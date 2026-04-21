@@ -1,0 +1,21 @@
+{
+  "name": "@salt/web-pwa",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@salt/domain": "workspace:*",
+    "@salt/firebase-adapter": "workspace:*",
+    "@salt/shared-types": "workspace:*",
+    "@salt/ui-components": "workspace:*"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}

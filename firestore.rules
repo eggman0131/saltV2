@@ -1,0 +1,14 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Notes are written only via the createNoteCallable cloud function (admin SDK bypasses rules).
+    // Reads are open so the web client can list notes without authentication.
+    match /notes/{noteId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

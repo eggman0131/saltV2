@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.svelte-kit/
+.firebase/
+*.local
+.env*
+!.env.example
+*.tsbuildinfo

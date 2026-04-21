@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh issue *)",
+      "Bash(pnpm --version)",
+      "Bash(node -e \"console.log\\(process.version\\)\")",
+      "Bash(npm install *)",
+      "Bash(curl -fsSL https://get.pnpm.io/install.sh)",
+      "Bash(sh -)",
+      "Bash(export PNPM_HOME=\"/home/eggman/.local/share/pnpm\")",
+      "Bash(export PATH=\"$PNPM_HOME:$PATH\")",
+      "Bash(pnpm add *)",
+      "Bash(npm run *)",
+      "Bash(node -e \"require\\('child_process'\\).execSync\\('pnpm --version', {stdio:'inherit'}\\)\")",
+      "Bash(npx pnpm *)",
+      "Bash(/home/eggman/.local/share/pnpm/pnpm --version)",
+      "Bash(~/.local/share/pnpm/pnpm --version)",
+      "Bash(~/.local/share/pnpm/pnpm add *)",
+      "Bash(~/.local/share/pnpm/pnpm exec *)",
+      "Bash(xargs -I {} find {} -type f)",
+      "Bash(pnpm install *)",
+      "Bash(pnpm firebase *)",
+      "Bash(fuser -k 4000/tcp 9099/tcp 8080/tcp 9199/tcp 5001/tcp 5000/tcp 4400/tcp 4500/tcp)",
+      "Bash(git add *)"
+    ]
+  }
+}
