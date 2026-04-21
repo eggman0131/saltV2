@@ -64,9 +64,9 @@ export default [
     },
   },
 
-  // boundaries: file-path-based import graph enforcement
+  // boundaries: file-path-based import graph enforcement (packages only — apps are leaf nodes)
   {
-    files: ['**/*.ts'],
+    files: ['packages/**/*.ts'],
     plugins: { boundaries },
     settings: { 'boundaries/elements': ELEMENTS },
     rules: {
@@ -82,12 +82,9 @@ export default [
             { from: 'testing-utils', allow: ['shared-types', 'domain', 'firebase-adapter'] },
             {
               from: 'web-pwa',
-              allow: ['shared-types', 'domain', 'firebase-adapter', 'ui-components', 'web-pwa'],
+              allow: ['shared-types', 'domain', 'firebase-adapter', 'ui-components'],
             },
-            {
-              from: 'cloud-functions',
-              allow: ['shared-types', 'domain', 'firebase-adapter', 'cloud-functions'],
-            },
+            { from: 'cloud-functions', allow: ['shared-types', 'domain', 'firebase-adapter'] },
           ],
         },
       ],
