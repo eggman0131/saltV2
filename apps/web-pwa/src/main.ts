@@ -1,8 +1,8 @@
 import { initFirebase, createNoteRepository, callCreateNote } from '@salt/firebase-adapter';
 import type { Note } from '@salt/domain';
+import { firebaseConfig, useEmulators } from './firebase-config.js';
 
-// Connect to local emulators — change to false + add real config for production
-initFirebase({ projectId: 'demo-salt' }, true);
+initFirebase(firebaseConfig, useEmulators);
 
 const repo = createNoteRepository();
 const statusEl = document.getElementById('status') as HTMLElement;

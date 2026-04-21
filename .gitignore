@@ -3,6 +3,8 @@ dist/
 .svelte-kit/
 .firebase/
 *.local
-.env*
-!.env.example
+.env
+.env.local
+.env.*.local
 *.tsbuildinfo
+.emulator-data/

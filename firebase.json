@@ -11,11 +11,9 @@
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
-  "storage": [
-    {
-      "rules": "storage.rules"
-    }
-  ],
+  "storage": {
+    "rules": "storage.rules"
+  },
   "hosting": {
     "public": "apps/web-pwa/build",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"]

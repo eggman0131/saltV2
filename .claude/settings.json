@@ -26,7 +26,13 @@
       "Bash(git commit *)",
       "Bash(pnpm typecheck *)",
       "mcp__vexp__run_pipeline",
-      "Bash(npx prettier *)"
+      "Bash(npx prettier *)",
+      "mcp__vexp__expand_vexp_ref",
+      "mcp__vexp__get_skeleton",
+      "Bash(pnpm --filter @salt/cloud-functions build)",
+      "Bash(pnpm lint:boundaries)",
+      "Bash(npx eslint *)",
+      "Bash(npx tsc *)"
     ]
   }
 }

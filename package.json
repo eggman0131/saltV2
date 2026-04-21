@@ -17,7 +17,8 @@
     "test": "vitest run",
     "format": "prettier --write \"**/*.{ts,js,svelte,css,html}\"",
     "format:check": "prettier --check \"**/*.{ts,js,svelte,css,html}\"",
-    "dev:emulators": "firebase emulators:start"
+    "dev": "pnpm --filter @salt/web-pwa dev",
+    "dev:emulators": "pnpm --filter @salt/cloud-functions build && firebase emulators:start --import=./.emulator-data --export-on-exit=./.emulator-data || true"
   },
   "lint-staged": {
     "*.{ts,js,svelte}": [
@@ -34,14 +35,14 @@
     "@typescript-eslint/eslint-plugin": "^8.32.0",
     "@typescript-eslint/parser": "^8.32.0",
     "dependency-cruiser": "^16.9.0",
-    "eslint": "^9.26.0",
-    "eslint-plugin-boundaries": "^4.2.2",
+    "eslint": "^10.2.1",
+    "eslint-plugin-boundaries": "^5.0.0",
+    "firebase-tools": "^15.12.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
     "prettier": "^3.5.3",
     "prettier-plugin-svelte": "^3.3.3",
     "typescript": "^5.8.3",
-    "firebase-tools": "^15.12.0",
     "vitest": "^3.2.0"
   }
 }

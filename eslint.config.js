@@ -82,9 +82,12 @@ export default [
             { from: 'testing-utils', allow: ['shared-types', 'domain', 'firebase-adapter'] },
             {
               from: 'web-pwa',
-              allow: ['shared-types', 'domain', 'firebase-adapter', 'ui-components'],
+              allow: ['shared-types', 'domain', 'firebase-adapter', 'ui-components', 'web-pwa'],
             },
-            { from: 'cloud-functions', allow: ['shared-types', 'domain', 'firebase-adapter'] },
+            {
+              from: 'cloud-functions',
+              allow: ['shared-types', 'domain', 'firebase-adapter', 'cloud-functions'],
+            },
           ],
         },
       ],
