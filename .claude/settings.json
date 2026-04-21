@@ -24,7 +24,9 @@
       "Bash(git add *)",
       "Bash(pnpm prettier *)",
       "Bash(git commit *)",
-      "Bash(pnpm typecheck *)"
+      "Bash(pnpm typecheck *)",
+      "mcp__vexp__run_pipeline",
+      "Bash(npx prettier *)"
     ]
   }
 }

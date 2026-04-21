@@ -15,8 +15,8 @@
     "typecheck": "tsc --build",
     "boundary:test": "sh .boundary-tests/run.sh",
     "test": "vitest run",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "format": "prettier --write \"**/*.{ts,js,svelte,css,html}\"",
+    "format:check": "prettier --check \"**/*.{ts,js,svelte,css,html}\"",
     "dev:emulators": "firebase emulators:start"
   },
   "lint-staged": {
@@ -24,7 +24,7 @@
       "eslint --no-error-on-unmatched-pattern",
       "prettier --check"
     ],
-    "*.{json,md,yaml,yml,css,html}": [
+    "*.{css,html}": [
       "prettier --check"
     ]
   },

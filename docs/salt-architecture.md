@@ -1,6 +1,7 @@
 # Salt 2.0 — Architecture Contract v0.1
 
 ## 1. Purpose
+
 Salt 2.0 is a modular, enforceable architecture for a modern PWA with a Firebase backend.
 The goal is to maintain strict separation between:
 
@@ -16,15 +17,15 @@ The architecture must remain framework‑agnostic, testable, and resilient to ch
 ## 2. Mono‑repo Structure (Logical Modules)
 
 /apps
-  web-pwa            # PWA front-end (UI only)
-  cloud-functions    # Firebase Cloud Functions entrypoints
+web-pwa # PWA front-end (UI only)
+cloud-functions # Firebase Cloud Functions entrypoints
 
 /packages
-  domain             # Pure business logic, entities, validation, rules
-  firebase-adapter   # Firebase implementation of domain ports
-  shared-types       # Cross-cutting types/interfaces only
-  ui-components      # Optional shared UI library
-  testing-utils      # Shared test helpers
+domain # Pure business logic, entities, validation, rules
+firebase-adapter # Firebase implementation of domain ports
+shared-types # Cross-cutting types/interfaces only
+ui-components # Optional shared UI library
+testing-utils # Shared test helpers
 
 This structure is conceptual; the scaffold must implement it exactly.
 
@@ -33,6 +34,7 @@ This structure is conceptual; the scaffold must implement it exactly.
 ## 3. Dependency Graph (Allowed Imports)
 
 ### Allowed
+
 - web-pwa → domain, firebase-adapter, shared-types, ui-components
 - cloud-functions → domain, firebase-adapter, shared-types
 - firebase-adapter → domain, shared-types
@@ -40,6 +42,7 @@ This structure is conceptual; the scaffold must implement it exactly.
 - shared-types → (no dependencies)
 
 ### Forbidden
+
 - UI → Cloud Functions
 - UI → Firebase SDK directly
 - Domain → Firebase SDK
@@ -148,6 +151,7 @@ This module must remain extremely small and stable.
 ## 9. Enforcement Rules
 
 ### ESLint
+
 - Enforce allowed import graph
 - Forbid Firebase imports outside firebase-adapter
 - Forbid domain importing anything except shared-types
@@ -156,11 +160,13 @@ This module must remain extremely small and stable.
 - Enforce strict TypeScript rules
 
 ### tsconfig
+
 - Use project references to enforce module boundaries
 - Each module has its own tsconfig
 - Root tsconfig defines the dependency graph
 
 ### Commit Gateway
+
 Every commit must:
 
 - Pass linting
@@ -177,18 +183,22 @@ Every commit must:
 ## 10. Testing Strategy
 
 ### Domain
+
 - 100% unit testable without Firebase
 - Pure logic tests
 
 ### Firebase Adapter
+
 - Unit tests with mocks
 - Integration tests with Firebase emulator (optional)
 
 ### Cloud Functions
+
 - Unit tests with mocked adapter
 - Integration tests with emulator
 
 ### UI
+
 - Component tests
 - Integration tests
 - E2E tests (Playwright)

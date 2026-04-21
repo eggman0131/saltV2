@@ -2,8 +2,6 @@ import boundaries from 'eslint-plugin-boundaries';
 import tsParser from '@typescript-eslint/parser';
 
 // Element definitions used by eslint-plugin-boundaries.
-// File-path patterns determine which element type a file belongs to.
-// Package-name patterns allow matching workspace import specifiers directly.
 const ELEMENTS = [
   {
     type: 'shared-types',
@@ -36,8 +34,6 @@ const ELEMENTS = [
 ];
 
 // Import specifier patterns that must never appear in certain layers.
-// Using no-restricted-imports so rules fire without module resolution.
-
 const FIREBASE_PKGS = ['firebase', 'firebase/*', 'firebase-admin', 'firebase-admin/*'];
 const SALT_APP_IMPORTS = [
   '@salt/web-pwa',
@@ -57,18 +53,18 @@ export default [
       '**/dist/**',
       '**/.svelte-kit/**',
       '**/__boundary_tests__/**',
-      '.boundary-tests/**',
+      '**/.boundary-tests/**',
     ],
   },
+
   {
     files: ['**/*.ts'],
     languageOptions: {
       parser: tsParser,
     },
   },
-  // eslint-plugin-boundaries: file-path-based import graph enforcement.
-  // Catches violations when imports resolve to local files (relative paths, or
-  // workspace symlinks). Second opinion after no-restricted-imports.
+
+  // boundaries: file-path-based import graph enforcement
   {
     files: ['**/*.ts'],
     plugins: { boundaries },
@@ -94,13 +90,10 @@ export default [
       ],
     },
   },
-  // no-restricted-imports: specifier-based rules that fire without module resolution.
-  // Each element type gets ONE comprehensive block so there are no rule override conflicts.
-  // Later config blocks for specific packages replace the earlier generic one for those files.
 
   // Generic default: packages and boundary-test fixtures must not import apps.
   {
-    files: ['packages/**/*.ts', '.boundary-tests/**/*.ts'],
+    files: ['packages/**/*.ts', '**/.boundary-tests/**/*.ts'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -115,7 +108,6 @@ export default [
   },
 
   // @salt/domain — must not import firebase or anything outside shared-types.
-  // This block comes AFTER the generic one and replaces it for domain files.
   {
     files: ['packages/domain/**/*.ts'],
     rules: {
@@ -123,6 +115,10 @@ export default [
         'error',
         {
           patterns: [
+            ...forbidGroup(
+              SALT_APP_IMPORTS,
+              'Packages must not import from apps. Apps are leaf nodes in the dependency graph.',
+            ),
             ...forbidGroup(
               FIREBASE_PKGS,
               'Firebase SDK imports are only allowed in @salt/firebase-adapter. Use the repository port instead.',
@@ -135,7 +131,6 @@ export default [
                 '@salt/ui-components/*',
                 '@salt/testing-utils',
                 '@salt/testing-utils/*',
-                ...SALT_APP_IMPORTS,
               ],
               '@salt/domain may only import @salt/shared-types from the workspace.',
             ),
@@ -152,20 +147,48 @@ export default [
       'no-restricted-imports': [
         'error',
         {
-          patterns: forbidGroup(
-            [
-              '@salt/domain',
-              '@salt/domain/*',
-              '@salt/firebase-adapter',
-              '@salt/firebase-adapter/*',
-              '@salt/ui-components',
-              '@salt/ui-components/*',
-              '@salt/testing-utils',
-              '@salt/testing-utils/*',
-              ...SALT_APP_IMPORTS,
-            ],
-            '@salt/shared-types must not import any other @salt/* package.',
-          ),
+          patterns: [
+            ...forbidGroup(SALT_APP_IMPORTS, 'Packages must not import from apps.'),
+            ...forbidGroup(
+              [
+                '@salt/domain',
+                '@salt/domain/*',
+                '@salt/firebase-adapter',
+                '@salt/firebase-adapter/*',
+                '@salt/ui-components',
+                '@salt/ui-components/*',
+                '@salt/testing-utils',
+                '@salt/testing-utils/*',
+              ],
+              '@salt/shared-types must not import any other @salt/* package.',
+            ),
+          ],
+        },
+      ],
+    },
+  },
+
+  // @salt/ui-components — must not import Firebase SDKs.
+  {
+    files: ['packages/ui-components/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: forbidGroup(FIREBASE_PKGS, 'UI components must not import Firebase SDKs.'),
+        },
+      ],
+    },
+  },
+
+  // @salt/testing-utils — only inherits the generic "no apps" rule unless tightened later.
+  {
+    files: ['packages/testing-utils/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: forbidGroup(SALT_APP_IMPORTS, 'Testing utilities must not import from apps.'),
         },
       ],
     },
@@ -181,7 +204,7 @@ export default [
           patterns: [
             ...forbidGroup(
               FIREBASE_PKGS,
-              'Firebase SDK imports are only allowed in @salt/firebase-adapter. Use the repository port instead.',
+              'Firebase SDK imports are only allowed in @salt/firebase-adapter.',
             ),
             ...forbidGroup(SALT_APP_IMPORTS, 'Packages must not import from apps.'),
           ],
@@ -189,26 +212,29 @@ export default [
       ],
     },
   },
+
   {
     files: ['packages/shared-types/src/__boundary_tests__/**/*.ts'],
     rules: {
       'no-restricted-imports': [
         'error',
         {
-          patterns: forbidGroup(
-            [
-              '@salt/domain',
-              '@salt/domain/*',
-              '@salt/firebase-adapter',
-              '@salt/firebase-adapter/*',
-              '@salt/ui-components',
-              '@salt/ui-components/*',
-              '@salt/testing-utils',
-              '@salt/testing-utils/*',
-              ...SALT_APP_IMPORTS,
-            ],
-            '@salt/shared-types must not import any other @salt/* package.',
-          ),
+          patterns: [
+            ...forbidGroup(SALT_APP_IMPORTS, 'Packages must not import from apps.'),
+            ...forbidGroup(
+              [
+                '@salt/domain',
+                '@salt/domain/*',
+                '@salt/firebase-adapter',
+                '@salt/firebase-adapter/*',
+                '@salt/ui-components',
+                '@salt/ui-components/*',
+                '@salt/testing-utils',
+                '@salt/testing-utils/*',
+              ],
+              '@salt/shared-types must not import any other @salt/* package.',
+            ),
+          ],
         },
       ],
     },
