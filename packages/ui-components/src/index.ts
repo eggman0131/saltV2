@@ -8,6 +8,7 @@ export { default as CardDescription } from './primitives/Card/CardDescription.sv
 export { default as CardFooter } from './primitives/Card/CardFooter.svelte';
 export { default as CardHeader } from './primitives/Card/CardHeader.svelte';
 export { default as CardTitle } from './primitives/Card/CardTitle.svelte';
+export { default as Checkbox } from './primitives/Checkbox/Checkbox.svelte';
 export { default as Divider } from './primitives/Divider/Divider.svelte';
 export { default as Grid } from './primitives/Grid/Grid.svelte';
 export { default as Heading } from './primitives/Heading/Heading.svelte';
@@ -15,7 +16,10 @@ export { default as Icon } from './primitives/Icon/Icon.svelte';
 export { default as Inline } from './primitives/Inline/Inline.svelte';
 export { default as Spinner } from './primitives/Spinner/Spinner.svelte';
 export { default as Stack } from './primitives/Stack/Stack.svelte';
+export { default as Switch } from './primitives/Switch/Switch.svelte';
 export { default as Text } from './primitives/Text/Text.svelte';
+export { default as TextArea } from './primitives/Textarea/Textarea.svelte';
+export { default as TextField } from './primitives/TextField/TextField.svelte';
 
 // Helpers (re-exported from ./lib)
 export { cn } from './lib/cn';
@@ -34,6 +38,7 @@ export type {
   CardHeaderProps,
   CardTitleProps,
 } from './primitives/Card/Card.types';
+export type { CheckboxProps, CheckedState } from './primitives/Checkbox/Checkbox.types';
 export type { DividerProps } from './primitives/Divider/Divider.types';
 export type { GridProps } from './primitives/Grid/Grid.types';
 export type { HeadingProps } from './primitives/Heading/Heading.types';
@@ -41,4 +46,7 @@ export type { IconProps } from './primitives/Icon/Icon.types';
 export type { InlineProps } from './primitives/Inline/Inline.types';
 export type { SpinnerProps } from './primitives/Spinner/Spinner.types';
 export type { StackProps } from './primitives/Stack/Stack.types';
+export type { SwitchProps } from './primitives/Switch/Switch.types';
 export type { TextProps } from './primitives/Text/Text.types';
+export type { TextareaProps } from './primitives/Textarea/Textarea.types';
+export type { TextFieldProps } from './primitives/TextField/TextField.types';

@@ -59,6 +59,10 @@ const saltFocusRingPlugin = plugin(({ addUtilities }) => {
       '@apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background':
         {},
     },
+    '.salt-focus-ring-within': {
+      '@apply focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background':
+        {},
+    },
   });
 });
 
