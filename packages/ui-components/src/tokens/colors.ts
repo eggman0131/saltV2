@@ -1,0 +1,21 @@
+// spec: SPEC.md §3.3 v0.2.3
+// AUTO-GENERATED — do not hand-edit. Run `pnpm --filter @salt/ui-components generate-tokens` to regenerate.
+export const background = 'hsl(var(--salt-background))';
+export const foreground = 'hsl(var(--salt-foreground))';
+export const primary = 'hsl(var(--salt-primary))';
+export const primaryForeground = 'hsl(var(--salt-primary-foreground))';
+export const secondary = 'hsl(var(--salt-secondary))';
+export const secondaryForeground = 'hsl(var(--salt-secondary-foreground))';
+export const muted = 'hsl(var(--salt-muted))';
+export const mutedForeground = 'hsl(var(--salt-muted-foreground))';
+export const accent = 'hsl(var(--salt-accent))';
+export const accentForeground = 'hsl(var(--salt-accent-foreground))';
+export const destructive = 'hsl(var(--salt-destructive))';
+export const destructiveForeground = 'hsl(var(--salt-destructive-foreground))';
+export const card = 'hsl(var(--salt-card))';
+export const cardForeground = 'hsl(var(--salt-card-foreground))';
+export const popover = 'hsl(var(--salt-popover))';
+export const popoverForeground = 'hsl(var(--salt-popover-foreground))';
+export const border = 'hsl(var(--salt-border))';
+export const input = 'hsl(var(--salt-input))';
+export const ring = 'hsl(var(--salt-ring))';
