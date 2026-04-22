@@ -1,0 +1,29 @@
+# vexp indexing ignore rules
+# Keep this focused on generated/binary/noisy paths so index quality stays high.
+
+# Dependency and build outputs
+node_modules/
+dist/
+.svelte-kit/
+coverage/
+
+# Firebase local/runtime artifacts
+.emulator-data/
+.firebase/
+
+# Internal tooling/runtime folders
+.vexp/
+.git/
+
+# Environment and local-only files
+.env
+.env.local
+.env.*.local
+*.local
+
+# Logs and large lock artifacts
+*.log
+pnpm-lock.yaml
+
+# TypeScript incremental artifacts
+*.tsbuildinfo
