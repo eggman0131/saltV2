@@ -1,0 +1,14 @@
+{
+  "servers": {
+    "vexp": {
+      "type": "stdio",
+      "command": "/home/eggman/.nvm/versions/node/v24.12.0/bin/node",
+      "args": [
+        "/home/eggman/.vscode-server-insiders/extensions/vexp.vexp-vscode-2.0.12-linux-x64/dist/mcp-server.cjs"
+      ],
+      "env": {
+        "VEXP_WORKSPACE": "/home/eggman/projects/saltV2"
+      }
+    }
+  }
+}
