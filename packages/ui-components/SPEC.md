@@ -1,4 +1,4 @@
-# Salt 2.0 — UI Primitives Specification (v0.2.2)
+# Salt 2.0 — UI Primitives Specification (v0.2.3)
 
 **Status:** Authoritative
 **Audience:** AI code generators + human contributors
@@ -59,10 +59,9 @@ Generators must not implement v0.3 primitives until the v0.3 spec exists.
 ---
 
 ## 1.2 Boundaries
-`@salt/ui-components` is a leaf package.
+`@salt/ui-components` is a leaf package (external-only — no `@salt/*` imports).
 
 Allowed imports:
-- `@salt/shared-types`
 - bits-ui, melt-ui, lucide-svelte
 - Svelte internals
 - Tailwind utilities
@@ -1409,6 +1408,7 @@ Numeric transform (allowed by §2.3): determinate indicator uses `style="transfo
 
 | Date | Version | Summary |
 |------|---------|---------|
+| 2026-04-22 | v0.2.3 | §1.2 tightened to truly leaf (external-only) to match root CLAUDE.md and eslint.config.js. Removed `@salt/shared-types` from allowed imports list. |
 | 2026-04-22 | v0.2.2 | Locked four implementation decisions: Svelte pin `^5.55.0` (§1.1), Icon surface `keyof typeof import('lucide-svelte')` (§1.1 + §8.12 unchanged), `tailwindcss-animate` registered by preset (§1.1 + §3.3), `useId` kept as module-scope counter explicitly **not SSR-safe** (§2.6). No breaking change to generated code. |
 | 2026-04-21 | v0.2.1 | Finished Progress spec. Centralized headless layer under `src/headless/`. Added §1.4 event naming rule, §1.5 spec versioning, §3.5 helper signatures, §3.6 canonical Button example + controlled/uncontrolled + snippet patterns, §3.7 bits-ui mapping table, §3.8 provenance header convention, §4.4 shared size scale, §4.5 dark-mode contract, §6.2 test template. Added CVA class matrices to all primitives. Added per-primitive "Forbidden" lists. |
 | earlier | v0.2 | Initial draft. |
