@@ -12,7 +12,7 @@ FAIL=0
 expect_lint_error() {
   local file="$1"
   local desc="$2"
-  if pnpm eslint --no-error-on-unmatched-pattern "$file" 2>&1 | grep -qE " error "; then
+  if pnpm eslint --no-ignore --no-error-on-unmatched-pattern "$file" 2>&1 | grep -qE " error "; then
     echo "  PASS  $desc"
     PASS=$((PASS + 1))
   else

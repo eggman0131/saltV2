@@ -41,7 +41,12 @@
       "Bash(pnpm format:check)",
       "Read(//home/eggman/**)",
       "Bash(bash -l -c \"node --version\")",
-      "Bash(bash -l -c \"nvm current && nvm alias default\")"
+      "Bash(bash -l -c \"nvm current && nvm alias default\")",
+      "Bash(pnpm --filter @salt/ui-components test)",
+      "Bash(pnpm lint *)",
+      "Bash(pnpm boundary:test)",
+      "Bash(pnpm test *)",
+      "Bash(pnpm --filter @salt/ui-components generate-tokens)"
     ],
     "additionalDirectories": [
       "/home/eggman"
