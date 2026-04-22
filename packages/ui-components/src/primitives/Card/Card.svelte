@@ -1,0 +1,11 @@
+<!-- spec: SPEC.md §8.9 v0.2.3 -->
+<script lang="ts">
+  import { cn } from '../../lib/cn';
+  import type { CardProps } from './Card.types';
+
+  let { class: className, children }: CardProps = $props();
+</script>
+
+<div class={cn('rounded-lg border bg-card text-card-foreground shadow-sm', className)}>
+  {@render children?.()}
+</div>
