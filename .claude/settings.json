@@ -36,7 +36,15 @@
       "Bash(python3 -c \"import sys,json; c=json.load\\(sys.stdin\\); [print\\(r\\) for r in c.get\\('rules',{}\\) if 'boundaries' in r]\")",
       "Bash(python3 -c \"import sys,json; c=json.load\\(sys.stdin\\); print\\(json.dumps\\(c.get\\('rules',{}\\).get\\('boundaries/element-types'\\), indent=2\\)\\)\")",
       "Bash(gh auth *)",
-      "Bash(gh repo *)"
+      "Bash(gh repo *)",
+      "Bash(git stash *)",
+      "Bash(pnpm format:check)",
+      "Read(//home/eggman/**)",
+      "Bash(bash -l -c \"node --version\")",
+      "Bash(bash -l -c \"nvm current && nvm alias default\")"
+    ],
+    "additionalDirectories": [
+      "/home/eggman"
     ]
   }
 }
