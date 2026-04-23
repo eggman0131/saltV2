@@ -48,6 +48,10 @@ expect_lint_error \
   "packages/shared-types/src/__boundary_tests__/no-domain.ts" \
   "shared-types cannot import @salt/domain"
 
+expect_lint_error \
+  "packages/ui-components/src/__boundary_tests__/imports-firebase.ts" \
+  "ui-components cannot import Firebase SDKs"
+
 expect_depcruise_error \
   ".boundary-tests/circular" \
   "circular imports are rejected"

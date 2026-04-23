@@ -14,6 +14,7 @@
     "lint:boundaries": "eslint \"packages/**/*.ts\" \"apps/**/*.ts\" \".boundary-tests/**/*.ts\"",
     "typecheck": "tsc --build",
     "boundary:test": "sh .boundary-tests/run.sh",
+    "provenance:check": "pnpm --filter @salt/ui-components provenance:check",
     "test": "vitest run",
     "format": "prettier --write \"**/*.{ts,js,svelte,css,html}\"",
     "format:check": "prettier --check \"**/*.{ts,js,svelte,css,html}\"",
