@@ -23,6 +23,7 @@ export { default as Heading } from './primitives/Heading/Heading.svelte';
 export { default as Icon } from './primitives/Icon/Icon.svelte';
 export { default as Inline } from './primitives/Inline/Inline.svelte';
 export { default as Popover } from './primitives/Popover/Popover.svelte';
+export { default as Progress } from './primitives/Progress/Progress.svelte';
 export { default as PopoverContent } from './primitives/Popover/PopoverContent.svelte';
 export { default as PopoverTrigger } from './primitives/Popover/PopoverTrigger.svelte';
 export { default as Spinner } from './primitives/Spinner/Spinner.svelte';
@@ -81,3 +82,4 @@ export type {
   TooltipContentProps,
   TooltipPartProps,
 } from './primitives/Tooltip/Tooltip.types';
+export type { ProgressProps } from './primitives/Progress/Progress.types';

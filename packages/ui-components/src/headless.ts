@@ -13,3 +13,5 @@ export { createTextFieldState } from './headless/TextField.headless.svelte';
 export type { TextFieldState } from './headless/TextField.headless.svelte';
 export { createTooltipState, TOOLTIP_CONTEXT } from './headless/Tooltip.headless.svelte';
 export type { TooltipState } from './headless/Tooltip.headless.svelte';
+export { createProgressState } from './headless/Progress.headless.svelte';
+export type { ProgressState } from './headless/Progress.headless.svelte';
