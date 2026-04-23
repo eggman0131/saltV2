@@ -1,10 +1,15 @@
-import { describe, it, expect } from 'vitest';
-import * as sharedTypes from '@salt/shared-types';
-import * as domain from '@salt/domain';
+// spec: SPEC.md §1.3 v0.2.3
+import { describe, it, expect, afterEach } from 'vitest';
+import { render, cleanup } from '@testing-library/svelte';
+import { axe } from 'vitest-axe';
+import App from '../src/App.svelte';
 
-describe('@salt/web-pwa', () => {
-  it('can import from allowed layers', () => {
-    expect(sharedTypes).toBeDefined();
-    expect(domain).toBeDefined();
+afterEach(() => cleanup());
+
+describe('@salt/web-pwa smoke', () => {
+  it('mounts App with no axe violations', async () => {
+    const { container } = render(App);
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
   });
 });

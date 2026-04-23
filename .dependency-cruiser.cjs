@@ -39,8 +39,8 @@ module.exports = {
     {
       name: 'no-import-web-pwa',
       severity: 'error',
-      comment: 'Nothing may import from the web-pwa app.',
-      from: {},
+      comment: 'Nothing outside web-pwa may import from the web-pwa app.',
+      from: { pathNot: '^apps/web-pwa' },
       to: { path: '^apps/web-pwa' },
     },
   ],

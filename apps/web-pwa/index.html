@@ -3,62 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Salt — Notes</title>
-    <style>
-      body {
-        font-family: system-ui, sans-serif;
-        max-width: 600px;
-        margin: 2rem auto;
-        padding: 0 1rem;
-      }
-      form {
-        display: flex;
-        gap: 0.5rem;
-        flex-wrap: wrap;
-        margin-bottom: 1.5rem;
-      }
-      input {
-        flex: 1;
-        padding: 0.4rem 0.6rem;
-        border: 1px solid #ccc;
-        border-radius: 4px;
-      }
-      button {
-        padding: 0.4rem 0.8rem;
-        cursor: pointer;
-      }
-      ul {
-        list-style: none;
-        padding: 0;
-      }
-      li {
-        padding: 0.5rem 0;
-        border-bottom: 1px solid #eee;
-      }
-      li strong {
-        display: block;
-      }
-      li em {
-        font-size: 0.8rem;
-        color: #888;
-      }
-      #status {
-        color: #e44;
-        min-height: 1.2rem;
-      }
-    </style>
+    <title>Salt</title>
   </head>
   <body>
-    <h1>Notes</h1>
-    <form id="create-form">
-      <input type="text" name="title" placeholder="Title (required)" required />
-      <input type="text" name="body" placeholder="Body" />
-      <button type="submit">Create via Cloud Function</button>
-    </form>
-    <p id="status"></p>
-    <ul id="notes-list">
-      <li>Loading…</li>
-    </ul>
+    <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
