@@ -26,6 +26,13 @@ export { default as Popover } from './primitives/Popover/Popover.svelte';
 export { default as Progress } from './primitives/Progress/Progress.svelte';
 export { default as RadioGroup } from './primitives/RadioGroup/RadioGroup.svelte';
 export { default as RadioGroupItem } from './primitives/RadioGroup/RadioGroupItem.svelte';
+export { default as Select } from './primitives/Select/Select.svelte';
+export { default as SelectContent } from './primitives/Select/SelectContent.svelte';
+export { default as SelectGroup } from './primitives/Select/SelectGroup.svelte';
+export { default as SelectItem } from './primitives/Select/SelectItem.svelte';
+export { default as SelectLabel } from './primitives/Select/SelectLabel.svelte';
+export { default as SelectSeparator } from './primitives/Select/SelectSeparator.svelte';
+export { default as SelectTrigger } from './primitives/Select/SelectTrigger.svelte';
 export { default as PopoverContent } from './primitives/Popover/PopoverContent.svelte';
 export { default as PopoverTrigger } from './primitives/Popover/PopoverTrigger.svelte';
 export { default as Spinner } from './primitives/Spinner/Spinner.svelte';
@@ -89,3 +96,12 @@ export type {
   RadioGroupProps,
   RadioGroupItemProps,
 } from './primitives/RadioGroup/RadioGroup.types';
+export type {
+  SelectProps,
+  SelectTriggerProps,
+  SelectContentProps,
+  SelectItemProps,
+  SelectGroupProps,
+  SelectLabelProps,
+  SelectSeparatorProps,
+} from './primitives/Select/Select.types';

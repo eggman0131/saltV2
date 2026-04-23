@@ -17,3 +17,5 @@ export { createProgressState } from './headless/Progress.headless.svelte';
 export type { ProgressState } from './headless/Progress.headless.svelte';
 export { createRadioGroupState, RADIO_GROUP_CONTEXT } from './headless/RadioGroup.headless.svelte';
 export type { RadioGroupState } from './headless/RadioGroup.headless.svelte';
+export { createSelectState, SELECT_CONTEXT } from './headless/Select.headless.svelte';
+export type { SelectState, SelectRegisteredItem } from './headless/Select.headless.svelte';
