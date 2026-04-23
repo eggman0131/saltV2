@@ -3,6 +3,14 @@
 // Primitives
 export { default as Button } from './primitives/Button/Button.svelte';
 export { default as Card } from './primitives/Card/Card.svelte';
+export { default as Dialog } from './primitives/Dialog/Dialog.svelte';
+export { default as DialogClose } from './primitives/Dialog/DialogClose.svelte';
+export { default as DialogContent } from './primitives/Dialog/DialogContent.svelte';
+export { default as DialogDescription } from './primitives/Dialog/DialogDescription.svelte';
+export { default as DialogFooter } from './primitives/Dialog/DialogFooter.svelte';
+export { default as DialogHeader } from './primitives/Dialog/DialogHeader.svelte';
+export { default as DialogTitle } from './primitives/Dialog/DialogTitle.svelte';
+export { default as DialogTrigger } from './primitives/Dialog/DialogTrigger.svelte';
 export { default as CardContent } from './primitives/Card/CardContent.svelte';
 export { default as CardDescription } from './primitives/Card/CardDescription.svelte';
 export { default as CardFooter } from './primitives/Card/CardFooter.svelte';
@@ -14,12 +22,19 @@ export { default as Grid } from './primitives/Grid/Grid.svelte';
 export { default as Heading } from './primitives/Heading/Heading.svelte';
 export { default as Icon } from './primitives/Icon/Icon.svelte';
 export { default as Inline } from './primitives/Inline/Inline.svelte';
+export { default as Popover } from './primitives/Popover/Popover.svelte';
+export { default as PopoverContent } from './primitives/Popover/PopoverContent.svelte';
+export { default as PopoverTrigger } from './primitives/Popover/PopoverTrigger.svelte';
 export { default as Spinner } from './primitives/Spinner/Spinner.svelte';
 export { default as Stack } from './primitives/Stack/Stack.svelte';
 export { default as Switch } from './primitives/Switch/Switch.svelte';
 export { default as Text } from './primitives/Text/Text.svelte';
 export { default as TextArea } from './primitives/Textarea/Textarea.svelte';
 export { default as TextField } from './primitives/TextField/TextField.svelte';
+export { default as Tooltip } from './primitives/Tooltip/Tooltip.svelte';
+export { default as TooltipContent } from './primitives/Tooltip/TooltipContent.svelte';
+export { default as TooltipProvider } from './primitives/Tooltip/TooltipProvider.svelte';
+export { default as TooltipTrigger } from './primitives/Tooltip/TooltipTrigger.svelte';
 
 // Helpers (re-exported from ./lib)
 export { cn } from './lib/cn';
@@ -39,14 +54,30 @@ export type {
   CardTitleProps,
 } from './primitives/Card/Card.types';
 export type { CheckboxProps, CheckedState } from './primitives/Checkbox/Checkbox.types';
+export type {
+  DialogProps,
+  DialogContentProps,
+  DialogPartProps,
+} from './primitives/Dialog/Dialog.types';
 export type { DividerProps } from './primitives/Divider/Divider.types';
 export type { GridProps } from './primitives/Grid/Grid.types';
 export type { HeadingProps } from './primitives/Heading/Heading.types';
 export type { IconProps } from './primitives/Icon/Icon.types';
 export type { InlineProps } from './primitives/Inline/Inline.types';
+export type {
+  PopoverProps,
+  PopoverContentProps,
+  PopoverPartProps,
+} from './primitives/Popover/Popover.types';
 export type { SpinnerProps } from './primitives/Spinner/Spinner.types';
 export type { StackProps } from './primitives/Stack/Stack.types';
 export type { SwitchProps } from './primitives/Switch/Switch.types';
 export type { TextProps } from './primitives/Text/Text.types';
 export type { TextareaProps } from './primitives/Textarea/Textarea.types';
 export type { TextFieldProps } from './primitives/TextField/TextField.types';
+export type {
+  TooltipProviderProps,
+  TooltipProps,
+  TooltipContentProps,
+  TooltipPartProps,
+} from './primitives/Tooltip/Tooltip.types';
