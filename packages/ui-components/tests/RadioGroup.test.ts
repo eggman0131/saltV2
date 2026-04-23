@@ -1,4 +1,4 @@
-// lean RadioGroup test suite
+// spec: SPEC.md §2 v0.3
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
@@ -114,6 +114,29 @@ describe('RadioGroup (lean suite)', () => {
       setup({ value: 'apple', defaultValue: 'banana' });
       expect(apple).toHaveAttribute('aria-checked', 'true');
       expect(banana).toHaveAttribute('aria-checked', 'false');
+    });
+  });
+
+  // ------------------------------------------------------------
+  // Composition
+  // ------------------------------------------------------------
+  describe('composition', () => {
+    it('renders items as children of the group', () => {
+      setup();
+      const group = screen.getByRole('radiogroup');
+      const items = screen.getAllByRole('radio');
+      items.forEach((item) => expect(group.contains(item)).toBe(true));
+    });
+
+    it('disabled item carries aria-disabled', () => {
+      setup();
+      expect(orange).toHaveAttribute('aria-disabled', 'true');
+      expect(apple).not.toHaveAttribute('aria-disabled', 'true');
+    });
+
+    it('orientation attribute is forwarded to the group', () => {
+      setup({ orientation: 'horizontal' });
+      expect(screen.getByRole('radiogroup')).toHaveAttribute('aria-orientation', 'horizontal');
     });
   });
 });
