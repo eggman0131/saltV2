@@ -19,3 +19,5 @@ export { createRadioGroupState, RADIO_GROUP_CONTEXT } from './headless/RadioGrou
 export type { RadioGroupState } from './headless/RadioGroup.headless.svelte';
 export { createSelectState, SELECT_CONTEXT } from './headless/Select.headless.svelte';
 export type { SelectState, SelectRegisteredItem } from './headless/Select.headless.svelte';
+export { createSliderState, SLIDER_CONTEXT } from './headless/Slider.headless.svelte';
+export type { SliderState } from './headless/Slider.headless.svelte';

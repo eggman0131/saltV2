@@ -33,6 +33,10 @@ export { default as SelectItem } from './primitives/Select/SelectItem.svelte';
 export { default as SelectLabel } from './primitives/Select/SelectLabel.svelte';
 export { default as SelectSeparator } from './primitives/Select/SelectSeparator.svelte';
 export { default as SelectTrigger } from './primitives/Select/SelectTrigger.svelte';
+export { default as Slider } from './primitives/Slider/Slider.svelte';
+export { default as SliderRange } from './primitives/Slider/SliderRange.svelte';
+export { default as SliderThumb } from './primitives/Slider/SliderThumb.svelte';
+export { default as SliderTrack } from './primitives/Slider/SliderTrack.svelte';
 export { default as PopoverContent } from './primitives/Popover/PopoverContent.svelte';
 export { default as PopoverTrigger } from './primitives/Popover/PopoverTrigger.svelte';
 export { default as Spinner } from './primitives/Spinner/Spinner.svelte';
@@ -105,3 +109,9 @@ export type {
   SelectLabelProps,
   SelectSeparatorProps,
 } from './primitives/Select/Select.types';
+export type {
+  SliderProps,
+  SliderTrackProps,
+  SliderRangeProps,
+  SliderThumbProps,
+} from './primitives/Slider/Slider.types';
