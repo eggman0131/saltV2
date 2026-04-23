@@ -129,3 +129,18 @@ export type {
   SheetPartProps,
   SheetSide,
 } from './primitives/Sheet/Sheet.types';
+export { default as Toast } from './primitives/Toast/Toast.svelte';
+export { default as ToastAction } from './primitives/Toast/ToastAction.svelte';
+export { default as ToastClose } from './primitives/Toast/ToastClose.svelte';
+export { default as ToastDescription } from './primitives/Toast/ToastDescription.svelte';
+export { default as ToastProvider } from './primitives/Toast/ToastProvider.svelte';
+export { default as ToastTitle } from './primitives/Toast/ToastTitle.svelte';
+export { default as ToastViewport } from './primitives/Toast/ToastViewport.svelte';
+export type {
+  ToastVariant,
+  ToastProviderProps,
+  ToastViewportProps,
+  ToastProps,
+  ToastPartProps,
+  ToastActionProps,
+} from './primitives/Toast/Toast.types';
