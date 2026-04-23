@@ -27,6 +27,14 @@ export { default as Progress } from './primitives/Progress/Progress.svelte';
 export { default as RadioGroup } from './primitives/RadioGroup/RadioGroup.svelte';
 export { default as RadioGroupItem } from './primitives/RadioGroup/RadioGroupItem.svelte';
 export { default as Select } from './primitives/Select/Select.svelte';
+export { default as Sheet } from './primitives/Sheet/Sheet.svelte';
+export { default as SheetClose } from './primitives/Sheet/SheetClose.svelte';
+export { default as SheetContent } from './primitives/Sheet/SheetContent.svelte';
+export { default as SheetDescription } from './primitives/Sheet/SheetDescription.svelte';
+export { default as SheetFooter } from './primitives/Sheet/SheetFooter.svelte';
+export { default as SheetHeader } from './primitives/Sheet/SheetHeader.svelte';
+export { default as SheetTitle } from './primitives/Sheet/SheetTitle.svelte';
+export { default as SheetTrigger } from './primitives/Sheet/SheetTrigger.svelte';
 export { default as SelectContent } from './primitives/Select/SelectContent.svelte';
 export { default as SelectGroup } from './primitives/Select/SelectGroup.svelte';
 export { default as SelectItem } from './primitives/Select/SelectItem.svelte';
@@ -115,3 +123,9 @@ export type {
   SliderRangeProps,
   SliderThumbProps,
 } from './primitives/Slider/Slider.types';
+export type {
+  SheetProps,
+  SheetContentProps,
+  SheetPartProps,
+  SheetSide,
+} from './primitives/Sheet/Sheet.types';

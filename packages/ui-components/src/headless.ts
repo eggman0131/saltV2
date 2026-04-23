@@ -21,3 +21,5 @@ export { createSelectState, SELECT_CONTEXT } from './headless/Select.headless.sv
 export type { SelectState, SelectRegisteredItem } from './headless/Select.headless.svelte';
 export { createSliderState, SLIDER_CONTEXT } from './headless/Slider.headless.svelte';
 export type { SliderState } from './headless/Slider.headless.svelte';
+export { createSheetState, SHEET_CONTEXT } from './headless/Sheet.headless.svelte';
+export type { SheetState } from './headless/Sheet.headless.svelte';
