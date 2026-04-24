@@ -11,31 +11,25 @@ export const radioGroupVariants = cva('flex gap-2', {
   defaultVariants: { orientation: 'vertical' },
 });
 
-export const radioGroupItemVariants = cva(
-  'salt-focus-ring flex items-center gap-2 cursor-pointer rounded-sm outline-none',
-  {
-    variants: {
-      disabled: {
-        true: 'opacity-50 pointer-events-none cursor-not-allowed',
-        false: '',
-      },
+export const radioGroupItemVariants = cva('salt-control salt-control--radio', {
+  variants: {
+    disabled: {
+      true: 'salt-control--disabled',
+      false: '',
     },
-    defaultVariants: { disabled: false },
   },
-);
+  defaultVariants: { disabled: false },
+});
 
-export const radioGroupIndicatorVariants = cva(
-  'h-4 w-4 shrink-0 rounded-full border border-primary flex items-center justify-center',
-  {
-    variants: {
-      checked: {
-        true: 'bg-primary',
-        false: 'bg-background',
-      },
+export const radioGroupIndicatorVariants = cva('salt-control--radio-indicator', {
+  variants: {
+    checked: {
+      true: 'salt-control--radio-indicator-checked',
+      false: 'salt-control--radio-indicator-unchecked',
     },
-    defaultVariants: { checked: false },
   },
-);
+  defaultVariants: { checked: false },
+});
 
 export type RadioGroupVariants = VariantProps<typeof radioGroupVariants>;
 export type RadioGroupItemVariants = VariantProps<typeof radioGroupItemVariants>;

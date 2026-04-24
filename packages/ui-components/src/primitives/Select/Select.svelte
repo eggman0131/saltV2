@@ -25,8 +25,8 @@
     onOpenChange,
   }: SelectProps = $props();
 
-  if (value === undefined) value = defaultValue;
-  if (open === undefined) open = defaultOpen;
+  if (value === undefined) value = untrack(() => defaultValue);
+  if (open === undefined) open = untrack(() => defaultOpen);
 
   let items = $state.raw<SelectRegisteredItem[]>([]);
   let activeOption = $state<string | undefined>(undefined);

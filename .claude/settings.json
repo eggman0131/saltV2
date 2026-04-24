@@ -105,10 +105,29 @@
       "Bash(pnpm --filter @salt/ui-components exec eslint \"src/**/*.ts\")",
       "Bash(git -C /home/eggman/projects/saltV2 add packages/ui-components/src/headless/Toast.headless.svelte.ts packages/ui-components/src/primitives/Toast/ packages/ui-components/tests/Toast.test.ts packages/ui-components/tests/fixtures/ToastFixture.svelte packages/ui-components/src/headless.ts packages/ui-components/src/index.ts)",
       "Bash(git -C /home/eggman/projects/saltV2 add packages/ui-components/src/headless/Toast.headless.svelte.ts packages/ui-components/tests/Toast.test.ts)",
-      "Bash(pnpm -w test --reporter=verbose)"
+      "Bash(pnpm -w test --reporter=verbose)",
+      "Bash(git -C /home/eggman/projects/saltV2 diff)",
+      "Bash(git -C /home/eggman/projects/saltV2 status --short)",
+      "Bash(git -C /home/eggman/projects/saltV2 add packages/ui-components/tests/RadioGroup.test.ts)",
+      "Bash(gh label *)",
+      "Bash(pnpm --filter @salt/ui-components test -- --reporter=verbose --run)",
+      "Bash(pnpm --filter @salt/ui-components test -- --reporter=verbose --run --testPathPattern=Combobox)",
+      "Bash(pnpm --filter @salt/ui-components exec tsc --noEmit)",
+      "Bash(pnpm --filter @salt/ui-components test -- --run)",
+      "Bash(pnpm --filter @salt/kitchen-sink exec vite build)",
+      "Bash(node -e \"const p = require\\('/home/eggman/projects/saltV2/node_modules/.pnpm/bits-ui@1.8.0_svelte@5.55.4_@typescript-eslint+types@8.59.0_/node_modules/bits-ui/package.json'\\); console.log\\(p.version\\)\")",
+      "Bash(node -e \"const m = require\\('/home/eggman/projects/saltV2/node_modules/.pnpm/bits-ui@1.8.0_svelte@5.55.4_@typescript-eslint+types@8.59.0_/node_modules/bits-ui/dist/bits/checkbox/exports.js'\\); console.log\\(Object.keys\\(m\\).join\\(', '\\)\\)\")",
+      "Bash(pnpm --filter @salt/kitchen-sink dev)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5174)",
+      "Bash(pnpm --filter kitchen-sink build)",
+      "Bash(pnpm --filter kitchen-sink dev)",
+      "Bash(pkill -f \"vite --port 5174\")",
+      "Bash(curl -s http://localhost:5174/)",
+      "Bash(curl -s http://localhost:5174/src/app.css)",
+      "Bash(curl -s \"http://localhost:5174/@fs/home/eggman/projects/saltV2/apps/kitchen-sink/src/app.css\")",
+      "Bash(node_modules/.bin/tailwindcss -i src/app.css -o src/generated-tokens.css --minify)",
+      "Bash(node_modules/.bin/tailwindcss -i src/app.css -o /tmp/ks-check.css)"
     ],
-    "additionalDirectories": [
-      "/home/eggman"
-    ]
+    "additionalDirectories": ["/home/eggman"]
   }
 }

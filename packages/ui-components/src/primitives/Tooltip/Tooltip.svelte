@@ -1,5 +1,6 @@
 <!-- spec: SPEC.md §8.8 v0.2.3 -->
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { Tooltip } from 'bits-ui';
   import { TOOLTIP_CONTEXT, createTooltipState } from '../../headless/Tooltip.headless.svelte';
   import type { TooltipProps } from './Tooltip.types';
@@ -13,7 +14,7 @@
     onOpenChange,
   }: TooltipProps = $props();
 
-  if (open === undefined) open = defaultOpen;
+  if (open === undefined) open = untrack(() => defaultOpen);
 
   const state = createTooltipState();
   TOOLTIP_CONTEXT.set(state);

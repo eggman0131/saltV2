@@ -19,6 +19,7 @@
 
 <div
   bind:this={trackEl}
+  role="presentation"
   class={cn(sliderTrackVariants({ orientation: ctx.orientation }), className)}
   data-orientation={ctx.orientation}
   onpointerdown={handlePointerDown}

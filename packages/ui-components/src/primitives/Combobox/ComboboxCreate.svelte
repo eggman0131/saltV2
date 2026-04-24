@@ -29,6 +29,13 @@
   function handlePointerMove() {
     ctx.setActiveIndex(createIndex);
   }
+
+  function handleKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      ctx.createCustom();
+    }
+  }
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -37,8 +44,10 @@
   id={ctx.getItemId(createIndex)}
   role="option"
   aria-selected={false}
+  tabindex={-1}
   class={cn(comboboxCreateVariants({ active: isActive }), className)}
   onclick={handleClick}
+  onkeydown={handleKeydown}
   onpointermove={handlePointerMove}
 >
   {#if children}

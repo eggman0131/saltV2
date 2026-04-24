@@ -30,7 +30,6 @@
   bind:this={el}
   id={ctx.triggerId}
   type="button"
-  role="button"
   aria-haspopup="listbox"
   aria-expanded={ctx.open}
   aria-controls={ctx.open ? ctx.listboxId : undefined}

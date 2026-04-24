@@ -66,6 +66,106 @@ const saltFocusRingPlugin = plugin(({ addUtilities }) => {
   });
 });
 
+const saltComponentPlugin = plugin(({ addComponents }) => {
+  addComponents({
+    // ─ Button ─────────────────────────────────────────────────────────
+    '.salt-button': {
+      '@apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors motion-reduce:transition-none disabled:pointer-events-none data-[disabled]:opacity-50':
+        {},
+    },
+    '.salt-button--solid': { '@apply bg-primary text-primary-foreground hover:bg-primary/90': {} },
+    '.salt-button--outline': {
+      '@apply border border-input bg-background hover:bg-accent hover:text-accent-foreground': {},
+    },
+    '.salt-button--ghost': { '@apply bg-transparent hover:bg-muted hover:text-foreground': {} },
+    '.salt-button--link': {
+      '@apply bg-transparent underline-offset-4 hover:underline text-primary': {},
+    },
+    '.salt-button--destructive': {
+      '@apply bg-destructive text-destructive-foreground hover:bg-destructive/90': {},
+    },
+    '.salt-button--sm': { '@apply h-8 px-3 text-sm': {} },
+    '.salt-button--md': { '@apply h-9 px-4 text-sm': {} },
+    '.salt-button--lg': { '@apply h-10 px-6 text-base': {} },
+    '.salt-button--icon': { '@apply h-9 w-9 p-0': {} },
+    '.salt-button--full': { '@apply w-full': {} },
+
+    // ─ Input (TextField frame + ComboboxInput) ────────────────────────
+    '.salt-input': {
+      '@apply flex items-center gap-2 rounded-md border border-input bg-background': {},
+    },
+    '.salt-input--sm': { '@apply h-8 px-3 text-sm': {} },
+    '.salt-input--md': { '@apply h-9 px-4 text-sm': {} },
+    '.salt-input--lg': { '@apply h-10 px-6 text-base': {} },
+    '.salt-input--error': {
+      '@apply border-destructive focus-within:ring-destructive': {},
+    },
+    '.salt-input--disabled': { '@apply opacity-50 pointer-events-none': {} },
+    // Combobox variant: direct <input> element (owns its own focus ring)
+    '.salt-input--combobox': {
+      '@apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background h-10 w-full px-3 py-2 text-sm outline-none ring-offset-background placeholder:text-muted-foreground':
+        {},
+    },
+
+    // ─ Trigger (SelectTrigger) ────────────────────────────────────────
+    '.salt-trigger': {
+      '@apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background flex h-10 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-offset-background':
+        {},
+    },
+    '.salt-trigger--disabled': { '@apply cursor-not-allowed opacity-50 pointer-events-none': {} },
+    '.salt-trigger--enabled': { '@apply cursor-pointer hover:bg-accent/50': {} },
+
+    // ─ Control (Checkbox / Radio / Switch) ────────────────────────────
+    '.salt-control': {
+      '@apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background':
+        {},
+    },
+    // Checkbox
+    '.salt-control--checkbox': {
+      '@apply peer shrink-0 rounded border border-input bg-background data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground':
+        {},
+    },
+    '.salt-control--checkbox-sm': { '@apply h-3.5 w-3.5': {} },
+    '.salt-control--checkbox-md': { '@apply h-4 w-4': {} },
+    '.salt-control--checkbox-lg': { '@apply h-5 w-5': {} },
+    // Radio item (the focusable row: indicator + label)
+    '.salt-control--radio': {
+      '@apply flex items-center gap-2 cursor-pointer rounded-sm outline-none': {},
+    },
+    // Radio indicator (the visual dot)
+    '.salt-control--radio-indicator': {
+      '@apply h-4 w-4 shrink-0 rounded-full border border-primary flex items-center justify-center':
+        {},
+    },
+    '.salt-control--radio-indicator-checked': { '@apply bg-primary': {} },
+    '.salt-control--radio-indicator-unchecked': { '@apply bg-background': {} },
+    // Switch root (the track)
+    '.salt-control--switch': {
+      '@apply inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors motion-reduce:transition-none data-[state=checked]:bg-primary data-[state=unchecked]:bg-input':
+        {},
+    },
+    '.salt-control--switch-sm': { '@apply h-4 w-7': {} },
+    '.salt-control--switch-md': { '@apply h-5 w-9': {} },
+    '.salt-control--switch-lg': { '@apply h-6 w-11': {} },
+    // Switch thumb
+    '.salt-control--switch-thumb': {
+      '@apply pointer-events-none block rounded-full bg-background shadow-sm transition-transform motion-reduce:transition-none data-[state=unchecked]:translate-x-0':
+        {},
+    },
+    '.salt-control--switch-thumb-sm': {
+      '@apply h-3 w-3 data-[state=checked]:translate-x-3': {},
+    },
+    '.salt-control--switch-thumb-md': {
+      '@apply h-4 w-4 data-[state=checked]:translate-x-4': {},
+    },
+    '.salt-control--switch-thumb-lg': {
+      '@apply h-5 w-5 data-[state=checked]:translate-x-5': {},
+    },
+    // Shared disabled state
+    '.salt-control--disabled': { '@apply opacity-50 pointer-events-none cursor-not-allowed': {} },
+  });
+});
+
 const saltProgressPlugin = plugin(({ addBase }) => {
   addBase({
     '@keyframes salt-progress-indeterminate': {
@@ -145,7 +245,7 @@ const preset = {
       },
     },
   },
-  plugins: [animate, cssVarsPlugin, saltFocusRingPlugin, saltProgressPlugin],
+  plugins: [animate, cssVarsPlugin, saltFocusRingPlugin, saltComponentPlugin, saltProgressPlugin],
 };
 
 export default preset;

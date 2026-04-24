@@ -1,5 +1,6 @@
 <!-- spec: SPEC.md §8.4 v0.2.3 -->
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { Checkbox } from 'bits-ui';
   import { cn } from '../../lib/cn';
   import { createCheckboxState } from '../../headless/Checkbox.headless.svelte';
@@ -23,7 +24,7 @@
     onCheckedChange,
   }: CheckboxProps & { onCheckedChange?: (checked: CheckedState) => void } = $props();
 
-  if (checked === undefined) checked = defaultChecked;
+  if (checked === undefined) checked = untrack(() => defaultChecked);
 
   const fieldState = createCheckboxState({
     id: () => undefined,

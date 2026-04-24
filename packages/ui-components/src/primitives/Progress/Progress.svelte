@@ -1,5 +1,6 @@
 <!-- spec: SPEC.md §8.15 v0.2.3 -->
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { Progress } from 'bits-ui';
   import { cn } from '../../lib/cn';
   import { createProgressState } from '../../headless/Progress.headless.svelte';
@@ -15,7 +16,7 @@
     class: className,
   }: ProgressProps = $props();
 
-  if (value === undefined) value = defaultValue;
+  if (value === undefined) value = untrack(() => defaultValue);
 
   const state = createProgressState({
     value: () => value,

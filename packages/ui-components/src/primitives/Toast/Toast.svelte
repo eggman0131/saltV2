@@ -1,5 +1,6 @@
 <!-- spec: SPEC.md §6 v0.3 -->
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { cn } from '../../lib/cn';
   import { TOAST_ITEM_CONTEXT } from '../../headless/Toast.headless.svelte';
   import { toastVariants } from './Toast.variants';
@@ -15,7 +16,7 @@
     onOpenChange,
   }: ToastProps = $props();
 
-  if (open === undefined) open = defaultOpen;
+  if (open === undefined) open = untrack(() => defaultOpen);
 
   function close() {
     open = false;
@@ -31,7 +32,7 @@
 
   // Auto-dismiss timer state (plain let — not reactive, not tracked by effects)
   let timerId: ReturnType<typeof setTimeout> | undefined;
-  let remaining = duration;
+  let remaining = untrack(() => duration);
   let timerStartTime: number | undefined;
 
   function clearTimer() {

@@ -1,5 +1,6 @@
 <!-- spec: SPEC.md §8.5 v0.2.3 -->
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { Switch } from 'bits-ui';
   import { cn } from '../../lib/cn';
   import { createSwitchState } from '../../headless/Switch.headless.svelte';
@@ -21,7 +22,7 @@
     onCheckedChange,
   }: SwitchProps = $props();
 
-  if (checked === undefined) checked = defaultChecked;
+  if (checked === undefined) checked = untrack(() => defaultChecked);
 
   const fieldState = createSwitchState({
     id: () => undefined,

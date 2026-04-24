@@ -1,5 +1,6 @@
 <!-- spec: SPEC.md §8.6 v0.2.3 -->
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { Dialog } from 'bits-ui';
   import { DIALOG_CONTEXT, createDialogState } from '../../headless/Dialog.headless.svelte';
   import type { DialogProps } from './Dialog.types';
@@ -13,7 +14,7 @@
     onOpenChange,
   }: DialogProps = $props();
 
-  if (open === undefined) open = defaultOpen;
+  if (open === undefined) open = untrack(() => defaultOpen);
 
   const state = createDialogState({ portal: () => portal ?? 'body' });
   DIALOG_CONTEXT.set(state);

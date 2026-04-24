@@ -19,6 +19,7 @@
     "format": "prettier --write \"**/*.{ts,js,svelte,css,html}\"",
     "format:check": "prettier --check \"**/*.{ts,js,svelte,css,html}\"",
     "dev": "pnpm --filter @salt/web-pwa dev",
+    "dev:kitchen-sink": "pnpm --filter @salt/kitchen-sink dev",
     "dev:emulators": "pnpm --filter @salt/cloud-functions build && firebase emulators:start --import=./.emulator-data --export-on-exit=./.emulator-data || true"
   },
   "lint-staged": {

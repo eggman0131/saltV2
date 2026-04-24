@@ -1,5 +1,6 @@
 <!-- spec: SPEC.md §4 v0.3 -->
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { cn } from '../../lib/cn';
   import { SLIDER_CONTEXT, createSliderState } from '../../headless/Slider.headless.svelte';
   import { sliderRootVariants } from './Slider.variants';
@@ -18,8 +19,8 @@
     onValueChange,
   }: SliderProps = $props();
 
-  // Canonical §3.6 seed — reads defaultValue once, intentionally non-reactive
-  if (value === undefined) value = defaultValue ?? 0;
+  // Canonical §3.6 seed — reads defaultValue once via untrack (intentional, not reactive)
+  if (value === undefined) value = untrack(() => defaultValue) ?? 0;
 
   let activeThumbIdx = $state(0);
 

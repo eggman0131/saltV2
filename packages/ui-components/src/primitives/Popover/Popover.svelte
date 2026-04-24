@@ -1,5 +1,6 @@
 <!-- spec: SPEC.md §8.7 v0.2.3 -->
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { Popover } from 'bits-ui';
   import { POPOVER_CONTEXT, createPopoverState } from '../../headless/Popover.headless.svelte';
   import type { PopoverProps } from './Popover.types';
@@ -14,7 +15,7 @@
     onOpenChange,
   }: PopoverProps = $props();
 
-  if (open === undefined) open = defaultOpen;
+  if (open === undefined) open = untrack(() => defaultOpen);
 
   const state = createPopoverState({
     portal: () => portal ?? 'body',

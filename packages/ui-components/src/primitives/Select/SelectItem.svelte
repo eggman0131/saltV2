@@ -39,6 +39,13 @@
   function handlePointerMove() {
     if (!disabled) ctx.setActive(value);
   }
+
+  function handleKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      if (!disabled) ctx.selectOption(value);
+    }
+  }
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -48,8 +55,10 @@
   role="option"
   aria-selected={isSelected}
   aria-disabled={disabled || undefined}
+  tabindex={-1}
   class={cn(selectItemVariants({ active: isActive, disabled }), className)}
   onclick={handleClick}
+  onkeydown={handleKeydown}
   onpointermove={handlePointerMove}
 >
   {#if children}

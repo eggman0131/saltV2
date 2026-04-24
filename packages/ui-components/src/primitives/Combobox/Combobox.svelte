@@ -23,19 +23,21 @@
     onCreate,
   }: ComboboxProps = $props();
 
-  if (allowCustom && restrict) {
-    throw new Error('Combobox: allowCustom and restrict are mutually exclusive.');
-  }
+  untrack(() => {
+    if (allowCustom && restrict) {
+      throw new Error('Combobox: allowCustom and restrict are mutually exclusive.');
+    }
+  });
 
-  if (value === undefined) value = defaultValue;
-  if (open === undefined) open = defaultOpen;
+  if (value === undefined) value = untrack(() => defaultValue);
+  if (open === undefined) open = untrack(() => defaultOpen);
 
   let inputValue = $state('');
   let filterValue = $state('');
   let activeIndex = $state<number | null>(null);
 
   // Sync inputValue to selected value's label on init
-  const initialItem = items.find((i) => i.value === value);
+  const initialItem = untrack(() => items.find((i) => i.value === value));
   if (initialItem) inputValue = initialItem.label;
 
   const listboxId = useId('combobox-listbox');

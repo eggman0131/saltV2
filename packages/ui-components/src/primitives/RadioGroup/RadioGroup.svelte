@@ -31,8 +31,8 @@
   let items = $state.raw<RadioGroupRegisteredItem[]>([]);
   let rovingValue = $state<string | undefined>(undefined);
 
-  // Canonical §3.6 seed — only reads defaultValue once (intentional, not reactive)
-  if (value === undefined) value = defaultValue;
+  // Canonical §3.6 seed — reads defaultValue once via untrack (intentional, not reactive)
+  if (value === undefined) value = untrack(() => defaultValue);
 
   const labelId = useId('rg-label');
   const descId = useId('rg-desc');

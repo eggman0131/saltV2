@@ -1,5 +1,6 @@
 <!-- spec: SPEC.md §5 v0.3 -->
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { Dialog } from 'bits-ui';
   import { SHEET_CONTEXT, createSheetState } from '../../headless/Sheet.headless.svelte';
   import type { SheetProps } from './Sheet.types';
@@ -14,7 +15,7 @@
     onOpenChange,
   }: SheetProps = $props();
 
-  if (open === undefined) open = defaultOpen;
+  if (open === undefined) open = untrack(() => defaultOpen);
 
   const state = createSheetState({
     portal: () => portal ?? 'body',

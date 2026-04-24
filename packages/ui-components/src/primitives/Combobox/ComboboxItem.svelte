@@ -28,6 +28,13 @@
   function handlePointerMove() {
     ctx.setActiveIndex(index);
   }
+
+  function handleKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      ctx.selectItem(item.value);
+    }
+  }
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -36,8 +43,10 @@
   id={ctx.getItemId(index)}
   role="option"
   aria-selected={isSelected}
+  tabindex={-1}
   class={cn(comboboxItemVariants({ active: isActive }), className)}
   onclick={handleClick}
+  onkeydown={handleKeydown}
   onpointermove={handlePointerMove}
 >
   {#if children}

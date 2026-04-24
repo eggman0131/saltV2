@@ -1,5 +1,6 @@
 <!-- spec: SPEC.md §8.2 v0.2.3 -->
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { cn } from '../../lib/cn';
   import { createTextFieldState } from '../../headless/TextField.headless.svelte';
   import { textFieldFrameVariants } from './TextField.variants';
@@ -29,7 +30,7 @@
     ...rest
   }: TextFieldProps = $props();
 
-  if (value === undefined) value = defaultValue;
+  if (value === undefined) value = untrack(() => defaultValue);
 
   const state = createTextFieldState({
     id: () => idProp,
