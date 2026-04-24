@@ -1,7 +1,17 @@
-// spec: SPEC.md §1.3 v0.3
+// spec: SPEC.md §1.3 v0.3, ui-spec-v04.md §2 v0.4
 
 // Primitives
 export { default as Button } from './primitives/Button/Button.svelte';
+export { default as Combobox } from './primitives/Combobox/Combobox.svelte';
+export { default as ComboboxContent } from './primitives/Combobox/ComboboxContent.svelte';
+export { default as ComboboxCreate } from './primitives/Combobox/ComboboxCreate.svelte';
+export { default as ComboboxEmpty } from './primitives/Combobox/ComboboxEmpty.svelte';
+export { default as ComboboxGroup } from './primitives/Combobox/ComboboxGroup.svelte';
+export { default as ComboboxInput } from './primitives/Combobox/ComboboxInput.svelte';
+export { default as ComboboxItem } from './primitives/Combobox/ComboboxItem.svelte';
+export { default as ComboboxLabel } from './primitives/Combobox/ComboboxLabel.svelte';
+export { default as ComboboxSeparator } from './primitives/Combobox/ComboboxSeparator.svelte';
+export { default as ComboboxTrigger } from './primitives/Combobox/ComboboxTrigger.svelte';
 export { default as Card } from './primitives/Card/Card.svelte';
 export { default as CardContent } from './primitives/Card/CardContent.svelte';
 export { default as CardDescription } from './primitives/Card/CardDescription.svelte';
@@ -74,6 +84,19 @@ export * as tokens from './tokens';
 
 // Types
 export type { ButtonProps } from './primitives/Button/Button.types';
+export type {
+  ComboboxItem as ComboboxItemType,
+  ComboboxProps,
+  ComboboxInputProps,
+  ComboboxTriggerProps,
+  ComboboxContentProps,
+  ComboboxItemProps,
+  ComboboxGroupProps,
+  ComboboxLabelProps,
+  ComboboxSeparatorProps,
+  ComboboxEmptyProps,
+  ComboboxCreateProps,
+} from './primitives/Combobox/Combobox.types';
 export type {
   CardProps,
   CardContentProps,
