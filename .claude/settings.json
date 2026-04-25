@@ -137,7 +137,11 @@
       "Bash(pnpm provenance:check)",
       "Bash(pnpm --filter @salt/ui-components run check)",
       "Bash(pnpm --filter @salt/kitchen-sink build)",
-      "Bash(pnpm exec *)"
+      "Bash(pnpm exec *)",
+      "Bash(pnpm --filter @salt/ui-components check)",
+      "Bash(pnpm build *)",
+      "Bash(git mv *)",
+      "Bash(pnpm --filter @salt/ui-components theme:check)"
     ],
     "additionalDirectories": ["/home/eggman"]
   }
