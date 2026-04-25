@@ -5,50 +5,64 @@ import animate from 'tailwindcss-animate';
 const cssVarsPlugin = plugin(({ addBase }) => {
   addBase({
     ':root': {
-      '--salt-background': '0 0% 100%',
-      '--salt-foreground': '222.2 84% 4.9%',
-      '--salt-primary': '222.2 47.4% 11.2%',
-      '--salt-primary-foreground': '210 40% 98%',
-      '--salt-secondary': '210 40% 96.1%',
-      '--salt-secondary-foreground': '222.2 47.4% 11.2%',
-      '--salt-muted': '210 40% 96.1%',
-      '--salt-muted-foreground': '215.4 16.3% 46.9%',
-      '--salt-accent': '210 40% 96.1%',
-      '--salt-accent-foreground': '222.2 47.4% 11.2%',
-      '--salt-destructive': '0 84.2% 60.2%',
-      '--salt-destructive-foreground': '210 40% 98%',
-      '--salt-card': '0 0% 100%',
-      '--salt-card-foreground': '222.2 84% 4.9%',
+      // ── Culinary Modernist — light ──────────────────────────────────
+      '--salt-background': '180 11% 98%',           /* #f8fafa  surface */
+      '--salt-foreground': '195 7% 11%',             /* #191c1d  on-surface */
+      '--salt-primary': '195 77% 7%',                /* #041920  midnight navy */
+      '--salt-primary-foreground': '0 0% 100%',      /* #ffffff */
+      '--salt-secondary': '98 20% 33%',              /* #4f6443  sage */
+      '--salt-secondary-foreground': '0 0% 100%',    /* #ffffff */
+      '--salt-secondary-container': '94 47% 82%',    /* #cfe7bd  sage container */
+      '--salt-on-secondary-container': '99 19% 35%', /* #536947 */
+      '--salt-tertiary': '6 100% 10%',               /* #340500  terracotta */
+      '--salt-tertiary-foreground': '0 0% 100%',     /* #ffffff */
+      '--salt-tertiary-container': '10 100% 17%',    /* #580f00 */
+      '--salt-on-tertiary-container': '12 76% 61%',  /* #e76e50 */
+      '--salt-muted': '180 6% 93%',                  /* #eceeee  surface-container */
+      '--salt-muted-foreground': '195 6% 27%',       /* #42484a  on-surface-variant */
+      '--salt-accent': '94 47% 82%',                 /* secondary-container */
+      '--salt-accent-foreground': '99 19% 35%',      /* on-secondary-container */
+      '--salt-destructive': '0 75% 42%',             /* #ba1a1a  error */
+      '--salt-destructive-foreground': '0 0% 100%',  /* #ffffff */
+      '--salt-card': '0 0% 100%',                    /* surface-container-lowest */
+      '--salt-card-foreground': '195 7% 11%',        /* on-surface */
       '--salt-popover': '0 0% 100%',
-      '--salt-popover-foreground': '222.2 84% 4.9%',
-      '--salt-border': '214.3 31.8% 91.4%',
-      '--salt-input': '214.3 31.8% 91.4%',
-      '--salt-ring': '222.2 84% 4.9%',
-      '--salt-radius-sm': '2px',
-      '--salt-radius-md': '6px',
-      '--salt-radius-lg': '10px',
-      '--salt-radius-xl': '14px',
+      '--salt-popover-foreground': '195 7% 11%',
+      '--salt-border': '203 7% 78%',                 /* #c2c7ca  outline-variant */
+      '--salt-input': '203 7% 78%',
+      '--salt-ring': '195 77% 7%',                   /* #041920  midnight navy */
+      '--salt-radius-sm': '0.25rem',
+      '--salt-radius-md': '0.5rem',
+      '--salt-radius-lg': '1rem',
+      '--salt-radius-xl': '1.5rem',
     },
     '.dark': {
-      '--salt-background': '222.2 84% 4.9%',
-      '--salt-foreground': '210 40% 98%',
-      '--salt-primary': '210 40% 98%',
-      '--salt-primary-foreground': '222.2 47.4% 11.2%',
-      '--salt-secondary': '217.2 32.6% 17.5%',
-      '--salt-secondary-foreground': '210 40% 98%',
-      '--salt-muted': '217.2 32.6% 17.5%',
-      '--salt-muted-foreground': '215 20.2% 65.1%',
-      '--salt-accent': '217.2 32.6% 17.5%',
-      '--salt-accent-foreground': '210 40% 98%',
-      '--salt-destructive': '0 62.8% 30.6%',
-      '--salt-destructive-foreground': '210 40% 98%',
-      '--salt-card': '222.2 84% 4.9%',
-      '--salt-card-foreground': '210 40% 98%',
-      '--salt-popover': '222.2 84% 4.9%',
-      '--salt-popover-foreground': '210 40% 98%',
-      '--salt-border': '217.2 32.6% 17.5%',
-      '--salt-input': '217.2 32.6% 17.5%',
-      '--salt-ring': '212.7 26.8% 83.9%',
+      // ── Culinary Modernist — dark ───────────────────────────────────
+      '--salt-background': '180 3% 19%',             /* #2e3131  inverse-surface */
+      '--salt-foreground': '180 7% 94%',             /* #eff1f1 */
+      '--salt-primary': '198 26% 77%',               /* #b4cad3  inverse-primary */
+      '--salt-primary-foreground': '195 77% 7%',     /* #041920 */
+      '--salt-secondary': '98 20% 33%',              /* #4f6443  sage */
+      '--salt-secondary-foreground': '0 0% 100%',
+      '--salt-secondary-container': '94 47% 82%',
+      '--salt-on-secondary-container': '99 19% 35%',
+      '--salt-tertiary': '6 100% 10%',
+      '--salt-tertiary-foreground': '0 0% 100%',
+      '--salt-tertiary-container': '10 100% 17%',
+      '--salt-on-tertiary-container': '12 76% 61%',
+      '--salt-muted': '180 3% 24%',
+      '--salt-muted-foreground': '195 5% 58%',
+      '--salt-accent': '98 20% 33%',
+      '--salt-accent-foreground': '0 0% 100%',
+      '--salt-destructive': '0 75% 42%',
+      '--salt-destructive-foreground': '0 0% 100%',
+      '--salt-card': '180 3% 22%',
+      '--salt-card-foreground': '180 7% 94%',
+      '--salt-popover': '180 3% 22%',
+      '--salt-popover-foreground': '180 7% 94%',
+      '--salt-border': '197 3% 46%',                 /* #73787a  outline */
+      '--salt-input': '197 3% 46%',
+      '--salt-ring': '198 26% 77%',                  /* #b4cad3 */
     },
   });
 });
@@ -190,6 +204,14 @@ const preset = {
           DEFAULT: 'hsl(var(--salt-secondary) / <alpha-value>)',
           foreground: 'hsl(var(--salt-secondary-foreground) / <alpha-value>)',
         },
+        'secondary-container': {
+          DEFAULT: 'hsl(var(--salt-secondary-container) / <alpha-value>)',
+          foreground: 'hsl(var(--salt-on-secondary-container) / <alpha-value>)',
+        },
+        tertiary: {
+          DEFAULT: 'hsl(var(--salt-tertiary) / <alpha-value>)',
+          foreground: 'hsl(var(--salt-tertiary-foreground) / <alpha-value>)',
+        },
         muted: {
           DEFAULT: 'hsl(var(--salt-muted) / <alpha-value>)',
           foreground: 'hsl(var(--salt-muted-foreground) / <alpha-value>)',
@@ -221,6 +243,33 @@ const preset = {
         xl: 'var(--salt-radius-xl)',
         full: '9999px',
       },
+      fontFamily: {
+        display: ['Epilogue', 'sans-serif'],
+        sans: ['Inter', 'sans-serif'],
+      },
+      fontSize: {
+        display: ['48px', { lineHeight: '1.1', letterSpacing: '-0.02em' }],
+        h1: ['32px', { lineHeight: '1.2', letterSpacing: '-0.01em' }],
+        h2: ['24px', { lineHeight: '1.3', letterSpacing: '0' }],
+        'body-lg': ['18px', { lineHeight: '1.6' }],
+        'body-md': ['16px', { lineHeight: '1.5' }],
+        'label-caps': ['12px', { lineHeight: '1.0', letterSpacing: '0.05em' }],
+      },
+      boxShadow: {
+        sm: '0 1px 2px 0 rgb(0 0 0 / 0.05)',
+        md: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+        lg: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
+        ambient: '0 2px 12px 0 hsl(var(--salt-primary) / 0.05)',
+        popover: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+        dialog: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
+      },
+      spacing: {
+        xs: '4px',
+        sm: '8px',
+        md: '16px',
+        lg: '24px',
+        xl: '48px',
+      },
       transitionDuration: {
         fast: '120ms',
         base: '180ms',
@@ -230,13 +279,6 @@ const preset = {
         standard: 'cubic-bezier(0.2, 0, 0, 1)',
         emphasized: 'cubic-bezier(0.3, 0, 0, 1)',
         decel: 'cubic-bezier(0, 0, 0, 1)',
-      },
-      boxShadow: {
-        sm: '0 1px 2px 0 rgb(0 0 0 / 0.05)',
-        md: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-        lg: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
-        popover: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-        dialog: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
       },
       zIndex: {
         popover: '40',

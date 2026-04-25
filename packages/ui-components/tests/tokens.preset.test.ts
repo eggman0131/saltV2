@@ -106,10 +106,10 @@ describe('tailwind-preset', () => {
       const handler = getHandler(cssVarsPlugin);
       handler!({ addBase, addUtilities: vi.fn(), theme: vi.fn() });
       const [rules] = addBase.mock.calls[0] as [Record<string, Record<string, string>>];
-      expect(rules[':root']!['--salt-radius-sm']).toBe('2px');
-      expect(rules[':root']!['--salt-radius-md']).toBe('6px');
-      expect(rules[':root']!['--salt-radius-lg']).toBe('10px');
-      expect(rules[':root']!['--salt-radius-xl']).toBe('14px');
+      expect(rules[':root']!['--salt-radius-sm']).toBe('0.25rem');
+      expect(rules[':root']!['--salt-radius-md']).toBe('0.5rem');
+      expect(rules[':root']!['--salt-radius-lg']).toBe('1rem');
+      expect(rules[':root']!['--salt-radius-xl']).toBe('1.5rem');
     });
   });
 

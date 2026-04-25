@@ -6,58 +6,6 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
-    /* ── Culinary Modernist — light ─────────────────────────────────────── */
-    --salt-background: 180 11% 98%; /* #f8fafa  surface          */
-    --salt-foreground: 195 7% 11%; /* #191c1d  on-surface       */
-    --salt-primary: 195 77% 7%; /* #041920  midnight navy    */
-    --salt-primary-foreground: 0 0% 100%; /* #ffffff                   */
-    --salt-secondary: 94 47% 82%; /* #cfe7bd  sage container   */
-    --salt-secondary-foreground: 99 19% 35%; /* #536947                   */
-    --salt-muted: 180 6% 93%; /* #eceeee  surface-container */
-    --salt-muted-foreground: 195 6% 27%; /* #42484a  on-surface-variant */
-    --salt-accent: 94 47% 82%; /* #cfe7bd  sage container   */
-    --salt-accent-foreground: 99 19% 35%; /* #536947                   */
-    --salt-destructive: 0 75% 42%; /* #ba1a1a  error            */
-    --salt-destructive-foreground: 0 0% 100%; /* #ffffff                   */
-    --salt-card: 0 0% 100%; /* #ffffff  container-lowest */
-    --salt-card-foreground: 195 7% 11%; /* #191c1d                   */
-    --salt-popover: 0 0% 100%; /* #ffffff                   */
-    --salt-popover-foreground: 195 7% 11%; /* #191c1d                   */
-    --salt-border: 203 7% 78%; /* #c2c7ca  outline-variant  */
-    --salt-input: 203 7% 78%; /* #c2c7ca                   */
-    --salt-ring: 195 77% 7%; /* #041920  midnight navy    */
-
-    /* ── Shape ─────────────────────────────────────────────────────────── */
-    --salt-radius-sm: 0.25rem; /* 4px  — small elements     */
-    --salt-radius-md: 0.5rem; /* 8px  — buttons, inputs    */
-    --salt-radius-lg: 1rem; /* 16px — cards              */
-    --salt-radius-xl: 1.5rem; /* 24px — large containers   */
-  }
-
-  .dark {
-    /* ── Culinary Modernist — dark (derived from inverse tokens) ─────── */
-    --salt-background: 180 3% 19%; /* #2e3131  inverse-surface  */
-    --salt-foreground: 180 7% 94%; /* #eff1f1  inverse-on-surface */
-    --salt-primary: 198 26% 77%; /* #b4cad3  inverse-primary  */
-    --salt-primary-foreground: 195 77% 7%; /* #041920                   */
-    --salt-secondary: 98 20% 33%; /* #4f6443  sage green       */
-    --salt-secondary-foreground: 0 0% 100%;
-    --salt-muted: 180 3% 24%; /* surface-container dark    */
-    --salt-muted-foreground: 195 5% 58%; /* outline dark              */
-    --salt-accent: 98 20% 33%; /* #4f6443                   */
-    --salt-accent-foreground: 0 0% 100%;
-    --salt-destructive: 0 75% 42%; /* #ba1a1a                   */
-    --salt-destructive-foreground: 0 0% 100%;
-    --salt-card: 180 3% 22%;
-    --salt-card-foreground: 180 7% 94%;
-    --salt-popover: 180 3% 22%;
-    --salt-popover-foreground: 180 7% 94%;
-    --salt-border: 197 3% 46%; /* #73787a  outline          */
-    --salt-input: 197 3% 46%;
-    --salt-ring: 198 26% 77%; /* #b4cad3                   */
-  }
-
   /* ── Surface ────────────────────────────────────────────────────────── */
   body {
     background-color: hsl(var(--salt-background));
@@ -134,73 +82,11 @@
   }
 }
 
-/* ── Component Styling Layer — Step 3 ───────────────────────────────────
-   Overrides placed after @tailwind utilities so they beat same-specificity
-   utility classes. All HSL values are taken verbatim from design.md /
-   tailwind.config.ts — no invented tokens.
-────────────────────────────────────────────────────────────────────────── */
-
 @layer utilities {
-  /* ─── Button: outline/secondary variant ────────────────────────────
-   * design.md §Buttons: "Secondary buttons utilize a Sage Green ghost style
-   * (outline only)."
-   * Replaces grey border-input with sage DEFAULT and sets text colour.
-   * :not([aria-haspopup="listbox"]) excludes SelectTrigger from this rule. */
-  button.border-input:not([aria-haspopup='listbox']) {
-    border-color: hsl(98 20% 33%); /* sage DEFAULT #4f6443 */
-    color: hsl(98 20% 33%);
-  }
-
-  /* Outline button focus ring: sage to match its own visual identity */
-  button.border-input:not([aria-haspopup='listbox']):focus-visible {
-    --tw-ring-color: hsl(98 20% 33%);
-  }
-
   /* ─── Button: active press state (all interactive variants) ─────────
    * Not defined in any variant; provides tactile press feedback. */
   button:not([disabled]):not([data-disabled]):active {
     opacity: 0.8;
-  }
-
-  /* ─── Form inputs focus ring: sage green ────────────────────────────
-   * design.md §Input Fields: "Focus states should be indicated by a
-   * transition to the Sage Green accent."
-   * Overrides --tw-ring-color set by salt-focus-ring / salt-focus-ring-within. */
-
-  /* TextField frame wrapper (uses salt-focus-ring-within) */
-  .salt-focus-ring-within:focus-within {
-    --tw-ring-color: hsl(98 20% 33%);
-  }
-
-  /* SelectTrigger: button with aria-haspopup="listbox" */
-  button[aria-haspopup='listbox']:focus-visible {
-    --tw-ring-color: hsl(98 20% 33%);
-  }
-
-  /* ComboboxInput: <input role="combobox"> */
-  input[role='combobox']:focus-visible {
-    --tw-ring-color: hsl(98 20% 33%);
-  }
-
-  /* ─── Checkbox: sage green checked state ────────────────────────────
-   * design.md §Kitchen-Specific: "Large-format checkboxes that turn Sage
-   * Green when 'checked'." Overrides data-[state=checked]:bg-primary. */
-  [role='checkbox'][data-state='checked'] {
-    background-color: hsl(98 20% 33%);
-  }
-
-  /* ─── Switch: sage green checked track ──────────────────────────────
-   * Same reasoning as checkbox. Overrides data-[state=checked]:bg-primary. */
-  [role='switch'][data-state='checked'] {
-    background-color: hsl(98 20% 33%);
-  }
-
-  /* ─── Radio: sage green checked indicator ───────────────────────────
-   * radioGroupIndicatorVariants applies bg-primary + border-primary to the
-   * indicator <span> when selected. Parent [role="radio"] carries aria-checked. */
-  [role='radio'][aria-checked='true'] > span:first-child {
-    background-color: hsl(98 20% 33%);
-    border-color: hsl(98 20% 33%);
   }
 }
 
