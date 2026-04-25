@@ -14,9 +14,11 @@
     "test": "vitest run",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "generate-tokens": "tsx scripts/generate-tokens.ts",
-    "provenance:check": "tsx scripts/check-provenance.ts"
+    "provenance:check": "tsx scripts/check-provenance.ts",
+    "theme:check": "tsx scripts/check-theme.ts"
   },
   "dependencies": {
+    "@floating-ui/dom": "^1.7.0",
     "bits-ui": "^1.0.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",

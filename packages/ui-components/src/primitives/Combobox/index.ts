@@ -1,5 +1,6 @@
 // spec: ui-spec-v04.md §2 v0.4
 export { default as Combobox } from './Combobox.svelte';
+export { default as ComboboxField } from './ComboboxField.svelte';
 export { default as ComboboxInput } from './ComboboxInput.svelte';
 export { default as ComboboxTrigger } from './ComboboxTrigger.svelte';
 export { default as ComboboxContent } from './ComboboxContent.svelte';
@@ -13,6 +14,7 @@ export type {
   ComboboxItem as ComboboxItemType,
   ComboboxProps,
   ComboboxInputProps,
+  ComboboxFieldProps,
   ComboboxTriggerProps,
   ComboboxContentProps,
   ComboboxItemProps,

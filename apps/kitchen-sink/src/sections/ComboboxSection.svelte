@@ -1,6 +1,7 @@
 <script lang="ts">
   import {
     Combobox,
+    ComboboxField,
     ComboboxInput,
     ComboboxTrigger,
     ComboboxContent,
@@ -29,8 +30,10 @@
     <h3 class="subsection-title">Searchable select</h3>
     <div class="max-w-xs">
       <Combobox items={fruits} bind:value={selected} placeholder="Search fruit…">
-        <ComboboxInput />
-        <ComboboxTrigger />
+        <ComboboxField>
+          <ComboboxInput />
+          <ComboboxTrigger />
+        </ComboboxField>
         <ComboboxContent>
           {#snippet children({ filteredItems })}
             {#each filteredItems as item, i}
@@ -55,8 +58,10 @@
         placeholder="Type or pick a fruit…"
         onCreate={(v) => console.log('created:', v)}
       >
-        <ComboboxInput />
-        <ComboboxTrigger />
+        <ComboboxField>
+          <ComboboxInput />
+          <ComboboxTrigger />
+        </ComboboxField>
         <ComboboxContent>
           {#snippet children({ filteredItems, showCreate })}
             {#each filteredItems as item, i}

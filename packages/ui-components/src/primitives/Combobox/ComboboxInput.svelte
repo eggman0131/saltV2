@@ -9,6 +9,17 @@
 
   const ctx = COMBOBOX_CONTEXT.get();
 
+  let inputEl: HTMLInputElement | undefined = $state(undefined);
+
+  // Register as the fallback floating anchor when no ComboboxField wraps us.
+  $effect(() => {
+    if (!inputEl) return;
+    if (ctx.anchorEl === null) ctx.setAnchorEl(inputEl);
+    return () => {
+      if (ctx.anchorEl === inputEl) ctx.setAnchorEl(null);
+    };
+  });
+
   function handleInput(e: Event) {
     const val = (e.target as HTMLInputElement).value;
     ctx.setInputValue(val);
@@ -29,6 +40,7 @@
 </script>
 
 <input
+  bind:this={inputEl}
   id={ctx.inputId}
   role="combobox"
   type="text"

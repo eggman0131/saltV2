@@ -13,7 +13,9 @@ export type ComboboxState = {
   readonly inputId: string;
   readonly portal: HTMLElement | string | false;
   readonly placeholder: string | undefined;
+  readonly anchorEl: HTMLElement | null;
 
+  readonly setAnchorEl: (el: HTMLElement | null) => void;
   readonly setInputValue: (v: string) => void;
   readonly openPopup: () => void;
   readonly openWhenTyping: () => void;
@@ -57,6 +59,8 @@ export function createComboboxState(opts: {
   listboxId: string;
   inputId: string;
   getOnCreate: () => ((v: string) => void) | undefined;
+  anchorEl: () => HTMLElement | null;
+  setAnchorEl: (el: HTMLElement | null) => void;
 }): ComboboxState {
   function defaultFilter(input: string, item: ComboboxItem): boolean {
     return item.label.toLowerCase().includes(input.trim().toLowerCase());
@@ -280,7 +284,13 @@ export function createComboboxState(opts: {
     },
     listboxId: opts.listboxId,
     inputId: opts.inputId,
+    get anchorEl() {
+      return opts.anchorEl();
+    },
 
+    setAnchorEl(el: HTMLElement | null) {
+      opts.setAnchorEl(el);
+    },
     setInputValue(v: string) {
       opts.setInputValue(v);
       opts.setFilterValue(v);

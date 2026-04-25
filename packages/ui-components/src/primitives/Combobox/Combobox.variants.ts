@@ -4,7 +4,7 @@ import { cva } from '../../lib/variants';
 export const comboboxInputVariants = cva('salt-input salt-input--combobox');
 
 export const comboboxTriggerVariants = cva(
-  'flex h-10 items-center justify-center rounded-r-md border border-l-0 border-input bg-background px-2 text-muted-foreground hover:bg-accent/50',
+  'flex h-10 min-h-0 items-center justify-center rounded-l-none rounded-r-md border border-l-0 border-input bg-background px-2 text-muted-foreground hover:bg-accent/50',
 );
 
 export const comboboxContentVariants = cva(

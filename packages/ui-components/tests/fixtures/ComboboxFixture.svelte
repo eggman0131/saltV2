@@ -1,6 +1,7 @@
 <!-- spec: ui-spec-v04.md §7 v0.4 — test fixture for Combobox composition -->
 <script lang="ts">
   import Combobox from '../../src/primitives/Combobox/Combobox.svelte';
+  import ComboboxField from '../../src/primitives/Combobox/ComboboxField.svelte';
   import ComboboxInput from '../../src/primitives/Combobox/ComboboxInput.svelte';
   import ComboboxTrigger from '../../src/primitives/Combobox/ComboboxTrigger.svelte';
   import ComboboxContent from '../../src/primitives/Combobox/ComboboxContent.svelte';
@@ -67,10 +68,10 @@
   {onOpenChange}
   {onCreate}
 >
-  <div style="display:flex">
+  <ComboboxField>
     <ComboboxInput />
     <ComboboxTrigger />
-  </div>
+  </ComboboxField>
   <ComboboxContent>
     {#snippet children({ filteredItems, showCreate })}
       <ComboboxGroup>

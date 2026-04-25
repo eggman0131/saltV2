@@ -32,7 +32,8 @@ const cssVarsPlugin = plugin(({ addBase }) => {
       '--salt-input': '203 7% 78%',
       '--salt-ring': '195 77% 7%' /* #041920  midnight navy */,
       '--salt-radius-sm': '0.25rem',
-      '--salt-radius-md': '0.5rem',
+      '--salt-radius-default': '0.5rem',
+      '--salt-radius-md': '0.75rem',
       '--salt-radius-lg': '1rem',
       '--salt-radius-xl': '1.5rem',
     },
@@ -84,7 +85,7 @@ const saltComponentPlugin = plugin(({ addComponents }) => {
   addComponents({
     // ─ Button ─────────────────────────────────────────────────────────
     '.salt-button': {
-      '@apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors motion-reduce:transition-none disabled:pointer-events-none data-[disabled]:opacity-50':
+      '@apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background inline-flex items-center justify-center gap-2 rounded font-medium transition-colors motion-reduce:transition-none disabled:pointer-events-none data-[disabled]:opacity-50':
         {},
     },
     '.salt-button--solid': { '@apply bg-primary text-primary-foreground hover:bg-primary/90': {} },
@@ -107,7 +108,7 @@ const saltComponentPlugin = plugin(({ addComponents }) => {
 
     // ─ Input (TextField frame + ComboboxInput) ────────────────────────
     '.salt-input': {
-      '@apply flex items-center gap-2 rounded-md border border-input bg-background': {},
+      '@apply flex items-center gap-2 rounded border border-input bg-background': {},
     },
     '.salt-input--sm': { '@apply h-8 px-3 text-sm': {} },
     '.salt-input--md': { '@apply h-9 px-4 text-sm': {} },
@@ -116,15 +117,16 @@ const saltComponentPlugin = plugin(({ addComponents }) => {
       '@apply border-destructive focus-within:ring-destructive': {},
     },
     '.salt-input--disabled': { '@apply opacity-50 pointer-events-none': {} },
-    // Combobox variant: direct <input> element (owns its own focus ring)
+    // Combobox variant: direct <input>; focus ring lives on the ComboboxField
+    // wrapper so it surrounds input + trigger, not just the input.
     '.salt-input--combobox': {
-      '@apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary focus-visible:ring-offset-2 focus-visible:ring-offset-background h-10 w-full px-3 py-2 text-sm outline-none ring-offset-background placeholder:text-muted-foreground':
+      '@apply focus-visible:outline-none h-10 w-full px-3 py-2 text-sm outline-none placeholder:text-muted-foreground':
         {},
     },
 
     // ─ Trigger (SelectTrigger) ────────────────────────────────────────
     '.salt-trigger': {
-      '@apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary focus-visible:ring-offset-2 focus-visible:ring-offset-background flex h-10 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-offset-background':
+      '@apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary focus-visible:ring-offset-2 focus-visible:ring-offset-background flex h-10 w-full items-center justify-between gap-2 rounded border border-input bg-background px-3 py-2 text-sm outline-none ring-offset-background':
         {},
     },
     '.salt-trigger--disabled': { '@apply cursor-not-allowed opacity-50 pointer-events-none': {} },
@@ -137,7 +139,7 @@ const saltComponentPlugin = plugin(({ addComponents }) => {
     },
     // Checkbox
     '.salt-control--checkbox': {
-      '@apply shrink-0 rounded border border-input bg-background data-[state=checked]:bg-secondary data-[state=checked]:text-secondary-foreground':
+      '@apply shrink-0 rounded-sm border border-input bg-background data-[state=checked]:bg-secondary data-[state=checked]:text-secondary-foreground':
         {},
     },
     '.salt-control--checkbox-sm': { '@apply h-3.5 w-3.5': {} },
@@ -310,6 +312,7 @@ const preset = {
       },
       borderRadius: {
         sm: 'var(--salt-radius-sm)',
+        DEFAULT: 'var(--salt-radius-default)',
         md: 'var(--salt-radius-md)',
         lg: 'var(--salt-radius-lg)',
         xl: 'var(--salt-radius-xl)',

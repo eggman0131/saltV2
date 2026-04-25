@@ -26,6 +26,11 @@ export type ComboboxInputProps = {
   class?: string;
 };
 
+export type ComboboxFieldProps = {
+  class?: string;
+  children?: Snippet;
+};
+
 export type ComboboxTriggerProps = {
   class?: string;
   children?: Snippet;

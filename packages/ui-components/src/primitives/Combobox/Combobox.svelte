@@ -35,6 +35,7 @@
   let inputValue = $state('');
   let filterValue = $state('');
   let activeIndex = $state<number | null>(null);
+  let anchorEl = $state<HTMLElement | null>(null);
 
   // Sync inputValue to selected value's label on init
   const initialItem = untrack(() => items.find((i) => i.value === value));
@@ -75,6 +76,10 @@
     listboxId,
     inputId,
     getOnCreate: () => onCreate,
+    anchorEl: () => anchorEl,
+    setAnchorEl: (el) => {
+      anchorEl = el;
+    },
   });
 
   COMBOBOX_CONTEXT.set(ctx);

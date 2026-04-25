@@ -6,6 +6,7 @@ export { default as Combobox } from './primitives/Combobox/Combobox.svelte';
 export { default as ComboboxContent } from './primitives/Combobox/ComboboxContent.svelte';
 export { default as ComboboxCreate } from './primitives/Combobox/ComboboxCreate.svelte';
 export { default as ComboboxEmpty } from './primitives/Combobox/ComboboxEmpty.svelte';
+export { default as ComboboxField } from './primitives/Combobox/ComboboxField.svelte';
 export { default as ComboboxGroup } from './primitives/Combobox/ComboboxGroup.svelte';
 export { default as ComboboxInput } from './primitives/Combobox/ComboboxInput.svelte';
 export { default as ComboboxItem } from './primitives/Combobox/ComboboxItem.svelte';
@@ -88,6 +89,7 @@ export type {
   ComboboxItem as ComboboxItemType,
   ComboboxProps,
   ComboboxInputProps,
+  ComboboxFieldProps,
   ComboboxTriggerProps,
   ComboboxContentProps,
   ComboboxItemProps,
