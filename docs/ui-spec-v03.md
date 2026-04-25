@@ -2,7 +2,7 @@
 
 **Status:** Planning  
 **Scope:** `@salt/ui-components` — new primitives only  
-**Audience:** AI code-generation agents (Claude) + human contributors  
+**Audience:** AI code-generation agents (Claude) + human contributors
 
 > Rule: If anything is missing or ambiguous → STOP → extend this spec → regenerate.  
 > No invention beyond what is written here.
@@ -67,22 +67,22 @@ APG pattern: **Radio Group**.
 
 ### 2.3 Root Props
 
-- `value: string | undefined` — bindable, controlled value  
-- `defaultValue: string | undefined` — uncontrolled initial value  
-- `name: string` — shared native name (generated if not provided)  
-- `orientation: 'horizontal' | 'vertical' = 'vertical'` — arrow axis  
-- `disabled: boolean = false` — disables all items  
-- `required: boolean = false`  
-- `label: string` — required, visible group label  
-- `description?: string` — helper text  
-- `error?: string` — error text  
+- `value: string | undefined` — bindable, controlled value
+- `defaultValue: string | undefined` — uncontrolled initial value
+- `name: string` — shared native name (generated if not provided)
+- `orientation: 'horizontal' | 'vertical' = 'vertical'` — arrow axis
+- `disabled: boolean = false` — disables all items
+- `required: boolean = false`
+- `label: string` — required, visible group label
+- `description?: string` — helper text
+- `error?: string` — error text
 - `class?: string` — merged last
 
 ### 2.4 Item Props
 
-- `value: string` — required  
-- `label?: string` — visible label  
-- `disabled?: boolean = false`  
+- `value: string` — required
+- `label?: string` — visible label
+- `disabled?: boolean = false`
 - `class?: string`
 
 ### 2.5 Events
@@ -137,20 +137,20 @@ Not a native `<select>`.
 
 ### 3.3 Root Props
 
-- `value: string | undefined` — bindable  
-- `defaultValue: string | undefined`  
-- `open: boolean` — bindable  
-- `defaultOpen: boolean`  
-- `disabled: boolean = false`  
-- `required: boolean = false`  
-- `name?: string` — hidden input for forms  
-- `placeholder?: string` — shown when no value  
-- `portal: HTMLElement | string | false = "body"`  
+- `value: string | undefined` — bindable
+- `defaultValue: string | undefined`
+- `open: boolean` — bindable
+- `defaultOpen: boolean`
+- `disabled: boolean = false`
+- `required: boolean = false`
+- `name?: string` — hidden input for forms
+- `placeholder?: string` — shown when no value
+- `portal: HTMLElement | string | false = "body"`
 - `class?: string`
 
 ### 3.4 Events
 
-- `onValueChange: (value: string) => void`  
+- `onValueChange: (value: string) => void`
 - `onOpenChange: (open: boolean) => void`
 
 ### 3.5 APG Requirements (Listbox)
@@ -210,13 +210,13 @@ APG pattern: **Slider**.
 
 ### 4.3 Props
 
-- `value: number | [number, number]` — bindable  
-- `defaultValue: number | [number, number]`  
-- `min: number = 0`  
-- `max: number = 100`  
-- `step: number = 1`  
-- `orientation: 'horizontal' | 'vertical' = 'horizontal'`  
-- `disabled: boolean = false`  
+- `value: number | [number, number]` — bindable
+- `defaultValue: number | [number, number]`
+- `min: number = 0`
+- `max: number = 100`
+- `step: number = 1`
+- `orientation: 'horizontal' | 'vertical' = 'horizontal'`
+- `disabled: boolean = false`
 - `class?: string`
 
 ### 4.4 Events
@@ -277,10 +277,10 @@ APG pattern: **Dialog** (non-modal variant is out of scope; Sheet is modal).
 
 ### 5.3 Root Props
 
-- `open: boolean` — bindable  
-- `defaultOpen: boolean`  
-- `side: 'left' | 'right' | 'top' | 'bottom' = 'right'`  
-- `portal: HTMLElement | string | false = "body"`  
+- `open: boolean` — bindable
+- `defaultOpen: boolean`
+- `side: 'left' | 'right' | 'top' | 'bottom' = 'right'`
+- `portal: HTMLElement | string | false = "body"`
 - `class?: string`
 
 ### 5.4 Events
@@ -330,10 +330,10 @@ APG pattern: **Alert / Status / Live Region**.
 
 ### 6.3 Root Props
 
-- `open: boolean` — bindable  
-- `defaultOpen: boolean`  
-- `duration: number = 5000` — ms before auto-dismiss  
-- `variant: 'default' | 'destructive' = 'default'`  
+- `open: boolean` — bindable
+- `defaultOpen: boolean`
+- `duration: number = 5000` — ms before auto-dismiss
+- `variant: 'default' | 'destructive' = 'default'`
 - `class?: string`
 
 ### 6.4 Provider Behavior
@@ -389,8 +389,8 @@ For each v0.3 primitive, tests must include:
 
 When generating v0.3 primitives:
 
-1. **Do not invent props, events, or parts** beyond those listed here.  
-2. **Implement APG requirements exactly** as specified per primitive.  
+1. **Do not invent props, events, or parts** beyond those listed here.
+2. **Implement APG requirements exactly** as specified per primitive.
 3. **Use the existing v0.2 architecture**:
    - headless `.headless.svelte.ts`
    - styled `.svelte` + parts

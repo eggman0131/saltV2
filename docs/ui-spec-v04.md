@@ -1,7 +1,8 @@
 # Salt 2.0 — UI Primitives Specification (v0.4)
+
 **Status:** Planning  
 **Scope:** `@salt/ui-components` — Combobox  
-**Audience:** AI code-generation agents + human contributors  
+**Audience:** AI code-generation agents + human contributors
 
 > Rule: If anything is missing or ambiguous → STOP → extend this spec → regenerate.  
 > No invention beyond what is written here.
@@ -27,11 +28,11 @@ APG pattern: **Autocomplete (Listbox)**.
 
 A text input that:
 
-- Filters a list of options as the user types  
-- Shows a scrollable popup listbox  
-- Allows keyboard and pointer navigation  
+- Filters a list of options as the user types
+- Shows a scrollable popup listbox
+- Allows keyboard and pointer navigation
 - Can be configured to:
-  - **restrict** to the list only, or  
+  - **restrict** to the list only, or
   - **allow custom** values (create new entries)
 
 ### 1.2 APG mapping
@@ -64,20 +65,20 @@ A text input that:
 
 ### 3.1 Root props (`Combobox`)
 
-| Name           | Type                                  | Default     | Notes                                      |
-|----------------|---------------------------------------|-------------|--------------------------------------------|
-| `value`        | string \| undefined (bindable)        | undefined   | Selected value                             |
-| `defaultValue` | string \| undefined                   | undefined   | Uncontrolled initial value                 |
-| `open`         | boolean (bindable)                    | false       | Popup open state                           |
-| `defaultOpen`  | boolean                               | false       | Initial open state                         |
-| `items`        | Array<{ value: string; label: string }> | []        | Full option list                           |
-| `allowCustom`  | boolean                               | false       | Allow values not in `items`                |
-| `restrict`     | boolean                               | false       | If true, must select from `items`          |
-| `name`         | string \| undefined                   | —           | Hidden input name                          |
-| `placeholder`  | string \| undefined                   | —           | Input placeholder                          |
-| `portal`       | HTMLElement \| string \| false        | "body"      | Portal target for content                  |
-| `filterFn`     | (input: string, item: { value; label }) => boolean | default filter | Optional custom filter function |
-| `class`        | string \| undefined                   | —           | Root class                                 |
+| Name           | Type                                               | Default        | Notes                             |
+| -------------- | -------------------------------------------------- | -------------- | --------------------------------- |
+| `value`        | string \| undefined (bindable)                     | undefined      | Selected value                    |
+| `defaultValue` | string \| undefined                                | undefined      | Uncontrolled initial value        |
+| `open`         | boolean (bindable)                                 | false          | Popup open state                  |
+| `defaultOpen`  | boolean                                            | false          | Initial open state                |
+| `items`        | Array<{ value: string; label: string }>            | []             | Full option list                  |
+| `allowCustom`  | boolean                                            | false          | Allow values not in `items`       |
+| `restrict`     | boolean                                            | false          | If true, must select from `items` |
+| `name`         | string \| undefined                                | —              | Hidden input name                 |
+| `placeholder`  | string \| undefined                                | —              | Input placeholder                 |
+| `portal`       | HTMLElement \| string \| false                     | "body"         | Portal target for content         |
+| `filterFn`     | (input: string, item: { value; label }) => boolean | default filter | Optional custom filter function   |
+| `class`        | string \| undefined                                | —              | Root class                        |
 
 > `allowCustom` and `restrict` are mutually exclusive.  
 > If both are true → **STOP** and throw in dev.
@@ -356,3 +357,4 @@ Rationale:
 - Prevents duplicate creation of existing items.
 - Matches behaviour of Radix, MUI, and Reach.
 
+```
