@@ -60,8 +60,8 @@ describe('tailwind-preset', () => {
       expect(z).toHaveProperty('tooltip', '70');
     });
 
-    it('has 5 plugins registered', () => {
-      expect(preset.plugins).toHaveLength(5);
+    it('has 6 plugins registered', () => {
+      expect(preset.plugins).toHaveLength(6);
     });
 
     it('includes tailwindcss-animate plugin', () => {

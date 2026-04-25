@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Epilogue:wght@600;700&family=Inter:wght@400;600&display=swap');
 @import './tokens.css';
 
 @tailwind base;
@@ -6,42 +5,6 @@
 @tailwind utilities;
 
 @layer base {
-  /* ── Surface ────────────────────────────────────────────────────────── */
-  body {
-    background-color: hsl(var(--salt-background));
-    color: hsl(var(--salt-foreground));
-  }
-
-  /* ── Typography scale ────────────────────────────────────────────────── */
-  html {
-    font-family: 'Inter', sans-serif;
-    font-size: 1rem; /* body-md: 16px */
-    font-weight: 400;
-    line-height: 1.5;
-  }
-
-  h1 {
-    font-family: 'Epilogue', sans-serif;
-    font-size: 2rem; /* 32px */
-    font-weight: 600;
-    line-height: 1.2;
-    letter-spacing: -0.01em;
-  }
-
-  h2 {
-    font-family: 'Epilogue', sans-serif;
-    font-size: 1.5rem; /* 24px */
-    font-weight: 600;
-    line-height: 1.3;
-  }
-
-  h3,
-  h4,
-  h5,
-  h6 {
-    font-family: 'Epilogue', sans-serif;
-  }
-
   /* ── Focus ring ──────────────────────────────────────────────────────── */
   :focus-visible {
     outline: 2px solid hsl(var(--salt-ring));

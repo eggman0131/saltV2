@@ -72,32 +72,18 @@
 
 <style>
   :global(.section-title) {
-    font-family: 'Epilogue', sans-serif;
-    font-size: 1.25rem;
-    font-weight: 600;
-    margin-bottom: 1.5rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid hsl(var(--salt-border));
+    @apply text-h2 mb-6 pb-2 border-b border-border;
   }
 
   :global(.subsection) {
-    margin-bottom: 2rem;
+    @apply mb-8;
   }
 
   :global(.subsection-title) {
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    color: hsl(var(--salt-muted-foreground));
-    margin-bottom: 0.75rem;
+    @apply text-label-caps text-muted-foreground mb-3;
   }
 
   :global(.demo-box) {
-    padding: 0.5rem 0.75rem;
-    border-radius: 0.5rem;
-    border: 1px dashed hsl(var(--salt-border));
-    font-size: 0.875rem;
-    color: hsl(var(--salt-muted-foreground));
+    @apply px-3 py-2 rounded-md border border-dashed border-border text-sm text-muted-foreground;
   }
 </style>

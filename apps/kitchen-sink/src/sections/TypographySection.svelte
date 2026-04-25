@@ -1,28 +1,48 @@
-<script lang="ts">
-  import { Heading, Text } from '@salt/ui-components';
-</script>
-
 <section id="typography">
   <h2 class="section-title">Typography</h2>
 
   <div class="subsection">
-    <h3 class="subsection-title">Heading levels</h3>
-    <div class="flex flex-col gap-3">
-      <Heading level={1}>Heading level 1</Heading>
-      <Heading level={2}>Heading level 2</Heading>
-      <Heading level={3}>Heading level 3</Heading>
-      <Heading level={4}>Heading level 4</Heading>
-      <Heading level={5}>Heading level 5</Heading>
-      <Heading level={6}>Heading level 6</Heading>
-    </div>
-  </div>
+    <h3 class="subsection-title">Named scales</h3>
+    <div class="flex flex-col divide-y divide-border">
+      <div class="py-6 first:pt-0">
+        <p class="text-display leading-none">The Art of Cuisine</p>
+        <p class="text-label-caps text-muted-foreground mt-2">
+          display — Epilogue 48px / 700 / −0.02em
+        </p>
+      </div>
 
-  <div class="subsection">
-    <h3 class="subsection-title">Text</h3>
-    <div class="flex flex-col gap-2">
-      <Text size="lg">Large text — size lg</Text>
-      <Text size="md">Medium text — size md (default)</Text>
-      <Text size="sm">Small text — size sm</Text>
+      <div class="py-6">
+        <p class="text-h1">Seasonal Ingredients</p>
+        <p class="text-label-caps text-muted-foreground mt-2">h1 — Epilogue 32px / 600 / −0.01em</p>
+      </div>
+
+      <div class="py-6">
+        <p class="text-h2">Preparation Methods</p>
+        <p class="text-label-caps text-muted-foreground mt-2">h2 — Epilogue 24px / 600</p>
+      </div>
+
+      <div class="py-6">
+        <p class="text-body-lg">
+          Slow-braised with aromatics, deglazed with a dry white wine and reduced to a silky jus.
+          Rest for five minutes before serving.
+        </p>
+        <p class="text-label-caps text-muted-foreground mt-2">body-lg — Inter 18px / 400 / 1.6</p>
+      </div>
+
+      <div class="py-6">
+        <p class="text-body-md">
+          Season generously and allow the flavours to develop over low heat for at least two hours
+          before adjusting the seasoning.
+        </p>
+        <p class="text-label-caps text-muted-foreground mt-2">body-md — Inter 16px / 400 / 1.5</p>
+      </div>
+
+      <div class="py-6">
+        <p class="text-label-caps">Prep time — 20 minutes · Cook time — 2 hours · Serves 4</p>
+        <p class="text-label-caps text-muted-foreground mt-2">
+          label-caps — Inter 12px / 600 / uppercase / 0.05em
+        </p>
+      </div>
     </div>
   </div>
 </section>

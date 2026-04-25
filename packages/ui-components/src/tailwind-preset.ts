@@ -6,31 +6,31 @@ const cssVarsPlugin = plugin(({ addBase }) => {
   addBase({
     ':root': {
       // ── Culinary Modernist — light ──────────────────────────────────
-      '--salt-background': '180 11% 98%',           /* #f8fafa  surface */
-      '--salt-foreground': '195 7% 11%',             /* #191c1d  on-surface */
-      '--salt-primary': '195 77% 7%',                /* #041920  midnight navy */
-      '--salt-primary-foreground': '0 0% 100%',      /* #ffffff */
-      '--salt-secondary': '98 20% 33%',              /* #4f6443  sage */
-      '--salt-secondary-foreground': '0 0% 100%',    /* #ffffff */
-      '--salt-secondary-container': '94 47% 82%',    /* #cfe7bd  sage container */
-      '--salt-on-secondary-container': '99 19% 35%', /* #536947 */
-      '--salt-tertiary': '6 100% 10%',               /* #340500  terracotta */
-      '--salt-tertiary-foreground': '0 0% 100%',     /* #ffffff */
-      '--salt-tertiary-container': '10 100% 17%',    /* #580f00 */
-      '--salt-on-tertiary-container': '12 76% 61%',  /* #e76e50 */
-      '--salt-muted': '180 6% 93%',                  /* #eceeee  surface-container */
-      '--salt-muted-foreground': '195 6% 27%',       /* #42484a  on-surface-variant */
-      '--salt-accent': '94 47% 82%',                 /* secondary-container */
-      '--salt-accent-foreground': '99 19% 35%',      /* on-secondary-container */
-      '--salt-destructive': '0 75% 42%',             /* #ba1a1a  error */
-      '--salt-destructive-foreground': '0 0% 100%',  /* #ffffff */
-      '--salt-card': '0 0% 100%',                    /* surface-container-lowest */
-      '--salt-card-foreground': '195 7% 11%',        /* on-surface */
+      '--salt-background': '180 11% 98%' /* #f8fafa  surface */,
+      '--salt-foreground': '195 7% 11%' /* #191c1d  on-surface */,
+      '--salt-primary': '195 77% 7%' /* #041920  midnight navy */,
+      '--salt-primary-foreground': '0 0% 100%' /* #ffffff */,
+      '--salt-secondary': '98 20% 33%' /* #4f6443  sage */,
+      '--salt-secondary-foreground': '0 0% 100%' /* #ffffff */,
+      '--salt-secondary-container': '94 47% 82%' /* #cfe7bd  sage container */,
+      '--salt-on-secondary-container': '99 19% 35%' /* #536947 */,
+      '--salt-tertiary': '6 100% 10%' /* #340500  terracotta */,
+      '--salt-tertiary-foreground': '0 0% 100%' /* #ffffff */,
+      '--salt-tertiary-container': '10 100% 17%' /* #580f00 */,
+      '--salt-on-tertiary-container': '12 76% 61%' /* #e76e50 */,
+      '--salt-muted': '180 6% 93%' /* #eceeee  surface-container */,
+      '--salt-muted-foreground': '195 6% 27%' /* #42484a  on-surface-variant */,
+      '--salt-accent': '94 47% 82%' /* secondary-container */,
+      '--salt-accent-foreground': '99 19% 35%' /* on-secondary-container */,
+      '--salt-destructive': '0 75% 42%' /* #ba1a1a  error */,
+      '--salt-destructive-foreground': '0 0% 100%' /* #ffffff */,
+      '--salt-card': '0 0% 100%' /* surface-container-lowest */,
+      '--salt-card-foreground': '195 7% 11%' /* on-surface */,
       '--salt-popover': '0 0% 100%',
       '--salt-popover-foreground': '195 7% 11%',
-      '--salt-border': '203 7% 78%',                 /* #c2c7ca  outline-variant */
+      '--salt-border': '203 7% 78%' /* #c2c7ca  outline-variant */,
       '--salt-input': '203 7% 78%',
-      '--salt-ring': '195 77% 7%',                   /* #041920  midnight navy */
+      '--salt-ring': '195 77% 7%' /* #041920  midnight navy */,
       '--salt-radius-sm': '0.25rem',
       '--salt-radius-md': '0.5rem',
       '--salt-radius-lg': '1rem',
@@ -38,11 +38,11 @@ const cssVarsPlugin = plugin(({ addBase }) => {
     },
     '.dark': {
       // ── Culinary Modernist — dark ───────────────────────────────────
-      '--salt-background': '180 3% 19%',             /* #2e3131  inverse-surface */
-      '--salt-foreground': '180 7% 94%',             /* #eff1f1 */
-      '--salt-primary': '198 26% 77%',               /* #b4cad3  inverse-primary */
-      '--salt-primary-foreground': '195 77% 7%',     /* #041920 */
-      '--salt-secondary': '98 20% 33%',              /* #4f6443  sage */
+      '--salt-background': '180 3% 19%' /* #2e3131  inverse-surface */,
+      '--salt-foreground': '180 7% 94%' /* #eff1f1 */,
+      '--salt-primary': '198 26% 77%' /* #b4cad3  inverse-primary */,
+      '--salt-primary-foreground': '195 77% 7%' /* #041920 */,
+      '--salt-secondary': '98 20% 33%' /* #4f6443  sage */,
       '--salt-secondary-foreground': '0 0% 100%',
       '--salt-secondary-container': '94 47% 82%',
       '--salt-on-secondary-container': '99 19% 35%',
@@ -60,9 +60,9 @@ const cssVarsPlugin = plugin(({ addBase }) => {
       '--salt-card-foreground': '180 7% 94%',
       '--salt-popover': '180 3% 22%',
       '--salt-popover-foreground': '180 7% 94%',
-      '--salt-border': '197 3% 46%',                 /* #73787a  outline */
+      '--salt-border': '197 3% 46%' /* #73787a  outline */,
       '--salt-input': '197 3% 46%',
-      '--salt-ring': '198 26% 77%',                  /* #b4cad3 */
+      '--salt-ring': '198 26% 77%' /* #b4cad3 */,
     },
   });
 });
@@ -89,7 +89,8 @@ const saltComponentPlugin = plugin(({ addComponents }) => {
     },
     '.salt-button--solid': { '@apply bg-primary text-primary-foreground hover:bg-primary/90': {} },
     '.salt-button--outline': {
-      '@apply border border-secondary text-secondary bg-background hover:bg-secondary hover:text-secondary-foreground': {},
+      '@apply border border-secondary text-secondary bg-background hover:bg-secondary hover:text-secondary-foreground':
+        {},
     },
     '.salt-button--ghost': { '@apply bg-transparent hover:bg-muted hover:text-foreground': {} },
     '.salt-button--link': {
@@ -177,6 +178,77 @@ const saltComponentPlugin = plugin(({ addComponents }) => {
     },
     // Shared disabled state
     '.salt-control--disabled': { '@apply opacity-50 pointer-events-none cursor-not-allowed': {} },
+  });
+});
+
+const saltTypographyPlugin = plugin(({ addBase, addComponents }) => {
+  addBase({
+    html: {
+      fontFamily: "'Inter', sans-serif",
+      fontSize: '1rem',
+      fontWeight: '400',
+      lineHeight: '1.5',
+    },
+    body: {
+      backgroundColor: 'hsl(var(--salt-background))',
+      color: 'hsl(var(--salt-foreground))',
+    },
+    h1: {
+      fontFamily: "'Epilogue', sans-serif",
+      fontSize: '2rem',
+      fontWeight: '600',
+      lineHeight: '1.2',
+      letterSpacing: '-0.01em',
+    },
+    h2: {
+      fontFamily: "'Epilogue', sans-serif",
+      fontSize: '1.5rem',
+      fontWeight: '600',
+      lineHeight: '1.3',
+    },
+    'h3, h4, h5, h6': {
+      fontFamily: "'Epilogue', sans-serif",
+    },
+  });
+
+  addComponents({
+    '.text-display': {
+      fontFamily: "'Epilogue', sans-serif",
+      fontSize: '3rem',
+      fontWeight: '700',
+      lineHeight: '1.1',
+      letterSpacing: '-0.02em',
+    },
+    '.text-h1': {
+      fontFamily: "'Epilogue', sans-serif",
+      fontSize: '2rem',
+      fontWeight: '600',
+      lineHeight: '1.2',
+      letterSpacing: '-0.01em',
+    },
+    '.text-h2': {
+      fontFamily: "'Epilogue', sans-serif",
+      fontSize: '1.5rem',
+      fontWeight: '600',
+      lineHeight: '1.3',
+    },
+    '.text-body-lg': {
+      fontSize: '1.125rem',
+      fontWeight: '400',
+      lineHeight: '1.6',
+    },
+    '.text-body-md': {
+      fontSize: '1rem',
+      fontWeight: '400',
+      lineHeight: '1.5',
+    },
+    '.text-label-caps': {
+      fontSize: '0.75rem',
+      fontWeight: '600',
+      lineHeight: '1',
+      letterSpacing: '0.05em',
+      textTransform: 'uppercase',
+    },
   });
 });
 
@@ -287,7 +359,14 @@ const preset = {
       },
     },
   },
-  plugins: [animate, cssVarsPlugin, saltFocusRingPlugin, saltComponentPlugin, saltProgressPlugin],
+  plugins: [
+    animate,
+    cssVarsPlugin,
+    saltFocusRingPlugin,
+    saltComponentPlugin,
+    saltProgressPlugin,
+    saltTypographyPlugin,
+  ],
 };
 
 export default preset;
