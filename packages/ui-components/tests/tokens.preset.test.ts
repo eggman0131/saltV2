@@ -49,6 +49,7 @@ describe('tailwind-preset', () => {
     it('has theme.extend.borderRadius with salt radius tokens', () => {
       const { borderRadius } = preset.theme.extend;
       expect(borderRadius).toHaveProperty('sm', 'var(--salt-radius-sm)');
+      expect(borderRadius).toHaveProperty('DEFAULT', 'var(--salt-radius-default)');
       expect(borderRadius).toHaveProperty('md', 'var(--salt-radius-md)');
       expect(borderRadius).toHaveProperty('lg', 'var(--salt-radius-lg)');
       expect(borderRadius).toHaveProperty('xl', 'var(--salt-radius-xl)');
@@ -108,7 +109,8 @@ describe('tailwind-preset', () => {
       handler!({ addBase, addUtilities: vi.fn(), theme: vi.fn() });
       const [rules] = addBase.mock.calls[0] as [Record<string, Record<string, string>>];
       expect(rules[':root']!['--salt-radius-sm']).toBe('0.25rem');
-      expect(rules[':root']!['--salt-radius-md']).toBe('0.5rem');
+      expect(rules[':root']!['--salt-radius-default']).toBe('0.5rem');
+      expect(rules[':root']!['--salt-radius-md']).toBe('0.75rem');
       expect(rules[':root']!['--salt-radius-lg']).toBe('1rem');
       expect(rules[':root']!['--salt-radius-xl']).toBe('1.5rem');
     });

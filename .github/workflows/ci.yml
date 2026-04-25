@@ -43,3 +43,6 @@ jobs:
 
       - name: Provenance check
         run: pnpm provenance:check
+
+      - name: Theme check
+        run: pnpm theme:check
