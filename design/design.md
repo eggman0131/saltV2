@@ -16,7 +16,7 @@ colors:
   outline: '#73787a'
   outline-variant: '#c2c7ca'
   surface-tint: '#4d6169'
-  primary: '#041920'
+  primary: '#35606e'
   on-primary: '#ffffff'
   primary-container: '#1a2e35'
   on-primary-container: '#81969e'
@@ -123,7 +123,7 @@ The style leans heavily into **Minimalism** with an **Editorial** edge. It utili
 
 ## Colors
 
-The palette is rooted in a deep **Midnight Navy** (Primary), providing a grounded, professional foundation that replaces standard blacks for a more sophisticated feel. This is paired with **Crisp White** and **Alabaster** neutrals to ensure the interface feels airy and hygienic.
+The palette is rooted in a deep **Slate Teal** (Primary), providing a grounded, professional foundation that replaces standard blacks for a more sophisticated feel. This is paired with **Crisp White** and **Alabaster** neutrals to ensure the interface feels airy and hygienic.
 
 To inject life into the system, we use **Sage Green** as the primary accent for success states and organic "fresh" elements, while **Warm Terracotta** serves as a secondary accent for warnings or high-energy interactions. All colors are calibrated for high legibility under varied lighting conditions common in a kitchen.
 
@@ -147,7 +147,7 @@ Key layouts prioritize a "Hands-Free" reading mode:
 
 This design system avoids heavy shadows and traditional skeuomorphism in favor of **Tonal Layers** and **Low-Contrast Outlines**. Depth is communicated through subtle shifts in surface color (e.g., a slightly darker Alabaster surface sitting atop a Crisp White background).
 
-When depth is required for interactive elements like modals or pop-overs, we use "Ambient Shadows"—extremely soft, diffused shadows with a low opacity (4-6%) and a hint of the Primary Midnight Navy color to keep the shadow looking "cool" and clean rather than muddy.
+When depth is required for interactive elements like modals or pop-overs, we use "Ambient Shadows"—extremely soft, diffused shadows with a low opacity (4-6%) and a hint of the Primary Slate Teal color to keep the shadow looking "cool" and clean rather than muddy.
 
 ## Shapes
 
@@ -159,7 +159,7 @@ Cards and primary containers use a 1rem (16px) radius, while smaller interactive
 
 ### Buttons
 
-Primary buttons use the Midnight Navy background with White text. Secondary buttons utilize a Sage Green ghost style (outline only). All buttons feature a minimum hit target of 48px for easy interaction with messy hands.
+Primary buttons use the Slate Teal background with White text. Secondary buttons utilize a Sage Green ghost style (outline only). All buttons feature a minimum hit target of 48px for easy interaction with messy hands.
 
 ### Cards
 

@@ -16,7 +16,7 @@ Tokens are promoted **reactively**, not speculatively. One real visual problem �
 
 ## Files to touch (in this order)
 
-1. **`apps/kitchen-sink/design/design.md`** — the source of truth. Add the new value under the relevant frontmatter section (`spacing`, `rounded`, or a new `controls:` block for component primitives). If the YAML schema needs a new top-level key, also extend `packages/ui-components/scripts/check-theme.ts` so drift is detected.
+1. **`design/design.md`** — the source of truth. Add the new value under the relevant frontmatter section (`spacing`, `rounded`, or a new `controls:` block for component primitives). If the YAML schema needs a new top-level key, also extend `packages/ui-components/scripts/check-theme.ts` so drift is detected.
 2. **`packages/ui-components/src/tailwind-preset.ts`** — mirror the value. For component-level sizes, edit the relevant `.salt-{component}--{size}` rule in `saltComponentPlugin` (e.g. `.salt-control--checkbox-md`). For new shared scales, add an entry under `theme.extend` and/or a CSS var in `cssVarsPlugin`.
 3. **`packages/ui-components/src/tokens/*.ts`** — add a typed export only if the value is referenced from TS (most component sizes don't need this; colors/radius/motion do).
 4. **`packages/ui-components/tests/tokens.preset.test.ts`** — add a focused assertion that pins the new value. One test per token. Match the style of existing `it('...', () => { expect(...).toBe(...) })` blocks.

@@ -7,6 +7,7 @@
   import ComboboxSection from './sections/ComboboxSection.svelte';
   import OverlaySection from './sections/OverlaySection.svelte';
   import FeedbackSection from './sections/FeedbackSection.svelte';
+  import TemplatesSection from './sections/TemplatesSection.svelte';
 
   const nav = [
     { id: 'colors', label: 'Colors' },
@@ -17,6 +18,7 @@
     { id: 'combobox', label: 'Combobox' },
     { id: 'overlays', label: 'Overlays' },
     { id: 'feedback', label: 'Feedback' },
+    { id: 'templates', label: 'Templates' },
   ];
 
   let darkMode = $state(false);
@@ -69,6 +71,7 @@
       <ComboboxSection />
       <OverlaySection />
       <FeedbackSection />
+      <TemplatesSection />
     </main>
   </div>
 </div>

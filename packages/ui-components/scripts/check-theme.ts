@@ -1,5 +1,5 @@
 // spec: SPEC.md §3.3 v0.2.3
-// Compares apps/kitchen-sink/design/design.md frontmatter against tailwind-preset.ts.
+// Compares design/design.md frontmatter against tailwind-preset.ts.
 // Fails with a diff when the two drift. Run via `pnpm theme:check`.
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -8,7 +8,7 @@ import preset from '../src/tailwind-preset.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '../../..');
-const DESIGN_MD_PATH = join(REPO_ROOT, 'apps/kitchen-sink/design/design.md');
+const DESIGN_MD_PATH = join(REPO_ROOT, 'design/design.md');
 const PRESET_SRC_PATH = join(__dirname, '../src/tailwind-preset.ts');
 
 // ── Minimal YAML-block parser (handles the exact frontmatter shape) ───────────

@@ -8,7 +8,7 @@ const cssVarsPlugin = plugin(({ addBase }) => {
       // ── Culinary Modernist — light ──────────────────────────────────
       '--salt-background': '180 11% 98%' /* #f8fafa  surface */,
       '--salt-foreground': '195 7% 11%' /* #191c1d  on-surface */,
-      '--salt-primary': '195 77% 7%' /* #041920  midnight navy */,
+      '--salt-primary': '195 35% 32%' /* #35606e  slate teal */,
       '--salt-primary-foreground': '0 0% 100%' /* #ffffff */,
       '--salt-secondary': '98 20% 33%' /* #4f6443  sage */,
       '--salt-secondary-foreground': '0 0% 100%' /* #ffffff */,
@@ -30,7 +30,7 @@ const cssVarsPlugin = plugin(({ addBase }) => {
       '--salt-popover-foreground': '195 7% 11%',
       '--salt-border': '203 7% 78%' /* #c2c7ca  outline-variant */,
       '--salt-input': '203 7% 78%',
-      '--salt-ring': '195 77% 7%' /* #041920  midnight navy */,
+      '--salt-ring': '195 35% 32%' /* #35606e  slate teal */,
       '--salt-radius-sm': '0.25rem',
       '--salt-radius-default': '0.5rem',
       '--salt-radius-md': '0.75rem',
