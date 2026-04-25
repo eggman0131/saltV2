@@ -126,7 +126,18 @@
       "Bash(curl -s http://localhost:5174/src/app.css)",
       "Bash(curl -s \"http://localhost:5174/@fs/home/eggman/projects/saltV2/apps/kitchen-sink/src/app.css\")",
       "Bash(node_modules/.bin/tailwindcss -i src/app.css -o src/generated-tokens.css --minify)",
-      "Bash(node_modules/.bin/tailwindcss -i src/app.css -o /tmp/ks-check.css)"
+      "Bash(node_modules/.bin/tailwindcss -i src/app.css -o /tmp/ks-check.css)",
+      "Bash(pnpm -w test --run --reporter=verbose)",
+      "Bash(git checkout *)",
+      "Bash(pnpm -w test --run)",
+      "Bash(pnpm -w test)",
+      "Bash(python3 -m json.tool)",
+      "Bash(pnpm theme:check)",
+      "Bash(node -e ' *)",
+      "Bash(pnpm provenance:check)",
+      "Bash(pnpm --filter @salt/ui-components run check)",
+      "Bash(pnpm --filter @salt/kitchen-sink build)",
+      "Bash(pnpm exec *)"
     ],
     "additionalDirectories": ["/home/eggman"]
   }

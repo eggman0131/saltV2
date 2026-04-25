@@ -15,6 +15,7 @@
     "typecheck": "tsc --build",
     "boundary:test": "sh .boundary-tests/run.sh",
     "provenance:check": "pnpm --filter @salt/ui-components provenance:check",
+    "theme:check": "pnpm --filter @salt/ui-components theme:check",
     "test": "vitest run",
     "format": "prettier --write \"**/*.{ts,js,svelte,css,html}\"",
     "format:check": "prettier --check \"**/*.{ts,js,svelte,css,html}\"",
