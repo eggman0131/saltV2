@@ -23,12 +23,12 @@ describe('Checkbox', () => {
   describe('props contract', () => {
     it('applies size class — sm', () => {
       const { container } = render(Checkbox, { props: { label: 'x', size: 'sm' } });
-      expect(container.querySelector('.h-3\\.5')).toBeInTheDocument();
+      expect(container.querySelector('.salt-control--checkbox-sm')).toBeInTheDocument();
     });
 
     it('applies size class — lg', () => {
       const { container } = render(Checkbox, { props: { label: 'x', size: 'lg' } });
-      expect(container.querySelector('.h-5')).toBeInTheDocument();
+      expect(container.querySelector('.salt-control--checkbox-lg')).toBeInTheDocument();
     });
 
     it('reflects checked state via data-state', () => {

@@ -23,7 +23,7 @@ describe('Button', () => {
   describe('props contract', () => {
     it('applies variant classes', () => {
       render(Button, { props: { variant: 'destructive', children: snippet('Delete') } });
-      expect(screen.getByRole('button')).toHaveClass('bg-destructive');
+      expect(screen.getByRole('button')).toHaveClass('salt-button--destructive');
     });
     it('merges class prop last', () => {
       render(Button, { props: { class: 'custom-class', children: snippet('x') } });

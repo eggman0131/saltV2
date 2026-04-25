@@ -74,7 +74,7 @@ const saltFocusRingPlugin = plugin(({ addUtilities }) => {
         {},
     },
     '.salt-focus-ring-within': {
-      '@apply focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background':
+      '@apply focus-within:outline-none focus-within:ring-2 focus-within:ring-secondary focus-within:ring-offset-2 focus-within:ring-offset-background':
         {},
     },
   });
@@ -89,7 +89,7 @@ const saltComponentPlugin = plugin(({ addComponents }) => {
     },
     '.salt-button--solid': { '@apply bg-primary text-primary-foreground hover:bg-primary/90': {} },
     '.salt-button--outline': {
-      '@apply border border-input bg-background hover:bg-accent hover:text-accent-foreground': {},
+      '@apply border border-secondary text-secondary bg-background hover:bg-secondary hover:text-secondary-foreground': {},
     },
     '.salt-button--ghost': { '@apply bg-transparent hover:bg-muted hover:text-foreground': {} },
     '.salt-button--link': {
@@ -117,13 +117,13 @@ const saltComponentPlugin = plugin(({ addComponents }) => {
     '.salt-input--disabled': { '@apply opacity-50 pointer-events-none': {} },
     // Combobox variant: direct <input> element (owns its own focus ring)
     '.salt-input--combobox': {
-      '@apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background h-10 w-full px-3 py-2 text-sm outline-none ring-offset-background placeholder:text-muted-foreground':
+      '@apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary focus-visible:ring-offset-2 focus-visible:ring-offset-background h-10 w-full px-3 py-2 text-sm outline-none ring-offset-background placeholder:text-muted-foreground':
         {},
     },
 
     // ─ Trigger (SelectTrigger) ────────────────────────────────────────
     '.salt-trigger': {
-      '@apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background flex h-10 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-offset-background':
+      '@apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary focus-visible:ring-offset-2 focus-visible:ring-offset-background flex h-10 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-offset-background':
         {},
     },
     '.salt-trigger--disabled': { '@apply cursor-not-allowed opacity-50 pointer-events-none': {} },
@@ -136,7 +136,7 @@ const saltComponentPlugin = plugin(({ addComponents }) => {
     },
     // Checkbox
     '.salt-control--checkbox': {
-      '@apply peer shrink-0 rounded border border-input bg-background data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground':
+      '@apply shrink-0 rounded border border-input bg-background data-[state=checked]:bg-secondary data-[state=checked]:text-secondary-foreground':
         {},
     },
     '.salt-control--checkbox-sm': { '@apply h-3.5 w-3.5': {} },
@@ -148,14 +148,14 @@ const saltComponentPlugin = plugin(({ addComponents }) => {
     },
     // Radio indicator (the visual dot)
     '.salt-control--radio-indicator': {
-      '@apply h-4 w-4 shrink-0 rounded-full border border-primary flex items-center justify-center':
+      '@apply h-4 w-4 shrink-0 rounded-full border border-secondary flex items-center justify-center':
         {},
     },
-    '.salt-control--radio-indicator-checked': { '@apply bg-primary': {} },
+    '.salt-control--radio-indicator-checked': { '@apply bg-secondary': {} },
     '.salt-control--radio-indicator-unchecked': { '@apply bg-background': {} },
     // Switch root (the track)
     '.salt-control--switch': {
-      '@apply inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors motion-reduce:transition-none data-[state=checked]:bg-primary data-[state=unchecked]:bg-input':
+      '@apply inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors motion-reduce:transition-none data-[state=checked]:bg-secondary data-[state=unchecked]:bg-input':
         {},
     },
     '.salt-control--switch-sm': { '@apply h-4 w-7': {} },

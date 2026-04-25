@@ -60,8 +60,8 @@ describe('tailwind-preset', () => {
       expect(z).toHaveProperty('tooltip', '70');
     });
 
-    it('has 4 plugins registered', () => {
-      expect(preset.plugins).toHaveLength(4);
+    it('has 5 plugins registered', () => {
+      expect(preset.plugins).toHaveLength(5);
     });
 
     it('includes tailwindcss-animate plugin', () => {
@@ -143,7 +143,7 @@ describe('tailwind-preset', () => {
 
   describe('salt-progress-indeterminate plugin', () => {
     it('registers @keyframes salt-progress-indeterminate', () => {
-      const progressPlugin = preset.plugins[3];
+      const progressPlugin = preset.plugins[4];
       const addBase = vi.fn();
       const handler = getHandler(progressPlugin);
       expect(handler).not.toBeNull();

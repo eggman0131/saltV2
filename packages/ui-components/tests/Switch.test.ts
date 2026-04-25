@@ -33,30 +33,30 @@ describe('Switch', () => {
 
     it('applies size class to root — sm', () => {
       const { container } = render(Switch, { props: { label: 'x', size: 'sm' } });
-      expect(container.querySelector('.h-4.w-7')).toBeInTheDocument();
+      expect(container.querySelector('.salt-control--switch-sm')).toBeInTheDocument();
     });
 
     it('applies size class to root — lg', () => {
       const { container } = render(Switch, { props: { label: 'x', size: 'lg' } });
-      expect(container.querySelector('.h-6.w-11')).toBeInTheDocument();
+      expect(container.querySelector('.salt-control--switch-lg')).toBeInTheDocument();
     });
 
     it('thumb uses correct translate for sm checked', () => {
       const { container } = render(Switch, { props: { label: 'x', size: 'sm' } });
       const thumb = container.querySelector('[data-switch-thumb]');
-      expect(thumb).toHaveClass('data-[state=checked]:translate-x-3');
+      expect(thumb).toHaveClass('salt-control--switch-thumb-sm');
     });
 
     it('thumb uses correct translate for md checked', () => {
       const { container } = render(Switch, { props: { label: 'x', size: 'md' } });
       const thumb = container.querySelector('[data-switch-thumb]');
-      expect(thumb).toHaveClass('data-[state=checked]:translate-x-4');
+      expect(thumb).toHaveClass('salt-control--switch-thumb-md');
     });
 
     it('thumb uses correct translate for lg checked', () => {
       const { container } = render(Switch, { props: { label: 'x', size: 'lg' } });
       const thumb = container.querySelector('[data-switch-thumb]');
-      expect(thumb).toHaveClass('data-[state=checked]:translate-x-5');
+      expect(thumb).toHaveClass('salt-control--switch-thumb-lg');
     });
 
     it('renders description text', () => {

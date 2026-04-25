@@ -23,19 +23,19 @@ describe('TextField', () => {
   describe('props contract', () => {
     it('applies size class to frame', () => {
       const { container } = render(TextField, { props: { label: 'x', size: 'lg' } });
-      expect(container.querySelector('.h-10')).toBeInTheDocument();
+      expect(container.querySelector('.salt-input--lg')).toBeInTheDocument();
     });
 
     it('applies error border when error is set', () => {
       const { container } = render(TextField, {
         props: { label: 'x', error: 'Required' },
       });
-      expect(container.querySelector('.border-destructive')).toBeInTheDocument();
+      expect(container.querySelector('.salt-input--error')).toBeInTheDocument();
     });
 
     it('applies disabled opacity when disabled', () => {
       const { container } = render(TextField, { props: { label: 'x', disabled: true } });
-      expect(container.querySelector('.opacity-50')).toBeInTheDocument();
+      expect(container.querySelector('.salt-input--disabled')).toBeInTheDocument();
     });
 
     it('merges class prop onto outer wrapper', () => {

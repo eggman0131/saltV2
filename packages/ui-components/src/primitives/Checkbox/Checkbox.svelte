@@ -54,7 +54,7 @@
     {value}
     aria-labelledby={labelledBy}
     aria-describedby={fieldState.describedBy}
-    class={checkboxRootVariants({ size })}
+    class={cn('peer', checkboxRootVariants({ size }))}
   >
     <Checkbox.Indicator class="flex items-center justify-center text-current">
       {#if bitsIndeterminate}

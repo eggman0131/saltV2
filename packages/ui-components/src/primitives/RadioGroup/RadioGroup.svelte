@@ -86,6 +86,7 @@
   role="radiogroup"
   aria-labelledby={labelId}
   aria-describedby={describedBy}
+  aria-orientation={orientation}
   aria-required={required || undefined}
   aria-disabled={disabled || undefined}
   class={cn('m-0 border-0 p-0', className)}
