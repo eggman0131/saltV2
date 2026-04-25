@@ -36,6 +36,7 @@ export type SelectState = {
   readonly handleTriggerKeydown: (e: KeyboardEvent) => void;
   readonly handleListboxKeydown: (e: KeyboardEvent) => void;
 
+  readonly triggerEl: HTMLElement | undefined;
   readonly setTriggerEl: (el: HTMLElement | undefined) => void;
 };
 
@@ -266,6 +267,9 @@ export function createSelectState(opts: {
       }
     },
 
+    get triggerEl() {
+      return opts.getTriggerEl();
+    },
     setTriggerEl(el: HTMLElement | undefined) {
       opts.setTriggerEl(el);
     },

@@ -1,6 +1,7 @@
 <!-- spec: SPEC.md §3 v0.3 -->
 <script lang="ts">
   import { tick } from 'svelte';
+  import { autoUpdate, computePosition, flip, offset, shift, size } from '@floating-ui/dom';
   import { cn } from '../../lib/cn';
   import { SELECT_CONTEXT } from '../../headless/Select.headless.svelte';
   import { selectContentVariants } from './Select.variants';
@@ -27,13 +28,44 @@
     return () => el.remove();
   });
 
+  // Floating-UI positioning: anchor the popover to the trigger.
+  $effect(() => {
+    const el = wrapperEl;
+    const anchor = ctx.triggerEl;
+    if (!el || !anchor) return;
+
+    return autoUpdate(anchor, el, () => {
+      void computePosition(anchor, el, {
+        placement: 'bottom-start',
+        middleware: [
+          offset(4),
+          flip({ padding: 8 }),
+          shift({ padding: 8 }),
+          size({
+            apply({ rects, elements, availableHeight }) {
+              elements.floating.style.minWidth = `${rects.reference.width}px`;
+              elements.floating.style.maxHeight = `${Math.max(120, availableHeight - 8)}px`;
+            },
+          }),
+        ],
+      }).then(({ x, y }) => {
+        Object.assign(el.style, {
+          position: 'absolute',
+          left: '0',
+          top: '0',
+          transform: `translate(${Math.round(x)}px, ${Math.round(y)}px)`,
+        });
+      });
+    });
+  });
+
   // On open: initialize active option, then focus the listbox
   $effect(() => {
     if (!ctx.open || !listboxEl) return;
     // tick() lets child SelectItem $effects run first (registering items)
     tick().then(() => {
       ctx.initializeOpen();
-      listboxEl?.focus();
+      listboxEl?.focus({ preventScroll: true });
     });
   });
 
@@ -43,7 +75,7 @@
 </script>
 
 {#if ctx.open}
-  <div bind:this={wrapperEl} class="relative z-50">
+  <div bind:this={wrapperEl} class="z-50" style="position: absolute; top: 0; left: 0;">
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div
       bind:this={listboxEl}
