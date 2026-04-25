@@ -123,6 +123,26 @@ const ROUNDED_MAP: Record<string, string | null> = {
 const SPACING_KEYS = ['xs', 'sm', 'md', 'lg', 'xl'];
 const TYPO_KEYS = ['display', 'h1', 'h2', 'body-lg', 'body-md', 'label-caps'];
 
+/** design.md controls.checkbox key → CSS var name */
+const CONTROLS_CHECKBOX_MAP: Record<string, string> = {
+  sm: '--salt-control-checkbox-sm',
+  md: '--salt-control-checkbox-md',
+  lg: '--salt-control-checkbox-lg',
+};
+
+/** design.md controls.switch key → CSS var name */
+const CONTROLS_SWITCH_MAP: Record<string, string> = {
+  'sm-h': '--salt-control-switch-sm-h',
+  'sm-w': '--salt-control-switch-sm-w',
+  'md-h': '--salt-control-switch-md-h',
+  'md-w': '--salt-control-switch-md-w',
+  'lg-h': '--salt-control-switch-lg-h',
+  'lg-w': '--salt-control-switch-lg-w',
+  'thumb-sm': '--salt-control-switch-thumb-sm',
+  'thumb-md': '--salt-control-switch-thumb-md',
+  'thumb-lg': '--salt-control-switch-thumb-lg',
+};
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 const failures: string[] = [];
@@ -237,6 +257,43 @@ for (const key of SPACING_KEYS) {
   }
   if (dmVal !== pVal) {
     fail(`  spacing.${key}: design.md=${dmVal}  preset=${pVal}`);
+  }
+}
+
+// ── Controls (Checkbox sizes) ─────────────────────────────────────────────────
+
+const designControls = design.controls as YamlMap | undefined;
+const designCheckbox = designControls?.checkbox as YamlMap | undefined;
+for (const [key, varName] of Object.entries(CONTROLS_CHECKBOX_MAP)) {
+  const dmVal = designCheckbox?.[key] as string | undefined;
+  const varVal = cssVars[varName];
+  if (!dmVal) {
+    fail(`  controls.checkbox.${key}: not found in design.md`);
+    continue;
+  }
+  if (!varVal) {
+    fail(`  ${varName}: not found in preset CSS vars (expected for controls.checkbox.${key})`);
+    continue;
+  }
+  if (dmVal !== varVal) {
+    fail(`  controls.checkbox.${key}: design.md=${dmVal}  preset ${varName}=${varVal}`);
+  }
+}
+
+const designSwitch = designControls?.switch as YamlMap | undefined;
+for (const [key, varName] of Object.entries(CONTROLS_SWITCH_MAP)) {
+  const dmVal = designSwitch?.[key] as string | undefined;
+  const varVal = cssVars[varName];
+  if (!dmVal) {
+    fail(`  controls.switch.${key}: not found in design.md`);
+    continue;
+  }
+  if (!varVal) {
+    fail(`  ${varName}: not found in preset CSS vars (expected for controls.switch.${key})`);
+    continue;
+  }
+  if (dmVal !== varVal) {
+    fail(`  controls.switch.${key}: design.md=${dmVal}  preset ${varName}=${varVal}`);
   }
 }
 

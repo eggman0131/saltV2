@@ -98,6 +98,21 @@ spacing:
   xl: 48px
   container-margin: 24px
   gutter: 16px
+controls:
+  checkbox:
+    sm: 14px
+    md: 16px
+    lg: 18px
+  switch:
+    sm-h: 16px
+    sm-w: 28px
+    md-h: 20px
+    md-w: 36px
+    lg-h: 24px
+    lg-w: 44px
+    thumb-sm: 12px
+    thumb-md: 16px
+    thumb-lg: 20px
 ---
 
 ## Brand & Style

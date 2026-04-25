@@ -36,6 +36,18 @@ const cssVarsPlugin = plugin(({ addBase }) => {
       '--salt-radius-md': '0.75rem',
       '--salt-radius-lg': '1rem',
       '--salt-radius-xl': '1.5rem',
+      '--salt-control-checkbox-sm': '14px',
+      '--salt-control-checkbox-md': '16px',
+      '--salt-control-checkbox-lg': '18px',
+      '--salt-control-switch-sm-h': '16px',
+      '--salt-control-switch-sm-w': '28px',
+      '--salt-control-switch-md-h': '20px',
+      '--salt-control-switch-md-w': '36px',
+      '--salt-control-switch-lg-h': '24px',
+      '--salt-control-switch-lg-w': '44px',
+      '--salt-control-switch-thumb-sm': '12px',
+      '--salt-control-switch-thumb-md': '16px',
+      '--salt-control-switch-thumb-lg': '20px',
     },
     '.dark': {
       // ── Culinary Modernist — dark ───────────────────────────────────
@@ -139,12 +151,21 @@ const saltComponentPlugin = plugin(({ addComponents }) => {
     },
     // Checkbox
     '.salt-control--checkbox': {
-      '@apply shrink-0 rounded-sm border border-input bg-background data-[state=checked]:bg-secondary data-[state=checked]:text-secondary-foreground':
+      '@apply shrink-0 min-h-0 rounded-sm border border-input bg-background aspect-square data-[state=checked]:bg-secondary data-[state=checked]:text-secondary-foreground':
         {},
     },
-    '.salt-control--checkbox-sm': { '@apply h-3.5 w-3.5': {} },
-    '.salt-control--checkbox-md': { '@apply h-4 w-4': {} },
-    '.salt-control--checkbox-lg': { '@apply h-5 w-5': {} },
+    '.salt-control--checkbox-sm': {
+      width: 'var(--salt-control-checkbox-sm)',
+      height: 'var(--salt-control-checkbox-sm)',
+    },
+    '.salt-control--checkbox-md': {
+      width: 'var(--salt-control-checkbox-md)',
+      height: 'var(--salt-control-checkbox-md)',
+    },
+    '.salt-control--checkbox-lg': {
+      width: 'var(--salt-control-checkbox-lg)',
+      height: 'var(--salt-control-checkbox-lg)',
+    },
     // Radio item (the focusable row: indicator + label)
     '.salt-control--radio': {
       '@apply flex items-center gap-2 cursor-pointer rounded-sm outline-none': {},
@@ -158,25 +179,40 @@ const saltComponentPlugin = plugin(({ addComponents }) => {
     '.salt-control--radio-indicator-unchecked': { '@apply bg-background': {} },
     // Switch root (the track)
     '.salt-control--switch': {
-      '@apply inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors motion-reduce:transition-none data-[state=checked]:bg-secondary data-[state=unchecked]:bg-input':
+      '@apply inline-flex shrink-0 min-h-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors motion-reduce:transition-none data-[state=checked]:bg-secondary data-[state=unchecked]:bg-input':
         {},
     },
-    '.salt-control--switch-sm': { '@apply h-4 w-7': {} },
-    '.salt-control--switch-md': { '@apply h-5 w-9': {} },
-    '.salt-control--switch-lg': { '@apply h-6 w-11': {} },
+    '.salt-control--switch-sm': {
+      height: 'var(--salt-control-switch-sm-h)',
+      width: 'var(--salt-control-switch-sm-w)',
+    },
+    '.salt-control--switch-md': {
+      height: 'var(--salt-control-switch-md-h)',
+      width: 'var(--salt-control-switch-md-w)',
+    },
+    '.salt-control--switch-lg': {
+      height: 'var(--salt-control-switch-lg-h)',
+      width: 'var(--salt-control-switch-lg-w)',
+    },
     // Switch thumb
     '.salt-control--switch-thumb': {
       '@apply pointer-events-none block rounded-full bg-background shadow-sm transition-transform motion-reduce:transition-none data-[state=unchecked]:translate-x-0':
         {},
     },
     '.salt-control--switch-thumb-sm': {
-      '@apply h-3 w-3 data-[state=checked]:translate-x-3': {},
+      '@apply data-[state=checked]:translate-x-3': {},
+      height: 'var(--salt-control-switch-thumb-sm)',
+      width: 'var(--salt-control-switch-thumb-sm)',
     },
     '.salt-control--switch-thumb-md': {
-      '@apply h-4 w-4 data-[state=checked]:translate-x-4': {},
+      '@apply data-[state=checked]:translate-x-4': {},
+      height: 'var(--salt-control-switch-thumb-md)',
+      width: 'var(--salt-control-switch-thumb-md)',
     },
     '.salt-control--switch-thumb-lg': {
-      '@apply h-5 w-5 data-[state=checked]:translate-x-5': {},
+      '@apply data-[state=checked]:translate-x-5': {},
+      height: 'var(--salt-control-switch-thumb-lg)',
+      width: 'var(--salt-control-switch-thumb-lg)',
     },
     // Shared disabled state
     '.salt-control--disabled': { '@apply opacity-50 pointer-events-none cursor-not-allowed': {} },

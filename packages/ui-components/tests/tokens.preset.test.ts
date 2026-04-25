@@ -144,6 +144,66 @@ describe('tailwind-preset', () => {
     });
   });
 
+  describe('salt-component plugin (checkbox tokens)', () => {
+    function getComponents(): Record<string, unknown> {
+      const componentPlugin = preset.plugins[3];
+      const addComponents = vi.fn();
+      const handler = getHandler(componentPlugin);
+      handler!({ addBase: vi.fn(), addComponents, addUtilities: vi.fn(), theme: vi.fn() });
+      return addComponents.mock.calls[0]![0] as Record<string, unknown>;
+    }
+
+    it('checkbox base includes aspect-square and min-h-0 to override global button min-height', () => {
+      const components = getComponents();
+      const rule = components['.salt-control--checkbox'] as Record<string, unknown>;
+      const applyKey = Object.keys(rule).find((k) => k.startsWith('@apply'));
+      expect(applyKey).toContain('aspect-square');
+      expect(applyKey).toContain('min-h-0');
+    });
+
+    it('checkbox sm is var(--salt-control-checkbox-sm) × var(--salt-control-checkbox-sm)', () => {
+      const components = getComponents();
+      const rule = components['.salt-control--checkbox-sm'] as Record<string, string>;
+      expect(rule.width).toBe('var(--salt-control-checkbox-sm)');
+      expect(rule.height).toBe('var(--salt-control-checkbox-sm)');
+    });
+
+    it('checkbox md is var(--salt-control-checkbox-md) × var(--salt-control-checkbox-md)', () => {
+      const components = getComponents();
+      const rule = components['.salt-control--checkbox-md'] as Record<string, string>;
+      expect(rule.width).toBe('var(--salt-control-checkbox-md)');
+      expect(rule.height).toBe('var(--salt-control-checkbox-md)');
+    });
+
+    it('checkbox lg is var(--salt-control-checkbox-lg) × var(--salt-control-checkbox-lg)', () => {
+      const components = getComponents();
+      const rule = components['.salt-control--checkbox-lg'] as Record<string, string>;
+      expect(rule.width).toBe('var(--salt-control-checkbox-lg)');
+      expect(rule.height).toBe('var(--salt-control-checkbox-lg)');
+    });
+
+    it('switch base includes min-h-0 to override global button min-height', () => {
+      const components = getComponents();
+      const rule = components['.salt-control--switch'] as Record<string, unknown>;
+      const applyKey = Object.keys(rule).find((k) => k.startsWith('@apply'));
+      expect(applyKey).toContain('min-h-0');
+    });
+
+    it('switch md track uses CSS var width and height', () => {
+      const components = getComponents();
+      const rule = components['.salt-control--switch-md'] as Record<string, string>;
+      expect(rule.height).toBe('var(--salt-control-switch-md-h)');
+      expect(rule.width).toBe('var(--salt-control-switch-md-w)');
+    });
+
+    it('switch md thumb uses CSS var width and height', () => {
+      const components = getComponents();
+      const rule = components['.salt-control--switch-thumb-md'] as Record<string, string>;
+      expect(rule.height).toBe('var(--salt-control-switch-thumb-md)');
+      expect(rule.width).toBe('var(--salt-control-switch-thumb-md)');
+    });
+  });
+
   describe('salt-progress-indeterminate plugin', () => {
     it('registers @keyframes salt-progress-indeterminate', () => {
       const progressPlugin = preset.plugins[4];
