@@ -74,7 +74,7 @@
       aria-required={required ? 'true' : undefined}
       aria-invalid={state.hasError ? 'true' : undefined}
       aria-describedby={state.describedBy}
-      class="flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
+      class="flex-1 appearance-none border-0 bg-transparent outline-none placeholder:text-muted-foreground"
       oninput={handleInput}
       {onfocus}
       {onblur}

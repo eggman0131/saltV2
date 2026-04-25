@@ -83,7 +83,7 @@
       aria-required={required ? 'true' : undefined}
       aria-invalid={fieldState.hasError ? 'true' : undefined}
       aria-describedby={fieldState.describedBy}
-      class="flex-1 bg-transparent outline-none resize-none py-2 placeholder:text-muted-foreground"
+      class="flex-1 appearance-none border-0 bg-transparent outline-none resize-none py-2 placeholder:text-muted-foreground"
       oninput={handleInput}
       {onfocus}
       {onblur}
