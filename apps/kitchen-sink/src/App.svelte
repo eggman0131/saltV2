@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ColorsSection from './sections/ColorsSection.svelte';
   import TypographySection from './sections/TypographySection.svelte';
   import LayoutSection from './sections/LayoutSection.svelte';
   import ButtonSection from './sections/ButtonSection.svelte';
@@ -8,6 +9,7 @@
   import FeedbackSection from './sections/FeedbackSection.svelte';
 
   const nav = [
+    { id: 'colors', label: 'Colors' },
     { id: 'typography', label: 'Typography' },
     { id: 'layout', label: 'Layout' },
     { id: 'button', label: 'Button' },
@@ -59,6 +61,7 @@
 
     <!-- Content -->
     <main class="flex-1 min-w-0 px-6 md:px-10 py-8 space-y-16">
+      <ColorsSection />
       <TypographySection />
       <LayoutSection />
       <ButtonSection />

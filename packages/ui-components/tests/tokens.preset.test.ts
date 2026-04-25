@@ -8,6 +8,7 @@ import * as motion from '../src/tokens/motion';
 import * as elevation from '../src/tokens/elevation';
 import * as zIndex from '../src/tokens/z-index';
 import * as tokens from '../src/tokens';
+import * as typography from '../src/tokens/typography';
 
 // Helper to extract the handler from a plugin object (Tailwind v3 plugin() return shape).
 function getHandler(plugin: unknown): ((api: Record<string, unknown>) => void) | null {
@@ -234,5 +235,51 @@ describe('token constants', () => {
       expect(tokens.zIndex).toBeDefined();
       expect(tokens.zIndex.popover).toBe(40);
     });
+    it('exports typography namespace', () => {
+      expect(tokens.typography).toBeDefined();
+      expect(tokens.typography.fontFamilyDisplay).toContain('Epilogue');
+    });
+  });
+});
+
+describe('typography tokens', () => {
+  it('fontFamilyDisplay includes Epilogue', () => {
+    expect(typography.fontFamilyDisplay).toContain('Epilogue');
+  });
+  it('fontFamilyBody includes Inter', () => {
+    expect(typography.fontFamilyBody).toContain('Inter');
+  });
+  it('fontSizeDisplay is 48px', () => {
+    expect(typography.fontSizeDisplay).toBe('48px');
+  });
+  it('fontSizeH1 is 32px', () => {
+    expect(typography.fontSizeH1).toBe('32px');
+  });
+  it('fontSizeH2 is 24px', () => {
+    expect(typography.fontSizeH2).toBe('24px');
+  });
+  it('fontSizeBodyLg is 18px', () => {
+    expect(typography.fontSizeBodyLg).toBe('18px');
+  });
+  it('fontSizeBodyMd is 16px', () => {
+    expect(typography.fontSizeBodyMd).toBe('16px');
+  });
+  it('fontSizeLabelCaps is 12px', () => {
+    expect(typography.fontSizeLabelCaps).toBe('12px');
+  });
+  it('letterSpacingDisplay is -0.02em', () => {
+    expect(typography.letterSpacingDisplay).toBe('-0.02em');
+  });
+  it('letterSpacingLabelCaps is 0.05em', () => {
+    expect(typography.letterSpacingLabelCaps).toBe('0.05em');
+  });
+  it('fontWeightDisplay is 700', () => {
+    expect(typography.fontWeightDisplay).toBe('700');
+  });
+  it('fontWeightHeading is 600', () => {
+    expect(typography.fontWeightHeading).toBe('600');
+  });
+  it('exports 21 typography constants', () => {
+    expect(Object.keys(typography).length).toBe(21);
   });
 });
