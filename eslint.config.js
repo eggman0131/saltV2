@@ -52,6 +52,53 @@ function forbidGroup(pkgs, message) {
   return pkgs.map((g) => ({ group: [g], message }));
 }
 
+// Domain submodules. Add a module name here when scaffolding it.
+const DOMAIN_MODULES = ['canon', 'recipe', 'shopping'];
+// Subfolders that constitute a domain module's internals. Cross-module
+// subpath imports into these are forbidden — go through the module index.
+const DOMAIN_INTERNAL_SUBFOLDERS = ['entities', 'ports', 'commands', 'queries'];
+
+function crossModuleSubpathPatterns(modules) {
+  const patterns = [];
+  for (const mod of modules) {
+    for (const sub of DOMAIN_INTERNAL_SUBFOLDERS) {
+      patterns.push(`**/${mod}/${sub}`);
+      patterns.push(`**/${mod}/${sub}/**`);
+    }
+  }
+  return patterns;
+}
+
+const COORDINATOR_PATTERNS = ['**/coordinators', '**/coordinators/**'];
+
+const DOMAIN_BASE_PATTERNS = [
+  ...forbidGroup(
+    SALT_APP_IMPORTS,
+    'Packages must not import from apps. Apps are leaf nodes in the dependency graph.',
+  ),
+  ...forbidGroup(
+    FIREBASE_PKGS,
+    'Firebase SDK imports are only allowed in @salt/firebase-sync. Use the domain port instead.',
+  ),
+  ...forbidGroup(
+    INDEXEDDB_PKGS,
+    'Browser storage imports are only allowed in @salt/local-store. Use the domain port instead.',
+  ),
+  ...forbidGroup(
+    [
+      '@salt/local-store',
+      '@salt/local-store/*',
+      '@salt/firebase-sync',
+      '@salt/firebase-sync/*',
+      '@salt/ui-components',
+      '@salt/ui-components/*',
+      '@salt/testing-utils',
+      '@salt/testing-utils/*',
+    ],
+    '@salt/domain may only import @salt/shared-types from the workspace.',
+  ),
+];
+
 export default [
   {
     ignores: [
@@ -120,38 +167,53 @@ export default [
     },
   },
 
-  // @salt/domain — must not import firebase, IndexedDB, or anything outside shared-types.
+  // @salt/domain — catch-all: must not import firebase, IndexedDB, or anything outside shared-types.
+  // Per-module and coordinator rules below override this for files within those scopes.
   {
     files: ['packages/domain/**/*.ts'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: DOMAIN_BASE_PATTERNS }],
+    },
+  },
+
+  // Per-module rules: each domain module may only import the published index
+  // of sibling modules, never their internals. Modules must not depend on
+  // coordinators.
+  ...DOMAIN_MODULES.map((mod) => ({
+    files: [`packages/domain/src/${mod}/**/*.ts`],
     rules: {
       'no-restricted-imports': [
         'error',
         {
           patterns: [
+            ...DOMAIN_BASE_PATTERNS,
             ...forbidGroup(
-              SALT_APP_IMPORTS,
-              'Packages must not import from apps. Apps are leaf nodes in the dependency graph.',
+              crossModuleSubpathPatterns(DOMAIN_MODULES.filter((m) => m !== mod)),
+              'Cross-module subpath imports are forbidden. Import the sibling module via its published index (e.g. "../canon"), not its internals.',
             ),
             ...forbidGroup(
-              FIREBASE_PKGS,
-              'Firebase SDK imports are only allowed in @salt/firebase-sync. Use the domain port instead.',
+              COORDINATOR_PATTERNS,
+              'Domain modules must not depend on coordinators. Coordinators depend on modules, not the other way around.',
             ),
+          ],
+        },
+      ],
+    },
+  })),
+
+  // Coordinators: may import any module's published surface, but never
+  // another module's internals.
+  {
+    files: ['packages/domain/src/coordinators/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            ...DOMAIN_BASE_PATTERNS,
             ...forbidGroup(
-              INDEXEDDB_PKGS,
-              'Browser storage imports are only allowed in @salt/local-store. Use the domain port instead.',
-            ),
-            ...forbidGroup(
-              [
-                '@salt/local-store',
-                '@salt/local-store/*',
-                '@salt/firebase-sync',
-                '@salt/firebase-sync/*',
-                '@salt/ui-components',
-                '@salt/ui-components/*',
-                '@salt/testing-utils',
-                '@salt/testing-utils/*',
-              ],
-              '@salt/domain may only import @salt/shared-types from the workspace.',
+              crossModuleSubpathPatterns(DOMAIN_MODULES),
+              'Coordinators must import only the published index of each module, never their internals (entities/ports/commands/queries).',
             ),
           ],
         },
