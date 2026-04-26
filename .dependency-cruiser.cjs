@@ -16,6 +16,13 @@ module.exports = {
       to: { path: '^node_modules/firebase' },
     },
     {
+      name: 'domain-no-indexeddb',
+      severity: 'error',
+      comment: 'Domain layer must not import browser storage. Use the LocalStore port.',
+      from: { path: '^packages/domain' },
+      to: { path: '^node_modules/(idb|idb-keyval|dexie)' },
+    },
+    {
       name: 'shared-types-no-salt-imports',
       severity: 'error',
       comment: 'shared-types must not import other @salt packages.',
@@ -35,6 +42,34 @@ module.exports = {
       comment: 'Domain may only import @salt/shared-types from the @salt workspace.',
       from: { path: '^packages/domain' },
       to: { path: '^packages/(?!shared-types|domain)' },
+    },
+    {
+      name: 'local-store-no-firebase',
+      severity: 'error',
+      comment: '@salt/local-store must not import Firebase SDKs. Sync lives in @salt/firebase-sync.',
+      from: { path: '^packages/adapters/local-store' },
+      to: { path: '^node_modules/firebase' },
+    },
+    {
+      name: 'firebase-sync-no-indexeddb',
+      severity: 'error',
+      comment: '@salt/firebase-sync must not import browser storage. Local persistence lives in @salt/local-store.',
+      from: { path: '^packages/adapters/firebase-sync' },
+      to: { path: '^node_modules/(idb|idb-keyval|dexie)' },
+    },
+    {
+      name: 'adapters-no-cross-import',
+      severity: 'error',
+      comment: 'local-store and firebase-sync must not import each other. Compose them at the application layer.',
+      from: { path: '^packages/adapters/(local-store|firebase-sync)' },
+      to: { path: '^packages/adapters/(local-store|firebase-sync)', pathNot: '$0' },
+    },
+    {
+      name: 'cloud-functions-no-local-store',
+      severity: 'error',
+      comment: 'Cloud Functions run server-side and must not import @salt/local-store.',
+      from: { path: '^apps/cloud-functions' },
+      to: { path: '^packages/adapters/local-store' },
     },
     {
       name: 'no-import-web-pwa',

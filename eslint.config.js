@@ -12,8 +12,12 @@ const ELEMENTS = [
     pattern: ['packages/domain/**', '@salt/domain'],
   },
   {
-    type: 'firebase-adapter',
-    pattern: ['packages/adapters/firebase/**', '@salt/firebase-adapter'],
+    type: 'local-store',
+    pattern: ['packages/adapters/local-store/**', '@salt/local-store'],
+  },
+  {
+    type: 'firebase-sync',
+    pattern: ['packages/adapters/firebase-sync/**', '@salt/firebase-sync'],
   },
   {
     type: 'ui-components',
@@ -35,6 +39,8 @@ const ELEMENTS = [
 
 // Import specifier patterns that must never appear in certain layers.
 const FIREBASE_PKGS = ['firebase', 'firebase/*', 'firebase-admin', 'firebase-admin/*'];
+// Browser storage packages that must only appear inside @salt/local-store.
+const INDEXEDDB_PKGS = ['idb', 'idb/*', 'idb-keyval', 'idb-keyval/*', 'dexie', 'dexie/*'];
 const SALT_APP_IMPORTS = [
   '@salt/web-pwa',
   '@salt/web-pwa/*',
@@ -77,14 +83,21 @@ export default [
           rules: [
             { from: 'shared-types', allow: [] },
             { from: 'domain', allow: ['shared-types'] },
-            { from: 'firebase-adapter', allow: ['domain', 'shared-types'] },
+            { from: 'local-store', allow: ['domain', 'shared-types'] },
+            { from: 'firebase-sync', allow: ['domain', 'shared-types'] },
             { from: 'ui-components', allow: [] },
-            { from: 'testing-utils', allow: ['shared-types', 'domain', 'firebase-adapter'] },
+            {
+              from: 'testing-utils',
+              allow: ['shared-types', 'domain', 'local-store', 'firebase-sync'],
+            },
             {
               from: 'web-pwa',
-              allow: ['shared-types', 'domain', 'firebase-adapter', 'ui-components'],
+              allow: ['shared-types', 'domain', 'local-store', 'firebase-sync', 'ui-components'],
             },
-            { from: 'cloud-functions', allow: ['shared-types', 'domain', 'firebase-adapter'] },
+            {
+              from: 'cloud-functions',
+              allow: ['shared-types', 'domain', 'firebase-sync'],
+            },
           ],
         },
       ],
@@ -107,7 +120,7 @@ export default [
     },
   },
 
-  // @salt/domain — must not import firebase or anything outside shared-types.
+  // @salt/domain — must not import firebase, IndexedDB, or anything outside shared-types.
   {
     files: ['packages/domain/**/*.ts'],
     rules: {
@@ -121,12 +134,18 @@ export default [
             ),
             ...forbidGroup(
               FIREBASE_PKGS,
-              'Firebase SDK imports are only allowed in @salt/firebase-adapter. Use the repository port instead.',
+              'Firebase SDK imports are only allowed in @salt/firebase-sync. Use the domain port instead.',
+            ),
+            ...forbidGroup(
+              INDEXEDDB_PKGS,
+              'Browser storage imports are only allowed in @salt/local-store. Use the domain port instead.',
             ),
             ...forbidGroup(
               [
-                '@salt/firebase-adapter',
-                '@salt/firebase-adapter/*',
+                '@salt/local-store',
+                '@salt/local-store/*',
+                '@salt/firebase-sync',
+                '@salt/firebase-sync/*',
                 '@salt/ui-components',
                 '@salt/ui-components/*',
                 '@salt/testing-utils',
@@ -153,8 +172,10 @@ export default [
               [
                 '@salt/domain',
                 '@salt/domain/*',
-                '@salt/firebase-adapter',
-                '@salt/firebase-adapter/*',
+                '@salt/local-store',
+                '@salt/local-store/*',
+                '@salt/firebase-sync',
+                '@salt/firebase-sync/*',
                 '@salt/ui-components',
                 '@salt/ui-components/*',
                 '@salt/testing-utils',
@@ -168,14 +189,66 @@ export default [
     },
   },
 
-  // @salt/ui-components — must not import Firebase SDKs.
+  // @salt/local-store — must not import Firebase SDKs or @salt/firebase-sync.
+  {
+    files: ['packages/adapters/local-store/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            ...forbidGroup(SALT_APP_IMPORTS, 'Adapters must not import from apps.'),
+            ...forbidGroup(
+              FIREBASE_PKGS,
+              'Firebase SDK imports are only allowed in @salt/firebase-sync.',
+            ),
+            ...forbidGroup(
+              ['@salt/firebase-sync', '@salt/firebase-sync/*'],
+              'Adapters must not import each other. Compose them at the application layer.',
+            ),
+          ],
+        },
+      ],
+    },
+  },
+
+  // @salt/firebase-sync — must not import IndexedDB packages or @salt/local-store.
+  {
+    files: ['packages/adapters/firebase-sync/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            ...forbidGroup(SALT_APP_IMPORTS, 'Adapters must not import from apps.'),
+            ...forbidGroup(
+              INDEXEDDB_PKGS,
+              'Browser storage imports are only allowed in @salt/local-store.',
+            ),
+            ...forbidGroup(
+              ['@salt/local-store', '@salt/local-store/*'],
+              'Adapters must not import each other. Compose them at the application layer.',
+            ),
+          ],
+        },
+      ],
+    },
+  },
+
+  // @salt/ui-components — must not import Firebase SDKs or browser storage packages.
   {
     files: ['packages/ui-components/**/*.ts'],
     rules: {
       'no-restricted-imports': [
         'error',
         {
-          patterns: forbidGroup(FIREBASE_PKGS, 'UI components must not import Firebase SDKs.'),
+          patterns: [
+            ...forbidGroup(FIREBASE_PKGS, 'UI components must not import Firebase SDKs.'),
+            ...forbidGroup(
+              INDEXEDDB_PKGS,
+              'UI components must not import browser storage packages — go through @salt/local-store.',
+            ),
+          ],
         },
       ],
     },
@@ -204,7 +277,11 @@ export default [
           patterns: [
             ...forbidGroup(
               FIREBASE_PKGS,
-              'Firebase SDK imports are only allowed in @salt/firebase-adapter.',
+              'Firebase SDK imports are only allowed in @salt/firebase-sync.',
+            ),
+            ...forbidGroup(
+              INDEXEDDB_PKGS,
+              'Browser storage imports are only allowed in @salt/local-store.',
             ),
             ...forbidGroup(SALT_APP_IMPORTS, 'Packages must not import from apps.'),
           ],
@@ -225,14 +302,60 @@ export default [
               [
                 '@salt/domain',
                 '@salt/domain/*',
-                '@salt/firebase-adapter',
-                '@salt/firebase-adapter/*',
+                '@salt/local-store',
+                '@salt/local-store/*',
+                '@salt/firebase-sync',
+                '@salt/firebase-sync/*',
                 '@salt/ui-components',
                 '@salt/ui-components/*',
                 '@salt/testing-utils',
                 '@salt/testing-utils/*',
               ],
               '@salt/shared-types must not import any other @salt/* package.',
+            ),
+          ],
+        },
+      ],
+    },
+  },
+
+  {
+    files: ['packages/adapters/local-store/src/__boundary_tests__/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            ...forbidGroup(SALT_APP_IMPORTS, 'Packages must not import from apps.'),
+            ...forbidGroup(
+              FIREBASE_PKGS,
+              'Firebase SDK imports are only allowed in @salt/firebase-sync.',
+            ),
+            ...forbidGroup(
+              ['@salt/firebase-sync', '@salt/firebase-sync/*'],
+              'Adapters must not import each other.',
+            ),
+          ],
+        },
+      ],
+    },
+  },
+
+  {
+    files: ['packages/adapters/firebase-sync/src/__boundary_tests__/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            ...forbidGroup(SALT_APP_IMPORTS, 'Packages must not import from apps.'),
+            ...forbidGroup(
+              INDEXEDDB_PKGS,
+              'Browser storage imports are only allowed in @salt/local-store.',
+            ),
+            ...forbidGroup(
+              ['@salt/local-store', '@salt/local-store/*'],
+              'Adapters must not import each other.',
             ),
           ],
         },

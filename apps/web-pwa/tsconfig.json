@@ -10,7 +10,8 @@
   "references": [
     { "path": "../../packages/shared-types" },
     { "path": "../../packages/domain" },
-    { "path": "../../packages/adapters/firebase" },
+    { "path": "../../packages/adapters/local-store" },
+    { "path": "../../packages/adapters/firebase-sync" },
     { "path": "../../packages/ui-components" }
   ]
 }

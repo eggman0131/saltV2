@@ -18,11 +18,12 @@ See [CLAUDE.md](./CLAUDE.md) for the architecture contract enforced on all contr
 | ------------------------ | -------------------------------------------------------------- |
 | `@salt/shared-types`     | DTOs and error codes shared across all layers                  |
 | `@salt/domain`           | Pure business logic — entities, ports, commands, queries       |
-| `@salt/firebase-adapter` | Firebase implementations of domain ports                       |
+| `@salt/local-store`      | IndexedDB implementation of the LocalStore port                |
+| `@salt/firebase-sync`    | Firebase Sync/Auth implementation of sync, realtime, auth ports|
 | `@salt/ui-components`    | shadcn-svelte component library (the only UI primitive source) |
 | `@salt/testing-utils`    | Shared test fixtures and helpers                               |
 | `@salt/web-pwa`          | SvelteKit PWA                                                  |
-| `@salt/cloud-functions`  | Firebase Cloud Functions                                       |
+| `@salt/cloud-functions`  | Firebase Cloud Functions (reserved for gen-AI workloads)       |
 
 ## Getting started
 

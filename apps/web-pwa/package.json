@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "@salt/domain": "workspace:*",
-    "@salt/firebase-adapter": "workspace:*",
+    "@salt/firebase-sync": "workspace:*",
+    "@salt/local-store": "workspace:*",
     "@salt/shared-types": "workspace:*",
     "@salt/ui-components": "workspace:*",
     "svelte": "^5.55.0"

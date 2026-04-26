@@ -3,7 +3,7 @@ import * as domain from '@salt/domain';
 import * as sharedTypes from '@salt/shared-types';
 import * as pkg from '../src/index.js';
 
-describe('@salt/firebase-adapter', () => {
+describe('@salt/firebase-sync', () => {
   it('is importable', () => {
     expect(pkg).toBeDefined();
   });

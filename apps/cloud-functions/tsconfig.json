@@ -11,6 +11,6 @@
   "references": [
     { "path": "../../packages/shared-types" },
     { "path": "../../packages/domain" },
-    { "path": "../../packages/adapters/firebase" }
+    { "path": "../../packages/adapters/firebase-sync" }
   ]
 }

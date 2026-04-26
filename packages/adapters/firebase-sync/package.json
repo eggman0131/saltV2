@@ -1,0 +1,17 @@
+{
+  "name": "@salt/firebase-sync",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@salt/domain": "workspace:*",
+    "@salt/shared-types": "workspace:*",
+    "firebase": "^11.0.0"
+  }
+}
