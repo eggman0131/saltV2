@@ -1,31 +1,61 @@
 import { describe, it, expect } from 'vitest';
-import { createCanonItem } from '../../src/canon/index.js';
+import { createCanonItem } from '@salt/domain';
+import type { IdGenerator } from '@salt/domain';
+import { ErrorCode } from '@salt/shared-types';
+
+function counterIds(prefix = 'id'): IdGenerator {
+  let n = 0;
+  return {
+    newCanonId: () => `${prefix}-${++n}`,
+  };
+}
 
 describe('createCanonItem', () => {
-  it('builds a CanonItem with trimmed name', () => {
-    const item = createCanonItem({ id: 'c1', name: '  Tomato  ' });
-    expect(item).toEqual({ id: 'c1', name: 'Tomato', synonyms: [], aisle: null });
+  it('returns Success with a CanonItem when name is valid', () => {
+    const result = createCanonItem({ name: '  Tomato  ' }, counterIds());
+    expect(result.kind).toBe('ok');
+    if (result.kind !== 'ok') return;
+    expect(result.value).toEqual({
+      id: 'id-1',
+      name: 'Tomato',
+      synonyms: [],
+      aisle: null,
+    });
+  });
+
+  it('uses the IdGenerator for the new id', () => {
+    const ids = counterIds('canon');
+    const a = createCanonItem({ name: 'Tomato' }, ids);
+    const b = createCanonItem({ name: 'Onion' }, ids);
+    expect(a.kind === 'ok' && a.value.id).toBe('canon-1');
+    expect(b.kind === 'ok' && b.value.id).toBe('canon-2');
   });
 
   it('trims and drops empty synonyms', () => {
-    const item = createCanonItem({
-      id: 'c2',
-      name: 'Tomato',
-      synonyms: [' tom ', '', '   ', 'tomate'],
-    });
-    expect(item.synonyms).toEqual(['tom', 'tomate']);
+    const result = createCanonItem(
+      { name: 'Tomato', synonyms: [' tom ', '', '   ', 'tomate'] },
+      counterIds(),
+    );
+    expect(result.kind === 'ok' && result.value.synonyms).toEqual(['tom', 'tomate']);
   });
 
   it('preserves aisle when supplied', () => {
-    const item = createCanonItem({ id: 'c3', name: 'Tomato', aisle: 'produce' });
-    expect(item.aisle).toBe('produce');
+    const result = createCanonItem({ name: 'Tomato', aisle: 'produce' }, counterIds());
+    expect(result.kind === 'ok' && result.value.aisle).toBe('produce');
   });
 
-  it('throws INVALID_CANON_NAME when name is blank', () => {
-    expect(() => createCanonItem({ id: 'c4', name: '   ' })).toThrow('INVALID_CANON_NAME');
+  it('returns Failure with INVALID_CANON_NAME when name is blank', () => {
+    const result = createCanonItem({ name: '   ' }, counterIds());
+    expect(result.kind).toBe('err');
+    if (result.kind !== 'err') return;
+    expect(result.error).toEqual({
+      kind: 'ValidationError',
+      code: ErrorCode.INVALID_CANON_NAME,
+    });
   });
 
-  it('throws INVALID_CANON_NAME when name is empty', () => {
-    expect(() => createCanonItem({ id: 'c5', name: '' })).toThrow('INVALID_CANON_NAME');
+  it('returns Failure when name is empty', () => {
+    const result = createCanonItem({ name: '' }, counterIds());
+    expect(result.kind === 'err' && result.error.kind).toBe('ValidationError');
   });
 });

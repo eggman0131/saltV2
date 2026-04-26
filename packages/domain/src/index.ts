@@ -5,6 +5,7 @@ export type {
   CanonItem,
   CanonStorePort,
   CanonLookupPort,
+  IdGenerator,
   CreateCanonItemInput,
 } from './canon/index.js';
 export { createCanonItem, createCanonLookup } from './canon/index.js';
