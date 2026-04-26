@@ -72,6 +72,14 @@ expect_lint_error \
   "packages/adapters/firebase-sync/src/__boundary_tests__/no-local-store.ts" \
   "firebase-sync cannot import @salt/local-store"
 
+expect_lint_error \
+  "packages/domain/src/canon/__boundary_tests__/no-cross-module-subpath.ts" \
+  "canon cannot import sibling module internals (subpath)"
+
+expect_lint_error \
+  "packages/domain/src/canon/__boundary_tests__/no-coordinator.ts" \
+  "canon cannot import a coordinator"
+
 expect_depcruise_error \
   ".boundary-tests/circular" \
   "circular imports are rejected"
