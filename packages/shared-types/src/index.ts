@@ -1,10 +1,3 @@
-export interface NoteDTO {
-  id: string;
-  title: string;
-  body: string;
-  createdAt: string;
-}
-
 export interface CanonItemDTO {
   id: string;
   name: string;
@@ -13,7 +6,6 @@ export interface CanonItemDTO {
 }
 
 export const ErrorCode = {
-  INVALID_TITLE: 'INVALID_TITLE',
   INVALID_CANON_NAME: 'INVALID_CANON_NAME',
 } as const;
 

@@ -144,7 +144,8 @@
       "Bash(pnpm --filter @salt/ui-components theme:check)",
       "Bash(pnpm -r test)",
       "Bash(pnpm eslint *)",
-      "Bash(pnpm --filter @salt/domain test)"
+      "Bash(pnpm --filter @salt/domain test)",
+      "Bash(git rm *)"
     ],
     "additionalDirectories": [
       "/home/eggman"
