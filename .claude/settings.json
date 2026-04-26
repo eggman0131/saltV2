@@ -141,8 +141,11 @@
       "Bash(pnpm --filter @salt/ui-components check)",
       "Bash(pnpm build *)",
       "Bash(git mv *)",
-      "Bash(pnpm --filter @salt/ui-components theme:check)"
+      "Bash(pnpm --filter @salt/ui-components theme:check)",
+      "Bash(pnpm -r test)"
     ],
-    "additionalDirectories": ["/home/eggman"]
+    "additionalDirectories": [
+      "/home/eggman"
+    ]
   }
 }
