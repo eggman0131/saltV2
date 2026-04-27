@@ -149,7 +149,13 @@
       "Bash(pnpm --filter @salt/shared-types --filter @salt/domain typecheck)",
       "Bash(pnpm --filter @salt/domain exec tsc --noEmit)",
       "Bash(pnpm --filter @salt/firebase-sync exec tsc --noEmit)",
-      "Bash(pnpm --filter @salt/firebase-sync test)"
+      "Bash(pnpm --filter @salt/firebase-sync test)",
+      "Bash(pnpm --filter @salt/web-pwa add svelte-spa-router)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\({k:d[k] for k in ['exports','main','module','types'] if k in d}, indent=2\\)\\)\")",
+      "Bash(pnpm --filter @salt/web-pwa add lucide-svelte)",
+      "Bash(pnpm --filter @salt/web-pwa exec svelte-check --tsconfig ./tsconfig.json)",
+      "Bash(pnpm --filter @salt/web-pwa exec tsc --noEmit)",
+      "Bash(echo \"Exit: $?\")"
     ],
     "additionalDirectories": [
       "/home/eggman"
