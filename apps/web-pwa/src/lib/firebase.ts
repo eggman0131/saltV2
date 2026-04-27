@@ -1,15 +1,28 @@
 import { initFirebase, createFirebaseAuth, type FirebaseOptions } from '@salt/firebase-sync';
 
-const options: FirebaseOptions = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-};
-
 export const useEmulators = import.meta.env.VITE_USE_EMULATORS === 'true';
+
+// In emulator mode the SDK ignores credential values but still requires
+// non-empty strings for apiKey/appId. Project IDs prefixed `demo-` keep
+// the SDK strictly emulator-only (no real-network fallthrough).
+const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+const options: FirebaseOptions = useEmulators
+  ? {
+      apiKey: 'emulator',
+      authDomain: `${projectId}.firebaseapp.com`,
+      projectId,
+      storageBucket: `${projectId}.appspot.com`,
+      messagingSenderId: '0',
+      appId: 'emulator',
+    }
+  : {
+      apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+      authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+      projectId,
+      storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+      messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+      appId: import.meta.env.VITE_FIREBASE_APP_ID,
+    };
 
 initFirebase(options, useEmulators);
 
