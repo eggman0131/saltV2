@@ -174,6 +174,18 @@ export type {
   TooltipPartProps,
 } from './primitives/Tooltip/Tooltip.types';
 
+// Layout
+export { default as AppShell } from './layout/AppShell/AppShell.svelte';
+export { default as TopBar } from './layout/TopBar/TopBar.svelte';
+export { default as SideNav } from './layout/SideNav/SideNav.svelte';
+export { default as BottomNav } from './layout/BottomNav/BottomNav.svelte';
+
+export type { AppShellProps } from './layout/AppShell/AppShell.types';
+export type { TopBarProps } from './layout/TopBar/TopBar.types';
+export type { SideNavProps } from './layout/SideNav/SideNav.types';
+export type { BottomNavProps } from './layout/BottomNav/BottomNav.types';
+export type { NavItem } from './layout/NavItem.types';
+
 // Templates
 export { default as ListPage } from './templates/ListPage/ListPage.svelte';
 export { default as FormPage } from './templates/FormPage/FormPage.svelte';
