@@ -15,7 +15,7 @@
   class={cn('fixed inset-x-0 bottom-0 z-10 border-t bg-card lg:hidden', className)}
   aria-label="Main navigation"
 >
-  <ul class="mx-auto flex h-16 w-full max-w-lg items-center justify-around" role="list">
+  <ul class="mx-auto flex h-14 w-full max-w-lg items-center justify-around" role="list">
     {#each items as item (item.id)}
       {@const active = isActive(item.href, currentPath)}
       {@const Icon = item.icon}
@@ -23,13 +23,15 @@
         <a
           href={item.href}
           class={cn(
-            'relative flex flex-1 flex-col items-center justify-center gap-1 py-1 text-xs transition-colors',
-            active ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
+            'relative flex flex-1 flex-col items-center justify-center gap-0.5 py-1 transition-colors',
+            active ? 'text-primary' : 'text-foreground/40 hover:text-foreground/60',
           )}
           aria-current={active ? 'page' : undefined}
         >
-          <Icon size={22} aria-hidden="true" />
-          <span>{item.label}</span>
+          <Icon size={20} aria-hidden="true" />
+          <span class={cn('text-[10px] uppercase tracking-wider', active && 'font-semibold')}
+            >{item.label}</span
+          >
           {#if item.badge}
             <span
               class="absolute right-1/4 top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] text-primary-foreground"

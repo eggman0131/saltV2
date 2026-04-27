@@ -26,7 +26,7 @@
       pb-16: on mobile, reserves space so content is never hidden under the fixed BottomNav.
       lg:pb-0: removed on desktop where BottomNav is not rendered.
     -->
-    <main class="flex-1 overflow-y-auto pb-16 lg:pb-0">
+    <main class="flex-1 overflow-y-auto pb-14 lg:pb-0">
       {@render children?.()}
     </main>
   </div>
