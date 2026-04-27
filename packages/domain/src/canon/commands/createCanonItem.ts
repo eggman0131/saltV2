@@ -22,5 +22,7 @@ export function createCanonItem(
     name,
     synonyms: (input.synonyms ?? []).map((s) => s.trim()).filter((s) => s.length > 0),
     aisle: input.aisle ?? null,
+    thumbnail: null,
+    embedding: null,
   });
 }

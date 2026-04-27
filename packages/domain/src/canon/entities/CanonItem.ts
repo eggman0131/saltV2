@@ -6,4 +6,6 @@ export interface CanonItem {
   readonly name: string;
   readonly synonyms: readonly string[];
   readonly aisle: string | null;
+  readonly thumbnail: string | null;
+  readonly embedding: readonly number[] | null;
 }

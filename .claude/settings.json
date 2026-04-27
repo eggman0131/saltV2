@@ -145,7 +145,8 @@
       "Bash(pnpm -r test)",
       "Bash(pnpm eslint *)",
       "Bash(pnpm --filter @salt/domain test)",
-      "Bash(git rm *)"
+      "Bash(git rm *)",
+      "Bash(pnpm --filter @salt/shared-types --filter @salt/domain typecheck)"
     ],
     "additionalDirectories": [
       "/home/eggman"

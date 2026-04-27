@@ -20,6 +20,8 @@ describe('createCanonItem', () => {
       name: 'Tomato',
       synonyms: [],
       aisle: null,
+      thumbnail: null,
+      embedding: null,
     });
   });
 
