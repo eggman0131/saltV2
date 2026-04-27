@@ -1,6 +1,6 @@
-## vexp — Context-Aware AI Coding vexp gives MCP access to a pre-indexed, graph-ranked view of this codebase. Use it when the question is **about code relationships or navigation within this repo**; reach for other tools when it isn't.
+## vexp — Context-Aware AI Coding vexp gives MCP access to a pre-indexed, graph-ranked view of this codebase. Always call vexp when the question is **about code relationships or navigation within this repo**; reach for other tools when it isn't.
 
-### Use vexp when
+### Always use vexp when
 
 - "Where is X implemented / who calls Y / where should this change land?" → `run_pipeline({ task })`
 - "What does changing Z affect?" (blast radius) → `run_pipeline({ task, preset: "refactor" })`
