@@ -9,3 +9,6 @@ export type {
   CreateCanonItemInput,
 } from './canon/index.js';
 export { createCanonItem, createCanonLookup } from './canon/index.js';
+
+// Auth module — published surface.
+export type { User, AuthProvider } from './auth/index.js';

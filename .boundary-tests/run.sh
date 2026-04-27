@@ -80,6 +80,10 @@ expect_lint_error \
   "packages/domain/src/canon/__boundary_tests__/no-coordinator.ts" \
   "canon cannot import a coordinator"
 
+expect_lint_error \
+  "packages/domain/src/auth/__boundary_tests__/no-cross-module-subpath.ts" \
+  "auth cannot import sibling module internals (subpath)"
+
 expect_depcruise_error \
   ".boundary-tests/circular" \
   "circular imports are rejected"
