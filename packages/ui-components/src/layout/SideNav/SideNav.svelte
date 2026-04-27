@@ -5,8 +5,9 @@
   let { items, currentPath, footer, class: className }: SideNavProps = $props();
 
   function isActive(href: string, path: string): boolean {
-    if (href === '/') return path === '/';
-    return path === href || path.startsWith(href + '/');
+    const p = href.startsWith('#') ? href.slice(1) : href;
+    if (p === '/') return path === '/';
+    return path === p || path.startsWith(p + '/');
   }
 </script>
 
