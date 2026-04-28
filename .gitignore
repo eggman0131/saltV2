@@ -9,4 +9,4 @@ dist/
 *.tsbuildinfo
 .emulator-data/
 firebase-debug.log
-firestore-debug.log
+firebase-export*/
