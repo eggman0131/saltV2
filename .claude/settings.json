@@ -155,7 +155,10 @@
       "Bash(pnpm --filter @salt/web-pwa add lucide-svelte)",
       "Bash(pnpm --filter @salt/web-pwa exec svelte-check --tsconfig ./tsconfig.json)",
       "Bash(pnpm --filter @salt/web-pwa exec tsc --noEmit)",
-      "Bash(echo \"Exit: $?\")"
+      "Bash(echo \"Exit: $?\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('test script:', d.get\\('scripts',{}\\).get\\('test','none'\\)\\); print\\('vitest:', 'vitest' in str\\(d\\)\\)\")",
+      "Bash(pnpm --filter @salt/domain typecheck)",
+      "Bash(pnpm --filter @salt/firebase-sync typecheck)"
     ],
     "additionalDirectories": [
       "/home/eggman"
