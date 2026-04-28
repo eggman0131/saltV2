@@ -24,3 +24,8 @@ export type { MatchLoggingPort } from './ports/MatchLoggingPort.js';
 export type { EmbeddingPort } from './ports/EmbeddingPort.js';
 export { MatchLogBuilder } from './logging/MatchLogBuilder.js';
 export { embedMatch } from './queries/embedMatch.js';
+export type {
+  CanonArbitrationPort,
+  ArbitrationRequest,
+  ArbitrationResult,
+} from './ports/CanonArbitrationPort.js';

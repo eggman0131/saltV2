@@ -3,3 +3,4 @@ export { initFirebase } from './init.js';
 export { createFirebaseAuth } from './auth.js';
 export { createFirebaseMatchLoggingAdapter } from './canonMatchingLog.js';
 export { createGeminiEmbeddingAdapter } from './geminiEmbedding.js';
+export { createGeminiArbitrationAdapter } from './geminiArbitration.js';

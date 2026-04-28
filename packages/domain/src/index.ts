@@ -15,6 +15,9 @@ export type {
   FinalDecision,
   MatchLoggingPort,
   EmbeddingPort,
+  CanonArbitrationPort,
+  ArbitrationRequest,
+  ArbitrationResult,
 } from './canon/index.js';
 export {
   createCanonItem,
