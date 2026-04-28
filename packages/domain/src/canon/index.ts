@@ -4,7 +4,9 @@
 // design.
 
 export type { CanonItem } from './entities/CanonItem.js';
+export type { Aisle } from './entities/Aisle.js';
 export type { CanonStorePort } from './ports/CanonStorePort.js';
+export type { AisleStorePort } from './ports/AisleStorePort.js';
 export type { CanonLookupPort } from './ports/CanonLookupPort.js';
 export type { IdGenerator } from './ports/IdGenerator.js';
 export { createCanonItem } from './commands/createCanonItem.js';

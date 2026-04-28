@@ -88,6 +88,17 @@ export interface CanonItemDTO {
   readonly schemaVersion: 1;
 }
 
+export interface AisleDTO {
+  readonly id: string;
+  readonly name: string;
+  readonly order: number;
+}
+
+export interface AisleListDTO {
+  readonly aisles: readonly AisleDTO[];
+  readonly schemaVersion: 1;
+}
+
 export const ErrorCode = {
   INVALID_CANON_NAME: 'INVALID_CANON_NAME',
 } as const;
