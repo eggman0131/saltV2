@@ -25,11 +25,11 @@
   },
   "lint-staged": {
     "*.{ts,js,svelte}": [
-      "eslint --no-error-on-unmatched-pattern",
-      "prettier --check"
+      "prettier --write",
+      "eslint --no-error-on-unmatched-pattern"
     ],
     "*.{css,html}": [
-      "prettier --check"
+      "prettier --write"
     ]
   },
   "devDependencies": {
