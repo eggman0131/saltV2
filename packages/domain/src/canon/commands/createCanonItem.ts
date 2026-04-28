@@ -25,6 +25,6 @@ export function createCanonItem(
     aisle: input.aisle ?? null,
     thumbnail: null,
     embedding: null,
-    needs_approval: input.needs_approval ?? false,
+    needs_approval: input.needs_approval ?? true,
   });
 }

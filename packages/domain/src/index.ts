@@ -7,13 +7,20 @@ export type {
   CanonLookupPort,
   IdGenerator,
   CreateCanonItemInput,
+  MatchCandidate,
+  MatchStage,
   MatchLogEntry,
   StageLog,
   CandidateLog,
   FinalDecision,
   MatchLoggingPort,
 } from './canon/index.js';
-export { createCanonItem, createCanonLookup, MatchLogBuilder } from './canon/index.js';
+export {
+  createCanonItem,
+  createCanonLookup,
+  MatchLogBuilder,
+  MATCH_THRESHOLDS,
+} from './canon/index.js';
 
 // Auth module — published surface.
 export type { User, AuthProvider } from './auth/index.js';

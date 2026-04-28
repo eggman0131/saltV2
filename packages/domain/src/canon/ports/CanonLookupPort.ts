@@ -1,4 +1,5 @@
 import type { CanonItem } from '../entities/CanonItem.js';
+import type { MatchCandidate } from '../matching.js';
 
 // Module-offered port: canonicalisation logic exposed to other domain modules.
 // Implemented by canon's own queries (see queries/createCanonLookup).
@@ -10,7 +11,7 @@ import type { CanonItem } from '../entities/CanonItem.js';
 // `refresh` lets the composition layer push a new canon set into the lookup
 // after a sync brings in updates, without reconstructing the port.
 export interface CanonLookupPort {
-  findClosestMatch(rawName: string): CanonItem | null;
+  findClosestMatch(rawName: string): MatchCandidate | null;
   normaliseName(rawName: string): string;
   refresh(items: readonly CanonItem[]): void;
 }

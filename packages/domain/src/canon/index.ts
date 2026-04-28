@@ -12,6 +12,8 @@ export type { IdGenerator } from './ports/IdGenerator.js';
 export { createCanonItem } from './commands/createCanonItem.js';
 export type { CreateCanonItemInput } from './commands/createCanonItem.js';
 export { createCanonLookup } from './queries/createCanonLookup.js';
+export type { MatchCandidate, MatchStage } from './matching.js';
+export { MATCH_THRESHOLDS } from './matching.js';
 export type {
   MatchLogEntry,
   StageLog,

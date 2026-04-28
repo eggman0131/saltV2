@@ -52,9 +52,9 @@ describe('createCanonLookup', () => {
     if (result.kind !== 'ok') return;
     const lookup = result.value;
 
-    expect(lookup.findClosestMatch('tom')?.id).toBe('1');
-    expect(lookup.findClosestMatch('  TOMATO  ')?.id).toBe('1');
-    expect(lookup.findClosestMatch('evoo')?.id).toBe('2');
+    expect(lookup.findClosestMatch('tom')?.item.id).toBe('1');
+    expect(lookup.findClosestMatch('  TOMATO  ')?.item.id).toBe('1');
+    expect(lookup.findClosestMatch('evoo')?.item.id).toBe('2');
     expect(lookup.findClosestMatch('butter')).toBeNull();
     expect(lookup.findClosestMatch('   ')).toBeNull();
   });
@@ -83,7 +83,7 @@ describe('createCanonLookup', () => {
     if (result.kind !== 'ok') throw new Error('setup failed');
     const lookup = result.value;
 
-    expect(lookup.findClosestMatch('tom')?.id).toBe('1');
+    expect(lookup.findClosestMatch('tom')?.item.id).toBe('1');
 
     lookup.refresh([
       {
@@ -98,7 +98,7 @@ describe('createCanonLookup', () => {
     ]);
 
     expect(lookup.findClosestMatch('tom')).toBeNull();
-    expect(lookup.findClosestMatch('butter')?.id).toBe('99');
+    expect(lookup.findClosestMatch('butter')?.item.id).toBe('99');
   });
 
   it('propagates Failure from the store', async () => {
