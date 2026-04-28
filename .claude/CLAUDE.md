@@ -1,28 +1,71 @@
-## vexp — Context-Aware AI Coding vexp gives MCP access to a pre-indexed, graph-ranked view of this codebase. Always call vexp when the question is **about code relationships or navigation within this repo**; reach for other tools when it isn't.
+## vexp — Context-Aware AI Coding (selective use)
 
-### Always use vexp when
+vexp provides a pre-indexed, graph-ranked view of the *local codebase only*.
+Use it when understanding **relationships, impact, or structure inside this repo**
+would materially improve accuracy or speed. Do not use it by default.
 
-- "Where is X implemented / who calls Y / where should this change land?" → `run_pipeline({ task })`
-- "What does changing Z affect?" (blast radius) → `run_pipeline({ task, preset: "refactor" })`
-- Inspecting a file's shape (signatures, exports, types) → `get_skeleton({ files, detail })` — **Use this instead of Read** for initial inspection; it is significantly faster and token-efficient.
+---
 
-### Use other tools when
+### Step 1 — Decide if vexp adds value
 
-- You already know the file path — just Read/Edit it.
-- Searching for a literal string, exact import path, config key, or regex — `rg`/`grep` via **Bash** is often faster and more precise than semantic search.
-- Filesystem, git, build, or CI questions (`ls`, `git status`, `pnpm test`) — these are not codebase searches.
-- **External resources:** GitHub issues, PR descriptions, npm packages, or web docs. **vexp only sees local disk; it cannot fetch live API data.**
+Before using any tool, decide:
 
-### Tool reference
+“Am I reasoning about **how this codebase works internally**?”
 
-- `run_pipeline({ task })` — runs capsule + impact + memory in a single call. Auto-detects intent from the task. Override with `preset: "debug" | "refactor" | "explore"`; widen with `max_tokens`; add tests with `include_tests: true`; scope with `repos: [...]`.
-- `get_skeleton({ files, detail: "minimal" | "standard" | "detailed" })` — file structure without the full body. Prefer over Read for initial file analysis.
-- `index_status` — indexed repos and daemon health (use to discover repo aliases).
-- `expand_vexp_ref(hash)` — expand `[V-REF:xxxx]` placeholders from compact output.
+- If **yes**, use vexp.
+- If **no**, do not use vexp.
 
-### Notes
+When in doubt, prefer NOT using vexp unless the task is codebase‑specific.
 
-- **Zero-Result Rule:** If `run_pipeline` returns weak pivots or no relevant files, **do not retry with synonyms.** Assume the information is not in the local index and switch to `grep` or external tools (like GitHub API) immediately.
-- **Bypassing Hooks:** A PreToolUse hook may block standard Grep/Glob when the vexp daemon is running. If you need a literal search and the standard tool is blocked, run `rg` or `grep` via **Bash** instead. Do not fall back to vexp just because it is the "available" search tool.
-- **Don't Chain:** Do not call `run_pipeline` multiple times for the same sub-task. One call already bundles capsule, impact, and memory context.
-- **Subagents:** Pass the specific task description to subagents so they can call `run_pipeline` with the correct context rather than re-deriving it.
+---
+
+### Always use vexp when the task involves:
+- Where something is implemented
+  - “Where is X defined / implemented?”
+  - “Who calls Y?”
+- Change impact or blast radius
+  - “What does changing Z affect?”
+  - “If I refactor this, what breaks?”
+- Codebase navigation or architecture
+  - entry points, layering, ownership, cross‑module flows
+- Understanding internal types, exports, or abstractions
+- Refactors that require awareness of usage and coupling
+
+➡️ Use:
+`run_pipeline({ task })`
+(or `preset: "refactor"` for blast‑radius analysis)
+
+---
+
+### Do NOT use vexp when the task is:
+- About **external services or content**
+  - GitHub issues/PRs, APIs, SaaS tools, npm docs, cloud services
+- About **tools, workflows, or theory**
+  - “How does X usually work?”
+- About **known files or direct edits**
+  - You already have the file path
+- Simple string or literal search
+- Git, CI, filesystem, builds, or commands
+- Planning, explanation, or discussion without codebase inspection
+
+➡️ Use standard reasoning, Bash, Read/Edit, or web tools instead.
+
+---
+
+### File inspection rules
+- To understand a file’s shape (exports, signatures, types):
+  ➜ Use `get_skeleton`
+- Only use Read when you need exact lines to edit.
+
+---
+
+### Usage constraints
+- Do not call `run_pipeline` more than once per logical task.
+- Do not retry vexp with synonyms if results are weak.
+- vexp cannot see the internet — do not use it for external lookups.
+
+---
+
+### Principle
+vexp is a **scalpel**, not a hammer.
+Use it when internal context matters; skip it when it doesn’t.
