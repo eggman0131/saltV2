@@ -1,0 +1,51 @@
+import { getApp } from 'firebase/app';
+import type { EmbeddingPort } from '@salt/domain';
+
+const EMBEDDING_MODEL = 'text-embedding-004';
+const BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
+
+export function createGeminiEmbeddingAdapter(): EmbeddingPort {
+  return {
+    async computeEmbedding(text: string) {
+      const apiKey = getApp().options.apiKey;
+      if (!apiKey) {
+        return { kind: 'err', error: { kind: 'NetworkError', reason: 'unreachable' } };
+      }
+      try {
+        const resp = await fetch(
+          `${BASE_URL}/${EMBEDDING_MODEL}:embedContent?key=${encodeURIComponent(apiKey)}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: `models/${EMBEDDING_MODEL}`,
+              content: { parts: [{ text }] },
+            }),
+          },
+        );
+        if (!resp.ok) {
+          return { kind: 'err', error: { kind: 'NetworkError', reason: 'transient' } };
+        }
+        const data = (await resp.json()) as { embedding: { values: number[] } };
+        return { kind: 'ok', value: data.embedding.values };
+      } catch {
+        return { kind: 'err', error: { kind: 'NetworkError', reason: 'transient' } };
+      }
+    },
+
+    cosineSimilarity(a: readonly number[], b: readonly number[]): number {
+      let dot = 0;
+      let magA = 0;
+      let magB = 0;
+      for (let i = 0; i < a.length; i++) {
+        const ai = a[i]!;
+        const bi = b[i]!;
+        dot += ai * bi;
+        magA += ai * ai;
+        magB += bi * bi;
+      }
+      const mag = Math.sqrt(magA) * Math.sqrt(magB);
+      return mag === 0 ? 0 : dot / mag;
+    },
+  };
+}

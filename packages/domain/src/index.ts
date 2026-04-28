@@ -14,12 +14,14 @@ export type {
   CandidateLog,
   FinalDecision,
   MatchLoggingPort,
+  EmbeddingPort,
 } from './canon/index.js';
 export {
   createCanonItem,
   createCanonLookup,
   MatchLogBuilder,
   MATCH_THRESHOLDS,
+  embedMatch,
 } from './canon/index.js';
 
 // Auth module — published surface.
