@@ -5,8 +5,24 @@ import { success, failure } from '@salt/shared-types';
 import type { ReadResult, DomainError } from '@salt/shared-types';
 
 const seed: readonly CanonItem[] = [
-  { id: '1', name: 'Tomato', synonyms: ['tom', 'tomate'], aisle: 'produce' },
-  { id: '2', name: 'Olive Oil', synonyms: ['EVOO'], aisle: 'oils' },
+  {
+    id: '1',
+    name: 'Tomato',
+    synonyms: ['tom', 'tomate'],
+    aisle: 'produce',
+    thumbnail: null,
+    embedding: null,
+    needs_approval: false,
+  },
+  {
+    id: '2',
+    name: 'Olive Oil',
+    synonyms: ['EVOO'],
+    aisle: 'oils',
+    thumbnail: null,
+    embedding: null,
+    needs_approval: false,
+  },
 ];
 
 function fakeStore(
@@ -69,7 +85,17 @@ describe('createCanonLookup', () => {
 
     expect(lookup.findClosestMatch('tom')?.id).toBe('1');
 
-    lookup.refresh([{ id: '99', name: 'Butter', synonyms: [], aisle: 'dairy' }]);
+    lookup.refresh([
+      {
+        id: '99',
+        name: 'Butter',
+        synonyms: [],
+        aisle: 'dairy',
+        thumbnail: null,
+        embedding: null,
+        needs_approval: false,
+      },
+    ]);
 
     expect(lookup.findClosestMatch('tom')).toBeNull();
     expect(lookup.findClosestMatch('butter')?.id).toBe('99');

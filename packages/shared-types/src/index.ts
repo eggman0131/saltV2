@@ -84,6 +84,7 @@ export interface CanonItemDTO {
   readonly aisle: string | null;
   readonly thumbnail: string | null;
   readonly embedding: readonly number[] | null;
+  readonly needs_approval: boolean;
   readonly schemaVersion: 1;
 }
 

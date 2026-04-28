@@ -7,6 +7,7 @@ export interface CreateCanonItemInput {
   readonly name: string;
   readonly synonyms?: readonly string[];
   readonly aisle?: string | null;
+  readonly needs_approval?: boolean;
 }
 
 export function createCanonItem(
@@ -24,5 +25,6 @@ export function createCanonItem(
     aisle: input.aisle ?? null,
     thumbnail: null,
     embedding: null,
+    needs_approval: input.needs_approval ?? false,
   });
 }

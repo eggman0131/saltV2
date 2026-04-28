@@ -22,6 +22,7 @@ describe('createCanonItem', () => {
       aisle: null,
       thumbnail: null,
       embedding: null,
+      needs_approval: false,
     });
   });
 
