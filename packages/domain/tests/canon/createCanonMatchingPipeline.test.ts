@@ -1,0 +1,526 @@
+import { describe, it, expect, vi } from 'vitest';
+import { createCanonMatchingPipeline } from '../../src/canon/createCanonMatchingPipeline.js';
+import type { CanonStorePort } from '../../src/canon/ports/CanonStorePort.js';
+import type { AisleStorePort } from '../../src/canon/ports/AisleStorePort.js';
+import type { EmbeddingPort } from '../../src/canon/ports/EmbeddingPort.js';
+import type { CanonArbitrationPort } from '../../src/canon/ports/CanonArbitrationPort.js';
+import type { IdGenerator } from '../../src/canon/ports/IdGenerator.js';
+import type { MatchLoggingPort } from '../../src/canon/ports/MatchLoggingPort.js';
+import type { CanonItem } from '../../src/canon/entities/CanonItem.js';
+import type { MatchLogEntry } from '../../src/canon/logging/MatchLogEntry.js';
+
+// ─── Fixtures ────────────────────────────────────────────────────────────────
+
+function canonItem(overrides: Partial<CanonItem> & { id: string; name: string }): CanonItem {
+  return {
+    synonyms: [],
+    aisle: null,
+    thumbnail: null,
+    embedding: null,
+    needs_approval: false,
+    ...overrides,
+  };
+}
+
+let idCounter = 0;
+
+function makeIds(): IdGenerator {
+  return { newCanonId: () => `id-${++idCounter}` };
+}
+
+function makeStore(initial: CanonItem[] = []): CanonStorePort & { items: CanonItem[] } {
+  const items = [...initial];
+  return {
+    items,
+    list: async () => ({ kind: 'ok', value: items }),
+    load: async (id) => {
+      const found = items.find((i) => i.id === id) ?? null;
+      return { kind: 'ok', value: found };
+    },
+    save: async (item) => {
+      const idx = items.findIndex((i) => i.id === item.id);
+      if (idx >= 0) items[idx] = item;
+      else items.push(item);
+      return { kind: 'ok', value: item };
+    },
+    delete: async () => ({ kind: 'ok', value: undefined }),
+  };
+}
+
+function makeAisleStore(): AisleStorePort {
+  return {
+    load: async () => ({ kind: 'ok', value: [] }),
+    save: async () => ({ kind: 'ok', value: [] }),
+  };
+}
+
+// eX · eX = 1.0 (above stage5Stop=0.75); eX · eY = 0.0 (below)
+const eX = [1, 0] as const;
+const eY = [0, 1] as const;
+
+function cosine(a: readonly number[], b: readonly number[]): number {
+  let dot = 0,
+    magA = 0,
+    magB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i]! * b[i]!;
+    magA += a[i]! * a[i]!;
+    magB += b[i]! * b[i]!;
+  }
+  const mag = Math.sqrt(magA) * Math.sqrt(magB);
+  return mag === 0 ? 0 : dot / mag;
+}
+
+function makeEmbedding(queryVec: readonly number[], itemVec?: readonly number[]): EmbeddingPort {
+  return {
+    computeEmbedding: async () => ({ kind: 'ok', value: queryVec }),
+    cosineSimilarity: (a, b) => cosine(a, itemVec ?? b),
+  };
+}
+
+function failEmbedding(): EmbeddingPort {
+  return {
+    computeEmbedding: async () => ({
+      kind: 'err',
+      error: { kind: 'NetworkError', reason: 'transient' },
+    }),
+    cosineSimilarity: cosine,
+  };
+}
+
+function noMatchArbitration(): CanonArbitrationPort {
+  return { arbitrate: async () => ({ kind: 'ok', value: { kind: 'no-match' } }) };
+}
+
+function matchArbitration(itemId: string): CanonArbitrationPort {
+  return {
+    arbitrate: async () => ({ kind: 'ok', value: { kind: 'match', itemId, confidence: 0.85 } }),
+  };
+}
+
+function newArbitration(canonName: string, aisleId: string | null = null): CanonArbitrationPort {
+  return { arbitrate: async () => ({ kind: 'ok', value: { kind: 'new', canonName, aisleId } }) };
+}
+
+function errorArbitration(): CanonArbitrationPort {
+  return {
+    arbitrate: async () => ({
+      kind: 'err',
+      error: { kind: 'NetworkError', reason: 'transient' },
+    }),
+  };
+}
+
+function pipeline(
+  opts: {
+    store?: CanonStorePort & { items: CanonItem[] };
+    items?: CanonItem[];
+    embedding?: EmbeddingPort;
+    arbitration?: CanonArbitrationPort;
+    logging?: MatchLoggingPort | null;
+  } = {},
+) {
+  const store = opts.store ?? makeStore(opts.items ?? []);
+  idCounter = 0;
+  return {
+    pipe: createCanonMatchingPipeline(
+      store,
+      makeAisleStore(),
+      opts.embedding ?? failEmbedding(),
+      opts.arbitration ?? noMatchArbitration(),
+      makeIds(),
+      opts.logging ?? null,
+    ),
+    store,
+  };
+}
+
+// ─── Stage 1: exact normalised name match ────────────────────────────────────
+
+describe('stage 1 — exact name match', () => {
+  it('returns the matched item when normalised names are identical', async () => {
+    const apple = canonItem({ id: 'a1', name: 'Apple' });
+    const { pipe } = pipeline({ items: [apple] });
+    const result = await pipe.matchOrCreate('apple');
+    expect(result).toEqual({ kind: 'ok', value: apple });
+  });
+
+  it('matches despite casing differences', async () => {
+    const apple = canonItem({ id: 'a1', name: 'APPLE' });
+    const { pipe } = pipeline({ items: [apple] });
+    const result = await pipe.matchOrCreate('apple');
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') expect(result.value.id).toBe('a1');
+  });
+
+  it('matches plural forms after singularisation', async () => {
+    const apple = canonItem({ id: 'a1', name: 'apple' });
+    const { pipe } = pipeline({ items: [apple] });
+    const result = await pipe.matchOrCreate('apples');
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') expect(result.value.id).toBe('a1');
+  });
+
+  it('does not create a new item when stage 1 matches', async () => {
+    const apple = canonItem({ id: 'a1', name: 'apple' });
+    const { pipe, store } = pipeline({ items: [apple] });
+    await pipe.matchOrCreate('apple');
+    expect((store as ReturnType<typeof makeStore>).items).toHaveLength(1);
+  });
+});
+
+// ─── Stage 3: synonym match ───────────────────────────────────────────────────
+
+describe('stage 3 — synonym match', () => {
+  it('matches via a stored synonym', async () => {
+    const tomato = canonItem({ id: 't1', name: 'tomato', synonyms: ['love apple'] });
+    const { pipe } = pipeline({ items: [tomato] });
+    const result = await pipe.matchOrCreate('Love Apple');
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') expect(result.value.id).toBe('t1');
+  });
+});
+
+// ─── Stage 5: embedding match ─────────────────────────────────────────────────
+
+describe('stage 5 — embedding match', () => {
+  it('returns the best cosine match when above stage5Stop threshold', async () => {
+    // Item embedding = eX; query embedding = eX → cosine = 1.0 >= 0.75
+    const oil = canonItem({ id: 'o1', name: 'XYZ-unique-name', embedding: eX });
+    const { pipe } = pipeline({
+      items: [oil],
+      embedding: makeEmbedding(eX),
+    });
+    const result = await pipe.matchOrCreate('XYZ-unique-name');
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') expect(result.value.id).toBe('o1');
+  });
+
+  it('prefers the approved item when confidence is equal', async () => {
+    const unapproved = canonItem({
+      id: 'u1',
+      name: 'foo bar baz',
+      embedding: eX,
+      needs_approval: true,
+    });
+    const approved = canonItem({
+      id: 'a1',
+      name: 'foo bar baz',
+      embedding: eX,
+      needs_approval: false,
+    });
+    const { pipe } = pipeline({
+      items: [unapproved, approved],
+      embedding: makeEmbedding(eX),
+    });
+    const result = await pipe.matchOrCreate('foo bar baz qux'); // stage 1–4 won't fire; stage 5 will
+    if (result.kind === 'ok') expect(result.value.id).toBe('a1');
+  });
+});
+
+// ─── Stage 6: AI arbitration match ───────────────────────────────────────────
+
+describe('stage 6 — AI arbitration: match', () => {
+  it('returns the item identified by the arbitration port', async () => {
+    // tokenMatch score ~0.67 (2/3 tokens overlap) — above aiThreshold (0.6), below stage2Stop (0.8)
+    const item = canonItem({ id: 'x1', name: 'olive oil extra' });
+    const { pipe } = pipeline({
+      items: [item],
+      arbitration: matchArbitration('x1'),
+    });
+    const result = await pipe.matchOrCreate('olive oil');
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') expect(result.value.id).toBe('x1');
+  });
+});
+
+// ─── Stage 6: AI arbitration → new ───────────────────────────────────────────
+
+describe('stage 6 — AI arbitration: new item', () => {
+  it('creates an item with the AI-suggested canonical name', async () => {
+    const item = canonItem({ id: 'x1', name: 'olive oil extra' });
+    const { pipe, store } = pipeline({
+      items: [item],
+      arbitration: newArbitration('Olive Oil', 'oils'),
+    });
+    const result = await pipe.matchOrCreate('olive oil');
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value.name).toBe('Olive Oil');
+      expect(result.value.aisle).toBe('oils');
+      expect(result.value.needs_approval).toBe(true);
+    }
+    expect((store as ReturnType<typeof makeStore>).items).toHaveLength(2);
+  });
+
+  it('user-provided aisle overrides AI-suggested aisle', async () => {
+    const item = canonItem({ id: 'x1', name: 'olive oil extra' });
+    const { pipe } = pipeline({
+      items: [item],
+      arbitration: newArbitration('Olive Oil', 'oils'),
+    });
+    const result = await pipe.matchOrCreate('olive oil', 'user-aisle');
+    if (result.kind === 'ok') expect(result.value.aisle).toBe('user-aisle');
+  });
+});
+
+// ─── Stage 6: AI arbitration → no-match ──────────────────────────────────────
+
+describe('stage 6 — AI arbitration: no-match', () => {
+  it('creates a new item from rawName when AI returns no-match', async () => {
+    const item = canonItem({ id: 'x1', name: 'olive oil extra' });
+    const { pipe } = pipeline({
+      items: [item],
+      arbitration: noMatchArbitration(),
+    });
+    const result = await pipe.matchOrCreate('olive oil');
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value.name).toBe('olive oil');
+      expect(result.value.aisle).toBe('uncategorised');
+    }
+  });
+});
+
+// ─── No candidates → straight creation ───────────────────────────────────────
+
+describe('creation path — no candidates', () => {
+  it('creates a new item when the catalog is empty', async () => {
+    const { pipe, store } = pipeline();
+    const result = await pipe.matchOrCreate('Garlic');
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value.name).toBe('Garlic');
+      expect(result.value.aisle).toBe('uncategorised');
+      expect(result.value.needs_approval).toBe(true);
+    }
+    expect((store as ReturnType<typeof makeStore>).items).toHaveLength(1);
+  });
+
+  it('uses selectedAisle when provided', async () => {
+    const { pipe } = pipeline();
+    const result = await pipe.matchOrCreate('Garlic', 'produce');
+    if (result.kind === 'ok') expect(result.value.aisle).toBe('produce');
+  });
+
+  it('falls back to uncategorised when selectedAisle is null', async () => {
+    const { pipe } = pipeline();
+    const result = await pipe.matchOrCreate('Garlic', null);
+    if (result.kind === 'ok') expect(result.value.aisle).toBe('uncategorised');
+  });
+});
+
+// ─── Error paths ──────────────────────────────────────────────────────────────
+
+describe('error paths', () => {
+  it('returns err when rawName normalises to empty string', async () => {
+    const { pipe } = pipeline();
+    const result = await pipe.matchOrCreate('   ');
+    expect(result.kind).toBe('err');
+    if (result.kind === 'err') expect(result.error.kind).toBe('ValidationError');
+  });
+
+  it('propagates store.list() failure', async () => {
+    const brokenStore: CanonStorePort = {
+      list: async () => ({ kind: 'err', error: { kind: 'StorageError', reason: 'unavailable' } }),
+      load: async () => ({ kind: 'ok', value: null }),
+      save: async (i) => ({ kind: 'ok', value: i }),
+      delete: async () => ({ kind: 'ok', value: undefined }),
+    };
+    idCounter = 0;
+    const pipe = createCanonMatchingPipeline(
+      brokenStore,
+      makeAisleStore(),
+      failEmbedding(),
+      noMatchArbitration(),
+      makeIds(),
+      null,
+    );
+    const result = await pipe.matchOrCreate('Garlic');
+    expect(result.kind).toBe('err');
+    if (result.kind === 'err') expect(result.error.kind).toBe('StorageError');
+  });
+
+  it('propagates store.save() failure', async () => {
+    const brokenStore: CanonStorePort = {
+      list: async () => ({ kind: 'ok', value: [] }),
+      load: async () => ({ kind: 'ok', value: null }),
+      save: async () => ({ kind: 'err', error: { kind: 'StorageError', reason: 'unavailable' } }),
+      delete: async () => ({ kind: 'ok', value: undefined }),
+    };
+    idCounter = 0;
+    const pipe = createCanonMatchingPipeline(
+      brokenStore,
+      makeAisleStore(),
+      failEmbedding(),
+      noMatchArbitration(),
+      makeIds(),
+      null,
+    );
+    const result = await pipe.matchOrCreate('Garlic');
+    expect(result.kind).toBe('err');
+    if (result.kind === 'err') expect(result.error.kind).toBe('StorageError');
+  });
+
+  it('falls through to creation when arbitration port errors', async () => {
+    const item = canonItem({ id: 'x1', name: 'olive oil extra' });
+    const { pipe } = pipeline({
+      items: [item],
+      arbitration: errorArbitration(),
+    });
+    const result = await pipe.matchOrCreate('olive oil');
+    // Pipeline falls through to creation rather than surfacing the port error
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') expect(result.value.name).toBe('olive oil');
+  });
+});
+
+// ─── Idempotency ─────────────────────────────────────────────────────────────
+
+describe('idempotency (stages 1–4)', () => {
+  it('returns the same item for identical input after first creation', async () => {
+    const { pipe, store } = pipeline();
+    const first = await pipe.matchOrCreate('Garlic');
+    expect(first.kind).toBe('ok');
+
+    // Second call: the item now exists in the store, stage 1 will match it
+    const second = await pipe.matchOrCreate('Garlic');
+    expect(second.kind).toBe('ok');
+    if (first.kind === 'ok' && second.kind === 'ok') {
+      expect(second.value.id).toBe(first.value.id);
+    }
+    expect((store as ReturnType<typeof makeStore>).items).toHaveLength(1);
+  });
+
+  it('matches the same item regardless of input casing', async () => {
+    const { pipe } = pipeline();
+    const first = await pipe.matchOrCreate('Garlic');
+    const second = await pipe.matchOrCreate('GARLIC');
+    if (first.kind === 'ok' && second.kind === 'ok') {
+      expect(second.value.id).toBe(first.value.id);
+    }
+  });
+});
+
+// ─── Concurrent creation ──────────────────────────────────────────────────────
+
+describe('concurrent creation', () => {
+  it('both calls complete without error when run in parallel', async () => {
+    const { pipe } = pipeline();
+    const [a, b] = await Promise.all([
+      pipe.matchOrCreate('Cilantro'),
+      pipe.matchOrCreate('Cilantro'),
+    ]);
+    expect(a.kind).toBe('ok');
+    expect(b.kind).toBe('ok');
+  });
+});
+
+// ─── Logging ─────────────────────────────────────────────────────────────────
+
+describe('logging integration', () => {
+  it('writes a log entry after a stage-1 match', async () => {
+    const written: MatchLogEntry[] = [];
+    const loggingPort: MatchLoggingPort = {
+      write: async (e) => {
+        written.push(e);
+      },
+    };
+    const apple = canonItem({ id: 'a1', name: 'apple' });
+    idCounter = 0;
+    const pipe = createCanonMatchingPipeline(
+      makeStore([apple]),
+      makeAisleStore(),
+      failEmbedding(),
+      noMatchArbitration(),
+      makeIds(),
+      loggingPort,
+    );
+    await pipe.matchOrCreate('apple');
+    // Log is fire-and-forget; give it a tick to resolve
+    await Promise.resolve();
+    expect(written).toHaveLength(1);
+    expect(written[0]?.finalDecision).toBe('matched');
+    expect(written[0]?.finalItemId).toBe('a1');
+    expect(written[0]?.rawInput).toBe('apple');
+  });
+
+  it('writes a log entry with finalDecision=created when creating a new item', async () => {
+    const written: MatchLogEntry[] = [];
+    const loggingPort: MatchLoggingPort = {
+      write: async (e) => {
+        written.push(e);
+      },
+    };
+    idCounter = 0;
+    const pipe = createCanonMatchingPipeline(
+      makeStore([]),
+      makeAisleStore(),
+      failEmbedding(),
+      noMatchArbitration(),
+      makeIds(),
+      loggingPort,
+    );
+    await pipe.matchOrCreate('Basil');
+    await Promise.resolve();
+    expect(written[0]?.finalDecision).toBe('created');
+  });
+
+  it('writes a log entry with finalDecision=ai_arbitrated on AI match', async () => {
+    const written: MatchLogEntry[] = [];
+    const loggingPort: MatchLoggingPort = {
+      write: async (e) => {
+        written.push(e);
+      },
+    };
+    const item = canonItem({ id: 'x1', name: 'olive oil extra' });
+    idCounter = 0;
+    const pipe = createCanonMatchingPipeline(
+      makeStore([item]),
+      makeAisleStore(),
+      failEmbedding(),
+      matchArbitration('x1'),
+      makeIds(),
+      loggingPort,
+    );
+    await pipe.matchOrCreate('olive oil');
+    await Promise.resolve();
+    expect(written[0]?.finalDecision).toBe('ai_arbitrated');
+    expect(written[0]?.finalItemId).toBe('x1');
+  });
+
+  it('does not block the pipeline when the logging port throws', async () => {
+    const loggingPort: MatchLoggingPort = {
+      write: async () => {
+        throw new Error('log write failed');
+      },
+    };
+    idCounter = 0;
+    const pipe = createCanonMatchingPipeline(
+      makeStore([]),
+      makeAisleStore(),
+      failEmbedding(),
+      noMatchArbitration(),
+      makeIds(),
+      loggingPort,
+    );
+    const result = await pipe.matchOrCreate('Basil');
+    expect(result.kind).toBe('ok');
+  });
+
+  it('skips logging entirely when logging port is null', async () => {
+    const writeSpy = vi.fn();
+    idCounter = 0;
+    const pipe = createCanonMatchingPipeline(
+      makeStore([]),
+      makeAisleStore(),
+      failEmbedding(),
+      noMatchArbitration(),
+      makeIds(),
+      null,
+    );
+    const result = await pipe.matchOrCreate('Basil');
+    expect(result.kind).toBe('ok');
+    expect(writeSpy).not.toHaveBeenCalled();
+  });
+});

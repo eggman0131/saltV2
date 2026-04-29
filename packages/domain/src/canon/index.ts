@@ -29,3 +29,4 @@ export type {
   ArbitrationRequest,
   ArbitrationResult,
 } from './ports/CanonArbitrationPort.js';
+export { createCanonMatchingPipeline } from './createCanonMatchingPipeline.js';
