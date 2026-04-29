@@ -3,7 +3,9 @@
 // inside the domain itself goes through './canon' (the module index).
 export type {
   CanonItem,
+  Aisle,
   CanonStorePort,
+  AisleStorePort,
   CanonLookupPort,
   IdGenerator,
   CreateCanonItemInput,
@@ -25,6 +27,7 @@ export {
   MatchLogBuilder,
   MATCH_THRESHOLDS,
   embedMatch,
+  createCanonMatchingPipeline,
 } from './canon/index.js';
 
 // Auth module — published surface.
