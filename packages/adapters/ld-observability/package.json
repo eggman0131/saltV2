@@ -1,0 +1,17 @@
+{
+  "name": "@salt/ld-observability",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@launchdarkly/observability": "^1.0.0",
+    "@salt/domain": "workspace:*",
+    "@salt/shared-types": "workspace:*"
+  }
+}

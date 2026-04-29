@@ -5,17 +5,18 @@ This file is the authoritative, machine-enforced architecture contract. Violatin
 ## Layer map
 
 ```
-shared-types  →  (nothing)
-domain        →  shared-types
-local-store   →  domain, shared-types          # IndexedDB only
-firebase-sync →  domain, shared-types          # Firebase SDKs only
-ui-components →  (external only — shadcn/tailwind)
-testing-utils →  shared-types, domain, local-store, firebase-sync
-web-pwa       →  shared-types, domain, local-store, firebase-sync, ui-components
-cloud-functions → shared-types, domain, firebase-sync
+shared-types    →  (nothing)
+domain          →  shared-types
+local-store     →  domain, shared-types          # IndexedDB only
+firebase-sync   →  domain, shared-types          # Firebase SDKs only
+ld-observability  →  domain, shared-types          # LaunchDarkly Observability SDK only
+ui-components   →  (external only — shadcn/tailwind)
+testing-utils   →  shared-types, domain, local-store, firebase-sync, ld-observability
+web-pwa         →  shared-types, domain, local-store, firebase-sync, ld-observability, ui-components
+cloud-functions →  shared-types, domain, firebase-sync, ld-observability
 ```
 
-`local-store` and `firebase-sync` are **siblings** — they must not import each other. They are composed at the application layer (web-pwa, cloud-functions).
+`local-store`, `firebase-sync`, and `ld-observability` are **siblings** — they must not import each other. They are composed at the application layer (web-pwa, cloud-functions).
 
 ## Hard rules
 
@@ -45,8 +46,9 @@ cloud-functions → shared-types, domain, firebase-sync
 | `packages/shared-types`           | `@salt/shared-types`   |
 | `packages/domain`                 | `@salt/domain`         |
 | `packages/adapters/local-store`   | `@salt/local-store`    |
-| `packages/adapters/firebase-sync` | `@salt/firebase-sync`  |
-| `packages/ui-components`          | `@salt/ui-components`  |
+| `packages/adapters/firebase-sync`  | `@salt/firebase-sync`  |
+| `packages/adapters/ld-observability` | `@salt/ld-observability` |
+| `packages/ui-components`           | `@salt/ui-components`  |
 | `packages/testing-utils`          | `@salt/testing-utils`  |
 | `apps/web-pwa`                    | `@salt/web-pwa`        |
 | `apps/cloud-functions`            | `@salt/cloud-functions`|

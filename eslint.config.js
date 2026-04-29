@@ -20,6 +20,10 @@ const ELEMENTS = [
     pattern: ['packages/adapters/firebase-sync/**', '@salt/firebase-sync'],
   },
   {
+    type: 'ld-observability',
+    pattern: ['packages/adapters/ld-observability/**', '@salt/ld-observability'],
+  },
+  {
     type: 'ui-components',
     pattern: ['packages/ui-components/**', '@salt/ui-components'],
   },
@@ -90,6 +94,8 @@ const DOMAIN_BASE_PATTERNS = [
       '@salt/local-store/*',
       '@salt/firebase-sync',
       '@salt/firebase-sync/*',
+      '@salt/ld-observability',
+      '@salt/ld-observability/*',
       '@salt/ui-components',
       '@salt/ui-components/*',
       '@salt/testing-utils',
@@ -132,18 +138,26 @@ export default [
             { from: 'domain', allow: ['shared-types'] },
             { from: 'local-store', allow: ['domain', 'shared-types'] },
             { from: 'firebase-sync', allow: ['domain', 'shared-types'] },
+            { from: 'ld-observability', allow: ['domain', 'shared-types'] },
             { from: 'ui-components', allow: [] },
             {
               from: 'testing-utils',
-              allow: ['shared-types', 'domain', 'local-store', 'firebase-sync'],
+              allow: ['shared-types', 'domain', 'local-store', 'firebase-sync', 'ld-observability'],
             },
             {
               from: 'web-pwa',
-              allow: ['shared-types', 'domain', 'local-store', 'firebase-sync', 'ui-components'],
+              allow: [
+                'shared-types',
+                'domain',
+                'local-store',
+                'firebase-sync',
+                'ld-observability',
+                'ui-components',
+              ],
             },
             {
               from: 'cloud-functions',
-              allow: ['shared-types', 'domain', 'firebase-sync'],
+              allow: ['shared-types', 'domain', 'firebase-sync', 'ld-observability'],
             },
           ],
         },
@@ -238,6 +252,8 @@ export default [
                 '@salt/local-store/*',
                 '@salt/firebase-sync',
                 '@salt/firebase-sync/*',
+                '@salt/ld-observability',
+                '@salt/ld-observability/*',
                 '@salt/ui-components',
                 '@salt/ui-components/*',
                 '@salt/testing-utils',
@@ -251,7 +267,7 @@ export default [
     },
   },
 
-  // @salt/local-store — must not import Firebase SDKs or @salt/firebase-sync.
+  // @salt/local-store — must not import Firebase SDKs or sibling adapters.
   {
     files: ['packages/adapters/local-store/**/*.ts'],
     rules: {
@@ -265,7 +281,12 @@ export default [
               'Firebase SDK imports are only allowed in @salt/firebase-sync.',
             ),
             ...forbidGroup(
-              ['@salt/firebase-sync', '@salt/firebase-sync/*'],
+              [
+                '@salt/firebase-sync',
+                '@salt/firebase-sync/*',
+                '@salt/ld-observability',
+                '@salt/ld-observability/*',
+              ],
               'Adapters must not import each other. Compose them at the application layer.',
             ),
           ],
@@ -274,7 +295,7 @@ export default [
     },
   },
 
-  // @salt/firebase-sync — must not import IndexedDB packages or @salt/local-store.
+  // @salt/firebase-sync — must not import IndexedDB packages or sibling adapters.
   {
     files: ['packages/adapters/firebase-sync/**/*.ts'],
     rules: {
@@ -288,7 +309,44 @@ export default [
               'Browser storage imports are only allowed in @salt/local-store.',
             ),
             ...forbidGroup(
-              ['@salt/local-store', '@salt/local-store/*'],
+              [
+                '@salt/local-store',
+                '@salt/local-store/*',
+                '@salt/ld-observability',
+                '@salt/ld-observability/*',
+              ],
+              'Adapters must not import each other. Compose them at the application layer.',
+            ),
+          ],
+        },
+      ],
+    },
+  },
+
+  // @salt/ld-observability — must not import Firebase SDKs, IndexedDB, or sibling adapters.
+  {
+    files: ['packages/adapters/ld-observability/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            ...forbidGroup(SALT_APP_IMPORTS, 'Adapters must not import from apps.'),
+            ...forbidGroup(
+              FIREBASE_PKGS,
+              'Firebase SDK imports are only allowed in @salt/firebase-sync.',
+            ),
+            ...forbidGroup(
+              INDEXEDDB_PKGS,
+              'Browser storage imports are only allowed in @salt/local-store.',
+            ),
+            ...forbidGroup(
+              [
+                '@salt/local-store',
+                '@salt/local-store/*',
+                '@salt/firebase-sync',
+                '@salt/firebase-sync/*',
+              ],
               'Adapters must not import each other. Compose them at the application layer.',
             ),
           ],
@@ -368,6 +426,8 @@ export default [
                 '@salt/local-store/*',
                 '@salt/firebase-sync',
                 '@salt/firebase-sync/*',
+                '@salt/ld-observability',
+                '@salt/ld-observability/*',
                 '@salt/ui-components',
                 '@salt/ui-components/*',
                 '@salt/testing-utils',
@@ -394,7 +454,12 @@ export default [
               'Firebase SDK imports are only allowed in @salt/firebase-sync.',
             ),
             ...forbidGroup(
-              ['@salt/firebase-sync', '@salt/firebase-sync/*'],
+              [
+                '@salt/firebase-sync',
+                '@salt/firebase-sync/*',
+                '@salt/ld-observability',
+                '@salt/ld-observability/*',
+              ],
               'Adapters must not import each other.',
             ),
           ],
@@ -416,7 +481,43 @@ export default [
               'Browser storage imports are only allowed in @salt/local-store.',
             ),
             ...forbidGroup(
-              ['@salt/local-store', '@salt/local-store/*'],
+              [
+                '@salt/local-store',
+                '@salt/local-store/*',
+                '@salt/ld-observability',
+                '@salt/ld-observability/*',
+              ],
+              'Adapters must not import each other.',
+            ),
+          ],
+        },
+      ],
+    },
+  },
+
+  {
+    files: ['packages/adapters/ld-observability/src/__boundary_tests__/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            ...forbidGroup(SALT_APP_IMPORTS, 'Packages must not import from apps.'),
+            ...forbidGroup(
+              FIREBASE_PKGS,
+              'Firebase SDK imports are only allowed in @salt/firebase-sync.',
+            ),
+            ...forbidGroup(
+              INDEXEDDB_PKGS,
+              'Browser storage imports are only allowed in @salt/local-store.',
+            ),
+            ...forbidGroup(
+              [
+                '@salt/local-store',
+                '@salt/local-store/*',
+                '@salt/firebase-sync',
+                '@salt/firebase-sync/*',
+              ],
               'Adapters must not import each other.',
             ),
           ],

@@ -5,6 +5,7 @@
     { "path": "packages/domain" },
     { "path": "packages/adapters/local-store" },
     { "path": "packages/adapters/firebase-sync" },
+    { "path": "packages/adapters/ld-observability" },
     { "path": "packages/ui-components" },
     { "path": "packages/testing-utils" },
     { "path": "apps/web-pwa" },
