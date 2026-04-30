@@ -2,14 +2,10 @@
   import { Button, ListPage } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
   import { onMount } from 'svelte';
-  import { canonItems, initCanonSync } from '../../lib/canonService.js';
-
-  let isLoading = $state(true);
+  import { canonItems, initCanonSync, syncPending } from '../../lib/canonService.js';
 
   onMount(() => {
-    const unsubscribeSync = initCanonSync();
-    isLoading = false;
-    return unsubscribeSync;
+    return initCanonSync();
   });
 </script>
 
@@ -17,7 +13,7 @@
   <ListPage
     title="Ingredients"
     description="Your canonical ingredient database."
-    {isLoading}
+    isLoading={$syncPending.initialSync || $syncPending.pull}
     isEmpty={$canonItems.length === 0}
   >
     {#snippet actions()}
