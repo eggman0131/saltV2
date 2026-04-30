@@ -14,7 +14,7 @@ function makeCandidate(id: string, name: string, confidence: number): MatchCandi
       id,
       name,
       synonyms: [],
-      aisle: null,
+      aisleId: null,
       thumbnail: null,
       embedding: null,
       needs_approval: false,

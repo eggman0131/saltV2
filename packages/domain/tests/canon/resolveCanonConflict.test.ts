@@ -7,7 +7,7 @@ function item(overrides: Partial<CanonItem> = {}): CanonItem {
     id: 'item-1',
     name: 'Tomato',
     synonyms: ['tom'],
-    aisle: 'produce',
+    aisleId: 'produce',
     thumbnail: null,
     embedding: null,
     needs_approval: false,
@@ -15,8 +15,8 @@ function item(overrides: Partial<CanonItem> = {}): CanonItem {
   };
 }
 
-const local = item({ id: 'item-1', name: 'Tomato', aisle: 'dairy', synonyms: ['tom'] });
-const remote = item({ id: 'item-1', name: 'Pomodoro', aisle: 'produce', synonyms: ['pomodoro'] });
+const local = item({ id: 'item-1', name: 'Tomato', aisleId: 'dairy', synonyms: ['tom'] });
+const remote = item({ id: 'item-1', name: 'Pomodoro', aisleId: 'produce', synonyms: ['pomodoro'] });
 
 describe('resolveCanonConflict', () => {
   it('keep-local returns the local item unchanged', () => {
@@ -34,7 +34,7 @@ describe('resolveCanonConflict', () => {
       const result = resolveCanonConflict('merge', local, remote);
       expect(result.id).toBe(local.id);
       expect(result.name).toBe(remote.name);
-      expect(result.aisle).toBe(remote.aisle);
+      expect(result.aisleId).toBe(remote.aisleId);
       expect(result.synonyms).toContain('tom');
       expect(result.synonyms).toContain('pomodoro');
     });

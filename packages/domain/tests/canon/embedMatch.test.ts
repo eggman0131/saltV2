@@ -7,7 +7,7 @@ import { MATCH_THRESHOLDS } from '../../src/canon/queries/matchThresholds.js';
 function item(overrides: Partial<CanonItem> & { id: string; name: string }): CanonItem {
   return {
     synonyms: [],
-    aisle: null,
+    aisleId: null,
     thumbnail: null,
     embedding: null,
     needs_approval: false,

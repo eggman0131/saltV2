@@ -19,7 +19,7 @@ describe('createCanonItem', () => {
       id: 'id-1',
       name: 'Tomato',
       synonyms: [],
-      aisle: null,
+      aisleId: null,
       thumbnail: null,
       embedding: null,
       needs_approval: true,
@@ -42,9 +42,9 @@ describe('createCanonItem', () => {
     expect(result.kind === 'ok' && result.value.synonyms).toEqual(['tom', 'tomate']);
   });
 
-  it('preserves aisle when supplied', () => {
-    const result = createCanonItem({ name: 'Tomato', aisle: 'produce' }, counterIds());
-    expect(result.kind === 'ok' && result.value.aisle).toBe('produce');
+  it('preserves aisleId when supplied', () => {
+    const result = createCanonItem({ name: 'Tomato', aisleId: 'produce' }, counterIds());
+    expect(result.kind === 'ok' && result.value.aisleId).toBe('produce');
   });
 
   it('returns Failure with INVALID_CANON_NAME when name is blank', () => {

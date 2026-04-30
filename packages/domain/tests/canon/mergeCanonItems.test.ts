@@ -7,7 +7,7 @@ function item(overrides: Partial<CanonItem> = {}): CanonItem {
     id: 'item-1',
     name: 'Tomato',
     synonyms: [],
-    aisle: 'produce',
+    aisleId: 'produce',
     thumbnail: null,
     embedding: null,
     needs_approval: false,
@@ -66,15 +66,15 @@ describe('mergeCanonItems', () => {
     });
   });
 
-  describe('aisle', () => {
-    it('takes remote aisle', () => {
-      const result = mergeCanonItems(item({ aisle: 'dairy' }), item({ aisle: 'produce' }));
-      expect(result.aisle).toBe('produce');
+  describe('aisleId', () => {
+    it('takes remote aisleId', () => {
+      const result = mergeCanonItems(item({ aisleId: 'dairy' }), item({ aisleId: 'produce' }));
+      expect(result.aisleId).toBe('produce');
     });
 
-    it('uses null from remote when remote has no aisle', () => {
-      const result = mergeCanonItems(item({ aisle: 'dairy' }), item({ aisle: null }));
-      expect(result.aisle).toBeNull();
+    it('uses null from remote when remote has no aisleId', () => {
+      const result = mergeCanonItems(item({ aisleId: 'dairy' }), item({ aisleId: null }));
+      expect(result.aisleId).toBeNull();
     });
   });
 

@@ -26,7 +26,7 @@ function makeItem(id = 'item-1') {
     id,
     name: 'Tomato',
     synonyms: [] as string[],
-    aisle: null,
+    aisleId: null,
     thumbnail: null,
     embedding: null,
     needs_approval: false,

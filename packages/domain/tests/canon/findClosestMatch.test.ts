@@ -5,7 +5,7 @@ import type { CanonItem } from '../../src/canon/entities/CanonItem.js';
 function item(overrides: Partial<CanonItem> & { id: string; name: string }): CanonItem {
   return {
     synonyms: [],
-    aisle: null,
+    aisleId: null,
     thumbnail: null,
     embedding: null,
     needs_approval: false,

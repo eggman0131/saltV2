@@ -14,7 +14,7 @@ import type { MatchLogEntry } from '../../src/canon/entities/MatchLogEntry.js';
 function canonItem(overrides: Partial<CanonItem> & { id: string; name: string }): CanonItem {
   return {
     synonyms: [],
-    aisle: null,
+    aisleId: null,
     thumbnail: null,
     embedding: null,
     needs_approval: false,
@@ -134,8 +134,8 @@ function makePipeline(
     ids: makeIds(),
     logging: opts.logging ?? null,
   };
-  const run = (rawName: string, selectedAisle?: string | null) =>
-    matchOrCreate({ rawName, selectedAisle }, ports);
+  const run = (rawName: string, selectedAisleId?: string | null) =>
+    matchOrCreate({ rawName, selectedAisleId }, ports);
   return { run, store };
 }
 
@@ -251,7 +251,7 @@ describe('stage 6 — AI arbitration: new item', () => {
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') {
       expect(result.value.name).toBe('Olive Oil');
-      expect(result.value.aisle).toBe('oils');
+      expect(result.value.aisleId).toBe('oils');
       expect(result.value.needs_approval).toBe(true);
     }
     expect((store as ReturnType<typeof makeStore>).items).toHaveLength(2);
@@ -264,7 +264,7 @@ describe('stage 6 — AI arbitration: new item', () => {
       arbitration: newArbitration('Olive Oil', 'oils'),
     });
     const result = await run('olive oil', 'user-aisle');
-    if (result.kind === 'ok') expect(result.value.aisle).toBe('user-aisle');
+    if (result.kind === 'ok') expect(result.value.aisleId).toBe('user-aisle');
   });
 });
 
@@ -281,7 +281,7 @@ describe('stage 6 — AI arbitration: no-match', () => {
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') {
       expect(result.value.name).toBe('olive oil');
-      expect(result.value.aisle).toBe('uncategorised');
+      expect(result.value.aisleId).toBeNull();
     }
   });
 });
@@ -295,22 +295,22 @@ describe('creation path — no candidates', () => {
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') {
       expect(result.value.name).toBe('Garlic');
-      expect(result.value.aisle).toBe('uncategorised');
+      expect(result.value.aisleId).toBeNull();
       expect(result.value.needs_approval).toBe(true);
     }
     expect((store as ReturnType<typeof makeStore>).items).toHaveLength(1);
   });
 
-  it('uses selectedAisle when provided', async () => {
+  it('uses selectedAisleId when provided', async () => {
     const { run } = makePipeline();
     const result = await run('Garlic', 'produce');
-    if (result.kind === 'ok') expect(result.value.aisle).toBe('produce');
+    if (result.kind === 'ok') expect(result.value.aisleId).toBe('produce');
   });
 
-  it('falls back to uncategorised when selectedAisle is null', async () => {
+  it('falls back to null when selectedAisleId is null', async () => {
     const { run } = makePipeline();
     const result = await run('Garlic', null);
-    if (result.kind === 'ok') expect(result.value.aisle).toBe('uncategorised');
+    if (result.kind === 'ok') expect(result.value.aisleId).toBeNull();
   });
 });
 

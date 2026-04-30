@@ -6,7 +6,7 @@ import type { CanonItem } from '../entities/CanonItem.js';
  * Rules:
  *   synonyms   — union (case-insensitive dedup, local casing preserved)
  *   name       — remote (authoritative from cloud; prefer local once a locallyEdited flag exists)
- *   aisle      — remote
+ *   aisleId    — remote
  *   thumbnail  — remote
  *   embedding  — remote (cloud-computed)
  *   needs_approval — local OR remote (if either side wants approval, keep it)
@@ -16,7 +16,7 @@ export function mergeCanonItems(local: CanonItem, remote: CanonItem): CanonItem 
     id: local.id,
     name: remote.name,
     synonyms: unionSynonyms(local.synonyms, remote.synonyms),
-    aisle: remote.aisle,
+    aisleId: remote.aisleId,
     thumbnail: remote.thumbnail,
     embedding: remote.embedding,
     needs_approval: local.needs_approval || remote.needs_approval,

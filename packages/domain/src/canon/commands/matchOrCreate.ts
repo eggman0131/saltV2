@@ -21,7 +21,7 @@ import { createCanonItem } from './createCanonItem.js';
 
 export interface MatchOrCreateInput {
   readonly rawName: string;
-  readonly selectedAisle?: string | null | undefined;
+  readonly selectedAisleId?: string | null | undefined;
 }
 
 export interface MatchOrCreatePorts {
@@ -37,7 +37,7 @@ export async function matchOrCreate(
   input: MatchOrCreateInput,
   ports: MatchOrCreatePorts,
 ): Promise<Result<CanonItem, DomainError>> {
-  const { rawName, selectedAisle } = input;
+  const { rawName, selectedAisleId } = input;
   const { store, aisleStore, embedding, arbitration, ids, logging } = ports;
 
   const normalisedName = normaliseName(rawName);
@@ -129,14 +129,14 @@ export async function matchOrCreate(
       }
 
       if (arb.kind === 'new') {
-        const aisleId = selectedAisle ?? arb.aisleId ?? 'uncategorised';
+        const aisleId = selectedAisleId ?? arb.aisleId ?? null;
         return persistNew(store, ids, arb.canonName, aisleId, commitLog);
       }
     }
   }
 
   // No match found anywhere: create a new item from rawName
-  return persistNew(store, ids, rawName, selectedAisle ?? 'uncategorised', commitLog);
+  return persistNew(store, ids, rawName, selectedAisleId ?? null, commitLog);
 }
 
 function pickBest(candidates: readonly MatchCandidate[]): MatchCandidate {
@@ -149,10 +149,10 @@ async function persistNew(
   store: CanonLocalStorePort,
   ids: IdGenerator,
   name: string,
-  aisle: string,
+  aisleId: string | null,
   commitLog: (decision: FinalDecision, finalItemId: string | null) => void,
 ): Promise<Result<CanonItem, DomainError>> {
-  const result = createCanonItem({ name, aisle }, ids);
+  const result = createCanonItem({ name, aisleId }, ids);
   if (result.kind !== 'ok') return result;
   const item = result.value;
   const saved = await store.upsert(item);

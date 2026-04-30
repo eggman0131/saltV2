@@ -6,7 +6,7 @@ import type { IdGenerator } from '../ports/IdGenerator.js';
 export interface CreateCanonItemInput {
   readonly name: string;
   readonly synonyms?: readonly string[];
-  readonly aisle?: string | null;
+  readonly aisleId?: string | null;
   readonly needs_approval?: boolean;
 }
 
@@ -22,7 +22,7 @@ export function createCanonItem(
     id: ids.newCanonId(),
     name,
     synonyms: (input.synonyms ?? []).map((s) => s.trim()).filter((s) => s.length > 0),
-    aisle: input.aisle ?? null,
+    aisleId: input.aisleId ?? null,
     thumbnail: null,
     embedding: null,
     needs_approval: input.needs_approval ?? true,

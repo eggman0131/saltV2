@@ -25,7 +25,7 @@ function fromDoc(data: Record<string, unknown>): CanonItem {
     id: data['id'] as string,
     name: data['name'] as string,
     synonyms: Array.isArray(data['synonyms']) ? (data['synonyms'] as string[]) : [],
-    aisle: typeof data['aisle'] === 'string' ? data['aisle'] : null,
+    aisleId: typeof data['aisleId'] === 'string' ? data['aisleId'] : null,
     thumbnail: typeof data['thumbnail'] === 'string' ? data['thumbnail'] : null,
     embedding: Array.isArray(data['embedding']) ? (data['embedding'] as number[]) : null,
     needs_approval: typeof data['needs_approval'] === 'boolean' ? data['needs_approval'] : true,
