@@ -15,7 +15,7 @@ Before using any tool, decide:
 - If **yes**, use vexp.
 - If **no**, do not use vexp.
 
-When in doubt, prefer NOT using vexp unless the task is codebase‑specific.
+When in doubt, prefer using vexp.
 
 ---
 
