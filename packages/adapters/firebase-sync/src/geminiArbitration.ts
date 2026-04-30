@@ -1,12 +1,19 @@
 import { getApp } from 'firebase/app';
-import type { CanonArbitrationPort, ArbitrationRequest, ArbitrationResult } from '@salt/domain';
+import type {
+  CanonArbitrationPort,
+  ArbitrationRequest,
+  ArbitrationResult,
+  ErrorReportingPort,
+} from '@salt/domain';
 
 const GENERATION_MODEL = 'gemini-2.0-flash';
 const BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 const NO_MATCH: ArbitrationResult = { kind: 'no-match' };
 
-export function createGeminiArbitrationAdapter(): CanonArbitrationPort {
+export function createGeminiArbitrationAdapter(
+  errors: ErrorReportingPort | null = null,
+): CanonArbitrationPort {
   return {
     async arbitrate(req: ArbitrationRequest) {
       const apiKey = getApp().options.apiKey;
@@ -43,7 +50,8 @@ export function createGeminiArbitrationAdapter(): CanonArbitrationPort {
         }
 
         return { kind: 'ok', value: parseResult(JSON.parse(text) as unknown) };
-      } catch {
+      } catch (err) {
+        errors?.report(err);
         return { kind: 'ok', value: NO_MATCH };
       }
     },

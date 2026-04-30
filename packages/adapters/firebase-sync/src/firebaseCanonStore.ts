@@ -6,11 +6,12 @@ import {
   getDocs,
   setDoc,
   deleteDoc,
+  onSnapshot,
 } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import { failure, success } from '@salt/shared-types';
 import type { DomainError } from '@salt/shared-types';
-import type { CanonItem, CanonStorePort } from '@salt/domain';
+import type { CanonItem, CanonStorePort, ErrorReportingPort } from '@salt/domain';
 
 const COLLECTION = 'canonItems';
 
@@ -32,14 +33,40 @@ function fromDoc(data: Record<string, unknown>): CanonItem {
 
 const toError = (): DomainError => ({ kind: 'StorageError', reason: 'unavailable' });
 
-export function createFirebaseCanonStoreAdapter(): CanonStorePort {
+export function subscribeCanonToLocalStore(
+  localStore: CanonStorePort,
+  errors: ErrorReportingPort | null = null,
+  onBatchComplete?: () => void,
+): () => void {
+  const db = getFirestore(getApp());
+  return onSnapshot(
+    collection(db, COLLECTION),
+    async (snapshot) => {
+      await Promise.all(
+        snapshot.docChanges().map((change) => {
+          if (change.type === 'added' || change.type === 'modified') {
+            return localStore.save(fromDoc(change.doc.data() as Record<string, unknown>));
+          }
+          return localStore.delete(change.doc.id);
+        }),
+      );
+      onBatchComplete?.();
+    },
+    (err) => errors?.report(err),
+  );
+}
+
+export function createFirebaseCanonStoreAdapter(
+  errors: ErrorReportingPort | null = null,
+): CanonStorePort {
   return {
     async save(item) {
       try {
         const db = getFirestore(getApp());
         await setDoc(doc(db, COLLECTION, item.id), toDoc(item));
         return success(item);
-      } catch {
+      } catch (err) {
+        errors?.report(err);
         return failure(toError());
       }
     },
@@ -49,7 +76,8 @@ export function createFirebaseCanonStoreAdapter(): CanonStorePort {
         const db = getFirestore(getApp());
         const snap = await getDoc(doc(db, COLLECTION, id));
         return success(snap.exists() ? fromDoc(snap.data() as Record<string, unknown>) : null);
-      } catch {
+      } catch (err) {
+        errors?.report(err);
         return failure(toError());
       }
     },
@@ -59,7 +87,8 @@ export function createFirebaseCanonStoreAdapter(): CanonStorePort {
         const db = getFirestore(getApp());
         const snap = await getDocs(collection(db, COLLECTION));
         return success(snap.docs.map((d) => fromDoc(d.data() as Record<string, unknown>)));
-      } catch {
+      } catch (err) {
+        errors?.report(err);
         return failure(toError());
       }
     },
@@ -69,7 +98,8 @@ export function createFirebaseCanonStoreAdapter(): CanonStorePort {
         const db = getFirestore(getApp());
         await deleteDoc(doc(db, COLLECTION, id));
         return success(undefined);
-      } catch {
+      } catch (err) {
+        errors?.report(err);
         return failure(toError());
       }
     },

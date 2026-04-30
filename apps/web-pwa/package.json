@@ -13,6 +13,7 @@
   "dependencies": {
     "@salt/domain": "workspace:*",
     "@salt/firebase-sync": "workspace:*",
+    "@salt/ld-observability": "workspace:*",
     "@salt/local-store": "workspace:*",
     "@salt/shared-types": "workspace:*",
     "@salt/ui-components": "workspace:*",

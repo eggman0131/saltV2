@@ -1,10 +1,12 @@
 import { getApp } from 'firebase/app';
-import type { EmbeddingPort } from '@salt/domain';
+import type { EmbeddingPort, ErrorReportingPort } from '@salt/domain';
 
 const EMBEDDING_MODEL = 'text-embedding-004';
 const BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 
-export function createGeminiEmbeddingAdapter(): EmbeddingPort {
+export function createGeminiEmbeddingAdapter(
+  errors: ErrorReportingPort | null = null,
+): EmbeddingPort {
   return {
     async computeEmbedding(text: string) {
       const apiKey = getApp().options.apiKey;
@@ -28,7 +30,8 @@ export function createGeminiEmbeddingAdapter(): EmbeddingPort {
         }
         const data = (await resp.json()) as { embedding: { values: number[] } };
         return { kind: 'ok', value: data.embedding.values };
-      } catch {
+      } catch (err) {
+        errors?.report(err);
         return { kind: 'err', error: { kind: 'NetworkError', reason: 'transient' } };
       }
     },

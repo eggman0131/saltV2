@@ -32,3 +32,6 @@ export {
 
 // Auth module — published surface.
 export type { User, AuthProvider } from './auth/index.js';
+
+// Cross-cutting ports.
+export type { ErrorReportingPort } from './ErrorReportingPort.js';

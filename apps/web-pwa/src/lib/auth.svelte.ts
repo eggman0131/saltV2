@@ -1,5 +1,6 @@
 import type { User } from '@salt/domain';
 import { authProvider } from './firebase.js';
+import { identifyUser, identifyAnonymous } from './observability.js';
 
 const PENDING_EMAIL_KEY = 'salt:auth:pendingEmail';
 
@@ -42,6 +43,8 @@ class AuthStore {
     authProvider.observe((u) => {
       this.user = u;
       this.loading = false;
+      if (u) identifyUser(u);
+      else identifyAnonymous();
     });
     void this.maybeCompleteFromUrl();
   }

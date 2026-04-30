@@ -1,4 +1,5 @@
 import { initFirebase, createFirebaseAuth, type FirebaseOptions } from '@salt/firebase-sync';
+import { createLDErrorReportingAdapter } from '@salt/ld-observability';
 
 export const useEmulators = import.meta.env.VITE_USE_EMULATORS === 'true';
 
@@ -26,4 +27,4 @@ const options: FirebaseOptions = useEmulators
 
 initFirebase(options, useEmulators);
 
-export const authProvider = createFirebaseAuth();
+export const authProvider = createFirebaseAuth(createLDErrorReportingAdapter());

@@ -7,6 +7,14 @@ service cloud.firestore {
       allow read: if true;
       allow write: if false;
     }
+    // Canon items — shared ingredient canon; any authenticated user can read and write.
+    match /canonItems/{itemId} {
+      allow read, write: if request.auth != null;
+    }
+    // Aisle config — shared; any authenticated user can read and write.
+    match /config/{document} {
+      allow read, write: if request.auth != null;
+    }
     match /{document=**} {
       allow read, write: if false;
     }

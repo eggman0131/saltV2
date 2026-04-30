@@ -11,7 +11,7 @@ import {
 } from 'firebase/auth';
 import { getApp } from 'firebase/app';
 import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
-import type { AuthProvider, User } from '@salt/domain';
+import type { AuthProvider, User, ErrorReportingPort } from '@salt/domain';
 
 let authEmulatorConnected = false;
 
@@ -40,7 +40,7 @@ function toAuthError(err: unknown): DomainError {
   return { kind: 'AuthError', reason: 'unauthenticated' };
 }
 
-export function createFirebaseAuth(): AuthProvider {
+export function createFirebaseAuth(errors: ErrorReportingPort | null = null): AuthProvider {
   const auth = getAuth(getApp());
 
   return {
@@ -55,6 +55,7 @@ export function createFirebaseAuth(): AuthProvider {
         });
         return success(undefined);
       } catch (err) {
+        errors?.report(err);
         return failure(toAuthError(err));
       }
     },
@@ -68,6 +69,7 @@ export function createFirebaseAuth(): AuthProvider {
         const cred = await signInWithEmailLink(auth, email, url);
         return success(toUser(cred.user));
       } catch (err) {
+        errors?.report(err);
         return failure(toAuthError(err));
       }
     },
@@ -77,6 +79,7 @@ export function createFirebaseAuth(): AuthProvider {
         await fbSignOut(auth);
         return success(undefined);
       } catch (err) {
+        errors?.report(err);
         return failure(toAuthError(err));
       }
     },

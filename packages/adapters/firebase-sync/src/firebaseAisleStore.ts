@@ -2,11 +2,13 @@ import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import { failure, success } from '@salt/shared-types';
 import type { DomainError } from '@salt/shared-types';
-import type { Aisle, AisleStorePort } from '@salt/domain';
+import type { Aisle, AisleStorePort, ErrorReportingPort } from '@salt/domain';
 
 const toError = (): DomainError => ({ kind: 'StorageError', reason: 'unavailable' });
 
-export function createFirebaseAisleStoreAdapter(): AisleStorePort {
+export function createFirebaseAisleStoreAdapter(
+  errors: ErrorReportingPort | null = null,
+): AisleStorePort {
   return {
     async load() {
       try {
@@ -15,7 +17,8 @@ export function createFirebaseAisleStoreAdapter(): AisleStorePort {
         if (!snap.exists()) return success(null);
         const data = snap.data() as { aisles?: Aisle[] };
         return success(data.aisles ?? []);
-      } catch {
+      } catch (err) {
+        errors?.report(err);
         return failure(toError());
       }
     },
@@ -25,7 +28,8 @@ export function createFirebaseAisleStoreAdapter(): AisleStorePort {
         const db = getFirestore(getApp());
         await setDoc(doc(db, 'config', 'aisles'), { aisles: [...aisles], schemaVersion: 1 });
         return success(aisles);
-      } catch {
+      } catch (err) {
+        errors?.report(err);
         return failure(toError());
       }
     },
