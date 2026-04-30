@@ -39,3 +39,21 @@ export type {
 } from './ports/CanonArbitrationPort.js';
 export { matchOrCreate } from './commands/matchOrCreate.js';
 export type { MatchOrCreateInput, MatchOrCreatePorts } from './commands/matchOrCreate.js';
+export { createAisle } from './commands/createAisle.js';
+export type { CreateAisleInput } from './commands/createAisle.js';
+export { createAislesBulk } from './commands/createAislesBulk.js';
+export type { CreateAislesBulkInput } from './commands/createAislesBulk.js';
+export { renameAisle } from './commands/renameAisle.js';
+export type { RenameAisleInput } from './commands/renameAisle.js';
+export { reorderAisles } from './commands/reorderAisles.js';
+export type { ReorderAislesInput } from './commands/reorderAisles.js';
+export { deleteAisles } from './commands/deleteAisles.js';
+export type { DeleteAislesInput } from './commands/deleteAisles.js';
+export { mergeAisles } from './commands/mergeAisles.js';
+export type {
+  MergeAislesInput,
+  PerItemMergeChoice,
+  ItemMergeChoice,
+} from './commands/mergeAisles.js';
+export { listAisles } from './queries/listAisles.js';
+export { getAisleUsage } from './queries/getAisleUsage.js';

@@ -91,7 +91,7 @@ export async function addCanonItem(
       aisleStore: createFirebaseAisleStoreAdapter(errors),
       embedding: createGeminiEmbeddingAdapter(errors),
       arbitration: createGeminiArbitrationAdapter(errors),
-      ids: { newCanonId: () => crypto.randomUUID() },
+      ids: { newCanonId: () => crypto.randomUUID(), newAisleId: () => crypto.randomUUID() },
       logging: createLDMatchLoggingAdapter(),
     },
   );

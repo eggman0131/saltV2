@@ -25,7 +25,7 @@ function canonItem(overrides: Partial<CanonItem> & { id: string; name: string })
 let idCounter = 0;
 
 function makeIds(): IdGenerator {
-  return { newCanonId: () => `id-${++idCounter}` };
+  return { newCanonId: () => `id-${++idCounter}`, newAisleId: () => `aisle-${++idCounter}` };
 }
 
 function makeStore(initial: CanonItem[] = []): CanonLocalStorePort & { items: CanonItem[] } {

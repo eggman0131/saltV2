@@ -55,7 +55,7 @@ export type DomainError =
   | { readonly kind: 'AuthError'; readonly reason: 'unauthenticated' | 'forbidden' | 'expired' }
   | {
       readonly kind: 'NotFound';
-      readonly resource: 'recipe' | 'canon' | 'shopping-list' | 'workspace';
+      readonly resource: 'recipe' | 'canon' | 'shopping-list' | 'workspace' | 'aisle';
       readonly id: string;
     }
   | {
@@ -101,6 +101,8 @@ export interface AisleListDTO {
 
 export const ErrorCode = {
   INVALID_CANON_NAME: 'INVALID_CANON_NAME',
+  INVALID_AISLE_NAME: 'INVALID_AISLE_NAME',
+  DUPLICATE_AISLE_NAME: 'DUPLICATE_AISLE_NAME',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

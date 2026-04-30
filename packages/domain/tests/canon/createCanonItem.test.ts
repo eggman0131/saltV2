@@ -7,6 +7,7 @@ function counterIds(prefix = 'id'): IdGenerator {
   let n = 0;
   return {
     newCanonId: () => `${prefix}-${++n}`,
+    newAisleId: () => `aisle-${++n}`,
   };
 }
 

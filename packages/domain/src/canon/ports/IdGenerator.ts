@@ -6,4 +6,5 @@
 // this port owns the *generation* of the entropy that fills it.
 export interface IdGenerator {
   newCanonId(): string;
+  newAisleId(): string;
 }
