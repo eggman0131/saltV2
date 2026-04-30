@@ -71,11 +71,7 @@ describe('createLocalAisleStoreAdapter', () => {
   describe('round-trip ordering', () => {
     it('preserves insertion order across save/load', async () => {
       const store = createLocalAisleStoreAdapter();
-      const aisles = [
-        aisle('a3', 'Frozen', 2),
-        aisle('a1', 'Produce', 0),
-        aisle('a2', 'Dairy', 1),
-      ];
+      const aisles = [aisle('a3', 'Frozen', 2), aisle('a1', 'Produce', 0), aisle('a2', 'Dairy', 1)];
       await store.save(aisles);
       const result = await store.load();
       expect(result).toEqual({ kind: 'ok', value: aisles });

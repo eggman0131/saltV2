@@ -34,3 +34,7 @@ pnpm typecheck
 pnpm lint
 pnpm boundary:test
 ```
+
+## E2E tests
+
+See [docs/e2e.md](docs/e2e.md) for running Playwright specs locally and CI behavior.

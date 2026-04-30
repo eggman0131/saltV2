@@ -46,3 +46,56 @@ jobs:
 
       - name: Theme check
         run: pnpm theme:check
+
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '10'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build cloud functions
+        run: pnpm --filter @salt/cloud-functions build
+
+      - name: Install Playwright browsers
+        run: pnpm --filter @salt/web-pwa exec playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        run: pnpm --filter @salt/web-pwa e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web-pwa/playwright-report/
+          retention-days: 14
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: apps/web-pwa/test-results/
+          retention-days: 14
+
+      - name: Surface LD replay URLs
+        if: failure()
+        run: echo "::notice::Search the 'Run E2E tests' log above for 'LD replay:' lines to find session-replay URLs for failed tests."
