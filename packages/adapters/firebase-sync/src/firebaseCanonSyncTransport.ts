@@ -9,8 +9,12 @@ import type {
   SyncPending,
   ErrorReportingPort,
 } from '@salt/domain';
+import { classifyFirestoreError } from './firestoreErrors.js';
 
 const COLLECTION = 'canonItems';
+const MAX_RETRIES = 4;
+const BASE_DELAY_MS = 500;
+const MAX_DELAY_MS = 10_000;
 
 function toDoc(item: CanonItem) {
   return { ...item, schemaVersion: 1 as const };
@@ -28,8 +32,21 @@ function fromDoc(data: Record<string, unknown>): CanonItem {
   };
 }
 
-function toTransportError(_err: unknown): DomainError {
-  return { kind: 'StorageError', reason: 'unavailable' };
+function isRetryable(err: unknown): boolean {
+  const { kind } = classifyFirestoreError(err);
+  return kind === 'NetworkError' || kind === 'SyncError';
+}
+
+async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!isRetryable(err) || attempt >= MAX_RETRIES) throw err;
+      const delay = Math.min(BASE_DELAY_MS * 2 ** attempt, MAX_DELAY_MS);
+      await new Promise<void>((resolve) => setTimeout(resolve, delay));
+    }
+  }
 }
 
 export function createFirebaseCanonSyncTransportAdapter(
@@ -50,13 +67,13 @@ export function createFirebaseCanonSyncTransportAdapter(
       pendingState.pull = true;
       try {
         const db = getFirestore(getApp());
-        const snap = await getDocs(collection(db, COLLECTION));
+        const snap = await withRetry(() => getDocs(collection(db, COLLECTION)));
         const items = snap.docs.map((d) => fromDoc(d.data() as Record<string, unknown>));
         const cursor = new Date().toISOString();
         return success({ items, cursor });
       } catch (err) {
         errors?.report(err);
-        return failure(toTransportError(err));
+        return failure(classifyFirestoreError(err));
       } finally {
         pendingState.pull = false;
       }
@@ -66,11 +83,11 @@ export function createFirebaseCanonSyncTransportAdapter(
       pendingState.push = true;
       try {
         const db = getFirestore(getApp());
-        await setDoc(doc(db, COLLECTION, item.id), toDoc(item));
+        await withRetry(() => setDoc(doc(db, COLLECTION, item.id), toDoc(item)));
         return success(item);
       } catch (err) {
         errors?.report(err);
-        return failure(toTransportError(err));
+        return failure(classifyFirestoreError(err));
       } finally {
         pendingState.push = false;
       }
@@ -94,7 +111,7 @@ export function createFirebaseCanonSyncTransportAdapter(
         },
         (err) => {
           errors?.report(err);
-          onError({ kind: 'StorageError', reason: 'unavailable' });
+          onError(classifyFirestoreError(err));
         },
       );
     },
