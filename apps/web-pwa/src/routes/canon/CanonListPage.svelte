@@ -19,8 +19,10 @@
     canonConflicts,
     resolveConflict,
   } from '../../lib/canonService.js';
+  import { aisles, initAisles } from '../../lib/aisleService.js';
 
   onMount(() => {
+    void initAisles();
     return initCanonSync();
   });
 
@@ -44,6 +46,7 @@
     isEmpty={$canonItems.length === 0}
   >
     {#snippet actions()}
+      <Button variant="outline" onclick={() => push('/canon/aisles')}>Manage aisles</Button>
       <Button onclick={() => push('/canon/new')}>Add ingredient</Button>
     {/snippet}
     {#snippet children()}
@@ -56,7 +59,9 @@
             >
               <span class="font-medium">{item.name}</span>
               {#if item.aisleId}
-                <span class="text-sm text-muted-foreground">{item.aisleId}</span>
+                <span class="text-sm text-muted-foreground">
+                  {$aisles.find((a) => a.id === item.aisleId)?.name ?? ''}
+                </span>
               {/if}
             </button>
           </li>
@@ -82,14 +87,18 @@
           <Text muted>Local</Text>
           <p class="font-medium">{conflict.local.name}</p>
           {#if conflict.local.aisleId}
-            <p class="text-muted-foreground">{conflict.local.aisleId}</p>
+            <p class="text-muted-foreground">
+              {$aisles.find((a) => a.id === conflict.local.aisleId)?.name ?? ''}
+            </p>
           {/if}
         </div>
         <div>
           <Text muted>Remote</Text>
           <p class="font-medium">{conflict.remote.name}</p>
           {#if conflict.remote.aisleId}
-            <p class="text-muted-foreground">{conflict.remote.aisleId}</p>
+            <p class="text-muted-foreground">
+              {$aisles.find((a) => a.id === conflict.remote.aisleId)?.name ?? ''}
+            </p>
           {/if}
         </div>
       </div>

@@ -239,6 +239,9 @@ importers:
       svelte:
         specifier: ^5.55.0
         version: 5.55.4(@typescript-eslint/types@8.59.0)
+      svelte-dnd-action:
+        specifier: ^0.9.69
+        version: 0.9.69(svelte@5.55.4(@typescript-eslint/types@8.59.0))
       tailwind-merge:
         specifier: ^2.5.0
         version: 2.6.1
@@ -4757,6 +4760,11 @@ packages:
     peerDependencies:
       svelte: ^4.0.0 || ^5.0.0-next.0
       typescript: '>=5.0.0'
+
+  svelte-dnd-action@0.9.69:
+    resolution: {integrity: sha512-NAmSOH7htJoYraTQvr+q5whlIuVoq88vEuHr4NcFgscDRUxfWPPxgie2OoxepBCQCikrXZV4pqV86aun60wVyw==}
+    peerDependencies:
+      svelte: '>=3.23.0 || ^5.0.0-next.0'
 
   svelte-spa-router@5.0.1:
     resolution: {integrity: sha512-AU/4rosuCnkMLqVYV+HRYP/jLVBAhGzeIUaPGaSmFj7wLfyfZeW18iSiYlMEj2y4Uh3+8GYUt3tvObJiBmgzyA==}
@@ -10350,6 +10358,10 @@ snapshots:
       typescript: 5.9.3
     transitivePeerDependencies:
       - picomatch
+
+  svelte-dnd-action@0.9.69(svelte@5.55.4(@typescript-eslint/types@8.59.0)):
+    dependencies:
+      svelte: 5.55.4(@typescript-eslint/types@8.59.0)
 
   svelte-spa-router@5.0.1:
     dependencies:

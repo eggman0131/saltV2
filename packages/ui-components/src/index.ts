@@ -61,6 +61,7 @@ export { default as SliderRange } from './primitives/Slider/SliderRange.svelte';
 export { default as SliderThumb } from './primitives/Slider/SliderThumb.svelte';
 export { default as SliderTrack } from './primitives/Slider/SliderTrack.svelte';
 export { default as Spinner } from './primitives/Spinner/Spinner.svelte';
+export { default as SortableList } from './primitives/SortableList/SortableList.svelte';
 export { default as Stack } from './primitives/Stack/Stack.svelte';
 export { default as Switch } from './primitives/Switch/Switch.svelte';
 export { default as Text } from './primitives/Text/Text.svelte';
@@ -154,6 +155,7 @@ export type {
   SliderThumbProps,
 } from './primitives/Slider/Slider.types';
 export type { SpinnerProps } from './primitives/Spinner/Spinner.types';
+export type { SortableListProps } from './primitives/SortableList/SortableList.types';
 export type { StackProps } from './primitives/Stack/Stack.types';
 export type { SwitchProps } from './primitives/Switch/Switch.types';
 export type { TextProps } from './primitives/Text/Text.types';

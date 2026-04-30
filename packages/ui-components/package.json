@@ -24,6 +24,7 @@
     "clsx": "^2.1.0",
     "lucide-svelte": "^0.460.0",
     "svelte": "^5.55.0",
+    "svelte-dnd-action": "^0.9.69",
     "tailwind-merge": "^2.5.0"
   },
   "devDependencies": {

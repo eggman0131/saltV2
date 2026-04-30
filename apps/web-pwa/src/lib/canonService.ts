@@ -1,6 +1,5 @@
 import {
   createFirebaseCanonSyncTransportAdapter,
-  createFirebaseAisleStoreAdapter,
   createGeminiEmbeddingAdapter,
   createGeminiArbitrationAdapter,
 } from '@salt/firebase-sync';
@@ -8,6 +7,7 @@ import { createLDMatchLoggingAdapter, createLDErrorReportingAdapter } from '@sal
 import { matchOrCreate, resolveCanonConflict } from '@salt/domain';
 import type { ConflictStrategy } from '@salt/domain';
 import { createLocalCanonStoreAdapter } from '@salt/local-store';
+import { getLocalAisleStore } from './aisleService.js';
 import type {
   CanonItem,
   CanonLocalStorePort,
@@ -88,7 +88,7 @@ export async function addCanonItem(
     { rawName, selectedAisleId },
     {
       store: getLocalStore(),
-      aisleStore: createFirebaseAisleStoreAdapter(errors),
+      aisleStore: getLocalAisleStore(),
       embedding: createGeminiEmbeddingAdapter(errors),
       arbitration: createGeminiArbitrationAdapter(errors),
       ids: { newCanonId: () => crypto.randomUUID(), newAisleId: () => crypto.randomUUID() },
