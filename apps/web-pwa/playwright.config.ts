@@ -9,7 +9,9 @@ export default defineConfig({
   forbidOnly: CI,
   retries: CI ? 2 : 0,
   workers: CI ? 1 : undefined,
-  reporter: CI ? [['html'], ['github']] : [['html'], ['list']],
+  reporter: CI
+    ? [['html'], ['github'], ['./e2e/reporter/ldSessionReporter.ts']]
+    : [['html'], ['list'], ['./e2e/reporter/ldSessionReporter.ts']],
 
   use: {
     baseURL: 'http://127.0.0.1:5173',

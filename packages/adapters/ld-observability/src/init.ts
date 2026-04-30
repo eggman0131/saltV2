@@ -1,5 +1,6 @@
 import { createClient, type LDClient, type LDContext } from '@launchdarkly/js-client-sdk';
 import Observability from '@launchdarkly/observability';
+import SessionReplay from '@launchdarkly/session-replay';
 
 let client: LDClient | null = null;
 
@@ -7,9 +8,11 @@ const ANON_CONTEXT: LDContext = { kind: 'user', key: 'anonymous', anonymous: tru
 
 export function initLDObservability(clientSideId: string): void {
   if (client) return;
-  // Observe from highlight.run satisfies the plugin interface at runtime but
-  // doesn't align with LDPluginBase's generic shape — cast required.
-  client = createClient(clientSideId, ANON_CONTEXT, { plugins: [new Observability() as never] });
+  // Observe and Record from highlight.run satisfy the plugin interface at runtime
+  // but don't align with LDPluginBase's generic shape — cast required.
+  client = createClient(clientSideId, ANON_CONTEXT, {
+    plugins: [new Observability() as never, new SessionReplay() as never],
+  });
   void client.start();
 }
 
@@ -19,4 +22,8 @@ export function identifyObservabilityUser(uid: string, email?: string): void {
 
 export function identifyObservabilityAnonymous(): void {
   void client?.identify(ANON_CONTEXT);
+}
+
+export function trackObservabilityEvent(key: string, data?: unknown): void {
+  client?.track(key, data);
 }

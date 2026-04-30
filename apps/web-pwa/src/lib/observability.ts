@@ -2,6 +2,9 @@ import {
   initLDObservability,
   identifyObservabilityUser,
   identifyObservabilityAnonymous,
+  tagObservabilitySession,
+  getObservabilitySessionURL,
+  type ObservabilitySessionMeta,
 } from '@salt/ld-observability';
 import type { User } from '@salt/domain';
 
@@ -14,3 +17,13 @@ export function identifyUser(user: User): void {
 export function identifyAnonymous(): void {
   identifyObservabilityAnonymous();
 }
+
+export function tagSession(meta: ObservabilitySessionMeta): void {
+  tagObservabilitySession(meta);
+}
+
+export function getSessionURL(): string | null {
+  return getObservabilitySessionURL();
+}
+
+export type { ObservabilitySessionMeta };

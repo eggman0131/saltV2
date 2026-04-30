@@ -12,6 +12,7 @@
   "dependencies": {
     "@launchdarkly/js-client-sdk": "^4.6.3",
     "@launchdarkly/observability": "^1.0.0",
+    "@launchdarkly/session-replay": "^1.1.6",
     "@salt/domain": "workspace:*",
     "@salt/shared-types": "workspace:*"
   }
