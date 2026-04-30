@@ -26,12 +26,15 @@ export type {
 } from './canon/index.js';
 export {
   createCanonItem,
+  mergeCanonItems,
+  resolveCanonConflict,
   createCanonLookup,
   MatchLogBuilder,
   MATCH_THRESHOLDS,
   embedMatch,
   createCanonMatchingPipeline,
 } from './canon/index.js';
+export type { ConflictStrategy } from './canon/index.js';
 
 // Auth module — published surface.
 export type { User, AuthProvider } from './auth/index.js';
