@@ -5,7 +5,12 @@
 
 export type { CanonItem } from './entities/CanonItem.js';
 export type { Aisle } from './entities/Aisle.js';
-export type { CanonStorePort } from './ports/CanonStorePort.js';
+export type { CanonLocalStorePort } from './ports/CanonLocalStorePort.js';
+export type {
+  CanonSyncTransportPort,
+  SyncBatch,
+  SyncPending,
+} from './ports/CanonSyncTransportPort.js';
 export type { AisleStorePort } from './ports/AisleStorePort.js';
 export type { CanonLookupPort } from './ports/CanonLookupPort.js';
 export type { IdGenerator } from './ports/IdGenerator.js';

@@ -4,7 +4,10 @@
 export type {
   CanonItem,
   Aisle,
-  CanonStorePort,
+  CanonLocalStorePort,
+  CanonSyncTransportPort,
+  SyncBatch,
+  SyncPending,
   AisleStorePort,
   CanonLookupPort,
   IdGenerator,

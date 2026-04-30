@@ -1,34 +1,33 @@
 import {
-  createFirebaseCanonStoreAdapter,
+  createFirebaseCanonSyncTransportAdapter,
   createFirebaseAisleStoreAdapter,
   createGeminiEmbeddingAdapter,
   createGeminiArbitrationAdapter,
-  subscribeCanonToLocalStore,
 } from '@salt/firebase-sync';
 import { createLDMatchLoggingAdapter, createLDErrorReportingAdapter } from '@salt/ld-observability';
 import { createCanonMatchingPipeline } from '@salt/domain';
 import { createLocalCanonStoreAdapter } from '@salt/local-store';
-import type { CanonItem } from '@salt/domain';
+import type { CanonItem, CanonLocalStorePort, CanonSyncTransportPort } from '@salt/domain';
 import type { Result, DomainError } from '@salt/shared-types';
 import { writable } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 
-let _localStore: ReturnType<typeof createLocalCanonStoreAdapter> | null = null;
-let _firebaseStore: ReturnType<typeof createFirebaseCanonStoreAdapter> | null = null;
+let _localStore: CanonLocalStorePort | null = null;
+let _syncTransport: CanonSyncTransportPort | null = null;
 let _pipeline: ReturnType<typeof createCanonMatchingPipeline> | null = null;
 
 const _canonItems = writable<CanonItem[]>([]);
 export const canonItems: Readable<CanonItem[]> = _canonItems;
 
-function getLocalStore() {
+function getLocalStore(): CanonLocalStorePort {
   if (!_localStore) _localStore = createLocalCanonStoreAdapter();
   return _localStore;
 }
 
-function getFirebaseStore() {
-  if (!_firebaseStore)
-    _firebaseStore = createFirebaseCanonStoreAdapter(createLDErrorReportingAdapter());
-  return _firebaseStore;
+function getSyncTransport(): CanonSyncTransportPort {
+  if (!_syncTransport)
+    _syncTransport = createFirebaseCanonSyncTransportAdapter(createLDErrorReportingAdapter());
+  return _syncTransport;
 }
 
 function getPipeline(): ReturnType<typeof createCanonMatchingPipeline> {
@@ -53,10 +52,15 @@ async function refreshCanonItems(): Promise<void> {
 
 export function initCanonSync(): () => void {
   refreshCanonItems();
-  return subscribeCanonToLocalStore(
-    getLocalStore(),
-    createLDErrorReportingAdapter(),
-    refreshCanonItems,
+  return getSyncTransport().subscribe(
+    ({ upserted, deleted }) => {
+      const store = getLocalStore();
+      void Promise.all([
+        ...upserted.map((item) => store.upsert(item)),
+        ...deleted.map((id) => store.delete(id)),
+      ]).then(() => refreshCanonItems());
+    },
+    (err) => createLDErrorReportingAdapter().report(err),
   );
 }
 
@@ -66,7 +70,8 @@ export async function addCanonItem(
 ): Promise<Result<CanonItem, DomainError>> {
   const result = await getPipeline().matchOrCreate(rawName, selectedAisle);
   if (result.kind === 'ok') {
-    getFirebaseStore().save(result.value); // background push to Firestore
+    await getLocalStore().enqueuePendingWrite(result.value);
+    void getSyncTransport().push(result.value); // background push; conflict surfacing in Phase 2
     await refreshCanonItems();
   }
   return result;

@@ -2,7 +2,7 @@ import { failure, success } from '@salt/shared-types';
 import { ErrorCode } from '@salt/shared-types';
 import type { DomainError, Result } from '@salt/shared-types';
 import type { CanonItem } from './entities/CanonItem.js';
-import type { CanonStorePort } from './ports/CanonStorePort.js';
+import type { CanonLocalStorePort } from './ports/CanonLocalStorePort.js';
 import type { AisleStorePort } from './ports/AisleStorePort.js';
 import type { EmbeddingPort } from './ports/EmbeddingPort.js';
 import type { CanonArbitrationPort } from './ports/CanonArbitrationPort.js';
@@ -20,7 +20,7 @@ import { embedMatch } from './queries/embedMatch.js';
 import { createCanonItem } from './commands/createCanonItem.js';
 
 export function createCanonMatchingPipeline(
-  store: CanonStorePort,
+  store: CanonLocalStorePort,
   aisleStore: AisleStorePort,
   embedding: EmbeddingPort,
   arbitration: CanonArbitrationPort,
@@ -146,7 +146,7 @@ function pickBest(candidates: readonly MatchCandidate[]): MatchCandidate {
 }
 
 async function persistNew(
-  store: CanonStorePort,
+  store: CanonLocalStorePort,
   ids: IdGenerator,
   name: string,
   aisle: string,
@@ -155,8 +155,7 @@ async function persistNew(
   const result = createCanonItem({ name, aisle }, ids);
   if (result.kind !== 'ok') return result;
   const item = result.value;
-  const saved = await store.save(item);
-  if (saved.kind === 'conflict') return failure({ kind: 'ConflictError' });
+  const saved = await store.upsert(item);
   if (saved.kind !== 'ok') return saved;
   commitLog('created', item.id);
   return success(item);

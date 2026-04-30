@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createCanonMatchingPipeline } from '../../src/canon/createCanonMatchingPipeline.js';
-import type { CanonStorePort } from '../../src/canon/ports/CanonStorePort.js';
+import type { CanonLocalStorePort } from '../../src/canon/ports/CanonLocalStorePort.js';
 import type { AisleStorePort } from '../../src/canon/ports/AisleStorePort.js';
 import type { EmbeddingPort } from '../../src/canon/ports/EmbeddingPort.js';
 import type { CanonArbitrationPort } from '../../src/canon/ports/CanonArbitrationPort.js';
@@ -28,7 +28,7 @@ function makeIds(): IdGenerator {
   return { newCanonId: () => `id-${++idCounter}` };
 }
 
-function makeStore(initial: CanonItem[] = []): CanonStorePort & { items: CanonItem[] } {
+function makeStore(initial: CanonItem[] = []): CanonLocalStorePort & { items: CanonItem[] } {
   const items = [...initial];
   return {
     items,
@@ -37,13 +37,17 @@ function makeStore(initial: CanonItem[] = []): CanonStorePort & { items: CanonIt
       const found = items.find((i) => i.id === id) ?? null;
       return { kind: 'ok', value: found };
     },
-    save: async (item) => {
+    upsert: async (item) => {
       const idx = items.findIndex((i) => i.id === item.id);
       if (idx >= 0) items[idx] = item;
       else items.push(item);
       return { kind: 'ok', value: item };
     },
     delete: async () => ({ kind: 'ok', value: undefined }),
+    getManifestCursor: async () => ({ kind: 'ok', value: null }),
+    setManifestCursor: async () => ({ kind: 'ok', value: undefined }),
+    enqueuePendingWrite: async () => ({ kind: 'ok', value: undefined }),
+    drainPendingWrites: async () => ({ kind: 'ok', value: [] }),
   };
 }
 
@@ -113,7 +117,7 @@ function errorArbitration(): CanonArbitrationPort {
 
 function pipeline(
   opts: {
-    store?: CanonStorePort & { items: CanonItem[] };
+    store?: CanonLocalStorePort & { items: CanonItem[] };
     items?: CanonItem[];
     embedding?: EmbeddingPort;
     arbitration?: CanonArbitrationPort;
@@ -321,11 +325,15 @@ describe('error paths', () => {
   });
 
   it('propagates store.list() failure', async () => {
-    const brokenStore: CanonStorePort = {
+    const brokenStore: CanonLocalStorePort = {
       list: async () => ({ kind: 'err', error: { kind: 'StorageError', reason: 'unavailable' } }),
       load: async () => ({ kind: 'ok', value: null }),
-      save: async (i) => ({ kind: 'ok', value: i }),
+      upsert: async (i) => ({ kind: 'ok', value: i }),
       delete: async () => ({ kind: 'ok', value: undefined }),
+      getManifestCursor: async () => ({ kind: 'ok', value: null }),
+      setManifestCursor: async () => ({ kind: 'ok', value: undefined }),
+      enqueuePendingWrite: async () => ({ kind: 'ok', value: undefined }),
+      drainPendingWrites: async () => ({ kind: 'ok', value: [] }),
     };
     idCounter = 0;
     const pipe = createCanonMatchingPipeline(
@@ -341,12 +349,16 @@ describe('error paths', () => {
     if (result.kind === 'err') expect(result.error.kind).toBe('StorageError');
   });
 
-  it('propagates store.save() failure', async () => {
-    const brokenStore: CanonStorePort = {
+  it('propagates store.upsert() failure', async () => {
+    const brokenStore: CanonLocalStorePort = {
       list: async () => ({ kind: 'ok', value: [] }),
       load: async () => ({ kind: 'ok', value: null }),
-      save: async () => ({ kind: 'err', error: { kind: 'StorageError', reason: 'unavailable' } }),
+      upsert: async () => ({ kind: 'err', error: { kind: 'StorageError', reason: 'unavailable' } }),
       delete: async () => ({ kind: 'ok', value: undefined }),
+      getManifestCursor: async () => ({ kind: 'ok', value: null }),
+      setManifestCursor: async () => ({ kind: 'ok', value: undefined }),
+      enqueuePendingWrite: async () => ({ kind: 'ok', value: undefined }),
+      drainPendingWrites: async () => ({ kind: 'ok', value: [] }),
     };
     idCounter = 0;
     const pipe = createCanonMatchingPipeline(
