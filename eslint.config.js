@@ -113,6 +113,7 @@ export default [
       '**/.svelte-kit/**',
       '**/__boundary_tests__/**',
       '**/.boundary-tests/**',
+      'apps/web-pwa/e2e/**',
     ],
   },
 
