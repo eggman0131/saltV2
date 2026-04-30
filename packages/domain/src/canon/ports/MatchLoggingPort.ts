@@ -1,4 +1,4 @@
-import type { MatchLogEntry } from '../logging/MatchLogEntry.js';
+import type { MatchLogEntry } from '../entities/MatchLogEntry.js';
 
 export interface MatchLoggingPort {
   write(entry: MatchLogEntry): Promise<void>;

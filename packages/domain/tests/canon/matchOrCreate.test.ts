@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createCanonMatchingPipeline } from '../../src/canon/createCanonMatchingPipeline.js';
+import { matchOrCreate } from '../../src/canon/commands/matchOrCreate.js';
 import type { CanonLocalStorePort } from '../../src/canon/ports/CanonLocalStorePort.js';
 import type { AisleStorePort } from '../../src/canon/ports/AisleStorePort.js';
 import type { EmbeddingPort } from '../../src/canon/ports/EmbeddingPort.js';
@@ -7,7 +7,7 @@ import type { CanonArbitrationPort } from '../../src/canon/ports/CanonArbitratio
 import type { IdGenerator } from '../../src/canon/ports/IdGenerator.js';
 import type { MatchLoggingPort } from '../../src/canon/ports/MatchLoggingPort.js';
 import type { CanonItem } from '../../src/canon/entities/CanonItem.js';
-import type { MatchLogEntry } from '../../src/canon/logging/MatchLogEntry.js';
+import type { MatchLogEntry } from '../../src/canon/entities/MatchLogEntry.js';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -115,7 +115,7 @@ function errorArbitration(): CanonArbitrationPort {
   };
 }
 
-function pipeline(
+function makePipeline(
   opts: {
     store?: CanonLocalStorePort & { items: CanonItem[] };
     items?: CanonItem[];
@@ -126,17 +126,17 @@ function pipeline(
 ) {
   const store = opts.store ?? makeStore(opts.items ?? []);
   idCounter = 0;
-  return {
-    pipe: createCanonMatchingPipeline(
-      store,
-      makeAisleStore(),
-      opts.embedding ?? failEmbedding(),
-      opts.arbitration ?? noMatchArbitration(),
-      makeIds(),
-      opts.logging ?? null,
-    ),
+  const ports = {
     store,
+    aisleStore: makeAisleStore(),
+    embedding: opts.embedding ?? failEmbedding(),
+    arbitration: opts.arbitration ?? noMatchArbitration(),
+    ids: makeIds(),
+    logging: opts.logging ?? null,
   };
+  const run = (rawName: string, selectedAisle?: string | null) =>
+    matchOrCreate({ rawName, selectedAisle }, ports);
+  return { run, store };
 }
 
 // ─── Stage 1: exact normalised name match ────────────────────────────────────
@@ -144,31 +144,31 @@ function pipeline(
 describe('stage 1 — exact name match', () => {
   it('returns the matched item when normalised names are identical', async () => {
     const apple = canonItem({ id: 'a1', name: 'Apple' });
-    const { pipe } = pipeline({ items: [apple] });
-    const result = await pipe.matchOrCreate('apple');
+    const { run } = makePipeline({ items: [apple] });
+    const result = await run('apple');
     expect(result).toEqual({ kind: 'ok', value: apple });
   });
 
   it('matches despite casing differences', async () => {
     const apple = canonItem({ id: 'a1', name: 'APPLE' });
-    const { pipe } = pipeline({ items: [apple] });
-    const result = await pipe.matchOrCreate('apple');
+    const { run } = makePipeline({ items: [apple] });
+    const result = await run('apple');
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') expect(result.value.id).toBe('a1');
   });
 
   it('matches plural forms after singularisation', async () => {
     const apple = canonItem({ id: 'a1', name: 'apple' });
-    const { pipe } = pipeline({ items: [apple] });
-    const result = await pipe.matchOrCreate('apples');
+    const { run } = makePipeline({ items: [apple] });
+    const result = await run('apples');
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') expect(result.value.id).toBe('a1');
   });
 
   it('does not create a new item when stage 1 matches', async () => {
     const apple = canonItem({ id: 'a1', name: 'apple' });
-    const { pipe, store } = pipeline({ items: [apple] });
-    await pipe.matchOrCreate('apple');
+    const { run, store } = makePipeline({ items: [apple] });
+    await run('apple');
     expect((store as ReturnType<typeof makeStore>).items).toHaveLength(1);
   });
 });
@@ -178,8 +178,8 @@ describe('stage 1 — exact name match', () => {
 describe('stage 3 — synonym match', () => {
   it('matches via a stored synonym', async () => {
     const tomato = canonItem({ id: 't1', name: 'tomato', synonyms: ['love apple'] });
-    const { pipe } = pipeline({ items: [tomato] });
-    const result = await pipe.matchOrCreate('Love Apple');
+    const { run } = makePipeline({ items: [tomato] });
+    const result = await run('Love Apple');
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') expect(result.value.id).toBe('t1');
   });
@@ -191,11 +191,11 @@ describe('stage 5 — embedding match', () => {
   it('returns the best cosine match when above stage5Stop threshold', async () => {
     // Item embedding = eX; query embedding = eX → cosine = 1.0 >= 0.75
     const oil = canonItem({ id: 'o1', name: 'XYZ-unique-name', embedding: eX });
-    const { pipe } = pipeline({
+    const { run } = makePipeline({
       items: [oil],
       embedding: makeEmbedding(eX),
     });
-    const result = await pipe.matchOrCreate('XYZ-unique-name');
+    const result = await run('XYZ-unique-name');
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') expect(result.value.id).toBe('o1');
   });
@@ -213,11 +213,11 @@ describe('stage 5 — embedding match', () => {
       embedding: eX,
       needs_approval: false,
     });
-    const { pipe } = pipeline({
+    const { run } = makePipeline({
       items: [unapproved, approved],
       embedding: makeEmbedding(eX),
     });
-    const result = await pipe.matchOrCreate('foo bar baz qux'); // stage 1–4 won't fire; stage 5 will
+    const result = await run('foo bar baz qux'); // stage 1–4 won't fire; stage 5 will
     if (result.kind === 'ok') expect(result.value.id).toBe('a1');
   });
 });
@@ -228,11 +228,11 @@ describe('stage 6 — AI arbitration: match', () => {
   it('returns the item identified by the arbitration port', async () => {
     // tokenMatch score ~0.67 (2/3 tokens overlap) — above aiThreshold (0.6), below stage2Stop (0.8)
     const item = canonItem({ id: 'x1', name: 'olive oil extra' });
-    const { pipe } = pipeline({
+    const { run } = makePipeline({
       items: [item],
       arbitration: matchArbitration('x1'),
     });
-    const result = await pipe.matchOrCreate('olive oil');
+    const result = await run('olive oil');
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') expect(result.value.id).toBe('x1');
   });
@@ -243,11 +243,11 @@ describe('stage 6 — AI arbitration: match', () => {
 describe('stage 6 — AI arbitration: new item', () => {
   it('creates an item with the AI-suggested canonical name', async () => {
     const item = canonItem({ id: 'x1', name: 'olive oil extra' });
-    const { pipe, store } = pipeline({
+    const { run, store } = makePipeline({
       items: [item],
       arbitration: newArbitration('Olive Oil', 'oils'),
     });
-    const result = await pipe.matchOrCreate('olive oil');
+    const result = await run('olive oil');
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') {
       expect(result.value.name).toBe('Olive Oil');
@@ -259,11 +259,11 @@ describe('stage 6 — AI arbitration: new item', () => {
 
   it('user-provided aisle overrides AI-suggested aisle', async () => {
     const item = canonItem({ id: 'x1', name: 'olive oil extra' });
-    const { pipe } = pipeline({
+    const { run } = makePipeline({
       items: [item],
       arbitration: newArbitration('Olive Oil', 'oils'),
     });
-    const result = await pipe.matchOrCreate('olive oil', 'user-aisle');
+    const result = await run('olive oil', 'user-aisle');
     if (result.kind === 'ok') expect(result.value.aisle).toBe('user-aisle');
   });
 });
@@ -273,11 +273,11 @@ describe('stage 6 — AI arbitration: new item', () => {
 describe('stage 6 — AI arbitration: no-match', () => {
   it('creates a new item from rawName when AI returns no-match', async () => {
     const item = canonItem({ id: 'x1', name: 'olive oil extra' });
-    const { pipe } = pipeline({
+    const { run } = makePipeline({
       items: [item],
       arbitration: noMatchArbitration(),
     });
-    const result = await pipe.matchOrCreate('olive oil');
+    const result = await run('olive oil');
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') {
       expect(result.value.name).toBe('olive oil');
@@ -290,8 +290,8 @@ describe('stage 6 — AI arbitration: no-match', () => {
 
 describe('creation path — no candidates', () => {
   it('creates a new item when the catalog is empty', async () => {
-    const { pipe, store } = pipeline();
-    const result = await pipe.matchOrCreate('Garlic');
+    const { run, store } = makePipeline();
+    const result = await run('Garlic');
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') {
       expect(result.value.name).toBe('Garlic');
@@ -302,14 +302,14 @@ describe('creation path — no candidates', () => {
   });
 
   it('uses selectedAisle when provided', async () => {
-    const { pipe } = pipeline();
-    const result = await pipe.matchOrCreate('Garlic', 'produce');
+    const { run } = makePipeline();
+    const result = await run('Garlic', 'produce');
     if (result.kind === 'ok') expect(result.value.aisle).toBe('produce');
   });
 
   it('falls back to uncategorised when selectedAisle is null', async () => {
-    const { pipe } = pipeline();
-    const result = await pipe.matchOrCreate('Garlic', null);
+    const { run } = makePipeline();
+    const result = await run('Garlic', null);
     if (result.kind === 'ok') expect(result.value.aisle).toBe('uncategorised');
   });
 });
@@ -318,8 +318,8 @@ describe('creation path — no candidates', () => {
 
 describe('error paths', () => {
   it('returns err when rawName normalises to empty string', async () => {
-    const { pipe } = pipeline();
-    const result = await pipe.matchOrCreate('   ');
+    const { run } = makePipeline();
+    const result = await run('   ');
     expect(result.kind).toBe('err');
     if (result.kind === 'err') expect(result.error.kind).toBe('ValidationError');
   });
@@ -336,15 +336,17 @@ describe('error paths', () => {
       drainPendingWrites: async () => ({ kind: 'ok', value: [] }),
     };
     idCounter = 0;
-    const pipe = createCanonMatchingPipeline(
-      brokenStore,
-      makeAisleStore(),
-      failEmbedding(),
-      noMatchArbitration(),
-      makeIds(),
-      null,
+    const result = await matchOrCreate(
+      { rawName: 'Garlic' },
+      {
+        store: brokenStore,
+        aisleStore: makeAisleStore(),
+        embedding: failEmbedding(),
+        arbitration: noMatchArbitration(),
+        ids: makeIds(),
+        logging: null,
+      },
     );
-    const result = await pipe.matchOrCreate('Garlic');
     expect(result.kind).toBe('err');
     if (result.kind === 'err') expect(result.error.kind).toBe('StorageError');
   });
@@ -361,27 +363,28 @@ describe('error paths', () => {
       drainPendingWrites: async () => ({ kind: 'ok', value: [] }),
     };
     idCounter = 0;
-    const pipe = createCanonMatchingPipeline(
-      brokenStore,
-      makeAisleStore(),
-      failEmbedding(),
-      noMatchArbitration(),
-      makeIds(),
-      null,
+    const result = await matchOrCreate(
+      { rawName: 'Garlic' },
+      {
+        store: brokenStore,
+        aisleStore: makeAisleStore(),
+        embedding: failEmbedding(),
+        arbitration: noMatchArbitration(),
+        ids: makeIds(),
+        logging: null,
+      },
     );
-    const result = await pipe.matchOrCreate('Garlic');
     expect(result.kind).toBe('err');
     if (result.kind === 'err') expect(result.error.kind).toBe('StorageError');
   });
 
   it('falls through to creation when arbitration port errors', async () => {
     const item = canonItem({ id: 'x1', name: 'olive oil extra' });
-    const { pipe } = pipeline({
+    const { run } = makePipeline({
       items: [item],
       arbitration: errorArbitration(),
     });
-    const result = await pipe.matchOrCreate('olive oil');
-    // Pipeline falls through to creation rather than surfacing the port error
+    const result = await run('olive oil');
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') expect(result.value.name).toBe('olive oil');
   });
@@ -391,12 +394,12 @@ describe('error paths', () => {
 
 describe('idempotency (stages 1–4)', () => {
   it('returns the same item for identical input after first creation', async () => {
-    const { pipe, store } = pipeline();
-    const first = await pipe.matchOrCreate('Garlic');
+    const { run, store } = makePipeline();
+    const first = await run('Garlic');
     expect(first.kind).toBe('ok');
 
     // Second call: the item now exists in the store, stage 1 will match it
-    const second = await pipe.matchOrCreate('Garlic');
+    const second = await run('Garlic');
     expect(second.kind).toBe('ok');
     if (first.kind === 'ok' && second.kind === 'ok') {
       expect(second.value.id).toBe(first.value.id);
@@ -405,9 +408,9 @@ describe('idempotency (stages 1–4)', () => {
   });
 
   it('matches the same item regardless of input casing', async () => {
-    const { pipe } = pipeline();
-    const first = await pipe.matchOrCreate('Garlic');
-    const second = await pipe.matchOrCreate('GARLIC');
+    const { run } = makePipeline();
+    const first = await run('Garlic');
+    const second = await run('GARLIC');
     if (first.kind === 'ok' && second.kind === 'ok') {
       expect(second.value.id).toBe(first.value.id);
     }
@@ -418,10 +421,19 @@ describe('idempotency (stages 1–4)', () => {
 
 describe('concurrent creation', () => {
   it('both calls complete without error when run in parallel', async () => {
-    const { pipe } = pipeline();
+    const store = makeStore();
+    idCounter = 0;
+    const ports = {
+      store,
+      aisleStore: makeAisleStore(),
+      embedding: failEmbedding(),
+      arbitration: noMatchArbitration(),
+      ids: makeIds(),
+      logging: null,
+    };
     const [a, b] = await Promise.all([
-      pipe.matchOrCreate('Cilantro'),
-      pipe.matchOrCreate('Cilantro'),
+      matchOrCreate({ rawName: 'Cilantro' }, ports),
+      matchOrCreate({ rawName: 'Cilantro' }, ports),
     ]);
     expect(a.kind).toBe('ok');
     expect(b.kind).toBe('ok');
@@ -440,16 +452,17 @@ describe('logging integration', () => {
     };
     const apple = canonItem({ id: 'a1', name: 'apple' });
     idCounter = 0;
-    const pipe = createCanonMatchingPipeline(
-      makeStore([apple]),
-      makeAisleStore(),
-      failEmbedding(),
-      noMatchArbitration(),
-      makeIds(),
-      loggingPort,
+    await matchOrCreate(
+      { rawName: 'apple' },
+      {
+        store: makeStore([apple]),
+        aisleStore: makeAisleStore(),
+        embedding: failEmbedding(),
+        arbitration: noMatchArbitration(),
+        ids: makeIds(),
+        logging: loggingPort,
+      },
     );
-    await pipe.matchOrCreate('apple');
-    // Log is fire-and-forget; give it a tick to resolve
     await Promise.resolve();
     expect(written).toHaveLength(1);
     expect(written[0]?.finalDecision).toBe('matched');
@@ -465,15 +478,17 @@ describe('logging integration', () => {
       },
     };
     idCounter = 0;
-    const pipe = createCanonMatchingPipeline(
-      makeStore([]),
-      makeAisleStore(),
-      failEmbedding(),
-      noMatchArbitration(),
-      makeIds(),
-      loggingPort,
+    await matchOrCreate(
+      { rawName: 'Basil' },
+      {
+        store: makeStore([]),
+        aisleStore: makeAisleStore(),
+        embedding: failEmbedding(),
+        arbitration: noMatchArbitration(),
+        ids: makeIds(),
+        logging: loggingPort,
+      },
     );
-    await pipe.matchOrCreate('Basil');
     await Promise.resolve();
     expect(written[0]?.finalDecision).toBe('created');
   });
@@ -487,15 +502,17 @@ describe('logging integration', () => {
     };
     const item = canonItem({ id: 'x1', name: 'olive oil extra' });
     idCounter = 0;
-    const pipe = createCanonMatchingPipeline(
-      makeStore([item]),
-      makeAisleStore(),
-      failEmbedding(),
-      matchArbitration('x1'),
-      makeIds(),
-      loggingPort,
+    await matchOrCreate(
+      { rawName: 'olive oil' },
+      {
+        store: makeStore([item]),
+        aisleStore: makeAisleStore(),
+        embedding: failEmbedding(),
+        arbitration: matchArbitration('x1'),
+        ids: makeIds(),
+        logging: loggingPort,
+      },
     );
-    await pipe.matchOrCreate('olive oil');
     await Promise.resolve();
     expect(written[0]?.finalDecision).toBe('ai_arbitrated');
     expect(written[0]?.finalItemId).toBe('x1');
@@ -508,30 +525,34 @@ describe('logging integration', () => {
       },
     };
     idCounter = 0;
-    const pipe = createCanonMatchingPipeline(
-      makeStore([]),
-      makeAisleStore(),
-      failEmbedding(),
-      noMatchArbitration(),
-      makeIds(),
-      loggingPort,
+    const result = await matchOrCreate(
+      { rawName: 'Basil' },
+      {
+        store: makeStore([]),
+        aisleStore: makeAisleStore(),
+        embedding: failEmbedding(),
+        arbitration: noMatchArbitration(),
+        ids: makeIds(),
+        logging: loggingPort,
+      },
     );
-    const result = await pipe.matchOrCreate('Basil');
     expect(result.kind).toBe('ok');
   });
 
   it('skips logging entirely when logging port is null', async () => {
     const writeSpy = vi.fn();
     idCounter = 0;
-    const pipe = createCanonMatchingPipeline(
-      makeStore([]),
-      makeAisleStore(),
-      failEmbedding(),
-      noMatchArbitration(),
-      makeIds(),
-      null,
+    const result = await matchOrCreate(
+      { rawName: 'Basil' },
+      {
+        store: makeStore([]),
+        aisleStore: makeAisleStore(),
+        embedding: failEmbedding(),
+        arbitration: noMatchArbitration(),
+        ids: makeIds(),
+        logging: null,
+      },
     );
-    const result = await pipe.matchOrCreate('Basil');
     expect(result.kind).toBe('ok');
     expect(writeSpy).not.toHaveBeenCalled();
   });

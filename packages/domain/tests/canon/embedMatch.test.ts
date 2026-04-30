@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { embedMatch } from '../../src/canon/queries/embedMatch.js';
 import type { EmbeddingPort } from '../../src/canon/ports/EmbeddingPort.js';
 import type { CanonItem } from '../../src/canon/entities/CanonItem.js';
-import { MATCH_THRESHOLDS } from '../../src/canon/matching.js';
+import { MATCH_THRESHOLDS } from '../../src/canon/queries/matchThresholds.js';
 
 function item(overrides: Partial<CanonItem> & { id: string; name: string }): CanonItem {
   return {

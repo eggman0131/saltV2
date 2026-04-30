@@ -32,9 +32,9 @@ export {
   MatchLogBuilder,
   MATCH_THRESHOLDS,
   embedMatch,
-  createCanonMatchingPipeline,
+  matchOrCreate,
 } from './canon/index.js';
-export type { ConflictStrategy } from './canon/index.js';
+export type { ConflictStrategy, MatchOrCreateInput, MatchOrCreatePorts } from './canon/index.js';
 
 // Auth module — published surface.
 export type { User, AuthProvider } from './auth/index.js';

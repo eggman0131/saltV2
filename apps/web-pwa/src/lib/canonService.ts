@@ -5,7 +5,7 @@ import {
   createGeminiArbitrationAdapter,
 } from '@salt/firebase-sync';
 import { createLDMatchLoggingAdapter, createLDErrorReportingAdapter } from '@salt/ld-observability';
-import { createCanonMatchingPipeline } from '@salt/domain';
+import { matchOrCreate } from '@salt/domain';
 import { createLocalCanonStoreAdapter } from '@salt/local-store';
 import type {
   CanonItem,
@@ -19,7 +19,6 @@ import type { Readable } from 'svelte/store';
 
 let _localStore: CanonLocalStorePort | null = null;
 let _syncTransport: CanonSyncTransportPort | null = null;
-let _pipeline: ReturnType<typeof createCanonMatchingPipeline> | null = null;
 
 const _canonItems = writable<CanonItem[]>([]);
 export const canonItems: Readable<CanonItem[]> = _canonItems;
@@ -36,21 +35,6 @@ function getSyncTransport(): CanonSyncTransportPort {
   if (!_syncTransport)
     _syncTransport = createFirebaseCanonSyncTransportAdapter(createLDErrorReportingAdapter());
   return _syncTransport;
-}
-
-function getPipeline(): ReturnType<typeof createCanonMatchingPipeline> {
-  if (!_pipeline) {
-    const errors = createLDErrorReportingAdapter();
-    _pipeline = createCanonMatchingPipeline(
-      getLocalStore(),
-      createFirebaseAisleStoreAdapter(errors),
-      createGeminiEmbeddingAdapter(errors),
-      createGeminiArbitrationAdapter(errors),
-      { newCanonId: () => crypto.randomUUID() },
-      createLDMatchLoggingAdapter(),
-    );
-  }
-  return _pipeline;
 }
 
 async function refreshCanonItems(): Promise<void> {
@@ -85,12 +69,23 @@ export async function addCanonItem(
   rawName: string,
   selectedAisle?: string | null,
 ): Promise<Result<CanonItem, DomainError>> {
-  const result = await getPipeline().matchOrCreate(rawName, selectedAisle);
+  const errors = createLDErrorReportingAdapter();
+  const result = await matchOrCreate(
+    { rawName, selectedAisle },
+    {
+      store: getLocalStore(),
+      aisleStore: createFirebaseAisleStoreAdapter(errors),
+      embedding: createGeminiEmbeddingAdapter(errors),
+      arbitration: createGeminiArbitrationAdapter(errors),
+      ids: { newCanonId: () => crypto.randomUUID() },
+      logging: createLDMatchLoggingAdapter(),
+    },
+  );
   if (result.kind === 'ok') {
     await getLocalStore().enqueuePendingWrite(result.value);
     _syncPending.update((p) => ({ ...p, push: true }));
     void getSyncTransport()
-      .push(result.value) // background push; conflict surfacing in Phase 2
+      .push(result.value)
       .finally(() => _syncPending.update((p) => ({ ...p, push: false })));
     await refreshCanonItems();
   }

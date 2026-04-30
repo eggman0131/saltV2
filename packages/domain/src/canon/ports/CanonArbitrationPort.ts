@@ -1,6 +1,6 @@
 import type { ReadResult, DomainError } from '@salt/shared-types';
 import type { Aisle } from '../entities/Aisle.js';
-import type { MatchCandidate } from '../matching.js';
+import type { MatchCandidate } from '../entities/MatchCandidate.js';
 
 export type ArbitrationResult =
   | { readonly kind: 'match'; readonly itemId: string; readonly confidence: number }

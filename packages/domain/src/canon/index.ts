@@ -20,21 +20,22 @@ export { mergeCanonItems } from './commands/mergeCanonItems.js';
 export { resolveCanonConflict } from './commands/resolveCanonConflict.js';
 export type { ConflictStrategy } from './commands/resolveCanonConflict.js';
 export { createCanonLookup } from './queries/createCanonLookup.js';
-export type { MatchCandidate, MatchStage } from './matching.js';
-export { MATCH_THRESHOLDS } from './matching.js';
+export type { MatchCandidate, MatchStage } from './entities/MatchCandidate.js';
+export { MATCH_THRESHOLDS } from './queries/matchThresholds.js';
 export type {
   MatchLogEntry,
   StageLog,
   CandidateLog,
   FinalDecision,
-} from './logging/MatchLogEntry.js';
+} from './entities/MatchLogEntry.js';
 export type { MatchLoggingPort } from './ports/MatchLoggingPort.js';
 export type { EmbeddingPort } from './ports/EmbeddingPort.js';
-export { MatchLogBuilder } from './logging/MatchLogBuilder.js';
+export { MatchLogBuilder } from './commands/buildMatchLog.js';
 export { embedMatch } from './queries/embedMatch.js';
 export type {
   CanonArbitrationPort,
   ArbitrationRequest,
   ArbitrationResult,
 } from './ports/CanonArbitrationPort.js';
-export { createCanonMatchingPipeline } from './createCanonMatchingPipeline.js';
+export { matchOrCreate } from './commands/matchOrCreate.js';
+export type { MatchOrCreateInput, MatchOrCreatePorts } from './commands/matchOrCreate.js';

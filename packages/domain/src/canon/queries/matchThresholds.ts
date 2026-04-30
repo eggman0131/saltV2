@@ -1,13 +1,3 @@
-import type { CanonItem } from './entities/CanonItem.js';
-
-export type MatchStage = 1 | 2 | 3 | 4 | 5 | 6;
-
-export interface MatchCandidate {
-  readonly item: CanonItem;
-  readonly confidence: number;
-  readonly stage: MatchStage;
-}
-
 // Stop threshold: confidence at or above this level ends the search at the current stage.
 // aiThreshold: candidates at or above this level are forwarded to stage 6 when reached (Phase 4+).
 export const MATCH_THRESHOLDS = {

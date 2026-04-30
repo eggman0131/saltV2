@@ -1,11 +1,11 @@
 import type { CanonItem } from '../entities/CanonItem.js';
-import type { MatchCandidate } from '../matching.js';
-import { MATCH_THRESHOLDS } from '../matching.js';
+import type { MatchCandidate } from '../entities/MatchCandidate.js';
+import { MATCH_THRESHOLDS } from './matchThresholds.js';
 import { normaliseName } from './normaliseName.js';
 import { tokenMatch } from './tokenMatch.js';
 import { synonymMatch } from './synonymMatch.js';
 import { stringSimilarity } from './stringSimilarity.js';
-import type { MatchLogBuilder } from '../logging/MatchLogBuilder.js';
+import type { MatchLogBuilder } from '../commands/buildMatchLog.js';
 
 // Runs stages 1–4 in order; returns the first candidate that meets its stop
 // threshold. Returns null when no stage finds a confident match (stages 5–6

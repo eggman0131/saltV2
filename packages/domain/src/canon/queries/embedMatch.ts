@@ -1,8 +1,8 @@
 import type { CanonItem } from '../entities/CanonItem.js';
-import type { MatchCandidate } from '../matching.js';
+import type { MatchCandidate } from '../entities/MatchCandidate.js';
 import type { EmbeddingPort } from '../ports/EmbeddingPort.js';
-import { MATCH_THRESHOLDS } from '../matching.js';
-import type { MatchLogBuilder } from '../logging/MatchLogBuilder.js';
+import { MATCH_THRESHOLDS } from './matchThresholds.js';
+import type { MatchLogBuilder } from '../commands/buildMatchLog.js';
 
 // Stage 5: semantic similarity via stored embeddings.
 // Items without a stored embedding are skipped gracefully.

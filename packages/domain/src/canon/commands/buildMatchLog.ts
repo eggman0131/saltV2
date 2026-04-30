@@ -1,4 +1,4 @@
-import type { FinalDecision, MatchLogEntry, StageLog } from './MatchLogEntry.js';
+import type { FinalDecision, MatchLogEntry, StageLog } from '../entities/MatchLogEntry.js';
 
 export class MatchLogBuilder {
   private rawInput = '';

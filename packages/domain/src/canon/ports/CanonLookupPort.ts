@@ -1,5 +1,5 @@
 import type { CanonItem } from '../entities/CanonItem.js';
-import type { MatchCandidate } from '../matching.js';
+import type { MatchCandidate } from '../entities/MatchCandidate.js';
 
 // Module-offered port: canonicalisation logic exposed to other domain modules.
 // Implemented by canon's own queries (see queries/createCanonLookup).
