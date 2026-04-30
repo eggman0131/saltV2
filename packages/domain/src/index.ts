@@ -50,7 +50,13 @@ export {
   listAisles,
   getAisleUsage,
 } from './canon/index.js';
-export type { ConflictStrategy, MatchOrCreateInput, MatchOrCreatePorts } from './canon/index.js';
+export type {
+  ConflictStrategy,
+  MatchOrCreateInput,
+  MatchOrCreatePorts,
+  MatchOrCreateResult,
+} from './canon/index.js';
+export { renameCanonItem, setCanonItemAisle, setCanonItemSynonyms } from './canon/index.js';
 
 // Auth module — published surface.
 export type { User, AuthProvider } from './auth/index.js';

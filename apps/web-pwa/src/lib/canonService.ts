@@ -4,8 +4,14 @@ import {
   createGeminiArbitrationAdapter,
 } from '@salt/firebase-sync';
 import { createLDMatchLoggingAdapter, createLDErrorReportingAdapter } from '@salt/ld-observability';
-import { matchOrCreate, resolveCanonConflict } from '@salt/domain';
-import type { ConflictStrategy } from '@salt/domain';
+import {
+  matchOrCreate,
+  resolveCanonConflict,
+  renameCanonItem,
+  setCanonItemAisle,
+  setCanonItemSynonyms,
+} from '@salt/domain';
+import type { ConflictStrategy, MatchOrCreateResult } from '@salt/domain';
 import { createLocalCanonStoreAdapter } from '@salt/local-store';
 import { getLocalAisleStore } from './aisleService.js';
 import type {
@@ -15,6 +21,7 @@ import type {
   SyncPending,
 } from '@salt/domain';
 import type { Conflict, Result, DomainError } from '@salt/shared-types';
+export type { MatchOrCreateResult };
 import { writable } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 
@@ -82,10 +89,11 @@ export function initCanonSync(): () => void {
 export async function addCanonItem(
   rawName: string,
   selectedAisleId?: string | null,
-): Promise<Result<CanonItem, DomainError>> {
+  forceCreate?: boolean,
+): Promise<Result<MatchOrCreateResult, DomainError>> {
   const errors = createLDErrorReportingAdapter();
   const result = await matchOrCreate(
-    { rawName, selectedAisleId },
+    { rawName, selectedAisleId, ...(forceCreate !== undefined && { forceCreate }) },
     {
       store: getLocalStore(),
       aisleStore: getLocalAisleStore(),
@@ -96,8 +104,55 @@ export async function addCanonItem(
     },
   );
   if (result.kind === 'ok') {
-    await getLocalStore().enqueuePendingWrite(result.value);
+    await getLocalStore().enqueuePendingWrite(result.value.item);
+    enqueuePush(result.value.item);
+    await refreshCanonItems();
+  }
+  return result;
+}
+
+export async function updateCanonItemName(
+  item: CanonItem,
+  newName: string,
+): Promise<Result<CanonItem, DomainError>> {
+  const result = renameCanonItem(item, newName);
+  if (result.kind === 'ok') {
+    await getLocalStore().upsert(result.value);
     enqueuePush(result.value);
+    await refreshCanonItems();
+  }
+  return result;
+}
+
+export async function updateCanonItemAisle(
+  item: CanonItem,
+  aisleId: string | null,
+): Promise<Result<CanonItem, DomainError>> {
+  const result = setCanonItemAisle(item, aisleId);
+  if (result.kind === 'ok') {
+    await getLocalStore().upsert(result.value);
+    enqueuePush(result.value);
+    await refreshCanonItems();
+  }
+  return result;
+}
+
+export async function updateCanonItemSynonyms(
+  item: CanonItem,
+  synonyms: readonly string[],
+): Promise<Result<CanonItem, DomainError>> {
+  const result = setCanonItemSynonyms(item, synonyms);
+  if (result.kind === 'ok') {
+    await getLocalStore().upsert(result.value);
+    enqueuePush(result.value);
+    await refreshCanonItems();
+  }
+  return result;
+}
+
+export async function deleteCanonItem(id: string): Promise<Result<void, DomainError>> {
+  const result = await getLocalStore().delete(id);
+  if (result.kind === 'ok') {
     await refreshCanonItems();
   }
   return result;

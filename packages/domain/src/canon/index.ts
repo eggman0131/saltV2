@@ -38,7 +38,14 @@ export type {
   ArbitrationResult,
 } from './ports/CanonArbitrationPort.js';
 export { matchOrCreate } from './commands/matchOrCreate.js';
-export type { MatchOrCreateInput, MatchOrCreatePorts } from './commands/matchOrCreate.js';
+export type {
+  MatchOrCreateInput,
+  MatchOrCreatePorts,
+  MatchOrCreateResult,
+} from './commands/matchOrCreate.js';
+export { renameCanonItem } from './commands/renameCanonItem.js';
+export { setCanonItemAisle } from './commands/setCanonItemAisle.js';
+export { setCanonItemSynonyms } from './commands/setCanonItemSynonyms.js';
 export { createAisle } from './commands/createAisle.js';
 export type { CreateAisleInput } from './commands/createAisle.js';
 export { createAislesBulk } from './commands/createAislesBulk.js';

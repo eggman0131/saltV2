@@ -134,8 +134,8 @@ function makePipeline(
     ids: makeIds(),
     logging: opts.logging ?? null,
   };
-  const run = (rawName: string, selectedAisleId?: string | null) =>
-    matchOrCreate({ rawName, selectedAisleId }, ports);
+  const run = (rawName: string, selectedAisleId?: string | null, forceCreate?: boolean) =>
+    matchOrCreate({ rawName, selectedAisleId, forceCreate }, ports);
   return { run, store };
 }
 
@@ -146,7 +146,7 @@ describe('stage 1 — exact name match', () => {
     const apple = canonItem({ id: 'a1', name: 'Apple' });
     const { run } = makePipeline({ items: [apple] });
     const result = await run('apple');
-    expect(result).toEqual({ kind: 'ok', value: apple });
+    expect(result).toEqual({ kind: 'ok', value: { item: apple, decision: 'matched' } });
   });
 
   it('matches despite casing differences', async () => {
@@ -154,7 +154,7 @@ describe('stage 1 — exact name match', () => {
     const { run } = makePipeline({ items: [apple] });
     const result = await run('apple');
     expect(result.kind).toBe('ok');
-    if (result.kind === 'ok') expect(result.value.id).toBe('a1');
+    if (result.kind === 'ok') expect(result.value.item.id).toBe('a1');
   });
 
   it('matches plural forms after singularisation', async () => {
@@ -162,7 +162,7 @@ describe('stage 1 — exact name match', () => {
     const { run } = makePipeline({ items: [apple] });
     const result = await run('apples');
     expect(result.kind).toBe('ok');
-    if (result.kind === 'ok') expect(result.value.id).toBe('a1');
+    if (result.kind === 'ok') expect(result.value.item.id).toBe('a1');
   });
 
   it('does not create a new item when stage 1 matches', async () => {
@@ -170,6 +170,13 @@ describe('stage 1 — exact name match', () => {
     const { run, store } = makePipeline({ items: [apple] });
     await run('apple');
     expect((store as ReturnType<typeof makeStore>).items).toHaveLength(1);
+  });
+
+  it('returns decision=matched for a stage-1 hit', async () => {
+    const apple = canonItem({ id: 'a1', name: 'apple' });
+    const { run } = makePipeline({ items: [apple] });
+    const result = await run('apple');
+    if (result.kind === 'ok') expect(result.value.decision).toBe('matched');
   });
 });
 
@@ -181,7 +188,7 @@ describe('stage 3 — synonym match', () => {
     const { run } = makePipeline({ items: [tomato] });
     const result = await run('Love Apple');
     expect(result.kind).toBe('ok');
-    if (result.kind === 'ok') expect(result.value.id).toBe('t1');
+    if (result.kind === 'ok') expect(result.value.item.id).toBe('t1');
   });
 });
 
@@ -197,7 +204,10 @@ describe('stage 5 — embedding match', () => {
     });
     const result = await run('XYZ-unique-name');
     expect(result.kind).toBe('ok');
-    if (result.kind === 'ok') expect(result.value.id).toBe('o1');
+    if (result.kind === 'ok') {
+      expect(result.value.item.id).toBe('o1');
+      expect(result.value.decision).toBe('matched');
+    }
   });
 
   it('prefers the approved item when confidence is equal', async () => {
@@ -218,7 +228,7 @@ describe('stage 5 — embedding match', () => {
       embedding: makeEmbedding(eX),
     });
     const result = await run('foo bar baz qux'); // stage 1–4 won't fire; stage 5 will
-    if (result.kind === 'ok') expect(result.value.id).toBe('a1');
+    if (result.kind === 'ok') expect(result.value.item.id).toBe('a1');
   });
 });
 
@@ -234,7 +244,10 @@ describe('stage 6 — AI arbitration: match', () => {
     });
     const result = await run('olive oil');
     expect(result.kind).toBe('ok');
-    if (result.kind === 'ok') expect(result.value.id).toBe('x1');
+    if (result.kind === 'ok') {
+      expect(result.value.item.id).toBe('x1');
+      expect(result.value.decision).toBe('ai_arbitrated');
+    }
   });
 });
 
@@ -250,9 +263,10 @@ describe('stage 6 — AI arbitration: new item', () => {
     const result = await run('olive oil');
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') {
-      expect(result.value.name).toBe('Olive Oil');
-      expect(result.value.aisleId).toBe('oils');
-      expect(result.value.needs_approval).toBe(true);
+      expect(result.value.item.name).toBe('Olive Oil');
+      expect(result.value.item.aisleId).toBe('oils');
+      expect(result.value.item.needs_approval).toBe(true);
+      expect(result.value.decision).toBe('created');
     }
     expect((store as ReturnType<typeof makeStore>).items).toHaveLength(2);
   });
@@ -264,7 +278,7 @@ describe('stage 6 — AI arbitration: new item', () => {
       arbitration: newArbitration('Olive Oil', 'oils'),
     });
     const result = await run('olive oil', 'user-aisle');
-    if (result.kind === 'ok') expect(result.value.aisleId).toBe('user-aisle');
+    if (result.kind === 'ok') expect(result.value.item.aisleId).toBe('user-aisle');
   });
 });
 
@@ -280,8 +294,8 @@ describe('stage 6 — AI arbitration: no-match', () => {
     const result = await run('olive oil');
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') {
-      expect(result.value.name).toBe('olive oil');
-      expect(result.value.aisleId).toBeNull();
+      expect(result.value.item.name).toBe('olive oil');
+      expect(result.value.item.aisleId).toBeNull();
     }
   });
 });
@@ -294,9 +308,10 @@ describe('creation path — no candidates', () => {
     const result = await run('Garlic');
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') {
-      expect(result.value.name).toBe('Garlic');
-      expect(result.value.aisleId).toBeNull();
-      expect(result.value.needs_approval).toBe(true);
+      expect(result.value.item.name).toBe('Garlic');
+      expect(result.value.item.aisleId).toBeNull();
+      expect(result.value.item.needs_approval).toBe(true);
+      expect(result.value.decision).toBe('created');
     }
     expect((store as ReturnType<typeof makeStore>).items).toHaveLength(1);
   });
@@ -304,13 +319,54 @@ describe('creation path — no candidates', () => {
   it('uses selectedAisleId when provided', async () => {
     const { run } = makePipeline();
     const result = await run('Garlic', 'produce');
-    if (result.kind === 'ok') expect(result.value.aisleId).toBe('produce');
+    if (result.kind === 'ok') expect(result.value.item.aisleId).toBe('produce');
   });
 
   it('falls back to null when selectedAisleId is null', async () => {
     const { run } = makePipeline();
     const result = await run('Garlic', null);
-    if (result.kind === 'ok') expect(result.value.aisleId).toBeNull();
+    if (result.kind === 'ok') expect(result.value.item.aisleId).toBeNull();
+  });
+});
+
+// ─── forceCreate ─────────────────────────────────────────────────────────────
+
+describe('forceCreate — bypass matching', () => {
+  it('creates a new item even when an exact match exists', async () => {
+    const apple = canonItem({ id: 'a1', name: 'apple' });
+    const { run, store } = makePipeline({ items: [apple] });
+    const result = await run('apple', null, true);
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value.decision).toBe('created');
+      // a new item, not the existing one
+      expect(result.value.item.id).not.toBe('a1');
+    }
+    expect((store as ReturnType<typeof makeStore>).items).toHaveLength(2);
+  });
+
+  it('uses selectedAisleId when provided alongside forceCreate', async () => {
+    const { run } = makePipeline({ arbitration: newArbitration('Garlic', 'produce') });
+    const result = await run('Garlic', 'spices', true);
+    if (result.kind === 'ok') expect(result.value.item.aisleId).toBe('spices');
+  });
+
+  it('falls back to arbitration-suggested aisle when selectedAisleId is absent', async () => {
+    const { run } = makePipeline({ arbitration: newArbitration('Garlic', 'produce') });
+    const result = await run('Garlic', null, true);
+    if (result.kind === 'ok') expect(result.value.item.aisleId).toBe('produce');
+  });
+
+  it('leaves aisle null when arbitration provides no aisle', async () => {
+    const { run } = makePipeline({ arbitration: noMatchArbitration() });
+    const result = await run('Garlic', null, true);
+    if (result.kind === 'ok') expect(result.value.item.aisleId).toBeNull();
+  });
+
+  it('returns decision=created', async () => {
+    const { run } = makePipeline();
+    const result = await run('Garlic', null, true);
+    if (result.kind === 'ok') expect(result.value.decision).toBe('created');
   });
 });
 
@@ -386,7 +442,7 @@ describe('error paths', () => {
     });
     const result = await run('olive oil');
     expect(result.kind).toBe('ok');
-    if (result.kind === 'ok') expect(result.value.name).toBe('olive oil');
+    if (result.kind === 'ok') expect(result.value.item.name).toBe('olive oil');
   });
 });
 
@@ -402,7 +458,7 @@ describe('idempotency (stages 1–4)', () => {
     const second = await run('Garlic');
     expect(second.kind).toBe('ok');
     if (first.kind === 'ok' && second.kind === 'ok') {
-      expect(second.value.id).toBe(first.value.id);
+      expect(second.value.item.id).toBe(first.value.item.id);
     }
     expect((store as ReturnType<typeof makeStore>).items).toHaveLength(1);
   });
@@ -412,7 +468,7 @@ describe('idempotency (stages 1–4)', () => {
     const first = await run('Garlic');
     const second = await run('GARLIC');
     if (first.kind === 'ok' && second.kind === 'ok') {
-      expect(second.value.id).toBe(first.value.id);
+      expect(second.value.item.id).toBe(first.value.item.id);
     }
   });
 });

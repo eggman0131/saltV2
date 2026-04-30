@@ -1,5 +1,5 @@
 import { ErrorCode, failure, success } from '@salt/shared-types';
-import type { DomainError, Result } from '@salt/shared-types';
+import type { DomainError, ReadResult } from '@salt/shared-types';
 import type { CanonItem } from '../entities/CanonItem.js';
 import type { IdGenerator } from '../ports/IdGenerator.js';
 
@@ -13,7 +13,7 @@ export interface CreateCanonItemInput {
 export function createCanonItem(
   input: CreateCanonItemInput,
   ids: IdGenerator,
-): Result<CanonItem, DomainError> {
+): ReadResult<CanonItem, DomainError> {
   const name = input.name.trim();
   if (!name) {
     return failure({ kind: 'ValidationError', code: ErrorCode.INVALID_CANON_NAME });

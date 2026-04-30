@@ -1,6 +1,6 @@
 import { failure, success } from '@salt/shared-types';
 import { ErrorCode } from '@salt/shared-types';
-import type { DomainError, Result } from '@salt/shared-types';
+import type { DomainError, ReadResult } from '@salt/shared-types';
 import type { CanonItem } from '../entities/CanonItem.js';
 import type { MatchCandidate } from '../entities/MatchCandidate.js';
 import type { FinalDecision } from '../entities/MatchLogEntry.js';
@@ -22,6 +22,13 @@ import { createCanonItem } from './createCanonItem.js';
 export interface MatchOrCreateInput {
   readonly rawName: string;
   readonly selectedAisleId?: string | null | undefined;
+  /** Skip match stages and force a new item. Pipeline still runs aisle arbitration. */
+  readonly forceCreate?: boolean;
+}
+
+export interface MatchOrCreateResult {
+  readonly item: CanonItem;
+  readonly decision: FinalDecision;
 }
 
 export interface MatchOrCreatePorts {
@@ -36,18 +43,14 @@ export interface MatchOrCreatePorts {
 export async function matchOrCreate(
   input: MatchOrCreateInput,
   ports: MatchOrCreatePorts,
-): Promise<Result<CanonItem, DomainError>> {
-  const { rawName, selectedAisleId } = input;
+): Promise<ReadResult<MatchOrCreateResult, DomainError>> {
+  const { rawName, selectedAisleId, forceCreate = false } = input;
   const { store, aisleStore, embedding, arbitration, ids, logging } = ports;
 
   const normalisedName = normaliseName(rawName);
   if (!normalisedName) {
     return failure({ kind: 'ValidationError', code: ErrorCode.INVALID_CANON_NAME });
   }
-
-  const itemsResult = await store.list();
-  if (itemsResult.kind !== 'ok') return itemsResult;
-  const items = itemsResult.value;
 
   const logBuilder = logging ? new MatchLogBuilder() : null;
   const runId = ids.newCanonId();
@@ -59,11 +62,25 @@ export async function matchOrCreate(
     void logging.write(entry).catch(() => {});
   };
 
+  // Force-create: skip match stages, still run aisle arbitration for assignment.
+  if (forceCreate) {
+    const aislesResult = await aisleStore.load();
+    const aisles = aislesResult.kind === 'ok' ? (aislesResult.value ?? []) : [];
+    const arbResult = await arbitration.arbitrate({ normalisedName, candidates: [], aisles });
+    const suggestedAisleId =
+      arbResult.kind === 'ok' && arbResult.value.kind === 'new' ? arbResult.value.aisleId : null;
+    return persistNew(store, ids, rawName, selectedAisleId ?? suggestedAisleId ?? null, commitLog);
+  }
+
+  const itemsResult = await store.list();
+  if (itemsResult.kind !== 'ok') return itemsResult;
+  const items = itemsResult.value;
+
   // Stages 1–4: pure deterministic matching
   const stage1to4 = findClosestMatch(items, rawName, logBuilder ?? undefined);
   if (stage1to4 !== null) {
     commitLog('matched', stage1to4.item.id);
-    return success(stage1to4.item);
+    return success({ item: stage1to4.item, decision: 'matched' });
   }
 
   // Stage 5: semantic embedding
@@ -76,7 +93,7 @@ export async function matchOrCreate(
   if (embedCandidates.length > 0) {
     const winner = pickBest(embedCandidates);
     commitLog('matched', winner.item.id);
-    return success(winner.item);
+    return success({ item: winner.item, decision: 'matched' });
   }
 
   // Collect near-miss candidates from stages 2 & 4 above aiThreshold for stage 6.
@@ -124,7 +141,7 @@ export async function matchOrCreate(
         const matched = items.find((i) => i.id === arb.itemId);
         if (matched !== undefined) {
           commitLog('ai_arbitrated', matched.id);
-          return success(matched);
+          return success({ item: matched, decision: 'ai_arbitrated' });
         }
       }
 
@@ -151,12 +168,12 @@ async function persistNew(
   name: string,
   aisleId: string | null,
   commitLog: (decision: FinalDecision, finalItemId: string | null) => void,
-): Promise<Result<CanonItem, DomainError>> {
+): Promise<ReadResult<MatchOrCreateResult, DomainError>> {
   const result = createCanonItem({ name, aisleId }, ids);
   if (result.kind !== 'ok') return result;
   const item = result.value;
   const saved = await store.upsert(item);
   if (saved.kind !== 'ok') return saved;
   commitLog('created', item.id);
-  return success(item);
+  return success({ item, decision: 'created' });
 }
