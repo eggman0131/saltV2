@@ -38,9 +38,11 @@ The two consistency models above are **deliberately different** and must be expr
     local-store                   # IndexedDB implementation of local persistence ports
     firebase-sync                 # Firebase Storage + Firestore + Auth implementation
                                   # of sync, realtime, and auth ports
+    ld-observability              # LaunchDarkly Observability SDK implementation
+                                  # of error reporting and match logging ports
 ```
 
-The two adapters are **siblings**, not layered. `firebase-sync` does not depend on `local-store`; both are wired together by the UI/composition layer.
+The three adapters are **siblings**, not layered. They do not depend on each other; all are wired together by the UI/composition layer.
 
 ---
 
@@ -48,10 +50,11 @@ The two adapters are **siblings**, not layered. `firebase-sync` does not depend 
 
 ### Allowed
 
-- web-pwa → domain, shared-types, ui-components, local-store, firebase-sync
-- cloud-functions → domain, shared-types, firebase-sync
+- web-pwa → domain, shared-types, ui-components, local-store, firebase-sync, ld-observability
+- cloud-functions → domain, shared-types, firebase-sync, ld-observability
 - local-store → domain, shared-types
 - firebase-sync → domain, shared-types
+- ld-observability → domain, shared-types
 - domain → shared-types
 - shared-types → (no dependencies)
 
@@ -60,10 +63,11 @@ The two adapters are **siblings**, not layered. `firebase-sync` does not depend 
 - UI → Cloud Functions
 - UI → Firebase SDK directly
 - UI → IndexedDB directly
+- UI → LaunchDarkly SDK directly
 - Domain → Firebase SDK / IndexedDB / Node / browser APIs
 - Domain → UI
 - Cloud Functions → UI
-- local-store ↔ firebase-sync (adapters must not import each other)
+- local-store ↔ firebase-sync ↔ ld-observability (adapters must not import each other)
 - Any module → apps/web-pwa or apps/cloud-functions
 
 These rules must be enforced via ESLint, tsconfig project references, and commit gateway checks.
@@ -137,12 +141,22 @@ This model is intentionally narrow. Multi‑workspace, sharing, or per‑documen
 - Must not contain domain logic — including conflict resolution. When a revision mismatch is detected, the adapter returns `Conflict<T>` and lets the domain/UI decide.
 - Must not leak Firebase types across the boundary.
 
-### 6.3 Common rules
+### 6.3 ld-observability adapter
 
-- Both adapters convert their backend's responses into domain entities.
-- Both adapters use `shared-types` for DTOs.
-- Neither adapter imports the other; they are composed at the application layer.
-- The two adapters together are the **only** modules permitted to import Firebase SDKs or browser storage APIs.
+- Implements `ErrorReportingPort` and `MatchLoggingPort` using the LaunchDarkly Observability SDK.
+- May import the LaunchDarkly Observability SDK; nothing else in the codebase may.
+- Must not import Firebase, IndexedDB, browser storage, UI, or other adapters.
+- Must not contain domain logic or business rules.
+- Normalizes errors into `DomainError` categories before crossing the boundary.
+- Logs diagnostic information without leaking SDK types or raw error objects.
+
+### 6.4 Common rules
+
+- All adapters convert their backend's responses into domain entities or error types.
+- All adapters use `shared-types` for DTOs and result types.
+- Adapters must not import each other; all are composed at the application layer.
+- `firebase-sync` and `local-store` are the **only** modules permitted to import Firebase SDKs or browser storage APIs.
+- `ld-observability` is the **only** module permitted to import the LaunchDarkly Observability SDK.
 
 ---
 
@@ -223,11 +237,13 @@ Shopping lists never return conflicts. They use realtime field‑level merge dri
 - UI must handle all `Failure` / `Conflict` states explicitly.
 - Domain must not depend on adapter error shapes — only on `DomainError`.
 
-### 7.6 Logging
+### 7.6 Logging and Error Reporting
 
-- Adapters may log internal errors for diagnostics.
-- Logs must not leak Firebase/IndexedDB types or raw error objects.
-- Logs must not cross the adapter boundary.
+- Adapters may log internal errors for diagnostics via the `ErrorReportingPort`.
+- All error reporting is mediated through `ErrorReportingPort` (a cross-cutting port in the domain layer).
+- Adapters must not log directly to console or external SDKs; they must use the port to normalize errors first.
+- Logs must not leak Firebase/IndexedDB/LaunchDarkly types or raw error objects across the adapter boundary.
+- The `ld-observability` adapter receives `DomainError` instances and reports them to LaunchDarkly.
 
 ### 7.7 Retry Behaviour
 
@@ -254,7 +270,7 @@ Cloud Functions exist in the architecture to support **server‑side gen‑AI wo
 
 When implemented, Cloud Functions:
 
-- Import domain + firebase-sync (never local-store; CFs have no browser storage)
+- Import domain + firebase-sync + ld-observability (never local-store; CFs have no browser storage)
 - Never import UI
 - Never contain business logic
 - Only orchestrate:
@@ -273,11 +289,11 @@ Until a gen‑AI requirement lands, the `cloud-functions` app may remain a stub.
 
 The PWA:
 
-- Imports domain, local-store, firebase-sync, ui-components, shared-types
-- Never imports Firebase SDK or IndexedDB directly
+- Imports domain, local-store, firebase-sync, ld-observability, ui-components, shared-types
+- Never imports Firebase SDK, IndexedDB, or LaunchDarkly SDK directly
 - Never contains business logic (including conflict resolution policy)
 - Uses domain commands/queries as its API
-- Wires `LocalStore`, `SyncTransport`, `RealtimeChannel`, and `AuthProvider` ports together at composition time
+- Wires `LocalStore`, `SyncTransport`, `RealtimeChannel`, `AuthProvider`, `ErrorReportingPort`, and `MatchLoggingPort` ports together at composition time
 - Must support offline‑first behaviour (service worker + local-store)
 - Must distinguish, in its UX, between:
   - **recipes/canon** — eventual consistency, may surface conflict prompts
@@ -290,6 +306,7 @@ UI is responsible for:
 - User interactions
 - Calling domain commands
 - Displaying results, including pending / failure / conflict states
+- Wiring cross-cutting ports (error reporting, observability) at composition time
 
 ---
 
@@ -315,7 +332,8 @@ This module must remain extremely small and stable.
 - Enforce allowed import graph (boundaries plugin)
 - Forbid Firebase imports outside firebase-sync
 - Forbid IndexedDB / browser storage imports outside local-store
-- Forbid local-store ↔ firebase-sync imports
+- Forbid LaunchDarkly Observability SDK imports outside ld-observability
+- Forbid local-store ↔ firebase-sync ↔ ld-observability imports (sibling adapters must not import each other)
 - Forbid domain importing anything except shared-types
 - Forbid UI importing Cloud Functions
 - Forbid circular dependencies
@@ -338,6 +356,7 @@ Every commit must:
 - Pass formatting
 - Reject any Firebase import outside firebase-sync
 - Reject any IndexedDB import outside local-store
+- Reject any LaunchDarkly SDK import outside ld-observability
 - Reject any UI → backend leakage
 - Reject any domain impurity (Node/browser/Firebase imports)
 
@@ -360,15 +379,21 @@ Every commit must:
 - Unit tests with mocks
 - Integration tests against the Firebase emulator
 
+### ld-observability
+
+- Unit tests with mocked LaunchDarkly SDK
+- Tests that error normalization preserves error context
+- Integration tests against the LaunchDarkly Observability SDK (in staging)
+
 ### Cloud Functions
 
-- Unit tests with mocked adapter
+- Unit tests with mocked adapters
 - Integration tests with emulator (once implemented)
 
 ### UI
 
 - Component tests
-- Integration tests (with both adapters wired to fakes)
+- Integration tests (with all adapters wired to fakes)
 - E2E tests (Playwright)
 
 ---
@@ -378,8 +403,9 @@ Every commit must:
 - web-pwa → deployed as PWA
 - cloud-functions → deployed to Firebase Functions (when activated for gen‑AI)
 - local-store → bundled into UI only
-- firebase-sync → bundled into UI and (when activated) Functions
-- domain → bundled into UI and Functions
+- firebase-sync → bundled into UI and (when activated) Cloud Functions
+- ld-observability → bundled into UI and Cloud Functions
+- domain → bundled into UI and Cloud Functions
 - shared-types → type-only package
 
 ---
@@ -398,11 +424,12 @@ Every commit must:
 
 - No Firebase SDK in UI or local-store
 - No IndexedDB in UI or firebase-sync
+- No LaunchDarkly SDK in UI or other adapters (only in ld-observability)
 - No business logic outside domain (including conflict resolution)
 - No cross-module imports outside the allowed graph
 - No global state
 - No "quick hacks" in Cloud Functions or adapters
-- No leaking Firebase / IndexedDB types across boundaries
+- No leaking Firebase / IndexedDB / LaunchDarkly types across boundaries
 - No circular dependencies
 - No untyped data flow
 - No legacy artefacts or config creep

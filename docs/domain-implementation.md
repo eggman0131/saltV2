@@ -132,6 +132,39 @@ The port is the contract. Everything else in the module is replaceable
 behind that contract.
 
 ============================================================
+4.1 Cross‑Cutting Ports
+============================================================
+
+Most ports belong to a specific module: they are defined inside that
+module's `ports/` folder and re‑exported from its `index.ts`.
+
+Some ports are **cross-cutting**: they are not owned by a single module
+and serve system‑wide concerns. These live directly in
+`/packages/domain/src/` and are re‑exported from `domain/index.ts`.
+
+Current cross‑cutting ports:
+
+ErrorReportingPort
+  report(error: DomainError): void
+
+MatchLoggingPort
+  logMatch(entry: MatchLogEntry): void
+
+Cross‑cutting ports:
+- are implemented by adapters (e.g. ld-observability, observability
+  solutions)
+- are used by multiple modules or by the entire domain layer
+- address concerns that do not fit a single module's responsibilities
+- must be documented in this file (here)
+- must be re‑exported from `domain/index.ts`
+- follow the same naming and implementation contracts as module ports
+
+Example:
+  Canon module may call `ErrorReportingPort` to report a matching failure.
+  Shopping module may call it separately.
+  The port itself belongs to neither module — it is shared infrastructure.
+
+============================================================
 5. Coordinators (Cross‑Module Workflows)
 ============================================================
 
