@@ -41,7 +41,7 @@ function getSyncTransport(): CanonSyncTransportPort {
   return _syncTransport;
 }
 
-async function refreshCanonItems(): Promise<void> {
+export async function refreshCanonItems(): Promise<void> {
   const result = await getLocalStore().list();
   if (result.kind === 'ok') _canonItems.set([...result.value]);
 }

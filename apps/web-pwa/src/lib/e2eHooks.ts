@@ -3,6 +3,7 @@ import { createLocalCanonStoreAdapter } from '@salt/local-store';
 import type { CanonItem } from '@salt/domain';
 import { devSignIn } from './auth.svelte.js';
 import { addAislesBulk, aisles } from './aisleService.js';
+import { refreshCanonItems } from './canonService.js';
 import { tagSession, getSessionURL } from './observability.js';
 import type { E2EBridge, SeedCanonItemInput } from './types/e2e.js';
 
@@ -47,6 +48,7 @@ export function installE2EHooks(): void {
       if (result.kind !== 'ok') {
         throw new Error(`seedCanonItem failed: ${JSON.stringify(result.error)}`);
       }
+      await refreshCanonItems();
       return item;
     },
 

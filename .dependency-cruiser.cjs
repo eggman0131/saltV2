@@ -58,11 +58,25 @@ module.exports = {
       to: { path: '^node_modules/(idb|idb-keyval|dexie)' },
     },
     {
+      name: 'ld-observability-no-firebase',
+      severity: 'error',
+      comment: '@salt/ld-observability must not import Firebase SDKs.',
+      from: { path: '^packages/adapters/ld-observability' },
+      to: { path: '^node_modules/firebase' },
+    },
+    {
+      name: 'ld-observability-no-indexeddb',
+      severity: 'error',
+      comment: '@salt/ld-observability must not import browser storage.',
+      from: { path: '^packages/adapters/ld-observability' },
+      to: { path: '^node_modules/(idb|idb-keyval|dexie)' },
+    },
+    {
       name: 'adapters-no-cross-import',
       severity: 'error',
-      comment: 'local-store and firebase-sync must not import each other. Compose them at the application layer.',
-      from: { path: '^packages/adapters/(local-store|firebase-sync)' },
-      to: { path: '^packages/adapters/(local-store|firebase-sync)', pathNot: '$0' },
+      comment: 'local-store, firebase-sync, and ld-observability must not import each other. Compose them at the application layer.',
+      from: { path: '^packages/adapters/(local-store|firebase-sync|ld-observability)' },
+      to: { path: '^packages/adapters/(local-store|firebase-sync|ld-observability)', pathNot: '$0' },
     },
     {
       name: 'cloud-functions-no-local-store',
