@@ -1,10 +1,19 @@
 <script lang="ts">
   import Router, { router } from 'svelte-spa-router';
-  import { AppShell, Button, ToastProvider, ToastViewport } from '@salt/ui-components';
+  import {
+    AppShell,
+    Button,
+    Toast,
+    ToastClose,
+    ToastDescription,
+    ToastProvider,
+    ToastViewport,
+  } from '@salt/ui-components';
   import AuthGate from './components/AuthGate.svelte';
   import { auth } from './lib/auth.svelte.js';
   import { navItems } from './lib/nav.js';
   import { routes } from './routes/index.js';
+  import { toasts, dismissToast } from './lib/toastStore.js';
 </script>
 
 <AuthGate>
@@ -16,6 +25,19 @@
       {/snippet}
       <Router {routes} />
     </AppShell>
-    <ToastViewport />
+    <ToastViewport>
+      {#each $toasts as toast (toast.id)}
+        <Toast
+          defaultOpen={true}
+          variant={toast.variant}
+          onOpenChange={(open) => {
+            if (!open) dismissToast(toast.id);
+          }}
+        >
+          <ToastDescription>{toast.message}</ToastDescription>
+          <ToastClose />
+        </Toast>
+      {/each}
+    </ToastViewport>
   </ToastProvider>
 </AuthGate>
