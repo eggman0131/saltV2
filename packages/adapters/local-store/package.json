@@ -13,5 +13,8 @@
     "@salt/domain": "workspace:*",
     "@salt/shared-types": "workspace:*",
     "idb": "^8.0.3"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "^6.2.5"
   }
 }
