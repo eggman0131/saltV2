@@ -12,3 +12,6 @@ firebase-debug.log
 firestore-debug.log
 firebase-export*/
 .vexp/manifest.json
+apps/web-pwa/test-results/
+apps/web-pwa/playwright-report/
+apps/web-pwa/playwright/.cache/
