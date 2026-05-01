@@ -113,7 +113,7 @@
     deleteBusy = false;
     if (result.kind === 'ok') {
       deleteOpen = false;
-      addToast(`Deleted ${name}`);
+      addToast(`Deleted ${name}`, 'success');
       push('/canon');
     }
   }
@@ -127,13 +127,13 @@
           {#snippet leading()}
             <Icon name="ArrowLeft" size={16} />
           {/snippet}
-          Ingredients
+          Items
         </Button>
       </div>
-      <Text muted>Ingredient not found.</Text>
+      <Text muted>Item not found.</Text>
     </div>
   {:else}
-    <DetailPage title={titleCase(item.name)} onBack={() => push('/canon')} backLabel="Ingredients">
+    <DetailPage title={titleCase(item.name)} onBack={() => push('/canon')} backLabel="Items">
       {#snippet actions()}
         <Button
           data-testid="canon-detail-delete-button"

@@ -80,7 +80,7 @@
     const { item, decision } = result.value;
 
     if (decision === 'created') {
-      addToast(`Added ${titleCase(item.name)}`);
+      addToast(`Added ${titleCase(item.name)}`, 'success');
       push(`/canon/${item.id}`);
     } else {
       // matched or ai_arbitrated — ask user to confirm

@@ -20,7 +20,7 @@ test('create truly new item → navigates to detail page', async ({ page }, test
   await signIn(page, email);
 
   await page.goto('/#/canon/new');
-  await expect(page.getByRole('heading', { name: /add ingredient/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /add item/i })).toBeVisible();
 
   await createViaCombobox(page, 'Garlic Powder');
 
@@ -39,7 +39,7 @@ test('pick existing from combobox → routes to detail without creating', async 
   const seeded = await seedCanonItem(page, { name: 'Olive Oil' });
 
   await page.goto('/#/canon/new');
-  await expect(page.getByRole('heading', { name: /add ingredient/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /add item/i })).toBeVisible();
 
   const ui = canonCreatePage(page);
   await ui.comboboxInput.fill('Olive');
@@ -62,7 +62,7 @@ test('create matching name → confirm dialog → use existing → routes to exi
   const seeded = await seedCanonItem(page, { name: 'Butter' });
 
   await page.goto('/#/canon/new');
-  await expect(page.getByRole('heading', { name: /add ingredient/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /add item/i })).toBeVisible();
 
   // Submit the same name (lowercased) — stage-1 match, decision=matched
   await createViaCombobox(page, 'butter');
@@ -87,7 +87,7 @@ test('create matching name → confirm dialog → create anyway → creates new 
   const seeded = await seedCanonItem(page, { name: 'Milk' });
 
   await page.goto('/#/canon/new');
-  await expect(page.getByRole('heading', { name: /add ingredient/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /add item/i })).toBeVisible();
 
   await createViaCombobox(page, 'milk');
 

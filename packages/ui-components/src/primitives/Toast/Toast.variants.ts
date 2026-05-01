@@ -8,6 +8,7 @@ export const toastVariants = cva(
       variant: {
         default: 'border bg-background text-foreground',
         destructive: 'border-destructive bg-destructive text-destructive-foreground',
+        success: 'border-secondary bg-secondary text-secondary-foreground',
       },
     },
     defaultVariants: { variant: 'default' },

@@ -1,7 +1,7 @@
 // spec: SPEC.md §6 v0.3
 import { createContext } from '../lib/context';
 
-export type ToastVariant = 'default' | 'destructive';
+export type ToastVariant = 'default' | 'destructive' | 'success';
 
 export type ToastProviderState = {
   readonly maxToasts: number;
