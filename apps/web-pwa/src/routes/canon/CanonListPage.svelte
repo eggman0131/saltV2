@@ -20,6 +20,7 @@
     resolveConflict,
   } from '../../lib/canonService.js';
   import { aisles, initAisles } from '../../lib/aisleService.js';
+  import { titleCase } from '../../lib/titleCase.js';
 
   onMount(() => {
     void initAisles();
@@ -40,14 +41,14 @@
 
 <div class="p-4 sm:p-6">
   <ListPage
-    title="Ingredients"
-    description="Your canonical ingredient database."
+    title="Items"
+    description="Your canonical item database."
     isLoading={$syncPending.initialSync || $syncPending.pull}
     isEmpty={$canonItems.length === 0}
   >
     {#snippet actions()}
       <Button variant="outline" onclick={() => push('/canon/aisles')}>Manage aisles</Button>
-      <Button onclick={() => push('/canon/new')}>Add ingredient</Button>
+      <Button onclick={() => push('/canon/new')}>Add item</Button>
     {/snippet}
     {#snippet children()}
       <ul class="divide-y divide-border rounded-lg border">
@@ -57,10 +58,10 @@
               class="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-muted/50"
               onclick={() => push(`/canon/${item.id}`)}
             >
-              <span class="font-medium">{item.name}</span>
+              <span class="font-medium">{titleCase(item.name)}</span>
               {#if item.aisleId}
                 <span class="text-sm text-muted-foreground">
-                  {$aisles.find((a) => a.id === item.aisleId)?.name ?? ''}
+                  {titleCase($aisles.find((a) => a.id === item.aisleId)?.name ?? '')}
                 </span>
               {/if}
             </button>
@@ -76,28 +77,27 @@
   <Dialog open={true}>
     <DialogContent>
       <DialogHeader>
-        <DialogTitle>Sync conflict: {conflict.local.name}</DialogTitle>
+        <DialogTitle>Sync conflict: {titleCase(conflict.local.name)}</DialogTitle>
         <DialogDescription>
-          This ingredient was changed both locally and on another device. Choose which version to
-          keep.
+          This item was changed both locally and on another device. Choose which version to keep.
         </DialogDescription>
       </DialogHeader>
       <div class="grid grid-cols-2 gap-4 py-2 text-sm">
         <div>
           <Text muted>Local</Text>
-          <p class="font-medium">{conflict.local.name}</p>
+          <p class="font-medium">{titleCase(conflict.local.name)}</p>
           {#if conflict.local.aisleId}
             <p class="text-muted-foreground">
-              {$aisles.find((a) => a.id === conflict.local.aisleId)?.name ?? ''}
+              {titleCase($aisles.find((a) => a.id === conflict.local.aisleId)?.name ?? '')}
             </p>
           {/if}
         </div>
         <div>
           <Text muted>Remote</Text>
-          <p class="font-medium">{conflict.remote.name}</p>
+          <p class="font-medium">{titleCase(conflict.remote.name)}</p>
           {#if conflict.remote.aisleId}
             <p class="text-muted-foreground">
-              {$aisles.find((a) => a.id === conflict.remote.aisleId)?.name ?? ''}
+              {titleCase($aisles.find((a) => a.id === conflict.remote.aisleId)?.name ?? '')}
             </p>
           {/if}
         </div>

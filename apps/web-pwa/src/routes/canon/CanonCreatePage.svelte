@@ -26,12 +26,13 @@
   import { aisles, initAisles } from '../../lib/aisleService.js';
   import type { CanonItem } from '@salt/domain';
   import { addToast } from '../../lib/toastStore.js';
+  import { titleCase } from '../../lib/titleCase.js';
 
   onMount(() => {
     void initAisles();
   });
 
-  let comboItems = $derived($canonItems.map((c) => ({ value: c.id, label: c.name })));
+  let comboItems = $derived($canonItems.map((c) => ({ value: c.id, label: titleCase(c.name) })));
 
   // Case-insensitive substring match on name and synonyms
   function filterFn(input: string, comboItem: { value: string; label: string }): boolean {
@@ -72,14 +73,14 @@
     pending = false;
 
     if (result.kind !== 'ok') {
-      errorMessage = 'Failed to save ingredient. Please try again.';
+      errorMessage = 'Failed to save item. Please try again.';
       return;
     }
 
     const { item, decision } = result.value;
 
     if (decision === 'created') {
-      addToast(`Added ${item.name}`);
+      addToast(`Added ${titleCase(item.name)}`);
       push(`/canon/${item.id}`);
     } else {
       // matched or ai_arbitrated — ask user to confirm
@@ -99,12 +100,12 @@
     overrideBusy = false;
 
     if (result.kind !== 'ok') {
-      addToast('Failed to create ingredient. Please try again.', 'destructive');
+      addToast('Failed to create item. Please try again.', 'destructive');
       return;
     }
 
     matchDialogOpen = false;
-    addToast(`Added ${result.value.item.name}`);
+    addToast(`Added ${titleCase(result.value.item.name)}`);
     push(`/canon/${result.value.item.id}`);
   }
 </script>
@@ -112,23 +113,23 @@
 <div class="p-4 sm:p-6">
   <div class="flex flex-col gap-6">
     <header class="flex flex-col gap-1">
-      <h1 class="text-xl font-semibold tracking-tight text-foreground">Add ingredient</h1>
+      <h1 class="text-xl font-semibold tracking-tight text-foreground">Add item</h1>
       <p class="text-sm text-muted-foreground">
-        Search for an existing ingredient or type a new name to add one.
+        Search for an existing item or type a new name to add one.
       </p>
     </header>
 
     <div class="flex flex-col gap-4">
       <!-- Name combobox -->
       <div class="flex flex-col gap-1.5">
-        <label class="text-sm font-medium" for="ingredient-combobox">Name</label>
+        <label class="text-sm font-medium" for="item-combobox">Name</label>
         <Combobox
           items={comboItems}
           allowCustom={true}
           {filterFn}
           onValueChange={handleValueChange}
           onCreate={handleCreate}
-          placeholder="Search or type a new ingredient…"
+          placeholder="Search or type a new item…"
         >
           <ComboboxField>
             <ComboboxInput />
@@ -157,13 +158,13 @@
         <Select value={selectedAisleId ?? ''} onValueChange={(v) => (selectedAisleId = v || null)}>
           <SelectTrigger>
             {selectedAisleId
-              ? ($aisles.find((a) => a.id === selectedAisleId)?.name ?? 'Unknown')
+              ? titleCase($aisles.find((a) => a.id === selectedAisleId)?.name ?? 'Unknown')
               : 'No aisle'}
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="">No aisle</SelectItem>
             {#each $aisles as aisle (aisle.id)}
-              <SelectItem value={aisle.id}>{aisle.name}</SelectItem>
+              <SelectItem value={aisle.id}>{titleCase(aisle.name)}</SelectItem>
             {/each}
           </SelectContent>
         </Select>
@@ -195,13 +196,13 @@
   <DialogContent>
     <div data-testid="canon-create-match-dialog">
       <DialogHeader>
-        <DialogTitle>This looks like an existing ingredient</DialogTitle>
+        <DialogTitle>This looks like an existing item</DialogTitle>
         <DialogDescription>
           {#if matchedItem}
-            We found a match: <strong>{matchedItem.name}</strong>
+            We found a match: <strong>{titleCase(matchedItem.name)}</strong>
             {#if matchedItem.aisleId}
               {@const aisle = $aisles.find((a) => a.id === matchedItem?.aisleId)}
-              {#if aisle}(aisle: {aisle.name}){/if}
+              {#if aisle}(aisle: {titleCase(aisle.name)}){/if}
             {/if}
             . Would you like to use it, or create a new one anyway?
           {/if}

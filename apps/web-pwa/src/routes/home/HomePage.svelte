@@ -10,9 +10,9 @@
 
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
     <Card>
-      <CardHeader><CardTitle>Ingredients</CardTitle></CardHeader>
+      <CardHeader><CardTitle>Items</CardTitle></CardHeader>
       <CardContent>
-        <Text muted>Your canonical ingredient database.</Text>
+        <Text muted>Your canonical item database.</Text>
       </CardContent>
     </Card>
   </div>

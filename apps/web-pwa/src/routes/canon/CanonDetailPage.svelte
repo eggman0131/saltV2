@@ -28,6 +28,7 @@
   } from '../../lib/canonService.js';
   import { aisles, initAisles } from '../../lib/aisleService.js';
   import { addToast } from '../../lib/toastStore.js';
+  import { titleCase } from '../../lib/titleCase.js';
 
   let { params }: { params: Record<string, string> } = $props();
 
@@ -106,7 +107,7 @@
 
   async function handleDelete(): Promise<void> {
     if (!item) return;
-    const name = item.name;
+    const name = titleCase(item.name);
     deleteBusy = true;
     const result = await deleteCanonItem(item.id);
     deleteBusy = false;
@@ -132,7 +133,7 @@
       <Text muted>Ingredient not found.</Text>
     </div>
   {:else}
-    <DetailPage title={item.name} onBack={() => push('/canon')} backLabel="Ingredients">
+    <DetailPage title={titleCase(item.name)} onBack={() => push('/canon')} backLabel="Ingredients">
       {#snippet actions()}
         <Button
           data-testid="canon-detail-delete-button"
@@ -177,17 +178,17 @@
         <section class="flex flex-col gap-2">
           <h2 class="text-sm font-medium text-foreground">Aisle</h2>
           <div class="flex items-center gap-2">
-            <div class="flex-1">
+            <div class="flex-1" data-testid="canon-detail-aisle-select">
               <Select value={item.aisleId ?? ''} onValueChange={saveAisle} disabled={aisleBusy}>
                 <SelectTrigger>
                   {item.aisleId
-                    ? ($aisles.find((a) => a.id === item?.aisleId)?.name ?? 'Unknown')
+                    ? titleCase($aisles.find((a) => a.id === item?.aisleId)?.name ?? 'Unknown')
                     : 'No aisle'}
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">No aisle</SelectItem>
                   {#each $aisles as aisle (aisle.id)}
-                    <SelectItem value={aisle.id}>{aisle.name}</SelectItem>
+                    <SelectItem value={aisle.id}>{titleCase(aisle.name)}</SelectItem>
                   {/each}
                 </SelectContent>
               </Select>
@@ -239,7 +240,7 @@
   <DialogContent>
     <div data-testid="canon-detail-delete-dialog">
       <DialogHeader>
-        <DialogTitle>Delete "{item?.name}"?</DialogTitle>
+        <DialogTitle>Delete "{titleCase(item?.name ?? '')}"?</DialogTitle>
         <DialogDescription>This action cannot be undone.</DialogDescription>
       </DialogHeader>
       <DialogFooter>

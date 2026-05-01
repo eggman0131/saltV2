@@ -1,6 +1,6 @@
 import { test, expect } from './fixtures/test';
 import { signIn, uniqueEmail } from './helpers/auth';
-import { seedCanonItem, getCanonItem } from './helpers/seed';
+import { seedAisles, seedCanonItem, getCanonItem } from './helpers/seed';
 import { canonCreatePage, canonDetailPage } from './helpers/locators';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -151,6 +151,27 @@ test('detail page — edit synonyms', async ({ page }, testInfo) => {
       return item?.synonyms;
     })
     .toEqual(['Cilantro', 'Chinese parsley']);
+});
+
+test('detail page — change aisle', async ({ page }, testInfo) => {
+  const email = uniqueEmail(testInfo.testId);
+  await page.goto('/');
+  await signIn(page, email);
+
+  const [aisle] = await seedAisles(page, ['Produce']);
+  const seeded = await seedCanonItem(page, { name: 'Carrot' });
+
+  await page.goto(`/#/canon/${seeded.id}`);
+  const ui = canonDetailPage(page);
+  await ui.aisleTrigger.click();
+  await page.getByRole('option', { name: 'Produce' }).click();
+
+  await expect
+    .poll(async () => {
+      const item = await getCanonItem(page, seeded.id);
+      return item?.aisleId;
+    })
+    .toBe(aisle!.id);
 });
 
 test('detail page — delete item navigates back to canon list', async ({ page }, testInfo) => {

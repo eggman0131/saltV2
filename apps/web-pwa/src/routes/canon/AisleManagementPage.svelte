@@ -35,6 +35,7 @@
   } from '../../lib/aisleService.js';
   import { canonItems } from '../../lib/canonService.js';
   import type { Aisle } from '@salt/domain';
+  import { titleCase } from '../../lib/titleCase.js';
 
   onMount(() => {
     void initAisles();
@@ -327,7 +328,7 @@
                 class="flex-1 truncate text-left text-sm font-medium hover:underline"
                 onclick={() => startRename(aisle)}
               >
-                {aisle.name}
+                {titleCase(aisle.name)}
               </button>
             {/if}
 
@@ -340,7 +341,7 @@
             <Button
               variant="ghost"
               size="icon"
-              ariaLabel="Delete {aisle.name}"
+              ariaLabel="Delete {titleCase(aisle.name)}"
               onclick={() => handleDeleteRow(aisle.id)}
             >
               <Icon name="Trash2" size={16} />
@@ -412,7 +413,7 @@
       {#if deleteAffectedItems.length > 0}
         <ul class="max-h-48 divide-y divide-border overflow-y-auto rounded-md border py-1">
           {#each deleteAffectedItems as item (item.id)}
-            <li class="px-3 py-2 text-sm">{item.name}</li>
+            <li class="px-3 py-2 text-sm">{titleCase(item.name)}</li>
           {/each}
         </ul>
       {:else}
@@ -459,14 +460,14 @@
       <Select value={mergeTargetId} onValueChange={(v: string) => (mergeTargetId = v)}>
         <SelectTrigger>
           {mergeTargetId
-            ? ($aisles.find((a) => a.id === mergeTargetId)?.name ?? 'Pick target…')
+            ? titleCase($aisles.find((a) => a.id === mergeTargetId)?.name ?? 'Pick target…')
             : 'Pick target aisle…'}
         </SelectTrigger>
         <SelectContent>
           {#each [...selected] as id (id)}
             {@const a = $aisles.find((a) => a.id === id)}
             {#if a}
-              <SelectItem value={a.id}>{a.name}</SelectItem>
+              <SelectItem value={a.id}>{titleCase(a.name)}</SelectItem>
             {/if}
           {/each}
         </SelectContent>
@@ -476,9 +477,9 @@
         <div class="max-h-64 divide-y divide-border overflow-y-auto rounded-md border">
           {#each mergeAffectedItems as item (item.id)}
             <div class="flex items-center justify-between gap-4 px-3 py-2">
-              <span class="min-w-0 flex-1 truncate text-sm">{item.name}</span>
+              <span class="min-w-0 flex-1 truncate text-sm">{titleCase(item.name)}</span>
               <RadioGroup
-                label={item.name}
+                label={titleCase(item.name)}
                 value={mergeChoices.get(item.id) ?? 'move'}
                 orientation="horizontal"
                 class="sr-only-label"
