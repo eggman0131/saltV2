@@ -98,7 +98,7 @@ describe('CanonDetailPage', () => {
     it('renders a not-found message when item is absent from the store', () => {
       mockCanonItems._set([]);
       render(CanonDetailPage, { params: { id: 'missing' } });
-      expect(screen.getByText(/Ingredient not found/i)).toBeInTheDocument();
+      expect(screen.getByText(/Item not found/i)).toBeInTheDocument();
     });
   });
 
@@ -260,7 +260,10 @@ describe('CanonDetailPage', () => {
       await userEvent.click(screen.getByTestId('canon-detail-delete-confirm'));
 
       await waitFor(() => {
-        expect(vi.mocked(addToast)).toHaveBeenCalledWith(expect.stringContaining('Olive Oil'));
+        expect(vi.mocked(addToast)).toHaveBeenCalledWith(
+          expect.stringContaining('Olive Oil'),
+          'success',
+        );
         expect(vi.mocked(push)).toHaveBeenCalledWith('/canon');
       });
     });

@@ -159,7 +159,10 @@ describe('CanonCreatePage', () => {
       await userEvent.click(screen.getByRole('option', { name: /Create "Garlic"/ }));
 
       await waitFor(() => {
-        expect(vi.mocked(addToast)).toHaveBeenCalledWith(expect.stringContaining('Garlic'));
+        expect(vi.mocked(addToast)).toHaveBeenCalledWith(
+          expect.stringContaining('Garlic'),
+          'success',
+        );
         expect(vi.mocked(push)).toHaveBeenCalledWith('/canon/g1');
       });
     });
