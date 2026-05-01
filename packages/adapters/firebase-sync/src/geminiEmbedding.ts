@@ -11,6 +11,7 @@ export function createGeminiEmbeddingAdapter(
     async computeEmbedding(text: string) {
       const apiKey = getApp().options.apiKey;
       if (!apiKey) {
+        errors?.report(new Error('Gemini embedding: no API key configured'));
         return { kind: 'err', error: { kind: 'NetworkError', reason: 'unreachable' } };
       }
       try {
@@ -26,7 +27,10 @@ export function createGeminiEmbeddingAdapter(
           },
         );
         if (!resp.ok) {
-          return { kind: 'err', error: { kind: 'NetworkError', reason: 'transient' } };
+          const body = await resp.json().catch(() => null);
+          errors?.report(new Error(`Gemini embedding ${resp.status}: ${JSON.stringify(body)}`));
+          const reason = resp.status >= 500 || resp.status === 429 ? 'transient' : 'unreachable';
+          return { kind: 'err', error: { kind: 'NetworkError', reason } };
         }
         const data = (await resp.json()) as { embedding: { values: number[] } };
         return { kind: 'ok', value: data.embedding.values };
