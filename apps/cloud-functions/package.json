@@ -8,7 +8,7 @@
     "node": "22"
   },
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/index.js --external:firebase-admin --external:firebase-admin/* --external:firebase-functions --external:firebase-functions/*",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/index.js --external:firebase-admin --external:firebase-admin/* --external:firebase-functions --external:firebase-functions/* --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
