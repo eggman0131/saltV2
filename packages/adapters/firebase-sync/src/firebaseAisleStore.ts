@@ -11,7 +11,7 @@ export function createFirebaseAisleStoreAdapter(
     async load() {
       try {
         const db = getFirestore(getApp());
-        const snap = await getDoc(doc(db, 'config', 'aisles'));
+        const snap = await getDoc(doc(db, 'canonData', 'aisles'));
         if (!snap.exists()) return success(null);
         const data = snap.data() as { aisles?: Aisle[] };
         return success(data.aisles ?? []);
@@ -24,7 +24,7 @@ export function createFirebaseAisleStoreAdapter(
     async save(aisles) {
       try {
         const db = getFirestore(getApp());
-        await setDoc(doc(db, 'config', 'aisles'), { aisles: [...aisles], schemaVersion: 1 });
+        await setDoc(doc(db, 'canonData', 'aisles'), { aisles: [...aisles], schemaVersion: 1 });
         return success(aisles);
       } catch (err) {
         errors?.report(err);
