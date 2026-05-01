@@ -56,45 +56,47 @@
     aria-describedby={fieldState.describedBy}
     class={cn('peer', checkboxRootVariants({ size }))}
   >
-    <Checkbox.Indicator class="flex items-center justify-center text-current">
-      {#if bitsIndeterminate}
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="10"
-          height="2"
-          viewBox="0 0 10 2"
-          fill="none"
-          aria-hidden="true"
-        >
-          <line
-            x1="1"
-            y1="1"
-            x2="9"
-            y2="1"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-          />
-        </svg>
-      {:else}
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="10"
-          height="8"
-          viewBox="0 0 10 8"
-          fill="none"
-          aria-hidden="true"
-        >
-          <path
-            d="M1 4L3.5 6.5L9 1"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
-      {/if}
-    </Checkbox.Indicator>
+    {#if bitsChecked || bitsIndeterminate}
+      <div class="flex items-center justify-center text-current">
+        {#if bitsIndeterminate}
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="10"
+            height="2"
+            viewBox="0 0 10 2"
+            fill="none"
+            aria-hidden="true"
+          >
+            <line
+              x1="1"
+              y1="1"
+              x2="9"
+              y2="1"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            />
+          </svg>
+        {:else}
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="10"
+            height="8"
+            viewBox="0 0 10 8"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path
+              d="M1 4L3.5 6.5L9 1"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        {/if}
+      </div>
+    {/if}
   </Checkbox.Root>
 
   {#if children || label}
