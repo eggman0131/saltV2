@@ -14,12 +14,17 @@ import type { CanonItem } from '../entities/CanonItem.js';
 export function mergeCanonItems(local: CanonItem, remote: CanonItem): CanonItem {
   return {
     id: local.id,
+    schemaVersion: 2,
     name: remote.name,
     synonyms: unionSynonyms(local.synonyms, remote.synonyms),
     aisleId: remote.aisleId,
     thumbnail: remote.thumbnail,
     embedding: remote.embedding,
     needs_approval: local.needs_approval || remote.needs_approval,
+    // Server-authoritative sync fields come from remote.
+    updatedAt: remote.updatedAt,
+    revision: remote.revision,
+    deletedAt: remote.deletedAt,
   };
 }
 

@@ -5,6 +5,7 @@
 
 export type { CanonItem } from './entities/CanonItem.js';
 export type { Aisle } from './entities/Aisle.js';
+export type { AislesDocument } from './entities/AislesDocument.js';
 export type { CanonLocalStorePort } from './ports/CanonLocalStorePort.js';
 export type {
   CanonSyncTransportPort,

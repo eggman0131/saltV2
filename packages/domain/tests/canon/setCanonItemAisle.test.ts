@@ -5,12 +5,16 @@ import type { CanonItem } from '../../src/canon/entities/CanonItem.js';
 function item(overrides: Partial<CanonItem> = {}): CanonItem {
   return {
     id: 'c1',
+    schemaVersion: 2,
     name: 'Olive Oil',
     synonyms: [],
     aisleId: null,
     thumbnail: null,
     embedding: null,
     needs_approval: false,
+    updatedAt: '',
+    revision: 0,
+    deletedAt: null,
     ...overrides,
   };
 }

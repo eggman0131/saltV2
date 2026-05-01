@@ -12,8 +12,13 @@ service cloud.firestore {
       allow read, write: if request.auth != null;
     }
     // Aisle config — shared; any authenticated user can read and write.
-    match /config/{document} {
+    match /canonData/{document} {
       allow read, write: if request.auth != null;
+    }
+    // Canon manifest — revision ticker; written only by CF admin SDK, readable by any auth user.
+    match /canonManifest/{document} {
+      allow read: if request.auth != null;
+      allow write: if false;
     }
     match /{document=**} {
       allow read, write: if false;

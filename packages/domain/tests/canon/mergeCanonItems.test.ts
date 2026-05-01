@@ -5,12 +5,16 @@ import type { CanonItem } from '@salt/domain';
 function item(overrides: Partial<CanonItem> = {}): CanonItem {
   return {
     id: 'item-1',
+    schemaVersion: 2,
     name: 'Tomato',
     synonyms: [],
     aisleId: 'produce',
     thumbnail: null,
     embedding: null,
     needs_approval: false,
+    updatedAt: '',
+    revision: 0,
+    deletedAt: null,
     ...overrides,
   };
 }

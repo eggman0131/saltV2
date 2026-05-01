@@ -4,11 +4,15 @@ import type { CanonItem } from '../../src/canon/entities/CanonItem.js';
 
 function item(overrides: Partial<CanonItem> & { id: string; name: string }): CanonItem {
   return {
+    schemaVersion: 2,
     synonyms: [],
     aisleId: null,
     thumbnail: null,
     embedding: null,
     needs_approval: false,
+    updatedAt: '',
+    revision: 0,
+    deletedAt: null,
     ...overrides,
   };
 }

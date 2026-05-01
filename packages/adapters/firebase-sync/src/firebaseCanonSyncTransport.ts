@@ -17,18 +17,22 @@ const BASE_DELAY_MS = 500;
 const MAX_DELAY_MS = 10_000;
 
 function toDoc(item: CanonItem) {
-  return { ...item, schemaVersion: 1 as const };
+  return { ...item };
 }
 
 function fromDoc(data: Record<string, unknown>): CanonItem {
   return {
     id: data['id'] as string,
+    schemaVersion: 2,
     name: data['name'] as string,
     synonyms: Array.isArray(data['synonyms']) ? (data['synonyms'] as string[]) : [],
     aisleId: typeof data['aisleId'] === 'string' ? data['aisleId'] : null,
     thumbnail: typeof data['thumbnail'] === 'string' ? data['thumbnail'] : null,
     embedding: Array.isArray(data['embedding']) ? (data['embedding'] as number[]) : null,
     needs_approval: typeof data['needs_approval'] === 'boolean' ? data['needs_approval'] : true,
+    updatedAt: typeof data['updatedAt'] === 'string' ? data['updatedAt'] : '',
+    revision: typeof data['revision'] === 'number' ? data['revision'] : 0,
+    deletedAt: typeof data['deletedAt'] === 'string' ? data['deletedAt'] : null,
   };
 }
 

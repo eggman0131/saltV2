@@ -3,10 +3,16 @@
 // Other modules access it only via the published index (re-exported as a type).
 export interface CanonItem {
   readonly id: string;
+  readonly schemaVersion: 2;
   readonly name: string;
   readonly synonyms: readonly string[];
   readonly aisleId: string | null;
   readonly thumbnail: string | null;
   readonly embedding: readonly number[] | null;
   readonly needs_approval: boolean;
+  // Sync fields — stamped server-side by the onCanonItemWritten CF trigger.
+  // New local items start with revision 0 and empty updatedAt until first sync.
+  readonly updatedAt: string; // ISO-8601
+  readonly revision: number;
+  readonly deletedAt: string | null; // null = live; non-null = soft-deleted tombstone
 }

@@ -18,12 +18,16 @@ describe('createCanonItem', () => {
     if (result.kind !== 'ok') return;
     expect(result.value).toEqual({
       id: 'id-1',
+      schemaVersion: 2,
       name: 'Tomato',
       synonyms: [],
       aisleId: null,
       thumbnail: null,
       embedding: null,
       needs_approval: true,
+      updatedAt: '',
+      revision: 0,
+      deletedAt: null,
     });
   });
 

@@ -20,11 +20,15 @@ export function createCanonItem(
   }
   return success({
     id: ids.newCanonId(),
+    schemaVersion: 2,
     name,
     synonyms: (input.synonyms ?? []).map((s) => s.trim()).filter((s) => s.length > 0),
     aisleId: input.aisleId ?? null,
     thumbnail: null,
     embedding: null,
     needs_approval: input.needs_approval ?? true,
+    updatedAt: '',
+    revision: 0,
+    deletedAt: null,
   });
 }

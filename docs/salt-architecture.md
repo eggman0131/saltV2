@@ -141,6 +141,8 @@ This model is intentionally narrow. Multi‑workspace, sharing, or per‑documen
 - Must not contain domain logic — including conflict resolution. When a revision mismatch is detected, the adapter returns `Conflict<T>` and lets the domain/UI decide.
 - Must not leak Firebase types across the boundary.
 
+**Canon wire format (manifest-driven sync).** Canon sync uses a single Firestore document `canonManifest/global` as a revision ticker with two per-scope counters: `{ itemsRevision: number, aislesRevision: number, latestItemsUpdatedAt: Timestamp, latestAislesUpdatedAt: Timestamp, latestRevisionAt: Timestamp }`. Clients subscribe to this one document instead of listening to any collection. When a scope's revision advances past the local cursor stored in `local-store` (keyed `manifestCursor:items` and `manifestCursor:aisles`), the client triggers a delta pull for that scope only. Per-scope cursors are `number` (matching the `revision` field on each entity). Canon items use per-document `revision`; the aisles scope uses a single wrapper-doc (`canonData/aisles`) carrying its own `revision`. Both revision fields are stamped server-side by Cloud Function triggers — clients never forge them. The manifest document is readable by any authenticated user and writable only by the admin SDK (Cloud Functions).
+
 ### 6.3 ld-observability adapter
 
 - Implements `ErrorReportingPort` and `MatchLoggingPort` using the LaunchDarkly Observability SDK.
