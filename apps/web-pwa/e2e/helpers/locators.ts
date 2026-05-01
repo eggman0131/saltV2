@@ -31,3 +31,43 @@ export function aislesPage(page: Page): AislesPageLocators {
     dragHandle: (id) => page.getByTestId(`aisle-drag-handle-${id}`),
   };
 }
+
+export interface CanonCreatePageLocators {
+  readonly comboboxInput: Locator;
+  readonly pendingIndicator: Locator;
+  readonly matchDialog: Locator;
+  readonly useExistingButton: Locator;
+  readonly createAnywayButton: Locator;
+}
+
+export function canonCreatePage(page: Page): CanonCreatePageLocators {
+  return {
+    comboboxInput: page.getByRole('combobox'),
+    pendingIndicator: page.getByTestId('canon-create-pending'),
+    matchDialog: page.getByTestId('canon-create-match-dialog'),
+    useExistingButton: page.getByTestId('canon-create-use-existing'),
+    createAnywayButton: page.getByTestId('canon-create-create-anyway'),
+  };
+}
+
+export interface CanonDetailPageLocators {
+  readonly nameInput: Locator;
+  readonly nameSave: Locator;
+  readonly synonymsInput: Locator;
+  readonly synonymsSave: Locator;
+  readonly deleteButton: Locator;
+  readonly deleteDialog: Locator;
+  readonly deleteConfirm: Locator;
+}
+
+export function canonDetailPage(page: Page): CanonDetailPageLocators {
+  return {
+    nameInput: page.getByTestId('canon-detail-name-input'),
+    nameSave: page.getByTestId('canon-detail-name-save'),
+    synonymsInput: page.getByTestId('canon-detail-synonyms-input'),
+    synonymsSave: page.getByTestId('canon-detail-synonyms-save'),
+    deleteButton: page.getByTestId('canon-detail-delete-button'),
+    deleteDialog: page.getByTestId('canon-detail-delete-dialog'),
+    deleteConfirm: page.getByTestId('canon-detail-delete-confirm'),
+  };
+}

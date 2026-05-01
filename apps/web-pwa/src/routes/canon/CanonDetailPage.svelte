@@ -134,7 +134,12 @@
   {:else}
     <DetailPage title={item.name} onBack={() => push('/canon')} backLabel="Ingredients">
       {#snippet actions()}
-        <Button variant="destructive" size="sm" onclick={() => (deleteOpen = true)}>
+        <Button
+          data-testid="canon-detail-delete-button"
+          variant="destructive"
+          size="sm"
+          onclick={() => (deleteOpen = true)}
+        >
           {#snippet leading()}
             <Icon name="Trash2" size={16} />
           {/snippet}
@@ -153,9 +158,11 @@
                 value={editingName}
                 onValueChange={(v) => (editingName = v)}
                 error={nameError}
+                data-testid="canon-detail-name-input"
               />
             </div>
             <Button
+              data-testid="canon-detail-name-save"
               variant="outline"
               onclick={saveName}
               loading={nameBusy}
@@ -203,9 +210,11 @@
                 onValueChange={(v) => (editingSynonyms = v)}
                 error={synonymsError}
                 placeholder="e.g. Butter, Unsalted butter"
+                data-testid="canon-detail-synonyms-input"
               />
             </div>
             <Button
+              data-testid="canon-detail-synonyms-save"
               variant="outline"
               onclick={saveSynonyms}
               loading={synonymsBusy}
@@ -228,22 +237,25 @@
   }}
 >
   <DialogContent>
-    <DialogHeader>
-      <DialogTitle>Delete "{item?.name}"?</DialogTitle>
-      <DialogDescription>This action cannot be undone.</DialogDescription>
-    </DialogHeader>
-    <DialogFooter>
-      <Button variant="outline" onclick={() => (deleteOpen = false)} disabled={deleteBusy}>
-        Cancel
-      </Button>
-      <Button
-        variant="destructive"
-        onclick={handleDelete}
-        loading={deleteBusy}
-        disabled={deleteBusy}
-      >
-        Delete
-      </Button>
-    </DialogFooter>
+    <div data-testid="canon-detail-delete-dialog">
+      <DialogHeader>
+        <DialogTitle>Delete "{item?.name}"?</DialogTitle>
+        <DialogDescription>This action cannot be undone.</DialogDescription>
+      </DialogHeader>
+      <DialogFooter>
+        <Button variant="outline" onclick={() => (deleteOpen = false)} disabled={deleteBusy}>
+          Cancel
+        </Button>
+        <Button
+          data-testid="canon-detail-delete-confirm"
+          variant="destructive"
+          onclick={handleDelete}
+          loading={deleteBusy}
+          disabled={deleteBusy}
+        >
+          Delete
+        </Button>
+      </DialogFooter>
+    </div>
   </DialogContent>
 </Dialog>

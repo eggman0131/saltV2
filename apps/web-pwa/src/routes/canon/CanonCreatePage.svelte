@@ -171,7 +171,10 @@
     </div>
 
     {#if pending}
-      <div class="flex items-center gap-2 text-sm text-muted-foreground">
+      <div
+        data-testid="canon-create-pending"
+        class="flex items-center gap-2 text-sm text-muted-foreground"
+      >
         <Spinner size={16} />
         Checking for matches…
       </div>
@@ -190,24 +193,35 @@
 <!-- Match confirm dialog -->
 <Dialog bind:open={matchDialogOpen}>
   <DialogContent>
-    <DialogHeader>
-      <DialogTitle>This looks like an existing ingredient</DialogTitle>
-      <DialogDescription>
-        {#if matchedItem}
-          We found a match: <strong>{matchedItem.name}</strong>
-          {#if matchedItem.aisleId}
-            {@const aisle = $aisles.find((a) => a.id === matchedItem?.aisleId)}
-            {#if aisle}(aisle: {aisle.name}){/if}
+    <div data-testid="canon-create-match-dialog">
+      <DialogHeader>
+        <DialogTitle>This looks like an existing ingredient</DialogTitle>
+        <DialogDescription>
+          {#if matchedItem}
+            We found a match: <strong>{matchedItem.name}</strong>
+            {#if matchedItem.aisleId}
+              {@const aisle = $aisles.find((a) => a.id === matchedItem?.aisleId)}
+              {#if aisle}(aisle: {aisle.name}){/if}
+            {/if}
+            . Would you like to use it, or create a new one anyway?
           {/if}
-          . Would you like to use it, or create a new one anyway?
-        {/if}
-      </DialogDescription>
-    </DialogHeader>
-    <DialogFooter>
-      <Button variant="outline" onclick={handleUseExisting}>Use existing</Button>
-      <Button onclick={handleForceCreate} loading={overrideBusy} disabled={overrideBusy}>
-        Create anyway
-      </Button>
-    </DialogFooter>
+        </DialogDescription>
+      </DialogHeader>
+      <DialogFooter>
+        <Button
+          data-testid="canon-create-use-existing"
+          variant="outline"
+          onclick={handleUseExisting}>Use existing</Button
+        >
+        <Button
+          data-testid="canon-create-create-anyway"
+          onclick={handleForceCreate}
+          loading={overrideBusy}
+          disabled={overrideBusy}
+        >
+          Create anyway
+        </Button>
+      </DialogFooter>
+    </div>
   </DialogContent>
 </Dialog>
