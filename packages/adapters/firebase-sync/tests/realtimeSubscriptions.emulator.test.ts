@@ -11,10 +11,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { initializeApp, deleteApp, type FirebaseApp } from 'firebase/app';
 import { getFirestore, connectFirestoreEmulator, doc, setDoc } from 'firebase/firestore';
 import type { Firestore } from 'firebase/firestore';
-import { initFirebase } from '../src/init.js';
+import { getAuth, connectAuthEmulator, signInAnonymously } from 'firebase/auth';
 import { subscribeCanonItems, upsertCanonItem } from '../src/canonSubscription.js';
 import { subscribeAisles, saveAisles } from '../src/aisleSubscription.js';
-import { clearFirestoreEmulator, PROJECT_ID } from './emulatorHelpers.js';
+import { clearFirestoreEmulator, initFirebaseEmulator, PROJECT_ID } from './emulatorHelpers.js';
 import type { CanonItem, Aisle } from '@salt/domain';
 
 const CONVERGENCE_MS = 5000;
@@ -42,12 +42,15 @@ function makeAisle(id: string, name: string): Aisle {
   return { id, name, order: 0 };
 }
 
-beforeAll(() => {
-  initFirebase({ projectId: PROJECT_ID }, true);
+beforeAll(async () => {
+  await initFirebaseEmulator();
 
-  writerApp = initializeApp({ projectId: PROJECT_ID }, 'rt-writer');
+  writerApp = initializeApp({ projectId: PROJECT_ID, apiKey: 'demo-api-key' }, 'rt-writer');
   writerDb = getFirestore(writerApp);
   connectFirestoreEmulator(writerDb, '127.0.0.1', 8080);
+  const writerAuth = getAuth(writerApp);
+  connectAuthEmulator(writerAuth, 'http://127.0.0.1:9099', { disableWarnings: true });
+  await signInAnonymously(writerAuth);
 });
 
 afterAll(async () => {
@@ -164,10 +167,12 @@ describe('realtimeSubscriptions — Firestore emulator', () => {
         () => {},
       );
 
-      await waitFor(() => received.length > 0, CONVERGENCE_MS);
+      // Firestore may deliver a stale cache snapshot first; wait for the
+      // server-confirmed empty delivery.
+      await waitFor(() => received.some((r) => r.length === 0), CONVERGENCE_MS);
 
       unsubscribe();
-      expect(received[0]).toEqual([]);
+      expect(received.some((r) => r.length === 0)).toBe(true);
     });
   });
 });

@@ -10,9 +10,8 @@
  */
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { doc, getDoc, getFirestore, setDoc } from 'firebase/firestore';
-import { initFirebase } from '../src/init.js';
 import { createFirebaseCanonSyncTransportAdapter } from '../src/firebaseCanonSyncTransport.js';
-import { clearFirestoreEmulator, PROJECT_ID } from './emulatorHelpers.js';
+import { clearFirestoreEmulator, initFirebaseEmulator } from './emulatorHelpers.js';
 
 function makeItem(id: string, revision: number, name = 'Test Item') {
   return {
@@ -30,8 +29,8 @@ function makeItem(id: string, revision: number, name = 'Test Item') {
   };
 }
 
-beforeAll(() => {
-  initFirebase({ projectId: PROJECT_ID }, true);
+beforeAll(async () => {
+  await initFirebaseEmulator();
 });
 
 beforeEach(async () => {

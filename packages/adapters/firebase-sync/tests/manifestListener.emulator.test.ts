@@ -6,9 +6,8 @@
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { doc, getFirestore, setDoc, updateDoc } from 'firebase/firestore';
-import { initFirebase } from '../src/init.js';
 import { createFirebaseManifestListener } from '../src/firebaseManifestListener.js';
-import { clearFirestoreEmulator, PROJECT_ID } from './emulatorHelpers.js';
+import { clearFirestoreEmulator, initFirebaseEmulator } from './emulatorHelpers.js';
 
 const MANIFEST_PATH = 'canonManifest/global';
 
@@ -28,8 +27,8 @@ function waitForTick(onTick: ReturnType<typeof vi.fn>, count = 1, timeout = 5000
   });
 }
 
-beforeAll(() => {
-  initFirebase({ projectId: PROJECT_ID }, true);
+beforeAll(async () => {
+  await initFirebaseEmulator();
 });
 
 beforeEach(async () => {

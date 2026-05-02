@@ -6,9 +6,8 @@
  */
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { doc, getDoc, getFirestore, setDoc } from 'firebase/firestore';
-import { initFirebase } from '../src/init.js';
 import { createFirebaseAisleSyncTransportAdapter } from '../src/firebaseAisleSync.js';
-import { clearFirestoreEmulator, PROJECT_ID } from './emulatorHelpers.js';
+import { clearFirestoreEmulator, initFirebaseEmulator } from './emulatorHelpers.js';
 import type { Aisle } from '@salt/domain';
 
 const AISLES_PATH = 'canonData/aisles';
@@ -26,8 +25,8 @@ function aislesDoc(aisles: Aisle[], revision: number) {
   };
 }
 
-beforeAll(() => {
-  initFirebase({ projectId: PROJECT_ID }, true);
+beforeAll(async () => {
+  await initFirebaseEmulator();
 });
 
 beforeEach(async () => {
