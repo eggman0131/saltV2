@@ -164,6 +164,13 @@ Example:
   Shopping module may call it separately.
   The port itself belongs to neither module — it is shared infrastructure.
 
+Composition note: `ld-observability` is the client implementation of
+`ErrorReportingPort` and `MatchLoggingPort` and is browser-only. Cloud
+Functions do not wire these ports; CF code logs via `firebase-functions/
+logger` directly. Domain code that wants to report through the port from
+both surfaces must wait for a Node-side adapter (tracked as a follow-up
+in the architecture contract).
+
 ============================================================
 5. Coordinators (Cross‑Module Workflows)
 ============================================================

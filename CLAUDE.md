@@ -9,14 +9,14 @@ shared-types    →  (nothing)
 domain          →  shared-types
 local-store     →  domain, shared-types          # IndexedDB only
 firebase-sync   →  domain, shared-types          # Firebase SDKs only
-ld-observability  →  domain, shared-types          # LaunchDarkly Observability SDK only
+ld-observability  →  domain, shared-types          # LaunchDarkly Observability SDK only — browser-only
 ui-components   →  (external only — shadcn/tailwind)
 testing-utils   →  shared-types, domain, local-store, firebase-sync, ld-observability
 web-pwa         →  shared-types, domain, local-store, firebase-sync, ld-observability, ui-components
-cloud-functions →  shared-types, domain, firebase-sync, ld-observability
+cloud-functions →  shared-types, domain, firebase-sync
 ```
 
-`local-store`, `firebase-sync`, and `ld-observability` are **siblings** — they must not import each other. They are composed at the application layer (web-pwa, cloud-functions).
+`local-store`, `firebase-sync`, and `ld-observability` are **siblings** — they must not import each other. `web-pwa` composes all three; `cloud-functions` composes `firebase-sync` only. `@salt/ld-observability` depends on browser-only LaunchDarkly SDKs and cannot run in Node — Cloud Functions log via `firebase-functions/logger` directly.
 
 ## Hard rules
 
@@ -24,7 +24,7 @@ cloud-functions →  shared-types, domain, firebase-sync, ld-observability
 2. **Firebase SDK only in `firebase-sync`.** The only place `firebase` or `firebase-admin` may be imported is `packages/adapters/firebase-sync`.
 3. **IndexedDB / browser storage only in `local-store`.** No other package may import `idb`, `idb-keyval`, or touch `window.indexedDB` / `localStorage` / `sessionStorage` / `caches` directly.
 4. **Adapters do not import each other.** `local-store` ↔ `firebase-sync` is forbidden in both directions.
-5. **Cloud Functions do not import `local-store`.** CFs run server‑side and have no browser storage.
+5. **Cloud Functions do not import `local-store` or `ld-observability`.** CFs run server‑side: no browser storage, and the LaunchDarkly Observability SDK is browser-only. CFs log via `firebase-functions/logger`.
 6. **No importing apps.** Nothing may import `@salt/web-pwa` or `@salt/cloud-functions`.
 7. **UI primitives go through `@salt/ui-components`.** `apps/web-pwa` must never import `shadcn-svelte`, `bits-ui`, or `melt-ui` directly — always through `@salt/ui-components`.
 8. **No circular dependencies.** Enforced by dependency-cruiser.

@@ -51,7 +51,7 @@ The three adapters are **siblings**, not layered. They do not depend on each oth
 ### Allowed
 
 - web-pwa → domain, shared-types, ui-components, local-store, firebase-sync, ld-observability
-- cloud-functions → domain, shared-types, firebase-sync, ld-observability
+- cloud-functions → domain, shared-types, firebase-sync
 - local-store → domain, shared-types
 - firebase-sync → domain, shared-types
 - ld-observability → domain, shared-types
@@ -67,6 +67,7 @@ The three adapters are **siblings**, not layered. They do not depend on each oth
 - Domain → Firebase SDK / IndexedDB / Node / browser APIs
 - Domain → UI
 - Cloud Functions → UI
+- Cloud Functions → ld-observability (LaunchDarkly Observability SDK is browser-only; CFs use `firebase-functions/logger`)
 - local-store ↔ firebase-sync ↔ ld-observability (adapters must not import each other)
 - Any module → apps/web-pwa or apps/cloud-functions
 
@@ -151,6 +152,7 @@ This model is intentionally narrow. Multi‑workspace, sharing, or per‑documen
 - Must not contain domain logic or business rules.
 - Normalizes errors into `DomainError` categories before crossing the boundary.
 - Logs diagnostic information without leaking SDK types or raw error objects.
+- **Browser-only.** The underlying SDKs (`@launchdarkly/js-client-sdk`, `@launchdarkly/session-replay`) do not run in Node, so this adapter is bundled into `web-pwa` only. Cloud Functions log via `firebase-functions/logger` directly (see §8). A Node-side LaunchDarkly ingest is tracked as a follow-up.
 
 ### 6.4 Common rules
 
@@ -245,7 +247,8 @@ Shopping lists never return conflicts. They use realtime field‑level merge dri
 - All error reporting is mediated through `ErrorReportingPort` (a cross-cutting port in the domain layer).
 - Adapters must not log directly to console or external SDKs; they must use the port to normalize errors first.
 - Logs must not leak Firebase/IndexedDB/LaunchDarkly types or raw error objects across the adapter boundary.
-- The `ld-observability` adapter receives `DomainError` instances and reports them to LaunchDarkly.
+- The `ld-observability` adapter receives `DomainError` instances and reports them to LaunchDarkly. It is browser-only.
+- **Cloud Functions** do not wire `ErrorReportingPort` (no Node-side adapter exists). They log via `firebase-functions/logger` with structured JSON shaped to match the `DomainError` taxonomy (`{ scope, docId, errorCategory }`), so server-side telemetry can be normalized later if a Node-side ingest lands.
 
 ### 7.7 Retry Behaviour
 
@@ -272,7 +275,7 @@ Cloud Functions exist in the architecture to support **server‑side gen‑AI wo
 
 When implemented, Cloud Functions:
 
-- Import domain + firebase-sync + ld-observability (never local-store; CFs have no browser storage)
+- Import domain + firebase-sync (never local-store; CFs have no browser storage. Never ld-observability; the LaunchDarkly Observability SDK is browser-only — log via `firebase-functions/logger` instead)
 - Never import UI
 - Never contain business logic
 - Only orchestrate:
@@ -335,6 +338,7 @@ This module must remain extremely small and stable.
 - Forbid Firebase imports outside firebase-sync
 - Forbid IndexedDB / browser storage imports outside local-store
 - Forbid LaunchDarkly Observability SDK imports outside ld-observability
+- Forbid `ld-observability` imports in cloud-functions (browser-only SDK)
 - Forbid local-store ↔ firebase-sync ↔ ld-observability imports (sibling adapters must not import each other)
 - Forbid domain importing anything except shared-types
 - Forbid UI importing Cloud Functions
@@ -406,7 +410,7 @@ Every commit must:
 - cloud-functions → deployed to Firebase Functions (when activated for gen‑AI)
 - local-store → bundled into UI only
 - firebase-sync → bundled into UI and (when activated) Cloud Functions
-- ld-observability → bundled into UI and Cloud Functions
+- ld-observability → bundled into UI only (browser-only SDK)
 - domain → bundled into UI and Cloud Functions
 - shared-types → type-only package
 
