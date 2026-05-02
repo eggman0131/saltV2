@@ -1,6 +1,6 @@
 # Write GitHub Issue
 
-Now write the GitHub issue for this feature.
+Now create the GitHub issue for this feature.
 
 Use this exact structure:
 

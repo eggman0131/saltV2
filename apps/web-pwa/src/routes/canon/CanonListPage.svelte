@@ -2,6 +2,7 @@
   import {
     Button,
     ListPage,
+    SelectableList,
     Dialog,
     DialogContent,
     DialogHeader,
@@ -18,6 +19,7 @@
     syncPending,
     canonConflicts,
     resolveConflict,
+    deleteCanonItem,
   } from '../../lib/canonService.js';
   import { aisles, initAisles } from '../../lib/aisleService.js';
   import { titleCase } from '../../lib/titleCase.js';
@@ -28,6 +30,13 @@
   });
 
   let resolvingConflict = $state(false);
+  let selected = $state(new Set<string>());
+
+  const aisleMap = $derived(new Map($aisles.map((a) => [a.id, a.name])));
+
+  async function handleBulkDelete(ids: string[]) {
+    await Promise.all(ids.map((id) => deleteCanonItem(id)));
+  }
 
   async function handleResolve(
     conflict: (typeof $canonConflicts)[number],
@@ -39,38 +48,39 @@
   }
 </script>
 
-<div class="p-4 sm:p-6">
-  <ListPage
-    title="Items"
-    description="Your canonical item database."
-    isLoading={$syncPending.initialSync || $syncPending.pull}
-    isEmpty={$canonItems.length === 0}
-  >
-    {#snippet actions()}
-      <Button variant="outline" onclick={() => push('/canon/aisles')}>Manage aisles</Button>
-      <Button onclick={() => push('/canon/new')}>Add item</Button>
-    {/snippet}
-    {#snippet children()}
-      <ul class="divide-y divide-border rounded-lg border">
-        {#each $canonItems as item (item.id)}
-          <li>
-            <button
-              class="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-muted/50"
-              onclick={() => push(`/canon/${item.id}`)}
-            >
-              <span class="font-medium">{titleCase(item.name)}</span>
-              {#if item.aisleId}
-                <span class="text-sm text-muted-foreground">
-                  {titleCase($aisles.find((a) => a.id === item.aisleId)?.name ?? '')}
-                </span>
-              {/if}
-            </button>
-          </li>
-        {/each}
-      </ul>
-    {/snippet}
-  </ListPage>
-</div>
+<ListPage
+  title="Items"
+  description="Your canonical item database."
+  isLoading={$syncPending.initialSync || $syncPending.pull}
+  isEmpty={$canonItems.length === 0}
+  class="p-4 sm:p-6"
+>
+  {#snippet actions()}
+    <Button variant="outline" onclick={() => push('/canon/aisles')}>Manage aisles</Button>
+    <Button onclick={() => push('/canon/new')}>Add item</Button>
+  {/snippet}
+  {#snippet children()}
+    <SelectableList
+      items={[...$canonItems]}
+      bind:selected
+      bulkActions={[
+        { id: 'delete', label: 'Delete', variant: 'destructive', onAction: handleBulkDelete },
+      ]}
+    >
+      {#snippet row(item)}
+        <button
+          class="flex w-full items-center justify-between text-left"
+          onclick={() => push(`/canon/${item.id}`)}
+        >
+          <Text>{titleCase(item.name)}</Text>
+          {#if item.aisleId}
+            <Text muted size="sm">{titleCase(aisleMap.get(item.aisleId) ?? '')}</Text>
+          {/if}
+        </button>
+      {/snippet}
+    </SelectableList>
+  {/snippet}
+</ListPage>
 
 {#if $canonConflicts.length > 0}
   {@const conflict = $canonConflicts[0]!}
@@ -88,7 +98,7 @@
           <p class="font-medium">{titleCase(conflict.local.name)}</p>
           {#if conflict.local.aisleId}
             <p class="text-muted-foreground">
-              {titleCase($aisles.find((a) => a.id === conflict.local.aisleId)?.name ?? '')}
+              {titleCase(aisleMap.get(conflict.local.aisleId) ?? '')}
             </p>
           {/if}
         </div>
@@ -97,7 +107,7 @@
           <p class="font-medium">{titleCase(conflict.remote.name)}</p>
           {#if conflict.remote.aisleId}
             <p class="text-muted-foreground">
-              {titleCase($aisles.find((a) => a.id === conflict.remote.aisleId)?.name ?? '')}
+              {titleCase(aisleMap.get(conflict.remote.aisleId) ?? '')}
             </p>
           {/if}
         </div>
