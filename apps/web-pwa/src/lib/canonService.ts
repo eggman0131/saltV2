@@ -145,8 +145,36 @@ export const canonConflicts: Readable<Conflict<CanonItem>[]> = _canonConflicts;
 const _aisleConflicts = writable<Conflict<AislesDocument>[]>([]);
 export const aisleConflicts: Readable<Conflict<AislesDocument>[]> = _aisleConflicts;
 
+export interface SyncHealth {
+  readonly itemsCursor: number | null;
+  readonly aislesCursor: number | null;
+  readonly lastTickAt: number | null;
+  readonly lastError: DomainError | null;
+}
+
+const _syncHealth = writable<SyncHealth>({
+  itemsCursor: null,
+  aislesCursor: null,
+  lastTickAt: null,
+  lastError: null,
+});
+export const syncHealth: Readable<SyncHealth> = _syncHealth;
+
 function setPending(patch: Partial<SyncPending>): void {
   _syncPending.update((p) => ({ ...p, ...patch }));
+}
+
+function recordTick(scope: 'items' | 'aisles', cursor: number, at: number): void {
+  _syncHealth.update((h) =>
+    scope === 'items'
+      ? { ...h, itemsCursor: cursor, lastTickAt: at }
+      : { ...h, aislesCursor: cursor, lastTickAt: at },
+  );
+}
+
+function reportDomainError(err: DomainError): void {
+  _syncHealth.update((h) => ({ ...h, lastError: err }));
+  deps().errors.report(err);
 }
 
 // ─── Refreshers ────────────────────────────────────────────────────────────────
@@ -186,17 +214,18 @@ async function pullItems(scopeStartedAt: number): Promise<void> {
   const d = deps();
   const cursorRes = await d.localCanonStore.getCursor('items');
   if (cursorRes.kind === 'err') {
-    d.errors.report(cursorRes.error);
+    reportDomainError(cursorRes.error);
     return;
   }
   const pullRes = await d.canonTransport.pull(cursorRes.value);
   if (pullRes.kind === 'err') {
-    d.errors.report(pullRes.error);
+    reportDomainError(pullRes.error);
     return;
   }
   await applyItemsBatch(pullRes.value.upserted);
   await d.localCanonStore.setCursor('items', pullRes.value.cursor);
   await refreshCanonItems();
+  recordTick('items', pullRes.value.cursor, d.now());
   d.diagnostics.syncTick({
     scope: 'items',
     cursor: pullRes.value.cursor,
@@ -211,10 +240,11 @@ async function pullAisles(scopeStartedAt: number): Promise<void> {
   const sinceCursor = cursorRes.kind === 'ok' ? (cursorRes.value?.revision ?? null) : null;
   const pullRes = await d.aisleTransport.pull(sinceCursor);
   if (pullRes.kind === 'err') {
-    d.errors.report(pullRes.error);
+    reportDomainError(pullRes.error);
     return;
   }
   if (pullRes.value === null) {
+    recordTick('aisles', sinceCursor ?? 0, d.now());
     d.diagnostics.syncTick({
       scope: 'aisles',
       cursor: sinceCursor ?? 0,
@@ -227,6 +257,7 @@ async function pullAisles(scopeStartedAt: number): Promise<void> {
   // Mirror revision into the canon-store cursor for cross-scope visibility.
   await d.localCanonStore.setCursor('aisles', pullRes.value.cursor);
   await refreshAisles();
+  recordTick('aisles', pullRes.value.cursor, d.now());
   d.diagnostics.syncTick({
     scope: 'aisles',
     cursor: pullRes.value.cursor,
@@ -247,7 +278,7 @@ async function drainItemsQueue(): Promise<void> {
   try {
     const drained = await d.localCanonStore.drainPendingWrites();
     if (drained.kind === 'err') {
-      d.errors.report(drained.error);
+      reportDomainError(drained.error);
       return;
     }
     if (drained.value.length === 0) return;
@@ -259,7 +290,7 @@ async function drainItemsQueue(): Promise<void> {
       } else if (r.kind === 'err') {
         // Push failed — re-enqueue so a future drain retries.
         await d.localCanonStore.enqueuePendingWrite(item);
-        d.errors.report(r.error);
+        reportDomainError(r.error);
       }
     }
   } finally {
@@ -275,7 +306,7 @@ async function drainAislesQueue(): Promise<void> {
   try {
     const drained = await d.localAisleStore.drainPendingSave();
     if (drained.kind === 'err') {
-      d.errors.report(drained.error);
+      reportDomainError(drained.error);
       return;
     }
     if (drained.value === null) return;
@@ -288,7 +319,7 @@ async function drainAislesQueue(): Promise<void> {
     } else if (r.kind === 'err') {
       // Push failed — re-enqueue depth-1 so a future drain retries.
       await d.localAisleStore.enqueuePendingSave(drained.value);
-      d.errors.report(r.error);
+      reportDomainError(r.error);
     }
   } finally {
     setPending({ push: false });
@@ -358,7 +389,7 @@ export function initCanonSync(): () => void {
     (tick) => {
       _lastTickPromise = handleManifestTick(tick).catch((err) => d.errors.report(err));
     },
-    (err) => d.errors.report(err),
+    (err) => reportDomainError(err),
   );
   cleanups.push(unsubscribeManifest);
 
@@ -528,6 +559,7 @@ export function __resetCanonServiceForTest(): void {
   _canonConflicts.set([]);
   _aisleConflicts.set([]);
   _syncPending.set({ initialSync: false, pull: false, push: false, manifestRefresh: false });
+  _syncHealth.set({ itemsCursor: null, aislesCursor: null, lastTickAt: null, lastError: null });
   _isLoadingAisles.set(false);
   _initReady = null;
   _lastTickPromise = null;

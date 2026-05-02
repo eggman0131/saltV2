@@ -2,6 +2,7 @@ import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import type { DocumentReference, Firestore } from 'firebase-admin/firestore';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
+import { classifyAdminFirestoreError } from './errorCategory.js';
 
 const MANIFEST_PATH = 'canonManifest/global';
 
@@ -65,7 +66,12 @@ export const onCanonItemWritten = onDocumentWritten('canonItems/{id}', async (ev
   try {
     await handleCanonItemWritten(db, docId, beforeData, afterData, afterRef);
   } catch (err) {
-    logger.error('onCanonItemWritten failed', { docId, err });
+    logger.error('onCanonItemWritten failed', {
+      scope: 'items',
+      docId,
+      errorCategory: classifyAdminFirestoreError(err),
+      message: err instanceof Error ? err.message : String(err),
+    });
     throw err;
   }
 });

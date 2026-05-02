@@ -2,6 +2,7 @@ import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import type { DocumentReference, Firestore } from 'firebase-admin/firestore';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
+import { classifyAdminFirestoreError } from './errorCategory.js';
 
 const MANIFEST_PATH = 'canonManifest/global';
 const AISLES_DOC_PATH = 'canonData/aisles';
@@ -68,7 +69,12 @@ export const onAislesWritten = onDocumentWritten('canonData/aisles', async (even
   try {
     await handleAislesWritten(db, beforeData, afterData, afterRef);
   } catch (err) {
-    logger.error('onAislesWritten failed', { err });
+    logger.error('onAislesWritten failed', {
+      scope: 'aisles',
+      docId: AISLES_DOC_PATH,
+      errorCategory: classifyAdminFirestoreError(err),
+      message: err instanceof Error ? err.message : String(err),
+    });
     throw err;
   }
 });

@@ -99,8 +99,9 @@ export function createFirebaseCanonSyncTransportAdapter(
           upserted.length > 0 ? upserted[upserted.length - 1]!.revision : (sinceCursor ?? 0);
         return success({ upserted, deleted: [], cursor } satisfies SyncBatch);
       } catch (err) {
-        errors?.report(err);
-        return failure(classifyFirestoreError(err));
+        const classified = classifyFirestoreError(err);
+        errors?.report(classified);
+        return failure(classified);
       } finally {
         pendingState.pull = false;
       }
@@ -132,8 +133,9 @@ export function createFirebaseCanonSyncTransportAdapter(
         }
         return success(item);
       } catch (err) {
-        errors?.report(err);
-        return failure(classifyFirestoreError(err));
+        const classified = classifyFirestoreError(err);
+        errors?.report(classified);
+        return failure(classified);
       } finally {
         pendingState.push = false;
       }

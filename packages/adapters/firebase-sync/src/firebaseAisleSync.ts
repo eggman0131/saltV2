@@ -42,8 +42,9 @@ export function createFirebaseAisleSyncTransportAdapter(
           cursor: document.revision,
         } satisfies AisleSyncBatch);
       } catch (err) {
-        errors?.report(err);
-        return failure(classifyFirestoreError(err));
+        const classified = classifyFirestoreError(err);
+        errors?.report(classified);
+        return failure(classified);
       }
     },
 
@@ -82,8 +83,9 @@ export function createFirebaseAisleSyncTransportAdapter(
         }
         return success(txResult.newDoc);
       } catch (err) {
-        errors?.report(err);
-        return failure(classifyFirestoreError(err));
+        const classified = classifyFirestoreError(err);
+        errors?.report(classified);
+        return failure(classified);
       }
     },
 

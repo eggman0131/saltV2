@@ -33,6 +33,7 @@ import {
   resolveConflict,
   resolveAisleConflict,
   enqueueAisleSave,
+  syncHealth,
   syncPending,
 } from '../src/lib/canonService.js';
 
@@ -579,5 +580,182 @@ describe('canonService — manifest-driven sync', () => {
 
     expect(h.aisleTransport._doc?.aisles.map((a) => a.id)).toEqual(['a1']);
     expect(h.aisleStore._pending).toBeNull();
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────────
+// Phase 6 §1 — DomainError category coverage audit
+//
+// Each non-conflict DomainError category must be observed flowing through
+// `ErrorReportingPort` from at least one canon-sync code path. Some adapters
+// never naturally emit certain categories (e.g. firebase-sync's classifier
+// has no SyncError or ValidationError branch), so those are stub-tested by
+// injecting a fake transport that returns the relevant DomainError.
+// Conflict is excluded — it is a domain event, not an error (Phase 5 flag #2).
+// ───────────────────────────────────────────────────────────────────────────────
+
+describe('canonService — DomainError category coverage (§7.6 audit)', () => {
+  let cleanup: (() => void) | null = null;
+
+  beforeEach(() => {
+    __resetCanonServiceForTest();
+  });
+
+  afterEach(() => {
+    cleanup?.();
+    cleanup = null;
+    __setCanonServiceDeps(null);
+    __resetCanonServiceForTest();
+  });
+
+  it('AuthError flows through ErrorReportingPort on items pull failure', async () => {
+    const h = setupHarness();
+    h.canonTransport._pullErr = { kind: 'AuthError', reason: 'forbidden' };
+    cleanup = initCanonSync();
+    await flush();
+
+    expect(h.errors.errors).toContainEqual({ kind: 'AuthError', reason: 'forbidden' });
+  });
+
+  it('NetworkError flows through ErrorReportingPort on items pull failure', async () => {
+    const h = setupHarness();
+    h.canonTransport._pullErr = { kind: 'NetworkError', reason: 'transient' };
+    cleanup = initCanonSync();
+    await flush();
+
+    expect(h.errors.errors).toContainEqual({ kind: 'NetworkError', reason: 'transient' });
+  });
+
+  it('StorageError flows through ErrorReportingPort on items pull failure', async () => {
+    const h = setupHarness();
+    h.canonTransport._pullErr = { kind: 'StorageError', reason: 'quota-exceeded' };
+    cleanup = initCanonSync();
+    await flush();
+
+    expect(h.errors.errors).toContainEqual({ kind: 'StorageError', reason: 'quota-exceeded' });
+  });
+
+  // Stub coverage: SyncError is part of the closed-set but no current adapter
+  // path classifies into it. If a future adapter emits SyncError (e.g. on
+  // manifest-revision mismatch), this test guarantees it propagates to LD.
+  it('SyncError flows through ErrorReportingPort when an adapter emits it (stub)', async () => {
+    const h = setupHarness();
+    h.canonTransport._pullErr = { kind: 'SyncError', reason: 'manifest-mismatch' };
+    cleanup = initCanonSync();
+    await flush();
+
+    expect(h.errors.errors).toContainEqual({ kind: 'SyncError', reason: 'manifest-mismatch' });
+  });
+
+  // Stub coverage: ValidationError originates in domain commands, not in
+  // sync transports. This test injects a ValidationError into the manifest
+  // error channel to assert the reporter forwards it intact.
+  it('ValidationError flows through ErrorReportingPort via manifest onError (stub)', async () => {
+    const h = setupHarness();
+    cleanup = initCanonSync();
+    await flush();
+
+    h.manifest.emitError({
+      kind: 'ValidationError',
+      code: 'INVALID_CANON_NAME',
+      message: 'reserved for stub test',
+    });
+
+    expect(h.errors.errors).toContainEqual({
+      kind: 'ValidationError',
+      code: 'INVALID_CANON_NAME',
+      message: 'reserved for stub test',
+    });
+  });
+
+  it('aisles pull failures flow through the same reporter (per-scope coverage)', async () => {
+    const h = setupHarness();
+    // Force the aisle transport to fail without touching items.
+    const orig = h.aisleTransport.pull.bind(h.aisleTransport);
+    h.aisleTransport.pull = async () =>
+      failure({ kind: 'NetworkError', reason: 'offline' } satisfies DomainError);
+    cleanup = initCanonSync();
+    await flush();
+    h.aisleTransport.pull = orig;
+
+    expect(h.errors.errors).toContainEqual({ kind: 'NetworkError', reason: 'offline' });
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────────
+// Phase 6 §2 — syncHealth derived store
+// ───────────────────────────────────────────────────────────────────────────────
+
+describe('canonService — syncHealth store', () => {
+  let cleanup: (() => void) | null = null;
+
+  beforeEach(() => {
+    __resetCanonServiceForTest();
+  });
+
+  afterEach(() => {
+    cleanup?.();
+    cleanup = null;
+    __setCanonServiceDeps(null);
+    __resetCanonServiceForTest();
+  });
+
+  it('starts with all fields null', () => {
+    setupHarness();
+    expect(get(syncHealth)).toEqual({
+      itemsCursor: null,
+      aislesCursor: null,
+      lastTickAt: null,
+      lastError: null,
+    });
+  });
+
+  it('records itemsCursor and lastTickAt after a successful items pull', async () => {
+    const h = setupHarness();
+    h.canonTransport._remote.set('a', makeItem('a', 7));
+    cleanup = initCanonSync();
+    await flush();
+
+    const health = get(syncHealth);
+    expect(health.itemsCursor).toBe(7);
+    expect(health.lastTickAt).not.toBeNull();
+  });
+
+  it('records aislesCursor after a successful aisles pull', async () => {
+    const h = setupHarness();
+    h.aisleTransport._doc = { aisles: [makeAisle('a1', 'Produce', 0)], revision: 4 };
+    cleanup = initCanonSync();
+    await flush();
+
+    expect(get(syncHealth).aislesCursor).toBe(4);
+  });
+
+  it('records lastError when a pull returns a DomainError', async () => {
+    const h = setupHarness();
+    h.canonTransport._pullErr = { kind: 'AuthError', reason: 'forbidden' };
+    cleanup = initCanonSync();
+    await flush();
+
+    expect(get(syncHealth).lastError).toEqual({ kind: 'AuthError', reason: 'forbidden' });
+  });
+
+  it('updates cursors independently per scope on subsequent ticks', async () => {
+    const h = setupHarness();
+    cleanup = initCanonSync();
+    await flush();
+
+    // Items advance via tick.
+    h.canonTransport._remote.set('a', makeItem('a', 3));
+    h.manifest.emit({ itemsRevision: 3, aislesRevision: 0 });
+    await flush();
+    expect(get(syncHealth).itemsCursor).toBe(3);
+    expect(get(syncHealth).aislesCursor).toBe(0);
+
+    // Aisles advance via a later tick — items unchanged.
+    h.aisleTransport._doc = { aisles: [makeAisle('a1', 'Produce', 0)], revision: 9 };
+    h.manifest.emit({ itemsRevision: 3, aislesRevision: 9 });
+    await flush();
+    expect(get(syncHealth).itemsCursor).toBe(3);
+    expect(get(syncHealth).aislesCursor).toBe(9);
   });
 });
