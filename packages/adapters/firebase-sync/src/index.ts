@@ -1,9 +1,6 @@
 export type { FirebaseOptions } from 'firebase/app';
 export { initFirebase } from './init.js';
 export { createFirebaseAuth } from './auth.js';
-export { createFirebaseCanonSyncTransportAdapter } from './firebaseCanonSyncTransport.js';
-export { createFirebaseAisleSyncTransportAdapter } from './firebaseAisleSync.js';
-export { createFirebaseManifestListener } from './firebaseManifestListener.js';
 export { createFirebaseMatchLoggingAdapter } from './canonMatchingLog.js';
 export { createGeminiEmbeddingAdapter } from './geminiEmbedding.js';
 export { createGeminiArbitrationAdapter } from './geminiArbitration.js';

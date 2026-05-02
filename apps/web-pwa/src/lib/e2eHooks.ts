@@ -1,27 +1,14 @@
 import { get } from 'svelte/store';
-import { createLocalCanonStoreAdapter } from '@salt/local-store';
+import { upsertCanonItem } from '@salt/firebase-sync';
 import type { CanonItem } from '@salt/domain';
 import { devSignIn } from './auth.svelte.js';
 import { addAislesBulk, aisles } from './aisleService.js';
-import { refreshCanonItems } from './canonService.js';
+import { canonItems } from './canonService.js';
 import { tagSession, getSessionURL } from './observability.js';
 import type { E2EBridge, SeedCanonItemInput } from './types/e2e.js';
 
-const INDEXED_DB_NAMES = ['salt-aisles-v1', 'salt-v1'];
-
-function deleteDatabase(name: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const req = window.indexedDB.deleteDatabase(name);
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
-    req.onblocked = () => resolve();
-  });
-}
-
 export function installE2EHooks(): void {
   if (import.meta.env.VITE_USE_EMULATORS !== 'true') return;
-
-  const canonStore = createLocalCanonStoreAdapter();
 
   const bridge: E2EBridge = {
     devSignIn,
@@ -48,11 +35,7 @@ export function installE2EHooks(): void {
         revision: 0,
         deletedAt: null,
       };
-      const result = await canonStore.upsert(item);
-      if (result.kind !== 'ok') {
-        throw new Error(`seedCanonItem failed: ${JSON.stringify(result.error)}`);
-      }
-      await refreshCanonItems();
+      await upsertCanonItem(item);
       return item;
     },
 
@@ -61,15 +44,11 @@ export function installE2EHooks(): void {
     },
 
     async getCanonItem(id) {
-      const result = await canonStore.load(id);
-      if (result.kind !== 'ok') {
-        throw new Error(`getCanonItem failed: ${JSON.stringify(result.error)}`);
-      }
-      return result.value;
+      return get(canonItems).find((i) => i.id === id) ?? null;
     },
 
     async clearStores() {
-      await Promise.all(INDEXED_DB_NAMES.map(deleteDatabase));
+      // Firestore persistent cache is managed by the SDK; no local stores to clear.
     },
 
     tagSession(meta) {

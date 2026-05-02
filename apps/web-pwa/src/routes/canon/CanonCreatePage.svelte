@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { push } from 'svelte-spa-router';
   import {
     Button,
@@ -23,14 +22,10 @@
     Spinner,
   } from '@salt/ui-components';
   import { canonItems, addCanonItem } from '../../lib/canonService.js';
-  import { aisles, initAisles } from '../../lib/aisleService.js';
+  import { aisles } from '../../lib/aisleService.js';
   import type { CanonItem } from '@salt/domain';
   import { addToast } from '../../lib/toastStore.js';
   import { titleCase } from '../../lib/titleCase.js';
-
-  onMount(() => {
-    void initAisles();
-  });
 
   let comboItems = $derived($canonItems.map((c) => ({ value: c.id, label: titleCase(c.name) })));
 

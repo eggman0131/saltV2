@@ -57,20 +57,8 @@ expect_lint_error \
   "domain cannot import IndexedDB packages"
 
 expect_lint_error \
-  "packages/adapters/local-store/src/__boundary_tests__/no-firebase.ts" \
-  "local-store cannot import Firebase SDKs"
-
-expect_lint_error \
-  "packages/adapters/local-store/src/__boundary_tests__/no-firebase-sync.ts" \
-  "local-store cannot import @salt/firebase-sync"
-
-expect_lint_error \
   "packages/adapters/firebase-sync/src/__boundary_tests__/no-indexeddb.ts" \
   "firebase-sync cannot import IndexedDB packages"
-
-expect_lint_error \
-  "packages/adapters/firebase-sync/src/__boundary_tests__/no-local-store.ts" \
-  "firebase-sync cannot import @salt/local-store"
 
 expect_lint_error \
   "packages/domain/src/canon/__boundary_tests__/no-cross-module-subpath.ts" \
@@ -87,10 +75,6 @@ expect_lint_error \
 expect_depcruise_error \
   ".boundary-tests/circular" \
   "circular imports are rejected"
-
-expect_lint_error \
-  "apps/cloud-functions/src/__boundary_tests__/no-local-store.ts" \
-  "cloud-functions cannot import @salt/local-store"
 
 expect_lint_error \
   "apps/cloud-functions/src/__boundary_tests__/no-ld-observability.ts" \

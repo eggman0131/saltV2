@@ -25,6 +25,6 @@ const options: FirebaseOptions = useEmulators
       appId: import.meta.env.VITE_FIREBASE_APP_ID,
     };
 
-initFirebase(options, useEmulators);
+initFirebase(options, useEmulators, !useEmulators);
 
 export const authProvider = createFirebaseAuth(createLDErrorReportingAdapter());

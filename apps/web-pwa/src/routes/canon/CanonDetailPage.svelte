@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { push } from 'svelte-spa-router';
   import {
     Button,
@@ -26,15 +25,11 @@
     updateCanonItemSynonyms,
     deleteCanonItem,
   } from '../../lib/canonService.js';
-  import { aisles, initAisles } from '../../lib/aisleService.js';
+  import { aisles } from '../../lib/aisleService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { titleCase } from '../../lib/titleCase.js';
 
   let { params }: { params: Record<string, string> } = $props();
-
-  onMount(() => {
-    void initAisles();
-  });
 
   let item = $derived($canonItems.find((c) => c.id === params.id));
 

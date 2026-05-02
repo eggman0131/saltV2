@@ -1,123 +1,31 @@
 import {
-  createFirebaseCanonSyncTransportAdapter,
-  createFirebaseAisleSyncTransportAdapter,
-  createFirebaseManifestListener,
+  subscribeCanonItems,
+  upsertCanonItem,
+  subscribeAisles,
   createGeminiEmbeddingAdapter,
   createGeminiArbitrationAdapter,
 } from '@salt/firebase-sync';
-import {
-  createLDMatchLoggingAdapter,
-  createLDErrorReportingAdapter,
-  createLDSyncDiagnosticsAdapter,
-} from '@salt/ld-observability';
+import { createLDMatchLoggingAdapter, createLDErrorReportingAdapter } from '@salt/ld-observability';
 import {
   matchOrCreate,
-  resolveCanonConflict,
   renameCanonItem,
   setCanonItemAisle,
   setCanonItemSynonyms,
-  listAisles,
-  getAisleUsage,
 } from '@salt/domain';
 import type {
   Aisle,
-  AislesDocument,
-  AisleLocalStorePort,
-  AisleSyncTransportPort,
   CanonItem,
   CanonLocalStorePort,
-  CanonSyncTransportPort,
-  ConflictStrategy,
-  ErrorReportingPort,
-  ManifestTick,
+  AisleLocalStorePort,
   MatchOrCreateResult,
-  SyncDiagnosticsPort,
-  SyncPending,
 } from '@salt/domain';
-import type { Conflict, DomainError, Result } from '@salt/shared-types';
-import { createLocalCanonStoreAdapter, createLocalAisleStoreAdapter } from '@salt/local-store';
+import type { DomainError, Result } from '@salt/shared-types';
 import { writable, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 
 export type { MatchOrCreateResult };
 
-// ─── Singletons ────────────────────────────────────────────────────────────────
-
-let _localCanonStore: CanonLocalStorePort | null = null;
-let _localAisleStore: AisleLocalStorePort | null = null;
-let _canonTransport: CanonSyncTransportPort | null = null;
-let _aisleTransport: AisleSyncTransportPort | null = null;
-let _errorReporter: ErrorReportingPort | null = null;
-let _diagnostics: SyncDiagnosticsPort | null = null;
-
-export function getLocalCanonStore(): CanonLocalStorePort {
-  if (!_localCanonStore) _localCanonStore = createLocalCanonStoreAdapter();
-  return _localCanonStore;
-}
-
-export function getLocalAisleStore(): AisleLocalStorePort {
-  if (!_localAisleStore) _localAisleStore = createLocalAisleStoreAdapter();
-  return _localAisleStore;
-}
-
-function getErrorReporter(): ErrorReportingPort {
-  if (!_errorReporter) _errorReporter = createLDErrorReportingAdapter();
-  return _errorReporter;
-}
-
-function getDiagnostics(): SyncDiagnosticsPort {
-  if (!_diagnostics) _diagnostics = createLDSyncDiagnosticsAdapter();
-  return _diagnostics;
-}
-
-function getCanonTransport(): CanonSyncTransportPort {
-  if (!_canonTransport)
-    _canonTransport = createFirebaseCanonSyncTransportAdapter(getErrorReporter());
-  return _canonTransport;
-}
-
-function getAisleTransport(): AisleSyncTransportPort {
-  if (!_aisleTransport)
-    _aisleTransport = createFirebaseAisleSyncTransportAdapter(getErrorReporter());
-  return _aisleTransport;
-}
-
-/** Test seam: replace adapter singletons. Tests only. */
-export interface CanonServiceDeps {
-  readonly localCanonStore: CanonLocalStorePort;
-  readonly localAisleStore: AisleLocalStorePort;
-  readonly canonTransport: CanonSyncTransportPort;
-  readonly aisleTransport: AisleSyncTransportPort;
-  readonly errors: ErrorReportingPort;
-  readonly diagnostics: SyncDiagnosticsPort;
-  readonly subscribeManifest: (
-    onTick: (tick: ManifestTick) => void,
-    onError: (err: DomainError) => void,
-  ) => () => void;
-  readonly now: () => number;
-}
-
-let _deps: CanonServiceDeps | null = null;
-
-export function __setCanonServiceDeps(deps: CanonServiceDeps | null): void {
-  _deps = deps;
-}
-
-function deps(): CanonServiceDeps {
-  if (_deps) return _deps;
-  return {
-    localCanonStore: getLocalCanonStore(),
-    localAisleStore: getLocalAisleStore(),
-    canonTransport: getCanonTransport(),
-    aisleTransport: getAisleTransport(),
-    errors: getErrorReporter(),
-    diagnostics: getDiagnostics(),
-    subscribeManifest: (onTick, onError) => createFirebaseManifestListener(onTick, onError),
-    now: () => Date.now(),
-  };
-}
-
-// ─── Reactive stores ───────────────────────────────────────────────────────────
+// ─── Reactive stores ────────────────────────────────────────────────────────────
 
 const _canonItems = writable<readonly CanonItem[]>([]);
 export const canonItems: Readable<readonly CanonItem[]> = _canonItems;
@@ -128,322 +36,171 @@ export const aisles: Readable<readonly Aisle[]> = _aisles;
 const _aisleUsage = writable<Map<string, number>>(new Map());
 export const aisleUsage: Readable<Map<string, number>> = _aisleUsage;
 
-const _syncPending = writable<SyncPending>({
-  initialSync: false,
-  pull: false,
-  push: false,
-  manifestRefresh: false,
-});
-export const syncPending: Readable<SyncPending> = _syncPending;
-
 const _isLoadingAisles = writable(false);
 export const isLoadingAisles: Readable<boolean> = _isLoadingAisles;
 
-const _canonConflicts = writable<Conflict<CanonItem>[]>([]);
-export const canonConflicts: Readable<Conflict<CanonItem>[]> = _canonConflicts;
+// ─── Error reporting ────────────────────────────────────────────────────────────
 
-const _aisleConflicts = writable<Conflict<AislesDocument>[]>([]);
-export const aisleConflicts: Readable<Conflict<AislesDocument>[]> = _aisleConflicts;
-
-export interface SyncHealth {
-  readonly itemsCursor: number | null;
-  readonly aislesCursor: number | null;
-  readonly lastTickAt: number | null;
-  readonly lastError: DomainError | null;
+let _errorReporter: ReturnType<typeof createLDErrorReportingAdapter> | null = null;
+function getErrorReporter() {
+  if (!_errorReporter) _errorReporter = createLDErrorReportingAdapter();
+  return _errorReporter;
 }
 
-const _syncHealth = writable<SyncHealth>({
-  itemsCursor: null,
-  aislesCursor: null,
-  lastTickAt: null,
-  lastError: null,
-});
-export const syncHealth: Readable<SyncHealth> = _syncHealth;
+// ─── Internal loading state ─────────────────────────────────────────────────────
 
-function setPending(patch: Partial<SyncPending>): void {
-  _syncPending.update((p) => ({ ...p, ...patch }));
+let _receivedItems = false;
+let _receivedAisles = false;
+
+function markLoaded(scope: 'items' | 'aisles'): void {
+  if (scope === 'items') _receivedItems = true;
+  if (scope === 'aisles') _receivedAisles = true;
+  if (_receivedItems && _receivedAisles) _isLoadingAisles.set(false);
 }
 
-function recordTick(scope: 'items' | 'aisles', cursor: number, at: number): void {
-  _syncHealth.update((h) =>
-    scope === 'items'
-      ? { ...h, itemsCursor: cursor, lastTickAt: at }
-      : { ...h, aislesCursor: cursor, lastTickAt: at },
-  );
-}
+// ─── Aisle usage ─────────────────────────────────────────────────────────────────
 
-function reportDomainError(err: DomainError): void {
-  _syncHealth.update((h) => ({ ...h, lastError: err }));
-  deps().errors.report(err);
-}
-
-// ─── Refreshers ────────────────────────────────────────────────────────────────
-
-export async function refreshCanonItems(): Promise<void> {
-  const result = await deps().localCanonStore.list();
-  if (result.kind === 'ok') _canonItems.set([...result.value]);
-}
-
-export async function refreshAisles(): Promise<void> {
-  const [aislesResult, usageResult] = await Promise.all([
-    listAisles(deps().localAisleStore),
-    getAisleUsage(deps().localAisleStore, deps().localCanonStore),
-  ]);
-  if (aislesResult.kind === 'ok') _aisles.set([...aislesResult.value]);
-  if (usageResult.kind === 'ok') _aisleUsage.set(new Map(usageResult.value));
-}
-
-// ─── Pull replay ───────────────────────────────────────────────────────────────
-
-async function applyItemsBatch(items: readonly CanonItem[]): Promise<void> {
-  const store = deps().localCanonStore;
+function recomputeAisleUsage(): void {
+  const items = get(_canonItems);
+  const currentAisles = get(_aisles);
+  const usage = new Map<string, number>(currentAisles.map((a) => [a.id, 0]));
   for (const item of items) {
-    // Tombstones (deletedAt != null) flow through upsert; localCanonStore.list() filters them.
-    await store.upsert(item);
-  }
-}
-
-async function applyAislesBatch(payload: {
-  readonly aisles: readonly Aisle[];
-  readonly cursor: number;
-}): Promise<void> {
-  await deps().localAisleStore.save(payload.aisles, payload.cursor);
-}
-
-async function pullItems(scopeStartedAt: number): Promise<void> {
-  const d = deps();
-  const cursorRes = await d.localCanonStore.getCursor('items');
-  if (cursorRes.kind === 'err') {
-    reportDomainError(cursorRes.error);
-    return;
-  }
-  const pullRes = await d.canonTransport.pull(cursorRes.value);
-  if (pullRes.kind === 'err') {
-    reportDomainError(pullRes.error);
-    return;
-  }
-  await applyItemsBatch(pullRes.value.upserted);
-  await d.localCanonStore.setCursor('items', pullRes.value.cursor);
-  await refreshCanonItems();
-  recordTick('items', pullRes.value.cursor, d.now());
-  d.diagnostics.syncTick({
-    scope: 'items',
-    cursor: pullRes.value.cursor,
-    batchSize: pullRes.value.upserted.length,
-    durationMs: d.now() - scopeStartedAt,
-  });
-}
-
-async function pullAisles(scopeStartedAt: number): Promise<void> {
-  const d = deps();
-  const cursorRes = await d.localAisleStore.load();
-  const sinceCursor = cursorRes.kind === 'ok' ? (cursorRes.value?.revision ?? null) : null;
-  const pullRes = await d.aisleTransport.pull(sinceCursor);
-  if (pullRes.kind === 'err') {
-    reportDomainError(pullRes.error);
-    return;
-  }
-  if (pullRes.value === null) {
-    recordTick('aisles', sinceCursor ?? 0, d.now());
-    d.diagnostics.syncTick({
-      scope: 'aisles',
-      cursor: sinceCursor ?? 0,
-      batchSize: 0,
-      durationMs: d.now() - scopeStartedAt,
-    });
-    return;
-  }
-  await applyAislesBatch(pullRes.value);
-  // Mirror revision into the canon-store cursor for cross-scope visibility.
-  await d.localCanonStore.setCursor('aisles', pullRes.value.cursor);
-  await refreshAisles();
-  recordTick('aisles', pullRes.value.cursor, d.now());
-  d.diagnostics.syncTick({
-    scope: 'aisles',
-    cursor: pullRes.value.cursor,
-    batchSize: pullRes.value.aisles.length,
-    durationMs: d.now() - scopeStartedAt,
-  });
-}
-
-// ─── Push drains ───────────────────────────────────────────────────────────────
-
-let _itemsDrainInFlight = false;
-let _aislesDrainInFlight = false;
-
-async function drainItemsQueue(): Promise<void> {
-  if (_itemsDrainInFlight) return;
-  _itemsDrainInFlight = true;
-  const d = deps();
-  try {
-    const drained = await d.localCanonStore.drainPendingWrites();
-    if (drained.kind === 'err') {
-      reportDomainError(drained.error);
-      return;
+    if (item.aisleId !== null && usage.has(item.aisleId)) {
+      usage.set(item.aisleId, (usage.get(item.aisleId) ?? 0) + 1);
     }
-    if (drained.value.length === 0) return;
-    setPending({ push: true });
-    for (const item of drained.value) {
-      const r = await d.canonTransport.push(item);
-      if (r.kind === 'conflict') {
-        _canonConflicts.update((cs) => [...cs, r]);
-      } else if (r.kind === 'err') {
-        // Push failed — re-enqueue so a future drain retries.
-        await d.localCanonStore.enqueuePendingWrite(item);
-        reportDomainError(r.error);
-      }
-    }
-  } finally {
-    setPending({ push: false });
-    _itemsDrainInFlight = false;
   }
+  _aisleUsage.set(usage);
 }
 
-async function drainAislesQueue(): Promise<void> {
-  if (_aislesDrainInFlight) return;
-  _aislesDrainInFlight = true;
-  const d = deps();
-  try {
-    const drained = await d.localAisleStore.drainPendingSave();
-    if (drained.kind === 'err') {
-      reportDomainError(drained.error);
-      return;
-    }
-    if (drained.value === null) return;
-    const local = await d.localAisleStore.load();
-    const baseRevision = local.kind === 'ok' ? (local.value?.revision ?? 0) : 0;
-    setPending({ push: true });
-    const r = await d.aisleTransport.push(drained.value, baseRevision);
-    if (r.kind === 'conflict') {
-      _aisleConflicts.update((cs) => [...cs, r]);
-    } else if (r.kind === 'err') {
-      // Push failed — re-enqueue depth-1 so a future drain retries.
-      await d.localAisleStore.enqueuePendingSave(drained.value);
-      reportDomainError(r.error);
-    }
-  } finally {
-    setPending({ push: false });
-    _aislesDrainInFlight = false;
-  }
+// ─── In-memory store adapters (for domain commands) ─────────────────────────────
+
+export function memAisleStore(seed: readonly Aisle[]) {
+  let written: readonly Aisle[] | null = null;
+  const store: AisleLocalStorePort = {
+    async load() {
+      return { kind: 'ok', value: { aisles: written ?? seed, revision: 0 } };
+    },
+    async save(aisles, _revision) {
+      written = aisles;
+      return { kind: 'ok', value: undefined };
+    },
+    async enqueuePendingSave() {
+      return { kind: 'ok', value: undefined };
+    },
+    async drainPendingSave() {
+      return { kind: 'ok', value: null };
+    },
+  };
+  return { store, getWritten: () => written };
 }
 
-// ─── Manifest tick handler ─────────────────────────────────────────────────────
-
-let _lastTickPromise: Promise<void> | null = null;
-
-async function handleManifestTick(tick: ManifestTick): Promise<void> {
-  const d = deps();
-  const [itemsCursorRes, aislesLocal] = await Promise.all([
-    d.localCanonStore.getCursor('items'),
-    d.localAisleStore.load(),
-  ]);
-  const itemsCursor = itemsCursorRes.kind === 'ok' ? (itemsCursorRes.value ?? 0) : 0;
-  const aislesCursor = aislesLocal.kind === 'ok' ? (aislesLocal.value?.revision ?? 0) : 0;
-
-  const itemsAdvanced = tick.itemsRevision > itemsCursor;
-  const aislesAdvanced = tick.aislesRevision > aislesCursor;
-  if (!itemsAdvanced && !aislesAdvanced) return;
-
-  setPending({ manifestRefresh: true });
-  try {
-    const tasks: Promise<void>[] = [];
-    const tickStart = d.now();
-    if (itemsAdvanced) tasks.push(pullItems(tickStart).then(() => drainItemsQueue()));
-    if (aislesAdvanced) tasks.push(pullAisles(tickStart).then(() => drainAislesQueue()));
-    await Promise.all(tasks);
-  } finally {
-    setPending({ manifestRefresh: false });
-  }
+export function memCanonStore(seed: readonly CanonItem[]) {
+  const items = new Map(seed.map((i) => [i.id, i]));
+  const upserted: CanonItem[] = [];
+  const store: CanonLocalStorePort = {
+    async upsert(item) {
+      items.set(item.id, item);
+      upserted.push(item);
+      return { kind: 'ok', value: item };
+    },
+    async load(id) {
+      return { kind: 'ok', value: items.get(id) ?? null };
+    },
+    async list() {
+      return { kind: 'ok', value: [...items.values()].filter((i) => i.deletedAt === null) };
+    },
+    async delete(id) {
+      items.delete(id);
+      return { kind: 'ok', value: undefined };
+    },
+    async getCursor() {
+      return { kind: 'ok', value: null };
+    },
+    async setCursor() {
+      return { kind: 'ok', value: undefined };
+    },
+    async enqueuePendingWrite() {
+      return { kind: 'ok', value: undefined };
+    },
+    async drainPendingWrites() {
+      return { kind: 'ok', value: [] };
+    },
+  };
+  return { store, getUpserted: () => [...upserted] };
 }
 
-// ─── Init / cleanup ────────────────────────────────────────────────────────────
+// ─── Snapshots (used by aisleService) ───────────────────────────────────────────
 
-let _onlineHandler: (() => void) | null = null;
-let _initReady: Promise<void> | null = null;
+export function getAislesSnapshot(): readonly Aisle[] {
+  return get(_aisles);
+}
+
+export function getCanonItemsSnapshot(): readonly CanonItem[] {
+  return get(_canonItems);
+}
+
+// ─── Init / cleanup ─────────────────────────────────────────────────────────────
 
 export function initCanonSync(): () => void {
-  setPending({ initialSync: true });
   _isLoadingAisles.set(true);
+  _receivedItems = false;
+  _receivedAisles = false;
 
-  const d = deps();
-  const cleanups: Array<() => void> = [];
+  const errors = getErrorReporter();
 
-  // Cold start: refresh from local first so UI lights up offline-first,
-  // then run both pulls in parallel, then drain pending queues.
-  _initReady = (async () => {
-    try {
-      await Promise.all([refreshCanonItems(), refreshAisles()]);
-      const tickStart = d.now();
-      await Promise.all([pullItems(tickStart), pullAisles(tickStart)]);
-      setPending({ initialSync: false });
-      _isLoadingAisles.set(false);
-      await Promise.all([drainItemsQueue(), drainAislesQueue()]);
-    } catch (err) {
-      setPending({ initialSync: false });
-      _isLoadingAisles.set(false);
-      d.errors.report(err);
-    }
-  })();
-
-  const unsubscribeManifest = d.subscribeManifest(
-    (tick) => {
-      _lastTickPromise = handleManifestTick(tick).catch((err) => d.errors.report(err));
+  const unsubItems = subscribeCanonItems(
+    (items) => {
+      _canonItems.set(items.filter((i) => i.deletedAt === null));
+      recomputeAisleUsage();
+      markLoaded('items');
     },
-    (err) => reportDomainError(err),
+    (err) => errors.report(err),
   );
-  cleanups.push(unsubscribeManifest);
 
-  if (typeof window !== 'undefined') {
-    _onlineHandler = () => {
-      void Promise.all([drainItemsQueue(), drainAislesQueue()]).catch((err) =>
-        d.errors.report(err),
-      );
-    };
-    window.addEventListener('online', _onlineHandler);
-    cleanups.push(() => {
-      if (_onlineHandler) window.removeEventListener('online', _onlineHandler);
-      _onlineHandler = null;
-    });
-  }
+  const unsubAisles = subscribeAisles(
+    (newAisles) => {
+      _aisles.set([...newAisles].sort((a, b) => a.order - b.order));
+      recomputeAisleUsage();
+      markLoaded('aisles');
+    },
+    (err) => errors.report(err),
+  );
 
   return () => {
-    for (const fn of cleanups) fn();
+    unsubItems();
+    unsubAisles();
   };
 }
 
-// ─── Canon item commands ───────────────────────────────────────────────────────
+// ─── Canon item commands ─────────────────────────────────────────────────────────
 
 export async function addCanonItem(
   rawName: string,
   selectedAisleId?: string | null,
   forceCreate?: boolean,
 ): Promise<Result<MatchOrCreateResult, DomainError>> {
-  const d = deps();
+  const errors = getErrorReporter();
+  const { store: canonStore } = memCanonStore(get(_canonItems));
+  const { store: aisleStore } = memAisleStore(get(_aisles));
   const result = await matchOrCreate(
     { rawName, selectedAisleId, ...(forceCreate !== undefined && { forceCreate }) },
     {
-      store: d.localCanonStore,
-      aisleStore: d.localAisleStore,
-      embedding: createGeminiEmbeddingAdapter(d.errors),
-      arbitration: createGeminiArbitrationAdapter(d.errors),
+      store: canonStore,
+      aisleStore,
+      embedding: createGeminiEmbeddingAdapter(errors),
+      arbitration: createGeminiArbitrationAdapter(errors),
       ids: { newCanonId: () => crypto.randomUUID(), newAisleId: () => crypto.randomUUID() },
       logging: createLDMatchLoggingAdapter(),
     },
   );
   if (result.kind === 'ok') {
-    await d.localCanonStore.enqueuePendingWrite(result.value.item);
-    await refreshCanonItems();
-    void drainItemsQueue();
+    await upsertCanonItem(result.value.item);
   }
   return result;
 }
 
 async function commitCanonItemUpdate(item: CanonItem): Promise<void> {
-  const d = deps();
-  await d.localCanonStore.upsert(item);
-  await d.localCanonStore.enqueuePendingWrite(item);
-  await refreshCanonItems();
-  void drainItemsQueue();
+  await upsertCanonItem(item);
 }
 
 export async function updateCanonItemName(
@@ -474,99 +231,22 @@ export async function updateCanonItemSynonyms(
 }
 
 export async function deleteCanonItem(id: string): Promise<Result<void, DomainError>> {
-  const d = deps();
-  const loaded = await d.localCanonStore.load(id);
-  if (loaded.kind === 'err') return loaded;
-  if (loaded.value !== null) {
-    const tombstone: CanonItem = { ...loaded.value, deletedAt: new Date().toISOString() };
-    await d.localCanonStore.upsert(tombstone);
-    await d.localCanonStore.enqueuePendingWrite(tombstone);
+  const item = get(_canonItems).find((i) => i.id === id) ?? null;
+  if (item !== null) {
+    const tombstone: CanonItem = { ...item, deletedAt: new Date().toISOString() };
+    await upsertCanonItem(tombstone);
   }
-  await refreshCanonItems();
-  void drainItemsQueue();
   return { kind: 'ok', value: undefined };
 }
 
-export async function resolveConflict(
-  conflictItem: Conflict<CanonItem>,
-  strategy: ConflictStrategy,
-): Promise<void> {
-  const d = deps();
-  const resolved = resolveCanonConflict(strategy, conflictItem.local, conflictItem.remote);
-  // Use the remote revision so the next push baseline matches Firestore.
-  const reconciled: CanonItem = { ...resolved, revision: conflictItem.remote.revision };
-  await d.localCanonStore.upsert(reconciled);
-  await d.localCanonStore.enqueuePendingWrite(reconciled);
-  _canonConflicts.update((cs) => cs.filter((c) => c.local.id !== conflictItem.local.id));
-  await refreshCanonItems();
-  void drainItemsQueue();
-}
+// ─── Test helpers ────────────────────────────────────────────────────────────────
 
-// ─── Aisle composition (used by aisleService facade) ───────────────────────────
-
-/** Called by aisleService after a domain command writes new aisles to local store. */
-export async function enqueueAisleSave(): Promise<void> {
-  const d = deps();
-  const local = await d.localAisleStore.load();
-  if (local.kind !== 'ok' || local.value === null) return;
-  await d.localAisleStore.enqueuePendingSave(local.value.aisles);
-  await refreshAisles();
-  void drainAislesQueue();
-}
-
-export async function resolveAisleConflict(
-  conflictDoc: Conflict<AislesDocument>,
-  strategy: 'keepLocal' | 'keepRemote',
-): Promise<void> {
-  const d = deps();
-  const chosen = strategy === 'keepLocal' ? conflictDoc.local.aisles : conflictDoc.remote.aisles;
-  const baseRevision = conflictDoc.remote.revision;
-  await d.localAisleStore.save(chosen, baseRevision);
-  await d.localCanonStore.setCursor('aisles', baseRevision);
-  if (strategy === 'keepLocal') {
-    await d.localAisleStore.enqueuePendingSave(chosen);
-  }
-  _aisleConflicts.update((cs) => cs.filter((c) => c !== conflictDoc));
-  await refreshAisles();
-  if (strategy === 'keepLocal') void drainAislesQueue();
-}
-
-/** Test-only: force-drain queues. */
-export async function __drainQueuesForTest(): Promise<void> {
-  await Promise.all([drainItemsQueue(), drainAislesQueue()]);
-}
-
-/** Test-only: synchronously read current state (for assertions). */
-export function __getSyncPending(): SyncPending {
-  return get(_syncPending);
-}
-
-/** Test-only: await the in-flight cold-start IIFE, if any. */
-export async function __waitForInit(): Promise<void> {
-  if (_initReady) await _initReady;
-}
-
-/** Test-only: await the most recent manifest tick handler, if any. */
-export async function __waitForLastTick(): Promise<void> {
-  if (_lastTickPromise) await _lastTickPromise;
-}
-
-/** Test-only: reset reactive stores and module state between tests. */
 export function __resetCanonServiceForTest(): void {
   _canonItems.set([]);
   _aisles.set([]);
   _aisleUsage.set(new Map());
-  _canonConflicts.set([]);
-  _aisleConflicts.set([]);
-  _syncPending.set({ initialSync: false, pull: false, push: false, manifestRefresh: false });
-  _syncHealth.set({ itemsCursor: null, aislesCursor: null, lastTickAt: null, lastError: null });
   _isLoadingAisles.set(false);
-  _initReady = null;
-  _lastTickPromise = null;
-  _itemsDrainInFlight = false;
-  _aislesDrainInFlight = false;
-  if (_onlineHandler && typeof window !== 'undefined') {
-    window.removeEventListener('online', _onlineHandler);
-  }
-  _onlineHandler = null;
+  _receivedItems = false;
+  _receivedAisles = false;
+  _errorReporter = null;
 }

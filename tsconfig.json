@@ -3,7 +3,6 @@
   "references": [
     { "path": "packages/shared-types" },
     { "path": "packages/domain" },
-    { "path": "packages/adapters/local-store" },
     { "path": "packages/adapters/firebase-sync" },
     { "path": "packages/adapters/ld-observability" },
     { "path": "packages/ui-components" },

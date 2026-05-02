@@ -5,26 +5,25 @@ This file is the authoritative, machine-enforced architecture contract. Violatin
 ## Layer map
 
 ```
-shared-types    →  (nothing)
-domain          →  shared-types
-local-store     →  domain, shared-types          # IndexedDB only
-firebase-sync   →  domain, shared-types          # Firebase SDKs only
+shared-types      →  (nothing)
+domain            →  shared-types
+firebase-sync     →  domain, shared-types          # Firebase SDKs only; Firestore is the live data layer
 ld-observability  →  domain, shared-types          # LaunchDarkly Observability SDK only — browser-only
-ui-components   →  (external only — shadcn/tailwind)
-testing-utils   →  shared-types, domain, local-store, firebase-sync, ld-observability
-web-pwa         →  shared-types, domain, local-store, firebase-sync, ld-observability, ui-components
-cloud-functions →  shared-types, domain, firebase-sync
+ui-components     →  (external only — shadcn/tailwind)
+testing-utils     →  shared-types, domain, firebase-sync, ld-observability
+web-pwa           →  shared-types, domain, firebase-sync, ld-observability, ui-components
+cloud-functions   →  shared-types, domain, firebase-sync
 ```
 
-`local-store`, `firebase-sync`, and `ld-observability` are **siblings** — they must not import each other. `web-pwa` composes all three; `cloud-functions` composes `firebase-sync` only. `@salt/ld-observability` depends on browser-only LaunchDarkly SDKs and cannot run in Node — Cloud Functions log via `firebase-functions/logger` directly.
+`firebase-sync` and `ld-observability` are **siblings** — they must not import each other. `web-pwa` composes both; `cloud-functions` composes `firebase-sync` only. `@salt/ld-observability` depends on browser-only LaunchDarkly SDKs and cannot run in Node — Cloud Functions log via `firebase-functions/logger` directly.
 
 ## Hard rules
 
 1. **Domain is pure.** `packages/domain` must not import Firebase, Node.js built-ins, browser APIs, or any I/O. No side effects. Pure functions and types only. Conflict resolution policy lives here.
 2. **Firebase SDK only in `firebase-sync`.** The only place `firebase` or `firebase-admin` may be imported is `packages/adapters/firebase-sync`.
-3. **IndexedDB / browser storage only in `local-store`.** No other package may import `idb`, `idb-keyval`, or touch `window.indexedDB` / `localStorage` / `sessionStorage` / `caches` directly.
-4. **Adapters do not import each other.** `local-store` ↔ `firebase-sync` is forbidden in both directions.
-5. **Cloud Functions do not import `local-store` or `ld-observability`.** CFs run server‑side: no browser storage, and the LaunchDarkly Observability SDK is browser-only. CFs log via `firebase-functions/logger`.
+3. **No IndexedDB / browser storage.** No package may import `idb`, `idb-keyval`, or touch `window.indexedDB` / `localStorage` / `sessionStorage` / `caches` directly. Offline reads and writes are handled by Firestore's `persistentLocalCache`.
+4. **Adapters do not import each other.** `firebase-sync` ↔ `ld-observability` is forbidden in both directions.
+5. **Cloud Functions do not import `ld-observability`.** CFs run server‑side: the LaunchDarkly Observability SDK is browser-only. CFs log via `firebase-functions/logger`.
 6. **No importing apps.** Nothing may import `@salt/web-pwa` or `@salt/cloud-functions`.
 7. **UI primitives go through `@salt/ui-components`.** `apps/web-pwa` must never import `shadcn-svelte`, `bits-ui`, or `melt-ui` directly — always through `@salt/ui-components`.
 8. **No circular dependencies.** Enforced by dependency-cruiser.
@@ -45,7 +44,6 @@ cloud-functions →  shared-types, domain, firebase-sync
 | --------------------------------- | ---------------------- |
 | `packages/shared-types`           | `@salt/shared-types`   |
 | `packages/domain`                 | `@salt/domain`         |
-| `packages/adapters/local-store`   | `@salt/local-store`    |
 | `packages/adapters/firebase-sync`  | `@salt/firebase-sync`  |
 | `packages/adapters/ld-observability` | `@salt/ld-observability` |
 | `packages/ui-components`           | `@salt/ui-components`  |

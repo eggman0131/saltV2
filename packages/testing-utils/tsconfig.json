@@ -9,7 +9,6 @@
   "references": [
     { "path": "../shared-types" },
     { "path": "../domain" },
-    { "path": "../adapters/local-store" },
     { "path": "../adapters/firebase-sync" }
   ]
 }

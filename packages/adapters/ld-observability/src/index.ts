@@ -1,6 +1,5 @@
 export { createLDMatchLoggingAdapter } from './ldMatchLoggingAdapter.js';
 export { createLDErrorReportingAdapter } from './ldErrorReportingAdapter.js';
-export { createLDSyncDiagnosticsAdapter } from './ldSyncDiagnosticsAdapter.js';
 export {
   initLDObservability,
   identifyObservabilityUser,

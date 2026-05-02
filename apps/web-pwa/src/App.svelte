@@ -14,6 +14,13 @@
   import { navItems } from './lib/nav.js';
   import { routes } from './routes/index.js';
   import { toasts, dismissToast } from './lib/toastStore.js';
+  import { initCanonSync } from './lib/canonService.js';
+
+  // Start Firestore subscriptions when authenticated; clean up on sign-out.
+  $effect(() => {
+    if (!auth.user) return;
+    return initCanonSync();
+  });
 </script>
 
 <AuthGate>

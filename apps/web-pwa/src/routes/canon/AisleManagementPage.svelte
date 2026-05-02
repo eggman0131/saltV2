@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { push } from 'svelte-spa-router';
   import {
     Button,
@@ -25,7 +24,6 @@
     aisles,
     aisleUsage,
     isLoadingAisles,
-    initAisles,
     addAisle,
     addAislesBulk,
     renameAisle,
@@ -36,10 +34,6 @@
   import { canonItems } from '../../lib/canonService.js';
   import type { Aisle } from '@salt/domain';
   import { titleCase } from '../../lib/titleCase.js';
-
-  onMount(() => {
-    void initAisles();
-  });
 
   // Filter state
   let filterText = $state('');

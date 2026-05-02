@@ -4,6 +4,6 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 export default defineConfig({
   plugins: [svelte()],
   optimizeDeps: {
-    exclude: ['@salt/shared-types', '@salt/domain', '@salt/local-store', '@salt/firebase-sync'],
+    exclude: ['@salt/shared-types', '@salt/domain', '@salt/firebase-sync'],
   },
 });

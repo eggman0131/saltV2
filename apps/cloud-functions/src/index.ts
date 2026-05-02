@@ -3,9 +3,6 @@ import { defineSecret } from 'firebase-functions/params';
 import { onCallGenkit, isSignedIn } from 'firebase-functions/https';
 import { embedTextFlow } from './flows/embedText.js';
 import { arbitrateCanonFlow } from './flows/arbitrateCanon.js';
-import { onCanonItemWritten } from './triggers/onCanonItemWritten.js';
-import { onAislesWritten } from './triggers/onAislesWritten.js';
-import { initManifest } from './triggers/initManifest.js';
 
 initializeApp();
 
@@ -26,5 +23,3 @@ export const arbitrateCanon = onCallGenkit(
   },
   arbitrateCanonFlow,
 );
-
-export { onCanonItemWritten, onAislesWritten, initManifest };
