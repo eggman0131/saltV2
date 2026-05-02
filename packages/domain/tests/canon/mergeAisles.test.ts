@@ -1,19 +1,21 @@
 import { describe, it, expect } from 'vitest';
 import { mergeAisles } from '@salt/domain';
-import type { AisleStorePort, CanonLocalStorePort } from '@salt/domain';
+import type { AisleLocalStorePort, CanonLocalStorePort } from '@salt/domain';
 import type { Aisle } from '../../src/canon/entities/Aisle.js';
 import type { CanonItem } from '../../src/canon/entities/CanonItem.js';
 
-function makeAisleStore(initial: Aisle[] = []): AisleStorePort & { items: Aisle[] } {
+function makeAisleStore(initial: Aisle[] = []): AisleLocalStorePort & { items: Aisle[] } {
   const items = [...initial];
   return {
     items,
-    load: async () => ({ kind: 'ok', value: items }),
+    load: async () => ({ kind: 'ok', value: { aisles: items, revision: 0 } }),
     save: async (aisles) => {
       items.length = 0;
       items.push(...aisles);
-      return { kind: 'ok', value: items };
+      return { kind: 'ok', value: undefined };
     },
+    enqueuePendingSave: async () => ({ kind: 'ok', value: undefined }),
+    drainPendingSave: async () => ({ kind: 'ok', value: null }),
   };
 }
 
@@ -30,8 +32,8 @@ function makeCanonStore(initial: CanonItem[] = []): CanonLocalStorePort & { item
       return { kind: 'ok', value: item };
     },
     delete: async () => ({ kind: 'ok', value: undefined }),
-    getManifestCursor: async () => ({ kind: 'ok', value: null }),
-    setManifestCursor: async () => ({ kind: 'ok', value: undefined }),
+    getCursor: async () => ({ kind: 'ok', value: null }),
+    setCursor: async () => ({ kind: 'ok', value: undefined }),
     enqueuePendingWrite: async () => ({ kind: 'ok', value: undefined }),
     drainPendingWrites: async () => ({ kind: 'ok', value: [] }),
   };
@@ -39,11 +41,15 @@ function makeCanonStore(initial: CanonItem[] = []): CanonLocalStorePort & { item
 
 function canonItem(overrides: Partial<CanonItem> & { id: string; name: string }): CanonItem {
   return {
+    schemaVersion: 2,
     synonyms: [],
     aisleId: null,
     thumbnail: null,
     embedding: null,
     needs_approval: false,
+    updatedAt: '',
+    revision: 0,
+    deletedAt: null,
     ...overrides,
   };
 }
@@ -136,8 +142,8 @@ describe('mergeAisles', () => {
       load: async () => ({ kind: 'ok', value: null }),
       upsert: async (item) => ({ kind: 'ok', value: item }),
       delete: async () => ({ kind: 'ok', value: undefined }),
-      getManifestCursor: async () => ({ kind: 'ok', value: null }),
-      setManifestCursor: async () => ({ kind: 'ok', value: undefined }),
+      getCursor: async () => ({ kind: 'ok', value: null }),
+      setCursor: async () => ({ kind: 'ok', value: undefined }),
       enqueuePendingWrite: async () => ({ kind: 'ok', value: undefined }),
       drainPendingWrites: async () => ({ kind: 'ok', value: [] }),
     };

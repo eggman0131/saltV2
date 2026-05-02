@@ -1,13 +1,20 @@
 import { describe, it, expect } from 'vitest';
 import { getAisleUsage } from '@salt/domain';
-import type { AisleStorePort, CanonLocalStorePort } from '@salt/domain';
+import type { AisleLocalStorePort, CanonLocalStorePort } from '@salt/domain';
 import type { Aisle } from '../../src/canon/entities/Aisle.js';
 import type { CanonItem } from '../../src/canon/entities/CanonItem.js';
 
-function makeAisleStore(initial: Aisle[] = []): AisleStorePort {
+function makeAisleStore(initial: Aisle[] = []): AisleLocalStorePort {
+  const items = [...initial];
   return {
-    load: async () => ({ kind: 'ok', value: [...initial] }),
-    save: async (aisles) => ({ kind: 'ok', value: aisles }),
+    load: async () => ({ kind: 'ok', value: { aisles: items, revision: 0 } }),
+    save: async (aisles) => {
+      items.length = 0;
+      items.push(...aisles);
+      return { kind: 'ok', value: undefined };
+    },
+    enqueuePendingSave: async () => ({ kind: 'ok', value: undefined }),
+    drainPendingSave: async () => ({ kind: 'ok', value: null }),
   };
 }
 
@@ -18,8 +25,8 @@ function makeCanonStore(initial: CanonItem[] = []): CanonLocalStorePort {
     load: async (id) => ({ kind: 'ok', value: items.find((i) => i.id === id) ?? null }),
     upsert: async (item) => ({ kind: 'ok', value: item }),
     delete: async () => ({ kind: 'ok', value: undefined }),
-    getManifestCursor: async () => ({ kind: 'ok', value: null }),
-    setManifestCursor: async () => ({ kind: 'ok', value: undefined }),
+    getCursor: async () => ({ kind: 'ok', value: null }),
+    setCursor: async () => ({ kind: 'ok', value: undefined }),
     enqueuePendingWrite: async () => ({ kind: 'ok', value: undefined }),
     drainPendingWrites: async () => ({ kind: 'ok', value: [] }),
   };
@@ -85,9 +92,11 @@ describe('getAisleUsage', () => {
   });
 
   it('propagates aisle store load failure', async () => {
-    const aisleStore: AisleStorePort = {
+    const aisleStore: AisleLocalStorePort = {
       load: async () => ({ kind: 'err', error: { kind: 'StorageError', reason: 'unavailable' } }),
-      save: async (aisles) => ({ kind: 'ok', value: aisles }),
+      save: async () => ({ kind: 'ok', value: undefined }),
+      enqueuePendingSave: async () => ({ kind: 'ok', value: undefined }),
+      drainPendingSave: async () => ({ kind: 'ok', value: null }),
     };
     const result = await getAisleUsage(aisleStore, makeCanonStore());
     expect(result.kind).toBe('err');
@@ -100,8 +109,8 @@ describe('getAisleUsage', () => {
       load: async () => ({ kind: 'ok', value: null }),
       upsert: async (item) => ({ kind: 'ok', value: item }),
       delete: async () => ({ kind: 'ok', value: undefined }),
-      getManifestCursor: async () => ({ kind: 'ok', value: null }),
-      setManifestCursor: async () => ({ kind: 'ok', value: undefined }),
+      getCursor: async () => ({ kind: 'ok', value: null }),
+      setCursor: async () => ({ kind: 'ok', value: undefined }),
       enqueuePendingWrite: async () => ({ kind: 'ok', value: undefined }),
       drainPendingWrites: async () => ({ kind: 'ok', value: [] }),
     };

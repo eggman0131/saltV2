@@ -1,18 +1,20 @@
 import { describe, it, expect } from 'vitest';
 import { renameAisle } from '@salt/domain';
-import type { AisleStorePort } from '@salt/domain';
+import type { AisleLocalStorePort } from '@salt/domain';
 import type { Aisle } from '../../src/canon/entities/Aisle.js';
 import { ErrorCode } from '@salt/shared-types';
 
-function makeAisleStore(initial: Aisle[] = []): AisleStorePort {
+function makeAisleStore(initial: Aisle[] = []): AisleLocalStorePort {
   const items = [...initial];
   return {
-    load: async () => ({ kind: 'ok', value: items }),
+    load: async () => ({ kind: 'ok', value: { aisles: items, revision: 0 } }),
     save: async (aisles) => {
       items.length = 0;
       items.push(...aisles);
-      return { kind: 'ok', value: items };
+      return { kind: 'ok', value: undefined };
     },
+    enqueuePendingSave: async () => ({ kind: 'ok', value: undefined }),
+    drainPendingSave: async () => ({ kind: 'ok', value: null }),
   };
 }
 
@@ -63,9 +65,11 @@ describe('renameAisle', () => {
   });
 
   it('propagates store load failure', async () => {
-    const store: AisleStorePort = {
+    const store: AisleLocalStorePort = {
       load: async () => ({ kind: 'err', error: { kind: 'StorageError', reason: 'unavailable' } }),
-      save: async () => ({ kind: 'ok', value: [] }),
+      save: async () => ({ kind: 'ok', value: undefined }),
+      enqueuePendingSave: async () => ({ kind: 'ok', value: undefined }),
+      drainPendingSave: async () => ({ kind: 'ok', value: null }),
     };
     const result = await renameAisle({ id: 'a1', newName: 'X' }, store);
     expect(result.kind).toBe('err');

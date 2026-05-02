@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { matchOrCreate } from '../../src/canon/commands/matchOrCreate.js';
 import type { CanonLocalStorePort } from '../../src/canon/ports/CanonLocalStorePort.js';
-import type { AisleStorePort } from '../../src/canon/ports/AisleStorePort.js';
+import type { AisleLocalStorePort } from '../../src/canon/ports/AisleLocalStorePort.js';
 import type { EmbeddingPort } from '../../src/canon/ports/EmbeddingPort.js';
 import type { CanonArbitrationPort } from '../../src/canon/ports/CanonArbitrationPort.js';
 import type { IdGenerator } from '../../src/canon/ports/IdGenerator.js';
@@ -48,17 +48,19 @@ function makeStore(initial: CanonItem[] = []): CanonLocalStorePort & { items: Ca
       return { kind: 'ok', value: item };
     },
     delete: async () => ({ kind: 'ok', value: undefined }),
-    getManifestCursor: async () => ({ kind: 'ok', value: null }),
-    setManifestCursor: async () => ({ kind: 'ok', value: undefined }),
+    getCursor: async () => ({ kind: 'ok', value: null }),
+    setCursor: async () => ({ kind: 'ok', value: undefined }),
     enqueuePendingWrite: async () => ({ kind: 'ok', value: undefined }),
     drainPendingWrites: async () => ({ kind: 'ok', value: [] }),
   };
 }
 
-function makeAisleStore(): AisleStorePort {
+function makeAisleStore(): AisleLocalStorePort {
   return {
-    load: async () => ({ kind: 'ok', value: [] }),
-    save: async () => ({ kind: 'ok', value: [] }),
+    load: async () => ({ kind: 'ok', value: { aisles: [], revision: 0 } }),
+    save: async () => ({ kind: 'ok', value: undefined }),
+    enqueuePendingSave: async () => ({ kind: 'ok', value: undefined }),
+    drainPendingSave: async () => ({ kind: 'ok', value: null }),
   };
 }
 
@@ -390,8 +392,8 @@ describe('error paths', () => {
       load: async () => ({ kind: 'ok', value: null }),
       upsert: async (i) => ({ kind: 'ok', value: i }),
       delete: async () => ({ kind: 'ok', value: undefined }),
-      getManifestCursor: async () => ({ kind: 'ok', value: null }),
-      setManifestCursor: async () => ({ kind: 'ok', value: undefined }),
+      getCursor: async () => ({ kind: 'ok', value: null }),
+      setCursor: async () => ({ kind: 'ok', value: undefined }),
       enqueuePendingWrite: async () => ({ kind: 'ok', value: undefined }),
       drainPendingWrites: async () => ({ kind: 'ok', value: [] }),
     };
@@ -417,8 +419,8 @@ describe('error paths', () => {
       load: async () => ({ kind: 'ok', value: null }),
       upsert: async () => ({ kind: 'err', error: { kind: 'StorageError', reason: 'unavailable' } }),
       delete: async () => ({ kind: 'ok', value: undefined }),
-      getManifestCursor: async () => ({ kind: 'ok', value: null }),
-      setManifestCursor: async () => ({ kind: 'ok', value: undefined }),
+      getCursor: async () => ({ kind: 'ok', value: null }),
+      setCursor: async () => ({ kind: 'ok', value: undefined }),
       enqueuePendingWrite: async () => ({ kind: 'ok', value: undefined }),
       drainPendingWrites: async () => ({ kind: 'ok', value: [] }),
     };

@@ -1,12 +1,19 @@
 import { describe, it, expect } from 'vitest';
 import { listAisles } from '@salt/domain';
-import type { AisleStorePort } from '@salt/domain';
+import type { AisleLocalStorePort } from '@salt/domain';
 import type { Aisle } from '../../src/canon/entities/Aisle.js';
 
-function makeAisleStore(initial: Aisle[] = []): AisleStorePort {
+function makeAisleStore(initial: Aisle[] = []): AisleLocalStorePort {
+  const items = [...initial];
   return {
-    load: async () => ({ kind: 'ok', value: [...initial] }),
-    save: async (aisles) => ({ kind: 'ok', value: aisles }),
+    load: async () => ({ kind: 'ok', value: { aisles: items, revision: 0 } }),
+    save: async (aisles) => {
+      items.length = 0;
+      items.push(...aisles);
+      return { kind: 'ok', value: undefined };
+    },
+    enqueuePendingSave: async () => ({ kind: 'ok', value: undefined }),
+    drainPendingSave: async () => ({ kind: 'ok', value: null }),
   };
 }
 
@@ -31,9 +38,11 @@ describe('listAisles', () => {
   });
 
   it('returns empty array when store returns null', async () => {
-    const store: AisleStorePort = {
+    const store: AisleLocalStorePort = {
       load: async () => ({ kind: 'ok', value: null }),
-      save: async (aisles) => ({ kind: 'ok', value: aisles }),
+      save: async () => ({ kind: 'ok', value: undefined }),
+      enqueuePendingSave: async () => ({ kind: 'ok', value: undefined }),
+      drainPendingSave: async () => ({ kind: 'ok', value: null }),
     };
     const result = await listAisles(store);
     expect(result.kind).toBe('ok');
@@ -42,9 +51,11 @@ describe('listAisles', () => {
   });
 
   it('propagates store load failure', async () => {
-    const store: AisleStorePort = {
+    const store: AisleLocalStorePort = {
       load: async () => ({ kind: 'err', error: { kind: 'StorageError', reason: 'unavailable' } }),
-      save: async (aisles) => ({ kind: 'ok', value: aisles }),
+      save: async () => ({ kind: 'ok', value: undefined }),
+      enqueuePendingSave: async () => ({ kind: 'ok', value: undefined }),
+      drainPendingSave: async () => ({ kind: 'ok', value: null }),
     };
     const result = await listAisles(store);
     expect(result.kind).toBe('err');

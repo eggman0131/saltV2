@@ -1,6 +1,6 @@
 import { failure, success } from '@salt/shared-types';
 import type { DomainError, ReadResult } from '@salt/shared-types';
-import type { AisleStorePort } from '../ports/AisleStorePort.js';
+import type { AisleLocalStorePort } from '../ports/AisleLocalStorePort.js';
 import type { CanonLocalStorePort } from '../ports/CanonLocalStorePort.js';
 
 export type ItemMergeChoice = 'move' | 'unassign';
@@ -18,7 +18,7 @@ export interface MergeAislesInput {
 
 export async function mergeAisles(
   input: MergeAislesInput,
-  store: AisleStorePort,
+  store: AisleLocalStorePort,
   canonStore: CanonLocalStorePort,
 ): Promise<ReadResult<void, DomainError>> {
   const sourceSet = new Set(input.sourceIds);
@@ -43,12 +43,13 @@ export async function mergeAisles(
   const loadResult = await store.load();
   if (loadResult.kind === 'err') return loadResult;
 
-  const remaining = (loadResult.value ?? []).filter((a) => !sourceSet.has(a.id));
-  const saveResult = await store.save(remaining);
+  const stored = loadResult.value;
+  const existing = stored?.aisles ?? [];
+  const revision = stored?.revision ?? 0;
+  const remaining = existing.filter((a) => !sourceSet.has(a.id));
+
+  const saveResult = await store.save(remaining, revision);
   if (saveResult.kind === 'err') return saveResult;
-  if (saveResult.kind === 'conflict') {
-    return failure({ kind: 'StorageError', reason: 'unavailable' });
-  }
 
   return success(undefined);
 }

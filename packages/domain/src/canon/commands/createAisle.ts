@@ -2,7 +2,7 @@ import { ErrorCode, failure, success } from '@salt/shared-types';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import type { Aisle } from '../entities/Aisle.js';
 import type { IdGenerator } from '../ports/IdGenerator.js';
-import type { AisleStorePort } from '../ports/AisleStorePort.js';
+import type { AisleLocalStorePort } from '../ports/AisleLocalStorePort.js';
 
 export interface CreateAisleInput {
   readonly name: string;
@@ -11,7 +11,7 @@ export interface CreateAisleInput {
 export async function createAisle(
   input: CreateAisleInput,
   ids: IdGenerator,
-  store: AisleStorePort,
+  store: AisleLocalStorePort,
 ): Promise<ReadResult<Aisle, DomainError>> {
   const name = input.name.trim();
   if (!name) {
@@ -21,7 +21,9 @@ export async function createAisle(
   const loadResult = await store.load();
   if (loadResult.kind === 'err') return loadResult;
 
-  const existing = loadResult.value ?? [];
+  const stored = loadResult.value;
+  const existing = stored?.aisles ?? [];
+  const revision = stored?.revision ?? 0;
   const nameLower = name.toLowerCase();
   if (existing.some((a) => a.name.toLowerCase() === nameLower)) {
     return failure({ kind: 'ValidationError', code: ErrorCode.DUPLICATE_AISLE_NAME });
@@ -30,11 +32,8 @@ export async function createAisle(
   const maxOrder = existing.reduce((max, a) => Math.max(max, a.order), -1);
   const newAisle: Aisle = { id: ids.newAisleId(), name, order: maxOrder + 1 };
 
-  const saveResult = await store.save([...existing, newAisle]);
+  const saveResult = await store.save([...existing, newAisle], revision);
   if (saveResult.kind === 'err') return saveResult;
-  if (saveResult.kind === 'conflict') {
-    return failure({ kind: 'StorageError', reason: 'unavailable' });
-  }
 
   return success(newAisle);
 }

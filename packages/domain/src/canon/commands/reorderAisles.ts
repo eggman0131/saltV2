@@ -1,7 +1,7 @@
 import { failure, success } from '@salt/shared-types';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import type { Aisle } from '../entities/Aisle.js';
-import type { AisleStorePort } from '../ports/AisleStorePort.js';
+import type { AisleLocalStorePort } from '../ports/AisleLocalStorePort.js';
 
 export interface ReorderAislesInput {
   readonly orderedIds: readonly string[];
@@ -9,12 +9,14 @@ export interface ReorderAislesInput {
 
 export async function reorderAisles(
   input: ReorderAislesInput,
-  store: AisleStorePort,
+  store: AisleLocalStorePort,
 ): Promise<ReadResult<readonly Aisle[], DomainError>> {
   const loadResult = await store.load();
   if (loadResult.kind === 'err') return loadResult;
 
-  const existing = loadResult.value ?? [];
+  const stored = loadResult.value;
+  const existing = stored?.aisles ?? [];
+  const revision = stored?.revision ?? 0;
   const byId = new Map(existing.map((a) => [a.id, a]));
 
   const reordered: Aisle[] = [];
@@ -30,11 +32,8 @@ export async function reorderAisles(
     if (!inList.has(aisle.id)) reordered.push({ ...aisle, order: tail++ });
   }
 
-  const saveResult = await store.save(reordered);
+  const saveResult = await store.save(reordered, revision);
   if (saveResult.kind === 'err') return saveResult;
-  if (saveResult.kind === 'conflict') {
-    return failure({ kind: 'StorageError', reason: 'unavailable' });
-  }
 
   return success(reordered);
 }

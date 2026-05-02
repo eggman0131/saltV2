@@ -5,7 +5,7 @@ import type { CanonItem } from '../entities/CanonItem.js';
 import type { MatchCandidate } from '../entities/MatchCandidate.js';
 import type { FinalDecision } from '../entities/MatchLogEntry.js';
 import type { CanonLocalStorePort } from '../ports/CanonLocalStorePort.js';
-import type { AisleStorePort } from '../ports/AisleStorePort.js';
+import type { AisleLocalStorePort } from '../ports/AisleLocalStorePort.js';
 import type { EmbeddingPort } from '../ports/EmbeddingPort.js';
 import type { CanonArbitrationPort } from '../ports/CanonArbitrationPort.js';
 import type { IdGenerator } from '../ports/IdGenerator.js';
@@ -33,7 +33,7 @@ export interface MatchOrCreateResult {
 
 export interface MatchOrCreatePorts {
   readonly store: CanonLocalStorePort;
-  readonly aisleStore: AisleStorePort;
+  readonly aisleStore: AisleLocalStorePort;
   readonly embedding: EmbeddingPort;
   readonly arbitration: CanonArbitrationPort;
   readonly ids: IdGenerator;
@@ -65,7 +65,7 @@ export async function matchOrCreate(
   // Force-create: skip match stages, still run aisle arbitration for assignment.
   if (forceCreate) {
     const aislesResult = await aisleStore.load();
-    const aisles = aislesResult.kind === 'ok' ? (aislesResult.value ?? []) : [];
+    const aisles = aislesResult.kind === 'ok' ? (aislesResult.value?.aisles ?? []) : [];
     const arbResult = await arbitration.arbitrate({ normalisedName, candidates: [], aisles });
     const suggestedAisleId =
       arbResult.kind === 'ok' && arbResult.value.kind === 'new' ? arbResult.value.aisleId : null;
@@ -117,7 +117,7 @@ export async function matchOrCreate(
   // Stage 6: AI arbitration when near-miss candidates exist
   if (aiCandidates.length > 0) {
     const aislesResult = await aisleStore.load();
-    const aisles = aislesResult.kind === 'ok' ? (aislesResult.value ?? []) : [];
+    const aisles = aislesResult.kind === 'ok' ? (aislesResult.value?.aisles ?? []) : [];
 
     const arbResult = await arbitration.arbitrate({
       normalisedName,
