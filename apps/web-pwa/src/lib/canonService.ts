@@ -19,6 +19,7 @@ import type {
   AisleLocalStorePort,
   MatchOrCreateResult,
 } from '@salt/domain';
+import { failure } from '@salt/shared-types';
 import type { DomainError, Result } from '@salt/shared-types';
 import { writable, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
@@ -194,7 +195,12 @@ export async function addCanonItem(
     },
   );
   if (result.kind === 'ok') {
-    await upsertCanonItem(result.value.item);
+    try {
+      await upsertCanonItem(result.value.item);
+    } catch (err) {
+      errors.report(err);
+      return failure({ kind: 'StorageError', reason: 'unavailable' });
+    }
   }
   return result;
 }

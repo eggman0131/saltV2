@@ -4,8 +4,12 @@ import type { ObservabilitySessionMeta } from '@salt/ld-observability';
 
 declare const process: { env: Record<string, string | undefined> };
 
+const FIRESTORE_EMULATOR_CLEAR_URL =
+  'http://127.0.0.1:8080/emulator/v1/projects/demo-salt/databases/(default)/documents';
+
 interface AutoFixtures {
   readonly observabilitySession: void;
+  readonly clearFirestore: void;
 }
 
 function buildSessionMeta(testName: string, testId: string): ObservabilitySessionMeta {
@@ -20,6 +24,17 @@ function buildSessionMeta(testName: string, testId: string): ObservabilitySessio
 }
 
 export const test = baseTest.extend<AutoFixtures>({
+  clearFirestore: [
+    async ({}, use) => {
+      const resp = await fetch(FIRESTORE_EMULATOR_CLEAR_URL, { method: 'DELETE' });
+      if (!resp.ok && resp.status !== 404) {
+        throw new Error(`Failed to clear Firestore emulator: HTTP ${resp.status}`);
+      }
+      await use();
+    },
+    { auto: true },
+  ],
+
   observabilitySession: [
     async ({ page }, use, testInfo) => {
       const meta = buildSessionMeta(testInfo.title, testInfo.testId);

@@ -123,8 +123,8 @@ test.describe('canon sync — two-tab convergence', () => {
       await gotoAndSignIn(page1, emailA);
       await gotoAndSignIn(page2, emailB);
 
-      // Take ctx1 offline and seed an item (enqueues a pending write).
-      await ctx1.setOffline(true);
+      // Take ctx1 offline via the SDK (more reliable than browser-level setOffline on WSL).
+      await page1.evaluate(() => window.__e2e!.setFirestoreOffline(true));
       await seedCanonItem(page1, { id: itemId, name: 'Offline Edit' });
 
       // While offline, tab B should not yet see it.
@@ -136,7 +136,7 @@ test.describe('canon sync — two-tab convergence', () => {
         });
 
       // Bring ctx1 back online — pending writes drain and propagate.
-      await ctx1.setOffline(false);
+      await page1.evaluate(() => window.__e2e!.setFirestoreOffline(false));
 
       await expect
         .poll(() => getCanonItem(page2, itemId), { timeout: CONVERGENCE_TIMEOUT })

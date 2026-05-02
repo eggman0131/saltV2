@@ -5,6 +5,8 @@ import {
   initializeFirestore,
   persistentLocalCache,
   connectFirestoreEmulator,
+  disableNetwork,
+  enableNetwork,
 } from 'firebase/firestore';
 import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
 import { getAuth } from 'firebase/auth';
@@ -29,5 +31,14 @@ export function initFirebase(
     connectFunctionsEmulator(getFunctions(app), '127.0.0.1', 5001);
     connectAuthEmulatorOnce(getAuth(app));
     emulatorsConnected = true;
+  }
+}
+
+export async function setFirestoreNetwork(online: boolean): Promise<void> {
+  const db = getFirestore();
+  if (online) {
+    await enableNetwork(db);
+  } else {
+    await disableNetwork(db);
   }
 }

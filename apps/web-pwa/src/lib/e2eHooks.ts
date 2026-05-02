@@ -1,5 +1,5 @@
 import { get } from 'svelte/store';
-import { upsertCanonItem } from '@salt/firebase-sync';
+import { upsertCanonItem, setFirestoreNetwork } from '@salt/firebase-sync';
 import type { CanonItem } from '@salt/domain';
 import { devSignIn } from './auth.svelte.js';
 import { addAislesBulk, aisles } from './aisleService.js';
@@ -49,6 +49,10 @@ export function installE2EHooks(): void {
 
     async clearStores() {
       // Firestore persistent cache is managed by the SDK; no local stores to clear.
+    },
+
+    async setFirestoreOffline(offline: boolean) {
+      await setFirestoreNetwork(!offline);
     },
 
     tagSession(meta) {

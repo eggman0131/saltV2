@@ -18,6 +18,7 @@ export interface E2EBridge {
   getAisles(): readonly Aisle[];
   getCanonItem(id: string): Promise<CanonItem | null>;
   clearStores(): Promise<void>;
+  setFirestoreOffline(offline: boolean): Promise<void>;
   tagSession(meta: ObservabilitySessionMeta): void;
   getLDSessionURL(): string | null;
 }
