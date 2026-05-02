@@ -158,7 +158,7 @@ export default [
             },
             {
               from: 'cloud-functions',
-              allow: ['shared-types', 'domain', 'firebase-sync', 'ld-observability'],
+              allow: ['shared-types', 'domain', 'firebase-sync'],
             },
           ],
         },
