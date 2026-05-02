@@ -14,6 +14,8 @@ export type {
   AisleSyncTransportPort,
   AisleSyncBatch,
   AisleLocalStorePort,
+  SyncDiagnosticsPort,
+  SyncTickEvent,
   CanonLookupPort,
   IdGenerator,
   CreateCanonItemInput,

@@ -66,10 +66,16 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
 export function createFirebaseCanonSyncTransportAdapter(
   errors: ErrorReportingPort | null = null,
 ): CanonSyncTransportPort {
-  const pendingState: SyncPending & { initialSync: boolean; pull: boolean; push: boolean } = {
+  const pendingState: {
+    initialSync: boolean;
+    pull: boolean;
+    push: boolean;
+    manifestRefresh: boolean;
+  } = {
     initialSync: false,
     pull: false,
     push: false,
+    manifestRefresh: false,
   };
 
   return {

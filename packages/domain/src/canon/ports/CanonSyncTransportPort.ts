@@ -19,6 +19,8 @@ export interface SyncPending {
   readonly initialSync: boolean;
   readonly pull: boolean;
   readonly push: boolean;
+  /** True while a manifest tick is being applied (delta pull in flight). */
+  readonly manifestRefresh: boolean;
 }
 
 export interface CanonSyncTransportPort {

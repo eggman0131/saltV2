@@ -1,3 +1,6 @@
+// Thin facade over canonService — aisles share the canon manifest sync lifecycle.
+// Re-exports the reactive stores and wraps domain commands so each mutation
+// enqueues an aisles save through canonService and triggers the drain.
 import {
   createAisle,
   createAislesBulk,
@@ -5,100 +8,44 @@ import {
   reorderAisles as reorderAislesCmd,
   deleteAisles as deleteAislesCmd,
   mergeAisles as mergeAislesCmd,
-  listAisles,
-  getAisleUsage,
 } from '@salt/domain';
-import type { Aisle, AisleStorePort, CanonLocalStorePort, MergeAislesInput } from '@salt/domain';
+import type { Aisle, MergeAislesInput } from '@salt/domain';
 import type { DomainError, ReadResult } from '@salt/shared-types';
-import { createLocalAisleStoreAdapter, createLocalCanonStoreAdapter } from '@salt/local-store';
-import { createFirebaseAisleStoreAdapter } from '@salt/firebase-sync';
-import { createLDErrorReportingAdapter } from '@salt/ld-observability';
-import { writable } from 'svelte/store';
-import type { Readable } from 'svelte/store';
+import {
+  aisles,
+  aisleUsage,
+  isLoadingAisles,
+  enqueueAisleSave,
+  getLocalAisleStore,
+  getLocalCanonStore,
+  refreshAisles,
+} from './canonService.js';
 
-let _localAisleStore: AisleStorePort | null = null;
-let _localCanonStore: CanonLocalStorePort | null = null;
-let _firebaseAisleStore: AisleStorePort | null = null;
+export { aisles, aisleUsage, isLoadingAisles, refreshAisles, getLocalAisleStore };
 
-const _aisles = writable<Aisle[]>([]);
-export const aisles: Readable<Aisle[]> = _aisles;
-
-const _aisleUsage = writable<Map<string, number>>(new Map());
-export const aisleUsage: Readable<Map<string, number>> = _aisleUsage;
-
-const _isLoadingAisles = writable(false);
-export const isLoadingAisles: Readable<boolean> = _isLoadingAisles;
-
-export function getLocalAisleStore(): AisleStorePort {
-  if (!_localAisleStore) _localAisleStore = createLocalAisleStoreAdapter();
-  return _localAisleStore;
-}
-
-function getLocalCanonStore(): CanonLocalStorePort {
-  if (!_localCanonStore) _localCanonStore = createLocalCanonStoreAdapter();
-  return _localCanonStore;
-}
-
-function getFirebaseAisleStore(): AisleStorePort {
-  if (!_firebaseAisleStore)
-    _firebaseAisleStore = createFirebaseAisleStoreAdapter(createLDErrorReportingAdapter());
-  return _firebaseAisleStore;
-}
-
-async function refreshAisles(): Promise<void> {
-  const [aislesResult, usageResult] = await Promise.all([
-    listAisles(getLocalAisleStore()),
-    getAisleUsage(getLocalAisleStore(), getLocalCanonStore()),
-  ]);
-  if (aislesResult.kind === 'ok') _aisles.set([...aislesResult.value]);
-  if (usageResult.kind === 'ok') _aisleUsage.set(new Map(usageResult.value));
-}
-
-function syncToFirebase(): void {
-  void (async () => {
-    const local = await getLocalAisleStore().load();
-    if (local.kind === 'ok' && local.value !== null) {
-      await getFirebaseAisleStore().save(local.value);
-    }
-  })();
-}
-
+/**
+ * Legacy entry point still imported by route components. The real cold-start
+ * and subscribe lifecycle is owned by canonService.initCanonSync; this hook
+ * just guarantees the in-memory aisle stores are populated before the first
+ * paint of an aisle-aware page.
+ */
 export async function initAisles(): Promise<void> {
-  _isLoadingAisles.set(true);
   await refreshAisles();
-  _isLoadingAisles.set(false);
-  const remote = await getFirebaseAisleStore().load();
-  if (remote.kind === 'ok' && remote.value !== null) {
-    await getLocalAisleStore().save(remote.value);
-    await refreshAisles();
-  }
 }
+
+const idGen = { newAisleId: () => crypto.randomUUID(), newCanonId: () => crypto.randomUUID() };
 
 export async function addAisle(name: string): Promise<ReadResult<Aisle, DomainError>> {
-  const result = await createAisle(
-    { name },
-    { newAisleId: () => crypto.randomUUID(), newCanonId: () => crypto.randomUUID() },
-    getLocalAisleStore(),
-  );
-  if (result.kind === 'ok') {
-    await refreshAisles();
-    syncToFirebase();
-  }
+  const result = await createAisle({ name }, idGen, getLocalAisleStore());
+  if (result.kind === 'ok') await enqueueAisleSave();
   return result;
 }
 
 export async function addAislesBulk(
   names: string[],
 ): Promise<ReadResult<readonly Aisle[], DomainError>> {
-  const result = await createAislesBulk(
-    { names },
-    { newAisleId: () => crypto.randomUUID(), newCanonId: () => crypto.randomUUID() },
-    getLocalAisleStore(),
-  );
-  if (result.kind === 'ok') {
-    await refreshAisles();
-    syncToFirebase();
-  }
+  const result = await createAislesBulk({ names }, idGen, getLocalAisleStore());
+  if (result.kind === 'ok') await enqueueAisleSave();
   return result;
 }
 
@@ -107,33 +54,23 @@ export async function renameAisle(
   newName: string,
 ): Promise<ReadResult<Aisle, DomainError>> {
   const result = await renameAisleCmd({ id, newName }, getLocalAisleStore());
-  if (result.kind === 'ok') {
-    await refreshAisles();
-    syncToFirebase();
-  }
+  if (result.kind === 'ok') await enqueueAisleSave();
   return result;
 }
 
 export async function reorderAisles(orderedIds: string[]): Promise<void> {
   await reorderAislesCmd({ orderedIds }, getLocalAisleStore());
-  await refreshAisles();
-  syncToFirebase();
+  await enqueueAisleSave();
 }
 
 export async function deleteAisles(ids: string[]): Promise<ReadResult<void, DomainError>> {
   const result = await deleteAislesCmd({ ids }, getLocalAisleStore(), getLocalCanonStore());
-  if (result.kind === 'ok') {
-    await refreshAisles();
-    syncToFirebase();
-  }
+  if (result.kind === 'ok') await enqueueAisleSave();
   return result;
 }
 
 export async function mergeAisles(input: MergeAislesInput): Promise<ReadResult<void, DomainError>> {
   const result = await mergeAislesCmd(input, getLocalAisleStore(), getLocalCanonStore());
-  if (result.kind === 'ok') {
-    await refreshAisles();
-    syncToFirebase();
-  }
+  if (result.kind === 'ok') await enqueueAisleSave();
   return result;
 }
