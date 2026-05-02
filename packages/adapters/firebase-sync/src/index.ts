@@ -7,3 +7,5 @@ export { createFirebaseManifestListener } from './firebaseManifestListener.js';
 export { createFirebaseMatchLoggingAdapter } from './canonMatchingLog.js';
 export { createGeminiEmbeddingAdapter } from './geminiEmbedding.js';
 export { createGeminiArbitrationAdapter } from './geminiArbitration.js';
+export { subscribeCanonItems, upsertCanonItem } from './canonSubscription.js';
+export { subscribeAisles, saveAisles } from './aisleSubscription.js';

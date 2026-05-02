@@ -1,0 +1,42 @@
+import { getFirestore, collection, doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { getApp } from 'firebase/app';
+import type { CanonItem } from '@salt/domain';
+import type { DomainError } from '@salt/shared-types';
+import { classifyFirestoreError } from './firestoreErrors.js';
+
+const COLLECTION = 'canonItems';
+
+function fromDoc(data: Record<string, unknown>): CanonItem {
+  return {
+    id: data['id'] as string,
+    schemaVersion: 2,
+    name: data['name'] as string,
+    synonyms: Array.isArray(data['synonyms']) ? (data['synonyms'] as string[]) : [],
+    aisleId: typeof data['aisleId'] === 'string' ? data['aisleId'] : null,
+    thumbnail: typeof data['thumbnail'] === 'string' ? data['thumbnail'] : null,
+    embedding: Array.isArray(data['embedding']) ? (data['embedding'] as number[]) : null,
+    needs_approval: typeof data['needs_approval'] === 'boolean' ? data['needs_approval'] : true,
+    updatedAt: typeof data['updatedAt'] === 'string' ? data['updatedAt'] : '',
+    revision: typeof data['revision'] === 'number' ? data['revision'] : 0,
+    deletedAt: typeof data['deletedAt'] === 'string' ? data['deletedAt'] : null,
+  };
+}
+
+export function subscribeCanonItems(
+  onItems: (items: CanonItem[]) => void,
+  onError: (err: DomainError) => void,
+): () => void {
+  const db = getFirestore(getApp());
+  return onSnapshot(
+    collection(db, COLLECTION),
+    (snap) => {
+      onItems(snap.docs.map((d) => fromDoc(d.data() as Record<string, unknown>)));
+    },
+    (err) => onError(classifyFirestoreError(err)),
+  );
+}
+
+export async function upsertCanonItem(item: CanonItem): Promise<void> {
+  const db = getFirestore(getApp());
+  await setDoc(doc(db, COLLECTION, item.id), { ...item });
+}
