@@ -1,6 +1,15 @@
-import { getFirestore, collection, doc, getDocs, setDoc, onSnapshot } from 'firebase/firestore';
+import {
+  getFirestore,
+  collection,
+  doc,
+  query,
+  where,
+  orderBy,
+  getDocs,
+  runTransaction,
+} from 'firebase/firestore';
 import { getApp } from 'firebase/app';
-import { failure, success } from '@salt/shared-types';
+import { failure, success, conflict } from '@salt/shared-types';
 import type { DomainError } from '@salt/shared-types';
 import type {
   CanonItem,
@@ -10,6 +19,7 @@ import type {
   ErrorReportingPort,
 } from '@salt/domain';
 import { classifyFirestoreError } from './firestoreErrors.js';
+import { createFirebaseManifestListener } from './firebaseManifestListener.js';
 
 const COLLECTION = 'canonItems';
 const MAX_RETRIES = 4;
@@ -67,14 +77,21 @@ export function createFirebaseCanonSyncTransportAdapter(
       return pendingState;
     },
 
-    async pull(_sinceCursor) {
+    async pull(sinceCursor) {
       pendingState.pull = true;
       try {
         const db = getFirestore(getApp());
-        const snap = await withRetry(() => getDocs(collection(db, COLLECTION)));
-        const items = snap.docs.map((d) => fromDoc(d.data() as Record<string, unknown>));
-        const cursor = new Date().toISOString();
-        return success({ items, cursor });
+        const q = query(
+          collection(db, COLLECTION),
+          where('revision', '>', sinceCursor ?? 0),
+          orderBy('revision'),
+        );
+        const snap = await withRetry(() => getDocs(q));
+        const upserted = snap.docs.map((d) => fromDoc(d.data() as Record<string, unknown>));
+        // Items are ordered by revision asc, so last item holds the max revision.
+        const cursor =
+          upserted.length > 0 ? upserted[upserted.length - 1]!.revision : (sinceCursor ?? 0);
+        return success({ upserted, deleted: [], cursor } satisfies SyncBatch);
       } catch (err) {
         errors?.report(err);
         return failure(classifyFirestoreError(err));
@@ -87,7 +104,26 @@ export function createFirebaseCanonSyncTransportAdapter(
       pendingState.push = true;
       try {
         const db = getFirestore(getApp());
-        await withRetry(() => setDoc(doc(db, COLLECTION, item.id), toDoc(item)));
+        const itemRef = doc(db, COLLECTION, item.id);
+
+        const txResult = await withRetry(() =>
+          runTransaction(db, async (tx) => {
+            const remote = await tx.get(itemRef);
+            if (remote.exists()) {
+              const remoteData = fromDoc(remote.data() as Record<string, unknown>);
+              if (remoteData.revision !== item.revision) {
+                return { isConflict: true as const, remoteData };
+              }
+            }
+            // Write optimistic revision; CF trigger stamps the authoritative value.
+            tx.set(itemRef, { ...toDoc(item), revision: item.revision + 1 });
+            return { isConflict: false as const };
+          }),
+        );
+
+        if (txResult.isConflict) {
+          return conflict(item, txResult.remoteData);
+        }
         return success(item);
       } catch (err) {
         errors?.report(err);
@@ -97,27 +133,8 @@ export function createFirebaseCanonSyncTransportAdapter(
       }
     },
 
-    subscribe(onChange: (batch: SyncBatch) => void, onError: (err: DomainError) => void) {
-      const db = getFirestore(getApp());
-      return onSnapshot(
-        collection(db, COLLECTION),
-        (snapshot) => {
-          const upserted: CanonItem[] = [];
-          const deleted: string[] = [];
-          for (const change of snapshot.docChanges()) {
-            if (change.type === 'added' || change.type === 'modified') {
-              upserted.push(fromDoc(change.doc.data() as Record<string, unknown>));
-            } else {
-              deleted.push(change.doc.id);
-            }
-          }
-          onChange({ upserted, deleted });
-        },
-        (err) => {
-          errors?.report(err);
-          onError(classifyFirestoreError(err));
-        },
-      );
+    subscribe(onTick, onError) {
+      return createFirebaseManifestListener(onTick, onError);
     },
   };
 }

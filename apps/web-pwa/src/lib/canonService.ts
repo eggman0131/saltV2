@@ -66,18 +66,23 @@ function enqueuePush(item: CanonItem): void {
 export function initCanonSync(): () => void {
   _syncPending.update((p) => ({ ...p, initialSync: true }));
   refreshCanonItems();
-  let firstBatch = true;
+  let isFirstTick = true;
+  // Phase 5 will replace this with cursor-based delta pulls per scope.
   return getSyncTransport().subscribe(
-    ({ upserted, deleted }) => {
-      if (firstBatch) {
-        firstBatch = false;
-        _syncPending.update((p) => ({ ...p, initialSync: false }));
-      }
-      const store = getLocalStore();
-      void Promise.all([
-        ...upserted.map((item) => store.upsert(item)),
-        ...deleted.map((id) => store.delete(id)),
-      ]).then(() => refreshCanonItems());
+    (_tick) => {
+      void getSyncTransport()
+        .pull(null)
+        .then((r) => {
+          if (isFirstTick) {
+            isFirstTick = false;
+            _syncPending.update((p) => ({ ...p, initialSync: false }));
+          }
+          if (r.kind !== 'ok') return;
+          const store = getLocalStore();
+          void Promise.all(r.value.upserted.map((item) => store.upsert(item))).then(() =>
+            refreshCanonItems(),
+          );
+        });
     },
     (err) => {
       _syncPending.update((p) => ({ ...p, initialSync: false }));

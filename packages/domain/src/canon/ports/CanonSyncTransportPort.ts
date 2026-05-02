@@ -29,6 +29,10 @@ export interface CanonSyncTransportPort {
    * The adapter never auto-resolves — callers route the conflict to canonConflicts.
    */
   push(item: CanonItem): Promise<WriteResult<CanonItem, DomainError>>;
-  subscribe(onChange: (batch: SyncBatch) => void, onError: (err: DomainError) => void): () => void;
+  /**
+   * Registers a handler for canonManifest/global ticks.
+   * Shares the same underlying manifest listener as AisleSyncTransportPort.
+   */
+  subscribe(onTick: (tick: ManifestTick) => void, onError: (err: DomainError) => void): () => void;
   readonly pending: SyncPending;
 }
