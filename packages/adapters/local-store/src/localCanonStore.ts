@@ -1,31 +1,21 @@
-import { openDB } from 'idb';
 import { success, failure } from '@salt/shared-types';
 import type { DomainError } from '@salt/shared-types';
-import type { CanonItem, CanonLocalStorePort } from '@salt/domain';
+import type { CanonItem, CanonLocalStorePort, CursorScope } from '@salt/domain';
+import {
+  dbPromise,
+  CANON_ITEMS_STORE,
+  SYNC_META_STORE,
+  PENDING_WRITES_STORE,
+} from './db.js';
 
-const DB_NAME = 'salt-v1';
-const DB_VERSION = 2;
-const CANON_ITEMS_STORE = 'canonItems';
-const SYNC_META_STORE = 'syncMeta';
-const PENDING_WRITES_STORE = 'pendingWrites';
-
-const dbPromise = openDB(DB_NAME, DB_VERSION, {
-  upgrade(db, oldVersion) {
-    if (!db.objectStoreNames.contains(CANON_ITEMS_STORE)) {
-      db.createObjectStore(CANON_ITEMS_STORE, { keyPath: 'id' });
-    }
-    if (oldVersion < 2) {
-      if (!db.objectStoreNames.contains(SYNC_META_STORE)) {
-        db.createObjectStore(SYNC_META_STORE, { keyPath: 'key' });
-      }
-      if (!db.objectStoreNames.contains(PENDING_WRITES_STORE)) {
-        db.createObjectStore(PENDING_WRITES_STORE, { keyPath: 'id' });
-      }
-    }
-  },
-});
+const cursorKey = (scope: CursorScope): string => `manifestCursor:${scope}`;
 
 const toError = (): DomainError => ({ kind: 'StorageError', reason: 'unavailable' });
+
+interface CursorRecord {
+  readonly key: string;
+  readonly value: number;
+}
 
 export function createLocalCanonStoreAdapter(): CanonLocalStorePort {
   return {
@@ -53,7 +43,7 @@ export function createLocalCanonStoreAdapter(): CanonLocalStorePort {
       try {
         const db = await dbPromise;
         const items = (await db.getAll(CANON_ITEMS_STORE)) as CanonItem[];
-        return success(items);
+        return success(items.filter((i) => i.deletedAt === null));
       } catch {
         return failure(toError());
       }
@@ -69,11 +59,11 @@ export function createLocalCanonStoreAdapter(): CanonLocalStorePort {
       }
     },
 
-    async getManifestCursor() {
+    async getCursor(scope) {
       try {
         const db = await dbPromise;
-        const record = (await db.get(SYNC_META_STORE, 'manifestCursor')) as
-          | { key: string; value: string }
+        const record = (await db.get(SYNC_META_STORE, cursorKey(scope))) as
+          | CursorRecord
           | undefined;
         return success(record?.value ?? null);
       } catch {
@@ -81,10 +71,11 @@ export function createLocalCanonStoreAdapter(): CanonLocalStorePort {
       }
     },
 
-    async setManifestCursor(cursor) {
+    async setCursor(scope, value) {
       try {
         const db = await dbPromise;
-        await db.put(SYNC_META_STORE, { key: 'manifestCursor', value: cursor });
+        const record: CursorRecord = { key: cursorKey(scope), value };
+        await db.put(SYNC_META_STORE, record);
         return success(undefined);
       } catch {
         return failure(toError());

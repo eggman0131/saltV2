@@ -3,89 +3,115 @@ import { openDB } from 'idb';
 import { createLocalAisleStoreAdapter } from '../src/index.js';
 import type { Aisle } from '@salt/domain';
 
-const DB_NAME = 'salt-aisles-v1';
-const STORE = 'aisleList';
-
-async function clearStore() {
-  const db = await openDB(DB_NAME, 1);
-  await db.clear(STORE);
-  db.close();
-}
+const DB_NAME = 'salt-v1';
+const DB_VERSION = 3;
+const AISLES_DATA_STORE = 'aislesData';
+const PENDING_AISLES_SAVE_STORE = 'pendingAislesSave';
 
 const aisle = (id: string, name: string, order: number): Aisle => ({ id, name, order });
 
+async function clearAll() {
+  const db = await openDB(DB_NAME, DB_VERSION);
+  await db.clear(AISLES_DATA_STORE);
+  await db.clear(PENDING_AISLES_SAVE_STORE);
+  db.close();
+}
+
 describe('createLocalAisleStoreAdapter', () => {
   beforeEach(async () => {
-    await clearStore();
+    await clearAll();
   });
 
-  describe('load()', () => {
-    it('returns null when nothing has been saved', async () => {
+  describe('save / load', () => {
+    it('load() returns null when nothing has been saved', async () => {
       const store = createLocalAisleStoreAdapter();
       const result = await store.load();
       expect(result).toEqual({ kind: 'ok', value: null });
     });
 
-    it('returns the saved aisles after a save', async () => {
+    it('save() then load() round-trips aisles and revision', async () => {
       const store = createLocalAisleStoreAdapter();
       const aisles = [aisle('a1', 'Produce', 0), aisle('a2', 'Dairy', 1)];
-      await store.save(aisles);
+      await store.save(aisles, 7);
       const result = await store.load();
-      expect(result).toEqual({ kind: 'ok', value: aisles });
-    });
-  });
-
-  describe('save()', () => {
-    it('returns the saved aisle list on success', async () => {
-      const store = createLocalAisleStoreAdapter();
-      const aisles = [aisle('a1', 'Produce', 0)];
-      const result = await store.save(aisles);
-      expect(result).toEqual({ kind: 'ok', value: aisles });
+      expect(result).toEqual({ kind: 'ok', value: { aisles, revision: 7 } });
     });
 
-    it('overwrites the previous list on a second save', async () => {
+    it('save() returns ok with no payload', async () => {
       const store = createLocalAisleStoreAdapter();
-      await store.save([aisle('a1', 'Produce', 0), aisle('a2', 'Dairy', 1)]);
-      const updated = [aisle('a1', 'Produce', 0)];
-      await store.save(updated);
+      const result = await store.save([aisle('a1', 'Produce', 0)], 1);
+      expect(result).toEqual({ kind: 'ok', value: undefined });
+    });
+
+    it('save() overwrites prior aisles and revision', async () => {
+      const store = createLocalAisleStoreAdapter();
+      await store.save([aisle('a1', 'Produce', 0), aisle('a2', 'Dairy', 1)], 1);
+      const next = [aisle('a1', 'Produce', 0)];
+      await store.save(next, 2);
       const result = await store.load();
-      expect(result).toEqual({ kind: 'ok', value: updated });
+      expect(result).toEqual({ kind: 'ok', value: { aisles: next, revision: 2 } });
     });
 
-    it('persists an empty list', async () => {
+    it('persists an empty list with its revision', async () => {
       const store = createLocalAisleStoreAdapter();
-      await store.save([]);
+      await store.save([], 4);
       const result = await store.load();
-      expect(result).toEqual({ kind: 'ok', value: [] });
+      expect(result).toEqual({ kind: 'ok', value: { aisles: [], revision: 4 } });
     });
 
-    it('does not mutate a readonly input array', async () => {
-      const store = createLocalAisleStoreAdapter();
-      const aisles: readonly Aisle[] = [aisle('a1', 'Produce', 0)];
-      await store.save(aisles);
-      const result = await store.load();
-      expect(result.kind === 'ok' && result.value).toEqual([aisle('a1', 'Produce', 0)]);
-    });
-  });
-
-  describe('round-trip ordering', () => {
-    it('preserves insertion order across save/load', async () => {
+    it('preserves aisle ordering across save/load', async () => {
       const store = createLocalAisleStoreAdapter();
       const aisles = [aisle('a3', 'Frozen', 2), aisle('a1', 'Produce', 0), aisle('a2', 'Dairy', 1)];
-      await store.save(aisles);
+      await store.save(aisles, 1);
       const result = await store.load();
-      expect(result).toEqual({ kind: 'ok', value: aisles });
+      expect(result.kind === 'ok' && result.value?.aisles).toEqual(aisles);
+    });
+
+    it('two adapters read the same underlying record', async () => {
+      const writer = createLocalAisleStoreAdapter();
+      const reader = createLocalAisleStoreAdapter();
+      await writer.save([aisle('a1', 'Produce', 0)], 3);
+      const result = await reader.load();
+      expect(result).toEqual({
+        kind: 'ok',
+        value: { aisles: [aisle('a1', 'Produce', 0)], revision: 3 },
+      });
     });
   });
 
-  describe('multiple adapter instances', () => {
-    it('two adapters read the same underlying data', async () => {
-      const writer = createLocalAisleStoreAdapter();
-      const reader = createLocalAisleStoreAdapter();
+  describe('pending save queue (depth-1)', () => {
+    it('drainPendingSave returns null when nothing is queued', async () => {
+      const store = createLocalAisleStoreAdapter();
+      const result = await store.drainPendingSave();
+      expect(result).toEqual({ kind: 'ok', value: null });
+    });
+
+    it('enqueue then drain returns the queued aisles and clears', async () => {
+      const store = createLocalAisleStoreAdapter();
       const aisles = [aisle('a1', 'Produce', 0)];
-      await writer.save(aisles);
-      const result = await reader.load();
-      expect(result).toEqual({ kind: 'ok', value: aisles });
+      await store.enqueuePendingSave(aisles);
+      const drained = await store.drainPendingSave();
+      expect(drained).toEqual({ kind: 'ok', value: aisles });
+      const second = await store.drainPendingSave();
+      expect(second).toEqual({ kind: 'ok', value: null });
+    });
+
+    it('repeated enqueue overwrites — only the last payload is drained', async () => {
+      const store = createLocalAisleStoreAdapter();
+      await store.enqueuePendingSave([aisle('a1', 'first', 0)]);
+      await store.enqueuePendingSave([aisle('a2', 'second', 0)]);
+      const drained = await store.drainPendingSave();
+      expect(drained).toEqual({ kind: 'ok', value: [aisle('a2', 'second', 0)] });
+    });
+
+    it('pending queue survives a save() — pending payload is preserved for next push', async () => {
+      // Mirrors the canon items invariant: pull replay (save) must not
+      // drop the pending payload — it surfaces as a conflict on next push.
+      const store = createLocalAisleStoreAdapter();
+      await store.enqueuePendingSave([aisle('a1', 'local', 0)]);
+      await store.save([aisle('a1', 'remote', 0)], 9);
+      const drained = await store.drainPendingSave();
+      expect(drained).toEqual({ kind: 'ok', value: [aisle('a1', 'local', 0)] });
     });
   });
 });
