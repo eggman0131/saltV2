@@ -20,11 +20,5 @@ Then implement Phase PHASE_NUMBER with these rules:
 - If you discover something that looks wrong in a previous phase, flag it
   to me — do not fix it silently
 
-When you are done, tell me:
-1. Every file you created or modified
-2. Any decisions you made that weren't in the spec, and why
-3. Anything I should check or test manually
-4. Any concerns about the next phase
-
 Do not write the commit message or next-phase prompt yet — I will ask for
 that separately using /phase-end.

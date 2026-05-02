@@ -66,6 +66,8 @@ Closes #ISSUE_NUMBER phase PHASE_NUMBER
 
 Use type: feat / fix / refactor / test / chore / docs as appropriate.
 
+commit the change, if CI fails, or fails to run - cancel the commit
+
 ---
 ## Step 4 — Personal flags for me
 
