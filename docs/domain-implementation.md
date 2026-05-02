@@ -210,6 +210,10 @@ directly — that is exactly what published ports are for.
 ============================================================
 
 Canon is the smallest module with the clearest dependencies.
+It is also the **canonical sync exemplar**: it owns two entities with
+different shapes (items and aisles) that both use the manifest-driven
+local-first ↔ Firestore sync pattern. When implementing sync for a new
+module (e.g. recipes), copy this pattern verbatim.
 
 6.1 Responsibilities
 --------------------
@@ -229,10 +233,26 @@ Canon does not know:
 
 6.2 Ports
 ---------
-Canon exposes two ports via its `index.ts`:
+Canon exposes four sync-related ports via its `index.ts` (in addition to
+CanonLookupPort):
 
-CanonStorePort
-  persistence (local + cloud) — implemented by adapters
+CanonLocalStorePort
+  IndexedDB persistence for canon items — implemented by @salt/local-store
+
+CanonSyncTransportPort
+  pull/push/subscribe for canon items — implemented by @salt/firebase-sync
+
+AisleLocalStorePort
+  IndexedDB persistence for the aisles document — implemented by @salt/local-store
+
+AisleSyncTransportPort
+  pull/push/subscribe for the aisles document — implemented by @salt/firebase-sync
+
+Both scopes share the same manifest pattern (single `canonManifest/global`
+document with per-scope revision counters: `itemsRevision` and
+`aislesRevision`). The cursors are stored in local-store keyed
+`manifestCursor:items` and `manifestCursor:aisles`. Clients subscribe to
+the one manifest document instead of listening to any collection.
 
 CanonLookupPort
   canonicalisation logic used by other modules — implemented by canon's

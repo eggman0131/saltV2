@@ -218,6 +218,21 @@ Adapters must expose **explicit pending states** for long‑running operations:
 
 UI must treat pending as a first‑class state, not infer it from undefined/null.
 
+For canon sync, the `SyncPending` type (published from `@salt/domain`) exposes:
+
+```ts
+interface SyncPending {
+  initialSync: boolean;      // full pull of both scopes at cold start
+  pull: boolean;             // delta pull in progress
+  push: boolean;             // write to Firestore in progress
+  manifestRefresh: boolean;  // manifest tick received; delta pull queued
+}
+```
+
+`manifestRefresh` is set `true` when the manifest subscription fires a tick with a revision
+ahead of the local cursor, and cleared when the resulting delta pull completes. UI that shows
+a "syncing…" indicator should treat any of these flags as `true` → pending.
+
 ### 7.4 Conflict Semantics
 
 For recipe/canon writes:

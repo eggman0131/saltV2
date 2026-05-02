@@ -88,6 +88,18 @@ expect_depcruise_error \
   ".boundary-tests/circular" \
   "circular imports are rejected"
 
+expect_lint_error \
+  "apps/cloud-functions/src/__boundary_tests__/no-local-store.ts" \
+  "cloud-functions cannot import @salt/local-store"
+
+expect_lint_error \
+  "apps/cloud-functions/src/__boundary_tests__/no-ld-observability.ts" \
+  "cloud-functions cannot import @salt/ld-observability (browser-only)"
+
+expect_lint_error \
+  "apps/web-pwa/src/__boundary_tests__/no-firebase-sync-internal.ts" \
+  "web-pwa cannot import firebase-sync internal subpaths"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 

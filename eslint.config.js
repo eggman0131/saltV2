@@ -526,4 +526,49 @@ export default [
       ],
     },
   },
+
+  // Cloud Functions boundary-test fixtures: enforce CF-specific import restrictions.
+  {
+    files: ['apps/cloud-functions/src/__boundary_tests__/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            ...forbidGroup(
+              ['@salt/local-store', '@salt/local-store/*'],
+              'Cloud Functions must not import @salt/local-store — CFs run server-side with no browser storage.',
+            ),
+            ...forbidGroup(
+              ['@salt/ld-observability', '@salt/ld-observability/*'],
+              'Cloud Functions must not import @salt/ld-observability — the LaunchDarkly Observability SDK is browser-only. Log via firebase-functions/logger instead.',
+            ),
+          ],
+        },
+      ],
+    },
+  },
+
+  // web-pwa boundary-test fixtures: enforce that internal subpaths of sibling
+  // adapters are never imported directly — only the published package root.
+  {
+    files: ['apps/web-pwa/src/__boundary_tests__/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            ...forbidGroup(
+              ['@salt/firebase-sync/src', '@salt/firebase-sync/src/**'],
+              'web-pwa must not import firebase-sync internals. Use the published package root (@salt/firebase-sync) only.',
+            ),
+            ...forbidGroup(
+              ['@salt/local-store/src', '@salt/local-store/src/**'],
+              'web-pwa must not import local-store internals. Use the published package root (@salt/local-store) only.',
+            ),
+          ],
+        },
+      ],
+    },
+  },
 ];
