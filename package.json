@@ -21,7 +21,8 @@
     "format:check": "prettier --check \"**/*.{ts,js,svelte,css,html}\"",
     "dev": "pnpm --filter @salt/web-pwa dev",
     "dev:kitchen-sink": "pnpm --filter @salt/kitchen-sink dev",
-    "dev:emulators": "pnpm --filter @salt/cloud-functions build && firebase emulators:start --import=./.emulator-data --export-on-exit=./.emulator-data || true",
+    "dev:genkit": "pnpm --filter @salt/cloud-functions dev",
+    "dev:emulators": "pnpm --filter @salt/cloud-functions build && GENKIT_ENV=dev firebase emulators:start --import=./.emulator-data --export-on-exit=./.emulator-data || true",
     "test:emulator": "firebase emulators:exec --only=firestore,auth --project=demo-salt 'pnpm --filter @salt/firebase-sync test:emulator && pnpm --filter @salt/cloud-functions test:emulator'"
   },
   "lint-staged": {

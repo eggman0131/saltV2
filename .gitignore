@@ -16,3 +16,4 @@ apps/web-pwa/test-results/
 apps/web-pwa/playwright-report/
 apps/web-pwa/playwright/.cache/
 apps/cloud-functions/.secret.local
+apps/cloud-functions/.genkit/
