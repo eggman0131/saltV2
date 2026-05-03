@@ -189,7 +189,7 @@
 <!-- Match confirm dialog -->
 <Dialog bind:open={matchDialogOpen}>
   <DialogContent>
-    <div data-testid="canon-create-match-dialog">
+    <div data-testid="canon-create-match-dialog" class="flex flex-col gap-4">
       <DialogHeader>
         <DialogTitle>This looks like an existing item</DialogTitle>
         <DialogDescription>

@@ -6,6 +6,6 @@
   let { class: className, children }: DialogPartProps = $props();
 </script>
 
-<div class={cn('flex justify-end gap-2', className)}>
+<div class={cn('flex flex-col-reverse gap-2 sm:flex-row sm:justify-end', className)}>
   {@render children?.()}
 </div>
