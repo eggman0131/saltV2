@@ -10,7 +10,7 @@ function nearMissCount(stages: readonly StageLog[]): number {
 }
 
 function formatStage(s: StageLog): string {
-  const glyph = s.skipReason !== null ? '—' : s.passed ? '✓' : '✗';
+  const glyph = s.skipReason !== null || s.bestScore === null ? '—' : s.passed ? '✓' : '✗';
   const name = s.stageName.padEnd(18);
 
   if (s.skipReason !== null) {

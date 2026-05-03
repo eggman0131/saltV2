@@ -195,9 +195,10 @@ describe('summarizeMatchLog — stage lines', () => {
     expect(multiLine).toContain('skip: embedding_unavailable');
   });
 
-  it('shows "no candidates" for a stage with null bestScore and no skipReason', () => {
+  it('shows — glyph and "no candidates" for null bestScore with no skipReason', () => {
     const stages = [makeStage({ passed: false, bestScore: null, skipReason: null })];
     const { multiLine } = summarizeMatchLog(makeEntry({ stages }));
+    expect(multiLine).toContain('—');
     expect(multiLine).toContain('no candidates');
   });
 
