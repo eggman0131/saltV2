@@ -8,7 +8,7 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: CI,
   retries: CI ? 2 : 0,
-  workers: CI ? 1 : undefined,
+  workers: 1,
   reporter: CI
     ? [['html'], ['github'], ['./e2e/reporter/ldSessionReporter.ts']]
     : [['html'], ['list'], ['./e2e/reporter/ldSessionReporter.ts']],

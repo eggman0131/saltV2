@@ -35,7 +35,16 @@ export function installE2EHooks(): void {
         revision: 0,
         deletedAt: null,
       };
-      await upsertCanonItem(item);
+      // Fire-and-forget: setDoc hangs when the SDK network is disabled (offline
+      // test). Firestore still writes to local cache and fires onSnapshot
+      // immediately, so we wait for the store to reflect the write instead.
+      void upsertCanonItem(item);
+      const deadline = Date.now() + 5000;
+      while (!get(canonItems).some((i) => i.id === item.id)) {
+        if (Date.now() > deadline)
+          throw new Error(`seedCanonItem: item ${item.id} not in store after 5s`);
+        await new Promise((r) => setTimeout(r, 50));
+      }
       return item;
     },
 

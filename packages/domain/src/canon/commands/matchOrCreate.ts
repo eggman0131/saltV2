@@ -66,9 +66,13 @@ export async function matchOrCreate(
   if (forceCreate) {
     const aislesResult = await aisleStore.load();
     const aisles = aislesResult.kind === 'ok' ? (aislesResult.value?.aisles ?? []) : [];
-    const arbResult = await arbitration.arbitrate({ normalisedName, candidates: [], aisles });
-    const suggestedAisleId =
-      arbResult.kind === 'ok' && arbResult.value.kind === 'new' ? arbResult.value.aisleId : null;
+    let suggestedAisleId: string | null = null;
+    if (aisles.length > 0 && selectedAisleId == null) {
+      const arbResult = await arbitration.arbitrate({ normalisedName, candidates: [], aisles });
+      if (arbResult.kind === 'ok' && arbResult.value.kind === 'new') {
+        suggestedAisleId = arbResult.value.aisleId ?? null;
+      }
+    }
     return persistNew(store, ids, rawName, selectedAisleId ?? suggestedAisleId ?? null, commitLog);
   }
 

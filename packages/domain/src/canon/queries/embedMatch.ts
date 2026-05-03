@@ -15,6 +15,18 @@ export async function embedMatch(
   items: readonly CanonItem[],
   log?: MatchLogBuilder,
 ): Promise<MatchCandidate[]> {
+  const itemsWithEmbeddings = items.filter((i) => i.embedding !== null);
+  if (itemsWithEmbeddings.length === 0) {
+    log?.addStage({
+      stage: 5,
+      stageName: 'embedding',
+      threshold: MATCH_THRESHOLDS.stage5Stop,
+      passed: false,
+      candidates: [],
+    });
+    return [];
+  }
+
   const result = await port.computeEmbedding(normalisedName);
   if (result.kind === 'err') {
     log?.addStage({
@@ -30,9 +42,8 @@ export async function embedMatch(
   const queryEmbedding = result.value;
   const candidates: MatchCandidate[] = [];
 
-  for (const item of items) {
-    if (item.embedding === null) continue;
-    const score = port.cosineSimilarity(queryEmbedding, item.embedding);
+  for (const item of itemsWithEmbeddings) {
+    const score = port.cosineSimilarity(queryEmbedding, item.embedding!);
     if (score >= MATCH_THRESHOLDS.stage5Stop) {
       candidates.push({ item, confidence: score, stage: 5 });
     }

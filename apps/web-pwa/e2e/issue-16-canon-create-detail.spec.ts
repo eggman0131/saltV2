@@ -64,8 +64,8 @@ test('create matching name → confirm dialog → use existing → routes to exi
   await page.goto('/#/canon/new');
   await expect(page.getByRole('heading', { name: /add item/i })).toBeVisible();
 
-  // Submit the same name (lowercased) — stage-1 match, decision=matched
-  await createViaCombobox(page, 'butter');
+  // Submit the plural — normaliseName singularizes it, giving a stage-1 match
+  await createViaCombobox(page, 'Butters');
 
   const ui = canonCreatePage(page);
   await expect(ui.matchDialog).toBeVisible();
@@ -89,7 +89,8 @@ test('create matching name → confirm dialog → create anyway → creates new 
   await page.goto('/#/canon/new');
   await expect(page.getByRole('heading', { name: /add item/i })).toBeVisible();
 
-  await createViaCombobox(page, 'milk');
+  // Submit the plural — normaliseName singularizes it, giving a stage-1 match
+  await createViaCombobox(page, 'Milks');
 
   const ui = canonCreatePage(page);
   await expect(ui.matchDialog).toBeVisible();

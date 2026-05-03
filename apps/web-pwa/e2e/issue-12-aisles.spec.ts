@@ -46,7 +46,7 @@ test('add, reorder, and bulk-delete aisles unassigns referencing canon items', a
   await ui.rowCheckbox(bakery.id).click();
   await ui.bulkDeleteButton.click();
   await expect(ui.bulkDeleteDialog).toBeVisible();
-  await expect(ui.bulkDeleteDialog.getByText('Sourdough loaf', { exact: true })).toBeVisible();
+  await expect(ui.bulkDeleteDialog.getByText('Sourdough Loaf', { exact: true })).toBeVisible();
 
   await ui.bulkDeleteConfirm.click();
   await expect(ui.bulkDeleteDialog).toBeHidden();
