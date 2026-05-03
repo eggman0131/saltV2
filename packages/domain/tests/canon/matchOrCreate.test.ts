@@ -64,6 +64,16 @@ function makeAisleStore(): AisleLocalStorePort {
   };
 }
 
+function makeAisleStoreWithAisles(): AisleLocalStorePort {
+  const aisles = [{ id: 'produce', name: 'Produce', order: 1 }];
+  return {
+    load: async () => ({ kind: 'ok', value: { aisles, revision: 0 } }),
+    save: async () => ({ kind: 'ok', value: undefined }),
+    enqueuePendingSave: async () => ({ kind: 'ok', value: undefined }),
+    drainPendingSave: async () => ({ kind: 'ok', value: null }),
+  };
+}
+
 // eX · eX = 1.0 (above stage5Stop=0.75); eX · eY = 0.0 (below)
 const eX = [1, 0] as const;
 const eY = [0, 1] as const;
@@ -125,6 +135,7 @@ function makePipeline(
   opts: {
     store?: CanonLocalStorePort & { items: CanonItem[] };
     items?: CanonItem[];
+    aisleStore?: AisleLocalStorePort;
     embedding?: EmbeddingPort;
     arbitration?: CanonArbitrationPort;
     logging?: MatchLoggingPort | null;
@@ -134,7 +145,7 @@ function makePipeline(
   idCounter = 0;
   const ports = {
     store,
-    aisleStore: makeAisleStore(),
+    aisleStore: opts.aisleStore ?? makeAisleStore(),
     embedding: opts.embedding ?? failEmbedding(),
     arbitration: opts.arbitration ?? noMatchArbitration(),
     ids: makeIds(),
@@ -333,6 +344,21 @@ describe('creation path — no candidates', () => {
     const result = await run('Garlic', null);
     if (result.kind === 'ok') expect(result.value.item.aisleId).toBeNull();
   });
+
+  it('uses arbitration-suggested aisle when selectedAisleId is absent and aisles exist', async () => {
+    const { run } = makePipeline({
+      aisleStore: makeAisleStoreWithAisles(),
+      arbitration: newArbitration('Garlic', 'produce'),
+    });
+    const result = await run('Garlic', null);
+    if (result.kind === 'ok') expect(result.value.item.aisleId).toBe('produce');
+  });
+
+  it('leaves aisle null when no aisles are configured', async () => {
+    const { run } = makePipeline({ arbitration: newArbitration('Garlic', 'produce') });
+    const result = await run('Garlic', null);
+    if (result.kind === 'ok') expect(result.value.item.aisleId).toBeNull();
+  });
 });
 
 // ─── forceCreate ─────────────────────────────────────────────────────────────
@@ -358,7 +384,10 @@ describe('forceCreate — bypass matching', () => {
   });
 
   it('falls back to arbitration-suggested aisle when selectedAisleId is absent', async () => {
-    const { run } = makePipeline({ arbitration: newArbitration('Garlic', 'produce') });
+    const { run } = makePipeline({
+      aisleStore: makeAisleStoreWithAisles(),
+      arbitration: newArbitration('Garlic', 'produce'),
+    });
     const result = await run('Garlic', null, true);
     if (result.kind === 'ok') expect(result.value.item.aisleId).toBe('produce');
   });

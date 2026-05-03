@@ -156,8 +156,20 @@ export async function matchOrCreate(
     }
   }
 
-  // No match found anywhere: create a new item from rawName
-  return persistNew(store, ids, rawName, selectedAisleId ?? null, commitLog);
+  // No match found anywhere: create a new item from rawName.
+  // Run aisle arbitration with empty candidates so the AI can still suggest an aisle.
+  let finalAisleId = selectedAisleId ?? null;
+  if (finalAisleId === null) {
+    const aislesResult = await aisleStore.load();
+    const aisles = aislesResult.kind === 'ok' ? (aislesResult.value?.aisles ?? []) : [];
+    if (aisles.length > 0) {
+      const arbResult = await arbitration.arbitrate({ normalisedName, candidates: [], aisles });
+      if (arbResult.kind === 'ok' && arbResult.value.kind === 'new') {
+        finalAisleId = arbResult.value.aisleId ?? null;
+      }
+    }
+  }
+  return persistNew(store, ids, rawName, finalAisleId, commitLog);
 }
 
 function pickBest(candidates: readonly MatchCandidate[]): MatchCandidate {

@@ -1,6 +1,10 @@
 import { initializeApp } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
 import { defineSecret } from 'firebase-functions/params';
 import { onCallGenkit, isSignedIn } from 'firebase-functions/https';
+import { onDocumentWritten } from 'firebase-functions/firestore';
+import { logger } from 'firebase-functions';
+import { normaliseName } from '@salt/domain';
 import { embedTextFlow } from './flows/embedText.js';
 import { arbitrateCanonFlow } from './flows/arbitrateCanon.js';
 
@@ -22,4 +26,35 @@ export const arbitrateCanon = onCallGenkit(
     authPolicy: isSignedIn(),
   },
   arbitrateCanonFlow,
+);
+
+export const onCanonItemWritten = onDocumentWritten(
+  {
+    document: 'canonItems/{id}',
+    secrets: [geminiApiKey],
+  },
+  async (event) => {
+    const after = event.data?.after;
+    if (!after?.exists) return;
+
+    const data = after.data() as Record<string, unknown>;
+    if (typeof data['deletedAt'] === 'string') return;
+    if (Array.isArray(data['embedding'])) return;
+
+    const name = typeof data['name'] === 'string' ? data['name'] : null;
+    if (!name) return;
+
+    const normalised = normaliseName(name);
+    if (!normalised) return;
+
+    try {
+      const { values } = await embedTextFlow({ text: normalised });
+      await getFirestore()
+        .collection('canonItems')
+        .doc(event.params.id)
+        .update({ embedding: values });
+    } catch (err) {
+      logger.error('onCanonItemWritten: embedding failed', { id: event.params.id, err });
+    }
+  },
 );

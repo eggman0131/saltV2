@@ -32,6 +32,7 @@ export type {
   ArbitrationResult,
 } from './canon/index.js';
 export {
+  normaliseName,
   createCanonItem,
   mergeCanonItems,
   resolveCanonConflict,

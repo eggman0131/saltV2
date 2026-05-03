@@ -58,5 +58,6 @@ export type {
   PerItemMergeChoice,
   ItemMergeChoice,
 } from './commands/mergeAisles.js';
+export { normaliseName } from './queries/normaliseName.js';
 export { listAisles } from './queries/listAisles.js';
 export { getAisleUsage } from './queries/getAisleUsage.js';
