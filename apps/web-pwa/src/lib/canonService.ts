@@ -10,7 +10,8 @@ import {
   createLDErrorReportingAdapter,
   startSpan,
 } from '@salt/ld-observability';
-import type { CanonArbitrationPort } from '@salt/domain';
+import type { ObservabilitySpan } from '@salt/ld-observability';
+import type { CanonArbitrationPort, EmbeddingPort } from '@salt/domain';
 import {
   matchOrCreate,
   renameCanonItem,
@@ -180,10 +181,38 @@ export function initCanonSync(): () => void {
 
 // ─── Traced arbitration adapter ──────────────────────────────────────────────────
 
-function createTracedArbitrationAdapter(inner: CanonArbitrationPort): CanonArbitrationPort {
+function createTracedEmbeddingAdapter(
+  inner: EmbeddingPort,
+  parentSpan?: ObservabilitySpan,
+): EmbeddingPort {
+  return {
+    async computeEmbedding(text) {
+      const span = startSpan(
+        `canon.embed: ${text}`,
+        parentSpan ? { parent: parentSpan } : undefined,
+      );
+      try {
+        return await inner.computeEmbedding(text);
+      } finally {
+        span.end();
+      }
+    },
+    cosineSimilarity(a, b) {
+      return inner.cosineSimilarity(a, b);
+    },
+  };
+}
+
+function createTracedArbitrationAdapter(
+  inner: CanonArbitrationPort,
+  parentSpan?: ObservabilitySpan,
+): CanonArbitrationPort {
   return {
     async arbitrate(req) {
-      const span = startSpan(`canon.arbitrate: ${req.normalisedName}`);
+      const span = startSpan(
+        `canon.arbitrate: ${req.normalisedName}`,
+        parentSpan ? { parent: parentSpan } : undefined,
+      );
       span.setAttribute('arbitration.ingredient', req.normalisedName);
       span.setAttribute('arbitration.aisle_count', req.aisles.length);
       try {
@@ -232,10 +261,10 @@ export async function addCanonItem(
       {
         store: canonStore,
         aisleStore,
-        embedding: createGeminiEmbeddingAdapter(errors),
-        arbitration: createTracedArbitrationAdapter(createGeminiArbitrationAdapter(errors)),
+        embedding: createTracedEmbeddingAdapter(createGeminiEmbeddingAdapter(errors), span),
+        arbitration: createTracedArbitrationAdapter(createGeminiArbitrationAdapter(errors), span),
         ids: { newCanonId: () => crypto.randomUUID(), newAisleId: () => crypto.randomUUID() },
-        logging: createLDMatchLoggingAdapter(),
+        logging: createLDMatchLoggingAdapter(span),
       },
     );
     if (result.kind === 'ok') {

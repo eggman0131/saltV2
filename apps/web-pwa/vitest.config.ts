@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
+import { resolve } from 'path';
 
 const TEST_ENV = {
   VITE_FIREBASE_API_KEY: 'test-api-key',
@@ -14,6 +15,9 @@ const TEST_ENV = {
 export default defineConfig({
   plugins: [svelte({ hot: false })],
   resolve: {
+    alias: {
+      $lib: resolve(__dirname, 'src/lib'),
+    },
     conditions: ['browser'],
   },
   define: Object.fromEntries(

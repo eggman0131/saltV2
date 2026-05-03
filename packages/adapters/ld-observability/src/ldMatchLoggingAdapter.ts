@@ -1,73 +1,94 @@
-import { LDObserve } from '@launchdarkly/observability';
+import { summarizeMatchLog } from '@salt/domain';
 import type { MatchLoggingPort, MatchLogEntry } from '@salt/domain';
+import { startSpan } from './init.js';
+import type { ObservabilitySpan } from './init.js';
 
-const STAGE_LABELS: Record<number, string> = {
-  1: 'exact name',
-  2: 'token overlap',
-  3: 'synonym',
-  4: 'string similarity',
-  5: 'embedding',
-  6: 'near-miss',
-};
+const LD_ATTR_MAX = 2000;
 
-export function createLDMatchLoggingAdapter(): MatchLoggingPort {
+function truncate(s: string): string {
+  return s.length > LD_ATTR_MAX ? s.slice(0, LD_ATTR_MAX) : s;
+}
+
+export function createLDMatchLoggingAdapter(parentSpan?: ObservabilitySpan): MatchLoggingPort {
   return {
     write(entry: MatchLogEntry): Promise<void> {
-      LDObserve.startManualSpan(`canon.stages: ${entry.rawInput}`, (span) => {
-        span.setAttribute('canon.input', entry.rawInput);
-        if (entry.normalizedInput !== entry.rawInput) {
-          span.setAttribute('canon.normalized', entry.normalizedInput);
-        }
-        span.setAttribute('canon.outcome', entry.finalDecision);
+      const span = startSpan(
+        `canon.stages: ${entry.rawInput}`,
+        parentSpan ? { parent: parentSpan } : undefined,
+      );
+      const { oneLine, multiLine } = summarizeMatchLog(entry);
 
-        if (entry.finalItemName) {
-          span.setAttribute('canon.result', entry.finalItemName);
-        }
-        if (entry.finalItemId) {
-          span.setAttribute('canon.result_id', entry.finalItemId);
-        }
+      span.setAttribute('canon.summary', oneLine);
+      span.setAttribute('canon.trace', multiLine);
+      span.setAttribute('canon.input_count', entry.inputItemCount);
+      span.setAttribute('canon.total_duration_ms', entry.totalDurationMs);
+      span.setAttribute('canon.decision', entry.finalDecision);
+      span.setAttribute('canon.correlation_id', entry.id);
+      span.setAttribute('canon.input', entry.rawInput);
+      if (entry.normalizedInput !== entry.rawInput) {
+        span.setAttribute('canon.normalized', entry.normalizedInput);
+      }
+      if (entry.finalItemName) {
+        span.setAttribute('canon.result', entry.finalItemName);
+      }
+      if (entry.finalItemId) {
+        span.setAttribute('canon.result_id', entry.finalItemId);
+      }
 
-        // Stage-by-stage breakdown — only passed stages get a top candidate
-        for (const stage of entry.stages) {
-          const label = STAGE_LABELS[stage.stage] ?? `stage ${stage.stage}`;
-          span.setAttribute(`stage.${stage.stage}.name`, label);
-          span.setAttribute(`stage.${stage.stage}.passed`, stage.passed);
-          const top = stage.topCandidates[0];
-          if (top) {
-            span.setAttribute(`stage.${stage.stage}.top`, top.itemName ?? top.itemId);
-            span.setAttribute(
-              `stage.${stage.stage}.score`,
-              parseFloat((top.score * 100).toFixed(1)),
-            );
-          }
-        }
-
-        // Surfaced-to-user candidates — includes the best-not-selected
-        if (entry.surfacedCandidates && entry.surfacedCandidates.length > 0) {
-          span.setAttribute('canon.surfaced_count', entry.surfacedCandidates.length);
-
-          const best = entry.surfacedCandidates[0]!;
-          span.setAttribute('canon.best_candidate', best.itemName);
+      for (const stage of entry.stages) {
+        const n = stage.stage;
+        span.setAttribute(`stage.${n}.passed`, stage.passed);
+        span.setAttribute(`stage.${n}.considered_count`, stage.consideredCount);
+        span.setAttribute(`stage.${n}.duration_ms`, stage.durationMs);
+        if (stage.bestScore !== null) {
           span.setAttribute(
-            'canon.best_candidate_score',
-            parseFloat((best.confidence * 100).toFixed(1)),
+            `stage.${n}.best_score`,
+            parseFloat((stage.bestScore * 100).toFixed(2)),
           );
-          span.setAttribute(
-            'canon.best_candidate_stage',
-            STAGE_LABELS[best.stage] ?? `stage ${best.stage}`,
-          );
-
-          const summary = entry.surfacedCandidates
-            .map(
-              (c) =>
-                `${c.itemName} (${(c.confidence * 100).toFixed(0)}% via ${STAGE_LABELS[c.stage] ?? `stage ${c.stage}`})`,
-            )
-            .join(' | ');
-          span.setAttribute('canon.candidates', summary);
         }
+        if (stage.gap !== null) {
+          span.setAttribute(`stage.${n}.gap`, parseFloat((stage.gap * 100).toFixed(2)));
+        }
+        if (stage.topCandidates.length > 0) {
+          const top = stage.topCandidates[0]!;
+          span.setAttribute(`stage.${n}.best_name`, top.itemName ?? top.itemId);
+          span.setAttribute(
+            `stage.${n}.top`,
+            JSON.stringify(
+              stage.topCandidates.map((c) => ({
+                id: c.itemId,
+                name: c.itemName,
+                score: parseFloat((c.score * 100).toFixed(2)),
+              })),
+            ),
+          );
+        }
+      }
 
-        span.end();
-      });
+      if (entry.arbitration !== null) {
+        const arb = entry.arbitration;
+        span.setAttribute('arbitration.duration_ms', arb.durationMs);
+        span.setAttribute('arbitration.outcome', arb.outcome);
+        span.setAttribute('arbitration.candidates_in_count', arb.candidatesIn);
+        if (arb.prompt) {
+          span.setAttribute('arbitration.prompt', truncate(arb.prompt));
+        }
+        if (arb.rawResponse) {
+          span.setAttribute('arbitration.raw_response', truncate(arb.rawResponse));
+        }
+      }
+
+      if (entry.surfacedCandidates && entry.surfacedCandidates.length > 0) {
+        span.setAttribute('canon.surfaced_count', entry.surfacedCandidates.length);
+        const best = entry.surfacedCandidates[0]!;
+        span.setAttribute('canon.best_candidate', best.itemName);
+        span.setAttribute(
+          'canon.best_candidate_score',
+          parseFloat((best.confidence * 100).toFixed(1)),
+        );
+      }
+
+      span.end();
       return Promise.resolve();
     },
   };
