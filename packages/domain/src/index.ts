@@ -1,6 +1,7 @@
 // Canon module — re-export the canon module's published surface so that
 // adapters and apps can reach it via @salt/domain. Cross-module access
 // inside the domain itself goes through './canon' (the module index).
+export type { MatchLogSummary } from './canon/index.js';
 export type {
   CanonItem,
   Aisle,
@@ -33,6 +34,7 @@ export type {
 } from './canon/index.js';
 export {
   normaliseName,
+  summarizeMatchLog,
   createCanonItem,
   mergeCanonItems,
   resolveCanonConflict,

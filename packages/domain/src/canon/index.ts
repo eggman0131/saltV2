@@ -61,5 +61,7 @@ export type {
   ItemMergeChoice,
 } from './commands/mergeAisles.js';
 export { normaliseName } from './queries/normaliseName.js';
+export { summarizeMatchLog } from './queries/summarizeMatchLog.js';
+export type { MatchLogSummary } from './queries/summarizeMatchLog.js';
 export { listAisles } from './queries/listAisles.js';
 export { getAisleUsage } from './queries/getAisleUsage.js';
