@@ -5,7 +5,12 @@ import {
   createGeminiEmbeddingAdapter,
   createGeminiArbitrationAdapter,
 } from '@salt/firebase-sync';
-import { createLDMatchLoggingAdapter, createLDErrorReportingAdapter } from '@salt/ld-observability';
+import {
+  createLDMatchLoggingAdapter,
+  createLDErrorReportingAdapter,
+  startSpan,
+} from '@salt/ld-observability';
+import type { CanonArbitrationPort } from '@salt/domain';
 import {
   matchOrCreate,
   renameCanonItem,
@@ -173,6 +178,43 @@ export function initCanonSync(): () => void {
   };
 }
 
+// ─── Traced arbitration adapter ──────────────────────────────────────────────────
+
+function createTracedArbitrationAdapter(inner: CanonArbitrationPort): CanonArbitrationPort {
+  return {
+    async arbitrate(req) {
+      const span = startSpan('canon.arbitrateCanon');
+      span.setAttribute('arbitration.ingredient', req.normalisedName);
+      span.setAttribute('arbitration.aisle_count', req.aisles.length);
+      try {
+        const result = await inner.arbitrate(req);
+        if (result.kind === 'ok') {
+          const r = result.value;
+          if (r.kind === 'match') {
+            span.setAttribute('arbitration.outcome', 'match');
+            span.setAttribute(
+              'arbitration.confidence',
+              parseFloat((r.confidence * 100).toFixed(1)),
+            );
+          } else if (r.kind === 'new') {
+            span.setAttribute('arbitration.outcome', 'new');
+            const aisle = req.aisles.find((a) => a.id === r.aisleId);
+            span.setAttribute('arbitration.suggested_aisle', aisle?.name ?? 'none');
+          } else {
+            span.setAttribute('arbitration.outcome', 'no-match');
+          }
+        } else {
+          span.setAttribute('arbitration.outcome', 'error');
+          span.setAttribute('arbitration.error', result.error.kind);
+        }
+        return result;
+      } finally {
+        span.end();
+      }
+    },
+  };
+}
+
 // ─── Canon item commands ─────────────────────────────────────────────────────────
 
 export async function addCanonItem(
@@ -180,29 +222,45 @@ export async function addCanonItem(
   selectedAisleId?: string | null,
   forceCreate?: boolean,
 ): Promise<Result<MatchOrCreateResult, DomainError>> {
+  const span = startSpan(`canon: ${rawName}`);
   const errors = getErrorReporter();
-  const { store: canonStore } = memCanonStore(get(_canonItems));
-  const { store: aisleStore } = memAisleStore(get(_aisles));
-  const result = await matchOrCreate(
-    { rawName, selectedAisleId, ...(forceCreate !== undefined && { forceCreate }) },
-    {
-      store: canonStore,
-      aisleStore,
-      embedding: createGeminiEmbeddingAdapter(errors),
-      arbitration: createGeminiArbitrationAdapter(errors),
-      ids: { newCanonId: () => crypto.randomUUID(), newAisleId: () => crypto.randomUUID() },
-      logging: createLDMatchLoggingAdapter(),
-    },
-  );
-  if (result.kind === 'ok' && result.value.decision !== 'candidates') {
-    try {
-      await upsertCanonItem(result.value.item);
-    } catch (err) {
-      errors.report(err);
-      return failure({ kind: 'StorageError', reason: 'unavailable' });
+  try {
+    const { store: canonStore } = memCanonStore(get(_canonItems));
+    const { store: aisleStore } = memAisleStore(get(_aisles));
+    const result = await matchOrCreate(
+      { rawName, selectedAisleId, ...(forceCreate !== undefined && { forceCreate }) },
+      {
+        store: canonStore,
+        aisleStore,
+        embedding: createGeminiEmbeddingAdapter(errors),
+        arbitration: createTracedArbitrationAdapter(createGeminiArbitrationAdapter(errors)),
+        ids: { newCanonId: () => crypto.randomUUID(), newAisleId: () => crypto.randomUUID() },
+        logging: createLDMatchLoggingAdapter(),
+      },
+    );
+    if (result.kind === 'ok') {
+      span.setAttribute('canon.outcome', result.value.decision);
+      if (result.value.decision !== 'candidates') {
+        span.setAttribute('canon.result', result.value.item.name);
+      } else {
+        span.setAttribute('canon.candidates_count', result.value.candidates.length);
+      }
+    } else {
+      span.setAttribute('canon.error', result.error.kind);
     }
+    if (result.kind === 'ok' && result.value.decision !== 'candidates') {
+      try {
+        await upsertCanonItem(result.value.item);
+      } catch (err) {
+        errors.report(err);
+        span.setAttribute('canon.error', 'StorageError');
+        return failure({ kind: 'StorageError', reason: 'unavailable' });
+      }
+    }
+    return result;
+  } finally {
+    span.end();
   }
-  return result;
 }
 
 async function commitCanonItemUpdate(item: CanonItem): Promise<void> {

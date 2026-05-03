@@ -5,8 +5,9 @@ export {
   identifyObservabilityUser,
   identifyObservabilityAnonymous,
   trackObservabilityEvent,
+  startSpan,
 } from './init.js';
-export type { LDObservabilityOptions } from './init.js';
+export type { LDObservabilityOptions, ObservabilitySpan } from './init.js';
 export { tagObservabilitySession, getObservabilitySessionURL } from './sessionTagging.js';
 export type { ObservabilitySessionMeta } from './sessionTagging.js';
 export {

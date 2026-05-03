@@ -1,4 +1,9 @@
-import type { FinalDecision, MatchLogEntry, StageLog } from '../entities/MatchLogEntry.js';
+import type {
+  FinalDecision,
+  MatchLogEntry,
+  StageLog,
+  SurfacedCandidateLog,
+} from '../entities/MatchLogEntry.js';
 
 export class MatchLogBuilder {
   private rawInput = '';
@@ -15,7 +20,13 @@ export class MatchLogBuilder {
     this.stageLogs.push(stageLog);
   }
 
-  complete(id: string, finalDecision: FinalDecision, finalItemId: string | null): MatchLogEntry {
+  complete(
+    id: string,
+    finalDecision: FinalDecision,
+    finalItemId: string | null,
+    finalItemName: string | null = null,
+    surfacedCandidates: readonly SurfacedCandidateLog[] | null = null,
+  ): MatchLogEntry {
     return {
       id,
       schemaVersion: 1,
@@ -25,6 +36,8 @@ export class MatchLogBuilder {
       stages: [...this.stageLogs],
       finalDecision,
       finalItemId,
+      finalItemName,
+      surfacedCandidates,
     };
   }
 }

@@ -57,6 +57,7 @@ export async function embedMatch(
     passed: sorted.length > 0,
     candidates: sorted.map((c) => ({
       itemId: c.item.id,
+      itemName: c.item.name,
       score: c.confidence,
       reason: `cosine:${c.confidence.toFixed(4)}`,
     })),

@@ -3,7 +3,7 @@ import { ErrorCode } from '@salt/shared-types';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import type { CanonItem } from '../entities/CanonItem.js';
 import type { MatchCandidate } from '../entities/MatchCandidate.js';
-import type { FinalDecision } from '../entities/MatchLogEntry.js';
+import type { FinalDecision, SurfacedCandidateLog } from '../entities/MatchLogEntry.js';
 import type { CanonLocalStorePort } from '../ports/CanonLocalStorePort.js';
 import type { AisleLocalStorePort } from '../ports/AisleLocalStorePort.js';
 import type { EmbeddingPort } from '../ports/EmbeddingPort.js';
@@ -55,9 +55,20 @@ export async function matchOrCreate(
   const runId = ids.newCanonId();
   logBuilder?.start(rawName, normalisedName);
 
-  const commitLog = (decision: FinalDecision, finalItemId: string | null): void => {
+  const commitLog = (
+    decision: FinalDecision,
+    finalItemId: string | null,
+    finalItemName: string | null = null,
+    surfacedCandidates: readonly SurfacedCandidateLog[] | null = null,
+  ): void => {
     if (!logBuilder || !logging) return;
-    const entry = logBuilder.complete(runId, decision, finalItemId);
+    const entry = logBuilder.complete(
+      runId,
+      decision,
+      finalItemId,
+      finalItemName,
+      surfacedCandidates,
+    );
     void logging.write(entry).catch(() => {});
   };
 
@@ -82,7 +93,7 @@ export async function matchOrCreate(
   // Stages 1–4: pure deterministic matching
   const stage1to4 = findClosestMatch(items, rawName, logBuilder ?? undefined);
   if (stage1to4 !== null) {
-    commitLog('matched', stage1to4.item.id);
+    commitLog('matched', stage1to4.item.id, stage1to4.item.name);
     return success({ item: stage1to4.item, decision: 'matched' });
   }
 
@@ -95,7 +106,7 @@ export async function matchOrCreate(
   );
   if (embedCandidates.length > 0) {
     const winner = pickBest(embedCandidates);
-    commitLog('matched', winner.item.id);
+    commitLog('matched', winner.item.id, winner.item.name);
     return success({ item: winner.item, decision: 'matched' });
   }
 
@@ -121,10 +132,17 @@ export async function matchOrCreate(
   // With a single candidate above the threshold there's no ambiguity — match directly.
   // With multiple candidates the human picks; AI arbitration was unreliable here.
   if (aiCandidates.length === 1) {
-    commitLog('matched', aiCandidates[0]!.item.id);
+    commitLog('matched', aiCandidates[0]!.item.id, aiCandidates[0]!.item.name);
     return success({ item: aiCandidates[0]!.item, decision: 'matched' });
   }
   if (aiCandidates.length > 1) {
+    const surfaced: SurfacedCandidateLog[] = aiCandidates.map((c) => ({
+      itemId: c.item.id,
+      itemName: c.item.name,
+      confidence: c.confidence,
+      stage: c.stage,
+    }));
+    commitLog('surfaced_candidates', null, null, surfaced);
     return success({ decision: 'candidates', candidates: aiCandidates.map((c) => c.item) });
   }
 
@@ -155,13 +173,17 @@ async function persistNew(
   ids: IdGenerator,
   name: string,
   aisleId: string | null,
-  commitLog: (decision: FinalDecision, finalItemId: string | null) => void,
+  commitLog: (
+    decision: FinalDecision,
+    finalItemId: string | null,
+    finalItemName?: string | null,
+  ) => void,
 ): Promise<ReadResult<MatchOrCreateResult, DomainError>> {
   const result = createCanonItem({ name, aisleId }, ids);
   if (result.kind !== 'ok') return result;
   const item = result.value;
   const saved = await store.upsert(item);
   if (saved.kind !== 'ok') return saved;
-  commitLog('created', item.id);
+  commitLog('created', item.id, item.name);
   return success({ item, decision: 'created' });
 }

@@ -1,5 +1,6 @@
 export interface CandidateLog {
   readonly itemId: string;
+  readonly itemName?: string;
   readonly score: number;
   readonly reason?: string;
 }
@@ -12,7 +13,14 @@ export interface StageLog {
   readonly candidates: readonly CandidateLog[];
 }
 
-export type FinalDecision = 'matched' | 'created' | 'ai_arbitrated';
+export interface SurfacedCandidateLog {
+  readonly itemId: string;
+  readonly itemName: string;
+  readonly confidence: number;
+  readonly stage: number;
+}
+
+export type FinalDecision = 'matched' | 'created' | 'ai_arbitrated' | 'surfaced_candidates';
 
 export interface MatchLogEntry {
   readonly id: string;
@@ -23,4 +31,6 @@ export interface MatchLogEntry {
   readonly stages: readonly StageLog[];
   readonly finalDecision: FinalDecision;
   readonly finalItemId: string | null;
+  readonly finalItemName: string | null;
+  readonly surfacedCandidates: readonly SurfacedCandidateLog[] | null;
 }

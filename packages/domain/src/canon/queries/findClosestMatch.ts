@@ -26,7 +26,7 @@ export function findClosestMatch(
         stageName: 'exact_name',
         threshold: MATCH_THRESHOLDS.stage1Stop,
         passed: true,
-        candidates: [{ itemId: item.id, score: 1.0 }],
+        candidates: [{ itemId: item.id, itemName: item.name, score: 1.0 }],
       });
       return { item, confidence: 1.0, stage: 1 };
     }
@@ -48,7 +48,7 @@ export function findClosestMatch(
         stageName: 'token_overlap',
         threshold: MATCH_THRESHOLDS.stage2Stop,
         passed: true,
-        candidates: [{ itemId: item.id, score }],
+        candidates: [{ itemId: item.id, itemName: item.name, score }],
       });
       return { item, confidence: score, stage: 2 };
     }
@@ -70,7 +70,7 @@ export function findClosestMatch(
       stageName: 'synonym',
       threshold: MATCH_THRESHOLDS.stage3Stop,
       passed: true,
-      candidates: [{ itemId: firstSyn.id, score: 1.0 }],
+      candidates: [{ itemId: firstSyn.id, itemName: firstSyn.name, score: 1.0 }],
     });
     return { item: firstSyn, confidence: 1.0, stage: 3 };
   }
@@ -91,7 +91,7 @@ export function findClosestMatch(
         stageName: 'string_similarity',
         threshold: MATCH_THRESHOLDS.stage4Stop,
         passed: true,
-        candidates: [{ itemId: item.id, score }],
+        candidates: [{ itemId: item.id, itemName: item.name, score }],
       });
       return { item, confidence: score, stage: 4 };
     }

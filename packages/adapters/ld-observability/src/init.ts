@@ -1,5 +1,5 @@
 import { createClient, type LDClient, type LDContext } from '@launchdarkly/js-client-sdk';
-import Observability from '@launchdarkly/observability';
+import Observability, { LDObserve } from '@launchdarkly/observability';
 import SessionReplay from '@launchdarkly/session-replay';
 
 let client: LDClient | null = null;
@@ -31,4 +31,13 @@ export function identifyObservabilityAnonymous(): void {
 
 export function trackObservabilityEvent(key: string, data?: unknown): void {
   client?.track(key, data);
+}
+
+export interface ObservabilitySpan {
+  setAttribute(key: string, value: string | number | boolean): void;
+  end(): void;
+}
+
+export function startSpan(name: string): ObservabilitySpan {
+  return LDObserve.startManualSpan(name, (s) => s);
 }
