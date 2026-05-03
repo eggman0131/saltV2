@@ -183,7 +183,7 @@ export function initCanonSync(): () => void {
 function createTracedArbitrationAdapter(inner: CanonArbitrationPort): CanonArbitrationPort {
   return {
     async arbitrate(req) {
-      const span = startSpan('canon.arbitrateCanon');
+      const span = startSpan(`canon.arbitrate: ${req.normalisedName}`);
       span.setAttribute('arbitration.ingredient', req.normalisedName);
       span.setAttribute('arbitration.aisle_count', req.aisles.length);
       try {
@@ -222,7 +222,7 @@ export async function addCanonItem(
   selectedAisleId?: string | null,
   forceCreate?: boolean,
 ): Promise<Result<MatchOrCreateResult, DomainError>> {
-  const span = startSpan(`canon: ${rawName}`);
+  const span = startSpan(`canon.add: ${rawName}`);
   const errors = getErrorReporter();
   try {
     const { store: canonStore } = memCanonStore(get(_canonItems));

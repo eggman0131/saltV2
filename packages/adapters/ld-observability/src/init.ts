@@ -1,6 +1,8 @@
 import { createClient, type LDClient, type LDContext } from '@launchdarkly/js-client-sdk';
 import Observability, { LDObserve } from '@launchdarkly/observability';
 import SessionReplay from '@launchdarkly/session-replay';
+import { trace, context as otelContext } from '@opentelemetry/api';
+import type { Span } from '@opentelemetry/api';
 
 let client: LDClient | null = null;
 
@@ -14,7 +16,10 @@ export function initLDObservability(clientSideId: string, opts?: LDObservability
   if (client) return;
   // Observe and Record from highlight.run satisfy the plugin interface at runtime
   // but don't align with LDPluginBase's generic shape — cast required.
-  const replayOpts = opts?.manualStart ? { manualStart: true } : undefined;
+  const replayOpts = {
+    privacySetting: 'none' as const,
+    ...(opts?.manualStart ? { manualStart: true } : {}),
+  };
   client = createClient(clientSideId, ANON_CONTEXT, {
     plugins: [new Observability() as never, new SessionReplay(replayOpts) as never],
   });
@@ -38,6 +43,10 @@ export interface ObservabilitySpan {
   end(): void;
 }
 
-export function startSpan(name: string): ObservabilitySpan {
+export function startSpan(name: string, opts?: { parent?: ObservabilitySpan }): ObservabilitySpan {
+  if (opts?.parent) {
+    const ctx = trace.setSpan(otelContext.active(), opts.parent as unknown as Span);
+    return LDObserve.startManualSpan(name, {}, ctx, (s) => s);
+  }
   return LDObserve.startManualSpan(name, (s) => s);
 }

@@ -13,7 +13,7 @@ const STAGE_LABELS: Record<number, string> = {
 export function createLDMatchLoggingAdapter(): MatchLoggingPort {
   return {
     write(entry: MatchLogEntry): Promise<void> {
-      LDObserve.startManualSpan(`canon: ${entry.rawInput}`, (span) => {
+      LDObserve.startManualSpan(`canon.stages: ${entry.rawInput}`, (span) => {
         span.setAttribute('canon.input', entry.rawInput);
         if (entry.normalizedInput !== entry.rawInput) {
           span.setAttribute('canon.normalized', entry.normalizedInput);

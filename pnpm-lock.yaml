@@ -197,6 +197,9 @@ importers:
       '@launchdarkly/session-replay':
         specifier: ^1.1.6
         version: 1.1.6
+      '@opentelemetry/api':
+        specifier: ^1.9.1
+        version: 1.9.1
       '@salt/domain':
         specifier: workspace:*
         version: link:../../domain
