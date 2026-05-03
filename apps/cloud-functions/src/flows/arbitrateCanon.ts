@@ -2,7 +2,7 @@ import { z } from 'genkit';
 import { googleAI } from '@genkit-ai/google-genai';
 import { ai } from '../genkit.js';
 
-const GENERATION_MODEL = googleAI.model('gemini-2.0-flash');
+const GENERATION_MODEL = googleAI.model('gemini-3-flash-preview');
 
 const ArbitrationRequestSchema = z.object({
   normalisedName: z.string(),
