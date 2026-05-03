@@ -6,12 +6,17 @@ let client: LDClient | null = null;
 
 const ANON_CONTEXT: LDContext = { kind: 'user', key: 'anonymous', anonymous: true };
 
-export function initLDObservability(clientSideId: string): void {
+export interface LDObservabilityOptions {
+  manualStart?: boolean;
+}
+
+export function initLDObservability(clientSideId: string, opts?: LDObservabilityOptions): void {
   if (client) return;
   // Observe and Record from highlight.run satisfy the plugin interface at runtime
   // but don't align with LDPluginBase's generic shape — cast required.
+  const replayOpts = opts?.manualStart ? { manualStart: true } : undefined;
   client = createClient(clientSideId, ANON_CONTEXT, {
-    plugins: [new Observability() as never, new SessionReplay() as never],
+    plugins: [new Observability() as never, new SessionReplay(replayOpts) as never],
   });
   void client.start();
 }
