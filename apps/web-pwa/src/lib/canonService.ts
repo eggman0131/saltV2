@@ -194,7 +194,7 @@ export async function addCanonItem(
       logging: createLDMatchLoggingAdapter(),
     },
   );
-  if (result.kind === 'ok') {
+  if (result.kind === 'ok' && result.value.decision !== 'candidates') {
     try {
       await upsertCanonItem(result.value.item);
     } catch (err) {

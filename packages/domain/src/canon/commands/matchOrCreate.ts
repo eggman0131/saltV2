@@ -26,10 +26,9 @@ export interface MatchOrCreateInput {
   readonly forceCreate?: boolean;
 }
 
-export interface MatchOrCreateResult {
-  readonly item: CanonItem;
-  readonly decision: FinalDecision;
-}
+export type MatchOrCreateResult =
+  | { readonly decision: 'created' | 'matched' | 'ai_arbitrated'; readonly item: CanonItem }
+  | { readonly decision: 'candidates'; readonly candidates: readonly CanonItem[] };
 
 export interface MatchOrCreatePorts {
   readonly store: CanonLocalStorePort;
@@ -118,42 +117,15 @@ export async function matchOrCreate(
   }
   const aiCandidates = [...aiCandidateMap.values()].sort((a, b) => b.confidence - a.confidence);
 
-  // Stage 6: AI arbitration when near-miss candidates exist
-  if (aiCandidates.length > 0) {
-    const aislesResult = await aisleStore.load();
-    const aisles = aislesResult.kind === 'ok' ? (aislesResult.value?.aisles ?? []) : [];
-
-    const arbResult = await arbitration.arbitrate({
-      normalisedName,
-      candidates: aiCandidates,
-      aisles,
-    });
-
-    const arbMatched = arbResult.kind === 'ok' && arbResult.value.kind === 'match';
-    logBuilder?.addStage({
-      stage: 6,
-      stageName: 'ai_arbitration',
-      threshold: MATCH_THRESHOLDS.aiThreshold,
-      passed: arbMatched,
-      candidates: aiCandidates.map((c) => ({ itemId: c.item.id, score: c.confidence })),
-    });
-
-    if (arbResult.kind === 'ok') {
-      const arb = arbResult.value;
-
-      if (arb.kind === 'match') {
-        const matched = items.find((i) => i.id === arb.itemId);
-        if (matched !== undefined) {
-          commitLog('ai_arbitrated', matched.id);
-          return success({ item: matched, decision: 'ai_arbitrated' });
-        }
-      }
-
-      if (arb.kind === 'new') {
-        const aisleId = selectedAisleId ?? arb.aisleId ?? null;
-        return persistNew(store, ids, arb.canonName, aisleId, commitLog);
-      }
-    }
+  // Stage 6: surface near-miss candidates to the user rather than auto-picking.
+  // With a single candidate above the threshold there's no ambiguity — match directly.
+  // With multiple candidates the human picks; AI arbitration was unreliable here.
+  if (aiCandidates.length === 1) {
+    commitLog('matched', aiCandidates[0]!.item.id);
+    return success({ item: aiCandidates[0]!.item, decision: 'matched' });
+  }
+  if (aiCandidates.length > 1) {
+    return success({ decision: 'candidates', candidates: aiCandidates.map((c) => c.item) });
   }
 
   // No match found anywhere: create a new item from rawName.

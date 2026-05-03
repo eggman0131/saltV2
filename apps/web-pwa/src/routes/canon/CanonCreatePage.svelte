@@ -44,12 +44,17 @@
   let pending = $state(false);
   let errorMessage = $state('');
 
-  // Match/ai_arbitrated confirm dialog
+  // Match/candidates confirm dialog
   let matchDialogOpen = $state(false);
-  let matchedItem = $state<CanonItem | null>(null);
+  let matchCandidates = $state<CanonItem[]>([]);
+  let selectedCandidateId = $state<string | null>(null);
   let pendingName = $state('');
   let pendingAisleId = $state<string | null>(null);
   let overrideBusy = $state(false);
+
+  const selectedCandidate = $derived(
+    matchCandidates.find((c) => c.id === selectedCandidateId) ?? null,
+  );
 
   // Selecting an existing item from the combobox navigates to its detail page
   function handleValueChange(id: string): void {
@@ -72,21 +77,26 @@
       return;
     }
 
-    const { item, decision } = result.value;
+    const outcome = result.value;
 
-    if (decision === 'created') {
-      addToast(`Added ${titleCase(item.name)}`, 'success');
-      push(`/canon/${item.id}`);
+    if (outcome.decision === 'created') {
+      addToast(`Added ${titleCase(outcome.item.name)}`, 'success');
+      push(`/canon/${outcome.item.id}`);
+    } else if (outcome.decision === 'candidates') {
+      matchCandidates = [...outcome.candidates];
+      selectedCandidateId = outcome.candidates[0]?.id ?? null;
+      matchDialogOpen = true;
     } else {
-      // matched or ai_arbitrated — ask user to confirm
-      matchedItem = item;
+      // 'matched' | 'ai_arbitrated' — single confirmed match
+      matchCandidates = [outcome.item];
+      selectedCandidateId = outcome.item.id;
       matchDialogOpen = true;
     }
   }
 
   function handleUseExisting(): void {
     matchDialogOpen = false;
-    if (matchedItem) push(`/canon/${matchedItem.id}`);
+    if (selectedCandidateId) push(`/canon/${selectedCandidateId}`);
   }
 
   async function handleForceCreate(): Promise<void> {
@@ -186,28 +196,56 @@
   </div>
 </div>
 
-<!-- Match confirm dialog -->
+<!-- Match / candidates confirm dialog -->
 <Dialog bind:open={matchDialogOpen}>
   <DialogContent>
     <div data-testid="canon-create-match-dialog" class="flex flex-col gap-4">
       <DialogHeader>
-        <DialogTitle>This looks like an existing item</DialogTitle>
+        <DialogTitle>
+          {matchCandidates.length > 1 ? 'Similar items found' : 'This looks like an existing item'}
+        </DialogTitle>
         <DialogDescription>
-          {#if matchedItem}
-            We found a match: <strong>{titleCase(matchedItem.name)}</strong>
-            {#if matchedItem.aisleId}
-              {@const aisle = $aisles.find((a) => a.id === matchedItem?.aisleId)}
+          {#if matchCandidates.length > 1}
+            We found {matchCandidates.length} items that may already cover this. Select one to use it,
+            or create a new item anyway.
+          {:else if selectedCandidate}
+            We found a match: <strong>{titleCase(selectedCandidate.name)}</strong>
+            {#if selectedCandidate.aisleId}
+              {@const aisle = $aisles.find((a) => a.id === selectedCandidate.aisleId)}
               {#if aisle}(aisle: {titleCase(aisle.name)}){/if}
             {/if}
             . Would you like to use it, or create a new one anyway?
           {/if}
         </DialogDescription>
       </DialogHeader>
+
+      {#if matchCandidates.length > 1}
+        <Select
+          value={selectedCandidateId ?? ''}
+          onValueChange={(v) => (selectedCandidateId = v || null)}
+          data-testid="canon-create-candidate-select"
+        >
+          <SelectTrigger>
+            {selectedCandidate ? titleCase(selectedCandidate.name) : 'Select an item'}
+          </SelectTrigger>
+          <SelectContent>
+            {#each matchCandidates as candidate (candidate.id)}
+              {@const aisle = $aisles.find((a) => a.id === candidate.aisleId)}
+              <SelectItem value={candidate.id}>
+                {titleCase(candidate.name)}{aisle ? ` — ${titleCase(aisle.name)}` : ''}
+              </SelectItem>
+            {/each}
+          </SelectContent>
+        </Select>
+      {/if}
+
       <DialogFooter>
         <Button
           data-testid="canon-create-use-existing"
           variant="outline"
-          onclick={handleUseExisting}>Use existing</Button
+          disabled={!selectedCandidateId}
+          onclick={handleUseExisting}
+          >{matchCandidates.length > 1 ? 'Use selected' : 'Use existing'}</Button
         >
         <Button
           data-testid="canon-create-create-anyway"
