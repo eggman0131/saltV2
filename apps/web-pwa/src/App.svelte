@@ -15,6 +15,7 @@
   import { routes } from './routes/index.js';
   import { toasts, dismissToast } from './lib/toastStore.js';
   import { initCanonSync } from './lib/canonService.js';
+  import SessionOverlay from './lib/dev/SessionOverlay.svelte';
 
   // Start Firestore subscriptions when authenticated; clean up on sign-out.
   $effect(() => {
@@ -48,3 +49,7 @@
     </ToastViewport>
   </ToastProvider>
 </AuthGate>
+
+{#if import.meta.env.DEV}
+  <SessionOverlay />
+{/if}
