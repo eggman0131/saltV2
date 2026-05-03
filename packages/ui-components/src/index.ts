@@ -200,5 +200,4 @@ export type { DetailPageProps } from './templates/DetailPage/DetailPage.types';
 export type {
   SelectableListProps,
   SelectableListItem,
-  BulkAction,
 } from './templates/SelectableList/SelectableList.types';

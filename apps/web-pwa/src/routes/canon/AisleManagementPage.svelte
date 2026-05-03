@@ -235,19 +235,32 @@
     isEmpty={$aisles.length === 0 && !$isLoadingAisles}
   >
     {#snippet actions()}
-      {#if selectedCount > 0}
-        <Button variant="outline" onclick={openMerge} disabled={selectedCount < 2}>Merge…</Button>
-        <Button
-          variant="outline"
-          data-testid="bulk-delete-button"
-          onclick={() => (deleteOpen = true)}>Delete ({selectedCount})</Button
-        >
-      {/if}
       <Button onclick={() => push('/canon')}>
         <Icon name="ArrowLeft" size={16} />
         Back
       </Button>
       <Button data-testid="aisle-add-button" onclick={() => (addOpen = true)}>Add</Button>
+    {/snippet}
+    {#snippet selectionBar()}
+      <Checkbox
+        checked={allSelected ? true : someSelected ? 'indeterminate' : false}
+        onCheckedChange={toggleSelectAll}
+        label={selectedCount > 0 ? `${selectedCount} selected` : 'Select all'}
+      />
+      {#if selectedCount > 0}
+        <div class="flex items-center gap-2">
+          <Button variant="outline" size="sm" onclick={openMerge} disabled={selectedCount < 2}>
+            Merge…
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            data-testid="bulk-delete-button"
+            onclick={() => (deleteOpen = true)}>Delete</Button
+          >
+          <Button variant="ghost" size="sm" onclick={() => (selected = new Set())}>Clear</Button>
+        </div>
+      {/if}
     {/snippet}
 
     {#snippet children()}
@@ -272,17 +285,6 @@
           </SelectContent>
         </Select>
       </div>
-
-      <!-- Select-all row -->
-      {#if filteredAisles.length > 0}
-        <div class="mb-1 flex items-center gap-2 px-1">
-          <Checkbox
-            checked={allSelected ? true : someSelected ? 'indeterminate' : false}
-            onCheckedChange={toggleSelectAll}
-            label="Select all"
-          />
-        </div>
-      {/if}
 
       <!-- Sortable list -->
       <SortableList
