@@ -29,18 +29,20 @@ const baseReq = {
 };
 
 describe('arbitrateCanon flow — output shapes', () => {
-  it('returns match result from ai.generate output', async () => {
+  it('returns match result with core fields from ai.generate output', async () => {
     const output = { kind: 'match', itemId: 'abc', confidence: 0.92 };
-    mockGenerate.mockResolvedValue({ output });
+    mockGenerate.mockResolvedValue({ output, text: JSON.stringify(output) });
 
     const result = await (arbitrateCanonFlow as Function)(baseReq);
 
-    expect(result).toEqual(output);
+    expect(result).toMatchObject(output);
+    expect(typeof result.prompt).toBe('string');
+    expect(typeof result.rawResponse).toBe('string');
   });
 
   it('returns new result with aisleId', async () => {
     const output = { kind: 'new', canonName: 'Cherry Tomato', aisleId: 'produce-1' };
-    mockGenerate.mockResolvedValue({ output });
+    mockGenerate.mockResolvedValue({ output, text: JSON.stringify(output) });
 
     const result = await (arbitrateCanonFlow as Function)({
       normalisedName: 'cherry tomato',
@@ -48,12 +50,14 @@ describe('arbitrateCanon flow — output shapes', () => {
       aisles: [{ id: 'produce-1', name: 'Produce' }],
     });
 
-    expect(result).toEqual(output);
+    expect(result).toMatchObject(output);
+    expect(typeof result.prompt).toBe('string');
+    expect(typeof result.rawResponse).toBe('string');
   });
 
   it('returns new result with null aisleId', async () => {
     const output = { kind: 'new', canonName: 'Cherry Tomato', aisleId: null };
-    mockGenerate.mockResolvedValue({ output });
+    mockGenerate.mockResolvedValue({ output, text: JSON.stringify(output) });
 
     const result = await (arbitrateCanonFlow as Function)({
       normalisedName: 'cherry tomato',
@@ -61,10 +65,26 @@ describe('arbitrateCanon flow — output shapes', () => {
       aisles: [],
     });
 
-    expect(result).toEqual(output);
+    expect(result).toMatchObject(output);
   });
 
-  it('returns no-match result', async () => {
+  it('returns no-match result with prompt and rawResponse', async () => {
+    const output = { kind: 'no-match' };
+    mockGenerate.mockResolvedValue({ output, text: JSON.stringify(output) });
+
+    const result = await (arbitrateCanonFlow as Function)({
+      normalisedName: 'xyzzy',
+      candidates: [],
+      aisles: [],
+    });
+
+    expect(result).toMatchObject(output);
+    expect(typeof result.prompt).toBe('string');
+    expect(result.prompt.length).toBeGreaterThan(0);
+    expect(result.rawResponse).toBe(JSON.stringify(output));
+  });
+
+  it('uses JSON.stringify(output) as rawResponse when text is absent', async () => {
     const output = { kind: 'no-match' };
     mockGenerate.mockResolvedValue({ output });
 
@@ -74,7 +94,21 @@ describe('arbitrateCanon flow — output shapes', () => {
       aisles: [],
     });
 
-    expect(result).toEqual(output);
+    expect(result.rawResponse).toBe(JSON.stringify(output));
+  });
+
+  it('uses text from ai.generate as rawResponse when present', async () => {
+    const output = { kind: 'no-match' };
+    const rawText = '{"kind":"no-match"}';
+    mockGenerate.mockResolvedValue({ output, text: rawText });
+
+    const result = await (arbitrateCanonFlow as Function)({
+      normalisedName: 'xyzzy',
+      candidates: [],
+      aisles: [],
+    });
+
+    expect(result.rawResponse).toBe(rawText);
   });
 });
 
@@ -126,5 +160,14 @@ describe('arbitrateCanon flow — prompt construction', () => {
     const opts = mockGenerate.mock.calls[0]![0];
     expect(opts.config).toEqual({ temperature: 0 });
     expect(opts.output?.schema).toBeDefined();
+  });
+
+  it('prompt returned in result matches the prompt sent to ai.generate', async () => {
+    mockGenerate.mockResolvedValue({ output: { kind: 'no-match' } });
+
+    const result = await (arbitrateCanonFlow as Function)(baseReq);
+
+    const { prompt: sentPrompt } = mockGenerate.mock.calls[0]![0];
+    expect(result.prompt).toBe(sentPrompt);
   });
 });

@@ -112,12 +112,6 @@ function noMatchArbitration(): CanonArbitrationPort {
   return { arbitrate: async () => ({ kind: 'ok', value: { kind: 'no-match' } }) };
 }
 
-function matchArbitration(itemId: string): CanonArbitrationPort {
-  return {
-    arbitrate: async () => ({ kind: 'ok', value: { kind: 'match', itemId, confidence: 0.85 } }),
-  };
-}
-
 function newArbitration(canonName: string, aisleId: string | null = null): CanonArbitrationPort {
   return { arbitrate: async () => ({ kind: 'ok', value: { kind: 'new', canonName, aisleId } }) };
 }
@@ -249,71 +243,96 @@ describe('stage 5 — embedding match', () => {
   });
 });
 
-// ─── Stage 6: AI arbitration match ───────────────────────────────────────────
+// ─── Stage 6: single near-miss → direct match ────────────────────────────────
+// When exactly one candidate is above aiThreshold (but below a deterministic
+// stop threshold), it is matched directly without calling the arbitration port.
 
-describe('stage 6 — AI arbitration: match', () => {
-  it('returns the item identified by the arbitration port', async () => {
-    // tokenMatch score ~0.67 (2/3 tokens overlap) — above aiThreshold (0.6), below stage2Stop (0.8)
+describe('stage 6 — single near-miss: direct match', () => {
+  it('matches the single near-miss candidate directly', async () => {
+    // tokenMatch('olive oil', 'olive oil extra') ≈ 0.67 — above aiThreshold (0.6)
     const item = canonItem({ id: 'x1', name: 'olive oil extra' });
-    const { run } = makePipeline({
-      items: [item],
-      arbitration: matchArbitration('x1'),
-    });
+    const { run } = makePipeline({ items: [item] });
     const result = await run('olive oil');
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') {
       expect(result.value.item.id).toBe('x1');
-      expect(result.value.decision).toBe('ai_arbitrated');
+      expect(result.value.decision).toBe('matched');
+    }
+  });
+
+  it('does not call the arbitration port for a single near-miss', async () => {
+    const item = canonItem({ id: 'x1', name: 'olive oil extra' });
+    const arbitrateSpy = vi.fn().mockResolvedValue({ kind: 'ok', value: { kind: 'no-match' } });
+    idCounter = 0;
+    await matchOrCreate(
+      { rawName: 'olive oil' },
+      {
+        store: makeStore([item]),
+        aisleStore: makeAisleStore(),
+        embedding: failEmbedding(),
+        arbitration: { arbitrate: arbitrateSpy },
+        ids: makeIds(),
+        logging: null,
+      },
+    );
+    expect(arbitrateSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Stage 6: multiple near-misses → surfaced candidates ─────────────────────
+
+describe('stage 6 — multiple near-misses: surfaced candidates', () => {
+  it('surfaces candidates when two or more are above aiThreshold', async () => {
+    // Both items score above aiThreshold (0.6) with tokenMatch for 'olive oil'
+    const item1 = canonItem({ id: 'x1', name: 'olive oil extra' });
+    const item2 = canonItem({ id: 'x2', name: 'olive oil light' });
+    const { run } = makePipeline({ items: [item1, item2] });
+    const result = await run('olive oil');
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value.decision).toBe('candidates');
+      if (result.value.decision === 'candidates') {
+        expect(result.value.candidates.length).toBeGreaterThanOrEqual(2);
+      }
     }
   });
 });
 
-// ─── Stage 6: AI arbitration → new ───────────────────────────────────────────
+// ─── Aisle suggestion via arbitration ────────────────────────────────────────
+// Arbitration is called with empty candidates when a new item needs an aisle.
 
-describe('stage 6 — AI arbitration: new item', () => {
-  it('creates an item with the AI-suggested canonical name', async () => {
-    const item = canonItem({ id: 'x1', name: 'olive oil extra' });
-    const { run, store } = makePipeline({
-      items: [item],
-      arbitration: newArbitration('Olive Oil', 'oils'),
+describe('aisle suggestion — arbitration called on creation', () => {
+  it('uses the AI-suggested aisle when creating a new item with no match', async () => {
+    const { run } = makePipeline({
+      aisleStore: makeAisleStoreWithAisles(),
+      arbitration: newArbitration('Garlic', 'produce'),
     });
-    const result = await run('olive oil');
+    const result = await run('garlic-xyz-unique');
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') {
-      expect(result.value.item.name).toBe('Olive Oil');
-      expect(result.value.item.aisleId).toBe('oils');
-      expect(result.value.item.needs_approval).toBe(true);
+      expect(result.value.item.aisleId).toBe('produce');
       expect(result.value.decision).toBe('created');
     }
-    expect((store as ReturnType<typeof makeStore>).items).toHaveLength(2);
+  });
+
+  it('creates item from rawName, not AI-suggested canonName', async () => {
+    const { run } = makePipeline({
+      aisleStore: makeAisleStoreWithAisles(),
+      arbitration: newArbitration('Canonical Garlic Name', 'produce'),
+    });
+    const result = await run('garlic-xyz-unique');
+    if (result.kind === 'ok') {
+      expect(result.value.item.name).toBe('garlic-xyz-unique');
+    }
   });
 
   it('user-provided aisle overrides AI-suggested aisle', async () => {
-    const item = canonItem({ id: 'x1', name: 'olive oil extra' });
     const { run } = makePipeline({
-      items: [item],
-      arbitration: newArbitration('Olive Oil', 'oils'),
+      aisleStore: makeAisleStoreWithAisles(),
+      arbitration: newArbitration('Garlic', 'produce'),
     });
-    const result = await run('olive oil', 'user-aisle');
-    if (result.kind === 'ok') expect(result.value.item.aisleId).toBe('user-aisle');
-  });
-});
-
-// ─── Stage 6: AI arbitration → no-match ──────────────────────────────────────
-
-describe('stage 6 — AI arbitration: no-match', () => {
-  it('creates a new item from rawName when AI returns no-match', async () => {
-    const item = canonItem({ id: 'x1', name: 'olive oil extra' });
-    const { run } = makePipeline({
-      items: [item],
-      arbitration: noMatchArbitration(),
-    });
-    const result = await run('olive oil');
-    expect(result.kind).toBe('ok');
-    if (result.kind === 'ok') {
-      expect(result.value.item.name).toBe('olive oil');
-      expect(result.value.item.aisleId).toBeNull();
-    }
+    const result = await run('garlic-xyz-unique', 'spices');
+    if (result.kind === 'ok') expect(result.value.item.aisleId).toBe('spices');
   });
 });
 
@@ -469,15 +488,25 @@ describe('error paths', () => {
     if (result.kind === 'err') expect(result.error.kind).toBe('StorageError');
   });
 
-  it('falls through to creation when arbitration port errors', async () => {
-    const item = canonItem({ id: 'x1', name: 'olive oil extra' });
-    const { run } = makePipeline({
-      items: [item],
-      arbitration: errorArbitration(),
-    });
-    const result = await run('olive oil');
+  it('falls through to creation when arbitration port errors (aisle suggestion path)', async () => {
+    // Empty catalog → no match → aisle arbitration triggered → errors → item created with null aisle
+    idCounter = 0;
+    const result = await matchOrCreate(
+      { rawName: 'Garlic' },
+      {
+        store: makeStore([]),
+        aisleStore: makeAisleStoreWithAisles(),
+        embedding: failEmbedding(),
+        arbitration: errorArbitration(),
+        ids: makeIds(),
+        logging: null,
+      },
+    );
     expect(result.kind).toBe('ok');
-    if (result.kind === 'ok') expect(result.value.item.name).toBe('olive oil');
+    if (result.kind === 'ok') {
+      expect(result.value.item.name).toBe('Garlic');
+      expect(result.value.item.aisleId).toBeNull();
+    }
   });
 });
 
@@ -561,6 +590,29 @@ describe('logging integration', () => {
     expect(written[0]?.rawInput).toBe('apple');
   });
 
+  it('writes a log entry with schemaVersion 2', async () => {
+    const written: MatchLogEntry[] = [];
+    const loggingPort: MatchLoggingPort = {
+      write: async (e) => {
+        written.push(e);
+      },
+    };
+    idCounter = 0;
+    await matchOrCreate(
+      { rawName: 'Basil' },
+      {
+        store: makeStore([]),
+        aisleStore: makeAisleStore(),
+        embedding: failEmbedding(),
+        arbitration: noMatchArbitration(),
+        ids: makeIds(),
+        logging: loggingPort,
+      },
+    );
+    await Promise.resolve();
+    expect(written[0]?.schemaVersion).toBe(2);
+  });
+
   it('writes a log entry with finalDecision=created when creating a new item', async () => {
     const written: MatchLogEntry[] = [];
     const loggingPort: MatchLoggingPort = {
@@ -584,7 +636,105 @@ describe('logging integration', () => {
     expect(written[0]?.finalDecision).toBe('created');
   });
 
-  it('writes a log entry with finalDecision=ai_arbitrated on AI match', async () => {
+  it('records inputItemCount matching the catalog size at call time', async () => {
+    const written: MatchLogEntry[] = [];
+    const loggingPort: MatchLoggingPort = {
+      write: async (e) => {
+        written.push(e);
+      },
+    };
+    const items = [canonItem({ id: 'a1', name: 'apple' }), canonItem({ id: 'b1', name: 'banana' })];
+    idCounter = 0;
+    await matchOrCreate(
+      { rawName: 'mango' },
+      {
+        store: makeStore(items),
+        aisleStore: makeAisleStore(),
+        embedding: failEmbedding(),
+        arbitration: noMatchArbitration(),
+        ids: makeIds(),
+        logging: loggingPort,
+      },
+    );
+    await Promise.resolve();
+    expect(written[0]?.inputItemCount).toBe(2);
+  });
+
+  it('records totalDurationMs as a non-negative number', async () => {
+    const written: MatchLogEntry[] = [];
+    const loggingPort: MatchLoggingPort = {
+      write: async (e) => {
+        written.push(e);
+      },
+    };
+    idCounter = 0;
+    await matchOrCreate(
+      { rawName: 'Basil' },
+      {
+        store: makeStore([]),
+        aisleStore: makeAisleStore(),
+        embedding: failEmbedding(),
+        arbitration: noMatchArbitration(),
+        ids: makeIds(),
+        logging: loggingPort,
+      },
+    );
+    await Promise.resolve();
+    expect(written[0]?.totalDurationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it('records arbitration log when AI is called for aisle suggestion', async () => {
+    const written: MatchLogEntry[] = [];
+    const loggingPort: MatchLoggingPort = {
+      write: async (e) => {
+        written.push(e);
+      },
+    };
+    idCounter = 0;
+    await matchOrCreate(
+      { rawName: 'Garlic' },
+      {
+        store: makeStore([]),
+        aisleStore: makeAisleStoreWithAisles(),
+        embedding: failEmbedding(),
+        arbitration: newArbitration('Garlic', 'produce'),
+        ids: makeIds(),
+        logging: loggingPort,
+      },
+    );
+    await Promise.resolve();
+    expect(written[0]?.arbitration).not.toBeNull();
+    expect(written[0]?.arbitration?.reason).toBe('aisle_suggestion');
+    expect(written[0]?.arbitration?.aislesIn).toBe(1);
+    expect(written[0]?.arbitration?.candidatesIn).toBe(0);
+    expect(written[0]?.arbitration?.outcome).toBe('new');
+  });
+
+  it('records null arbitration when no AI is called', async () => {
+    const written: MatchLogEntry[] = [];
+    const loggingPort: MatchLoggingPort = {
+      write: async (e) => {
+        written.push(e);
+      },
+    };
+    const apple = canonItem({ id: 'a1', name: 'apple' });
+    idCounter = 0;
+    await matchOrCreate(
+      { rawName: 'apple' },
+      {
+        store: makeStore([apple]),
+        aisleStore: makeAisleStore(),
+        embedding: failEmbedding(),
+        arbitration: noMatchArbitration(),
+        ids: makeIds(),
+        logging: loggingPort,
+      },
+    );
+    await Promise.resolve();
+    expect(written[0]?.arbitration).toBeNull();
+  });
+
+  it('writes a log entry with finalDecision=matched for a single near-miss above aiThreshold', async () => {
     const written: MatchLogEntry[] = [];
     const loggingPort: MatchLoggingPort = {
       write: async (e) => {
@@ -599,13 +749,13 @@ describe('logging integration', () => {
         store: makeStore([item]),
         aisleStore: makeAisleStore(),
         embedding: failEmbedding(),
-        arbitration: matchArbitration('x1'),
+        arbitration: noMatchArbitration(),
         ids: makeIds(),
         logging: loggingPort,
       },
     );
     await Promise.resolve();
-    expect(written[0]?.finalDecision).toBe('ai_arbitrated');
+    expect(written[0]?.finalDecision).toBe('matched');
     expect(written[0]?.finalItemId).toBe('x1');
   });
 

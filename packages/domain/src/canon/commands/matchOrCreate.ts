@@ -78,9 +78,23 @@ export async function matchOrCreate(
     const aisles = aislesResult.kind === 'ok' ? (aislesResult.value?.aisles ?? []) : [];
     let suggestedAisleId: string | null = null;
     if (aisles.length > 0 && selectedAisleId == null) {
+      const arbT0 = Date.now();
       const arbResult = await arbitration.arbitrate({ normalisedName, candidates: [], aisles });
+      const arbDuration = Math.max(0, Date.now() - arbT0);
       if (arbResult.kind === 'ok' && arbResult.value.kind === 'new') {
         suggestedAisleId = arbResult.value.aisleId ?? null;
+      }
+      if (logBuilder) {
+        const outcome = arbResult.kind === 'ok' ? arbResult.value.kind : 'error';
+        logBuilder.setArbitration({
+          reason: 'aisle_suggestion',
+          candidatesIn: 0,
+          aislesIn: aisles.length,
+          prompt: arbResult.kind === 'ok' ? (arbResult.value.prompt ?? '') : '',
+          rawResponse: arbResult.kind === 'ok' ? (arbResult.value.rawResponse ?? '') : '',
+          outcome,
+          durationMs: arbDuration,
+        });
       }
     }
     return persistNew(store, ids, rawName, selectedAisleId ?? suggestedAisleId ?? null, commitLog);
@@ -89,6 +103,7 @@ export async function matchOrCreate(
   const itemsResult = await store.list();
   if (itemsResult.kind !== 'ok') return itemsResult;
   const items = itemsResult.value;
+  logBuilder?.setInputItemCount(items.length);
 
   // Stages 1–4: pure deterministic matching
   const stage1to4 = findClosestMatch(items, rawName, logBuilder ?? undefined);
@@ -153,9 +168,23 @@ export async function matchOrCreate(
     const aislesResult = await aisleStore.load();
     const aisles = aislesResult.kind === 'ok' ? (aislesResult.value?.aisles ?? []) : [];
     if (aisles.length > 0) {
+      const arbT0 = Date.now();
       const arbResult = await arbitration.arbitrate({ normalisedName, candidates: [], aisles });
+      const arbDuration = Math.max(0, Date.now() - arbT0);
       if (arbResult.kind === 'ok' && arbResult.value.kind === 'new') {
         finalAisleId = arbResult.value.aisleId ?? null;
+      }
+      if (logBuilder) {
+        const outcome = arbResult.kind === 'ok' ? arbResult.value.kind : 'error';
+        logBuilder.setArbitration({
+          reason: 'aisle_suggestion',
+          candidatesIn: 0,
+          aislesIn: aisles.length,
+          prompt: arbResult.kind === 'ok' ? (arbResult.value.prompt ?? '') : '',
+          rawResponse: arbResult.kind === 'ok' ? (arbResult.value.rawResponse ?? '') : '',
+          outcome,
+          durationMs: arbDuration,
+        });
       }
     }
   }

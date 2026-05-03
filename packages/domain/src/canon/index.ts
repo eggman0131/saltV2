@@ -22,7 +22,9 @@ export type {
   MatchLogEntry,
   StageLog,
   CandidateLog,
+  StageSkipReason,
   FinalDecision,
+  ArbitrationLog,
 } from './entities/MatchLogEntry.js';
 export type { MatchLoggingPort } from './ports/MatchLoggingPort.js';
 export type { EmbeddingPort } from './ports/EmbeddingPort.js';

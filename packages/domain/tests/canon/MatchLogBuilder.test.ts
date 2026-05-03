@@ -8,7 +8,12 @@ function makeStage(overrides: Partial<StageLog> = {}): StageLog {
     stageName: 'normalization',
     threshold: 1.0,
     passed: true,
-    candidates: [],
+    consideredCount: 3,
+    durationMs: 0,
+    topCandidates: [],
+    bestScore: 1.0,
+    gap: 0.0,
+    skipReason: null,
     ...overrides,
   };
 }
@@ -49,11 +54,11 @@ describe('MatchLogBuilder', () => {
     expect(entry.stages[1].passed).toBe(false);
   });
 
-  it('sets schemaVersion to 1', () => {
+  it('sets schemaVersion to 2', () => {
     builder.start('Onion', 'onion');
     const entry = builder.complete('log-3', 'matched', 'item-1');
 
-    expect(entry.schemaVersion).toBe(1);
+    expect(entry.schemaVersion).toBe(2);
   });
 
   it('sets timestamp to a valid ISO8601 string', () => {
@@ -82,5 +87,78 @@ describe('MatchLogBuilder', () => {
     builder.addStage(makeStage({ stage: 2 }));
 
     expect(entry.stages).toHaveLength(1);
+  });
+
+  it('includes inputItemCount set via setInputItemCount', () => {
+    builder.start('Apple', 'apple');
+    builder.setInputItemCount(42);
+    const entry = builder.complete('log-7', 'matched', 'item-1');
+
+    expect(entry.inputItemCount).toBe(42);
+  });
+
+  it('defaults inputItemCount to 0 when not set', () => {
+    builder.start('Apple', 'apple');
+    const entry = builder.complete('log-8', 'created', null);
+
+    expect(entry.inputItemCount).toBe(0);
+  });
+
+  it('resets inputItemCount on a second call to start', () => {
+    builder.start('First', 'first');
+    builder.setInputItemCount(10);
+    builder.start('Second', 'second');
+    const entry = builder.complete('log-9', 'created', null);
+
+    expect(entry.inputItemCount).toBe(0);
+  });
+
+  it('reports totalDurationMs as a non-negative number', () => {
+    builder.start('Apple', 'apple');
+    const entry = builder.complete('log-10', 'matched', 'item-1');
+
+    expect(entry.totalDurationMs).toBeGreaterThanOrEqual(0);
+    expect(Number.isFinite(entry.totalDurationMs)).toBe(true);
+  });
+
+  it('includes arbitration log set via setArbitration', () => {
+    builder.start('Apple', 'apple');
+    const arbLog = {
+      reason: 'aisle_suggestion',
+      candidatesIn: 0,
+      aislesIn: 3,
+      prompt: 'test prompt',
+      rawResponse: '{"kind":"new"}',
+      outcome: 'new',
+      durationMs: 42,
+    };
+    builder.setArbitration(arbLog);
+    const entry = builder.complete('log-11', 'created', 'item-1');
+
+    expect(entry.arbitration).toEqual(arbLog);
+  });
+
+  it('defaults arbitration to null when not set', () => {
+    builder.start('Apple', 'apple');
+    const entry = builder.complete('log-12', 'matched', 'item-1');
+
+    expect(entry.arbitration).toBeNull();
+  });
+
+  it('resets arbitration on a second call to start', () => {
+    builder.start('First', 'first');
+    builder.setArbitration({
+      reason: 'r',
+      candidatesIn: 0,
+      aislesIn: 1,
+      prompt: '',
+      rawResponse: '',
+      outcome: 'new',
+      durationMs: 1,
+    });
+    builder.start('Second', 'second');
+    const entry = builder.complete('log-13', 'created', null);
+
+    expect(entry.arbitration).toBeNull();
   });
 });

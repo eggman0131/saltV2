@@ -32,7 +32,7 @@ export function createLDMatchLoggingAdapter(): MatchLoggingPort {
           const label = STAGE_LABELS[stage.stage] ?? `stage ${stage.stage}`;
           span.setAttribute(`stage.${stage.stage}.name`, label);
           span.setAttribute(`stage.${stage.stage}.passed`, stage.passed);
-          const top = stage.candidates[0];
+          const top = stage.topCandidates[0];
           if (top) {
             span.setAttribute(`stage.${stage.stage}.top`, top.itemName ?? top.itemId);
             span.setAttribute(

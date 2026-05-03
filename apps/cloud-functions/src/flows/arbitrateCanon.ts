@@ -15,10 +15,30 @@ const ArbitrationRequestSchema = z.object({
   aisles: z.array(z.object({ id: z.string(), name: z.string() })),
 });
 
-const ArbitrationResultSchema = z.discriminatedUnion('kind', [
+// AI output schema — what the model itself returns.
+const AIOutputSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('match'), itemId: z.string(), confidence: z.number() }),
   z.object({ kind: z.literal('new'), canonName: z.string(), aisleId: z.string().nullable() }),
   z.object({ kind: z.literal('no-match') }),
+]);
+
+// Flow output schema — includes the prompt and raw model response for observability.
+const ArbitrationResultSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('match'),
+    itemId: z.string(),
+    confidence: z.number(),
+    prompt: z.string(),
+    rawResponse: z.string(),
+  }),
+  z.object({
+    kind: z.literal('new'),
+    canonName: z.string(),
+    aisleId: z.string().nullable(),
+    prompt: z.string(),
+    rawResponse: z.string(),
+  }),
+  z.object({ kind: z.literal('no-match'), prompt: z.string(), rawResponse: z.string() }),
 ]);
 
 export const arbitrateCanonFlow = ai.defineFlow(
@@ -28,13 +48,16 @@ export const arbitrateCanonFlow = ai.defineFlow(
     outputSchema: ArbitrationResultSchema,
   },
   async (req) => {
+    const builtPrompt = buildPrompt(req);
     const result = await ai.generate({
       model: GENERATION_MODEL,
-      prompt: buildPrompt(req),
-      output: { schema: ArbitrationResultSchema },
+      prompt: builtPrompt,
+      output: { schema: AIOutputSchema },
       config: { temperature: 0 },
     });
-    return result.output!;
+    const output = result.output!;
+    const rawResponse = result.text ?? JSON.stringify(output);
+    return { ...output, prompt: builtPrompt, rawResponse };
   },
 );
 
