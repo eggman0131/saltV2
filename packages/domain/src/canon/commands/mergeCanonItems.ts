@@ -14,7 +14,7 @@ import type { CanonItem } from '../entities/CanonItem.js';
 export function mergeCanonItems(local: CanonItem, remote: CanonItem): CanonItem {
   return {
     id: local.id,
-    schemaVersion: 3,
+    schemaVersion: 4,
     name: remote.name,
     synonyms: unionSynonyms(local.synonyms, remote.synonyms),
     aisleId: remote.aisleId,
@@ -25,6 +25,8 @@ export function mergeCanonItems(local: CanonItem, remote: CanonItem): CanonItem 
     ...(remote.largeQuantityThreshold !== undefined
       ? { largeQuantityThreshold: remote.largeQuantityThreshold }
       : {}),
+    ...(remote.unit !== undefined ? { unit: remote.unit } : {}),
+    ...(remote.reasoning !== undefined ? { reasoning: remote.reasoning } : {}),
     // Server-authoritative sync fields come from remote.
     updatedAt: remote.updatedAt,
     revision: remote.revision,

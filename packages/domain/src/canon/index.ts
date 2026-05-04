@@ -3,7 +3,7 @@
 // to import from canon. Anything not re-exported here is private to canon by
 // design.
 
-export type { CanonItem, ShoppingBehavior } from './entities/CanonItem.js';
+export type { CanonItem, ShoppingBehavior, CanonItemUnit } from './entities/CanonItem.js';
 export type { Aisle } from './entities/Aisle.js';
 export type { AislesDocument } from './entities/AislesDocument.js';
 export type { CanonLocalStorePort, CursorScope } from './ports/CanonLocalStorePort.js';

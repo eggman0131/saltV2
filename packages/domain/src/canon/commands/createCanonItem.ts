@@ -22,7 +22,7 @@ export function createCanonItem(
   }
   return success({
     id: ids.newCanonId(),
-    schemaVersion: 3,
+    schemaVersion: 4,
     name,
     synonyms: (input.synonyms ?? []).map((s) => s.trim()).filter((s) => s.length > 0),
     aisleId: input.aisleId ?? null,

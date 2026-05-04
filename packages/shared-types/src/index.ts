@@ -79,6 +79,8 @@ export type DomainError =
 
 export type ShoppingBehavior = 'stocked' | 'check' | 'needed';
 
+export type CanonItemUnit = 'g' | 'ml' | 'count';
+
 export interface CanonItemDTO {
   readonly id: string;
   readonly name: string;
@@ -89,7 +91,9 @@ export interface CanonItemDTO {
   readonly needs_approval: boolean;
   readonly shoppingBehavior: ShoppingBehavior;
   readonly largeQuantityThreshold?: number;
-  readonly schemaVersion: 2;
+  readonly unit?: CanonItemUnit;
+  readonly reasoning?: string;
+  readonly schemaVersion: 3;
 }
 
 export interface AisleDTO {
