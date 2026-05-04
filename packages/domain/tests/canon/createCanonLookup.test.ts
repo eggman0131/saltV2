@@ -7,21 +7,31 @@ import type { ReadResult, DomainError } from '@salt/shared-types';
 const seed: readonly CanonItem[] = [
   {
     id: '1',
+    schemaVersion: 4,
     name: 'Tomato',
     synonyms: ['tom', 'tomate'],
     aisleId: 'produce',
     thumbnail: null,
     embedding: null,
     needs_approval: false,
+    shoppingBehavior: 'needed',
+    updatedAt: '',
+    revision: 0,
+    deletedAt: null,
   },
   {
     id: '2',
+    schemaVersion: 4,
     name: 'Olive Oil',
     synonyms: ['EVOO'],
     aisleId: 'oils',
     thumbnail: null,
     embedding: null,
     needs_approval: false,
+    shoppingBehavior: 'needed',
+    updatedAt: '',
+    revision: 0,
+    deletedAt: null,
   },
 ];
 
@@ -88,12 +98,17 @@ describe('createCanonLookup', () => {
     lookup.refresh([
       {
         id: '99',
+        schemaVersion: 4,
         name: 'Butter',
         synonyms: [],
         aisleId: 'dairy',
         thumbnail: null,
         embedding: null,
         needs_approval: false,
+        shoppingBehavior: 'needed',
+        updatedAt: '',
+        revision: 0,
+        deletedAt: null,
       },
     ]);
 

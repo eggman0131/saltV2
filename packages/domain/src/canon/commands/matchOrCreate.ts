@@ -124,10 +124,72 @@ export async function matchOrCreate(
 
   // Stages 1–4: pure deterministic matching
   const stage1to4 = findClosestMatch(items, rawName, logBuilder ?? undefined);
-  if (stage1to4 !== null) {
-    commitLog('matched', stage1to4.item.id, stage1to4.item.name);
-    return success({ item: stage1to4.item, decision: 'matched' });
+
+  if (stage1to4.kind === 'match') {
+    // Clear winner: capture the input as a synonym so future searches resolve without AI.
+    const { item } = stage1to4.candidate;
+    const updatedItem = appendSynonym(item, normalisedName);
+    if (updatedItem !== item) {
+      const saved = await store.upsert(updatedItem);
+      if (saved.kind !== 'ok') return saved;
+    }
+    commitLog('matched', updatedItem.id, updatedItem.name);
+    return success({ item: updatedItem, decision: 'matched' });
   }
+
+  if (stage1to4.kind === 'ambiguous') {
+    // Near-tie: candidates are above the stop threshold but too close to auto-pick.
+    // Forward to AI arbitration with the full candidate list.
+    const ambCandidates = stage1to4.candidates;
+    const aislesResult = await aisleStore.load();
+    const aisles = aislesResult.kind === 'ok' ? (aislesResult.value?.aisles ?? []) : [];
+
+    const arbT0 = Date.now();
+    const arbResult = await arbitration.arbitrate({
+      normalisedName,
+      candidates: [...ambCandidates],
+      aisles,
+    });
+    const arbDuration = Math.max(0, Date.now() - arbT0);
+
+    if (logBuilder) {
+      const outcome = arbResult.kind === 'ok' ? arbResult.value.kind : 'error';
+      logBuilder.setArbitration({
+        reason: 'ambiguous_near_tie',
+        candidatesIn: ambCandidates.length,
+        aislesIn: aisles.length,
+        prompt: arbResult.kind === 'ok' ? (arbResult.value.prompt ?? '') : '',
+        rawResponse: arbResult.kind === 'ok' ? (arbResult.value.rawResponse ?? '') : '',
+        outcome,
+        durationMs: arbDuration,
+      });
+    }
+
+    if (arbResult.kind === 'ok') {
+      const arb = arbResult.value;
+      if (arb.kind === 'match') {
+        const matchedItem = ambCandidates.find((c) => c.item.id === arb.itemId)?.item ?? null;
+        if (matchedItem !== null) {
+          commitLog('ai_arbitrated', matchedItem.id, matchedItem.name);
+          return success({ item: matchedItem, decision: 'ai_arbitrated' });
+        }
+      }
+      if (arb.kind === 'new') {
+        return persistNew(store, ids, rawName, selectedAisleId ?? arb.aisleId ?? null, commitLog, {
+          shoppingBehavior: arb.shoppingBehavior,
+          ...(arb.largeQuantityThreshold !== undefined
+            ? { largeQuantityThreshold: arb.largeQuantityThreshold }
+            : {}),
+          ...(arb.unit !== undefined ? { unit: arb.unit } : {}),
+          ...(arb.reasoning !== undefined ? { reasoning: arb.reasoning } : {}),
+        });
+      }
+    }
+    // Arbitration failed or returned no-match: create without aisle suggestion.
+    return persistNew(store, ids, rawName, selectedAisleId ?? null, commitLog);
+  }
+
+  // stage1to4.kind === 'none': fall through to embedding and near-miss collection.
 
   // Stage 5: semantic embedding
   const embedCandidates = await embedMatch(
@@ -138,8 +200,13 @@ export async function matchOrCreate(
   );
   if (embedCandidates.length > 0) {
     const winner = pickBest(embedCandidates);
-    commitLog('matched', winner.item.id, winner.item.name);
-    return success({ item: winner.item, decision: 'matched' });
+    const updatedItem = appendSynonym(winner.item, normalisedName);
+    if (updatedItem !== winner.item) {
+      const saved = await store.upsert(updatedItem);
+      if (saved.kind !== 'ok') return saved;
+    }
+    commitLog('matched', updatedItem.id, updatedItem.name);
+    return success({ item: updatedItem, decision: 'matched' });
   }
 
   // Collect near-miss candidates from stages 2 & 4 above aiThreshold for stage 6.
@@ -223,6 +290,13 @@ interface ArbitrationExtras {
   readonly largeQuantityThreshold?: number;
   readonly unit?: CanonItemUnit;
   readonly reasoning?: string;
+}
+
+// Appends normalisedInput to item.synonyms (deduped) and re-flags needs_approval.
+// Returns the same object reference when no change is needed (allows cheap identity check).
+function appendSynonym(item: CanonItem, normalisedInput: string): CanonItem {
+  if (item.synonyms.includes(normalisedInput)) return item;
+  return { ...item, synonyms: [...item.synonyms, normalisedInput], needs_approval: true };
 }
 
 function pickBest(candidates: readonly MatchCandidate[]): MatchCandidate {

@@ -13,12 +13,13 @@ import type { MatchLogEntry } from '../../src/canon/entities/MatchLogEntry.js';
 
 function canonItem(overrides: Partial<CanonItem> & { id: string; name: string }): CanonItem {
   return {
-    schemaVersion: 2,
+    schemaVersion: 4,
     synonyms: [],
     aisleId: null,
     thumbnail: null,
     embedding: null,
     needs_approval: false,
+    shoppingBehavior: 'needed',
     updatedAt: '',
     revision: 0,
     deletedAt: null,
@@ -121,6 +122,15 @@ function newArbitration(canonName: string, aisleId: string | null = null): Canon
   };
 }
 
+function matchArbitration(itemId: string): CanonArbitrationPort {
+  return {
+    arbitrate: async () => ({
+      kind: 'ok',
+      value: { kind: 'match', itemId, confidence: 0.95, shoppingBehavior: 'needed' as const },
+    }),
+  };
+}
+
 function errorArbitration(): CanonArbitrationPort {
   return {
     arbitrate: async () => ({
@@ -162,7 +172,12 @@ describe('stage 1 — exact name match', () => {
     const apple = canonItem({ id: 'a1', name: 'Apple' });
     const { run } = makePipeline({ items: [apple] });
     const result = await run('apple');
-    expect(result).toEqual({ kind: 'ok', value: { item: apple, decision: 'matched' } });
+    // Auto-synonym capture: 'apple' is appended to synonyms and needs_approval is set to true.
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value.item.id).toBe('a1');
+      expect(result.value.decision).toBe('matched');
+    }
   });
 
   it('matches despite casing differences', async () => {
@@ -539,6 +554,108 @@ describe('idempotency (stages 1–4)', () => {
     if (first.kind === 'ok' && second.kind === 'ok') {
       expect(second.value.item.id).toBe(first.value.item.id);
     }
+  });
+});
+
+// ─── Ambiguity gap — near-tie at stages 1–4 → AI arbitration ─────────────────
+
+describe('ambiguity gap — near-tie at stage 2 forwards to AI', () => {
+  // Two items with the same token-overlap score against the query
+  // 'alpha beta gamma delta epsilon' vs both 6-token items → both score 5/6 ≈ 0.833, gap ≈ 0
+  const item1 = canonItem({ id: 'i1', name: 'alpha beta gamma delta epsilon zeta' });
+  const item2 = canonItem({ id: 'i2', name: 'alpha beta gamma delta epsilon eta' });
+
+  it('calls the arbitration port with the near-tie candidates', async () => {
+    const arbitrateSpy = vi.fn().mockResolvedValue({
+      kind: 'ok',
+      value: { kind: 'match', itemId: 'i1', confidence: 0.9, shoppingBehavior: 'needed' },
+    });
+    idCounter = 0;
+    await matchOrCreate(
+      { rawName: 'alpha beta gamma delta epsilon' },
+      {
+        store: makeStore([item1, item2]),
+        aisleStore: makeAisleStore(),
+        embedding: failEmbedding(),
+        arbitration: { arbitrate: arbitrateSpy },
+        ids: makeIds(),
+        logging: null,
+      },
+    );
+    expect(arbitrateSpy).toHaveBeenCalledOnce();
+    const req = arbitrateSpy.mock.calls[0]![0];
+    expect(req.candidates.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('returns ai_arbitrated when arbitration picks one of the near-tie candidates', async () => {
+    const { run } = makePipeline({
+      items: [item1, item2],
+      arbitration: matchArbitration('i1'),
+    });
+    const result = await run('alpha beta gamma delta epsilon');
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value.decision).toBe('ai_arbitrated');
+      expect(result.value.item.id).toBe('i1');
+    }
+  });
+
+  it('creates a new item when arbitration returns new for a near-tie', async () => {
+    const { run, store } = makePipeline({
+      items: [item1, item2],
+      aisleStore: makeAisleStoreWithAisles(),
+      arbitration: newArbitration('Alpha Beta', 'produce'),
+    });
+    const result = await run('alpha beta gamma delta epsilon');
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value.decision).toBe('created');
+    }
+    // Original two items still exist; one new item added
+    expect((store as ReturnType<typeof makeStore>).items).toHaveLength(3);
+  });
+});
+
+// ─── Auto-synonym capture — stages 1–5 matches ───────────────────────────────
+
+describe('auto-synonym capture', () => {
+  it('appends the normalised input as a synonym on a stage-1 match', async () => {
+    const apple = canonItem({ id: 'a1', name: 'apple' });
+    const { run, store } = makePipeline({ items: [apple] });
+    await run('apple');
+    const stored = (store as ReturnType<typeof makeStore>).items.find((i) => i.id === 'a1');
+    expect(stored?.synonyms).toContain('apple');
+  });
+
+  it('re-flags an approved item when a new synonym is added', async () => {
+    const approved = canonItem({ id: 'a1', name: 'onion', needs_approval: false });
+    const { run, store } = makePipeline({ items: [approved] });
+    // 'onions' normalises to 'onion', matches stage 1; 'onion' added as synonym
+    await run('onions');
+    const stored = (store as ReturnType<typeof makeStore>).items.find((i) => i.id === 'a1');
+    expect(stored?.needs_approval).toBe(true);
+  });
+
+  it('does not upsert when the synonym is already present (deduped)', async () => {
+    const apple = canonItem({ id: 'a1', name: 'apple', synonyms: ['apple'] });
+    const { run, store } = makePipeline({ items: [apple] });
+    const upsertSpy = vi.spyOn(store as ReturnType<typeof makeStore>, 'upsert');
+    await run('apple');
+    // 'apple' already in synonyms → no upsert called (beyond any initial store setup)
+    expect(upsertSpy).not.toHaveBeenCalled();
+  });
+
+  it('appends the normalised input as a synonym on a stage-5 (embedding) match', async () => {
+    const oil = canonItem({ id: 'o1', name: 'coconut oil', embedding: eX });
+    const { run, store } = makePipeline({
+      items: [oil],
+      embedding: makeEmbedding(eX),
+    });
+    // 'coconut oil xyz' won't match stages 1–4; embedding will fire
+    await run('coconut oil xyz');
+    const stored = (store as ReturnType<typeof makeStore>).items.find((i) => i.id === 'o1');
+    expect(stored?.synonyms).toContain('coconut oil xyz');
+    expect(stored?.needs_approval).toBe(true);
   });
 });
 

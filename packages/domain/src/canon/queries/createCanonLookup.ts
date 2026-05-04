@@ -3,7 +3,7 @@ import type { DomainError, ReadResult } from '@salt/shared-types';
 import type { CanonItem } from '../entities/CanonItem.js';
 import type { CanonLocalStorePort } from '../ports/CanonLocalStorePort.js';
 import type { CanonLookupPort } from '../ports/CanonLookupPort.js';
-import { findClosestMatch } from './findClosestMatch.js';
+import { findClosestMatch, type FindClosestMatchResult } from './findClosestMatch.js';
 import { normaliseName } from './normaliseName.js';
 
 // Async factory: loads the canon set from the store once and caches it
@@ -21,7 +21,15 @@ export async function createCanonLookup(
   let items: readonly CanonItem[] = initial.value;
 
   return success({
-    findClosestMatch: (rawName) => findClosestMatch(items, rawName),
+    // CanonLookupPort is read-only (recipe parsing, shopping-list). Return the best candidate
+    // for both 'match' and 'ambiguous' results; the write pipeline (matchOrCreate) handles
+    // full ambiguity routing with AI arbitration.
+    findClosestMatch: (rawName) => {
+      const result: FindClosestMatchResult = findClosestMatch(items, rawName);
+      if (result.kind === 'match') return result.candidate;
+      if (result.kind === 'ambiguous') return result.candidates[0] ?? null;
+      return null;
+    },
     normaliseName,
     refresh: (next) => {
       items = next;
