@@ -42,10 +42,9 @@ If something to flag, post a second comment on issue #ISSUE_NUMBER:
 - Do not summarise what was built — that belongs in the commit
 
 ---
-## Step 3 — Produce the commit message
+## Step 3 — Commit the changes to github following conventional commit guidelines
 
-Output this for me to copy into git:
-
+Commit Message -
 First line: type(scope): short description (under 72 characters)
 Then a blank line.
 Then 1-2 sentences summarising what the phase does and why.
