@@ -26,7 +26,7 @@ export const sliderTrackVariants = cva('relative grow rounded-full bg-muted over
 });
 
 export const sliderThumbVariants = cva(
-  'absolute h-5 w-5 rounded-full border-2 border-primary bg-background shadow-sm salt-focus-ring cursor-grab active:cursor-grabbing transition-shadow',
+  'absolute h-5 w-5 rounded-full border-2 border-primary bg-background shadow-sm salt-focus-ring cursor-grab active:cursor-grabbing transition-shadow duration-fast ease-standard',
   {
     variants: {
       disabled: {

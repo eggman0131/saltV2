@@ -97,7 +97,7 @@ const saltComponentPlugin = plugin(({ addComponents }) => {
   addComponents({
     // ─ Button ─────────────────────────────────────────────────────────
     '.salt-button': {
-      '@apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background inline-flex items-center justify-center gap-2 rounded font-medium transition-colors motion-reduce:transition-none disabled:pointer-events-none data-[disabled]:opacity-50':
+      '@apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background inline-flex items-center justify-center gap-2 rounded font-medium transition-colors duration-fast ease-standard motion-reduce:transition-none disabled:pointer-events-none data-[disabled]:opacity-50':
         {},
     },
     '.salt-button--solid': { '@apply bg-primary text-primary-foreground hover:bg-primary/90': {} },
@@ -179,7 +179,7 @@ const saltComponentPlugin = plugin(({ addComponents }) => {
     '.salt-control--radio-indicator-unchecked': { '@apply bg-background': {} },
     // Switch root (the track)
     '.salt-control--switch': {
-      '@apply inline-flex shrink-0 min-h-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors motion-reduce:transition-none data-[state=checked]:bg-secondary data-[state=unchecked]:bg-input':
+      '@apply inline-flex shrink-0 min-h-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-base ease-standard motion-reduce:transition-none data-[state=checked]:bg-secondary data-[state=unchecked]:bg-input':
         {},
     },
     '.salt-control--switch-sm': {
@@ -196,7 +196,7 @@ const saltComponentPlugin = plugin(({ addComponents }) => {
     },
     // Switch thumb
     '.salt-control--switch-thumb': {
-      '@apply pointer-events-none block rounded-full bg-background shadow-sm transition-transform motion-reduce:transition-none data-[state=unchecked]:translate-x-0':
+      '@apply pointer-events-none block rounded-full bg-background shadow-sm transition-transform duration-base ease-standard motion-reduce:transition-none data-[state=unchecked]:translate-x-0':
         {},
     },
     '.salt-control--switch-thumb-sm': {

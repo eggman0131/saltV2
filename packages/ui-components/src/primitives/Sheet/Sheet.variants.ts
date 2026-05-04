@@ -2,10 +2,10 @@
 import { cva, type VariantProps } from '../../lib/variants';
 
 export const sheetOverlayClass =
-  'fixed inset-0 z-dialog bg-black/60 data-[state=open]:animate-in data-[state=closed]:animate-out motion-reduce:animate-none';
+  'fixed inset-0 z-dialog bg-black/60 data-[state=open]:animate-in data-[state=closed]:animate-out fade-in-0 fade-out-0 duration-base ease-standard motion-reduce:animate-none';
 
 export const sheetContentVariants = cva(
-  'fixed z-dialog flex flex-col gap-4 border bg-background p-6 shadow-dialog transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out motion-reduce:animate-none motion-reduce:transition-none',
+  'fixed z-dialog flex flex-col gap-4 border bg-background p-6 shadow-dialog data-[state=open]:animate-in data-[state=closed]:animate-out duration-slow ease-emphasized motion-reduce:animate-none',
   {
     variants: {
       side: {

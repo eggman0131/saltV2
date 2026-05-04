@@ -2,10 +2,10 @@
 import { cva, type VariantProps } from '../../lib/variants';
 
 export const dialogOverlayClass =
-  'fixed inset-0 z-dialog bg-black/60 data-[state=open]:animate-in data-[state=closed]:animate-out motion-reduce:animate-none';
+  'fixed inset-0 z-dialog bg-black/60 data-[state=open]:animate-in data-[state=closed]:animate-out fade-in-0 fade-out-0 duration-base ease-standard motion-reduce:animate-none';
 
 export const dialogContentVariants = cva(
-  'fixed left-1/2 top-1/2 z-dialog grid -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border bg-background p-6 shadow-dialog data-[state=open]:animate-in data-[state=closed]:animate-out motion-reduce:animate-none',
+  'fixed left-1/2 top-1/2 z-dialog grid -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border bg-background p-6 shadow-dialog data-[state=open]:animate-in data-[state=closed]:animate-out fade-in-0 zoom-in-95 fade-out-0 zoom-out-95 duration-slow ease-emphasized motion-reduce:animate-none',
   {
     variants: {
       size: {

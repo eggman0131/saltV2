@@ -9,7 +9,7 @@ export const progressIndicatorVariants = cva('h-full bg-primary', {
   variants: {
     indeterminate: {
       true: 'w-1/3 animate-[salt-progress-indeterminate_1s_ease_infinite] motion-reduce:animate-none',
-      false: 'transition-transform motion-reduce:transition-none',
+      false: 'transition-transform duration-base ease-standard motion-reduce:transition-none',
     },
   },
   defaultVariants: { indeterminate: false },

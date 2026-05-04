@@ -23,7 +23,7 @@
         <a
           href={item.href}
           class={cn(
-            'relative flex flex-1 flex-col items-center justify-center gap-0.5 py-1 transition-colors',
+            'relative flex flex-1 flex-col items-center justify-center gap-0.5 py-1 transition-colors duration-fast ease-standard',
             active ? 'text-primary' : 'text-foreground/40 hover:text-foreground/60',
           )}
           aria-current={active ? 'page' : undefined}
