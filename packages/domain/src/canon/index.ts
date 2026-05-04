@@ -46,6 +46,10 @@ export type { ApproveCanonItemOverrides } from './commands/approveCanonItem.js';
 export { renameCanonItem } from './commands/renameCanonItem.js';
 export { setCanonItemAisle } from './commands/setCanonItemAisle.js';
 export { setCanonItemSynonyms } from './commands/setCanonItemSynonyms.js';
+export {
+  setCanonItemShoppingBehavior,
+  setCanonItemThreshold,
+} from './commands/setCanonItemShoppingFields.js';
 export { createAisle } from './commands/createAisle.js';
 export type { CreateAisleInput } from './commands/createAisle.js';
 export { createAislesBulk } from './commands/createAislesBulk.js';

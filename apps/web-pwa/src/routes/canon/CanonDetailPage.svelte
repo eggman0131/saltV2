@@ -25,13 +25,15 @@
     updateCanonItemName,
     updateCanonItemAisle,
     updateCanonItemSynonyms,
+    updateCanonItemShoppingBehavior,
+    updateCanonItemThreshold,
     approveCanonItemWithOverrides,
     deleteCanonItem,
   } from '../../lib/canonService.js';
   import { aisles } from '../../lib/aisleService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { titleCase } from '../../lib/titleCase.js';
-  import type { ShoppingBehavior } from '@salt/shared-types';
+  import type { ShoppingBehavior, CanonItemUnit } from '@salt/shared-types';
 
   let { params }: { params: Record<string, string> } = $props();
 
@@ -50,6 +52,14 @@
   let synonymsBusy = $state(false);
   let synonymsError = $state('');
 
+  // Threshold + unit editing (shared between pending approval form and approved standalone)
+  let editingThreshold = $state('');
+  let editingUnit = $state<CanonItemUnit>('g');
+  let thresholdBusy = $state(false);
+
+  // Shopping behavior for approved items (immediate save)
+  let behaviorBusy = $state(false);
+
   // Initialize editing state once per item id
   $effect(() => {
     const current = item;
@@ -57,6 +67,8 @@
       _initedId = current.id;
       editingName = current.name;
       editingSynonyms = current.synonyms.join(', ');
+      editingThreshold = current.largeQuantityThreshold?.toString() ?? '';
+      editingUnit = current.unit ?? 'g';
     }
   });
 
@@ -100,6 +112,28 @@
     }
   }
 
+  // Shopping behavior for approved items — save immediately on select (mirrors aisle pattern)
+  async function saveShoppingBehavior(value: string): Promise<void> {
+    if (!item || item.needs_approval) return;
+    const behavior = value as ShoppingBehavior;
+    if (behavior === item.shoppingBehavior) return;
+    behaviorBusy = true;
+    await updateCanonItemShoppingBehavior(item, behavior);
+    behaviorBusy = false;
+  }
+
+  // Threshold + unit for approved items — saved together
+  async function saveThreshold(): Promise<void> {
+    if (!item || item.needs_approval) return;
+    const raw = editingThreshold.trim();
+    const parsed = raw ? parseFloat(raw) : undefined;
+    const validParsed = parsed !== undefined && !isNaN(parsed) ? parsed : undefined;
+    const unit = validParsed !== undefined ? editingUnit : undefined;
+    thresholdBusy = true;
+    await updateCanonItemThreshold(item, validParsed, unit);
+    thresholdBusy = false;
+  }
+
   // Approval
   let pendingBehavior = $state<ShoppingBehavior>('needed');
   let approveBusy = $state(false);
@@ -112,7 +146,15 @@
   async function handleApprove(): Promise<void> {
     if (!item) return;
     approveBusy = true;
-    await approveCanonItemWithOverrides(item, { shoppingBehavior: pendingBehavior });
+    const raw = editingThreshold.trim();
+    const parsed = raw ? parseFloat(raw) : undefined;
+    const validParsed = parsed !== undefined && !isNaN(parsed) ? parsed : undefined;
+    await approveCanonItemWithOverrides(item, {
+      shoppingBehavior: pendingBehavior,
+      ...(validParsed !== undefined
+        ? { largeQuantityThreshold: validParsed, unit: editingUnit }
+        : {}),
+    });
     approveBusy = false;
     push('/canon');
   }
@@ -184,6 +226,32 @@
               <RadioGroupItem value="check" label="Check" />
               <RadioGroupItem value="needed" label="Needed" />
             </RadioGroup>
+            <div class="flex gap-2 items-end">
+              <div class="flex-1">
+                <TextField
+                  label="Quantity threshold (optional)"
+                  type="number"
+                  value={editingThreshold}
+                  onValueChange={(v) => (editingThreshold = v)}
+                  placeholder="e.g. 500"
+                  data-testid="canon-detail-threshold-input"
+                />
+              </div>
+              <div class="w-28">
+                <Select
+                  value={editingUnit}
+                  onValueChange={(v) => (editingUnit = v as CanonItemUnit)}
+                >
+                  <SelectTrigger data-testid="canon-detail-unit-select">{editingUnit}</SelectTrigger
+                  >
+                  <SelectContent>
+                    <SelectItem value="g">g</SelectItem>
+                    <SelectItem value="ml">ml</SelectItem>
+                    <SelectItem value="count">count</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
             <div>
               <Button
                 data-testid="canon-detail-approve-button"
@@ -192,6 +260,79 @@
                 disabled={approveBusy}
               >
                 Approve
+              </Button>
+            </div>
+          </section>
+        {/if}
+
+        <!-- AI Reasoning (all items, when present) -->
+        {#if item.reasoning}
+          <section class="flex flex-col gap-1" data-testid="canon-detail-reasoning">
+            <h2 class="text-sm font-medium text-foreground">AI reasoning</h2>
+            <p class="text-sm text-muted-foreground">{item.reasoning}</p>
+          </section>
+        {/if}
+
+        <!-- Shopping behavior (approved items only — immediate save) -->
+        {#if !item.needs_approval}
+          <section class="flex flex-col gap-2" data-testid="canon-detail-behavior-section">
+            <div class="flex items-center gap-2">
+              <RadioGroup
+                label="Shopping behavior"
+                orientation="horizontal"
+                value={item.shoppingBehavior}
+                onValueChange={saveShoppingBehavior}
+                disabled={behaviorBusy}
+              >
+                <RadioGroupItem value="stocked" label="Stocked" />
+                <RadioGroupItem value="check" label="Check" />
+                <RadioGroupItem value="needed" label="Needed" />
+              </RadioGroup>
+              {#if behaviorBusy}
+                <Spinner size={16} />
+              {/if}
+            </div>
+          </section>
+        {/if}
+
+        <!-- Quantity threshold (approved items only) -->
+        {#if !item.needs_approval}
+          <section class="flex flex-col gap-2" data-testid="canon-detail-threshold-section">
+            <h2 class="text-sm font-medium text-foreground">Quantity threshold</h2>
+            <div class="flex gap-2 items-end">
+              <div class="flex-1">
+                <TextField
+                  label=""
+                  type="number"
+                  value={editingThreshold}
+                  onValueChange={(v) => (editingThreshold = v)}
+                  placeholder="e.g. 500"
+                  data-testid="canon-detail-threshold-input"
+                />
+              </div>
+              <div class="w-28">
+                <Select
+                  value={editingUnit}
+                  onValueChange={(v) => (editingUnit = v as CanonItemUnit)}
+                  disabled={thresholdBusy}
+                >
+                  <SelectTrigger data-testid="canon-detail-unit-select">{editingUnit}</SelectTrigger
+                  >
+                  <SelectContent>
+                    <SelectItem value="g">g</SelectItem>
+                    <SelectItem value="ml">ml</SelectItem>
+                    <SelectItem value="count">count</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                data-testid="canon-detail-threshold-save"
+                variant="outline"
+                onclick={saveThreshold}
+                loading={thresholdBusy}
+                disabled={thresholdBusy}
+              >
+                Save
               </Button>
             </div>
           </section>

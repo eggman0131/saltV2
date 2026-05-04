@@ -18,14 +18,18 @@ import {
   renameCanonItem,
   setCanonItemAisle,
   setCanonItemSynonyms,
+  setCanonItemShoppingBehavior,
+  setCanonItemThreshold,
 } from '@salt/domain';
 import type {
   Aisle,
   ApproveCanonItemOverrides,
   CanonItem,
+  CanonItemUnit,
   CanonLocalStorePort,
   AisleLocalStorePort,
   MatchOrCreateResult,
+  ShoppingBehavior,
 } from '@salt/domain';
 import { failure } from '@salt/shared-types';
 import type { DomainError, Result } from '@salt/shared-types';
@@ -321,6 +325,25 @@ export async function updateCanonItemSynonyms(
   synonyms: readonly string[],
 ): Promise<Result<CanonItem, DomainError>> {
   const result = setCanonItemSynonyms(item, synonyms);
+  if (result.kind === 'ok') await commitCanonItemUpdate(result.value);
+  return result;
+}
+
+export async function updateCanonItemShoppingBehavior(
+  item: CanonItem,
+  shoppingBehavior: ShoppingBehavior,
+): Promise<Result<CanonItem, DomainError>> {
+  const result = setCanonItemShoppingBehavior(item, shoppingBehavior);
+  if (result.kind === 'ok') await commitCanonItemUpdate(result.value);
+  return result;
+}
+
+export async function updateCanonItemThreshold(
+  item: CanonItem,
+  largeQuantityThreshold: number | undefined,
+  unit: CanonItemUnit | undefined,
+): Promise<Result<CanonItem, DomainError>> {
+  const result = setCanonItemThreshold(item, largeQuantityThreshold, unit);
   if (result.kind === 'ok') await commitCanonItemUpdate(result.value);
   return result;
 }

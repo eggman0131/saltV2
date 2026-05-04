@@ -5,6 +5,7 @@ export type { MatchLogSummary } from './canon/index.js';
 export type {
   CanonItem,
   ShoppingBehavior,
+  CanonItemUnit,
   Aisle,
   AislesDocument,
   CanonLocalStorePort,
@@ -64,6 +65,8 @@ export {
   renameCanonItem,
   setCanonItemAisle,
   setCanonItemSynonyms,
+  setCanonItemShoppingBehavior,
+  setCanonItemThreshold,
 } from './canon/index.js';
 export type { ApproveCanonItemOverrides } from './canon/index.js';
 
