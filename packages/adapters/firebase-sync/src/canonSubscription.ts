@@ -1,7 +1,7 @@
 import { getFirestore, collection, doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import type { CanonItem } from '@salt/domain';
-import type { DomainError } from '@salt/shared-types';
+import type { DomainError, ShoppingBehavior } from '@salt/shared-types';
 import { classifyFirestoreError } from './firestoreErrors.js';
 
 const COLLECTION = 'canonItems';
@@ -9,13 +9,17 @@ const COLLECTION = 'canonItems';
 function fromDoc(data: Record<string, unknown>): CanonItem {
   return {
     id: data['id'] as string,
-    schemaVersion: 2,
+    schemaVersion: 3,
     name: data['name'] as string,
     synonyms: Array.isArray(data['synonyms']) ? (data['synonyms'] as string[]) : [],
     aisleId: typeof data['aisleId'] === 'string' ? data['aisleId'] : null,
     thumbnail: typeof data['thumbnail'] === 'string' ? data['thumbnail'] : null,
     embedding: Array.isArray(data['embedding']) ? (data['embedding'] as number[]) : null,
     needs_approval: typeof data['needs_approval'] === 'boolean' ? data['needs_approval'] : true,
+    shoppingBehavior: (data['shoppingBehavior'] as ShoppingBehavior | undefined) ?? 'needed',
+    ...(typeof data['largeQuantityThreshold'] === 'number'
+      ? { largeQuantityThreshold: data['largeQuantityThreshold'] as number }
+      : {}),
     updatedAt: typeof data['updatedAt'] === 'string' ? data['updatedAt'] : '',
     revision: typeof data['revision'] === 'number' ? data['revision'] : 0,
     deletedAt: typeof data['deletedAt'] === 'string' ? data['deletedAt'] : null,

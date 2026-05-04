@@ -153,14 +153,6 @@
     }
   }
 
-  // Delete row
-  async function handleDeleteRow(id: string) {
-    await deleteAisles([id]);
-    const s = new Set(selected);
-    s.delete(id);
-    selected = s;
-  }
-
   // Reorder
   async function handleReorder(orderedIds: string[]) {
     await reorderAisles(orderedIds);
@@ -333,15 +325,6 @@
                 {$aisleUsage.get(aisle.id)}
               </span>
             {/if}
-
-            <Button
-              variant="ghost"
-              size="icon"
-              ariaLabel="Delete {titleCase(aisle.name)}"
-              onclick={() => handleDeleteRow(aisle.id)}
-            >
-              <Icon name="Trash2" size={16} />
-            </Button>
           </div>
         {/snippet}
       </SortableList>

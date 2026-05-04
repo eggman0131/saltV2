@@ -10,6 +10,8 @@
     DialogHeader,
     DialogTitle,
     Icon,
+    RadioGroup,
+    RadioGroupItem,
     Select,
     SelectContent,
     SelectItem,
@@ -23,11 +25,13 @@
     updateCanonItemName,
     updateCanonItemAisle,
     updateCanonItemSynonyms,
+    approveCanonItemWithOverrides,
     deleteCanonItem,
   } from '../../lib/canonService.js';
   import { aisles } from '../../lib/aisleService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { titleCase } from '../../lib/titleCase.js';
+  import type { ShoppingBehavior } from '@salt/shared-types';
 
   let { params }: { params: Record<string, string> } = $props();
 
@@ -96,6 +100,23 @@
     }
   }
 
+  // Approval
+  let pendingBehavior = $state<ShoppingBehavior>('needed');
+  let approveBusy = $state(false);
+
+  $effect(() => {
+    const current = item;
+    if (current?.needs_approval) pendingBehavior = current.shoppingBehavior;
+  });
+
+  async function handleApprove(): Promise<void> {
+    if (!item) return;
+    approveBusy = true;
+    await approveCanonItemWithOverrides(item, { shoppingBehavior: pendingBehavior });
+    approveBusy = false;
+    push('/canon');
+  }
+
   // Delete
   let deleteOpen = $state(false);
   let deleteBusy = $state(false);
@@ -144,6 +165,38 @@
       {/snippet}
 
       <div class="flex flex-col gap-6">
+        <!-- Approval -->
+        {#if item.needs_approval}
+          <section
+            class="flex flex-col gap-3 rounded-md border border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/30"
+            data-testid="canon-detail-approval-section"
+          >
+            <h2 class="text-sm font-semibold text-amber-800 dark:text-amber-300">
+              Review before approving
+            </h2>
+            <RadioGroup
+              label="Shopping behavior"
+              orientation="horizontal"
+              value={pendingBehavior}
+              onValueChange={(v) => (pendingBehavior = v as ShoppingBehavior)}
+            >
+              <RadioGroupItem value="stocked" label="Stocked" />
+              <RadioGroupItem value="check" label="Check" />
+              <RadioGroupItem value="needed" label="Needed" />
+            </RadioGroup>
+            <div>
+              <Button
+                data-testid="canon-detail-approve-button"
+                onclick={handleApprove}
+                loading={approveBusy}
+                disabled={approveBusy}
+              >
+                Approve
+              </Button>
+            </div>
+          </section>
+        {/if}
+
         <!-- Name -->
         <section class="flex flex-col gap-2">
           <h2 class="text-sm font-medium text-foreground">Name</h2>

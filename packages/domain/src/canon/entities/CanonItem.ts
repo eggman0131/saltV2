@@ -1,15 +1,20 @@
 // Canon entity: a canonical ingredient definition.
 // Lives in canon/entities — internal to the canon module.
 // Other modules access it only via the published index (re-exported as a type).
+import type { ShoppingBehavior } from '@salt/shared-types';
+export type { ShoppingBehavior };
+
 export interface CanonItem {
   readonly id: string;
-  readonly schemaVersion: 2;
+  readonly schemaVersion: 3;
   readonly name: string;
   readonly synonyms: readonly string[];
   readonly aisleId: string | null;
   readonly thumbnail: string | null;
   readonly embedding: readonly number[] | null;
   readonly needs_approval: boolean;
+  readonly shoppingBehavior: ShoppingBehavior;
+  readonly largeQuantityThreshold?: number;
   // Sync fields — stamped server-side by the onCanonItemWritten CF trigger.
   // New local items start with revision 0 and empty updatedAt until first sync.
   readonly updatedAt: string; // ISO-8601

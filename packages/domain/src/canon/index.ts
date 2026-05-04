@@ -3,7 +3,7 @@
 // to import from canon. Anything not re-exported here is private to canon by
 // design.
 
-export type { CanonItem } from './entities/CanonItem.js';
+export type { CanonItem, ShoppingBehavior } from './entities/CanonItem.js';
 export type { Aisle } from './entities/Aisle.js';
 export type { AislesDocument } from './entities/AislesDocument.js';
 export type { CanonLocalStorePort, CursorScope } from './ports/CanonLocalStorePort.js';
@@ -41,6 +41,8 @@ export type {
   MatchOrCreatePorts,
   MatchOrCreateResult,
 } from './commands/matchOrCreate.js';
+export { approveCanonItem } from './commands/approveCanonItem.js';
+export type { ApproveCanonItemOverrides } from './commands/approveCanonItem.js';
 export { renameCanonItem } from './commands/renameCanonItem.js';
 export { setCanonItemAisle } from './commands/setCanonItemAisle.js';
 export { setCanonItemSynonyms } from './commands/setCanonItemSynonyms.js';

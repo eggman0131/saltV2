@@ -24,13 +24,14 @@ export function installE2EHooks(): void {
     async seedCanonItem(input: SeedCanonItemInput) {
       const item: CanonItem = {
         id: input.id ?? crypto.randomUUID(),
-        schemaVersion: 2,
+        schemaVersion: 3,
         name: input.name,
         synonyms: input.synonyms ?? [],
         aisleId: input.aisleId ?? null,
         thumbnail: input.thumbnail ?? null,
         embedding: input.embedding ?? null,
         needs_approval: input.needs_approval ?? false,
+        shoppingBehavior: 'needed',
         updatedAt: '',
         revision: 0,
         deletedAt: null,

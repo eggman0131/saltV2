@@ -1,5 +1,5 @@
 import { ErrorCode, failure, success } from '@salt/shared-types';
-import type { DomainError, ReadResult } from '@salt/shared-types';
+import type { DomainError, ReadResult, ShoppingBehavior } from '@salt/shared-types';
 import type { CanonItem } from '../entities/CanonItem.js';
 import type { IdGenerator } from '../ports/IdGenerator.js';
 
@@ -8,6 +8,8 @@ export interface CreateCanonItemInput {
   readonly synonyms?: readonly string[];
   readonly aisleId?: string | null;
   readonly needs_approval?: boolean;
+  readonly shoppingBehavior?: ShoppingBehavior;
+  readonly largeQuantityThreshold?: number;
 }
 
 export function createCanonItem(
@@ -20,13 +22,17 @@ export function createCanonItem(
   }
   return success({
     id: ids.newCanonId(),
-    schemaVersion: 2,
+    schemaVersion: 3,
     name,
     synonyms: (input.synonyms ?? []).map((s) => s.trim()).filter((s) => s.length > 0),
     aisleId: input.aisleId ?? null,
     thumbnail: null,
     embedding: null,
     needs_approval: input.needs_approval ?? true,
+    shoppingBehavior: input.shoppingBehavior ?? 'needed',
+    ...(input.largeQuantityThreshold !== undefined
+      ? { largeQuantityThreshold: input.largeQuantityThreshold }
+      : {}),
     updatedAt: '',
     revision: 0,
     deletedAt: null,

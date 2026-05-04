@@ -10,8 +10,8 @@ function counterIds(): IdGenerator {
 
 describe('CanonItem schema', () => {
   describe('type-level: new fields exist with correct types', () => {
-    it('schemaVersion is the literal 2', () => {
-      expectTypeOf<CanonItem['schemaVersion']>().toEqualTypeOf<2>();
+    it('schemaVersion is the literal 3', () => {
+      expectTypeOf<CanonItem['schemaVersion']>().toEqualTypeOf<3>();
     });
 
     it('revision is a number', () => {
@@ -28,9 +28,9 @@ describe('CanonItem schema', () => {
   });
 
   describe('createCanonItem defaults', () => {
-    it('newly created item has schemaVersion 2', () => {
+    it('newly created item has schemaVersion 3', () => {
       const result = createCanonItem({ name: 'Tomato' }, counterIds());
-      expect(result.kind === 'ok' && result.value.schemaVersion).toBe(2);
+      expect(result.kind === 'ok' && result.value.schemaVersion).toBe(3);
     });
 
     it('newly created item has revision 0', () => {
@@ -53,13 +53,14 @@ describe('CanonItem schema', () => {
     it('a live item has deletedAt null', () => {
       const item: CanonItem = {
         id: 'x',
-        schemaVersion: 2,
+        schemaVersion: 3,
         name: 'Butter',
         synonyms: [],
         aisleId: null,
         thumbnail: null,
         embedding: null,
         needs_approval: false,
+        shoppingBehavior: 'needed',
         updatedAt: '2026-01-01T00:00:00.000Z',
         revision: 3,
         deletedAt: null,
@@ -70,13 +71,14 @@ describe('CanonItem schema', () => {
     it('a tombstone item has a non-null deletedAt ISO string', () => {
       const tombstone: CanonItem = {
         id: 'x',
-        schemaVersion: 2,
+        schemaVersion: 3,
         name: 'Butter',
         synonyms: [],
         aisleId: null,
         thumbnail: null,
         embedding: null,
         needs_approval: false,
+        shoppingBehavior: 'needed',
         updatedAt: '2026-01-01T00:00:00.000Z',
         revision: 4,
         deletedAt: '2026-01-02T00:00:00.000Z',
@@ -88,13 +90,14 @@ describe('CanonItem schema', () => {
     it('revision advances monotonically (higher revision = newer state)', () => {
       const v1: CanonItem = {
         id: 'x',
-        schemaVersion: 2,
+        schemaVersion: 3,
         name: 'A',
         synonyms: [],
         aisleId: null,
         thumbnail: null,
         embedding: null,
         needs_approval: false,
+        shoppingBehavior: 'needed',
         updatedAt: '',
         revision: 1,
         deletedAt: null,

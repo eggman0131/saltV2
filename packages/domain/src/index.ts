@@ -4,6 +4,7 @@
 export type { MatchLogSummary } from './canon/index.js';
 export type {
   CanonItem,
+  ShoppingBehavior,
   Aisle,
   AislesDocument,
   CanonLocalStorePort,
@@ -58,7 +59,13 @@ export type {
   MatchOrCreatePorts,
   MatchOrCreateResult,
 } from './canon/index.js';
-export { renameCanonItem, setCanonItemAisle, setCanonItemSynonyms } from './canon/index.js';
+export {
+  approveCanonItem,
+  renameCanonItem,
+  setCanonItemAisle,
+  setCanonItemSynonyms,
+} from './canon/index.js';
+export type { ApproveCanonItemOverrides } from './canon/index.js';
 
 // Auth module — published surface.
 export type { User, AuthProvider } from './auth/index.js';

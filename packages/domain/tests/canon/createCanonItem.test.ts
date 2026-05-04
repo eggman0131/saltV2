@@ -18,13 +18,14 @@ describe('createCanonItem', () => {
     if (result.kind !== 'ok') return;
     expect(result.value).toEqual({
       id: 'id-1',
-      schemaVersion: 2,
+      schemaVersion: 3,
       name: 'Tomato',
       synonyms: [],
       aisleId: null,
       thumbnail: null,
       embedding: null,
       needs_approval: true,
+      shoppingBehavior: 'needed',
       updatedAt: '',
       revision: 0,
       deletedAt: null,
@@ -65,5 +66,30 @@ describe('createCanonItem', () => {
   it('returns Failure when name is empty', () => {
     const result = createCanonItem({ name: '' }, counterIds());
     expect(result.kind === 'err' && result.error.kind).toBe('ValidationError');
+  });
+
+  it('defaults shoppingBehavior to "needed" when not supplied', () => {
+    const result = createCanonItem({ name: 'Tomato' }, counterIds());
+    expect(result.kind === 'ok' && result.value.shoppingBehavior).toBe('needed');
+  });
+
+  it('uses supplied shoppingBehavior when provided', () => {
+    const result = createCanonItem({ name: 'Salt', shoppingBehavior: 'stocked' }, counterIds());
+    expect(result.kind === 'ok' && result.value.shoppingBehavior).toBe('stocked');
+  });
+
+  it('accepts "check" as shoppingBehavior', () => {
+    const result = createCanonItem({ name: 'Flour', shoppingBehavior: 'check' }, counterIds());
+    expect(result.kind === 'ok' && result.value.shoppingBehavior).toBe('check');
+  });
+
+  it('omits largeQuantityThreshold when not supplied', () => {
+    const result = createCanonItem({ name: 'Salt' }, counterIds());
+    expect(result.kind === 'ok' && result.value).not.toHaveProperty('largeQuantityThreshold');
+  });
+
+  it('sets largeQuantityThreshold when supplied', () => {
+    const result = createCanonItem({ name: 'Flour', largeQuantityThreshold: 500 }, counterIds());
+    expect(result.kind === 'ok' && result.value.largeQuantityThreshold).toBe(500);
   });
 });

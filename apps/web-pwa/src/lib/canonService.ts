@@ -13,6 +13,7 @@ import {
 import type { ObservabilitySpan } from '@salt/ld-observability';
 import type { CanonArbitrationPort, EmbeddingPort } from '@salt/domain';
 import {
+  approveCanonItem,
   matchOrCreate,
   renameCanonItem,
   setCanonItemAisle,
@@ -20,6 +21,7 @@ import {
 } from '@salt/domain';
 import type {
   Aisle,
+  ApproveCanonItemOverrides,
   CanonItem,
   CanonLocalStorePort,
   AisleLocalStorePort,
@@ -321,6 +323,28 @@ export async function updateCanonItemSynonyms(
   const result = setCanonItemSynonyms(item, synonyms);
   if (result.kind === 'ok') await commitCanonItemUpdate(result.value);
   return result;
+}
+
+export async function approveCanonItemWithOverrides(
+  item: CanonItem,
+  overrides?: ApproveCanonItemOverrides,
+): Promise<Result<CanonItem, DomainError>> {
+  const result = approveCanonItem(item, overrides);
+  if (result.kind === 'ok') await commitCanonItemUpdate(result.value);
+  return result;
+}
+
+export async function approveCanonItems(ids: string[]): Promise<void> {
+  const items = get(_canonItems);
+  await Promise.all(
+    ids.map((id) => {
+      const item = items.find((i) => i.id === id);
+      if (!item) return Promise.resolve();
+      const result = approveCanonItem(item);
+      if (result.kind === 'ok') return commitCanonItemUpdate(result.value);
+      return Promise.resolve();
+    }),
+  );
 }
 
 export async function deleteCanonItem(id: string): Promise<Result<void, DomainError>> {

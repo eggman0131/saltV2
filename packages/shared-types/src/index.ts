@@ -77,6 +77,8 @@ export type DomainError =
 // DTOs and validation codes
 // ──────────────────────────────────────────────────────────────────────────
 
+export type ShoppingBehavior = 'stocked' | 'check' | 'needed';
+
 export interface CanonItemDTO {
   readonly id: string;
   readonly name: string;
@@ -85,7 +87,9 @@ export interface CanonItemDTO {
   readonly thumbnail: string | null;
   readonly embedding: readonly number[] | null;
   readonly needs_approval: boolean;
-  readonly schemaVersion: 1;
+  readonly shoppingBehavior: ShoppingBehavior;
+  readonly largeQuantityThreshold?: number;
+  readonly schemaVersion: 2;
 }
 
 export interface AisleDTO {
