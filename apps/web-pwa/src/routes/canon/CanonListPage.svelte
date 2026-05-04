@@ -2,13 +2,11 @@
   import {
     Button,
     Checkbox,
-    Icon,
     ListPage,
     Select,
     SelectContent,
     SelectItem,
     SelectTrigger,
-    Text,
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
   import {
@@ -19,6 +17,7 @@
   } from '../../lib/canonService.js';
   import { aisles } from '../../lib/aisleService.js';
   import { titleCase } from '../../lib/titleCase.js';
+  import CanonListRow from './CanonListRow.svelte';
 
   // Filter / display state
   let filterText = $state('');
@@ -33,9 +32,6 @@
       (i) => filterText === '' || i.name.toLowerCase().includes(filterText.toLowerCase()),
     ),
   );
-
-  // Derived: aisle lookup
-  const aisleMap = $derived(new Map($aisles.map((a) => [a.id, a.name])));
 
   // Derived: items grouped by aisle, sorted alpha within each group.
   // Aisles appear in their stored order; unassigned at the end.
@@ -200,23 +196,12 @@
         </div>
         <ul class="flex flex-col gap-1">
           {#each topApprovalItems as item (item.id)}
-            {@const isSelected = selected.has(item.id)}
-            <li
-              class="flex items-center gap-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 dark:border-amber-700 dark:bg-amber-950/30 {isSelected
-                ? 'ring-2 ring-ring border-ring'
-                : ''}"
-            >
-              <Checkbox checked={isSelected} onCheckedChange={() => toggleItem(item.id)} />
-              <button
-                class="flex min-w-0 flex-1 items-center justify-between text-left"
-                onclick={() => push(`/canon/${item.id}`)}
-              >
-                <Text>{titleCase(item.name)}</Text>
-                {#if item.aisleId}
-                  <Text muted size="sm">{titleCase(aisleMap.get(item.aisleId) ?? '')}</Text>
-                {/if}
-              </button>
-            </li>
+            <CanonListRow
+              {item}
+              aisles={$aisles}
+              selected={selected.has(item.id)}
+              onToggleSelect={() => toggleItem(item.id)}
+            />
           {/each}
         </ul>
       </div>
@@ -232,30 +217,12 @@
             </h3>
             <ul class="flex flex-col gap-1">
               {#each group.items as item (item.id)}
-                {@const isSelected = selected.has(item.id)}
-                {@const isPending = item.needs_approval}
-                <li
-                  class="flex items-center gap-3 rounded-md border px-3 py-2
-                    {isPending
-                    ? 'border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/30'
-                    : 'border-border bg-card'}
-                    {isSelected ? 'ring-2 ring-ring' + (isPending ? '' : ' border-ring') : ''}"
-                >
-                  <Checkbox checked={isSelected} onCheckedChange={() => toggleItem(item.id)} />
-                  <button
-                    class="flex min-w-0 flex-1 items-center justify-between text-left"
-                    onclick={() => push(`/canon/${item.id}`)}
-                  >
-                    <Text>{titleCase(item.name)}</Text>
-                    {#if isPending}
-                      <span
-                        class="ml-2 shrink-0 rounded-full bg-amber-200 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-800 dark:text-amber-200"
-                      >
-                        Review
-                      </span>
-                    {/if}
-                  </button>
-                </li>
+                <CanonListRow
+                  {item}
+                  aisles={$aisles}
+                  selected={selected.has(item.id)}
+                  onToggleSelect={() => toggleItem(item.id)}
+                />
               {/each}
             </ul>
           </div>

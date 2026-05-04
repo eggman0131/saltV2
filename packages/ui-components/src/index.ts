@@ -29,6 +29,7 @@ export { default as DialogHeader } from './primitives/Dialog/DialogHeader.svelte
 export { default as DialogTitle } from './primitives/Dialog/DialogTitle.svelte';
 export { default as DialogTrigger } from './primitives/Dialog/DialogTrigger.svelte';
 export { default as Divider } from './primitives/Divider/Divider.svelte';
+export { default as EditableRow } from './primitives/EditableRow/EditableRow.svelte';
 export { default as EmptyState } from './primitives/EmptyState/EmptyState.svelte';
 export { default as ErrorState } from './primitives/ErrorState/ErrorState.svelte';
 export { default as Grid } from './primitives/Grid/Grid.svelte';
@@ -117,6 +118,7 @@ export type {
   DialogPartProps,
 } from './primitives/Dialog/Dialog.types';
 export type { DividerProps } from './primitives/Divider/Divider.types';
+export type { EditableRowProps } from './primitives/EditableRow/EditableRow.types';
 export type { EmptyStateProps } from './primitives/EmptyState/EmptyState.types';
 export type { ErrorStateProps } from './primitives/ErrorState/ErrorState.types';
 export type { GridProps } from './primitives/Grid/Grid.types';
