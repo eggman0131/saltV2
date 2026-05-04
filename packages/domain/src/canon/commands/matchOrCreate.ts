@@ -1,6 +1,6 @@
 import { failure, success } from '@salt/shared-types';
 import { ErrorCode } from '@salt/shared-types';
-import type { DomainError, ReadResult } from '@salt/shared-types';
+import type { DomainError, ReadResult, ShoppingBehavior, CanonItemUnit } from '@salt/shared-types';
 import type { CanonItem } from '../entities/CanonItem.js';
 import type { MatchCandidate } from '../entities/MatchCandidate.js';
 import type { FinalDecision, SurfacedCandidateLog } from '../entities/MatchLogEntry.js';
@@ -72,17 +72,27 @@ export async function matchOrCreate(
     void logging.write(entry).catch(() => {});
   };
 
-  // Force-create: skip match stages, still run aisle arbitration for assignment.
+  // Force-create: skip match stages, still run arbitration to populate aisle + item metadata.
   if (forceCreate) {
     const aislesResult = await aisleStore.load();
     const aisles = aislesResult.kind === 'ok' ? (aislesResult.value?.aisles ?? []) : [];
     let suggestedAisleId: string | null = null;
+    let forceExtras: ArbitrationExtras | undefined;
     if (aisles.length > 0 && selectedAisleId == null) {
       const arbT0 = Date.now();
       const arbResult = await arbitration.arbitrate({ normalisedName, candidates: [], aisles });
       const arbDuration = Math.max(0, Date.now() - arbT0);
       if (arbResult.kind === 'ok' && arbResult.value.kind === 'new') {
-        suggestedAisleId = arbResult.value.aisleId ?? null;
+        const newResult = arbResult.value;
+        suggestedAisleId = newResult.aisleId ?? null;
+        forceExtras = {
+          shoppingBehavior: newResult.shoppingBehavior,
+          ...(newResult.largeQuantityThreshold !== undefined
+            ? { largeQuantityThreshold: newResult.largeQuantityThreshold }
+            : {}),
+          ...(newResult.unit !== undefined ? { unit: newResult.unit } : {}),
+          ...(newResult.reasoning !== undefined ? { reasoning: newResult.reasoning } : {}),
+        };
       }
       if (logBuilder) {
         const outcome = arbResult.kind === 'ok' ? arbResult.value.kind : 'error';
@@ -97,7 +107,14 @@ export async function matchOrCreate(
         });
       }
     }
-    return persistNew(store, ids, rawName, selectedAisleId ?? suggestedAisleId ?? null, commitLog);
+    return persistNew(
+      store,
+      ids,
+      rawName,
+      selectedAisleId ?? suggestedAisleId ?? null,
+      commitLog,
+      forceExtras,
+    );
   }
 
   const itemsResult = await store.list();
@@ -162,8 +179,9 @@ export async function matchOrCreate(
   }
 
   // No match found anywhere: create a new item from rawName.
-  // Run aisle arbitration with empty candidates so the AI can still suggest an aisle.
+  // Run arbitration with empty candidates to populate aisle + item metadata.
   let finalAisleId = selectedAisleId ?? null;
+  let newExtras: ArbitrationExtras | undefined;
   if (finalAisleId === null) {
     const aislesResult = await aisleStore.load();
     const aisles = aislesResult.kind === 'ok' ? (aislesResult.value?.aisles ?? []) : [];
@@ -172,7 +190,16 @@ export async function matchOrCreate(
       const arbResult = await arbitration.arbitrate({ normalisedName, candidates: [], aisles });
       const arbDuration = Math.max(0, Date.now() - arbT0);
       if (arbResult.kind === 'ok' && arbResult.value.kind === 'new') {
-        finalAisleId = arbResult.value.aisleId ?? null;
+        const newResult = arbResult.value;
+        finalAisleId = newResult.aisleId ?? null;
+        newExtras = {
+          shoppingBehavior: newResult.shoppingBehavior,
+          ...(newResult.largeQuantityThreshold !== undefined
+            ? { largeQuantityThreshold: newResult.largeQuantityThreshold }
+            : {}),
+          ...(newResult.unit !== undefined ? { unit: newResult.unit } : {}),
+          ...(newResult.reasoning !== undefined ? { reasoning: newResult.reasoning } : {}),
+        };
       }
       if (logBuilder) {
         const outcome = arbResult.kind === 'ok' ? arbResult.value.kind : 'error';
@@ -188,7 +215,14 @@ export async function matchOrCreate(
       }
     }
   }
-  return persistNew(store, ids, rawName, finalAisleId, commitLog);
+  return persistNew(store, ids, rawName, finalAisleId, commitLog, newExtras);
+}
+
+interface ArbitrationExtras {
+  readonly shoppingBehavior?: ShoppingBehavior;
+  readonly largeQuantityThreshold?: number;
+  readonly unit?: CanonItemUnit;
+  readonly reasoning?: string;
 }
 
 function pickBest(candidates: readonly MatchCandidate[]): MatchCandidate {
@@ -207,8 +241,23 @@ async function persistNew(
     finalItemId: string | null,
     finalItemName?: string | null,
   ) => void,
+  extras?: ArbitrationExtras,
 ): Promise<ReadResult<MatchOrCreateResult, DomainError>> {
-  const result = createCanonItem({ name, aisleId }, ids);
+  const result = createCanonItem(
+    {
+      name,
+      aisleId,
+      ...(extras?.shoppingBehavior !== undefined
+        ? { shoppingBehavior: extras.shoppingBehavior }
+        : {}),
+      ...(extras?.largeQuantityThreshold !== undefined
+        ? { largeQuantityThreshold: extras.largeQuantityThreshold }
+        : {}),
+      ...(extras?.unit !== undefined ? { unit: extras.unit } : {}),
+      ...(extras?.reasoning !== undefined ? { reasoning: extras.reasoning } : {}),
+    },
+    ids,
+  );
   if (result.kind !== 'ok') return result;
   const item = result.value;
   const saved = await store.upsert(item);

@@ -15,19 +15,28 @@ const ArbitrationRequestSchema = z.object({
   aisles: z.array(z.object({ id: z.string(), name: z.string() })),
 });
 
-// AI output schema — what the model itself returns.
-const AIOutputSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('match'), itemId: z.string(), confidence: z.number() }),
-  z.object({ kind: z.literal('new'), canonName: z.string(), aisleId: z.string().nullable() }),
-  z.object({ kind: z.literal('no-match') }),
-]);
+// Flat schema returned by the model; the flow maps it to the domain result shape.
+const AIOutputSchema = z.object({
+  match_found: z.boolean(),
+  match_id: z.string().nullable(),
+  canonical_name: z.string().nullable(),
+  aisle_name: z.string().nullable(),
+  shoppingBehavior: z.enum(['stocked', 'check', 'needed']),
+  largeQuantityThreshold: z.number().nullable(),
+  unit: z.enum(['g', 'ml', 'count']).nullable(),
+  reasoning: z.string(),
+});
 
-// Flow output schema — includes the prompt and raw model response for observability.
+// Flow output — discriminated union matching ArbitrationResult; includes prompt and rawResponse.
 const ArbitrationResultSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('match'),
     itemId: z.string(),
     confidence: z.number(),
+    shoppingBehavior: z.enum(['stocked', 'check', 'needed']),
+    largeQuantityThreshold: z.number().optional(),
+    unit: z.enum(['g', 'ml', 'count']).optional(),
+    reasoning: z.string().optional(),
     prompt: z.string(),
     rawResponse: z.string(),
   }),
@@ -35,6 +44,10 @@ const ArbitrationResultSchema = z.discriminatedUnion('kind', [
     kind: z.literal('new'),
     canonName: z.string(),
     aisleId: z.string().nullable(),
+    shoppingBehavior: z.enum(['stocked', 'check', 'needed']),
+    largeQuantityThreshold: z.number().optional(),
+    unit: z.enum(['g', 'ml', 'count']).optional(),
+    reasoning: z.string().optional(),
     prompt: z.string(),
     rawResponse: z.string(),
   }),
@@ -57,7 +70,48 @@ export const arbitrateCanonFlow = ai.defineFlow(
     });
     const output = result.output!;
     const rawResponse = result.text ?? JSON.stringify(output);
-    return { ...output, prompt: builtPrompt, rawResponse };
+
+    // Map aisle name → id (first match wins; null if name not found in list).
+    const aisleId =
+      output.aisle_name != null
+        ? (req.aisles.find((a) => a.name === output.aisle_name)?.id ?? null)
+        : null;
+
+    const optionalFields = {
+      ...(output.largeQuantityThreshold != null
+        ? { largeQuantityThreshold: output.largeQuantityThreshold }
+        : {}),
+      ...(output.unit != null ? { unit: output.unit } : {}),
+      reasoning: output.reasoning,
+    };
+
+    if (output.match_found && output.match_id != null) {
+      const confidence =
+        req.candidates.find((c) => c.item.id === output.match_id)?.confidence ?? 1.0;
+      return {
+        kind: 'match' as const,
+        itemId: output.match_id,
+        confidence,
+        shoppingBehavior: output.shoppingBehavior,
+        ...optionalFields,
+        prompt: builtPrompt,
+        rawResponse,
+      };
+    }
+
+    if (output.canonical_name != null) {
+      return {
+        kind: 'new' as const,
+        canonName: output.canonical_name,
+        aisleId,
+        shoppingBehavior: output.shoppingBehavior,
+        ...optionalFields,
+        prompt: builtPrompt,
+        rawResponse,
+      };
+    }
+
+    return { kind: 'no-match' as const, prompt: builtPrompt, rawResponse };
   },
 );
 
@@ -71,23 +125,45 @@ function buildPrompt(req: z.infer<typeof ArbitrationRequestSchema>): string {
     : '(none)';
 
   const aisleList = req.aisles.length
-    ? req.aisles.map((a) => `- id: "${a.id}", name: "${a.name}"`).join('\n')
+    ? req.aisles.map((a) => `- "${a.name}"`).join('\n')
     : '(none)';
 
   return [
-    `You are a grocery canon item matching assistant.`,
+    `You are a UK grocery canon-matching assistant. Apply the four rules below and respond with a single JSON object matching the output schema exactly.`,
     ``,
-    `Normalized ingredient name: "${req.normalisedName}"`,
+    `Normalised input: "${req.normalisedName}"`,
     ``,
     `Candidate matches (id, name, similarity score 0–1):`,
     candidateList,
     ``,
-    `Available aisles:`,
+    `Available aisles (use the exact name in your response):`,
     aisleList,
     ``,
-    `Respond with JSON in exactly one of these shapes:`,
-    `  {"kind":"match","itemId":"<id>","confidence":<0-1>}`,
-    `  {"kind":"new","canonName":"<canonical name>","aisleId":"<aisle id or null>"}`,
-    `  {"kind":"no-match"}`,
+    `## Rule 1 — Canonical matching`,
+    `If any candidate is the same grocery item as the input (allowing for spelling variants, plurals, or minor descriptors), set match_found to true and match_id to that candidate's id. Choose the highest-scoring semantically equivalent candidate. If no candidate matches, set match_found to false and match_id to null.`,
+    ``,
+    `## Rule 2 — Standardisation (UK conventions)`,
+    `Produce a canonical_name using standard UK supermarket naming: use "courgette" not "zucchini", "aubergine" not "eggplant", "coriander" not "cilantro", etc. Omit brand names, preparation state, and quantities. If match_found is true, set canonical_name to null — the existing item name stands.`,
+    ``,
+    `## Rule 3 — shoppingBehavior`,
+    `Classify the item as one of:`,
+    `  "stocked"  — kept in the store cupboard long-term (salt, olive oil, plain flour, dried pasta, spices)`,
+    `  "check"    — perishable or semi-perishable; might already be in stock (eggs, butter, cheese, milk)`,
+    `  "needed"   — typically bought fresh per shop (fresh vegetables, fresh meat, fresh fish, bread)`,
+    ``,
+    `## Rule 4 — largeQuantityThreshold`,
+    `If the item is sold in a standard UK pack, set largeQuantityThreshold to the pack size number and unit to "g", "ml", or "count". For example: plain flour → 1000 g; semi-skimmed milk → 2272 ml (4 pints); eggs → 12 count. If there is no clear standard UK pack, set both to null.`,
+    ``,
+    `Respond with JSON:`,
+    `{`,
+    `  "match_found": <boolean>,`,
+    `  "match_id": <string id or null>,`,
+    `  "canonical_name": <canonical UK grocery name, or null when match_found is true>,`,
+    `  "aisle_name": <exact name from the available aisles list, or null if none fits>,`,
+    `  "shoppingBehavior": "stocked" | "check" | "needed",`,
+    `  "largeQuantityThreshold": <number or null>,`,
+    `  "unit": "g" | "ml" | "count" | null,`,
+    `  "reasoning": <one sentence explaining your decision>`,
+    `}`,
   ].join('\n');
 }

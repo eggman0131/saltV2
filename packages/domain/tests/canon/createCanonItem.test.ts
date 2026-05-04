@@ -18,7 +18,7 @@ describe('createCanonItem', () => {
     if (result.kind !== 'ok') return;
     expect(result.value).toEqual({
       id: 'id-1',
-      schemaVersion: 3,
+      schemaVersion: 4,
       name: 'Tomato',
       synonyms: [],
       aisleId: null,

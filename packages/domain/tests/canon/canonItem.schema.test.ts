@@ -10,8 +10,8 @@ function counterIds(): IdGenerator {
 
 describe('CanonItem schema', () => {
   describe('type-level: new fields exist with correct types', () => {
-    it('schemaVersion is the literal 3', () => {
-      expectTypeOf<CanonItem['schemaVersion']>().toEqualTypeOf<3>();
+    it('schemaVersion is the literal 4', () => {
+      expectTypeOf<CanonItem['schemaVersion']>().toEqualTypeOf<4>();
     });
 
     it('revision is a number', () => {
@@ -28,9 +28,9 @@ describe('CanonItem schema', () => {
   });
 
   describe('createCanonItem defaults', () => {
-    it('newly created item has schemaVersion 3', () => {
+    it('newly created item has schemaVersion 4', () => {
       const result = createCanonItem({ name: 'Tomato' }, counterIds());
-      expect(result.kind === 'ok' && result.value.schemaVersion).toBe(3);
+      expect(result.kind === 'ok' && result.value.schemaVersion).toBe(4);
     });
 
     it('newly created item has revision 0', () => {

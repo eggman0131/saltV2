@@ -38,23 +38,59 @@ beforeEach(() => {
 
 describe('GeminiArbitrationAdapter — match result', () => {
   it('returns ok with match result from callable', async () => {
-    mockCallable.mockResolvedValue({ data: { kind: 'match', itemId: 'abc', confidence: 0.92 } });
+    mockCallable.mockResolvedValue({
+      data: { kind: 'match', itemId: 'abc', confidence: 0.92, shoppingBehavior: 'needed' },
+    });
 
     const adapter = createGeminiArbitrationAdapter();
     const result = await adapter.arbitrate(baseReq);
 
     expect(result).toEqual({
       kind: 'ok',
-      value: { kind: 'match', itemId: 'abc', confidence: 0.92 },
+      value: { kind: 'match', itemId: 'abc', confidence: 0.92, shoppingBehavior: 'needed' },
     });
     expect(mockCallable).toHaveBeenCalledWith(baseReq);
+  });
+
+  it('passes through largeQuantityThreshold, unit, and reasoning on match result', async () => {
+    mockCallable.mockResolvedValue({
+      data: {
+        kind: 'match',
+        itemId: 'abc',
+        confidence: 0.92,
+        shoppingBehavior: 'stocked',
+        largeQuantityThreshold: 1000,
+        unit: 'g',
+        reasoning: 'Good match for plain flour.',
+      },
+    });
+
+    const adapter = createGeminiArbitrationAdapter();
+    const result = await adapter.arbitrate(baseReq);
+
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      const v = result.value;
+      expect(v.kind).toBe('match');
+      if (v.kind === 'match') {
+        expect(v.shoppingBehavior).toBe('stocked');
+        expect(v.largeQuantityThreshold).toBe(1000);
+        expect(v.unit).toBe('g');
+        expect(v.reasoning).toBe('Good match for plain flour.');
+      }
+    }
   });
 });
 
 describe('GeminiArbitrationAdapter — new item result', () => {
-  it('returns ok with new result including aisleId', async () => {
+  it('returns ok with new result including aisleId and shoppingBehavior', async () => {
     mockCallable.mockResolvedValue({
-      data: { kind: 'new', canonName: 'Cherry Tomato', aisleId: 'produce-1' },
+      data: {
+        kind: 'new',
+        canonName: 'Cherry Tomato',
+        aisleId: 'produce-1',
+        shoppingBehavior: 'needed',
+      },
     });
 
     const adapter = createGeminiArbitrationAdapter();
@@ -66,13 +102,18 @@ describe('GeminiArbitrationAdapter — new item result', () => {
 
     expect(result).toEqual({
       kind: 'ok',
-      value: { kind: 'new', canonName: 'Cherry Tomato', aisleId: 'produce-1' },
+      value: {
+        kind: 'new',
+        canonName: 'Cherry Tomato',
+        aisleId: 'produce-1',
+        shoppingBehavior: 'needed',
+      },
     });
   });
 
   it('returns ok with null aisleId', async () => {
     mockCallable.mockResolvedValue({
-      data: { kind: 'new', canonName: 'Cherry Tomato', aisleId: null },
+      data: { kind: 'new', canonName: 'Cherry Tomato', aisleId: null, shoppingBehavior: 'needed' },
     });
 
     const adapter = createGeminiArbitrationAdapter();
@@ -84,8 +125,41 @@ describe('GeminiArbitrationAdapter — new item result', () => {
 
     expect(result).toEqual({
       kind: 'ok',
-      value: { kind: 'new', canonName: 'Cherry Tomato', aisleId: null },
+      value: { kind: 'new', canonName: 'Cherry Tomato', aisleId: null, shoppingBehavior: 'needed' },
     });
+  });
+
+  it('passes through largeQuantityThreshold, unit, and reasoning on new result', async () => {
+    mockCallable.mockResolvedValue({
+      data: {
+        kind: 'new',
+        canonName: 'Plain Flour',
+        aisleId: 'baking-1',
+        shoppingBehavior: 'stocked',
+        largeQuantityThreshold: 1000,
+        unit: 'g',
+        reasoning: 'Standard UK bag of flour is 1 kg.',
+      },
+    });
+
+    const adapter = createGeminiArbitrationAdapter();
+    const result = await adapter.arbitrate({
+      normalisedName: 'plain flour',
+      candidates: [],
+      aisles: [{ id: 'baking-1', name: 'Baking', order: 1 }],
+    });
+
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      const v = result.value;
+      expect(v.kind).toBe('new');
+      if (v.kind === 'new') {
+        expect(v.shoppingBehavior).toBe('stocked');
+        expect(v.largeQuantityThreshold).toBe(1000);
+        expect(v.unit).toBe('g');
+        expect(v.reasoning).toBe('Standard UK bag of flour is 1 kg.');
+      }
+    }
   });
 });
 

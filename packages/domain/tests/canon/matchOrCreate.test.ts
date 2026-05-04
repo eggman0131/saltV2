@@ -113,7 +113,12 @@ function noMatchArbitration(): CanonArbitrationPort {
 }
 
 function newArbitration(canonName: string, aisleId: string | null = null): CanonArbitrationPort {
-  return { arbitrate: async () => ({ kind: 'ok', value: { kind: 'new', canonName, aisleId } }) };
+  return {
+    arbitrate: async () => ({
+      kind: 'ok',
+      value: { kind: 'new', canonName, aisleId, shoppingBehavior: 'needed' as const },
+    }),
+  };
 }
 
 function errorArbitration(): CanonArbitrationPort {

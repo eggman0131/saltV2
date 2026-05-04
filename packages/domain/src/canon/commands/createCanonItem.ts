@@ -1,5 +1,5 @@
 import { ErrorCode, failure, success } from '@salt/shared-types';
-import type { DomainError, ReadResult, ShoppingBehavior } from '@salt/shared-types';
+import type { DomainError, ReadResult, ShoppingBehavior, CanonItemUnit } from '@salt/shared-types';
 import type { CanonItem } from '../entities/CanonItem.js';
 import type { IdGenerator } from '../ports/IdGenerator.js';
 
@@ -10,6 +10,8 @@ export interface CreateCanonItemInput {
   readonly needs_approval?: boolean;
   readonly shoppingBehavior?: ShoppingBehavior;
   readonly largeQuantityThreshold?: number;
+  readonly unit?: CanonItemUnit;
+  readonly reasoning?: string;
 }
 
 export function createCanonItem(
@@ -33,6 +35,8 @@ export function createCanonItem(
     ...(input.largeQuantityThreshold !== undefined
       ? { largeQuantityThreshold: input.largeQuantityThreshold }
       : {}),
+    ...(input.unit !== undefined ? { unit: input.unit } : {}),
+    ...(input.reasoning !== undefined ? { reasoning: input.reasoning } : {}),
     updatedAt: '',
     revision: 0,
     deletedAt: null,
