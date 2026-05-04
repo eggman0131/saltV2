@@ -5,6 +5,39 @@
   let active = $state(isSessionActive());
   let copied = $state(false);
 
+  let overlayEl: HTMLDivElement | undefined;
+  let dragging = $state(false);
+  let pos = $state<{ x: number; y: number } | null>(null);
+  let dragOrigin: { posX: number; posY: number; mouseX: number; mouseY: number } | null = null;
+
+  function handleMove(e: MouseEvent) {
+    if (!dragOrigin) return;
+    pos = {
+      x: dragOrigin.posX + (e.clientX - dragOrigin.mouseX),
+      y: dragOrigin.posY + (e.clientY - dragOrigin.mouseY),
+    };
+  }
+
+  function handleUp() {
+    dragging = false;
+    dragOrigin = null;
+    window.removeEventListener('mousemove', handleMove);
+    window.removeEventListener('mouseup', handleUp);
+  }
+
+  function onDragStart(e: MouseEvent) {
+    if (!overlayEl) return;
+    if (pos === null) {
+      const rect = overlayEl.getBoundingClientRect();
+      pos = { x: rect.left, y: rect.top };
+    }
+    dragOrigin = { posX: pos.x, posY: pos.y, mouseX: e.clientX, mouseY: e.clientY };
+    dragging = true;
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+    e.preventDefault();
+  }
+
   function handleStart() {
     startSession(name.trim() || undefined);
     active = true;
@@ -25,8 +58,15 @@
   }
 </script>
 
-<div class="session-overlay" class:recording={active}>
-  <div class="session-overlay__header">
+<div
+  class="session-overlay"
+  class:recording={active}
+  class:dragging
+  bind:this={overlayEl}
+  style={pos ? `left: ${pos.x}px; top: ${pos.y}px; right: auto; bottom: auto;` : ''}
+>
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="session-overlay__header" onmousedown={onDragStart}>
     <span class="session-overlay__dot" class:active></span>
     <span class="session-overlay__label">{active ? 'Recording' : 'Idle'}</span>
   </div>
@@ -81,6 +121,12 @@
     align-items: center;
     gap: 6px;
     font-weight: bold;
+    cursor: grab;
+    user-select: none;
+  }
+
+  .session-overlay.dragging .session-overlay__header {
+    cursor: grabbing;
   }
 
   .session-overlay__dot {
