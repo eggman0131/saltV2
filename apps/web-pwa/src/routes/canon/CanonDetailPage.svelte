@@ -2,6 +2,13 @@
   import { push } from 'svelte-spa-router';
   import {
     Button,
+    Combobox,
+    ComboboxContent,
+    ComboboxEmpty,
+    ComboboxField,
+    ComboboxInput,
+    ComboboxItem,
+    ComboboxTrigger,
     DetailPage,
     Dialog,
     DialogContent,
@@ -39,11 +46,12 @@
 
   let item = $derived($canonItems.find((c) => c.id === params.id));
 
-  // Track which item was last initialized so edits aren't wiped on unrelated store updates
-  let _initedId = '';
+  let _initedId = $state('');
 
   // Name editing
   let editingName = $state('');
+  let editingNameActive = $state(false);
+  let nameInput = $state<HTMLInputElement | undefined>(undefined);
   let nameBusy = $state(false);
   let nameError = $state('');
 
@@ -52,15 +60,14 @@
   let synonymsBusy = $state(false);
   let synonymsError = $state('');
 
-  // Threshold + unit editing (shared between pending approval form and approved standalone)
+  // Threshold + unit editing
   let editingThreshold = $state('');
   let editingUnit = $state<CanonItemUnit>('g');
   let thresholdBusy = $state(false);
 
-  // Shopping behavior for approved items (immediate save)
+  // Shopping behavior for approved items
   let behaviorBusy = $state(false);
 
-  // Initialize editing state once per item id
   $effect(() => {
     const current = item;
     if (current && current.id !== _initedId) {
@@ -69,6 +76,13 @@
       editingSynonyms = current.synonyms.join(', ');
       editingThreshold = current.largeQuantityThreshold?.toString() ?? '';
       editingUnit = current.unit ?? 'g';
+    }
+  });
+
+  $effect(() => {
+    if (editingNameActive && nameInput) {
+      nameInput.focus();
+      nameInput.select();
     }
   });
 
@@ -85,7 +99,6 @@
     }
   }
 
-  // Aisle editing — save immediately on select
   let aisleBusy = $state(false);
 
   async function saveAisle(value: string): Promise<void> {
@@ -103,6 +116,11 @@
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
+    if (
+      synonyms.length === item.synonyms.length &&
+      synonyms.every((s, i) => s === item.synonyms[i])
+    )
+      return;
     synonymsBusy = true;
     synonymsError = '';
     const result = await updateCanonItemSynonyms(item, synonyms);
@@ -112,7 +130,6 @@
     }
   }
 
-  // Shopping behavior for approved items — save immediately on select (mirrors aisle pattern)
   async function saveShoppingBehavior(value: string): Promise<void> {
     if (!item || item.needs_approval) return;
     const behavior = value as ShoppingBehavior;
@@ -122,7 +139,6 @@
     behaviorBusy = false;
   }
 
-  // Threshold + unit for approved items — saved together
   async function saveThreshold(): Promise<void> {
     if (!item || item.needs_approval) return;
     const raw = editingThreshold.trim();
@@ -159,6 +175,11 @@
     push('/canon');
   }
 
+  const aisleItems = $derived([
+    { value: '', label: 'No aisle' },
+    ...$aisles.map((a) => ({ value: a.id, label: titleCase(a.name) })),
+  ]);
+
   // Delete
   let deleteOpen = $state(false);
   let deleteBusy = $state(false);
@@ -192,6 +213,48 @@
     </div>
   {:else}
     <DetailPage title={titleCase(item.name)} onBack={() => push('/canon')} backLabel="Items">
+      {#snippet titleSlot()}
+        {#if editingNameActive}
+          <input
+            bind:this={nameInput}
+            class="text-2xl font-semibold tracking-tight text-foreground bg-transparent border-b border-foreground/30 outline-none w-full min-w-0"
+            value={editingName}
+            oninput={(e) => (editingName = e.currentTarget.value)}
+            onkeydown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                saveName();
+                editingNameActive = false;
+              } else if (e.key === 'Escape') {
+                editingName = item!.name;
+                editingNameActive = false;
+              }
+            }}
+            onblur={() => {
+              editingName = item!.name;
+              editingNameActive = false;
+            }}
+          />
+        {:else}
+          <div class="flex items-center gap-2 min-w-0">
+            <h1 class="text-2xl font-semibold tracking-tight text-foreground truncate">
+              {titleCase(item.name)}
+            </h1>
+            <button
+              class="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+              onclick={() => {
+                editingName = item!.name;
+                editingNameActive = true;
+              }}
+              aria-label="Edit name"
+              type="button"
+            >
+              <Icon name="Pencil" size={14} />
+            </button>
+          </div>
+        {/if}
+      {/snippet}
+
       {#snippet actions()}
         <Button
           data-testid="canon-detail-delete-button"
@@ -207,15 +270,78 @@
       {/snippet}
 
       <div class="flex flex-col gap-6">
-        <!-- Approval -->
+        <!-- Approval — all AI-assigned fields -->
         {#if item.needs_approval}
           <section
-            class="flex flex-col gap-3 rounded-md border border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/30"
+            class="flex flex-col gap-4 rounded-md border border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/30"
             data-testid="canon-detail-approval-section"
           >
             <h2 class="text-sm font-semibold text-amber-800 dark:text-amber-300">
               Review before approving
             </h2>
+
+            {#if item.reasoning}
+              <p
+                class="text-sm text-amber-900 dark:text-amber-200"
+                data-testid="canon-detail-reasoning"
+              >
+                {item.reasoning}
+              </p>
+            {/if}
+
+            <!-- Aisle -->
+            <div class="flex flex-col gap-1.5">
+              <span class="text-sm font-medium text-foreground">Aisle</span>
+              <div class="flex items-center gap-2">
+                <div class="flex-1" data-testid="canon-detail-aisle-select">
+                  <Combobox
+                    items={aisleItems}
+                    value={item.aisleId ?? ''}
+                    onValueChange={saveAisle}
+                    restrict
+                  >
+                    <ComboboxField>
+                      <ComboboxInput placeholder="Search aisles…" />
+                      <ComboboxTrigger />
+                    </ComboboxField>
+                    <ComboboxContent>
+                      {#snippet children({ filteredItems })}
+                        {#each filteredItems as cbItem, i (cbItem.value)}
+                          <ComboboxItem item={cbItem} index={i} />
+                        {/each}
+                        {#if filteredItems.length === 0}
+                          <ComboboxEmpty>No aisles match.</ComboboxEmpty>
+                        {/if}
+                      {/snippet}
+                    </ComboboxContent>
+                  </Combobox>
+                </div>
+                {#if aisleBusy}
+                  <Spinner size={16} />
+                {/if}
+              </div>
+            </div>
+
+            <!-- Synonyms -->
+            <TextField
+              label="Synonyms"
+              description="Separate multiple synonyms with commas."
+              value={editingSynonyms}
+              onValueChange={(v) => (editingSynonyms = v)}
+              error={synonymsError}
+              placeholder="e.g. Butter, Unsalted butter"
+              data-testid="canon-detail-synonyms-input"
+              disabled={synonymsBusy}
+              onkeydown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  saveSynonyms();
+                }
+              }}
+              onblur={saveSynonyms}
+            />
+
+            <!-- Shopping behavior -->
             <RadioGroup
               label="Shopping behavior"
               orientation="horizontal"
@@ -226,6 +352,8 @@
               <RadioGroupItem value="check" label="Check" />
               <RadioGroupItem value="needed" label="Needed" />
             </RadioGroup>
+
+            <!-- Threshold + unit -->
             <div class="flex gap-2 items-end">
               <div class="flex-1">
                 <TextField
@@ -252,6 +380,7 @@
                 </Select>
               </div>
             </div>
+
             <div>
               <Button
                 data-testid="canon-detail-approve-button"
@@ -265,15 +394,7 @@
           </section>
         {/if}
 
-        <!-- AI Reasoning (all items, when present) -->
-        {#if item.reasoning}
-          <section class="flex flex-col gap-1" data-testid="canon-detail-reasoning">
-            <h2 class="text-sm font-medium text-foreground">AI reasoning</h2>
-            <p class="text-sm text-muted-foreground">{item.reasoning}</p>
-          </section>
-        {/if}
-
-        <!-- Shopping behavior (approved items only — immediate save) -->
+        <!-- Shopping behavior (approved only) -->
         {#if !item.needs_approval}
           <section class="flex flex-col gap-2" data-testid="canon-detail-behavior-section">
             <div class="flex items-center gap-2">
@@ -295,7 +416,7 @@
           </section>
         {/if}
 
-        <!-- Quantity threshold (approved items only) -->
+        <!-- Quantity threshold (approved only) -->
         {#if !item.needs_approval}
           <section class="flex flex-col gap-2" data-testid="canon-detail-threshold-section">
             <h2 class="text-sm font-medium text-foreground">Quantity threshold</h2>
@@ -338,82 +459,63 @@
           </section>
         {/if}
 
-        <!-- Name -->
-        <section class="flex flex-col gap-2">
-          <h2 class="text-sm font-medium text-foreground">Name</h2>
-          <div class="flex gap-2">
-            <div class="flex-1">
-              <TextField
-                label=""
-                value={editingName}
-                onValueChange={(v) => (editingName = v)}
-                error={nameError}
-                data-testid="canon-detail-name-input"
-              />
+        <!-- Aisle (approved only) -->
+        {#if !item.needs_approval}
+          <section class="flex flex-col gap-2">
+            <h2 class="text-sm font-medium text-foreground">Aisle</h2>
+            <div class="flex items-center gap-2">
+              <div class="flex-1" data-testid="canon-detail-aisle-select">
+                <Combobox
+                  items={aisleItems}
+                  value={item.aisleId ?? ''}
+                  onValueChange={saveAisle}
+                  restrict
+                >
+                  <ComboboxField>
+                    <ComboboxInput placeholder="Search aisles…" />
+                    <ComboboxTrigger />
+                  </ComboboxField>
+                  <ComboboxContent>
+                    {#snippet children({ filteredItems })}
+                      {#each filteredItems as cbItem, i (cbItem.value)}
+                        <ComboboxItem item={cbItem} index={i} />
+                      {/each}
+                      {#if filteredItems.length === 0}
+                        <ComboboxEmpty>No aisles match.</ComboboxEmpty>
+                      {/if}
+                    {/snippet}
+                  </ComboboxContent>
+                </Combobox>
+              </div>
+              {#if aisleBusy}
+                <Spinner size={16} />
+              {/if}
             </div>
-            <Button
-              data-testid="canon-detail-name-save"
-              variant="outline"
-              onclick={saveName}
-              loading={nameBusy}
-              disabled={nameBusy || !editingName.trim() || editingName.trim() === item.name}
-            >
-              Save
-            </Button>
-          </div>
-        </section>
+          </section>
+        {/if}
 
-        <!-- Aisle -->
-        <section class="flex flex-col gap-2">
-          <h2 class="text-sm font-medium text-foreground">Aisle</h2>
-          <div class="flex items-center gap-2">
-            <div class="flex-1" data-testid="canon-detail-aisle-select">
-              <Select value={item.aisleId ?? ''} onValueChange={saveAisle} disabled={aisleBusy}>
-                <SelectTrigger>
-                  {item.aisleId
-                    ? titleCase($aisles.find((a) => a.id === item?.aisleId)?.name ?? 'Unknown')
-                    : 'No aisle'}
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">No aisle</SelectItem>
-                  {#each $aisles as aisle (aisle.id)}
-                    <SelectItem value={aisle.id}>{titleCase(aisle.name)}</SelectItem>
-                  {/each}
-                </SelectContent>
-              </Select>
-            </div>
-            {#if aisleBusy}
-              <Spinner size={16} />
-            {/if}
-          </div>
-        </section>
-
-        <!-- Synonyms -->
-        <section class="flex flex-col gap-2">
-          <h2 class="text-sm font-medium text-foreground">Synonyms</h2>
-          <p class="text-xs text-muted-foreground">Separate multiple synonyms with commas.</p>
-          <div class="flex gap-2">
-            <div class="flex-1">
-              <TextField
-                label=""
-                value={editingSynonyms}
-                onValueChange={(v) => (editingSynonyms = v)}
-                error={synonymsError}
-                placeholder="e.g. Butter, Unsalted butter"
-                data-testid="canon-detail-synonyms-input"
-              />
-            </div>
-            <Button
-              data-testid="canon-detail-synonyms-save"
-              variant="outline"
-              onclick={saveSynonyms}
-              loading={synonymsBusy}
+        <!-- Synonyms (approved only) -->
+        {#if !item.needs_approval}
+          <section class="flex flex-col gap-2">
+            <TextField
+              label="Synonyms"
+              description="Separate multiple synonyms with commas."
+              value={editingSynonyms}
+              onValueChange={(v) => (editingSynonyms = v)}
+              error={synonymsError}
+              placeholder="e.g. Butter, Unsalted butter"
+              data-testid="canon-detail-synonyms-input"
               disabled={synonymsBusy}
-            >
-              Save
-            </Button>
-          </div>
-        </section>
+              onkeydown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  saveSynonyms();
+                }
+              }}
+              onblur={saveSynonyms}
+            />
+          </section>
+        {/if}
       </div>
     </DetailPage>
   {/if}

@@ -83,11 +83,11 @@ const cssVarsPlugin = plugin(({ addBase }) => {
 const saltFocusRingPlugin = plugin(({ addUtilities }) => {
   addUtilities({
     '.salt-focus-ring': {
-      '@apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background':
+      '@apply focus-visible:outline focus-visible:outline-2 focus-visible:outline-border focus-visible:outline-offset-0':
         {},
     },
     '.salt-focus-ring-within': {
-      '@apply focus-within:outline-none focus-within:ring-2 focus-within:ring-secondary focus-within:ring-offset-2 focus-within:ring-offset-background':
+      '@apply focus-within:outline focus-within:outline-2 focus-within:outline-border focus-within:outline-offset-0':
         {},
     },
   });
@@ -97,7 +97,7 @@ const saltComponentPlugin = plugin(({ addComponents }) => {
   addComponents({
     // ─ Button ─────────────────────────────────────────────────────────
     '.salt-button': {
-      '@apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background inline-flex items-center justify-center gap-2 rounded font-medium transition-colors duration-fast ease-standard motion-reduce:transition-none disabled:pointer-events-none data-[disabled]:opacity-50':
+      '@apply inline-flex items-center justify-center gap-2 rounded font-medium transition-colors duration-fast ease-standard motion-reduce:transition-none disabled:pointer-events-none data-[disabled]:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-border focus-visible:outline-offset-0':
         {},
     },
     '.salt-button--solid': { '@apply bg-primary text-primary-foreground hover:bg-primary/90': {} },
@@ -132,13 +132,12 @@ const saltComponentPlugin = plugin(({ addComponents }) => {
     // Combobox variant: direct <input>; focus ring lives on the ComboboxField
     // wrapper so it surrounds input + trigger, not just the input.
     '.salt-input--combobox': {
-      '@apply focus-visible:outline-none h-10 w-full px-3 py-2 text-sm outline-none placeholder:text-muted-foreground':
-        {},
+      '@apply outline-none h-10 w-full px-3 py-2 text-sm placeholder:text-muted-foreground': {},
     },
 
     // ─ Trigger (SelectTrigger) ────────────────────────────────────────
     '.salt-trigger': {
-      '@apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary focus-visible:ring-offset-2 focus-visible:ring-offset-background flex h-10 w-full items-center justify-between gap-2 rounded border border-input bg-background px-3 py-2 text-sm outline-none ring-offset-background':
+      '@apply flex h-9 w-full items-center justify-between gap-2 rounded border border-input bg-background px-3 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-border focus-visible:outline-offset-0':
         {},
     },
     '.salt-trigger--disabled': { '@apply cursor-not-allowed opacity-50 pointer-events-none': {} },
@@ -146,7 +145,7 @@ const saltComponentPlugin = plugin(({ addComponents }) => {
 
     // ─ Control (Checkbox / Radio / Switch) ────────────────────────────
     '.salt-control': {
-      '@apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background':
+      '@apply focus-visible:outline focus-visible:outline-2 focus-visible:outline-border focus-visible:outline-offset-0':
         {},
     },
     // Checkbox

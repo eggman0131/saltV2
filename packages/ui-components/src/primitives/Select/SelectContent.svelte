@@ -45,6 +45,7 @@
             apply({ rects, elements, availableHeight }) {
               elements.floating.style.minWidth = `${rects.reference.width}px`;
               elements.floating.style.maxHeight = `${Math.max(120, availableHeight - 8)}px`;
+              elements.floating.style.overflowY = 'auto';
             },
           }),
         ],
@@ -57,6 +58,18 @@
         });
       });
     });
+  });
+
+  // Close on outside click
+  $effect(() => {
+    if (!ctx.open) return;
+    function handleOutside(e: PointerEvent) {
+      const target = e.target as Node;
+      if (wrapperEl?.contains(target) || ctx.triggerEl?.contains(target)) return;
+      ctx.closeList(false);
+    }
+    document.addEventListener('pointerdown', handleOutside);
+    return () => document.removeEventListener('pointerdown', handleOutside);
   });
 
   // On open: initialize active option, then focus the listbox

@@ -14,6 +14,7 @@
     metadata,
     children,
     class: className,
+    titleSlot,
   }: DetailPageProps = $props();
 </script>
 
@@ -31,7 +32,11 @@
     {/if}
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div class="flex flex-col gap-1 min-w-0">
-        <h1 class="text-2xl font-semibold tracking-tight text-foreground truncate">{title}</h1>
+        {#if titleSlot}
+          {@render titleSlot()}
+        {:else}
+          <h1 class="text-2xl font-semibold tracking-tight text-foreground truncate">{title}</h1>
+        {/if}
         {#if subtitle}
           <p class="text-sm text-muted-foreground">{subtitle}</p>
         {/if}

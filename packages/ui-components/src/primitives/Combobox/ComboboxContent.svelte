@@ -43,6 +43,7 @@
             apply({ rects, elements, availableHeight }) {
               elements.floating.style.minWidth = `${rects.reference.width}px`;
               elements.floating.style.maxHeight = `${Math.max(120, availableHeight - 8)}px`;
+              elements.floating.style.overflowY = 'auto';
             },
           }),
         ],

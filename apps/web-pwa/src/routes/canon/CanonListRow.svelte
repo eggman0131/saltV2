@@ -1,5 +1,12 @@
 <script lang="ts">
   import {
+    Combobox,
+    ComboboxContent,
+    ComboboxEmpty,
+    ComboboxField,
+    ComboboxInput,
+    ComboboxItem,
+    ComboboxTrigger,
     EditableRow,
     Select,
     SelectContent,
@@ -27,6 +34,11 @@
     selected: boolean;
     onToggleSelect: () => void;
   } = $props();
+
+  const aisleItems = $derived([
+    { value: '', label: 'No aisle' },
+    ...aisles.map((a) => ({ value: a.id, label: titleCase(a.name) })),
+  ]);
 
   let thresholdStr = $state(
     item.largeQuantityThreshold != null ? String(item.largeQuantityThreshold) : '',
@@ -106,19 +118,27 @@
       </span>
     {/if}
 
-    <Select value={item.aisleId ?? ''} onValueChange={handleAisleChange}>
-      <SelectTrigger class="h-7 w-32 shrink-0 text-xs">
-        {item.aisleId
-          ? titleCase(aisles.find((a) => a.id === item.aisleId)?.name ?? '')
-          : 'No aisle'}
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="">No aisle</SelectItem>
-        {#each aisles as aisle (aisle.id)}
-          <SelectItem value={aisle.id}>{titleCase(aisle.name)}</SelectItem>
-        {/each}
-      </SelectContent>
-    </Select>
+    <Combobox
+      items={aisleItems}
+      value={item.aisleId ?? ''}
+      onValueChange={handleAisleChange}
+      restrict
+    >
+      <ComboboxField class="w-32 shrink-0">
+        <ComboboxInput class="h-7 px-2 text-xs" placeholder="Aisle…" />
+        <ComboboxTrigger class="h-7" />
+      </ComboboxField>
+      <ComboboxContent>
+        {#snippet children({ filteredItems })}
+          {#each filteredItems as cbItem, i (cbItem.value)}
+            <ComboboxItem item={cbItem} index={i} />
+          {/each}
+          {#if filteredItems.length === 0}
+            <ComboboxEmpty>No aisles match.</ComboboxEmpty>
+          {/if}
+        {/snippet}
+      </ComboboxContent>
+    </Combobox>
 
     <Select value={item.shoppingBehavior} onValueChange={handleBehaviorChange}>
       <SelectTrigger class="h-7 w-24 shrink-0 text-xs">

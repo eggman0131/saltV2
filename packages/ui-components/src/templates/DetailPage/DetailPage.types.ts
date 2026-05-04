@@ -10,4 +10,5 @@ export type DetailPageProps = {
   metadata?: Snippet;
   children?: Snippet;
   class?: string;
+  titleSlot?: Snippet;
 };
