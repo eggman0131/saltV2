@@ -217,6 +217,7 @@
         {#if editingNameActive}
           <input
             bind:this={nameInput}
+            data-testid="canon-detail-name-input"
             class="text-2xl font-semibold tracking-tight text-foreground bg-transparent border-b border-foreground/30 outline-none w-full min-w-0"
             value={editingName}
             oninput={(e) => (editingName = e.currentTarget.value)}
@@ -236,21 +237,27 @@
             }}
           />
         {:else}
-          <div class="flex items-center gap-2 min-w-0">
-            <h1 class="text-2xl font-semibold tracking-tight text-foreground truncate">
-              {titleCase(item.name)}
-            </h1>
-            <button
-              class="text-muted-foreground hover:text-foreground transition-colors shrink-0"
-              onclick={() => {
-                editingName = item!.name;
-                editingNameActive = true;
-              }}
-              aria-label="Edit name"
-              type="button"
-            >
-              <Icon name="Pencil" size={14} />
-            </button>
+          <div class="min-w-0">
+            <div class="flex items-center gap-2">
+              <h1 class="text-2xl font-semibold tracking-tight text-foreground truncate">
+                {titleCase(item.name)}
+              </h1>
+              <button
+                class="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                onclick={() => {
+                  editingName = item!.name;
+                  editingNameActive = true;
+                  nameError = '';
+                }}
+                aria-label="Edit name"
+                type="button"
+              >
+                <Icon name="Pencil" size={14} />
+              </button>
+            </div>
+            {#if nameError}
+              <span class="text-sm text-destructive">{nameError}</span>
+            {/if}
           </div>
         {/if}
       {/snippet}

@@ -109,6 +109,7 @@ describe('CanonDetailPage', () => {
   describe('renders item details', () => {
     it('pre-fills the name field with the item name', async () => {
       setupWithItem();
+      await userEvent.click(screen.getByRole('button', { name: /edit name/i }));
       const nameInput = screen.getByTestId('canon-detail-name-input');
       expect(nameInput).toHaveValue('Olive Oil');
     });
@@ -137,11 +138,11 @@ describe('CanonDetailPage', () => {
       });
       setupWithItem(item);
 
+      await userEvent.click(screen.getByRole('button', { name: /edit name/i }));
       const nameInput = screen.getByTestId('canon-detail-name-input');
       await userEvent.clear(nameInput);
       await userEvent.type(nameInput, '  Extra Virgin Olive Oil  ');
-
-      await userEvent.click(screen.getByTestId('canon-detail-name-save'));
+      await userEvent.keyboard('{Enter}');
 
       await waitFor(() => {
         expect(vi.mocked(updateCanonItemName)).toHaveBeenCalledWith(item, 'Extra Virgin Olive Oil');
@@ -156,10 +157,11 @@ describe('CanonDetailPage', () => {
       });
       setupWithItem(item);
 
+      await userEvent.click(screen.getByRole('button', { name: /edit name/i }));
       const nameInput = screen.getByTestId('canon-detail-name-input');
       await userEvent.clear(nameInput);
       await userEvent.type(nameInput, 'Changed');
-      await userEvent.click(screen.getByTestId('canon-detail-name-save'));
+      await userEvent.keyboard('{Enter}');
 
       await waitFor(() => {
         expect(screen.getByText(/Invalid name/i)).toBeInTheDocument();
@@ -179,7 +181,7 @@ describe('CanonDetailPage', () => {
       const synonymsInput = screen.getByTestId('canon-detail-synonyms-input');
       await userEvent.clear(synonymsInput);
       await userEvent.type(synonymsInput, 'EVOO, liquid gold');
-      await userEvent.click(screen.getByTestId('canon-detail-synonyms-save'));
+      await userEvent.keyboard('{Enter}');
 
       await waitFor(() => {
         expect(vi.mocked(updateCanonItemSynonyms)).toHaveBeenCalledWith(item, [
@@ -197,7 +199,7 @@ describe('CanonDetailPage', () => {
       const synonymsInput = screen.getByTestId('canon-detail-synonyms-input');
       await userEvent.clear(synonymsInput);
       await userEvent.type(synonymsInput, ' EVOO ,  liquid gold ');
-      await userEvent.click(screen.getByTestId('canon-detail-synonyms-save'));
+      await userEvent.keyboard('{Enter}');
 
       await waitFor(() => {
         expect(vi.mocked(updateCanonItemSynonyms)).toHaveBeenCalledWith(item, [
@@ -215,9 +217,8 @@ describe('CanonDetailPage', () => {
       mockAisles._set([{ id: 'oils', name: 'Oils & Vinegars', position: 0 }]);
       setupWithItem(item);
 
-      // Open the aisle select (SelectTrigger renders as a button)
-      const trigger = screen.getByRole('button', { name: /no aisle/i });
-      await userEvent.click(trigger);
+      // Open the aisle combobox by clicking its input (role="combobox")
+      await userEvent.click(screen.getByRole('combobox'));
       await waitFor(() =>
         expect(screen.getByRole('option', { name: 'Oils & Vinegars' })).toBeInTheDocument(),
       );

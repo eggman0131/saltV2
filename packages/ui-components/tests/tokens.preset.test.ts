@@ -128,7 +128,7 @@ describe('tailwind-preset', () => {
       expect(utilities).toHaveProperty('.salt-focus-ring');
     });
 
-    it('salt-focus-ring utility contains focus-visible @apply with §4.2 classes', () => {
+    it('salt-focus-ring utility contains focus-visible @apply with outline classes', () => {
       const focusPlugin = preset.plugins[2];
       const addUtilities = vi.fn();
       const handler = getHandler(focusPlugin);
@@ -136,11 +136,10 @@ describe('tailwind-preset', () => {
       const [utilities] = addUtilities.mock.calls[0] as [Record<string, unknown>];
       const rule = utilities['.salt-focus-ring'] as Record<string, unknown>;
       const applyKey = Object.keys(rule).find((k) => k.startsWith('@apply'));
-      expect(applyKey).toContain('focus-visible:outline-none');
-      expect(applyKey).toContain('focus-visible:ring-2');
-      expect(applyKey).toContain('focus-visible:ring-ring');
-      expect(applyKey).toContain('focus-visible:ring-offset-2');
-      expect(applyKey).toContain('focus-visible:ring-offset-background');
+      expect(applyKey).toContain('focus-visible:outline');
+      expect(applyKey).toContain('focus-visible:outline-2');
+      expect(applyKey).toContain('focus-visible:outline-border');
+      expect(applyKey).toContain('focus-visible:outline-offset-0');
     });
   });
 
