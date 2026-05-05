@@ -1,5 +1,6 @@
 <!-- spec: ui-spec-v04.md §2 v0.4 -->
 <script lang="ts">
+  import { ChevronDown } from 'lucide-svelte';
   import { cn } from '../../lib/cn';
   import { COMBOBOX_CONTEXT } from '../../headless/Combobox.headless.svelte';
   import { comboboxTriggerVariants } from './Combobox.variants';
@@ -26,6 +27,6 @@
   {#if children}
     {@render children()}
   {:else}
-    <span aria-hidden="true">&#9660;</span>
+    <ChevronDown class="size-4" aria-hidden="true" />
   {/if}
 </button>

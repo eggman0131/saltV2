@@ -12,7 +12,7 @@ export const selectTriggerVariants = cva('salt-trigger', {
 });
 
 export const selectContentVariants = cva(
-  'min-w-32 overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-md outline-none',
+  'min-w-32 overflow-hidden rounded-b-md border border-border bg-popover text-popover-foreground shadow-md outline-none',
 );
 
 export const selectItemVariants = cva(

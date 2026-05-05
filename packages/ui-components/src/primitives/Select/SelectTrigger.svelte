@@ -1,5 +1,6 @@
 <!-- spec: SPEC.md §3 v0.3 -->
 <script lang="ts">
+  import { ChevronDown } from 'lucide-svelte';
   import { cn } from '../../lib/cn';
   import { SELECT_CONTEXT } from '../../headless/Select.headless.svelte';
   import { selectTriggerVariants } from './Select.variants';
@@ -45,6 +46,6 @@
     <span class={ctx.value ? 'text-foreground' : 'text-muted-foreground'}>
       {ctx.displayLabel ?? ctx.placeholder ?? 'Select…'}
     </span>
-    <span aria-hidden="true">&#9660;</span>
+    <ChevronDown class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
   {/if}
 </button>

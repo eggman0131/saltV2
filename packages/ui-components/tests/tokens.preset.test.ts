@@ -138,8 +138,8 @@ describe('tailwind-preset', () => {
       const applyKey = Object.keys(rule).find((k) => k.startsWith('@apply'));
       expect(applyKey).toContain('focus-visible:outline');
       expect(applyKey).toContain('focus-visible:outline-2');
-      expect(applyKey).toContain('focus-visible:outline-border');
-      expect(applyKey).toContain('focus-visible:outline-offset-0');
+      expect(applyKey).toContain('focus-visible:outline-ring');
+      expect(applyKey).toContain('focus-visible:outline-offset-1');
     });
   });
 
