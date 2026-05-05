@@ -1,6 +1,18 @@
 {
   "configurations": [
     {
+      "name": "Run Task Pilot Extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/tools/task-pilot-extension",
+        "${workspaceFolder}"
+      ],
+      "presentation": {
+        "hidden": false
+      }
+    },
+    {
       "type": "msedge",
       "name": "Launch Microsoft Edge",
       "request": "launch",

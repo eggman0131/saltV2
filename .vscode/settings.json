@@ -1,5 +1,8 @@
 {
     "chat.tools.terminal.autoApprove": {
         "pnpm": true
-    }
+    },
+    "terminal.integrated.enablePersistentSessions": true,
+    "terminal.integrated.persistentSessionReviveProcess": "onExitAndWindowClose",
+    "task.reconnection": true
 }

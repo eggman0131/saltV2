@@ -1,0 +1,99 @@
+{
+  "name": "task-pilot-extension",
+  "displayName": "Task Pilot",
+  "description": "Sidebar controls for starting, stopping, and monitoring workspace tasks.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.89.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "taskPilotContainer",
+          "title": "Task Pilot",
+          "icon": "media/tasks.svg"
+        }
+      ]
+    },
+    "views": {
+      "taskPilotContainer": [
+        {
+          "id": "taskPilotView",
+          "name": "Task Control"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "taskPilot.refresh",
+        "title": "Task Pilot: Refresh"
+      },
+      {
+        "command": "taskPilot.toggle",
+        "title": "Task Pilot: Toggle Task"
+      },
+      {
+        "command": "taskPilot.showOutput",
+        "title": "Task Pilot: Show Output"
+      },
+      {
+        "command": "taskPilot.openTaskConfig",
+        "title": "Task Pilot: Open tasks.json"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "taskPilot.refresh",
+          "when": "view == taskPilotView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "taskPilot.openTaskConfig",
+          "when": "view == taskPilotView",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "taskPilot.toggle",
+          "when": "view == taskPilotView && viewItem == taskRunning",
+          "group": "inline@1"
+        },
+        {
+          "command": "taskPilot.toggle",
+          "when": "view == taskPilotView && viewItem == taskStopped",
+          "group": "inline@1"
+        },
+        {
+          "command": "taskPilot.showOutput",
+          "when": "view == taskPilotView && (viewItem == taskRunning || viewItem == taskStopped)",
+          "group": "inline@2"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Task Pilot",
+      "properties": {
+        "taskPilot.labels": {
+          "type": "array",
+          "description": "Task labels to show, in order. Defaults to Firebase, Vite, and Genkit tasks.",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "Firebase Emulators",
+            "Vite Dev Server",
+            "Genkit Admin UI"
+          ]
+        }
+      }
+    }
+  }
+}
