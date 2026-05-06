@@ -21,7 +21,7 @@
     SelectTrigger,
     Spinner,
   } from '@salt/ui-components';
-  import { canonItems, addCanonItem } from '../../lib/canonService.js';
+  import { canonItems, addCanonItem, confirmCanonMatch } from '../../lib/canonService.js';
   import { aisles } from '../../lib/aisleService.js';
   import type { CanonItem } from '@salt/domain';
   import { addToast } from '../../lib/toastStore.js';
@@ -94,8 +94,9 @@
     }
   }
 
-  function handleUseExisting(): void {
+  async function handleUseExisting(): Promise<void> {
     matchDialogOpen = false;
+    if (selectedCandidate) await confirmCanonMatch(selectedCandidate, pendingName);
     if (selectedCandidateId) push(`/canon/${selectedCandidateId}`);
   }
 

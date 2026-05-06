@@ -126,15 +126,9 @@ export async function matchOrCreate(
   const stage1to4 = findClosestMatch(items, rawName, logBuilder ?? undefined);
 
   if (stage1to4.kind === 'match') {
-    // Clear winner: capture the input as a synonym so future searches resolve without AI.
     const { item } = stage1to4.candidate;
-    const updatedItem = appendSynonym(item, normalisedName);
-    if (updatedItem !== item) {
-      const saved = await store.upsert(updatedItem);
-      if (saved.kind !== 'ok') return saved;
-    }
-    commitLog('matched', updatedItem.id, updatedItem.name);
-    return success({ item: updatedItem, decision: 'matched' });
+    commitLog('matched', item.id, item.name);
+    return success({ item, decision: 'matched' });
   }
 
   if (stage1to4.kind === 'ambiguous') {
@@ -200,13 +194,8 @@ export async function matchOrCreate(
   );
   if (embedCandidates.length > 0) {
     const winner = pickBest(embedCandidates);
-    const updatedItem = appendSynonym(winner.item, normalisedName);
-    if (updatedItem !== winner.item) {
-      const saved = await store.upsert(updatedItem);
-      if (saved.kind !== 'ok') return saved;
-    }
-    commitLog('matched', updatedItem.id, updatedItem.name);
-    return success({ item: updatedItem, decision: 'matched' });
+    commitLog('matched', winner.item.id, winner.item.name);
+    return success({ item: winner.item, decision: 'matched' });
   }
 
   // Collect near-miss candidates from stages 2 & 4 above aiThreshold for stage 6.
@@ -292,17 +281,11 @@ interface ArbitrationExtras {
   readonly reasoning?: string;
 }
 
-// Appends normalisedInput to item.synonyms (deduped) and re-flags needs_approval.
-// Returns the same object reference when no change is needed (allows cheap identity check).
-function appendSynonym(item: CanonItem, normalisedInput: string): CanonItem {
-  if (item.synonyms.includes(normalisedInput)) return item;
-  return { ...item, synonyms: [...item.synonyms, normalisedInput], needs_approval: true };
-}
-
 function pickBest(candidates: readonly MatchCandidate[]): MatchCandidate {
-  const approved = candidates.filter((c) => !c.item.needs_approval);
-  const pool = approved.length > 0 ? approved : [...candidates];
-  return pool.reduce((best, c) => (c.confidence > best.confidence ? c : best), pool[0]!);
+  return candidates.reduce(
+    (best, c) => (c.confidence > best.confidence ? c : best),
+    candidates[0]!,
+  );
 }
 
 async function persistNew(

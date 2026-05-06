@@ -45,6 +45,7 @@ export {
   MATCH_THRESHOLDS,
   embedMatch,
   matchOrCreate,
+  appendCanonSynonym,
   createAisle,
   createAislesBulk,
   renameAisle,

@@ -14,6 +14,7 @@ import type { ObservabilitySpan } from '@salt/ld-observability';
 import type { CanonArbitrationPort, EmbeddingPort } from '@salt/domain';
 import {
   approveCanonItem,
+  appendCanonSynonym,
   matchOrCreate,
   renameCanonItem,
   setCanonItemAisle,
@@ -283,7 +284,7 @@ export async function addCanonItem(
     } else {
       span.setAttribute('canon.error', result.error.kind);
     }
-    if (result.kind === 'ok' && result.value.decision !== 'candidates') {
+    if (result.kind === 'ok' && result.value.decision === 'created') {
       try {
         await upsertCanonItem(result.value.item);
       } catch (err) {
@@ -296,6 +297,11 @@ export async function addCanonItem(
   } finally {
     span.end();
   }
+}
+
+export async function confirmCanonMatch(item: CanonItem, rawName: string): Promise<void> {
+  const updated = appendCanonSynonym(item, rawName);
+  if (updated !== item) await upsertCanonItem(updated);
 }
 
 async function commitCanonItemUpdate(item: CanonItem): Promise<void> {

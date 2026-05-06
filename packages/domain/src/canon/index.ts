@@ -36,6 +36,7 @@ export type {
   ArbitrationResult,
 } from './ports/CanonArbitrationPort.js';
 export { matchOrCreate } from './commands/matchOrCreate.js';
+export { appendCanonSynonym } from './commands/appendCanonSynonym.js';
 export type {
   MatchOrCreateInput,
   MatchOrCreatePorts,
