@@ -170,108 +170,29 @@ describe('CanonCreatePage', () => {
         expect(vi.mocked(push)).toHaveBeenCalledWith('/canon/g1');
       });
     });
-
-    it('does not show the match dialog when decision is created', async () => {
-      const newItem = canonItem({ id: 'g1', name: 'Garlic' });
-      vi.mocked(addCanonItem).mockResolvedValueOnce(okResult(newItem, 'created'));
-      render(CanonCreatePage);
-      await openAndType('Garlic');
-      await userEvent.click(screen.getByRole('option', { name: /Create "Garlic"/ }));
-
-      await waitFor(() => expect(vi.mocked(push)).toHaveBeenCalled());
-      expect(screen.queryByTestId('canon-create-match-dialog')).not.toBeInTheDocument();
-    });
   });
 
   describe('decision branching — matched', () => {
-    it('opens the confirm dialog when decision is matched', async () => {
+    it('navigates straight to the matched item without a confirm dialog', async () => {
       const existing = canonItem({ id: 'oo1', name: 'Olive Oil' });
       vi.mocked(addCanonItem).mockResolvedValueOnce(okResult(existing, 'matched'));
       render(CanonCreatePage);
       await openAndType('olive oil');
       await userEvent.click(screen.getByRole('option', { name: /Create "olive oil"/ }));
 
-      await waitFor(() => {
-        expect(screen.getByTestId('canon-create-match-dialog')).toBeInTheDocument();
-      });
-      expect(screen.getByText(/Olive Oil/)).toBeInTheDocument();
+      await waitFor(() => expect(vi.mocked(push)).toHaveBeenCalledWith('/canon/oo1'));
     });
   });
 
   describe('decision branching — ai_arbitrated', () => {
-    it('opens the confirm dialog when decision is ai_arbitrated', async () => {
+    it('navigates straight to the AI-resolved item without a confirm dialog', async () => {
       const existing = canonItem({ id: 'oo1', name: 'Olive Oil' });
       vi.mocked(addCanonItem).mockResolvedValueOnce(okResult(existing, 'ai_arbitrated'));
       render(CanonCreatePage);
       await openAndType('liquid gold');
       await userEvent.click(screen.getByRole('option', { name: /Create "liquid gold"/ }));
 
-      await waitFor(() => {
-        expect(screen.getByTestId('canon-create-match-dialog')).toBeInTheDocument();
-      });
-    });
-  });
-
-  describe('use existing path', () => {
-    it('navigates to the matched item when "Use existing" is clicked', async () => {
-      const existing = canonItem({ id: 'oo1', name: 'Olive Oil' });
-      vi.mocked(addCanonItem).mockResolvedValueOnce(okResult(existing, 'matched'));
-      render(CanonCreatePage);
-      await openAndType('olive');
-      await userEvent.click(screen.getByRole('option', { name: /Create "olive"/ }));
-      await waitFor(() =>
-        expect(screen.getByTestId('canon-create-match-dialog')).toBeInTheDocument(),
-      );
-
-      await userEvent.click(screen.getByTestId('canon-create-use-existing'));
-
-      await waitFor(() => {
-        expect(vi.mocked(push)).toHaveBeenCalledWith('/canon/oo1');
-      });
-    });
-  });
-
-  describe('override (force-create) path', () => {
-    it('calls addCanonItem with forceCreate=true when "Create anyway" is clicked', async () => {
-      const existing = canonItem({ id: 'oo1', name: 'Olive Oil' });
-      const forced = canonItem({ id: 'oo2', name: 'olive' });
-      vi.mocked(addCanonItem)
-        .mockResolvedValueOnce(okResult(existing, 'matched'))
-        .mockResolvedValueOnce(okResult(forced, 'created'));
-
-      render(CanonCreatePage);
-      await openAndType('olive');
-      await userEvent.click(screen.getByRole('option', { name: /Create "olive"/ }));
-      await waitFor(() =>
-        expect(screen.getByTestId('canon-create-match-dialog')).toBeInTheDocument(),
-      );
-
-      await userEvent.click(screen.getByTestId('canon-create-create-anyway'));
-
-      await waitFor(() => {
-        expect(vi.mocked(addCanonItem)).toHaveBeenCalledWith('olive', null, true);
-      });
-    });
-
-    it('navigates to the newly force-created item', async () => {
-      const existing = canonItem({ id: 'oo1', name: 'Olive Oil' });
-      const forced = canonItem({ id: 'oo2', name: 'olive' });
-      vi.mocked(addCanonItem)
-        .mockResolvedValueOnce(okResult(existing, 'matched'))
-        .mockResolvedValueOnce(okResult(forced, 'created'));
-
-      render(CanonCreatePage);
-      await openAndType('olive');
-      await userEvent.click(screen.getByRole('option', { name: /Create "olive"/ }));
-      await waitFor(() =>
-        expect(screen.getByTestId('canon-create-match-dialog')).toBeInTheDocument(),
-      );
-
-      await userEvent.click(screen.getByTestId('canon-create-create-anyway'));
-
-      await waitFor(() => {
-        expect(vi.mocked(push)).toHaveBeenCalledWith('/canon/oo2');
-      });
+      await waitFor(() => expect(vi.mocked(push)).toHaveBeenCalledWith('/canon/oo1'));
     });
   });
 

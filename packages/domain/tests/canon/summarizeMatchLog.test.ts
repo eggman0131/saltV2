@@ -31,7 +31,6 @@ function makeEntry(overrides: Partial<MatchLogEntry> = {}): MatchLogEntry {
     finalDecision: 'created',
     finalItemId: null,
     finalItemName: null,
-    surfacedCandidates: null,
     arbitration: null,
     ...overrides,
   };
@@ -438,24 +437,6 @@ describe('summarizeMatchLog — AI arbitration path', () => {
     const { oneLine, multiLine } = summarizeMatchLog(entry);
     expect(oneLine).toContain('ai_arbitrated');
     expect(multiLine).toContain('AI arbitration');
-  });
-});
-
-// ── scenario: surfaced_candidates ────────────────────────────────────────
-
-describe('summarizeMatchLog — surfaced_candidates path', () => {
-  it('oneLine shows surfaced_candidates decision', () => {
-    const stages = [
-      makeStage({ stage: 1, stageName: 'exact_name', passed: false, bestScore: 0.9, gap: -0.1 }),
-    ];
-    const entry = makeEntry({
-      stages,
-      finalDecision: 'surfaced_candidates',
-      surfacedCandidates: [{ itemId: 'i1', itemName: 'Garlic', confidence: 0.9, stage: 1 }],
-    });
-    const { oneLine } = summarizeMatchLog(entry);
-    expect(oneLine).toContain('surfaced_candidates');
-    expect(oneLine).toContain('1 near-miss');
   });
 });
 

@@ -299,22 +299,41 @@ describe('stage 6 — single near-miss: direct match', () => {
   });
 });
 
-// ─── Stage 6: multiple near-misses → surfaced candidates ─────────────────────
+// ─── Stage 6: multiple near-misses → AI arbitration is sole decider ──────────
 
-describe('stage 6 — multiple near-misses: surfaced candidates', () => {
-  it('surfaces candidates when two or more are above aiThreshold', async () => {
-    // Both items score above aiThreshold (0.6) with tokenMatch for 'olive oil'
-    const item1 = canonItem({ id: 'x1', name: 'olive oil extra' });
-    const item2 = canonItem({ id: 'x2', name: 'olive oil light' });
-    const { run } = makePipeline({ items: [item1, item2] });
+describe('stage 6 — multiple near-misses: AI arbitrates', () => {
+  // Both items score above aiThreshold (0.6) with tokenMatch for 'olive oil'
+  const item1 = canonItem({ id: 'x1', name: 'olive oil extra' });
+  const item2 = canonItem({ id: 'x2', name: 'olive oil light' });
+
+  it('returns ai_arbitrated when AI picks one candidate', async () => {
+    const { run } = makePipeline({
+      items: [item1, item2],
+      arbitration: matchArbitration('x2'),
+    });
     const result = await run('olive oil');
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') {
-      expect(result.value.decision).toBe('candidates');
-      if (result.value.decision === 'candidates') {
-        expect(result.value.candidates.length).toBeGreaterThanOrEqual(2);
-      }
+      expect(result.value.decision).toBe('ai_arbitrated');
+      expect(result.value.item.id).toBe('x2');
     }
+  });
+
+  it('falls back to highest-confidence candidate when AI errors, flagged needs_approval', async () => {
+    const { run, store } = makePipeline({
+      items: [item1, item2],
+      arbitration: errorArbitration(),
+    });
+    const result = await run('olive oil');
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value.decision).toBe('ai_arbitrated');
+      expect(['x1', 'x2']).toContain(result.value.item.id);
+      // appendCanonSynonym sets needs_approval=true so the user can review.
+      expect(result.value.item.needs_approval).toBe(true);
+    }
+    // Original two items still exist; no third item created.
+    expect((store as ReturnType<typeof makeStore>).items).toHaveLength(2);
   });
 });
 

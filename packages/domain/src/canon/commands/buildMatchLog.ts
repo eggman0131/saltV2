@@ -3,7 +3,6 @@ import type {
   FinalDecision,
   MatchLogEntry,
   StageLog,
-  SurfacedCandidateLog,
 } from '../entities/MatchLogEntry.js';
 
 export class MatchLogBuilder {
@@ -40,7 +39,6 @@ export class MatchLogBuilder {
     finalDecision: FinalDecision,
     finalItemId: string | null,
     finalItemName: string | null = null,
-    surfacedCandidates: readonly SurfacedCandidateLog[] | null = null,
   ): MatchLogEntry {
     return {
       id,
@@ -54,7 +52,6 @@ export class MatchLogBuilder {
       finalDecision,
       finalItemId,
       finalItemName,
-      surfacedCandidates,
       arbitration: this._arbitration,
     };
   }

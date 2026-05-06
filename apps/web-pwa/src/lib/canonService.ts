@@ -14,7 +14,6 @@ import type { ObservabilitySpan } from '@salt/ld-observability';
 import type { CanonArbitrationPort, EmbeddingPort } from '@salt/domain';
 import {
   approveCanonItem,
-  appendCanonSynonym,
   matchOrCreate,
   renameCanonItem,
   setCanonItemAisle,
@@ -276,15 +275,7 @@ export async function addCanonItem(
     );
     if (result.kind === 'ok') {
       span.setAttribute('canon.outcome', result.value.decision);
-      if (result.value.decision !== 'candidates') {
-        span.setAttribute('canon.result', result.value.item.name);
-      } else {
-        span.setAttribute('canon.candidates_count', result.value.candidates.length);
-      }
-    } else {
-      span.setAttribute('canon.error', result.error.kind);
-    }
-    if (result.kind === 'ok' && result.value.decision === 'created') {
+      span.setAttribute('canon.result', result.value.item.name);
       try {
         await upsertCanonItem(result.value.item);
       } catch (err) {
@@ -292,16 +283,13 @@ export async function addCanonItem(
         span.setAttribute('canon.error', 'StorageError');
         return failure({ kind: 'StorageError', reason: 'unavailable' });
       }
+    } else {
+      span.setAttribute('canon.error', result.error.kind);
     }
     return result;
   } finally {
     span.end();
   }
-}
-
-export async function confirmCanonMatch(item: CanonItem, rawName: string): Promise<void> {
-  const updated = appendCanonSynonym(item, rawName);
-  if (updated !== item) await upsertCanonItem(updated);
 }
 
 async function commitCanonItemUpdate(item: CanonItem): Promise<void> {

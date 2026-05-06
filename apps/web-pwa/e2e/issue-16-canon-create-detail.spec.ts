@@ -52,9 +52,7 @@ test('pick existing from combobox → routes to detail without creating', async 
   expect(fetched?.id).toBe(seeded.id);
 });
 
-test('create matching name → confirm dialog → use existing → routes to existing', async ({
-  page,
-}, testInfo) => {
+test('create matching name → routes straight to existing item', async ({ page }, testInfo) => {
   const email = uniqueEmail(testInfo.testId);
   await page.goto('/');
   await signIn(page, email);
@@ -67,47 +65,8 @@ test('create matching name → confirm dialog → use existing → routes to exi
   // Submit the plural — normaliseName singularizes it, giving a stage-1 match
   await createViaCombobox(page, 'Butters');
 
-  const ui = canonCreatePage(page);
-  await expect(ui.matchDialog).toBeVisible();
-  await expect(page.getByText(/Butter/i)).toBeVisible();
-
-  await ui.useExistingButton.click();
-
-  // Should navigate to the existing item
+  // No confirm dialog — pipeline resolves to the existing item and we navigate straight in.
   await expect(page).toHaveURL(new RegExp(`#/canon/${seeded.id}$`));
-});
-
-test('create matching name → confirm dialog → create anyway → creates new item', async ({
-  page,
-}, testInfo) => {
-  const email = uniqueEmail(testInfo.testId);
-  await page.goto('/');
-  await signIn(page, email);
-
-  const seeded = await seedCanonItem(page, { name: 'Milk' });
-
-  await page.goto('/#/canon/new');
-  await expect(page.getByRole('heading', { name: /add item/i })).toBeVisible();
-
-  // Submit the plural — normaliseName singularizes it, giving a stage-1 match
-  await createViaCombobox(page, 'Milks');
-
-  const ui = canonCreatePage(page);
-  await expect(ui.matchDialog).toBeVisible();
-
-  await ui.createAnywayButton.click();
-
-  // Should navigate to a DIFFERENT item, not the seeded one
-  await expect(page).toHaveURL(/#\/canon\/(?!new)[a-z0-9-]+$/);
-  const newUrl = page.url();
-  const newId = newUrl.split('/').pop()!;
-  expect(newId).not.toBe(seeded.id);
-
-  // Both items exist
-  const original = await getCanonItem(page, seeded.id);
-  const duplicate = await getCanonItem(page, newId);
-  expect(original).not.toBeNull();
-  expect(duplicate).not.toBeNull();
 });
 
 test('detail page — rename item', async ({ page }, testInfo) => {

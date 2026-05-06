@@ -35,18 +35,12 @@ export function aislesPage(page: Page): AislesPageLocators {
 export interface CanonCreatePageLocators {
   readonly comboboxInput: Locator;
   readonly pendingIndicator: Locator;
-  readonly matchDialog: Locator;
-  readonly useExistingButton: Locator;
-  readonly createAnywayButton: Locator;
 }
 
 export function canonCreatePage(page: Page): CanonCreatePageLocators {
   return {
     comboboxInput: page.getByRole('combobox'),
     pendingIndicator: page.getByTestId('canon-create-pending'),
-    matchDialog: page.getByTestId('canon-create-match-dialog'),
-    useExistingButton: page.getByTestId('canon-create-use-existing'),
-    createAnywayButton: page.getByTestId('canon-create-create-anyway'),
   };
 }
 

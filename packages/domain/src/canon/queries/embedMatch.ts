@@ -55,7 +55,13 @@ export async function embedMatch(
     item,
     score: port.cosineSimilarity(queryEmbedding, item.embedding!),
   }));
-  allScored.sort((a, b) => b.score - a.score);
+  allScored.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    // Tie-break: prefer already-approved items so the review queue isn't padded.
+    const aFlag = a.item.needs_approval ? 1 : 0;
+    const bFlag = b.item.needs_approval ? 1 : 0;
+    return aFlag - bFlag;
+  });
 
   const top5 = allScored.slice(0, 5);
   const bestScore = top5[0]?.score ?? 0;

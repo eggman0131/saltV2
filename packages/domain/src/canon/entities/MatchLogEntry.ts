@@ -20,14 +20,7 @@ export interface StageLog {
   readonly skipReason: StageSkipReason | null;
 }
 
-export interface SurfacedCandidateLog {
-  readonly itemId: string;
-  readonly itemName: string;
-  readonly confidence: number;
-  readonly stage: number;
-}
-
-export type FinalDecision = 'matched' | 'created' | 'ai_arbitrated' | 'surfaced_candidates';
+export type FinalDecision = 'matched' | 'created' | 'ai_arbitrated';
 
 export interface ArbitrationLog {
   readonly reason: string;
@@ -51,6 +44,5 @@ export interface MatchLogEntry {
   readonly finalDecision: FinalDecision;
   readonly finalItemId: string | null;
   readonly finalItemName: string | null;
-  readonly surfacedCandidates: readonly SurfacedCandidateLog[] | null;
   readonly arbitration: ArbitrationLog | null;
 }

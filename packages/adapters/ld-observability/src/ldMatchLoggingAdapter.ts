@@ -78,16 +78,6 @@ export function createLDMatchLoggingAdapter(parentSpan?: ObservabilitySpan): Mat
         }
       }
 
-      if (entry.surfacedCandidates && entry.surfacedCandidates.length > 0) {
-        span.setAttribute('canon.surfaced_count', entry.surfacedCandidates.length);
-        const best = entry.surfacedCandidates[0]!;
-        span.setAttribute('canon.best_candidate', best.itemName);
-        span.setAttribute(
-          'canon.best_candidate_score',
-          parseFloat((best.confidence * 100).toFixed(1)),
-        );
-      }
-
       span.end();
       return Promise.resolve();
     },
