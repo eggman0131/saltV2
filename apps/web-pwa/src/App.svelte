@@ -14,7 +14,7 @@
   import { navItems } from './lib/nav.js';
   import { routes } from './routes/index.js';
   import { toasts, dismissToast } from './lib/toastStore.js';
-  import { initCanonSync } from './lib/canonService.js';
+  import { canonItems, initCanonSync } from './lib/canonService.js';
   import SessionOverlay from './lib/dev/SessionOverlay.svelte';
 
   // Start Firestore subscriptions when authenticated; clean up on sign-out.
@@ -22,11 +22,18 @@
     if (!auth.user) return;
     return initCanonSync();
   });
+
+  const needsApprovalCount = $derived($canonItems.filter((i) => i.needs_approval).length);
+  const decoratedNavItems = $derived(
+    navItems.map((item) =>
+      item.id === 'canon' && needsApprovalCount > 0 ? { ...item, badge: needsApprovalCount } : item,
+    ),
+  );
 </script>
 
 <AuthGate>
   <ToastProvider>
-    <AppShell {navItems} currentPath={router.location} title="Salt">
+    <AppShell navItems={decoratedNavItems} currentPath={router.location} title="Salt">
       {#snippet actions()}
         <span class="hidden text-sm text-muted-foreground sm:inline">{auth.user?.email ?? ''}</span>
         <Button variant="outline" size="sm" onclick={() => void auth.signOut()}>Sign out</Button>

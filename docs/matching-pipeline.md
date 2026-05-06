@@ -1,6 +1,18 @@
 # Canon Item Matching Pipeline
 
-When a user types a new item name, Salt runs a multi-stage pipeline to decide whether the name refers to something already in the canon or is genuinely new. Each stage is progressively slower and more expensive, so cheaper deterministic checks run first.
+Salt resolves a free-text item name to one canonical `CanonItem` through a multi-stage pipeline. Cheap deterministic checks run first; AI arbitration and embeddings run only when the deterministic stages can't decide. The pipeline is authoritative — it always returns one concrete `CanonItem` and is the only path that writes synonyms or sets `needs_approval`.
+
+The same pipeline is the entry point for all four use cases: manual canon item add, shopping list add, recipe add, and recipe ingredient update. None of them block on a user dialog mid-flow.
+
+---
+
+## Authority and runtime
+
+The pipeline lives behind a single Cloud Function callable, `matchOrCreateCanon`. The CF composes Firestore-admin stores, Genkit-backed embedding + arbitration adapters, an ID generator, and a server-side `MatchLoggingPort` that emits `canon.match` records via `firebase-functions/logger`.
+
+The client also runs a **fast-path** for stages 1–4 against the in-memory canon snapshot. If `findClosestMatch` returns a clear `'match'`, the client applies `appendCanonSynonym`, persists, and returns without a CF round-trip. `'ambiguous'` and `'none'` always escalate to the CF; `forceCreate` always escalates so the CF can run aisle arbitration. Stages 1–4 are executed by the same `findClosestMatch` function in both places, so the deterministic outcome is identical for the same canon snapshot. Both paths attach a `canon.path: 'fast' | 'cf'` attribute to their span so dashboards can split traffic.
+
+`findClosestMatch` is the only stage 1–4 entry point — `tokenMatch`, `stringSimilarity`, `synonymMatch`, and `embedMatch` are not exported and the boundary lint forbids reaching past `findClosestMatch` to call them.
 
 ---
 
@@ -8,119 +20,211 @@ When a user types a new item name, Salt runs a multi-stage pipeline to decide wh
 
 ```mermaid
 flowchart TD
-    A([User types name]) --> B[Normalise name]
-    B --> C{Stage 1\nExact name match}
+    A([Caller: rawName, selectedAisleId?, forceCreate?]) --> FAST{Client fast-path\nfindClosestMatch}
 
-    C -->|match| MATCH1[decision: matched]
-    C -->|no match| D{Stage 2\nToken overlap ≥ 0.80}
+    FAST -->|match| FASTMATCH[Apply appendCanonSynonym\nUpsert\nLog canon.match path=fast\nReturn matched]
+    FAST -->|ambiguous / none / forceCreate| CF[Cloud Function\nmatchOrCreateCanon]
 
-    D -->|best − 2nd ≥ 0.05| MATCH2[decision: matched]
-    D -->|above threshold\nbut gap too small| AMB
-    D -->|below threshold| E{Stage 3\nSynonym exact match}
+    CF --> NORM[Normalise name]
+    NORM --> FORCE{forceCreate?}
 
-    E -->|single match| MATCH3[decision: matched]
-    E -->|tie| AMB
-    E -->|no match| F{Stage 4\nString similarity ≥ 0.85}
+    FORCE -->|yes| ARBNEW[Arbitrate w/ empty shortlist\nfor aisle + metadata]
+    ARBNEW --> CREATEAI[Create new item]
 
-    F -->|best − 2nd ≥ 0.05| MATCH4[decision: matched]
-    F -->|above threshold\nbut gap too small| AMB
-    F -->|below threshold| G{Stage 5\nEmbedding ≥ 0.75}
+    FORCE -->|no| S1{Stage 1\nExact name}
+    S1 -->|1 match| MATCH[appendCanonSynonym\nUpsert\nReturn matched]
+    S1 -->|≥2 ties| ARB[AI Arbitration\nshortlist = ties]
+    S1 -->|none| S2{Stage 2\nToken overlap ≥ 0.80}
 
-    AMB{AI Arbitration} -->|AI picks a match| ARBMATCH[decision: ai_arbitrated]
-    AMB -->|AI says new item| ARBNEW[Create new\nwith AI metadata]
-    AMB -->|error / no-match| ARBNEW
+    S2 -->|gap ≥ 0.05| MATCH
+    S2 -->|near-tie above threshold| ARB
+    S2 -->|below threshold| S3{Stage 3\nSynonym exact}
 
-    G -->|one or more candidates| MATCH5[decision: matched\nbest confidence wins]
-    G -->|no candidates| H{Stage 6\nNear-miss scan ≥ 0.60}
+    S3 -->|1 match| MATCH
+    S3 -->|≥2 ties| ARB
+    S3 -->|none| S4{Stage 4\nString similarity ≥ 0.85}
 
-    H -->|0 candidates| CREATE[Create new\nwith AI aisle suggestion]
-    H -->|1 candidate| MATCH6[decision: matched]
-    H -->|2+ candidates| CANDS[decision: candidates]
+    S4 -->|gap ≥ 0.05| MATCH
+    S4 -->|near-tie above threshold| ARB
+    S4 -->|below threshold| S5[Stage 5\nEmbedding ≥ 0.75]
 
-    MATCH1 & MATCH2 & MATCH3 & MATCH4 & MATCH5 & MATCH6 & ARBMATCH --> DIALOG1[Confirm dialog\nUse existing / Create anyway]
-    CANDS --> DIALOG2[Pick dialog\nSelect one / Create anyway]
-    ARBNEW & CREATE --> DONE([Navigate to item])
+    S5 --> S6[Stage 6\nMerge w/ token+similarity ≥ 0.60]
 
-    DIALOG1 -->|Use existing| CONFIRM[confirmCanonMatch\nappend synonym]
-    DIALOG1 -->|Create anyway| FORCE[forceCreate path\nAI aisle suggestion]
-    DIALOG2 -->|Use selected| CONFIRM
-    DIALOG2 -->|Create anyway| FORCE
+    S6 -->|0 candidates| EMPTY[Arbitrate w/ empty shortlist\nfor aisle + metadata]
+    S6 -->|1 candidate| MATCH
+    S6 -->|≥2 candidates| ARB
 
-    CONFIRM --> DONE
-    FORCE --> DONE
+    EMPTY --> CREATEAI
+
+    ARB -->|AI 'match' w/ valid id| AIMATCH[appendCanonSynonym on chosen\nReturn ai_arbitrated]
+    ARB -->|AI 'new' from non-empty shortlist| CREATEAI2[Create new w/ AI metadata]
+    ARB -->|AI error / unknown id / 'no-match'| FALLBACK[Fall back: highest-confidence\ncandidate; appendCanonSynonym\nflags needs_approval\nReturn ai_arbitrated]
+
+    MATCH --> LOG[Log canon.match path=cf]
+    AIMATCH --> LOG
+    FALLBACK --> LOG
+    CREATEAI --> LOG
+    CREATEAI2 --> LOG
+    FASTMATCH --> DONE([Return CanonItem])
+    LOG --> DONE
 ```
 
 ---
 
 ## Stage-by-stage narrative
 
+> **Stages 1–4 are dual-run.** They live in [`findClosestMatch`](../packages/domain/src/canon/queries/findClosestMatch.ts) and execute on both the client fast-path (against the in-memory canon snapshot) and the CF (against the Firestore-loaded canon). Same code, same stage logs, same `'match' | 'ambiguous' | 'none'` outcome for the same input + canon. Stages 5–6 and AI arbitration are CF-only.
+
 ### Stage 1 — Exact name match
 
-Both the query and every canon item name are run through `normaliseName` (lowercase, trim, collapse whitespace) before comparison. A character-perfect match after normalisation is the highest-confidence signal possible.
-
-- **Match** → `decision: matched`, pipeline stops.
-- **No match** → continues to stage 2.
-
-The code also handles `winners.length > 1` defensively (forwarding to AI arbitration), but this can only arise if the canon already contains duplicate items with the same normalised name — a data integrity problem that should not occur in normal operation.
+Both query and every canon item name run through `normaliseName` (lowercase, trim, collapse whitespace). One winner → `match`. Two or more winners → `ambiguous` (sent to AI arbitration to disambiguate true duplicates). No winners → fall through to stage 2.
 
 ### Stage 2 — Token overlap
 
-The query and item names are each split into word tokens. The score is the proportion of query tokens that appear in the item name (and vice versa), producing a Jaccard-like overlap. Threshold: **0.80**.
-
-If the best score clears 0.80 but the gap between first and second place is smaller than the ambiguity gap (**0.05**), the candidates are too close to auto-pick and are forwarded to AI arbitration instead.
+Jaccard-style overlap between word tokens of the query and item name. Threshold **0.80**. If best ≥ threshold and (best − second) ≥ ambiguity gap (**0.05**), `match`. If best ≥ threshold but the gap is too small, all near-ties become an `ambiguous` shortlist.
 
 ### Stage 3 — Synonym exact match
 
-Each canon item carries a list of normalised synonyms accumulated from past confirmed matches. Stage 3 checks whether the normalised query exactly matches any stored synonym. Because synonyms are only written after a human confirms a match, a hit here is as reliable as an exact name match.
-
-- **Single match** → `decision: matched`.
-- **Tie** → AI arbitration.
+Each `CanonItem` carries normalised synonyms accumulated from past confirmed matches. Stage 3 checks for an exact synonym hit. Single hit → `match`. Multiple hits → `ambiguous`. No hits → fall through to stage 4.
 
 ### Stage 4 — String similarity (Levenshtein)
 
-Levenshtein edit-distance is used to score how close the query string is to each item name after normalisation. Threshold: **0.85** (handles common typos and minor spelling variants). The same ambiguity-gap rule as stage 2 applies.
+Normalised Levenshtein distance. Threshold **0.85**. Same ambiguity-gap rule as stage 2.
 
-### Stage 5 — Semantic embedding
+### Stage 5 — Embedding cosine
 
-The query is embedded using Gemini and its cosine similarity is computed against the stored embedding of every canon item that has one. Threshold: **0.75**. This catches conceptual near-equivalents that differ in wording — e.g. "spanish onions" and "onions".
+Gemini embedding of the query, cosine similarity against every canon item with a stored embedding. Threshold **0.75**. Embedding *never* auto-matches on its own — it only feeds the shortlist. Tie-break favours already-approved items so the review queue isn't padded.
 
-All candidates above the threshold are collected. `pickBest` selects the highest-confidence one by score alone — `needs_approval` status is not a tiebreaker.
+### Stage 6 — Merged shortlist + AI arbitration
 
-If no candidates pass the threshold, the pipeline falls through to stage 6.
+Stage 6 re-runs token overlap and string similarity at the lower **0.60** `aiThreshold` and merges them with stage-5 candidates into a single deduplicated shortlist ordered by confidence.
 
-### Stage 6 — Near-miss surface
-
-Stages 2 and 4 are re-run at a lower threshold (**0.60**, the `aiThreshold`) to cast a wider net. The intent is to surface plausible alternatives rather than auto-match at lower confidence.
-
-| Candidates found | Outcome |
-|---|---|
-| 0 | Item is genuinely new — create with AI aisle suggestion |
-| 1 | Single unambiguous near-miss — `decision: matched` |
-| 2+ | Surface all to the user — `decision: candidates` |
+- 0 candidates → arbitrate with an empty shortlist (purely for aisle/metadata) and create.
+- 1 candidate → `match` directly without calling arbitration.
+- ≥2 candidates → AI arbitration on the shortlist.
 
 ---
 
 ## AI Arbitration
 
-AI arbitration runs when stages 1–4 produce a near-tie (multiple candidates above the stop threshold but with a gap below 0.05). The arbitration prompt sends the normalised query, all near-tie candidates, and the full aisle list to Gemini and asks it to pick the best match or declare the query a new item.
+AI arbitration is the sole decider after stages 1–4 produce an `'ambiguous'` shortlist or stage 6 produces a multi-candidate shortlist. There is **no `'candidates'` decision and no mid-flow user dialog** — review happens later, asynchronously, via the `needs_approval` flag.
 
-Possible outcomes:
+### AI-fallback rule (behavioural contract)
 
-| AI response | Pipeline action |
-|---|---|
-| `match` (with item ID) | Return `decision: ai_arbitrated` |
-| `new` (with metadata) | Create new item using the AI-suggested aisle, shopping behaviour, and unit |
-| Error / no-match | Create new item without AI metadata |
+The pipeline falls back to the **highest-confidence shortlist candidate**, flagged `needs_approval` (set by `appendCanonSynonym`), on any of these three triggers:
+
+1. **AI adapter error.**
+2. **AI returns `kind: 'match'` with an `itemId` not present in the shortlist** (unknown id).
+3. **AI returns `kind: 'no-match'` from a non-empty shortlist.**
+
+`AI 'new'` is the **only** path that creates a brand-new item from a non-empty shortlist.
+
+The empty-shortlist case is different: with no candidates to fall back to, AI error or `'no-match'` results in a fresh create (with whatever aisle/metadata arbitration managed to return, or none). All four entry points (canon add, shopping list add, recipe add, recipe ingredient update) inherit this same rule via the shared CF.
+
+| AI response (non-empty shortlist) | Pipeline action | Decision returned |
+|---|---|---|
+| `match` with valid `itemId` | `appendCanonSynonym` on chosen item | `ai_arbitrated` |
+| `match` with unknown `itemId` | Fall back to top-confidence candidate, flag `needs_approval` | `ai_arbitrated` |
+| `new` (with metadata) | Create new item with AI-suggested aisle, behaviour, unit | `created` |
+| `no-match` | Fall back to top-confidence candidate, flag `needs_approval` | `ai_arbitrated` |
+| Error | Fall back to top-confidence candidate, flag `needs_approval` | `ai_arbitrated` |
+
+### Why fall back rather than create new
+
+A non-empty shortlist means at least one item scored above `aiThreshold` (0.60) on token overlap, similarity, or embedding cosine. Treating an AI failure mode as licence to create a duplicate would silently pad the canon with near-twins. Surfacing the resolution as `needs_approval` instead lets the human review queue catch it, while still returning a usable `CanonItem` to the caller — shopping list adds (the most latency-sensitive entry point) stay non-blocking.
 
 ---
 
-## User confirmation
+## Review via `needs_approval`
 
-Every `matched` and `ai_arbitrated` result opens a single-item confirm dialog. Every `candidates` result opens a picker. In both cases the user can either confirm an existing item or override and create a new one.
+`needs_approval` is the universal "human should look at this" signal. `appendCanonSynonym` sets it whenever a synonym is added; the AI-fallback path inherits it that way. The canon list page is the review queue: items with `needs_approval` are highlighted, promoted to the top, and support multi-select bulk-approve. The canon nav menu item carries a count badge of `needs_approval === true` items so the queue is visible from anywhere in the app.
 
-**Synonym writes happen only at confirmation.** When the user clicks "Use existing", `confirmCanonMatch` appends the normalised query to the matched item's synonym list and sets `needs_approval: true`. This ensures future searches for the same phrase resolve at stage 3 (exact synonym match) without touching the embedding API.
+The canon item detail page also exposes a **split** action: take the most-recently-added synonym off the current item and promote it into a new canon item (flagged `needs_approval`). This is the corrective path when the pipeline added a synonym to the wrong canonical item.
 
-If the user clicks "Create anyway", the `forceCreate` path runs: all match stages are skipped, AI arbitration is called with an empty candidate list purely to suggest an aisle and populate item metadata, and a new item is created.
+---
+
+## Logging schema
+
+The pipeline emits one log record per resolution. The fast-path (client) writes via the LD `MatchLoggingPort` ([`createLDMatchLoggingAdapter`](../packages/adapters/ld-observability/src/ldMatchLoggingAdapter.ts)); the CF writes via `firebase-functions/logger` ([`createServerMatchLoggingAdapter`](../apps/cloud-functions/src/adapters/serverMatchLog.ts)). Both carry a `path: 'fast' | 'cf'` discriminator.
+
+The schema below describes the **domain `MatchLogEntry`** — the in-memory log object built by `MatchLogBuilder` and passed to `MatchLoggingPort.write`. Adapters serialise this object to their destination's conventions (see [Adapter serialisation](#adapter-serialisation) for what actually goes on the wire).
+
+> **Parity target, not parity reality.** Today only the LD adapter (fast-path) emits the full per-stage record. The server `firebase-functions/logger` adapter currently emits only the top-level summary fields — no `stages[]` array, no `arbitration` block. Aligning the CF emission onto the LD schema is tracked in #30; until then, a fast-path log and a CF log for the same input + canon will agree on top-level decision/timings but only the fast-path log carries per-stage detail.
+
+### Top-level fields
+
+| Field | Type | Source |
+|---|---|---|
+| `canon.path` | `'fast' \| 'cf'` | Adapter — fast-path or CF |
+| `correlationId` | string | One per resolution |
+| `rawInput` | string | Caller's `rawName` |
+| `normalizedInput` | string | `normaliseName(rawName)` |
+| `inputItemCount` | number | Size of canon snapshot considered |
+| `totalDurationMs` | number | Wall-clock for the resolution |
+| `decision` | `'matched' \| 'created' \| 'ai_arbitrated'` | Final outcome |
+| `finalItemId` / `finalItemName` | string \| null | Resolved `CanonItem` |
+
+### Per-stage fields (stages 1–4 — fast-path + CF parity)
+
+Each stage record is one entry in the `stages[]` array. Fields and types are identical across fast-path and CF emissions.
+
+| Field | Type | Notes |
+|---|---|---|
+| `stage` | number (1–4) | Stage ordinal |
+| `stageName` | `'exact_name' \| 'token_overlap' \| 'synonym' \| 'string_similarity'` | Stable identifier |
+| `threshold` | number | Stop threshold for the stage |
+| `passed` | boolean | Whether the stage produced ≥1 candidate above threshold |
+| `consideredCount` | number | Items scored at this stage (= canon snapshot size for 1–4) |
+| `durationMs` | number | Stage wall-clock |
+| `topCandidates[]` | `{ itemId, itemName, score }[]` | Top 5 candidates by score (stages 2 & 4 always; stages 1 & 3 only when `passed`) |
+| `bestScore` | number \| null | Highest score this stage observed (1.0 for stages 1 & 3 hits) |
+| `gap` | number \| null | Stage 1: 1.0 single / 0.0 tie / null miss. Stage 2/4: (best − second) when `passed`, else (best − threshold). Stage 3: same convention as stage 1. |
+| `skipReason` | `null` for stages 1–4 | Reserved for stages 5–6 |
+
+#### Per-stage outcomes
+
+- **Stage 1** (`exact_name`) — 1 winner ⇒ `'match'`; ≥2 winners ⇒ `'ambiguous'`; otherwise fall through.
+- **Stage 2** (`token_overlap`, threshold 0.80) — best ≥ threshold and gap ≥ ambiguityGap ⇒ `'match'`; best ≥ threshold and gap < ambiguityGap ⇒ `'ambiguous'`; otherwise fall through.
+- **Stage 3** (`synonym`) — 1 hit ⇒ `'match'`; ≥2 hits ⇒ `'ambiguous'`; otherwise fall through.
+- **Stage 4** (`string_similarity`, threshold 0.85) — same shape as stage 2.
+
+`findClosestMatch` returns `'match' | 'ambiguous' | 'none'` — `'none'` is reached only when stages 1–4 all fall through (or the normalised input is empty). The resolved `CanonItem` and final `decision` are set by `matchOrCreate` (CF) or by the fast-path branch in `addCanonItem` (client).
+
+### Per-stage fields (stages 5–6 — CF only)
+
+These stages run only on the CF (the client fast-path never embeds or arbitrates). The same `StageLog` shape is reused, with `skipReason` populated when the stage cannot run.
+
+**Stage 5 — `embedding`** (threshold 0.75)
+
+| Field | Notes |
+|---|---|
+| `topCandidates[].score` | Cosine similarity |
+| `topCandidates[].reason` | `cosine:<score>` for traceability |
+| `bestScore` | Best cosine observed; null if skipped |
+| `gap` | best − stage5Stop (negative when not passing) |
+| `skipReason` | `'no_items'` (no canon items have an embedding) or `'embedding_error'` (port returned err); `null` when the stage ran |
+
+**Stage 6 — merged shortlist** (`aiThreshold` 0.60)
+
+Stage 6 is implicit in `matchOrCreate`'s `buildShortlist`: it merges stage 5's passing embeddings with token overlap ≥ 0.60 and string similarity ≥ 0.60, deduplicates by item id (highest-confidence wins), and orders by confidence. There is no separate `StageLog` entry for stage 6 today; arbitration over the resulting shortlist is captured in the top-level `arbitration` field instead:
+
+| `arbitration` field | Notes |
+|---|---|
+| `reason` | `'ambiguous_near_tie' \| 'near_miss_shortlist' \| 'aisle_suggestion'` |
+| `candidatesIn` | Shortlist size at arbitration time |
+| `aislesIn` | Aisle list size sent to the AI |
+| `prompt` / `rawResponse` | Truncated where the LD attribute cap (2000 chars) applies |
+| `outcome` | `'match' \| 'new' \| 'no-match' \| 'error'` |
+| `durationMs` | AI call wall-clock |
+
+> Server-side observability for stages 5–6 currently emits structured `firebase-functions/logger` records only, with the top-level summary fields above; reconciling the CF emission with LaunchDarkly (so stages 5–6 land on the same dashboards as the fast-path stages 1–4) is tracked in #30.
+
+### Adapter serialisation
+
+The two adapters consume the same `MatchLogEntry` object but emit it differently:
+
+- **LD adapter** ([`ldMatchLoggingAdapter.ts`](../packages/adapters/ld-observability/src/ldMatchLoggingAdapter.ts)) — opens a `canon.stages: <rawInput>` span (parented to the caller's `canon.add` span when present) and writes top-level fields as `canon.*` attributes (`canon.path`, `canon.summary`, `canon.trace`, `canon.input_count`, `canon.total_duration_ms`, `canon.decision`, `canon.correlation_id`, `canon.input`, `canon.normalized`, `canon.result`, `canon.result_id`). Per-stage fields are written as `stage.{n}.passed`, `stage.{n}.considered_count`, `stage.{n}.duration_ms`, `stage.{n}.best_score`, `stage.{n}.gap`, `stage.{n}.best_name`, `stage.{n}.top` (JSON-stringified array). Scores and gaps are scaled `×100` and rounded to 2dp on the wire (so `bestScore: 0.8421` becomes `stage.2.best_score: 84.21`). Arbitration prompt and raw response are truncated to 2000 chars (LD attribute cap).
+- **Server adapter** ([`serverMatchLog.ts`](../apps/cloud-functions/src/adapters/serverMatchLog.ts)) — emits `logger.info('canon.match', { … })` with `path: 'cf'`, `summary` (one-line trace), `correlationId`, `decision`, `rawInput`, `normalizedInput`, `finalItemId`, `finalItemName`, `inputItemCount`, `totalDurationMs`. **No per-stage fields and no arbitration fields are emitted today** (#30).
 
 ---
 
@@ -128,7 +232,9 @@ If the user clicks "Create anyway", the `forceCreate` path runs: all match stage
 
 | Constant | Value | Used at |
 |---|---|---|
+| `stage1Stop` | 1.0 | Stage 1 normalised exact match (sentinel) |
 | `stage2Stop` | 0.80 | Stage 2 token overlap stop |
+| `stage3Stop` | 1.0 | Stage 3 synonym exact match (sentinel) |
 | `stage4Stop` | 0.85 | Stage 4 string similarity stop |
 | `stage5Stop` | 0.75 | Stage 5 embedding stop |
 | `aiThreshold` | 0.60 | Stage 6 near-miss collection |

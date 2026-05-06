@@ -7,6 +7,7 @@ export function createServerMatchLoggingAdapter(): MatchLoggingPort {
     write(entry) {
       const { oneLine } = summarizeMatchLog(entry);
       logger.info('canon.match', {
+        path: 'cf',
         summary: oneLine,
         correlationId: entry.id,
         decision: entry.finalDecision,

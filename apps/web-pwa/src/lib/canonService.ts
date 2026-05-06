@@ -4,11 +4,18 @@ import {
   subscribeAisles,
   callMatchOrCreate,
 } from '@salt/firebase-sync';
-import { createLDErrorReportingAdapter, startSpan } from '@salt/ld-observability';
+import {
+  createLDErrorReportingAdapter,
+  createLDMatchLoggingAdapter,
+  startSpan,
+} from '@salt/ld-observability';
 import {
   approveCanonItem,
   appendCanonSynonym,
+  createCanonItem,
   findClosestMatch,
+  MatchLogBuilder,
+  normaliseName,
   renameCanonItem,
   setCanonItemAisle,
   setCanonItemSynonyms,
@@ -25,7 +32,7 @@ import type {
   MatchOrCreateResult,
   ShoppingBehavior,
 } from '@salt/domain';
-import { success, type DomainError, type Result } from '@salt/shared-types';
+import { ErrorCode, failure, success, type DomainError, type Result } from '@salt/shared-types';
 import { writable, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 
@@ -194,13 +201,21 @@ export async function addCanonItem(
     // owns AI arbitration. forceCreate also bypasses (CF runs aisle arbitration).
     if (!forceCreate) {
       const localItems = get(_canonItems);
-      const local = findClosestMatch(localItems, rawName);
+      const normalised = normaliseName(rawName);
+      const logBuilder = new MatchLogBuilder();
+      logBuilder.start(rawName, normalised);
+      logBuilder.setInputItemCount(localItems.length);
+      const local = findClosestMatch(localItems, rawName, logBuilder);
       if (local.kind === 'match') {
         const updated = appendCanonSynonym(local.candidate.item, rawName);
         if (updated !== local.candidate.item) await upsertCanonItem(updated);
         span.setAttribute('canon.outcome', 'matched');
         span.setAttribute('canon.path', 'fast');
         span.setAttribute('canon.result', updated.name);
+        const entry = logBuilder.complete(crypto.randomUUID(), 'matched', updated.id, updated.name);
+        void createLDMatchLoggingAdapter('fast', span)
+          .write(entry)
+          .catch(() => {});
         return success({ decision: 'matched' as const, item: updated });
       }
     }
@@ -292,6 +307,24 @@ export async function approveCanonItems(ids: string[]): Promise<void> {
       return Promise.resolve();
     }),
   );
+}
+
+export async function splitMostRecentSynonym(
+  item: CanonItem,
+): Promise<Result<CanonItem, DomainError>> {
+  if (item.synonyms.length === 0) {
+    return failure({ kind: 'ValidationError', code: ErrorCode.INVALID_CANON_NAME });
+  }
+  const synonym = item.synonyms[item.synonyms.length - 1]!;
+  const created = createCanonItem(
+    { name: synonym, needs_approval: true },
+    { newCanonId: () => crypto.randomUUID(), newAisleId: () => crypto.randomUUID() },
+  );
+  if (created.kind !== 'ok') return created;
+  const trimmed: CanonItem = { ...item, synonyms: item.synonyms.slice(0, -1) };
+  await upsertCanonItem(created.value);
+  await upsertCanonItem(trimmed);
+  return created;
 }
 
 export async function deleteCanonItem(id: string): Promise<Result<void, DomainError>> {

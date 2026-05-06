@@ -9,7 +9,10 @@ function truncate(s: string): string {
   return s.length > LD_ATTR_MAX ? s.slice(0, LD_ATTR_MAX) : s;
 }
 
-export function createLDMatchLoggingAdapter(parentSpan?: ObservabilitySpan): MatchLoggingPort {
+export function createLDMatchLoggingAdapter(
+  path: 'fast' | 'cf',
+  parentSpan?: ObservabilitySpan,
+): MatchLoggingPort {
   return {
     write(entry: MatchLogEntry): Promise<void> {
       const span = startSpan(
@@ -18,6 +21,7 @@ export function createLDMatchLoggingAdapter(parentSpan?: ObservabilitySpan): Mat
       );
       const { oneLine, multiLine } = summarizeMatchLog(entry);
 
+      span.setAttribute('canon.path', path);
       span.setAttribute('canon.summary', oneLine);
       span.setAttribute('canon.trace', multiLine);
       span.setAttribute('canon.input_count', entry.inputItemCount);

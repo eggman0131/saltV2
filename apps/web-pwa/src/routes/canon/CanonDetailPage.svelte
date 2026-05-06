@@ -36,6 +36,7 @@
     updateCanonItemThreshold,
     approveCanonItemWithOverrides,
     deleteCanonItem,
+    splitMostRecentSynonym,
   } from '../../lib/canonService.js';
   import { aisles } from '../../lib/aisleService.js';
   import { addToast } from '../../lib/toastStore.js';
@@ -180,6 +181,21 @@
     ...$aisles.map((a) => ({ value: a.id, label: titleCase(a.name) })),
   ]);
 
+  // Split (most recent synonym → new canon item)
+  let splitBusy = $state(false);
+
+  async function handleSplit(): Promise<void> {
+    if (!item || item.synonyms.length === 0) return;
+    splitBusy = true;
+    const last = item.synonyms[item.synonyms.length - 1]!;
+    const result = await splitMostRecentSynonym(item);
+    splitBusy = false;
+    if (result.kind === 'ok') {
+      addToast(`Split "${titleCase(last)}" into a new item`, 'success');
+      push(`/canon/${result.value.id}`);
+    }
+  }
+
   // Delete
   let deleteOpen = $state(false);
   let deleteBusy = $state(false);
@@ -263,6 +279,21 @@
       {/snippet}
 
       {#snippet actions()}
+        {#if item.synonyms.length > 0}
+          <Button
+            data-testid="canon-detail-split-button"
+            variant="outline"
+            size="sm"
+            onclick={handleSplit}
+            loading={splitBusy}
+            disabled={splitBusy}
+          >
+            {#snippet leading()}
+              <Icon name="Split" size={16} />
+            {/snippet}
+            Split
+          </Button>
+        {/if}
         <Button
           data-testid="canon-detail-delete-button"
           variant="destructive"
