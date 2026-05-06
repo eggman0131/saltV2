@@ -84,7 +84,7 @@ const saltFocusRingPlugin = plugin(({ addBase, addUtilities }) => {
   // Global default: every focusable element gets the same ring automatically.
   addBase({
     ':focus-visible': {
-      outline: '2px solid hsl(var(--border))',
+      outline: '2px solid hsl(var(--salt-border))',
       'outline-offset': '0px',
     },
   });

@@ -125,6 +125,7 @@ describe('tailwind-preset', () => {
       expect(addBase).toHaveBeenCalledOnce();
       const [rules] = addBase.mock.calls[0] as [Record<string, Record<string, string>>];
       expect(rules).toHaveProperty(':focus-visible');
+      expect(rules[':focus-visible']['outline']).toBe('2px solid hsl(var(--salt-border))');
       expect(rules[':focus-visible']['outline-offset']).toBe('0px');
     });
 
