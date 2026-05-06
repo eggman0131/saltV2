@@ -154,7 +154,7 @@
     <div class="flex shrink-0 items-center gap-1">
       <input
         type="number"
-        class="h-7 w-16 rounded-md border border-input bg-background px-2 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+        class="h-7 w-16 rounded border border-input bg-background px-2 text-xs placeholder:text-muted-foreground salt-focus-ring"
         placeholder="Qty"
         min="0"
         step="1"
