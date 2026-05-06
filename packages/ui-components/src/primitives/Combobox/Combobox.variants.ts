@@ -8,7 +8,7 @@ export const comboboxTriggerVariants = cva(
 );
 
 export const comboboxContentVariants = cva(
-  'min-w-48 overflow-hidden rounded-b-md border border-border bg-popover text-popover-foreground shadow-md outline-none',
+  'min-w-48 overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-md outline-none',
 );
 
 export const comboboxItemVariants = cva(
