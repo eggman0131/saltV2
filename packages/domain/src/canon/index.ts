@@ -30,6 +30,8 @@ export type { MatchLoggingPort } from './ports/MatchLoggingPort.js';
 export type { EmbeddingPort } from './ports/EmbeddingPort.js';
 export { MatchLogBuilder } from './commands/buildMatchLog.js';
 export { embedMatch } from './queries/embedMatch.js';
+export { findClosestMatch } from './queries/findClosestMatch.js';
+export type { FindClosestMatchResult } from './queries/findClosestMatch.js';
 export type {
   CanonArbitrationPort,
   ArbitrationRequest,

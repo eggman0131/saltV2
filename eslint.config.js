@@ -48,6 +48,18 @@ const SALT_APP_IMPORTS = [
   '@salt/cloud-functions/*',
 ];
 
+// Stage 1–4 / stage 5 internals that must only be reached via findClosestMatch
+// (or, in domain itself, matchOrCreate). Apps must never call these directly.
+const STAGE_INTERNAL_NAMES = ['tokenMatch', 'stringSimilarity', 'synonymMatch', 'embedMatch'];
+const STAGE_INTERNAL_SUBPATHS = [
+  '@salt/domain/**/queries/tokenMatch*',
+  '@salt/domain/**/queries/stringSimilarity*',
+  '@salt/domain/**/queries/synonymMatch*',
+  '@salt/domain/**/queries/embedMatch*',
+];
+const STAGE_INTERNAL_MESSAGE =
+  'Stage 1–5 internals (tokenMatch, stringSimilarity, synonymMatch, embedMatch) must not be called directly from apps. Use findClosestMatch (which composes stages 1–4) or call the matchOrCreateCanon CF.';
+
 function forbidGroup(pkgs, message) {
   return pkgs.map((g) => ({ group: [g], message }));
 }
@@ -437,6 +449,12 @@ export default [
               ['@salt/ld-observability', '@salt/ld-observability/*'],
               'Cloud Functions must not import @salt/ld-observability — the LaunchDarkly Observability SDK is browser-only. Log via firebase-functions/logger instead.',
             ),
+            ...forbidGroup(STAGE_INTERNAL_SUBPATHS, STAGE_INTERNAL_MESSAGE),
+            {
+              group: ['@salt/domain', '@salt/domain/*'],
+              importNames: STAGE_INTERNAL_NAMES,
+              message: STAGE_INTERNAL_MESSAGE,
+            },
           ],
         },
       ],
@@ -456,6 +474,34 @@ export default [
               ['@salt/firebase-sync/src', '@salt/firebase-sync/src/**'],
               'web-pwa must not import firebase-sync internals. Use the published package root (@salt/firebase-sync) only.',
             ),
+            ...forbidGroup(STAGE_INTERNAL_SUBPATHS, STAGE_INTERNAL_MESSAGE),
+            {
+              group: ['@salt/domain', '@salt/domain/*'],
+              importNames: STAGE_INTERNAL_NAMES,
+              message: STAGE_INTERNAL_MESSAGE,
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  // Apps (production code): must not call canon stage internals directly.
+  // findClosestMatch (stages 1–4) and matchOrCreate are the only allowed entry points.
+  {
+    files: ['apps/web-pwa/src/**/*.ts', 'apps/cloud-functions/src/**/*.ts'],
+    ignores: ['**/__boundary_tests__/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            ...forbidGroup(STAGE_INTERNAL_SUBPATHS, STAGE_INTERNAL_MESSAGE),
+            {
+              group: ['@salt/domain', '@salt/domain/*'],
+              importNames: STAGE_INTERNAL_NAMES,
+              message: STAGE_INTERNAL_MESSAGE,
+            },
           ],
         },
       ],

@@ -84,6 +84,14 @@ expect_lint_error \
   "apps/web-pwa/src/__boundary_tests__/no-firebase-sync-internal.ts" \
   "web-pwa cannot import firebase-sync internal subpaths"
 
+expect_lint_error \
+  "apps/web-pwa/src/__boundary_tests__/no-stage-internals.ts" \
+  "web-pwa cannot import canon stage internals (must go through findClosestMatch)"
+
+expect_lint_error \
+  "apps/cloud-functions/src/__boundary_tests__/no-stage-internals.ts" \
+  "cloud-functions cannot import canon stage internals (must go through findClosestMatch)"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 

@@ -44,6 +44,7 @@ export {
   MatchLogBuilder,
   MATCH_THRESHOLDS,
   embedMatch,
+  findClosestMatch,
   matchOrCreate,
   appendCanonSynonym,
   createAisle,
@@ -57,6 +58,7 @@ export {
 } from './canon/index.js';
 export type {
   ConflictStrategy,
+  FindClosestMatchResult,
   MatchOrCreateInput,
   MatchOrCreatePorts,
   MatchOrCreateResult,

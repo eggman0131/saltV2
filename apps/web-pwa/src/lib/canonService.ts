@@ -7,6 +7,8 @@ import {
 import { createLDErrorReportingAdapter, startSpan } from '@salt/ld-observability';
 import {
   approveCanonItem,
+  appendCanonSynonym,
+  findClosestMatch,
   renameCanonItem,
   setCanonItemAisle,
   setCanonItemSynonyms,
@@ -23,7 +25,7 @@ import type {
   MatchOrCreateResult,
   ShoppingBehavior,
 } from '@salt/domain';
-import type { DomainError, Result } from '@salt/shared-types';
+import { success, type DomainError, type Result } from '@salt/shared-types';
 import { writable, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 
@@ -187,6 +189,21 @@ export async function addCanonItem(
 ): Promise<Result<MatchOrCreateResult, DomainError>> {
   const span = startSpan(`canon.add: ${rawName}`);
   try {
+    // Fast-path: stages 1–4 against the in-memory canon. Only a clear 'match'
+    // short-circuits — 'ambiguous' and 'none' must escalate to the CF, which
+    // owns AI arbitration. forceCreate also bypasses (CF runs aisle arbitration).
+    if (!forceCreate) {
+      const localItems = get(_canonItems);
+      const local = findClosestMatch(localItems, rawName);
+      if (local.kind === 'match') {
+        const updated = appendCanonSynonym(local.candidate.item, rawName);
+        if (updated !== local.candidate.item) await upsertCanonItem(updated);
+        span.setAttribute('canon.outcome', 'matched');
+        span.setAttribute('canon.path', 'fast');
+        span.setAttribute('canon.result', updated.name);
+        return success({ decision: 'matched' as const, item: updated });
+      }
+    }
     const result = await callMatchOrCreate({
       rawName,
       selectedAisleId,
@@ -194,6 +211,7 @@ export async function addCanonItem(
     });
     if (result.kind === 'ok') {
       span.setAttribute('canon.outcome', result.value.decision);
+      span.setAttribute('canon.path', 'cf');
       span.setAttribute('canon.result', result.value.item.name);
     } else {
       span.setAttribute('canon.error', result.error.kind);
