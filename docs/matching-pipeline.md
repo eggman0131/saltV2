@@ -11,8 +11,7 @@ flowchart TD
     A([User types name]) --> B[Normalise name]
     B --> C{Stage 1\nExact name match}
 
-    C -->|single match| MATCH1[decision: matched]
-    C -->|tie| AMB[AI Arbitration]
+    C -->|match| MATCH1[decision: matched]
     C -->|no match| D{Stage 2\nToken overlap ≥ 0.80}
 
     D -->|best − 2nd ≥ 0.05| MATCH2[decision: matched]
@@ -59,9 +58,10 @@ flowchart TD
 
 Both the query and every canon item name are run through `normaliseName` (lowercase, trim, collapse whitespace) before comparison. A character-perfect match after normalisation is the highest-confidence signal possible.
 
-- **Single match** → `decision: matched`, pipeline stops.
-- **Tie** (two items with the same normalised name) → forwarded to AI arbitration.
+- **Match** → `decision: matched`, pipeline stops.
 - **No match** → continues to stage 2.
+
+The code also handles `winners.length > 1` defensively (forwarding to AI arbitration), but this can only arise if the canon already contains duplicate items with the same normalised name — a data integrity problem that should not occur in normal operation.
 
 ### Stage 2 — Token overlap
 

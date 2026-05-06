@@ -54,18 +54,8 @@ export function findClosestMatch(
       gap,
       skipReason: null,
     });
-    if (winners.length === 1) {
+    if (winners.length >= 1) {
       return { kind: 'match', candidate: { item: winners[0]!, confidence: 1.0, stage: 1 } };
-    }
-    if (winners.length > 1) {
-      return {
-        kind: 'ambiguous',
-        candidates: winners.map((item) => ({
-          item,
-          confidence: 1.0,
-          stage: 1 as MatchCandidate['stage'],
-        })),
-      };
     }
   }
 
