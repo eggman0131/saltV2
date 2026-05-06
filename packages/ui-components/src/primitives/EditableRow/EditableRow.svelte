@@ -28,7 +28,7 @@
     </div>
   {/if}
   {#if wide}
-    <div class="hidden sm:flex flex-1 min-w-0 items-center gap-2 overflow-x-auto py-0.5">
+    <div class="hidden sm:flex flex-1 min-w-0 items-center gap-2">
       {@render wide()}
     </div>
   {/if}
