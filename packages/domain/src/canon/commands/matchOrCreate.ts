@@ -192,19 +192,21 @@ export async function matchOrCreate(
     items,
     logBuilder ?? undefined,
   );
-  if (embedCandidates.length > 0) {
-    const winner = pickBest(embedCandidates);
-    commitLog('matched', winner.item.id, winner.item.name);
-    return success({ item: winner.item, decision: 'matched' });
-  }
-
-  // Collect near-miss candidates from stages 2 & 4 above aiThreshold for stage 6.
+  // Stages 5+6: merge embedding candidates with token/string near-misses into a single
+  // shortlist, then let AI arbitration decide. Embedding ranks items by semantic distance;
+  // the near-miss scan adds anything above aiThreshold that embedding may have missed.
   const aiCandidateMap = new Map<string, MatchCandidate>();
+  for (const c of embedCandidates) {
+    aiCandidateMap.set(c.item.id, c);
+  }
   for (const item of items) {
     const normItem = normaliseName(item.name);
     const s2 = tokenMatch(normalisedName, normItem);
     if (s2 >= MATCH_THRESHOLDS.aiThreshold) {
-      aiCandidateMap.set(item.id, { item, confidence: s2, stage: 2 });
+      const existing = aiCandidateMap.get(item.id);
+      if (!existing || s2 > existing.confidence) {
+        aiCandidateMap.set(item.id, { item, confidence: s2, stage: 2 });
+      }
     }
     const s4 = stringSimilarity(normalisedName, normItem);
     if (s4 >= MATCH_THRESHOLDS.aiThreshold) {
@@ -216,14 +218,53 @@ export async function matchOrCreate(
   }
   const aiCandidates = [...aiCandidateMap.values()].sort((a, b) => b.confidence - a.confidence);
 
-  // Stage 6: surface near-miss candidates to the user rather than auto-picking.
-  // With a single candidate above the threshold there's no ambiguity — match directly.
-  // With multiple candidates the human picks; AI arbitration was unreliable here.
-  if (aiCandidates.length === 1) {
-    commitLog('matched', aiCandidates[0]!.item.id, aiCandidates[0]!.item.name);
-    return success({ item: aiCandidates[0]!.item, decision: 'matched' });
-  }
-  if (aiCandidates.length > 1) {
+  if (aiCandidates.length > 0) {
+    const aislesResult = await aisleStore.load();
+    const aisles = aislesResult.kind === 'ok' ? (aislesResult.value?.aisles ?? []) : [];
+
+    const arbT0 = Date.now();
+    const arbResult = await arbitration.arbitrate({
+      normalisedName,
+      candidates: [...aiCandidates],
+      aisles,
+    });
+    const arbDuration = Math.max(0, Date.now() - arbT0);
+
+    if (logBuilder) {
+      const outcome = arbResult.kind === 'ok' ? arbResult.value.kind : 'error';
+      logBuilder.setArbitration({
+        reason: 'near_miss_shortlist',
+        candidatesIn: aiCandidates.length,
+        aislesIn: aisles.length,
+        prompt: arbResult.kind === 'ok' ? (arbResult.value.prompt ?? '') : '',
+        rawResponse: arbResult.kind === 'ok' ? (arbResult.value.rawResponse ?? '') : '',
+        outcome,
+        durationMs: arbDuration,
+      });
+    }
+
+    if (arbResult.kind === 'ok') {
+      const arb = arbResult.value;
+      if (arb.kind === 'match') {
+        const matchedItem = aiCandidates.find((c) => c.item.id === arb.itemId)?.item ?? null;
+        if (matchedItem !== null) {
+          commitLog('ai_arbitrated', matchedItem.id, matchedItem.name);
+          return success({ item: matchedItem, decision: 'ai_arbitrated' });
+        }
+      }
+      if (arb.kind === 'new') {
+        return persistNew(store, ids, rawName, selectedAisleId ?? arb.aisleId ?? null, commitLog, {
+          shoppingBehavior: arb.shoppingBehavior,
+          ...(arb.largeQuantityThreshold !== undefined
+            ? { largeQuantityThreshold: arb.largeQuantityThreshold }
+            : {}),
+          ...(arb.unit !== undefined ? { unit: arb.unit } : {}),
+          ...(arb.reasoning !== undefined ? { reasoning: arb.reasoning } : {}),
+        });
+      }
+    }
+
+    // Arbitration failed — surface candidates so the user can decide.
     const surfaced: SurfacedCandidateLog[] = aiCandidates.map((c) => ({
       itemId: c.item.id,
       itemName: c.item.name,
@@ -234,7 +275,7 @@ export async function matchOrCreate(
     return success({ decision: 'candidates', candidates: aiCandidates.map((c) => c.item) });
   }
 
-  // No match found anywhere: create a new item from rawName.
+  // No candidates anywhere — create a new item from rawName.
   // Run arbitration with empty candidates to populate aisle + item metadata.
   let finalAisleId = selectedAisleId ?? null;
   let newExtras: ArbitrationExtras | undefined;
@@ -279,13 +320,6 @@ interface ArbitrationExtras {
   readonly largeQuantityThreshold?: number;
   readonly unit?: CanonItemUnit;
   readonly reasoning?: string;
-}
-
-function pickBest(candidates: readonly MatchCandidate[]): MatchCandidate {
-  return candidates.reduce(
-    (best, c) => (c.confidence > best.confidence ? c : best),
-    candidates[0]!,
-  );
 }
 
 async function persistNew(
