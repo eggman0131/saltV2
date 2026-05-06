@@ -80,14 +80,22 @@ const cssVarsPlugin = plugin(({ addBase }) => {
   });
 });
 
-const saltFocusRingPlugin = plugin(({ addUtilities }) => {
+const saltFocusRingPlugin = plugin(({ addBase, addUtilities }) => {
+  // Global default: every focusable element gets the same ring automatically.
+  addBase({
+    ':focus-visible': {
+      outline: '2px solid hsl(var(--border))',
+      'outline-offset': '0px',
+    },
+  });
+  // Explicit utilities kept for wrapper divs (focus-within) and overrides.
   addUtilities({
     '.salt-focus-ring': {
-      '@apply focus-visible:outline focus-visible:outline-2 focus-visible:outline-border focus-visible:outline-offset-1':
+      '@apply focus-visible:outline focus-visible:outline-2 focus-visible:outline-border focus-visible:outline-offset-0':
         {},
     },
     '.salt-focus-ring-within': {
-      '@apply focus-within:outline focus-within:outline-2 focus-within:outline-border focus-within:outline-offset-1':
+      '@apply focus-within:outline focus-within:outline-2 focus-within:outline-border focus-within:outline-offset-0':
         {},
     },
   });
@@ -97,7 +105,7 @@ const saltComponentPlugin = plugin(({ addComponents }) => {
   addComponents({
     // ─ Button ─────────────────────────────────────────────────────────
     '.salt-button': {
-      '@apply inline-flex items-center justify-center gap-2 rounded font-medium transition-colors duration-fast ease-standard motion-reduce:transition-none disabled:pointer-events-none data-[disabled]:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-border focus-visible:outline-offset-1':
+      '@apply inline-flex items-center justify-center gap-2 rounded font-medium transition-colors duration-fast ease-standard motion-reduce:transition-none disabled:pointer-events-none data-[disabled]:opacity-50':
         {},
     },
     '.salt-button--solid': { '@apply bg-primary text-primary-foreground hover:bg-primary/90': {} },
@@ -137,17 +145,14 @@ const saltComponentPlugin = plugin(({ addComponents }) => {
 
     // ─ Trigger (SelectTrigger) ────────────────────────────────────────
     '.salt-trigger': {
-      '@apply flex h-9 w-full items-center justify-between gap-2 rounded border border-input bg-background px-3 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-border focus-visible:outline-offset-1':
+      '@apply flex h-9 w-full items-center justify-between gap-2 rounded border border-input bg-background px-3 text-sm':
         {},
     },
     '.salt-trigger--disabled': { '@apply cursor-not-allowed opacity-50 pointer-events-none': {} },
     '.salt-trigger--enabled': { '@apply cursor-pointer hover:bg-accent/50': {} },
 
     // ─ Control (Checkbox / Radio / Switch) ────────────────────────────
-    '.salt-control': {
-      '@apply focus-visible:outline focus-visible:outline-2 focus-visible:outline-border focus-visible:outline-offset-1':
-        {},
-    },
+    '.salt-control': {},
     // Checkbox
     '.salt-control--checkbox': {
       '@apply shrink-0 min-h-0 rounded-sm border border-input bg-background aspect-square data-[state=checked]:bg-secondary data-[state=checked]:text-secondary-foreground':

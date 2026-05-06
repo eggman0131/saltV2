@@ -158,7 +158,7 @@
     <div class="mb-4 flex flex-wrap items-end gap-2">
       <div class="flex-1">
         <input
-          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          class="w-full rounded border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground"
           placeholder="Filter items…"
           type="search"
           bind:value={filterText}

@@ -260,7 +260,7 @@
       <div class="mb-4 flex flex-wrap items-end gap-2">
         <div class="flex-1">
           <input
-            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            class="w-full rounded border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground"
             placeholder="Filter aisles…"
             type="search"
             bind:value={filterText}
@@ -305,7 +305,7 @@
             {#if editingId === aisle.id}
               <input
                 bind:this={editInputEl}
-                class="flex-1 rounded border border-ring bg-background px-2 py-0.5 text-sm focus:outline-none"
+                class="flex-1 rounded border border-input bg-background px-2 py-0.5 text-sm"
                 bind:value={editingName}
                 onblur={() => commitRename(aisle.id)}
                 onkeydown={(e) => handleRenameKeydown(e, aisle.id)}

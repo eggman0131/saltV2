@@ -117,6 +117,17 @@ describe('tailwind-preset', () => {
   });
 
   describe('salt-focus-ring plugin', () => {
+    it('adds global :focus-visible base rule', () => {
+      const focusPlugin = preset.plugins[2];
+      const addBase = vi.fn();
+      const handler = getHandler(focusPlugin);
+      handler!({ addBase, addUtilities: vi.fn(), theme: vi.fn() });
+      expect(addBase).toHaveBeenCalledOnce();
+      const [rules] = addBase.mock.calls[0] as [Record<string, Record<string, string>>];
+      expect(rules).toHaveProperty(':focus-visible');
+      expect(rules[':focus-visible']['outline-offset']).toBe('0px');
+    });
+
     it('registers .salt-focus-ring utility', () => {
       const focusPlugin = preset.plugins[2];
       const addUtilities = vi.fn();
@@ -139,7 +150,7 @@ describe('tailwind-preset', () => {
       expect(applyKey).toContain('focus-visible:outline');
       expect(applyKey).toContain('focus-visible:outline-2');
       expect(applyKey).toContain('focus-visible:outline-border');
-      expect(applyKey).toContain('focus-visible:outline-offset-1');
+      expect(applyKey).toContain('focus-visible:outline-offset-0');
     });
   });
 
