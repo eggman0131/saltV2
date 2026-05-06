@@ -1,6 +1,3 @@
-#!/bin/sh
-. "$(dirname "$0")/_/husky.sh"
-
 # Use absolute path to pnpm for sandboxed environments
 /home/eggman/.local/share/pnpm/pnpm exec lint-staged
 /home/eggman/.local/share/pnpm/pnpm typecheck
