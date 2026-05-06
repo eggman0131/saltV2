@@ -94,10 +94,6 @@
         >
           Review
         </span>
-      {:else if item.aisleId}
-        <Text muted size="sm"
-          >{titleCase(aisles.find((a) => a.id === item.aisleId)?.name ?? '')}</Text
-        >
       {/if}
     </button>
   {/snippet}
@@ -124,7 +120,7 @@
       onValueChange={handleAisleChange}
       restrict
     >
-      <ComboboxField class="w-32 shrink-0">
+      <ComboboxField class="w-44 shrink-0">
         <ComboboxInput class="h-7 px-2 text-xs" placeholder="Aisle…" />
         <ComboboxTrigger class="h-7" />
       </ComboboxField>
