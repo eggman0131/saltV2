@@ -2,19 +2,11 @@ import {
   subscribeCanonItems,
   upsertCanonItem,
   subscribeAisles,
-  createGeminiEmbeddingAdapter,
-  createGeminiArbitrationAdapter,
+  callMatchOrCreate,
 } from '@salt/firebase-sync';
-import {
-  createLDMatchLoggingAdapter,
-  createLDErrorReportingAdapter,
-  startSpan,
-} from '@salt/ld-observability';
-import type { ObservabilitySpan } from '@salt/ld-observability';
-import type { CanonArbitrationPort, EmbeddingPort } from '@salt/domain';
+import { createLDErrorReportingAdapter, startSpan } from '@salt/ld-observability';
 import {
   approveCanonItem,
-  matchOrCreate,
   renameCanonItem,
   setCanonItemAisle,
   setCanonItemSynonyms,
@@ -31,7 +23,6 @@ import type {
   MatchOrCreateResult,
   ShoppingBehavior,
 } from '@salt/domain';
-import { failure } from '@salt/shared-types';
 import type { DomainError, Result } from '@salt/shared-types';
 import { writable, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
@@ -85,7 +76,9 @@ function recomputeAisleUsage(): void {
   _aisleUsage.set(usage);
 }
 
-// ─── In-memory store adapters (for domain commands) ─────────────────────────────
+// ─── In-memory store adapters ───────────────────────────────────────────────────
+// Used by aisleService for delete/merge flows that still run in the client.
+// The canon match/create path runs in the CF and no longer touches these.
 
 export function memAisleStore(seed: readonly Aisle[]) {
   let written: readonly Aisle[] | null = null;
@@ -185,71 +178,6 @@ export function initCanonSync(): () => void {
   };
 }
 
-// ─── Traced arbitration adapter ──────────────────────────────────────────────────
-
-function createTracedEmbeddingAdapter(
-  inner: EmbeddingPort,
-  parentSpan?: ObservabilitySpan,
-): EmbeddingPort {
-  return {
-    async computeEmbedding(text) {
-      const span = startSpan(
-        `canon.embed: ${text}`,
-        parentSpan ? { parent: parentSpan } : undefined,
-      );
-      try {
-        return await inner.computeEmbedding(text);
-      } finally {
-        span.end();
-      }
-    },
-    cosineSimilarity(a, b) {
-      return inner.cosineSimilarity(a, b);
-    },
-  };
-}
-
-function createTracedArbitrationAdapter(
-  inner: CanonArbitrationPort,
-  parentSpan?: ObservabilitySpan,
-): CanonArbitrationPort {
-  return {
-    async arbitrate(req) {
-      const span = startSpan(
-        `canon.arbitrate: ${req.normalisedName}`,
-        parentSpan ? { parent: parentSpan } : undefined,
-      );
-      span.setAttribute('arbitration.ingredient', req.normalisedName);
-      span.setAttribute('arbitration.aisle_count', req.aisles.length);
-      try {
-        const result = await inner.arbitrate(req);
-        if (result.kind === 'ok') {
-          const r = result.value;
-          if (r.kind === 'match') {
-            span.setAttribute('arbitration.outcome', 'match');
-            span.setAttribute(
-              'arbitration.confidence',
-              parseFloat((r.confidence * 100).toFixed(1)),
-            );
-          } else if (r.kind === 'new') {
-            span.setAttribute('arbitration.outcome', 'new');
-            const aisle = req.aisles.find((a) => a.id === r.aisleId);
-            span.setAttribute('arbitration.suggested_aisle', aisle?.name ?? 'none');
-          } else {
-            span.setAttribute('arbitration.outcome', 'no-match');
-          }
-        } else {
-          span.setAttribute('arbitration.outcome', 'error');
-          span.setAttribute('arbitration.error', result.error.kind);
-        }
-        return result;
-      } finally {
-        span.end();
-      }
-    },
-  };
-}
-
 // ─── Canon item commands ─────────────────────────────────────────────────────────
 
 export async function addCanonItem(
@@ -258,31 +186,15 @@ export async function addCanonItem(
   forceCreate?: boolean,
 ): Promise<Result<MatchOrCreateResult, DomainError>> {
   const span = startSpan(`canon.add: ${rawName}`);
-  const errors = getErrorReporter();
   try {
-    const { store: canonStore } = memCanonStore(get(_canonItems));
-    const { store: aisleStore } = memAisleStore(get(_aisles));
-    const result = await matchOrCreate(
-      { rawName, selectedAisleId, ...(forceCreate !== undefined && { forceCreate }) },
-      {
-        store: canonStore,
-        aisleStore,
-        embedding: createTracedEmbeddingAdapter(createGeminiEmbeddingAdapter(errors), span),
-        arbitration: createTracedArbitrationAdapter(createGeminiArbitrationAdapter(errors), span),
-        ids: { newCanonId: () => crypto.randomUUID(), newAisleId: () => crypto.randomUUID() },
-        logging: createLDMatchLoggingAdapter(span),
-      },
-    );
+    const result = await callMatchOrCreate({
+      rawName,
+      selectedAisleId,
+      ...(forceCreate !== undefined && { forceCreate }),
+    });
     if (result.kind === 'ok') {
       span.setAttribute('canon.outcome', result.value.decision);
       span.setAttribute('canon.result', result.value.item.name);
-      try {
-        await upsertCanonItem(result.value.item);
-      } catch (err) {
-        errors.report(err);
-        span.setAttribute('canon.error', 'StorageError');
-        return failure({ kind: 'StorageError', reason: 'unavailable' });
-      }
     } else {
       span.setAttribute('canon.error', result.error.kind);
     }

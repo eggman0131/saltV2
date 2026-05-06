@@ -7,6 +7,7 @@ import { logger } from 'firebase-functions';
 import { normaliseName } from '@salt/domain';
 import { embedTextFlow } from './flows/embedText.js';
 import { arbitrateCanonFlow } from './flows/arbitrateCanon.js';
+import { matchOrCreateCanonFlow } from './flows/matchOrCreateCanon.js';
 
 initializeApp();
 
@@ -26,6 +27,14 @@ export const arbitrateCanon = onCallGenkit(
     authPolicy: isSignedIn(),
   },
   arbitrateCanonFlow,
+);
+
+export const matchOrCreateCanon = onCallGenkit(
+  {
+    secrets: [geminiApiKey],
+    authPolicy: isSignedIn(),
+  },
+  matchOrCreateCanonFlow,
 );
 
 export const onCanonItemWritten = onDocumentWritten(

@@ -8,13 +8,12 @@ vi.mock('@salt/firebase-sync', () => ({
   subscribeCanonItems: vi.fn(),
   subscribeAisles: vi.fn(),
   upsertCanonItem: vi.fn().mockResolvedValue(undefined),
-  createGeminiEmbeddingAdapter: vi.fn(() => ({ embed: vi.fn() })),
-  createGeminiArbitrationAdapter: vi.fn(() => ({ arbitrate: vi.fn() })),
+  callMatchOrCreate: vi.fn(),
 }));
 
 vi.mock('@salt/ld-observability', () => ({
-  createLDMatchLoggingAdapter: vi.fn(() => null),
   createLDErrorReportingAdapter: vi.fn(() => ({ report: vi.fn() })),
+  startSpan: vi.fn(() => ({ setAttribute: vi.fn(), end: vi.fn() })),
 }));
 
 import * as firebaseSync from '@salt/firebase-sync';

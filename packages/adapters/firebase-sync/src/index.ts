@@ -6,3 +6,4 @@ export { createGeminiEmbeddingAdapter } from './geminiEmbedding.js';
 export { createGeminiArbitrationAdapter } from './geminiArbitration.js';
 export { subscribeCanonItems, upsertCanonItem } from './canonSubscription.js';
 export { subscribeAisles, saveAisles } from './aisleSubscription.js';
+export { callMatchOrCreate } from './canonMatching.js';
