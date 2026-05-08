@@ -40,7 +40,7 @@
     ...aisles.map((a) => ({ value: a.id, label: titleCase(a.name) })),
   ]);
 
-  let thresholdStr = $state(
+  let thresholdStr = $state<string | number>(
     item.largeQuantityThreshold != null ? String(item.largeQuantityThreshold) : '',
   );
   let unitVal = $state<CanonItemUnit>(item.unit ?? 'g');
@@ -59,7 +59,7 @@
   }
 
   async function saveThreshold() {
-    const raw = thresholdStr.trim();
+    const raw = String(thresholdStr ?? '').trim();
     const parsed = raw ? parseFloat(raw) : undefined;
     const validParsed = parsed !== undefined && !isNaN(parsed) ? parsed : undefined;
     const unit = validParsed !== undefined ? unitVal : undefined;
@@ -69,7 +69,7 @@
   async function handleUnitChange(value: string) {
     unitVal = value as CanonItemUnit;
     // Only persist when threshold has a value — unit alone is meaningless without threshold
-    if (thresholdStr.trim()) {
+    if (String(thresholdStr ?? '').trim()) {
       await saveThreshold();
     }
   }
