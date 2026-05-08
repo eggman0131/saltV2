@@ -131,12 +131,14 @@ export async function matchOrCreate(
 
   const shortlist = buildShortlist(embedCandidates, items, normalisedName);
 
-  // Single near-miss above aiThreshold: match directly without calling AI.
-  if (shortlist.length === 1) {
+  // Single near-miss from a deterministic stage: match directly without calling AI.
+  // Embedding candidates (stage 5) always go to arbitration — cosine similarity
+  // at 0.75 is not precise enough to auto-bind without AI review.
+  if (shortlist.length === 1 && shortlist[0]!.stage !== 5) {
     return resolveMatch(store, shortlist[0]!.item, rawName, 'matched', commitLog);
   }
 
-  if (shortlist.length > 1) {
+  if (shortlist.length > 0) {
     return arbitrateShortlist(
       shortlist,
       'near_miss_shortlist',
