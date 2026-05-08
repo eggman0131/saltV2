@@ -14,7 +14,7 @@ import { Resource } from '@opentelemetry/resources';
 import { trace, propagation, context, diag, type Span as OtelSpan } from '@opentelemetry/api';
 import { SPAN_TYPE_ATTR, TraceServerExporter, setTelemetryServerUrl } from 'genkit/tracing';
 
-const LD_OTLP_ENDPOINT = 'https://otel.launchdarkly.com/v1/traces';
+const LD_OTLP_ENDPOINT = 'https://otel.observability.app.launchdarkly.com:4318/v1/traces';
 
 let provider: NodeTracerProvider | null = null;
 let readyPromise: Promise<void> | null = null;
@@ -23,7 +23,12 @@ export function initServerObservability(sdkKey: string): void {
   if (provider) return;
 
   provider = new NodeTracerProvider({
-    resource: new Resource({ 'service.name': 'salt-cloud-functions' }),
+    resource: new Resource({
+      'service.name': 'salt-cloud-functions',
+      // LD observability authenticates by project ID in the resource attributes,
+      // not via an Authorization header (mirrors @launchdarkly/observability-node).
+      'highlight.project_id': sdkKey,
+    }),
     // Honour the sampling decision carried in the upstream browser traceparent.
     // When there is no parent context (cold-start, direct invocation), always
     // sample so every first call is visible in LD.
@@ -31,12 +36,7 @@ export function initServerObservability(sdkKey: string): void {
   });
 
   provider.addSpanProcessor(
-    new BatchSpanProcessor(
-      new OTLPTraceExporter({
-        url: LD_OTLP_ENDPOINT,
-        headers: { Authorization: `ApiKey ${sdkKey}` },
-      }),
-    ),
+    new BatchSpanProcessor(new OTLPTraceExporter({ url: LD_OTLP_ENDPOINT })),
   );
 
   const genkitUrl = process.env['GENKIT_TELEMETRY_SERVER'];
