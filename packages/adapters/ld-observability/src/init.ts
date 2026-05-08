@@ -50,3 +50,22 @@ export function startSpan(name: string, opts?: { parent?: ObservabilitySpan }): 
   }
   return LDObserve.startManualSpan(name, (s) => s);
 }
+
+// W3C trace context extraction. Reads the OTel span context off the underlying
+// span and formats a traceparent string so the CF can parent its server-side
+// span to this client span. Empty record when the span has no valid context
+// (e.g. tracing disabled).
+export function extractTraceHeaders(span: ObservabilitySpan): Record<string, string> {
+  const otelSpan = span as unknown as Span;
+  const ctx = otelSpan.spanContext?.();
+  if (!ctx || !ctx.traceId || !ctx.spanId) return {};
+  const flags = (ctx.traceFlags ?? 0).toString(16).padStart(2, '0');
+  const headers: Record<string, string> = {
+    traceparent: `00-${ctx.traceId}-${ctx.spanId}-${flags}`,
+  };
+  if (ctx.traceState) {
+    const state = ctx.traceState.serialize();
+    if (state) headers['tracestate'] = state;
+  }
+  return headers;
+}

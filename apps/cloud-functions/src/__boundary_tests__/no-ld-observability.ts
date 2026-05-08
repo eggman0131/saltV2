@@ -1,4 +1,5 @@
-// VIOLATION: Cloud Functions must not import @salt/ld-observability.
-// The LaunchDarkly Observability SDK is browser-only and cannot run in Node.
-// CFs log via firebase-functions/logger instead. Expected: no-restricted-imports error.
+// VIOLATION: Cloud Functions must not import the default @salt/ld-observability
+// subpath — that subpath wraps the browser-only LaunchDarkly SDK. Server-side
+// code must use @salt/ld-observability/server instead.
+// Expected: no-restricted-imports error.
 import '@salt/ld-observability';

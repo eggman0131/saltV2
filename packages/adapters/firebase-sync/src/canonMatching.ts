@@ -9,12 +9,28 @@ type WireResult =
   | { readonly kind: 'ok'; readonly value: MatchOrCreateResult }
   | { readonly kind: 'err'; readonly error: DomainError };
 
+// httpsCallable doesn't expose request headers, so W3C trace context is
+// piggy-backed on the payload via _trace. The CF strips it before passing
+// the input to the matchOrCreate domain function.
+type WireInput = MatchOrCreateInput & {
+  readonly _trace?: Record<string, string>;
+};
+
+export interface CallMatchOrCreateOptions {
+  readonly traceHeaders?: Record<string, string>;
+}
+
 export async function callMatchOrCreate(
   input: MatchOrCreateInput,
+  opts?: CallMatchOrCreateOptions,
 ): Promise<ReadResult<MatchOrCreateResult, DomainError>> {
   try {
-    const fn = httpsCallable<MatchOrCreateInput, WireResult>(getFunctions(), 'matchOrCreateCanon');
-    const res = await fn(input);
+    const fn = httpsCallable<WireInput, WireResult>(getFunctions(), 'matchOrCreateCanon');
+    const wireInput: WireInput =
+      opts?.traceHeaders && Object.keys(opts.traceHeaders).length > 0
+        ? { ...input, _trace: opts.traceHeaders }
+        : input;
+    const res = await fn(wireInput);
     return res.data;
   } catch (err) {
     const code = (err as { code?: string }).code ?? '';

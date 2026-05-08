@@ -78,7 +78,11 @@ expect_depcruise_error \
 
 expect_lint_error \
   "apps/cloud-functions/src/__boundary_tests__/no-ld-observability.ts" \
-  "cloud-functions cannot import @salt/ld-observability (browser-only)"
+  "cloud-functions cannot import the default @salt/ld-observability subpath (browser SDK)"
+
+expect_lint_error \
+  "apps/web-pwa/src/__boundary_tests__/no-ld-observability-server.ts" \
+  "web-pwa cannot import @salt/ld-observability/server (Node SDK)"
 
 expect_lint_error \
   "apps/web-pwa/src/__boundary_tests__/no-firebase-sync-internal.ts" \

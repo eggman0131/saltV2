@@ -5,17 +5,18 @@ This file is the authoritative, machine-enforced architecture contract. Violatin
 ## Layer map
 
 ```
-shared-types      →  (nothing)
-domain            →  shared-types
-firebase-sync     →  domain, shared-types          # Firebase SDKs only; Firestore is the live data layer
-ld-observability  →  domain, shared-types          # LaunchDarkly Observability SDK only — browser-only
-ui-components     →  (external only — shadcn/tailwind)
-testing-utils     →  shared-types, domain, firebase-sync, ld-observability
-web-pwa           →  shared-types, domain, firebase-sync, ld-observability, ui-components
-cloud-functions   →  shared-types, domain, firebase-sync
+shared-types               →  (nothing)
+domain                     →  shared-types
+firebase-sync              →  domain, shared-types          # Firebase SDKs only; Firestore is the live data layer
+ld-observability           →  domain, shared-types          # LaunchDarkly browser SDK; default subpath
+ld-observability/server    →  domain, shared-types          # LaunchDarkly Node SDK; same package, /server subpath
+ui-components              →  (external only — shadcn/tailwind)
+testing-utils              →  shared-types, domain, firebase-sync, ld-observability
+web-pwa                    →  shared-types, domain, firebase-sync, ld-observability, ui-components
+cloud-functions            →  shared-types, domain, firebase-sync, ld-observability/server
 ```
 
-`firebase-sync` and `ld-observability` are **siblings** — they must not import each other. `web-pwa` composes both; `cloud-functions` composes `firebase-sync` only. `@salt/ld-observability` depends on browser-only LaunchDarkly SDKs and cannot run in Node — Cloud Functions log via `firebase-functions/logger` directly.
+`firebase-sync` and `ld-observability` are **siblings** — they must not import each other. `@salt/ld-observability` ships two subpath entrypoints from a single package: the default subpath wraps the LaunchDarkly browser SDK and is for `web-pwa`; `@salt/ld-observability/server` wraps the LaunchDarkly Node SDK and is for `cloud-functions`. The two subpaths share a runtime-neutral schema mapper (`src/shared/`) so the `canon.match` wire schema cannot drift between fast-path and CF emissions. Cross-runtime imports are forbidden: `web-pwa` must not import `/server`, and `cloud-functions` must not import the default subpath.
 
 ## Hard rules
 
@@ -23,7 +24,7 @@ cloud-functions   →  shared-types, domain, firebase-sync
 2. **Firebase SDK only in `firebase-sync`.** The only place `firebase` or `firebase-admin` may be imported is `packages/adapters/firebase-sync`.
 3. **No IndexedDB / browser storage.** No package may import `idb`, `idb-keyval`, or touch `window.indexedDB` / `localStorage` / `sessionStorage` / `caches` directly. Offline reads and writes are handled by Firestore's `persistentLocalCache`.
 4. **Adapters do not import each other.** `firebase-sync` ↔ `ld-observability` is forbidden in both directions.
-5. **Cloud Functions do not import `ld-observability`.** CFs run server‑side: the LaunchDarkly Observability SDK is browser-only. CFs log via `firebase-functions/logger`.
+5. **Cloud Functions do not import the default `@salt/ld-observability` subpath.** That subpath wraps the browser-only LaunchDarkly SDK and cannot run in Node. Server-side observability uses `@salt/ld-observability/server` (LaunchDarkly Node SDK). `firebase-functions/logger` continues to be used additively for CF-side match logs.
 6. **No importing apps.** Nothing may import `@salt/web-pwa` or `@salt/cloud-functions`.
 7. **UI primitives go through `@salt/ui-components`.** `apps/web-pwa` must never import `shadcn-svelte`, `bits-ui`, or `melt-ui` directly — always through `@salt/ui-components`.
 8. **No circular dependencies.** Enforced by dependency-cruiser.

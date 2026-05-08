@@ -47,13 +47,13 @@ describe('manualStart option', () => {
   it('passes manualStart: true to SessionReplay when option is set', async () => {
     const { initLDObservability: init } = await import('../src/init.js');
     init('test-key', { manualStart: true });
-    expect(MockSessionReplay).toHaveBeenCalledWith({ manualStart: true });
+    expect(MockSessionReplay).toHaveBeenCalledWith({ privacySetting: 'none', manualStart: true });
   });
 
   it('does not pass manualStart when no option is provided', async () => {
     const { initLDObservability: init } = await import('../src/init.js');
     init('test-key-2');
-    expect(MockSessionReplay).toHaveBeenCalledWith(undefined);
+    expect(MockSessionReplay).toHaveBeenCalledWith({ privacySetting: 'none' });
   });
 });
 

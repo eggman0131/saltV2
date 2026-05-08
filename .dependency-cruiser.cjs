@@ -86,6 +86,22 @@ module.exports = {
       to: { path: '^packages/adapters/local-store' },
     },
     {
+      name: 'cloud-functions-no-ld-observability-browser',
+      severity: 'error',
+      comment:
+        'Cloud Functions must not import the browser side of @salt/ld-observability. Use the /server subpath (LaunchDarkly Node SDK).',
+      from: { path: '^apps/cloud-functions' },
+      to: { path: '^packages/adapters/ld-observability/src/(?!server/|shared/)' },
+    },
+    {
+      name: 'web-pwa-no-ld-observability-server',
+      severity: 'error',
+      comment:
+        'web-pwa must not import the /server subpath of @salt/ld-observability. Use the default subpath (LaunchDarkly browser SDK).',
+      from: { path: '^apps/web-pwa' },
+      to: { path: '^packages/adapters/ld-observability/src/server' },
+    },
+    {
       name: 'no-import-web-pwa',
       severity: 'error',
       comment: 'Nothing outside web-pwa may import from the web-pwa app.',
@@ -95,7 +111,7 @@ module.exports = {
   ],
   options: {
     doNotFollow: { path: 'node_modules|dist' },
-    exclude: { path: 'playwright-report|test-results' },
+    exclude: { path: 'playwright-report|test-results|__boundary_tests__' },
     moduleSystems: ['es6', 'cjs'],
     tsPreCompilationDeps: true,
     tsConfig: { fileName: 'tsconfig.base.json' },

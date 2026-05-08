@@ -4,16 +4,26 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./src/index.ts"
+    },
+    "./server": {
+      "types": "./dist/server/index.d.ts",
+      "default": "./src/server/index.ts"
+    }
   },
   "scripts": {
     "test": "vitest run"
   },
   "dependencies": {
     "@launchdarkly/js-client-sdk": "^4.6.3",
+    "@launchdarkly/js-server-sdk-common": "^2.18.6",
+    "@launchdarkly/node-server-sdk": "^9.10.13",
     "@launchdarkly/observability": "^1.0.0",
+    "@launchdarkly/observability-node": "^1.1.1",
     "@launchdarkly/session-replay": "^1.1.6",
-    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/api": "1.9.0",
     "@salt/domain": "workspace:*",
     "@salt/shared-types": "workspace:*"
   }

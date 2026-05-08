@@ -12,6 +12,9 @@ import { matchOrCreateCanonFlow } from './flows/matchOrCreateCanon.js';
 initializeApp();
 
 const geminiApiKey = defineSecret('GEMINI_API_KEY');
+// LaunchDarkly server SDK key for observability in matchOrCreateCanon.
+// Optional — when unset, the flow falls back to firebase-functions/logger only.
+const ldSdkKey = defineSecret('LD_SDK_KEY');
 
 export const embedText = onCallGenkit(
   {
@@ -31,7 +34,7 @@ export const arbitrateCanon = onCallGenkit(
 
 export const matchOrCreateCanon = onCallGenkit(
   {
-    secrets: [geminiApiKey],
+    secrets: [geminiApiKey, ldSdkKey],
     authPolicy: isSignedIn(),
   },
   matchOrCreateCanonFlow,

@@ -162,7 +162,7 @@ export default [
             },
             {
               from: 'cloud-functions',
-              allow: ['shared-types', 'domain', 'firebase-sync'],
+              allow: ['shared-types', 'domain', 'firebase-sync', 'ld-observability'],
             },
           ],
         },
@@ -444,11 +444,17 @@ export default [
       'no-restricted-imports': [
         'error',
         {
+          // `paths` is exact-match; `patterns` uses minimatch with matchBase:true
+          // which would over-match (e.g. forbidding the default subpath would
+          // also forbid /server).
+          paths: [
+            {
+              name: '@salt/ld-observability',
+              message:
+                'Cloud Functions must not import the default @salt/ld-observability subpath (browser SDK). Use @salt/ld-observability/server instead.',
+            },
+          ],
           patterns: [
-            ...forbidGroup(
-              ['@salt/ld-observability', '@salt/ld-observability/*'],
-              'Cloud Functions must not import @salt/ld-observability — the LaunchDarkly Observability SDK is browser-only. Log via firebase-functions/logger instead.',
-            ),
             ...forbidGroup(STAGE_INTERNAL_SUBPATHS, STAGE_INTERNAL_MESSAGE),
             {
               group: ['@salt/domain', '@salt/domain/*'],
@@ -469,6 +475,13 @@ export default [
       'no-restricted-imports': [
         'error',
         {
+          paths: [
+            {
+              name: '@salt/ld-observability/server',
+              message:
+                'web-pwa must not import @salt/ld-observability/server (Node SDK). Use the default @salt/ld-observability subpath.',
+            },
+          ],
           patterns: [
             ...forbidGroup(
               ['@salt/firebase-sync/src', '@salt/firebase-sync/src/**'],
@@ -488,13 +501,48 @@ export default [
 
   // Apps (production code): must not call canon stage internals directly.
   // findClosestMatch (stages 1–4) and matchOrCreate are the only allowed entry points.
+  // Also enforces the ld-observability subpath split: web-pwa uses the default
+  // subpath, cloud-functions uses /server.
   {
-    files: ['apps/web-pwa/src/**/*.ts', 'apps/cloud-functions/src/**/*.ts'],
+    files: ['apps/web-pwa/src/**/*.ts'],
     ignores: ['**/__boundary_tests__/**'],
     rules: {
       'no-restricted-imports': [
         'error',
         {
+          paths: [
+            {
+              name: '@salt/ld-observability/server',
+              message:
+                'web-pwa must not import @salt/ld-observability/server (Node SDK). Use the default @salt/ld-observability subpath.',
+            },
+          ],
+          patterns: [
+            ...forbidGroup(STAGE_INTERNAL_SUBPATHS, STAGE_INTERNAL_MESSAGE),
+            {
+              group: ['@salt/domain', '@salt/domain/*'],
+              importNames: STAGE_INTERNAL_NAMES,
+              message: STAGE_INTERNAL_MESSAGE,
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ['apps/cloud-functions/src/**/*.ts'],
+    ignores: ['**/__boundary_tests__/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@salt/ld-observability',
+              message:
+                'Cloud Functions must not import the default @salt/ld-observability subpath (browser SDK). Use @salt/ld-observability/server instead.',
+            },
+          ],
           patterns: [
             ...forbidGroup(STAGE_INTERNAL_SUBPATHS, STAGE_INTERNAL_MESSAGE),
             {

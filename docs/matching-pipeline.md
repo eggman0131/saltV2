@@ -8,7 +8,7 @@ The same pipeline is the entry point for all four use cases: manual canon item a
 
 ## Authority and runtime
 
-The pipeline lives behind a single Cloud Function callable, `matchOrCreateCanon`. The CF composes Firestore-admin stores, Genkit-backed embedding + arbitration adapters, an ID generator, and a server-side `MatchLoggingPort` that emits `canon.match` records via `firebase-functions/logger`.
+The pipeline lives behind a single Cloud Function callable, `matchOrCreateCanon`. The CF composes Firestore-admin stores, Genkit-backed embedding + arbitration adapters, an ID generator, and a fan-out `MatchLoggingPort` that writes each resolution to two destinations: LaunchDarkly (via the LD Node SDK, parity with the fast-path's wire shape — see [Logging schema](#logging-schema)) and `firebase-functions/logger` (top-level summary only, additive for Cloud Logging).
 
 The client also runs a **fast-path** for stages 1–4 against the in-memory canon snapshot. If `findClosestMatch` returns a clear `'match'`, the client applies `appendCanonSynonym`, persists, and returns without a CF round-trip. `'ambiguous'` and `'none'` always escalate to the CF; `forceCreate` always escalates so the CF can run aisle arbitration. Stages 1–4 are executed by the same `findClosestMatch` function in both places, so the deterministic outcome is identical for the same canon snapshot. Both paths attach a `canon.path: 'fast' | 'cf'` attribute to their span so dashboards can split traffic.
 
@@ -145,11 +145,11 @@ The canon item detail page also exposes a **split** action: take the most-recent
 
 ## Logging schema
 
-The pipeline emits one log record per resolution. The fast-path (client) writes via the LD `MatchLoggingPort` ([`createLDMatchLoggingAdapter`](../packages/adapters/ld-observability/src/ldMatchLoggingAdapter.ts)); the CF writes via `firebase-functions/logger` ([`createServerMatchLoggingAdapter`](../apps/cloud-functions/src/adapters/serverMatchLog.ts)). Both carry a `path: 'fast' | 'cf'` discriminator.
+The pipeline emits one log record per resolution. The fast-path (client) writes via the LD `MatchLoggingPort` ([`createLDMatchLoggingAdapter`](../packages/adapters/ld-observability/src/ldMatchLoggingAdapter.ts)). The CF writes via two adapters composed: the LaunchDarkly Node SDK ([`createServerLDMatchLoggingAdapter`](../packages/adapters/ld-observability/src/server/serverMatchLoggingAdapter.ts)) and `firebase-functions/logger` ([`createServerMatchLoggingAdapter`](../apps/cloud-functions/src/adapters/serverMatchLog.ts)). All emissions carry a `path: 'fast' | 'cf'` discriminator.
 
 The schema below describes the **domain `MatchLogEntry`** — the in-memory log object built by `MatchLogBuilder` and passed to `MatchLoggingPort.write`. Adapters serialise this object to their destination's conventions (see [Adapter serialisation](#adapter-serialisation) for what actually goes on the wire).
 
-> **Parity target, not parity reality.** Today only the LD adapter (fast-path) emits the full per-stage record. The server `firebase-functions/logger` adapter currently emits only the top-level summary fields — no `stages[]` array, no `arbitration` block. Aligning the CF emission onto the LD schema is tracked in #30; until then, a fast-path log and a CF log for the same input + canon will agree on top-level decision/timings but only the fast-path log carries per-stage detail.
+> **Parity contract enforced.** The fast-path and CF LD emissions both flow through a single shared mapper ([`applyMatchLogAttrs`](../packages/adapters/ld-observability/src/shared/matchLogToAttributes.ts)), so field names, value scaling, and truncation are structurally identical for the same `MatchLogEntry` — drift is not possible without a deliberate edit to the shared file. The `firebase-functions/logger` emission on the CF side is additive (top-level summary only) and exists for Cloud Logging dashboards; it does not need to match the LD schema. The structural drift guard is enforced by [`tests/matchLogParity.test.ts`](../packages/adapters/ld-observability/tests/matchLogParity.test.ts).
 
 ### Top-level fields
 
@@ -217,14 +217,18 @@ Stage 6 is implicit in `matchOrCreate`'s `buildShortlist`: it merges stage 5's p
 | `outcome` | `'match' \| 'new' \| 'no-match' \| 'error'` |
 | `durationMs` | AI call wall-clock |
 
-> Server-side observability for stages 5–6 currently emits structured `firebase-functions/logger` records only, with the top-level summary fields above; reconciling the CF emission with LaunchDarkly (so stages 5–6 land on the same dashboards as the fast-path stages 1–4) is tracked in #30.
-
 ### Adapter serialisation
 
-The two adapters consume the same `MatchLogEntry` object but emit it differently:
+Three adapters write the `MatchLogEntry`. The two LD adapters share a runtime-neutral mapper, so their wire shapes are identical for the same entry:
 
-- **LD adapter** ([`ldMatchLoggingAdapter.ts`](../packages/adapters/ld-observability/src/ldMatchLoggingAdapter.ts)) — opens a `canon.stages: <rawInput>` span (parented to the caller's `canon.add` span when present) and writes top-level fields as `canon.*` attributes (`canon.path`, `canon.summary`, `canon.trace`, `canon.input_count`, `canon.total_duration_ms`, `canon.decision`, `canon.correlation_id`, `canon.input`, `canon.normalized`, `canon.result`, `canon.result_id`). Per-stage fields are written as `stage.{n}.passed`, `stage.{n}.considered_count`, `stage.{n}.duration_ms`, `stage.{n}.best_score`, `stage.{n}.gap`, `stage.{n}.best_name`, `stage.{n}.top` (JSON-stringified array). Scores and gaps are scaled `×100` and rounded to 2dp on the wire (so `bestScore: 0.8421` becomes `stage.2.best_score: 84.21`). Arbitration prompt and raw response are truncated to 2000 chars (LD attribute cap).
-- **Server adapter** ([`serverMatchLog.ts`](../apps/cloud-functions/src/adapters/serverMatchLog.ts)) — emits `logger.info('canon.match', { … })` with `path: 'cf'`, `summary` (one-line trace), `correlationId`, `decision`, `rawInput`, `normalizedInput`, `finalItemId`, `finalItemName`, `inputItemCount`, `totalDurationMs`. **No per-stage fields and no arbitration fields are emitted today** (#30).
+- **Browser LD adapter** ([`ldMatchLoggingAdapter.ts`](../packages/adapters/ld-observability/src/ldMatchLoggingAdapter.ts)) — fast-path. Opens a `canon.stages: <rawInput>` span parented to the caller's `canon.add` span and calls the shared mapper.
+- **Server LD adapter** ([`serverMatchLoggingAdapter.ts`](../packages/adapters/ld-observability/src/server/serverMatchLoggingAdapter.ts)) — CF. Opens a `canon.stages: <rawInput>` span parented to the flow's `canon.matchOrCreateCanon` span and calls the same shared mapper. The flow flushes pending telemetry before returning so spans aren't lost when the Node process is paused.
+- **Shared mapper** ([`matchLogToAttributes.ts`](../packages/adapters/ld-observability/src/shared/matchLogToAttributes.ts)) — single source of truth for the wire schema. Top-level fields are written as `canon.*` span attributes (`canon.path`, `canon.summary`, `canon.trace`, `canon.input_count`, `canon.total_duration_ms`, `canon.decision`, `canon.correlation_id`, `canon.input`, `canon.normalized`, `canon.result`, `canon.result_id`). Per-stage fields are written as `stage.{n}.passed`, `stage.{n}.considered_count`, `stage.{n}.duration_ms`, `stage.{n}.best_score`, `stage.{n}.gap`, `stage.{n}.best_name`, `stage.{n}.top` (JSON-stringified array). Scores and gaps are scaled `×100` and rounded to 2dp on the wire (so `bestScore: 0.8421` becomes `stage.2.best_score: 84.21`). Arbitration prompt and raw response are truncated to 2000 chars (LD attribute cap).
+- **Server `firebase-functions/logger` adapter** ([`serverMatchLog.ts`](../apps/cloud-functions/src/adapters/serverMatchLog.ts)) — CF only, additive. Emits `logger.info('canon.match', { … })` with `path: 'cf'`, `summary` (one-line trace), `correlationId`, `decision`, `rawInput`, `normalizedInput`, `finalItemId`, `finalItemName`, `inputItemCount`, `totalDurationMs`. Cloud Logging captures these alongside other CF logs for ops debugging; there is no per-stage detail here by design.
+
+### Trace context propagation (client → CF)
+
+The fast-path's `canon.add` span and the CF's `canon.matchOrCreateCanon` span are linked by W3C trace context so a fast-path-ambiguous → CF-resolved flow renders as a single distributed trace in LaunchDarkly. The client extracts `traceparent` (and `tracestate` when present) from its active span via [`extractTraceHeaders`](../packages/adapters/ld-observability/src/init.ts) and piggy-backs it on the callable payload as `_trace`. The CF strips `_trace` from the input, passes it as `headers` to its `startSpan` call, and the LD Node SDK (`LDObserve.startWithHeaders`) parents the new span to the propagated client trace. `httpsCallable` is used because it's the project's standard wire — custom request headers aren't first-class in that API, hence the payload-level propagation.
 
 ---
 

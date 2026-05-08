@@ -7,6 +7,7 @@ import {
 import {
   createLDErrorReportingAdapter,
   createLDMatchLoggingAdapter,
+  extractTraceHeaders,
   startSpan,
 } from '@salt/ld-observability';
 import {
@@ -219,11 +220,15 @@ export async function addCanonItem(
         return success({ decision: 'matched' as const, item: updated });
       }
     }
-    const result = await callMatchOrCreate({
-      rawName,
-      selectedAisleId,
-      ...(forceCreate !== undefined && { forceCreate }),
-    });
+    const traceHeaders = extractTraceHeaders(span);
+    const result = await callMatchOrCreate(
+      {
+        rawName,
+        selectedAisleId,
+        ...(forceCreate !== undefined && { forceCreate }),
+      },
+      Object.keys(traceHeaders).length > 0 ? { traceHeaders } : undefined,
+    );
     if (result.kind === 'ok') {
       span.setAttribute('canon.outcome', result.value.decision);
       span.setAttribute('canon.path', 'cf');
