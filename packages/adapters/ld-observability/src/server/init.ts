@@ -11,7 +11,7 @@ import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
 import { GrpcInstrumentation } from '@opentelemetry/instrumentation-grpc';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { Resource } from '@opentelemetry/resources';
-import { trace, propagation, context, type Span as OtelSpan } from '@opentelemetry/api';
+import { trace, propagation, context, diag, type Span as OtelSpan } from '@opentelemetry/api';
 import { SPAN_TYPE_ATTR, TraceServerExporter, setTelemetryServerUrl } from 'genkit/tracing';
 
 const LD_OTLP_ENDPOINT = 'https://otel.launchdarkly.com/v1/traces';
@@ -146,9 +146,13 @@ export function startSpan(name: string, opts?: StartSpanOptions): ObservabilityS
 
 // Flush pending telemetry. Cloud Functions should call this before returning
 // so spans aren't lost when the Node process is paused between invocations.
+// Export failures (e.g. DNS unreachable in local dev) are non-fatal — the
+// adapter must not surface operational telemetry errors to callers.
 export async function flushServerObservability(): Promise<void> {
   if (!provider) return;
-  await provider.forceFlush();
+  await provider.forceFlush().catch((err: unknown) => {
+    diag.warn('flushServerObservability: export failed (non-fatal)', err);
+  });
 }
 
 // W3C trace context extraction. Mirrors the browser-side helper; same wire
