@@ -2,8 +2,13 @@ import type { IncomingHttpHeaders } from 'node:http';
 import {
   NodeTracerProvider,
   BatchSpanProcessor,
+  ParentBasedSampler,
+  AlwaysOnSampler,
   type ReadableSpan,
 } from '@opentelemetry/sdk-trace-node';
+import { registerInstrumentations } from '@opentelemetry/instrumentation';
+import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
+import { GrpcInstrumentation } from '@opentelemetry/instrumentation-grpc';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { Resource } from '@opentelemetry/resources';
 import { trace, propagation, context, type Span as OtelSpan } from '@opentelemetry/api';
@@ -19,6 +24,10 @@ export function initServerObservability(sdkKey: string): void {
 
   provider = new NodeTracerProvider({
     resource: new Resource({ 'service.name': 'salt-cloud-functions' }),
+    // Honour the sampling decision carried in the upstream browser traceparent.
+    // When there is no parent context (cold-start, direct invocation), always
+    // sample so every first call is visible in LD.
+    sampler: new ParentBasedSampler({ root: new AlwaysOnSampler() }),
   });
 
   provider.addSpanProcessor(
@@ -51,6 +60,17 @@ export function initServerObservability(sdkKey: string): void {
   }
 
   provider.register();
+
+  // Auto-instrumentations registered against this provider.
+  // Active: http (inbound callable HTTP + outbound requests), grpc (Firestore RPCs).
+  // To disable an instrumentation, pass { enabled: false } in its constructor config,
+  // e.g. new HttpInstrumentation({ enabled: false }).
+  // To add more instrumentations, extend the array here — not in the CF entrypoint.
+  registerInstrumentations({
+    tracerProvider: provider,
+    instrumentations: [new HttpInstrumentation(), new GrpcInstrumentation()],
+  });
+
   readyPromise = Promise.resolve();
 }
 
