@@ -1,40 +1,36 @@
 import type { IncomingHttpHeaders } from 'node:http';
-import { init as initLDClient, type LDClient } from '@launchdarkly/node-server-sdk';
-import { Observability, LDObserve } from '@launchdarkly/observability-node';
-// `Span` is a type-only import — it doesn't survive into the runtime bundle,
-// so it can't add a second copy of @opentelemetry/api. Keeping value imports
-// of @opentelemetry/api would race with the copy bundled inside
-// @launchdarkly/observability-node, and the resulting "duplicate registration"
-// failure leaves LD's TracerProvider unregistered globally — spans created
-// via LD's API end up no-op and never reach LD's exporter.
-import type { Span as OtelSpan } from '@opentelemetry/api';
+import { NodeTracerProvider, BatchSpanProcessor } from '@opentelemetry/sdk-trace-node';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+import { Resource } from '@opentelemetry/resources';
+import { trace, propagation, context, type Span as OtelSpan } from '@opentelemetry/api';
 
-let client: LDClient | null = null;
+const LD_OTLP_ENDPOINT = 'https://otel.launchdarkly.com/v1/traces';
+
+let provider: NodeTracerProvider | null = null;
 let readyPromise: Promise<void> | null = null;
-const INIT_TIMEOUT_MS = 5000;
 
-// Auto-instrumentation defaults (HTTP, etc.) are controlled by env vars at
-// deploy time, not constructor options:
-//   OTEL_NODE_DISABLED_INSTRUMENTATIONS=http,dns,...
-//   LAUNCHDARKLY_OTEL_NODE_ENABLE_OUTGOING_HTTP_INSTRUMENTATION=false
-// See @launchdarkly/observability-node Options.d.ts.
-//
-// serviceName is set explicitly so CF spans are easy to find in LD (the
-// browser SDK tags itself "browser"; without an override the Node SDK falls
-// back to "unknown_service:node" which gets buried in dashboards).
 export function initServerObservability(sdkKey: string): void {
-  if (client) return;
-  client = initLDClient(sdkKey, {
-    plugins: [new Observability({ serviceName: 'salt-cloud-functions' })],
+  if (provider) return;
+
+  provider = new NodeTracerProvider({
+    resource: new Resource({ 'service.name': 'salt-cloud-functions' }),
   });
-  readyPromise = client
-    .waitForInitialization({ timeout: INIT_TIMEOUT_MS / 1000 })
-    .then(() => undefined)
-    .catch(() => undefined);
+
+  provider.addSpanProcessor(
+    new BatchSpanProcessor(
+      new OTLPTraceExporter({
+        url: LD_OTLP_ENDPOINT,
+        headers: { Authorization: `ApiKey ${sdkKey}` },
+      }),
+    ),
+  );
+
+  provider.register();
+  readyPromise = Promise.resolve();
 }
 
 export function isServerObservabilityInitialised(): boolean {
-  return client !== null;
+  return provider !== null;
 }
 
 export async function whenServerObservabilityReady(): Promise<void> {
@@ -68,15 +64,7 @@ export interface StartSpanOptions {
   readonly headers?: IncomingHttpHeaders;
 }
 
-function traceparentFromSpan(span: ObservabilitySpan): IncomingHttpHeaders {
-  const otelSpan = span[OTEL_SPAN];
-  const ctx = otelSpan.spanContext();
-  if (!ctx.traceId || !ctx.spanId) return {};
-  const flags = (ctx.traceFlags ?? 0).toString(16).padStart(2, '0');
-  return { traceparent: `00-${ctx.traceId}-${ctx.spanId}-${flags}` };
-}
-
-// No-op span returned when LD observability isn't initialised. Carries a
+// No-op span returned when observability isn't initialised. Carries a
 // minimal OtelSpan-shaped object so call sites that read spanContext don't
 // crash, but doesn't export anything.
 const NOOP_OTEL_SPAN: OtelSpan = {
@@ -97,28 +85,25 @@ const NOOP_OTEL_SPAN: OtelSpan = {
   recordException: () => undefined,
 } as unknown as OtelSpan;
 
-// Start a span via LDObserve. We always go through this path so spans live
-// in LD's tracer regardless of which copy of @opentelemetry/api won the
-// global registration race. For child spans, the parent's W3C trace context
-// is reconstructed from its spanContext and passed as headers — LD's
-// startWithHeaders parents the new span via the propagated traceparent.
-//
-// When LD isn't initialised (e.g. tests, or LD_SDK_KEY unset), returns a
-// no-op wrapper so callers don't crash. The flow continues without
-// observability; firebase-functions/logger continues to emit additively.
 export function startSpan(name: string, opts?: StartSpanOptions): ObservabilitySpan {
-  if (!client) return wrap(NOOP_OTEL_SPAN);
-  const headers: IncomingHttpHeaders =
-    opts?.headers ?? (opts?.parent ? traceparentFromSpan(opts.parent) : {});
-  const { span } = LDObserve.startWithHeaders(name, headers);
+  if (!provider) return wrap(NOOP_OTEL_SPAN);
+
+  let parentCtx = context.active();
+  if (opts?.parent) {
+    parentCtx = trace.setSpan(parentCtx, opts.parent[OTEL_SPAN]);
+  } else if (opts?.headers) {
+    parentCtx = propagation.extract(parentCtx, opts.headers);
+  }
+
+  const span = trace.getTracer('salt-cloud-functions').startSpan(name, {}, parentCtx);
   return wrap(span);
 }
 
 // Flush pending telemetry. Cloud Functions should call this before returning
 // so spans aren't lost when the Node process is paused between invocations.
 export async function flushServerObservability(): Promise<void> {
-  if (!client) return;
-  await LDObserve.flush();
+  if (!provider) return;
+  await provider.forceFlush();
 }
 
 // W3C trace context extraction. Mirrors the browser-side helper; same wire

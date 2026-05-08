@@ -59,6 +59,9 @@ importers:
       '@genkit-ai/google-genai':
         specifier: ^1.33.0
         version: 1.33.0(genkit@1.33.0(@google-cloud/firestore@7.11.6)(firebase-admin@13.8.0)(firebase@11.10.0))
+      '@opentelemetry/api':
+        specifier: 1.9.0
+        version: 1.9.0
       '@salt/domain':
         specifier: workspace:*
         version: link:../../packages/domain
@@ -206,15 +209,24 @@ importers:
       '@launchdarkly/observability':
         specifier: ^1.0.0
         version: 1.1.6
-      '@launchdarkly/observability-node':
-        specifier: ^1.1.1
-        version: 1.1.1(@launchdarkly/js-server-sdk-common@2.18.6)(@launchdarkly/node-server-sdk@9.10.13)(@opentelemetry/api@1.9.0)
       '@launchdarkly/session-replay':
         specifier: ^1.1.6
         version: 1.1.6
       '@opentelemetry/api':
         specifier: 1.9.0
         version: 1.9.0
+      '@opentelemetry/exporter-trace-otlp-http':
+        specifier: ^0.52.1
+        version: 0.52.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/resources':
+        specifier: ^1.25.1
+        version: 1.25.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/sdk-trace-node':
+        specifier: ^1.25.1
+        version: 1.25.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/semantic-conventions':
+        specifier: ^1.25.1
+        version: 1.39.0
       '@salt/domain':
         specifier: workspace:*
         version: link:../../domain
@@ -1452,20 +1464,8 @@ packages:
   '@launchdarkly/js-server-sdk-common@2.18.6':
     resolution: {integrity: sha512-oc4ZJa7cuBuWN62PFR3Kcok+qVcm5XX4/5YEvcvg6cvqSRdte/8JYZ6AVAnJ9YFfYWoedpUSmFe9VXTBG/mWQw==}
 
-  '@launchdarkly/node-server-sdk-otel@1.3.13':
-    resolution: {integrity: sha512-9RHPpXZ9haeZ76z2QCtqhMg7d/pQcJ7BcLOYK/AlEIPXV/FnlMvEMzF6Ilq2p5efyXtcO5L0lDtdZU+AaaC6zw==}
-    peerDependencies:
-      '@launchdarkly/node-server-sdk': '>=9.10.13'
-      '@opentelemetry/api': 1.9.0
-
   '@launchdarkly/node-server-sdk@9.10.13':
     resolution: {integrity: sha512-trN7DWtYO7BccQsMariHuIIw+QT1deqaj6jWECoT+FBlEW/Ws/oHQLX+HV2dMqKGASeofd66u+UxMTU5apGY4A==}
-
-  '@launchdarkly/observability-node@1.1.1':
-    resolution: {integrity: sha512-tjX342tGuEz9FKQApJdGEIQW4289258fcumugzMHT1PoaczWhMgeN9BvWk7emigghqOnSV6u7ydhcRdEEURLtg==}
-    peerDependencies:
-      '@launchdarkly/js-server-sdk-common': ^2.15.2
-      '@launchdarkly/node-server-sdk': ^9.9.2
 
   '@launchdarkly/observability@1.1.6':
     resolution: {integrity: sha512-1giCEXw1X7FmePRpzt/O63dokP/aGLp9YcsDjfQmOe9+eBG6XYmCcSacAZfGQA8cNEE9MAmrMPce9GymVN5xKA==}
@@ -1513,10 +1513,6 @@ packages:
   '@npmcli/redact@4.0.0':
     resolution: {integrity: sha512-gOBg5YHMfZy+TfHArfVogwgfBeQnKbbGo3pSUyK/gSI0AVu+pEiDVcKlQb0D8Mg1LNRZILZ6XG8I5dJ4KuAd9Q==}
     engines: {node: ^20.17.0 || >=22.9.0}
-
-  '@opentelemetry/api-logs@0.207.0':
-    resolution: {integrity: sha512-lAb0jQRVyleQQGiuuvCOTDVspc14nx6XJjP4FspJ1sNARo3Regq4ZZbrc3rN4b1TYSuUCvgH+UXUPug4SLOqEQ==}
-    engines: {node: '>=8.0.0'}
 
   '@opentelemetry/api-logs@0.52.1':
     resolution: {integrity: sha512-qnSqB2DQ9TPP96dl8cDubDvrUyWc0/sK81xHTK8eSUspzDM3bsewX903qclQFvVhgStjRWdC5bLb3kQqMkfV5A==}
@@ -1808,12 +1804,6 @@ packages:
     peerDependencies:
       '@opentelemetry/api': 1.9.0
 
-  '@opentelemetry/instrumentation@0.207.0':
-    resolution: {integrity: sha512-y6eeli9+TLKnznrR8AZlQMSJT7wILpXH+6EYq5Vf/4Ao+huI7EedxQHwRgVUOMLFbe7VFDvHJrX9/f4lcwnJsA==}
-    engines: {node: ^18.19.0 || >=20.6.0}
-    peerDependencies:
-      '@opentelemetry/api': 1.9.0
-
   '@opentelemetry/instrumentation@0.52.1':
     resolution: {integrity: sha512-uXJbYU/5/MBHjMp1FqrILLRuiJCs3Ofk0MeRDk8g1S1gD47U8X3JnSwcMO1rtRo1x1a7zKaQHaoYu49p/4eSKw==}
     engines: {node: '>=14'}
@@ -1970,11 +1960,6 @@ packages:
   '@pnpm/npm-conf@3.0.2':
     resolution: {integrity: sha512-h104Kh26rR8tm+a3Qkc5S4VLYint3FE48as7+/5oCEcKR2idC/pF1G6AhIXKI+eHPJa/3J9i5z0Al47IeGHPkA==}
     engines: {node: '>=12'}
-
-  '@prisma/instrumentation@7.8.0':
-    resolution: {integrity: sha512-15aMqRqQtEMxSSVGNKP7wnFkDjm83tiIJmxioHvxl7xeKTRpvMTN2EbpRGJ9PvAYWn/mnqHdw4br/s49juZ87w==}
-    peerDependencies:
-      '@opentelemetry/api': 1.9.0
 
   '@protobufjs/aspromise@1.1.2':
     resolution: {integrity: sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ==}
@@ -2846,9 +2831,6 @@ packages:
 
   cjs-module-lexer@1.4.3:
     resolution: {integrity: sha512-9z8TZaGM1pfswYeXrUpzPrkx8UnWYdhJclsiYMm6x/w5+nN+8Tf/LnAgfLGQCm59qAOxU8WwHEq2vNwF6i4j+Q==}
-
-  cjs-module-lexer@2.2.0:
-    resolution: {integrity: sha512-4bHTS2YuzUvtoLjdy+98ykbNB5jS0+07EvFNXerqZQJ89F7DI6ET7OQo/HJuW6K0aVsKA9hj9/RVb2kQVOrPDQ==}
 
   cjson@0.3.3:
     resolution: {integrity: sha512-yKNcXi/Mvi5kb1uK0sahubYiyfUO2EUgOp4NcY9+8NX5Xmc+4yeNogZuLFkpLBBj7/QI9MjRUIuXrV9XOw5kVg==}
@@ -3957,9 +3939,6 @@ packages:
 
   import-in-the-middle@1.15.0:
     resolution: {integrity: sha512-bpQy+CrsRmYmoPMAE/0G33iwRqwW4ouqdRg8jgbH3aKuCtOc8lxgmYXg2dMM92CRiGP660EtBcymH/eVUpCSaA==}
-
-  import-in-the-middle@2.0.6:
-    resolution: {integrity: sha512-3vZV3jX0XRFW3EJDTwzWoZa+RH1b8eTTx6YOCjglrLyPuepwoBti1k3L2dKwdCUrnVEfc5CuRuGstaC/uQJJaw==}
 
   import-lazy@2.1.0:
     resolution: {integrity: sha512-m7ZEHgtw69qOGw+jwxXkHlrlIPdTGkyh66zXZ1ajZbxkDBNjSY/LGbmjc7h0s2ELsUDTAhFr55TrPSSqJGPG0A==}
@@ -5201,10 +5180,6 @@ packages:
   require-in-the-middle@7.5.2:
     resolution: {integrity: sha512-gAZ+kLqBdHarXB64XpAe2VCjB7rIRv+mU8tfRWziHRJ5umKsIHN2tLLv6EtMw7WCdP19S0ERVMldNvxYCHnhSQ==}
     engines: {node: '>=8.6.0'}
-
-  require-in-the-middle@8.0.1:
-    resolution: {integrity: sha512-QT7FVMXfWOYFbeRBF6nu+I6tr2Tf3u0q8RIEjNob/heKY/nh7drD/k7eeMFmSQgnTtCzLDcCu/XEnpW2wk4xCQ==}
-    engines: {node: '>=9.3.0 || >=8.10.0 <9.0.0'}
 
   resolve-from@4.0.0:
     resolution: {integrity: sha512-pb/MYmXstAkysRFx8piNI1tGFNQIFA3vkE3Gq4EuA1dF6gHp/+vgZqsCGJapvy8N3Q+4o7FwvquPJcnZ7RYy4g==}
@@ -7594,28 +7569,12 @@ snapshots:
       '@launchdarkly/js-sdk-common': 2.24.3
       semver: 7.5.4
 
-  '@launchdarkly/node-server-sdk-otel@1.3.13(@launchdarkly/node-server-sdk@9.10.13)(@opentelemetry/api@1.9.0)':
-    dependencies:
-      '@launchdarkly/node-server-sdk': 9.10.13
-      '@opentelemetry/api': 1.9.0
-
   '@launchdarkly/node-server-sdk@9.10.13':
     dependencies:
       '@launchdarkly/js-server-sdk-common': 2.18.6
       https-proxy-agent: 7.0.6
       launchdarkly-eventsource: 2.2.0
     transitivePeerDependencies:
-      - supports-color
-
-  '@launchdarkly/observability-node@1.1.1(@launchdarkly/js-server-sdk-common@2.18.6)(@launchdarkly/node-server-sdk@9.10.13)(@opentelemetry/api@1.9.0)':
-    dependencies:
-      '@launchdarkly/js-server-sdk-common': 2.18.6
-      '@launchdarkly/node-server-sdk': 9.10.13
-      '@launchdarkly/node-server-sdk-otel': 1.3.13(@launchdarkly/node-server-sdk@9.10.13)(@opentelemetry/api@1.9.0)
-      '@prisma/instrumentation': 7.8.0(@opentelemetry/api@1.9.0)
-      require-in-the-middle: 7.5.2
-    transitivePeerDependencies:
-      - '@opentelemetry/api'
       - supports-color
 
   '@launchdarkly/observability@1.1.6':
@@ -7687,10 +7646,6 @@ snapshots:
 
   '@npmcli/redact@4.0.0':
     optional: true
-
-  '@opentelemetry/api-logs@0.207.0':
-    dependencies:
-      '@opentelemetry/api': 1.9.0
 
   '@opentelemetry/api-logs@0.52.1':
     dependencies:
@@ -8179,15 +8134,6 @@ snapshots:
       - supports-color
     optional: true
 
-  '@opentelemetry/instrumentation@0.207.0(@opentelemetry/api@1.9.0)':
-    dependencies:
-      '@opentelemetry/api': 1.9.0
-      '@opentelemetry/api-logs': 0.207.0
-      import-in-the-middle: 2.0.6
-      require-in-the-middle: 8.0.1
-    transitivePeerDependencies:
-      - supports-color
-
   '@opentelemetry/instrumentation@0.52.1(@opentelemetry/api@1.9.0)':
     dependencies:
       '@opentelemetry/api': 1.9.0
@@ -8378,13 +8324,6 @@ snapshots:
       '@pnpm/config.env-replace': 1.1.0
       '@pnpm/network.ca-file': 1.0.2
       config-chain: 1.1.13
-
-  '@prisma/instrumentation@7.8.0(@opentelemetry/api@1.9.0)':
-    dependencies:
-      '@opentelemetry/api': 1.9.0
-      '@opentelemetry/instrumentation': 0.207.0(@opentelemetry/api@1.9.0)
-    transitivePeerDependencies:
-      - supports-color
 
   '@protobufjs/aspromise@1.1.2': {}
 
@@ -9316,8 +9255,6 @@ snapshots:
   ci-info@2.0.0: {}
 
   cjs-module-lexer@1.4.3: {}
-
-  cjs-module-lexer@2.2.0: {}
 
   cjson@0.3.3:
     dependencies:
@@ -10809,13 +10746,6 @@ snapshots:
       cjs-module-lexer: 1.4.3
       module-details-from-path: 1.0.4
 
-  import-in-the-middle@2.0.6:
-    dependencies:
-      acorn: 8.16.0
-      acorn-import-attributes: 1.9.5(acorn@8.16.0)
-      cjs-module-lexer: 2.2.0
-      module-details-from-path: 1.0.4
-
   import-lazy@2.1.0: {}
 
   import-meta-resolve@4.2.0: {}
@@ -12015,13 +11945,6 @@ snapshots:
       debug: 4.4.3
       module-details-from-path: 1.0.4
       resolve: 1.22.12
-    transitivePeerDependencies:
-      - supports-color
-
-  require-in-the-middle@8.0.1:
-    dependencies:
-      debug: 4.4.3
-      module-details-from-path: 1.0.4
     transitivePeerDependencies:
       - supports-color
 
