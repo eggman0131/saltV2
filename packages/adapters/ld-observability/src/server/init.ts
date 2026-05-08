@@ -1,8 +1,13 @@
 import type { IncomingHttpHeaders } from 'node:http';
-import { NodeTracerProvider, BatchSpanProcessor } from '@opentelemetry/sdk-trace-node';
+import {
+  NodeTracerProvider,
+  BatchSpanProcessor,
+  type ReadableSpan,
+} from '@opentelemetry/sdk-trace-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { Resource } from '@opentelemetry/resources';
 import { trace, propagation, context, type Span as OtelSpan } from '@opentelemetry/api';
+import { SPAN_TYPE_ATTR, TraceServerExporter, setTelemetryServerUrl } from 'genkit/tracing';
 
 const LD_OTLP_ENDPOINT = 'https://otel.launchdarkly.com/v1/traces';
 
@@ -24,6 +29,26 @@ export function initServerObservability(sdkKey: string): void {
       }),
     ),
   );
+
+  const genkitUrl = process.env['GENKIT_TELEMETRY_SERVER'];
+  if (genkitUrl) {
+    setTelemetryServerUrl(genkitUrl);
+    const genkitBatch = new BatchSpanProcessor(new TraceServerExporter());
+    provider.addSpanProcessor({
+      onStart(): void {},
+      onEnd(span: ReadableSpan): void {
+        if (span.attributes[SPAN_TYPE_ATTR] !== undefined) {
+          genkitBatch.onEnd(span);
+        }
+      },
+      forceFlush(): Promise<void> {
+        return genkitBatch.forceFlush();
+      },
+      shutdown(): Promise<void> {
+        return genkitBatch.shutdown();
+      },
+    });
+  }
 
   provider.register();
   readyPromise = Promise.resolve();
