@@ -59,30 +59,45 @@ jobs:
               - docs/e2e.md
               - Any other .md files under docs/
 
-            ## Step 3 — Identify staleness
+            ## Step 3 — Classify the relationship between code and docs
 
-            For each doc, decide whether the commits from Step 1 have made it stale.
-            Ask yourself:
-              - Are new packages, files, or modules introduced that aren't documented?
-              - Have layer boundaries, import rules, or hard rules changed?
-              - Have patterns, naming conventions, or public APIs changed?
-              - Are things removed or renamed that docs still reference?
+            For each area touched by the commits, make a judgement call — pick exactly
+            one of three verdicts:
 
-            ## Step 4 — Act
+            **A — Docs need a simple update.**
+            The code change is clearly intentional and valid. The documented architecture
+            still makes sense; the docs just haven't caught up yet. Examples: a new
+            package was added that should appear in the layer map; a file was renamed;
+            a convention was extended in an obvious way.
+            → You will update the docs automatically.
 
-            **If no updates are needed:** Output a brief summary of what you reviewed
-            and why everything is still accurate. Done.
+            **B — Implementation may have drifted (or you're not sure).**
+            The code change looks like it might violate the intended architecture, OR
+            you genuinely can't tell whether the docs should change to match the code or
+            the code should be fixed to match the docs. Examples: a new import crosses a
+            layer boundary; a Firebase SDK import appeared outside firebase-sync; a
+            pattern was introduced that contradicts a hard rule in CLAUDE.md.
+            → You will raise an issue for a human to decide. Do NOT touch the docs.
 
-            **If updates are needed:**
+            **C — Everything is fine.**
+            The commits don't affect anything documented, or the docs already reflect
+            the changes accurately.
+            → Nothing to do.
+
+            ## Step 4 — Act on your verdict
+
+            **Verdict C:** Output a brief summary of what you reviewed and why no action
+            is needed. Done.
+
+            **Verdict A — simple doc update:**
 
             a) Create a GitHub issue to track the work:
                gh issue create \
                  --title "docs: update docs after $(date +%Y-%m-%d) commits" \
-                 --body "Nightly review found stale documentation. Changes committed automatically."
-               Capture the issue number from the output (it prints the URL — extract the number).
+                 --body "Nightly review found stale documentation. Updating automatically."
+               Capture the issue number from the URL it prints.
 
-            b) Edit the relevant doc files to bring them up to date. Keep the same
-               tone and structure as the existing content. Do not add padding.
+            b) Edit the relevant doc files. Keep the same tone and structure. No padding.
 
             c) Commit and push directly to main:
                git config user.email "claude-nightly[bot]@users.noreply.github.com"
@@ -91,8 +106,35 @@ jobs:
                git commit -m "docs: update documentation after $(date +%Y-%m-%d) commits"
                git push origin main
 
-            d) Close the issue with a summary of what changed:
+            d) Close the issue:
                gh issue close <ISSUE_NUMBER> \
-                 --comment "Updated the following docs:\n<bullet list of files changed and why>"
+                 --comment "Updated the following docs:\n<bullet list of files and why>"
+
+            **Verdict B — possible drift or uncertain:**
+
+            Raise an issue explaining the situation clearly. Do NOT edit any doc files.
+
+               gh issue create \
+                 --title "review: possible architecture drift detected $(date +%Y-%m-%d)" \
+                 --label "needs-review" \
+                 --body "$(cat <<'BODY'
+               ## What the nightly review found
+
+               <Describe the commits that triggered this, with file names and a brief
+               summary of what changed.>
+
+               ## Why this needs a human decision
+
+               <Explain specifically what looks like drift, what rule or doc it conflicts
+               with, and why you couldn't confidently update the docs to match.>
+
+               ## Recommendation
+
+               <State clearly what you think the right resolution is — fix the code,
+               update the docs, or investigate further — and why.>
+               BODY
+               )"
+
+            Leave the issue open for the team to resolve.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
