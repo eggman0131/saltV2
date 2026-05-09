@@ -4,7 +4,7 @@ import {
   BatchSpanProcessor,
   ParentBasedSampler,
   AlwaysOnSampler,
-  type ReadableSpan,
+  type SpanProcessor,
 } from '@opentelemetry/sdk-trace-node';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
@@ -12,7 +12,6 @@ import { GrpcInstrumentation } from '@opentelemetry/instrumentation-grpc';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { Resource } from '@opentelemetry/resources';
 import { trace, propagation, context, diag, type Span as OtelSpan } from '@opentelemetry/api';
-import { SPAN_TYPE_ATTR, TraceServerExporter, setTelemetryServerUrl } from 'genkit/tracing';
 
 const LD_OTLP_ENDPOINT = 'https://otel.observability.app.launchdarkly.com:4318/v1/traces';
 
@@ -39,26 +38,6 @@ export function initServerObservability(sdkKey: string): void {
     new BatchSpanProcessor(new OTLPTraceExporter({ url: LD_OTLP_ENDPOINT })),
   );
 
-  const genkitUrl = process.env['GENKIT_TELEMETRY_SERVER'];
-  if (genkitUrl) {
-    setTelemetryServerUrl(genkitUrl);
-    const genkitBatch = new BatchSpanProcessor(new TraceServerExporter());
-    provider.addSpanProcessor({
-      onStart(): void {},
-      onEnd(span: ReadableSpan): void {
-        if (span.attributes[SPAN_TYPE_ATTR] !== undefined) {
-          genkitBatch.onEnd(span);
-        }
-      },
-      forceFlush(): Promise<void> {
-        return genkitBatch.forceFlush();
-      },
-      shutdown(): Promise<void> {
-        return genkitBatch.shutdown();
-      },
-    });
-  }
-
   provider.register();
 
   // Auto-instrumentations registered against this provider.
@@ -80,6 +59,16 @@ export function isServerObservabilityInitialised(): boolean {
 
 export async function whenServerObservabilityReady(): Promise<void> {
   if (readyPromise) await readyPromise;
+}
+
+// Register an additional SpanProcessor with the provider built by
+// initServerObservability. No-op when the provider hasn't been initialised
+// yet (e.g. LD_SDK_KEY not set). Must be called after initServerObservability.
+// Use this hook for CF-local concerns — such as Genkit dev-trace routing —
+// that must not live inside the ld-observability adapter.
+export function addServerSpanProcessor(processor: SpanProcessor): void {
+  if (!provider) return;
+  provider.addSpanProcessor(processor);
 }
 
 const OTEL_SPAN = Symbol('otel-span');

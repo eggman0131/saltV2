@@ -9,7 +9,7 @@ shared-types               →  (nothing)
 domain                     →  shared-types
 firebase-sync              →  domain, shared-types          # Firebase SDKs only; Firestore is the live data layer
 ld-observability           →  domain, shared-types          # LaunchDarkly browser SDK; default subpath
-ld-observability/server    →  domain, shared-types          # LaunchDarkly Node SDK; same package, /server subpath
+ld-observability/server    →  domain, shared-types          # Ships CF spans to LD's OTLP endpoint; exposes a span-processor registration hook for CF-local concerns
 ui-components              →  (external only — shadcn/tailwind)
 testing-utils              →  shared-types, domain, firebase-sync, ld-observability
 web-pwa                    →  shared-types, domain, firebase-sync, ld-observability, ui-components

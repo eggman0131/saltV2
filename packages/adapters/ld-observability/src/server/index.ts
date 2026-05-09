@@ -7,5 +7,6 @@ export {
   startSpan,
   extractTraceHeaders,
   runWithExtractedTraceContext,
+  addServerSpanProcessor,
 } from './init.js';
 export type { ObservabilitySpan, StartSpanOptions } from './init.js';
