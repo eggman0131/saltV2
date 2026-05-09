@@ -45,10 +45,9 @@ export function canonCreatePage(page: Page): CanonCreatePageLocators {
 }
 
 export interface CanonDetailPageLocators {
+  readonly nameEditButton: Locator;
   readonly nameInput: Locator;
-  readonly nameSave: Locator;
   readonly synonymsInput: Locator;
-  readonly synonymsSave: Locator;
   readonly aisleTrigger: Locator;
   readonly deleteButton: Locator;
   readonly deleteDialog: Locator;
@@ -57,10 +56,9 @@ export interface CanonDetailPageLocators {
 
 export function canonDetailPage(page: Page): CanonDetailPageLocators {
   return {
+    nameEditButton: page.getByRole('button', { name: /edit name/i }),
     nameInput: page.getByTestId('canon-detail-name-input'),
-    nameSave: page.getByTestId('canon-detail-name-save'),
     synonymsInput: page.getByTestId('canon-detail-synonyms-input'),
-    synonymsSave: page.getByTestId('canon-detail-synonyms-save'),
     aisleTrigger: page.getByTestId('canon-detail-aisle-select').getByRole('button'),
     deleteButton: page.getByTestId('canon-detail-delete-button'),
     deleteDialog: page.getByTestId('canon-detail-delete-dialog'),

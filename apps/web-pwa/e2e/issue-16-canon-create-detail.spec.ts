@@ -26,7 +26,7 @@ test('create truly new item → navigates to detail page', async ({ page }, test
 
   // Should navigate away from /canon/new to a detail page
   await expect(page).toHaveURL(/#\/canon\/(?!new)[a-z0-9-]+$/);
-  await expect(canonDetailPage(page).nameInput).toHaveValue('Garlic Powder');
+  await expect(page.getByRole('heading', { name: /garlic powder/i })).toBeVisible();
 });
 
 test('pick existing from combobox → routes to detail without creating', async ({
@@ -78,10 +78,11 @@ test('detail page — rename item', async ({ page }, testInfo) => {
 
   await page.goto(`/#/canon/${seeded.id}`);
   const ui = canonDetailPage(page);
-  await expect(ui.nameInput).toHaveValue('Skim Milk');
+  await expect(page.getByRole('heading', { name: /skim milk/i })).toBeVisible();
 
+  await ui.nameEditButton.click();
   await ui.nameInput.fill('Whole Milk');
-  await ui.nameSave.click();
+  await ui.nameInput.press('Enter');
 
   await expect
     .poll(async () => {
@@ -103,7 +104,7 @@ test('detail page — edit synonyms', async ({ page }, testInfo) => {
   await expect(ui.synonymsInput).toBeVisible();
 
   await ui.synonymsInput.fill('Cilantro, Chinese parsley');
-  await ui.synonymsSave.click();
+  await ui.synonymsInput.press('Enter');
 
   await expect
     .poll(async () => {
