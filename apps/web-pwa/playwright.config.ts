@@ -34,21 +34,21 @@ export default defineConfig({
       // that tests only start once the auth emulator is fully initialised —
       // the hub responds before individual emulators are ready.
       command:
-        'fuser -k 8080/tcp 9099/tcp 2>/dev/null; pnpm --filter @salt/cloud-functions build && firebase emulators:start --project=demo-salt --only=auth,firestore',
+        'fuser -k 8080/tcp 9099/tcp 2>/dev/null; firebase emulators:start --project=demo-salt --only=auth,firestore',
       cwd: '../..',
       url: 'http://127.0.0.1:9099',
       reuseExistingServer: !CI,
       timeout: 120_000,
-      stdout: 'pipe',
-      stderr: 'pipe',
+      stdout: CI ? 'inherit' : 'pipe',
+      stderr: CI ? 'inherit' : 'pipe',
     },
     {
       command: 'vite',
       url: 'http://127.0.0.1:5173',
       reuseExistingServer: !CI,
       timeout: 60_000,
-      stdout: 'pipe',
-      stderr: 'pipe',
+      stdout: CI ? 'inherit' : 'pipe',
+      stderr: CI ? 'inherit' : 'pipe',
     },
   ],
 });

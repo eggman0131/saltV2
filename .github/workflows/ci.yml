@@ -71,6 +71,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Cache Firebase emulators
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-${{ hashFiles('package.json') }}
+
       - name: Build cloud functions
         run: pnpm --filter @salt/cloud-functions build
 
