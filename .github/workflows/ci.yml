@@ -80,8 +80,20 @@ jobs:
       - name: Build cloud functions
         run: pnpm --filter @salt/cloud-functions build
 
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
       - name: Install Playwright browsers
-        run: pnpm --filter @salt/web-pwa exec playwright install --with-deps chromium
+        run: |
+          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
+            pnpm --filter @salt/web-pwa exec playwright install-deps chromium
+          else
+            pnpm --filter @salt/web-pwa exec playwright install --with-deps chromium
+          fi
 
       - name: Start Firebase emulators
         run: |

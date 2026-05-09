@@ -7,7 +7,7 @@ export default defineConfig({
   testIgnore: ['**/fixtures/**', '**/helpers/**', '**/reporter/**'],
   fullyParallel: true,
   forbidOnly: CI,
-  retries: CI ? 2 : 0,
+  retries: CI ? 1 : 0,
   workers: 1,
   reporter: CI
     ? [['html'], ['github'], ['./e2e/reporter/ldSessionReporter.ts']]
