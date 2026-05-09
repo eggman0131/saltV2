@@ -17,6 +17,7 @@
     "provenance:check": "pnpm --filter @salt/ui-components provenance:check",
     "theme:check": "pnpm --filter @salt/ui-components theme:check",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "format": "prettier --write \"**/*.{ts,js,svelte,css,html}\"",
     "format:check": "prettier --check \"**/*.{ts,js,svelte,css,html}\"",
     "dev": "pnpm --filter @salt/web-pwa dev",
@@ -53,6 +54,7 @@
     "prettier": "^3.5.3",
     "prettier-plugin-svelte": "^3.3.3",
     "typescript": "^5.8.3",
+    "@vitest/coverage-v8": "^3.2.0",
     "vitest": "^3.2.0"
   }
 }

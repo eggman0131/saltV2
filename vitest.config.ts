@@ -12,5 +12,12 @@ export default defineConfig({
       'apps/web-pwa/vitest.config.ts',
       'apps/cloud-functions/vitest.config.ts',
     ],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'html', 'lcov'],
+      reportsDirectory: './coverage/unit',
+      all: true,
+      include: ['packages/*/src/**', 'packages/adapters/*/src/**', 'apps/*/src/**'],
+    },
   },
 });
