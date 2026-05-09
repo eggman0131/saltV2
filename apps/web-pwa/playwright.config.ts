@@ -43,9 +43,9 @@ export default defineConfig({
       stderr: CI ? 'inherit' : 'pipe',
     },
     {
-      command: 'vite',
+      command: 'vite --host 127.0.0.1',
       url: 'http://127.0.0.1:5173',
-      reuseExistingServer: !CI,
+      reuseExistingServer: true,
       timeout: 60_000,
       stdout: CI ? 'inherit' : 'pipe',
       stderr: CI ? 'inherit' : 'pipe',

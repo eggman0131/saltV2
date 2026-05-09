@@ -94,12 +94,27 @@ jobs:
           timeout 90 bash -c 'until curl -s http://127.0.0.1:9099 > /dev/null 2>&1; do sleep 2; done'
           echo "Emulators ready"
 
+      - name: Start Vite dev server
+        run: |
+          pnpm --filter @salt/web-pwa exec vite --host 127.0.0.1 > /tmp/vite.log 2>&1 &
+          echo "Vite starting (PID $!)"
+
+      - name: Wait for Vite dev server
+        run: |
+          echo "Waiting for Vite on port 5173..."
+          timeout 60 bash -c 'until curl -s http://127.0.0.1:5173 > /dev/null 2>&1; do sleep 2; done'
+          echo "Vite ready"
+
       - name: Run E2E tests
         run: pnpm --filter @salt/web-pwa e2e
 
       - name: Show Firebase emulator log
         if: failure()
         run: cat /tmp/firebase-emulators.log 2>/dev/null || echo "No firebase log found"
+
+      - name: Show Vite log
+        if: failure()
+        run: cat /tmp/vite.log 2>/dev/null || echo "No Vite log found"
 
       - name: Upload Playwright report
         if: failure()
