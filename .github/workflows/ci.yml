@@ -83,8 +83,23 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm --filter @salt/web-pwa exec playwright install --with-deps chromium
 
+      - name: Start Firebase emulators
+        run: |
+          pnpm exec firebase emulators:start --project=demo-salt --only=auth,firestore > /tmp/firebase-emulators.log 2>&1 &
+          echo "Firebase emulators starting (PID $!)"
+
+      - name: Wait for Firebase emulators
+        run: |
+          echo "Waiting for auth emulator on port 9099..."
+          timeout 90 bash -c 'until curl -s http://127.0.0.1:9099 > /dev/null 2>&1; do sleep 2; done'
+          echo "Emulators ready"
+
       - name: Run E2E tests
         run: pnpm --filter @salt/web-pwa e2e
+
+      - name: Show Firebase emulator log
+        if: failure()
+        run: cat /tmp/firebase-emulators.log 2>/dev/null || echo "No firebase log found"
 
       - name: Upload Playwright report
         if: failure()

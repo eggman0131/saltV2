@@ -37,7 +37,7 @@ export default defineConfig({
         'fuser -k 8080/tcp 9099/tcp 2>/dev/null; firebase emulators:start --project=demo-salt --only=auth,firestore',
       cwd: '../..',
       url: 'http://127.0.0.1:9099',
-      reuseExistingServer: !CI,
+      reuseExistingServer: true,
       timeout: 120_000,
       stdout: CI ? 'inherit' : 'pipe',
       stderr: CI ? 'inherit' : 'pipe',
