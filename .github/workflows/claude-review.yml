@@ -1,0 +1,35 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    # Skip fork PRs (no secrets anyway) and gate on author for cost control.
+    if: |
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor == 'eggman0131'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Review this PR against the architecture contract in CLAUDE.md.
+            Focus on:
+            1. Layer-map compliance (no cross-layer or sibling-adapter imports)
+            2. Hard rules (no Firebase outside firebase-sync, no IndexedDB, no
+               importing of apps, ld-observability subpath usage)
+            3. Test coverage for domain logic and adapter boundaries
+            4. Genkit / Cloud Functions patterns from issue #17 (Genkit flows
+               + callable CFs; trace propagation via runWithExtractedTraceContext)
+            5. Security: secret handling, input validation at adapter boundaries
+          claude_args: '--max-turns 5 --model claude-sonnet-4-6'
