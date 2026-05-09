@@ -1,3 +1,4 @@
+<!-- spec: ui-spec-v04.md §9 v0.4 -->
 <script lang="ts" generics="T">
   import { dndzone, type DndEvent } from 'svelte-dnd-action';
   import type { SortableListProps } from './SortableList.types';
