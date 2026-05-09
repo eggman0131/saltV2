@@ -8,7 +8,7 @@ import preset from '../src/tailwind-preset.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '../../..');
-const DESIGN_MD_PATH = join(REPO_ROOT, 'design/design.md');
+const DESIGN_MD_PATH = join(REPO_ROOT, 'docs/design/design.md');
 const PRESET_SRC_PATH = join(__dirname, '../src/tailwind-preset.ts');
 
 // ── Minimal YAML-block parser (handles the exact frontmatter shape) ───────────
