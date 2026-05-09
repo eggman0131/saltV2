@@ -85,13 +85,15 @@ jobs:
 
       - name: Start Firebase emulators
         run: |
-          pnpm exec firebase emulators:start --project=demo-salt --only=auth,firestore > /tmp/firebase-emulators.log 2>&1 &
+          pnpm exec firebase emulators:start --project=demo-salt --only=auth,firestore,functions > /tmp/firebase-emulators.log 2>&1 &
           echo "Firebase emulators starting (PID $!)"
 
       - name: Wait for Firebase emulators
         run: |
           echo "Waiting for auth emulator on port 9099..."
           timeout 90 bash -c 'until curl -s http://127.0.0.1:9099 > /dev/null 2>&1; do sleep 2; done'
+          echo "Waiting for functions emulator on port 5001..."
+          timeout 90 bash -c 'until curl -s http://127.0.0.1:5001 > /dev/null 2>&1; do sleep 2; done'
           echo "Emulators ready"
 
       - name: Start Vite dev server
