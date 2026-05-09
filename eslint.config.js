@@ -116,6 +116,7 @@ export default [
     ignores: [
       '**/node_modules/**',
       '**/dist/**',
+      '**/coverage/**',
       '**/.svelte-kit/**',
       '**/__boundary_tests__/**',
       '**/.boundary-tests/**',
