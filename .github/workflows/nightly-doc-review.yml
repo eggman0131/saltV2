@@ -1,0 +1,98 @@
+name: Nightly Doc Review
+
+on:
+  schedule:
+    # 2 AM UTC every night
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  id-token: write
+
+jobs:
+  doc-review:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Check for commits in the last 24 hours
+        id: check
+        run: |
+          COUNT=$(git log --since="24 hours ago" --oneline | wc -l | tr -d ' ')
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "Found $COUNT commit(s) in the last 24 hours"
+
+      - name: Run nightly doc review
+        if: steps.check.outputs.count != '0'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: '--max-turns 20 --model claude-sonnet-4-6'
+          prompt: |
+            You are running a nightly documentation review for the Salt 2.0 monorepo.
+            Today's date: ${{ github.run_started_at }}
+
+            ## Step 1 — Identify what changed in the last 24 hours
+
+            Run:
+              git log --since="24 hours ago" --oneline
+              git diff --name-only $(git log --since="24 hours ago" --format="%H" | tail -1)^..HEAD
+
+            For each changed file get the full diff:
+              git log --since="24 hours ago" -p -- <file>
+
+            ## Step 2 — Read all documentation
+
+            Read every .md file in the repo that describes architecture, conventions, or
+            package contracts. At minimum:
+              - CLAUDE.md (root)
+              - .claude/CLAUDE.md
+              - docs/salt-architecture.md
+              - docs/domain-implementation.md
+              - docs/matching-pipeline.md
+              - docs/e2e.md
+              - Any other .md files under docs/
+
+            ## Step 3 — Identify staleness
+
+            For each doc, decide whether the commits from Step 1 have made it stale.
+            Ask yourself:
+              - Are new packages, files, or modules introduced that aren't documented?
+              - Have layer boundaries, import rules, or hard rules changed?
+              - Have patterns, naming conventions, or public APIs changed?
+              - Are things removed or renamed that docs still reference?
+
+            ## Step 4 — Act
+
+            **If no updates are needed:** Output a brief summary of what you reviewed
+            and why everything is still accurate. Done.
+
+            **If updates are needed:**
+
+            a) Create a GitHub issue to track the work:
+               gh issue create \
+                 --title "docs: update docs after $(date +%Y-%m-%d) commits" \
+                 --body "Nightly review found stale documentation. Changes committed automatically."
+               Capture the issue number from the output (it prints the URL — extract the number).
+
+            b) Edit the relevant doc files to bring them up to date. Keep the same
+               tone and structure as the existing content. Do not add padding.
+
+            c) Commit and push directly to main:
+               git config user.email "claude-nightly[bot]@users.noreply.github.com"
+               git config user.name "claude-nightly[bot]"
+               git add docs/ CLAUDE.md .claude/CLAUDE.md
+               git commit -m "docs: update documentation after $(date +%Y-%m-%d) commits"
+               git push origin main
+
+            d) Close the issue with a summary of what changed:
+               gh issue close <ISSUE_NUMBER> \
+                 --comment "Updated the following docs:\n<bullet list of files changed and why>"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
