@@ -115,7 +115,12 @@ beforeEach(() => {
 describe('matchOrCreateCanon — trace propagation + _trace stripping', () => {
   const traceparent = '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01';
 
-  it('passes _trace as headers to the parent startSpan call', async () => {
+  // Trace context propagation is now handled at the callable entrypoint
+  // (apps/cloud-functions/src/index.ts) via runWithExtractedTraceContext,
+  // which installs the browser's trace as the active OTel context BEFORE
+  // the flow opens any span. The flow itself opens spans with no headers
+  // option — they inherit from context.active() automatically.
+  it('opens the parent span without forwarding _trace (entrypoint sets active context)', async () => {
     getCollection('canonItems').set(
       'tomato-1',
       makeItem({ id: 'tomato-1', name: 'Tomato' }) as unknown as Record<string, unknown>,
@@ -129,10 +134,10 @@ describe('matchOrCreateCanon — trace propagation + _trace stripping', () => {
     expect(result.kind).toBe('ok');
     expect(startSpanCalls).toHaveLength(1);
     expect(startSpanCalls[0]!.name).toBe('canon.matchOrCreateCanon: tomato');
-    expect(startSpanCalls[0]!.opts).toEqual({ headers: { traceparent } });
+    expect(startSpanCalls[0]!.opts).toBeUndefined();
   });
 
-  it('omits the headers option when _trace is absent', async () => {
+  it('opens the parent span without headers when _trace is absent', async () => {
     getCollection('canonItems').set(
       'tomato-1',
       makeItem({ id: 'tomato-1', name: 'Tomato' }) as unknown as Record<string, unknown>,
@@ -159,23 +164,6 @@ describe('matchOrCreateCanon — trace propagation + _trace stripping', () => {
     const stored = [...getCollection('canonItems').values()][0]!;
     expect(stored).not.toHaveProperty('_trace');
     expect(stored).not.toHaveProperty('traceparent');
-  });
-
-  it('forwards both traceparent and tracestate when present', async () => {
-    getCollection('canonItems').set(
-      'tomato-1',
-      makeItem({ id: 'tomato-1', name: 'Tomato' }) as unknown as Record<string, unknown>,
-    );
-
-    await (matchOrCreateCanonFlow as Function)({
-      rawName: 'tomato',
-      _trace: { traceparent, tracestate: 'rojo=00f067aa0ba902b7,congo=t61rcWkgMzE' },
-    });
-
-    expect(startSpanCalls[0]!.opts?.headers).toEqual({
-      traceparent,
-      tracestate: 'rojo=00f067aa0ba902b7,congo=t61rcWkgMzE',
-    });
   });
 
   it('flushes telemetry and ends the parent span even when matchOrCreate errors', async () => {

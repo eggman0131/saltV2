@@ -101,10 +101,10 @@ export const matchOrCreateCanonFlow = ai.defineFlow(
       ...(rest.forceCreate !== undefined && { forceCreate: rest.forceCreate }),
     };
 
-    const parentSpan = startSpan(
-      `canon.matchOrCreateCanon: ${cleanInput.rawName}`,
-      _trace ? { headers: _trace } : undefined,
-    );
+    // Trace context is extracted at the callable entrypoint (index.ts) and
+    // installed as the active OTel context before this flow runs, so a plain
+    // startSpan inherits the browser's trace via context.active().
+    const parentSpan = startSpan(`canon.matchOrCreateCanon: ${cleanInput.rawName}`);
 
     try {
       const result = await matchOrCreate(cleanInput, buildMatchOrCreatePorts(parentSpan));

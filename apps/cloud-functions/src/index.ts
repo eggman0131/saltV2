@@ -1,10 +1,16 @@
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { defineSecret } from 'firebase-functions/params';
-import { onCallGenkit, isSignedIn } from 'firebase-functions/https';
+import { onCall, onCallGenkit, isSignedIn, HttpsError } from 'firebase-functions/https';
 import { onDocumentWritten } from 'firebase-functions/firestore';
 import { logger } from 'firebase-functions';
 import { normaliseName } from '@salt/domain';
+import {
+  initServerObservability,
+  isServerObservabilityInitialised,
+  runWithExtractedTraceContext,
+  whenServerObservabilityReady,
+} from '@salt/ld-observability/server';
 import { embedTextFlow } from './flows/embedText.js';
 import { arbitrateCanonFlow } from './flows/arbitrateCanon.js';
 import { matchOrCreateCanonFlow } from './flows/matchOrCreateCanon.js';
@@ -32,12 +38,30 @@ export const arbitrateCanon = onCallGenkit(
   arbitrateCanonFlow,
 );
 
-export const matchOrCreateCanon = onCallGenkit(
+// Manual onCall (instead of onCallGenkit) so we can extract the W3C trace
+// context from the request body and set it as the active OTel context BEFORE
+// Genkit opens the flow span. Otherwise Genkit's flow root starts a fresh
+// trace and the Genkit/Firestore child spans never join the browser's trace.
+export const matchOrCreateCanon = onCall(
   {
     secrets: [geminiApiKey, ldSdkKey],
-    authPolicy: isSignedIn(),
   },
-  matchOrCreateCanonFlow,
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Sign in required.');
+    }
+
+    // Init LD observability before extracting trace context, so the global
+    // tracer provider is registered when Genkit's flow span opens.
+    const sdkKey = process.env['LD_SDK_KEY'];
+    if (sdkKey && !isServerObservabilityInitialised()) {
+      initServerObservability(sdkKey);
+    }
+    await whenServerObservabilityReady();
+
+    const data = request.data as { _trace?: Record<string, string> };
+    return runWithExtractedTraceContext(data?._trace, () => matchOrCreateCanonFlow(request.data));
+  },
 );
 
 export const onCanonItemWritten = onDocumentWritten(

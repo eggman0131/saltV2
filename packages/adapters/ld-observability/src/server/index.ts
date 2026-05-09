@@ -6,5 +6,6 @@ export {
   flushServerObservability,
   startSpan,
   extractTraceHeaders,
+  runWithExtractedTraceContext,
 } from './init.js';
 export type { ObservabilitySpan, StartSpanOptions } from './init.js';

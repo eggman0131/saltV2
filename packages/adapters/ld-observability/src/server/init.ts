@@ -155,6 +155,20 @@ export async function flushServerObservability(): Promise<void> {
   });
 }
 
+// Run `fn` inside an OTel context populated from `headers` (W3C traceparent
+// / tracestate). Use this at a callable entrypoint to make the propagated
+// browser trace the active context BEFORE any flow span opens — otherwise
+// Genkit/Firestore spans root a fresh trace and never join the browser's.
+// No-op when observability isn't initialised.
+export async function runWithExtractedTraceContext<T>(
+  headers: IncomingHttpHeaders | Record<string, string | undefined> | undefined,
+  fn: () => Promise<T>,
+): Promise<T> {
+  if (!provider) return fn();
+  const ctx = propagation.extract(context.active(), headers ?? {});
+  return context.with(ctx, fn);
+}
+
 // W3C trace context extraction. Mirrors the browser-side helper; same wire
 // format so the CF can extract its trace headers when emitting downstream
 // requests, or for tests asserting parity.
