@@ -1,8 +1,19 @@
 /// <reference path="../../src/lib/types/e2e.d.ts" />
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { test as baseTest, expect } from '@playwright/test';
 import type { ObservabilitySessionMeta } from '@salt/ld-observability';
 
 declare const process: { env: Record<string, string | undefined> };
+
+const E2E_RAW_DIR = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+  'coverage',
+  'e2e-raw',
+);
 
 const FIRESTORE_EMULATOR_CLEAR_URL =
   'http://127.0.0.1:8080/emulator/v1/projects/demo-salt/databases/(default)/documents';
@@ -10,6 +21,7 @@ const FIRESTORE_EMULATOR_CLEAR_URL =
 interface AutoFixtures {
   readonly observabilitySession: void;
   readonly clearFirestore: void;
+  readonly coverageData: void;
 }
 
 function buildSessionMeta(testName: string, testId: string): ObservabilitySessionMeta {
@@ -54,6 +66,24 @@ export const test = baseTest.extend<AutoFixtures>({
         });
         (testInfo as { ldSessionURL?: string }).ldSessionURL = url;
       }
+    },
+    { auto: true },
+  ],
+
+  coverageData: [
+    async ({ page }, use, testInfo) => {
+      await page.coverage.startJSCoverage();
+      await use();
+      const coverage = await page.coverage.stopJSCoverage();
+      const safeName = testInfo.title
+        .replace(/[^a-zA-Z0-9]+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 60);
+      await mkdir(E2E_RAW_DIR, { recursive: true });
+      await writeFile(
+        join(E2E_RAW_DIR, `${safeName}-${testInfo.testId}.json`),
+        JSON.stringify(coverage),
+      );
     },
     { auto: true },
   ],
