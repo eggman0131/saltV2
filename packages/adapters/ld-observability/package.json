@@ -18,8 +18,6 @@
   },
   "dependencies": {
     "@launchdarkly/js-client-sdk": "^4.6.3",
-    "@launchdarkly/js-server-sdk-common": "^2.18.6",
-    "@launchdarkly/node-server-sdk": "^9.10.13",
     "@launchdarkly/observability": "^1.0.0",
     "@launchdarkly/session-replay": "^1.1.6",
     "@opentelemetry/api": "1.9.0",

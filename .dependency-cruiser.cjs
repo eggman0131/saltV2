@@ -44,16 +44,9 @@ module.exports = {
       to: { path: '^packages/(?!shared-types|domain)' },
     },
     {
-      name: 'local-store-no-firebase',
-      severity: 'error',
-      comment: '@salt/local-store must not import Firebase SDKs. Sync lives in @salt/firebase-sync.',
-      from: { path: '^packages/adapters/local-store' },
-      to: { path: '^node_modules/firebase' },
-    },
-    {
       name: 'firebase-sync-no-indexeddb',
       severity: 'error',
-      comment: '@salt/firebase-sync must not import browser storage. Local persistence lives in @salt/local-store.',
+      comment: '@salt/firebase-sync must not import browser storage. Offline reads/writes are handled by Firestore\'s persistentLocalCache.',
       from: { path: '^packages/adapters/firebase-sync' },
       to: { path: '^node_modules/(idb|idb-keyval|dexie)' },
     },
@@ -74,16 +67,9 @@ module.exports = {
     {
       name: 'adapters-no-cross-import',
       severity: 'error',
-      comment: 'local-store, firebase-sync, and ld-observability must not import each other. Compose them at the application layer.',
-      from: { path: '^packages/adapters/(local-store|firebase-sync|ld-observability)' },
-      to: { path: '^packages/adapters/(local-store|firebase-sync|ld-observability)', pathNot: '$0' },
-    },
-    {
-      name: 'cloud-functions-no-local-store',
-      severity: 'error',
-      comment: 'Cloud Functions run server-side and must not import @salt/local-store.',
-      from: { path: '^apps/cloud-functions' },
-      to: { path: '^packages/adapters/local-store' },
+      comment: 'firebase-sync and ld-observability must not import each other. Compose them at the application layer.',
+      from: { path: '^packages/adapters/(firebase-sync|ld-observability)' },
+      to: { path: '^packages/adapters/(firebase-sync|ld-observability)', pathNot: '$0' },
     },
     {
       name: 'cloud-functions-no-ld-observability-browser',

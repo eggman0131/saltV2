@@ -68,9 +68,6 @@ importers:
       '@salt/domain':
         specifier: workspace:*
         version: link:../../packages/domain
-      '@salt/firebase-sync':
-        specifier: workspace:*
-        version: link:../../packages/adapters/firebase-sync
       '@salt/ld-observability':
         specifier: workspace:*
         version: link:../../packages/adapters/ld-observability
@@ -215,12 +212,6 @@ importers:
       '@launchdarkly/js-client-sdk':
         specifier: ^4.6.3
         version: 4.6.3
-      '@launchdarkly/js-server-sdk-common':
-        specifier: ^2.18.6
-        version: 2.18.6
-      '@launchdarkly/node-server-sdk':
-        specifier: ^9.10.13
-        version: 9.10.13
       '@launchdarkly/observability':
         specifier: ^1.0.0
         version: 1.1.6
@@ -1506,15 +1497,6 @@ packages:
 
   '@launchdarkly/js-sdk-common@2.24.2':
     resolution: {integrity: sha512-SuWfR90NZ1ttGxz/2AeavfFXy/sFnFE7PhEBfg4mv0beTF9LeZwVa4XJsVeBe0Zb1PcuUQt7kn4VmFCctQIAzA==}
-
-  '@launchdarkly/js-sdk-common@2.24.3':
-    resolution: {integrity: sha512-KQaaHJcFOKvdiLIcS9f70tYLyENOmBvKI9sEKiMc43BwTwDW3AS0jyoKyCw3jCQL/sYv1+oX3VLk1urbdphGPg==}
-
-  '@launchdarkly/js-server-sdk-common@2.18.6':
-    resolution: {integrity: sha512-oc4ZJa7cuBuWN62PFR3Kcok+qVcm5XX4/5YEvcvg6cvqSRdte/8JYZ6AVAnJ9YFfYWoedpUSmFe9VXTBG/mWQw==}
-
-  '@launchdarkly/node-server-sdk@9.10.13':
-    resolution: {integrity: sha512-trN7DWtYO7BccQsMariHuIIw+QT1deqaj6jWECoT+FBlEW/Ws/oHQLX+HV2dMqKGASeofd66u+UxMTU5apGY4A==}
 
   '@launchdarkly/observability@1.1.6':
     resolution: {integrity: sha512-1giCEXw1X7FmePRpzt/O63dokP/aGLp9YcsDjfQmOe9+eBG6XYmCcSacAZfGQA8cNEE9MAmrMPce9GymVN5xKA==}
@@ -4326,10 +4308,6 @@ packages:
   kuler@2.0.0:
     resolution: {integrity: sha512-Xq9nH7KlWZmXAtodXDDRE7vs6DU1gTU8zYDHDiWLSip45Egwq3plLHzPn27NgvzL2r1LMPC1vdqh98sQxtqj4A==}
 
-  launchdarkly-eventsource@2.2.0:
-    resolution: {integrity: sha512-u38fYlLSq/m6oFz0MS1/76Sj2xzlYhTKZ+sf/vju6PA86PMc6fPlY5k8CdU79edLXjNwsvIQTDvDNy3llDqB8A==}
-    engines: {node: '>=0.12.0'}
-
   lazystream@1.0.1:
     resolution: {integrity: sha512-b94GiNHQNy6JNTrt5w6zNyffMrNkXZb3KTkCZJb2V1xaEGCk093vkZ2jk3tpaeP33/OiXC+WvK9AxUebnf5nbw==}
     engines: {node: '>= 0.6.3'}
@@ -5381,11 +5359,6 @@ packages:
 
   semver@6.3.1:
     resolution: {integrity: sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA==}
-    hasBin: true
-
-  semver@7.5.4:
-    resolution: {integrity: sha512-1bCSESV6Pv+i21Hvpxp3Dx+pSD8lIPt8uVjRrxAUt/nbswYc+tK6Y2btiULjd4+fnq15PX+nqQDC7Oft7WkwcA==}
-    engines: {node: '>=10'}
     hasBin: true
 
   semver@7.7.4:
@@ -7685,21 +7658,6 @@ snapshots:
       '@launchdarkly/js-client-sdk-common': 1.26.1
 
   '@launchdarkly/js-sdk-common@2.24.2': {}
-
-  '@launchdarkly/js-sdk-common@2.24.3': {}
-
-  '@launchdarkly/js-server-sdk-common@2.18.6':
-    dependencies:
-      '@launchdarkly/js-sdk-common': 2.24.3
-      semver: 7.5.4
-
-  '@launchdarkly/node-server-sdk@9.10.13':
-    dependencies:
-      '@launchdarkly/js-server-sdk-common': 2.18.6
-      https-proxy-agent: 7.0.6
-      launchdarkly-eventsource: 2.2.0
-    transitivePeerDependencies:
-      - supports-color
 
   '@launchdarkly/observability@1.1.6':
     dependencies:
@@ -11197,8 +11155,6 @@ snapshots:
 
   kuler@2.0.0: {}
 
-  launchdarkly-eventsource@2.2.0: {}
-
   lazystream@1.0.1:
     dependencies:
       readable-stream: 2.3.8
@@ -12264,10 +12220,6 @@ snapshots:
       semver: 6.3.1
 
   semver@6.3.1: {}
-
-  semver@7.5.4:
-    dependencies:
-      lru-cache: 6.0.0
 
   semver@7.7.4: {}
 
