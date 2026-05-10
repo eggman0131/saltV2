@@ -95,7 +95,6 @@ function makeItem(overrides: Partial<CanonItem> & { id: string; name: string }):
     needs_approval: false,
     shoppingBehavior: 'needed',
     updatedAt: '',
-    revision: 0,
     deletedAt: null,
     ...overrides,
   };

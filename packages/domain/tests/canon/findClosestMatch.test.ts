@@ -12,7 +12,6 @@ function item(overrides: Partial<CanonItem> & { id: string; name: string }): Can
     needs_approval: false,
     shoppingBehavior: 'needed',
     updatedAt: '',
-    revision: 0,
     deletedAt: null,
     ...overrides,
   };

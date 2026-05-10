@@ -14,10 +14,6 @@ describe('CanonItem schema', () => {
       expectTypeOf<CanonItem['schemaVersion']>().toEqualTypeOf<4>();
     });
 
-    it('revision is a number', () => {
-      expectTypeOf<CanonItem['revision']>().toEqualTypeOf<number>();
-    });
-
     it('updatedAt is a string', () => {
       expectTypeOf<CanonItem['updatedAt']>().toEqualTypeOf<string>();
     });
@@ -31,11 +27,6 @@ describe('CanonItem schema', () => {
     it('newly created item has schemaVersion 4', () => {
       const result = createCanonItem({ name: 'Tomato' }, counterIds());
       expect(result.kind === 'ok' && result.value.schemaVersion).toBe(4);
-    });
-
-    it('newly created item has revision 0', () => {
-      const result = createCanonItem({ name: 'Tomato' }, counterIds());
-      expect(result.kind === 'ok' && result.value.revision).toBe(0);
     });
 
     it('newly created item has empty updatedAt (pre-sync sentinel)', () => {
@@ -53,7 +44,7 @@ describe('CanonItem schema', () => {
     it('a live item has deletedAt null', () => {
       const item: CanonItem = {
         id: 'x',
-        schemaVersion: 3,
+        schemaVersion: 4,
         name: 'Butter',
         synonyms: [],
         aisleId: null,
@@ -62,7 +53,6 @@ describe('CanonItem schema', () => {
         needs_approval: false,
         shoppingBehavior: 'needed',
         updatedAt: '2026-01-01T00:00:00.000Z',
-        revision: 3,
         deletedAt: null,
       };
       expect(item.deletedAt).toBeNull();
@@ -71,7 +61,7 @@ describe('CanonItem schema', () => {
     it('a tombstone item has a non-null deletedAt ISO string', () => {
       const tombstone: CanonItem = {
         id: 'x',
-        schemaVersion: 3,
+        schemaVersion: 4,
         name: 'Butter',
         synonyms: [],
         aisleId: null,
@@ -80,30 +70,10 @@ describe('CanonItem schema', () => {
         needs_approval: false,
         shoppingBehavior: 'needed',
         updatedAt: '2026-01-01T00:00:00.000Z',
-        revision: 4,
         deletedAt: '2026-01-02T00:00:00.000Z',
       };
       expect(tombstone.deletedAt).not.toBeNull();
       expect(typeof tombstone.deletedAt).toBe('string');
-    });
-
-    it('revision advances monotonically (higher revision = newer state)', () => {
-      const v1: CanonItem = {
-        id: 'x',
-        schemaVersion: 3,
-        name: 'A',
-        synonyms: [],
-        aisleId: null,
-        thumbnail: null,
-        embedding: null,
-        needs_approval: false,
-        shoppingBehavior: 'needed',
-        updatedAt: '',
-        revision: 1,
-        deletedAt: null,
-      };
-      const v2: CanonItem = { ...v1, revision: 2 };
-      expect(v2.revision).toBeGreaterThan(v1.revision);
     });
   });
 });

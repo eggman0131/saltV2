@@ -33,7 +33,6 @@ export function installE2EHooks(): void {
         needs_approval: input.needs_approval ?? false,
         shoppingBehavior: 'needed',
         updatedAt: '',
-        revision: 0,
         deletedAt: null,
       };
       // Fire-and-forget: setDoc hangs when the SDK network is disabled (offline

@@ -28,7 +28,6 @@ function fromDoc(data: Record<string, unknown>): CanonItem {
     ...(typeof data['unit'] === 'string' ? { unit: data['unit'] as CanonItemUnit } : {}),
     ...(typeof data['reasoning'] === 'string' ? { reasoning: data['reasoning'] as string } : {}),
     updatedAt: typeof data['updatedAt'] === 'string' ? data['updatedAt'] : '',
-    revision: typeof data['revision'] === 'number' ? data['revision'] : 0,
     deletedAt: typeof data['deletedAt'] === 'string' ? data['deletedAt'] : null,
   };
 }
@@ -77,20 +76,6 @@ export function createFirestoreCanonStore(db: Firestore): CanonLocalStorePort {
       } catch (err) {
         return failure(classify(err));
       }
-    },
-    // Cursor + pending-write hooks are local-store concerns; the CF runs against
-    // Firestore directly and never queues writes. Return ok with no-op values.
-    async getCursor() {
-      return success(null);
-    },
-    async setCursor() {
-      return success(undefined);
-    },
-    async enqueuePendingWrite() {
-      return success(undefined);
-    },
-    async drainPendingWrites() {
-      return success([]);
     },
   };
 }

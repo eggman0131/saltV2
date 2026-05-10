@@ -18,8 +18,6 @@ export interface CanonItem {
   readonly unit?: CanonItemUnit;
   readonly reasoning?: string;
   // Sync fields — stamped server-side by the onCanonItemWritten CF trigger.
-  // New local items start with revision 0 and empty updatedAt until first sync.
   readonly updatedAt: string; // ISO-8601
-  readonly revision: number;
   readonly deletedAt: string | null; // null = live; non-null = soft-deleted tombstone
 }
