@@ -11,7 +11,7 @@
   const ctx = DIALOG_CONTEXT.get();
 
   const portalTo = $derived(
-    ctx.portal === false ? undefined : (ctx.portal as string | HTMLElement),
+    ctx.portal === false ? 'body' : (ctx.portal as string | HTMLElement),
   );
   const portalDisabled = $derived(ctx.portal === false);
 </script>

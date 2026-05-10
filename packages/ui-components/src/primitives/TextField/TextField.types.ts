@@ -38,4 +38,5 @@ export type TextFieldProps = {
   | 'placeholder'
   | 'onfocus'
   | 'onblur'
+  | 'size'
 >;

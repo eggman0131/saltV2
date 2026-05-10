@@ -23,7 +23,7 @@
   }: ButtonProps = $props();
 
   const state = createButtonState({
-    disabled: () => disabled,
+    disabled: () => disabled ?? false,
     loading: () => loading,
   });
 
@@ -35,7 +35,7 @@
     }
   });
 
-  function handleClick(e: MouseEvent) {
+  function handleClick(e: MouseEvent & { currentTarget: EventTarget & HTMLButtonElement }) {
     if (!state.interactive) {
       e.preventDefault();
       return;

@@ -27,7 +27,7 @@
 
 <!-- Embed Provider so Tooltip.Root works standalone; TooltipProvider.svelte is for app-level shared config -->
 <Tooltip.Provider {delayDuration} {disableHoverableContent}>
-  <Tooltip.Root {open} onOpenChange={handleOpenChange} {delayDuration} {disableHoverableContent}>
+  <Tooltip.Root open={open ?? false} onOpenChange={handleOpenChange} {delayDuration} {disableHoverableContent}>
     {@render children?.()}
   </Tooltip.Root>
 </Tooltip.Provider>
