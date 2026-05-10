@@ -47,7 +47,7 @@ The architecture must remain framework‑agnostic, testable, and resilient to ch
 ### Allowed
 
 - web-pwa → domain, shared-types, ui-components, firebase-sync, ld-observability
-- cloud-functions → domain, shared-types, firebase-sync
+- cloud-functions → domain, shared-types, firebase-sync, ld-observability/server
 - firebase-sync → domain, shared-types
 - ld-observability → domain, shared-types
 - domain → shared-types
@@ -62,7 +62,7 @@ The architecture must remain framework‑agnostic, testable, and resilient to ch
 - Domain → Firebase SDK / IndexedDB / Node / browser APIs
 - Domain → UI
 - Cloud Functions → UI
-- Cloud Functions → ld-observability (LaunchDarkly Observability SDK is browser-only; CFs use `firebase-functions/logger`)
+- Cloud Functions → ld-observability (the default subpath wraps the browser-only LaunchDarkly SDK and cannot run in Node; use `ld-observability/server` instead)
 - firebase-sync ↔ ld-observability (adapters must not import each other)
 - Any module → apps/web-pwa or apps/cloud-functions
 
@@ -129,12 +129,25 @@ This model is intentionally narrow. Multi‑workspace, sharing, or per‑documen
 
 ### 6.2 ld-observability adapter
 
-- Implements `ErrorReportingPort` and `MatchLoggingPort` using the LaunchDarkly Observability SDK.
-- May import the LaunchDarkly Observability SDK; nothing else in the codebase may.
+Ships two subpath entrypoints from a single package:
+
+**Default subpath (`@salt/ld-observability`)** — browser-only, bundled into `web-pwa`:
+- Implements `ErrorReportingPort` and `MatchLoggingPort` using the LaunchDarkly browser SDK.
+- Normalizes errors into `DomainError` categories before crossing the boundary.
+- Must not be imported by Cloud Functions.
+
+**Server subpath (`@salt/ld-observability/server`)** — Node-only, bundled into `cloud-functions`:
+- Initialises an OTel `NodeTracerProvider` that ships CF spans to LaunchDarkly's OTLP endpoint.
+- Implements `MatchLoggingPort` for the CF side via `createServerLDMatchLoggingAdapter`.
+- Exposes `addServerSpanProcessor` so CF-local concerns (e.g. Genkit dev-trace routing) can register additional span processors without touching the adapter internals.
+- `firebase-functions/logger` is used additively for top-level summary logs to Cloud Logging.
+
+Both subpaths share a runtime-neutral schema mapper (`src/shared/`) so the `canon.match` wire schema cannot drift between fast-path and CF emissions.
+
+Common rules for both subpaths:
+- May import the LaunchDarkly SDK; nothing else in the codebase may.
 - Must not import Firebase, IndexedDB, browser storage, UI, or other adapters.
 - Must not contain domain logic or business rules.
-- Normalizes errors into `DomainError` categories before crossing the boundary.
-- **Browser-only.** The underlying SDKs do not run in Node, so this adapter is bundled into `web-pwa` only. Cloud Functions log via `firebase-functions/logger` directly.
 
 ### 6.3 Common rules
 
@@ -206,7 +219,7 @@ Cloud Functions exist to support **server‑side gen‑AI workloads** (`embedTex
 
 Cloud Functions:
 
-- Import domain + firebase-sync (never ld-observability; the LaunchDarkly Observability SDK is browser-only — log via `firebase-functions/logger` instead)
+- Import domain + firebase-sync + ld-observability/server (never the default `ld-observability` subpath, which wraps the browser-only SDK and cannot run in Node)
 - Never import UI
 - Never contain business logic
 - Only orchestrate: input validation, domain commands/queries, gen‑AI providers, and returning results
@@ -253,7 +266,7 @@ This module must remain extremely small and stable.
 - Forbid Firebase imports outside firebase-sync
 - Forbid IndexedDB / browser storage imports everywhere
 - Forbid LaunchDarkly Observability SDK imports outside ld-observability
-- Forbid `ld-observability` imports in cloud-functions (browser-only SDK)
+- Forbid the default `ld-observability` subpath imports in cloud-functions (browser-only); `ld-observability/server` is allowed
 - Forbid firebase-sync ↔ ld-observability imports (sibling adapters must not import each other)
 - Forbid domain importing anything except shared-types
 - Forbid UI importing Cloud Functions
@@ -318,7 +331,8 @@ Every commit must:
 - web-pwa → deployed as PWA
 - cloud-functions → deployed to Firebase Functions
 - firebase-sync → bundled into UI and Cloud Functions
-- ld-observability → bundled into UI only (browser-only SDK)
+- ld-observability (default subpath) → bundled into UI only (browser-only SDK)
+- ld-observability/server → bundled into cloud-functions (Node SDK, OTLP exporter)
 - domain → bundled into UI and Cloud Functions
 - shared-types → type-only package
 
