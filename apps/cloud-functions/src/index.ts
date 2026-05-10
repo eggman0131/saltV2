@@ -11,6 +11,7 @@ import {
   runWithExtractedTraceContext,
   whenServerObservabilityReady,
 } from '@salt/ld-observability/server';
+import { registerGenkitDevTracing } from './genkitTracing.js';
 import { embedTextFlow } from './flows/embedText.js';
 import { arbitrateCanonFlow } from './flows/arbitrateCanon.js';
 import { matchOrCreateCanonFlow } from './flows/matchOrCreateCanon.js';
@@ -53,9 +54,12 @@ export const matchOrCreateCanon = onCall(
 
     // Init LD observability before extracting trace context, so the global
     // tracer provider is registered when Genkit's flow span opens.
+    // initServerObservability is synchronous, so registerGenkitDevTracing can
+    // follow immediately — both complete before whenServerObservabilityReady().
     const sdkKey = process.env['LD_SDK_KEY'];
     if (sdkKey && !isServerObservabilityInitialised()) {
       initServerObservability(sdkKey);
+      registerGenkitDevTracing();
     }
     await whenServerObservabilityReady();
 
