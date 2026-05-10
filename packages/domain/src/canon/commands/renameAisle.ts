@@ -20,9 +20,7 @@ export async function renameAisle(
   const loadResult = await store.load();
   if (loadResult.kind === 'err') return loadResult;
 
-  const stored = loadResult.value;
-  const existing = stored?.aisles ?? [];
-  const revision = stored?.revision ?? 0;
+  const existing = loadResult.value ?? [];
   const target = existing.find((a) => a.id === input.id);
   if (!target) {
     return failure({ kind: 'NotFound', resource: 'aisle', id: input.id });
@@ -36,7 +34,7 @@ export async function renameAisle(
   const renamed: Aisle = { ...target, name: newName };
   const updated = existing.map((a) => (a.id === input.id ? renamed : a));
 
-  const saveResult = await store.save(updated, revision);
+  const saveResult = await store.save(updated);
   if (saveResult.kind === 'err') return saveResult;
 
   return success(renamed);

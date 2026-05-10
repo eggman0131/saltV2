@@ -53,20 +53,16 @@ function makeStore(initial: CanonItem[] = []): CanonLocalStorePort & { items: Ca
 
 function makeAisleStore(): AisleLocalStorePort {
   return {
-    load: async () => ({ kind: 'ok', value: { aisles: [], revision: 0 } }),
+    load: async () => ({ kind: 'ok', value: [] }),
     save: async () => ({ kind: 'ok', value: undefined }),
-    enqueuePendingSave: async () => ({ kind: 'ok', value: undefined }),
-    drainPendingSave: async () => ({ kind: 'ok', value: null }),
   };
 }
 
 function makeAisleStoreWithAisles(): AisleLocalStorePort {
   const aisles = [{ id: 'produce', name: 'Produce', order: 1 }];
   return {
-    load: async () => ({ kind: 'ok', value: { aisles, revision: 0 } }),
+    load: async () => ({ kind: 'ok', value: aisles }),
     save: async () => ({ kind: 'ok', value: undefined }),
-    enqueuePendingSave: async () => ({ kind: 'ok', value: undefined }),
-    drainPendingSave: async () => ({ kind: 'ok', value: null }),
   };
 }
 

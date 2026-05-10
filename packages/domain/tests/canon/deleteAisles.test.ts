@@ -8,14 +8,12 @@ function makeAisleStore(initial: Aisle[] = []): AisleLocalStorePort & { items: A
   const items = [...initial];
   return {
     items,
-    load: async () => ({ kind: 'ok', value: { aisles: items, revision: 0 } }),
+    load: async () => ({ kind: 'ok', value: items }),
     save: async (aisles) => {
       items.length = 0;
       items.push(...aisles);
       return { kind: 'ok', value: undefined };
     },
-    enqueuePendingSave: async () => ({ kind: 'ok', value: undefined }),
-    drainPendingSave: async () => ({ kind: 'ok', value: null }),
   };
 }
 
@@ -81,8 +79,6 @@ describe('deleteAisles', () => {
     const store: AisleLocalStorePort = {
       load: async () => ({ kind: 'err', error: { kind: 'StorageError', reason: 'unavailable' } }),
       save: async () => ({ kind: 'ok', value: undefined }),
-      enqueuePendingSave: async () => ({ kind: 'ok', value: undefined }),
-      drainPendingSave: async () => ({ kind: 'ok', value: null }),
     };
     const result = await deleteAisles({ ids: ['a1'] }, store, makeCanonStore());
     expect(result.kind).toBe('err');
