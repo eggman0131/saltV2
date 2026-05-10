@@ -9,7 +9,6 @@ export type {
   Aisle,
   AislesDocument,
   CanonLocalStorePort,
-  CursorScope,
   AisleLocalStorePort,
   CanonLookupPort,
   IdGenerator,

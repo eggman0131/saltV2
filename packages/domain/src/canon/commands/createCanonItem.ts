@@ -38,7 +38,6 @@ export function createCanonItem(
     ...(input.unit !== undefined ? { unit: input.unit } : {}),
     ...(input.reasoning !== undefined ? { reasoning: input.reasoning } : {}),
     updatedAt: '',
-    revision: 0,
     deletedAt: null,
   });
 }

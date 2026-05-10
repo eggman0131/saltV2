@@ -39,7 +39,7 @@ const ELEMENTS = [
 
 // Import specifier patterns that must never appear in certain layers.
 const FIREBASE_PKGS = ['firebase', 'firebase/*', 'firebase-admin', 'firebase-admin/*'];
-// Browser storage packages forbidden everywhere (no local-store remains to own them).
+// Browser storage packages forbidden everywhere — Firestore's persistentLocalCache is the offline layer.
 const INDEXEDDB_PKGS = ['idb', 'idb/*', 'idb-keyval', 'idb-keyval/*', 'dexie', 'dexie/*'];
 const SALT_APP_IMPORTS = [
   '@salt/web-pwa',
@@ -163,7 +163,7 @@ export default [
             },
             {
               from: 'cloud-functions',
-              allow: ['shared-types', 'domain', 'firebase-sync', 'ld-observability'],
+              allow: ['shared-types', 'domain', 'ld-observability'],
             },
           ],
         },

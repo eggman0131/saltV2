@@ -37,5 +37,6 @@ On failure:
   buttons, dialog containers, drag handles) but content assertions stay on roles/labels.
 - **Isolation** — fresh browser context per test; per-test unique emails (`e2e-${testId}@salt.test`).
   Firestore is cleared once per file in `globalSetup`.
-- **Seeding** — write through the existing `@salt/local-store` adapter (not raw IndexedDB) so tests
-  exercise real persistence code paths.
+- **Seeding** — write through the existing `@salt/firebase-sync` adapter so tests exercise the
+  real Firestore persistence code paths (Firestore is the live data layer; offline reads/writes
+  go through its `persistentLocalCache`).

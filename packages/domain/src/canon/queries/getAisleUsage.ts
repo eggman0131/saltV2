@@ -11,7 +11,7 @@ export async function getAisleUsage(
   if (aisleResult.kind === 'err') return aisleResult;
   if (canonResult.kind === 'err') return canonResult;
 
-  const aisles = aisleResult.value?.aisles ?? [];
+  const aisles = aisleResult.value ?? [];
   const usage = new Map<string, number>(aisles.map((a) => [a.id, 0]));
   for (const item of canonResult.value) {
     if (item.aisleId !== null && usage.has(item.aisleId)) {

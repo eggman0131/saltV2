@@ -36,7 +36,6 @@ function canonItem(overrides: Partial<CanonItem> & { id: string; name: string })
     needs_approval: false,
     shoppingBehavior: 'needed',
     updatedAt: '',
-    revision: 0,
     deletedAt: null,
     ...overrides,
   };
@@ -55,18 +54,12 @@ function makeStore(initial: CanonItem[]): CanonLocalStorePort & { items: CanonIt
       return { kind: 'ok', value: item };
     },
     delete: async () => ({ kind: 'ok', value: undefined }),
-    getCursor: async () => ({ kind: 'ok', value: null }),
-    setCursor: async () => ({ kind: 'ok', value: undefined }),
-    enqueuePendingWrite: async () => ({ kind: 'ok', value: undefined }),
-    drainPendingWrites: async () => ({ kind: 'ok', value: [] }),
   };
 }
 
 const aisleStore: AisleLocalStorePort = {
-  load: async () => ({ kind: 'ok', value: { aisles: [], revision: 0 } }),
+  load: async () => ({ kind: 'ok', value: [] }),
   save: async () => ({ kind: 'ok', value: undefined }),
-  enqueuePendingSave: async () => ({ kind: 'ok', value: undefined }),
-  drainPendingSave: async () => ({ kind: 'ok', value: null }),
 };
 
 // AI ports that throw if invoked — guarantees the fast-path-eligible cases

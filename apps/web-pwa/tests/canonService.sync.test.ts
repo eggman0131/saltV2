@@ -48,7 +48,6 @@ function makeItem(id: string, overrides: Partial<CanonItem> = {}): CanonItem {
     embedding: null,
     needs_approval: false,
     updatedAt: '',
-    revision: 0,
     deletedAt: null,
     ...overrides,
   };
@@ -186,13 +185,13 @@ describe('canonService — in-memory adapters', () => {
       const seed = [makeAisle('a1', 'Produce')];
       const { store } = memAisleStore(seed);
       const result = await store.load();
-      expect(result).toEqual({ kind: 'ok', value: { aisles: seed, revision: 0 } });
+      expect(result).toEqual({ kind: 'ok', value: seed });
     });
 
     it('save captures the new aisles', async () => {
       const { store, getWritten } = memAisleStore([]);
       const newAisles = [makeAisle('a1', 'Dairy')];
-      await store.save(newAisles, 0);
+      await store.save(newAisles);
       expect(getWritten()).toEqual(newAisles);
     });
 
@@ -204,9 +203,9 @@ describe('canonService — in-memory adapters', () => {
     it('load reflects saved aisles after save', async () => {
       const { store } = memAisleStore([]);
       const updated = [makeAisle('b', 'Bakery')];
-      await store.save(updated, 0);
+      await store.save(updated);
       const result = await store.load();
-      expect((result as { kind: 'ok'; value: { aisles: Aisle[] } }).value.aisles).toEqual(updated);
+      expect((result as { kind: 'ok'; value: readonly Aisle[] }).value).toEqual(updated);
     });
   });
 

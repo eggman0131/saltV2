@@ -16,7 +16,6 @@ const seed: readonly CanonItem[] = [
     needs_approval: false,
     shoppingBehavior: 'needed',
     updatedAt: '',
-    revision: 0,
     deletedAt: null,
   },
   {
@@ -30,7 +29,6 @@ const seed: readonly CanonItem[] = [
     needs_approval: false,
     shoppingBehavior: 'needed',
     updatedAt: '',
-    revision: 0,
     deletedAt: null,
   },
 ];
@@ -107,7 +105,6 @@ describe('createCanonLookup', () => {
         needs_approval: false,
         shoppingBehavior: 'needed',
         updatedAt: '',
-        revision: 0,
         deletedAt: null,
       },
     ]);

@@ -21,31 +21,20 @@ function classify(_err: unknown): DomainError {
 
 export function createFirestoreAisleStore(db: Firestore): AisleLocalStorePort {
   return {
-    async load(): Promise<
-      ReadResult<
-        { readonly aisles: readonly Aisle[]; readonly revision: number } | null,
-        DomainError
-      >
-    > {
+    async load(): Promise<ReadResult<readonly Aisle[] | null, DomainError>> {
       try {
         const snap = await db.collection(AISLES_COLLECTION).doc(AISLES_DOC_ID).get();
         if (!snap.exists) return success(null);
         const data = snap.data() as Record<string, unknown>;
-        return success({ aisles: fromDoc(data), revision: 0 });
+        return success(fromDoc(data));
       } catch (err) {
         return failure(classify(err));
       }
     },
-    // matchOrCreate never writes aisles. Keep these as ok no-ops so the port
+    // matchOrCreate never writes aisles. Kept as an ok no-op so the port
     // contract stays satisfied without exposing an unused write path.
     async save() {
       return success(undefined);
-    },
-    async enqueuePendingSave() {
-      return success(undefined);
-    },
-    async drainPendingSave() {
-      return success(null);
     },
   };
 }

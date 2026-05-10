@@ -29,6 +29,6 @@
   }
 </script>
 
-<Dialog.Root {open} onOpenChange={handleOpenChange}>
+<Dialog.Root open={open ?? false} onOpenChange={handleOpenChange}>
   {@render children?.()}
 </Dialog.Root>

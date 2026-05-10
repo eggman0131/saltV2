@@ -29,6 +29,6 @@
   }
 </script>
 
-<Popover.Root {open} onOpenChange={handleOpenChange}>
+<Popover.Root open={open ?? false} onOpenChange={handleOpenChange}>
   {@render children?.()}
 </Popover.Root>

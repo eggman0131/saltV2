@@ -33,7 +33,6 @@ function makeItem(id: string, name = 'Test'): CanonItem {
     embedding: null,
     needs_approval: false,
     updatedAt: '',
-    revision: 0,
     deletedAt: null,
   };
 }

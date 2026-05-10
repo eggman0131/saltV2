@@ -9,6 +9,6 @@ export async function listAisles(
   const loadResult = await store.load();
   if (loadResult.kind === 'err') return loadResult;
 
-  const aisles = loadResult.value?.aisles ?? [];
+  const aisles = loadResult.value ?? [];
   return success([...aisles].sort((a, b) => a.order - b.order));
 }

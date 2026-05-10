@@ -14,9 +14,7 @@ export async function reorderAisles(
   const loadResult = await store.load();
   if (loadResult.kind === 'err') return loadResult;
 
-  const stored = loadResult.value;
-  const existing = stored?.aisles ?? [];
-  const revision = stored?.revision ?? 0;
+  const existing = loadResult.value ?? [];
   const byId = new Map(existing.map((a) => [a.id, a]));
 
   const reordered: Aisle[] = [];
@@ -32,7 +30,7 @@ export async function reorderAisles(
     if (!inList.has(aisle.id)) reordered.push({ ...aisle, order: tail++ });
   }
 
-  const saveResult = await store.save(reordered, revision);
+  const saveResult = await store.save(reordered);
   if (saveResult.kind === 'err') return saveResult;
 
   return success(reordered);

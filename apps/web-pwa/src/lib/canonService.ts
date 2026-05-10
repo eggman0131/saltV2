@@ -94,17 +94,11 @@ export function memAisleStore(seed: readonly Aisle[]) {
   let written: readonly Aisle[] | null = null;
   const store: AisleLocalStorePort = {
     async load() {
-      return { kind: 'ok', value: { aisles: written ?? seed, revision: 0 } };
+      return { kind: 'ok', value: written ?? seed };
     },
-    async save(aisles, _revision) {
+    async save(aisles) {
       written = aisles;
       return { kind: 'ok', value: undefined };
-    },
-    async enqueuePendingSave() {
-      return { kind: 'ok', value: undefined };
-    },
-    async drainPendingSave() {
-      return { kind: 'ok', value: null };
     },
   };
   return { store, getWritten: () => written };
@@ -128,18 +122,6 @@ export function memCanonStore(seed: readonly CanonItem[]) {
     async delete(id) {
       items.delete(id);
       return { kind: 'ok', value: undefined };
-    },
-    async getCursor() {
-      return { kind: 'ok', value: null };
-    },
-    async setCursor() {
-      return { kind: 'ok', value: undefined };
-    },
-    async enqueuePendingWrite() {
-      return { kind: 'ok', value: undefined };
-    },
-    async drainPendingWrites() {
-      return { kind: 'ok', value: [] };
     },
   };
   return { store, getUpserted: () => [...upserted] };

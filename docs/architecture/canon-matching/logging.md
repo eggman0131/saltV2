@@ -79,31 +79,29 @@ await loggingPort?.write(entry);
 
 ## Adapter behaviour
 
-`createFirebaseMatchLoggingAdapter()` in `packages/adapters/firebase-sync/src/canonMatchingLog.ts`:
+Three live `MatchLoggingPort` adapters write canon match logs. None persists to Firestore — match logs are observability spans / structured CF logs, not a queryable ledger.
 
-- Writes to Firestore collection **`canonMatchingLogs`**
-- Append-only; documents are never updated or deleted by the adapter
-- Errors from `addDoc` are silently caught — the pipeline always succeeds regardless of log write outcome
-- No batching, no indexing; this is a debug ledger, not a production query surface
+`createLDMatchLoggingAdapter(path, parentSpan?)` — `packages/adapters/ld-observability/src/ldMatchLoggingAdapter.ts`
+
+- Browser-side adapter used by the web-pwa fast path.
+- Opens a `canon.stages: <rawInput>` span via the LaunchDarkly browser SDK and applies the entry through the shared `applyMatchLogAttrs` mapper.
+- `path` is `'fast'` or `'cf'`; `parentSpan` chains under an outer match span when provided.
+
+`createServerLDMatchLoggingAdapter(parentSpan?)` — `packages/adapters/ld-observability/src/server/serverMatchLoggingAdapter.ts`
+
+- Cloud Functions counterpart to the browser adapter. Emits the same `canon.stages: <rawInput>` span via the LaunchDarkly Node SDK.
+- Shares `applyMatchLogAttrs` with the browser adapter so the wire schema cannot drift between fast-path and CF emissions.
+
+`createServerMatchLoggingAdapter()` — `apps/cloud-functions/src/adapters/serverMatchLog.ts`
+
+- Writes a structured `canon.match` line via `firebase-functions/logger` for CF-side inspection.
+- Logs the one-line `summarizeMatchLog` output plus correlation id, decision, raw/normalized input, final item, and total duration.
+
+All three are fire-and-forget: `MatchLogBuilder.complete()` is called regardless of write outcome, and the pipeline never errors on a failed log write.
 
 ---
 
 ## How to inspect logs manually
 
-Using the Firebase Emulator UI or the Firestore console, browse the `canonMatchingLogs` collection. Each document corresponds to one `matchOrCreate` call. Filter by `rawInput` or `finalDecision` to narrow results.
-
-For emulator-based inspection, start the emulators and run a manual pipeline call; the log document appears immediately in the Emulator UI at `http://127.0.0.1:4000`.
-
----
-
-## How future phases extend this
-
-| Phase | Extension |
-|-------|-----------|
-| Phase 1 (stages 1–4) | Pipeline calls `log.addStage(...)` for each pure stage |
-| Phase 2 (embeddings) | Stage 5 entry added; `reason` field populated with cosine score |
-| Phase 3 (AI arbitration) | Stage 6 entry added; `finalDecision` may be `'ai_arbitrated'` |
-| Phase 4 (orchestrator) | Pipeline factory wires `MatchLoggingPort` injection |
-| Future analytics issue | Separate tooling queries `canonMatchingLogs` for threshold analysis |
-
-No schema changes are needed for Phases 1–4 under the current design.
+- **Web fast path / CF traces:** open the LaunchDarkly observability UI and filter on `canon.stages` spans. The `canon.*` and `stage.{n}.*` attributes (defined in `applyMatchLogAttrs`) carry decision, scores, and per-stage outcomes.
+- **CF structured logs:** in the Firebase / Google Cloud Logs Explorer, filter on `jsonPayload.message = "canon.match"`. Each entry is one `matchOrCreate` invocation with the summary line and key fields inlined.

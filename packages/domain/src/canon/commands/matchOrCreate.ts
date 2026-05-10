@@ -201,7 +201,7 @@ function extrasFromNew(arb: ArbitrationNew): ArbitrationExtras {
 
 async function loadAisles(aisleStore: AisleLocalStorePort) {
   const aislesResult = await aisleStore.load();
-  return aislesResult.kind === 'ok' ? (aislesResult.value?.aisles ?? []) : [];
+  return aislesResult.kind === 'ok' ? (aislesResult.value ?? []) : [];
 }
 
 function logArbitration(
