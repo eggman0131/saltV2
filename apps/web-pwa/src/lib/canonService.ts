@@ -129,18 +129,6 @@ export function memCanonStore(seed: readonly CanonItem[]) {
       items.delete(id);
       return { kind: 'ok', value: undefined };
     },
-    async getCursor() {
-      return { kind: 'ok', value: null };
-    },
-    async setCursor() {
-      return { kind: 'ok', value: undefined };
-    },
-    async enqueuePendingWrite() {
-      return { kind: 'ok', value: undefined };
-    },
-    async drainPendingWrites() {
-      return { kind: 'ok', value: [] };
-    },
   };
   return { store, getUpserted: () => [...upserted] };
 }

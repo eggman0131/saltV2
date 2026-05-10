@@ -25,10 +25,6 @@ function makeCanonStore(initial: CanonItem[] = []): CanonLocalStorePort {
     load: async (id) => ({ kind: 'ok', value: items.find((i) => i.id === id) ?? null }),
     upsert: async (item) => ({ kind: 'ok', value: item }),
     delete: async () => ({ kind: 'ok', value: undefined }),
-    getCursor: async () => ({ kind: 'ok', value: null }),
-    setCursor: async () => ({ kind: 'ok', value: undefined }),
-    enqueuePendingWrite: async () => ({ kind: 'ok', value: undefined }),
-    drainPendingWrites: async () => ({ kind: 'ok', value: [] }),
   };
 }
 
@@ -41,7 +37,6 @@ function canonItem(overrides: Partial<CanonItem> & { id: string; name: string })
     embedding: null,
     needs_approval: false,
     updatedAt: '',
-    revision: 0,
     deletedAt: null,
     ...overrides,
   };
@@ -109,10 +104,6 @@ describe('getAisleUsage', () => {
       load: async () => ({ kind: 'ok', value: null }),
       upsert: async (item) => ({ kind: 'ok', value: item }),
       delete: async () => ({ kind: 'ok', value: undefined }),
-      getCursor: async () => ({ kind: 'ok', value: null }),
-      setCursor: async () => ({ kind: 'ok', value: undefined }),
-      enqueuePendingWrite: async () => ({ kind: 'ok', value: undefined }),
-      drainPendingWrites: async () => ({ kind: 'ok', value: [] }),
     };
     const result = await getAisleUsage(aisleStore, canonStore);
     expect(result.kind).toBe('err');

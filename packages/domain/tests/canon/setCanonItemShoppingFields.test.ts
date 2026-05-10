@@ -17,7 +17,6 @@ function item(overrides: Partial<CanonItem> = {}): CanonItem {
     needs_approval: false,
     shoppingBehavior: 'needed',
     updatedAt: '',
-    revision: 0,
     deletedAt: null,
     ...overrides,
   };

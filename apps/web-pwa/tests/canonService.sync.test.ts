@@ -48,7 +48,6 @@ function makeItem(id: string, overrides: Partial<CanonItem> = {}): CanonItem {
     embedding: null,
     needs_approval: false,
     updatedAt: '',
-    revision: 0,
     deletedAt: null,
     ...overrides,
   };

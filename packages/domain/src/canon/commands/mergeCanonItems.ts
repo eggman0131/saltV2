@@ -29,7 +29,6 @@ export function mergeCanonItems(local: CanonItem, remote: CanonItem): CanonItem 
     ...(remote.reasoning !== undefined ? { reasoning: remote.reasoning } : {}),
     // Server-authoritative sync fields come from remote.
     updatedAt: remote.updatedAt,
-    revision: remote.revision,
     deletedAt: remote.deletedAt,
   };
 }

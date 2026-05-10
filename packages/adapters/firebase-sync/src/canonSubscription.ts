@@ -23,7 +23,6 @@ function fromDoc(data: Record<string, unknown>): CanonItem {
     ...(typeof data['unit'] === 'string' ? { unit: data['unit'] as CanonItemUnit } : {}),
     ...(typeof data['reasoning'] === 'string' ? { reasoning: data['reasoning'] } : {}),
     updatedAt: typeof data['updatedAt'] === 'string' ? data['updatedAt'] : '',
-    revision: typeof data['revision'] === 'number' ? data['revision'] : 0,
     deletedAt: typeof data['deletedAt'] === 'string' ? data['deletedAt'] : null,
   };
 }
