@@ -58,10 +58,8 @@ function makeStore(initial: CanonItem[]): CanonLocalStorePort & { items: CanonIt
 }
 
 const aisleStore: AisleLocalStorePort = {
-  load: async () => ({ kind: 'ok', value: { aisles: [], revision: 0 } }),
+  load: async () => ({ kind: 'ok', value: [] }),
   save: async () => ({ kind: 'ok', value: undefined }),
-  enqueuePendingSave: async () => ({ kind: 'ok', value: undefined }),
-  drainPendingSave: async () => ({ kind: 'ok', value: null }),
 };
 
 // AI ports that throw if invoked — guarantees the fast-path-eligible cases

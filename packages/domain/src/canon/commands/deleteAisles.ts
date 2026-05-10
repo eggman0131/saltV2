@@ -17,12 +17,10 @@ export async function deleteAisles(
   const loadResult = await store.load();
   if (loadResult.kind === 'err') return loadResult;
 
-  const stored = loadResult.value;
-  const existing = stored?.aisles ?? [];
-  const revision = stored?.revision ?? 0;
+  const existing = loadResult.value ?? [];
   const remaining = existing.filter((a) => !deletedSet.has(a.id));
 
-  const saveResult = await store.save(remaining, revision);
+  const saveResult = await store.save(remaining);
   if (saveResult.kind === 'err') return saveResult;
 
   const canonResult = await canonStore.list();

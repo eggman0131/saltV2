@@ -32,9 +32,7 @@ export async function createAislesBulk(
   const loadResult = await store.load();
   if (loadResult.kind === 'err') return loadResult;
 
-  const stored = loadResult.value;
-  const existing = stored?.aisles ?? [];
-  const revision = stored?.revision ?? 0;
+  const existing = loadResult.value ?? [];
   const existingLower = new Set(existing.map((a) => a.name.toLowerCase()));
   const collision = deduped.find((n) => existingLower.has(n.toLowerCase()));
   if (collision !== undefined) {
@@ -48,7 +46,7 @@ export async function createAislesBulk(
     order: maxOrder + 1 + i,
   }));
 
-  const saveResult = await store.save([...existing, ...newAisles], revision);
+  const saveResult = await store.save([...existing, ...newAisles]);
   if (saveResult.kind === 'err') return saveResult;
 
   return success(newAisles);

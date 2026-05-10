@@ -39,31 +39,18 @@ describe('CanonLocalStorePort', () => {
 // ─── AisleLocalStorePort ────────────────────────────────────────────────────
 
 describe('AisleLocalStorePort', () => {
-  it('save accepts aisles + revision and returns ReadResult<void>', () => {
+  it('exposes only { save, load }', () => {
+    expectTypeOf<keyof AisleLocalStorePort>().toEqualTypeOf<'save' | 'load'>();
+  });
+
+  it('save accepts aisles and returns ReadResult<void>', () => {
     expectTypeOf<AisleLocalStorePort['save']>().toEqualTypeOf<
-      (aisles: readonly Aisle[], revision: number) => Promise<ReadResult<void, DomainError>>
-    >();
-  });
-
-  it('load returns { aisles, revision } | null', () => {
-    expectTypeOf<AisleLocalStorePort['load']>().toEqualTypeOf<
-      () => Promise<
-        ReadResult<
-          { readonly aisles: readonly Aisle[]; readonly revision: number } | null,
-          DomainError
-        >
-      >
-    >();
-  });
-
-  it('enqueuePendingSave accepts aisles and returns ReadResult<void>', () => {
-    expectTypeOf<AisleLocalStorePort['enqueuePendingSave']>().toEqualTypeOf<
       (aisles: readonly Aisle[]) => Promise<ReadResult<void, DomainError>>
     >();
   });
 
-  it('drainPendingSave returns aisles | null', () => {
-    expectTypeOf<AisleLocalStorePort['drainPendingSave']>().toEqualTypeOf<
+  it('load returns readonly Aisle[] | null', () => {
+    expectTypeOf<AisleLocalStorePort['load']>().toEqualTypeOf<
       () => Promise<ReadResult<readonly Aisle[] | null, DomainError>>
     >();
   });

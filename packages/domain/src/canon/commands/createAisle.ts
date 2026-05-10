@@ -21,9 +21,7 @@ export async function createAisle(
   const loadResult = await store.load();
   if (loadResult.kind === 'err') return loadResult;
 
-  const stored = loadResult.value;
-  const existing = stored?.aisles ?? [];
-  const revision = stored?.revision ?? 0;
+  const existing = loadResult.value ?? [];
   const nameLower = name.toLowerCase();
   if (existing.some((a) => a.name.toLowerCase() === nameLower)) {
     return failure({ kind: 'ValidationError', code: ErrorCode.DUPLICATE_AISLE_NAME });
@@ -32,7 +30,7 @@ export async function createAisle(
   const maxOrder = existing.reduce((max, a) => Math.max(max, a.order), -1);
   const newAisle: Aisle = { id: ids.newAisleId(), name, order: maxOrder + 1 };
 
-  const saveResult = await store.save([...existing, newAisle], revision);
+  const saveResult = await store.save([...existing, newAisle]);
   if (saveResult.kind === 'err') return saveResult;
 
   return success(newAisle);
