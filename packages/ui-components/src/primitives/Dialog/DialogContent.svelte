@@ -10,9 +10,7 @@
 
   const ctx = DIALOG_CONTEXT.get();
 
-  const portalTo = $derived(
-    ctx.portal === false ? 'body' : (ctx.portal as string | HTMLElement),
-  );
+  const portalTo = $derived(ctx.portal === false ? 'body' : (ctx.portal as string | HTMLElement));
   const portalDisabled = $derived(ctx.portal === false);
 </script>
 
