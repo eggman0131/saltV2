@@ -230,30 +230,32 @@ Canon does not know:
 - shopping lists
 - UI
 - Firebase
-- IndexedDB
+- browser storage (IndexedDB, localStorage, etc.)
 
 6.2 Ports
 ---------
-Canon exposes four sync-related ports via its `index.ts` (in addition to
-CanonLookupPort):
+Canon exposes the following sync-related ports via its `index.ts` (in
+addition to CanonLookupPort):
 
 CanonLocalStorePort
-  IndexedDB persistence for canon items — implemented by @salt/local-store
+  in-memory cache for canon items — backs live Firestore subscriptions in
+  the web client (web-pwa) and read-through reads in the cloud-functions
+  matcher
 
 CanonSyncTransportPort
-  pull/push/subscribe for canon items — implemented by @salt/firebase-sync
+  pull/subscribe for canon items — implemented by @salt/firebase-sync
 
 AisleLocalStorePort
-  IndexedDB persistence for the aisles document — implemented by @salt/local-store
+  in-memory cache for the aisles document — same pattern as above
 
 AisleSyncTransportPort
-  pull/push/subscribe for the aisles document — implemented by @salt/firebase-sync
+  pull/subscribe for the aisles document — implemented by @salt/firebase-sync
 
-Both scopes share the same manifest pattern (single `canonManifest/global`
-document with per-scope revision counters: `itemsRevision` and
-`aislesRevision`). The cursors are stored in local-store keyed
-`manifestCursor:items` and `manifestCursor:aisles`. Clients subscribe to
-the one manifest document instead of listening to any collection.
+Firestore is the live data layer: clients subscribe directly to the
+canon collections and the aisles document, and offline reads/writes are
+handled by Firestore's `persistentLocalCache`. There is no separate
+manifest document, no per-scope revision counter, and no app-managed
+cursor — the SDK owns durability.
 
 CanonLookupPort
   canonicalisation logic used by other modules — implemented by canon's
