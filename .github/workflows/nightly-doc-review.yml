@@ -1,0 +1,140 @@
+name: Nightly Doc Review
+
+on:
+  schedule:
+    # 2 AM UTC every night
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  id-token: write
+
+jobs:
+  doc-review:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Check for commits in the last 24 hours
+        id: check
+        run: |
+          COUNT=$(git log --since="24 hours ago" --oneline | wc -l | tr -d ' ')
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "Found $COUNT commit(s) in the last 24 hours"
+
+      - name: Run nightly doc review
+        if: steps.check.outputs.count != '0'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: '--max-turns 20 --model claude-sonnet-4-6'
+          prompt: |
+            You are running a nightly documentation review for the Salt 2.0 monorepo.
+            Today's date: ${{ github.run_started_at }}
+
+            ## Step 1 — Identify what changed in the last 24 hours
+
+            Run:
+              git log --since="24 hours ago" --oneline
+              git diff --name-only $(git log --since="24 hours ago" --format="%H" | tail -1)^..HEAD
+
+            For each changed file get the full diff:
+              git log --since="24 hours ago" -p -- <file>
+
+            ## Step 2 — Read all documentation
+
+            Read every .md file in the repo that describes architecture, conventions, or
+            package contracts. At minimum:
+              - CLAUDE.md (root)
+              - .claude/CLAUDE.md
+              - docs/salt-architecture.md
+              - docs/domain-implementation.md
+              - docs/matching-pipeline.md
+              - docs/e2e.md
+              - Any other .md files under docs/
+
+            ## Step 3 — Classify the relationship between code and docs
+
+            For each area touched by the commits, make a judgement call — pick exactly
+            one of three verdicts:
+
+            **A — Docs need a simple update.**
+            The code change is clearly intentional and valid. The documented architecture
+            still makes sense; the docs just haven't caught up yet. Examples: a new
+            package was added that should appear in the layer map; a file was renamed;
+            a convention was extended in an obvious way.
+            → You will update the docs automatically.
+
+            **B — Implementation may have drifted (or you're not sure).**
+            The code change looks like it might violate the intended architecture, OR
+            you genuinely can't tell whether the docs should change to match the code or
+            the code should be fixed to match the docs. Examples: a new import crosses a
+            layer boundary; a Firebase SDK import appeared outside firebase-sync; a
+            pattern was introduced that contradicts a hard rule in CLAUDE.md.
+            → You will raise an issue for a human to decide. Do NOT touch the docs.
+
+            **C — Everything is fine.**
+            The commits don't affect anything documented, or the docs already reflect
+            the changes accurately.
+            → Nothing to do.
+
+            ## Step 4 — Act on your verdict
+
+            **Verdict C:** Output a brief summary of what you reviewed and why no action
+            is needed. Done.
+
+            **Verdict A — simple doc update:**
+
+            a) Create a GitHub issue to track the work:
+               gh issue create \
+                 --title "docs: update docs after $(date +%Y-%m-%d) commits" \
+                 --body "Nightly review found stale documentation. Updating automatically."
+               Capture the issue number from the URL it prints.
+
+            b) Edit the relevant doc files. Keep the same tone and structure. No padding.
+
+            c) Commit and push directly to main:
+               git config user.email "claude-nightly[bot]@users.noreply.github.com"
+               git config user.name "claude-nightly[bot]"
+               git add docs/ CLAUDE.md .claude/CLAUDE.md
+               git commit -m "docs: update documentation after $(date +%Y-%m-%d) commits"
+               git push origin main
+
+            d) Close the issue:
+               gh issue close <ISSUE_NUMBER> \
+                 --comment "Updated the following docs:\n<bullet list of files and why>"
+
+            **Verdict B — possible drift or uncertain:**
+
+            Raise an issue explaining the situation clearly. Do NOT edit any doc files.
+
+               gh issue create \
+                 --title "review: possible architecture drift detected $(date +%Y-%m-%d)" \
+                 --label "needs-review" \
+                 --body "$(cat <<'BODY'
+               ## What the nightly review found
+
+               <Describe the commits that triggered this, with file names and a brief
+               summary of what changed.>
+
+               ## Why this needs a human decision
+
+               <Explain specifically what looks like drift, what rule or doc it conflicts
+               with, and why you couldn't confidently update the docs to match.>
+
+               ## Recommendation
+
+               <State clearly what you think the right resolution is — fix the code,
+               update the docs, or investigate further — and why.>
+               BODY
+               )"
+
+            Leave the issue open for the team to resolve.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
