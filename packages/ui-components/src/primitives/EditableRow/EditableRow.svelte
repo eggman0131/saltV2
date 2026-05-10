@@ -22,7 +22,7 @@
     selected && (shaded ? 'ring-2 ring-ring' : 'ring-2 ring-ring border-ring'),
   )}
 >
-  <Checkbox checked={selected} onCheckedChange={onToggleSelect} />
+  <Checkbox checked={selected} {...(onToggleSelect !== undefined ? { onCheckedChange: onToggleSelect } : {})} />
   {#if narrow}
     <div class="flex-1 min-w-0 sm:hidden">
       {@render narrow()}

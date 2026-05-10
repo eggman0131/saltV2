@@ -39,12 +39,12 @@
 <div class={cn('flex items-center gap-2', className)}>
   <Switch.Root
     id={fieldState.id}
-    {checked}
+    checked={checked ?? false}
     onCheckedChange={handleCheckedChange}
     {disabled}
     {required}
-    {name}
     {value}
+    {...(name !== undefined ? { name } : {})}
     aria-describedby={fieldState.describedBy}
     class={switchRootVariants({ size })}
   >
