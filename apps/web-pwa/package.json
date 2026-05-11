@@ -9,11 +9,11 @@
     "build:staging": "vite build --mode staging",
     "preview": "vite preview",
     "test": "vitest run",
-    "e2e": "trap 'node ../../scripts/stop-emulators.mjs || exit 1' EXIT; node ../../scripts/stop-emulators.mjs && playwright test",
-    "e2e:coverage": "trap 'node ../../scripts/stop-emulators.mjs || exit 1' EXIT; node ../../scripts/stop-emulators.mjs && playwright test && node --experimental-strip-types scripts/process-e2e-coverage.ts",
+    "e2e": "playwright test",
+    "e2e:coverage": "playwright test && node --experimental-strip-types scripts/process-e2e-coverage.ts",
     "e2e:coverage:report": "node --experimental-strip-types scripts/process-e2e-coverage.ts",
     "e2e:install": "playwright install --with-deps chromium",
-    "e2e:ui": "trap 'node ../../scripts/stop-emulators.mjs || exit 1' EXIT; node ../../scripts/stop-emulators.mjs && playwright test --ui"
+    "e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@salt/domain": "workspace:*",

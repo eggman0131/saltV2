@@ -12,6 +12,8 @@ export default defineConfig({
   reporter: CI
     ? [['html'], ['github'], ['./e2e/reporter/ldSessionReporter.ts']]
     : [['html'], ['list'], ['./e2e/reporter/ldSessionReporter.ts']],
+  globalSetup: './e2e/globalSetup.ts',
+  globalTeardown: './e2e/globalTeardown.ts',
 
   use: {
     baseURL: 'http://127.0.0.1:5173',
@@ -26,23 +28,12 @@ export default defineConfig({
     },
   ],
 
-  webServer: [
-    {
-      command: 'firebase emulators:start --project=demo-salt --only=auth,firestore,functions',
-      cwd: '../..',
-      url: 'http://127.0.0.1:9099',
-      reuseExistingServer: CI,
-      timeout: 120_000,
-      stdout: CI ? 'inherit' : 'pipe',
-      stderr: CI ? 'inherit' : 'pipe',
-    },
-    {
-      command: 'vite --host 127.0.0.1',
-      url: 'http://127.0.0.1:5173',
-      reuseExistingServer: true,
-      timeout: 60_000,
-      stdout: CI ? 'inherit' : 'pipe',
-      stderr: CI ? 'inherit' : 'pipe',
-    },
-  ],
+  webServer: {
+    command: 'vite --host 127.0.0.1',
+    url: 'http://127.0.0.1:5173',
+    reuseExistingServer: true,
+    timeout: 60_000,
+    stdout: CI ? 'inherit' : 'pipe',
+    stderr: CI ? 'inherit' : 'pipe',
+  },
 });
