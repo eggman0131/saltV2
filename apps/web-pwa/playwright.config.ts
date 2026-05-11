@@ -28,16 +28,11 @@ export default defineConfig({
 
   webServer: [
     {
-      // fuser -k clears orphaned emulator Java subprocesses left behind when
-      // the Firebase CLI is killed (common in WSL). The reuseExistingServer
-      // check uses port 9099 (auth emulator) rather than the hub (4400) so
-      // that tests only start once the auth emulator is fully initialised —
-      // the hub responds before individual emulators are ready.
       command:
-        'fuser -k 8080/tcp 9099/tcp 5001/tcp 2>/dev/null; firebase emulators:start --project=demo-salt --only=auth,firestore,functions',
+        'node scripts/stop-emulators.mjs && firebase emulators:start --project=demo-salt --only=auth,firestore,functions',
       cwd: '../..',
       url: 'http://127.0.0.1:9099',
-      reuseExistingServer: true,
+      reuseExistingServer: false,
       timeout: 120_000,
       stdout: CI ? 'inherit' : 'pipe',
       stderr: CI ? 'inherit' : 'pipe',
