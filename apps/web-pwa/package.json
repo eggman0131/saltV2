@@ -9,11 +9,11 @@
     "build:staging": "vite build --mode staging",
     "preview": "vite preview",
     "test": "vitest run",
-    "e2e": "node ../../scripts/stop-emulators.mjs && playwright test; E=$?; node ../../scripts/stop-emulators.mjs && exit $E || exit 1",
-    "e2e:coverage": "node ../../scripts/stop-emulators.mjs && playwright test && node --experimental-strip-types scripts/process-e2e-coverage.ts; E=$?; node ../../scripts/stop-emulators.mjs && exit $E || exit 1",
+    "e2e": "trap 'node ../../scripts/stop-emulators.mjs || exit 1' EXIT; node ../../scripts/stop-emulators.mjs && playwright test",
+    "e2e:coverage": "trap 'node ../../scripts/stop-emulators.mjs || exit 1' EXIT; node ../../scripts/stop-emulators.mjs && playwright test && node --experimental-strip-types scripts/process-e2e-coverage.ts",
     "e2e:coverage:report": "node --experimental-strip-types scripts/process-e2e-coverage.ts",
     "e2e:install": "playwright install --with-deps chromium",
-    "e2e:ui": "node ../../scripts/stop-emulators.mjs && playwright test --ui; E=$?; node ../../scripts/stop-emulators.mjs && exit $E || exit 1"
+    "e2e:ui": "trap 'node ../../scripts/stop-emulators.mjs || exit 1' EXIT; node ../../scripts/stop-emulators.mjs && playwright test --ui"
   },
   "dependencies": {
     "@salt/domain": "workspace:*",
