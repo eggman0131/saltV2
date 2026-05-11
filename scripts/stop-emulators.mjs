@@ -10,7 +10,7 @@ import os from "os";
 import path from "path";
 
 const HUB_URL = "http://localhost:4400/emulators";
-const PORTS = [8080, 9099];
+const PORTS = [8080, 9099, 5001, 5000, 9199];
 const TIMEOUT_MS = 30_000;
 const POLL_INTERVAL_MS = 500;
 
