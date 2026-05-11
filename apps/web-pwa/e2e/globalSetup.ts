@@ -1,4 +1,4 @@
-import { execFileSync, spawn } from 'child_process';
+import { execFileSync, execSync, spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -7,6 +7,15 @@ const STOP_SCRIPT = path.join(REPO_ROOT, 'scripts/stop-emulators.mjs');
 const AUTH_URL = 'http://127.0.0.1:9099';
 const TIMEOUT_MS = 120_000;
 const POLL_MS = 500;
+
+// Synchronous cleanup — safe to call from a process.on('exit') handler.
+function stopEmulators(): void {
+  try {
+    execFileSync('node', [STOP_SCRIPT], { stdio: 'inherit' });
+  } catch {
+    // best effort: if the hub is already gone this is a no-op
+  }
+}
 
 async function waitForEmulator(): Promise<void> {
   const deadline = Date.now() + TIMEOUT_MS;
@@ -30,6 +39,11 @@ export default async function globalSetup(): Promise<void> {
     stdio: 'pipe',
     detached: false,
   });
+
+  // Safety net: stop test emulators when the Playwright process exits even if
+  // globalTeardown is not called (VS Code extension keeps the runner alive
+  // between runs and does not reliably invoke teardown after each run).
+  process.once('exit', stopEmulators);
 
   await waitForEmulator();
 }
