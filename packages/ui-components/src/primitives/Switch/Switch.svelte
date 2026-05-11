@@ -44,7 +44,7 @@
     {disabled}
     {required}
     {value}
-    {...(name !== undefined ? { name } : {})}
+    {...name !== undefined ? { name } : {}}
     aria-describedby={fieldState.describedBy}
     class={switchRootVariants({ size })}
   >
