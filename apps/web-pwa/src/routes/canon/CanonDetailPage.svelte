@@ -567,7 +567,7 @@
   }}
 >
   <DialogContent>
-    <div data-testid="canon-detail-delete-dialog">
+    <div class="flex flex-col gap-4" data-testid="canon-detail-delete-dialog">
       <DialogHeader>
         <DialogTitle>Delete "{titleCase(item?.name ?? '')}"?</DialogTitle>
         <DialogDescription>This action cannot be undone.</DialogDescription>

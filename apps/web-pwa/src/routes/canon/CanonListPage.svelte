@@ -2,6 +2,12 @@
   import {
     Button,
     Checkbox,
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
     ListPage,
     Select,
     SelectContent,
@@ -25,6 +31,10 @@
 
   // Selection
   let selected = $state(new Set<string>());
+
+  // Delete dialog
+  let deleteOpen = $state(false);
+  let deleteBusy = $state(false);
 
   // Derived: filtered items
   const filteredItems = $derived(
@@ -117,7 +127,10 @@
   }
 
   async function handleBulkDelete() {
+    deleteBusy = true;
     await Promise.all([...selected].map((id) => deleteCanonItem(id)));
+    deleteBusy = false;
+    deleteOpen = false;
     selected = new Set();
   }
 </script>
@@ -147,7 +160,7 @@
             Approve ({selectedApprovalIds.length})
           </Button>
         {/if}
-        <Button variant="destructive" size="sm" onclick={handleBulkDelete}>Delete</Button>
+        <Button variant="destructive" size="sm" onclick={() => (deleteOpen = true)}>Delete</Button>
         <Button variant="ghost" size="sm" onclick={() => (selected = new Set())}>Clear</Button>
       </div>
     {/if}
@@ -233,3 +246,34 @@
     {/if}
   {/snippet}
 </ListPage>
+
+<!-- Bulk delete confirmation dialog -->
+<Dialog
+  bind:open={deleteOpen}
+  onOpenChange={(v) => {
+    if (!v) deleteBusy = false;
+  }}
+>
+  <DialogContent>
+    <div class="flex flex-col gap-4" data-testid="canon-list-bulk-delete-dialog">
+      <DialogHeader>
+        <DialogTitle>Delete {selected.size} {selected.size === 1 ? 'item' : 'items'}?</DialogTitle>
+        <DialogDescription>This action cannot be undone.</DialogDescription>
+      </DialogHeader>
+      <DialogFooter>
+        <Button variant="outline" onclick={() => (deleteOpen = false)} disabled={deleteBusy}>
+          Cancel
+        </Button>
+        <Button
+          data-testid="canon-list-bulk-delete-confirm"
+          variant="destructive"
+          onclick={handleBulkDelete}
+          loading={deleteBusy}
+          disabled={deleteBusy}
+        >
+          Delete
+        </Button>
+      </DialogFooter>
+    </div>
+  </DialogContent>
+</Dialog>
