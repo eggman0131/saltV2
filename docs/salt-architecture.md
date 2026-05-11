@@ -47,7 +47,7 @@ The architecture must remain framework‑agnostic, testable, and resilient to ch
 ### Allowed
 
 - web-pwa → domain, shared-types, ui-components, firebase-sync, ld-observability
-- cloud-functions → domain, shared-types, firebase-sync, ld-observability/server
+- cloud-functions → domain, shared-types, ld-observability/server
 - firebase-sync → domain, shared-types
 - ld-observability → domain, shared-types
 - domain → shared-types
@@ -63,6 +63,7 @@ The architecture must remain framework‑agnostic, testable, and resilient to ch
 - Domain → UI
 - Cloud Functions → UI
 - Cloud Functions → ld-observability (the default subpath wraps the browser-only LaunchDarkly SDK and cannot run in Node; use `ld-observability/server` instead)
+- Cloud Functions → firebase-sync (CF talks to Firestore directly via `firebase-admin`; `firebase-sync` wraps the browser SDK and is not for server-side use)
 - firebase-sync ↔ ld-observability (adapters must not import each other)
 - Any module → apps/web-pwa or apps/cloud-functions
 
@@ -219,7 +220,8 @@ Cloud Functions exist to support **server‑side gen‑AI workloads** (`embedTex
 
 Cloud Functions:
 
-- Import domain + firebase-sync + ld-observability/server (never the default `ld-observability` subpath, which wraps the browser-only SDK and cannot run in Node)
+- Import domain + ld-observability/server (never the default `ld-observability` subpath, which wraps the browser-only SDK and cannot run in Node)
+- Talk to Firestore directly via `firebase-admin` — do not import `@salt/firebase-sync`, which wraps the browser SDK
 - Never import UI
 - Never contain business logic
 - Only orchestrate: input validation, domain commands/queries, gen‑AI providers, and returning results
@@ -330,7 +332,7 @@ Every commit must:
 
 - web-pwa → deployed as PWA
 - cloud-functions → deployed to Firebase Functions
-- firebase-sync → bundled into UI and Cloud Functions
+- firebase-sync → bundled into UI only (browser SDK; not imported by Cloud Functions)
 - ld-observability (default subpath) → bundled into UI only (browser-only SDK)
 - ld-observability/server → bundled into cloud-functions (Node SDK, OTLP exporter)
 - domain → bundled into UI and Cloud Functions

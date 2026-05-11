@@ -13,7 +13,7 @@ ld-observability/server    →  domain, shared-types          # Ships CF spans t
 ui-components              →  (external only — shadcn/tailwind)
 testing-utils              →  shared-types, domain, firebase-sync, ld-observability
 web-pwa                    →  shared-types, domain, firebase-sync, ld-observability, ui-components
-cloud-functions            →  shared-types, domain, firebase-sync, ld-observability/server
+cloud-functions            →  shared-types, domain, ld-observability/server
 ```
 
 `firebase-sync` and `ld-observability` are **siblings** — they must not import each other. `@salt/ld-observability` ships two subpath entrypoints from a single package: the default subpath wraps the LaunchDarkly browser SDK and is for `web-pwa`; `@salt/ld-observability/server` wraps the LaunchDarkly Node SDK and is for `cloud-functions`. The two subpaths share a runtime-neutral schema mapper (`src/shared/`) so the `canon.match` wire schema cannot drift between fast-path and CF emissions. Cross-runtime imports are forbidden: `web-pwa` must not import `/server`, and `cloud-functions` must not import the default subpath.
