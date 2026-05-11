@@ -26,6 +26,10 @@ const InputSchema = z.object({
   forceCreate: z.boolean().optional(),
   // W3C trace context piggy-backed on the payload because httpsCallable
   // doesn't surface request headers. Stripped before reaching the domain.
+  //
+  // DORMANT: trace propagation — currently accepted but ignored by the CF
+  // entrypoint (see apps/cloud-functions/src/index.ts). Field kept so the
+  // browser → CF wire shape stays stable while propagation is disabled.
   _trace: TraceSchema,
 });
 

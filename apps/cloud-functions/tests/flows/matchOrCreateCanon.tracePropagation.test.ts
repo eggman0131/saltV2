@@ -114,11 +114,17 @@ beforeEach(() => {
 describe('matchOrCreateCanon — trace propagation + _trace stripping', () => {
   const traceparent = '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01';
 
-  // Trace context propagation is now handled at the callable entrypoint
-  // (apps/cloud-functions/src/index.ts) via runWithExtractedTraceContext,
-  // which installs the browser's trace as the active OTel context BEFORE
-  // the flow opens any span. The flow itself opens spans with no headers
-  // option — they inherit from context.active() automatically.
+  // The flow opens spans with no headers option — they inherit from
+  // context.active(). This left the door open for the callable entrypoint
+  // (apps/cloud-functions/src/index.ts) to install the browser's W3C trace
+  // as the active OTel context via runWithExtractedTraceContext before the
+  // flow opened any span.
+  //
+  // DORMANT: trace propagation — the entrypoint currently does NOT install
+  // the propagated context (it broke the Genkit Dev UI's flow-rooted trace
+  // list). These tests still pass because they assert the flow strips
+  // _trace and opens parent-less spans — both still true. They guard the
+  // wire contract so re-enabling propagation later is safe.
   it('opens the parent span without forwarding _trace (entrypoint sets active context)', async () => {
     getCollection('canonItems').set(
       'tomato-1',

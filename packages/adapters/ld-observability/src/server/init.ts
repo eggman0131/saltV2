@@ -149,6 +149,12 @@ export async function flushServerObservability(): Promise<void> {
 // browser trace the active context BEFORE any flow span opens — otherwise
 // Genkit/Firestore spans root a fresh trace and never join the browser's.
 // No-op when observability isn't initialised.
+//
+// DORMANT: trace propagation — currently has no callers. matchOrCreateCanon
+// previously used this to unify browser↔CF traces, but parenting the flow
+// span under the browser span made it a non-root, which the Genkit Dev UI's
+// trace list filters out. Kept exported so re-enabling propagation is a
+// one-line change at the call site. See apps/cloud-functions/src/index.ts.
 export async function runWithExtractedTraceContext<T>(
   headers: IncomingHttpHeaders | Record<string, string | undefined> | undefined,
   fn: () => Promise<T>,

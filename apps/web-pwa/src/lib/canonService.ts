@@ -202,6 +202,9 @@ export async function addCanonItem(
         return success({ decision: 'matched' as const, item: updated });
       }
     }
+    // DORMANT: trace propagation — headers still extracted and sent so the
+    // wire shape stays consistent, but the CF currently ignores _trace. See
+    // apps/cloud-functions/src/index.ts for the rationale and re-enable site.
     const traceHeaders = extractTraceHeaders(span);
     const result = await callMatchOrCreate(
       {

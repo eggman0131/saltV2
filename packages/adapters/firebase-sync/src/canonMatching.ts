@@ -12,6 +12,11 @@ type WireResult =
 // httpsCallable doesn't expose request headers, so W3C trace context is
 // piggy-backed on the payload via _trace. The CF strips it before passing
 // the input to the matchOrCreate domain function.
+//
+// DORMANT: trace propagation — the CF currently ignores _trace (see
+// apps/cloud-functions/src/index.ts). This adapter still forwards the field
+// when callers pass traceHeaders, so the wire shape and call surface stay
+// ready for re-enabling propagation later.
 type WireInput = MatchOrCreateInput & {
   readonly _trace?: Record<string, string>;
 };

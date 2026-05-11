@@ -8,7 +8,6 @@ import { normaliseName } from '@salt/domain';
 import {
   initServerObservability,
   isServerObservabilityInitialised,
-  runWithExtractedTraceContext,
   whenServerObservabilityReady,
 } from '@salt/ld-observability/server';
 import { registerGenkitDevTracing } from './genkitTracing.js';
@@ -39,10 +38,21 @@ export const arbitrateCanon = onCallGenkit(
   arbitrateCanonFlow,
 );
 
-// Manual onCall (instead of onCallGenkit) so we can extract the W3C trace
+// Manual onCall (instead of onCallGenkit) so we *could* extract the W3C trace
 // context from the request body and set it as the active OTel context BEFORE
-// Genkit opens the flow span. Otherwise Genkit's flow root starts a fresh
-// trace and the Genkit/Firestore child spans never join the browser's trace.
+// Genkit opens the flow span — joining the browser's trace to the CF trace.
+//
+// DORMANT: trace propagation is intentionally disabled below (see the
+// `return matchOrCreateCanonFlow(...)` site). Reason: parenting the flow span
+// under the browser span makes it a non-root in OTel, and the Genkit Dev UI's
+// trace list only surfaces flow-rooted traces — so unified traces in LD came
+// at the cost of zero traces in the local dev view. The owner accepts split
+// browser/CF traces in LD to keep the Dev UI working. To re-enable unified
+// traces, restore the `runWithExtractedTraceContext` wrapper below; the
+// supporting plumbing (`_trace` payload field, `extractTraceHeaders` on the
+// browser, `runWithExtractedTraceContext` in @salt/ld-observability/server)
+// is still in place. Search for "DORMANT: trace propagation" to find all
+// sites at once.
 export const matchOrCreateCanon = onCall(
   {
     secrets: [geminiApiKey, ldSdkKey],
@@ -63,8 +73,9 @@ export const matchOrCreateCanon = onCall(
     }
     await whenServerObservabilityReady();
 
-    const data = request.data as { _trace?: Record<string, string> };
-    return runWithExtractedTraceContext(data?._trace, () => matchOrCreateCanonFlow(request.data));
+    // DORMANT: trace propagation — see block comment above.
+    // Was: runWithExtractedTraceContext(data?._trace, () => matchOrCreateCanonFlow(request.data))
+    return matchOrCreateCanonFlow(request.data);
   },
 );
 
