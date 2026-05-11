@@ -3,7 +3,6 @@ import { defineConfig, devices } from '@playwright/test';
 const CI = !!process.env.CI;
 
 export default defineConfig({
-  globalSetup: './e2e/globalSetup.ts',
   testDir: 'e2e',
   testIgnore: ['**/fixtures/**', '**/helpers/**', '**/reporter/**'],
   fullyParallel: true,
