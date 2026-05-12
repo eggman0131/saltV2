@@ -13,7 +13,7 @@ import os from "os";
 import path from "path";
 
 const HUB_URL = "http://localhost:4400/emulators";
-const PORTS = [8080, 9099, 5001, 5000, 9199];
+const PORTS = [4400, 8080, 9099, 5001, 5000, 9199];
 const TIMEOUT_MS = 30_000;
 const SIGKILL_TIMEOUT_MS = 5_000;
 const POLL_INTERVAL_MS = 500;
@@ -75,6 +75,16 @@ function forceKillPorts(ports) {
   }
 }
 
+function gracefulKillPorts(ports) {
+  for (const port of ports) {
+    try {
+      execSync(`fuser -k -TERM ${port}/tcp 2>/dev/null`, { stdio: "ignore" });
+    } catch {
+      // fuser not available or no process on port — best effort
+    }
+  }
+}
+
 async function assertPortsFree() {
   const busy = await getOccupiedPorts();
   if (busy.length === 0) return;
@@ -104,7 +114,26 @@ async function main() {
 
   const pid = findHubPid();
   if (pid === null) {
-    console.warn("stop-emulators: hub is running but locator file not found — cannot send SIGTERM.");
+    // Hub is alive but we can't address it by PID (locator file missing or
+    // outside the tmpdir we search). Don't silently exit — we know there's
+    // something to kill. Send SIGTERM via port lookup so --export-on-exit
+    // still runs and dev data is preserved; escalate to SIGKILL if that times out.
+    const busy = await getOccupiedPorts();
+    console.warn(
+      `stop-emulators: hub responding but locator file not found — sending SIGTERM via fuser to ports ${busy.join(", ")}...`
+    );
+    gracefulKillPorts(busy);
+    if (await waitForPorts()) {
+      console.log("stop-emulators: all ports free, emulators stopped.");
+      process.exit(0);
+    }
+    console.warn(
+      `stop-emulators: SIGTERM timed out after ${TIMEOUT_MS / 1000}s — escalating to SIGKILL (fuser -k)...`
+    );
+    forceKillPorts(await getOccupiedPorts());
+    await new Promise((r) => setTimeout(r, 1000));
+    await assertPortsFree();
+    console.log("stop-emulators: all ports free after force-kill.");
     process.exit(0);
   }
 
