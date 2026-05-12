@@ -30,7 +30,10 @@ export async function callMatchOrCreate(
   opts?: CallMatchOrCreateOptions,
 ): Promise<ReadResult<MatchOrCreateResult, DomainError>> {
   try {
-    const fn = httpsCallable<WireInput, WireResult>(getFunctions(), 'matchOrCreateCanon');
+    const fn = httpsCallable<WireInput, WireResult>(
+      getFunctions(undefined, 'europe-west2'),
+      'matchOrCreateCanon',
+    );
     const wireInput: WireInput =
       opts?.traceHeaders && Object.keys(opts.traceHeaders).length > 0
         ? { ...input, _trace: opts.traceHeaders }

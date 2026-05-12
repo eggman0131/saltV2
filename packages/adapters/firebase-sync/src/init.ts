@@ -28,7 +28,7 @@ export function initFirebase(
 
   if (useEmulators && !emulatorsConnected) {
     connectFirestoreEmulator(getFirestore(app), '127.0.0.1', 8080);
-    connectFunctionsEmulator(getFunctions(app), '127.0.0.1', 5001);
+    connectFunctionsEmulator(getFunctions(app, 'europe-west2'), '127.0.0.1', 5001);
     connectAuthEmulatorOnce(getAuth(app));
     emulatorsConnected = true;
   }

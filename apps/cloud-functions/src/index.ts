@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { setGlobalOptions } from 'firebase-functions/v2';
 import { defineSecret } from 'firebase-functions/params';
 import { onCall, onCallGenkit, isSignedIn, HttpsError } from 'firebase-functions/https';
 import { onDocumentWritten } from 'firebase-functions/firestore';
@@ -16,6 +17,8 @@ import { arbitrateCanonFlow } from './flows/arbitrateCanon.js';
 import { matchOrCreateCanonFlow } from './flows/matchOrCreateCanon.js';
 
 initializeApp();
+
+setGlobalOptions({ region: 'europe-west2' });
 
 const geminiApiKey = defineSecret('GEMINI_API_KEY');
 // LaunchDarkly server SDK key for observability in matchOrCreateCanon.
