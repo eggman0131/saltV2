@@ -10,6 +10,7 @@ const STOP_SCRIPT = path.join(REPO_ROOT, 'scripts/stop-emulators.mjs');
 const WATCHDOG_SCRIPT = path.join(REPO_ROOT, 'scripts/emulator-watchdog.mjs');
 const WATCHDOG_PID_FILE = path.join(os.tmpdir(), 'salt-emulator-watchdog.pid');
 const AUTH_URL = 'http://127.0.0.1:9099';
+const FUNCTIONS_READY_URL = 'http://127.0.0.1:5001/demo-salt/europe-west2/matchOrCreateCanon';
 const EMULATOR_PORTS = [4400, 8080, 9099, 5001, 5000, 9199];
 const TIMEOUT_MS = 120_000;
 const POLL_MS = 500;
@@ -78,6 +79,26 @@ async function waitForEmulator(): Promise<void> {
   throw new Error(`Emulators did not become ready within ${TIMEOUT_MS / 1000}s`);
 }
 
+async function waitForFunctions(): Promise<void> {
+  const deadline = Date.now() + TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    try {
+      // OPTIONS preflight returns CORS headers once the function is registered;
+      // a 404/connection-refused means the emulator is still loading.
+      const res = await fetch(FUNCTIONS_READY_URL, {
+        method: 'OPTIONS',
+        headers: { Origin: 'http://127.0.0.1:5173', 'Access-Control-Request-Method': 'POST' },
+        signal: AbortSignal.timeout(2000),
+      });
+      if (res.headers.get('access-control-allow-origin')) return;
+    } catch {
+      // not ready yet
+    }
+    await new Promise((r) => setTimeout(r, POLL_MS));
+  }
+  throw new Error(`Functions emulator did not register triggers within ${TIMEOUT_MS / 1000}s`);
+}
+
 export default async function globalSetup(): Promise<void> {
   killExistingWatchdog();
   execFileSync('node', [STOP_SCRIPT], { stdio: 'inherit' });
@@ -111,4 +132,5 @@ export default async function globalSetup(): Promise<void> {
   process.once('exit', stopEmulators);
 
   await waitForEmulator();
+  await waitForFunctions();
 }
