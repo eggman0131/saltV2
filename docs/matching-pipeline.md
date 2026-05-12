@@ -228,7 +228,11 @@ Three adapters write the `MatchLogEntry`. The two LD adapters share a runtime-ne
 
 ### Trace context propagation (client → CF)
 
-The fast-path's `canon.add` span and the CF's `canon.matchOrCreateCanon` span are linked by W3C trace context so a fast-path-ambiguous → CF-resolved flow renders as a single distributed trace in LaunchDarkly. The client extracts `traceparent` (and `tracestate` when present) from its active span via [`extractTraceHeaders`](../packages/adapters/ld-observability/src/init.ts) and piggy-backs it on the callable payload as `_trace`. The CF strips `_trace` from the input, passes it as `headers` to its `startSpan` call, and the LD Node SDK (`LDObserve.startWithHeaders`) parents the new span to the propagated client trace. `httpsCallable` is used because it's the project's standard wire — custom request headers aren't first-class in that API, hence the payload-level propagation.
+> **Status: dormant.** Trace propagation infrastructure is in place but currently disabled. See the tradeoff note below.
+
+The fast-path's `canon.add` span and the CF's `canon.matchOrCreateCanon` span are designed to be linked by W3C trace context so a fast-path-ambiguous → CF-resolved flow renders as a single distributed trace in LaunchDarkly. The client extracts `traceparent` (and `tracestate` when present) from its active span via [`extractTraceHeaders`](../packages/adapters/ld-observability/src/init.ts) and piggy-backs it on the callable payload as `_trace`. `httpsCallable` is used because it's the project's standard wire — custom request headers aren't first-class in that API, hence the payload-level propagation.
+
+**Why it is currently dormant:** When the CF flow span is parented under the browser trace, Genkit treats it as a non-root span and the Genkit Dev UI's trace list filters it out, making local development and debugging significantly harder. The infrastructure to re-enable propagation (passing `_trace` headers to `runWithExtractedTraceContext` in `apps/cloud-functions/src/index.ts`) is a one-line change at the call site. The `_trace` field is still forwarded by `canonMatching.ts` and accepted by the CF's `InputSchema` so the wire shape remains stable while propagation is disabled.
 
 ---
 
