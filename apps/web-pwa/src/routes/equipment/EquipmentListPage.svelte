@@ -62,7 +62,7 @@
             {item.name}
             {#if item.accessories.length > 0}
               <span class="ml-2 text-xs text-muted-foreground">
-                {item.accessories.length} accessory{item.accessories.length === 1 ? '' : 'ies'}
+                {item.accessories.length} accessor{item.accessories.length === 1 ? 'y' : 'ies'}
               </span>
             {/if}
             {#if item.rules.length > 0}

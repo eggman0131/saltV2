@@ -16,7 +16,7 @@ import {
   removeRule,
   editRule,
 } from '@salt/domain';
-import type { EquipmentManifest } from '@salt/domain';
+import type { EquipmentManifest, EquipmentManifestPort } from '@salt/domain';
 import { failure, type DomainError, type ReadResult } from '@salt/shared-types';
 import { writable, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
@@ -44,6 +44,22 @@ function emptyManifest(): EquipmentManifest {
   return { schemaVersion: 1, updatedAt: new Date().toISOString(), items: [] };
 }
 
+// ─── In-memory adapter (test double) ──────────────────────────────────────────
+
+export function memEquipmentManifestStore(seed: EquipmentManifest | null = null) {
+  let written: EquipmentManifest | null = seed;
+  const store: EquipmentManifestPort = {
+    async load() {
+      return { kind: 'ok', value: written };
+    },
+    async save(manifest) {
+      written = manifest;
+      return { kind: 'ok', value: undefined };
+    },
+  };
+  return { store, getWritten: () => written };
+}
+
 // ─── Init / cleanup ───────────────────────────────────────────────────────────
 
 export function initEquipmentSync(): () => void {
@@ -64,8 +80,16 @@ export function initEquipmentSync(): () => void {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function currentManifest(): EquipmentManifest {
+// Returns null while the Firestore subscription has not yet delivered its first
+// snapshot. Acting on a substituted empty manifest before hydration would
+// overwrite a legitimate existing manifest on the next save.
+function currentManifest(): EquipmentManifest | null {
+  if (get(_isLoadingEquipment)) return null;
   return get(_equipment) ?? emptyManifest();
+}
+
+function notHydratedFailure(): ReadResult<EquipmentManifest, DomainError> {
+  return failure({ kind: 'NetworkError', reason: 'transient' });
 }
 
 async function applyAndSave(
@@ -82,14 +106,18 @@ async function applyAndSave(
 export async function addEquipmentItem(
   name: string,
 ): Promise<ReadResult<EquipmentManifest, DomainError>> {
-  const result = addEquipment(currentManifest(), { name, now: new Date().toISOString() }, ids);
+  const manifest = currentManifest();
+  if (!manifest) return notHydratedFailure();
+  const result = addEquipment(manifest, { name, now: new Date().toISOString() }, ids);
   return applyAndSave(result);
 }
 
 export async function removeEquipmentItem(
   id: string,
 ): Promise<ReadResult<EquipmentManifest, DomainError>> {
-  const result = removeEquipment(currentManifest(), { id });
+  const manifest = currentManifest();
+  if (!manifest) return notHydratedFailure();
+  const result = removeEquipment(manifest, { id });
   return applyAndSave(result);
 }
 
@@ -97,8 +125,57 @@ export async function renameEquipmentItem(
   id: string,
   name: string,
 ): Promise<ReadResult<EquipmentManifest, DomainError>> {
-  const result = renameEquipment(currentManifest(), { id, name, now: new Date().toISOString() });
+  const manifest = currentManifest();
+  if (!manifest) return notHydratedFailure();
+  const result = renameEquipment(manifest, { id, name, now: new Date().toISOString() });
   return applyAndSave(result);
+}
+
+/**
+ * Capture an item with its accessories in a single save. Returns the new
+ * item's id so the caller can navigate to it without name-based lookup.
+ */
+export interface CaptureAccessoryInput {
+  readonly name: string;
+  readonly owned: boolean;
+  readonly included: boolean;
+}
+
+export interface CaptureResult {
+  readonly itemId: string;
+  readonly manifest: EquipmentManifest;
+}
+
+export async function captureEquipmentItem(
+  name: string,
+  accessories: readonly CaptureAccessoryInput[],
+): Promise<ReadResult<CaptureResult, DomainError>> {
+  const base = currentManifest();
+  if (!base) return failure({ kind: 'NetworkError', reason: 'transient' });
+
+  const now = new Date().toISOString();
+  const addResult = addEquipment(base, { name, now }, ids);
+  if (addResult.kind !== 'ok') return addResult;
+
+  // addEquipment appends; the new item is the last entry.
+  const newItem = addResult.value.items[addResult.value.items.length - 1];
+  if (!newItem) return failure({ kind: 'NetworkError', reason: 'transient' });
+  const itemId = newItem.id;
+
+  let working = addResult.value;
+  for (const acc of accessories) {
+    const accResult = addAccessory(
+      working,
+      { equipmentId: itemId, name: acc.name, owned: acc.owned, included: acc.included, now },
+      ids,
+    );
+    if (accResult.kind !== 'ok') return accResult;
+    working = accResult.value;
+  }
+
+  _equipment.set(working);
+  await saveEquipmentManifest(working);
+  return { kind: 'ok', value: { itemId, manifest: working } };
 }
 
 // ─── Accessory commands ───────────────────────────────────────────────────────
@@ -109,8 +186,10 @@ export async function addEquipmentAccessory(
   owned: boolean,
   included: boolean,
 ): Promise<ReadResult<EquipmentManifest, DomainError>> {
+  const manifest = currentManifest();
+  if (!manifest) return notHydratedFailure();
   const result = addAccessory(
-    currentManifest(),
+    manifest,
     { equipmentId, name, owned, included, now: new Date().toISOString() },
     ids,
   );
@@ -121,7 +200,9 @@ export async function removeEquipmentAccessory(
   equipmentId: string,
   accessoryId: string,
 ): Promise<ReadResult<EquipmentManifest, DomainError>> {
-  const result = removeAccessory(currentManifest(), {
+  const manifest = currentManifest();
+  if (!manifest) return notHydratedFailure();
+  const result = removeAccessory(manifest, {
     equipmentId,
     accessoryId,
     now: new Date().toISOString(),
@@ -134,7 +215,9 @@ export async function toggleEquipmentAccessoryOwned(
   accessoryId: string,
   owned: boolean,
 ): Promise<ReadResult<EquipmentManifest, DomainError>> {
-  const result = setAccessoryOwned(currentManifest(), {
+  const manifest = currentManifest();
+  if (!manifest) return notHydratedFailure();
+  const result = setAccessoryOwned(manifest, {
     equipmentId,
     accessoryId,
     owned,
@@ -149,7 +232,9 @@ export async function addEquipmentRule(
   equipmentId: string,
   rule: string,
 ): Promise<ReadResult<EquipmentManifest, DomainError>> {
-  const result = addRule(currentManifest(), {
+  const manifest = currentManifest();
+  if (!manifest) return notHydratedFailure();
+  const result = addRule(manifest, {
     equipmentId,
     rule,
     now: new Date().toISOString(),
@@ -161,7 +246,9 @@ export async function removeEquipmentRule(
   equipmentId: string,
   ruleIndex: number,
 ): Promise<ReadResult<EquipmentManifest, DomainError>> {
-  const result = removeRule(currentManifest(), {
+  const manifest = currentManifest();
+  if (!manifest) return notHydratedFailure();
+  const result = removeRule(manifest, {
     equipmentId,
     ruleIndex,
     now: new Date().toISOString(),
@@ -174,7 +261,9 @@ export async function editEquipmentRule(
   ruleIndex: number,
   rule: string,
 ): Promise<ReadResult<EquipmentManifest, DomainError>> {
-  const result = editRule(currentManifest(), {
+  const manifest = currentManifest();
+  if (!manifest) return notHydratedFailure();
+  const result = editRule(manifest, {
     equipmentId,
     ruleIndex,
     rule,
@@ -202,5 +291,6 @@ export function getEquipmentSnapshot(): EquipmentManifest | null {
 
 export async function seedEquipmentManifest(manifest: EquipmentManifest): Promise<void> {
   _equipment.set(manifest);
+  _isLoadingEquipment.set(false);
   await saveEquipmentManifest(manifest);
 }

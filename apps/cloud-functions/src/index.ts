@@ -22,9 +22,10 @@ initializeApp();
 setGlobalOptions({ region: 'europe-west2' });
 
 // Initialise LD observability and Genkit dev-trace routing at module load so
-// all three exported flows (embedText, arbitrateCanon, matchOrCreateCanon) and
-// the onCanonItemWritten trigger share the same OTel provider and forward their
-// Genkit spans to the dev server when GENKIT_TELEMETRY_SERVER is set.
+// every exported callable flow (embedText, arbitrateCanon, matchOrCreateCanon,
+// identifyEquipment, populateEquipmentEntry) and the onCanonItemWritten
+// trigger share the same OTel provider and forward their Genkit spans to the
+// dev server when GENKIT_TELEMETRY_SERVER is set.
 const _ldSdkKeyAtLoad = process.env['LD_SDK_KEY'];
 if (_ldSdkKeyAtLoad) {
   initServerObservability(_ldSdkKeyAtLoad);

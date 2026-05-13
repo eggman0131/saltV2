@@ -4,9 +4,8 @@
   import {
     callIdentifyEquipment,
     callPopulateEquipmentEntry,
-    addEquipmentItem,
-    addEquipmentAccessory,
-    equipment,
+    captureEquipmentItem,
+    isLoadingEquipment,
   } from '../../lib/equipmentService.js';
   import { addToast } from '../../lib/toastStore.js';
   import type { IdentifyEquipmentCandidate } from '@salt/firebase-sync';
@@ -100,37 +99,24 @@
 
   async function handleSave(): Promise<void> {
     saveBusy = true;
-
-    // Create the equipment item first
-    const addResult = await addEquipmentItem(confirmedName);
-    if (addResult.kind !== 'ok') {
-      saveBusy = false;
-      addToast('Failed to save equipment.', 'error');
-      return;
-    }
-
-    // Find the newly created item's id (it's the last item added)
-    const manifest = addResult.value;
-    const newItem = manifest.items.find((i) => i.name === confirmedName);
-    if (!newItem) {
-      saveBusy = false;
-      addToast('Failed to save equipment.', 'error');
-      return;
-    }
-
-    // Add each accessory sequentially
-    for (const acc of draftAccessories) {
-      await addEquipmentAccessory(newItem.id, acc.name, acc.owned, acc.included);
-    }
-
+    const result = await captureEquipmentItem(
+      confirmedName,
+      draftAccessories.map((a) => ({ name: a.name, owned: a.owned, included: a.included })),
+    );
     saveBusy = false;
+    if (result.kind !== 'ok') {
+      addToast('Failed to save equipment.', 'error');
+      return;
+    }
     addToast(`Added ${confirmedName}`, 'success');
-    push(`/equipment/${newItem.id}`);
+    push(`/equipment/${result.value.itemId}`);
   }
 
   const canIdentify = $derived(rawName.trim().length > 0 && !identifyBusy);
   const canConfirm = $derived((confirmedName.trim() || rawName.trim()).length > 0 && !populateBusy);
-  const canSave = $derived(!saveBusy);
+  // Block Save until the manifest subscription has hydrated — saving against
+  // a not-yet-loaded store would overwrite the user's existing manifest.
+  const canSave = $derived(!saveBusy && !$isLoadingEquipment);
 </script>
 
 {#if step === 1}
