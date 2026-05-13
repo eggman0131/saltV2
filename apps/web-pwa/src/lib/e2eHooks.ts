@@ -4,6 +4,7 @@ import type { CanonItem } from '@salt/domain';
 import { devSignIn } from './auth.svelte.js';
 import { addAislesBulk, aisles } from './aisleService.js';
 import { canonItems } from './canonService.js';
+import { seedEquipmentManifest, getEquipmentSnapshot } from './equipmentService.js';
 import { tagSession, getSessionURL } from './observability.js';
 import type { E2EBridge, SeedCanonItemInput } from './types/e2e.js';
 
@@ -58,6 +59,14 @@ export function installE2EHooks(): void {
 
     async clearStores() {
       // Firestore persistent cache is managed by the SDK; no local stores to clear.
+    },
+
+    async seedEquipmentManifest(manifest) {
+      await seedEquipmentManifest(manifest);
+    },
+
+    getEquipmentManifest() {
+      return getEquipmentSnapshot();
     },
 
     async setFirestoreOffline(offline: boolean) {

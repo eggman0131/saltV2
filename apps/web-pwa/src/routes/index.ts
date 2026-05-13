@@ -4,17 +4,22 @@ import CanonListPage from './canon/CanonListPage.svelte';
 import CanonCreatePage from './canon/CanonCreatePage.svelte';
 import CanonDetailPage from './canon/CanonDetailPage.svelte';
 import AisleManagementPage from './canon/AisleManagementPage.svelte';
+import EquipmentListPage from './equipment/EquipmentListPage.svelte';
+import EquipmentCapturePage from './equipment/EquipmentCapturePage.svelte';
+import EquipmentEditPage from './equipment/EquipmentEditPage.svelte';
 import SettingsPage from './settings/SettingsPage.svelte';
 import NotFound from './NotFound.svelte';
 
-// More-specific static routes (/canon/aisles, /canon/new) must precede parameterised ones (/canon/:id)
-// when using a Map to preserve insertion order.
+// More-specific static routes must precede parameterised ones when using a Map.
 export const routes: RouteDefinition = new Map([
   ['/', HomePage],
   ['/canon', CanonListPage],
   ['/canon/aisles', AisleManagementPage],
   ['/canon/new', CanonCreatePage],
   ['/canon/:id', CanonDetailPage],
+  ['/equipment', EquipmentListPage],
+  ['/equipment/new', EquipmentCapturePage],
+  ['/equipment/:id', EquipmentEditPage],
   ['/settings', SettingsPage],
   ['*', NotFound],
 ]);

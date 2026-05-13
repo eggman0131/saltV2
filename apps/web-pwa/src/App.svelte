@@ -15,12 +15,18 @@
   import { routes } from './routes/index.js';
   import { toasts, dismissToast } from './lib/toastStore.js';
   import { canonItems, initCanonSync } from './lib/canonService.js';
+  import { initEquipmentSync } from './lib/equipmentService.js';
   import SessionOverlay from './lib/dev/SessionOverlay.svelte';
 
   // Start Firestore subscriptions when authenticated; clean up on sign-out.
   $effect(() => {
     if (!auth.user) return;
-    return initCanonSync();
+    const unsubCanon = initCanonSync();
+    const unsubEquipment = initEquipmentSync();
+    return () => {
+      unsubCanon();
+      unsubEquipment();
+    };
   });
 
   const needsApprovalCount = $derived($canonItems.filter((i) => i.needs_approval).length);

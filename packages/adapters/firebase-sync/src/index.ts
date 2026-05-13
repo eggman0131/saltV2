@@ -8,3 +8,10 @@ export {
   saveEquipmentManifest,
 } from './equipmentManifestSubscription.js';
 export { callMatchOrCreate } from './canonMatching.js';
+export { callIdentifyEquipment, callPopulateEquipmentEntry } from './equipmentCallables.js';
+export type {
+  IdentifyEquipmentCandidate,
+  IdentifyEquipmentResult,
+  PopulateAccessory,
+  PopulateEquipmentEntryResult,
+} from './equipmentCallables.js';
