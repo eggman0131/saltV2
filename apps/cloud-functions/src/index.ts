@@ -8,7 +8,6 @@ import { logger } from 'firebase-functions';
 import { normaliseName } from '@salt/domain';
 import {
   initServerObservability,
-  isServerObservabilityInitialised,
   whenServerObservabilityReady,
 } from '@salt/ld-observability/server';
 import { registerGenkitDevTracing } from './genkitTracing.js';
@@ -19,6 +18,16 @@ import { matchOrCreateCanonFlow } from './flows/matchOrCreateCanon.js';
 initializeApp();
 
 setGlobalOptions({ region: 'europe-west2' });
+
+// Initialise LD observability and Genkit dev-trace routing at module load so
+// all three exported flows (embedText, arbitrateCanon, matchOrCreateCanon) and
+// the onCanonItemWritten trigger share the same OTel provider and forward their
+// Genkit spans to the dev server when GENKIT_TELEMETRY_SERVER is set.
+const _ldSdkKeyAtLoad = process.env['LD_SDK_KEY'];
+if (_ldSdkKeyAtLoad) {
+  initServerObservability(_ldSdkKeyAtLoad);
+  registerGenkitDevTracing();
+}
 
 const geminiApiKey = defineSecret('GEMINI_API_KEY');
 // LaunchDarkly server SDK key for observability in matchOrCreateCanon.
@@ -65,15 +74,6 @@ export const matchOrCreateCanon = onCall(
       throw new HttpsError('unauthenticated', 'Sign in required.');
     }
 
-    // Init LD observability before extracting trace context, so the global
-    // tracer provider is registered when Genkit's flow span opens.
-    // initServerObservability is synchronous, so registerGenkitDevTracing can
-    // follow immediately — both complete before whenServerObservabilityReady().
-    const sdkKey = process.env['LD_SDK_KEY'];
-    if (sdkKey && !isServerObservabilityInitialised()) {
-      initServerObservability(sdkKey);
-      registerGenkitDevTracing();
-    }
     await whenServerObservabilityReady();
 
     // DORMANT: trace propagation — see block comment above.
