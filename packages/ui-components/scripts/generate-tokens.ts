@@ -34,7 +34,7 @@ for (const [key, value] of Object.entries(colorsTheme)) {
 }
 writeFileSync(
   join(tokensDir, 'colors.ts'),
-  HEADER.replace('§3.3', '§3.3').replace('§4.1', '§3.3') + colorLines.join('\n') + '\n',
+  HEADER.replace('§4.1', '§3.3') + colorLines.join('\n') + '\n',
 );
 
 // --- radius.ts ---
