@@ -14,6 +14,8 @@ import { registerGenkitDevTracing } from './genkitTracing.js';
 import { embedTextFlow } from './flows/embedText.js';
 import { arbitrateCanonFlow } from './flows/arbitrateCanon.js';
 import { matchOrCreateCanonFlow } from './flows/matchOrCreateCanon.js';
+import { identifyEquipmentFlow } from './flows/identifyEquipment.js';
+import { populateEquipmentEntryFlow } from './flows/populateEquipmentEntry.js';
 
 initializeApp();
 
@@ -80,6 +82,22 @@ export const matchOrCreateCanon = onCall(
     // Was: runWithExtractedTraceContext(data?._trace, () => matchOrCreateCanonFlow(request.data))
     return matchOrCreateCanonFlow(request.data);
   },
+);
+
+export const identifyEquipment = onCallGenkit(
+  {
+    secrets: [geminiApiKey],
+    authPolicy: isSignedIn(),
+  },
+  identifyEquipmentFlow,
+);
+
+export const populateEquipmentEntry = onCallGenkit(
+  {
+    secrets: [geminiApiKey],
+    authPolicy: isSignedIn(),
+  },
+  populateEquipmentEntryFlow,
 );
 
 export const onCanonItemWritten = onDocumentWritten(
