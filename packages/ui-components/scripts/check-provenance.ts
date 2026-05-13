@@ -11,8 +11,8 @@ const SRC_ROOT = join(PKG_ROOT, 'src');
 const SCAN_DIRS = ['headless', 'primitives', 'lib'];
 
 // §3.8: .svelte files use <!-- spec: ... --> and .ts/.svelte.ts files use // spec: ...
-const SVELTE_HEADER = /^<!-- spec: [\w.-]+\.md §\S+(?:,\s*§\S+)* v\d+\.\d+(\.\d+)? -->/;
-const TS_HEADER = /^\/\/ spec: [\w.-]+\.md §\S+(?:,\s*§\S+)* v\d+\.\d+(\.\d+)?/;
+const SVELTE_HEADER = /^<!-- spec: [\w.-]+\.md §[^\s,]+(?:,\s*§[^\s,]+)* v\d+\.\d+(\.\d+)? -->/;
+const TS_HEADER = /^\/\/ spec: [\w.-]+\.md §[^\s,]+(?:,\s*§[^\s,]+)* v\d+\.\d+(\.\d+)?/;
 
 function collectFiles(dir: string): string[] {
   const results: string[] = [];
