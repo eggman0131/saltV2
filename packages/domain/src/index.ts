@@ -75,5 +75,34 @@ export type { ApproveCanonItemOverrides } from './canon/index.js';
 // Auth module — published surface.
 export type { User, AuthProvider } from './auth/index.js';
 
+// Equipment module — published surface.
+export type {
+  Accessory,
+  EquipmentItem,
+  EquipmentManifest,
+  EquipmentManifestPort,
+  EquipmentIdGenerator,
+  AddEquipmentInput,
+  RemoveEquipmentInput,
+  RenameEquipmentInput,
+  AddAccessoryInput,
+  RemoveAccessoryInput,
+  SetAccessoryOwnedInput,
+  AddRuleInput,
+  RemoveRuleInput,
+  EditRuleInput,
+} from './equipment/index.js';
+export {
+  addEquipment,
+  removeEquipment,
+  renameEquipment,
+  addAccessory,
+  removeAccessory,
+  setAccessoryOwned,
+  addRule,
+  removeRule,
+  editRule,
+} from './equipment/index.js';
+
 // Cross-cutting ports.
 export type { ErrorReportingPort } from './ErrorReportingPort.js';
