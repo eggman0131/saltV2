@@ -23,7 +23,7 @@
     "dev": "pnpm --filter @salt/web-pwa dev",
     "dev:kitchen-sink": "pnpm --filter @salt/kitchen-sink dev",
     "dev:genkit": "pnpm --filter @salt/cloud-functions dev",
-    "dev:emulators": "node scripts/stop-emulators.mjs && pnpm --filter @salt/cloud-functions build && GENKIT_ENV=dev GENKIT_TELEMETRY_SERVER=http://localhost:4033 firebase emulators:start --import=./.emulator-data --export-on-exit=./.emulator-data || true",
+    "dev:emulators": "node scripts/stop-emulators.mjs && pnpm --filter @salt/cloud-functions build && NODE_OPTIONS='--disable-warning=DEP0040' GENKIT_ENV=dev GENKIT_TELEMETRY_SERVER=http://localhost:4033 firebase emulators:start --import=./.emulator-data --export-on-exit=./.emulator-data || true",
     "test:emulator": "node scripts/stop-emulators.mjs && firebase emulators:exec --only=firestore,auth --project=demo-salt 'pnpm --filter @salt/firebase-sync test:emulator && pnpm --filter @salt/cloud-functions test:emulator'"
   },
   "lint-staged": {
@@ -45,16 +45,16 @@
     "@commitlint/config-conventional": "^20.5.0",
     "@typescript-eslint/eslint-plugin": "^8.32.0",
     "@typescript-eslint/parser": "^8.32.0",
+    "@vitest/coverage-v8": "^3.2.0",
     "dependency-cruiser": "^16.9.0",
     "eslint": "^10.2.1",
     "eslint-plugin-boundaries": "^5.0.0",
-    "firebase-tools": "^15.12.0",
+    "firebase-tools": "^15.17.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
     "prettier": "^3.5.3",
     "prettier-plugin-svelte": "^3.3.3",
     "typescript": "^5.8.3",
-    "@vitest/coverage-v8": "^3.2.0",
     "vitest": "^3.2.0"
   }
 }
