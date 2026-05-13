@@ -262,8 +262,9 @@ async function resolveMatch(
     finalItemId: string | null,
     finalItemName?: string | null,
   ) => void,
+  reasoning?: string,
 ): Promise<ReadResult<MatchOrCreateResult, DomainError>> {
-  const updated = appendCanonSynonym(item, rawName);
+  const updated = appendCanonSynonym(item, rawName, reasoning);
   let finalItem = item;
   if (updated !== item) {
     const saved = await store.upsert(updated);
@@ -307,7 +308,7 @@ async function arbitrateShortlist(
     if (arb.kind === 'match') {
       const matchedItem = shortlist.find((c) => c.item.id === arb.itemId)?.item ?? null;
       if (matchedItem !== null) {
-        return resolveMatch(store, matchedItem, rawName, 'ai_arbitrated', commitLog);
+        return resolveMatch(store, matchedItem, rawName, 'ai_arbitrated', commitLog, arb.reasoning);
       }
       // AI returned an unknown id — fall through to highest-confidence fallback.
     } else if (arb.kind === 'new') {
