@@ -113,11 +113,17 @@ function newArbitration(canonName: string, aisleId: string | null = null): Canon
   };
 }
 
-function matchArbitration(itemId: string): CanonArbitrationPort {
+function matchArbitration(itemId: string, reasoning?: string): CanonArbitrationPort {
   return {
     arbitrate: async () => ({
       kind: 'ok',
-      value: { kind: 'match', itemId, confidence: 0.95, shoppingBehavior: 'needed' as const },
+      value: {
+        kind: 'match',
+        itemId,
+        confidence: 0.95,
+        shoppingBehavior: 'needed' as const,
+        ...(reasoning !== undefined ? { reasoning } : {}),
+      },
     }),
   };
 }
@@ -307,6 +313,18 @@ describe('stage 6 — multiple near-misses: AI arbitrates', () => {
     if (result.kind === 'ok') {
       expect(result.value.decision).toBe('ai_arbitrated');
       expect(result.value.item.id).toBe('x2');
+    }
+  });
+
+  it('sets reasoning on the matched item when AI provides reasoning', async () => {
+    const { run } = makePipeline({
+      items: [item1, item2],
+      arbitration: matchArbitration('x2', 'synonym is a regional variant'),
+    });
+    const result = await run('olive oil');
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value.item.reasoning).toBe('synonym is a regional variant');
     }
   });
 
