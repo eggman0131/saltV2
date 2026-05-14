@@ -121,6 +121,22 @@ export async function removeEquipmentItem(
   return applyAndSave(result);
 }
 
+export async function removeEquipmentItems(
+  ids: string[],
+): Promise<ReadResult<EquipmentManifest, DomainError>> {
+  const manifest = currentManifest();
+  if (!manifest) return notHydratedFailure();
+  let working: EquipmentManifest = manifest;
+  for (const id of ids) {
+    const result = removeEquipment(working, { id });
+    if (result.kind !== 'ok') return result;
+    working = result.value;
+  }
+  _equipment.set(working);
+  await saveEquipmentManifest(working);
+  return { kind: 'ok', value: working };
+}
+
 export async function renameEquipmentItem(
   id: string,
   name: string,

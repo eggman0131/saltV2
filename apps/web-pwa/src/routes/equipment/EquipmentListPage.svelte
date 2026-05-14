@@ -1,6 +1,7 @@
 <script lang="ts">
   import {
     Button,
+    Checkbox,
     Dialog,
     DialogContent,
     DialogDescription,
@@ -8,30 +9,43 @@
     DialogHeader,
     DialogTitle,
     ListPage,
+    SelectableList,
     Spinner,
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
   import {
     equipment,
     isLoadingEquipment,
-    removeEquipmentItem,
+    removeEquipmentItems,
   } from '../../lib/equipmentService.js';
   import { addToast } from '../../lib/toastStore.js';
 
-  let deleteTargetId = $state<string | null>(null);
+  let selected = $state(new Set<string>());
+  let showDeleteDialog = $state(false);
   let deleteBusy = $state(false);
 
   const items = $derived($equipment?.items ?? []);
   const sorted = $derived([...items].sort((a, b) => a.name.localeCompare(b.name)));
 
+  const allIds = $derived(sorted.map((i) => i.id));
+  const allSelected = $derived(allIds.length > 0 && allIds.every((id) => selected.has(id)));
+  const someSelected = $derived(allIds.some((id) => selected.has(id)) && !allSelected);
+  const selectedCount = $derived(allIds.filter((id) => selected.has(id)).length);
+
+  function toggleAll() {
+    selected = allSelected ? new Set() : new Set(allIds);
+  }
+
   async function handleDelete(): Promise<void> {
-    if (!deleteTargetId) return;
+    if (selectedCount === 0) return;
     deleteBusy = true;
-    const result = await removeEquipmentItem(deleteTargetId);
+    const ids = [...selected];
+    const result = await removeEquipmentItems(ids);
     deleteBusy = false;
-    deleteTargetId = null;
+    showDeleteDialog = false;
+    selected = new Set();
     if (result.kind !== 'ok') {
-      addToast('Failed to delete item.', 'error');
+      addToast('Failed to delete items.', 'error');
     }
   }
 </script>
@@ -47,58 +61,64 @@
     <Button onclick={() => push('/equipment/new')}>Add equipment</Button>
   {/snippet}
 
+  {#snippet selectionBar()}
+    <Checkbox
+      checked={allSelected ? true : someSelected ? 'indeterminate' : false}
+      onCheckedChange={toggleAll}
+      label={selectedCount > 0 ? `${selectedCount} selected` : 'Select all'}
+    />
+    {#if selectedCount > 0}
+      <div class="flex items-center gap-2">
+        <Button variant="destructive" size="sm" onclick={() => (showDeleteDialog = true)}>
+          Delete
+        </Button>
+        <Button variant="ghost" size="sm" onclick={() => (selected = new Set())}>Clear</Button>
+      </div>
+    {/if}
+  {/snippet}
+
   {#snippet children()}
-    <ul class="flex flex-col gap-2" data-testid="equipment-list">
-      {#each sorted as item (item.id)}
-        <li
-          class="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3"
+    <SelectableList items={sorted} bind:selected>
+      {#snippet row(item)}
+        <button
+          class="w-full text-left text-sm font-medium hover:underline"
+          onclick={() => push(`/equipment/${item.id}`)}
+          data-testid="equipment-list-item"
+          data-equipment-id={item.id}
         >
-          <button
-            class="flex-1 text-left text-sm font-medium hover:underline"
-            onclick={() => push(`/equipment/${item.id}`)}
-            data-testid="equipment-list-item"
-            data-equipment-id={item.id}
-          >
-            {item.name}
-            {#if item.accessories.length > 0}
-              <span class="ml-2 text-xs text-muted-foreground">
-                {item.accessories.length} accessor{item.accessories.length === 1 ? 'y' : 'ies'}
-              </span>
-            {/if}
-            {#if item.rules.length > 0}
-              <span class="ml-2 text-xs text-muted-foreground">
-                {item.rules.length} rule{item.rules.length === 1 ? '' : 's'}
-              </span>
-            {/if}
-          </button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onclick={() => (deleteTargetId = item.id)}
-            aria-label="Delete {item.name}"
-          >
-            Delete
-          </Button>
-        </li>
-      {/each}
-    </ul>
+          {item.name}
+          {#if item.accessories.length > 0}
+            <span class="ml-2 text-xs text-muted-foreground">
+              {item.accessories.length} accessor{item.accessories.length === 1 ? 'y' : 'ies'}
+            </span>
+          {/if}
+          {#if item.rules.length > 0}
+            <span class="ml-2 text-xs text-muted-foreground">
+              {item.rules.length} rule{item.rules.length === 1 ? '' : 's'}
+            </span>
+          {/if}
+        </button>
+      {/snippet}
+    </SelectableList>
   {/snippet}
 </ListPage>
 
 <Dialog
-  open={deleteTargetId !== null}
+  open={showDeleteDialog}
   onOpenChange={(v) => {
-    if (!v) deleteTargetId = null;
+    if (!v) showDeleteDialog = false;
   }}
 >
   <DialogContent>
     <div class="flex flex-col gap-4" data-testid="equipment-delete-dialog">
       <DialogHeader>
-        <DialogTitle>Delete equipment?</DialogTitle>
+        <DialogTitle>
+          Delete {selectedCount} item{selectedCount === 1 ? '' : 's'}?
+        </DialogTitle>
         <DialogDescription>This cannot be undone.</DialogDescription>
       </DialogHeader>
       <DialogFooter>
-        <Button variant="outline" onclick={() => (deleteTargetId = null)} disabled={deleteBusy}>
+        <Button variant="outline" onclick={() => (showDeleteDialog = false)} disabled={deleteBusy}>
           Cancel
         </Button>
         <Button

@@ -32,12 +32,12 @@ vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
 vi.mock('../src/lib/equipmentService.js', () => ({
   equipment: mockEquipment,
   isLoadingEquipment: mockIsLoading,
-  removeEquipmentItem: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  removeEquipmentItems: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
 }));
 
 import EquipmentListPage from '../src/routes/equipment/EquipmentListPage.svelte';
 import { push } from 'svelte-spa-router';
-import { removeEquipmentItem } from '../src/lib/equipmentService.js';
+import { removeEquipmentItems } from '../src/lib/equipmentService.js';
 
 function item(
   id: string,
@@ -80,8 +80,7 @@ describe('EquipmentListPage', () => {
   it('renders empty state when manifest has no items', () => {
     mockEquipment._set(manifest([]));
     render(EquipmentListPage);
-    // ListPage renders the empty-state via the isEmpty prop; just confirm the list is absent.
-    expect(screen.queryByTestId('equipment-list')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('equipment-list-item')).not.toBeInTheDocument();
   });
 
   it('renders one row per item, sorted alphabetically by name', () => {
@@ -118,14 +117,48 @@ describe('EquipmentListPage', () => {
     expect(vi.mocked(push)).toHaveBeenCalledWith('/equipment/mixer-id');
   });
 
-  it('confirm-and-delete flow calls removeEquipmentItem', async () => {
+  it('delete button is absent before any items are selected', () => {
+    mockEquipment._set(manifest([item('a', 'Blender')]));
+    render(EquipmentListPage);
+    expect(screen.queryByRole('button', { name: /^delete$/i })).not.toBeInTheDocument();
+  });
+
+  it('select-all checkbox selects all items and shows count', async () => {
+    mockEquipment._set(manifest([item('a', 'Blender'), item('b', 'Mixer')]));
+    render(EquipmentListPage);
+    const selectAll = screen.getByRole('checkbox', { name: /select all/i });
+    await userEvent.click(selectAll);
+    await waitFor(() => expect(screen.getByText(/2 selected/i)).toBeInTheDocument());
+  });
+
+  it('clear button deselects all items', async () => {
+    mockEquipment._set(manifest([item('a', 'Blender')]));
+    render(EquipmentListPage);
+    await userEvent.click(screen.getByRole('checkbox', { name: /select all/i }));
+    await waitFor(() => screen.getByRole('button', { name: /clear/i }));
+    await userEvent.click(screen.getByRole('button', { name: /clear/i }));
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /^delete$/i })).not.toBeInTheDocument(),
+    );
+  });
+
+  it('multi-select confirm-and-delete flow calls removeEquipmentItems', async () => {
     mockEquipment._set(manifest([item('to-delete', 'Old Blender')]));
     render(EquipmentListPage);
-    await userEvent.click(screen.getByRole('button', { name: /delete old blender/i }));
+
+    const checkbox = screen.getByRole('checkbox', { name: /select all/i });
+    await userEvent.click(checkbox);
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^delete$/i })).toBeInTheDocument(),
+    );
+    await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
+
     await waitFor(() => screen.getByTestId('equipment-delete-dialog'));
     await userEvent.click(screen.getByTestId('equipment-delete-confirm'));
+
     await waitFor(() => {
-      expect(vi.mocked(removeEquipmentItem)).toHaveBeenCalledWith('to-delete');
+      expect(vi.mocked(removeEquipmentItems)).toHaveBeenCalledWith(['to-delete']);
     });
   });
 });

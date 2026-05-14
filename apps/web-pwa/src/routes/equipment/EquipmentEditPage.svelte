@@ -1,9 +1,22 @@
 <script lang="ts">
-  import { Button, Checkbox, DetailPage, TextField, Spinner } from '@salt/ui-components';
+  import {
+    Button,
+    Checkbox,
+    DetailPage,
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    Icon,
+    TextField,
+  } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
   import {
     equipment,
     renameEquipmentItem,
+    removeEquipmentItem,
     addEquipmentAccessory,
     removeEquipmentAccessory,
     toggleEquipmentAccessoryOwned,
@@ -20,31 +33,68 @@
 
   const item = $derived($equipment?.items.find((i) => i.id === params.id) ?? null);
 
-  // ─── Rename ───────────────────────────────────────────────────────────────
-  let renameDraft = $state('');
-  let renameBusy = $state(false);
-  let renameMode = $state(false);
+  // ─── Name editing (inline, pencil-triggered) ──────────────────────────────
+  let editingName = $state('');
+  let editingNameActive = $state(false);
+  let nameInput = $state<HTMLInputElement | undefined>(undefined);
+  let nameBusy = $state(false);
 
-  function startRename(): void {
-    renameDraft = item?.name ?? '';
-    renameMode = true;
+  $effect(() => {
+    if (editingNameActive && nameInput) {
+      nameInput.focus();
+      nameInput.select();
+    }
+  });
+
+  function startEditName(): void {
+    if (!item) return;
+    editingName = item.name;
+    editingNameActive = true;
   }
 
-  async function commitRename(): Promise<void> {
-    if (!renameDraft.trim() || !item) return;
-    renameBusy = true;
-    const result = await renameEquipmentItem(item.id, renameDraft);
-    renameBusy = false;
+  async function commitEditName(): Promise<void> {
+    if (!item) return;
+    const trimmed = editingName.trim();
+    if (!trimmed || trimmed === item.name) {
+      editingNameActive = false;
+      return;
+    }
+    nameBusy = true;
+    const result = await renameEquipmentItem(item.id, trimmed);
+    nameBusy = false;
     if (result.kind !== 'ok') {
       addToast('Failed to rename.', 'error');
     } else {
-      renameMode = false;
+      editingNameActive = false;
     }
+  }
+
+  // ─── Delete equipment ─────────────────────────────────────────────────────
+  let deleteOpen = $state(false);
+  let deleteBusy = $state(false);
+
+  async function handleDelete(): Promise<void> {
+    if (!item) return;
+    const name = item.name;
+    deleteBusy = true;
+    const result = await removeEquipmentItem(item.id);
+    deleteBusy = false;
+    if (result.kind !== 'ok') {
+      addToast('Failed to delete equipment.', 'error');
+      return;
+    }
+    deleteOpen = false;
+    addToast(`Deleted ${name}`, 'success');
+    push('/equipment');
   }
 
   // ─── Accessories ──────────────────────────────────────────────────────────
   let newAccessoryName = $state('');
   let accessoryBusy = $state(false);
+
+  // Confirmation for removal — tracks which accessory is pending.
+  let pendingAccessoryRemoval = $state<{ id: string; name: string } | null>(null);
+  let accessoryRemoveBusy = $state(false);
 
   async function handleAddAccessory(): Promise<void> {
     if (!newAccessoryName.trim() || !item) return;
@@ -58,10 +108,16 @@
     }
   }
 
-  async function handleRemoveAccessory(accessoryId: string): Promise<void> {
-    if (!item) return;
-    const result = await removeEquipmentAccessory(item.id, accessoryId);
-    if (result.kind !== 'ok') addToast('Failed to remove accessory.', 'error');
+  async function confirmRemoveAccessory(): Promise<void> {
+    if (!item || !pendingAccessoryRemoval) return;
+    accessoryRemoveBusy = true;
+    const result = await removeEquipmentAccessory(item.id, pendingAccessoryRemoval.id);
+    accessoryRemoveBusy = false;
+    if (result.kind !== 'ok') {
+      addToast('Failed to remove accessory.', 'error');
+      return;
+    }
+    pendingAccessoryRemoval = null;
   }
 
   async function handleToggleOwned(accessoryId: string, currentOwned: boolean): Promise<void> {
@@ -88,10 +144,20 @@
     }
   }
 
-  async function handleRemoveRule(ruleIndex: number): Promise<void> {
-    if (!item) return;
-    const result = await removeEquipmentRule(item.id, ruleIndex);
-    if (result.kind !== 'ok') addToast('Failed to remove rule.', 'error');
+  // Confirmation for removal — tracks which rule is pending.
+  let pendingRuleRemoval = $state<{ index: number; text: string } | null>(null);
+  let ruleRemoveBusy = $state(false);
+
+  async function confirmRemoveRule(): Promise<void> {
+    if (!item || !pendingRuleRemoval) return;
+    ruleRemoveBusy = true;
+    const result = await removeEquipmentRule(item.id, pendingRuleRemoval.index);
+    ruleRemoveBusy = false;
+    if (result.kind !== 'ok') {
+      addToast('Failed to remove rule.', 'error');
+      return;
+    }
+    pendingRuleRemoval = null;
   }
 
   function startEditRule(index: number): void {
@@ -124,49 +190,60 @@
     backLabel="Kitchen"
     class="p-4 sm:p-6"
   >
-    {#snippet actions()}
-      {#if !renameMode}
-        <Button
-          variant="outline"
-          size="sm"
-          onclick={startRename}
-          data-testid="equipment-rename-btn"
-        >
-          Rename
-        </Button>
+    {#snippet titleSlot()}
+      {#if editingNameActive}
+        <input
+          bind:this={nameInput}
+          data-testid="equipment-detail-name-input"
+          class="text-2xl font-semibold tracking-tight text-foreground bg-transparent border-b border-foreground/30 outline-none w-full min-w-0"
+          value={editingName}
+          oninput={(e) => (editingName = e.currentTarget.value)}
+          disabled={nameBusy}
+          onkeydown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              void commitEditName();
+            } else if (e.key === 'Escape') {
+              editingNameActive = false;
+            }
+          }}
+          onblur={() => {
+            void commitEditName();
+          }}
+        />
+      {:else}
+        <div class="flex items-center gap-2 min-w-0">
+          <h1 class="text-2xl font-semibold tracking-tight text-foreground truncate">
+            {item.name}
+          </h1>
+          <button
+            class="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+            onclick={startEditName}
+            aria-label="Edit name"
+            type="button"
+            data-testid="equipment-detail-edit-name-btn"
+          >
+            <Icon name="Pencil" size={14} />
+          </button>
+        </div>
       {/if}
     {/snippet}
 
-    <div class="flex flex-col gap-8">
-      <!-- Rename section -->
-      {#if renameMode}
-        <section class="flex flex-col gap-2">
-          <p class="text-sm font-medium">Rename</p>
-          <div class="flex gap-2">
-            <TextField
-              bind:value={renameDraft}
-              disabled={renameBusy}
-              class="flex-1"
-              data-testid="equipment-rename-input"
-              onkeydown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  void commitRename();
-                }
-                if (e.key === 'Escape') renameMode = false;
-              }}
-              autofocus
-            />
-            <Button onclick={commitRename} loading={renameBusy} disabled={!renameDraft.trim()}>
-              Save
-            </Button>
-            <Button variant="ghost" onclick={() => (renameMode = false)} disabled={renameBusy}>
-              Cancel
-            </Button>
-          </div>
-        </section>
-      {/if}
+    {#snippet actions()}
+      <Button
+        data-testid="equipment-detail-delete-button"
+        variant="destructive"
+        size="sm"
+        onclick={() => (deleteOpen = true)}
+      >
+        {#snippet leading()}
+          <Icon name="Trash2" size={16} />
+        {/snippet}
+        Delete
+      </Button>
+    {/snippet}
 
+    <div class="flex flex-col gap-8">
       <!-- Accessories section -->
       <section class="flex flex-col gap-3">
         <p class="text-sm font-medium">
@@ -199,7 +276,7 @@
                 <Button
                   variant="ghost"
                   size="sm"
-                  onclick={() => void handleRemoveAccessory(acc.id)}
+                  onclick={() => (pendingAccessoryRemoval = { id: acc.id, name: acc.name })}
                   aria-label="Remove {acc.name}"
                 >
                   Remove
@@ -293,7 +370,7 @@
                     <Button
                       variant="ghost"
                       size="sm"
-                      onclick={() => void handleRemoveRule(idx)}
+                      onclick={() => (pendingRuleRemoval = { index: idx, text: rule })}
                       aria-label="Remove rule"
                     >
                       Remove
@@ -336,3 +413,112 @@
     </div>
   </DetailPage>
 {/if}
+
+<!-- Delete equipment confirm dialog -->
+<Dialog
+  bind:open={deleteOpen}
+  onOpenChange={(v) => {
+    if (!v) deleteBusy = false;
+  }}
+>
+  <DialogContent>
+    <div class="flex flex-col gap-4" data-testid="equipment-detail-delete-dialog">
+      <DialogHeader>
+        <DialogTitle>Delete "{item?.name ?? ''}"?</DialogTitle>
+        <DialogDescription>This action cannot be undone.</DialogDescription>
+      </DialogHeader>
+      <DialogFooter>
+        <Button variant="outline" onclick={() => (deleteOpen = false)} disabled={deleteBusy}>
+          Cancel
+        </Button>
+        <Button
+          data-testid="equipment-detail-delete-confirm"
+          variant="destructive"
+          onclick={handleDelete}
+          loading={deleteBusy}
+          disabled={deleteBusy}
+        >
+          Delete
+        </Button>
+      </DialogFooter>
+    </div>
+  </DialogContent>
+</Dialog>
+
+<!-- Remove rule confirm dialog -->
+<Dialog
+  open={pendingRuleRemoval !== null}
+  onOpenChange={(v) => {
+    if (!v) {
+      pendingRuleRemoval = null;
+      ruleRemoveBusy = false;
+    }
+  }}
+>
+  <DialogContent>
+    <div class="flex flex-col gap-4" data-testid="equipment-detail-remove-rule-dialog">
+      <DialogHeader>
+        <DialogTitle>Remove this rule?</DialogTitle>
+        <DialogDescription>
+          "{pendingRuleRemoval?.text ?? ''}"
+        </DialogDescription>
+      </DialogHeader>
+      <DialogFooter>
+        <Button
+          variant="outline"
+          onclick={() => (pendingRuleRemoval = null)}
+          disabled={ruleRemoveBusy}
+        >
+          Cancel
+        </Button>
+        <Button
+          data-testid="equipment-detail-remove-rule-confirm"
+          variant="destructive"
+          onclick={confirmRemoveRule}
+          loading={ruleRemoveBusy}
+          disabled={ruleRemoveBusy}
+        >
+          Remove
+        </Button>
+      </DialogFooter>
+    </div>
+  </DialogContent>
+</Dialog>
+
+<!-- Remove accessory confirm dialog -->
+<Dialog
+  open={pendingAccessoryRemoval !== null}
+  onOpenChange={(v) => {
+    if (!v) {
+      pendingAccessoryRemoval = null;
+      accessoryRemoveBusy = false;
+    }
+  }}
+>
+  <DialogContent>
+    <div class="flex flex-col gap-4" data-testid="equipment-detail-remove-accessory-dialog">
+      <DialogHeader>
+        <DialogTitle>Remove "{pendingAccessoryRemoval?.name ?? ''}"?</DialogTitle>
+        <DialogDescription>This accessory will be removed from this equipment.</DialogDescription>
+      </DialogHeader>
+      <DialogFooter>
+        <Button
+          variant="outline"
+          onclick={() => (pendingAccessoryRemoval = null)}
+          disabled={accessoryRemoveBusy}
+        >
+          Cancel
+        </Button>
+        <Button
+          data-testid="equipment-detail-remove-accessory-confirm"
+          variant="destructive"
+          onclick={confirmRemoveAccessory}
+          loading={accessoryRemoveBusy}
+          disabled={accessoryRemoveBusy}
+        >
+          Remove
+        </Button>
+      </DialogFooter>
+    </div>
+  </DialogContent>
+</Dialog>
