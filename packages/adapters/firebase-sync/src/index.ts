@@ -9,6 +9,26 @@ export {
 } from './equipmentManifestSubscription.js';
 export { callMatchOrCreate } from './canonMatching.js';
 export { callIdentifyEquipment, callPopulateEquipmentEntry } from './equipmentCallables.js';
+export {
+  subscribeShoppingLists,
+  listShoppingLists,
+  createShoppingList,
+  renameShoppingList,
+  deleteShoppingList,
+} from './shoppingListSubscription.js';
+export {
+  subscribeShoppingListItems,
+  listShoppingListItems,
+  saveShoppingListItem,
+  deleteShoppingListItem,
+  deleteShoppingListItems,
+  moveShoppingListItems,
+} from './shoppingListItemSubscription.js';
+export {
+  subscribeShoppingListsConfig,
+  loadShoppingListsConfig,
+  saveShoppingListsConfig,
+} from './shoppingListsConfigSubscription.js';
 export type {
   IdentifyEquipmentCandidate,
   IdentifyEquipmentResult,

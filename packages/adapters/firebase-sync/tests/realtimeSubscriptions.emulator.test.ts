@@ -18,8 +18,25 @@ import {
   subscribeEquipmentManifest,
   saveEquipmentManifest,
 } from '../src/equipmentManifestSubscription.js';
+import { subscribeShoppingLists, createShoppingList } from '../src/shoppingListSubscription.js';
+import {
+  subscribeShoppingListItems,
+  saveShoppingListItem,
+} from '../src/shoppingListItemSubscription.js';
+import {
+  subscribeShoppingListsConfig,
+  saveShoppingListsConfig,
+} from '../src/shoppingListsConfigSubscription.js';
 import { clearFirestoreEmulator, initFirebaseEmulator, PROJECT_ID } from './emulatorHelpers.js';
-import type { CanonItem, Aisle, EquipmentManifest, EquipmentItem } from '@salt/domain';
+import type {
+  CanonItem,
+  Aisle,
+  EquipmentManifest,
+  EquipmentItem,
+  ShoppingList,
+  ShoppingListItem,
+  ShoppingListsConfig,
+} from '@salt/domain';
 
 const CONVERGENCE_MS = 5000;
 
@@ -236,6 +253,174 @@ describe('realtimeSubscriptions — Firestore emulator', () => {
       await delay(500);
 
       expect(received.length).toBe(countBeforeUnsub);
+    });
+  });
+
+  describe('subscribeShoppingLists', () => {
+    it('delivers a list written via createShoppingList', async () => {
+      const received: ShoppingList[][] = [];
+      const unsubscribe = subscribeShoppingLists(
+        (lists) => received.push(lists),
+        () => {},
+      );
+
+      const list: ShoppingList = {
+        id: 'weekly',
+        name: 'Weekly Shop',
+        schemaVersion: 1,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await createShoppingList(list);
+
+      await waitFor(
+        () => received.some((lists) => lists.some((l) => l.id === 'weekly')),
+        CONVERGENCE_MS,
+      );
+
+      unsubscribe();
+      expect(received.some((lists) => lists.some((l) => l.id === 'weekly'))).toBe(true);
+    });
+
+    it('stops callbacks after unsubscribe', async () => {
+      const received: ShoppingList[][] = [];
+      const unsubscribe = subscribeShoppingLists(
+        (lists) => received.push(lists),
+        () => {},
+      );
+
+      await waitFor(() => received.length > 0, CONVERGENCE_MS);
+      const countBeforeUnsub = received.length;
+      unsubscribe();
+
+      await createShoppingList({
+        id: 'after-unsub',
+        name: 'After',
+        schemaVersion: 1,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      await delay(500);
+
+      expect(received.length).toBe(countBeforeUnsub);
+    });
+  });
+
+  describe('subscribeShoppingListItems (subcollection)', () => {
+    it('delivers an item written via saveShoppingListItem', async () => {
+      const listId = 'emulator-list';
+      const received: ShoppingListItem[][] = [];
+      const unsubscribe = subscribeShoppingListItems(
+        listId,
+        (items) => received.push(items),
+        () => {},
+      );
+
+      const item: ShoppingListItem = {
+        id: 'item-1',
+        rawText: 'milk 2L',
+        notes: '',
+        sources: [{ kind: 'manual' }],
+        canonId: null,
+        matchState: 'pending',
+        checked: false,
+        schemaVersion: 1,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await saveShoppingListItem(listId, item);
+
+      await waitFor(
+        () => received.some((items) => items.some((i) => i.id === 'item-1')),
+        CONVERGENCE_MS,
+      );
+
+      unsubscribe();
+      expect(received.some((items) => items.some((i) => i.id === 'item-1'))).toBe(true);
+    });
+
+    it('delivers an updated item when saved again', async () => {
+      const listId = 'emulator-list-update';
+      const received: ShoppingListItem[][] = [];
+      const unsubscribe = subscribeShoppingListItems(
+        listId,
+        (items) => received.push(items),
+        () => {},
+      );
+
+      const item: ShoppingListItem = {
+        id: 'item-u',
+        rawText: 'eggs',
+        notes: '',
+        sources: [{ kind: 'manual' }],
+        canonId: null,
+        matchState: 'pending',
+        checked: false,
+        schemaVersion: 1,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await saveShoppingListItem(listId, item);
+      await waitFor(
+        () => received.some((items) => items.some((i) => i.id === 'item-u')),
+        CONVERGENCE_MS,
+      );
+
+      const updated: ShoppingListItem = {
+        ...item,
+        canonId: 'canon-egg',
+        matchState: 'matched',
+        updatedAt: new Date().toISOString(),
+      };
+      await saveShoppingListItem(listId, updated);
+
+      await waitFor(
+        () =>
+          received.some((items) =>
+            items.some((i) => i.id === 'item-u' && i.matchState === 'matched'),
+          ),
+        CONVERGENCE_MS,
+      );
+
+      unsubscribe();
+      expect(
+        received.some((items) =>
+          items.some((i) => i.id === 'item-u' && i.matchState === 'matched'),
+        ),
+      ).toBe(true);
+    });
+  });
+
+  describe('subscribeShoppingListsConfig', () => {
+    it('delivers null when document does not exist', async () => {
+      const received: (ShoppingListsConfig | null)[] = [];
+      const unsubscribe = subscribeShoppingListsConfig(
+        (cfg) => received.push(cfg),
+        () => {},
+      );
+
+      await waitFor(() => received.length > 0, CONVERGENCE_MS);
+
+      unsubscribe();
+      expect(received.some((r) => r === null)).toBe(true);
+    });
+
+    it('delivers config written via saveShoppingListsConfig', async () => {
+      const received: (ShoppingListsConfig | null)[] = [];
+      const unsubscribe = subscribeShoppingListsConfig(
+        (cfg) => received.push(cfg),
+        () => {},
+      );
+
+      await saveShoppingListsConfig({ defaultListId: 'weekly', schemaVersion: 1 });
+
+      await waitFor(
+        () => received.some((cfg) => cfg !== null && cfg.defaultListId === 'weekly'),
+        CONVERGENCE_MS,
+      );
+
+      unsubscribe();
+      expect(received.some((cfg) => cfg !== null && cfg.defaultListId === 'weekly')).toBe(true);
     });
   });
 });
