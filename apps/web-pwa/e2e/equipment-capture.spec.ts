@@ -19,6 +19,9 @@ test.describe('equipment — capture, edit, and persistence', () => {
   test('capture a device end-to-end, author a rule, reload, see it persisted', async ({
     page,
   }, testInfo) => {
+    // Two AI calls (identifyEquipment + populateEquipmentEntry) plus several
+    // sync waits push this well past the 30s default.
+    test.setTimeout(120_000);
     const email = uniqueEmail(testInfo.testId);
     await gotoAndSignIn(page, email);
 
@@ -44,16 +47,18 @@ test.describe('equipment — capture, edit, and persistence', () => {
     await page.getByTestId('equipment-confirm-name-btn').click();
 
     // ── Step 3: accessories ───────────────────────────────────────────────
+    // The Confirm click triggers populateEquipmentEntry (AI), which can take
+    // 15s+ end-to-end against a real Gemini key. Give it generous time.
     await expect(
       page.getByRole('heading', { name: /kitchenaid artisan stand mixer/i }),
-    ).toBeVisible({ timeout: 10_000 });
+    ).toBeVisible({ timeout: 30_000 });
 
     // Add a manual accessory.
     const accessoryInput = page.getByTestId('equipment-new-accessory-input');
-    await accessoryInput.fill('Dough Hook');
+    await accessoryInput.fill('QA Test Whisk');
     await page.getByRole('button', { name: /^add$/i }).click();
     await expect(
-      page.getByTestId('equipment-draft-accessory').filter({ hasText: 'Dough Hook' }),
+      page.getByTestId('equipment-draft-accessory').filter({ hasText: 'QA Test Whisk' }),
     ).toBeVisible();
 
     // Save.
@@ -66,7 +71,18 @@ test.describe('equipment — capture, edit, and persistence', () => {
     ).toBeVisible();
 
     // Verify accessory is present.
-    await expect(page.getByTestId('equipment-accessories').getByText('Dough Hook')).toBeVisible();
+    await expect(
+      page.getByTestId('equipment-accessories').getByText('QA Test Whisk'),
+    ).toBeVisible();
+
+    // Wait for the "Added X" success toast to dismiss before clicking
+    // controls in the bottom-right, where the toast viewport overlays.
+    // The Toast auto-dismiss timer pauses on mouseenter — move the cursor
+    // away from the bottom-right corner so the 5s timer can run.
+    await page.mouse.move(0, 0);
+    await expect(page.getByText(/added kitchenaid artisan stand mixer/i)).toBeHidden({
+      timeout: SYNC_TIMEOUT,
+    });
 
     // ── Author a rule ─────────────────────────────────────────────────────
     const ruleInput = page.getByTestId('equipment-add-rule-input');
@@ -87,7 +103,9 @@ test.describe('equipment — capture, edit, and persistence', () => {
       page.getByRole('heading', { name: /kitchenaid artisan stand mixer/i }),
     ).toBeVisible({ timeout: SYNC_TIMEOUT });
 
-    await expect(page.getByTestId('equipment-accessories').getByText('Dough Hook')).toBeVisible();
+    await expect(
+      page.getByTestId('equipment-accessories').getByText('QA Test Whisk'),
+    ).toBeVisible();
 
     await expect(
       page.getByTestId('equipment-rules').getByTestId('equipment-rule-text').first(),
@@ -148,11 +166,15 @@ test.describe('equipment — capture, edit, and persistence', () => {
 
     await page.goto('/#/equipment');
 
+    // Select the row via its checkbox (bulk-delete UI), then trigger the
+    // selection-bar Delete and confirm in the dialog.
     const row = page
       .getByTestId('equipment-list')
-      .locator('[data-equipment-id="to-delete"]')
-      .locator('..');
-    await row.getByRole('button', { name: /delete/i }).click();
+      .locator('li')
+      .filter({ has: page.locator('[data-equipment-id="to-delete"]') });
+    await row.getByRole('checkbox').click();
+
+    await page.getByRole('button', { name: /^delete$/i }).click();
 
     await expect(page.getByTestId('equipment-delete-dialog')).toBeVisible();
     await page.getByTestId('equipment-delete-confirm').click();

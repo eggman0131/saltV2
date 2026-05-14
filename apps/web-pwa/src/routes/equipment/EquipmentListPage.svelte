@@ -78,28 +78,30 @@
   {/snippet}
 
   {#snippet children()}
-    <SelectableList items={sorted} bind:selected>
-      {#snippet row(item)}
-        <button
-          class="w-full text-left text-sm font-medium hover:underline"
-          onclick={() => push(`/equipment/${item.id}`)}
-          data-testid="equipment-list-item"
-          data-equipment-id={item.id}
-        >
-          {item.name}
-          {#if item.accessories.length > 0}
-            <span class="ml-2 text-xs text-muted-foreground">
-              {item.accessories.length} accessor{item.accessories.length === 1 ? 'y' : 'ies'}
-            </span>
-          {/if}
-          {#if item.rules.length > 0}
-            <span class="ml-2 text-xs text-muted-foreground">
-              {item.rules.length} rule{item.rules.length === 1 ? '' : 's'}
-            </span>
-          {/if}
-        </button>
-      {/snippet}
-    </SelectableList>
+    <div data-testid="equipment-list">
+      <SelectableList items={sorted} bind:selected>
+        {#snippet row(item)}
+          <button
+            class="w-full text-left text-sm font-medium hover:underline"
+            onclick={() => push(`/equipment/${item.id}`)}
+            data-testid="equipment-list-item"
+            data-equipment-id={item.id}
+          >
+            {item.name}
+            {#if item.accessories.length > 0}
+              <span class="ml-2 text-xs text-muted-foreground">
+                {item.accessories.length} accessor{item.accessories.length === 1 ? 'y' : 'ies'}
+              </span>
+            {/if}
+            {#if item.rules.length > 0}
+              <span class="ml-2 text-xs text-muted-foreground">
+                {item.rules.length} rule{item.rules.length === 1 ? '' : 's'}
+              </span>
+            {/if}
+          </button>
+        {/snippet}
+      </SelectableList>
+    </div>
   {/snippet}
 </ListPage>
 

@@ -63,6 +63,6 @@
   </ToastProvider>
 </AuthGate>
 
-{#if import.meta.env.DEV}
+{#if import.meta.env.DEV && !window.__e2e}
   <SessionOverlay />
 {/if}
