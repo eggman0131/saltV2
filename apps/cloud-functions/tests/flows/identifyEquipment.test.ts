@@ -96,21 +96,21 @@ describe('identifyEquipment flow — prompt construction', () => {
     expect(opts.output?.schema).toBeDefined();
   });
 
-  it('mentions UK English in the prompt', async () => {
+  it('mentions UK English in the system instructions', async () => {
     mockGenerate.mockResolvedValue({ output: aiOutput() });
 
     await (identifyEquipmentFlow as Function)({ rawName: 'broiler' });
 
-    const { prompt } = mockGenerate.mock.calls[0]![0];
-    expect(prompt).toContain('UK');
+    const { system } = mockGenerate.mock.calls[0]![0];
+    expect(system).toContain('UK');
   });
 
-  it('instructs the model to collapse cosmetic variants', async () => {
+  it('instructs the model to identify the specific make and model', async () => {
     mockGenerate.mockResolvedValue({ output: aiOutput() });
 
     await (identifyEquipmentFlow as Function)({ rawName: 'anything' });
 
-    const { prompt } = mockGenerate.mock.calls[0]![0];
-    expect(prompt.toLowerCase()).toContain('cosmetic variant');
+    const { system } = mockGenerate.mock.calls[0]![0];
+    expect(system.toLowerCase()).toContain('make and model');
   });
 });

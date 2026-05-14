@@ -126,13 +126,13 @@ describe('populateEquipmentEntry flow — prompt construction', () => {
     expect(opts.output?.schema).toBeDefined();
   });
 
-  it('mentions first-party accessories in the prompt', async () => {
+  it('mentions first-party accessories in the system instructions', async () => {
     mockGenerate.mockResolvedValue({ output: aiOutput('Blender') });
 
     await (populateEquipmentEntryFlow as Function)({ confirmedName: 'blender' });
 
-    const { prompt } = mockGenerate.mock.calls[0]![0];
-    expect(prompt.toLowerCase()).toContain('first-party');
+    const { system } = mockGenerate.mock.calls[0]![0];
+    expect(system.toLowerCase()).toContain('first-party');
   });
 
   it('instructs the model not to include capabilities or features', async () => {
@@ -140,7 +140,7 @@ describe('populateEquipmentEntry flow — prompt construction', () => {
 
     await (populateEquipmentEntryFlow as Function)({ confirmedName: 'blender' });
 
-    const { prompt } = mockGenerate.mock.calls[0]![0];
-    expect(prompt.toLowerCase()).toContain('capabilities');
+    const { system } = mockGenerate.mock.calls[0]![0];
+    expect(system.toLowerCase()).toContain('capabilities');
   });
 });
