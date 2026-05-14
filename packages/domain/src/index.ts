@@ -104,5 +104,52 @@ export {
   editRule,
 } from './equipment/index.js';
 
+// Shopping list module — published surface.
+export type {
+  ShoppingList,
+  ShoppingListItem,
+  MatchState,
+  SourceRef,
+  ShoppingListsConfig,
+  ShoppingListPort,
+  ShoppingListItemPort,
+  ShoppingListsConfigPort,
+  ShoppingListIdGenerator,
+  CreateListInput,
+  RenameListInput,
+  DeleteListInput,
+  SetDefaultListInput,
+  AddItemInput,
+  EditItemRawTextInput,
+  EditItemNotesInput,
+  CheckItemInput,
+  UncheckItemInput,
+  DeleteItemInput,
+  MoveItemsInput,
+  MoveItemsResult,
+  CanonInfo as ShoppingListCanonInfo,
+  AisleInfo as ShoppingListAisleInfo,
+  NeedsReviewContributor,
+  NeedsReviewBucket,
+  ItemGroup,
+  AisleGroup,
+  GroupedShoppingList,
+} from './shoppingList/index.js';
+export {
+  createList,
+  renameList,
+  deleteList,
+  setDefaultList,
+  addItem,
+  editItemRawText,
+  editItemNotes,
+  checkItem,
+  uncheckItem,
+  deleteItem,
+  clearCheckedItems,
+  moveItems,
+  groupItemsByAisle,
+} from './shoppingList/index.js';
+
 // Cross-cutting ports.
 export type { ErrorReportingPort } from './ErrorReportingPort.js';

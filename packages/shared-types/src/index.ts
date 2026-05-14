@@ -55,7 +55,15 @@ export type DomainError =
   | { readonly kind: 'AuthError'; readonly reason: 'unauthenticated' | 'forbidden' | 'expired' }
   | {
       readonly kind: 'NotFound';
-      readonly resource: 'recipe' | 'canon' | 'shopping-list' | 'workspace' | 'aisle' | 'equipment';
+      readonly resource:
+        | 'recipe'
+        | 'canon'
+        | 'shopping-list'
+        | 'shoppingList'
+        | 'shoppingListItem'
+        | 'workspace'
+        | 'aisle'
+        | 'equipment';
       readonly id: string;
     }
   | {
@@ -115,6 +123,9 @@ export const ErrorCode = {
   INVALID_ACCESSORY_NAME: 'INVALID_ACCESSORY_NAME',
   INVALID_RULE: 'INVALID_RULE',
   EQUIPMENT_ACCESSORY_NOT_FOUND: 'EQUIPMENT_ACCESSORY_NOT_FOUND',
+  INVALID_LIST_NAME: 'INVALID_LIST_NAME',
+  INVALID_ITEM_RAW_TEXT: 'INVALID_ITEM_RAW_TEXT',
+  LIST_IS_DEFAULT: 'LIST_IS_DEFAULT',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

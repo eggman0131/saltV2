@@ -76,6 +76,10 @@ expect_lint_error \
   "packages/domain/src/equipment/__boundary_tests__/no-cross-module-subpath.ts" \
   "equipment cannot import sibling module internals (subpath)"
 
+expect_lint_error \
+  "packages/domain/src/shoppingList/__boundary_tests__/no-cross-module-subpath.ts" \
+  "shoppingList cannot import sibling module internals (subpath)"
+
 expect_depcruise_error \
   ".boundary-tests/circular" \
   "circular imports are rejected"
