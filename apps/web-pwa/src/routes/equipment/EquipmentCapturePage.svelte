@@ -64,11 +64,13 @@
       addToast('Could not fetch accessories. You can add them manually.', 'error');
       draftAccessories = [];
     } else {
-      // Phase 3 contract: no id, no owned in response — mint both here
+      // Phase 3 contract: no id, no owned in response — mint both here.
+      // Accessories that ship in the standard box default to owned; the user
+      // can untick if their unit was missing one.
       draftAccessories = result.value.accessories.map((a) => ({
         id: crypto.randomUUID(),
         name: a.name,
-        owned: false,
+        owned: a.included,
         included: a.included,
       }));
     }
