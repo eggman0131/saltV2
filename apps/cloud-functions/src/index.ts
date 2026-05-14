@@ -14,15 +14,18 @@ import { registerGenkitDevTracing } from './genkitTracing.js';
 import { embedTextFlow } from './flows/embedText.js';
 import { arbitrateCanonFlow } from './flows/arbitrateCanon.js';
 import { matchOrCreateCanonFlow } from './flows/matchOrCreateCanon.js';
+import { identifyEquipmentFlow } from './flows/identifyEquipment.js';
+import { populateEquipmentEntryFlow } from './flows/populateEquipmentEntry.js';
 
 initializeApp();
 
 setGlobalOptions({ region: 'europe-west2' });
 
 // Initialise LD observability and Genkit dev-trace routing at module load so
-// all three exported flows (embedText, arbitrateCanon, matchOrCreateCanon) and
-// the onCanonItemWritten trigger share the same OTel provider and forward their
-// Genkit spans to the dev server when GENKIT_TELEMETRY_SERVER is set.
+// every exported callable flow (embedText, arbitrateCanon, matchOrCreateCanon,
+// identifyEquipment, populateEquipmentEntry) and the onCanonItemWritten
+// trigger share the same OTel provider and forward their Genkit spans to the
+// dev server when GENKIT_TELEMETRY_SERVER is set.
 const _ldSdkKeyAtLoad = process.env['LD_SDK_KEY'];
 if (_ldSdkKeyAtLoad) {
   initServerObservability(_ldSdkKeyAtLoad);
@@ -80,6 +83,22 @@ export const matchOrCreateCanon = onCall(
     // Was: runWithExtractedTraceContext(data?._trace, () => matchOrCreateCanonFlow(request.data))
     return matchOrCreateCanonFlow(request.data);
   },
+);
+
+export const identifyEquipment = onCallGenkit(
+  {
+    secrets: [geminiApiKey],
+    authPolicy: isSignedIn(),
+  },
+  identifyEquipmentFlow,
+);
+
+export const populateEquipmentEntry = onCallGenkit(
+  {
+    secrets: [geminiApiKey],
+    authPolicy: isSignedIn(),
+  },
+  populateEquipmentEntryFlow,
 );
 
 export const onCanonItemWritten = onDocumentWritten(

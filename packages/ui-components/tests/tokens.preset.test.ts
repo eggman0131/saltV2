@@ -243,9 +243,9 @@ describe('token constants', () => {
     it('primaryForeground is a CSS var reference string', () => {
       expect(colors.primaryForeground).toBe('hsl(var(--salt-primary-foreground))');
     });
-    it('exports all 19 semantic color constants', () => {
+    it('exports all 23 semantic color constants', () => {
       const keys = Object.keys(colors);
-      expect(keys.length).toBe(19);
+      expect(keys.length).toBe(23);
     });
   });
 

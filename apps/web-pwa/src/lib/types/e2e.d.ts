@@ -1,4 +1,4 @@
-import type { Aisle, CanonItem } from '@salt/domain';
+import type { Aisle, CanonItem, EquipmentManifest } from '@salt/domain';
 import type { ObservabilitySessionMeta } from '@salt/ld-observability';
 
 export interface SeedCanonItemInput {
@@ -19,6 +19,8 @@ export interface E2EBridge {
   getCanonItem(id: string): Promise<CanonItem | null>;
   clearStores(): Promise<void>;
   setFirestoreOffline(offline: boolean): Promise<void>;
+  seedEquipmentManifest(manifest: EquipmentManifest): Promise<void>;
+  getEquipmentManifest(): EquipmentManifest | null;
   tagSession(meta: ObservabilitySessionMeta): void;
   getLDSessionURL(): string | null;
 }

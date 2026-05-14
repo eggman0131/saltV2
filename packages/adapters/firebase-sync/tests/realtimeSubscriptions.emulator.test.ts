@@ -14,8 +14,12 @@ import type { Firestore } from 'firebase/firestore';
 import { getAuth, connectAuthEmulator, signInAnonymously } from 'firebase/auth';
 import { subscribeCanonItems, upsertCanonItem } from '../src/canonSubscription.js';
 import { subscribeAisles, saveAisles } from '../src/aisleSubscription.js';
+import {
+  subscribeEquipmentManifest,
+  saveEquipmentManifest,
+} from '../src/equipmentManifestSubscription.js';
 import { clearFirestoreEmulator, initFirebaseEmulator, PROJECT_ID } from './emulatorHelpers.js';
-import type { CanonItem, Aisle } from '@salt/domain';
+import type { CanonItem, Aisle, EquipmentManifest, EquipmentItem } from '@salt/domain';
 
 const CONVERGENCE_MS = 5000;
 
@@ -172,6 +176,66 @@ describe('realtimeSubscriptions — Firestore emulator', () => {
 
       unsubscribe();
       expect(received.some((r) => r.length === 0)).toBe(true);
+    });
+  });
+
+  describe('subscribeEquipmentManifest', () => {
+    it('delivers null when document does not exist', async () => {
+      const received: (EquipmentManifest | null)[] = [];
+      const unsubscribe = subscribeEquipmentManifest(
+        (m) => received.push(m),
+        () => {},
+      );
+
+      await waitFor(() => received.length > 0, CONVERGENCE_MS);
+
+      unsubscribe();
+      expect(received.some((r) => r === null)).toBe(true);
+    });
+
+    it('delivers manifest written via saveEquipmentManifest', async () => {
+      const received: (EquipmentManifest | null)[] = [];
+      const unsubscribe = subscribeEquipmentManifest(
+        (m) => received.push(m),
+        () => {},
+      );
+
+      const item: EquipmentItem = {
+        id: 'mixer-1',
+        schemaVersion: 1,
+        name: 'Stand Mixer',
+        accessories: [{ id: 'acc-1', name: 'Dough Hook', owned: true, included: true }],
+        rules: ['Use speed 2 for bread'],
+        updatedAt: new Date().toISOString(),
+      };
+      await saveEquipmentManifest({ schemaVersion: 1, updatedAt: '', items: [item] });
+
+      await waitFor(
+        () => received.some((m) => m !== null && m.items.some((i) => i.id === 'mixer-1')),
+        CONVERGENCE_MS,
+      );
+
+      unsubscribe();
+      expect(received.some((m) => m !== null && m.items.some((i) => i.id === 'mixer-1'))).toBe(
+        true,
+      );
+    });
+
+    it('stops callbacks after unsubscribe', async () => {
+      const received: (EquipmentManifest | null)[] = [];
+      const unsubscribe = subscribeEquipmentManifest(
+        (m) => received.push(m),
+        () => {},
+      );
+
+      await waitFor(() => received.length > 0, CONVERGENCE_MS);
+      const countBeforeUnsub = received.length;
+      unsubscribe();
+
+      await saveEquipmentManifest({ schemaVersion: 1, updatedAt: '', items: [] });
+      await delay(500);
+
+      expect(received.length).toBe(countBeforeUnsub);
     });
   });
 });

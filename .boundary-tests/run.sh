@@ -72,6 +72,10 @@ expect_lint_error \
   "packages/domain/src/auth/__boundary_tests__/no-cross-module-subpath.ts" \
   "auth cannot import sibling module internals (subpath)"
 
+expect_lint_error \
+  "packages/domain/src/equipment/__boundary_tests__/no-cross-module-subpath.ts" \
+  "equipment cannot import sibling module internals (subpath)"
+
 expect_depcruise_error \
   ".boundary-tests/circular" \
   "circular imports are rejected"

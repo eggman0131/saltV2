@@ -46,9 +46,11 @@
 </script>
 
 <div class={cn('flex flex-col gap-1.5', className)}>
-  <label class="text-sm font-medium text-foreground" for={state.id}>
-    {label}
-  </label>
+  {#if label}
+    <label class="text-sm font-medium text-foreground" for={state.id}>
+      {label}
+    </label>
+  {/if}
 
   <div
     class={textFieldFrameVariants({

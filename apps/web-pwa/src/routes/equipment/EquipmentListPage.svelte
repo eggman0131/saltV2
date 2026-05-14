@@ -1,0 +1,144 @@
+<script lang="ts">
+  import {
+    Button,
+    Checkbox,
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    ListPage,
+    SelectableList,
+    Spinner,
+  } from '@salt/ui-components';
+  import { push } from 'svelte-spa-router';
+  import {
+    equipment,
+    isLoadingEquipment,
+    removeEquipmentItems,
+  } from '../../lib/equipmentService.js';
+  import { addToast } from '../../lib/toastStore.js';
+
+  let selected = $state(new Set<string>());
+  let showDeleteDialog = $state(false);
+  let deleteBusy = $state(false);
+
+  const items = $derived($equipment?.items ?? []);
+  const sorted = $derived([...items].sort((a, b) => a.name.localeCompare(b.name)));
+
+  const allIds = $derived(sorted.map((i) => i.id));
+  const allSelected = $derived(allIds.length > 0 && allIds.every((id) => selected.has(id)));
+  const someSelected = $derived(allIds.some((id) => selected.has(id)) && !allSelected);
+  const selectedCount = $derived(allIds.filter((id) => selected.has(id)).length);
+
+  function toggleAll() {
+    selected = allSelected ? new Set() : new Set(allIds);
+  }
+
+  async function handleDelete(): Promise<void> {
+    if (selectedCount === 0) return;
+    deleteBusy = true;
+    const ids = [...selected];
+    const result = await removeEquipmentItems(ids);
+    deleteBusy = false;
+    showDeleteDialog = false;
+    selected = new Set();
+    if (result.kind !== 'ok') {
+      addToast('Failed to delete items.', 'error');
+    }
+  }
+</script>
+
+<ListPage
+  title="Kitchen"
+  description="Your equipment manifest."
+  isLoading={$isLoadingEquipment}
+  isEmpty={items.length === 0}
+  class="p-4 sm:p-6"
+>
+  {#snippet actions()}
+    <Button onclick={() => push('/equipment/new')}>Add equipment</Button>
+  {/snippet}
+
+  {#snippet selectionBar()}
+    <Checkbox
+      checked={allSelected ? true : someSelected ? 'indeterminate' : false}
+      onCheckedChange={toggleAll}
+      label={selectedCount > 0 ? `${selectedCount} selected` : 'Select all'}
+    />
+    {#if selectedCount > 0}
+      <div class="flex items-center gap-2">
+        <Button variant="destructive" size="sm" onclick={() => (showDeleteDialog = true)}>
+          Delete
+        </Button>
+        <Button variant="ghost" size="sm" onclick={() => (selected = new Set())}>Clear</Button>
+      </div>
+    {/if}
+  {/snippet}
+
+  {#snippet children()}
+    <div data-testid="equipment-list">
+      <SelectableList items={sorted} bind:selected>
+        {#snippet row(item)}
+          <button
+            class="w-full text-left text-sm font-medium hover:underline"
+            onclick={() => push(`/equipment/${item.id}`)}
+            data-testid="equipment-list-item"
+            data-equipment-id={item.id}
+          >
+            {item.name}
+            {#if item.accessories.length > 0}
+              <span class="ml-2 text-xs text-muted-foreground">
+                {item.accessories.length} accessor{item.accessories.length === 1 ? 'y' : 'ies'}
+              </span>
+            {/if}
+            {#if item.rules.length > 0}
+              <span class="ml-2 text-xs text-muted-foreground">
+                {item.rules.length} rule{item.rules.length === 1 ? '' : 's'}
+              </span>
+            {/if}
+          </button>
+        {/snippet}
+      </SelectableList>
+    </div>
+  {/snippet}
+</ListPage>
+
+<Dialog
+  open={showDeleteDialog}
+  onOpenChange={(v) => {
+    if (!v) showDeleteDialog = false;
+  }}
+>
+  <DialogContent>
+    <div class="flex flex-col gap-4" data-testid="equipment-delete-dialog">
+      <DialogHeader>
+        <DialogTitle>
+          Delete {selectedCount} item{selectedCount === 1 ? '' : 's'}?
+        </DialogTitle>
+        <DialogDescription>This cannot be undone.</DialogDescription>
+      </DialogHeader>
+      <DialogFooter>
+        <Button variant="outline" onclick={() => (showDeleteDialog = false)} disabled={deleteBusy}>
+          Cancel
+        </Button>
+        <Button
+          variant="destructive"
+          onclick={handleDelete}
+          loading={deleteBusy}
+          disabled={deleteBusy}
+          data-testid="equipment-delete-confirm"
+        >
+          Delete
+        </Button>
+      </DialogFooter>
+    </div>
+  </DialogContent>
+</Dialog>
+
+{#if $isLoadingEquipment}
+  <div class="flex items-center justify-center py-8">
+    <Spinner size={24} />
+  </div>
+{/if}

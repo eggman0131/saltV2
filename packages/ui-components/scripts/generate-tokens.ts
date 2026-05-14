@@ -32,10 +32,7 @@ for (const [key, value] of Object.entries(colorsTheme)) {
     colorLines.push(`export const ${camel}Foreground = '${stripAlpha(value.foreground)}';`);
   }
 }
-writeFileSync(
-  join(tokensDir, 'colors.ts'),
-  HEADER + colorLines.join('\n') + '\n',
-);
+writeFileSync(join(tokensDir, 'colors.ts'), HEADER + colorLines.join('\n') + '\n');
 
 // --- radius.ts ---
 const radiusTheme = preset.theme.extend.borderRadius as Record<string, string>;
@@ -104,6 +101,7 @@ export * as radius from './tokens/radius';
 export * as motion from './tokens/motion';
 export * as elevation from './tokens/elevation';
 export * as zIndex from './tokens/z-index';
+export * as typography from './tokens/typography';
 `;
 writeFileSync(join(srcDir, 'tokens.ts'), tokensBarrel);
 

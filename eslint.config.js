@@ -65,7 +65,7 @@ function forbidGroup(pkgs, message) {
 }
 
 // Domain submodules. Add a module name here when scaffolding it.
-const DOMAIN_MODULES = ['canon', 'recipe', 'shopping', 'auth'];
+const DOMAIN_MODULES = ['canon', 'recipe', 'shopping', 'auth', 'equipment'];
 // Subfolders that constitute a domain module's internals. Cross-module
 // subpath imports into these are forbidden — go through the module index.
 const DOMAIN_INTERNAL_SUBFOLDERS = ['entities', 'ports', 'commands', 'queries'];
