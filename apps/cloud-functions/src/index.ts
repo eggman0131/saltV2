@@ -16,6 +16,7 @@ import { arbitrateCanonFlow } from './flows/arbitrateCanon.js';
 import { matchOrCreateCanonFlow } from './flows/matchOrCreateCanon.js';
 import { identifyEquipmentFlow } from './flows/identifyEquipment.js';
 import { populateEquipmentEntryFlow } from './flows/populateEquipmentEntry.js';
+import { onShoppingListItemWrite } from './triggers/onShoppingListItemWrite.js';
 
 initializeApp();
 
@@ -100,6 +101,8 @@ export const populateEquipmentEntry = onCallGenkit(
   },
   populateEquipmentEntryFlow,
 );
+
+export { onShoppingListItemWrite };
 
 export const onCanonItemWritten = onDocumentWritten(
   {
