@@ -5,4 +5,3 @@ export * as radius from './tokens/radius';
 export * as motion from './tokens/motion';
 export * as elevation from './tokens/elevation';
 export * as zIndex from './tokens/z-index';
-export * as typography from './tokens/typography';

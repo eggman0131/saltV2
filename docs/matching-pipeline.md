@@ -123,9 +123,9 @@ The empty-shortlist case is different: with no candidates to fall back to, AI er
 
 | AI response (non-empty shortlist) | Pipeline action | Decision returned |
 |---|---|---|
-| `match` with valid `itemId` | `appendCanonSynonym` on chosen item | `ai_arbitrated` |
+| `match` with valid `itemId` | `appendCanonSynonym` on chosen item; AI `reasoning` stored on item if present | `ai_arbitrated` |
 | `match` with unknown `itemId` | Fall back to top-confidence candidate, flag `needs_approval` | `ai_arbitrated` |
-| `new` (with metadata) | Create new item with AI-suggested aisle, behaviour, unit | `created` |
+| `new` (with metadata) | Create new item with AI-suggested aisle, behaviour, unit; `reasoning` stored if present | `created` |
 | `no-match` | Fall back to top-confidence candidate, flag `needs_approval` | `ai_arbitrated` |
 | Error | Fall back to top-confidence candidate, flag `needs_approval` | `ai_arbitrated` |
 
@@ -137,7 +137,7 @@ A non-empty shortlist means at least one item scored above `aiThreshold` (0.60) 
 
 ## Review via `needs_approval`
 
-`needs_approval` is the universal "human should look at this" signal. `appendCanonSynonym` sets it whenever a synonym is added; the AI-fallback path inherits it that way. The canon list page is the review queue: items with `needs_approval` are highlighted, promoted to the top, and support multi-select bulk-approve. The canon nav menu item carries a count badge of `needs_approval === true` items so the queue is visible from anywhere in the app.
+`needs_approval` is the universal "human should look at this" signal. `appendCanonSynonym` sets it whenever a synonym is added; the AI-fallback path inherits it that way. When AI arbitration returns a `'match'` or `'new'` response that includes a `reasoning` string, `appendCanonSynonym` (or the item-creation path) also stores that string as `CanonItem.reasoning` — it surfaces in the canon review UI alongside `needs_approval` items for auditing why the AI made a given decision. The canon list page is the review queue: items with `needs_approval` are highlighted, promoted to the top, and support multi-select bulk-approve. The canon nav menu item carries a count badge of `needs_approval === true` items so the queue is visible from anywhere in the app.
 
 The canon item detail page also exposes a **split** action: take the most-recently-added synonym off the current item and promote it into a new canon item (flagged `needs_approval`). This is the corrective path when the pipeline added a synonym to the wrong canonical item.
 
