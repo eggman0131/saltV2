@@ -1,5 +1,6 @@
 // spec: SPEC.md §3 v0.3
 import type { Snippet } from 'svelte';
+import type { HTMLButtonAttributes } from 'svelte/elements';
 
 export type SelectProps = {
   value?: string;
@@ -20,7 +21,7 @@ export type SelectProps = {
 export type SelectTriggerProps = {
   class?: string;
   children?: Snippet;
-};
+} & Omit<HTMLButtonAttributes, 'class'>;
 
 export type SelectContentProps = {
   class?: string;

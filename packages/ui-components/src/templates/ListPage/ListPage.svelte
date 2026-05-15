@@ -20,10 +20,11 @@
     empty,
     children,
     class: className,
+    ...restProps
   }: ListPageProps = $props();
 </script>
 
-<section class={cn('flex flex-col gap-4', className)}>
+<section class={cn('flex flex-col gap-4', className)} {...restProps}>
   <header class="flex flex-wrap items-start justify-between gap-3">
     <div class="flex flex-col gap-1 min-w-0">
       <h1 class="text-xl font-semibold tracking-tight text-foreground">{title}</h1>

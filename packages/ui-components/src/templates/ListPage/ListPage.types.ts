@@ -1,5 +1,6 @@
 // spec: SPEC.md §9.1 v0.2.3
 import type { Snippet } from 'svelte';
+import type { HTMLAttributes } from 'svelte/elements';
 
 export type ListPageProps = {
   title: string;
@@ -21,4 +22,4 @@ export type ListPageProps = {
   empty?: Snippet;
   children?: Snippet;
   class?: string;
-};
+} & Omit<HTMLAttributes<HTMLElement>, 'class'>;

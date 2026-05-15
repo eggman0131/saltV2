@@ -6,7 +6,7 @@
   import { selectTriggerVariants } from './Select.variants';
   import type { SelectTriggerProps } from './Select.types';
 
-  let { class: className, children }: SelectTriggerProps = $props();
+  let { class: className, children, ...restProps }: SelectTriggerProps = $props();
 
   const ctx = SELECT_CONTEXT.get();
 
@@ -39,6 +39,7 @@
   class={cn(selectTriggerVariants({ disabled: ctx.disabled }), className)}
   onclick={handleClick}
   onkeydown={handleKeydown}
+  {...restProps}
 >
   {#if children}
     {@render children()}
