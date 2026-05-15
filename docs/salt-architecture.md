@@ -122,7 +122,11 @@ This model is intentionally narrow. Multi‑workspace, sharing, or per‑documen
 - Implements realtime subscriptions and direct writes using Firestore `onSnapshot` and `setDoc`.
 - Implements `AuthProvider` using Firebase Auth.
 - Initialises Firestore with `persistentLocalCache()` in production (disabled in emulator tests to avoid stale cache).
-- Exposes `subscribeCanonItems`, `subscribeAisles`, `upsertCanonItem`, `saveAisles` as its primary data API.
+- Exposes the following as its primary data API:
+  - Canon: `subscribeCanonItems`, `subscribeAisles`, `upsertCanonItem`, `saveAisles`
+  - Shopping lists: `subscribeShoppingLists`, `listShoppingLists`, `createShoppingList`, `renameShoppingList`, `deleteShoppingList`
+  - Shopping list items: `subscribeShoppingListItems`, `listShoppingListItems`, `saveShoppingListItem`, `deleteShoppingListItem`, `deleteShoppingListItems`, `moveShoppingListItems`
+  - Shopping list config: `subscribeShoppingListsConfig`, `loadShoppingListsConfig`, `saveShoppingListsConfig`
 - Must not import IndexedDB or any local‑storage code.
 - Must not contain UI logic.
 - Must not contain domain logic — including conflict resolution.
@@ -216,7 +220,12 @@ No Firebase error codes may cross the boundary.
 
 ## 8. Cloud Functions requirements
 
-Cloud Functions exist to support **server‑side gen‑AI workloads** (`embedText`, `arbitrateCanon`). They are intentionally minimal.
+Cloud Functions cover two categories of server-side work:
+
+1. **Gen-AI callables** (`embedText`, `arbitrateCanon`, `matchOrCreateCanon`, `identifyEquipment`, `populateEquipmentEntry`) — HTTPS callables invoked by the client.
+2. **Firestore write triggers** (`onShoppingListItemWrite`) — respond to document writes and run domain logic (e.g. canon matching) server-side, writing results back to Firestore.
+
+Both categories are intentionally minimal.
 
 Cloud Functions:
 
@@ -226,7 +235,7 @@ Cloud Functions:
 - Never contain business logic
 - Only orchestrate: input validation, domain commands/queries, gen‑AI providers, and returning results
 - Must be stateless
-- Must be testable without Firebase emulators (via domain mocks)
+- Callables must be testable without Firebase emulators (via domain mocks); triggers use the Firestore emulator for write-back integration tests
 
 ---
 

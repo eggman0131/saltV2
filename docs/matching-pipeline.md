@@ -8,9 +8,13 @@ The same pipeline is the entry point for all four use cases: manual canon item a
 
 ## Authority and runtime
 
-The pipeline lives behind a single Cloud Function callable, `matchOrCreateCanon`. The CF composes Firestore-admin stores, Genkit-backed embedding + arbitration adapters, an ID generator, and a fan-out `MatchLoggingPort` that writes each resolution to two destinations: LaunchDarkly (via the LD Node SDK, parity with the fast-path's wire shape — see [Logging schema](#logging-schema)) and `firebase-functions/logger` (top-level summary only, additive for Cloud Logging).
+The pipeline is invoked from two server-side entry points:
 
-The client also runs a **fast-path** for stages 1–4 against the in-memory canon snapshot. If `findClosestMatch` returns a clear `'match'`, the client applies `appendCanonSynonym`, persists, and returns without a CF round-trip. `'ambiguous'` and `'none'` always escalate to the CF; `forceCreate` always escalates so the CF can run aisle arbitration. Stages 1–4 are executed by the same `findClosestMatch` function in both places, so the deterministic outcome is identical for the same canon snapshot. Both paths attach a `canon.path: 'fast' | 'cf'` attribute to their span so dashboards can split traffic.
+1. **`matchOrCreateCanon` CF callable** — the client-facing entry point for explicit canon resolution (manual canon item add, recipe add, recipe ingredient update). Composes Firestore-admin stores, Genkit-backed embedding + arbitration adapters, an ID generator, and a fan-out `MatchLoggingPort` that writes each resolution to two destinations: LaunchDarkly (via the LD Node SDK, parity with the fast-path's wire shape — see [Logging schema](#logging-schema)) and `firebase-functions/logger` (top-level summary only, additive for Cloud Logging).
+
+2. **`onShoppingListItemWrite` Firestore trigger** — fires on every write to `shoppingLists/{listId}/items/{itemId}`. Reuses `buildMatchOrCreatePorts` and `matchOrCreate` from the domain directly (no Genkit callable involved). Idempotency: skips when `matchState !== 'pending'` or `canonId` is already set (CF own write). Writes `canonId` and `matchState` (`matched` | `needs_approval` | `failed`) back to the item document. This is the matching entry point for shopping list adds.
+
+The client also runs a **fast-path** for stages 1–4 against the in-memory canon snapshot. If `findClosestMatch` returns a clear `'match'`, the client applies `appendCanonSynonym`, persists, and returns without a CF round-trip. `'ambiguous'` and `'none'` always escalate to the CF callable; `forceCreate` always escalates so the CF can run aisle arbitration. Stages 1–4 are executed by the same `findClosestMatch` function in both places, so the deterministic outcome is identical for the same canon snapshot. Both paths attach a `canon.path: 'fast' | 'cf'` attribute to their span so dashboards can split traffic.
 
 `findClosestMatch` is the only stage 1–4 entry point — `tokenMatch`, `stringSimilarity`, `synonymMatch`, and `embedMatch` are not exported and the boundary lint forbids reaching past `findClosestMatch` to call them.
 
