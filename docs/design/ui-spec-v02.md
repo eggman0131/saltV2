@@ -126,7 +126,7 @@ export { createPopoverState, POPOVER_CONTEXT } from './headless/Popover.headless
 // ... only primitives with a headless layer
 ```
 
-**Tokens barrel (`src/tokens.ts`):** default export of the preset object plus named exports of token groups (`colors`, `radius`, `motion`, `elevation`, `zIndex`). Content is generated from the Tailwind preset — never hand-edited.
+**Tokens barrel (`src/tokens.ts`):** default export of the preset object plus named exports of token groups (`colors`, `radius`, `motion`, `elevation`, `zIndex`, `typography`). Content is generated from the Tailwind preset — never hand-edited.
 
 **Test barrel (`src/test.ts`):** `renderPrimitive`, `axeCheck`, `pressKey` helpers. Not listed in package `exports` for app consumers — only for internal tests.
 
@@ -679,6 +679,8 @@ Salt adopts the shadcn token scheme, emitted as CSS variables on `:root` and `.d
 - `background`, `foreground`
 - `primary`, `primary-foreground`
 - `secondary`, `secondary-foreground`
+- `secondary-container`, `on-secondary-container`
+- `tertiary`, `tertiary-foreground`
 - `muted`, `muted-foreground`
 - `accent`, `accent-foreground`
 - `destructive`, `destructive-foreground`
