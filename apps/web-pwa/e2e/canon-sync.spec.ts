@@ -94,7 +94,11 @@ test.describe('canon sync — two-tab convergence', () => {
 
       // Write an aisle first.
       await seedAisles(page1, ['Bakery']);
-      await expect.poll(() => getAisles(page2), { timeout: CONVERGENCE_TIMEOUT }).toHaveLength(1);
+      await expect
+        .poll(async () => (await getAisles(page2)).some((a) => a.name === 'Bakery'), {
+          timeout: CONVERGENCE_TIMEOUT,
+        })
+        .toBe(true);
 
       // Now write an item — it must propagate independently.
       await seedCanonItem(page1, { id: itemId, name: 'Bread' });
