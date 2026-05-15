@@ -35,5 +35,10 @@ export default defineConfig({
     timeout: 60_000,
     stdout: CI ? 'inherit' : 'pipe',
     stderr: CI ? 'inherit' : 'pipe',
+    env: {
+      VITE_EMULATOR_FIRESTORE_PORT: '8081',
+      VITE_EMULATOR_FUNCTIONS_PORT: '5002',
+      VITE_EMULATOR_AUTH_PORT: '9100',
+    },
   },
 });

@@ -6,12 +6,12 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
-const STOP_SCRIPT = path.join(REPO_ROOT, 'scripts/stop-emulators.mjs');
+const STOP_SCRIPT = path.join(REPO_ROOT, 'scripts/stop-test-emulators.mjs');
 const WATCHDOG_SCRIPT = path.join(REPO_ROOT, 'scripts/emulator-watchdog.mjs');
 const WATCHDOG_PID_FILE = path.join(os.tmpdir(), 'salt-emulator-watchdog.pid');
-const AUTH_URL = 'http://127.0.0.1:9099';
-const FUNCTIONS_READY_URL = 'http://127.0.0.1:5001/demo-salt/europe-west2/matchOrCreateCanon';
-const EMULATOR_PORTS = [4400, 8080, 9099, 5001, 5000, 9199];
+const AUTH_URL = 'http://127.0.0.1:9100';
+const FUNCTIONS_READY_URL = 'http://127.0.0.1:5002/demo-salt/europe-west2/matchOrCreateCanon';
+const EMULATOR_PORTS = [4402, 8081, 9100, 5002, 5003, 9200];
 const TIMEOUT_MS = 120_000;
 const POLL_MS = 500;
 
@@ -109,16 +109,26 @@ export default async function globalSetup(): Promise<void> {
   await assertEmulatorPortsFree();
 
   const emulatorLog = process.env.CI ? fs.openSync('/tmp/firebase-emulators.log', 'w') : null;
-  spawn('firebase', ['emulators:start', '--project=demo-salt', '--only=auth,firestore,functions'], {
-    cwd: REPO_ROOT,
-    stdio: emulatorLog ? ['ignore', emulatorLog, emulatorLog] : 'pipe',
-    detached: false,
-  });
+  spawn(
+    'firebase',
+    [
+      'emulators:start',
+      '--config',
+      'firebase.test.json',
+      '--project=demo-salt',
+      '--only=auth,firestore,functions',
+    ],
+    {
+      cwd: REPO_ROOT,
+      stdio: emulatorLog ? ['ignore', emulatorLog, emulatorLog] : 'pipe',
+      detached: false,
+    },
+  );
 
   // Detached watchdog: survives SIGKILL of this runner (which the VS Code
   // Playwright extension does between runs). Polls our PID; when we're gone,
-  // it runs stop-emulators and exits. globalTeardown kills it in the happy path.
-  const watchdog = spawn('node', [WATCHDOG_SCRIPT, String(process.pid)], {
+  // it runs stop-test-emulators and exits. globalTeardown kills it in the happy path.
+  const watchdog = spawn('node', [WATCHDOG_SCRIPT, String(process.pid), STOP_SCRIPT], {
     detached: true,
     stdio: 'ignore',
   });

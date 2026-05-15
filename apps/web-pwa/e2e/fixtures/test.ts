@@ -16,7 +16,7 @@ const E2E_RAW_DIR = join(
 );
 
 const FIRESTORE_EMULATOR_CLEAR_URL =
-  'http://127.0.0.1:8080/emulator/v1/projects/demo-salt/databases/(default)/documents';
+  'http://127.0.0.1:8081/emulator/v1/projects/demo-salt/databases/(default)/documents';
 
 interface AutoFixtures {
   readonly observabilitySession: void;

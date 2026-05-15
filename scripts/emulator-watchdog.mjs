@@ -17,10 +17,10 @@ if (!RUNNER_PID || Number.isNaN(RUNNER_PID)) {
   process.exit(1);
 }
 
-const STOP_SCRIPT = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "stop-emulators.mjs"
-);
+const SCRIPTS_DIR = path.dirname(fileURLToPath(import.meta.url));
+const STOP_SCRIPT = process.argv[3]
+  ? path.resolve(process.argv[3])
+  : path.resolve(SCRIPTS_DIR, "stop-emulators.mjs");
 
 function runnerAlive() {
   try {

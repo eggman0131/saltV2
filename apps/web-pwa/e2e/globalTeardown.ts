@@ -5,7 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
-const STOP_SCRIPT = path.join(REPO_ROOT, 'scripts/stop-emulators.mjs');
+const STOP_SCRIPT = path.join(REPO_ROOT, 'scripts/stop-test-emulators.mjs');
 const WATCHDOG_PID_FILE = path.join(os.tmpdir(), 'salt-emulator-watchdog.pid');
 
 function killWatchdog(): void {
