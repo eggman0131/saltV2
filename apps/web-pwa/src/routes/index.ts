@@ -7,6 +7,10 @@ import AisleManagementPage from './canon/AisleManagementPage.svelte';
 import EquipmentListPage from './equipment/EquipmentListPage.svelte';
 import EquipmentCapturePage from './equipment/EquipmentCapturePage.svelte';
 import EquipmentEditPage from './equipment/EquipmentEditPage.svelte';
+import ShoppingListRedirectPage from './shopping/ShoppingListRedirectPage.svelte';
+import ShoppingListCreatePage from './shopping/ShoppingListCreatePage.svelte';
+import ShoppingListManagePage from './shopping/ShoppingListManagePage.svelte';
+import ShoppingListPage from './shopping/ShoppingListPage.svelte';
 import SettingsPage from './settings/SettingsPage.svelte';
 import NotFound from './NotFound.svelte';
 
@@ -20,6 +24,10 @@ export const routes: RouteDefinition = new Map([
   ['/equipment', EquipmentListPage],
   ['/equipment/new', EquipmentCapturePage],
   ['/equipment/:id', EquipmentEditPage],
+  ['/shopping', ShoppingListRedirectPage],
+  ['/shopping/new', ShoppingListCreatePage],
+  ['/shopping/:listId/manage', ShoppingListManagePage],
+  ['/shopping/:listId', ShoppingListPage],
   ['/settings', SettingsPage],
   ['*', NotFound],
 ]);

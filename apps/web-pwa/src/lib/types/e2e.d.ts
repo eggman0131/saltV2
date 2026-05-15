@@ -1,4 +1,10 @@
-import type { Aisle, CanonItem, EquipmentManifest } from '@salt/domain';
+import type {
+  Aisle,
+  CanonItem,
+  EquipmentManifest,
+  ShoppingList,
+  ShoppingListItem,
+} from '@salt/domain';
 import type { ObservabilitySessionMeta } from '@salt/ld-observability';
 
 export interface SeedCanonItemInput {
@@ -21,6 +27,9 @@ export interface E2EBridge {
   setFirestoreOffline(offline: boolean): Promise<void>;
   seedEquipmentManifest(manifest: EquipmentManifest): Promise<void>;
   getEquipmentManifest(): EquipmentManifest | null;
+  getShoppingLists(): readonly ShoppingList[];
+  getDefaultListId(): string | null | undefined;
+  getShoppingListItems(): readonly ShoppingListItem[];
   tagSession(meta: ObservabilitySessionMeta): void;
   getLDSessionURL(): string | null;
 }

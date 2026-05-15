@@ -16,6 +16,7 @@
   import { toasts, dismissToast } from './lib/toastStore.js';
   import { canonItems, initCanonSync } from './lib/canonService.js';
   import { initEquipmentSync } from './lib/equipmentService.js';
+  import { initShoppingListSync } from './lib/shoppingListService.svelte.js';
   import SessionOverlay from './lib/dev/SessionOverlay.svelte';
 
   // Start Firestore subscriptions when authenticated; clean up on sign-out.
@@ -23,9 +24,11 @@
     if (!auth.user) return;
     const unsubCanon = initCanonSync();
     const unsubEquipment = initEquipmentSync();
+    const unsubShopping = initShoppingListSync();
     return () => {
       unsubCanon();
       unsubEquipment();
+      unsubShopping();
     };
   });
 

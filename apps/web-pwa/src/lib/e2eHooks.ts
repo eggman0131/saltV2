@@ -5,6 +5,11 @@ import { devSignIn } from './auth.svelte.js';
 import { addAislesBulk, aisles } from './aisleService.js';
 import { canonItems } from './canonService.js';
 import { seedEquipmentManifest, getEquipmentSnapshot } from './equipmentService.js';
+import {
+  getShoppingListsSnapshot,
+  getDefaultListIdSnapshot,
+  getItemsSnapshot,
+} from './shoppingListService.svelte.js';
 import { tagSession, getSessionURL } from './observability.js';
 import type { E2EBridge, SeedCanonItemInput } from './types/e2e.js';
 
@@ -67,6 +72,18 @@ export function installE2EHooks(): void {
 
     getEquipmentManifest() {
       return getEquipmentSnapshot();
+    },
+
+    getShoppingLists() {
+      return getShoppingListsSnapshot();
+    },
+
+    getDefaultListId() {
+      return getDefaultListIdSnapshot();
+    },
+
+    getShoppingListItems() {
+      return getItemsSnapshot();
     },
 
     async setFirestoreOffline(offline: boolean) {
