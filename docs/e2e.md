@@ -5,17 +5,47 @@ emulator (`window.__e2e.devSignIn`), tags the LaunchDarkly Observability session
 session-replay URL to the test result. See issue #14 for the foundation rationale and locked
 decisions.
 
+## Emulator port sets
+
+E2E tests run their own Firebase emulator stack on a private port set that does not overlap with
+the dev emulator or the Genkit dev UI:
+
+| Emulator   | Dev port | Test port |
+| ---------- | -------- | --------- |
+| Firestore  | 8080     | 8081      |
+| Auth       | 9099     | 9100      |
+| Functions  | 5001     | 5002      |
+| Storage    | 9199     | 9200      |
+| Hosting    | 5000     | 5003      |
+| Hub        | 4400     | 4402      |
+| UI         | 4000     | 4002      |
+
+Both stacks use project ID `demo-salt`. Isolation is by port, not project ID, so existing
+`firestore.rules` and any `demo-salt`-coded test paths work unchanged.
+
+`firebase.json` defines the dev port set. `firebase.test.json` at the repo root defines the test
+port set and is used exclusively by `globalSetup.ts`.
+
 ## Running locally
 
 ```bash
-# Playwright manages its own emulators + Vite (matches CI)
+# Playwright manages its own test emulators + Vite (matches CI exactly)
 pnpm --filter @salt/web-pwa e2e:install   # one-time: install chromium
 pnpm --filter @salt/web-pwa e2e
+```
 
-# Or reuse a long-running emulator session you already have
-pnpm dev:emulators                         # in one shell
-pnpm --filter @salt/web-pwa dev            # in another (optional — Playwright will start vite if needed)
-pnpm --filter @salt/web-pwa e2e            # in a third
+Because the test emulators run on a private port set, dev and e2e can run simultaneously with no
+interference:
+
+```bash
+# Terminal 1 — dev stack (unchanged, unaffected)
+pnpm dev:emulators
+
+# Terminal 2 — optional: dev vite server
+pnpm --filter @salt/web-pwa dev
+
+# Terminal 3 — e2e (manages its own test emulators on test ports)
+pnpm --filter @salt/web-pwa e2e
 ```
 
 `pnpm --filter @salt/web-pwa e2e:ui` opens Playwright's UI mode for interactive debugging.
