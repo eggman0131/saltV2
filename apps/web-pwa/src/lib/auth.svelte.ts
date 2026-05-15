@@ -113,7 +113,8 @@ export async function devSignIn(email: string): Promise<void> {
     return;
   }
   const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
-  const r = await fetch(`http://127.0.0.1:9099/emulator/v1/projects/${projectId}/oobCodes`);
+  const authPort = import.meta.env.VITE_EMULATOR_AUTH_PORT ?? '9099';
+  const r = await fetch(`http://127.0.0.1:${authPort}/emulator/v1/projects/${projectId}/oobCodes`);
   const data = (await r.json()) as { oobCodes: { email: string; oobLink: string }[] };
   const link = [...data.oobCodes].reverse().find((c) => c.email === email)?.oobLink;
   if (!link) {
