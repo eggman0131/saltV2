@@ -1,7 +1,6 @@
 {
   "permissions": {
     "allow": [
-      // --- Core wildcarded command families ---
       "Bash(pnpm *)",
       "Bash(npm *)",
       "Bash(node *)",
@@ -13,18 +12,10 @@
       "Bash(grep *)",
       "Bash(xargs *)",
       "Bash(bash -l -c *)",
-
-      // Direct pnpm path variants
       "Bash(/home/eggman/.local/share/pnpm/pnpm *)",
       "Bash(~/.local/share/pnpm/pnpm *)",
-
-      // --- Vite / Tailwind / TSX / misc tool wrappers ---
       "Bash(node_modules/.bin/*)",
-
-      // --- VEXP MCP server: allow all ---
       "mcp__vexp__*",
-
-      // --- GitHub MCP server: reads + safe writes (merge/push/fork/create_repo/create_or_update_file require prompt) ---
       "mcp__github__get_*",
       "mcp__github__list_*",
       "mcp__github__search_*",
@@ -35,12 +26,8 @@
       "mcp__github__create_pull_request",
       "mcp__github__create_pull_request_review",
       "mcp__github__update_pull_request_branch",
-
-      // --- Reads ---
       "Read(//home/eggman/**)",
       "Read(//tmp/claude-1000/-home-eggman-projects-saltV2/**)",
-
-      // --- Singleton commands kept intact ---
       "Bash(export PNPM_HOME=\"/home/eggman/.local/share/pnpm\")",
       "Bash(export PATH=\"$PNPM_HOME:$PATH\")",
       "Bash(fuser -k 4000/tcp 9099/tcp 8080/tcp 9199/tcp 5001/tcp 5000/tcp 4400/tcp 4500/tcp)"
