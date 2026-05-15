@@ -32,50 +32,58 @@ const AISLES: AisleInfo[] = [
   { id: 'aisle-3', name: 'Bakery', order: 2 },
 ];
 
-// ── Needs Review routing ──────────────────────────────────────────────────────
+// ── Other bucket routing ──────────────────────────────────────────────────────
 
-describe('groupItemsByAisle — Needs Review routing', () => {
-  it('routes pending items to Needs Review with isPending=true', () => {
+describe('groupItemsByAisle — Other bucket routing', () => {
+  it('routes pending items to Other with isPending=true', () => {
     const items = [makeItem('i1', { matchState: 'pending' })];
     const result = groupItemsByAisle(items, makeCanonMap([]), AISLES);
-    expect(result.needsReview.contributors).toHaveLength(1);
-    expect(result.needsReview.contributors[0].isPending).toBe(true);
+    expect(result.other.contributors).toHaveLength(1);
+    expect(result.other.contributors[0].isPending).toBe(true);
     expect(result.aisles).toHaveLength(0);
   });
 
-  it('routes failed items to Needs Review with isPending=false', () => {
+  it('routes failed items to Other with isPending=false', () => {
     const items = [makeItem('i1', { matchState: 'failed' })];
     const result = groupItemsByAisle(items, makeCanonMap([]), AISLES);
-    expect(result.needsReview.contributors).toHaveLength(1);
-    expect(result.needsReview.contributors[0].isPending).toBe(false);
+    expect(result.other.contributors).toHaveLength(1);
+    expect(result.other.contributors[0].isPending).toBe(false);
   });
 
-  it('routes needs_approval items to Needs Review', () => {
+  it('routes needs_approval items with a valid aisle to the aisle group (treated as matched)', () => {
     const items = [makeItem('i1', { matchState: 'needs_approval', canonId: 'c1' })];
     const canonMap = makeCanonMap([{ id: 'c1', name: 'Beans', aisleId: 'aisle-1' }]);
     const result = groupItemsByAisle(items, canonMap, AISLES);
-    expect(result.needsReview.contributors).toHaveLength(1);
+    expect(result.other.contributors).toHaveLength(0);
+    expect(result.aisles[0].groups[0].contributors).toHaveLength(1);
   });
 
-  it('routes stale-canon items (canonId not in map) to Needs Review', () => {
+  it('routes needs_approval items with null aisleId to Other', () => {
+    const items = [makeItem('i1', { matchState: 'needs_approval', canonId: 'c1' })];
+    const canonMap = makeCanonMap([{ id: 'c1', name: 'Beans', aisleId: null }]);
+    const result = groupItemsByAisle(items, canonMap, AISLES);
+    expect(result.other.contributors).toHaveLength(1);
+  });
+
+  it('routes stale-canon items (canonId not in map) to Other', () => {
     const items = [makeItem('i1', { matchState: 'matched', canonId: 'deleted-canon' })];
     const result = groupItemsByAisle(items, makeCanonMap([]), AISLES);
-    expect(result.needsReview.contributors).toHaveLength(1);
-    expect(result.needsReview.contributors[0].isPending).toBe(false);
+    expect(result.other.contributors).toHaveLength(1);
+    expect(result.other.contributors[0].isPending).toBe(false);
   });
 
-  it('routes matched items with null aisleId to Needs Review', () => {
+  it('routes matched items with null aisleId to Other', () => {
     const items = [makeItem('i1', { matchState: 'matched', canonId: 'c1' })];
     const canonMap = makeCanonMap([{ id: 'c1', name: 'Beans', aisleId: null }]);
     const result = groupItemsByAisle(items, canonMap, AISLES);
-    expect(result.needsReview.contributors).toHaveLength(1);
+    expect(result.other.contributors).toHaveLength(1);
   });
 
-  it('hides Needs Review (empty contributors) when all items are matched to aisles', () => {
+  it('hides Other (empty contributors) when all items are matched to aisles', () => {
     const items = [makeItem('i1', { matchState: 'matched', canonId: 'c1' })];
     const canonMap = makeCanonMap([{ id: 'c1', name: 'Milk', aisleId: 'aisle-2' }]);
     const result = groupItemsByAisle(items, canonMap, AISLES);
-    expect(result.needsReview.contributors).toHaveLength(0);
+    expect(result.other.contributors).toHaveLength(0);
     expect(result.aisles).toHaveLength(1);
   });
 });
@@ -184,6 +192,6 @@ describe('groupItemsByAisle — checked groups drop to bottom', () => {
   it('returns empty aisles array when no items are matched to aisles', () => {
     const result = groupItemsByAisle([], makeCanonMap([]), AISLES);
     expect(result.aisles).toHaveLength(0);
-    expect(result.needsReview.contributors).toHaveLength(0);
+    expect(result.other.contributors).toHaveLength(0);
   });
 });

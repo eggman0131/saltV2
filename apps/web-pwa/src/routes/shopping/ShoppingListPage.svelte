@@ -70,7 +70,7 @@
 
   const allItemIds = $derived($itemsForActiveList.map((i) => i.id));
   const totalItems = $derived(
-    grouped.needsReview.contributors.length +
+    grouped.other.contributors.length +
       grouped.aisles.reduce(
         (sum, ag) => sum + ag.groups.reduce((s2, g) => s2 + g.contributors.length, 0),
         0,
@@ -243,6 +243,11 @@
 
   // ─── Item row helper ──────────────────────────────────────────────────────────
 
+  function toSentenceCase(text: string): string {
+    if (!text) return text;
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  }
+
   function sourceLabel(item: ShoppingListItem): string {
     const src = item.sources[0];
     if (!src || src.kind === 'manual') return '';
@@ -405,68 +410,6 @@
 
     {#snippet children()}
       <div class="flex flex-col gap-4" data-testid="shopping-list-content">
-        <!-- Needs Review pseudo-aisle -->
-        {#if grouped.needsReview.contributors.length > 0}
-          <section class="flex flex-col gap-1" data-testid="shopping-needs-review">
-            <div class="flex items-center gap-2 mb-1">
-              <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Needs Review
-              </p>
-              {#if grouped.needsReview.contributors.some((c) => c.isPending)}
-                <Spinner size={12} />
-              {/if}
-            </div>
-            {#each grouped.needsReview.contributors as { item, isPending } (item.id)}
-              {@const isSelected = selected.has(item.id)}
-              <div
-                class="flex items-center gap-3 rounded-md border px-3 py-2 text-sm {isSelected
-                  ? 'border-ring ring-2 ring-ring bg-card'
-                  : 'border-border bg-card'}"
-                data-testid="shopping-item-row"
-                data-item-id={item.id}
-              >
-                <Checkbox
-                  checked={isSelected}
-                  onCheckedChange={() => toggleSelection(item.id)}
-                  label=""
-                  aria-label="Select {item.rawText}"
-                />
-                <div class="flex-1 min-w-0">
-                  <span
-                    class="block truncate {item.checked
-                      ? 'line-through text-muted-foreground'
-                      : ''}"
-                  >
-                    {item.rawText}
-                  </span>
-                  {#if item.notes}
-                    <span class="block text-xs text-muted-foreground truncate">{item.notes}</span>
-                  {/if}
-                </div>
-                {#if isPending}
-                  <Spinner size={14} />
-                {/if}
-                <Checkbox
-                  checked={item.checked}
-                  onCheckedChange={() => void toggleItemChecked(params.listId, item)}
-                  label=""
-                  aria-label="Mark as done"
-                  data-testid="shopping-item-check"
-                />
-                <button
-                  type="button"
-                  class="text-muted-foreground hover:text-foreground p-1 shrink-0"
-                  onclick={() => openEditSheet(item)}
-                  aria-label="Edit {item.rawText}"
-                  data-testid="shopping-item-edit-btn"
-                >
-                  <Icon name="Pencil" size={14} />
-                </button>
-              </div>
-            {/each}
-          </section>
-        {/if}
-
         <!-- Aisle groups -->
         {#each grouped.aisles as aisleGroup (aisleGroup.aisleId)}
           <section
@@ -508,10 +451,12 @@
                         ? 'line-through text-muted-foreground'
                         : ''}"
                     >
-                      {item.rawText}
+                      {toSentenceCase(item.rawText)}
                     </span>
                     {#if item.notes}
-                      <span class="block text-xs text-muted-foreground truncate">{item.notes}</span>
+                      <span class="block text-xs text-muted-foreground truncate"
+                        >{toSentenceCase(item.notes)}</span
+                      >
                     {/if}
                     {#if sourceLabel(item)}
                       <span class="block text-xs text-muted-foreground/70">{sourceLabel(item)}</span
@@ -569,7 +514,7 @@
                           ? 'line-through text-muted-foreground'
                           : ''}"
                       >
-                        {group.canonName}
+                        {toSentenceCase(group.canonName)}
                       </span>
                       <span
                         class="text-xs bg-muted text-muted-foreground rounded px-1.5 py-0.5 shrink-0"
@@ -611,11 +556,11 @@
                                 ? 'line-through text-muted-foreground'
                                 : ''}"
                             >
-                              {item.rawText}
+                              {toSentenceCase(item.rawText)}
                             </span>
                             {#if item.notes}
                               <span class="block text-xs text-muted-foreground truncate"
-                                >{item.notes}</span
+                                >{toSentenceCase(item.notes)}</span
                               >
                             {/if}
                             {#if sourceLabel(item)}
@@ -649,6 +594,70 @@
             {/each}
           </section>
         {/each}
+
+        <!-- Other (pending / failed / no-aisle items) -->
+        {#if grouped.other.contributors.length > 0}
+          <section class="flex flex-col gap-1" data-testid="shopping-other">
+            <div class="flex items-center gap-2 mb-1">
+              <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Other
+              </p>
+              {#if grouped.other.contributors.some((c) => c.isPending)}
+                <Spinner size={12} />
+              {/if}
+            </div>
+            {#each grouped.other.contributors as { item, isPending } (item.id)}
+              {@const isSelected = selected.has(item.id)}
+              <div
+                class="flex items-center gap-3 rounded-md border px-3 py-2 text-sm {isSelected
+                  ? 'border-ring ring-2 ring-ring bg-card'
+                  : 'border-border bg-card'}"
+                data-testid="shopping-item-row"
+                data-item-id={item.id}
+              >
+                <Checkbox
+                  checked={isSelected}
+                  onCheckedChange={() => toggleSelection(item.id)}
+                  label=""
+                  aria-label="Select {item.rawText}"
+                />
+                <div class="flex-1 min-w-0">
+                  <span
+                    class="block truncate {item.checked
+                      ? 'line-through text-muted-foreground'
+                      : ''}"
+                  >
+                    {toSentenceCase(item.rawText)}
+                  </span>
+                  {#if item.notes}
+                    <span class="block text-xs text-muted-foreground truncate"
+                      >{toSentenceCase(item.notes)}</span
+                    >
+                  {/if}
+                </div>
+                {#if isPending}
+                  <Spinner size={14} />
+                {/if}
+                <Checkbox
+                  checked={item.checked}
+                  onCheckedChange={() => void toggleItemChecked(params.listId, item)}
+                  label=""
+                  aria-label="Mark as done"
+                  data-testid="shopping-item-check"
+                />
+                <button
+                  type="button"
+                  class="text-muted-foreground hover:text-foreground p-1 shrink-0"
+                  onclick={() => openEditSheet(item)}
+                  aria-label="Edit {item.rawText}"
+                  data-testid="shopping-item-edit-btn"
+                >
+                  <Icon name="Pencil" size={14} />
+                </button>
+              </div>
+            {/each}
+          </section>
+        {/if}
       </div>
     {/snippet}
   </ListPage>

@@ -12,13 +12,13 @@ export interface AisleInfo {
   readonly order: number;
 }
 
-export interface NeedsReviewContributor {
+export interface OtherContributor {
   readonly item: ShoppingListItem;
   readonly isPending: boolean;
 }
 
-export interface NeedsReviewBucket {
-  readonly contributors: readonly NeedsReviewContributor[];
+export interface OtherBucket {
+  readonly contributors: readonly OtherContributor[];
 }
 
 export interface ItemGroup {
@@ -36,7 +36,7 @@ export interface AisleGroup {
 }
 
 export interface GroupedShoppingList {
-  readonly needsReview: NeedsReviewBucket;
+  readonly other: OtherBucket;
   readonly aisles: readonly AisleGroup[];
 }
 
@@ -45,19 +45,19 @@ export function groupItemsByAisle(
   canonMap: ReadonlyMap<string, CanonInfo>,
   aisles: readonly AisleInfo[],
 ): GroupedShoppingList {
-  const needsReviewContributors: NeedsReviewContributor[] = [];
+  const otherContributors: OtherContributor[] = [];
   // aisleId → canonId → items
   const aisleMap = new Map<string, Map<string, ShoppingListItem[]>>();
 
   for (const item of items) {
     const isMatchedToAisle =
-      item.matchState === 'matched' &&
+      (item.matchState === 'matched' || item.matchState === 'needs_approval') &&
       item.canonId !== null &&
       canonMap.has(item.canonId) &&
       canonMap.get(item.canonId)!.aisleId !== null;
 
     if (!isMatchedToAisle) {
-      needsReviewContributors.push({
+      otherContributors.push({
         item,
         isPending: item.matchState === 'pending',
       });
@@ -105,5 +105,5 @@ export function groupItemsByAisle(
     aisleGroups.push({ aisleId: aisle.id, aisleName: aisle.name, groups });
   }
 
-  return { needsReview: { contributors: needsReviewContributors }, aisles: aisleGroups };
+  return { other: { contributors: otherContributors }, aisles: aisleGroups };
 }

@@ -58,7 +58,7 @@ export const onShoppingListItemWrite = onDocumentWritten(TRIGGER_PATH, async (ev
     }
 
     const { item, decision } = result.value;
-    const newMatchState = item.needs_approval ? 'needs_approval' : 'matched';
+    const newMatchState = 'matched';
 
     span.setAttribute('canon.outcome', decision);
     span.setAttribute('canon.result', item.id);

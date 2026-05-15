@@ -46,21 +46,21 @@ test.describe('shopping list — happy path', () => {
     await input.fill('cheddar cheese');
     await addBtn.click();
 
-    // Items should appear in Needs Review immediately (matchState: pending)
-    const needsReview = page.getByTestId('shopping-needs-review');
-    await expect(needsReview).toBeVisible({ timeout: SYNC_TIMEOUT });
-    await expect(needsReview.getByText('heinz baked beans 4 tins')).toBeVisible();
-    await expect(needsReview.getByText('whole milk 2L')).toBeVisible();
-    await expect(needsReview.getByText('cheddar cheese')).toBeVisible();
+    // Items should appear in Other immediately (matchState: pending)
+    const other = page.getByTestId('shopping-other');
+    await expect(other).toBeVisible({ timeout: SYNC_TIMEOUT });
+    await expect(other.getByText('heinz baked beans 4 tins')).toBeVisible();
+    await expect(other.getByText('whole milk 2L')).toBeVisible();
+    await expect(other.getByText('cheddar cheese')).toBeVisible();
 
     // ── Check two items off ──────────────────────────────────────────────────
     // Find the first item row's shopping check checkbox and click it.
-    const firstItemRow = needsReview
+    const firstItemRow = other
       .getByTestId('shopping-item-row')
       .filter({ hasText: 'heinz baked beans 4 tins' });
     await firstItemRow.getByTestId('shopping-item-check').click();
 
-    const secondItemRow = needsReview
+    const secondItemRow = other
       .getByTestId('shopping-item-row')
       .filter({ hasText: 'whole milk 2L' });
     await secondItemRow.getByTestId('shopping-item-check').click();
@@ -78,7 +78,7 @@ test.describe('shopping list — happy path', () => {
     await expect(
       page.getByTestId('shopping-item-row').filter({ hasText: 'whole milk 2L' }),
     ).not.toBeVisible({ timeout: SYNC_TIMEOUT });
-    await expect(needsReview.getByText('cheddar cheese')).toBeVisible();
+    await expect(other.getByText('cheddar cheese')).toBeVisible();
 
     // ── Reload and verify persistence ────────────────────────────────────────
     const currentUrl = page.url();
@@ -156,13 +156,13 @@ test.describe('shopping list — happy path', () => {
     await page.getByTestId('shopping-item-input').fill('whole milk');
     await page.getByTestId('shopping-item-add-btn').click();
 
-    const needsReview = page.getByTestId('shopping-needs-review');
-    await expect(needsReview).toBeVisible({ timeout: SYNC_TIMEOUT });
-    await expect(needsReview.getByText('semi-skimmed milk')).toBeVisible();
-    await expect(needsReview.getByText('whole milk')).toBeVisible();
+    const other = page.getByTestId('shopping-other');
+    await expect(other).toBeVisible({ timeout: SYNC_TIMEOUT });
+    await expect(other.getByText('semi-skimmed milk')).toBeVisible();
+    await expect(other.getByText('whole milk')).toBeVisible();
 
     // Both items have edit buttons and individual check checkboxes.
-    await expect(needsReview.getByTestId('shopping-item-edit-btn')).toHaveCount(2);
+    await expect(other.getByTestId('shopping-item-edit-btn')).toHaveCount(2);
 
     // Verify the milkCanon was seeded (sanity check).
     expect(milkCanon.id).toBeTruthy();

@@ -40,8 +40,8 @@ export { groupItemsByAisle } from './queries/groupItemsByAisle.js';
 export type {
   CanonInfo,
   AisleInfo,
-  NeedsReviewContributor,
-  NeedsReviewBucket,
+  OtherContributor,
+  OtherBucket,
   ItemGroup,
   AisleGroup,
   GroupedShoppingList,
