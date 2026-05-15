@@ -22,6 +22,7 @@
     class: className,
     children,
     onCheckedChange,
+    ...rest
   }: CheckboxProps & { onCheckedChange?: (checked: CheckedState) => void } = $props();
 
   if (checked === undefined) checked = untrack(() => defaultChecked);
@@ -42,7 +43,7 @@
   }
 </script>
 
-<div class={cn('flex items-start gap-2', className)}>
+<div class={cn('flex items-start gap-2', className)} {...rest}>
   <Checkbox.Root
     id={fieldState.id}
     checked={bitsChecked}

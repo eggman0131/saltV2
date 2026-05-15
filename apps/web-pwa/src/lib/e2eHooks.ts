@@ -24,6 +24,11 @@ export function installE2EHooks(): void {
       if (result.kind !== 'ok') {
         throw new Error(`seedAisles failed: ${JSON.stringify(result.error)}`);
       }
+      const deadline = Date.now() + 5000;
+      while (!names.every((n) => get(aisles).some((a) => a.name === n))) {
+        if (Date.now() > deadline) throw new Error(`seedAisles: aisles not in store after 5s`);
+        await new Promise((r) => setTimeout(r, 50));
+      }
       return result.value;
     },
 
