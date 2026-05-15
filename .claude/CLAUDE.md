@@ -1,62 +1,42 @@
-## vexp — Context‑Aware AI Coding (selective, operational use)
+vexp — Context‑Aware AI Coding (Salt V2 Architecture Edition) 
+MANDATORY: Core Principle
+Salt V2's strict hexagonal architecture means almost every non-trivial task has cross-package impact (e.g., domain changes rippling into firebase-sync, cloud-functions, or web-pwa).
 
-vexp provides a pre‑indexed, graph‑ranked view of the **local codebase only**.  
-Use it when the task requires understanding **structure, relationships, or impact inside this repo**.
+Do NOT use grep, glob, or manual cat chains to map code relationships.
 
----
+Use vexp as the primary engine for structural mapping, impact analysis, and cross-package discovery.
 
-## Step 1 — When to use vexp
+Step 1 — When to Trigger vexp
+You MUST invoke the vexp pipeline at the start of a task if it meets any of the following criteria:
 
-**Use vexp whenever the task involves navigating or understanding the codebase beyond a single known file.**  
-This includes:
+Cross-Package Radius: The task touches or may affect more than one package/layer in the hexagonal architecture.
 
-- locating where something is defined or implemented  
-- finding who calls what  
-- understanding relationships, flows, or ownership  
-- assessing impact or blast radius of a change  
-- debugging behaviour that depends on cross‑file interactions  
-- refactors, feature additions, or anything requiring repo‑level awareness  
+Impact Analysis: You are changing a domain type, shared interface, database schema, or core service.
 
-If the task touches the repo and you’re unsure whether vexp helps, **use vexp**.
+Relationship Discovery: You need to find who calls what, locate definitions across layers, or understand control flow.
 
----
+When to SKIP vexp:
 
-## Step 2 — When *not* to use vexp
+You are editing a single, known file with zero external architectural side-effects (e.g., fixing a UI typo, updating a single isolated test utility).
 
-Do **not** use vexp for tasks that do *not* depend on repo structure:
+For simple, single-file tasks, standard Read or specific tools are acceptable. If unsure, default to vexp.
 
-- external APIs, SaaS tools, cloud services, npm docs  
-- workflows, theory, or general programming questions  
-- conceptual design discussions  
-- tasks where the exact file is already known and no structural reasoning is needed  
-- simple string/literal searches  
-- Git, CI, filesystem, build, or command‑line questions  
+Step 2 — Workflow & Fluid Context Execution
+To solve context evolution during complex tasks, follow this iterative execution loop:
 
-If the task does not require repo context, **skip vexp**.
+Initial Vector: Call run_pipeline({ task: "..." }) FIRST for all structural tasks. Let it auto-detect intent and map the initial blast radius.
 
----
+Structural Inspection: Use get_skeleton (using minimal, standard, or detailed parameters) to inspect type signatures and exports. Prefer this over full file Reads to achieve 70-90% token savings.
 
-## Step 3 — How to use vexp
+Targeted Implementation: Use Read only when you are ready to edit exact lines of raw content.
 
-When vexp is appropriate:
+Context Evolution (The Pivot Rule): If a complex task evolves mid-execution, or an unexpected compilation error reveals a new architectural dependency, you are explicitly permitted to call run_pipeline again with an updated task description or explicit preset (e.g., preset: "refactor"). Do not chain calls blindly, but treat it as a checkpoint reset when the logical direction changes.
 
-- **Call `run_pipeline({ task })` first.**  
-  This retrieves context, relationships, and impact in one step.
+Step 3 — Primary Tooling Reference
+run_pipeline({ task: "...", preset: "...", include_tests: true })
 
-- Use `get_skeleton` to inspect file structure (exports, signatures, types).  
-  Prefer this over reading full files.
+Tip: For deep hexagonal refactors, explicitly pass preset: "refactor" to force depth-5 impact analysis.
 
-- Only use Read when you need exact lines to edit.
+Tip: If hunting a cross-layer bug, use preset: "debug" to loop in capsule, test, and memory context.
 
-- Do not call `run_pipeline` more than once per logical task.
-
----
-
-## Principle
-
-vexp is for **repo‑aware reasoning**.  
-Use it when the task depends on how the codebase is structured.  
-Skip it when it doesn’t.
-
-
-s
+get_skeleton({ files: [...], detail: "standard" }) — Use this to safely peek at cross-package boundaries without flooding the context window.
