@@ -131,6 +131,7 @@ export type {
   AisleInfo as ShoppingListAisleInfo,
   OtherContributor,
   OtherBucket,
+  CheckedBucket,
   ItemGroup,
   AisleGroup,
   GroupedShoppingList,

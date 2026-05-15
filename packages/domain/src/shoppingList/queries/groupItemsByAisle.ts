@@ -21,11 +21,14 @@ export interface OtherBucket {
   readonly contributors: readonly OtherContributor[];
 }
 
+export interface CheckedBucket {
+  readonly contributors: readonly ShoppingListItem[];
+}
+
 export interface ItemGroup {
   readonly canonId: string;
   readonly canonName: string;
   readonly contributors: readonly ShoppingListItem[];
-  readonly allChecked: boolean;
 }
 
 export interface AisleGroup {
@@ -38,6 +41,7 @@ export interface AisleGroup {
 export interface GroupedShoppingList {
   readonly other: OtherBucket;
   readonly aisles: readonly AisleGroup[];
+  readonly checked: CheckedBucket;
 }
 
 export function groupItemsByAisle(
@@ -46,10 +50,17 @@ export function groupItemsByAisle(
   aisles: readonly AisleInfo[],
 ): GroupedShoppingList {
   const otherContributors: OtherContributor[] = [];
+  const checkedItems: ShoppingListItem[] = [];
   // aisleId → canonId → items
   const aisleMap = new Map<string, Map<string, ShoppingListItem[]>>();
 
   for (const item of items) {
+    // Checked items go to the checked bucket regardless of match state.
+    if (item.checked) {
+      checkedItems.push(item);
+      continue;
+    }
+
     const isMatchedToAisle =
       (item.matchState === 'matched' || item.matchState === 'needs_approval') &&
       item.canonId !== null &&
@@ -77,6 +88,9 @@ export function groupItemsByAisle(
     canonGroup.get(item.canonId!)!.push(item);
   }
 
+  // Most-recently-checked first so the shopper can easily undo.
+  checkedItems.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+
   const sortedAisles = [...aisles].sort((a, b) => a.order - b.order);
 
   const aisleGroups: AisleGroup[] = [];
@@ -87,23 +101,17 @@ export function groupItemsByAisle(
     const groups: ItemGroup[] = [];
     for (const [canonId, groupItems] of canonGroup) {
       const canon = canonMap.get(canonId)!;
-      const allChecked = groupItems.every((i) => i.checked);
-      // Unchecked contributors first within a group.
-      const sortedContributors = [...groupItems].sort((a, b) => {
-        if (a.checked === b.checked) return 0;
-        return a.checked ? 1 : -1;
-      });
-      groups.push({ canonId, canonName: canon.name, contributors: sortedContributors, allChecked });
+      groups.push({ canonId, canonName: canon.name, contributors: [...groupItems] });
     }
 
-    // Sort groups: partial/unchecked groups alphabetically first, fully-checked groups last.
-    groups.sort((a, b) => {
-      if (a.allChecked !== b.allChecked) return a.allChecked ? 1 : -1;
-      return a.canonName.localeCompare(b.canonName);
-    });
+    groups.sort((a, b) => a.canonName.localeCompare(b.canonName));
 
     aisleGroups.push({ aisleId: aisle.id, aisleName: aisle.name, groups });
   }
 
-  return { other: { contributors: otherContributors }, aisles: aisleGroups };
+  return {
+    other: { contributors: otherContributors },
+    aisles: aisleGroups,
+    checked: { contributors: checkedItems },
+  };
 }

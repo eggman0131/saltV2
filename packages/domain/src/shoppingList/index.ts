@@ -42,6 +42,7 @@ export type {
   AisleInfo,
   OtherContributor,
   OtherBucket,
+  CheckedBucket,
   ItemGroup,
   AisleGroup,
   GroupedShoppingList,

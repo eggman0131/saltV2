@@ -71,6 +71,7 @@
   const allItemIds = $derived($itemsForActiveList.map((i) => i.id));
   const totalItems = $derived(
     grouped.other.contributors.length +
+      grouped.checked.contributors.length +
       grouped.aisles.reduce(
         (sum, ag) => sum + ag.groups.reduce((s2, g) => s2 + g.contributors.length, 0),
         0,
@@ -435,7 +436,7 @@
                 <div
                   class="flex items-center gap-3 rounded-md border px-3 py-2 text-sm {isSelected
                     ? 'border-ring ring-2 ring-ring bg-card'
-                    : 'border-border bg-card'} {group.allChecked ? 'opacity-60' : ''}"
+                    : 'border-border bg-card'}"
                   data-testid="shopping-item-row"
                   data-item-id={item.id}
                 >
@@ -446,11 +447,7 @@
                     aria-label="Select {item.rawText}"
                   />
                   <div class="flex-1 min-w-0">
-                    <span
-                      class="block truncate {item.checked
-                        ? 'line-through text-muted-foreground'
-                        : ''}"
-                    >
+                    <span class="block truncate">
                       {toSentenceCase(item.rawText)}
                     </span>
                     {#if item.notes}
@@ -491,7 +488,7 @@
                   <div
                     class="flex items-center gap-3 rounded-md border px-3 py-2 text-sm cursor-pointer {allGroupSelected
                       ? 'border-ring ring-2 ring-ring bg-card'
-                      : 'border-border bg-card'} {group.allChecked ? 'opacity-60' : ''}"
+                      : 'border-border bg-card'}"
                   >
                     <Checkbox
                       checked={allGroupSelected
@@ -509,11 +506,7 @@
                       onclick={() => toggleGroup(group.canonId)}
                       data-testid="shopping-group-toggle"
                     >
-                      <span
-                        class="font-medium truncate {group.allChecked
-                          ? 'line-through text-muted-foreground'
-                          : ''}"
-                      >
+                      <span class="font-medium truncate">
                         {toSentenceCase(group.canonName)}
                       </span>
                       <span
@@ -643,6 +636,58 @@
                   onCheckedChange={() => void toggleItemChecked(params.listId, item)}
                   label=""
                   aria-label="Mark as done"
+                  data-testid="shopping-item-check"
+                />
+                <button
+                  type="button"
+                  class="text-muted-foreground hover:text-foreground p-1 shrink-0"
+                  onclick={() => openEditSheet(item)}
+                  aria-label="Edit {item.rawText}"
+                  data-testid="shopping-item-edit-btn"
+                >
+                  <Icon name="Pencil" size={14} />
+                </button>
+              </div>
+            {/each}
+          </section>
+        {/if}
+
+        <!-- Checked items -->
+        {#if grouped.checked.contributors.length > 0}
+          <section class="flex flex-col gap-1" data-testid="shopping-checked">
+            <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+              Checked
+            </p>
+            {#each grouped.checked.contributors as item (item.id)}
+              {@const isSelected = selected.has(item.id)}
+              <div
+                class="flex items-center gap-3 rounded-md border px-3 py-2 text-sm {isSelected
+                  ? 'border-ring ring-2 ring-ring bg-card'
+                  : 'border-border bg-card'}"
+                data-testid="shopping-item-row"
+                data-item-id={item.id}
+              >
+                <Checkbox
+                  checked={isSelected}
+                  onCheckedChange={() => toggleSelection(item.id)}
+                  label=""
+                  aria-label="Select {item.rawText}"
+                />
+                <div class="flex-1 min-w-0">
+                  <span class="block truncate line-through text-muted-foreground">
+                    {toSentenceCase(item.rawText)}
+                  </span>
+                  {#if item.notes}
+                    <span class="block text-xs text-muted-foreground/60 truncate"
+                      >{toSentenceCase(item.notes)}</span
+                    >
+                  {/if}
+                </div>
+                <Checkbox
+                  checked={item.checked}
+                  onCheckedChange={() => void toggleItemChecked(params.listId, item)}
+                  label=""
+                  aria-label="Uncheck"
                   data-testid="shopping-item-check"
                 />
                 <button

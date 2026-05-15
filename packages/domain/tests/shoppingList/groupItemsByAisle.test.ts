@@ -84,6 +84,7 @@ describe('groupItemsByAisle — Other bucket routing', () => {
     const canonMap = makeCanonMap([{ id: 'c1', name: 'Milk', aisleId: 'aisle-2' }]);
     const result = groupItemsByAisle(items, canonMap, AISLES);
     expect(result.other.contributors).toHaveLength(0);
+    expect(result.checked.contributors).toHaveLength(0);
     expect(result.aisles).toHaveLength(1);
   });
 });
@@ -145,53 +146,37 @@ describe('groupItemsByAisle — collapse by canonId', () => {
   });
 });
 
-// ── check-all-then-drop-to-bottom ─────────────────────────────────────────────
+// ── checked bucket ────────────────────────────────────────────────────────────
 
-describe('groupItemsByAisle — checked groups drop to bottom', () => {
-  it('fully-checked group drops to bottom of aisle, partial group stays at top', () => {
-    const items = [
-      makeItem('i1', { matchState: 'matched', canonId: 'c-checked', checked: true }),
-      makeItem('i2', { matchState: 'matched', canonId: 'c-partial', checked: false }),
-      makeItem('i3', { matchState: 'matched', canonId: 'c-partial', checked: true }),
-    ];
-    const canonMap = makeCanonMap([
-      { id: 'c-checked', name: 'Beans', aisleId: 'aisle-1' },
-      { id: 'c-partial', name: 'Apples', aisleId: 'aisle-1' },
-    ]);
-    const result = groupItemsByAisle(items, canonMap, AISLES);
-    const groups = result.aisles[0].groups;
-    expect(groups).toHaveLength(2);
-    expect(groups[0].canonName).toBe('Apples'); // partial group first
-    expect(groups[0].allChecked).toBe(false);
-    expect(groups[1].canonName).toBe('Beans'); // fully-checked group last
-    expect(groups[1].allChecked).toBe(true);
-  });
-
-  it('allChecked is true only when every contributor is checked', () => {
+describe('groupItemsByAisle — checked bucket', () => {
+  it('routes checked items to the checked bucket regardless of match state', () => {
     const items = [
       makeItem('i1', { matchState: 'matched', canonId: 'c1', checked: true }),
-      makeItem('i2', { matchState: 'matched', canonId: 'c1', checked: true }),
+      makeItem('i2', { matchState: 'pending', checked: true }),
+      makeItem('i3', { matchState: 'matched', canonId: 'c1', checked: false }),
     ];
     const canonMap = makeCanonMap([{ id: 'c1', name: 'Milk', aisleId: 'aisle-2' }]);
     const result = groupItemsByAisle(items, canonMap, AISLES);
-    expect(result.aisles[0].groups[0].allChecked).toBe(true);
+    expect(result.checked.contributors).toHaveLength(2);
+    expect(result.aisles[0].groups[0].contributors).toHaveLength(1);
+    expect(result.other.contributors).toHaveLength(0);
   });
 
-  it('unchecked contributors appear before checked contributors within a group', () => {
+  it('sorts checked items most-recently-updated first', () => {
     const items = [
-      makeItem('i1', { matchState: 'matched', canonId: 'c1', rawText: 'a', checked: true }),
-      makeItem('i2', { matchState: 'matched', canonId: 'c1', rawText: 'b', checked: false }),
+      makeItem('i1', { checked: true, updatedAt: '2026-01-01T10:00:00.000Z' }),
+      makeItem('i2', { checked: true, updatedAt: '2026-01-01T12:00:00.000Z' }),
+      makeItem('i3', { checked: true, updatedAt: '2026-01-01T11:00:00.000Z' }),
     ];
-    const canonMap = makeCanonMap([{ id: 'c1', name: 'Milk', aisleId: 'aisle-2' }]);
-    const result = groupItemsByAisle(items, canonMap, AISLES);
-    const contributors = result.aisles[0].groups[0].contributors;
-    expect(contributors[0].checked).toBe(false);
-    expect(contributors[1].checked).toBe(true);
+    const result = groupItemsByAisle(items, makeCanonMap([]), AISLES);
+    const ids = result.checked.contributors.map((i) => i.id);
+    expect(ids).toEqual(['i2', 'i3', 'i1']);
   });
 
-  it('returns empty aisles array when no items are matched to aisles', () => {
+  it('returns empty checked bucket when no items are checked', () => {
     const result = groupItemsByAisle([], makeCanonMap([]), AISLES);
     expect(result.aisles).toHaveLength(0);
     expect(result.other.contributors).toHaveLength(0);
+    expect(result.checked.contributors).toHaveLength(0);
   });
 });
