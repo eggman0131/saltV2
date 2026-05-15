@@ -11,6 +11,7 @@ export function normaliseName(rawName: string): string {
     .trim()
     .split(' ')
     .filter(Boolean)
+    .filter((word) => !/^\d+$/.test(word))
     .map(singularize)
     .join(' ');
 }

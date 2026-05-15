@@ -169,7 +169,7 @@ describe('stage 1 — exact name match', () => {
     const apple = canonItem({ id: 'a1', name: 'Apple' });
     const { run } = makePipeline({ items: [apple] });
     const result = await run('apple');
-    // Auto-synonym capture: 'apple' is appended to synonyms and needs_approval is set to true.
+    // No synonym added: normalised input equals normalised item name.
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') {
       expect(result.value.item.id).toBe('a1');
@@ -639,21 +639,22 @@ describe('ambiguity gap — near-tie at stage 2 forwards to AI', () => {
 // ─── Auto-synonym capture — stages 1–5 matches ───────────────────────────────
 
 describe('auto-synonym capture', () => {
-  it('appends the normalised input as a synonym on a stage-1 match', async () => {
+  it('does not add a synonym when the normalised input equals the canonical name', async () => {
     const apple = canonItem({ id: 'a1', name: 'apple' });
     const { run, store } = makePipeline({ items: [apple] });
     await run('apple');
     const stored = (store as ReturnType<typeof makeStore>).items.find((i) => i.id === 'a1');
-    expect(stored?.synonyms).toContain('apple');
+    expect(stored?.synonyms).toHaveLength(0);
+    expect(stored?.needs_approval).toBe(false);
   });
 
-  it('re-flags an approved item when a new synonym is added', async () => {
+  it('does not add a synonym or flip needs_approval for plural/case variants that normalise to the canonical name', async () => {
     const approved = canonItem({ id: 'a1', name: 'onion', needs_approval: false });
     const { run, store } = makePipeline({ items: [approved] });
-    // 'onions' normalises to 'onion', matches stage 1; 'onion' added as synonym
     await run('onions');
     const stored = (store as ReturnType<typeof makeStore>).items.find((i) => i.id === 'a1');
-    expect(stored?.needs_approval).toBe(true);
+    expect(stored?.synonyms).toHaveLength(0);
+    expect(stored?.needs_approval).toBe(false);
   });
 
   it('does not upsert when the synonym is already present (deduped)', async () => {

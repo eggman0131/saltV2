@@ -128,8 +128,7 @@ describe('client fast-path ↔ CF path parity (clear stage 1–4 matches)', () =
   ];
 
   const cases: Array<{ name: string; rawName: string; expectedId: string }> = [
-    // Stage 1 — exact normalised name match (also exercises synonym append +
-    // needs_approval flip, since the canon item starts with no synonyms)
+    // Stage 1 — exact normalised name match (no synonym added; normalised input equals canonical name)
     { name: 'stage 1 (exact name)', rawName: 'tomato', expectedId: 'tomato-1' },
     // Stage 1 with case/whitespace differences still normalises identically
     { name: 'stage 1 (case + whitespace)', rawName: '  TOMATO  ', expectedId: 'tomato-1' },

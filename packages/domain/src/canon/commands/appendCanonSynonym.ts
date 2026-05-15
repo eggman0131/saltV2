@@ -7,7 +7,8 @@ export function appendCanonSynonym(
   reasoning?: string,
 ): CanonItem {
   const normalised = normaliseName(rawName);
-  if (!normalised || item.synonyms.includes(normalised)) return item;
+  if (!normalised || normalised === normaliseName(item.name) || item.synonyms.includes(normalised))
+    return item;
   return {
     ...item,
     synonyms: [...item.synonyms, normalised],

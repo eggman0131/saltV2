@@ -57,6 +57,12 @@ describe('normaliseName', () => {
     expect(normaliseName('rum')).toBe('rum');
   });
 
+  it('strips leading quantity numbers', () => {
+    expect(normaliseName('8 onions')).toBe('onion');
+    expect(normaliseName('12 eggs')).toBe('egg');
+    expect(normaliseName('2 cans tomatoes')).toBe('can tomato');
+  });
+
   it('returns empty string for blank input', () => {
     expect(normaliseName('')).toBe('');
     expect(normaliseName('   ')).toBe('');
