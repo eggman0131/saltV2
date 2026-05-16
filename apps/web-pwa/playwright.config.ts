@@ -28,17 +28,9 @@ export default defineConfig({
     },
   ],
 
-  webServer: {
-    command: 'vite --host 127.0.0.1 --port 5174 --strictPort',
-    url: 'http://127.0.0.1:5174',
-    reuseExistingServer: false,
-    timeout: 60_000,
-    stdout: CI ? 'inherit' : 'pipe',
-    stderr: CI ? 'inherit' : 'pipe',
-    env: {
-      VITE_EMULATOR_FIRESTORE_PORT: '8081',
-      VITE_EMULATOR_FUNCTIONS_PORT: '5002',
-      VITE_EMULATOR_AUTH_PORT: '9100',
-    },
-  },
+  // NOTE: Playwright does NOT manage the e2e web server. Its `webServer` readiness
+  // probe does a raw socket connect that deadlocks on this WSL2 host's free-port
+  // blackhole (issue #79). The dedicated e2e app server on :5174 (wired to the test
+  // emulator ports) is owned by e2e/globalSetup.ts + e2e/globalTeardown.ts instead.
+  // Do not re-introduce a `webServer` block here.
 });
