@@ -4,7 +4,7 @@ import type { CanonItem } from '../../src/canon/entities/CanonItem.js';
 
 function item(overrides: Partial<CanonItem> & { id: string; name: string }): CanonItem {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     synonyms: [],
     aisleId: null,
     thumbnail: null,
@@ -12,7 +12,6 @@ function item(overrides: Partial<CanonItem> & { id: string; name: string }): Can
     needs_approval: false,
     shoppingBehavior: 'needed',
     updatedAt: '',
-    deletedAt: null,
     ...overrides,
   };
 }

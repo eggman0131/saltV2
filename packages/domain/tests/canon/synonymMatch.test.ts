@@ -13,7 +13,6 @@ const items: readonly CanonItem[] = [
     embedding: null,
     needs_approval: false,
     updatedAt: '',
-    deletedAt: null,
   },
   {
     id: '2',
@@ -25,7 +24,6 @@ const items: readonly CanonItem[] = [
     embedding: null,
     needs_approval: false,
     updatedAt: '',
-    deletedAt: null,
   },
   {
     id: '3',
@@ -37,7 +35,6 @@ const items: readonly CanonItem[] = [
     embedding: null,
     needs_approval: false,
     updatedAt: '',
-    deletedAt: null,
   },
 ];
 

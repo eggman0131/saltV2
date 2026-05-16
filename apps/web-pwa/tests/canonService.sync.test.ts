@@ -8,6 +8,7 @@ vi.mock('@salt/firebase-sync', () => ({
   subscribeCanonItems: vi.fn(),
   subscribeAisles: vi.fn(),
   upsertCanonItem: vi.fn().mockResolvedValue(undefined),
+  deleteCanonItem: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   callMatchOrCreate: vi.fn(),
 }));
 
@@ -48,7 +49,6 @@ function makeItem(id: string, overrides: Partial<CanonItem> = {}): CanonItem {
     embedding: null,
     needs_approval: false,
     updatedAt: '',
-    deletedAt: null,
     ...overrides,
   };
 }
@@ -99,6 +99,7 @@ describe('canonService — subscription-fed stores', () => {
     __resetCanonServiceForTest();
     vi.clearAllMocks();
     fs.upsertCanonItem.mockResolvedValue(undefined);
+    fs.deleteCanonItem.mockResolvedValue({ kind: 'ok', value: undefined });
   });
 
   afterEach(() => {
@@ -145,13 +146,13 @@ describe('canonService — subscription-fed stores', () => {
       expect(get(isLoadingAisles)).toBe(false);
     });
 
-    it('populates canonItems from subscription, filtering tombstones', () => {
+    it('populates canonItems verbatim from subscription (no client-side filtering)', () => {
       const { emitItems } = wireSubscriptions();
       stopSync = initCanonSync();
-      const live = makeItem('a');
-      const dead = makeItem('b', { deletedAt: '2024-01-01' });
-      emitItems([live, dead]);
-      expect(get(canonItems)).toEqual([live]);
+      const a = makeItem('a');
+      const b = makeItem('b');
+      emitItems([a, b]);
+      expect(get(canonItems)).toEqual([a, b]);
     });
 
     it('populates aisles from subscription, sorted by order', () => {
@@ -210,11 +211,11 @@ describe('canonService — in-memory adapters', () => {
   });
 
   describe('memCanonStore', () => {
-    it('list returns seed items (excluding tombstones)', async () => {
-      const seed = [makeItem('a'), makeItem('b', { deletedAt: '2024-01-01' })];
+    it('list returns all seed items', async () => {
+      const seed = [makeItem('a'), makeItem('b')];
       const { store } = memCanonStore(seed);
       const result = await store.list();
-      expect(result).toEqual({ kind: 'ok', value: [makeItem('a')] });
+      expect(result).toEqual({ kind: 'ok', value: seed });
     });
 
     it('upsert adds item and records it as upserted', async () => {
@@ -277,6 +278,7 @@ describe('canonService — commands', () => {
     __resetCanonServiceForTest();
     vi.clearAllMocks();
     fs.upsertCanonItem.mockResolvedValue(undefined);
+    fs.deleteCanonItem.mockResolvedValue({ kind: 'ok', value: undefined });
   });
 
   afterEach(() => {
@@ -320,24 +322,24 @@ describe('canonService — commands', () => {
   });
 
   describe('deleteCanonItem', () => {
-    it('returns ok and calls upsertCanonItem with tombstone when item exists in store', async () => {
-      const { emitItems, emitAisles } = wireSubscriptions();
-      const cleanup = initCanonSync();
-      emitItems([makeItem('a')]);
-      emitAisles([]);
-
+    it('delegates to the adapter deleteCanonItem and never writes a soft-delete document', async () => {
       const result = await deleteCanonItem('a');
       expect(result).toEqual({ kind: 'ok', value: undefined });
-      expect(fs.upsertCanonItem).toHaveBeenCalledWith(
-        expect.objectContaining({ id: 'a', deletedAt: expect.any(String) }),
-      );
-      cleanup();
+      expect(fs.deleteCanonItem).toHaveBeenCalledWith('a');
+      expect(fs.upsertCanonItem).not.toHaveBeenCalled();
     });
 
-    it('returns ok without calling upsertCanonItem when item is not in store', async () => {
+    it('does not require the item to be present in the store', async () => {
       const result = await deleteCanonItem('nonexistent');
       expect(result).toEqual({ kind: 'ok', value: undefined });
-      expect(fs.upsertCanonItem).not.toHaveBeenCalled();
+      expect(fs.deleteCanonItem).toHaveBeenCalledWith('nonexistent');
+    });
+
+    it('propagates an adapter failure to the caller', async () => {
+      const err = { kind: 'StorageError', reason: 'unavailable' } as const;
+      fs.deleteCanonItem.mockResolvedValueOnce({ kind: 'err', error: err });
+      const result = await deleteCanonItem('a');
+      expect(result).toEqual({ kind: 'err', error: err });
     });
   });
 });

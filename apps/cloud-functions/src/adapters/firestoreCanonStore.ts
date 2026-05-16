@@ -14,7 +14,7 @@ const COLLECTION = 'canonItems';
 function fromDoc(data: Record<string, unknown>): CanonItem {
   return {
     id: data['id'] as string,
-    schemaVersion: 4,
+    schemaVersion: 5,
     name: data['name'] as string,
     synonyms: Array.isArray(data['synonyms']) ? (data['synonyms'] as string[]) : [],
     aisleId: typeof data['aisleId'] === 'string' ? data['aisleId'] : null,
@@ -28,7 +28,6 @@ function fromDoc(data: Record<string, unknown>): CanonItem {
     ...(typeof data['unit'] === 'string' ? { unit: data['unit'] as CanonItemUnit } : {}),
     ...(typeof data['reasoning'] === 'string' ? { reasoning: data['reasoning'] as string } : {}),
     updatedAt: typeof data['updatedAt'] === 'string' ? data['updatedAt'] : '',
-    deletedAt: typeof data['deletedAt'] === 'string' ? data['deletedAt'] : null,
   };
 }
 
@@ -61,9 +60,7 @@ export function createFirestoreCanonStore(db: Firestore): CanonLocalStorePort {
     async list(): Promise<ReadResult<readonly CanonItem[], DomainError>> {
       try {
         const snap = await db.collection(COLLECTION).get();
-        const items = snap.docs
-          .map((d) => fromDoc(d.data() as Record<string, unknown>))
-          .filter((i) => i.deletedAt === null);
+        const items = snap.docs.map((d) => fromDoc(d.data() as Record<string, unknown>));
         return success(items);
       } catch (err) {
         return failure(classify(err));

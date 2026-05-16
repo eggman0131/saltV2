@@ -13,7 +13,7 @@ import type { MatchLogEntry } from '../../src/canon/entities/MatchLogEntry.js';
 
 function canonItem(overrides: Partial<CanonItem> & { id: string; name: string }): CanonItem {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     synonyms: [],
     aisleId: null,
     thumbnail: null,
@@ -21,7 +21,6 @@ function canonItem(overrides: Partial<CanonItem> & { id: string; name: string })
     needs_approval: false,
     shoppingBehavior: 'needed',
     updatedAt: '',
-    deletedAt: null,
     ...overrides,
   };
 }

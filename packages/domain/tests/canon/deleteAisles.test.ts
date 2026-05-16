@@ -42,7 +42,6 @@ function canonItem(overrides: Partial<CanonItem> & { id: string; name: string })
     embedding: null,
     needs_approval: false,
     updatedAt: '',
-    deletedAt: null,
     ...overrides,
   };
 }

@@ -87,7 +87,7 @@ const { matchOrCreateCanonFlow } = await import('../../src/flows/matchOrCreateCa
 
 function makeItem(overrides: Partial<CanonItem> & { id: string; name: string }): CanonItem {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     synonyms: [],
     aisleId: null,
     thumbnail: null,
@@ -95,7 +95,6 @@ function makeItem(overrides: Partial<CanonItem> & { id: string; name: string }):
     needs_approval: false,
     shoppingBehavior: 'needed',
     updatedAt: '',
-    deletedAt: null,
     ...overrides,
   };
 }

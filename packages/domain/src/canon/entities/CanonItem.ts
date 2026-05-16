@@ -6,7 +6,7 @@ export type { ShoppingBehavior, CanonItemUnit };
 
 export interface CanonItem {
   readonly id: string;
-  readonly schemaVersion: 4;
+  readonly schemaVersion: 5;
   readonly name: string;
   readonly synonyms: readonly string[];
   readonly aisleId: string | null;
@@ -19,5 +19,4 @@ export interface CanonItem {
   readonly reasoning?: string;
   // Sync fields — stamped server-side by the onCanonItemWritten CF trigger.
   readonly updatedAt: string; // ISO-8601
-  readonly deletedAt: string | null; // null = live; non-null = soft-deleted tombstone
 }
