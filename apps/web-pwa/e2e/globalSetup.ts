@@ -172,6 +172,12 @@ async function e2eServerHealthy(): Promise<boolean> {
 }
 
 async function ensureE2eServer(): Promise<void> {
+  // Reuse contract: anything healthy on :5174 is treated as our e2e server;
+  // we do NOT verify it is env-wired to the test emulator ports. Accepted, not
+  // hardened: the dev server lives on :5173 and nothing else binds :5174 on
+  // this host, so in practice the only thing answering here is a prior e2e
+  // vite with the same TEST_EMULATOR_ENV. Judged an unlikely failure mode
+  // (issue #79); revisit if a non-e2e process ever contends for :5174.
   if (await e2eServerHealthy()) {
     console.log(`globalSetup: reused existing e2e app server at ${E2E_APP_URL}.`);
     return;
