@@ -61,9 +61,7 @@ export function createFirestoreCanonStore(db: Firestore): CanonLocalStorePort {
     async list(): Promise<ReadResult<readonly CanonItem[], DomainError>> {
       try {
         const snap = await db.collection(COLLECTION).get();
-        const items = snap.docs
-          .map((d) => fromDoc(d.data() as Record<string, unknown>))
-          .filter((i) => i.deletedAt === null);
+        const items = snap.docs.map((d) => fromDoc(d.data() as Record<string, unknown>));
         return success(items);
       } catch (err) {
         return failure(classify(err));

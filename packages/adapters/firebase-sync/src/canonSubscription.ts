@@ -1,7 +1,8 @@
-import { getFirestore, collection, doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import type { CanonItem } from '@salt/domain';
-import type { DomainError, ShoppingBehavior, CanonItemUnit } from '@salt/shared-types';
+import type { DomainError, ReadResult, ShoppingBehavior, CanonItemUnit } from '@salt/shared-types';
+import { success, failure } from '@salt/shared-types';
 import { classifyFirestoreError } from './firestoreErrors.js';
 
 const COLLECTION = 'canonItems';
@@ -44,4 +45,14 @@ export function subscribeCanonItems(
 export async function upsertCanonItem(item: CanonItem): Promise<void> {
   const db = getFirestore(getApp());
   await setDoc(doc(db, COLLECTION, item.id), { ...item });
+}
+
+export async function deleteCanonItem(id: string): Promise<ReadResult<void, DomainError>> {
+  try {
+    const db = getFirestore(getApp());
+    await deleteDoc(doc(db, COLLECTION, id));
+    return success(undefined);
+  } catch (err) {
+    return failure(classifyFirestoreError(err));
+  }
 }

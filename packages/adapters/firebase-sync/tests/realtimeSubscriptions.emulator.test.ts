@@ -12,7 +12,7 @@ import { initializeApp, deleteApp, type FirebaseApp } from 'firebase/app';
 import { getFirestore, connectFirestoreEmulator, doc, setDoc } from 'firebase/firestore';
 import type { Firestore } from 'firebase/firestore';
 import { getAuth, connectAuthEmulator, signInAnonymously } from 'firebase/auth';
-import { subscribeCanonItems, upsertCanonItem } from '../src/canonSubscription.js';
+import { subscribeCanonItems, upsertCanonItem, deleteCanonItem } from '../src/canonSubscription.js';
 import { subscribeAisles, saveAisles } from '../src/aisleSubscription.js';
 import {
   subscribeEquipmentManifest,
@@ -117,6 +117,32 @@ describe('realtimeSubscriptions — Firestore emulator', () => {
 
       unsubscribe();
       expect(received.some((items) => items.some((i) => i.id === 'onion'))).toBe(true);
+    });
+
+    it('deleteCanonItem removes the doc and the deletion converges via onSnapshot', async () => {
+      const received: CanonItem[][] = [];
+      const unsubscribe = subscribeCanonItems(
+        (items) => received.push(items),
+        () => {},
+      );
+
+      await upsertCanonItem(makeItem('garlic', 'Garlic'));
+      await waitFor(
+        () => received.some((items) => items.some((i) => i.id === 'garlic')),
+        CONVERGENCE_MS,
+      );
+
+      const result = await deleteCanonItem('garlic');
+      expect(result.kind).toBe('ok');
+
+      await waitFor(
+        () => received.some((items) => !items.some((i) => i.id === 'garlic')),
+        CONVERGENCE_MS,
+      );
+
+      unsubscribe();
+      const last = received[received.length - 1]!;
+      expect(last.some((i) => i.id === 'garlic')).toBe(false);
     });
 
     it('returns the unsubscribe function that stops callbacks', async () => {

@@ -114,7 +114,6 @@ export const onCanonItemWritten = onDocumentWritten(
     if (!after?.exists) return;
 
     const data = after.data() as Record<string, unknown>;
-    if (typeof data['deletedAt'] === 'string') return;
     if (Array.isArray(data['embedding'])) return;
 
     const name = typeof data['name'] === 'string' ? data['name'] : null;

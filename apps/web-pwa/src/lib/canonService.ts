@@ -1,6 +1,7 @@
 import {
   subscribeCanonItems,
   upsertCanonItem,
+  deleteCanonItem as deleteCanonItemDoc,
   subscribeAisles,
   callMatchOrCreate,
 } from '@salt/firebase-sync';
@@ -117,7 +118,7 @@ export function memCanonStore(seed: readonly CanonItem[]) {
       return { kind: 'ok', value: items.get(id) ?? null };
     },
     async list() {
-      return { kind: 'ok', value: [...items.values()].filter((i) => i.deletedAt === null) };
+      return { kind: 'ok', value: [...items.values()] };
     },
     async delete(id) {
       items.delete(id);
@@ -148,7 +149,7 @@ export function initCanonSync(): () => void {
 
   const unsubItems = subscribeCanonItems(
     (items) => {
-      _canonItems.set(items.filter((i) => i.deletedAt === null));
+      _canonItems.set(items);
       recomputeAisleUsage();
       markLoaded('items');
     },
@@ -318,12 +319,7 @@ export async function splitMostRecentSynonym(
 }
 
 export async function deleteCanonItem(id: string): Promise<Result<void, DomainError>> {
-  const item = get(_canonItems).find((i) => i.id === id) ?? null;
-  if (item !== null) {
-    const tombstone: CanonItem = { ...item, deletedAt: new Date().toISOString() };
-    await upsertCanonItem(tombstone);
-  }
-  return { kind: 'ok', value: undefined };
+  return deleteCanonItemDoc(id);
 }
 
 // ─── Test helpers ────────────────────────────────────────────────────────────────
