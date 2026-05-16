@@ -98,7 +98,7 @@ function makeEvent({
 
 function makeCanonItem(overrides: Partial<CanonItem> & { id: string }): CanonItem {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     name: 'Test Item',
     synonyms: [],
     aisleId: null,
@@ -107,7 +107,6 @@ function makeCanonItem(overrides: Partial<CanonItem> & { id: string }): CanonIte
     needs_approval: false,
     shoppingBehavior: 'needed',
     updatedAt: '',
-    deletedAt: null,
     ...overrides,
   };
 }

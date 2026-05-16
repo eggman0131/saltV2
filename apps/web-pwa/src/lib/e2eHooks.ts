@@ -35,7 +35,7 @@ export function installE2EHooks(): void {
     async seedCanonItem(input: SeedCanonItemInput) {
       const item: CanonItem = {
         id: input.id ?? crypto.randomUUID(),
-        schemaVersion: 4,
+        schemaVersion: 5,
         name: input.name,
         synonyms: input.synonyms ?? [],
         aisleId: input.aisleId ?? null,
@@ -44,7 +44,6 @@ export function installE2EHooks(): void {
         needs_approval: input.needs_approval ?? false,
         shoppingBehavior: 'needed',
         updatedAt: '',
-        deletedAt: null,
       };
       // Fire-and-forget: setDoc hangs when the SDK network is disabled (offline
       // test). Firestore still writes to local cache and fires onSnapshot

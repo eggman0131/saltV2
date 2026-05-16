@@ -7,7 +7,7 @@ import type { ReadResult, DomainError } from '@salt/shared-types';
 const seed: readonly CanonItem[] = [
   {
     id: '1',
-    schemaVersion: 4,
+    schemaVersion: 5,
     name: 'Tomato',
     synonyms: ['tom', 'tomate'],
     aisleId: 'produce',
@@ -16,11 +16,10 @@ const seed: readonly CanonItem[] = [
     needs_approval: false,
     shoppingBehavior: 'needed',
     updatedAt: '',
-    deletedAt: null,
   },
   {
     id: '2',
-    schemaVersion: 4,
+    schemaVersion: 5,
     name: 'Olive Oil',
     synonyms: ['EVOO'],
     aisleId: 'oils',
@@ -29,7 +28,6 @@ const seed: readonly CanonItem[] = [
     needs_approval: false,
     shoppingBehavior: 'needed',
     updatedAt: '',
-    deletedAt: null,
   },
 ];
 
@@ -96,7 +94,7 @@ describe('createCanonLookup', () => {
     lookup.refresh([
       {
         id: '99',
-        schemaVersion: 4,
+        schemaVersion: 5,
         name: 'Butter',
         synonyms: [],
         aisleId: 'dairy',
@@ -105,7 +103,6 @@ describe('createCanonLookup', () => {
         needs_approval: false,
         shoppingBehavior: 'needed',
         updatedAt: '',
-        deletedAt: null,
       },
     ]);
 

@@ -49,7 +49,6 @@ function makeItem(id: string, overrides: Partial<CanonItem> = {}): CanonItem {
     embedding: null,
     needs_approval: false,
     updatedAt: '',
-    deletedAt: null,
     ...overrides,
   };
 }
@@ -323,7 +322,7 @@ describe('canonService — commands', () => {
   });
 
   describe('deleteCanonItem', () => {
-    it('delegates to the adapter deleteCanonItem and never writes a tombstone', async () => {
+    it('delegates to the adapter deleteCanonItem and never writes a soft-delete document', async () => {
       const result = await deleteCanonItem('a');
       expect(result).toEqual({ kind: 'ok', value: undefined });
       expect(fs.deleteCanonItem).toHaveBeenCalledWith('a');

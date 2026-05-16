@@ -54,7 +54,6 @@ function makeItem(id: string, name = 'Test'): CanonItem {
     embedding: null,
     needs_approval: false,
     updatedAt: '',
-    deletedAt: null,
   };
 }
 

@@ -14,7 +14,7 @@ const COLLECTION = 'canonItems';
 function fromDoc(data: Record<string, unknown>): CanonItem {
   return {
     id: data['id'] as string,
-    schemaVersion: 4,
+    schemaVersion: 5,
     name: data['name'] as string,
     synonyms: Array.isArray(data['synonyms']) ? (data['synonyms'] as string[]) : [],
     aisleId: typeof data['aisleId'] === 'string' ? data['aisleId'] : null,
@@ -28,7 +28,6 @@ function fromDoc(data: Record<string, unknown>): CanonItem {
     ...(typeof data['unit'] === 'string' ? { unit: data['unit'] as CanonItemUnit } : {}),
     ...(typeof data['reasoning'] === 'string' ? { reasoning: data['reasoning'] as string } : {}),
     updatedAt: typeof data['updatedAt'] === 'string' ? data['updatedAt'] : '',
-    deletedAt: typeof data['deletedAt'] === 'string' ? data['deletedAt'] : null,
   };
 }
 

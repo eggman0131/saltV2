@@ -13,7 +13,6 @@ const base: CanonItem = {
   needs_approval: true,
   shoppingBehavior: 'needed',
   updatedAt: '',
-  deletedAt: null,
 };
 
 describe('approveCanonItem', () => {

@@ -18,7 +18,7 @@ describe('createCanonItem', () => {
     if (result.kind !== 'ok') return;
     expect(result.value).toEqual({
       id: 'id-1',
-      schemaVersion: 4,
+      schemaVersion: 5,
       name: 'Tomato',
       synonyms: [],
       aisleId: null,
@@ -27,7 +27,6 @@ describe('createCanonItem', () => {
       needs_approval: true,
       shoppingBehavior: 'needed',
       updatedAt: '',
-      deletedAt: null,
     });
   });
 

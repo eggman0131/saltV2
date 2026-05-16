@@ -13,7 +13,6 @@ function item(overrides: Partial<CanonItem> = {}): CanonItem {
     embedding: null,
     needs_approval: false,
     updatedAt: '',
-    deletedAt: null,
     ...overrides,
   };
 }

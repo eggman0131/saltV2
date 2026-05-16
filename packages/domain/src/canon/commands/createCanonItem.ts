@@ -24,7 +24,7 @@ export function createCanonItem(
   }
   return success({
     id: ids.newCanonId(),
-    schemaVersion: 4,
+    schemaVersion: 5,
     name,
     synonyms: (input.synonyms ?? []).map((s) => s.trim()).filter((s) => s.length > 0),
     aisleId: input.aisleId ?? null,
@@ -38,6 +38,5 @@ export function createCanonItem(
     ...(input.unit !== undefined ? { unit: input.unit } : {}),
     ...(input.reasoning !== undefined ? { reasoning: input.reasoning } : {}),
     updatedAt: '',
-    deletedAt: null,
   });
 }

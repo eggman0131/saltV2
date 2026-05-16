@@ -56,7 +56,7 @@ let adminApp: App;
 function makeCanonItem(id: string, needsApproval = false): CanonItem {
   return {
     id,
-    schemaVersion: 4,
+    schemaVersion: 5,
     name: 'Baked Beans',
     synonyms: [],
     aisleId: 'tinned',
@@ -65,7 +65,6 @@ function makeCanonItem(id: string, needsApproval = false): CanonItem {
     needs_approval: needsApproval,
     shoppingBehavior: 'needed',
     updatedAt: new Date().toISOString(),
-    deletedAt: null,
   };
 }
 
