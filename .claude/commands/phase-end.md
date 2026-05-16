@@ -55,13 +55,29 @@ Format:
 ```
 type(scope): short description
 
-One or two sentence summary of what this phase delivers.
+Phase PHASE_NUMBER. One or two sentence summary of what this phase delivers.
 
 - Decision or non-obvious choice and why
 - Decision or non-obvious choice and why
 
-Closes #ISSUE_NUMBER phase PHASE_NUMBER
+Refs #ISSUE_NUMBER
 ```
+
+The footer must be exactly one line on its own line, preceded by one
+blank line, with NOTHING trailing the issue number. A trailing ` phase N`
+(or any text after `#ISSUE_NUMBER`) breaks commitlint's footer parsing
+and triggers a `footer-leading-blank` warning. Keep the phase number in
+the summary line, not the footer.
+
+Footer keyword — `Refs` vs `Closes`:
+- Use `Refs #ISSUE_NUMBER` for every phase EXCEPT the issue's final phase.
+  `Refs` does not auto-close the issue on merge, so a multi-phase issue
+  stays open while earlier phases land.
+- Use `Closes #ISSUE_NUMBER` ONLY on the issue's last phase, so the issue
+  auto-closes when the final phase merges.
+- Decide whether PHASE_NUMBER is the final phase from the phase list in
+  the issue body (available from the issue read in /phase-start). If
+  unsure which phase is last, use `Refs` and tell me in Step 4.
 
 Use type: feat / fix / refactor / test / chore / docs as appropriate.
 
