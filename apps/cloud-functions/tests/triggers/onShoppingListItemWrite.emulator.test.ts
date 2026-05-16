@@ -6,12 +6,17 @@
  * SDK is used for real reads/writes against the emulator; domain logic is
  * mocked so the test focuses on the Firestore plumbing.
  *
- * Requires the Firestore emulator running at 127.0.0.1:8080.
+ * Requires the Firestore emulator reachable on the port injected by
+ * vitest.emulator.config.ts `test.env` (issue #84, Phase 3 — the isolated
+ * Vitest stack); falls back to the dev port 8080 for an ad-hoc run.
  * Run via: pnpm test:emulator
  */
 
-// Point the Admin SDK at the Firestore emulator before any imports.
-process.env['FIRESTORE_EMULATOR_HOST'] = '127.0.0.1:8080';
+// Point the Admin SDK at the Firestore emulator before any imports. The port
+// comes from the isolated Vitest stack (injected via test.env) so this no
+// longer pins to the dev emulator (8080 stays only as the ad-hoc fallback).
+process.env['FIRESTORE_EMULATOR_HOST'] =
+  `127.0.0.1:${process.env['VITE_EMULATOR_FIRESTORE_PORT'] ?? '8080'}`;
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initializeApp, deleteApp, type App } from 'firebase-admin/app';
@@ -49,7 +54,9 @@ const { onShoppingListItemWrite } = await import('../../src/triggers/onShoppingL
 // ─── Setup ───────────────────────────────────────────────────────────────────
 
 const PROJECT_ID = 'demo-salt';
-const EMULATOR_HOST = '127.0.0.1:8080';
+// Single source: the host resolved above for the Admin SDK is reused for the
+// REST clear endpoint so both hit the same (Vitest stack) emulator.
+const EMULATOR_HOST = process.env['FIRESTORE_EMULATOR_HOST'] as string;
 
 let adminApp: App;
 
