@@ -1,0 +1,63 @@
+# Firebase test emulator stack — containerized (issue #84, Phase 1).
+#
+# Phase 1 deliverable ONLY: a standalone, healthcheck-gated, deterministically
+# torn-down emulator stack. It is intentionally NOT yet wired into
+# globalSetup.ts / globalTeardown.ts (Phase 2) or `pnpm test:emulator`
+# (Phase 3).
+#
+# Standalone usage (run from this directory):
+#   # Cloud Functions bundle must exist first (Phase 2 automates this prebuild):
+#   pnpm --filter @salt/cloud-functions build
+#   docker compose -f docker-compose.test.yml up --wait      # blocks until HEALTHY
+#   docker compose -f docker-compose.test.yml down -v         # reaps the whole tree
+#
+# `up --wait` returns only once the container healthcheck passes, i.e. once
+# Functions triggers are registered (see healthcheck.sh) — not merely "port
+# open". `down -v` removes the container (reaping the functions-runtime child
+# tree via the container boundary) and the scratch volume.
+#
+# The stack reads /repo/firebase.test.docker.json, a faithful mirror of
+# firebase.test.json with host:0.0.0.0 added so the mapped ports are
+# reachable from the host. Its port set MUST stay identical to
+# firebase.test.json; Phase 2 collapses the e2e path onto this container so
+# the two configs converge.
+
+services:
+  test-emulators:
+    container_name: salt-test-emulators
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # PID 1 init reaps any in-container zombies; the real guarantee is the
+    # container boundary: `down`/`down -v` reaps the functions-runtime tree
+    # that port-scoped `fuser -k` used to orphan (issue #84 cause #2).
+    init: true
+    working_dir: /work
+    volumes:
+      # Repo read-only: config + the prebuilt CF bundle + pnpm's relative
+      # workspace symlinks (firebase-admin/firebase-functions resolve because
+      # the whole repo is mounted, so the relative links stay intact).
+      - ../../:/repo:ro
+      # Writable scratch for firebase-debug.log / firestore-debug.log — the
+      # repo mount is read-only so the emulator cwd must live here. Removed
+      # by `down -v`.
+      - emulator-work:/work
+    ports:
+      - "127.0.0.1:8081:8081" # Firestore
+      - "127.0.0.1:9100:9100" # Auth
+      - "127.0.0.1:5002:5002" # Functions
+      - "127.0.0.1:4402:4402" # Emulator hub
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck.sh"]
+      interval: 5s
+      timeout: 10s
+      retries: 60
+      # Cold JVM (Firestore) + Functions trigger registration on a fresh
+      # machine/CI runner; generous so warmup is not flagged unhealthy.
+      start_period: 180s
+    # Give firebase a chance to stop the emulators cleanly on SIGTERM before
+    # the container is force-killed; the container boundary reaps either way.
+    stop_grace_period: 20s
+
+volumes:
+  emulator-work:
