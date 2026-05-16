@@ -6,11 +6,28 @@ import { fileURLToPath } from 'url';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const STOP_SCRIPT = path.join(REPO_ROOT, 'scripts/stop-test-emulators.mjs');
+const HUB_URL = 'http://127.0.0.1:4402/emulators';
 const AUTH_URL = 'http://127.0.0.1:9100';
 const FUNCTIONS_READY_URL = 'http://127.0.0.1:5002/demo-salt/europe-west2/matchOrCreateCanon';
+const FIRESTORE_CLEAR_URL =
+  'http://127.0.0.1:8081/emulator/v1/projects/demo-salt/databases/(default)/documents';
+const AUTH_CLEAR_URL = 'http://127.0.0.1:9100/emulator/v1/projects/demo-salt/accounts';
 const EMULATOR_PORTS = [4402, 8081, 9100, 5002, 5003, 9200];
 const TIMEOUT_MS = 120_000;
 const POLL_MS = 500;
+
+interface HubEmulatorInfo {
+  name: string;
+  host: string;
+  port: number;
+}
+
+const EXPECTED_EMULATORS: Record<string, number> = {
+  auth: 9100,
+  firestore: 8081,
+  functions: 5002,
+  hub: 4402,
+};
 
 function portIsFree(port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -31,6 +48,25 @@ async function assertEmulatorPortsFree(): Promise<void> {
       `globalSetup: test emulator ports ${busy.join(', ')} still occupied after stop attempt — a prior test run may have crashed; check for orphaned processes.`,
     );
   }
+}
+
+async function getRunningEmulators(): Promise<HubEmulatorInfo[] | null> {
+  try {
+    const res = await fetch(HUB_URL, { signal: AbortSignal.timeout(2000) });
+    if (!res.ok) return null;
+    const body = (await res.json()) as Record<string, { host: string; port: number }>;
+    return Object.entries(body).map(([name, info]) => ({ name, host: info.host, port: info.port }));
+  } catch {
+    return null;
+  }
+}
+
+function emulatorsMatchExpected(running: HubEmulatorInfo[]): boolean {
+  for (const [name, expectedPort] of Object.entries(EXPECTED_EMULATORS)) {
+    const match = running.find((e) => e.name === name);
+    if (!match || match.port !== expectedPort) return false;
+  }
+  return true;
 }
 
 async function waitForEmulator(): Promise<void> {
@@ -67,7 +103,20 @@ async function waitForFunctions(): Promise<void> {
   throw new Error(`Functions emulator did not register triggers within ${TIMEOUT_MS / 1000}s`);
 }
 
-export default async function globalSetup(): Promise<void> {
+async function wipeEmulatorData(): Promise<void> {
+  const [firestoreRes, authRes] = await Promise.all([
+    fetch(FIRESTORE_CLEAR_URL, { method: 'DELETE' }),
+    fetch(AUTH_CLEAR_URL, { method: 'DELETE' }),
+  ]);
+  if (!firestoreRes.ok && firestoreRes.status !== 404) {
+    throw new Error(`globalSetup: failed to clear Firestore emulator: HTTP ${firestoreRes.status}`);
+  }
+  if (!authRes.ok && authRes.status !== 404) {
+    throw new Error(`globalSetup: failed to clear Auth emulator: HTTP ${authRes.status}`);
+  }
+}
+
+async function startEmulators(): Promise<void> {
   // Clean up any leftovers from a prior crashed test run before asserting ports are free.
   execFileSync('node', [STOP_SCRIPT], { stdio: 'inherit' });
 
@@ -94,4 +143,30 @@ export default async function globalSetup(): Promise<void> {
 
   await waitForEmulator();
   await waitForFunctions();
+}
+
+export default async function globalSetup(): Promise<void> {
+  const forceFresh = process.env.E2E_FRESH === '1';
+
+  if (!forceFresh) {
+    const running = await getRunningEmulators();
+    if (running && emulatorsMatchExpected(running)) {
+      try {
+        // Confirm functions are still healthy — emulator process can be alive while triggers
+        // are not registered (e.g. user edited CF source and build is in-flight).
+        await waitForFunctions();
+        await wipeEmulatorData();
+        console.log(
+          'globalSetup: reused existing test emulators (set E2E_FRESH=1 to force restart).',
+        );
+        return;
+      } catch (err) {
+        console.warn(
+          `globalSetup: existing emulators failed readiness check (${(err as Error).message}); restarting...`,
+        );
+      }
+    }
+  }
+
+  await startEmulators();
 }
