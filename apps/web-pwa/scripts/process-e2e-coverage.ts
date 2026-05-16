@@ -25,7 +25,7 @@ interface V8CoverageEntry {
 
 const RAW_DIR = resolve('coverage', 'e2e-raw');
 const OUT_DIR = resolve('coverage', 'e2e');
-const APP_ORIGIN = 'http://127.0.0.1:5173';
+const APP_ORIGIN = 'http://127.0.0.1:5174';
 
 async function main(): Promise<void> {
   let files: string[];

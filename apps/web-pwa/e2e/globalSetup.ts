@@ -91,7 +91,7 @@ async function waitForFunctions(): Promise<void> {
       // a 404/connection-refused means the emulator is still loading.
       const res = await fetch(FUNCTIONS_READY_URL, {
         method: 'OPTIONS',
-        headers: { Origin: 'http://127.0.0.1:5173', 'Access-Control-Request-Method': 'POST' },
+        headers: { Origin: 'http://127.0.0.1:5174', 'Access-Control-Request-Method': 'POST' },
         signal: AbortSignal.timeout(2000),
       });
       if (res.headers.get('access-control-allow-origin')) return;
