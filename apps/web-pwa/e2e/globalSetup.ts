@@ -16,6 +16,20 @@ const EMULATOR_PORTS = [4402, 8081, 9100, 5002, 5003, 9200];
 const TIMEOUT_MS = 120_000;
 const POLL_MS = 500;
 
+// Dedicated e2e app server. Playwright does NOT manage it (its webServer probe
+// raw-socket-connects and deadlocks on this WSL2 host's free-port blackhole,
+// issue #79); globalSetup owns the lifecycle instead. Bound explicitly to the
+// test emulator ports so the e2e app never falls back to the dev emulators.
+const APP_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const E2E_APP_HOST = '127.0.0.1';
+const E2E_APP_PORT = 5174;
+const E2E_APP_URL = `http://${E2E_APP_HOST}:${E2E_APP_PORT}`;
+const TEST_EMULATOR_ENV = {
+  VITE_EMULATOR_FIRESTORE_PORT: '8081',
+  VITE_EMULATOR_AUTH_PORT: '9100',
+  VITE_EMULATOR_FUNCTIONS_PORT: '5002',
+};
+
 interface HubEmulatorInfo {
   name: string;
   host: string;
@@ -145,9 +159,53 @@ async function startEmulators(): Promise<void> {
   await waitForFunctions();
 }
 
+// Every probe here is fetch + AbortSignal.timeout — never a raw socket connect.
+// A connect to a possibly-free port hangs forever on this WSL2 host (issue #79);
+// the timer-based abort bounds it regardless of whether anything is listening.
+async function e2eServerHealthy(): Promise<boolean> {
+  try {
+    const res = await fetch(E2E_APP_URL, { signal: AbortSignal.timeout(2000) });
+    return res.status < 500;
+  } catch {
+    return false;
+  }
+}
+
+async function ensureE2eServer(): Promise<void> {
+  if (await e2eServerHealthy()) {
+    console.log(`globalSetup: reused existing e2e app server at ${E2E_APP_URL}.`);
+    return;
+  }
+
+  const viteLog = process.env.CI ? fs.openSync('/tmp/e2e-vite.log', 'w') : null;
+  spawn(
+    'pnpm',
+    ['exec', 'vite', '--host', E2E_APP_HOST, '--port', String(E2E_APP_PORT), '--strictPort'],
+    {
+      cwd: APP_DIR,
+      env: { ...process.env, ...TEST_EMULATOR_ENV },
+      stdio: viteLog ? ['ignore', viteLog, viteLog] : 'pipe',
+      detached: false,
+    },
+  );
+
+  const deadline = Date.now() + TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if (await e2eServerHealthy()) {
+      console.log(`globalSetup: e2e app server ready at ${E2E_APP_URL} (test emulator ports).`);
+      return;
+    }
+    await new Promise((r) => setTimeout(r, POLL_MS));
+  }
+  throw new Error(
+    `e2e app server did not become ready at ${E2E_APP_URL} within ${TIMEOUT_MS / 1000}s`,
+  );
+}
+
 export default async function globalSetup(): Promise<void> {
   const forceFresh = process.env.E2E_FRESH === '1';
 
+  let reusedEmulators = false;
   if (!forceFresh) {
     const running = await getRunningEmulators();
     if (running && emulatorsMatchExpected(running)) {
@@ -159,7 +217,7 @@ export default async function globalSetup(): Promise<void> {
         console.log(
           'globalSetup: reused existing test emulators (set E2E_FRESH=1 to force restart).',
         );
-        return;
+        reusedEmulators = true;
       } catch (err) {
         console.warn(
           `globalSetup: existing emulators failed readiness check (${(err as Error).message}); restarting...`,
@@ -168,5 +226,9 @@ export default async function globalSetup(): Promise<void> {
     }
   }
 
-  await startEmulators();
+  if (!reusedEmulators) {
+    await startEmulators();
+  }
+
+  await ensureE2eServer();
 }
