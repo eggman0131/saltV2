@@ -100,7 +100,10 @@ function makeEvent({
 }
 
 beforeAll(() => {
-  adminApp = initializeApp({ projectId: PROJECT_ID }, 'cf-trigger-test');
+  // Default (unnamed) app: the trigger acquires Firestore via getFirestore()
+  // with no app argument, so the test must seed/assert through the same
+  // default app or the handler throws "default Firebase app does not exist".
+  adminApp = initializeApp({ projectId: PROJECT_ID });
 });
 
 afterAll(async () => {

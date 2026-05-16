@@ -1,0 +1,46 @@
+{
+  "functions": [
+    {
+      "source": "apps/cloud-functions",
+      "codebase": "default",
+      "ignore": ["node_modules", ".git", "**/*.test.ts"],
+      "predeploy": ["pnpm --filter @salt/cloud-functions build"]
+    }
+  ],
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "hosting": {
+    "public": "apps/web-pwa/build",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"]
+  },
+  "emulators": {
+    "auth": {
+      "port": 9100
+    },
+    "functions": {
+      "port": 5002
+    },
+    "firestore": {
+      "port": 8081
+    },
+    "storage": {
+      "port": 9200
+    },
+    "hosting": {
+      "port": 5003
+    },
+    "hub": {
+      "port": 4402
+    },
+    "ui": {
+      "enabled": true,
+      "port": 4002
+    },
+    "singleProjectMode": true
+  }
+}

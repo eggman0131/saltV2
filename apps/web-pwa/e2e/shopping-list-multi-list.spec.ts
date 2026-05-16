@@ -15,7 +15,7 @@ async function createFirstList(page: import('@playwright/test').Page): Promise<s
   await expect(page).toHaveURL(/#\/shopping\/new/, { timeout: 10_000 });
   await page.getByTestId('shopping-create-list-name').fill('Weekly shop');
   await page.getByRole('button', { name: /create/i }).click();
-  await expect(page).toHaveURL(/#\/shopping\/[a-z0-9-]+$/, { timeout: SYNC_TIMEOUT });
+  await expect(page).toHaveURL(/#\/shopping\/(?!new)[a-z0-9-]+$/, { timeout: SYNC_TIMEOUT });
   return page.url();
 }
 
@@ -40,8 +40,7 @@ test.describe('shopping list — multi-list', () => {
     await page.getByTestId('shopping-create-list-name').fill('Asian supermarket');
     await page.getByRole('button', { name: /create/i }).click();
 
-    const secondListUrl = page.url();
-    await expect(page).toHaveURL(/#\/shopping\/[a-z0-9-]+$/, { timeout: SYNC_TIMEOUT });
+    await expect(page).toHaveURL(/#\/shopping\/(?!new)[a-z0-9-]+$/, { timeout: SYNC_TIMEOUT });
     // The second list should be empty
     await expect(page.getByText('Your list is empty')).toBeVisible({ timeout: SYNC_TIMEOUT });
 
@@ -50,12 +49,19 @@ test.describe('shopping list — multi-list', () => {
 
     // Navigate back to first list via direct URL
     await page.goto(firstListUrl);
-    await expect(page.getByText('apples')).toBeVisible({ timeout: SYNC_TIMEOUT });
+    // Guard: confirm the app didn't redirect to /new before asserting content
+    await expect(page).toHaveURL(/#\/shopping\/(?!new)[a-z0-9-]+$/, { timeout: SYNC_TIMEOUT });
+    await expect(page.getByTestId('shopping-item-row').filter({ hasText: 'apples' })).toBeVisible({
+      timeout: SYNC_TIMEOUT,
+    });
 
     // Reload verifies activeListId is in the URL and survives reload
     await page.reload();
     await page.goto(firstListUrl);
-    await expect(page.getByText('apples')).toBeVisible({ timeout: SYNC_TIMEOUT });
+    await expect(page).toHaveURL(/#\/shopping\/(?!new)[a-z0-9-]+$/, { timeout: SYNC_TIMEOUT });
+    await expect(page.getByTestId('shopping-item-row').filter({ hasText: 'apples' })).toBeVisible({
+      timeout: SYNC_TIMEOUT,
+    });
   });
 
   test('default list cannot be deleted — delete button is disabled', async ({ page }, testInfo) => {
@@ -96,7 +102,7 @@ test.describe('shopping list — multi-list', () => {
     await page.getByTestId('shopping-add-list').click();
     await page.getByTestId('shopping-create-list-name').fill('Asian supermarket');
     await page.getByRole('button', { name: /create/i }).click();
-    await expect(page).toHaveURL(/#\/shopping\/[a-z0-9-]+$/, { timeout: SYNC_TIMEOUT });
+    await expect(page).toHaveURL(/#\/shopping\/(?!new)[a-z0-9-]+$/, { timeout: SYNC_TIMEOUT });
 
     // Go back to first list
     await page.goto(firstListUrl);
@@ -135,8 +141,8 @@ test.describe('shopping list — multi-list', () => {
     await page.getByTestId('shopping-add-list').click();
     await page.getByTestId('shopping-create-list-name').fill('Second list');
     await page.getByRole('button', { name: /create/i }).click();
+    await expect(page).toHaveURL(/#\/shopping\/(?!new)[a-z0-9-]+$/, { timeout: SYNC_TIMEOUT });
     const secondListUrl = page.url();
-    await expect(page).toHaveURL(/#\/shopping\/[a-z0-9-]+$/, { timeout: SYNC_TIMEOUT });
 
     // Navigate to second list
     await page.goto(secondListUrl);

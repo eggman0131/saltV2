@@ -16,7 +16,7 @@ export default defineConfig({
   globalTeardown: './e2e/globalTeardown.ts',
 
   use: {
-    baseURL: 'http://127.0.0.1:5173',
+    baseURL: 'http://127.0.0.1:5174',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -28,12 +28,9 @@ export default defineConfig({
     },
   ],
 
-  webServer: {
-    command: 'vite --host 127.0.0.1',
-    url: 'http://127.0.0.1:5173',
-    reuseExistingServer: true,
-    timeout: 60_000,
-    stdout: CI ? 'inherit' : 'pipe',
-    stderr: CI ? 'inherit' : 'pipe',
-  },
+  // NOTE: Playwright does NOT manage the e2e web server. Its `webServer` readiness
+  // probe does a raw socket connect that deadlocks on this WSL2 host's free-port
+  // blackhole (issue #79). The dedicated e2e app server on :5174 (wired to the test
+  // emulator ports) is owned by e2e/globalSetup.ts + e2e/globalTeardown.ts instead.
+  // Do not re-introduce a `webServer` block here.
 });

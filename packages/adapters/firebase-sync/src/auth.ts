@@ -19,7 +19,9 @@ let authEmulatorConnected = false;
 // when useEmulators=true. Idempotent.
 export function connectAuthEmulatorOnce(auth: Auth): void {
   if (authEmulatorConnected) return;
-  connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+  const _env = (import.meta as { env?: Record<string, string | undefined> }).env ?? {};
+  const authPort = _env['VITE_EMULATOR_AUTH_PORT'] ?? '9099';
+  connectAuthEmulator(auth, `http://127.0.0.1:${authPort}`, { disableWarnings: true });
   authEmulatorConnected = true;
 }
 

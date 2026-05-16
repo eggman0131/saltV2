@@ -27,8 +27,11 @@ export function initFirebase(
   }
 
   if (useEmulators && !emulatorsConnected) {
-    connectFirestoreEmulator(getFirestore(app), '127.0.0.1', 8080);
-    connectFunctionsEmulator(getFunctions(app, 'europe-west2'), '127.0.0.1', 5001);
+    const _env = (import.meta as { env?: Record<string, string | undefined> }).env ?? {};
+    const firestorePort = Number(_env['VITE_EMULATOR_FIRESTORE_PORT'] ?? 8080);
+    const functionsPort = Number(_env['VITE_EMULATOR_FUNCTIONS_PORT'] ?? 5001);
+    connectFirestoreEmulator(getFirestore(app), '127.0.0.1', firestorePort);
+    connectFunctionsEmulator(getFunctions(app, 'europe-west2'), '127.0.0.1', functionsPort);
     connectAuthEmulatorOnce(getAuth(app));
     emulatorsConnected = true;
   }
