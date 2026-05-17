@@ -1,12 +1,14 @@
 name: Claude Assistant
 
+# NOTE: deliberately NOT triggered by `issues: [opened, assigned]`.
+# Creating an issue (e.g. via the /issue skill) must not auto-launch the
+# bot — it used to fire here, post a comment, then die at --max-turns.
+# On-demand only: @claude in a comment or PR review still works.
 on:
   issue_comment:
     types: [created]
   pull_request_review_comment:
     types: [created]
-  issues:
-    types: [opened, assigned]
   pull_request_review:
     types: [submitted]
 
@@ -18,8 +20,15 @@ permissions:
 
 jobs:
   claude:
-    # Restrict to repo owner so randoms can't burn the API budget.
-    if: github.actor == 'eggman0131'
+    # On-demand only: repo owner AND an explicit @claude in the body.
+    # Without the @claude gate the job spun up (then no-opped) on every
+    # comment — including the MCP /phase-start, /phase-end and handoff
+    # comments — which is noise and wasted runner starts. comment.body
+    # covers issue_comment + pull_request_review_comment; review.body
+    # covers pull_request_review.
+    if: >
+      github.actor == 'eggman0131' &&
+      contains(github.event.comment.body || github.event.review.body, '@claude')
     runs-on: ubuntu-latest
 
     steps:

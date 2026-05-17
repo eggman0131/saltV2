@@ -1,0 +1,80 @@
+# Isolated Vitest integration emulator stack — containerized (issue #84, Phase 3).
+#
+# Phase 3 deliverable: the Vitest emulator integration suites
+# (`pnpm --filter @salt/firebase-sync test:emulator` and
+# `pnpm --filter @salt/cloud-functions test:emulator`) get their OWN composed
+# stack instead of hijacking the dev emulator / dev `firebase.json` ports.
+# Driven by scripts/test-emulator.mjs (root `pnpm test:emulator`).
+#
+# Isolation is structural and deliberate (issue #84):
+#   * Distinct compose project: `salt-vitest-emulators` (top-level `name:`),
+#     so it can never collide with the e2e stack's project
+#     (docker-compose.test.yml, project `test-emulators`).
+#   * Distinct host ports: 8082/9101 — disjoint from dev (8080/9099) and the
+#     e2e stack (8081/9100). The container-internal ports stay 8081/9100
+#     because this stack reuses the SINGLE test config
+#     /repo/firebase.test.docker.json (no second firebase config — Phase 2
+#     deleted firebase.test.json; Phase 3 must not resurrect a sibling).
+#   * Distinct named volume: `vitest-emulator-work`.
+#   * Firestore + Auth only — these suites never use the Functions emulator
+#     (the legacy root script ran `emulators:exec --only=firestore,auth`), so
+#     this stack has zero Cloud-Functions-bundle-prebuild coupling.
+#   * By design it is never run concurrently with the e2e stack.
+#
+# Reuses the settled Phase 1 image (same Dockerfile) — it consumes, does not
+# redesign, the Phase 1 primitive. `up --wait` blocks on the healthcheck
+# below (Firestore + Auth reachable), `down -v` reaps the whole tree via the
+# container boundary (issue #84 cause #2). Every readiness probe is
+# timer-bounded (`curl --max-time`) per the #79 WSL2 free-port contract.
+
+name: salt-vitest-emulators
+
+services:
+  vitest-emulators:
+    container_name: salt-vitest-emulators
+    build:
+      context: .
+      dockerfile: Dockerfile
+    init: true
+    working_dir: /work
+    # Override the image CMD: Firestore + Auth only (no Functions — these
+    # suites do not exercise the Functions emulator), against the single
+    # shared test config.
+    command:
+      - firebase
+      - emulators:start
+      - --config
+      - /repo/firebase.test.docker.json
+      - --project
+      - demo-salt
+      - --only
+      - auth,firestore
+    volumes:
+      # Repo read-only: the emulator only needs the config + firestore.rules.
+      - ../../:/repo:ro
+      # Writable scratch for firebase-debug.log / firestore-debug.log — the
+      # repo mount is read-only. Removed by `down -v`.
+      - vitest-emulator-work:/work
+    ports:
+      - "127.0.0.1:8082:8081" # Firestore (host 8082 -> container 8081)
+      - "127.0.0.1:9101:9100" # Auth      (host 9101 -> container 9100)
+    healthcheck:
+      # Override the image's Functions-aware healthcheck: this stack runs no
+      # Functions emulator, so "healthy" = Firestore + Auth reachable
+      # (HTTP status < 500), mirroring the reachable() semantics of
+      # healthcheck.sh minus the Functions probe. Timer-bounded per #79.
+      test:
+        - CMD-SHELL
+        - >
+          curl -s -o /dev/null --max-time 5 -w '%{http_code}' http://127.0.0.1:8081/ | grep -Eq '^[1-4][0-9][0-9]$'
+          && curl -s -o /dev/null --max-time 5 -w '%{http_code}' http://127.0.0.1:9100/ | grep -Eq '^[1-4][0-9][0-9]$'
+      interval: 5s
+      timeout: 10s
+      retries: 60
+      # Cold Firestore JVM warmup on a fresh machine/CI runner; generous so
+      # warmup is not flagged unhealthy.
+      start_period: 120s
+    stop_grace_period: 20s
+
+volumes:
+  vitest-emulator-work:

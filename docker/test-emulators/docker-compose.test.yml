@@ -1,0 +1,64 @@
+# Firebase e2e test emulator stack — containerized (issue #84).
+#
+# The e2e (Playwright) emulator stack: Firestore + Auth + Functions on the
+# test port set. apps/web-pwa/e2e/globalSetup.ts owns its lifecycle — it
+# builds the Cloud Functions bundle, then `docker compose ... up --wait`
+# brings this stack up healthcheck-gated; globalTeardown.ts runs
+# `docker compose ... down -v` under the CI/E2E_TEARDOWN gate. The isolated
+# Vitest integration suites use a SEPARATE composed stack
+# (docker-compose.vitest.yml, project salt-vitest-emulators) — not this file.
+#
+# Standalone usage (debugging; run from this directory):
+#   pnpm --filter @salt/cloud-functions build                # CF bundle first
+#   docker compose -f docker-compose.test.yml up --wait      # blocks until HEALTHY
+#   docker compose -f docker-compose.test.yml down -v         # reaps the whole tree
+#
+# `up --wait` returns only once the container healthcheck passes, i.e. once
+# Functions triggers are registered (see healthcheck.sh) — not merely "port
+# open". `down -v` removes the container (reaping the functions-runtime child
+# tree via the container boundary) and the scratch volume.
+#
+# The stack reads /repo/firebase.test.docker.json — the SINGLE test emulator
+# config (the legacy host-run firebase.test.json was deleted once nothing
+# host-runs the emulators; this is now the only source of truth, with
+# host:0.0.0.0 so the mapped ports are reachable from the host).
+
+services:
+  test-emulators:
+    container_name: salt-test-emulators
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # PID 1 init reaps any in-container zombies; the real guarantee is the
+    # container boundary: `down`/`down -v` reaps the functions-runtime tree
+    # that port-scoped `fuser -k` used to orphan (issue #84 cause #2).
+    init: true
+    working_dir: /work
+    volumes:
+      # Repo read-only: config + the prebuilt CF bundle + pnpm's relative
+      # workspace symlinks (firebase-admin/firebase-functions resolve because
+      # the whole repo is mounted, so the relative links stay intact).
+      - ../../:/repo:ro
+      # Writable scratch for firebase-debug.log / firestore-debug.log — the
+      # repo mount is read-only so the emulator cwd must live here. Removed
+      # by `down -v`.
+      - emulator-work:/work
+    ports:
+      - "127.0.0.1:8081:8081" # Firestore
+      - "127.0.0.1:9100:9100" # Auth
+      - "127.0.0.1:5002:5002" # Functions
+      - "127.0.0.1:4402:4402" # Emulator hub
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck.sh"]
+      interval: 5s
+      timeout: 10s
+      retries: 60
+      # Cold JVM (Firestore) + Functions trigger registration on a fresh
+      # machine/CI runner; generous so warmup is not flagged unhealthy.
+      start_period: 180s
+    # Give firebase a chance to stop the emulators cleanly on SIGTERM before
+    # the container is force-killed; the container boundary reaps either way.
+    stop_grace_period: 20s
+
+volumes:
+  emulator-work:

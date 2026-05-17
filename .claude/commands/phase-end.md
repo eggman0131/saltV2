@@ -64,10 +64,18 @@ Refs #ISSUE_NUMBER
 ```
 
 The footer must be exactly one line on its own line, preceded by one
-blank line, with NOTHING trailing the issue number. A trailing ` phase N`
-(or any text after `#ISSUE_NUMBER`) breaks commitlint's footer parsing
-and triggers a `footer-leading-blank` warning. Keep the phase number in
-the summary line, not the footer.
+blank line, with NOTHING trailing the issue number. Keep the phase
+number in the summary line, not the footer.
+
+**The only `#` in the entire commit message is the footer's
+`#ISSUE_NUMBER`.** Commitlint's parser treats every `#<number>` token
+as an issue reference; if a `#N` appears in the summary or any body
+bullet, the parser folds that line into the footer block, and because
+that line is not blank-line-preceded it fires a spurious
+`footer-leading-blank` warning even when the real `Refs` footer is
+formatted correctly. So everywhere except the footer, drop the hash —
+write "issue 84", "cause 1", "phase 2", "PR 80", "GH 79" with no `#`.
+Also no text trailing the footer's issue number (e.g. no ` phase N`).
 
 Footer keyword — `Refs` vs `Closes`:
 - Use `Refs #ISSUE_NUMBER` for every phase EXCEPT the issue's final phase.

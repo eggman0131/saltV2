@@ -51,8 +51,16 @@ jobs:
       - name: Theme check
         run: pnpm theme:check
 
-  e2e:
-    name: E2E (Playwright)
+  # Isolated Vitest emulator integration stack (issue #84, Phase 3/4).
+  # Firestore+Auth-only composed stack on its own project/ports
+  # (docker-compose.vitest.yml, project salt-vitest-emulators, 8082/9101).
+  # scripts/test-emulator.mjs owns the full lifecycle: down -v -> up --wait
+  # (healthcheck-gated) -> run suites -> always down -v in a finally. No Java,
+  # no CF prebuild, no Playwright. Sequenced before e2e (e2e `needs:` this job)
+  # so the two composed stacks are never concurrent — non-concurrent by design
+  # per #84; this is also the cheaper suite, so it fails fast ahead of e2e.
+  vitest-integration:
+    name: Vitest integration (emulator)
     runs-on: ubuntu-latest
 
     steps:
@@ -67,22 +75,39 @@ jobs:
           node-version: '22'
           cache: 'pnpm'
 
-      - uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '21'
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Cache Firebase emulators
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/firebase/emulators
-          key: firebase-emulators-${{ hashFiles('package.json') }}
+      # `pnpm test:emulator` = node scripts/test-emulator.mjs: brings up the
+      # composed Vitest stack healthcheck-gated and always tears it down with
+      # `down -v` in a finally. Docker is preinstalled on ubuntu-latest.
+      # firebase-sync/.env.test is committed, so checkout is all CI needs to
+      # retarget the client SDK to ports 8082/9101.
+      - name: Run Vitest emulator integration suites
+        run: pnpm test:emulator
 
-      - name: Build cloud functions
-        run: pnpm --filter @salt/cloud-functions build
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    # Sequenced after the Vitest integration stack so the e2e composed stack
+    # (docker-compose.test.yml, project test-emulators, 8081/9100/5002) is
+    # never concurrent with the Vitest one — non-concurrent by design (#84).
+    needs: vitest-integration
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '10.33.0'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Cache Playwright browsers
         id: playwright-cache
@@ -99,27 +124,15 @@ jobs:
             pnpm --filter @salt/web-pwa exec playwright install --with-deps chromium
           fi
 
-      - name: Start Vite dev server
-        run: |
-          pnpm --filter @salt/web-pwa exec vite --host 127.0.0.1 > /tmp/vite.log 2>&1 &
-          echo "Vite starting (PID $!)"
-
-      - name: Wait for Vite dev server
-        run: |
-          echo "Waiting for Vite on port 5173..."
-          timeout 60 bash -c 'until curl -s http://127.0.0.1:5173 > /dev/null 2>&1; do sleep 2; done'
-          echo "Vite ready"
-
+      # globalSetup.ts owns the whole lifecycle (issue #84, Phase 2): it builds
+      # the Cloud Functions bundle, then `docker compose ... up --wait` brings
+      # up the healthcheck-gated emulator stack (the gate replaces the old 120s
+      # trigger-registration poll), and spawns the e2e Vite server on :5174.
+      # No host Java / firebase-emulator cache / manual Vite — emulators are
+      # containerized (jars baked into the image). CI=true makes globalTeardown
+      # run `docker compose ... down -v`, reaping the whole process tree.
       - name: Run E2E tests
         run: pnpm --filter @salt/web-pwa e2e
-
-      - name: Show Firebase emulator log
-        if: failure()
-        run: cat /tmp/firebase-emulators.log 2>/dev/null || echo "No firebase log found"
-
-      - name: Show Vite log
-        if: failure()
-        run: cat /tmp/vite.log 2>/dev/null || echo "No Vite log found"
 
       - name: Upload Playwright report
         if: failure()

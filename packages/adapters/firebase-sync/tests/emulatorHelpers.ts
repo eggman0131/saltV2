@@ -6,7 +6,14 @@ import { getApp } from 'firebase/app';
 import { initFirebase } from '../src/init.js';
 
 const PROJECT_ID = 'demo-salt';
-const EMULATOR_HOST = '127.0.0.1:8080';
+// Firestore port for the REST clear endpoint. Read from import.meta.env (fed
+// by this package's .env.test → the isolated Vitest stack, issue #84 Phase 3)
+// — the same source init.ts/auth.ts use for the client SDK, so the clear
+// endpoint and the SDK always hit the same emulator. Dev port 8080 stays as
+// the ad-hoc fallback (hand-started emulator, no .env.test loaded).
+const _env = (import.meta as { env?: Record<string, string | undefined> }).env ?? {};
+const FIRESTORE_PORT = _env['VITE_EMULATOR_FIRESTORE_PORT'] ?? '8080';
+const EMULATOR_HOST = `127.0.0.1:${FIRESTORE_PORT}`;
 
 /**
  * Initialise Firebase for emulator tests and sign in anonymously so that

@@ -4,7 +4,9 @@
  * Proves that a write on one client (named "writer" app) lands in another
  * client's (default app) subscription callback within the convergence window.
  *
- * Requires the Firestore emulator running at 127.0.0.1:8080.
+ * Requires the isolated Vitest emulator stack (issue #84 Phase 3); ports come
+ * from this package's .env.test via import.meta.env, with the dev emulator
+ * (8080/9099) as the ad-hoc fallback.
  * Run via: pnpm test:emulator
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -40,6 +42,15 @@ import type {
 
 const CONVERGENCE_MS = 5000;
 
+// The "writer" app connects to the emulator directly (it does not go through
+// init.ts), so resolve the isolated Vitest stack ports from the same source
+// init.ts/auth.ts/emulatorHelpers.ts use — .env.test → import.meta.env — so
+// the writer and the default app always hit the same emulator (issue #84
+// Phase 3). Dev ports stay as the ad-hoc fallback.
+const _env = (import.meta as { env?: Record<string, string | undefined> }).env ?? {};
+const WRITER_FIRESTORE_PORT = Number(_env['VITE_EMULATOR_FIRESTORE_PORT'] ?? 8080);
+const WRITER_AUTH_PORT = _env['VITE_EMULATOR_AUTH_PORT'] ?? '9099';
+
 let writerApp: FirebaseApp;
 let writerDb: Firestore;
 
@@ -66,9 +77,11 @@ beforeAll(async () => {
 
   writerApp = initializeApp({ projectId: PROJECT_ID, apiKey: 'demo-api-key' }, 'rt-writer');
   writerDb = getFirestore(writerApp);
-  connectFirestoreEmulator(writerDb, '127.0.0.1', 8080);
+  connectFirestoreEmulator(writerDb, '127.0.0.1', WRITER_FIRESTORE_PORT);
   const writerAuth = getAuth(writerApp);
-  connectAuthEmulator(writerAuth, 'http://127.0.0.1:9099', { disableWarnings: true });
+  connectAuthEmulator(writerAuth, `http://127.0.0.1:${WRITER_AUTH_PORT}`, {
+    disableWarnings: true,
+  });
   await signInAnonymously(writerAuth);
 });
 
