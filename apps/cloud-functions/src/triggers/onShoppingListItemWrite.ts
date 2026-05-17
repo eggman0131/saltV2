@@ -1,4 +1,4 @@
-import { onDocumentWritten } from 'firebase-functions/firestore';
+import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { getFirestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
 import { matchOrCreate, parseShoppingListEntry } from '@salt/domain';
