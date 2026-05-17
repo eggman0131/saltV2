@@ -47,3 +47,6 @@ export type {
   AisleGroup,
   GroupedShoppingList,
 } from './queries/groupItemsByAisle.js';
+
+export { parseShoppingListEntry } from './queries/parseEntry.js';
+export type { ParsedEntry } from './queries/parseEntry.js';
