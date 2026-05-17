@@ -1,13 +1,15 @@
-# Firebase test emulator stack — containerized (issue #84, Phase 1).
+# Firebase e2e test emulator stack — containerized (issue #84).
 #
-# Phase 1 deliverable ONLY: a standalone, healthcheck-gated, deterministically
-# torn-down emulator stack. It is intentionally NOT yet wired into
-# globalSetup.ts / globalTeardown.ts (Phase 2) or `pnpm test:emulator`
-# (Phase 3).
+# The e2e (Playwright) emulator stack: Firestore + Auth + Functions on the
+# test port set. apps/web-pwa/e2e/globalSetup.ts owns its lifecycle — it
+# builds the Cloud Functions bundle, then `docker compose ... up --wait`
+# brings this stack up healthcheck-gated; globalTeardown.ts runs
+# `docker compose ... down -v` under the CI/E2E_TEARDOWN gate. The isolated
+# Vitest integration suites use a SEPARATE composed stack
+# (docker-compose.vitest.yml, project salt-vitest-emulators) — not this file.
 #
-# Standalone usage (run from this directory):
-#   # Cloud Functions bundle must exist first (Phase 2 automates this prebuild):
-#   pnpm --filter @salt/cloud-functions build
+# Standalone usage (debugging; run from this directory):
+#   pnpm --filter @salt/cloud-functions build                # CF bundle first
 #   docker compose -f docker-compose.test.yml up --wait      # blocks until HEALTHY
 #   docker compose -f docker-compose.test.yml down -v         # reaps the whole tree
 #
@@ -16,11 +18,10 @@
 # open". `down -v` removes the container (reaping the functions-runtime child
 # tree via the container boundary) and the scratch volume.
 #
-# The stack reads /repo/firebase.test.docker.json, a faithful mirror of
-# firebase.test.json with host:0.0.0.0 added so the mapped ports are
-# reachable from the host. Its port set MUST stay identical to
-# firebase.test.json; Phase 2 collapses the e2e path onto this container so
-# the two configs converge.
+# The stack reads /repo/firebase.test.docker.json — the SINGLE test emulator
+# config (the legacy host-run firebase.test.json was deleted once nothing
+# host-runs the emulators; this is now the only source of truth, with
+# host:0.0.0.0 so the mapped ports are reachable from the host).
 
 services:
   test-emulators:
