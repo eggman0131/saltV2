@@ -72,6 +72,7 @@ export async function matchOrCreate(
     const aisles = await loadAisles(aisleStore);
     let suggestedAisleId: string | null = null;
     let forceExtras: ArbitrationExtras | undefined;
+    let forceName = rawName;
     if (aisles.length > 0 && selectedAisleId == null) {
       const arbT0 = Date.now();
       const arbResult = await arbitration.arbitrate({ normalisedName, candidates: [], aisles });
@@ -79,13 +80,14 @@ export async function matchOrCreate(
       if (arbResult.kind === 'ok' && arbResult.value.kind === 'new') {
         suggestedAisleId = arbResult.value.aisleId ?? null;
         forceExtras = extrasFromNew(arbResult.value);
+        forceName = arbResult.value.canonName;
       }
       logArbitration(logBuilder, 'aisle_suggestion', 0, aisles.length, arbResult, arbDuration);
     }
     return persistNew(
       store,
       ids,
-      rawName,
+      forceName,
       selectedAisleId ?? suggestedAisleId ?? null,
       commitLog,
       forceExtras,
@@ -158,6 +160,7 @@ export async function matchOrCreate(
   // Run arbitration with empty candidates to populate aisle + item metadata.
   let finalAisleId = selectedAisleId ?? null;
   let newExtras: ArbitrationExtras | undefined;
+  let createName = rawName;
   if (finalAisleId === null) {
     const aisles = await loadAisles(aisleStore);
     if (aisles.length > 0) {
@@ -167,11 +170,12 @@ export async function matchOrCreate(
       if (arbResult.kind === 'ok' && arbResult.value.kind === 'new') {
         finalAisleId = arbResult.value.aisleId ?? null;
         newExtras = extrasFromNew(arbResult.value);
+        createName = arbResult.value.canonName;
       }
       logArbitration(logBuilder, 'aisle_suggestion', 0, aisles.length, arbResult, arbDuration);
     }
   }
-  return persistNew(store, ids, rawName, finalAisleId, commitLog, newExtras);
+  return persistNew(store, ids, createName, finalAisleId, commitLog, newExtras);
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -315,7 +319,7 @@ async function arbitrateShortlist(
       return persistNew(
         store,
         ids,
-        rawName,
+        arb.canonName,
         selectedAisleId ?? arb.aisleId ?? null,
         commitLog,
         extrasFromNew(arb),

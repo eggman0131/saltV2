@@ -362,14 +362,14 @@ describe('aisle suggestion — arbitration called on creation', () => {
     }
   });
 
-  it('creates item from rawName, not AI-suggested canonName', async () => {
+  it('creates item from the AI-arbitrated canonName, not the raw input', async () => {
     const { run } = makePipeline({
       aisleStore: makeAisleStoreWithAisles(),
-      arbitration: newArbitration('Canonical Garlic Name', 'produce'),
+      arbitration: newArbitration('Garlic', 'produce'),
     });
-    const result = await run('garlic-xyz-unique');
+    const result = await run('5 cloves garlic (minced)');
     if (result.kind === 'ok') {
-      expect(result.value.item.name).toBe('garlic-xyz-unique');
+      expect(result.value.item.name).toBe('Garlic');
     }
   });
 
@@ -629,6 +629,7 @@ describe('ambiguity gap — near-tie at stage 2 forwards to AI', () => {
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') {
       expect(result.value.decision).toBe('created');
+      expect(result.value.item.name).toBe('Alpha Beta');
     }
     // Original two items still exist; one new item added
     expect((store as ReturnType<typeof makeStore>).items).toHaveLength(3);
