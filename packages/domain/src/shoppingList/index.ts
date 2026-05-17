@@ -50,3 +50,5 @@ export type {
 
 export { parseShoppingListEntry } from './queries/parseEntry.js';
 export type { ParsedEntry } from './queries/parseEntry.js';
+
+export type { EntryParsePort } from './ports/EntryParsePort.js';

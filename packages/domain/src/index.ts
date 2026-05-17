@@ -136,6 +136,7 @@ export type {
   AisleGroup,
   GroupedShoppingList,
   ParsedEntry,
+  EntryParsePort,
 } from './shoppingList/index.js';
 export {
   createList,
