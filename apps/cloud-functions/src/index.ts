@@ -3,7 +3,7 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { setGlobalOptions } from 'firebase-functions/v2';
 import { defineSecret } from 'firebase-functions/params';
 import { onCall, onCallGenkit, isSignedIn, HttpsError } from 'firebase-functions/https';
-import { onDocumentWritten } from 'firebase-functions/firestore';
+import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions';
 import { normaliseName } from '@salt/domain';
 import {
