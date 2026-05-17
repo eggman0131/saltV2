@@ -4,9 +4,9 @@ import { cva, type VariantProps } from '../../lib/variants';
 export const textVariants = cva('leading-normal', {
   variants: {
     size: {
-      sm: 'text-sm',
-      md: 'text-base',
-      lg: 'text-lg',
+      sm: 'text-label-caps',
+      md: 'text-body-md',
+      lg: 'text-body-lg',
     },
     muted: {
       true: 'text-muted-foreground',

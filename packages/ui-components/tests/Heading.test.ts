@@ -36,18 +36,27 @@ describe('Heading', () => {
     it('applies base classes', () => {
       const { container } = render(Heading, { props: { children: snippet('Title') } });
       expect(container.querySelector('h2')).toHaveClass(
+        'font-display',
         'font-semibold',
         'tracking-tight',
         'text-foreground',
       );
     });
-    it('applies level-specific size class for h1', () => {
+    it('maps level 1 to the Salt display token', () => {
       const { container } = render(Heading, { props: { level: 1, children: snippet('Title') } });
-      expect(container.querySelector('h1')).toHaveClass('text-4xl');
+      expect(container.querySelector('h1')).toHaveClass('text-display');
     });
-    it('applies level-specific size class for h2', () => {
+    it('maps level 2 to the Salt h1 token', () => {
       const { container } = render(Heading, { props: { level: 2, children: snippet('Title') } });
-      expect(container.querySelector('h2')).toHaveClass('text-3xl');
+      expect(container.querySelector('h2')).toHaveClass('text-h1');
+    });
+    it('maps level 3 to the Salt h2 token', () => {
+      const { container } = render(Heading, { props: { level: 3, children: snippet('Title') } });
+      expect(container.querySelector('h3')).toHaveClass('text-h2');
+    });
+    it('maps level 6 to the Salt label-caps token', () => {
+      const { container } = render(Heading, { props: { level: 6, children: snippet('Title') } });
+      expect(container.querySelector('h6')).toHaveClass('text-label-caps');
     });
     it('merges class prop', () => {
       const { container } = render(Heading, {

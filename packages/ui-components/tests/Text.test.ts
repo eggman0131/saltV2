@@ -29,17 +29,17 @@ describe('Text', () => {
       const { container } = render(Text, { props: { as: 'div', children: snippet('Hello') } });
       expect(container.querySelector('div')).toBeInTheDocument();
     });
-    it('applies text-sm for size="sm"', () => {
+    it('applies text-label-caps for size="sm"', () => {
       const { container } = render(Text, { props: { size: 'sm', children: snippet('x') } });
-      expect(container.querySelector('p')).toHaveClass('text-sm');
+      expect(container.querySelector('p')).toHaveClass('text-label-caps');
     });
-    it('applies text-base for size="md" (default)', () => {
+    it('applies text-body-md for size="md" (default)', () => {
       const { container } = render(Text, { props: { children: snippet('x') } });
-      expect(container.querySelector('p')).toHaveClass('text-base');
+      expect(container.querySelector('p')).toHaveClass('text-body-md');
     });
-    it('applies text-lg for size="lg"', () => {
+    it('applies text-body-lg for size="lg"', () => {
       const { container } = render(Text, { props: { size: 'lg', children: snippet('x') } });
-      expect(container.querySelector('p')).toHaveClass('text-lg');
+      expect(container.querySelector('p')).toHaveClass('text-body-lg');
     });
     it('applies text-foreground by default (muted=false)', () => {
       const { container } = render(Text, { props: { children: snippet('x') } });

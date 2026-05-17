@@ -785,11 +785,11 @@ Sized primitives use one of these scales. Deviation requires a spec amendment.
 
 ### Text Size Scale (Text primitive)
 
-| size | class       |
-| ---- | ----------- |
-| `sm` | `text-sm`   |
-| `md` | `text-base` |
-| `lg` | `text-lg`   |
+| size | class             |
+| ---- | ----------------- |
+| `sm` | `text-label-caps` |
+| `md` | `text-body-md`    |
+| `lg` | `text-body-lg`    |
 
 ### Icon / Spinner sizes
 
@@ -1392,8 +1392,8 @@ Renders `<h{level}>`. Snippet: `default` (children).
 ### Styling
 
 ```
-base: 'font-semibold tracking-tight text-foreground'
-level: 1='text-4xl' | 2='text-3xl' | 3='text-2xl' | 4='text-xl' | 5='text-lg' | 6='text-base'
+base: 'font-display font-semibold tracking-tight text-foreground'
+level: 1='text-display' | 2='text-h1' | 3='text-h2' | 4='text-body-lg' | 5='text-body-md' | 6='text-label-caps'
 ```
 
 ---
