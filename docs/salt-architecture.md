@@ -123,7 +123,7 @@ This model is intentionally narrow. Multi‑workspace, sharing, or per‑documen
 - Implements `AuthProvider` using Firebase Auth.
 - Initialises Firestore with `persistentLocalCache()` in production (disabled in emulator tests to avoid stale cache).
 - Exposes the following as its primary data API:
-  - Canon: `subscribeCanonItems`, `subscribeAisles`, `upsertCanonItem`, `saveAisles`
+  - Canon: `subscribeCanonItems`, `subscribeAisles`, `upsertCanonItem`, `deleteCanonItem`, `saveAisles`
   - Shopping lists: `subscribeShoppingLists`, `listShoppingLists`, `createShoppingList`, `renameShoppingList`, `deleteShoppingList`
   - Shopping list items: `subscribeShoppingListItems`, `listShoppingListItems`, `saveShoppingListItem`, `deleteShoppingListItem`, `deleteShoppingListItems`, `moveShoppingListItems`
   - Shopping list config: `subscribeShoppingListsConfig`, `loadShoppingListsConfig`, `saveShoppingListsConfig`
