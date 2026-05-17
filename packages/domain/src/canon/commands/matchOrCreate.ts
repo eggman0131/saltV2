@@ -20,6 +20,18 @@ import { embedMatch } from '../queries/embedMatch.js';
 import { createCanonItem } from './createCanonItem.js';
 import { appendCanonSynonym } from './appendCanonSynonym.js';
 
+/**
+ * Review-queue markers written to `CanonItem.reasoning` when a new item is
+ * created but arbitration could not supply a canonical name. The raw input is
+ * kept verbatim and `needs_approval` (default true) surfaces it for a human to
+ * fix. Two distinct strings so the queue can tell a failed AI call apart from
+ * the AI running but not matching.
+ */
+export const ARBITRATION_FAILED_REASONING =
+  'AI arbitration call failed; raw input kept — needs review';
+export const ARBITRATION_NO_MATCH_REASONING =
+  'AI arbitration returned no match; raw input kept — needs review';
+
 export interface MatchOrCreateInput {
   readonly rawName: string;
   readonly selectedAisleId?: string | null | undefined;
@@ -72,6 +84,7 @@ export async function matchOrCreate(
     const aisles = await loadAisles(aisleStore);
     let suggestedAisleId: string | null = null;
     let forceExtras: ArbitrationExtras | undefined;
+    let forceName = rawName;
     if (aisles.length > 0 && selectedAisleId == null) {
       const arbT0 = Date.now();
       const arbResult = await arbitration.arbitrate({ normalisedName, candidates: [], aisles });
@@ -79,13 +92,16 @@ export async function matchOrCreate(
       if (arbResult.kind === 'ok' && arbResult.value.kind === 'new') {
         suggestedAisleId = arbResult.value.aisleId ?? null;
         forceExtras = extrasFromNew(arbResult.value);
+        forceName = arbResult.value.canonName;
+      } else {
+        forceExtras = { reasoning: arbitrationFailureReasoning(arbResult) };
       }
       logArbitration(logBuilder, 'aisle_suggestion', 0, aisles.length, arbResult, arbDuration);
     }
     return persistNew(
       store,
       ids,
-      rawName,
+      forceName,
       selectedAisleId ?? suggestedAisleId ?? null,
       commitLog,
       forceExtras,
@@ -158,6 +174,7 @@ export async function matchOrCreate(
   // Run arbitration with empty candidates to populate aisle + item metadata.
   let finalAisleId = selectedAisleId ?? null;
   let newExtras: ArbitrationExtras | undefined;
+  let createName = rawName;
   if (finalAisleId === null) {
     const aisles = await loadAisles(aisleStore);
     if (aisles.length > 0) {
@@ -167,11 +184,14 @@ export async function matchOrCreate(
       if (arbResult.kind === 'ok' && arbResult.value.kind === 'new') {
         finalAisleId = arbResult.value.aisleId ?? null;
         newExtras = extrasFromNew(arbResult.value);
+        createName = arbResult.value.canonName;
+      } else {
+        newExtras = { reasoning: arbitrationFailureReasoning(arbResult) };
       }
       logArbitration(logBuilder, 'aisle_suggestion', 0, aisles.length, arbResult, arbDuration);
     }
   }
-  return persistNew(store, ids, rawName, finalAisleId, commitLog, newExtras);
+  return persistNew(store, ids, createName, finalAisleId, commitLog, newExtras);
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -197,6 +217,12 @@ function extrasFromNew(arb: ArbitrationNew): ArbitrationExtras {
     ...(arb.unit !== undefined ? { unit: arb.unit } : {}),
     ...(arb.reasoning !== undefined ? { reasoning: arb.reasoning } : {}),
   };
+}
+
+function arbitrationFailureReasoning(
+  arbResult: Awaited<ReturnType<CanonArbitrationPort['arbitrate']>>,
+): string {
+  return arbResult.kind === 'err' ? ARBITRATION_FAILED_REASONING : ARBITRATION_NO_MATCH_REASONING;
 }
 
 async function loadAisles(aisleStore: AisleLocalStorePort) {
@@ -315,7 +341,7 @@ async function arbitrateShortlist(
       return persistNew(
         store,
         ids,
-        rawName,
+        arb.canonName,
         selectedAisleId ?? arb.aisleId ?? null,
         commitLog,
         extrasFromNew(arb),
