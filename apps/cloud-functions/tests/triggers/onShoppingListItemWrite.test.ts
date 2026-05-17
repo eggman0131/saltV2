@@ -61,6 +61,14 @@ vi.mock('../../src/flows/matchOrCreateCanon.js', () => ({
   buildMatchOrCreatePorts: vi.fn(() => ({})),
 }));
 
+// ─── Mock createServerEntryParseAdapter ──────────────────────────────────────
+
+const mockEntryParseAdapterParse = vi.fn();
+
+vi.mock('../../src/adapters/serverEntryParse.js', () => ({
+  createServerEntryParseAdapter: vi.fn(() => ({ parse: mockEntryParseAdapterParse })),
+}));
+
 // Import after all mocks.
 const { onShoppingListItemWrite } = await import('../../src/triggers/onShoppingListItemWrite.js');
 
@@ -121,6 +129,11 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockUpdate.mockResolvedValue(undefined);
   mockMatchOrCreate.mockReset();
+  // Default: AI fallback returns the full text unchanged (no split).
+  mockEntryParseAdapterParse.mockImplementation(async (text: string) => ({
+    kind: 'ok',
+    value: { name: text, context: '' },
+  }));
 });
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -281,6 +294,165 @@ describe('onShoppingListItemWrite', () => {
         'onShoppingListItemWrite',
         expect.objectContaining({ scope: 'shoppingListItem', errorCategory: 'StorageError' }),
       );
+    });
+  });
+
+  describe('entry parsing', () => {
+    it('feeds the clean parsed name to matchOrCreate for "for" entries', async () => {
+      mockMatchOrCreate.mockResolvedValue({
+        kind: 'ok',
+        value: { decision: 'matched', item: makeCanonItem({ id: 'c1', needs_approval: false }) },
+      });
+
+      const event = makeEvent({
+        before: null,
+        after: { rawText: 'birthday card for bob', canonId: null, matchState: 'pending' },
+      });
+      await (onShoppingListItemWrite as Function)(event);
+
+      expect(mockMatchOrCreate).toHaveBeenCalledWith(
+        { rawName: 'birthday card' },
+        expect.anything(),
+      );
+    });
+
+    it('writes clean rawText and notes when context was extracted and notes is empty', async () => {
+      mockMatchOrCreate.mockResolvedValue({
+        kind: 'ok',
+        value: { decision: 'matched', item: makeCanonItem({ id: 'c1', needs_approval: false }) },
+      });
+
+      const event = makeEvent({
+        before: null,
+        after: { rawText: 'birthday card for bob', canonId: null, matchState: 'pending' },
+      });
+      await (onShoppingListItemWrite as Function)(event);
+
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ rawText: 'birthday card', notes: 'for bob' }),
+      );
+    });
+
+    it('does not overwrite existing notes even when context is extracted', async () => {
+      mockMatchOrCreate.mockResolvedValue({
+        kind: 'ok',
+        value: { decision: 'matched', item: makeCanonItem({ id: 'c1', needs_approval: false }) },
+      });
+
+      const event = makeEvent({
+        before: null,
+        after: {
+          rawText: 'birthday card for bob',
+          canonId: null,
+          matchState: 'pending',
+          notes: 'urgent',
+        },
+      });
+      await (onShoppingListItemWrite as Function)(event);
+
+      const updateArg = mockUpdate.mock.calls[0][0] as Record<string, unknown>;
+      expect(updateArg).not.toHaveProperty('rawText');
+      expect(updateArg).not.toHaveProperty('notes');
+    });
+
+    it('does not write rawText or notes when no context was extracted', async () => {
+      mockMatchOrCreate.mockResolvedValue({
+        kind: 'ok',
+        value: { decision: 'matched', item: makeCanonItem({ id: 'c1', needs_approval: false }) },
+      });
+
+      // 'milk' — 1 word, deterministic finds no split, looksCompound=false → no AI call
+      const event = makeEvent({
+        before: null,
+        after: { rawText: 'milk', canonId: null, matchState: 'pending' },
+      });
+      await (onShoppingListItemWrite as Function)(event);
+
+      const updateArg = mockUpdate.mock.calls[0][0] as Record<string, unknown>;
+      expect(updateArg).not.toHaveProperty('rawText');
+      expect(updateArg).not.toHaveProperty('notes');
+    });
+
+    it('does not re-trigger after combined rawText+notes+matchState write', async () => {
+      // Simulate the doc state after a combined write: matchState is 'matched', canonId set.
+      const event = makeEvent({
+        after: {
+          rawText: 'birthday card',
+          notes: 'for bob',
+          canonId: 'c1',
+          matchState: 'matched',
+        },
+      });
+      await (onShoppingListItemWrite as Function)(event);
+
+      expect(mockMatchOrCreate).not.toHaveBeenCalled();
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('AI fallback', () => {
+    it('calls AI adapter and uses its split for compound entries the deterministic parser missed', async () => {
+      // 'olive oil garlic' — 3 words, no "for", deterministic finds no split → AI called
+      mockEntryParseAdapterParse.mockResolvedValue({
+        kind: 'ok',
+        value: { name: 'olive oil', context: 'garlic' },
+      });
+      mockMatchOrCreate.mockResolvedValue({
+        kind: 'ok',
+        value: { decision: 'matched', item: makeCanonItem({ id: 'c1', needs_approval: false }) },
+      });
+
+      const event = makeEvent({
+        before: null,
+        after: { rawText: 'olive oil garlic', canonId: null, matchState: 'pending' },
+      });
+      await (onShoppingListItemWrite as Function)(event);
+
+      expect(mockMatchOrCreate).toHaveBeenCalledWith({ rawName: 'olive oil' }, expect.anything());
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ rawText: 'olive oil', notes: 'garlic' }),
+      );
+    });
+
+    it('degrades gracefully to deterministic result when AI fallback returns Failure', async () => {
+      mockEntryParseAdapterParse.mockResolvedValue({
+        kind: 'err',
+        error: { kind: 'NetworkError', reason: 'transient' },
+      });
+      mockMatchOrCreate.mockResolvedValue({
+        kind: 'ok',
+        value: { decision: 'matched', item: makeCanonItem({ id: 'c1', needs_approval: false }) },
+      });
+
+      const event = makeEvent({
+        before: null,
+        after: { rawText: 'olive oil garlic', canonId: null, matchState: 'pending' },
+      });
+      await (onShoppingListItemWrite as Function)(event);
+
+      // Deterministic found no split → full text as clean name, no extra write
+      expect(mockMatchOrCreate).toHaveBeenCalledWith(
+        { rawName: 'olive oil garlic' },
+        expect.anything(),
+      );
+      const updateArg = mockUpdate.mock.calls[0][0] as Record<string, unknown>;
+      expect(updateArg).not.toHaveProperty('rawText');
+    });
+
+    it('does not call AI adapter for short entries that cannot be compound', async () => {
+      mockMatchOrCreate.mockResolvedValue({
+        kind: 'ok',
+        value: { decision: 'matched', item: makeCanonItem({ id: 'c1', needs_approval: false }) },
+      });
+
+      // 'oat milk' — 2 words, looksCompound=false
+      const event = makeEvent({
+        before: null,
+        after: { rawText: 'oat milk', canonId: null, matchState: 'pending' },
+      });
+      await (onShoppingListItemWrite as Function)(event);
+
+      expect(mockEntryParseAdapterParse).not.toHaveBeenCalled();
     });
   });
 

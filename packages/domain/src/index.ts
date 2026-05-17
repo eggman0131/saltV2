@@ -135,6 +135,8 @@ export type {
   ItemGroup,
   AisleGroup,
   GroupedShoppingList,
+  ParsedEntry,
+  EntryParsePort,
 } from './shoppingList/index.js';
 export {
   createList,
@@ -150,6 +152,7 @@ export {
   clearCheckedItems,
   moveItems,
   groupItemsByAisle,
+  parseShoppingListEntry,
 } from './shoppingList/index.js';
 
 // Cross-cutting ports.

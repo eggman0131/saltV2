@@ -1,15 +1,20 @@
 import { onDocumentWritten } from 'firebase-functions/firestore';
 import { getFirestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
-import { matchOrCreate } from '@salt/domain';
+import { matchOrCreate, parseShoppingListEntry } from '@salt/domain';
 import {
   flushServerObservability,
   startSpan,
   whenServerObservabilityReady,
 } from '@salt/ld-observability/server';
 import { buildMatchOrCreatePorts } from '../flows/matchOrCreateCanon.js';
+import { createServerEntryParseAdapter } from '../adapters/serverEntryParse.js';
 
 const TRIGGER_PATH = 'shoppingLists/{listId}/items/{itemId}';
+
+function looksCompound(text: string): boolean {
+  return text.trim().split(/\s+/).length >= 3;
+}
 
 export const onShoppingListItemWrite = onDocumentWritten(TRIGGER_PATH, async (event) => {
   const after = event.data?.after;
@@ -36,6 +41,19 @@ export const onShoppingListItemWrite = onDocumentWritten(TRIGGER_PATH, async (ev
     if (beforeRawText === rawText) return;
   }
 
+  // Parse: deterministic first; AI fallback for compound entries the rule missed.
+  let parsed = parseShoppingListEntry(rawText);
+  if (parsed.context === '' && looksCompound(rawText)) {
+    const aiResult = await createServerEntryParseAdapter().parse(rawText);
+    if (aiResult.kind === 'ok') {
+      parsed = aiResult.value;
+    }
+  }
+
+  const cleanName = parsed.name;
+  const context = parsed.context;
+  const currentNotes = typeof afterData['notes'] === 'string' ? afterData['notes'] : '';
+
   const { listId, itemId } = event.params;
 
   await whenServerObservabilityReady();
@@ -46,7 +64,7 @@ export const onShoppingListItemWrite = onDocumentWritten(TRIGGER_PATH, async (ev
 
   let errorCategory: string | null = null;
   try {
-    const result = await matchOrCreate({ rawName: rawText }, buildMatchOrCreatePorts(span));
+    const result = await matchOrCreate({ rawName: cleanName }, buildMatchOrCreatePorts(span));
 
     const db = getFirestore();
     const docRef = db.collection('shoppingLists').doc(listId).collection('items').doc(itemId);
@@ -63,10 +81,13 @@ export const onShoppingListItemWrite = onDocumentWritten(TRIGGER_PATH, async (ev
     span.setAttribute('canon.outcome', decision);
     span.setAttribute('canon.result', item.id);
 
+    const nameChanged = cleanName !== rawText;
+
     await docRef.update({
       canonId: item.id,
       matchState: newMatchState,
       updatedAt: new Date().toISOString(),
+      ...(nameChanged && currentNotes === '' && { rawText: cleanName, notes: context }),
     });
   } finally {
     // DORMANT: trace propagation — trigger boundary; mark per convention.
