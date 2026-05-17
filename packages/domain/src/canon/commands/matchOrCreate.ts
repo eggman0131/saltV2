@@ -20,6 +20,18 @@ import { embedMatch } from '../queries/embedMatch.js';
 import { createCanonItem } from './createCanonItem.js';
 import { appendCanonSynonym } from './appendCanonSynonym.js';
 
+/**
+ * Review-queue markers written to `CanonItem.reasoning` when a new item is
+ * created but arbitration could not supply a canonical name. The raw input is
+ * kept verbatim and `needs_approval` (default true) surfaces it for a human to
+ * fix. Two distinct strings so the queue can tell a failed AI call apart from
+ * the AI running but not matching.
+ */
+export const ARBITRATION_FAILED_REASONING =
+  'AI arbitration call failed; raw input kept — needs review';
+export const ARBITRATION_NO_MATCH_REASONING =
+  'AI arbitration returned no match; raw input kept — needs review';
+
 export interface MatchOrCreateInput {
   readonly rawName: string;
   readonly selectedAisleId?: string | null | undefined;
@@ -81,6 +93,8 @@ export async function matchOrCreate(
         suggestedAisleId = arbResult.value.aisleId ?? null;
         forceExtras = extrasFromNew(arbResult.value);
         forceName = arbResult.value.canonName;
+      } else {
+        forceExtras = { reasoning: arbitrationFailureReasoning(arbResult) };
       }
       logArbitration(logBuilder, 'aisle_suggestion', 0, aisles.length, arbResult, arbDuration);
     }
@@ -171,6 +185,8 @@ export async function matchOrCreate(
         finalAisleId = arbResult.value.aisleId ?? null;
         newExtras = extrasFromNew(arbResult.value);
         createName = arbResult.value.canonName;
+      } else {
+        newExtras = { reasoning: arbitrationFailureReasoning(arbResult) };
       }
       logArbitration(logBuilder, 'aisle_suggestion', 0, aisles.length, arbResult, arbDuration);
     }
@@ -201,6 +217,12 @@ function extrasFromNew(arb: ArbitrationNew): ArbitrationExtras {
     ...(arb.unit !== undefined ? { unit: arb.unit } : {}),
     ...(arb.reasoning !== undefined ? { reasoning: arb.reasoning } : {}),
   };
+}
+
+function arbitrationFailureReasoning(
+  arbResult: Awaited<ReturnType<CanonArbitrationPort['arbitrate']>>,
+): string {
+  return arbResult.kind === 'err' ? ARBITRATION_FAILED_REASONING : ARBITRATION_NO_MATCH_REASONING;
 }
 
 async function loadAisles(aisleStore: AisleLocalStorePort) {

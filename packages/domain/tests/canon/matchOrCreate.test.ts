@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
-import { matchOrCreate } from '../../src/canon/commands/matchOrCreate.js';
+import {
+  matchOrCreate,
+  ARBITRATION_FAILED_REASONING,
+  ARBITRATION_NO_MATCH_REASONING,
+} from '../../src/canon/commands/matchOrCreate.js';
 import type { CanonLocalStorePort } from '../../src/canon/ports/CanonLocalStorePort.js';
 import type { AisleLocalStorePort } from '../../src/canon/ports/AisleLocalStorePort.js';
 import type { EmbeddingPort } from '../../src/canon/ports/EmbeddingPort.js';
@@ -545,6 +549,80 @@ describe('error paths', () => {
     if (result.kind === 'ok') {
       expect(result.value.item.name).toBe('Garlic');
       expect(result.value.item.aisleId).toBeNull();
+    }
+  });
+});
+
+// ─── Phase 2 — fallback name when arbitration fails on creation ──────────────
+// When a new item is created but arbitration could not supply a canonical name,
+// the raw input is kept verbatim and a reasoning marker surfaces it for review.
+// err and no-match get distinct markers; needs_approval stays true by default.
+
+describe('fallback — arbitration invoked but no canonical name', () => {
+  it('no-candidates path: arbitration error → rawName + failed marker, needs_approval', async () => {
+    const { run } = makePipeline({
+      aisleStore: makeAisleStoreWithAisles(),
+      arbitration: errorArbitration(),
+    });
+    const result = await run('5 cloves garlic (minced)');
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value.decision).toBe('created');
+      expect(result.value.item.name).toBe('5 cloves garlic (minced)');
+      expect(result.value.item.reasoning).toBe(ARBITRATION_FAILED_REASONING);
+      expect(result.value.item.needs_approval).toBe(true);
+    }
+  });
+
+  it('no-candidates path: arbitration no-match → rawName + no-match marker', async () => {
+    const { run } = makePipeline({
+      aisleStore: makeAisleStoreWithAisles(),
+      arbitration: noMatchArbitration(),
+    });
+    const result = await run('5 cloves garlic (minced)');
+    if (result.kind === 'ok') {
+      expect(result.value.item.name).toBe('5 cloves garlic (minced)');
+      expect(result.value.item.reasoning).toBe(ARBITRATION_NO_MATCH_REASONING);
+      expect(result.value.item.needs_approval).toBe(true);
+    }
+  });
+
+  it('forceCreate path: arbitration error → rawName + failed marker', async () => {
+    const { run } = makePipeline({
+      aisleStore: makeAisleStoreWithAisles(),
+      arbitration: errorArbitration(),
+    });
+    const result = await run('2kg maris piper potatoes', null, true);
+    if (result.kind === 'ok') {
+      expect(result.value.decision).toBe('created');
+      expect(result.value.item.name).toBe('2kg maris piper potatoes');
+      expect(result.value.item.reasoning).toBe(ARBITRATION_FAILED_REASONING);
+    }
+  });
+
+  it('forceCreate path: arbitration no-match → rawName + no-match marker', async () => {
+    const { run } = makePipeline({
+      aisleStore: makeAisleStoreWithAisles(),
+      arbitration: noMatchArbitration(),
+    });
+    const result = await run('2kg maris piper potatoes', null, true);
+    if (result.kind === 'ok') {
+      expect(result.value.item.reasoning).toBe(ARBITRATION_NO_MATCH_REASONING);
+    }
+  });
+
+  it('manual create with a chosen aisle skips arbitration — no failure marker', async () => {
+    // selectedAisleId provided → arbitration never runs on the no-candidates
+    // path; this is a deliberately-authored canon name, not a failure.
+    const { run } = makePipeline({
+      aisleStore: makeAisleStoreWithAisles(),
+      arbitration: errorArbitration(),
+    });
+    const result = await run('Maris Piper Potato', 'produce');
+    if (result.kind === 'ok') {
+      expect(result.value.item.name).toBe('Maris Piper Potato');
+      expect(result.value.item.aisleId).toBe('produce');
+      expect(result.value.item.reasoning).toBeUndefined();
     }
   });
 });
