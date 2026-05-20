@@ -31,6 +31,13 @@ cloud-functions            →  shared-types, domain, ld-observability/server
 9. **`shared-types` imports nothing from `@salt/*`.** It may only depend on external packages or nothing.
 10. **Adapters never throw for operational errors.** All failures cross the boundary as `Failure<DomainError>` or `Conflict<T>` (see [docs/salt-architecture.md §7](docs/salt-architecture.md)).
 
+## Zod schema conventions
+
+- **Schemas live in `@salt/domain/schemas`.** All zod schemas are defined under `packages/domain/src/schemas/` and exported via the `@salt/domain/schemas` subpath. Do not define schemas in adapters, apps, or `@salt/shared-types`.
+- **Schema-first.** Define the zod schema first; derive the TypeScript type with `type Foo = z.infer<typeof FooSchema>`. Never maintain a hand-written type alongside a schema for the same shape.
+- **Validate at trust boundaries only.** Add `.parse()` or `.safeParse()` at: AI/Genkit flow outputs, Firestore document reads (in `firebase-sync`), callable CF inputs, and "type laundering" sites (`as` casts, `unknown` narrowings, `JSON.parse`, string → structured parsers). Do **not** add validation to internal domain → domain calls, adapter internals, or any code the TypeScript compiler already proves correct.
+- **Validation failures funnel into `Failure<DomainError>`.** Do not throw across layer seams. Use `.safeParse()` and surface errors as `Failure` per the architecture contract (see [docs/salt-architecture.md §7](docs/salt-architecture.md)).
+
 ## Enforcement
 
 - `pnpm lint` — ESLint with `eslint-plugin-boundaries` checks the import graph.

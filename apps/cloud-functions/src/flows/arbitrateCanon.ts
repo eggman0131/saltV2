@@ -1,5 +1,6 @@
 import { z } from 'genkit';
 import { googleAI } from '@genkit-ai/google-genai';
+import { CanonArbitrationAIOutputSchema } from '@salt/domain/schemas';
 import { ai } from '../genkit.js';
 
 const GENERATION_MODEL = googleAI.model('gemini-3-flash-preview');
@@ -13,18 +14,6 @@ const ArbitrationRequestSchema = z.object({
     }),
   ),
   aisles: z.array(z.object({ id: z.string(), name: z.string() })),
-});
-
-// Flat schema returned by the model; the flow maps it to the domain result shape.
-const AIOutputSchema = z.object({
-  match_found: z.boolean(),
-  match_id: z.string().nullable(),
-  canonical_name: z.string().nullable(),
-  aisle_name: z.string().nullable(),
-  shoppingBehavior: z.enum(['stocked', 'check', 'needed']),
-  largeQuantityThreshold: z.number().nullable(),
-  unit: z.enum(['g', 'ml', 'count']).nullable(),
-  reasoning: z.string(),
 });
 
 // Flow output — discriminated union matching ArbitrationResult; includes prompt and rawResponse.
@@ -65,7 +54,7 @@ export const arbitrateCanonFlow = ai.defineFlow(
     const result = await ai.generate({
       model: GENERATION_MODEL,
       prompt: builtPrompt,
-      output: { schema: AIOutputSchema },
+      output: { schema: CanonArbitrationAIOutputSchema },
       config: { temperature: 0 },
     });
     const output = result.output!;
