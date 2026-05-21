@@ -57,13 +57,14 @@ let writerDb: Firestore;
 function makeItem(id: string, name = 'Test'): CanonItem {
   return {
     id,
-    schemaVersion: 2,
+    schemaVersion: 5,
     name,
     synonyms: [],
     aisleId: null,
     thumbnail: null,
     embedding: null,
     needs_approval: false,
+    shoppingBehavior: 'needed',
     updatedAt: '',
   };
 }

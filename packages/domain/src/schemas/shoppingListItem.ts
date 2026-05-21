@@ -15,16 +15,16 @@ export const SourceRefSchema = z.discriminatedUnion('kind', [
 ]);
 
 export const ShoppingListItemSchema = z.object({
-  id: z.string(),
-  rawText: z.string(),
-  notes: z.string(),
-  sources: z.array(SourceRefSchema),
-  canonId: z.string().nullable(),
-  matchState: z.enum(['pending', 'matched', 'needs_approval', 'failed']),
-  checked: z.boolean(),
-  schemaVersion: z.literal(1),
-  createdAt: z.string(),
-  updatedAt: z.string(),
+  id: z.string().default(''),
+  rawText: z.string().default(''),
+  notes: z.string().default(''),
+  sources: z.array(SourceRefSchema).default([]),
+  canonId: z.string().nullable().default(null),
+  matchState: z.enum(['pending', 'matched', 'needs_approval', 'failed']).catch('pending'),
+  checked: z.boolean().default(false),
+  schemaVersion: z.literal(1).default(1),
+  createdAt: z.string().default(''),
+  updatedAt: z.string().default(''),
 });
 
 export type SourceRefDoc = z.infer<typeof SourceRefSchema>;
