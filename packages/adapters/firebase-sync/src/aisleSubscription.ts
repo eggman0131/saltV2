@@ -2,20 +2,11 @@ import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import type { Aisle } from '@salt/domain';
 import type { DomainError } from '@salt/shared-types';
+import { AislesDocumentSchema } from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
 
 const AISLES_COLLECTION = 'canonData';
 const AISLES_DOC_ID = 'aisles';
-
-function fromDoc(data: Record<string, unknown>): Aisle[] {
-  return Array.isArray(data['aisles'])
-    ? (data['aisles'] as Array<{ id: string; name: string; order: number }>).map((a) => ({
-        id: a.id,
-        name: a.name,
-        order: typeof a.order === 'number' ? a.order : 0,
-      }))
-    : [];
-}
 
 export function subscribeAisles(
   onAisles: (aisles: Aisle[]) => void,
@@ -25,7 +16,16 @@ export function subscribeAisles(
   return onSnapshot(
     doc(db, AISLES_COLLECTION, AISLES_DOC_ID),
     (snap) => {
-      onAisles(snap.exists() ? fromDoc(snap.data() as Record<string, unknown>) : []);
+      if (!snap.exists()) {
+        onAisles([]);
+        return;
+      }
+      const result = AislesDocumentSchema.safeParse(snap.data());
+      if (!result.success) {
+        onError({ kind: 'StorageError', reason: 'corruption' });
+        return;
+      }
+      onAisles(result.data.aisles);
     },
     (err) => onError(classifyFirestoreError(err)),
   );

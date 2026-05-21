@@ -9,51 +9,14 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
-import type { ShoppingListItem, MatchState, SourceRef } from '@salt/domain';
+import type { ShoppingListItem } from '@salt/domain';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success, failure } from '@salt/shared-types';
+import { ShoppingListItemSchema } from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
 
 const LISTS_COLLECTION = 'shoppingLists';
 const ITEMS_SUB = 'items';
-
-const VALID_MATCH_STATES = new Set<string>(['pending', 'matched', 'needs_approval', 'failed']);
-
-function isMatchState(v: unknown): v is MatchState {
-  return typeof v === 'string' && VALID_MATCH_STATES.has(v);
-}
-
-function sourcesFromDoc(raw: unknown): SourceRef[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.map((s: unknown): SourceRef => {
-    const src = s as Record<string, unknown>;
-    if (src['kind'] === 'recipe') {
-      const ref: SourceRef = {
-        kind: 'recipe',
-        recipeId: String(src['recipeId'] ?? ''),
-        servings: typeof src['servings'] === 'number' ? src['servings'] : 1,
-        ...(typeof src['label'] === 'string' ? { label: src['label'] } : {}),
-      };
-      return ref;
-    }
-    return { kind: 'manual' };
-  });
-}
-
-function fromDoc(data: Record<string, unknown>): ShoppingListItem {
-  return {
-    id: String(data['id'] ?? ''),
-    rawText: String(data['rawText'] ?? ''),
-    notes: String(data['notes'] ?? ''),
-    sources: sourcesFromDoc(data['sources']),
-    canonId: typeof data['canonId'] === 'string' ? data['canonId'] : null,
-    matchState: isMatchState(data['matchState']) ? data['matchState'] : 'pending',
-    checked: Boolean(data['checked']),
-    schemaVersion: 1,
-    createdAt: String(data['createdAt'] ?? ''),
-    updatedAt: String(data['updatedAt'] ?? ''),
-  };
-}
 
 export function subscribeShoppingListItems(
   listId: string,
@@ -63,7 +26,21 @@ export function subscribeShoppingListItems(
   const db = getFirestore(getApp());
   return onSnapshot(
     collection(db, LISTS_COLLECTION, listId, ITEMS_SUB),
-    (snap) => onItems(snap.docs.map((d) => fromDoc(d.data() as Record<string, unknown>))),
+    (snap) => {
+      const valid: ShoppingListItem[] = [];
+      for (const d of snap.docs) {
+        const result = ShoppingListItemSchema.safeParse(d.data());
+        if (result.success) {
+          valid.push(result.data as ShoppingListItem);
+        } else {
+          console.error(
+            `[ShoppingListItemSchema] Document ${d.id} failed validation`,
+            result.error,
+          );
+        }
+      }
+      onItems(valid);
+    },
     (err) => onError(classifyFirestoreError(err)),
   );
 }
@@ -74,7 +51,16 @@ export async function listShoppingListItems(
   try {
     const db = getFirestore(getApp());
     const snap = await getDocs(collection(db, LISTS_COLLECTION, listId, ITEMS_SUB));
-    return success(snap.docs.map((d) => fromDoc(d.data() as Record<string, unknown>)));
+    const valid: ShoppingListItem[] = [];
+    for (const d of snap.docs) {
+      const result = ShoppingListItemSchema.safeParse(d.data());
+      if (result.success) {
+        valid.push(result.data as ShoppingListItem);
+      } else {
+        console.error(`[ShoppingListItemSchema] Document ${d.id} failed validation`, result.error);
+      }
+    }
+    return success(valid);
   } catch (err) {
     return failure(classifyFirestoreError(err));
   }
