@@ -1,20 +1,9 @@
 import { z } from 'genkit';
 import { googleAI } from '@genkit-ai/google-genai';
-import { CanonArbitrationAIOutputSchema } from '@salt/domain/schemas';
+import { ArbitrationRequestSchema, CanonArbitrationAIOutputSchema } from '@salt/domain/schemas';
 import { ai } from '../genkit.js';
 
 const GENERATION_MODEL = googleAI.model('gemini-3-flash-preview');
-
-const ArbitrationRequestSchema = z.object({
-  normalisedName: z.string(),
-  candidates: z.array(
-    z.object({
-      item: z.object({ id: z.string(), name: z.string() }),
-      confidence: z.number(),
-    }),
-  ),
-  aisles: z.array(z.object({ id: z.string(), name: z.string() })),
-});
 
 // Flow output — discriminated union matching ArbitrationResult; includes prompt and rawResponse.
 const ArbitrationResultSchema = z.discriminatedUnion('kind', [

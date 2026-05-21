@@ -13,3 +13,9 @@ export const PopulateEquipmentEntryAIOutputSchema = z.object({
 
 export type EquipmentAccessory = z.infer<typeof EquipmentAccessorySchema>;
 export type PopulateEquipmentEntryAIOutput = z.infer<typeof PopulateEquipmentEntryAIOutputSchema>;
+
+export const PopulateEquipmentEntryInputSchema = z.object({
+  confirmedName: z.string(),
+});
+
+export type PopulateEquipmentEntryInput = z.infer<typeof PopulateEquipmentEntryInputSchema>;

@@ -6,6 +6,7 @@ import { onCall, onCallGenkit, isSignedIn, HttpsError } from 'firebase-functions
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions';
 import { normaliseName } from '@salt/domain';
+import { CanonItemSchema, MatchOrCreateCanonInputSchema } from '@salt/domain/schemas';
 import {
   initServerObservability,
   whenServerObservabilityReady,
@@ -78,6 +79,11 @@ export const matchOrCreateCanon = onCall(
       throw new HttpsError('unauthenticated', 'Sign in required.');
     }
 
+    const parsed = MatchOrCreateCanonInputSchema.safeParse(request.data);
+    if (!parsed.success) {
+      throw new HttpsError('invalid-argument', 'Invalid request payload.');
+    }
+
     await whenServerObservabilityReady();
 
     // DORMANT: trace propagation — see block comment above.
@@ -113,13 +119,18 @@ export const onCanonItemWritten = onDocumentWritten(
     const after = event.data?.after;
     if (!after?.exists) return;
 
-    const data = after.data() as Record<string, unknown>;
-    if (Array.isArray(data['embedding'])) return;
+    const parsed = CanonItemSchema.safeParse(after.data());
+    if (!parsed.success) {
+      logger.error('onCanonItemWritten: invalid doc shape, skipping', {
+        id: event.params.id,
+        error: parsed.error.message,
+      });
+      return;
+    }
 
-    const name = typeof data['name'] === 'string' ? data['name'] : null;
-    if (!name) return;
+    if (parsed.data.embedding) return;
 
-    const normalised = normaliseName(name);
+    const normalised = normaliseName(parsed.data.name);
     if (!normalised) return;
 
     try {

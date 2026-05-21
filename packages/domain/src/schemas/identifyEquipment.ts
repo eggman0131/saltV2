@@ -12,3 +12,9 @@ export const IdentifyEquipmentAIOutputSchema = z.object({
 
 export type EquipmentCandidate = z.infer<typeof EquipmentCandidateSchema>;
 export type IdentifyEquipmentAIOutput = z.infer<typeof IdentifyEquipmentAIOutputSchema>;
+
+export const IdentifyEquipmentInputSchema = z.object({
+  rawName: z.string(),
+});
+
+export type IdentifyEquipmentInput = z.infer<typeof IdentifyEquipmentInputSchema>;

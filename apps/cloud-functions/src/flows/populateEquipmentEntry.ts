@@ -1,18 +1,16 @@
-import { z } from 'genkit';
 import { googleAI } from '@genkit-ai/google-genai';
-import { PopulateEquipmentEntryAIOutputSchema } from '@salt/domain/schemas';
+import {
+  PopulateEquipmentEntryAIOutputSchema,
+  PopulateEquipmentEntryInputSchema,
+} from '@salt/domain/schemas';
 import { ai } from '../genkit.js';
 
 const GENERATION_MODEL = googleAI.model('gemini-3-flash-preview');
 
-const PopulateEquipmentEntryRequestSchema = z.object({
-  confirmedName: z.string(),
-});
-
 export const populateEquipmentEntryFlow = ai.defineFlow(
   {
     name: 'populateEquipmentEntry',
-    inputSchema: PopulateEquipmentEntryRequestSchema,
+    inputSchema: PopulateEquipmentEntryInputSchema,
     outputSchema: PopulateEquipmentEntryAIOutputSchema,
   },
   async ({ confirmedName }) => {

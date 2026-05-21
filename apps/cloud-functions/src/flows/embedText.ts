@@ -1,5 +1,6 @@
 import { z } from 'genkit';
 import { googleAI } from '@genkit-ai/google-genai';
+import { EmbedTextInputSchema } from '@salt/domain/schemas';
 import { ai } from '../genkit.js';
 
 const EMBEDDING_MODEL = 'gemini-embedding-001';
@@ -7,7 +8,7 @@ const EMBEDDING_MODEL = 'gemini-embedding-001';
 export const embedTextFlow = ai.defineFlow(
   {
     name: 'embedText',
-    inputSchema: z.object({ text: z.string() }),
+    inputSchema: EmbedTextInputSchema,
     outputSchema: z.object({ values: z.array(z.number()) }),
   },
   async ({ text }) => {

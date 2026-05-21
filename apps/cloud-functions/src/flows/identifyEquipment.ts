@@ -1,18 +1,16 @@
-import { z } from 'genkit';
 import { googleAI } from '@genkit-ai/google-genai';
-import { IdentifyEquipmentAIOutputSchema } from '@salt/domain/schemas';
+import {
+  IdentifyEquipmentAIOutputSchema,
+  IdentifyEquipmentInputSchema,
+} from '@salt/domain/schemas';
 import { ai } from '../genkit.js';
 
 const GENERATION_MODEL = googleAI.model('gemini-3-flash-preview');
 
-const IdentifyEquipmentRequestSchema = z.object({
-  rawName: z.string(),
-});
-
 export const identifyEquipmentFlow = ai.defineFlow(
   {
     name: 'identifyEquipment',
-    inputSchema: IdentifyEquipmentRequestSchema,
+    inputSchema: IdentifyEquipmentInputSchema,
     outputSchema: IdentifyEquipmentAIOutputSchema,
   },
   async ({ rawName }) => {

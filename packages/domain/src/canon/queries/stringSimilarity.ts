@@ -11,6 +11,8 @@ function levenshtein(a: string, b: string): number {
   const m = a.length;
   const n = b.length;
   let prev: number[] = Array.from({ length: n + 1 }, (_, j) => j);
+  // noUncheckedIndexedAccess: array access returns T | undefined; loop bounds
+  // guarantee all accesses are in-range, so casts are safe.
   let curr: number[] = new Array(n + 1).fill(0) as number[];
   for (let i = 1; i <= m; i++) {
     curr[0] = i;
@@ -22,5 +24,5 @@ function levenshtein(a: string, b: string): number {
     }
     [prev, curr] = [curr, prev];
   }
-  return prev[n] as number;
+  return prev[n] as number; // in-range by loop construction; see comment above
 }

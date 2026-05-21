@@ -1,8 +1,19 @@
-export { CanonArbitrationAIOutputSchema } from './canonArbitration.js';
-export type { CanonArbitrationAIOutput } from './canonArbitration.js';
+export { ArbitrationRequestSchema, CanonArbitrationAIOutputSchema } from './canonArbitration.js';
+export type { ArbitrationRequestInput, CanonArbitrationAIOutput } from './canonArbitration.js';
 
-export { EquipmentCandidateSchema, IdentifyEquipmentAIOutputSchema } from './identifyEquipment.js';
-export type { EquipmentCandidate, IdentifyEquipmentAIOutput } from './identifyEquipment.js';
+export { EmbedTextInputSchema } from './embedTextInput.js';
+export type { EmbedTextInput } from './embedTextInput.js';
+
+export {
+  EquipmentCandidateSchema,
+  IdentifyEquipmentAIOutputSchema,
+  IdentifyEquipmentInputSchema,
+} from './identifyEquipment.js';
+export type {
+  EquipmentCandidate,
+  IdentifyEquipmentAIOutput,
+  IdentifyEquipmentInput,
+} from './identifyEquipment.js';
 
 export { ParseEntryAIOutputSchema } from './parseEntry.js';
 export type { ParseEntryAIOutput } from './parseEntry.js';
@@ -10,11 +21,16 @@ export type { ParseEntryAIOutput } from './parseEntry.js';
 export {
   EquipmentAccessorySchema,
   PopulateEquipmentEntryAIOutputSchema,
+  PopulateEquipmentEntryInputSchema,
 } from './populateEquipmentEntry.js';
 export type {
   EquipmentAccessory,
   PopulateEquipmentEntryAIOutput,
+  PopulateEquipmentEntryInput,
 } from './populateEquipmentEntry.js';
+
+export { MatchOrCreateCanonInputSchema } from './matchOrCreateCanonInput.js';
+export type { MatchOrCreateCanonInput } from './matchOrCreateCanonInput.js';
 
 export { CanonItemSchema } from './canonItem.js';
 export type { CanonItemDoc } from './canonItem.js';

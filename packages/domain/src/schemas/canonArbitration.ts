@@ -1,5 +1,18 @@
 import { z } from 'zod';
 
+export const ArbitrationRequestSchema = z.object({
+  normalisedName: z.string(),
+  candidates: z.array(
+    z.object({
+      item: z.object({ id: z.string(), name: z.string() }),
+      confidence: z.number(),
+    }),
+  ),
+  aisles: z.array(z.object({ id: z.string(), name: z.string() })),
+});
+
+export type ArbitrationRequestInput = z.infer<typeof ArbitrationRequestSchema>;
+
 // Flat shape returned by the Gemini model in the canon-matching flow.
 // Schema is the source of truth; the TS type is derived via z.infer.
 export const CanonArbitrationAIOutputSchema = z.object({
