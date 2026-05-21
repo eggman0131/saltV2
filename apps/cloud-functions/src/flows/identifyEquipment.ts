@@ -1,38 +1,24 @@
-import { z } from 'genkit';
 import { googleAI } from '@genkit-ai/google-genai';
+import {
+  IdentifyEquipmentAIOutputSchema,
+  IdentifyEquipmentInputSchema,
+} from '@salt/domain/schemas';
 import { ai } from '../genkit.js';
 
 const GENERATION_MODEL = googleAI.model('gemini-3-flash-preview');
 
-const IdentifyEquipmentRequestSchema = z.object({
-  rawName: z.string(),
-});
-
-const CandidateSchema = z.object({
-  name: z.string(),
-  rationale: z.string(),
-});
-
-const IdentifyEquipmentResponseSchema = z.object({
-  candidates: z.array(CandidateSchema),
-});
-
-const AIOutputSchema = z.object({
-  candidates: z.array(CandidateSchema),
-});
-
 export const identifyEquipmentFlow = ai.defineFlow(
   {
     name: 'identifyEquipment',
-    inputSchema: IdentifyEquipmentRequestSchema,
-    outputSchema: IdentifyEquipmentResponseSchema,
+    inputSchema: IdentifyEquipmentInputSchema,
+    outputSchema: IdentifyEquipmentAIOutputSchema,
   },
   async ({ rawName }) => {
     const result = await ai.generate({
       model: GENERATION_MODEL,
       system: SYSTEM_INSTRUCTIONS,
       prompt: `"${rawName}"`,
-      output: { schema: AIOutputSchema },
+      output: { schema: IdentifyEquipmentAIOutputSchema },
       config: { temperature: 0 },
     });
     return { candidates: result.output!.candidates };

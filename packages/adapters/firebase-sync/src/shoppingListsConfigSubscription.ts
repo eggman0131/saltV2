@@ -3,17 +3,11 @@ import { getApp } from 'firebase/app';
 import type { ShoppingListsConfig } from '@salt/domain';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success, failure } from '@salt/shared-types';
+import { ShoppingListsConfigSchema } from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
 
 const CONFIG_COLLECTION = 'shoppingListsConfig';
 const CONFIG_DOC_ID = 'singleton';
-
-function fromDoc(data: Record<string, unknown>): ShoppingListsConfig {
-  return {
-    defaultListId: String(data['defaultListId'] ?? ''),
-    schemaVersion: 1,
-  };
-}
 
 export function subscribeShoppingListsConfig(
   onConfig: (config: ShoppingListsConfig | null) => void,
@@ -22,7 +16,18 @@ export function subscribeShoppingListsConfig(
   const db = getFirestore(getApp());
   return onSnapshot(
     doc(db, CONFIG_COLLECTION, CONFIG_DOC_ID),
-    (snap) => onConfig(snap.exists() ? fromDoc(snap.data() as Record<string, unknown>) : null),
+    (snap) => {
+      if (!snap.exists()) {
+        onConfig(null);
+        return;
+      }
+      const result = ShoppingListsConfigSchema.safeParse(snap.data());
+      if (!result.success) {
+        onError({ kind: 'StorageError', reason: 'corruption' });
+        return;
+      }
+      onConfig(result.data);
+    },
     (err) => onError(classifyFirestoreError(err)),
   );
 }
@@ -33,7 +38,10 @@ export async function loadShoppingListsConfig(): Promise<
   try {
     const db = getFirestore(getApp());
     const snap = await getDoc(doc(db, CONFIG_COLLECTION, CONFIG_DOC_ID));
-    return success(snap.exists() ? fromDoc(snap.data() as Record<string, unknown>) : null);
+    if (!snap.exists()) return success(null);
+    const result = ShoppingListsConfigSchema.safeParse(snap.data());
+    if (!result.success) return failure({ kind: 'StorageError', reason: 'corruption' });
+    return success(result.data);
   } catch (err) {
     return failure(classifyFirestoreError(err));
   }

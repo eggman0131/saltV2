@@ -4,12 +4,14 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./schemas": "./src/schemas/index.ts"
   },
   "scripts": {
     "test": "vitest run"
   },
   "dependencies": {
-    "@salt/shared-types": "workspace:*"
+    "@salt/shared-types": "workspace:*",
+    "zod": "^3.23.8"
   }
 }

@@ -12,19 +12,10 @@ import { getApp } from 'firebase/app';
 import type { ShoppingList } from '@salt/domain';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success, failure } from '@salt/shared-types';
+import { ShoppingListSchema } from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
 
 const COLLECTION = 'shoppingLists';
-
-function fromDoc(data: Record<string, unknown>): ShoppingList {
-  return {
-    id: String(data['id'] ?? ''),
-    name: String(data['name'] ?? ''),
-    schemaVersion: 1,
-    createdAt: String(data['createdAt'] ?? ''),
-    updatedAt: String(data['updatedAt'] ?? ''),
-  };
-}
 
 export function subscribeShoppingLists(
   onLists: (lists: ShoppingList[]) => void,
@@ -33,7 +24,18 @@ export function subscribeShoppingLists(
   const db = getFirestore(getApp());
   return onSnapshot(
     collection(db, COLLECTION),
-    (snap) => onLists(snap.docs.map((d) => fromDoc(d.data() as Record<string, unknown>))),
+    (snap) => {
+      const valid: ShoppingList[] = [];
+      for (const d of snap.docs) {
+        const result = ShoppingListSchema.safeParse(d.data());
+        if (result.success) {
+          valid.push(result.data);
+        } else {
+          console.error(`[ShoppingListSchema] Document ${d.id} failed validation`, result.error);
+        }
+      }
+      onLists(valid);
+    },
     (err) => onError(classifyFirestoreError(err)),
   );
 }
@@ -44,7 +46,16 @@ export async function listShoppingLists(): Promise<
   try {
     const db = getFirestore(getApp());
     const snap = await getDocs(collection(db, COLLECTION));
-    return success(snap.docs.map((d) => fromDoc(d.data() as Record<string, unknown>)));
+    const valid: ShoppingList[] = [];
+    for (const d of snap.docs) {
+      const result = ShoppingListSchema.safeParse(d.data());
+      if (result.success) {
+        valid.push(result.data);
+      } else {
+        console.error(`[ShoppingListSchema] Document ${d.id} failed validation`, result.error);
+      }
+    }
+    return success(valid);
   } catch (err) {
     return failure(classifyFirestoreError(err));
   }

@@ -1,5 +1,6 @@
 import { z } from 'genkit';
 import { googleAI } from '@genkit-ai/google-genai';
+import { ParseEntryAIOutputSchema } from '@salt/domain/schemas';
 import { ai } from '../genkit.js';
 
 const GENERATION_MODEL = googleAI.model('gemini-3-flash-preview');
@@ -8,23 +9,18 @@ const ParseEntryInputSchema = z.object({
   rawText: z.string(),
 });
 
-const ParseEntryOutputSchema = z.object({
-  name: z.string(),
-  context: z.string(),
-});
-
 export const parseEntryFlow = ai.defineFlow(
   {
     name: 'parseEntry',
     inputSchema: ParseEntryInputSchema,
-    outputSchema: ParseEntryOutputSchema,
+    outputSchema: ParseEntryAIOutputSchema,
   },
   async ({ rawText }) => {
     const prompt = buildPrompt(rawText);
     const result = await ai.generate({
       model: GENERATION_MODEL,
       prompt,
-      output: { schema: ParseEntryOutputSchema },
+      output: { schema: ParseEntryAIOutputSchema },
       config: { temperature: 0 },
     });
     return result.output!;

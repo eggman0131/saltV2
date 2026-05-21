@@ -1,31 +1,12 @@
 import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import type { CanonItem } from '@salt/domain';
-import type { DomainError, ReadResult, ShoppingBehavior, CanonItemUnit } from '@salt/shared-types';
+import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success, failure } from '@salt/shared-types';
+import { CanonItemSchema } from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
 
 const COLLECTION = 'canonItems';
-
-function fromDoc(data: Record<string, unknown>): CanonItem {
-  return {
-    id: data['id'] as string,
-    schemaVersion: 5,
-    name: data['name'] as string,
-    synonyms: Array.isArray(data['synonyms']) ? (data['synonyms'] as string[]) : [],
-    aisleId: typeof data['aisleId'] === 'string' ? data['aisleId'] : null,
-    thumbnail: typeof data['thumbnail'] === 'string' ? data['thumbnail'] : null,
-    embedding: Array.isArray(data['embedding']) ? (data['embedding'] as number[]) : null,
-    needs_approval: typeof data['needs_approval'] === 'boolean' ? data['needs_approval'] : true,
-    shoppingBehavior: (data['shoppingBehavior'] as ShoppingBehavior | undefined) ?? 'needed',
-    ...(typeof data['largeQuantityThreshold'] === 'number'
-      ? { largeQuantityThreshold: data['largeQuantityThreshold'] as number }
-      : {}),
-    ...(typeof data['unit'] === 'string' ? { unit: data['unit'] as CanonItemUnit } : {}),
-    ...(typeof data['reasoning'] === 'string' ? { reasoning: data['reasoning'] } : {}),
-    updatedAt: typeof data['updatedAt'] === 'string' ? data['updatedAt'] : '',
-  };
-}
 
 export function subscribeCanonItems(
   onItems: (items: CanonItem[]) => void,
@@ -35,7 +16,16 @@ export function subscribeCanonItems(
   return onSnapshot(
     collection(db, COLLECTION),
     (snap) => {
-      onItems(snap.docs.map((d) => fromDoc(d.data() as Record<string, unknown>)));
+      const valid: CanonItem[] = [];
+      for (const d of snap.docs) {
+        const result = CanonItemSchema.safeParse(d.data());
+        if (result.success) {
+          valid.push(result.data as CanonItem);
+        } else {
+          console.error(`[CanonItemSchema] Document ${d.id} failed validation`, result.error);
+        }
+      }
+      onItems(valid);
     },
     (err) => onError(classifyFirestoreError(err)),
   );
