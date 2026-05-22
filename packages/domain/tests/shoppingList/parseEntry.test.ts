@@ -65,3 +65,95 @@ describe('parseShoppingListEntry', () => {
     expect(parseShoppingListEntry('   ')).toEqual({ name: '', context: '' });
   });
 });
+
+describe('parseShoppingListEntry — amount/unit extraction', () => {
+  it('extracts amount and unit when number is attached to unit', () => {
+    expect(parseShoppingListEntry('2kg maris piper potatoes')).toEqual({
+      amount: 2,
+      unit: 'kg',
+      name: 'maris piper potatoes',
+      context: '',
+    });
+    expect(parseShoppingListEntry('500g potatoes')).toEqual({
+      amount: 500,
+      unit: 'g',
+      name: 'potatoes',
+      context: '',
+    });
+  });
+
+  it('extracts amount with no unit for a bare leading number', () => {
+    expect(parseShoppingListEntry('3 onions')).toEqual({
+      amount: 3,
+      name: 'onions',
+      context: '',
+    });
+  });
+
+  it('extracts amount and unit when separated by a space', () => {
+    expect(parseShoppingListEntry('2 kg potatoes')).toEqual({
+      amount: 2,
+      unit: 'kg',
+      name: 'potatoes',
+      context: '',
+    });
+  });
+
+  it('preserves product-distinguishing adjectives in the name', () => {
+    // "red" is not a unit — stays in the name
+    expect(parseShoppingListEntry('2 red onions')).toEqual({
+      amount: 2,
+      name: 'red onions',
+      context: '',
+    });
+  });
+
+  it('handles decimal amounts', () => {
+    expect(parseShoppingListEntry('1.5 kg flour')).toEqual({
+      amount: 1.5,
+      unit: 'kg',
+      name: 'flour',
+      context: '',
+    });
+  });
+
+  it('combines amount/unit extraction with trailing-for rule', () => {
+    expect(parseShoppingListEntry('2kg flour for the cake')).toEqual({
+      amount: 2,
+      unit: 'kg',
+      name: 'flour',
+      context: 'for the cake',
+    });
+  });
+
+  it('does not extract from ambiguous text with no leading number', () => {
+    const result = parseShoppingListEntry('a couple of onions');
+    expect(result).toEqual({ name: 'a couple of onions', context: '' });
+    expect(result.amount).toBeUndefined();
+    expect(result.unit).toBeUndefined();
+  });
+
+  it('does not extract when the remainder after the number starts with "for" (price notation)', () => {
+    // "4 for £1" is price notation, not a quantity — existing safety fallback applies
+    expect(parseShoppingListEntry('4 for £1')).toEqual({ name: '4 for £1', context: '' });
+    expect(parseShoppingListEntry('2 for £1')).toEqual({ name: '2 for £1', context: '' });
+  });
+
+  it('does not extract when extraction would leave an empty normalised name', () => {
+    // A number followed by only punctuation would normalise to empty — keep intact
+    const result = parseShoppingListEntry('2 ££');
+    expect(result.amount).toBeUndefined();
+    expect(result.name).toBe('2 ££');
+  });
+
+  it('preserves unit casing as written by the user', () => {
+    expect(parseShoppingListEntry('2Kg flour')).toMatchObject({ amount: 2, unit: 'Kg' });
+    expect(parseShoppingListEntry('500G sugar')).toMatchObject({ amount: 500, unit: 'G' });
+  });
+
+  it('plain entries without a leading number have no amount or unit', () => {
+    const result = parseShoppingListEntry('milk');
+    expect(result.amount).toBeUndefined();
+    expect(result.unit).toBeUndefined();
+  });
+});
