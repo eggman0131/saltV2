@@ -21,6 +21,8 @@ export const ShoppingListItemSchema = z.object({
   sources: z.array(SourceRefSchema).default([]),
   canonId: z.string().nullable().default(null),
   matchState: z.enum(['pending', 'matched', 'needs_approval', 'failed']).catch('pending'),
+  amount: z.number().optional(),
+  unit: z.string().optional(),
   checked: z.boolean().default(false),
   schemaVersion: z.literal(1).default(1),
   createdAt: z.string().default(''),
