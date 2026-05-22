@@ -48,6 +48,9 @@ export type {
   GroupedShoppingList,
 } from './queries/groupItemsByAisle.js';
 
+export { combineItemsByUnit } from './queries/combineItemsByUnit.js';
+export type { UnitSlot } from './queries/combineItemsByUnit.js';
+
 export { parseShoppingListEntry } from './queries/parseEntry.js';
 export type { ParsedEntry } from './queries/parseEntry.js';
 

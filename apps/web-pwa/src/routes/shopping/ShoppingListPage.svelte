@@ -19,7 +19,7 @@
     EmptyState,
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
-  import { groupItemsByAisle } from '@salt/domain';
+  import { groupItemsByAisle, combineItemsByUnit } from '@salt/domain';
   import type { ShoppingListItem } from '@salt/domain';
   import { canonItems, aisles } from '../../lib/canonService.js';
   import {
@@ -255,6 +255,13 @@
     if (src.kind === 'recipe') return src.label ?? 'Recipe';
     return '';
   }
+
+  function formatUnitSlots(slots: ReturnType<typeof combineItemsByUnit>): string {
+    const parts = slots
+      .filter((s) => s.combinedAmount !== undefined)
+      .map((s) => (s.unit ? `${s.combinedAmount}${s.unit}` : `${s.combinedAmount}`));
+    return parts.join(' · ');
+  }
 </script>
 
 {#if !$isLoadingShoppingList && currentList === null}
@@ -428,6 +435,8 @@
               {@const someGroupSelected =
                 groupIds.some((id) => selected.has(id)) && !allGroupSelected}
               {@const isExpanded = expandedGroups.has(group.canonId)}
+              {@const unitSlots = combineItemsByUnit(group.contributors)}
+              {@const combinedLabel = formatUnitSlots(unitSlots)}
 
               {#if group.contributors.length === 1}
                 <!-- Single contributor: render directly -->
@@ -512,7 +521,7 @@
                       <span
                         class="text-xs bg-muted text-muted-foreground rounded px-1.5 py-0.5 shrink-0"
                       >
-                        +{group.contributors.length - 1}
+                        {combinedLabel || `+${group.contributors.length}`}
                       </span>
                     </button>
                     <button
