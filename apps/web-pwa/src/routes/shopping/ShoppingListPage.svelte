@@ -256,11 +256,35 @@
     return '';
   }
 
-  function formatUnitSlots(slots: ReturnType<typeof combineItemsByUnit>): string {
-    const parts = slots
-      .filter((s) => s.combinedAmount !== undefined)
-      .map((s) => (s.unit ? `${s.combinedAmount}${s.unit}` : `${s.combinedAmount}`));
-    return parts.join(' · ');
+  function formatSlotAmount(amount: number | undefined, unit: string | undefined): string | null {
+    if (amount === undefined) return null;
+    return unit ? `${amount} ${unit}` : `${amount}`;
+  }
+
+  function toggleSlotSelection(ids: string[]): void {
+    const next = new Set(selected);
+    const allSel = ids.every((id) => next.has(id));
+    if (allSel) {
+      for (const id of ids) next.delete(id);
+    } else {
+      for (const id of ids) next.add(id);
+    }
+    selected = next;
+  }
+
+  async function toggleSlotChecked(items: readonly ShoppingListItem[]): Promise<void> {
+    const allChecked = items.every((i) => i.checked);
+    if (allChecked) {
+      await uncheckItems(
+        params.listId,
+        items.map((i) => i.id),
+      );
+    } else {
+      await checkItems(
+        params.listId,
+        items.map((i) => i.id),
+      );
+    }
   }
 </script>
 
@@ -436,58 +460,80 @@
                 groupIds.some((id) => selected.has(id)) && !allGroupSelected}
               {@const isExpanded = expandedGroups.has(group.canonId)}
               {@const unitSlots = combineItemsByUnit(group.contributors)}
-              {@const combinedLabel = formatUnitSlots(unitSlots)}
 
-              {#if group.contributors.length === 1}
-                <!-- Single contributor: render directly -->
-                {@const item = group.contributors[0]!}
-                {@const isSelected = selected.has(item.id)}
+              {#if unitSlots.length === 1}
+                <!-- Single slot (all contributors share the same unit): one combined row -->
+                {@const slot = unitSlots[0]!}
+                {@const slotIds = slot.entries.map((e) => e.id)}
+                {@const slotAllSelected = slotIds.every((id) => selected.has(id))}
+                {@const slotSomeSelected =
+                  slotIds.some((id) => selected.has(id)) && !slotAllSelected}
+                {@const slotAllChecked = slot.entries.every((e) => e.checked)}
+                {@const slotSomeChecked = slot.entries.some((e) => e.checked) && !slotAllChecked}
+                {@const slotDisplayName =
+                  slot.entries.length === 1
+                    ? toSentenceCase(slot.entries[0]!.rawText)
+                    : toSentenceCase(group.canonName)}
+                {@const slotAmountStr = formatSlotAmount(slot.combinedAmount, slot.unit)}
+                {@const singleItem = slot.entries.length === 1 ? slot.entries[0]! : null}
                 <div
-                  class="flex items-center gap-3 rounded-md border px-3 py-2 text-sm {isSelected
+                  class="flex items-center gap-3 rounded-md border px-3 py-2 text-sm {slotAllSelected
                     ? 'border-ring ring-2 ring-ring bg-card'
                     : 'border-border bg-card'}"
                   data-testid="shopping-item-row"
-                  data-item-id={item.id}
+                  data-item-id={singleItem?.id}
                 >
                   <Checkbox
-                    checked={isSelected}
-                    onCheckedChange={() => toggleSelection(item.id)}
+                    checked={slotAllSelected ? true : slotSomeSelected ? 'indeterminate' : false}
+                    onCheckedChange={() => toggleSlotSelection(slotIds)}
                     label=""
-                    aria-label="Select {item.rawText}"
+                    aria-label="Select {slotDisplayName}"
                   />
-                  <div class="flex-1 min-w-0">
-                    <span class="block truncate">
-                      {toSentenceCase(item.rawText)}
-                    </span>
-                    {#if item.notes}
-                      <span class="block text-xs text-muted-foreground truncate"
-                        >{toSentenceCase(item.notes)}</span
-                      >
-                    {/if}
-                    {#if sourceLabel(item)}
-                      <span class="block text-xs text-muted-foreground/70">{sourceLabel(item)}</span
-                      >
-                    {/if}
-                  </div>
+                  {#if singleItem}
+                    <button
+                      type="button"
+                      class="flex-1 min-w-0 text-left"
+                      onclick={() => openEditSheet(singleItem)}
+                      aria-label="Edit {slotDisplayName}"
+                      data-testid="shopping-item-edit-btn"
+                    >
+                      <span class="block truncate">
+                        {slotDisplayName}
+                      </span>
+                      {#if slotAmountStr}
+                        <span class="block text-xs text-muted-foreground">{slotAmountStr}</span>
+                      {/if}
+                      {#if singleItem.notes}
+                        <span class="block text-xs text-muted-foreground truncate"
+                          >{toSentenceCase(singleItem.notes)}</span
+                        >
+                      {/if}
+                      {#if sourceLabel(singleItem)}
+                        <span class="block text-xs text-muted-foreground/70"
+                          >{sourceLabel(singleItem)}</span
+                        >
+                      {/if}
+                    </button>
+                  {:else}
+                    <div class="flex-1 min-w-0">
+                      <span class="block truncate">
+                        {slotDisplayName}
+                      </span>
+                      {#if slotAmountStr}
+                        <span class="block text-xs text-muted-foreground">{slotAmountStr}</span>
+                      {/if}
+                    </div>
+                  {/if}
                   <Checkbox
-                    checked={item.checked}
-                    onCheckedChange={() => void toggleItemChecked(params.listId, item)}
+                    checked={slotAllChecked ? true : slotSomeChecked ? 'indeterminate' : false}
+                    onCheckedChange={() => void toggleSlotChecked(slot.entries)}
                     label=""
                     aria-label="Mark as done"
                     data-testid="shopping-item-check"
                   />
-                  <button
-                    type="button"
-                    class="text-muted-foreground hover:text-foreground p-1 shrink-0"
-                    onclick={() => openEditSheet(item)}
-                    aria-label="Edit {item.rawText}"
-                    data-testid="shopping-item-edit-btn"
-                  >
-                    <Icon name="Pencil" size={14} />
-                  </button>
                 </div>
               {:else}
-                <!-- Multi-contributor: collapsible group -->
+                <!-- Multiple slots (different units): collapsible group, one row per slot -->
                 <div
                   class="flex flex-col gap-0.5"
                   data-testid="shopping-canon-group"
@@ -495,7 +541,7 @@
                 >
                   <!-- Group header row -->
                   <div
-                    class="flex items-center gap-3 rounded-md border px-3 py-2 text-sm cursor-pointer {allGroupSelected
+                    class="flex items-center gap-3 rounded-md border px-3 py-2 text-sm {allGroupSelected
                       ? 'border-ring ring-2 ring-ring bg-card'
                       : 'border-border bg-card'}"
                   >
@@ -513,6 +559,9 @@
                       type="button"
                       class="flex-1 min-w-0 flex items-center gap-2 text-left"
                       onclick={() => toggleGroup(group.canonId)}
+                      aria-label={isExpanded
+                        ? 'Collapse {group.canonName}'
+                        : 'Expand {group.canonName}'}
                       data-testid="shopping-group-toggle"
                     >
                       <span class="font-medium truncate">
@@ -521,72 +570,108 @@
                       <span
                         class="text-xs bg-muted text-muted-foreground rounded px-1.5 py-0.5 shrink-0"
                       >
-                        {combinedLabel || `+${group.contributors.length}`}
+                        +{unitSlots.length}
                       </span>
-                    </button>
-                    <button
-                      type="button"
-                      class="text-muted-foreground p-1 shrink-0"
-                      onclick={() => toggleGroup(group.canonId)}
-                      aria-label={isExpanded ? 'Collapse group' : 'Expand group'}
-                    >
-                      <Icon name={isExpanded ? 'ChevronUp' : 'ChevronDown'} size={14} />
+                      <Icon
+                        name={isExpanded ? 'ChevronUp' : 'ChevronDown'}
+                        size={14}
+                        class="ml-auto shrink-0 text-muted-foreground"
+                      />
                     </button>
                   </div>
 
-                  <!-- Expanded contributor rows -->
+                  <!-- Expanded slot rows -->
                   {#if isExpanded}
                     <div class="ml-6 flex flex-col gap-0.5">
-                      {#each group.contributors as item (item.id)}
-                        {@const isSelected = selected.has(item.id)}
+                      {#each unitSlots as slot}
+                        {@const slotIds = slot.entries.map((e) => e.id)}
+                        {@const slotAllSelected = slotIds.every((id) => selected.has(id))}
+                        {@const slotSomeSelected =
+                          slotIds.some((id) => selected.has(id)) && !slotAllSelected}
+                        {@const slotAllChecked = slot.entries.every((e) => e.checked)}
+                        {@const slotSomeChecked =
+                          slot.entries.some((e) => e.checked) && !slotAllChecked}
+                        {@const slotDisplayName =
+                          slot.entries.length === 1
+                            ? toSentenceCase(slot.entries[0]!.rawText)
+                            : toSentenceCase(group.canonName)}
+                        {@const slotAmountStr = formatSlotAmount(slot.combinedAmount, slot.unit)}
+                        {@const singleItem = slot.entries.length === 1 ? slot.entries[0]! : null}
                         <div
-                          class="flex items-center gap-3 rounded-md border px-3 py-2 text-sm {isSelected
+                          class="flex items-center gap-3 rounded-md border px-3 py-2 text-sm {slotAllSelected
                             ? 'border-ring ring-2 ring-ring bg-card'
                             : 'border-border bg-muted/30'}"
                           data-testid="shopping-item-row"
-                          data-item-id={item.id}
+                          data-item-id={singleItem?.id}
                         >
                           <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={() => toggleSelection(item.id)}
+                            checked={slotAllSelected
+                              ? true
+                              : slotSomeSelected
+                                ? 'indeterminate'
+                                : false}
+                            onCheckedChange={() => toggleSlotSelection(slotIds)}
                             label=""
-                            aria-label="Select {item.rawText}"
+                            aria-label="Select {slotDisplayName}"
                           />
-                          <div class="flex-1 min-w-0">
-                            <span
-                              class="block truncate {item.checked
-                                ? 'line-through text-muted-foreground'
-                                : ''}"
+                          {#if singleItem}
+                            <button
+                              type="button"
+                              class="flex-1 min-w-0 text-left"
+                              onclick={() => openEditSheet(singleItem)}
+                              aria-label="Edit {slotDisplayName}"
+                              data-testid="shopping-item-edit-btn"
                             >
-                              {toSentenceCase(item.rawText)}
-                            </span>
-                            {#if item.notes}
-                              <span class="block text-xs text-muted-foreground truncate"
-                                >{toSentenceCase(item.notes)}</span
+                              <span
+                                class="block truncate {slotAllChecked
+                                  ? 'line-through text-muted-foreground'
+                                  : ''}"
                               >
-                            {/if}
-                            {#if sourceLabel(item)}
-                              <span class="block text-xs text-muted-foreground/70"
-                                >{sourceLabel(item)}</span
+                                {slotDisplayName}
+                              </span>
+                              {#if slotAmountStr}
+                                <span class="block text-xs text-muted-foreground"
+                                  >{slotAmountStr}</span
+                                >
+                              {/if}
+                              {#if singleItem.notes}
+                                <span class="block text-xs text-muted-foreground truncate"
+                                  >{toSentenceCase(singleItem.notes)}</span
+                                >
+                              {/if}
+                              {#if sourceLabel(singleItem)}
+                                <span class="block text-xs text-muted-foreground/70"
+                                  >{sourceLabel(singleItem)}</span
+                                >
+                              {/if}
+                            </button>
+                          {:else}
+                            <div class="flex-1 min-w-0">
+                              <span
+                                class="block truncate {slotAllChecked
+                                  ? 'line-through text-muted-foreground'
+                                  : ''}"
                               >
-                            {/if}
-                          </div>
+                                {slotDisplayName}
+                              </span>
+                              {#if slotAmountStr}
+                                <span class="block text-xs text-muted-foreground"
+                                  >{slotAmountStr}</span
+                                >
+                              {/if}
+                            </div>
+                          {/if}
                           <Checkbox
-                            checked={item.checked}
-                            onCheckedChange={() => void toggleItemChecked(params.listId, item)}
+                            checked={slotAllChecked
+                              ? true
+                              : slotSomeChecked
+                                ? 'indeterminate'
+                                : false}
+                            onCheckedChange={() => void toggleSlotChecked(slot.entries)}
                             label=""
                             aria-label="Mark as done"
                             data-testid="shopping-item-check"
                           />
-                          <button
-                            type="button"
-                            class="text-muted-foreground hover:text-foreground p-1 shrink-0"
-                            onclick={() => openEditSheet(item)}
-                            aria-label="Edit {item.rawText}"
-                            data-testid="shopping-item-edit-btn"
-                          >
-                            <Icon name="Pencil" size={14} />
-                          </button>
                         </div>
                       {/each}
                     </div>
@@ -623,7 +708,13 @@
                   label=""
                   aria-label="Select {item.rawText}"
                 />
-                <div class="flex-1 min-w-0">
+                <button
+                  type="button"
+                  class="flex-1 min-w-0 text-left"
+                  onclick={() => openEditSheet(item)}
+                  aria-label="Edit {item.rawText}"
+                  data-testid="shopping-item-edit-btn"
+                >
                   <span
                     class="block truncate {item.checked
                       ? 'line-through text-muted-foreground'
@@ -631,12 +722,17 @@
                   >
                     {toSentenceCase(item.rawText)}
                   </span>
+                  {#if formatSlotAmount(item.amount, item.unit)}
+                    <span class="block text-xs text-muted-foreground"
+                      >{formatSlotAmount(item.amount, item.unit)}</span
+                    >
+                  {/if}
                   {#if item.notes}
                     <span class="block text-xs text-muted-foreground truncate"
                       >{toSentenceCase(item.notes)}</span
                     >
                   {/if}
-                </div>
+                </button>
                 {#if isPending}
                   <Spinner size={14} />
                 {/if}
@@ -647,15 +743,6 @@
                   aria-label="Mark as done"
                   data-testid="shopping-item-check"
                 />
-                <button
-                  type="button"
-                  class="text-muted-foreground hover:text-foreground p-1 shrink-0"
-                  onclick={() => openEditSheet(item)}
-                  aria-label="Edit {item.rawText}"
-                  data-testid="shopping-item-edit-btn"
-                >
-                  <Icon name="Pencil" size={14} />
-                </button>
               </div>
             {/each}
           </section>
@@ -682,16 +769,27 @@
                   label=""
                   aria-label="Select {item.rawText}"
                 />
-                <div class="flex-1 min-w-0">
+                <button
+                  type="button"
+                  class="flex-1 min-w-0 text-left"
+                  onclick={() => openEditSheet(item)}
+                  aria-label="Edit {item.rawText}"
+                  data-testid="shopping-item-edit-btn"
+                >
                   <span class="block truncate line-through text-muted-foreground">
                     {toSentenceCase(item.rawText)}
                   </span>
+                  {#if formatSlotAmount(item.amount, item.unit)}
+                    <span class="block text-xs text-muted-foreground/60"
+                      >{formatSlotAmount(item.amount, item.unit)}</span
+                    >
+                  {/if}
                   {#if item.notes}
                     <span class="block text-xs text-muted-foreground/60 truncate"
                       >{toSentenceCase(item.notes)}</span
                     >
                   {/if}
-                </div>
+                </button>
                 <Checkbox
                   checked={item.checked}
                   onCheckedChange={() => void toggleItemChecked(params.listId, item)}
@@ -699,15 +797,6 @@
                   aria-label="Uncheck"
                   data-testid="shopping-item-check"
                 />
-                <button
-                  type="button"
-                  class="text-muted-foreground hover:text-foreground p-1 shrink-0"
-                  onclick={() => openEditSheet(item)}
-                  aria-label="Edit {item.rawText}"
-                  data-testid="shopping-item-edit-btn"
-                >
-                  <Icon name="Pencil" size={14} />
-                </button>
               </div>
             {/each}
           </section>

@@ -156,4 +156,44 @@ describe('parseShoppingListEntry — amount/unit extraction', () => {
     expect(result.amount).toBeUndefined();
     expect(result.unit).toBeUndefined();
   });
+
+  it('strips leading "of" from the remainder when unit is attached', () => {
+    expect(parseShoppingListEntry('8rashers of bacon')).toEqual({
+      amount: 8,
+      unit: 'rashers',
+      name: 'bacon',
+      context: '',
+    });
+    expect(parseShoppingListEntry('500g of flour')).toEqual({
+      amount: 500,
+      unit: 'g',
+      name: 'flour',
+      context: '',
+    });
+  });
+
+  it('strips leading "of" from the remainder when unit is space-separated', () => {
+    expect(parseShoppingListEntry('2 kg of potatoes')).toEqual({
+      amount: 2,
+      unit: 'kg',
+      name: 'potatoes',
+      context: '',
+    });
+  });
+
+  it('strips leading "of" from bare-count remainder', () => {
+    expect(parseShoppingListEntry('3 of onions')).toEqual({
+      amount: 3,
+      name: 'onions',
+      context: '',
+    });
+  });
+
+  it('does not strip "of" that is part of the item name (not immediately after the quantity)', () => {
+    // "comfort" contains no leading "of" after quantity extraction
+    expect(parseShoppingListEntry('2 bags of crisps')).toMatchObject({
+      amount: 2,
+      name: 'bags of crisps',
+    });
+  });
 });

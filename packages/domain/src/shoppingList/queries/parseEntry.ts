@@ -63,6 +63,12 @@ interface QuantityResult {
   readonly remainder: string;
 }
 
+// Strip a leading "of " that connects a unit to its item name (e.g. "rashers of
+// bacon" → after extracting "rashers", remainder is "of bacon" → strip to "bacon").
+function stripLeadingOf(s: string): string {
+  return /^of\s+/i.test(s) ? s.replace(/^of\s+/i, '') : s;
+}
+
 function extractQuantity(text: string): QuantityResult | null {
   // Case 1: number directly attached to alpha unit, e.g. "2kg flour"
   const attachedMatch = ATTACHED_UNIT.exec(text);
@@ -70,7 +76,11 @@ function extractQuantity(text: string): QuantityResult | null {
     const remainder = attachedMatch[3]!;
     // "<N>X for …" is price notation ("2for£1" would be odd but guard anyway)
     if (/^for\s/i.test(remainder)) return null;
-    return { amount: parseFloat(attachedMatch[1]!), unit: attachedMatch[2]!, remainder };
+    return {
+      amount: parseFloat(attachedMatch[1]!),
+      unit: attachedMatch[2]!,
+      remainder: stripLeadingOf(remainder),
+    };
   }
 
   // Case 2: bare leading number, e.g. "3 onions" or "2 kg potatoes"
@@ -88,12 +98,12 @@ function extractQuantity(text: string): QuantityResult | null {
   if (spaceIdx !== -1) {
     const firstWord = rest.slice(0, spaceIdx);
     if (UNIT_WORDS.has(firstWord.toLowerCase())) {
-      return { amount, unit: firstWord, remainder: rest.slice(spaceIdx + 1) };
+      return { amount, unit: firstWord, remainder: stripLeadingOf(rest.slice(spaceIdx + 1)) };
     }
   }
 
-  // No recognised unit — bare count; entire rest is the name
-  return { amount, remainder: rest };
+  // No recognised unit — bare count; strip leading "of " if present
+  return { amount, remainder: stripLeadingOf(rest) };
 }
 
 export function parseShoppingListEntry(rawText: string): ParsedEntry {
