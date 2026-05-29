@@ -25,17 +25,11 @@ export interface CheckedBucket {
   readonly contributors: readonly ShoppingListItem[];
 }
 
-export interface ItemGroup {
-  readonly canonId: string;
-  readonly canonName: string;
-  readonly contributors: readonly ShoppingListItem[];
-}
-
 export interface AisleGroup {
   readonly aisleId: string;
   readonly aisleName: string;
-  // Unchecked/partial groups first (alphabetical by canonName), fully-checked groups last.
-  readonly groups: readonly ItemGroup[];
+  // Items in the order the user added them (createdAt ascending).
+  readonly items: readonly ShoppingListItem[];
 }
 
 export interface GroupedShoppingList {
@@ -51,11 +45,9 @@ export function groupItemsByAisle(
 ): GroupedShoppingList {
   const otherContributors: OtherContributor[] = [];
   const checkedItems: ShoppingListItem[] = [];
-  // aisleId → canonId → items
-  const aisleMap = new Map<string, Map<string, ShoppingListItem[]>>();
+  const aisleMap = new Map<string, ShoppingListItem[]>();
 
   for (const item of items) {
-    // Checked items go to the checked bucket regardless of match state.
     if (item.checked) {
       checkedItems.push(item);
       continue;
@@ -75,17 +67,9 @@ export function groupItemsByAisle(
       continue;
     }
 
-    const canon = canonMap.get(item.canonId!)!;
-    const aisleId = canon.aisleId!;
-
-    if (!aisleMap.has(aisleId)) {
-      aisleMap.set(aisleId, new Map());
-    }
-    const canonGroup = aisleMap.get(aisleId)!;
-    if (!canonGroup.has(item.canonId!)) {
-      canonGroup.set(item.canonId!, []);
-    }
-    canonGroup.get(item.canonId!)!.push(item);
+    const aisleId = canonMap.get(item.canonId!)!.aisleId!;
+    if (!aisleMap.has(aisleId)) aisleMap.set(aisleId, []);
+    aisleMap.get(aisleId)!.push(item);
   }
 
   // Most-recently-checked first so the shopper can easily undo.
@@ -95,18 +79,11 @@ export function groupItemsByAisle(
 
   const aisleGroups: AisleGroup[] = [];
   for (const aisle of sortedAisles) {
-    const canonGroup = aisleMap.get(aisle.id);
-    if (!canonGroup || canonGroup.size === 0) continue;
+    const aisleItems = aisleMap.get(aisle.id);
+    if (!aisleItems || aisleItems.length === 0) continue;
 
-    const groups: ItemGroup[] = [];
-    for (const [canonId, groupItems] of canonGroup) {
-      const canon = canonMap.get(canonId)!;
-      groups.push({ canonId, canonName: canon.name, contributors: [...groupItems] });
-    }
-
-    groups.sort((a, b) => a.canonName.localeCompare(b.canonName));
-
-    aisleGroups.push({ aisleId: aisle.id, aisleName: aisle.name, groups });
+    const sorted = [...aisleItems].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    aisleGroups.push({ aisleId: aisle.id, aisleName: aisle.name, items: sorted });
   }
 
   return {

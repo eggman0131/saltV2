@@ -54,6 +54,8 @@ export const onShoppingListItemWrite = onDocumentWritten(
 
     const cleanName = parsed.name;
     const context = parsed.context;
+    const parsedAmount = parsed.amount;
+    const parsedUnit = parsed.unit;
     const currentNotes = typeof afterData['notes'] === 'string' ? afterData['notes'] : '';
 
     const { listId, itemId } = event.params;
@@ -73,7 +75,12 @@ export const onShoppingListItemWrite = onDocumentWritten(
 
       if (result.kind === 'err') {
         errorCategory = result.error.kind;
-        await docRef.update({ matchState: 'failed', updatedAt: new Date().toISOString() });
+        await docRef.update({
+          matchState: 'failed',
+          updatedAt: new Date().toISOString(),
+          ...(parsedAmount !== undefined ? { amount: parsedAmount } : undefined),
+          ...(parsedUnit !== undefined ? { unit: parsedUnit } : undefined),
+        });
         return;
       }
 
@@ -90,6 +97,8 @@ export const onShoppingListItemWrite = onDocumentWritten(
         matchState: newMatchState,
         updatedAt: new Date().toISOString(),
         ...(nameChanged && currentNotes === '' && { rawText: cleanName, notes: context }),
+        ...(parsedAmount !== undefined ? { amount: parsedAmount } : undefined),
+        ...(parsedUnit !== undefined ? { unit: parsedUnit } : undefined),
       });
     } finally {
       // DORMANT: trace propagation — trigger boundary; mark per convention.

@@ -26,6 +26,8 @@ export { editItemRawText } from './commands/editItemRawText.js';
 export type { EditItemRawTextInput } from './commands/editItemRawText.js';
 export { editItemNotes } from './commands/editItemNotes.js';
 export type { EditItemNotesInput } from './commands/editItemNotes.js';
+export { editItemAmountUnit } from './commands/editItemAmountUnit.js';
+export type { EditItemAmountUnitInput } from './commands/editItemAmountUnit.js';
 export { checkItem } from './commands/checkItem.js';
 export type { CheckItemInput } from './commands/checkItem.js';
 export { uncheckItem } from './commands/uncheckItem.js';
@@ -43,7 +45,6 @@ export type {
   OtherContributor,
   OtherBucket,
   CheckedBucket,
-  ItemGroup,
   AisleGroup,
   GroupedShoppingList,
 } from './queries/groupItemsByAisle.js';

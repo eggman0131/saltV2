@@ -63,6 +63,18 @@ describe('normaliseName', () => {
     expect(normaliseName('2 cans tomatoes')).toBe('can tomato');
   });
 
+  it('strips English word-number tokens', () => {
+    expect(normaliseName('one cucumber')).toBe('cucumber');
+    expect(normaliseName('three onions')).toBe('onion');
+    expect(normaliseName('twelve eggs')).toBe('egg');
+  });
+
+  it('strips digit-prefixed unit tokens like "400g" and "2kg"', () => {
+    expect(normaliseName('cucumber 400g')).toBe('cucumber');
+    expect(normaliseName('potatoes 2kg')).toBe('potato');
+    expect(normaliseName('milk 500ml')).toBe('milk');
+  });
+
   it('returns empty string for blank input', () => {
     expect(normaliseName('')).toBe('');
     expect(normaliseName('   ')).toBe('');

@@ -24,7 +24,7 @@
     {@const isSelected = selected.has(item.id)}
     <li
       class={cn(
-        'flex items-center gap-3 px-3 py-2 rounded-md border border-border bg-card',
+        'flex items-center gap-3 px-3 py-2 rounded border border-border bg-card',
         isSelected && 'ring-2 ring-ring border-ring',
       )}
     >

@@ -15,7 +15,7 @@
 
 <li
   class={cn(
-    'flex items-center gap-3 rounded-md border px-3 py-2',
+    'flex items-center gap-3 rounded border px-3 py-2',
     shaded
       ? 'border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/30'
       : 'border-border bg-card',

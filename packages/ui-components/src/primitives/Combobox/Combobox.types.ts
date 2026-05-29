@@ -1,5 +1,6 @@
 // spec: ui-spec-v04.md §3 v0.4
 import type { Snippet } from 'svelte';
+import type { HTMLInputAttributes } from 'svelte/elements';
 
 export type ComboboxItem = { value: string; label: string };
 
@@ -22,7 +23,24 @@ export type ComboboxProps = {
   onCreate?: (value: string) => void;
 };
 
-export type ComboboxInputProps = {
+export type ComboboxInputProps = Omit<
+  HTMLInputAttributes,
+  | 'class'
+  | 'id'
+  | 'role'
+  | 'type'
+  | 'aria-expanded'
+  | 'aria-controls'
+  | 'aria-autocomplete'
+  | 'aria-activedescendant'
+  | 'value'
+  | 'placeholder'
+  | 'autocomplete'
+  | 'onclick'
+  | 'oninput'
+  | 'onkeydown'
+  | 'onblur'
+> & {
   class?: string;
 };
 
