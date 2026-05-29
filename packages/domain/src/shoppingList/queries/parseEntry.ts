@@ -55,12 +55,12 @@ const UNIT_WORDS = new Set([
 // ─── Leading quantity patterns ────────────────────────────────────────────────
 
 // "<number><alphas> <rest>" — number directly attached to a unit (e.g. "2kg flour")
-const ATTACHED_UNIT = /^(\d+(?:\.\d+)?)([a-zA-Z]+)\s+(.+)$/;
+const ATTACHED_UNIT = /^(\d+(?:\.\d+)?)([a-zA-Z]+) (\S.*)$/;
 // "<number> <rest>" — bare leading number with at least one following word
-const LEADING_NUMBER = /^(\d+(?:\.\d+)?)\s+(.+)$/;
+const LEADING_NUMBER = /^(\d+(?:\.\d+)?) (\S.*)$/;
 // "<word-number> <rest>" — English cardinal words one–twelve
 const LEADING_WORD_NUMBER =
-  /^(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(.+)$/i;
+  /^(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve) (\S.*)$/i;
 const WORD_NUMBER_VALUES: Record<string, number> = {
   one: 1,
   two: 2,
@@ -79,11 +79,11 @@ const WORD_NUMBER_VALUES: Record<string, number> = {
 // ─── Trailing quantity patterns ───────────────────────────────────────────────
 
 // "<name> <N><unit>" — unit directly attached to trailing number, e.g. "cucumber 400g"
-const TRAILING_ATTACHED_UNIT = /^(.+?)\s+(\d+(?:\.\d+)?)([a-zA-Z]+)$/;
+const TRAILING_ATTACHED_UNIT = /^(.+) (\d+(?:\.\d+)?)([a-zA-Z]+)$/;
 // "<name> <N> <unit>" — space-separated trailing unit from the known whitelist
-const TRAILING_SPACE_UNIT = /^(.+?)\s+(\d+(?:\.\d+)?)\s+([a-zA-Z]+)$/;
+const TRAILING_SPACE_UNIT = /^(.+) (\d+(?:\.\d+)?) ([a-zA-Z]+)$/;
 // "<name> <N>" — bare trailing count, e.g. "onions 3"
-const TRAILING_NUMBER_ONLY = /^(.+?)\s+(\d+(?:\.\d+)?)$/;
+const TRAILING_NUMBER_ONLY = /^(.+) (\d+(?:\.\d+)?)$/;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
