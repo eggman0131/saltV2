@@ -131,7 +131,7 @@
     addBusy = false;
     if (result.kind !== 'ok') {
       addToast('Failed to add item.', 'error');
-    } else {
+    } else if (newItemText.trim() === text) {
       newItemText = '';
       comboboxResetKey++;
     }
