@@ -204,7 +204,7 @@ describe('onShoppingListItemWrite', () => {
       await (onShoppingListItemWrite as Function)(event);
 
       expect(mockMatchOrCreate).toHaveBeenCalledWith(
-        { rawName: 'heinz baked beans' },
+        { rawName: 'heinz baked beans', rawText: 'heinz baked beans' },
         expect.anything(),
       );
     });
@@ -260,7 +260,10 @@ describe('onShoppingListItemWrite', () => {
       });
       await (onShoppingListItemWrite as Function)(event);
 
-      expect(mockMatchOrCreate).toHaveBeenCalledWith({ rawName: 'oat milk' }, expect.anything());
+      expect(mockMatchOrCreate).toHaveBeenCalledWith(
+        { rawName: 'oat milk', rawText: 'oat milk' },
+        expect.anything(),
+      );
       expect(mockUpdate).toHaveBeenCalledWith(
         expect.objectContaining({ canonId: 'canon-2', matchState: 'matched' }),
       );
@@ -311,7 +314,7 @@ describe('onShoppingListItemWrite', () => {
       await (onShoppingListItemWrite as Function)(event);
 
       expect(mockMatchOrCreate).toHaveBeenCalledWith(
-        { rawName: 'birthday card' },
+        { rawName: 'birthday card', rawText: 'birthday card for bob' },
         expect.anything(),
       );
     });
@@ -408,7 +411,10 @@ describe('onShoppingListItemWrite', () => {
       });
       await (onShoppingListItemWrite as Function)(event);
 
-      expect(mockMatchOrCreate).toHaveBeenCalledWith({ rawName: 'olive oil' }, expect.anything());
+      expect(mockMatchOrCreate).toHaveBeenCalledWith(
+        { rawName: 'olive oil', rawText: 'olive oil garlic' },
+        expect.anything(),
+      );
       expect(mockUpdate).toHaveBeenCalledWith(
         expect.objectContaining({ rawText: 'olive oil', notes: 'garlic' }),
       );
@@ -432,7 +438,7 @@ describe('onShoppingListItemWrite', () => {
 
       // Deterministic found no split → full text as clean name, no extra write
       expect(mockMatchOrCreate).toHaveBeenCalledWith(
-        { rawName: 'olive oil garlic' },
+        { rawName: 'olive oil garlic', rawText: 'olive oil garlic' },
         expect.anything(),
       );
       const updateArg = mockUpdate.mock.calls[0][0] as Record<string, unknown>;

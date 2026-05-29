@@ -18,6 +18,7 @@ export function createServerArbitrationAdapter(): CanonArbitrationPort {
             confidence: c.confidence,
           })),
           aisles: req.aisles.map((a) => ({ id: a.id, name: a.name })),
+          ...(req.rawText !== undefined ? { rawText: req.rawText } : {}),
         };
         const value = (await arbitrateCanonFlow(flowInput)) as unknown as ArbitrationResult;
         return success(value);

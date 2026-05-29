@@ -68,7 +68,10 @@ export const onShoppingListItemWrite = onDocumentWritten(
 
     let errorCategory: string | null = null;
     try {
-      const result = await matchOrCreate({ rawName: cleanName }, buildMatchOrCreatePorts(span));
+      const result = await matchOrCreate(
+        { rawName: cleanName, ...(rawText ? { rawText } : {}) },
+        buildMatchOrCreatePorts(span),
+      );
 
       const db = getFirestore();
       const docRef = db.collection('shoppingLists').doc(listId).collection('items').doc(itemId);
