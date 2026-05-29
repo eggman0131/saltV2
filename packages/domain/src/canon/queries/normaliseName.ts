@@ -1,3 +1,18 @@
+const WORD_NUMBERS = new Set([
+  'one',
+  'two',
+  'three',
+  'four',
+  'five',
+  'six',
+  'seven',
+  'eight',
+  'nine',
+  'ten',
+  'eleven',
+  'twelve',
+]);
+
 // Pure normalisation used by both lookup and matching logic.
 export function normaliseName(rawName: string): string {
   return rawName
@@ -11,7 +26,12 @@ export function normaliseName(rawName: string): string {
     .trim()
     .split(' ')
     .filter(Boolean)
-    .filter((word) => !/^\d+$/.test(word))
+    .filter(
+      (word) =>
+        !/^\d+$/.test(word) && // strip pure digit tokens: "3", "400"
+        !WORD_NUMBERS.has(word) && // strip word-number tokens: "one", "two"
+        !/^\d+[a-zA-Z]+$/.test(word), // strip digit-prefixed tokens: "400g", "2kg"
+    )
     .map(singularize)
     .join(' ');
 }

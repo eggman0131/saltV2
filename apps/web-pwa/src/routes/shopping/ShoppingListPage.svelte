@@ -2,6 +2,13 @@
   import {
     Button,
     Checkbox,
+    Combobox,
+    ComboboxContent,
+    ComboboxCreate,
+    ComboboxEmpty,
+    ComboboxField,
+    ComboboxInput,
+    ComboboxItem,
     Icon,
     ListPage,
     Select,
@@ -18,8 +25,9 @@
     TextField,
     EmptyState,
   } from '@salt/ui-components';
+  import { titleCase } from '../../lib/titleCase.js';
   import { push } from 'svelte-spa-router';
-  import { groupItemsByAisle, combineItemsByUnit } from '@salt/domain';
+  import { groupItemsByAisle } from '@salt/domain';
   import type { ShoppingListItem } from '@salt/domain';
   import { canonItems, aisles } from '../../lib/canonService.js';
   import {
@@ -30,6 +38,7 @@
     setActiveListId,
     addItemToList,
     updateItemRawText,
+    updateItemAmountUnit,
     updateItemNotes,
     toggleItemChecked,
     checkItems,
@@ -72,10 +81,7 @@
   const totalItems = $derived(
     grouped.other.contributors.length +
       grouped.checked.contributors.length +
-      grouped.aisles.reduce(
-        (sum, ag) => sum + ag.groups.reduce((s2, g) => s2 + g.contributors.length, 0),
-        0,
-      ),
+      grouped.aisles.reduce((sum, ag) => sum + ag.items.length, 0),
   );
 
   const isEmpty = $derived(!$isLoadingShoppingList && totalItems === 0);
@@ -95,36 +101,27 @@
     selected = next;
   }
 
-  function toggleGroupSelection(itemIds: string[]): void {
-    const allGroupSelected = itemIds.every((id) => selected.has(id));
-    const next = new Set(selected);
-    if (allGroupSelected) {
-      for (const id of itemIds) next.delete(id);
-    } else {
-      for (const id of itemIds) next.add(id);
-    }
-    selected = next;
-  }
-
   function toggleAll(): void {
     selected = allSelected ? new Set() : new Set(allItemIds);
-  }
-
-  // ─── Expanded groups ──────────────────────────────────────────────────────────
-
-  let expandedGroups = $state(new Set<string>());
-
-  function toggleGroup(canonId: string): void {
-    const next = new Set(expandedGroups);
-    if (next.has(canonId)) next.delete(canonId);
-    else next.add(canonId);
-    expandedGroups = next;
   }
 
   // ─── Item capture ─────────────────────────────────────────────────────────────
 
   let newItemText = $state('');
   let addBusy = $state(false);
+  let comboboxResetKey = $state(0);
+
+  const comboItems = $derived($canonItems.map((c) => ({ value: c.id, label: titleCase(c.name) })));
+
+  function filterFn(input: string, comboItem: { value: string; label: string }): boolean {
+    const q = input.trim().toLowerCase();
+    if (!q) return true;
+    const canon = $canonItems.find((c) => c.id === comboItem.value);
+    return (
+      comboItem.label.toLowerCase().includes(q) ||
+      (canon?.synonyms.some((s) => s.toLowerCase().includes(q)) ?? false)
+    );
+  }
 
   async function handleAddItem(): Promise<void> {
     const text = newItemText.trim();
@@ -136,7 +133,20 @@
       addToast('Failed to add item.', 'error');
     } else {
       newItemText = '';
+      comboboxResetKey++;
     }
+  }
+
+  function handleComboboxValueChange(id: string): void {
+    const item = $canonItems.find((c) => c.id === id);
+    if (!item) return;
+    newItemText = item.name;
+    void handleAddItem();
+  }
+
+  function handleComboboxCreate(text: string): void {
+    newItemText = text;
+    void handleAddItem();
   }
 
   // ─── Edit sheet ───────────────────────────────────────────────────────────────
@@ -144,6 +154,8 @@
   let editSheetOpen = $state(false);
   let editingItem = $state<ShoppingListItem | null>(null);
   let editRawText = $state('');
+  let editAmount = $state('');
+  let editUnit = $state('');
   let editNotes = $state('');
   let editBusy = $state(false);
   let editDeleteBusy = $state(false);
@@ -151,6 +163,8 @@
   function openEditSheet(item: ShoppingListItem): void {
     editingItem = item;
     editRawText = item.rawText;
+    editAmount = item.amount !== undefined ? String(item.amount) : '';
+    editUnit = item.unit ?? '';
     editNotes = item.notes;
     editSheetOpen = true;
   }
@@ -160,10 +174,27 @@
     editBusy = true;
     const rawChanged = editRawText.trim() !== editingItem.rawText;
     const notesChanged = editNotes.trim() !== editingItem.notes;
+    const parsedAmount = editAmount.trim() ? parseFloat(editAmount.trim()) : undefined;
+    const parsedUnit = editUnit.trim() || undefined;
+    const amountUnitChanged =
+      parsedAmount !== editingItem.amount || parsedUnit !== editingItem.unit;
     if (rawChanged) {
       const r = await updateItemRawText(params.listId, editingItem.id, editRawText);
       if (r.kind !== 'ok') {
         addToast('Failed to update item.', 'error');
+        editBusy = false;
+        return;
+      }
+    }
+    if (amountUnitChanged) {
+      const r = await updateItemAmountUnit(
+        params.listId,
+        editingItem.id,
+        Number.isNaN(parsedAmount) ? undefined : parsedAmount,
+        parsedUnit,
+      );
+      if (r.kind !== 'ok') {
+        addToast('Failed to update quantity.', 'error');
         editBusy = false;
         return;
       }
@@ -256,35 +287,9 @@
     return '';
   }
 
-  function formatSlotAmount(amount: number | undefined, unit: string | undefined): string | null {
+  function formatAmount(amount: number | undefined, unit: string | undefined): string | null {
     if (amount === undefined) return null;
     return unit ? `${amount} ${unit}` : `${amount}`;
-  }
-
-  function toggleSlotSelection(ids: string[]): void {
-    const next = new Set(selected);
-    const allSel = ids.every((id) => next.has(id));
-    if (allSel) {
-      for (const id of ids) next.delete(id);
-    } else {
-      for (const id of ids) next.add(id);
-    }
-    selected = next;
-  }
-
-  async function toggleSlotChecked(items: readonly ShoppingListItem[]): Promise<void> {
-    const allChecked = items.every((i) => i.checked);
-    if (allChecked) {
-      await uncheckItems(
-        params.listId,
-        items.map((i) => i.id),
-      );
-    } else {
-      await checkItems(
-        params.listId,
-        items.map((i) => i.id),
-      );
-    }
   }
 </script>
 
@@ -336,19 +341,41 @@
     {/snippet}
 
     {#snippet toolbar()}
-      <TextField
-        bind:value={newItemText}
-        placeholder="Add an item…"
-        disabled={addBusy}
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
         class="flex-1"
-        data-testid="shopping-item-input"
-        onkeydown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            void handleAddItem();
-          }
+        oninput={(e) => {
+          newItemText = (e.target as HTMLInputElement).value;
         }}
-      />
+      >
+        {#key comboboxResetKey}
+          <Combobox
+            items={comboItems}
+            allowCustom={true}
+            {filterFn}
+            onValueChange={handleComboboxValueChange}
+            onCreate={handleComboboxCreate}
+            placeholder="Add an item…"
+          >
+            <ComboboxField class="w-full">
+              <ComboboxInput data-testid="shopping-item-input" />
+            </ComboboxField>
+            <ComboboxContent>
+              {#snippet children({ filteredItems, showCreate })}
+                {#each filteredItems as item, i (item.value)}
+                  <ComboboxItem {item} index={i} />
+                {/each}
+                {#if showCreate}
+                  <ComboboxCreate />
+                {/if}
+                {#if filteredItems.length === 0 && !showCreate}
+                  <ComboboxEmpty>No matches</ComboboxEmpty>
+                {/if}
+              {/snippet}
+            </ComboboxContent>
+          </Combobox>
+        {/key}
+      </div>
       <Button
         onclick={handleAddItem}
         loading={addBusy}
@@ -453,231 +480,51 @@
               {aisleGroup.aisleName}
             </p>
 
-            {#each aisleGroup.groups as group (group.canonId)}
-              {@const groupIds = group.contributors.map((c) => c.id)}
-              {@const allGroupSelected = groupIds.every((id) => selected.has(id))}
-              {@const someGroupSelected =
-                groupIds.some((id) => selected.has(id)) && !allGroupSelected}
-              {@const isExpanded = expandedGroups.has(group.canonId)}
-              {@const unitSlots = combineItemsByUnit(group.contributors)}
-
-              {#if unitSlots.length === 1}
-                <!-- Single slot (all contributors share the same unit): one combined row -->
-                {@const slot = unitSlots[0]!}
-                {@const slotIds = slot.entries.map((e) => e.id)}
-                {@const slotAllSelected = slotIds.every((id) => selected.has(id))}
-                {@const slotSomeSelected =
-                  slotIds.some((id) => selected.has(id)) && !slotAllSelected}
-                {@const slotAllChecked = slot.entries.every((e) => e.checked)}
-                {@const slotSomeChecked = slot.entries.some((e) => e.checked) && !slotAllChecked}
-                {@const slotDisplayName =
-                  slot.entries.length === 1
-                    ? toSentenceCase(slot.entries[0]!.rawText)
-                    : toSentenceCase(group.canonName)}
-                {@const slotAmountStr = formatSlotAmount(slot.combinedAmount, slot.unit)}
-                {@const singleItem = slot.entries.length === 1 ? slot.entries[0]! : null}
-                <div
-                  class="flex items-center gap-3 rounded-md border px-3 py-2 text-sm {slotAllSelected
-                    ? 'border-ring ring-2 ring-ring bg-card'
-                    : 'border-border bg-card'}"
-                  data-testid="shopping-item-row"
-                  data-item-id={singleItem?.id}
+            {#each aisleGroup.items as item (item.id)}
+              {@const isSelected = selected.has(item.id)}
+              {@const amountStr = formatAmount(item.amount, item.unit)}
+              <div
+                class="flex items-center gap-3 rounded-md border px-3 py-2 text-sm {isSelected
+                  ? 'border-ring ring-2 ring-ring bg-card'
+                  : 'border-border bg-card'}"
+                data-testid="shopping-item-row"
+                data-item-id={item.id}
+              >
+                <Checkbox
+                  checked={isSelected}
+                  onCheckedChange={() => toggleSelection(item.id)}
+                  label=""
+                  aria-label="Select {item.rawText}"
+                />
+                <button
+                  type="button"
+                  class="flex-1 min-w-0 text-left"
+                  onclick={() => openEditSheet(item)}
+                  aria-label="Edit {item.rawText}"
+                  data-testid="shopping-item-edit-btn"
                 >
-                  <Checkbox
-                    checked={slotAllSelected ? true : slotSomeSelected ? 'indeterminate' : false}
-                    onCheckedChange={() => toggleSlotSelection(slotIds)}
-                    label=""
-                    aria-label="Select {slotDisplayName}"
-                  />
-                  {#if singleItem}
-                    <button
-                      type="button"
-                      class="flex-1 min-w-0 text-left"
-                      onclick={() => openEditSheet(singleItem)}
-                      aria-label="Edit {slotDisplayName}"
-                      data-testid="shopping-item-edit-btn"
+                  <span class="block truncate">
+                    {toSentenceCase(item.rawText)}{#if amountStr}{' '}<span
+                        class="text-muted-foreground">({amountStr})</span
+                      >{/if}
+                  </span>
+                  {#if item.notes}
+                    <span class="block text-xs text-muted-foreground truncate"
+                      >{toSentenceCase(item.notes)}</span
                     >
-                      <span class="block truncate">
-                        {slotDisplayName}
-                      </span>
-                      {#if slotAmountStr}
-                        <span class="block text-xs text-muted-foreground">{slotAmountStr}</span>
-                      {/if}
-                      {#if singleItem.notes}
-                        <span class="block text-xs text-muted-foreground truncate"
-                          >{toSentenceCase(singleItem.notes)}</span
-                        >
-                      {/if}
-                      {#if sourceLabel(singleItem)}
-                        <span class="block text-xs text-muted-foreground/70"
-                          >{sourceLabel(singleItem)}</span
-                        >
-                      {/if}
-                    </button>
-                  {:else}
-                    <div class="flex-1 min-w-0">
-                      <span class="block truncate">
-                        {slotDisplayName}
-                      </span>
-                      {#if slotAmountStr}
-                        <span class="block text-xs text-muted-foreground">{slotAmountStr}</span>
-                      {/if}
-                    </div>
                   {/if}
-                  <Checkbox
-                    checked={slotAllChecked ? true : slotSomeChecked ? 'indeterminate' : false}
-                    onCheckedChange={() => void toggleSlotChecked(slot.entries)}
-                    label=""
-                    aria-label="Mark as done"
-                    data-testid="shopping-item-check"
-                  />
-                </div>
-              {:else}
-                <!-- Multiple slots (different units): collapsible group, one row per slot -->
-                <div
-                  class="flex flex-col gap-0.5"
-                  data-testid="shopping-canon-group"
-                  data-canon-id={group.canonId}
-                >
-                  <!-- Group header row -->
-                  <div
-                    class="flex items-center gap-3 rounded-md border px-3 py-2 text-sm {allGroupSelected
-                      ? 'border-ring ring-2 ring-ring bg-card'
-                      : 'border-border bg-card'}"
-                  >
-                    <Checkbox
-                      checked={allGroupSelected
-                        ? true
-                        : someGroupSelected
-                          ? 'indeterminate'
-                          : false}
-                      onCheckedChange={() => toggleGroupSelection(groupIds)}
-                      label=""
-                      aria-label="Select all in {group.canonName}"
-                    />
-                    <button
-                      type="button"
-                      class="flex-1 min-w-0 flex items-center gap-2 text-left"
-                      onclick={() => toggleGroup(group.canonId)}
-                      aria-label={isExpanded
-                        ? 'Collapse {group.canonName}'
-                        : 'Expand {group.canonName}'}
-                      data-testid="shopping-group-toggle"
-                    >
-                      <span class="font-medium truncate">
-                        {toSentenceCase(group.canonName)}
-                      </span>
-                      <span
-                        class="text-xs bg-muted text-muted-foreground rounded px-1.5 py-0.5 shrink-0"
-                      >
-                        +{unitSlots.length}
-                      </span>
-                      <Icon
-                        name={isExpanded ? 'ChevronUp' : 'ChevronDown'}
-                        size={14}
-                        class="ml-auto shrink-0 text-muted-foreground"
-                      />
-                    </button>
-                  </div>
-
-                  <!-- Expanded slot rows -->
-                  {#if isExpanded}
-                    <div class="ml-6 flex flex-col gap-0.5">
-                      {#each unitSlots as slot}
-                        {@const slotIds = slot.entries.map((e) => e.id)}
-                        {@const slotAllSelected = slotIds.every((id) => selected.has(id))}
-                        {@const slotSomeSelected =
-                          slotIds.some((id) => selected.has(id)) && !slotAllSelected}
-                        {@const slotAllChecked = slot.entries.every((e) => e.checked)}
-                        {@const slotSomeChecked =
-                          slot.entries.some((e) => e.checked) && !slotAllChecked}
-                        {@const slotDisplayName =
-                          slot.entries.length === 1
-                            ? toSentenceCase(slot.entries[0]!.rawText)
-                            : toSentenceCase(group.canonName)}
-                        {@const slotAmountStr = formatSlotAmount(slot.combinedAmount, slot.unit)}
-                        {@const singleItem = slot.entries.length === 1 ? slot.entries[0]! : null}
-                        <div
-                          class="flex items-center gap-3 rounded-md border px-3 py-2 text-sm {slotAllSelected
-                            ? 'border-ring ring-2 ring-ring bg-card'
-                            : 'border-border bg-muted/30'}"
-                          data-testid="shopping-item-row"
-                          data-item-id={singleItem?.id}
-                        >
-                          <Checkbox
-                            checked={slotAllSelected
-                              ? true
-                              : slotSomeSelected
-                                ? 'indeterminate'
-                                : false}
-                            onCheckedChange={() => toggleSlotSelection(slotIds)}
-                            label=""
-                            aria-label="Select {slotDisplayName}"
-                          />
-                          {#if singleItem}
-                            <button
-                              type="button"
-                              class="flex-1 min-w-0 text-left"
-                              onclick={() => openEditSheet(singleItem)}
-                              aria-label="Edit {slotDisplayName}"
-                              data-testid="shopping-item-edit-btn"
-                            >
-                              <span
-                                class="block truncate {slotAllChecked
-                                  ? 'line-through text-muted-foreground'
-                                  : ''}"
-                              >
-                                {slotDisplayName}
-                              </span>
-                              {#if slotAmountStr}
-                                <span class="block text-xs text-muted-foreground"
-                                  >{slotAmountStr}</span
-                                >
-                              {/if}
-                              {#if singleItem.notes}
-                                <span class="block text-xs text-muted-foreground truncate"
-                                  >{toSentenceCase(singleItem.notes)}</span
-                                >
-                              {/if}
-                              {#if sourceLabel(singleItem)}
-                                <span class="block text-xs text-muted-foreground/70"
-                                  >{sourceLabel(singleItem)}</span
-                                >
-                              {/if}
-                            </button>
-                          {:else}
-                            <div class="flex-1 min-w-0">
-                              <span
-                                class="block truncate {slotAllChecked
-                                  ? 'line-through text-muted-foreground'
-                                  : ''}"
-                              >
-                                {slotDisplayName}
-                              </span>
-                              {#if slotAmountStr}
-                                <span class="block text-xs text-muted-foreground"
-                                  >{slotAmountStr}</span
-                                >
-                              {/if}
-                            </div>
-                          {/if}
-                          <Checkbox
-                            checked={slotAllChecked
-                              ? true
-                              : slotSomeChecked
-                                ? 'indeterminate'
-                                : false}
-                            onCheckedChange={() => void toggleSlotChecked(slot.entries)}
-                            label=""
-                            aria-label="Mark as done"
-                            data-testid="shopping-item-check"
-                          />
-                        </div>
-                      {/each}
-                    </div>
+                  {#if sourceLabel(item)}
+                    <span class="block text-xs text-muted-foreground/70">{sourceLabel(item)}</span>
                   {/if}
-                </div>
-              {/if}
+                </button>
+                <Checkbox
+                  checked={item.checked}
+                  onCheckedChange={() => void toggleItemChecked(params.listId, item)}
+                  label=""
+                  aria-label="Mark as done"
+                  data-testid="shopping-item-check"
+                />
+              </div>
             {/each}
           </section>
         {/each}
@@ -695,6 +542,7 @@
             </div>
             {#each grouped.other.contributors as { item, isPending } (item.id)}
               {@const isSelected = selected.has(item.id)}
+              {@const amountStr = formatAmount(item.amount, item.unit)}
               <div
                 class="flex items-center gap-3 rounded-md border px-3 py-2 text-sm {isSelected
                   ? 'border-ring ring-2 ring-ring bg-card'
@@ -720,13 +568,10 @@
                       ? 'line-through text-muted-foreground'
                       : ''}"
                   >
-                    {toSentenceCase(item.rawText)}
+                    {toSentenceCase(item.rawText)}{#if amountStr}{' '}<span
+                        class="text-muted-foreground">({amountStr})</span
+                      >{/if}
                   </span>
-                  {#if formatSlotAmount(item.amount, item.unit)}
-                    <span class="block text-xs text-muted-foreground"
-                      >{formatSlotAmount(item.amount, item.unit)}</span
-                    >
-                  {/if}
                   {#if item.notes}
                     <span class="block text-xs text-muted-foreground truncate"
                       >{toSentenceCase(item.notes)}</span
@@ -756,6 +601,7 @@
             </p>
             {#each grouped.checked.contributors as item (item.id)}
               {@const isSelected = selected.has(item.id)}
+              {@const amountStr = formatAmount(item.amount, item.unit)}
               <div
                 class="flex items-center gap-3 rounded-md border px-3 py-2 text-sm {isSelected
                   ? 'border-ring ring-2 ring-ring bg-card'
@@ -777,13 +623,8 @@
                   data-testid="shopping-item-edit-btn"
                 >
                   <span class="block truncate line-through text-muted-foreground">
-                    {toSentenceCase(item.rawText)}
+                    {toSentenceCase(item.rawText)}{#if amountStr}{' '}({amountStr}){/if}
                   </span>
-                  {#if formatSlotAmount(item.amount, item.unit)}
-                    <span class="block text-xs text-muted-foreground/60"
-                      >{formatSlotAmount(item.amount, item.unit)}</span
-                    >
-                  {/if}
                   {#if item.notes}
                     <span class="block text-xs text-muted-foreground/60 truncate"
                       >{toSentenceCase(item.notes)}</span
@@ -830,6 +671,29 @@
           disabled={editBusy}
           data-testid="shopping-edit-rawtext"
         />
+      </div>
+      <div class="flex gap-3">
+        <div class="flex flex-col gap-1.5 w-24">
+          <label class="text-sm font-medium" for="edit-item-amount">Quantity</label>
+          <TextField
+            id="edit-item-amount"
+            bind:value={editAmount}
+            placeholder="e.g. 2"
+            inputmode="decimal"
+            disabled={editBusy}
+            data-testid="shopping-edit-amount"
+          />
+        </div>
+        <div class="flex flex-col gap-1.5 flex-1">
+          <label class="text-sm font-medium" for="edit-item-unit">Unit</label>
+          <TextField
+            id="edit-item-unit"
+            bind:value={editUnit}
+            placeholder="e.g. kg"
+            disabled={editBusy}
+            data-testid="shopping-edit-unit"
+          />
+        </div>
       </div>
       <div class="flex flex-col gap-1.5">
         <label class="text-sm font-medium" for="edit-item-notes">Notes</label>

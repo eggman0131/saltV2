@@ -2,9 +2,10 @@
  * Shopping list happy-path E2E tests.
  *
  * Exercises the core shopping list lifecycle against the Firestore + Auth
- * emulators: item capture, Needs Review → aisle grouping flow (requires the
- * onShoppingListItemWrite CF trigger to be running), collapse/expand of
- * grouped items, check/uncheck, clear checked, and persistence across reload.
+ * emulators: item capture, Needs Review → aisle routing (requires the
+ * onShoppingListItemWrite CF trigger to be running), check/uncheck, clear
+ * checked, and persistence across reload. Direct entries are not collapsed
+ * even when they share a canon — each is its own row.
  *
  * The canon-match trigger must be running for items to graduate from Needs
  * Review into their aisles. In emulator-only mode without the trigger the
@@ -122,12 +123,14 @@ test.describe('shopping list — happy path', () => {
     await expect(page.getByText('500g bag')).toBeVisible({ timeout: SYNC_TIMEOUT });
   });
 
-  test('collapse/expand grouped items with +N chip', async ({ page }, testInfo) => {
+  test('duplicate direct entries render as separate rows (no canon collapsing)', async ({
+    page,
+  }, testInfo) => {
     test.setTimeout(90_000);
     const email = uniqueEmail(testInfo.testId);
     await gotoAndSignIn(page, email);
 
-    // Seed an aisle and two canon items pointing to the same aisle.
+    // Seed an aisle and a canon item so any future-matched dupes share a canonId.
     await page.goto('/');
     await page.waitForFunction(() => Boolean(window.__e2e), null, { timeout: 10_000 });
 
@@ -137,20 +140,15 @@ test.describe('shopping list — happy path', () => {
       [dairyAisle!.id] as const,
     );
 
-    // Create shopping list
     await page.goto('/#/shopping');
     await expect(page).toHaveURL(/#\/shopping\/new/, { timeout: 10_000 });
     await page.getByTestId('shopping-create-list-name').fill('Weekly');
     await page.getByRole('button', { name: /create/i }).click();
     await expect(page).toHaveURL(/#\/shopping\/[a-z0-9-]+$/, { timeout: SYNC_TIMEOUT });
 
-    // Add two items that both resolve to the same canon (milk).
-    // Since emulator doesn't run the CF trigger, we'll add items and they'll
-    // stay in Needs Review. The collapse test requires matched items —
-    // this test seeds canon and checks the collapse once items are matched
-    // via a direct Firestore write (bridge doesn't have seedShoppingListItem,
-    // so we exercise what the UI provides: Needs Review remains visible
-    // and items are individually accessible).
+    // Add two items that would both resolve to Milk if the match trigger were running.
+    // Without the trigger they stay in Needs Review; either way each must render as
+    // its own row — direct entries are never collapsed.
     await page.getByTestId('shopping-item-input').fill('semi-skimmed milk');
     await page.getByTestId('shopping-item-add-btn').click();
     await page.getByTestId('shopping-item-input').fill('whole milk');
@@ -160,11 +158,8 @@ test.describe('shopping list — happy path', () => {
     await expect(other).toBeVisible({ timeout: SYNC_TIMEOUT });
     await expect(other.getByText('semi-skimmed milk')).toBeVisible();
     await expect(other.getByText('whole milk')).toBeVisible();
-
-    // Both items have edit buttons and individual check checkboxes.
     await expect(other.getByTestId('shopping-item-edit-btn')).toHaveCount(2);
 
-    // Verify the milkCanon was seeded (sanity check).
     expect(milkCanon.id).toBeTruthy();
   });
 });

@@ -10,7 +10,7 @@ export interface ParsedEntry {
   readonly name: string;
   // Trailing context stripped off the entry ('' when nothing was stripped).
   readonly context: string;
-  // Structured quantity — absent when no unambiguous leading number was found.
+  // Structured quantity — absent when no quantity was found.
   readonly amount?: number;
   // Unit of the quantity — absent when no recognised unit was extracted.
   // Stored with original casing; normalisation for grouping is display-time only.
@@ -52,15 +52,51 @@ const UNIT_WORDS = new Set([
   'pints',
 ]);
 
+// ─── Leading quantity patterns ────────────────────────────────────────────────
+
 // "<number><alphas> <rest>" — number directly attached to a unit (e.g. "2kg flour")
 const ATTACHED_UNIT = /^(\d+(?:\.\d+)?)([a-zA-Z]+)\s+(.+)$/;
 // "<number> <rest>" — bare leading number with at least one following word
 const LEADING_NUMBER = /^(\d+(?:\.\d+)?)\s+(.+)$/;
+// "<word-number> <rest>" — English cardinal words one–twelve
+const LEADING_WORD_NUMBER =
+  /^(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(.+)$/i;
+const WORD_NUMBER_VALUES: Record<string, number> = {
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+  eleven: 11,
+  twelve: 12,
+};
+
+// ─── Trailing quantity patterns ───────────────────────────────────────────────
+
+// "<name> <N><unit>" — unit directly attached to trailing number, e.g. "cucumber 400g"
+const TRAILING_ATTACHED_UNIT = /^(.+?)\s+(\d+(?:\.\d+)?)([a-zA-Z]+)$/;
+// "<name> <N> <unit>" — space-separated trailing unit from the known whitelist
+const TRAILING_SPACE_UNIT = /^(.+?)\s+(\d+(?:\.\d+)?)\s+([a-zA-Z]+)$/;
+// "<name> <N>" — bare trailing count, e.g. "onions 3"
+const TRAILING_NUMBER_ONLY = /^(.+?)\s+(\d+(?:\.\d+)?)$/;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 interface QuantityResult {
   readonly amount: number;
   readonly unit?: string;
   readonly remainder: string;
+}
+
+interface TrailingQuantityResult {
+  readonly amount: number;
+  readonly unit?: string;
+  readonly name: string;
 }
 
 // Strip a leading "of " that connects a unit to its item name (e.g. "rashers of
@@ -69,7 +105,18 @@ function stripLeadingOf(s: string): string {
   return /^of\s+/i.test(s) ? s.replace(/^of\s+/i, '') : s;
 }
 
-function extractQuantity(text: string): QuantityResult | null {
+function extractLeadingQuantity(text: string): QuantityResult | null {
+  // Case 0: leading English word-number, e.g. "one cucumber" or "three onions"
+  const wordMatch = LEADING_WORD_NUMBER.exec(text);
+  if (wordMatch !== null) {
+    const remainder = wordMatch[2]!;
+    if (/^for\s/i.test(remainder)) return null;
+    return {
+      amount: WORD_NUMBER_VALUES[wordMatch[1]!.toLowerCase()]!,
+      remainder: stripLeadingOf(remainder),
+    };
+  }
+
   // Case 1: number directly attached to alpha unit, e.g. "2kg flour"
   const attachedMatch = ATTACHED_UNIT.exec(text);
   if (attachedMatch !== null) {
@@ -106,50 +153,88 @@ function extractQuantity(text: string): QuantityResult | null {
   return { amount, remainder: stripLeadingOf(rest) };
 }
 
+function extractTrailingQuantity(text: string): TrailingQuantityResult | null {
+  // Case 1: number directly attached to trailing unit, e.g. "cucumber 400g"
+  const attachedMatch = TRAILING_ATTACHED_UNIT.exec(text);
+  if (attachedMatch !== null) {
+    return {
+      name: attachedMatch[1]!,
+      amount: parseFloat(attachedMatch[2]!),
+      unit: attachedMatch[3]!,
+    };
+  }
+
+  // Case 2: space-separated trailing unit from the known whitelist, e.g. "potatoes 1 kg"
+  const spaceMatch = TRAILING_SPACE_UNIT.exec(text);
+  if (spaceMatch !== null && UNIT_WORDS.has(spaceMatch[3]!.toLowerCase())) {
+    return {
+      name: spaceMatch[1]!,
+      amount: parseFloat(spaceMatch[2]!),
+      unit: spaceMatch[3]!,
+    };
+  }
+
+  // Case 3: bare trailing count, e.g. "onions 3"
+  const numMatch = TRAILING_NUMBER_ONLY.exec(text);
+  if (numMatch !== null) {
+    return { name: numMatch[1]!, amount: parseFloat(numMatch[2]!) };
+  }
+
+  return null;
+}
+
+// ─── Public entry point ───────────────────────────────────────────────────────
+
 export function parseShoppingListEntry(rawText: string): ParsedEntry {
   const trimmed = collapse(rawText);
 
-  const qty = extractQuantity(trimmed);
-  let workingText = qty !== null ? qty.remainder : trimmed;
-  let amount = qty?.amount;
-  let unit = qty?.unit;
+  // Step 1: try leading quantity
+  const leading = extractLeadingQuantity(trimmed);
+  let workingText = leading !== null ? leading.remainder : trimmed;
+  let amount = leading?.amount;
+  let unit = leading?.unit;
 
-  // Safety fallback: if extraction leaves a name that normalises to empty,
-  // discard the quantity and keep the full entry intact
-  if (qty !== null && normaliseName(workingText) === '') {
+  // Safety fallback: if leading extraction leaves an empty normalised name, discard it
+  if (leading !== null && normaliseName(workingText) === '') {
     workingText = trimmed;
     amount = undefined;
     unit = undefined;
   }
 
-  // Apply trailing-`for` rule to the remaining name
-  const match = TRAILING_FOR.exec(workingText);
-  if (match === null) {
-    return {
-      name: workingText,
-      context: '',
-      ...(amount !== undefined ? { amount } : undefined),
-      ...(unit !== undefined ? { unit } : undefined),
-    };
+  // Step 2: apply trailing-`for` rule to get final name and context
+  const forMatch = TRAILING_FOR.exec(workingText);
+  let finalName: string;
+  let context: string;
+
+  if (forMatch === null) {
+    finalName = workingText;
+    context = '';
+  } else {
+    const candidateName = collapse(forMatch[1]!);
+    // Safety fallback: if the strip leaves nothing canon could match on
+    // ("4 for £1" → "4" → normalises to empty), keep the working text intact.
+    if (normaliseName(candidateName) === '') {
+      finalName = workingText;
+      context = '';
+    } else {
+      finalName = candidateName;
+      context = collapse(forMatch[2]!);
+    }
   }
 
-  // Groups 1 and 2 are non-optional in TRAILING_FOR, so a non-null match
-  // guarantees both are present.
-  const candidateName = collapse(match[1]!);
-  // Safety fallback: if the strip leaves nothing canon could match on
-  // ("4 for £1" → "4" → normalises to empty), keep the working text intact.
-  if (normaliseName(candidateName) === '') {
-    return {
-      name: workingText,
-      context: '',
-      ...(amount !== undefined ? { amount } : undefined),
-      ...(unit !== undefined ? { unit } : undefined),
-    };
+  // Step 3: if no leading quantity was found, try trailing quantity on the final name
+  if (amount === undefined) {
+    const trailing = extractTrailingQuantity(finalName);
+    if (trailing !== null && normaliseName(trailing.name) !== '') {
+      amount = trailing.amount;
+      unit = trailing.unit;
+      finalName = trailing.name;
+    }
   }
 
   return {
-    name: candidateName,
-    context: collapse(match[2]!),
+    name: finalName,
+    context,
     ...(amount !== undefined ? { amount } : undefined),
     ...(unit !== undefined ? { unit } : undefined),
   };

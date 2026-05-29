@@ -126,6 +126,96 @@ describe('parseShoppingListEntry — amount/unit extraction', () => {
     });
   });
 
+  it('extracts amount from a leading English word-number', () => {
+    expect(parseShoppingListEntry('one cucumber')).toEqual({
+      amount: 1,
+      name: 'cucumber',
+      context: '',
+    });
+    expect(parseShoppingListEntry('three onions')).toEqual({
+      amount: 3,
+      name: 'onions',
+      context: '',
+    });
+    expect(parseShoppingListEntry('twelve eggs')).toEqual({
+      amount: 12,
+      name: 'eggs',
+      context: '',
+    });
+  });
+
+  it('word-number extraction is case-insensitive', () => {
+    expect(parseShoppingListEntry('One Cucumber')).toEqual({
+      amount: 1,
+      name: 'Cucumber',
+      context: '',
+    });
+  });
+
+  it('combines word-number extraction with trailing-for rule', () => {
+    expect(parseShoppingListEntry('two avocados for the salad')).toEqual({
+      amount: 2,
+      name: 'avocados',
+      context: 'for the salad',
+    });
+  });
+
+  it('extracts amount and unit from a trailing attached number-unit', () => {
+    expect(parseShoppingListEntry('cucumber 400g')).toEqual({
+      amount: 400,
+      unit: 'g',
+      name: 'cucumber',
+      context: '',
+    });
+    expect(parseShoppingListEntry('coca cola 1.5l')).toEqual({
+      amount: 1.5,
+      unit: 'l',
+      name: 'coca cola',
+      context: '',
+    });
+  });
+
+  it('extracts amount and unit from a trailing space-separated known unit', () => {
+    expect(parseShoppingListEntry('potatoes 1 kg')).toEqual({
+      amount: 1,
+      unit: 'kg',
+      name: 'potatoes',
+      context: '',
+    });
+  });
+
+  it('extracts a bare trailing count', () => {
+    expect(parseShoppingListEntry('tomatoes 6')).toEqual({
+      amount: 6,
+      name: 'tomatoes',
+      context: '',
+    });
+  });
+
+  it('combines trailing quantity with the trailing-for rule', () => {
+    expect(parseShoppingListEntry('flour 400g for the cake')).toEqual({
+      amount: 400,
+      unit: 'g',
+      name: 'flour',
+      context: 'for the cake',
+    });
+  });
+
+  it('does not extract trailing quantity when the unit word is not recognised', () => {
+    // "3 bobs" — "bobs" is not a unit word, and text does not end in a bare number
+    const result = parseShoppingListEntry('birthday card for bob');
+    expect(result.amount).toBeUndefined();
+  });
+
+  it('leading quantity takes priority over trailing', () => {
+    // Leading "2kg" is extracted first; trailing extraction is skipped
+    expect(parseShoppingListEntry('2kg flour')).toMatchObject({
+      amount: 2,
+      unit: 'kg',
+      name: 'flour',
+    });
+  });
+
   it('does not extract from ambiguous text with no leading number', () => {
     const result = parseShoppingListEntry('a couple of onions');
     expect(result).toEqual({ name: 'a couple of onions', context: '' });

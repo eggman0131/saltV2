@@ -132,12 +132,10 @@ export type {
   OtherContributor,
   OtherBucket,
   CheckedBucket,
-  ItemGroup,
   AisleGroup,
   GroupedShoppingList,
   ParsedEntry,
   EntryParsePort,
-  UnitSlot,
 } from './shoppingList/index.js';
 export {
   createList,
@@ -147,6 +145,7 @@ export {
   addItem,
   editItemRawText,
   editItemNotes,
+  editItemAmountUnit,
   checkItem,
   uncheckItem,
   deleteItem,
@@ -154,7 +153,6 @@ export {
   moveItems,
   groupItemsByAisle,
   parseShoppingListEntry,
-  combineItemsByUnit,
 } from './shoppingList/index.js';
 
 // Cross-cutting ports.
