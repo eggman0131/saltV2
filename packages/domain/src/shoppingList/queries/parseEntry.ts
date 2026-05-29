@@ -58,10 +58,11 @@ const UNIT_WORDS = new Set([
 const ATTACHED_UNIT = /^(\d+(?:\.\d+)?)([a-zA-Z]+) (\S.*)$/;
 // "<number> <rest>" — bare leading number with at least one following word
 const LEADING_NUMBER = /^(\d+(?:\.\d+)?) (\S.*)$/;
-// "<word-number> <rest>" — English cardinal words one–twelve
+// "<word-number> <rest>" — English cardinal words one–twelve, plus the article "a" (= 1)
 const LEADING_WORD_NUMBER =
-  /^(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve) (\S.*)$/i;
+  /^(a|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve) (\S.*)$/i;
 const WORD_NUMBER_VALUES: Record<string, number> = {
+  a: 1,
   one: 1,
   two: 2,
   three: 3,

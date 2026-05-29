@@ -216,11 +216,15 @@ describe('parseShoppingListEntry — amount/unit extraction', () => {
     });
   });
 
-  it('does not extract from ambiguous text with no leading number', () => {
-    const result = parseShoppingListEntry('a couple of onions');
-    expect(result).toEqual({ name: 'a couple of onions', context: '' });
-    expect(result.amount).toBeUndefined();
-    expect(result.unit).toBeUndefined();
+  it('treats leading "a" as quantity 1', () => {
+    expect(parseShoppingListEntry('a bunch of bananas')).toMatchObject({
+      amount: 1,
+      name: 'bunch of bananas',
+    });
+    expect(parseShoppingListEntry('a couple of onions')).toMatchObject({
+      amount: 1,
+      name: 'couple of onions',
+    });
   });
 
   it('does not extract when the remainder after the number starts with "for" (price notation)', () => {
