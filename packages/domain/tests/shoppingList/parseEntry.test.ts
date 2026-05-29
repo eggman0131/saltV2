@@ -283,11 +283,12 @@ describe('parseShoppingListEntry — amount/unit extraction', () => {
     });
   });
 
-  it('does not strip "of" that is part of the item name (not immediately after the quantity)', () => {
-    // "comfort" contains no leading "of" after quantity extraction
-    expect(parseShoppingListEntry('2 bags of crisps')).toMatchObject({
+  it('strips leading "of" from container-unit remainder', () => {
+    expect(parseShoppingListEntry('2 bags of crisps')).toEqual({
       amount: 2,
-      name: 'bags of crisps',
+      unit: 'bags',
+      name: 'crisps',
+      context: '',
     });
   });
 });

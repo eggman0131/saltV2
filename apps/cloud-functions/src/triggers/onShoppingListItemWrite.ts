@@ -45,7 +45,7 @@ export const onShoppingListItemWrite = onDocumentWritten(
 
     // Parse: deterministic first; AI fallback for compound entries the rule missed.
     let parsed = parseShoppingListEntry(rawText);
-    if (parsed.context === '' && looksCompound(rawText)) {
+    if (parsed.context === '' && parsed.amount === undefined && looksCompound(rawText)) {
       const aiResult = await createServerEntryParseAdapter().parse(rawText);
       if (aiResult.kind === 'ok') {
         parsed = aiResult.value;
@@ -68,7 +68,10 @@ export const onShoppingListItemWrite = onDocumentWritten(
 
     let errorCategory: string | null = null;
     try {
-      const result = await matchOrCreate({ rawName: cleanName }, buildMatchOrCreatePorts(span));
+      const result = await matchOrCreate(
+        { rawName: cleanName, ...(rawText ? { rawText } : {}) },
+        buildMatchOrCreatePorts(span),
+      );
 
       const db = getFirestore();
       const docRef = db.collection('shoppingLists').doc(listId).collection('items').doc(itemId);

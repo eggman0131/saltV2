@@ -106,10 +106,16 @@ function buildPrompt(req: z.infer<typeof ArbitrationRequestSchema>): string {
     ? req.aisles.map((a) => `- "${a.name}"`).join('\n')
     : '(none)';
 
+  const rawInputLine =
+    req.rawText !== undefined && req.rawText !== req.normalisedName
+      ? `Raw input (context only — use container/descriptor words like "tin of", "smoked", "fresh" to resolve ambiguity, but match on the normalised name above): "${req.rawText}"`
+      : null;
+
   return [
     `You are a UK supermarket canon-matching assistant. Apply the four rules below and respond with a single JSON object matching the output schema exactly.`,
     ``,
     `Normalised input: "${req.normalisedName}"`,
+    ...(rawInputLine ? [rawInputLine] : []),
     ``,
     `Candidate matches (id, name, similarity score 0–1):`,
     candidateList,

@@ -517,13 +517,17 @@
                     <span class="block text-xs text-muted-foreground/70">{sourceLabel(item)}</span>
                   {/if}
                 </button>
-                <Checkbox
-                  checked={item.checked}
-                  onCheckedChange={() => void toggleItemChecked(params.listId, item)}
-                  label=""
-                  aria-label="Mark as done"
+                <button
+                  type="button"
+                  class="flex items-center justify-center p-1 rounded transition-colors {item.checked
+                    ? 'text-green-500'
+                    : 'text-muted-foreground hover:text-foreground'}"
+                  onclick={() => void toggleItemChecked(params.listId, item)}
+                  aria-label={item.checked ? 'Uncheck' : 'Mark as done'}
                   data-testid="shopping-item-check"
-                />
+                >
+                  <Icon name={item.checked ? 'CircleCheck' : 'Circle'} size={18} />
+                </button>
               </div>
             {/each}
           </section>
@@ -581,13 +585,17 @@
                 {#if isPending}
                   <Spinner size={14} />
                 {/if}
-                <Checkbox
-                  checked={item.checked}
-                  onCheckedChange={() => void toggleItemChecked(params.listId, item)}
-                  label=""
-                  aria-label="Mark as done"
+                <button
+                  type="button"
+                  class="flex items-center justify-center p-1 rounded transition-colors {item.checked
+                    ? 'text-green-500'
+                    : 'text-muted-foreground hover:text-foreground'}"
+                  onclick={() => void toggleItemChecked(params.listId, item)}
+                  aria-label={item.checked ? 'Uncheck' : 'Mark as done'}
                   data-testid="shopping-item-check"
-                />
+                >
+                  <Icon name={item.checked ? 'CircleCheck' : 'Circle'} size={18} />
+                </button>
               </div>
             {/each}
           </section>
@@ -631,13 +639,17 @@
                     >
                   {/if}
                 </button>
-                <Checkbox
-                  checked={item.checked}
-                  onCheckedChange={() => void toggleItemChecked(params.listId, item)}
-                  label=""
-                  aria-label="Uncheck"
+                <button
+                  type="button"
+                  class="flex items-center justify-center p-1 rounded transition-colors {item.checked
+                    ? 'text-green-500'
+                    : 'text-muted-foreground hover:text-foreground'}"
+                  onclick={() => void toggleItemChecked(params.listId, item)}
+                  aria-label={item.checked ? 'Uncheck' : 'Mark as done'}
                   data-testid="shopping-item-check"
-                />
+                >
+                  <Icon name={item.checked ? 'CircleCheck' : 'Circle'} size={18} />
+                </button>
               </div>
             {/each}
           </section>
