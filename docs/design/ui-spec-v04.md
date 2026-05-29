@@ -1,7 +1,7 @@
 # Salt 2.0 — UI Primitives Specification (v0.4)
 
 **Status:** Planning  
-**Scope:** `@salt/ui-components` — Combobox  
+**Scope:** `@salt/ui-components` — Combobox; ListPage Selection Mode  
 **Audience:** AI code-generation agents + human contributors
 
 > Rule: If anything is missing or ambiguous → STOP → extend this spec → regenerate.  
@@ -14,9 +14,10 @@ All global rules, architecture, naming, styling, and testing conventions from v0
 
 ## 0. v0.4 Scope
 
-v0.4 introduces **Combobox**:
+v0.4 introduces:
 
-- `Combobox` — text input + popup listbox + filtering + optional custom values
+- **Combobox** — text input + popup listbox + filtering + optional custom values
+- **ListPage Selection Mode** — app-wide hide-by-default multi-select pattern (§9)
 
 APG pattern: **Autocomplete (Listbox)**.
 
@@ -358,3 +359,87 @@ Rationale:
 - Matches behaviour of Radix, MUI, and Reach.
 
 ```
+
+---
+
+# 9. ListPage — Selection Mode
+
+## 9.1 Overview
+
+`ListPage` supports an app-wide **Selection Mode** pattern: multi-select is hidden by default; the list is "clean" with only each row's primary action visible. A built-in **"Select" button** in the page header switches into selection mode, revealing the `selectionBar` and per-row select controls. A **"Done" button** (replacing "Select" in the header) exits selection mode.
+
+Pattern precedent: iOS Reminders, Apple Mail, Google Tasks, Todoist.
+
+## 9.2 Behaviour
+
+### Default state (selection mode off)
+- No per-row select checkboxes are visible.
+- The `selectionBar` snippet is not rendered.
+- The header shows a "Select" ghost button (only when a `selectionBar` snippet is provided).
+
+### Selection mode on
+- The `selectionBar` snippet is rendered in the grey bar between toolbar and content.
+- Per-row select controls become visible (consuming pages gate them on `selectionMode` from context — see §9.4).
+- The "Select" button is replaced by a "Done" ghost button in the header.
+
+### Exiting selection mode
+- Tapping "Done" calls `exitSelectionMode()` on the internal state, setting `selectionMode = false`.
+- The `selectionBar` is hidden again; per-row controls disappear.
+- Consuming pages clear their `selected` Set by reacting to `selectionMode` becoming `false` (via `$effect` or `$derived` — see §9.5).
+
+## 9.3 `ListPage` props changes
+
+No new props. Selection mode is fully internal to `ListPage`. The "Select"/"Done" toggle appears automatically whenever a `selectionBar` snippet is provided.
+
+## 9.4 Context contract
+
+`ListPage` publishes selection state via Svelte context using `LIST_PAGE_CONTEXT` (exported from `@salt/ui-components`). Consuming pages read it to conditionally show per-row select controls.
+
+```ts
+import type { ListPageContext } from '@salt/ui-components';
+
+// ListPageContext shape:
+type ListPageContext = {
+  readonly selectionMode: boolean;       // reactive via getter
+  readonly exitSelectionMode: () => void; // turn off mode (does not clear page's selected Set)
+};
+```
+
+**Reading from context (in a consuming page's row markup):**
+```svelte
+<script lang="ts">
+  import { LIST_PAGE_CONTEXT } from '@salt/ui-components';
+  const ctx = LIST_PAGE_CONTEXT.get();
+</script>
+
+{#if ctx.selectionMode}
+  <Checkbox checked={isSelected} onCheckedChange={() => toggleSelection(item.id)} label="" />
+{/if}
+```
+
+**Important:** `LIST_PAGE_CONTEXT.get()` throws if called outside a `ListPage` component tree. Per-row select controls always live inside `ListPage`'s `children` snippet, so this is safe by construction.
+
+## 9.5 Clearing selection on exit
+
+Consuming pages own their `selected` Set. When selection mode exits, pages should clear it. The idiomatic pattern in Svelte 5:
+
+```ts
+const ctx = LIST_PAGE_CONTEXT.get();
+$effect(() => {
+  if (!ctx.selectionMode) selected = new Set();
+});
+```
+
+## 9.6 Programmatic exit
+
+Consuming pages may also exit selection mode programmatically (e.g., after a bulk delete completes):
+
+```ts
+ctx.exitSelectionMode(); // sets selectionMode = false, triggers the $effect above
+```
+
+## 9.7 Forbidden
+
+- Do not add a `selectionMode` prop to `ListPage` — state is internal only.
+- Do not re-implement the "Select"/"Done" toggle in consuming pages.
+- Do not read `selectionMode` from anywhere other than `LIST_PAGE_CONTEXT` in per-row controls.
