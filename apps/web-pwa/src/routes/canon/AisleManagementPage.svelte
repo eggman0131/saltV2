@@ -283,7 +283,7 @@
         items={filteredAisles}
         getId={(a) => a.id}
         onReorder={handleReorder}
-        class="divide-y divide-border rounded-lg border"
+        class="divide-y divide-border rounded border"
       >
         {#snippet row(aisle)}
           <div data-testid={`aisle-row-${aisle.id}`} class="flex items-center gap-2 px-3 py-2">
@@ -390,7 +390,7 @@
         </DialogDescription>
       </DialogHeader>
       {#if deleteAffectedItems.length > 0}
-        <ul class="max-h-48 divide-y divide-border overflow-y-auto rounded-md border py-1">
+        <ul class="max-h-48 divide-y divide-border overflow-y-auto rounded border py-1">
           {#each deleteAffectedItems as item (item.id)}
             <li class="px-3 py-2 text-sm">{titleCase(item.name)}</li>
           {/each}
@@ -453,7 +453,7 @@
       </Select>
 
       {#if mergeAffectedItems.length > 0}
-        <div class="max-h-64 divide-y divide-border overflow-y-auto rounded-md border">
+        <div class="max-h-64 divide-y divide-border overflow-y-auto rounded border">
           {#each mergeAffectedItems as item (item.id)}
             <div class="flex items-center justify-between gap-4 px-3 py-2">
               <span class="min-w-0 flex-1 truncate text-sm">{titleCase(item.name)}</span>

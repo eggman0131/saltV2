@@ -17,7 +17,7 @@
 
 <div
   class={cn(
-    'flex flex-col items-center justify-center text-center gap-3 py-12 px-6 rounded-md border border-destructive/30 bg-destructive/5',
+    'flex flex-col items-center justify-center text-center gap-3 py-12 px-6 rounded border border-destructive/30 bg-destructive/5',
     className,
   )}
   role="alert"

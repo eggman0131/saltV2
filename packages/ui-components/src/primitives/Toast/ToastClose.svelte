@@ -14,7 +14,7 @@
   type="button"
   aria-label="Close"
   class={cn(
-    'salt-focus-ring absolute right-2 top-2 inline-flex h-6 w-6 items-center justify-center rounded-md p-0 text-foreground/50 opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 motion-reduce:transition-none group-[.destructive]:text-red-300 group-[.destructive]:hover:text-red-50',
+    'salt-focus-ring absolute right-2 top-2 inline-flex h-6 w-6 items-center justify-center rounded p-0 text-foreground/50 opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 motion-reduce:transition-none group-[.destructive]:text-red-300 group-[.destructive]:hover:text-red-50',
     className,
   )}
   onclick={ctx.close}

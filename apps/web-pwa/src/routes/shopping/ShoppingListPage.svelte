@@ -484,7 +484,7 @@
               {@const isSelected = selected.has(item.id)}
               {@const amountStr = formatAmount(item.amount, item.unit)}
               <div
-                class="flex items-center gap-3 rounded-md border px-3 py-2 text-sm {isSelected
+                class="flex items-center gap-3 rounded border px-3 py-2 text-sm {isSelected
                   ? 'border-ring ring-2 ring-ring bg-card'
                   : 'border-border bg-card'}"
                 data-testid="shopping-item-row"
@@ -544,7 +544,7 @@
               {@const isSelected = selected.has(item.id)}
               {@const amountStr = formatAmount(item.amount, item.unit)}
               <div
-                class="flex items-center gap-3 rounded-md border px-3 py-2 text-sm {isSelected
+                class="flex items-center gap-3 rounded border px-3 py-2 text-sm {isSelected
                   ? 'border-ring ring-2 ring-ring bg-card'
                   : 'border-border bg-card'}"
                 data-testid="shopping-item-row"
@@ -603,7 +603,7 @@
               {@const isSelected = selected.has(item.id)}
               {@const amountStr = formatAmount(item.amount, item.unit)}
               <div
-                class="flex items-center gap-3 rounded-md border px-3 py-2 text-sm {isSelected
+                class="flex items-center gap-3 rounded border px-3 py-2 text-sm {isSelected
                   ? 'border-ring ring-2 ring-ring bg-card'
                   : 'border-border bg-card'}"
                 data-testid="shopping-item-row"

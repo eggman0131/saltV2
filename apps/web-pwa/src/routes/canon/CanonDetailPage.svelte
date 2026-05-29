@@ -311,7 +311,7 @@
         <!-- Approval — all AI-assigned fields -->
         {#if item.needs_approval}
           <section
-            class="flex flex-col gap-4 rounded-md border border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/30"
+            class="flex flex-col gap-4 rounded border border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/30"
             data-testid="canon-detail-approval-section"
           >
             <h2 class="text-sm font-semibold text-amber-800 dark:text-amber-300">
