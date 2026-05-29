@@ -445,6 +445,27 @@ describe('onShoppingListItemWrite', () => {
       expect(updateArg).not.toHaveProperty('rawText');
     });
 
+    it('does not call AI adapter when deterministic parser already extracted a quantity', async () => {
+      mockMatchOrCreate.mockResolvedValue({
+        kind: 'ok',
+        value: { decision: 'matched', item: makeCanonItem({ id: 'c1', needs_approval: false }) },
+      });
+
+      // 'baked beans 4 tins' — trailing quantity parsed deterministically; AI must not overwrite it
+      const event = makeEvent({
+        before: null,
+        after: { rawText: 'baked beans 4 tins', canonId: null, matchState: 'pending' },
+      });
+      await (onShoppingListItemWrite as Function)(event);
+
+      expect(mockEntryParseAdapterParse).not.toHaveBeenCalled();
+      expect(mockMatchOrCreate).toHaveBeenCalledWith(
+        { rawName: 'baked beans', rawText: 'baked beans 4 tins' },
+        expect.anything(),
+      );
+      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ amount: 4, unit: 'tins' }));
+    });
+
     it('does not call AI adapter for short entries that cannot be compound', async () => {
       mockMatchOrCreate.mockResolvedValue({
         kind: 'ok',

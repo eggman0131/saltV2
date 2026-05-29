@@ -45,7 +45,7 @@ export const onShoppingListItemWrite = onDocumentWritten(
 
     // Parse: deterministic first; AI fallback for compound entries the rule missed.
     let parsed = parseShoppingListEntry(rawText);
-    if (parsed.context === '' && looksCompound(rawText)) {
+    if (parsed.context === '' && parsed.amount === undefined && looksCompound(rawText)) {
       const aiResult = await createServerEntryParseAdapter().parse(rawText);
       if (aiResult.kind === 'ok') {
         parsed = aiResult.value;
