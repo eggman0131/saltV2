@@ -204,7 +204,7 @@ describe('onShoppingListItemWrite', () => {
       await (onShoppingListItemWrite as Function)(event);
 
       expect(mockMatchOrCreate).toHaveBeenCalledWith(
-        { rawName: 'heinz baked beans' },
+        { rawName: 'heinz baked beans', rawText: 'heinz baked beans' },
         expect.anything(),
       );
     });
@@ -260,7 +260,10 @@ describe('onShoppingListItemWrite', () => {
       });
       await (onShoppingListItemWrite as Function)(event);
 
-      expect(mockMatchOrCreate).toHaveBeenCalledWith({ rawName: 'oat milk' }, expect.anything());
+      expect(mockMatchOrCreate).toHaveBeenCalledWith(
+        { rawName: 'oat milk', rawText: 'oat milk' },
+        expect.anything(),
+      );
       expect(mockUpdate).toHaveBeenCalledWith(
         expect.objectContaining({ canonId: 'canon-2', matchState: 'matched' }),
       );
@@ -311,7 +314,7 @@ describe('onShoppingListItemWrite', () => {
       await (onShoppingListItemWrite as Function)(event);
 
       expect(mockMatchOrCreate).toHaveBeenCalledWith(
-        { rawName: 'birthday card' },
+        { rawName: 'birthday card', rawText: 'birthday card for bob' },
         expect.anything(),
       );
     });
@@ -408,7 +411,10 @@ describe('onShoppingListItemWrite', () => {
       });
       await (onShoppingListItemWrite as Function)(event);
 
-      expect(mockMatchOrCreate).toHaveBeenCalledWith({ rawName: 'olive oil' }, expect.anything());
+      expect(mockMatchOrCreate).toHaveBeenCalledWith(
+        { rawName: 'olive oil', rawText: 'olive oil garlic' },
+        expect.anything(),
+      );
       expect(mockUpdate).toHaveBeenCalledWith(
         expect.objectContaining({ rawText: 'olive oil', notes: 'garlic' }),
       );
@@ -432,11 +438,32 @@ describe('onShoppingListItemWrite', () => {
 
       // Deterministic found no split → full text as clean name, no extra write
       expect(mockMatchOrCreate).toHaveBeenCalledWith(
-        { rawName: 'olive oil garlic' },
+        { rawName: 'olive oil garlic', rawText: 'olive oil garlic' },
         expect.anything(),
       );
       const updateArg = mockUpdate.mock.calls[0][0] as Record<string, unknown>;
       expect(updateArg).not.toHaveProperty('rawText');
+    });
+
+    it('does not call AI adapter when deterministic parser already extracted a quantity', async () => {
+      mockMatchOrCreate.mockResolvedValue({
+        kind: 'ok',
+        value: { decision: 'matched', item: makeCanonItem({ id: 'c1', needs_approval: false }) },
+      });
+
+      // 'baked beans 4 tins' — trailing quantity parsed deterministically; AI must not overwrite it
+      const event = makeEvent({
+        before: null,
+        after: { rawText: 'baked beans 4 tins', canonId: null, matchState: 'pending' },
+      });
+      await (onShoppingListItemWrite as Function)(event);
+
+      expect(mockEntryParseAdapterParse).not.toHaveBeenCalled();
+      expect(mockMatchOrCreate).toHaveBeenCalledWith(
+        { rawName: 'baked beans', rawText: 'baked beans 4 tins' },
+        expect.anything(),
+      );
+      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ amount: 4, unit: 'tins' }));
     });
 
     it('does not call AI adapter for short entries that cannot be compound', async () => {

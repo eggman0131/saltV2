@@ -20,6 +20,7 @@ import {
   addItem,
   editItemRawText,
   editItemNotes,
+  editItemAmountUnit,
   checkItem,
   uncheckItem,
   deleteItem,
@@ -198,6 +199,20 @@ export async function updateItemRawText(
   const items = get(_itemsForActiveList);
   const now = new Date().toISOString();
   const result = editItemRawText(items, { id: itemId, rawText, now });
+  if (result.kind !== 'ok') return result;
+  const updated = result.value.find((i) => i.id === itemId)!;
+  return saveShoppingListItem(listId, updated);
+}
+
+export async function updateItemAmountUnit(
+  listId: string,
+  itemId: string,
+  amount: number | undefined,
+  unit: string | undefined,
+): Promise<ReadResult<void, DomainError>> {
+  const items = get(_itemsForActiveList);
+  const now = new Date().toISOString();
+  const result = editItemAmountUnit(items, { id: itemId, amount, unit, now });
   if (result.kind !== 'ok') return result;
   const updated = result.value.find((i) => i.id === itemId)!;
   return saveShoppingListItem(listId, updated);

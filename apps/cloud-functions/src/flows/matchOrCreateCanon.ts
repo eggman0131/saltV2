@@ -2,6 +2,7 @@ import { z } from 'genkit';
 import { getFirestore } from 'firebase-admin/firestore';
 import { matchOrCreate } from '@salt/domain';
 import type { MatchLoggingPort, MatchOrCreateInput, MatchOrCreatePorts } from '@salt/domain';
+import { MatchOrCreateCanonInputSchema } from '@salt/domain/schemas';
 import {
   createServerLDMatchLoggingAdapter,
   flushServerObservability,
@@ -18,19 +19,15 @@ import { createServerEmbeddingAdapter } from '../adapters/serverEmbedding.js';
 import { createServerArbitrationAdapter } from '../adapters/serverArbitration.js';
 import { createServerMatchLoggingAdapter } from '../adapters/serverMatchLog.js';
 
-const TraceSchema = z.record(z.string()).optional();
-
-const InputSchema = z.object({
-  rawName: z.string(),
-  selectedAisleId: z.string().nullable().optional(),
-  forceCreate: z.boolean().optional(),
-  // W3C trace context piggy-backed on the payload because httpsCallable
-  // doesn't surface request headers. Stripped before reaching the domain.
-  //
-  // DORMANT: trace propagation — currently accepted but ignored by the CF
-  // entrypoint (see apps/cloud-functions/src/index.ts). Field kept so the
-  // browser → CF wire shape stays stable while propagation is disabled.
-  _trace: TraceSchema,
+// Callable wire schema extends the domain input with _trace, a W3C trace
+// context field piggy-backed on the payload because httpsCallable doesn't
+// surface request headers. Stripped before reaching the domain.
+//
+// DORMANT: trace propagation — currently accepted but ignored by the CF
+// entrypoint (see apps/cloud-functions/src/index.ts). Field kept so the
+// browser → CF wire shape stays stable while propagation is disabled.
+const InputSchema = MatchOrCreateCanonInputSchema.extend({
+  _trace: z.record(z.string()).optional(),
 });
 
 // Output is the Result envelope produced by matchOrCreate. CanonItem and

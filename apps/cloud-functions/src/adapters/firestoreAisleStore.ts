@@ -1,19 +1,11 @@
 import type { Firestore } from 'firebase-admin/firestore';
+import { logger } from 'firebase-functions';
 import type { Aisle, AisleLocalStorePort } from '@salt/domain';
 import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
+import { AislesDocumentSchema } from '@salt/domain/schemas';
 
 const AISLES_COLLECTION = 'canonData';
 const AISLES_DOC_ID = 'aisles';
-
-function fromDoc(data: Record<string, unknown>): Aisle[] {
-  return Array.isArray(data['aisles'])
-    ? (data['aisles'] as Array<{ id: string; name: string; order: number }>).map((a) => ({
-        id: a.id,
-        name: a.name,
-        order: typeof a.order === 'number' ? a.order : 0,
-      }))
-    : [];
-}
 
 function classify(_err: unknown): DomainError {
   return { kind: 'StorageError', reason: 'unavailable' };
@@ -25,8 +17,12 @@ export function createFirestoreAisleStore(db: Firestore): AisleLocalStorePort {
       try {
         const snap = await db.collection(AISLES_COLLECTION).doc(AISLES_DOC_ID).get();
         if (!snap.exists) return success(null);
-        const data = snap.data() as Record<string, unknown>;
-        return success(fromDoc(data));
+        const result = AislesDocumentSchema.safeParse(snap.data());
+        if (!result.success) {
+          logger.error('firestoreAisleStore: invalid doc', { error: result.error.message });
+          return failure({ kind: 'StorageError', reason: 'corruption' });
+        }
+        return success(result.data.aisles);
       } catch (err) {
         return failure(classify(err));
       }

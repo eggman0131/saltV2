@@ -127,4 +127,61 @@ describe('createServerEntryParseAdapter', () => {
 
     await expect(adapter.parse('anything')).resolves.toMatchObject({ kind: 'err' });
   });
+
+  it('threads amount and unit through when the AI returns them', async () => {
+    mockGenerate.mockResolvedValue({
+      output: { name: 'maris piper potatoes', context: '', amount: 2, unit: 'kg' },
+    });
+
+    const adapter = createServerEntryParseAdapter();
+    const result = await adapter.parse('2kg maris piper potatoes');
+
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value.amount).toBe(2);
+      expect(result.value.unit).toBe('kg');
+      expect(result.value.name).toBe('maris piper potatoes');
+    }
+  });
+
+  it('omits amount and unit when the AI does not return them', async () => {
+    mockGenerate.mockResolvedValue({ output: { name: 'milk', context: '' } });
+
+    const adapter = createServerEntryParseAdapter();
+    const result = await adapter.parse('milk');
+
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value.amount).toBeUndefined();
+      expect(result.value.unit).toBeUndefined();
+    }
+  });
+});
+
+// ─── Flow — amount/unit in prompt and output ──────────────────────────────────
+
+describe('parseEntry flow — amount/unit', () => {
+  it('passes amount and unit through when AI returns them', async () => {
+    mockGenerate.mockResolvedValue({
+      output: { name: 'maris piper potatoes', context: '', amount: 2, unit: 'kg' },
+    });
+
+    const result = await (parseEntryFlow as Function)({ rawText: '2kg maris piper potatoes' });
+
+    expect(result.amount).toBe(2);
+    expect(result.unit).toBe('kg');
+    expect(result.name).toBe('maris piper potatoes');
+  });
+
+  it('prompt instructs the model to extract a leading quantity', async () => {
+    mockGenerate.mockResolvedValue({
+      output: { name: 'flour', context: '', amount: 2, unit: 'kg' },
+    });
+
+    await (parseEntryFlow as Function)({ rawText: '2kg flour' });
+
+    const { prompt } = mockGenerate.mock.calls[0]![0];
+    expect(prompt).toContain('amount');
+    expect(prompt).toContain('unit');
+  });
 });

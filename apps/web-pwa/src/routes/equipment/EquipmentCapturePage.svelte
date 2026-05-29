@@ -176,7 +176,7 @@
             <li>
               <button
                 type="button"
-                class="w-full rounded-lg border px-4 py-3 text-left text-sm transition-colors {confirmedName ===
+                class="w-full rounded border px-4 py-3 text-left text-sm transition-colors {confirmedName ===
                 candidate.name
                   ? 'border-primary bg-primary/5 font-medium'
                   : 'border-border bg-card hover:border-primary/50'}"

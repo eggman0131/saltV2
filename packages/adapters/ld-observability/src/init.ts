@@ -45,6 +45,8 @@ export interface ObservabilitySpan {
 
 export function startSpan(name: string, opts?: { parent?: ObservabilitySpan }): ObservabilitySpan {
   if (opts?.parent) {
+    // ObservabilitySpan is our abstraction over the underlying OTel Span; the
+    // LDObserve API requires the concrete type — runtime identity is preserved.
     const ctx = trace.setSpan(otelContext.active(), opts.parent as unknown as Span);
     return LDObserve.startManualSpan(name, {}, ctx, (s) => s);
   }
@@ -56,7 +58,7 @@ export function startSpan(name: string, opts?: { parent?: ObservabilitySpan }): 
 // span to this client span. Empty record when the span has no valid context
 // (e.g. tracing disabled).
 export function extractTraceHeaders(span: ObservabilitySpan): Record<string, string> {
-  const otelSpan = span as unknown as Span;
+  const otelSpan = span as unknown as Span; // see cast rationale above
   const ctx = otelSpan.spanContext?.();
   if (!ctx || !ctx.traceId || !ctx.spanId) return {};
   const flags = (ctx.traceFlags ?? 0).toString(16).padStart(2, '0');

@@ -1,31 +1,9 @@
 import { z } from 'genkit';
 import { googleAI } from '@genkit-ai/google-genai';
+import { ArbitrationRequestSchema, CanonArbitrationAIOutputSchema } from '@salt/domain/schemas';
 import { ai } from '../genkit.js';
 
 const GENERATION_MODEL = googleAI.model('gemini-3-flash-preview');
-
-const ArbitrationRequestSchema = z.object({
-  normalisedName: z.string(),
-  candidates: z.array(
-    z.object({
-      item: z.object({ id: z.string(), name: z.string() }),
-      confidence: z.number(),
-    }),
-  ),
-  aisles: z.array(z.object({ id: z.string(), name: z.string() })),
-});
-
-// Flat schema returned by the model; the flow maps it to the domain result shape.
-const AIOutputSchema = z.object({
-  match_found: z.boolean(),
-  match_id: z.string().nullable(),
-  canonical_name: z.string().nullable(),
-  aisle_name: z.string().nullable(),
-  shoppingBehavior: z.enum(['stocked', 'check', 'needed']),
-  largeQuantityThreshold: z.number().nullable(),
-  unit: z.enum(['g', 'ml', 'count']).nullable(),
-  reasoning: z.string(),
-});
 
 // Flow output — discriminated union matching ArbitrationResult; includes prompt and rawResponse.
 const ArbitrationResultSchema = z.discriminatedUnion('kind', [
@@ -65,7 +43,7 @@ export const arbitrateCanonFlow = ai.defineFlow(
     const result = await ai.generate({
       model: GENERATION_MODEL,
       prompt: builtPrompt,
-      output: { schema: AIOutputSchema },
+      output: { schema: CanonArbitrationAIOutputSchema },
       config: { temperature: 0 },
     });
     const output = result.output!;
@@ -128,10 +106,16 @@ function buildPrompt(req: z.infer<typeof ArbitrationRequestSchema>): string {
     ? req.aisles.map((a) => `- "${a.name}"`).join('\n')
     : '(none)';
 
+  const rawInputLine =
+    req.rawText !== undefined && req.rawText !== req.normalisedName
+      ? `Raw input (context only — use container/descriptor words like "tin of", "smoked", "fresh" to resolve ambiguity, but match on the normalised name above): "${req.rawText}"`
+      : null;
+
   return [
     `You are a UK supermarket canon-matching assistant. Apply the four rules below and respond with a single JSON object matching the output schema exactly.`,
     ``,
     `Normalised input: "${req.normalisedName}"`,
+    ...(rawInputLine ? [rawInputLine] : []),
     ``,
     `Candidate matches (id, name, similarity score 0–1):`,
     candidateList,

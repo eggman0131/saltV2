@@ -35,6 +35,7 @@ export interface ArbitrationRequest {
   readonly normalisedName: string;
   readonly candidates: readonly MatchCandidate[];
   readonly aisles: readonly Aisle[];
+  readonly rawText?: string;
 }
 
 export interface CanonArbitrationPort {

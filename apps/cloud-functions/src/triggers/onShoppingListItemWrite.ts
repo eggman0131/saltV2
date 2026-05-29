@@ -45,7 +45,7 @@ export const onShoppingListItemWrite = onDocumentWritten(
 
     // Parse: deterministic first; AI fallback for compound entries the rule missed.
     let parsed = parseShoppingListEntry(rawText);
-    if (parsed.context === '' && looksCompound(rawText)) {
+    if (parsed.context === '' && parsed.amount === undefined && looksCompound(rawText)) {
       const aiResult = await createServerEntryParseAdapter().parse(rawText);
       if (aiResult.kind === 'ok') {
         parsed = aiResult.value;
@@ -54,6 +54,8 @@ export const onShoppingListItemWrite = onDocumentWritten(
 
     const cleanName = parsed.name;
     const context = parsed.context;
+    const parsedAmount = parsed.amount;
+    const parsedUnit = parsed.unit;
     const currentNotes = typeof afterData['notes'] === 'string' ? afterData['notes'] : '';
 
     const { listId, itemId } = event.params;
@@ -66,14 +68,22 @@ export const onShoppingListItemWrite = onDocumentWritten(
 
     let errorCategory: string | null = null;
     try {
-      const result = await matchOrCreate({ rawName: cleanName }, buildMatchOrCreatePorts(span));
+      const result = await matchOrCreate(
+        { rawName: cleanName, ...(rawText ? { rawText } : {}) },
+        buildMatchOrCreatePorts(span),
+      );
 
       const db = getFirestore();
       const docRef = db.collection('shoppingLists').doc(listId).collection('items').doc(itemId);
 
       if (result.kind === 'err') {
         errorCategory = result.error.kind;
-        await docRef.update({ matchState: 'failed', updatedAt: new Date().toISOString() });
+        await docRef.update({
+          matchState: 'failed',
+          updatedAt: new Date().toISOString(),
+          ...(parsedAmount !== undefined ? { amount: parsedAmount } : undefined),
+          ...(parsedUnit !== undefined ? { unit: parsedUnit } : undefined),
+        });
         return;
       }
 
@@ -90,6 +100,8 @@ export const onShoppingListItemWrite = onDocumentWritten(
         matchState: newMatchState,
         updatedAt: new Date().toISOString(),
         ...(nameChanged && currentNotes === '' && { rawText: cleanName, notes: context }),
+        ...(parsedAmount !== undefined ? { amount: parsedAmount } : undefined),
+        ...(parsedUnit !== undefined ? { unit: parsedUnit } : undefined),
       });
     } finally {
       // DORMANT: trace propagation — trigger boundary; mark per convention.

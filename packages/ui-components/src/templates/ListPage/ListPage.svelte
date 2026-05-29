@@ -69,7 +69,7 @@
     {:else}
       {#if selectionBar}
         <div
-          class="mb-4 flex items-center justify-between px-3 py-2 rounded-md border border-border bg-muted/40"
+          class="mb-4 flex items-center justify-between px-3 py-2 rounded border border-border bg-muted/40"
         >
           {@render selectionBar()}
         </div>

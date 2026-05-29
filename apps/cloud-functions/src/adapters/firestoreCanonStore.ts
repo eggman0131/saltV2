@@ -1,35 +1,10 @@
 import type { Firestore } from 'firebase-admin/firestore';
+import { logger } from 'firebase-functions';
 import type { CanonItem, CanonLocalStorePort } from '@salt/domain';
-import {
-  failure,
-  success,
-  type CanonItemUnit,
-  type DomainError,
-  type ReadResult,
-  type ShoppingBehavior,
-} from '@salt/shared-types';
+import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
+import { CanonItemSchema } from '@salt/domain/schemas';
 
 const COLLECTION = 'canonItems';
-
-function fromDoc(data: Record<string, unknown>): CanonItem {
-  return {
-    id: data['id'] as string,
-    schemaVersion: 5,
-    name: data['name'] as string,
-    synonyms: Array.isArray(data['synonyms']) ? (data['synonyms'] as string[]) : [],
-    aisleId: typeof data['aisleId'] === 'string' ? data['aisleId'] : null,
-    thumbnail: typeof data['thumbnail'] === 'string' ? data['thumbnail'] : null,
-    embedding: Array.isArray(data['embedding']) ? (data['embedding'] as number[]) : null,
-    needs_approval: typeof data['needs_approval'] === 'boolean' ? data['needs_approval'] : true,
-    shoppingBehavior: (data['shoppingBehavior'] as ShoppingBehavior | undefined) ?? 'needed',
-    ...(typeof data['largeQuantityThreshold'] === 'number'
-      ? { largeQuantityThreshold: data['largeQuantityThreshold'] as number }
-      : {}),
-    ...(typeof data['unit'] === 'string' ? { unit: data['unit'] as CanonItemUnit } : {}),
-    ...(typeof data['reasoning'] === 'string' ? { reasoning: data['reasoning'] as string } : {}),
-    updatedAt: typeof data['updatedAt'] === 'string' ? data['updatedAt'] : '',
-  };
-}
 
 function classify(_err: unknown): DomainError {
   return { kind: 'StorageError', reason: 'unavailable' };
@@ -52,7 +27,17 @@ export function createFirestoreCanonStore(db: Firestore): CanonLocalStorePort {
       try {
         const snap = await db.collection(COLLECTION).doc(id).get();
         if (!snap.exists) return success(null);
-        return success(fromDoc(snap.data() as Record<string, unknown>));
+        const result = CanonItemSchema.safeParse(snap.data());
+        if (!result.success) {
+          logger.error('firestoreCanonStore: invalid doc', {
+            id,
+            error: result.error.message,
+          });
+          return failure({ kind: 'StorageError', reason: 'corruption' });
+        }
+        // exactOptionalPropertyTypes: zod's .optional() emits T | undefined
+        // while CanonItem uses bare optional properties; cast is load-bearing.
+        return success(result.data as CanonItem);
       } catch (err) {
         return failure(classify(err));
       }
@@ -60,7 +45,19 @@ export function createFirestoreCanonStore(db: Firestore): CanonLocalStorePort {
     async list(): Promise<ReadResult<readonly CanonItem[], DomainError>> {
       try {
         const snap = await db.collection(COLLECTION).get();
-        const items = snap.docs.map((d) => fromDoc(d.data() as Record<string, unknown>));
+        const items: CanonItem[] = [];
+        for (const doc of snap.docs) {
+          const result = CanonItemSchema.safeParse(doc.data());
+          if (!result.success) {
+            logger.error('firestoreCanonStore: invalid doc, skipping', {
+              id: doc.id,
+              error: result.error.message,
+            });
+            continue;
+          }
+          // exactOptionalPropertyTypes: same cast rationale as load().
+          items.push(result.data as CanonItem);
+        }
         return success(items);
       } catch (err) {
         return failure(classify(err));

@@ -5,7 +5,7 @@
   import { comboboxInputVariants } from './Combobox.variants';
   import type { ComboboxInputProps } from './Combobox.types';
 
-  let { class: className }: ComboboxInputProps = $props();
+  let { class: className, ...rest }: ComboboxInputProps = $props();
 
   const ctx = COMBOBOX_CONTEXT.get();
 
@@ -41,6 +41,7 @@
 
 <input
   bind:this={inputEl}
+  {...rest}
   id={ctx.inputId}
   role="combobox"
   type="text"

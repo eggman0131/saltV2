@@ -37,6 +37,7 @@ export interface MatchOrCreateInput {
   readonly selectedAisleId?: string | null | undefined;
   /** Skip match stages and force a new item. Pipeline still runs aisle arbitration. */
   readonly forceCreate?: boolean;
+  readonly rawText?: string;
 }
 
 export type MatchOrCreateResult = {
@@ -57,7 +58,7 @@ export async function matchOrCreate(
   input: MatchOrCreateInput,
   ports: MatchOrCreatePorts,
 ): Promise<ReadResult<MatchOrCreateResult, DomainError>> {
-  const { rawName, selectedAisleId, forceCreate = false } = input;
+  const { rawName, selectedAisleId, forceCreate = false, rawText } = input;
   const { store, aisleStore, embedding, arbitration, ids, logging } = ports;
 
   const normalisedName = normaliseName(rawName);
@@ -87,7 +88,12 @@ export async function matchOrCreate(
     let forceName = rawName;
     if (aisles.length > 0 && selectedAisleId == null) {
       const arbT0 = Date.now();
-      const arbResult = await arbitration.arbitrate({ normalisedName, candidates: [], aisles });
+      const arbResult = await arbitration.arbitrate({
+        normalisedName,
+        candidates: [],
+        aisles,
+        ...(rawText !== undefined ? { rawText } : {}),
+      });
       const arbDuration = Math.max(0, Date.now() - arbT0);
       if (arbResult.kind === 'ok' && arbResult.value.kind === 'new') {
         suggestedAisleId = arbResult.value.aisleId ?? null;
@@ -126,6 +132,7 @@ export async function matchOrCreate(
       'ambiguous_near_tie',
       normalisedName,
       rawName,
+      rawText,
       selectedAisleId ?? null,
       store,
       aisleStore,
@@ -160,6 +167,7 @@ export async function matchOrCreate(
       'near_miss_shortlist',
       normalisedName,
       rawName,
+      rawText,
       selectedAisleId ?? null,
       store,
       aisleStore,
@@ -179,7 +187,12 @@ export async function matchOrCreate(
     const aisles = await loadAisles(aisleStore);
     if (aisles.length > 0) {
       const arbT0 = Date.now();
-      const arbResult = await arbitration.arbitrate({ normalisedName, candidates: [], aisles });
+      const arbResult = await arbitration.arbitrate({
+        normalisedName,
+        candidates: [],
+        aisles,
+        ...(rawText !== undefined ? { rawText } : {}),
+      });
       const arbDuration = Math.max(0, Date.now() - arbT0);
       if (arbResult.kind === 'ok' && arbResult.value.kind === 'new') {
         finalAisleId = arbResult.value.aisleId ?? null;
@@ -306,6 +319,7 @@ async function arbitrateShortlist(
   reason: 'ambiguous_near_tie' | 'near_miss_shortlist',
   normalisedName: string,
   rawName: string,
+  rawText: string | undefined,
   selectedAisleId: string | null,
   store: CanonLocalStorePort,
   aisleStore: AisleLocalStorePort,
@@ -325,6 +339,7 @@ async function arbitrateShortlist(
     normalisedName,
     candidates: [...shortlist],
     aisles,
+    ...(rawText !== undefined ? { rawText } : {}),
   });
   const arbDuration = Math.max(0, Date.now() - arbT0);
   logArbitration(logBuilder, reason, shortlist.length, aisles.length, arbResult, arbDuration);

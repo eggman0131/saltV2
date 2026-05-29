@@ -10,7 +10,7 @@
 
 <Dialog.Close
   class={cn(
-    'salt-focus-ring inline-flex items-center justify-center rounded-md h-9 w-9 p-0 bg-transparent hover:bg-muted hover:text-foreground transition-colors motion-reduce:transition-none',
+    'salt-focus-ring inline-flex items-center justify-center rounded h-9 w-9 p-0 bg-transparent hover:bg-muted hover:text-foreground transition-colors motion-reduce:transition-none',
     className,
   )}
   aria-label="Close"

@@ -91,11 +91,12 @@ The domain exposes:
   - Workspace (single‑family membership + per‑user roles)
 - Commands (write operations)
 - Queries (read operations)
-- Validation rules
+- Validation rules and Zod schemas (via `@salt/domain/schemas` subpath) — covers all Firestore document shapes, callable CF inputs, and AI flow output types; TypeScript types are derived via `z.infer`
 - Ports (interfaces) for:
   - `CanonLocalStorePort` / `AisleLocalStorePort` — in-memory store contracts used by domain commands; satisfied by the in-memory adapters in `web-pwa`
   - `AuthProvider` — identity and workspace membership
   - `EmbeddingPort` / `CanonArbitrationPort` / `MatchLoggingPort` — AI and observability ports used by `matchOrCreate`
+  - `EntryParsePort` — AI-fallback port for structured shopping-list entry parsing; implemented by the server-side Genkit adapter in `cloud-functions` and consumed by `onShoppingListItemWrite`
 
 The domain is the single source of truth for business logic, data shapes, and validation semantics.
 
@@ -127,6 +128,7 @@ This model is intentionally narrow. Multi‑workspace, sharing, or per‑documen
   - Shopping lists: `subscribeShoppingLists`, `listShoppingLists`, `createShoppingList`, `renameShoppingList`, `deleteShoppingList`
   - Shopping list items: `subscribeShoppingListItems`, `listShoppingListItems`, `saveShoppingListItem`, `deleteShoppingListItem`, `deleteShoppingListItems`, `moveShoppingListItems`
   - Shopping list config: `subscribeShoppingListsConfig`, `loadShoppingListsConfig`, `saveShoppingListsConfig`
+- Validates all Firestore document reads using Zod schemas from `@salt/domain/schemas`; collection and subscription reads skip invalid documents (log the error, return the valid subset); single-document reads return `Failure<StorageError>` on parse failure.
 - Must not import IndexedDB or any local‑storage code.
 - Must not contain UI logic.
 - Must not contain domain logic — including conflict resolution.
@@ -233,7 +235,7 @@ Cloud Functions:
 - Talk to Firestore directly via `firebase-admin` — do not import `@salt/firebase-sync`, which wraps the browser SDK
 - Never import UI
 - Never contain business logic
-- Only orchestrate: input validation, domain commands/queries, gen‑AI providers, and returning results
+- Only orchestrate: input validation (via Zod schemas from `@salt/domain/schemas`; callable entry points throw `HttpsError('invalid-argument')` on parse failure), domain commands/queries, gen‑AI providers, and returning results
 - Must be stateless
 - Callables must be testable without Firebase emulators (via domain mocks); triggers use the Firestore emulator for write-back integration tests
 

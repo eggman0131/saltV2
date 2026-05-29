@@ -9,6 +9,8 @@ export interface ShoppingListItem {
   readonly sources: readonly SourceRef[];
   readonly canonId: string | null;
   readonly matchState: MatchState;
+  readonly amount?: number;
+  readonly unit?: string;
   readonly checked: boolean;
   readonly schemaVersion: 1;
   readonly createdAt: string; // ISO-8601

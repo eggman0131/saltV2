@@ -8,7 +8,7 @@
 
 <div
   class={cn(
-    'flex flex-col items-center justify-center text-center gap-3 py-12 px-6 rounded-md border border-dashed border-border',
+    'flex flex-col items-center justify-center text-center gap-3 py-12 px-6 rounded border border-dashed border-border',
     className,
   )}
   role="status"

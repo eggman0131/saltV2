@@ -32,12 +32,7 @@ describe('Card', () => {
   describe('props contract', () => {
     it('applies card base classes', () => {
       const { container } = render(Card);
-      expect(container.firstElementChild).toHaveClass(
-        'rounded-lg',
-        'border',
-        'bg-card',
-        'shadow-sm',
-      );
+      expect(container.firstElementChild).toHaveClass('rounded', 'border', 'bg-card', 'shadow-sm');
     });
     it('merges class prop', () => {
       const { container } = render(Card, { props: { class: 'extra-class' } });
