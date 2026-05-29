@@ -27,9 +27,10 @@ const TRAILING_FOR = /^(.*?\S)(\s+for\b\s+\S.*)$/i;
 
 const collapse = (s: string): string => s.replace(/\s+/g, ' ').trim();
 
-// Standard measurement units for the space-separated case ("2 kg …").
+// Standard measurement units and container words for the space-separated case ("2 kg …", "4 tins …").
 // Number-attached alpha ("2kg …") is matched structurally — no whitelist needed.
 const UNIT_WORDS = new Set([
+  // Measurement units
   'kg',
   'g',
   'mg',
@@ -50,6 +51,37 @@ const UNIT_WORDS = new Set([
   'cups',
   'pint',
   'pints',
+  // Container words
+  'bag',
+  'bags',
+  'box',
+  'boxes',
+  'tin',
+  'tins',
+  'can',
+  'cans',
+  'jar',
+  'jars',
+  'bottle',
+  'bottles',
+  'pack',
+  'packs',
+  'packet',
+  'packets',
+  'tub',
+  'tubs',
+  'bunch',
+  'bunches',
+  'carton',
+  'cartons',
+  'sachet',
+  'sachets',
+  'pouch',
+  'pouches',
+  'tray',
+  'trays',
+  'punnet',
+  'punnets',
 ]);
 
 // ─── Leading quantity patterns ────────────────────────────────────────────────
