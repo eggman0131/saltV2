@@ -43,6 +43,7 @@ test('add, reorder, and bulk-delete aisles unassigns referencing canon items', a
     .poll(async () => (await getAisles(page)).map((a) => a.name))
     .toEqual(['Produce', 'Bakery', 'Dairy']);
 
+  await page.getByRole('button', { name: /^select$/i }).click();
   await ui.rowCheckbox(bakery.id).click();
   await ui.bulkDeleteButton.click();
   await expect(ui.bulkDeleteDialog).toBeVisible();
