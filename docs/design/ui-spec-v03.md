@@ -148,12 +148,20 @@ Not a native `<select>`.
 - `portal: HTMLElement | string | false = "body"`
 - `class?: string`
 
-### 3.4 Events
+### 3.4 SelectTrigger Props
+
+`SelectTriggerProps` is an open interface that extends `Omit<HTMLButtonAttributes, 'class'>`.
+
+- `class?: string`
+- `children?: Snippet`
+- Any attribute valid on `<button>` is accepted and spread onto the underlying `<button>` element (e.g. `data-*`, `aria-*`, `tabindex`). The component owns `role`, `aria-haspopup`, `aria-expanded`, and `aria-controls` — passing these manually will be overwritten.
+
+### 3.5 Events
 
 - `onValueChange: (value: string) => void`
 - `onOpenChange: (open: boolean) => void`
 
-### 3.5 APG Requirements (Listbox)
+### 3.6 APG Requirements (Listbox)
 
 - Trigger:
   - `role="button"`
@@ -176,7 +184,7 @@ Not a native `<select>`.
     - Typing characters moves active option to the next item whose label starts with the typed string (case-insensitive)
     - Typeahead buffer resets after a short timeout (~1s)
 
-### 3.6 Behavior
+### 3.7 Behavior
 
 - Opening:
   - Trigger click or `Space`/`Enter` toggles `open`

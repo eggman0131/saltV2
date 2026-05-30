@@ -1,10 +1,21 @@
 {
   "servers": {
+    "github": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${env:GITHUB_PERSONAL_ACCESS_TOKEN}"
+      }
+    },
     "vexp": {
       "type": "stdio",
       "command": "/home/eggman/.nvm/versions/node/v24.12.0/bin/node",
       "args": [
-        "/home/eggman/.vscode-server-insiders/extensions/vexp.vexp-vscode-2.0.17-linux-x64/dist/mcp-server.cjs"
+        "/home/eggman/.vscode-server/extensions/vexp.vexp-vscode-2.0.22-linux-x64/dist/mcp-server.cjs"
       ],
       "env": {
         "VEXP_WORKSPACE": "/home/eggman/projects/saltV2"

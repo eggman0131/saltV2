@@ -1025,7 +1025,7 @@ Single-line text input with label + description + error.
 | -------------- | --------------------------------------------------------------- | ---------------------------------- |
 | `value`        | `string` (bindable)                                             | —                                  |
 | `defaultValue` | `string`                                                        | `''`                               |
-| `label`        | `string`                                                        | **required**                       |
+| `label`        | `string \| undefined`                                           | —                                  |
 | `description`  | `string \| undefined`                                           | —                                  |
 | `error`        | `string \| undefined`                                           | —                                  |
 | `type`         | `'text' \| 'email' \| 'password' \| 'url' \| 'tel' \| 'search'` | `'text'`                           |
@@ -1051,7 +1051,8 @@ Single-line text input with label + description + error.
 
 ### Accessibility
 
-- `<label for={id}>` renders the visible label.
+- When `label` is provided, `<label for={id}>` renders the visible label.
+- When `label` is omitted, the caller **must** supply `aria-label` or `aria-labelledby` on the TextField (the rendered `<input>` will have no programmatic label otherwise).
 - Description rendered in a `<span id={descId}>`; referenced via `aria-describedby`.
 - Error rendered in a `<span id={errorId}>` with `role="alert"`; id **prepended** to `aria-describedby` when present.
 - Error presence sets `aria-invalid="true"`.
@@ -1558,6 +1559,7 @@ Numeric transform (allowed by §2.3): determinate indicator uses `style="transfo
 
 | Date       | Version | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ---------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-05-30 | v0.2.4  | §8.2 TextField: `label` relaxed from required to `string \| undefined`. Callers omitting `label` must supply `aria-label` or `aria-labelledby`. Ratifies code change from PR #71.                                                                                                                                                                                                                                                                        |
 | 2026-04-22 | v0.2.3  | §1.2 tightened to truly leaf (external-only) to match root CLAUDE.md and eslint.config.js. Removed `@salt/shared-types` from allowed imports list.                                                                                                                                                                                                                                                                                                       |
 | 2026-04-22 | v0.2.2  | Locked four implementation decisions: Svelte pin `^5.55.0` (§1.1), Icon surface `keyof typeof import('lucide-svelte')` (§1.1 + §8.12 unchanged), `tailwindcss-animate` registered by preset (§1.1 + §3.3), `useId` kept as module-scope counter explicitly **not SSR-safe** (§2.6). No breaking change to generated code.                                                                                                                                |
 | 2026-04-21 | v0.2.1  | Finished Progress spec. Centralized headless layer under `src/headless/`. Added §1.4 event naming rule, §1.5 spec versioning, §3.5 helper signatures, §3.6 canonical Button example + controlled/uncontrolled + snippet patterns, §3.7 bits-ui mapping table, §3.8 provenance header convention, §4.4 shared size scale, §4.5 dark-mode contract, §6.2 test template. Added CVA class matrices to all primitives. Added per-primitive "Forbidden" lists. |

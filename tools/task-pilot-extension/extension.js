@@ -171,10 +171,7 @@ class TaskPilotProvider {
     }
 
     if (terminal) {
-      terminal.show(false);
-      await vscode.commands.executeCommand('workbench.action.terminal.sendSequence', {
-        text: '\u0003',
-      });
+      terminal.sendText('\u0003', false);
       vscode.window.showInformationMessage(`Sent Ctrl+C to \"${label}\" for graceful shutdown.`);
       return;
     }

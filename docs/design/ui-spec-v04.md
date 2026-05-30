@@ -391,6 +391,8 @@ Pattern precedent: iOS Reminders, Apple Mail, Google Tasks, Todoist.
 
 One new prop: `selectionMode?: boolean` (bindable, default `false`). Consuming pages bind to it to observe and react to mode state. The "Select"/"Done" toggle still appears automatically whenever a `selectionBar` snippet is provided — the page never needs to manage the toggle itself.
 
+`ListPageProps` is an open interface that extends `Omit<HTMLAttributes<HTMLElement>, 'class'>`. Any attribute valid on `<section>` is accepted and spread onto the root `<section>` element (e.g. `data-*`, `aria-*`, `id`). The `class` prop is reserved and handled internally.
+
 ## 9.4 Consuming-page contract (bindable prop)
 
 Consuming pages use `bind:selectionMode` to observe selection state in their own scripts and templates. This is the correct approach because consuming pages are *parents* of `ListPage` — Svelte context flows downward (parent → child), so `LIST_PAGE_CONTEXT.get()` cannot be called from a consuming page's `<script>` block (it would throw outside the component tree).
