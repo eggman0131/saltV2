@@ -39,6 +39,9 @@
   let filterText = $state('');
   let showFilter = $state<'all' | 'in-use' | 'empty'>('all');
 
+  // Selection mode
+  let selectionMode = $state(false);
+
   // Add dialog
   let addOpen = $state(false);
   let addText = $state('');
@@ -52,6 +55,9 @@
 
   // Selection
   let selected = $state(new Set<string>());
+  $effect(() => {
+    if (!selectionMode) selected = new Set();
+  });
 
   // Delete modal
   let deleteOpen = $state(false);
@@ -225,6 +231,7 @@
     description="Organise and sort your store aisles."
     isLoading={$isLoadingAisles}
     isEmpty={$aisles.length === 0 && !$isLoadingAisles}
+    bind:selectionMode
   >
     {#snippet actions()}
       <Button onclick={() => push('/canon')}>
@@ -287,13 +294,15 @@
       >
         {#snippet row(aisle)}
           <div data-testid={`aisle-row-${aisle.id}`} class="flex items-center gap-2 px-3 py-2">
-            <span data-testid={`aisle-row-checkbox-${aisle.id}`}>
-              <Checkbox
-                checked={selected.has(aisle.id)}
-                onCheckedChange={() => toggleSelect(aisle.id)}
-                labelledBy={`aisle-name-${aisle.id}`}
-              />
-            </span>
+            {#if selectionMode}
+              <span data-testid={`aisle-row-checkbox-${aisle.id}`}>
+                <Checkbox
+                  checked={selected.has(aisle.id)}
+                  onCheckedChange={() => toggleSelect(aisle.id)}
+                  labelledBy={`aisle-name-${aisle.id}`}
+                />
+              </span>
+            {/if}
 
             <span
               data-testid={`aisle-drag-handle-${aisle.id}`}

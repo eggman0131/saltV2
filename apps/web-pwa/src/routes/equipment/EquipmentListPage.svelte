@@ -20,9 +20,14 @@
   } from '../../lib/equipmentService.js';
   import { addToast } from '../../lib/toastStore.js';
 
+  let selectionMode = $state(false);
   let selected = $state(new Set<string>());
   let showDeleteDialog = $state(false);
   let deleteBusy = $state(false);
+
+  $effect(() => {
+    if (!selectionMode) selected = new Set();
+  });
 
   const items = $derived($equipment?.items ?? []);
   const sorted = $derived([...items].sort((a, b) => a.name.localeCompare(b.name)));
@@ -56,6 +61,7 @@
   isLoading={$isLoadingEquipment}
   isEmpty={items.length === 0}
   class="p-4 sm:p-6"
+  bind:selectionMode
 >
   {#snippet actions()}
     <Button onclick={() => push('/equipment/new')}>Add equipment</Button>
@@ -79,7 +85,7 @@
 
   {#snippet children()}
     <div data-testid="equipment-list">
-      <SelectableList items={sorted} bind:selected>
+      <SelectableList items={sorted} bind:selected {selectionMode}>
         {#snippet row(item)}
           <button
             class="w-full text-left text-sm font-medium hover:underline"

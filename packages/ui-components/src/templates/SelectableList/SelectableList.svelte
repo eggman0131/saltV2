@@ -7,6 +7,7 @@
   let {
     items,
     selected = $bindable(new Set<string>()),
+    selectionMode = false,
     row,
     class: className,
   }: SelectableListProps<T> = $props();
@@ -28,7 +29,9 @@
         isSelected && 'ring-2 ring-ring border-ring',
       )}
     >
-      <Checkbox checked={isSelected} onCheckedChange={() => toggle(item.id)} />
+      {#if selectionMode}
+        <Checkbox checked={isSelected} onCheckedChange={() => toggle(item.id)} />
+      {/if}
       <div class="flex-1 min-w-0">
         {@render row(item, { selected: isSelected, toggle: () => toggle(item.id) })}
       </div>
