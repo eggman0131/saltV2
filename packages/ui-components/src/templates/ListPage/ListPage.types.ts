@@ -13,6 +13,7 @@ export type ListPageProps = {
    * bulk actions (e.g. merge), variant="ghost" for Clear.
    */
   selectionBar?: Snippet;
+  selectionMode?: boolean;
   actions?: Snippet;
   isLoading?: boolean;
   isError?: boolean;

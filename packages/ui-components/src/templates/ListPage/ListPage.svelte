@@ -13,6 +13,7 @@
     description,
     toolbar,
     selectionBar,
+    selectionMode = $bindable(false),
     actions,
     isLoading = false,
     isError = false,
@@ -24,8 +25,6 @@
     class: className,
     ...restProps
   }: ListPageProps = $props();
-
-  let selectionMode = $state(false);
 
   LIST_PAGE_CONTEXT.set({
     get selectionMode() {
