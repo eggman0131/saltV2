@@ -29,8 +29,14 @@
   let filterText = $state('');
   let approvalPlacement = $state<'top' | 'in-aisles'>('top');
 
+  // Selection mode
+  let selectionMode = $state(false);
+
   // Selection
   let selected = $state(new Set<string>());
+  $effect(() => {
+    if (!selectionMode) selected = new Set();
+  });
 
   // Delete dialog
   let deleteOpen = $state(false);
@@ -141,6 +147,7 @@
   isLoading={$isLoadingAisles}
   isEmpty={$canonItems.length === 0}
   class="p-4 sm:p-6"
+  bind:selectionMode
 >
   {#snippet actions()}
     <Button variant="outline" onclick={() => push('/canon/aisles')}>Manage aisles</Button>
@@ -200,12 +207,14 @@
           >
             Needs Review ({topApprovalItems.length})
           </h3>
-          <button
-            class="text-xs text-muted-foreground underline-offset-2 hover:underline"
-            onclick={selectPending}
-          >
-            Select all pending
-          </button>
+          {#if selectionMode}
+            <button
+              class="text-xs text-muted-foreground underline-offset-2 hover:underline"
+              onclick={selectPending}
+            >
+              Select all pending
+            </button>
+          {/if}
         </div>
         <ul class="flex flex-col gap-1">
           {#each topApprovalItems as item (item.id)}
@@ -213,7 +222,7 @@
               {item}
               aisles={$aisles}
               selected={selected.has(item.id)}
-              onToggleSelect={() => toggleItem(item.id)}
+              onToggleSelect={selectionMode ? () => toggleItem(item.id) : undefined}
             />
           {/each}
         </ul>
@@ -234,7 +243,7 @@
                   {item}
                   aisles={$aisles}
                   selected={selected.has(item.id)}
-                  onToggleSelect={() => toggleItem(item.id)}
+                  onToggleSelect={selectionMode ? () => toggleItem(item.id) : undefined}
                 />
               {/each}
             </ul>

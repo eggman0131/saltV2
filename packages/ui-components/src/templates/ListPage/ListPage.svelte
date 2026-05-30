@@ -1,9 +1,11 @@
-<!-- spec: SPEC.md §9.1 v0.2.3 -->
+<!-- spec: SPEC.md §9.1 v0.4.0 -->
 <script lang="ts">
   import { cn } from '../../lib/cn';
   import Spinner from '../../primitives/Spinner/Spinner.svelte';
   import EmptyState from '../../primitives/EmptyState/EmptyState.svelte';
   import ErrorState from '../../primitives/ErrorState/ErrorState.svelte';
+  import Button from '../../primitives/Button/Button.svelte';
+  import { LIST_PAGE_CONTEXT } from './ListPage.context.js';
   import type { ListPageProps } from './ListPage.types';
 
   let {
@@ -11,6 +13,7 @@
     description,
     toolbar,
     selectionBar,
+    selectionMode = $bindable(false),
     actions,
     isLoading = false,
     isError = false,
@@ -22,6 +25,15 @@
     class: className,
     ...restProps
   }: ListPageProps = $props();
+
+  LIST_PAGE_CONTEXT.set({
+    get selectionMode() {
+      return selectionMode;
+    },
+    exitSelectionMode: () => {
+      selectionMode = false;
+    },
+  });
 </script>
 
 <section class={cn('flex flex-col gap-4', className)} {...restProps}>
@@ -32,9 +44,18 @@
         <p class="text-sm text-muted-foreground">{description}</p>
       {/if}
     </div>
-    {#if actions}
+    {#if actions || selectionBar}
       <div class="flex items-center gap-2 shrink-0">
-        {@render actions()}
+        {#if selectionBar}
+          {#if selectionMode}
+            <Button variant="ghost" size="sm" onclick={() => (selectionMode = false)}>Done</Button>
+          {:else}
+            <Button variant="ghost" size="sm" onclick={() => (selectionMode = true)}>Select</Button>
+          {/if}
+        {/if}
+        {#if actions}
+          {@render actions()}
+        {/if}
       </div>
     {/if}
   </header>
@@ -67,7 +88,7 @@
         <EmptyState title="Nothing here yet" />
       {/if}
     {:else}
-      {#if selectionBar}
+      {#if selectionMode && selectionBar}
         <div
           class="mb-4 flex items-center justify-between px-3 py-2 rounded border border-border bg-muted/40"
         >

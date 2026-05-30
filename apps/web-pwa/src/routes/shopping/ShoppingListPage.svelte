@@ -88,7 +88,13 @@
 
   // ─── Selection state ──────────────────────────────────────────────────────────
 
+  let selectionMode = $state(false);
+
   let selected = $state(new Set<string>());
+
+  $effect(() => {
+    if (!selectionMode) selected = new Set();
+  });
 
   const selectedCount = $derived(allItemIds.filter((id) => selected.has(id)).length);
   const allSelected = $derived(allItemIds.length > 0 && allItemIds.every((id) => selected.has(id)));
@@ -303,6 +309,7 @@
     title={currentList?.name ?? 'Shopping list'}
     isLoading={$isLoadingShoppingList}
     {isEmpty}
+    bind:selectionMode
     class="p-4 sm:p-6"
     data-testid="shopping-list-page"
   >
@@ -490,12 +497,14 @@
                 data-testid="shopping-item-row"
                 data-item-id={item.id}
               >
-                <Checkbox
-                  checked={isSelected}
-                  onCheckedChange={() => toggleSelection(item.id)}
-                  label=""
-                  aria-label="Select {item.rawText}"
-                />
+                {#if selectionMode}
+                  <Checkbox
+                    checked={isSelected}
+                    onCheckedChange={() => toggleSelection(item.id)}
+                    label=""
+                    aria-label="Select {item.rawText}"
+                  />
+                {/if}
                 <button
                   type="button"
                   class="flex-1 min-w-0 text-left"
@@ -554,12 +563,14 @@
                 data-testid="shopping-item-row"
                 data-item-id={item.id}
               >
-                <Checkbox
-                  checked={isSelected}
-                  onCheckedChange={() => toggleSelection(item.id)}
-                  label=""
-                  aria-label="Select {item.rawText}"
-                />
+                {#if selectionMode}
+                  <Checkbox
+                    checked={isSelected}
+                    onCheckedChange={() => toggleSelection(item.id)}
+                    label=""
+                    aria-label="Select {item.rawText}"
+                  />
+                {/if}
                 <button
                   type="button"
                   class="flex-1 min-w-0 text-left"
@@ -617,12 +628,14 @@
                 data-testid="shopping-item-row"
                 data-item-id={item.id}
               >
-                <Checkbox
-                  checked={isSelected}
-                  onCheckedChange={() => toggleSelection(item.id)}
-                  label=""
-                  aria-label="Select {item.rawText}"
-                />
+                {#if selectionMode}
+                  <Checkbox
+                    checked={isSelected}
+                    onCheckedChange={() => toggleSelection(item.id)}
+                    label=""
+                    aria-label="Select {item.rawText}"
+                  />
+                {/if}
                 <button
                   type="button"
                   class="flex-1 min-w-0 text-left"

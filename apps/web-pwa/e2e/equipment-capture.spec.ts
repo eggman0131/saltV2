@@ -166,8 +166,8 @@ test.describe('equipment — capture, edit, and persistence', () => {
 
     await page.goto('/#/equipment');
 
-    // Select the row via its checkbox (bulk-delete UI), then trigger the
-    // selection-bar Delete and confirm in the dialog.
+    // Enter selection mode, then select the row via its checkbox.
+    await page.getByRole('button', { name: /^select$/i }).click();
     const row = page
       .getByTestId('equipment-list')
       .locator('li')

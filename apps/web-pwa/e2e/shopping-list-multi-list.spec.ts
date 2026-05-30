@@ -108,7 +108,8 @@ test.describe('shopping list — multi-list', () => {
     await page.goto(firstListUrl);
     await expect(page.getByText('soy sauce')).toBeVisible({ timeout: SYNC_TIMEOUT });
 
-    // Select the soy sauce item
+    // Enter selection mode, then select the soy sauce item
+    await page.getByRole('button', { name: /^select$/i }).click();
     const soyRow = page.getByTestId('shopping-item-row').filter({ hasText: 'soy sauce' });
     await soyRow.getByRole('checkbox').first().click();
 

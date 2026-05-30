@@ -126,6 +126,7 @@ describe('EquipmentListPage', () => {
   it('select-all checkbox selects all items and shows count', async () => {
     mockEquipment._set(manifest([item('a', 'Blender'), item('b', 'Mixer')]));
     render(EquipmentListPage);
+    await userEvent.click(screen.getByRole('button', { name: /^select$/i }));
     const selectAll = screen.getByRole('checkbox', { name: /select all/i });
     await userEvent.click(selectAll);
     await waitFor(() => expect(screen.getByText(/2 selected/i)).toBeInTheDocument());
@@ -134,6 +135,7 @@ describe('EquipmentListPage', () => {
   it('clear button deselects all items', async () => {
     mockEquipment._set(manifest([item('a', 'Blender')]));
     render(EquipmentListPage);
+    await userEvent.click(screen.getByRole('button', { name: /^select$/i }));
     await userEvent.click(screen.getByRole('checkbox', { name: /select all/i }));
     await waitFor(() => screen.getByRole('button', { name: /clear/i }));
     await userEvent.click(screen.getByRole('button', { name: /clear/i }));
@@ -146,6 +148,7 @@ describe('EquipmentListPage', () => {
     mockEquipment._set(manifest([item('to-delete', 'Old Blender')]));
     render(EquipmentListPage);
 
+    await userEvent.click(screen.getByRole('button', { name: /^select$/i }));
     const checkbox = screen.getByRole('checkbox', { name: /select all/i });
     await userEvent.click(checkbox);
 
