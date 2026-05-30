@@ -379,67 +379,81 @@ Pattern precedent: iOS Reminders, Apple Mail, Google Tasks, Todoist.
 
 ### Selection mode on
 - The `selectionBar` snippet is rendered in the grey bar between toolbar and content.
-- Per-row select controls become visible (consuming pages gate them on `selectionMode` from context — see §9.4).
+- Per-row select controls become visible (consuming pages gate them on their page-local `selectionMode` — see §9.4).
 - The "Select" button is replaced by a "Done" ghost button in the header.
 
 ### Exiting selection mode
-- Tapping "Done" calls `exitSelectionMode()` on the internal state, setting `selectionMode = false`.
+- Tapping "Done" sets `selectionMode = false` inside `ListPage`, which propagates back to the consuming page via the binding.
 - The `selectionBar` is hidden again; per-row controls disappear.
-- Consuming pages clear their `selected` Set by reacting to `selectionMode` becoming `false` (via `$effect` or `$derived` — see §9.5).
+- Consuming pages clear their `selected` Set by reacting to `selectionMode` becoming `false` (see §9.5).
 
 ## 9.3 `ListPage` props changes
 
-No new props. Selection mode is fully internal to `ListPage`. The "Select"/"Done" toggle appears automatically whenever a `selectionBar` snippet is provided.
+One new prop: `selectionMode?: boolean` (bindable, default `false`). Consuming pages bind to it to observe and react to mode state. The "Select"/"Done" toggle still appears automatically whenever a `selectionBar` snippet is provided — the page never needs to manage the toggle itself.
 
-## 9.4 Context contract
+## 9.4 Consuming-page contract (bindable prop)
 
-`ListPage` publishes selection state via Svelte context using `LIST_PAGE_CONTEXT` (exported from `@salt/ui-components`). Consuming pages read it to conditionally show per-row select controls.
+Consuming pages use `bind:selectionMode` to observe selection state in their own scripts and templates. This is the correct approach because consuming pages are *parents* of `ListPage` — Svelte context flows downward (parent → child), so `LIST_PAGE_CONTEXT.get()` cannot be called from a consuming page's `<script>` block (it would throw outside the component tree).
 
-```ts
-import type { ListPageContext } from '@salt/ui-components';
-
-// ListPageContext shape:
-type ListPageContext = {
-  readonly selectionMode: boolean;       // reactive via getter
-  readonly exitSelectionMode: () => void; // turn off mode (does not clear page's selected Set)
-};
-```
-
-**Reading from context (in a consuming page's row markup):**
+**Standard pattern for a consuming page:**
 ```svelte
 <script lang="ts">
-  import { LIST_PAGE_CONTEXT } from '@salt/ui-components';
-  const ctx = LIST_PAGE_CONTEXT.get();
+  let selectionMode = $state(false);
+  let selected = $state(new Set<string>());
+
+  $effect(() => {
+    if (!selectionMode) selected = new Set();
+  });
 </script>
 
-{#if ctx.selectionMode}
-  <Checkbox checked={isSelected} onCheckedChange={() => toggleSelection(item.id)} label="" />
-{/if}
+<ListPage ... bind:selectionMode>
+  {#snippet children()}
+    {#if selectionMode}
+      <Checkbox checked={isSelected} onCheckedChange={() => toggleSelection(item.id)} label="" />
+    {/if}
+  {/snippet}
+</ListPage>
 ```
-
-**Important:** `LIST_PAGE_CONTEXT.get()` throws if called outside a `ListPage` component tree. Per-row select controls always live inside `ListPage`'s `children` snippet, so this is safe by construction.
 
 ## 9.5 Clearing selection on exit
 
-Consuming pages own their `selected` Set. When selection mode exits, pages should clear it. The idiomatic pattern in Svelte 5:
+Consuming pages own their `selected` Set. When selection mode exits the bound `selectionMode` becomes `false`; a top-level `$effect` reacts and clears it:
 
 ```ts
-const ctx = LIST_PAGE_CONTEXT.get();
 $effect(() => {
-  if (!ctx.selectionMode) selected = new Set();
+  if (!selectionMode) selected = new Set();
 });
 ```
 
 ## 9.6 Programmatic exit
 
-Consuming pages may also exit selection mode programmatically (e.g., after a bulk delete completes):
+To exit selection mode programmatically from a consuming page (e.g., after a bulk delete completes), set the bound state directly:
 
 ```ts
-ctx.exitSelectionMode(); // sets selectionMode = false, triggers the $effect above
+selectionMode = false; // propagates into ListPage via the binding; triggers the $effect above
 ```
 
-## 9.7 Forbidden
+## 9.7 Context — for nested components only
 
-- Do not add a `selectionMode` prop to `ListPage` — state is internal only.
+`ListPage` still publishes selection state via `LIST_PAGE_CONTEXT` (`@salt/ui-components`). This is intended for **components instantiated inside `ListPage`'s rendered tree** (e.g., a future shared row component that needs to know the mode without prop-drilling through the page's snippet markup).
+
+```ts
+// Only call this inside a component whose init runs inside ListPage's tree:
+import { LIST_PAGE_CONTEXT } from '@salt/ui-components';
+const ctx = LIST_PAGE_CONTEXT.get(); // throws if called outside ListPage's tree
+```
+
+`ListPageContext` shape:
+```ts
+type ListPageContext = {
+  readonly selectionMode: boolean;        // reactive via getter
+  readonly exitSelectionMode: () => void; // sets selectionMode = false
+};
+```
+
+Do **not** call `LIST_PAGE_CONTEXT.get()` in a consuming page's own `<script>` block — use `bind:selectionMode` instead (§9.4).
+
+## 9.8 Forbidden
+
 - Do not re-implement the "Select"/"Done" toggle in consuming pages.
-- Do not read `selectionMode` from anywhere other than `LIST_PAGE_CONTEXT` in per-row controls.
+- Do not call `LIST_PAGE_CONTEXT.get()` from a consuming page's `<script>` block — it is outside the context tree and will throw.
