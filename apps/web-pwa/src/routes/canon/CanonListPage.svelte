@@ -150,8 +150,8 @@
   bind:selectionMode
 >
   {#snippet actions()}
-    <Button variant="outline" onclick={() => push('/canon/aisles')}>Manage aisles</Button>
-    <Button onclick={() => push('/canon/new')}>Add item</Button>
+    <Button variant="outline" size="sm" onclick={() => push('/canon/aisles')}>Manage aisles</Button>
+    <Button size="sm" onclick={() => push('/canon/new')}>Add item</Button>
   {/snippet}
 
   {#snippet selectionBar()}

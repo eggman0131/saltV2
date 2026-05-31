@@ -11,6 +11,9 @@
     ComboboxItem,
     Icon,
     ListPage,
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
     Select,
     SelectContent,
     SelectItem,
@@ -314,16 +317,6 @@
     data-testid="shopping-list-page"
   >
     {#snippet actions()}
-      {#if $lists.length > 1}
-        <Select value={params.listId} onValueChange={(id) => push(`/shopping/${id}`)}>
-          <SelectTrigger class="text-sm h-8 min-w-[8rem]" data-testid="shopping-list-picker" />
-          <SelectContent>
-            {#each $lists as list (list.id)}
-              <SelectItem value={list.id}>{list.name}</SelectItem>
-            {/each}
-          </SelectContent>
-        </Select>
-      {/if}
       {#if hasCheckedItems}
         <Button
           variant="outline"
@@ -337,14 +330,51 @@
       <Button
         variant="ghost"
         size="sm"
-        onclick={() => push(`/shopping/${params.listId}/manage`)}
-        data-testid="shopping-manage-list"
+        onclick={() => push('/shopping/lists')}
+        data-testid="shopping-lists-btn"
+        aria-label="Manage lists"
       >
-        <Icon name="Settings" size={14} />
+        <Icon name="LayoutList" size={16} />
       </Button>
-      <Button size="sm" onclick={() => push('/shopping/new')} data-testid="shopping-add-list">
-        + List
-      </Button>
+    {/snippet}
+
+    {#snippet titleSlot()}
+      {#if $lists.length > 1}
+        <Popover>
+          <PopoverTrigger>
+            {#snippet children()}
+              <button
+                type="button"
+                class="flex items-center gap-1 text-xl font-semibold tracking-tight text-foreground hover:opacity-75"
+                data-testid="shopping-list-title-btn"
+                aria-label="Switch list"
+              >
+                {currentList?.name ?? 'Shopping list'}
+                <Icon name="ChevronDown" size={14} class="text-muted-foreground" />
+              </button>
+            {/snippet}
+          </PopoverTrigger>
+          <PopoverContent align="start" class="p-1 min-w-40">
+            {#each $lists as list (list.id)}
+              <button
+                type="button"
+                class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent {list.id ===
+                params.listId
+                  ? 'font-medium'
+                  : ''}"
+                onclick={() => push(`/shopping/${list.id}`)}
+                data-testid="shopping-list-picker-option"
+              >
+                {list.name}
+              </button>
+            {/each}
+          </PopoverContent>
+        </Popover>
+      {:else}
+        <h1 class="text-xl font-semibold tracking-tight text-foreground">
+          {currentList?.name ?? 'Shopping list'}
+        </h1>
+      {/if}
     {/snippet}
 
     {#snippet toolbar()}

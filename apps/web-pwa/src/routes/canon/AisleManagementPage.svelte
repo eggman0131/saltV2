@@ -234,11 +234,11 @@
     bind:selectionMode
   >
     {#snippet actions()}
-      <Button onclick={() => push('/canon')}>
+      <Button size="sm" onclick={() => push('/canon')}>
         <Icon name="ArrowLeft" size={16} />
         Back
       </Button>
-      <Button data-testid="aisle-add-button" onclick={() => (addOpen = true)}>Add</Button>
+      <Button size="sm" data-testid="aisle-add-button" onclick={() => (addOpen = true)}>Add</Button>
     {/snippet}
     {#snippet selectionBar()}
       <Checkbox

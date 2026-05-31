@@ -64,7 +64,7 @@
   bind:selectionMode
 >
   {#snippet actions()}
-    <Button onclick={() => push('/equipment/new')}>Add equipment</Button>
+    <Button size="sm" onclick={() => push('/equipment/new')}>Add equipment</Button>
   {/snippet}
 
   {#snippet selectionBar()}

@@ -159,7 +159,7 @@ Cards and primary containers use a 1rem (16px) radius, while smaller interactive
 
 ### Buttons
 
-Primary buttons use the Slate Teal background with White text. Secondary buttons utilize a Sage Green ghost style (outline only). All buttons feature a minimum hit target of 48px for easy interaction with messy hands.
+Primary buttons use the Slate Teal background with White text. Secondary buttons utilize a Sage Green ghost style (outline only).
 
 ### Cards
 

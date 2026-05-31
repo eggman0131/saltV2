@@ -19,6 +19,17 @@ async function createFirstList(page: import('@playwright/test').Page): Promise<s
   return page.url();
 }
 
+async function createSecondList(
+  page: import('@playwright/test').Page,
+  name: string,
+): Promise<void> {
+  await page.getByTestId('shopping-lists-btn').click();
+  await expect(page).toHaveURL(/#\/shopping\/lists/, { timeout: SYNC_TIMEOUT });
+  await page.getByTestId('shopping-lists-name-input').fill(name);
+  await page.getByTestId('shopping-lists-add-btn').click();
+  await expect(page).toHaveURL(/#\/shopping\/(?!lists)[a-z0-9-]+$/, { timeout: SYNC_TIMEOUT });
+}
+
 test.describe('shopping list — multi-list', () => {
   test('create a second list and navigate between them', async ({ page }, testInfo) => {
     test.setTimeout(60_000);
@@ -34,18 +45,14 @@ test.describe('shopping list — multi-list', () => {
       timeout: SYNC_TIMEOUT,
     });
 
-    // Create a second list
-    await page.getByTestId('shopping-add-list').click();
-    await expect(page).toHaveURL(/#\/shopping\/new/);
-    await page.getByTestId('shopping-create-list-name').fill('Asian supermarket');
-    await page.getByRole('button', { name: /create/i }).click();
+    // Create a second list via the lists management page
+    await createSecondList(page, 'Asian supermarket');
 
-    await expect(page).toHaveURL(/#\/shopping\/(?!new)[a-z0-9-]+$/, { timeout: SYNC_TIMEOUT });
     // The second list should be empty
     await expect(page.getByText('Your list is empty')).toBeVisible({ timeout: SYNC_TIMEOUT });
 
-    // The list picker should show both lists
-    await expect(page.getByTestId('shopping-list-picker')).toBeVisible();
+    // The title should be a clickable picker showing the current list name
+    await expect(page.getByTestId('shopping-list-title-btn')).toBeVisible();
 
     // Navigate back to first list via direct URL
     await page.goto(firstListUrl);
@@ -71,17 +78,14 @@ test.describe('shopping list — multi-list', () => {
 
     await createFirstList(page);
 
-    // Navigate to manage page for the default list
-    await page.getByTestId('shopping-manage-list').click();
-    await expect(page).toHaveURL(/#\/shopping\/.+\/manage/, { timeout: SYNC_TIMEOUT });
+    // Navigate to the lists management page
+    await page.getByTestId('shopping-lists-btn').click();
+    await expect(page).toHaveURL(/#\/shopping\/lists/, { timeout: SYNC_TIMEOUT });
 
-    // Delete button should be disabled
-    const deleteBtn = page.getByTestId('shopping-manage-delete');
+    // Delete button for the default list should be disabled
+    const deleteBtn = page.getByTestId('shopping-list-delete-btn');
     await expect(deleteBtn).toBeVisible();
     await expect(deleteBtn).toBeDisabled();
-
-    // Helper text should mention it cannot be deleted
-    await expect(page.getByText(/default list cannot be deleted/i)).toBeVisible();
   });
 
   test('move item to second list removes it from source', async ({ page }, testInfo) => {
@@ -99,10 +103,8 @@ test.describe('shopping list — multi-list', () => {
     ).toBeVisible({ timeout: SYNC_TIMEOUT });
 
     // Create a second list
-    await page.getByTestId('shopping-add-list').click();
-    await page.getByTestId('shopping-create-list-name').fill('Asian supermarket');
-    await page.getByRole('button', { name: /create/i }).click();
-    await expect(page).toHaveURL(/#\/shopping\/(?!new)[a-z0-9-]+$/, { timeout: SYNC_TIMEOUT });
+    await createSecondList(page, 'Asian supermarket');
+    await expect(page).toHaveURL(/#\/shopping\/(?!lists)[a-z0-9-]+$/, { timeout: SYNC_TIMEOUT });
 
     // Go back to first list
     await page.goto(firstListUrl);
@@ -139,10 +141,8 @@ test.describe('shopping list — multi-list', () => {
     const firstListUrl = await createFirstList(page);
 
     // Create second list
-    await page.getByTestId('shopping-add-list').click();
-    await page.getByTestId('shopping-create-list-name').fill('Second list');
-    await page.getByRole('button', { name: /create/i }).click();
-    await expect(page).toHaveURL(/#\/shopping\/(?!new)[a-z0-9-]+$/, { timeout: SYNC_TIMEOUT });
+    await createSecondList(page, 'Second list');
+    await expect(page).toHaveURL(/#\/shopping\/(?!lists)[a-z0-9-]+$/, { timeout: SYNC_TIMEOUT });
     const secondListUrl = page.url();
 
     // Navigate to second list

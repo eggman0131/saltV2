@@ -10,6 +10,7 @@
 
   let {
     title,
+    titleSlot,
     description,
     toolbar,
     selectionBar,
@@ -39,7 +40,11 @@
 <section class={cn('flex flex-col gap-4', className)} {...restProps}>
   <header class="flex flex-wrap items-start justify-between gap-3">
     <div class="flex flex-col gap-1 min-w-0">
-      <h1 class="text-xl font-semibold tracking-tight text-foreground">{title}</h1>
+      {#if titleSlot}
+        {@render titleSlot()}
+      {:else}
+        <h1 class="text-xl font-semibold tracking-tight text-foreground">{title}</h1>
+      {/if}
       {#if description}
         <p class="text-sm text-muted-foreground">{description}</p>
       {/if}
@@ -48,9 +53,12 @@
       <div class="flex items-center gap-2 shrink-0">
         {#if selectionBar}
           {#if selectionMode}
-            <Button variant="ghost" size="sm" onclick={() => (selectionMode = false)}>Done</Button>
+            <Button variant="outline" size="sm" onclick={() => (selectionMode = false)}>Done</Button
+            >
           {:else}
-            <Button variant="ghost" size="sm" onclick={() => (selectionMode = true)}>Select</Button>
+            <Button variant="outline" size="sm" onclick={() => (selectionMode = true)}
+              >Select</Button
+            >
           {/if}
         {/if}
         {#if actions}

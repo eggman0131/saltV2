@@ -4,6 +4,7 @@ import type { HTMLAttributes } from 'svelte/elements';
 
 export type ListPageProps = {
   title: string;
+  titleSlot?: Snippet;
   description?: string;
   toolbar?: Snippet;
   /**
@@ -14,6 +15,11 @@ export type ListPageProps = {
    */
   selectionBar?: Snippet;
   selectionMode?: boolean;
+  /**
+   * Header action buttons, rendered to the right of the built-in Select/Done toggle.
+   * Convention: use size="sm" on every button here so they line up with the Select
+   * toggle (which is sm); mixing in the default md size leaves the row uneven.
+   */
   actions?: Snippet;
   isLoading?: boolean;
   isError?: boolean;

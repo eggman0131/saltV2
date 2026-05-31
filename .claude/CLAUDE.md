@@ -41,7 +41,7 @@ Tip: If hunting a cross-layer bug, use preset: "debug" to loop in capsule, test,
 
 get_skeleton({ files: [...], detail: "standard" }) — Use this to safely peek at cross-package boundaries without flooding the context window.
 
-## vexp - Context-Aware AI Coding <!-- vexp v2.0.22 -->
+
 
 ### MANDATORY: use vexp pipeline - do NOT grep or glob the codebase
 For every task - bug fixes, features, refactors, debugging:
