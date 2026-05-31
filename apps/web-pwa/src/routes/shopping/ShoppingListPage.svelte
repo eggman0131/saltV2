@@ -78,8 +78,6 @@
 
   const grouped = $derived(groupItemsByAisle($itemsForActiveList, canonMap, aisleInfos));
 
-  const hasCheckedItems = $derived($itemsForActiveList.some((i) => i.checked));
-
   const allItemIds = $derived($itemsForActiveList.map((i) => i.id));
   const totalItems = $derived(
     grouped.other.contributors.length +
@@ -88,6 +86,10 @@
   );
 
   const isEmpty = $derived(!$isLoadingShoppingList && totalItems === 0);
+
+  // ─── Checked group collapse ─────────────────────────────────────────────────────
+
+  let checkedCollapsed = $state(false);
 
   // ─── Selection state ──────────────────────────────────────────────────────────
 
@@ -317,16 +319,6 @@
     data-testid="shopping-list-page"
   >
     {#snippet actions()}
-      {#if hasCheckedItems}
-        <Button
-          variant="outline"
-          size="sm"
-          onclick={handleClearChecked}
-          data-testid="shopping-clear-checked"
-        >
-          Clear checked
-        </Button>
-      {/if}
       <Button
         variant="ghost"
         size="sm"
@@ -645,56 +637,75 @@
         <!-- Checked items -->
         {#if grouped.checked.contributors.length > 0}
           <section class="flex flex-col gap-1" data-testid="shopping-checked">
-            <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
-              Checked
-            </p>
-            {#each grouped.checked.contributors as item (item.id)}
-              {@const isSelected = selected.has(item.id)}
-              {@const amountStr = formatAmount(item.amount, item.unit)}
-              <div
-                class="flex items-center gap-3 rounded border px-3 py-2 text-sm {isSelected
-                  ? 'border-ring ring-2 ring-ring bg-card'
-                  : 'border-border bg-card'}"
-                data-testid="shopping-item-row"
-                data-item-id={item.id}
+            <div class="flex items-center justify-between gap-2 mb-1">
+              <button
+                type="button"
+                class="flex items-center gap-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground"
+                onclick={() => (checkedCollapsed = !checkedCollapsed)}
+                aria-expanded={!checkedCollapsed}
+                data-testid="shopping-checked-toggle"
               >
-                {#if selectionMode}
-                  <Checkbox
-                    checked={isSelected}
-                    onCheckedChange={() => toggleSelection(item.id)}
-                    label=""
-                    aria-label="Select {item.rawText}"
-                  />
-                {/if}
-                <button
-                  type="button"
-                  class="flex-1 min-w-0 text-left"
-                  onclick={() => openEditSheet(item)}
-                  aria-label="Edit {item.rawText}"
-                  data-testid="shopping-item-edit-btn"
+                <Icon name={checkedCollapsed ? 'ChevronRight' : 'ChevronDown'} size={14} />
+                Checked ({grouped.checked.contributors.length})
+              </button>
+              <Button
+                variant="outline"
+                size="sm"
+                onclick={handleClearChecked}
+                data-testid="shopping-clear-checked"
+              >
+                Clear checked
+              </Button>
+            </div>
+            {#if !checkedCollapsed}
+              {#each grouped.checked.contributors as item (item.id)}
+                {@const isSelected = selected.has(item.id)}
+                {@const amountStr = formatAmount(item.amount, item.unit)}
+                <div
+                  class="flex items-center gap-3 rounded border px-3 py-2 text-sm {isSelected
+                    ? 'border-ring ring-2 ring-ring bg-card'
+                    : 'border-border bg-card'}"
+                  data-testid="shopping-item-row"
+                  data-item-id={item.id}
                 >
-                  <span class="block truncate line-through text-muted-foreground">
-                    {toSentenceCase(item.rawText)}{#if amountStr}{' '}({amountStr}){/if}
-                  </span>
-                  {#if item.notes}
-                    <span class="block text-xs text-muted-foreground/60 truncate"
-                      >{toSentenceCase(item.notes)}</span
-                    >
+                  {#if selectionMode}
+                    <Checkbox
+                      checked={isSelected}
+                      onCheckedChange={() => toggleSelection(item.id)}
+                      label=""
+                      aria-label="Select {item.rawText}"
+                    />
                   {/if}
-                </button>
-                <button
-                  type="button"
-                  class="flex items-center justify-center p-1 rounded transition-colors {item.checked
-                    ? 'text-green-500'
-                    : 'text-muted-foreground hover:text-foreground'}"
-                  onclick={() => void toggleItemChecked(params.listId, item)}
-                  aria-label={item.checked ? 'Uncheck' : 'Mark as done'}
-                  data-testid="shopping-item-check"
-                >
-                  <Icon name={item.checked ? 'CircleCheck' : 'Circle'} size={18} />
-                </button>
-              </div>
-            {/each}
+                  <button
+                    type="button"
+                    class="flex-1 min-w-0 text-left"
+                    onclick={() => openEditSheet(item)}
+                    aria-label="Edit {item.rawText}"
+                    data-testid="shopping-item-edit-btn"
+                  >
+                    <span class="block truncate line-through text-muted-foreground">
+                      {toSentenceCase(item.rawText)}{#if amountStr}{' '}({amountStr}){/if}
+                    </span>
+                    {#if item.notes}
+                      <span class="block text-xs text-muted-foreground/60 truncate"
+                        >{toSentenceCase(item.notes)}</span
+                      >
+                    {/if}
+                  </button>
+                  <button
+                    type="button"
+                    class="flex items-center justify-center p-1 rounded transition-colors {item.checked
+                      ? 'text-green-500'
+                      : 'text-muted-foreground hover:text-foreground'}"
+                    onclick={() => void toggleItemChecked(params.listId, item)}
+                    aria-label={item.checked ? 'Uncheck' : 'Mark as done'}
+                    data-testid="shopping-item-check"
+                  >
+                    <Icon name={item.checked ? 'CircleCheck' : 'Circle'} size={18} />
+                  </button>
+                </div>
+              {/each}
+            {/if}
           </section>
         {/if}
       </div>

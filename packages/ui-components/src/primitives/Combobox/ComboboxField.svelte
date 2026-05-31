@@ -22,7 +22,7 @@
 <div
   bind:this={fieldEl}
   class={cn(
-    'salt-focus-ring-within flex items-stretch rounded [&>input]:flex-1 [&>input]:rounded-r-none [&>input]:border-r-0',
+    'salt-focus-ring-within flex items-stretch rounded [&>input]:flex-1 [&>input:not(:last-child)]:rounded-r-none [&>input:not(:last-child)]:border-r-0',
     className,
   )}
 >

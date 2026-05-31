@@ -8,6 +8,7 @@
     DialogFooter,
     DialogHeader,
     DialogTitle,
+    Icon,
     ListPage,
     Select,
     SelectContent,
@@ -150,8 +151,16 @@
   bind:selectionMode
 >
   {#snippet actions()}
-    <Button variant="outline" size="sm" onclick={() => push('/canon/aisles')}>Manage aisles</Button>
     <Button size="sm" onclick={() => push('/canon/new')}>Add item</Button>
+    <Button
+      variant="ghost"
+      size="sm"
+      onclick={() => push('/canon/aisles')}
+      data-testid="canon-aisles-btn"
+      aria-label="Manage aisles"
+    >
+      <Icon name="Store" size={16} />
+    </Button>
   {/snippet}
 
   {#snippet selectionBar()}
