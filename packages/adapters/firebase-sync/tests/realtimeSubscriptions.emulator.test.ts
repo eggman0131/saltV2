@@ -40,7 +40,14 @@ import type {
   ShoppingListsConfig,
 } from '@salt/domain';
 
-const CONVERGENCE_MS = 5000;
+// Cross-client onSnapshot propagation tolerance. Generous to absorb cold-start
+// latency on CI's Dockerized emulator (the first subscription in each block and
+// the server-confirmed-empty delivery can take several seconds there). waitFor
+// polls and resolves the instant data converges, so this only raises the
+// failure ceiling — warm local runs stay sub-second. Kept below the Vitest
+// testTimeout in vitest.emulator.config.ts so waitFor surfaces its own clearer
+// error rather than being pre-empted by Vitest's per-test timeout.
+const CONVERGENCE_MS = 15_000;
 
 // The "writer" app connects to the emulator directly (it does not go through
 // init.ts), so resolve the isolated Vitest stack ports from the same source
