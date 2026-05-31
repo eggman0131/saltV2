@@ -3,7 +3,7 @@ import { googleAI } from '@genkit-ai/google-genai';
 import { ParseEntryAIOutputSchema } from '@salt/domain/schemas';
 import { ai } from '../genkit.js';
 
-const GENERATION_MODEL = googleAI.model('gemini-3-flash-preview');
+const GENERATION_MODEL = googleAI.model('gemini-flash-latest');
 
 const ParseEntryInputSchema = z.object({
   rawText: z.string(),

@@ -2,6 +2,7 @@ import { logger } from 'firebase-functions';
 import type { ArbitrationRequest, ArbitrationResult, CanonArbitrationPort } from '@salt/domain';
 import { failure, success } from '@salt/shared-types';
 import { arbitrateCanonFlow } from '../flows/arbitrateCanon.js';
+import { withAiTimeout } from './withAiTimeout.js';
 
 export function createServerArbitrationAdapter(): CanonArbitrationPort {
   return {
@@ -20,7 +21,9 @@ export function createServerArbitrationAdapter(): CanonArbitrationPort {
           aisles: req.aisles.map((a) => ({ id: a.id, name: a.name })),
           ...(req.rawText !== undefined ? { rawText: req.rawText } : {}),
         };
-        const value = (await arbitrateCanonFlow(flowInput)) as unknown as ArbitrationResult;
+        const value = (await withAiTimeout('arbitrateCanon', () =>
+          arbitrateCanonFlow(flowInput),
+        )) as unknown as ArbitrationResult;
         return success(value);
       } catch (err) {
         logger.error('matchOrCreateCanon: arbitration failed', { err });

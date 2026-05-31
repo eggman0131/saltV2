@@ -2,12 +2,13 @@ import { logger } from 'firebase-functions';
 import type { EntryParsePort, ParsedEntry } from '@salt/domain';
 import { failure, success } from '@salt/shared-types';
 import { parseEntryFlow } from '../flows/parseEntry.js';
+import { withAiTimeout } from './withAiTimeout.js';
 
 export function createServerEntryParseAdapter(): EntryParsePort {
   return {
     async parse(rawText: string) {
       try {
-        const value = await parseEntryFlow({ rawText });
+        const value = await withAiTimeout('parseEntry', () => parseEntryFlow({ rawText }));
         // Construct ParsedEntry explicitly so optional fields are absent (not
         // undefined) — required by exactOptionalPropertyTypes.
         const parsed: ParsedEntry = {
