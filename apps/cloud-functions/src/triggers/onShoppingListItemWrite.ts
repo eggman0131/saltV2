@@ -1,4 +1,5 @@
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
+import { defineSecret } from 'firebase-functions/params';
 import { getFirestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
 import { matchOrCreate, parseShoppingListEntry } from '@salt/domain';
@@ -12,12 +13,21 @@ import { createServerEntryParseAdapter } from '../adapters/serverEntryParse.js';
 
 const TRIGGER_PATH = 'shoppingLists/{listId}/items/{itemId}';
 
+// The trigger reaches Gemini (parse/embed/arbitrate) via matchOrCreate and
+// emits LD server observability, so both secrets must be bound to its runtime —
+// otherwise production has no GEMINI_API_KEY and every match fails. The emulator
+// masked this by sourcing the keys from process.env (.secret.local). Defined
+// here (not imported from index.ts) to avoid a circular import; the Firebase
+// CLI aggregates same-named defineSecret calls across files at deploy time.
+const geminiApiKey = defineSecret('GEMINI_API_KEY');
+const ldSdkKey = defineSecret('LD_SDK_KEY');
+
 function looksCompound(text: string): boolean {
   return text.trim().split(/\s+/).length >= 3;
 }
 
 export const onShoppingListItemWrite = onDocumentWritten(
-  { document: TRIGGER_PATH, region: 'europe-west2' },
+  { document: TRIGGER_PATH, region: 'europe-west2', secrets: [geminiApiKey, ldSdkKey] },
   async (event) => {
     const after = event.data?.after;
     const before = event.data?.before;

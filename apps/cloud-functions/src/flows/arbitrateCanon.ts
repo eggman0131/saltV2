@@ -3,7 +3,7 @@ import { googleAI } from '@genkit-ai/google-genai';
 import { ArbitrationRequestSchema, CanonArbitrationAIOutputSchema } from '@salt/domain/schemas';
 import { ai } from '../genkit.js';
 
-const GENERATION_MODEL = googleAI.model('gemini-3-flash-preview');
+const GENERATION_MODEL = googleAI.model('gemini-flash-latest');
 
 // Flow output — discriminated union matching ArbitrationResult; includes prompt and rawResponse.
 const ArbitrationResultSchema = z.discriminatedUnion('kind', [

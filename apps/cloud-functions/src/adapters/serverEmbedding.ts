@@ -2,12 +2,13 @@ import { logger } from 'firebase-functions';
 import type { EmbeddingPort } from '@salt/domain';
 import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
 import { embedTextFlow } from '../flows/embedText.js';
+import { withAiTimeout } from './withAiTimeout.js';
 
 export function createServerEmbeddingAdapter(): EmbeddingPort {
   return {
     async computeEmbedding(text: string): Promise<ReadResult<readonly number[], DomainError>> {
       try {
-        const { values } = await embedTextFlow({ text });
+        const { values } = await withAiTimeout('embedText', () => embedTextFlow({ text }));
         return success(values);
       } catch (err) {
         logger.error('matchOrCreateCanon: embedding failed', { err });

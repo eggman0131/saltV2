@@ -5,7 +5,7 @@ import {
 } from '@salt/domain/schemas';
 import { ai } from '../genkit.js';
 
-const GENERATION_MODEL = googleAI.model('gemini-3-flash-preview');
+const GENERATION_MODEL = googleAI.model('gemini-flash-latest');
 
 export const identifyEquipmentFlow = ai.defineFlow(
   {
