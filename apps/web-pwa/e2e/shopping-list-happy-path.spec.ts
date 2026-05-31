@@ -47,23 +47,31 @@ test.describe('shopping list — happy path', () => {
     await input.fill('cheddar cheese');
     await addBtn.click();
 
-    // Items should appear in Other immediately (matchState: pending)
+    // Items should appear in Other immediately (matchState: pending).
+    //
+    // Match the canonical-name substring, not the full raw entry: the
+    // onShoppingListItemWrite trigger rewrites `rawText` to the parsed name
+    // once it fires (e.g. "heinz baked beans 4 tins" → "heinz baked beans",
+    // with "4 tins" lifted into amount/notes). Asserting the full raw string
+    // races the trigger — the faster it matches, the sooner the raw text is
+    // gone. The canonical substring is present both before and after the
+    // rewrite, so these locators are stable regardless of trigger speed.
+    // "cheddar cheese" has no amount/unit, so it is never rewritten and serves
+    // as the unchanged control.
     const other = page.getByTestId('shopping-other');
     await expect(other).toBeVisible({ timeout: SYNC_TIMEOUT });
-    await expect(other.getByText('heinz baked beans 4 tins')).toBeVisible();
-    await expect(other.getByText('whole milk 2L')).toBeVisible();
+    await expect(other.getByText(/heinz baked beans/i)).toBeVisible();
+    await expect(other.getByText(/whole milk/i)).toBeVisible();
     await expect(other.getByText('cheddar cheese')).toBeVisible();
 
     // ── Check two items off ──────────────────────────────────────────────────
     // Find the first item row's shopping check checkbox and click it.
     const firstItemRow = other
       .getByTestId('shopping-item-row')
-      .filter({ hasText: 'heinz baked beans 4 tins' });
+      .filter({ hasText: /heinz baked beans/i });
     await firstItemRow.getByTestId('shopping-item-check').click();
 
-    const secondItemRow = other
-      .getByTestId('shopping-item-row')
-      .filter({ hasText: 'whole milk 2L' });
+    const secondItemRow = other.getByTestId('shopping-item-row').filter({ hasText: /whole milk/i });
     await secondItemRow.getByTestId('shopping-item-check').click();
 
     // Clear checked button should now be visible
@@ -74,10 +82,10 @@ test.describe('shopping list — happy path', () => {
 
     // The two checked items should vanish; only cheddar cheese remains
     await expect(
-      page.getByTestId('shopping-item-row').filter({ hasText: 'heinz baked beans 4 tins' }),
+      page.getByTestId('shopping-item-row').filter({ hasText: /heinz baked beans/i }),
     ).not.toBeVisible({ timeout: SYNC_TIMEOUT });
     await expect(
-      page.getByTestId('shopping-item-row').filter({ hasText: 'whole milk 2L' }),
+      page.getByTestId('shopping-item-row').filter({ hasText: /whole milk/i }),
     ).not.toBeVisible({ timeout: SYNC_TIMEOUT });
     await expect(other.getByText('cheddar cheese')).toBeVisible();
 
@@ -88,7 +96,10 @@ test.describe('shopping list — happy path', () => {
 
     await expect(page.getByTestId('shopping-list-page')).toBeVisible({ timeout: SYNC_TIMEOUT });
     await expect(page.getByText('cheddar cheese')).toBeVisible({ timeout: SYNC_TIMEOUT });
-    await expect(page.getByText('heinz baked beans 4 tins')).not.toBeVisible();
+    // The cleared item is genuinely gone (deleted), not merely rewritten —
+    // match the canonical substring so this asserts deletion, not just the
+    // absence of the original raw string.
+    await expect(page.getByText(/heinz baked beans/i)).not.toBeVisible();
   });
 
   test('item edit sheet — update raw text and notes', async ({ page }, testInfo) => {
