@@ -17,6 +17,12 @@ The architecture must remain framework‑agnostic, testable, and resilient to ch
 - **Last-write-wins per document.** No bespoke conflict resolution. If a specific document ever needs stronger guarantees, that is a per-document decision.
 - **Single-family workspace.** All authenticated members see all data; admin actions are gated per user.
 
+### 1.1 Schema evolution and production data
+
+Until the first production deploy, Salt is **greenfield** — no real data exists, so schema‑shape changes are free (drop a field, rename a collection, change a type) and **no migrations or back‑compat shims are written**.
+
+**That posture ends at launch.** Once production holds real family data, every schema‑shape change must account for documents already written: either keep the new shape backward‑compatible (tolerate old docs on read) or run an explicit one‑off migration. "Just change the shape" is no longer safe for production. Last‑write‑wins per document and the no‑tombstones / no‑soft‑delete rules are unchanged — this adds one standing gate: *does this change break existing production documents?*
+
 ---
 
 ## 2. Mono‑repo structure (logical modules)
