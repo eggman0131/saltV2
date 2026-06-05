@@ -104,7 +104,7 @@ The OIDC provider on both projects is restricted to
 - [x] `VITE_LD_CLIENT_SIDE_ID` for dev / staging / production (matched LD envs)
 - [x] WIF setup — staging (repo-scoped) and production (environment-scoped)
 - [x] `LD_SDK_KEY` secret set in staging + production Secret Manager
-- [ ] `GEMINI_API_KEY` secret set in staging + production Secret Manager
+- [x] `GEMINI_API_KEY` secret set in staging + production Secret Manager
 - [ ] GitHub Environments (`staging`, `production`) + production approval rule
 - [ ] Deploy workflows (staging on merge, production on Release)
 - [ ] PR preview channels
