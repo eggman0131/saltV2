@@ -1,9 +1,9 @@
 {
   "functions": [
     {
-      "source": "apps/cloud-functions",
+      "source": "apps/cloud-functions/dist",
       "codebase": "default",
-      "ignore": ["node_modules", ".git", "**/*.test.ts"],
+      "ignore": ["node_modules", ".git"],
       "predeploy": ["pnpm --filter @salt/cloud-functions build"]
     }
   ],
