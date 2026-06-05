@@ -204,6 +204,7 @@ All interactive primitives must:
 - Dark mode via `.dark` class on `<html>` (see §4.5).
 - `class` prop merged last via `cn()`.
 - No inline `style` attributes except for numeric transforms (`transform: scaleX(...)` on Progress, `transform: translate3d(...)` on Switch thumb, etc.).
+- **Base radius for surfaces.** Cards, list rows, and field frames use the base `rounded` (4px) radius (`--salt-radius`, §4.1). Larger surfaces that read as "floating panels" (Dialog, Popover, Sheet) keep `rounded-lg` (10px). Do not introduce a fourth radius for these surfaces without amending this rule.
 
 ---
 
@@ -690,6 +691,7 @@ Salt adopts the shadcn token scheme, emitted as CSS variables on `:root` and `.d
 
 ### Radius
 
+- `rounded` → `--salt-radius` (4px) — **base/default radius**; see the card-and-row rule in §2.3
 - `rounded-sm` → `--salt-radius-sm` (2px)
 - `rounded-md` → `--salt-radius-md` (6px)
 - `rounded-lg` → `--salt-radius-lg` (10px)
@@ -1367,7 +1369,7 @@ content: 'z-tooltip rounded-md bg-foreground text-background px-2 py-1 text-xs s
 ### Styling
 
 ```
-card: 'rounded-lg border bg-card text-card-foreground shadow-sm'
+card: 'rounded border bg-card text-card-foreground shadow-sm'
 header: 'flex flex-col gap-1.5 p-6'
 title: 'text-lg font-semibold leading-none tracking-tight'
 description: 'text-sm text-muted-foreground'

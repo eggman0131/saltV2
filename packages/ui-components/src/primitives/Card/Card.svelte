@@ -1,4 +1,4 @@
-<!-- spec: SPEC.md §8.9 v0.2.3 -->
+<!-- spec: ui-spec-v02.md §8.9 v0.2 -->
 <script lang="ts">
   import { cn } from '../../lib/cn';
   import type { CardProps } from './Card.types';

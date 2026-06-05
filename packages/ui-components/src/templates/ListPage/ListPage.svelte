@@ -1,4 +1,4 @@
-<!-- spec: SPEC.md §9.1 v0.4.0 -->
+<!-- spec: ui-spec-v04.md §9 v0.4 -->
 <script lang="ts">
   import { cn } from '../../lib/cn';
   import Spinner from '../../primitives/Spinner/Spinner.svelte';
