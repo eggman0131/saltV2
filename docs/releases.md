@@ -79,12 +79,26 @@ deploy job can see:
 PR preview deploys use **staging-scoped** config only; production secrets are
 never exposed to PR-triggered jobs.
 
+#### WIF identifiers (provisioned — Phase 2)
+
+These are **not secret** (resource paths + SA emails). The deploy workflows pass
+them to `google-github-actions/auth` as `workload_identity_provider` +
+`service_account`, sourced per GitHub Environment.
+
+| Env          | `workload_identity_provider`                                                                  | `service_account`                            | Impersonation scope |
+| ------------ | --------------------------------------------------------------------------------------------- | -------------------------------------------- | ------------------- |
+| `staging`    | `projects/946977631175/locations/global/workloadIdentityPools/github-actions/providers/github` | `gha-deployer@s2-stage-ccb22.iam.gserviceaccount.com` | repo `eggman0131/saltV2` (covers PR previews) |
+| `production` | `projects/140613398002/locations/global/workloadIdentityPools/github-actions/providers/github` | `gha-deployer@s2-prod-e46bd.iam.gserviceaccount.com`  | **only** the `production` GitHub Environment |
+
+The OIDC provider on both projects is restricted to
+`assertion.repository == 'eggman0131/saltV2'`; no long-lived key exists anywhere.
+
 ## Setup status
 
 - [x] Staging Firebase project (`s2-stage-ccb22`, Blaze) + alias + `.env.staging` config
 - [x] Production Firebase project (`s2-prod-e46bd`, Blaze) + alias + `.env.production` config
 - [ ] `VITE_LD_CLIENT_SIDE_ID` for staging and production (matching LD environments)
-- [ ] WIF setup — staging and production (Phase 2)
+- [x] WIF setup — staging (repo-scoped) and production (environment-scoped)
 - [ ] Functions secrets per project (`GEMINI_API_KEY`, `LD_SDK_KEY`)
 - [ ] GitHub Environments (`staging`, `production`) + production approval rule
 - [ ] Deploy workflows (staging on merge, production on Release)
