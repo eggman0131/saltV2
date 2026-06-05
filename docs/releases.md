@@ -80,8 +80,9 @@ deploy job can see:
 | `staging`    | none (auto-deploy)   | staging WIF provider + service-account refs                 |
 | `production` | required reviewer (maintainer) = the approval gate | production WIF provider + service-account refs |
 
-PR preview deploys use **staging-scoped** config only; production secrets are
-never exposed to PR-triggered jobs.
+No PR-triggered jobs run against either Environment (per-PR Hosting previews were
+dropped — see Setup status); production secrets are scoped to release-triggered
+deploys only.
 
 #### WIF identifiers (provisioned — Phase 2)
 
@@ -91,11 +92,47 @@ them to `google-github-actions/auth` as `workload_identity_provider` +
 
 | Env          | `workload_identity_provider`                                                                  | `service_account`                            | Impersonation scope |
 | ------------ | --------------------------------------------------------------------------------------------- | -------------------------------------------- | ------------------- |
-| `staging`    | `projects/946977631175/locations/global/workloadIdentityPools/github-actions/providers/github` | `gha-deployer@s2-stage-ccb22.iam.gserviceaccount.com` | repo `eggman0131/saltV2` (covers PR previews) |
+| `staging`    | `projects/946977631175/locations/global/workloadIdentityPools/github-actions/providers/github` | `gha-deployer@s2-stage-ccb22.iam.gserviceaccount.com` | repo `eggman0131/saltV2` |
 | `production` | `projects/140613398002/locations/global/workloadIdentityPools/github-actions/providers/github` | `gha-deployer@s2-prod-e46bd.iam.gserviceaccount.com`  | **only** the `production` GitHub Environment |
 
 The OIDC provider on both projects is restricted to
 `assertion.repository == 'eggman0131/saltV2'`; no long-lived key exists anywhere.
+
+## Deploying
+
+| Target       | Trigger                                   | Workflow                |
+| ------------ | ----------------------------------------- | ----------------------- |
+| `staging`    | every push to `main` (after CI passes)    | `deploy-staging.yml`    |
+| `production` | a **published GitHub Release** (gated)    | `deploy-production.yml` |
+
+**Production is a deliberate promotion, never automatic.** Publishing a GitHub
+Release deploys that release's exact tagged commit — the same commit already
+auto-deployed to and validated on staging. The job runs in the `production`
+GitHub Environment, whose required-reviewer rule is the approval gate: the run
+sits paused until the maintainer approves it, then deploys.
+
+### Cutting a release (promote staging → production)
+
+1. Confirm the commit you want is live and healthy on staging.
+2. Publish a GitHub Release whose tag points at that commit
+   (`gh release create vX.Y.Z --target <sha>`).
+3. `deploy-production.yml` starts and **waits for approval** in the `production`
+   Environment. Approve the run → it deploys that tag's commit to prod.
+
+### Rollback / re-deploy
+
+Production has no separate rollback build — you re-deploy a known-good tag:
+
+- **Re-deploy an earlier tag.** Run `deploy-production.yml` via
+  **workflow_dispatch** with `ref` set to the previous good tag (or SHA). It
+  goes through the same `production` approval gate and redeploys that commit's
+  artifacts (hosting + functions + firestore rules/indexes).
+- **Instant hosting-only rollback.** For a frontend-only regression, the
+  Firebase Hosting console's **one-click rollback** to the prior release is the
+  fastest path; it does not revert functions or rules.
+
+Either way, fixing forward (merge a fix → it auto-deploys to staging → cut a new
+release) is preferred when the issue isn't an emergency.
 
 ## First deploy to a fresh project (one-time bootstrap)
 
@@ -133,6 +170,6 @@ A brand-new Firebase project needs one-time setup that the CI deployer SA
 - [x] Staging first-deploy bootstrap (APIs + service agents) done
 - [x] **First end-to-end staging deploy verified** (CI/SA → https://s2-stage-ccb22.web.app)
 - [ ] Production first-deploy bootstrap (APIs done; owner bootstrap deploy still needed)
-- [ ] Production deploy workflow (on GitHub Release) — Phase 4
+- [x] Production deploy workflow (`deploy-production.yml` — on GitHub Release, gated) — Phase 4
 - [x] ~~PR preview channels~~ — **dropped** (#126 reverted). The whole app sits behind an auth gate and magic-link sign-in can't run on a preview's unauthorized, per-PR origin, so a preview only ever shows the login page. Verify on the staging domain after merge instead.
-- [ ] End-of-greenfield doc note — Phase 6
+- [x] End-of-greenfield doc note (`salt-architecture.md` §1.1 + `CLAUDE.md`) — Phase 6
