@@ -15,7 +15,7 @@
     "rules": "storage.rules"
   },
   "hosting": {
-    "public": "apps/web-pwa/build",
+    "public": "apps/web-pwa/dist",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"]
   },
   "emulators": {

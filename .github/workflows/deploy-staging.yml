@@ -1,0 +1,69 @@
+name: Deploy Staging
+
+# Runs after the CI workflow finishes successfully on main. main is protected
+# (PR + required status checks), so this is the post-merge, post-green deploy of
+# the exact merged commit — the trunk-based "merge to main -> staging" path.
+on:
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+    branches: [main]
+
+# id-token: write is REQUIRED for Workload Identity Federation — it lets the job
+# mint the short-lived OIDC token that google-github-actions/auth exchanges for
+# GCP credentials. No long-lived key is stored anywhere.
+permissions:
+  contents: read
+  id-token: write
+
+# Never run two staging deploys at once; queue rather than cancel so a deploy is
+# not interrupted half-way.
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to staging
+    # Only deploy when CI actually passed (workflow_run also fires on failure).
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    # Scopes WIF_PROVIDER / WIF_SERVICE_ACCOUNT to the staging GitHub Environment.
+    environment: staging
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Deploy the exact commit CI validated, not whatever is newest on main.
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '10.33.0'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Builds the PWA with --mode staging so Vite loads apps/web-pwa/.env.staging
+      # (staging Firebase config + LD client-side ID). Output -> apps/web-pwa/dist,
+      # which firebase.json hosting serves.
+      - name: Build web-pwa (staging)
+        run: pnpm --filter @salt/web-pwa build:staging
+
+      - name: Authenticate to Google Cloud (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: s2-stage-ccb22
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      # Deploys all targets: hosting, functions, firestore rules + indexes, storage
+      # rules. The functions predeploy hook (firebase.json) builds the CF bundle;
+      # GEMINI_API_KEY / LD_SDK_KEY are already in this project's Secret Manager.
+      - name: Deploy to Firebase (staging)
+        run: pnpm exec firebase deploy -P staging --non-interactive --force

@@ -105,6 +105,8 @@ The OIDC provider on both projects is restricted to
 - [x] WIF setup — staging (repo-scoped) and production (environment-scoped)
 - [x] `LD_SDK_KEY` secret set in staging + production Secret Manager
 - [x] `GEMINI_API_KEY` secret set in staging + production Secret Manager
-- [ ] GitHub Environments (`staging`, `production`) + production approval rule
-- [ ] Deploy workflows (staging on merge, production on Release)
-- [ ] PR preview channels
+- [x] GitHub Environments (`staging`, `production`) + production required-reviewer gate
+- [x] Staging deploy workflow (`deploy-staging.yml` — on CI success on `main`)
+- [ ] Production deploy workflow (on GitHub Release) — Phase 4
+- [ ] PR preview channels — Phase 5
+- [ ] First end-to-end staging deploy verified
