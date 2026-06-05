@@ -169,7 +169,7 @@ A brand-new Firebase project needs one-time setup that the CI deployer SA
 - [x] Staging deploy workflow (`deploy-staging.yml` — on CI success on `main`)
 - [x] Staging first-deploy bootstrap (APIs + service agents) done
 - [x] **First end-to-end staging deploy verified** (CI/SA → https://s2-stage-ccb22.web.app)
-- [ ] Production first-deploy bootstrap (APIs done; owner bootstrap deploy still needed)
+- [x] Production first-deploy bootstrap (owner deploy done — functions + firestore + hosting live at https://s2-prod-e46bd.web.app)
 - [x] Production deploy workflow (`deploy-production.yml` — on GitHub Release, gated) — Phase 4
 - [x] ~~PR preview channels~~ — **dropped** (#126 reverted). The whole app sits behind an auth gate and magic-link sign-in can't run on a preview's unauthorized, per-PR origin, so a preview only ever shows the login page. Verify on the staging domain after merge instead.
 - [x] End-of-greenfield doc note (`salt-architecture.md` §1.1 + `CLAUDE.md`) — Phase 6
