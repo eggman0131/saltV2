@@ -27,5 +27,12 @@ export default defineConfig({
     // hit the emulator (init, anon sign-in, data clear).
     testTimeout: 20_000,
     hookTimeout: 30_000,
+    // Stopgap for the flaky Firestore realtime Listen stream (issue #122): on CI
+    // the gRPC Listen stream intermittently breaks with a bogus multi-GB
+    // RESOURCE_EXHAUSTED, after which the subscription delivers nothing and every
+    // waitFor times out. A longer timeout can't help (the stream is dead), but a
+    // retry re-runs on a fresh subscription and clears the transient. This masks
+    // the symptom; the root fix (emulator cold-start / teardown) stays in #122.
+    retry: 2,
   },
 });
