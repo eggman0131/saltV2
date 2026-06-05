@@ -16,6 +16,16 @@
     }
   }
 
+  async function onComplete() {
+    if (!email || busy) return;
+    busy = true;
+    try {
+      await auth.completeWithEmail(email);
+    } finally {
+      busy = false;
+    }
+  }
+
   async function onDev() {
     if (!email || busy) return;
     busy = true;
@@ -38,6 +48,29 @@
           A sign-in link has been sent to <strong>{email}</strong>. Open it on this device to finish
           signing in.
         </p>
+      {:else if auth.needsEmail}
+        <form
+          class="space-y-4"
+          onsubmit={(e) => {
+            e.preventDefault();
+            void onComplete();
+          }}
+        >
+          <p class="text-sm text-muted-foreground">
+            Confirm the email you requested the sign-in link for to finish signing in.
+          </p>
+          <TextField
+            bind:value={email}
+            label="Email"
+            type="email"
+            placeholder="you@example.com"
+            required
+          />
+          {#if auth.error}
+            <p class="text-sm text-destructive">{auth.error}</p>
+          {/if}
+          <Button type="submit" disabled={!email || busy} loading={busy}>Complete sign-in</Button>
+        </form>
       {:else}
         <form
           class="space-y-4"
