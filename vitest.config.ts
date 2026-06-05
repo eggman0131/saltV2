@@ -16,7 +16,6 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],
       reportsDirectory: './coverage/unit',
-      all: true,
       include: ['packages/*/src/**', 'packages/adapters/*/src/**', 'apps/*/src/**'],
       exclude: ['apps/kitchen-sink/**'],
     },
