@@ -97,6 +97,29 @@ them to `google-github-actions/auth` as `workload_identity_provider` +
 The OIDC provider on both projects is restricted to
 `assertion.repository == 'eggman0131/saltV2'`; no long-lived key exists anywhere.
 
+## First deploy to a fresh project (one-time bootstrap)
+
+A brand-new Firebase project needs one-time setup that the CI deployer SA
+**cannot** do itself (it deliberately lacks project-IAM-admin). Done for staging;
+**still required for production before its first deploy.**
+
+1. **Enable the required APIs** (the SA can *use* APIs but not enable them):
+   `firebasestorage`, `cloudfunctions`, `cloudbuild`, `artifactregistry`, `run`,
+   `eventarc`, `pubsub`, `firestore`, `firebasehosting`, `storage`,
+   `secretmanager`, `cloudbilling`, plus `iamcredentials` + `sts` (WIF).
+   `gcloud services enable <api>… --project=<id>`.
+2. **Run the first deploy as an owner** (local `firebase deploy -P <alias>`).
+   This performs the one-time service-agent IAM setup that gen2 functions need
+   (Pub/Sub, Eventarc service agents) — which the SA can't do. Expect to retry:
+   the `gcf-admin-robot` and Eventarc service agents provision asynchronously on
+   first use, so the first one or two attempts can fail with `404 … Not found`
+   or "Eventarc permissions still propagating" — wait a few minutes and retry.
+3. After that, **CI/SA deploys work** without any standing IAM-admin grant.
+
+> Note: `firebase deploy` will not change a function's trigger type in place. If
+> an interrupted first deploy leaves a Firestore-trigger function as an `https`
+> stub, `firebase functions:delete <name> --region <region>` and redeploy.
+
 ## Setup status
 
 - [x] Staging Firebase project (`s2-stage-ccb22`, Blaze) + alias + `.env.staging` config
@@ -107,6 +130,9 @@ The OIDC provider on both projects is restricted to
 - [x] `GEMINI_API_KEY` secret set in staging + production Secret Manager
 - [x] GitHub Environments (`staging`, `production`) + production required-reviewer gate
 - [x] Staging deploy workflow (`deploy-staging.yml` — on CI success on `main`)
+- [x] Staging first-deploy bootstrap (APIs + service agents) done
+- [x] **First end-to-end staging deploy verified** (CI/SA → https://s2-stage-ccb22.web.app)
+- [ ] Production first-deploy bootstrap (APIs done; owner bootstrap deploy still needed)
 - [ ] Production deploy workflow (on GitHub Release) — Phase 4
 - [ ] PR preview channels — Phase 5
-- [ ] First end-to-end staging deploy verified
+- [ ] End-of-greenfield doc note — Phase 6
