@@ -4,13 +4,16 @@ import { identifyUser, identifyAnonymous } from './observability.js';
 
 const PENDING_EMAIL_KEY = 'salt:auth:pendingEmail';
 
-// Web-pwa is the composition layer for auth — it holds the pending email
-// (sessionStorage) so the firebase-sync adapter can stay stateless. The
+// Web-pwa is the composition layer for auth — it holds the pending email so
+// the firebase-sync adapter can stay stateless. We use localStorage (not
+// sessionStorage) because email clients open the magic link in a new tab or
+// window, which gets a fresh sessionStorage; localStorage is shared across
+// all tabs of the same browser, so the email survives the round-trip. The
 // adapter rule keeps browser-storage primitives out of adapters; this file
-// is in the app, which is allowed to touch sessionStorage directly.
+// is in the app, which is allowed to touch localStorage directly.
 function readPendingEmail(): string | null {
   try {
-    return window.sessionStorage.getItem(PENDING_EMAIL_KEY);
+    return window.localStorage.getItem(PENDING_EMAIL_KEY);
   } catch {
     return null;
   }
@@ -18,15 +21,15 @@ function readPendingEmail(): string | null {
 
 function writePendingEmail(email: string): void {
   try {
-    window.sessionStorage.setItem(PENDING_EMAIL_KEY, email);
+    window.localStorage.setItem(PENDING_EMAIL_KEY, email);
   } catch {
-    /* sessionStorage unavailable — magic link will prompt for email on return */
+    /* localStorage unavailable — magic link will prompt for email on return */
   }
 }
 
 function clearPendingEmail(): void {
   try {
-    window.sessionStorage.removeItem(PENDING_EMAIL_KEY);
+    window.localStorage.removeItem(PENDING_EMAIL_KEY);
   } catch {
     /* ignore */
   }
@@ -37,6 +40,13 @@ class AuthStore {
   loading = $state(true);
   error = $state<string | null>(null);
   linkSent = $state(false);
+  // True when we returned from a magic link but had no stored email to
+  // complete it (link opened on a different device/browser, or storage was
+  // cleared). The login UI prompts for the email and calls completeWithEmail.
+  needsEmail = $state(false);
+  // The magic-link URL we're waiting to complete, captured before any history
+  // rewrite so completeWithEmail can finish sign-in after the user re-enters.
+  private pendingUrl: string | null = null;
 
   constructor() {
     this.user = authProvider.getCurrentUser();
@@ -57,19 +67,37 @@ class AuthStore {
     }
     const email = readPendingEmail();
     if (!email) {
-      this.error = 'Sign-in link opened on a different device — re-enter your email.';
+      // Can't complete without the email (different device, or storage lost).
+      // Prompt for it instead of dead-ending — completeWithEmail finishes up.
+      this.pendingUrl = url;
+      this.needsEmail = true;
       this.loading = false;
       return;
     }
+    await this.finishSignIn(url, email);
+    this.loading = false;
+  }
+
+  // Complete sign-in for a magic-link URL once we have the email. Shared by
+  // the automatic path (stored email) and the manual re-entry path.
+  private async finishSignIn(url: string, email: string): Promise<void> {
     const result = await authProvider.completeMagicLink(url, email);
     if (result.kind === 'ok') {
       clearPendingEmail();
+      this.needsEmail = false;
+      this.pendingUrl = null;
       // Strip the magic-link params so a refresh doesn't re-trigger sign-in.
       window.history.replaceState({}, '', window.location.pathname);
     } else {
       this.error = formatError(result.error);
     }
-    this.loading = false;
+  }
+
+  // Called from the login UI when the user re-enters their email to finish a
+  // magic-link sign-in we couldn't complete automatically.
+  async completeWithEmail(email: string): Promise<void> {
+    this.error = null;
+    await this.finishSignIn(this.pendingUrl ?? window.location.href, email);
   }
 
   async sendLink(email: string): Promise<void> {
