@@ -115,13 +115,14 @@ test.describe('shopping list — multi-list', () => {
     const soyRow = page.getByTestId('shopping-item-row').filter({ hasText: 'soy sauce' });
     await soyRow.getByRole('checkbox').first().click();
 
-    // Bulk move to Asian supermarket
-    const moveSelect = page.getByTestId('shopping-bulk-move-select');
-    await expect(moveSelect).toBeVisible({ timeout: SYNC_TIMEOUT });
-    await moveSelect.click();
-    await page.getByRole('option', { name: /asian supermarket/i }).click();
-
-    await page.getByTestId('shopping-bulk-move-confirm').click();
+    // Bulk move to Asian supermarket via the move sheet
+    const moveButton = page.getByTestId('shopping-bulk-move-select');
+    await expect(moveButton).toBeVisible({ timeout: SYNC_TIMEOUT });
+    await moveButton.click();
+    await page
+      .getByTestId('shopping-bulk-move-option')
+      .filter({ hasText: /asian supermarket/i })
+      .click();
 
     // Soy sauce should be gone from the first list
     await expect(
