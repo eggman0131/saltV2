@@ -68,8 +68,9 @@ jobs:
           workload_identity_provider: ${{ vars.WIF_PROVIDER }}
           service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
 
-      # Deploys all targets: hosting, functions, firestore rules + indexes, storage
-      # rules. The functions predeploy hook (firebase.json) builds the CF bundle;
-      # GEMINI_API_KEY / LD_SDK_KEY are already in this project's Secret Manager.
+      # Deploys all targets in firebase.json: hosting, functions, firestore rules
+      # + indexes. (Storage is not deployed — unused; re-add when a feature needs
+      # it.) The functions predeploy hook builds the CF bundle; GEMINI_API_KEY /
+      # LD_SDK_KEY are already in this project's Secret Manager.
       - name: Deploy to Firebase (staging)
         run: pnpm exec firebase deploy -P staging --non-interactive --force
