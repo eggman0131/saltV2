@@ -47,8 +47,12 @@ API-key restrictions, not by secrecy.
 Each environment must use its **own** values; in particular the LD client-side ID
 must point at the matching LaunchDarkly environment.
 
-- `.env.staging` — populated for `s2-stage-ccb22`. **Outstanding:** `VITE_LD_CLIENT_SIDE_ID` (staging LD environment).
-- `.env.production` — populated for `s2-prod-e46bd`. **Outstanding:** `VITE_LD_CLIENT_SIDE_ID` (production LD environment).
+Each deploy target maps to its own LaunchDarkly environment (dev / staging /
+production) — the client-side ID and SDK key are a matched pair per LD env.
+
+- `.env.development` — emulators; LD env `dev`.
+- `.env.staging` — fully populated for `s2-stage-ccb22`; LD env `staging`.
+- `.env.production` — fully populated for `s2-prod-e46bd`; LD env `production`.
 
 ### 2. Cloud Functions runtime secrets — Secret Manager, per project, **never committed**
 
@@ -97,9 +101,10 @@ The OIDC provider on both projects is restricted to
 
 - [x] Staging Firebase project (`s2-stage-ccb22`, Blaze) + alias + `.env.staging` config
 - [x] Production Firebase project (`s2-prod-e46bd`, Blaze) + alias + `.env.production` config
-- [ ] `VITE_LD_CLIENT_SIDE_ID` for staging and production (matching LD environments)
+- [x] `VITE_LD_CLIENT_SIDE_ID` for dev / staging / production (matched LD envs)
 - [x] WIF setup — staging (repo-scoped) and production (environment-scoped)
-- [ ] Functions secrets per project (`GEMINI_API_KEY`, `LD_SDK_KEY`)
+- [x] `LD_SDK_KEY` secret set in staging + production Secret Manager
+- [ ] `GEMINI_API_KEY` secret set in staging + production Secret Manager
 - [ ] GitHub Environments (`staging`, `production`) + production approval rule
 - [ ] Deploy workflows (staging on merge, production on Release)
 - [ ] PR preview channels
