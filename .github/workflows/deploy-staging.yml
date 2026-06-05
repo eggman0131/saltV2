@@ -42,26 +42,77 @@ jobs:
         with:
           # Auto: the exact commit CI validated. Manual: current main HEAD.
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          # fetch-depth: 2 brings down the merged commit + its first parent so
+          # the guard step below can diff them. (Manual runs don't diff.)
+          fetch-depth: 2
+
+      # workflow_run triggers cannot use paths/paths-ignore, so the deploy-vs-skip
+      # decision is computed here instead. Deploy only when the merged commit
+      # touched a deploy-relevant path; manual runs always deploy. Allowlist, not
+      # denylist, and fail-safe toward deploying: any error resolving the diff
+      # defaults to should_deploy=true so we never silently skip a real change.
+      - name: Determine whether a deploy-relevant path changed
+        id: guard
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual dispatch — always deploy."
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          head="${{ github.event.workflow_run.head_sha }}"
+          # First parent of the merged commit = previous main HEAD (squash/merge
+          # commits to main have a single first parent).
+          if ! base="$(git rev-parse "${head}^" 2>/dev/null)"; then
+            echo "Could not resolve parent of ${head}; defaulting to deploy."
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! changed="$(git diff --name-only "${base}" "${head}" 2>/dev/null)"; then
+            echo "git diff failed; defaulting to deploy."
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Changed files between ${base} and ${head}:"
+          echo "${changed}"
+
+          # Allowlist of deploy-relevant paths. Any match -> deploy. apps/** and
+          # packages/** already cover nested package.json files, so the bare
+          # package.json anchor only matches the root manifest.
+          if echo "${changed}" | grep -Eq '^(apps/|packages/|firebase\.json$|firestore\.rules$|firestore\.indexes\.json$|package\.json$|pnpm-lock\.yaml$|\.github/workflows/deploy-staging\.yml$)'; then
+            echo "Deploy-relevant change detected -> deploy."
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No deploy-relevant change (docs/non-code only) -> skip deploy."
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: pnpm/action-setup@v4
+        if: ${{ steps.guard.outputs.should_deploy == 'true' }}
         with:
           version: '10.33.0'
 
       - uses: actions/setup-node@v4
+        if: ${{ steps.guard.outputs.should_deploy == 'true' }}
         with:
           node-version: '22'
           cache: 'pnpm'
 
       - name: Install dependencies
+        if: ${{ steps.guard.outputs.should_deploy == 'true' }}
         run: pnpm install --frozen-lockfile
 
       # Builds the PWA with --mode staging so Vite loads apps/web-pwa/.env.staging
       # (staging Firebase config + LD client-side ID). Output -> apps/web-pwa/dist,
       # which firebase.json hosting serves.
       - name: Build web-pwa (staging)
+        if: ${{ steps.guard.outputs.should_deploy == 'true' }}
         run: pnpm --filter @salt/web-pwa build:staging
 
       - name: Authenticate to Google Cloud (WIF)
+        if: ${{ steps.guard.outputs.should_deploy == 'true' }}
         uses: google-github-actions/auth@v2
         with:
           project_id: s2-stage-ccb22
@@ -73,4 +124,5 @@ jobs:
       # it.) The functions predeploy hook builds the CF bundle; GEMINI_API_KEY /
       # LD_SDK_KEY are already in this project's Secret Manager.
       - name: Deploy to Firebase (staging)
+        if: ${{ steps.guard.outputs.should_deploy == 'true' }}
         run: pnpm exec firebase deploy -P staging --non-interactive --force
