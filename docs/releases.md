@@ -134,5 +134,5 @@ A brand-new Firebase project needs one-time setup that the CI deployer SA
 - [x] **First end-to-end staging deploy verified** (CI/SA → https://s2-stage-ccb22.web.app)
 - [ ] Production first-deploy bootstrap (APIs done; owner bootstrap deploy still needed)
 - [ ] Production deploy workflow (on GitHub Release) — Phase 4
-- [ ] PR preview channels — Phase 5
+- [x] PR preview channels (`pr-preview.yml` — staging-scoped, auto-expiring)
 - [ ] End-of-greenfield doc note — Phase 6

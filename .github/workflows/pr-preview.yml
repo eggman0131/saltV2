@@ -1,0 +1,80 @@
+name: PR Preview
+
+# Deploys each PR's built PWA to an auto-expiring Firebase Hosting preview
+# channel so a change can be eyeballed before merge. Hosting-only: the preview
+# frontend talks to the shared staging backend (functions / firestore); no
+# per-PR functions deploy.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  id-token: write # WIF OIDC token
+  pull-requests: write # post/update the preview-URL comment
+
+# One preview per PR; a new push cancels the in-flight preview build.
+concurrency:
+  group: pr-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    name: Deploy preview channel
+    runs-on: ubuntu-latest
+    # Sources WIF_PROVIDER / WIF_SERVICE_ACCOUNT from the staging Environment.
+    # The staging SA is repo-scoped, so a PR job may assume it; the production
+    # SA is environment-scoped, so previews physically cannot reach production.
+    # Note: fork PRs receive no OIDC token, so they get no preview — by design.
+    environment: staging
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '10.33.0'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build web-pwa (staging)
+        run: pnpm --filter @salt/web-pwa build:staging
+
+      - name: Authenticate to Google Cloud (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: s2-stage-ccb22
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - name: Deploy to preview channel
+        id: preview
+        run: |
+          CHANNEL="pr-${{ github.event.pull_request.number }}"
+          URL=$(pnpm exec firebase hosting:channel:deploy "$CHANNEL" \
+            -P staging --expires 7d --json 2>/dev/null \
+            | jq -r '.result | to_entries[0].value.url')
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+      - name: Comment preview URL on PR (sticky)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          URL: ${{ steps.preview.outputs.url }}
+        run: |
+          BODY="<!-- pr-preview -->
+          🔎 **PWA preview** — built with the staging backend, channel expires in 7 days.
+
+          $URL"
+          CID=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" \
+            --jq 'map(select(.body | startswith("<!-- pr-preview -->"))) | .[0].id // empty')
+          if [ -n "$CID" ]; then
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${CID}" -f body="$BODY"
+          else
+            gh pr comment "$PR" --body "$BODY"
+          fi
