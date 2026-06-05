@@ -1,0 +1,71 @@
+name: Deploy Production
+
+# Production is a deliberate promotion, never automatic. Publishing a GitHub
+# Release deploys that release's exact tagged commit to production — the same
+# commit already validated on staging. workflow_dispatch is a manual path for
+# re-deploy / rollback (deploy a chosen earlier tag). BOTH paths run in the
+# `production` GitHub Environment, whose required-reviewer rule is the approval
+# gate: nothing reaches prod until the maintainer approves the run.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Tag or SHA to deploy to production (manual re-deploy / rollback)'
+        required: true
+
+permissions:
+  contents: read
+  id-token: write # WIF OIDC token
+
+# Never run two prod deploys at once; queue rather than cancel.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to production
+    runs-on: ubuntu-latest
+    # The approval gate. Also the source of WIF_PROVIDER / WIF_SERVICE_ACCOUNT —
+    # the production deployer SA is bound to attribute.environment/production, so
+    # only a job running in THIS environment can assume it (defence in depth on
+    # top of the manual approval).
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # On release: the published tag. On manual dispatch: the chosen ref.
+          ref: ${{ github.event.release.tag_name || inputs.ref }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '10.33.0'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Default Vite mode is production -> loads apps/web-pwa/.env.production
+      # (prod Firebase config + LD client-side ID). Output -> apps/web-pwa/dist.
+      - name: Build web-pwa (production)
+        run: pnpm --filter @salt/web-pwa build
+
+      - name: Authenticate to Google Cloud (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: s2-prod-e46bd
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      # Deploys hosting, functions, firestore rules + indexes to production. The
+      # functions predeploy hook builds the workspace-free deploy artifact;
+      # GEMINI_API_KEY / LD_SDK_KEY are already in prod Secret Manager.
+      - name: Deploy to Firebase (production)
+        run: pnpm exec firebase deploy -P production --non-interactive --force
