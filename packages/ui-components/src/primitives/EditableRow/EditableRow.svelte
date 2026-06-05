@@ -1,4 +1,4 @@
-<!-- spec: ui-spec-v04.md §7 v0.4 -->
+<!-- spec: ui-spec-v04.md §11 v0.4 -->
 <script lang="ts">
   import { cn } from '../../lib/cn';
   import Checkbox from '../../primitives/Checkbox/Checkbox.svelte';

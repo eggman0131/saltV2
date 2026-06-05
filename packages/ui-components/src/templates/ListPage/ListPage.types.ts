@@ -1,4 +1,4 @@
-// spec: SPEC.md §9.1 v0.2.3
+// spec: ui-spec-v04.md §9 v0.4
 import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 

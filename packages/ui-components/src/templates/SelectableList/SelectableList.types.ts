@@ -1,4 +1,4 @@
-// spec: SPEC.md §9.4 v0.2.3
+// spec: ui-spec-v04.md §10 v0.4
 import type { Snippet } from 'svelte';
 
 export type SelectableListItem = { id: string };

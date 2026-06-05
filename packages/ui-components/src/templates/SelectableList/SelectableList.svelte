@@ -1,4 +1,4 @@
-<!-- spec: SPEC.md §9.4 v0.2.3 -->
+<!-- spec: ui-spec-v04.md §10 v0.4 -->
 <script lang="ts" generics="T extends SelectableListItem">
   import { cn } from '../../lib/cn';
   import Checkbox from '../../primitives/Checkbox/Checkbox.svelte';

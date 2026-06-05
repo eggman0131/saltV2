@@ -1,4 +1,4 @@
-<!-- spec: ui-spec-v04.md §5 v0.4 -->
+<!-- spec: ui-spec-v04.md §3.4 v0.4 -->
 <script lang="ts">
   import { cn } from '../../lib/cn';
   import { COMBOBOX_CONTEXT } from '../../headless/Combobox.headless.svelte';
