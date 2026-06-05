@@ -114,10 +114,21 @@ sits paused until the maintainer approves it, then deploys.
 ### Cutting a release (promote staging → production)
 
 1. Confirm the commit you want is live and healthy on staging.
-2. Publish a GitHub Release whose tag points at that commit
-   (`gh release create vX.Y.Z --target <sha>`).
+2. Run **`pnpm release`**. It computes the next tag, prints it, asks for
+   confirmation, then creates + publishes the GitHub Release.
 3. `deploy-production.yml` starts and **waits for approval** in the `production`
    Environment. Approve the run → it deploys that tag's commit to prod.
+
+**Release tags use `YYYYMM.X`** — calendar month + a counter that resets each
+month (`202606.1`, `202606.2`, … then `202607.1`). `pnpm release`
+(`scripts/cut-release.sh`) finds the highest `X` already used this month across
+published Releases and remote tags, increments it, and tags `main`'s HEAD.
+
+```bash
+pnpm release          # tag main's HEAD with the next YYYYMM.X
+pnpm release <ref>    # tag a specific branch / sha / tag instead of main
+pnpm release -y       # skip the confirmation prompt
+```
 
 ### Rollback / re-deploy
 
