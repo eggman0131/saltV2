@@ -4,6 +4,7 @@
     AppShell,
     Button,
     Toast,
+    ToastAction,
     ToastClose,
     ToastDescription,
     ToastProvider,
@@ -54,11 +55,25 @@
         <Toast
           defaultOpen={true}
           variant={toast.variant}
+          duration={toast.duration}
           onOpenChange={(open) => {
-            if (!open) dismissToast(toast.id);
+            if (!open) {
+              toast.onDismiss?.();
+              dismissToast(toast.id);
+            }
           }}
         >
           <ToastDescription>{toast.message}</ToastDescription>
+          {#if toast.action}
+            <ToastAction
+              onclick={() => {
+                toast.action?.onClick();
+                dismissToast(toast.id);
+              }}
+            >
+              {toast.action.label}
+            </ToastAction>
+          {/if}
           <ToastClose />
         </Toast>
       {/each}
