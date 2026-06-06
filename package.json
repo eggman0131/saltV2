@@ -24,7 +24,7 @@
     "dev": "pnpm --filter @salt/web-pwa dev",
     "dev:kitchen-sink": "pnpm --filter @salt/kitchen-sink dev",
     "dev:genkit": "pnpm --filter @salt/cloud-functions dev",
-    "dev:emulators": "node scripts/stop-emulators.mjs && pnpm --filter @salt/cloud-functions build && NODE_OPTIONS='--disable-warning=DEP0040' GENKIT_ENV=dev GENKIT_TELEMETRY_SERVER=http://localhost:4033 firebase emulators:start --import=./.emulator-data --export-on-exit=./.emulator-data || true",
+    "dev:emulators": "node scripts/stop-emulators.mjs && pnpm --filter @salt/cloud-functions build && (cp apps/cloud-functions/.secret.local apps/cloud-functions/dist/.secret.local 2>/dev/null || true) && NODE_OPTIONS='--disable-warning=DEP0040' GENKIT_ENV=dev GENKIT_TELEMETRY_SERVER=http://localhost:4033 firebase emulators:start --import=./.emulator-data --export-on-exit=./.emulator-data || true",
     "test:emulator": "node scripts/test-emulator.mjs"
   },
   "lint-staged": {
