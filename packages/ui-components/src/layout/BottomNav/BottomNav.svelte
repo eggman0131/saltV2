@@ -12,7 +12,12 @@
 </script>
 
 <nav
-  class={cn('fixed inset-x-0 bottom-0 z-10 border-t bg-card lg:hidden', className)}
+  class={cn(
+    // pb-[env(safe-area-inset-bottom)]: keep the tappable row above the device
+    // home indicator / gesture bar so the lower part of each icon isn't a dead zone.
+    'fixed inset-x-0 bottom-0 z-10 border-t bg-card pb-[env(safe-area-inset-bottom)] lg:hidden',
+    className,
+  )}
   aria-label="Main navigation"
 >
   <ul class="mx-auto flex h-14 w-full max-w-lg items-center justify-around" role="list">
