@@ -8,7 +8,10 @@ const mockClientStart = vi.fn().mockResolvedValue(undefined);
 const mockCreateClient = vi.fn().mockReturnValue({ start: mockClientStart });
 
 let SessionReplayConstructorArgs: unknown[] = [];
-const MockSessionReplay = vi.fn().mockImplementation((...args: unknown[]) => {
+// Vitest 4: mocks invoked with `new` construct the instance, so a constructor
+// mock must be a real constructable (function/class), not an arrow function or
+// `mockReturnValue`. Use the `function` keyword and return the instance shape.
+const MockSessionReplay = vi.fn(function (...args: unknown[]) {
   SessionReplayConstructorArgs = args;
   return {};
 });
@@ -18,7 +21,10 @@ vi.mock('@launchdarkly/js-client-sdk', () => ({
 }));
 
 vi.mock('@launchdarkly/observability', () => ({
-  default: vi.fn().mockReturnValue({}),
+  // Constructed via `new Observability()` — must be constructable under Vitest 4.
+  default: vi.fn(function () {
+    return {};
+  }),
 }));
 
 vi.mock('@launchdarkly/session-replay', () => ({

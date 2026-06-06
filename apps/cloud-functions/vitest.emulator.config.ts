@@ -13,7 +13,11 @@ export default defineConfig({
     env: {
       VITE_EMULATOR_FIRESTORE_PORT: '8082',
     },
+    // Run all emulator test files sequentially in a single process. In Vitest
+    // 4 the v3 `poolOptions.forks.singleFork` was replaced by top-level
+    // `maxWorkers: 1` + `isolate: false` (see vitest 4 migration guide).
     pool: 'forks',
-    poolOptions: { forks: { singleFork: true } },
+    maxWorkers: 1,
+    isolate: false,
   },
 });

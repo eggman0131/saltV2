@@ -13,9 +13,12 @@ export default defineConfig({
     // deliberately NOT used: Vitest only reaches process.env via test.env,
     // never import.meta.env, so it cannot retarget the client SDK.
     // Emulator tests run sequentially to avoid concurrent Firestore access
-    // interfering with the beforeEach data-clear.
+    // interfering with the beforeEach data-clear. In Vitest 4 the v3
+    // `poolOptions.forks.singleFork` was replaced by top-level `maxWorkers: 1`
+    // + `isolate: false` (see vitest 4 migration guide).
     pool: 'forks',
-    poolOptions: { forks: { singleFork: true } },
+    maxWorkers: 1,
+    isolate: false,
     // Per-test ceiling must exceed the realtime tests' CONVERGENCE_MS window.
     // Vitest's default 5000ms timeout equals that window, but Vitest's clock
     // starts at the top of the test while each waitFor only starts after the
