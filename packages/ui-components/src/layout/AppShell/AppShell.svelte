@@ -23,10 +23,11 @@
     <SideNav items={navItems} {currentPath} footer={sideNavFooter} />
 
     <!--
-      pb-16: on mobile, reserves space so content is never hidden under the fixed BottomNav.
+      On mobile, reserve the BottomNav height (h-14 = 3.5rem) plus the device
+      safe-area inset so content is never hidden under the fixed BottomNav.
       lg:pb-0: removed on desktop where BottomNav is not rendered.
     -->
-    <main class="flex-1 overflow-y-auto pb-14 lg:pb-0">
+    <main class="flex-1 overflow-y-auto pb-[calc(3.5rem_+_env(safe-area-inset-bottom))] lg:pb-0">
       {@render children?.()}
     </main>
   </div>

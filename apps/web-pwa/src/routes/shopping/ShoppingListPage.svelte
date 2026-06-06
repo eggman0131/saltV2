@@ -719,7 +719,7 @@
      covers the app's bottom nav (Android-style contextual action mode). -->
 {#if selectionMode && selectedCount > 0}
   <div
-    class="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card"
+    class="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card pb-[env(safe-area-inset-bottom)]"
     role="toolbar"
     aria-label="Bulk actions"
     data-testid="shopping-bulk-bar"
