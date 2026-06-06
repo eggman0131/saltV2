@@ -20,9 +20,15 @@ export default defineConfig({
     },
     conditions: ['browser'],
   },
-  define: Object.fromEntries(
-    Object.entries(TEST_ENV).map(([k, v]) => [`import.meta.env.${k}`, JSON.stringify(v)]),
-  ),
+  define: {
+    ...Object.fromEntries(
+      Object.entries(TEST_ENV).map(([k, v]) => [`import.meta.env.${k}`, JSON.stringify(v)]),
+    ),
+    // Build stamp globals (injected by vite.config.ts in real builds) — stubbed
+    // here so rendering Settings under vitest doesn't hit an undefined global.
+    __APP_COMMIT__: JSON.stringify('test'),
+    __APP_BUILD_TIME__: JSON.stringify('1970-01-01T00:00:00.000Z'),
+  },
   test: {
     name: '@salt/web-pwa',
     environment: 'jsdom',
