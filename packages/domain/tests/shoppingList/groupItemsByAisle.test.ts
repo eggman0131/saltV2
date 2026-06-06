@@ -114,29 +114,48 @@ describe('groupItemsByAisle — items within an aisle', () => {
     expect(result.aisles[0].items.map((i) => i.id)).toEqual(['i1', 'i2']);
   });
 
-  it('sorts items within an aisle by createdAt ascending (oldest first)', () => {
+  it('sorts items within an aisle alphabetically by matched canon name', () => {
+    const items = [
+      makeItem('i1', { matchState: 'matched', canonId: 'c-beans' }),
+      makeItem('i2', { matchState: 'matched', canonId: 'c-apples' }),
+      makeItem('i3', { matchState: 'matched', canonId: 'c-carrots' }),
+    ];
+    const canonMap = makeCanonMap([
+      { id: 'c-beans', name: 'Beans', aisleId: 'aisle-1' },
+      { id: 'c-apples', name: 'Apples', aisleId: 'aisle-1' },
+      { id: 'c-carrots', name: 'Carrots', aisleId: 'aisle-1' },
+    ]);
+    const result = groupItemsByAisle(items, canonMap, AISLES);
+    expect(result.aisles[0].items.map((i) => i.id)).toEqual(['i2', 'i1', 'i3']);
+  });
+
+  it('clusters items matched to the same canon together, breaking ties by createdAt', () => {
     const items = [
       makeItem('i1', {
         matchState: 'matched',
-        canonId: 'c1',
+        canonId: 'c-onions',
+        rawText: 'red onions',
         createdAt: '2026-01-01T12:00:00.000Z',
       }),
       makeItem('i2', {
         matchState: 'matched',
-        canonId: 'c2',
+        canonId: 'c-apples',
+        rawText: 'granny smith',
         createdAt: '2026-01-01T10:00:00.000Z',
       }),
       makeItem('i3', {
         matchState: 'matched',
-        canonId: 'c1',
+        canonId: 'c-onions',
+        rawText: 'brown onions',
         createdAt: '2026-01-01T11:00:00.000Z',
       }),
     ];
     const canonMap = makeCanonMap([
-      { id: 'c1', name: 'Beans', aisleId: 'aisle-1' },
-      { id: 'c2', name: 'Apples', aisleId: 'aisle-1' },
+      { id: 'c-onions', name: 'Onions', aisleId: 'aisle-1' },
+      { id: 'c-apples', name: 'Apples', aisleId: 'aisle-1' },
     ]);
     const result = groupItemsByAisle(items, canonMap, AISLES);
+    // Apples first (A < O); the two Onions rows cluster, oldest (i3) before i1.
     expect(result.aisles[0].items.map((i) => i.id)).toEqual(['i2', 'i3', 'i1']);
   });
 });

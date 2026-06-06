@@ -28,7 +28,8 @@ export interface CheckedBucket {
 export interface AisleGroup {
   readonly aisleId: string;
   readonly aisleName: string;
-  // Items in the order the user added them (createdAt ascending).
+  // Items sorted alphabetically by their matched canon item's name, so rows
+  // resolving to the same canon cluster together (createdAt breaks ties).
   readonly items: readonly ShoppingListItem[];
 }
 
@@ -82,7 +83,15 @@ export function groupItemsByAisle(
     const aisleItems = aisleMap.get(aisle.id);
     if (!aisleItems || aisleItems.length === 0) continue;
 
-    const sorted = [...aisleItems].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    // Sort by the matched canon item's name so every row resolving to the same
+    // canon (e.g. all "Onions") clusters together regardless of its raw text.
+    // createdAt breaks ties so items sharing a canon keep a stable insertion order.
+    const sorted = [...aisleItems].sort((a, b) => {
+      const nameA = canonMap.get(a.canonId!)!.name;
+      const nameB = canonMap.get(b.canonId!)!.name;
+      const byName = nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+      return byName !== 0 ? byName : a.createdAt.localeCompare(b.createdAt);
+    });
     aisleGroups.push({ aisleId: aisle.id, aisleName: aisle.name, items: sorted });
   }
 
