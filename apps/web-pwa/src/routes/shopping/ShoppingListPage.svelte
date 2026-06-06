@@ -106,6 +106,10 @@
     collapsedAisles = next;
   }
 
+  // ─── List switcher ──────────────────────────────────────────────────────────────
+
+  let listSwitcherOpen = $state(false);
+
   // ─── Selection state ──────────────────────────────────────────────────────────
 
   let selectionMode = $state(false);
@@ -381,7 +385,7 @@
 
     {#snippet titleSlot()}
       {#if $lists.length > 1}
-        <Popover>
+        <Popover bind:open={listSwitcherOpen}>
           <PopoverTrigger>
             {#snippet children()}
               <button
@@ -403,7 +407,10 @@
                 params.listId
                   ? 'font-medium'
                   : ''}"
-                onclick={() => push(`/shopping/${list.id}`)}
+                onclick={() => {
+                  listSwitcherOpen = false;
+                  push(`/shopping/${list.id}`);
+                }}
                 data-testid="shopping-list-picker-option"
               >
                 {list.name}
