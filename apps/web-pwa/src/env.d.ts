@@ -20,3 +20,7 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+// Build stamp injected by Vite `define` (see vite.config.ts). Shown on Settings.
+declare const __APP_COMMIT__: string;
+declare const __APP_BUILD_TIME__: string;

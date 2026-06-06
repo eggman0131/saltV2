@@ -2,6 +2,24 @@ import { defineConfig, loadEnv } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { VitePWA } from 'vite-plugin-pwa';
 import { resolve } from 'path';
+import { execSync } from 'node:child_process';
+
+// Build stamp shown on the Settings screen. The git SHA identifies the code; the
+// build timestamp guarantees every build is distinct — so a re-dispatched deploy
+// of the same commit still produces a visibly new version, which is what lets us
+// validate the open-client PWA auto-update flow (issue #141 Phase 3) with a plain
+// workflow_dispatch re-deploy, no throwaway commit required.
+function gitShortSha(): string {
+  try {
+    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim();
+  } catch {
+    return 'unknown';
+  }
+}
+const appCommit = gitShortSha();
+const buildTime = new Date().toISOString();
 
 // PWA identity is env-distinct (issue #141): staging installs as "Salt (Staging)"
 // with its own theme color so it is visually separable from prod on a device.
@@ -77,6 +95,10 @@ export default defineConfig(({ mode }) => {
         },
       }),
     ],
+    define: {
+      __APP_COMMIT__: JSON.stringify(appCommit),
+      __APP_BUILD_TIME__: JSON.stringify(buildTime),
+    },
     resolve: {
       alias: {
         $lib: resolve(__dirname, 'src/lib'),
