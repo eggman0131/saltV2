@@ -4,6 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Salt</title>
+
+    <!-- PWA install + theming (issue #141). The web app manifest itself is
+         injected by vite-plugin-pwa. theme-color / apple title use Vite's
+         %VITE_*% HTML env replacement so they stay env-distinct (staging vs
+         prod), matching the manifest identity. -->
+    <meta name="theme-color" content="%VITE_PWA_THEME_COLOR%" />
+
+    <!-- iOS "Add to Home Screen": launch standalone with the correct icon,
+         title, and a light status bar to match the app's light background. -->
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="%VITE_PWA_SHORT_NAME%" />
   </head>
   <body>
     <div id="app"></div>
