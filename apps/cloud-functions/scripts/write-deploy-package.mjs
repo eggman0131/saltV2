@@ -1,10 +1,13 @@
 // Emits dist/package.json — the package manifest that ships to Cloud Functions.
 //
-// The esbuild bundle (dist/index.js) inlines everything EXCEPT the two
-// --external packages (firebase-admin, firebase-functions). So the deployed
-// artifact's only real runtime dependencies are those two. Crucially it must
-// contain NO `workspace:*` deps: Cloud Build runs plain `npm install` against
-// this file and cannot resolve pnpm's workspace protocol (EUNSUPPORTEDPROTOCOL).
+// The esbuild bundle (dist/index.js) inlines everything EXCEPT the
+// --external packages (firebase-admin, firebase-functions, sharp). So the
+// deployed artifact's only real runtime dependencies are those. sharp is a
+// native module (prebuilt binaries) and MUST stay external so `npm install`
+// against this manifest fetches the platform-correct binary on the Functions
+// runtime. Crucially this manifest must contain NO `workspace:*` deps: Cloud
+// Build runs plain `npm install` against it and cannot resolve pnpm's workspace
+// protocol (EUNSUPPORTEDPROTOCOL).
 //
 // firebase.json points functions.source at dist/, so THIS file (not the source
 // package.json with its workspace deps) is what gets uploaded.
@@ -32,8 +35,9 @@ const deployPkg = {
   dependencies: {
     'firebase-admin': pick('firebase-admin'),
     'firebase-functions': pick('firebase-functions'),
+    sharp: pick('sharp'),
   },
 };
 
 writeFileSync(resolve(pkgRoot, 'dist/package.json'), JSON.stringify(deployPkg, null, 2) + '\n');
-console.log('wrote dist/package.json (deploy artifact: firebase-admin, firebase-functions)');
+console.log('wrote dist/package.json (deploy artifact: firebase-admin, firebase-functions, sharp)');

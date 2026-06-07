@@ -1,6 +1,22 @@
 rules_version = '2';
+
+// Salt Firebase Storage rules.
+//
+// First real use of Firebase Storage: canon-item icons (Tier-1 pictograms,
+// issue #148). Icons are non-sensitive cartoon pictograms generated server-side
+// by the onCanonItemWritten Cloud Function (Admin SDK, which bypasses these
+// rules). The browser only ever renders them via <img src={publicUrl}>, so the
+// client needs public read access but never write access — keeping the web
+// client Storage-SDK-free.
 service firebase.storage {
   match /b/{bucket}/o {
+    // Canon icons: public read so any <img> tag can load them; client writes
+    // denied (only the CF Admin SDK writes here).
+    match /canon-icons/{file} {
+      allow read: if true;
+      allow write: if false;
+    }
+    // Everything else: locked down.
     match /{allPaths=**} {
       allow read, write: if false;
     }

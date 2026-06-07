@@ -7,6 +7,10 @@ export const CanonItemSchema = z.object({
   synonyms: z.array(z.string()),
   aisleId: z.string().nullable(),
   thumbnail: z.string().nullable(),
+  // Transient one-shot steer for the next icon (re)generation (issue #148).
+  // Written by the regenerateCanonIcon callable alongside thumbnail: null;
+  // consumed and cleared by the onCanonItemWritten icon branch.
+  iconHint: z.string().optional(),
   embedding: z.array(z.number()).nullable(),
   needs_approval: z.boolean(),
   shoppingBehavior: z.enum(['stocked', 'check', 'needed']),

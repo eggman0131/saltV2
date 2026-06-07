@@ -53,6 +53,7 @@ export {
   setCanonItemShoppingBehavior,
   setCanonItemThreshold,
 } from './commands/setCanonItemShoppingFields.js';
+export { setCanonItemThumbnail } from './commands/setCanonItemThumbnail.js';
 export { createAisle } from './commands/createAisle.js';
 export type { CreateAisleInput } from './commands/createAisle.js';
 export { createAislesBulk } from './commands/createAislesBulk.js';
@@ -70,6 +71,7 @@ export type {
   ItemMergeChoice,
 } from './commands/mergeAisles.js';
 export { normaliseName } from './queries/normaliseName.js';
+export { CANON_ICON_HIDDEN, isCanonIconRenderable } from './queries/canonIcon.js';
 export { summarizeMatchLog } from './queries/summarizeMatchLog.js';
 export type { MatchLogSummary } from './queries/summarizeMatchLog.js';
 export { listAisles } from './queries/listAisles.js';

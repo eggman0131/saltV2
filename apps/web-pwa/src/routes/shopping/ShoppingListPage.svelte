@@ -1,6 +1,7 @@
 <script lang="ts">
   import {
     Button,
+    CanonIcon,
     Checkbox,
     Combobox,
     ComboboxContent,
@@ -67,8 +68,20 @@
   const isDefault = $derived($defaultListId === params.listId);
 
   const canonMap = $derived(
-    new Map($canonItems.map((ci) => [ci.id, { id: ci.id, name: ci.name, aisleId: ci.aisleId }])),
+    new Map(
+      $canonItems.map((ci) => [
+        ci.id,
+        { id: ci.id, name: ci.name, aisleId: ci.aisleId, thumbnail: ci.thumbnail },
+      ]),
+    ),
   );
+
+  // Tri-state icon thumbnail for a row, looked up by its matched canon id.
+  // Returns null (→ bare tile) for unmatched/pending rows.
+  function thumbnailFor(canonId: string | null): string | null {
+    if (!canonId) return null;
+    return canonMap.get(canonId)?.thumbnail ?? null;
+  }
 
   const aisleInfos = $derived($aisles.map((a) => ({ id: a.id, name: a.name, order: a.order })));
 
@@ -527,6 +540,12 @@
                       aria-label="Select {item.rawText}"
                     />
                   {/if}
+                  <CanonIcon
+                    thumbnail={thumbnailFor(item.canonId)}
+                    name={item.rawText}
+                    dimmed={item.checked}
+                    size={28}
+                  />
                   <button
                     type="button"
                     class="flex-1 min-w-0 text-left"
@@ -595,6 +614,12 @@
                     aria-label="Select {item.rawText}"
                   />
                 {/if}
+                <CanonIcon
+                  thumbnail={thumbnailFor(item.canonId)}
+                  name={item.rawText}
+                  dimmed={item.checked}
+                  size={28}
+                />
                 <button
                   type="button"
                   class="flex-1 min-w-0 text-left"
@@ -678,6 +703,12 @@
                       aria-label="Select {item.rawText}"
                     />
                   {/if}
+                  <CanonIcon
+                    thumbnail={thumbnailFor(item.canonId)}
+                    name={item.rawText}
+                    dimmed={item.checked}
+                    size={28}
+                  />
                   <button
                     type="button"
                     class="flex-1 min-w-0 text-left"

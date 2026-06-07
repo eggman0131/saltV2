@@ -54,6 +54,8 @@ export {
   mergeAisles,
   listAisles,
   getAisleUsage,
+  CANON_ICON_HIDDEN,
+  isCanonIconRenderable,
 } from './canon/index.js';
 export type {
   ConflictStrategy,
@@ -69,6 +71,7 @@ export {
   setCanonItemSynonyms,
   setCanonItemShoppingBehavior,
   setCanonItemThreshold,
+  setCanonItemThumbnail,
 } from './canon/index.js';
 export type { ApproveCanonItemOverrides } from './canon/index.js';
 

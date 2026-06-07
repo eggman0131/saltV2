@@ -1,6 +1,6 @@
 # Canon item icons (Tier-1 pictograms)
 
-Status: **designed, not yet built** · Issue: _(link once filed)_ · Owner decisions baked in below.
+Status: **implemented** ([#148](https://github.com/eggman0131/saltV2/issues/148)) · Owner decisions baked in below.
 
 ## What this is
 
@@ -104,6 +104,14 @@ Consumers: `ShoppingListPage` rows (icon at row start, dimmed when checked; incl
 `thumbnail` in the page's `canonMap`, which currently drops it); later, recipe
 ingredient lists and canon management views. Manual **regenerate/hide** lives in the
 canon management view via a `regenerateCanonIcon` callable + a hide action.
+
+**Regenerate accepts an optional steer.** The Regenerate button opens a small dialog
+with an optional free-text field; the text is a one-shot, **additive** prompt hint
+(e.g. "show it as a tin", "make it greener") appended verbatim to the locked prompt —
+it never alters the house-style wording. The hint rides a transient `iconHint` field
+on the canon doc: the callable writes `{ thumbnail: null, iconHint }`, and the trigger's
+icon branch consumes it and clears it (`FieldValue.delete()`) in the same write that
+sets the new `thumbnail`.
 
 ## Architecture contract notes
 

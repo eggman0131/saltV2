@@ -32,6 +32,9 @@ export type {
 export { MatchOrCreateCanonInputSchema } from './matchOrCreateCanonInput.js';
 export type { MatchOrCreateCanonInput } from './matchOrCreateCanonInput.js';
 
+export { RegenerateCanonIconInputSchema } from './regenerateCanonIcon.js';
+export type { RegenerateCanonIconInput } from './regenerateCanonIcon.js';
+
 export { CanonItemSchema } from './canonItem.js';
 export type { CanonItemDoc } from './canonItem.js';
 

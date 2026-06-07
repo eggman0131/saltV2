@@ -4,6 +4,7 @@ import {
   deleteCanonItem as deleteCanonItemDoc,
   subscribeAisles,
   callMatchOrCreate,
+  callRegenerateCanonIcon,
 } from '@salt/firebase-sync';
 import {
   createLDErrorReportingAdapter,
@@ -23,6 +24,8 @@ import {
   setCanonItemSynonyms,
   setCanonItemShoppingBehavior,
   setCanonItemThreshold,
+  setCanonItemThumbnail,
+  CANON_ICON_HIDDEN,
 } from '@salt/domain';
 import type {
   Aisle,
@@ -320,6 +323,34 @@ export async function splitMostRecentSynonym(
 
 export async function deleteCanonItem(id: string): Promise<Result<void, DomainError>> {
   return deleteCanonItemDoc(id);
+}
+
+// ─── Icon (Tier-1 pictogram) escape hatch (issue #148) ───────────────────────────
+
+/**
+ * Regenerate a canon item's icon: clears `thumbnail` server-side (auth'd
+ * callable), re-firing the trigger so the icon branch regenerates. An optional
+ * `hint` is a one-shot additive steer for the next generation.
+ */
+export async function regenerateCanonIcon(
+  id: string,
+  hint?: string,
+): Promise<Result<void, DomainError>> {
+  return callRegenerateCanonIcon(id, hint);
+}
+
+/** Hide a canon item's icon: sets `thumbnail` to the "hidden" sentinel so the
+ *  trigger never regenerates it and the UI shows the bare tile. */
+export async function hideCanonIcon(item: CanonItem): Promise<Result<CanonItem, DomainError>> {
+  const result = setCanonItemThumbnail(item, CANON_ICON_HIDDEN);
+  if (result.kind === 'ok') await commitCanonItemUpdate(result.value);
+  return result;
+}
+
+/** Un-hide a canon item's icon: clears the "hidden" sentinel (→ null) via the
+ *  regenerate callable, which re-triggers generation. */
+export async function unhideCanonIcon(id: string): Promise<Result<void, DomainError>> {
+  return callRegenerateCanonIcon(id);
 }
 
 // ─── Test helpers ────────────────────────────────────────────────────────────────
