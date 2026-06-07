@@ -158,5 +158,15 @@ export {
   parseShoppingListEntry,
 } from './shoppingList/index.js';
 
+// Members module — published surface (issue #155).
+export type { Member, CreateMemberInput, UpdateMemberPatch } from './members/index.js';
+export {
+  normaliseMemberEmail,
+  createMember,
+  updateMember,
+  memberInitials,
+  sortMembers,
+} from './members/index.js';
+
 // Cross-cutting ports.
 export type { ErrorReportingPort } from './ErrorReportingPort.js';

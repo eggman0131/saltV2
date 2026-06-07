@@ -63,7 +63,7 @@ Until the first production deploy, Salt is **greenfield** — no real data exist
 
 - UI → Cloud Functions
 - UI → Firebase SDK directly
-- UI → IndexedDB / browser storage directly
+- UI → IndexedDB / browser storage directly (narrow exception below)
 - UI → LaunchDarkly SDK directly
 - Domain → Firebase SDK / IndexedDB / Node / browser APIs
 - Domain → UI
@@ -74,6 +74,14 @@ Until the first production deploy, Salt is **greenfield** — no real data exist
 - Any module → apps/web-pwa or apps/cloud-functions
 
 These rules must be enforced via ESLint, tsconfig project references, and commit gateway checks.
+
+#### Narrow exception: pre-authentication ephemeral state in `web-pwa`
+
+`apps/web-pwa` may use `window.localStorage` for pre-authentication ephemeral state that has no Firestore-backed alternative. The only sanctioned use today is the magic-link **pending email** in `apps/web-pwa/src/lib/auth.svelte.ts`: it must persist before any user is signed in (so `persistentLocalCache` cannot apply — there is no authenticated session to write to Firestore), and email clients open the magic link in a fresh tab/window, so `sessionStorage` would be lost. The exception is:
+
+- **Scoped to `apps/web-pwa` only.** It does **not** extend to any adapter (`firebase-sync`, `ld-observability`), `domain`, or `cloud-functions`.
+- **Limited to pre-auth ephemeral state.** It is not a general license to use browser storage for app data — all post-sign-in data still flows through Firestore's `persistentLocalCache`.
+- **Tolerant of failure.** Writes are wrapped so that a missing/blocked `localStorage` degrades gracefully (the magic link re-prompts for the email on return).
 
 ---
 
@@ -361,7 +369,7 @@ Every commit must:
 ## 14. Non-negotiables
 
 - No Firebase SDK in UI
-- No IndexedDB / browser storage anywhere — use Firestore's persistent cache
+- No IndexedDB / browser storage anywhere — use Firestore's persistent cache (one narrow exception: pre-auth ephemeral state in `web-pwa`, see §3)
 - No LaunchDarkly SDK in UI or other adapters (only in ld-observability)
 - No business logic outside domain (including conflict resolution)
 - No cross-module imports outside the allowed graph

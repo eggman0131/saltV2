@@ -1,4 +1,5 @@
 import type { User } from '@salt/domain';
+import { normaliseMemberEmail } from '@salt/domain';
 import { authProvider } from './firebase.js';
 import { identifyUser, identifyAnonymous } from './observability.js';
 
@@ -97,14 +98,19 @@ class AuthStore {
   // magic-link sign-in we couldn't complete automatically.
   async completeWithEmail(email: string): Promise<void> {
     this.error = null;
-    await this.finishSignIn(this.pendingUrl ?? window.location.href, email);
+    // Normalise so the Auth account's email (hence the ID-token email claim)
+    // matches the member doc key the security rules look up (issue #155).
+    await this.finishSignIn(this.pendingUrl ?? window.location.href, normaliseMemberEmail(email));
   }
 
   async sendLink(email: string): Promise<void> {
     this.error = null;
-    writePendingEmail(email);
+    // Normalise before sending: the email passed here becomes the Auth account
+    // email, and the member allowlist + rules key on the normalised form (#155).
+    const normalised = normaliseMemberEmail(email);
+    writePendingEmail(normalised);
     const continueUrl = window.location.origin + window.location.pathname;
-    const result = await authProvider.sendMagicLink(email, continueUrl);
+    const result = await authProvider.sendMagicLink(normalised, continueUrl);
     if (result.kind === 'ok') {
       this.linkSent = true;
     } else {
@@ -132,7 +138,8 @@ export const auth = new AuthStore();
 // Dev-only helper: when running against the Auth emulator, fetch the pending
 // magic link from the emulator's oobCodes endpoint and complete sign-in
 // without a real email round-trip.
-export async function devSignIn(email: string): Promise<void> {
+export async function devSignIn(emailInput: string): Promise<void> {
+  const email = normaliseMemberEmail(emailInput);
   writePendingEmail(email);
   const continueUrl = window.location.origin + window.location.pathname;
   const send = await authProvider.sendMagicLink(email, continueUrl);

@@ -29,6 +29,7 @@ export {
   loadShoppingListsConfig,
   saveShoppingListsConfig,
 } from './shoppingListsConfigSubscription.js';
+export { subscribeMembers, upsertMember, deleteMember } from './membersSubscription.js';
 export type {
   IdentifyEquipmentCandidate,
   IdentifyEquipmentResult,
