@@ -5,7 +5,7 @@ import type { CanonItem } from '@salt/domain';
 
 // ─── Mock stores (hoisted so vi.mock factories can reference them) ─────────────
 
-const { mockCanonItems, mockAisles } = vi.hoisted(() => {
+const { mockCanonItems, mockAisles, mockMembers, mockIsLoading, mockAuth } = vi.hoisted(() => {
   function makeStore<T>(initial: T) {
     let value = initial;
     const subs = new Set<(v: T) => void>();
@@ -26,6 +26,10 @@ const { mockCanonItems, mockAisles } = vi.hoisted(() => {
   return {
     mockCanonItems: makeStore<CanonItem[]>([]),
     mockAisles: makeStore<{ id: string; name: string; position: number }[]>([]),
+    // AdminGuard (canon now lives behind /admin, #157) reads these.
+    mockMembers: makeStore<{ email: string; admin: boolean }[]>([]),
+    mockIsLoading: makeStore<boolean>(false),
+    mockAuth: { user: { email: 'admin@e.org' } as { email: string } | null },
   };
 });
 
@@ -33,6 +37,11 @@ const { mockCanonItems, mockAisles } = vi.hoisted(() => {
 
 vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
 vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
+vi.mock('../src/lib/auth.svelte.js', () => ({ auth: mockAuth }));
+vi.mock('../src/lib/membersService.js', () => ({
+  members: mockMembers,
+  isLoadingMembers: mockIsLoading,
+}));
 vi.mock('../src/lib/canonService.js', () => ({
   canonItems: mockCanonItems,
   updateCanonItemName: vi.fn(),
@@ -85,6 +94,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockCanonItems._set([]);
   mockAisles._set([]);
+  // Pass AdminGuard: signed-in user is an admin member (#157).
+  mockAuth.user = { email: 'admin@e.org' };
+  mockIsLoading._set(false);
+  mockMembers._set([{ email: 'admin@e.org', admin: true }]);
 });
 
 // Helper: render with a known item in the store
@@ -252,7 +265,7 @@ describe('CanonDetailPage', () => {
       });
     });
 
-    it('shows a toast and navigates to /canon after successful delete', async () => {
+    it('shows a toast and navigates to /admin/canon after successful delete', async () => {
       vi.mocked(deleteCanonItem).mockResolvedValueOnce({ kind: 'ok', value: undefined });
       setupWithItem();
       await userEvent.click(screen.getByTestId('canon-detail-delete-button'));
@@ -267,7 +280,7 @@ describe('CanonDetailPage', () => {
           expect.stringContaining('Olive Oil'),
           'success',
         );
-        expect(vi.mocked(push)).toHaveBeenCalledWith('/canon');
+        expect(vi.mocked(push)).toHaveBeenCalledWith('/admin/canon');
       });
     });
   });

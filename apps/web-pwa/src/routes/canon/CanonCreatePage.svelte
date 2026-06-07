@@ -19,6 +19,7 @@
   import { aisles } from '../../lib/aisleService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { titleCase } from '../../lib/titleCase.js';
+  import AdminGuard from '../admin/AdminGuard.svelte';
 
   let comboItems = $derived($canonItems.map((c) => ({ value: c.id, label: titleCase(c.name) })));
 
@@ -40,7 +41,7 @@
   // Selecting an existing item from the combobox navigates to its detail page
   function handleValueChange(id: string): void {
     if ($canonItems.some((c) => c.id === id)) {
-      push(`/canon/${id}`);
+      push(`/admin/canon/${id}`);
     }
   }
 
@@ -63,87 +64,92 @@
         ? `Added ${titleCase(item.name)}`
         : `Matched to ${titleCase(item.name)}`;
     addToast(toastMessage, 'success');
-    push(`/canon/${item.id}`);
+    push(`/admin/canon/${item.id}`);
   }
 </script>
 
-<div class="p-4 sm:p-6">
-  <div class="flex flex-col gap-6">
-    <header class="flex flex-col gap-1">
-      <h1 class="text-xl font-semibold tracking-tight text-foreground">Add item</h1>
-      <p class="text-sm text-muted-foreground">
-        Search for an existing item or type a new name to add one.
-      </p>
-    </header>
-
-    <div class="flex flex-col gap-4">
-      <!-- Name combobox -->
-      <div class="flex flex-col gap-1.5">
-        <label class="text-sm font-medium" for="item-combobox">Name</label>
-        <Combobox
-          items={comboItems}
-          allowCustom={true}
-          {filterFn}
-          onValueChange={handleValueChange}
-          onCreate={handleCreate}
-          placeholder="Search or type a new item…"
-        >
-          <ComboboxField>
-            <ComboboxInput />
-          </ComboboxField>
-          <ComboboxContent>
-            {#snippet children({ filteredItems, showCreate })}
-              {#each filteredItems as item, i (item.value)}
-                <ComboboxItem {item} index={i} />
-              {/each}
-              {#if showCreate}
-                <ComboboxCreate />
-              {/if}
-              {#if filteredItems.length === 0 && !showCreate}
-                <ComboboxEmpty>No matches found</ComboboxEmpty>
-              {/if}
-            {/snippet}
-          </ComboboxContent>
-        </Combobox>
-      </div>
-
-      <!-- Optional aisle -->
-      <div class="flex flex-col gap-1.5">
-        <p class="text-sm font-medium">
-          Aisle <span class="font-normal text-muted-foreground">(optional)</span>
+<AdminGuard>
+  <div class="p-4 sm:p-6">
+    <div class="flex flex-col gap-6">
+      <header class="flex flex-col gap-1">
+        <h1 class="text-xl font-semibold tracking-tight text-foreground">Add item</h1>
+        <p class="text-sm text-muted-foreground">
+          Search for an existing item or type a new name to add one.
         </p>
-        <Select value={selectedAisleId ?? ''} onValueChange={(v) => (selectedAisleId = v || null)}>
-          <SelectTrigger>
-            {selectedAisleId
-              ? titleCase($aisles.find((a) => a.id === selectedAisleId)?.name ?? 'Unknown')
-              : 'No aisle'}
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="">No aisle</SelectItem>
-            {#each $aisles as aisle (aisle.id)}
-              <SelectItem value={aisle.id}>{titleCase(aisle.name)}</SelectItem>
-            {/each}
-          </SelectContent>
-        </Select>
+      </header>
+
+      <div class="flex flex-col gap-4">
+        <!-- Name combobox -->
+        <div class="flex flex-col gap-1.5">
+          <label class="text-sm font-medium" for="item-combobox">Name</label>
+          <Combobox
+            items={comboItems}
+            allowCustom={true}
+            {filterFn}
+            onValueChange={handleValueChange}
+            onCreate={handleCreate}
+            placeholder="Search or type a new item…"
+          >
+            <ComboboxField>
+              <ComboboxInput />
+            </ComboboxField>
+            <ComboboxContent>
+              {#snippet children({ filteredItems, showCreate })}
+                {#each filteredItems as item, i (item.value)}
+                  <ComboboxItem {item} index={i} />
+                {/each}
+                {#if showCreate}
+                  <ComboboxCreate />
+                {/if}
+                {#if filteredItems.length === 0 && !showCreate}
+                  <ComboboxEmpty>No matches found</ComboboxEmpty>
+                {/if}
+              {/snippet}
+            </ComboboxContent>
+          </Combobox>
+        </div>
+
+        <!-- Optional aisle -->
+        <div class="flex flex-col gap-1.5">
+          <p class="text-sm font-medium">
+            Aisle <span class="font-normal text-muted-foreground">(optional)</span>
+          </p>
+          <Select
+            value={selectedAisleId ?? ''}
+            onValueChange={(v) => (selectedAisleId = v || null)}
+          >
+            <SelectTrigger>
+              {selectedAisleId
+                ? titleCase($aisles.find((a) => a.id === selectedAisleId)?.name ?? 'Unknown')
+                : 'No aisle'}
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">No aisle</SelectItem>
+              {#each $aisles as aisle (aisle.id)}
+                <SelectItem value={aisle.id}>{titleCase(aisle.name)}</SelectItem>
+              {/each}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
-    </div>
 
-    {#if pending}
-      <div
-        data-testid="canon-create-pending"
-        class="flex items-center gap-2 text-sm text-muted-foreground"
-      >
-        <Spinner size={16} />
-        Checking for matches…
+      {#if pending}
+        <div
+          data-testid="canon-create-pending"
+          class="flex items-center gap-2 text-sm text-muted-foreground"
+        >
+          <Spinner size={16} />
+          Checking for matches…
+        </div>
+      {/if}
+
+      {#if errorMessage}
+        <p class="text-sm text-destructive">{errorMessage}</p>
+      {/if}
+
+      <div class="flex justify-end gap-2 border-t border-border pt-4">
+        <Button variant="ghost" onclick={() => push('/admin/canon')}>Cancel</Button>
       </div>
-    {/if}
-
-    {#if errorMessage}
-      <p class="text-sm text-destructive">{errorMessage}</p>
-    {/if}
-
-    <div class="flex justify-end gap-2 border-t border-border pt-4">
-      <Button variant="ghost" onclick={() => push('/canon')}>Cancel</Button>
     </div>
   </div>
-</div>
+</AdminGuard>

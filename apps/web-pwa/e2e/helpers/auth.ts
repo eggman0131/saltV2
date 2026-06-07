@@ -15,7 +15,7 @@ export function uniqueEmail(testId: string): string {
 const FIRESTORE_EMULATOR = 'http://127.0.0.1:8081';
 const EMULATOR_PROJECT = 'demo-salt';
 
-async function seedMemberAllowlist(email: string): Promise<void> {
+async function seedMemberAllowlist(email: string, admin = false): Promise<void> {
   const id = email.trim().toLowerCase(); // matches normaliseMemberEmail / the blocking-fn lookup
   const url =
     `${FIRESTORE_EMULATOR}/v1/projects/${EMULATOR_PROJECT}/databases/(default)/documents/` +
@@ -26,7 +26,7 @@ async function seedMemberAllowlist(email: string): Promise<void> {
       schemaVersion: { integerValue: '1' },
       name: { stringValue: id.split('@')[0] },
       email: { stringValue: id },
-      admin: { booleanValue: false },
+      admin: { booleanValue: admin },
       sortOrder: { integerValue: '0' },
       icon: { nullValue: null },
       updatedAt: { stringValue: new Date().toISOString() },
@@ -46,13 +46,25 @@ async function waitForBridge(page: Page): Promise<void> {
   await page.waitForFunction(() => Boolean(window.__e2e), null, { timeout: 10_000 });
 }
 
-export async function signIn(page: Page, email: string): Promise<void> {
-  await seedMemberAllowlist(email);
+// `admin: true` seeds the allowlisted member with the admin flag, which the
+// client-side AdminGuard requires to render operator-area screens (e.g. canon
+// management, moved behind /admin in #157).
+export async function signIn(
+  page: Page,
+  email: string,
+  options: { admin?: boolean } = {},
+): Promise<void> {
+  await seedMemberAllowlist(email, options.admin ?? false);
   await waitForBridge(page);
   await page.evaluate((e) => window.__e2e!.devSignIn(e), email);
 }
 
-export async function gotoAndSignIn(page: Page, email: string, path = '/'): Promise<void> {
+export async function gotoAndSignIn(
+  page: Page,
+  email: string,
+  path = '/',
+  options: { admin?: boolean } = {},
+): Promise<void> {
   await page.goto(path);
-  await signIn(page, email);
+  await signIn(page, email, options);
 }

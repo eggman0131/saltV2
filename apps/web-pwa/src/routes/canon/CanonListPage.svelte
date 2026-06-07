@@ -25,6 +25,7 @@
   import { aisles } from '../../lib/aisleService.js';
   import { titleCase } from '../../lib/titleCase.js';
   import CanonListRow from './CanonListRow.svelte';
+  import AdminGuard from '../admin/AdminGuard.svelte';
 
   // Filter / display state
   let filterText = $state('');
@@ -142,156 +143,160 @@
   }
 </script>
 
-<ListPage
-  title="Items"
-  description="Your canonical item database."
-  isLoading={$isLoadingAisles}
-  isEmpty={$canonItems.length === 0}
-  class="p-4 sm:p-6"
-  bind:selectionMode
->
-  {#snippet actions()}
-    <Button size="sm" onclick={() => push('/canon/new')}>Add item</Button>
-    <Button
-      variant="ghost"
-      size="sm"
-      onclick={() => push('/canon/aisles')}
-      data-testid="canon-aisles-btn"
-      aria-label="Manage aisles"
-    >
-      <Icon name="Store" size={16} />
-    </Button>
-  {/snippet}
-
-  {#snippet selectionBar()}
-    <Checkbox
-      checked={allSelected ? true : someSelected ? 'indeterminate' : false}
-      onCheckedChange={toggleAll}
-      label={selectedCount > 0 ? `${selectedCount} selected` : 'Select all'}
-    />
-    {#if selectedCount > 0}
-      <div class="flex items-center gap-2">
-        {#if selectedApprovalIds.length > 0}
-          <Button variant="outline" size="sm" onclick={handleBulkApprove}>
-            Approve ({selectedApprovalIds.length})
-          </Button>
-        {/if}
-        <Button variant="destructive" size="sm" onclick={() => (deleteOpen = true)}>Delete</Button>
-        <Button variant="ghost" size="sm" onclick={() => (selected = new Set())}>Clear</Button>
-      </div>
-    {/if}
-  {/snippet}
-
-  {#snippet children()}
-    <!-- Filter bar -->
-    <div class="mb-4 flex flex-wrap items-end gap-2">
-      <div class="flex-1">
-        <input
-          class="w-full rounded border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground"
-          placeholder="Filter items…"
-          type="search"
-          bind:value={filterText}
-        />
-      </div>
-      <Select
-        value={approvalPlacement}
-        onValueChange={(v) => (approvalPlacement = v as typeof approvalPlacement)}
+<AdminGuard>
+  <ListPage
+    title="Items"
+    description="Your canonical item database."
+    isLoading={$isLoadingAisles}
+    isEmpty={$canonItems.length === 0}
+    class="p-4 sm:p-6"
+    bind:selectionMode
+  >
+    {#snippet actions()}
+      <Button size="sm" onclick={() => push('/admin/canon/new')}>Add item</Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        onclick={() => push('/admin/canon/aisles')}
+        data-testid="canon-aisles-btn"
+        aria-label="Manage aisles"
       >
-        <SelectTrigger class="w-40">
-          {approvalPlacement === 'top' ? 'Pending at top' : 'Pending in aisles'}
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="top">Pending at top</SelectItem>
-          <SelectItem value="in-aisles">Pending in aisles</SelectItem>
-        </SelectContent>
-      </Select>
-    </div>
+        <Icon name="Store" size={16} />
+      </Button>
+    {/snippet}
 
-    <!-- Pending-at-top section -->
-    {#if topApprovalItems.length > 0}
-      <div class="mb-4">
-        <div class="mb-1 flex items-center justify-between">
-          <h3
-            class="text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400"
-          >
-            Needs Review ({topApprovalItems.length})
-          </h3>
-          {#if selectionMode}
-            <button
-              class="text-xs text-muted-foreground underline-offset-2 hover:underline"
-              onclick={selectPending}
-            >
-              Select all pending
-            </button>
+    {#snippet selectionBar()}
+      <Checkbox
+        checked={allSelected ? true : someSelected ? 'indeterminate' : false}
+        onCheckedChange={toggleAll}
+        label={selectedCount > 0 ? `${selectedCount} selected` : 'Select all'}
+      />
+      {#if selectedCount > 0}
+        <div class="flex items-center gap-2">
+          {#if selectedApprovalIds.length > 0}
+            <Button variant="outline" size="sm" onclick={handleBulkApprove}>
+              Approve ({selectedApprovalIds.length})
+            </Button>
           {/if}
+          <Button variant="destructive" size="sm" onclick={() => (deleteOpen = true)}>Delete</Button
+          >
+          <Button variant="ghost" size="sm" onclick={() => (selected = new Set())}>Clear</Button>
         </div>
-        <ul class="flex flex-col gap-1">
-          {#each topApprovalItems as item (item.id)}
-            <CanonListRow
-              {item}
-              aisles={$aisles}
-              selected={selected.has(item.id)}
-              onToggleSelect={selectionMode ? () => toggleItem(item.id) : undefined}
-            />
-          {/each}
-        </ul>
-      </div>
-    {/if}
+      {/if}
+    {/snippet}
 
-    <!-- Grouped by aisle -->
-    {#if aisleGroups.length > 0}
-      <div class="flex flex-col gap-4">
-        {#each aisleGroups as group (group.aisleId ?? '__unassigned__')}
-          <div>
-            <h3 class="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {group.aisleName}
-            </h3>
-            <ul class="flex flex-col gap-1">
-              {#each group.items as item (item.id)}
-                <CanonListRow
-                  {item}
-                  aisles={$aisles}
-                  selected={selected.has(item.id)}
-                  onToggleSelect={selectionMode ? () => toggleItem(item.id) : undefined}
-                />
-              {/each}
-            </ul>
-          </div>
-        {/each}
-      </div>
-    {:else if filteredItems.length === 0 && filterText !== ''}
-      <p class="py-4 text-center text-sm text-muted-foreground">No items match "{filterText}".</p>
-    {/if}
-  {/snippet}
-</ListPage>
-
-<!-- Bulk delete confirmation dialog -->
-<Dialog
-  bind:open={deleteOpen}
-  onOpenChange={(v) => {
-    if (!v) deleteBusy = false;
-  }}
->
-  <DialogContent>
-    <div class="flex flex-col gap-4" data-testid="canon-list-bulk-delete-dialog">
-      <DialogHeader>
-        <DialogTitle>Delete {selected.size} {selected.size === 1 ? 'item' : 'items'}?</DialogTitle>
-        <DialogDescription>This action cannot be undone.</DialogDescription>
-      </DialogHeader>
-      <DialogFooter>
-        <Button variant="outline" onclick={() => (deleteOpen = false)} disabled={deleteBusy}>
-          Cancel
-        </Button>
-        <Button
-          data-testid="canon-list-bulk-delete-confirm"
-          variant="destructive"
-          onclick={handleBulkDelete}
-          loading={deleteBusy}
-          disabled={deleteBusy}
+    {#snippet children()}
+      <!-- Filter bar -->
+      <div class="mb-4 flex flex-wrap items-end gap-2">
+        <div class="flex-1">
+          <input
+            class="w-full rounded border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground"
+            placeholder="Filter items…"
+            type="search"
+            bind:value={filterText}
+          />
+        </div>
+        <Select
+          value={approvalPlacement}
+          onValueChange={(v) => (approvalPlacement = v as typeof approvalPlacement)}
         >
-          Delete
-        </Button>
-      </DialogFooter>
-    </div>
-  </DialogContent>
-</Dialog>
+          <SelectTrigger class="w-40">
+            {approvalPlacement === 'top' ? 'Pending at top' : 'Pending in aisles'}
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="top">Pending at top</SelectItem>
+            <SelectItem value="in-aisles">Pending in aisles</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <!-- Pending-at-top section -->
+      {#if topApprovalItems.length > 0}
+        <div class="mb-4">
+          <div class="mb-1 flex items-center justify-between">
+            <h3
+              class="text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400"
+            >
+              Needs Review ({topApprovalItems.length})
+            </h3>
+            {#if selectionMode}
+              <button
+                class="text-xs text-muted-foreground underline-offset-2 hover:underline"
+                onclick={selectPending}
+              >
+                Select all pending
+              </button>
+            {/if}
+          </div>
+          <ul class="flex flex-col gap-1">
+            {#each topApprovalItems as item (item.id)}
+              <CanonListRow
+                {item}
+                aisles={$aisles}
+                selected={selected.has(item.id)}
+                onToggleSelect={selectionMode ? () => toggleItem(item.id) : undefined}
+              />
+            {/each}
+          </ul>
+        </div>
+      {/if}
+
+      <!-- Grouped by aisle -->
+      {#if aisleGroups.length > 0}
+        <div class="flex flex-col gap-4">
+          {#each aisleGroups as group (group.aisleId ?? '__unassigned__')}
+            <div>
+              <h3 class="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {group.aisleName}
+              </h3>
+              <ul class="flex flex-col gap-1">
+                {#each group.items as item (item.id)}
+                  <CanonListRow
+                    {item}
+                    aisles={$aisles}
+                    selected={selected.has(item.id)}
+                    onToggleSelect={selectionMode ? () => toggleItem(item.id) : undefined}
+                  />
+                {/each}
+              </ul>
+            </div>
+          {/each}
+        </div>
+      {:else if filteredItems.length === 0 && filterText !== ''}
+        <p class="py-4 text-center text-sm text-muted-foreground">No items match "{filterText}".</p>
+      {/if}
+    {/snippet}
+  </ListPage>
+
+  <!-- Bulk delete confirmation dialog -->
+  <Dialog
+    bind:open={deleteOpen}
+    onOpenChange={(v) => {
+      if (!v) deleteBusy = false;
+    }}
+  >
+    <DialogContent>
+      <div class="flex flex-col gap-4" data-testid="canon-list-bulk-delete-dialog">
+        <DialogHeader>
+          <DialogTitle>Delete {selected.size} {selected.size === 1 ? 'item' : 'items'}?</DialogTitle
+          >
+          <DialogDescription>This action cannot be undone.</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onclick={() => (deleteOpen = false)} disabled={deleteBusy}>
+            Cancel
+          </Button>
+          <Button
+            data-testid="canon-list-bulk-delete-confirm"
+            variant="destructive"
+            onclick={handleBulkDelete}
+            loading={deleteBusy}
+            disabled={deleteBusy}
+          >
+            Delete
+          </Button>
+        </DialogFooter>
+      </div>
+    </DialogContent>
+  </Dialog>
+</AdminGuard>

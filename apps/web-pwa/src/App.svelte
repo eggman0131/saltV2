@@ -42,12 +42,15 @@
   const currentEmail = $derived(normaliseMemberEmail(auth.user?.email ?? ''));
   const isAdmin = $derived($members.some((m) => m.email === currentEmail && m.admin));
 
+  // Canon management now lives behind the operator area (#157), so its
+  // needs-approval backlog count rides on the Admin nav entry — visible only to
+  // admins, who are the ones who action the review queue.
   const needsApprovalCount = $derived($canonItems.filter((i) => i.needs_approval).length);
   const decoratedNavItems = $derived([
-    ...navItems.map((item) =>
-      item.id === 'canon' && needsApprovalCount > 0 ? { ...item, badge: needsApprovalCount } : item,
-    ),
-    ...(isAdmin ? [adminNavItem] : []),
+    ...navItems,
+    ...(isAdmin
+      ? [needsApprovalCount > 0 ? { ...adminNavItem, badge: needsApprovalCount } : adminNavItem]
+      : []),
   ]);
 </script>
 

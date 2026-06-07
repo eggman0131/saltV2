@@ -17,15 +17,15 @@ async function createViaCombobox(page: import('@playwright/test').Page, name: st
 test('create truly new item → navigates to detail page', async ({ page }, testInfo) => {
   const email = uniqueEmail(testInfo.testId);
   await page.goto('/');
-  await signIn(page, email);
+  await signIn(page, email, { admin: true });
 
-  await page.goto('/#/canon/new');
+  await page.goto('/#/admin/canon/new');
   await expect(page.getByRole('heading', { name: /add item/i })).toBeVisible();
 
   await createViaCombobox(page, 'Garlic Powder');
 
-  // Should navigate away from /canon/new to a detail page
-  await expect(page).toHaveURL(/#\/canon\/(?!new)[a-z0-9-]+$/);
+  // Should navigate away from /admin/canon/new to a detail page
+  await expect(page).toHaveURL(/#\/admin\/canon\/(?!new)[a-z0-9-]+$/);
   await expect(page.getByRole('heading', { name: /garlic powder/i })).toBeVisible();
 });
 
@@ -34,11 +34,11 @@ test('pick existing from combobox → routes to detail without creating', async 
 }, testInfo) => {
   const email = uniqueEmail(testInfo.testId);
   await page.goto('/');
-  await signIn(page, email);
+  await signIn(page, email, { admin: true });
 
   const seeded = await seedCanonItem(page, { name: 'Olive Oil' });
 
-  await page.goto('/#/canon/new');
+  await page.goto('/#/admin/canon/new');
   await expect(page.getByRole('heading', { name: /add item/i })).toBeVisible();
 
   const ui = canonCreatePage(page);
@@ -46,7 +46,7 @@ test('pick existing from combobox → routes to detail without creating', async 
   await page.getByRole('option', { name: 'Olive Oil' }).click();
 
   // Navigates to the existing item's detail page, not a new one
-  await expect(page).toHaveURL(new RegExp(`#/canon/${seeded.id}$`));
+  await expect(page).toHaveURL(new RegExp(`#/admin/canon/${seeded.id}$`));
   // No new item should have been created
   const fetched = await getCanonItem(page, seeded.id);
   expect(fetched?.id).toBe(seeded.id);
@@ -55,28 +55,28 @@ test('pick existing from combobox → routes to detail without creating', async 
 test('create matching name → routes straight to existing item', async ({ page }, testInfo) => {
   const email = uniqueEmail(testInfo.testId);
   await page.goto('/');
-  await signIn(page, email);
+  await signIn(page, email, { admin: true });
 
   const seeded = await seedCanonItem(page, { name: 'Butter' });
 
-  await page.goto('/#/canon/new');
+  await page.goto('/#/admin/canon/new');
   await expect(page.getByRole('heading', { name: /add item/i })).toBeVisible();
 
   // Submit the plural — normaliseName singularizes it, giving a stage-1 match
   await createViaCombobox(page, 'Butters');
 
   // No confirm dialog — pipeline resolves to the existing item and we navigate straight in.
-  await expect(page).toHaveURL(new RegExp(`#/canon/${seeded.id}$`));
+  await expect(page).toHaveURL(new RegExp(`#/admin/canon/${seeded.id}$`));
 });
 
 test('detail page — rename item', async ({ page }, testInfo) => {
   const email = uniqueEmail(testInfo.testId);
   await page.goto('/');
-  await signIn(page, email);
+  await signIn(page, email, { admin: true });
 
   const seeded = await seedCanonItem(page, { name: 'Skim Milk' });
 
-  await page.goto(`/#/canon/${seeded.id}`);
+  await page.goto(`/#/admin/canon/${seeded.id}`);
   const ui = canonDetailPage(page);
   await expect(page.getByRole('heading', { name: /skim milk/i })).toBeVisible();
 
@@ -95,11 +95,11 @@ test('detail page — rename item', async ({ page }, testInfo) => {
 test('detail page — edit synonyms', async ({ page }, testInfo) => {
   const email = uniqueEmail(testInfo.testId);
   await page.goto('/');
-  await signIn(page, email);
+  await signIn(page, email, { admin: true });
 
   const seeded = await seedCanonItem(page, { name: 'Coriander' });
 
-  await page.goto(`/#/canon/${seeded.id}`);
+  await page.goto(`/#/admin/canon/${seeded.id}`);
   const ui = canonDetailPage(page);
   await expect(ui.synonymsInput).toBeVisible();
 
@@ -117,12 +117,12 @@ test('detail page — edit synonyms', async ({ page }, testInfo) => {
 test('detail page — change aisle', async ({ page }, testInfo) => {
   const email = uniqueEmail(testInfo.testId);
   await page.goto('/');
-  await signIn(page, email);
+  await signIn(page, email, { admin: true });
 
   const [aisle] = await seedAisles(page, ['Produce']);
   const seeded = await seedCanonItem(page, { name: 'Carrot' });
 
-  await page.goto(`/#/canon/${seeded.id}`);
+  await page.goto(`/#/admin/canon/${seeded.id}`);
   const ui = canonDetailPage(page);
   await ui.aisleTrigger.click();
   await page.getByRole('option', { name: 'Produce' }).click();
@@ -138,17 +138,17 @@ test('detail page — change aisle', async ({ page }, testInfo) => {
 test('detail page — delete item navigates back to canon list', async ({ page }, testInfo) => {
   const email = uniqueEmail(testInfo.testId);
   await page.goto('/');
-  await signIn(page, email);
+  await signIn(page, email, { admin: true });
 
   const seeded = await seedCanonItem(page, { name: 'Mango' });
 
-  await page.goto(`/#/canon/${seeded.id}`);
+  await page.goto(`/#/admin/canon/${seeded.id}`);
   const ui = canonDetailPage(page);
   await ui.deleteButton.click();
   await expect(ui.deleteDialog).toBeVisible();
   await ui.deleteConfirm.click();
 
-  await expect(page).toHaveURL(/#\/canon$/);
+  await expect(page).toHaveURL(/#\/admin\/canon$/);
 
   const deleted = await getCanonItem(page, seeded.id);
   expect(deleted).toBeNull();
