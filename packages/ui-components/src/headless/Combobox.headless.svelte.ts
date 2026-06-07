@@ -9,6 +9,7 @@ export type ComboboxState = {
   readonly filteredItems: ComboboxItem[];
   readonly selectedValue: string | undefined;
   readonly showCreate: boolean;
+  readonly openOnClick: boolean;
   readonly listboxId: string;
   readonly inputId: string;
   readonly portal: HTMLElement | string | false;
@@ -54,6 +55,7 @@ export function createComboboxState(opts: {
   filterFn: () => ((input: string, item: ComboboxItem) => boolean) | undefined;
   allowCustom: () => boolean;
   restrict: () => boolean;
+  openOnClick: () => boolean;
   portal: () => HTMLElement | string | false;
   placeholder: () => string | undefined;
   listboxId: string;
@@ -275,6 +277,9 @@ export function createComboboxState(opts: {
     },
     get showCreate() {
       return computeShowCreate();
+    },
+    get openOnClick() {
+      return opts.openOnClick();
     },
     get portal() {
       return opts.portal();
