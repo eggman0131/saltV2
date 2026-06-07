@@ -12,6 +12,8 @@ import ShoppingListCreatePage from './shopping/ShoppingListCreatePage.svelte';
 import ShoppingListsManagePage from './shopping/ShoppingListsManagePage.svelte';
 import ShoppingListPage from './shopping/ShoppingListPage.svelte';
 import SettingsPage from './settings/SettingsPage.svelte';
+import AdminHomePage from './admin/AdminHomePage.svelte';
+import AdminMembersPage from './admin/AdminMembersPage.svelte';
 import NotFound from './NotFound.svelte';
 
 // More-specific static routes must precede parameterised ones when using a Map.
@@ -29,5 +31,9 @@ export const routes: RouteDefinition = new Map([
   ['/shopping/lists', ShoppingListsManagePage],
   ['/shopping/:listId', ShoppingListPage],
   ['/settings', SettingsPage],
+  // Operator area (issue #155). Both routes are guarded client-side by
+  // AdminGuard; the real boundary is server-side (rules + CF admin checks).
+  ['/admin', AdminHomePage],
+  ['/admin/members', AdminMembersPage],
   ['*', NotFound],
 ]);
