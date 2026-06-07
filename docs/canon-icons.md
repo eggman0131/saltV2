@@ -91,6 +91,28 @@ First use of Firebase Storage in the project. Adds a `storage` block to
   writes). Icons are non-sensitive, so public read keeps the client SDK-free: the
   browser just renders `<img src={thumbnail}>`, no Storage SDK in `firebase-sync`.
 
+### Provisioning (one-time, per environment)
+
+`firebase deploy` deploys `storage.rules` but does **not** create the project's
+default Storage bucket — and it hard-fails ("Firebase Storage has not been set up")
+if the bucket is missing. The default bucket is therefore provisioned once per
+project, **outside** the deploy workflows. Both buckets are **`EUROPE-WEST2`**
+(regional, matching the `europe-west2` Cloud Functions region that writes icons); the
+location is permanent.
+
+Provisioned via the Cloud Storage for Firebase API (singleton default-bucket create):
+
+```sh
+TOKEN=$(gcloud auth print-access-token)
+curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  "https://firebasestorage.googleapis.com/v1beta/projects/<PROJECT>/defaultBucket" \
+  -d '{"location":"EUROPE-WEST2"}'
+```
+
+Done for both: `s2-stage-ccb22.firebasestorage.app` and `s2-prod-e46bd.firebasestorage.app`.
+(Equivalent to the Firebase Console Storage → "Get Started" flow.) The CF uses
+`getStorage().bucket()` — the default bucket — so no bucket name is hardcoded.
+
 ## Rendering
 
 A reusable **`<CanonIcon>`** in `@salt/ui-components`:
