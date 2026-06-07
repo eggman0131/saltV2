@@ -1,6 +1,27 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // True when the caller is an admin member (issue #155). Member docs are
+    // keyed by the normalised email, which equals the Auth ID-token email
+    // claim, so we can resolve the caller's own doc with a direct get() and
+    // read its admin flag — no query needed.
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && exists(/databases/$(database)/documents/members/$(request.auth.token.email))
+        && get(/databases/$(database)/documents/members/$(request.auth.token.email)).data.admin == true;
+    }
+
+    // Members allowlist — any signed-in user may read the roster (and the app
+    // reads it to resolve admin-ness for the operator UI); only admins may
+    // create/update/delete members. Off-list accounts never get created in the
+    // first place (beforeMemberCreated blocking function), so "signed in" here
+    // already means "an allowlisted member".
+    match /members/{email} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+
     // Notes are written only via the createNoteCallable cloud function (admin SDK bypasses rules).
     // Reads are open so the web client can list notes without authentication.
     match /notes/{noteId} {

@@ -108,3 +108,4 @@ export const populateEquipmentEntry = onCallGenkit(
 export { onShoppingListItemWrite };
 export { onCanonItemWritten };
 export { regenerateCanonIcon } from './callables/regenerateCanonIcon.js';
+export { beforeMemberCreated } from './auth/beforeMemberCreated.js';
