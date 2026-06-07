@@ -7,7 +7,7 @@ export {
   subscribeEquipmentManifest,
   saveEquipmentManifest,
 } from './equipmentManifestSubscription.js';
-export { callMatchOrCreate } from './canonMatching.js';
+export { callMatchOrCreate, callRegenerateCanonIcon } from './canonMatching.js';
 export { callIdentifyEquipment, callPopulateEquipmentEntry } from './equipmentCallables.js';
 export {
   subscribeShoppingLists,

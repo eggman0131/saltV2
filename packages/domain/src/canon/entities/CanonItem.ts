@@ -11,6 +11,9 @@ export interface CanonItem {
   readonly synonyms: readonly string[];
   readonly aisleId: string | null;
   readonly thumbnail: string | null;
+  // Transient one-shot steer for the next icon (re)generation (issue #148);
+  // written on regenerate, consumed + cleared by the CF icon branch.
+  readonly iconHint?: string;
   readonly embedding: readonly number[] | null;
   readonly needs_approval: boolean;
   readonly shoppingBehavior: ShoppingBehavior;

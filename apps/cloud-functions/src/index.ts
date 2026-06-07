@@ -1,12 +1,8 @@
 import { initializeApp } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
 import { setGlobalOptions } from 'firebase-functions/v2';
 import { defineSecret } from 'firebase-functions/params';
 import { onCall, onCallGenkit, isSignedIn, HttpsError } from 'firebase-functions/https';
-import { onDocumentWritten } from 'firebase-functions/v2/firestore';
-import { logger } from 'firebase-functions';
-import { normaliseName } from '@salt/domain';
-import { CanonItemSchema, MatchOrCreateCanonInputSchema } from '@salt/domain/schemas';
+import { MatchOrCreateCanonInputSchema } from '@salt/domain/schemas';
 import {
   initServerObservability,
   whenServerObservabilityReady,
@@ -18,6 +14,7 @@ import { matchOrCreateCanonFlow } from './flows/matchOrCreateCanon.js';
 import { identifyEquipmentFlow } from './flows/identifyEquipment.js';
 import { populateEquipmentEntryFlow } from './flows/populateEquipmentEntry.js';
 import { onShoppingListItemWrite } from './triggers/onShoppingListItemWrite.js';
+import { onCanonItemWritten } from './triggers/onCanonItemWritten.js';
 
 initializeApp();
 
@@ -109,38 +106,5 @@ export const populateEquipmentEntry = onCallGenkit(
 );
 
 export { onShoppingListItemWrite };
-
-export const onCanonItemWritten = onDocumentWritten(
-  {
-    document: 'canonItems/{id}',
-    secrets: [geminiApiKey],
-  },
-  async (event) => {
-    const after = event.data?.after;
-    if (!after?.exists) return;
-
-    const parsed = CanonItemSchema.safeParse(after.data());
-    if (!parsed.success) {
-      logger.error('onCanonItemWritten: invalid doc shape, skipping', {
-        id: event.params.id,
-        error: parsed.error.message,
-      });
-      return;
-    }
-
-    if (parsed.data.embedding) return;
-
-    const normalised = normaliseName(parsed.data.name);
-    if (!normalised) return;
-
-    try {
-      const { values } = await embedTextFlow({ text: normalised });
-      await getFirestore()
-        .collection('canonItems')
-        .doc(event.params.id)
-        .update({ embedding: values });
-    } catch (err) {
-      logger.error('onCanonItemWritten: embedding failed', { id: event.params.id, err });
-    }
-  },
-);
+export { onCanonItemWritten };
+export { regenerateCanonIcon } from './callables/regenerateCanonIcon.js';

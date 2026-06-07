@@ -2,6 +2,7 @@
 
 // Primitives
 export { default as Button } from './primitives/Button/Button.svelte';
+export { default as CanonIcon } from './primitives/CanonIcon/CanonIcon.svelte';
 export { default as Combobox } from './primitives/Combobox/Combobox.svelte';
 export { default as ComboboxContent } from './primitives/Combobox/ComboboxContent.svelte';
 export { default as ComboboxCreate } from './primitives/Combobox/ComboboxCreate.svelte';
@@ -89,6 +90,7 @@ export * as tokens from './tokens';
 
 // Types
 export type { ButtonProps } from './primitives/Button/Button.types';
+export type { CanonIconProps } from './primitives/CanonIcon/CanonIcon.types';
 export type {
   ComboboxItem as ComboboxItemType,
   ComboboxProps,

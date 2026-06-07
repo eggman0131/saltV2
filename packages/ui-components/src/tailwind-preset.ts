@@ -36,6 +36,10 @@ const cssVarsPlugin = plugin(({ addBase }) => {
       '--salt-radius-md': '0.75rem',
       '--salt-radius-lg': '1rem',
       '--salt-radius-xl': '1.5rem',
+      // Canon-item icon tile (issue #148): pale cool-grey backdrop the Tier-1
+      // pictogram sits on. Not in design.md's colour set (a component surface,
+      // not a semantic role), so it carries no /* #rrggbb */ provenance comment.
+      '--salt-icon-tile': '180 8% 93%',
       '--salt-control-checkbox-sm': '14px',
       '--salt-control-checkbox-md': '16px',
       '--salt-control-checkbox-lg': '18px',
@@ -76,6 +80,9 @@ const cssVarsPlugin = plugin(({ addBase }) => {
       '--salt-border': '197 3% 46%' /* #73787a  outline */,
       '--salt-input': '197 3% 46%',
       '--salt-ring': '198 26% 77%' /* #b4cad3 */,
+      // Canon-item icon tile (issue #148) — dark variant: a subtle cool-grey
+      // surface, marginally lighter than the dark card so the tile reads.
+      '--salt-icon-tile': '180 4% 30%',
     },
   });
 });
@@ -349,6 +356,7 @@ const preset = {
         border: 'hsl(var(--salt-border) / <alpha-value>)',
         input: 'hsl(var(--salt-input) / <alpha-value>)',
         ring: 'hsl(var(--salt-ring) / <alpha-value>)',
+        'icon-tile': 'hsl(var(--salt-icon-tile) / <alpha-value>)',
       },
       borderRadius: {
         sm: 'var(--salt-radius-sm)',

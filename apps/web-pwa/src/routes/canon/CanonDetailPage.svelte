@@ -2,6 +2,7 @@
   import { push } from 'svelte-spa-router';
   import {
     Button,
+    CanonIcon,
     Combobox,
     ComboboxContent,
     ComboboxEmpty,
@@ -37,10 +38,14 @@
     approveCanonItemWithOverrides,
     deleteCanonItem,
     splitMostRecentSynonym,
+    regenerateCanonIcon,
+    hideCanonIcon,
+    unhideCanonIcon,
   } from '../../lib/canonService.js';
   import { aisles } from '../../lib/aisleService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { titleCase } from '../../lib/titleCase.js';
+  import { CANON_ICON_HIDDEN } from '@salt/domain';
   import type { ShoppingBehavior, CanonItemUnit } from '@salt/shared-types';
 
   let { params }: { params: Record<string, string> } = $props();
@@ -196,6 +201,46 @@
     }
   }
 
+  // Icon (Tier-1 pictogram) escape hatch
+  let iconBusy = $state(false);
+  const iconHidden = $derived(item?.thumbnail === CANON_ICON_HIDDEN);
+
+  // Regenerate dialog — optional one-shot steer added to the generation prompt.
+  let regenerateOpen = $state(false);
+  let regenerateHint = $state('');
+
+  function openRegenerateDialog(): void {
+    regenerateHint = '';
+    regenerateOpen = true;
+  }
+
+  async function handleRegenerateIcon(): Promise<void> {
+    if (!item) return;
+    const hint = regenerateHint.trim();
+    iconBusy = true;
+    const result = await regenerateCanonIcon(item.id, hint || undefined);
+    iconBusy = false;
+    regenerateOpen = false;
+    if (result.kind === 'ok') addToast('Regenerating icon…', 'success');
+    else addToast('Failed to regenerate icon.', 'destructive');
+  }
+
+  async function handleHideIcon(): Promise<void> {
+    if (!item) return;
+    iconBusy = true;
+    const result = await hideCanonIcon(item);
+    iconBusy = false;
+    if (result.kind !== 'ok') addToast('Failed to hide icon.', 'destructive');
+  }
+
+  async function handleUnhideIcon(): Promise<void> {
+    if (!item) return;
+    iconBusy = true;
+    const result = await unhideCanonIcon(item.id);
+    iconBusy = false;
+    if (result.kind !== 'ok') addToast('Failed to unhide icon.', 'destructive');
+  }
+
   // Delete
   let deleteOpen = $state(false);
   let deleteBusy = $state(false);
@@ -308,6 +353,57 @@
       {/snippet}
 
       <div class="flex flex-col gap-6">
+        <!-- Icon (Tier-1 pictogram) -->
+        <section class="flex flex-col gap-2" data-testid="canon-detail-icon-section">
+          <h2 class="text-sm font-medium text-foreground">Icon</h2>
+          <div class="flex items-center gap-3">
+            <CanonIcon thumbnail={item.thumbnail} name={item.name} size={48} />
+            <div class="flex gap-2">
+              <Button
+                data-testid="canon-detail-icon-regenerate"
+                variant="outline"
+                size="sm"
+                onclick={openRegenerateDialog}
+                disabled={iconBusy}
+              >
+                {#snippet leading()}
+                  <Icon name="RefreshCw" size={16} />
+                {/snippet}
+                Regenerate
+              </Button>
+              {#if iconHidden}
+                <Button
+                  data-testid="canon-detail-icon-unhide"
+                  variant="outline"
+                  size="sm"
+                  onclick={handleUnhideIcon}
+                  loading={iconBusy}
+                  disabled={iconBusy}
+                >
+                  {#snippet leading()}
+                    <Icon name="Eye" size={16} />
+                  {/snippet}
+                  Unhide
+                </Button>
+              {:else}
+                <Button
+                  data-testid="canon-detail-icon-hide"
+                  variant="outline"
+                  size="sm"
+                  onclick={handleHideIcon}
+                  loading={iconBusy}
+                  disabled={iconBusy}
+                >
+                  {#snippet leading()}
+                    <Icon name="EyeOff" size={16} />
+                  {/snippet}
+                  Hide
+                </Button>
+              {/if}
+            </div>
+          </div>
+        </section>
+
         <!-- Approval — all AI-assigned fields -->
         {#if item.needs_approval}
           <section
@@ -558,6 +654,47 @@
     </DetailPage>
   {/if}
 </div>
+
+<!-- Regenerate icon dialog — optional additive prompt steer -->
+<Dialog bind:open={regenerateOpen}>
+  <DialogContent>
+    <div class="flex flex-col gap-4" data-testid="canon-detail-regenerate-dialog">
+      <DialogHeader>
+        <DialogTitle>Regenerate icon</DialogTitle>
+        <DialogDescription>
+          Optionally add guidance for the new icon. Leave blank to just try again.
+        </DialogDescription>
+      </DialogHeader>
+      <TextField
+        label="Extra guidance (optional)"
+        value={regenerateHint}
+        onValueChange={(v) => (regenerateHint = v)}
+        placeholder="e.g. show it as a tin, sliced, make it greener"
+        data-testid="canon-detail-regenerate-hint"
+        disabled={iconBusy}
+        onkeydown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            handleRegenerateIcon();
+          }
+        }}
+      />
+      <DialogFooter>
+        <Button variant="outline" onclick={() => (regenerateOpen = false)} disabled={iconBusy}>
+          Cancel
+        </Button>
+        <Button
+          data-testid="canon-detail-regenerate-confirm"
+          onclick={handleRegenerateIcon}
+          loading={iconBusy}
+          disabled={iconBusy}
+        >
+          Regenerate
+        </Button>
+      </DialogFooter>
+    </div>
+  </DialogContent>
+</Dialog>
 
 <!-- Delete confirm dialog -->
 <Dialog
