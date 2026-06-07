@@ -143,6 +143,24 @@ describe('Combobox', () => {
   });
 
   // ------------------------------------------------------------------
+  // openOnClick={false}: dropdown only appears once the user types
+  // ------------------------------------------------------------------
+  describe('openOnClick=false', () => {
+    it('does not open the popup when the input is clicked', async () => {
+      setup({ openOnClick: false });
+      await userEvent.click(getInput());
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    });
+
+    it('opens the popup once the user starts typing', async () => {
+      setup({ openOnClick: false });
+      await userEvent.click(getInput());
+      await userEvent.type(getInput(), 'a');
+      expect(getListbox()).toBeInTheDocument();
+    });
+  });
+
+  // ------------------------------------------------------------------
   // 4. Keyboard interaction
   // ------------------------------------------------------------------
   describe('keyboard', () => {

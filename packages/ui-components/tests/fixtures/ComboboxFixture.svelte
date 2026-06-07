@@ -27,6 +27,7 @@
     items = defaultItems,
     allowCustom = false,
     restrict = false,
+    openOnClick = true,
     name,
     placeholder = 'Search…',
     portal = false,
@@ -42,6 +43,7 @@
     items?: ComboboxItemType[];
     allowCustom?: boolean;
     restrict?: boolean;
+    openOnClick?: boolean;
     name?: string;
     placeholder?: string;
     portal?: HTMLElement | string | false;
@@ -60,6 +62,7 @@
   {items}
   {allowCustom}
   {restrict}
+  {openOnClick}
   {name}
   {placeholder}
   {portal}

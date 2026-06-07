@@ -27,7 +27,7 @@
   }
 
   function handleClick() {
-    ctx.openPopup();
+    if (ctx.openOnClick) ctx.openPopup();
   }
 
   function handleKeydown(e: KeyboardEvent) {

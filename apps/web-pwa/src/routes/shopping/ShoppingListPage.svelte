@@ -26,6 +26,7 @@
     EmptyState,
   } from '@salt/ui-components';
   import { titleCase } from '../../lib/titleCase.js';
+  import { tick } from 'svelte';
   import { push } from 'svelte-spa-router';
   import { groupItemsByAisle } from '@salt/domain';
   import type { ShoppingListItem } from '@salt/domain';
@@ -153,6 +154,9 @@
   let newItemText = $state('');
   let addBusy = $state(false);
   let comboboxResetKey = $state(0);
+  // Wrapper around the add combobox; stable across the {#key} remount, so we can
+  // find and refocus the freshly-mounted input after an item is added.
+  let addFieldEl = $state<HTMLDivElement | undefined>(undefined);
 
   const comboItems = $derived($canonItems.map((c) => ({ value: c.id, label: titleCase(c.name) })));
 
@@ -177,6 +181,10 @@
     } else if (newItemText.trim() === text) {
       newItemText = '';
       comboboxResetKey++;
+      // Remounting the combobox drops focus; return it to the fresh input so the
+      // user can keep adding items without re-tapping the field.
+      await tick();
+      addFieldEl?.querySelector('input')?.focus();
     }
   }
 
@@ -442,6 +450,7 @@
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
         class="flex-1"
+        bind:this={addFieldEl}
         oninput={(e) => {
           newItemText = (e.target as HTMLInputElement).value;
         }}
@@ -450,6 +459,7 @@
           <Combobox
             items={comboItems}
             allowCustom={true}
+            openOnClick={false}
             {filterFn}
             onValueChange={handleComboboxValueChange}
             onCreate={handleComboboxCreate}

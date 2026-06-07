@@ -12,6 +12,10 @@ export type ComboboxProps = {
   items: ComboboxItem[];
   allowCustom?: boolean;
   restrict?: boolean;
+  // When false, clicking the (closed) input no longer opens the dropdown — it
+  // only opens once the user starts typing. Default true (click opens, showing
+  // all items).
+  openOnClick?: boolean;
   name?: string;
   placeholder?: string;
   portal?: HTMLElement | string | false;
