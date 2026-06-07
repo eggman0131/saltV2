@@ -64,7 +64,10 @@ jobs:
           workload_identity_provider: ${{ vars.WIF_PROVIDER }}
           service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
 
-      # Deploys hosting, functions, firestore rules + indexes to production. The
+      # Deploys hosting, functions, firestore rules + indexes, and storage rules
+      # (canon icons, #148) to production. Storage rules deploy requires the
+      # project's default Storage bucket to already be provisioned — a one-time
+      # setup outside this workflow (see docs/canon-icons.md §Storage). The
       # functions predeploy hook builds the workspace-free deploy artifact;
       # GEMINI_API_KEY / LD_SDK_KEY are already in prod Secret Manager.
       - name: Deploy to Firebase (production)
