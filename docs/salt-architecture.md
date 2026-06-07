@@ -258,7 +258,8 @@ The PWA:
 - Wires `AuthProvider`, `ErrorReportingPort`, `MatchLoggingPort`, `EmbeddingPort`, and `CanonArbitrationPort` at composition time
 - Starts `initCanonSync()` from `App.svelte` when the user authenticates — subscriptions begin once at auth time, not on individual page mounts
 - In-memory Svelte stores (`canonItems`, `aisles`, `aisleUsage`) are the UI's read layer; `upsertCanonItem` and `saveAisles` are the write path
-- Offline behaviour is provided by Firestore's `persistentLocalCache` — no service worker storage layer needed for data
+- Offline data is provided by Firestore's `persistentLocalCache`. The service worker never caches Firestore traffic or any app data.
+- **PWA installability (Tier-1):** A Workbox-generated service worker (`vite-plugin-pwa`, `generateSW` strategy) precaches the built app shell and static assets only. The service worker is the sole consumer of the Cache API; no other module may touch `caches` directly (CLAUDE.md hard rule #3). The SW is disabled in dev (no interference with HMR). Manifest identity is env-distinct: `VITE_PWA_NAME`, `VITE_PWA_SHORT_NAME`, and `VITE_PWA_THEME_COLOR` are read at build time from `.env.<mode>` so staging and production install as distinct apps. The auto-update flow (owned by `src/lib/pwa.ts`) defers page reloads to safe moments (hash route change or tab refocus) and never reloads mid-interaction.
 
 ---
 
