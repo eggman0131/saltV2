@@ -7,6 +7,7 @@
     EmptyState,
     ErrorState,
     Button,
+    Checkbox,
     TextField,
     TextArea,
     Switch,
@@ -24,16 +25,84 @@
   let listMode = $state<ListMode>('data');
 
   type Note = { id: string; title: string; updated: string };
-  const sampleNotes: Note[] = [
+  let sampleNotes = $state<Note[]>([
     { id: 'n1', title: 'Pantry restock', updated: '2 hours ago' },
     { id: 'n2', title: 'Sourdough recipe', updated: 'Yesterday' },
     { id: 'n3', title: 'Weekly meal plan', updated: '3 days ago' },
-  ];
+  ]);
 
   let search = $state('');
   const filteredNotes = $derived(
     sampleNotes.filter((n) => n.title.toLowerCase().includes(search.toLowerCase())),
   );
+
+  // ── ListPage contextual action mode (selection) demo ────────────────────────
+  let listSelectionMode = $state(false);
+  let listSelected = $state(new Set<string>());
+  let lastListAction = $state<string | null>(null);
+
+  $effect(() => {
+    if (!listSelectionMode) listSelected = new Set();
+  });
+
+  const noteIds = $derived(filteredNotes.map((n) => n.id));
+  const listSelectedCount = $derived(noteIds.filter((id) => listSelected.has(id)).length);
+  const allNotesSelected = $derived(
+    noteIds.length > 0 && noteIds.every((id) => listSelected.has(id)),
+  );
+  const someNotesSelected = $derived(
+    noteIds.some((id) => listSelected.has(id)) && !allNotesSelected,
+  );
+
+  function toggleNote(id: string) {
+    const next = new Set(listSelected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    listSelected = next;
+  }
+
+  function toggleAllNotes() {
+    listSelected = allNotesSelected ? new Set() : new Set(noteIds);
+  }
+
+  const listBulkActions: BulkAction[] = $derived([
+    {
+      id: 'archive',
+      label: 'Archive',
+      icon: 'Archive',
+      onSelect: () => {
+        lastListAction = `Archived ${listSelectedCount} note(s)`;
+        listSelectionMode = false;
+      },
+    },
+    {
+      kind: 'picker',
+      id: 'move',
+      label: 'Move',
+      icon: 'FolderInput',
+      sheetTitle: `Move ${listSelectedCount} note(s) to…`,
+      targets: [
+        { id: 'recipes', label: 'Recipes' },
+        { id: 'archive-folder', label: 'Archive' },
+      ],
+      onPick: (target) => {
+        lastListAction = `Moved ${listSelectedCount} note(s) to ${target}`;
+        listSelectionMode = false;
+      },
+    },
+    {
+      id: 'delete',
+      label: 'Delete',
+      icon: 'Trash2',
+      variant: 'destructive',
+      onSelect: () => {
+        const ids = new Set(listSelected);
+        sampleNotes = sampleNotes.filter((n) => !ids.has(n.id));
+        lastListAction = `Deleted ${ids.size} note(s)`;
+        listSelectionMode = false;
+      },
+    },
+  ]);
 
   // ── FormPage demo ───────────────────────────────────────────────────────────
   let formTitle = $state('');
@@ -58,25 +127,7 @@
     { id: 'd', name: 'Basil', tag: 'produce' },
   ]);
   let selected = $state(new Set<string>());
-  let lastBulk = $state<string | null>(null);
-
-  const bulkActions: BulkAction[] = [
-    {
-      id: 'archive',
-      label: 'Archive',
-      variant: 'outline',
-      onAction: (ids) => (lastBulk = `Archived ${ids.length} item(s)`),
-    },
-    {
-      id: 'delete',
-      label: 'Delete',
-      variant: 'destructive',
-      onAction: (ids) => {
-        items = items.filter((i) => !ids.includes(i.id));
-        lastBulk = `Deleted ${ids.length} item(s)`;
-      },
-    },
-  ];
+  let selectableSelectionMode = $state(true);
 </script>
 
 <section id="templates">
@@ -110,8 +161,20 @@
         isLoading={listMode === 'loading'}
         isError={listMode === 'error'}
         isEmpty={listMode === 'empty' || (listMode === 'data' && filteredNotes.length === 0)}
+        bind:selectionMode={listSelectionMode}
+        selectionCount={listSelectedCount}
+        bulkActions={listBulkActions}
       >
         {#snippet actions()}
+          {#if listSelectionMode}
+            <Button size="sm" variant="outline" onclick={() => (listSelectionMode = false)}>
+              Done
+            </Button>
+          {:else}
+            <Button size="sm" variant="outline" onclick={() => (listSelectionMode = true)}>
+              Select
+            </Button>
+          {/if}
           <Button size="sm">
             {#snippet leading()}
               <Icon name="Plus" size={14} />
@@ -122,6 +185,14 @@
 
         {#snippet toolbar()}
           <TextField placeholder="Search notes…" bind:value={search} class="max-w-xs" />
+        {/snippet}
+
+        {#snippet selectionBar()}
+          <Checkbox
+            checked={allNotesSelected ? true : someNotesSelected ? 'indeterminate' : false}
+            onCheckedChange={toggleAllNotes}
+            label={listSelectedCount > 0 ? `${listSelectedCount} selected` : 'Select all'}
+          />
         {/snippet}
 
         {#snippet empty()}
@@ -137,16 +208,25 @@
 
         <ul class="flex flex-col gap-2">
           {#each filteredNotes as note (note.id)}
-            <li
-              class="flex items-center justify-between px-3 py-2 rounded-md border border-border bg-card"
-            >
-              <span class="text-sm font-medium">{note.title}</span>
+            <li class="flex items-center gap-3 px-3 py-2 rounded-md border border-border bg-card">
+              {#if listSelectionMode}
+                <Checkbox
+                  checked={listSelected.has(note.id)}
+                  onCheckedChange={() => toggleNote(note.id)}
+                  label=""
+                  aria-label={`Select ${note.title}`}
+                />
+              {/if}
+              <span class="flex-1 text-sm font-medium">{note.title}</span>
               <span class="text-xs text-muted-foreground">{note.updated}</span>
             </li>
           {/each}
         </ul>
       </ListPage>
     </div>
+    {#if lastListAction}
+      <p class="mt-3 text-sm text-muted-foreground">{lastListAction}</p>
+    {/if}
   </div>
 
   <!-- FormPage -->
@@ -229,11 +309,20 @@
   <!-- SelectableList -->
   <div class="subsection">
     <h3 class="subsection-title">SelectableList</h3>
+    <p class="text-sm text-muted-foreground mb-3 max-w-2xl">
+      Row-level helper: renders each row with an optional selection checkbox and tracks the selected
+      set. Bulk actions themselves live on <code class="text-xs">ListPage</code>'s contextual action
+      bar (above), not here.
+    </p>
+    <div class="flex items-center gap-2 mb-3">
+      <Switch label="Selection mode" bind:checked={selectableSelectionMode} />
+      <span class="text-xs text-muted-foreground">{selected.size} selected</span>
+    </div>
     <div class="rounded-lg border border-border p-6 bg-background max-w-2xl">
       {#if items.length === 0}
         <EmptyState title="All cleared" description="You deleted everything." />
       {:else}
-        <SelectableList {items} bind:selected {bulkActions}>
+        <SelectableList {items} bind:selected selectionMode={selectableSelectionMode}>
           {#snippet row(item)}
             <div class="flex items-center justify-between gap-3">
               <span class="text-sm font-medium">{item.name}</span>
@@ -241,9 +330,6 @@
             </div>
           {/snippet}
         </SelectableList>
-      {/if}
-      {#if lastBulk}
-        <p class="mt-4 text-sm text-muted-foreground">{lastBulk}</p>
       {/if}
     </div>
   </div>

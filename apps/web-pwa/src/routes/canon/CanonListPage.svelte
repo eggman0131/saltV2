@@ -2,18 +2,13 @@
   import {
     Button,
     Checkbox,
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
     Icon,
     ListPage,
     Select,
     SelectContent,
     SelectItem,
     SelectTrigger,
+    type BulkAction,
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
   import {
@@ -24,6 +19,8 @@
   } from '../../lib/canonService.js';
   import { aisles } from '../../lib/aisleService.js';
   import { titleCase } from '../../lib/titleCase.js';
+  import { addToast } from '../../lib/toastStore.js';
+  import { createDeferredDelete } from '../../lib/deferredDelete.svelte.js';
   import CanonListRow from './CanonListRow.svelte';
   import AdminGuard from '../admin/AdminGuard.svelte';
 
@@ -40,14 +37,15 @@
     if (!selectionMode) selected = new Set();
   });
 
-  // Delete dialog
-  let deleteOpen = $state(false);
-  let deleteBusy = $state(false);
+  // Deferred bulk delete (hide immediately, commit on undo-lapse — no confirm dialog).
+  const deferredDelete = createDeferredDelete();
 
-  // Derived: filtered items
+  // Derived: filtered items (pending-delete items are hidden while the undo toast is up)
   const filteredItems = $derived(
-    $canonItems.filter(
-      (i) => filterText === '' || i.name.toLowerCase().includes(filterText.toLowerCase()),
+    deferredDelete.visible(
+      $canonItems.filter(
+        (i) => filterText === '' || i.name.toLowerCase().includes(filterText.toLowerCase()),
+      ),
     ),
   );
 
@@ -134,13 +132,41 @@
     selected = new Set([...selected].filter((id) => !selectedApprovalIds.includes(id)));
   }
 
-  async function handleBulkDelete() {
-    deleteBusy = true;
-    await Promise.all([...selected].map((id) => deleteCanonItem(id)));
-    deleteBusy = false;
-    deleteOpen = false;
-    selected = new Set();
+  function handleBulkDelete() {
+    if (selectedCount === 0) return;
+    const ids = [...selected].filter((id) => allVisibleIds.includes(id));
+    selectionMode = false; // the $effect on selectionMode clears `selected`
+    deferredDelete.request(ids, async (delIds) => {
+      const results = await Promise.all(delIds.map((id) => deleteCanonItem(id)));
+      if (results.some((r) => r.kind !== 'ok')) {
+        addToast('Failed to delete some items.', 'destructive');
+      }
+    });
   }
+
+  // Contextual bottom action bar. Approve only appears when pending items are
+  // selected; Delete is always available and uses deferred-delete + undo.
+  const bulkActions = $derived<BulkAction[]>([
+    ...(selectedApprovalIds.length > 0
+      ? [
+          {
+            id: 'approve',
+            label: `Approve (${selectedApprovalIds.length})`,
+            icon: 'Check',
+            testId: 'canon-bulk-approve',
+            onSelect: () => void handleBulkApprove(),
+          } satisfies BulkAction,
+        ]
+      : []),
+    {
+      id: 'delete',
+      label: 'Delete',
+      icon: 'Trash2',
+      variant: 'destructive',
+      testId: 'canon-list-bulk-delete',
+      onSelect: handleBulkDelete,
+    },
+  ]);
 </script>
 
 <AdminGuard>
@@ -151,6 +177,8 @@
     isEmpty={$canonItems.length === 0}
     class="p-4 sm:p-6"
     bind:selectionMode
+    selectionCount={selectedCount}
+    {bulkActions}
   >
     {#snippet actions()}
       <Button size="sm" onclick={() => push('/admin/canon/new')}>Add item</Button>
@@ -171,18 +199,6 @@
         onCheckedChange={toggleAll}
         label={selectedCount > 0 ? `${selectedCount} selected` : 'Select all'}
       />
-      {#if selectedCount > 0}
-        <div class="flex items-center gap-2">
-          {#if selectedApprovalIds.length > 0}
-            <Button variant="outline" size="sm" onclick={handleBulkApprove}>
-              Approve ({selectedApprovalIds.length})
-            </Button>
-          {/if}
-          <Button variant="destructive" size="sm" onclick={() => (deleteOpen = true)}>Delete</Button
-          >
-          <Button variant="ghost" size="sm" onclick={() => (selected = new Set())}>Clear</Button>
-        </div>
-      {/if}
     {/snippet}
 
     {#snippet children()}
@@ -267,36 +283,4 @@
       {/if}
     {/snippet}
   </ListPage>
-
-  <!-- Bulk delete confirmation dialog -->
-  <Dialog
-    bind:open={deleteOpen}
-    onOpenChange={(v) => {
-      if (!v) deleteBusy = false;
-    }}
-  >
-    <DialogContent>
-      <div class="flex flex-col gap-4" data-testid="canon-list-bulk-delete-dialog">
-        <DialogHeader>
-          <DialogTitle>Delete {selected.size} {selected.size === 1 ? 'item' : 'items'}?</DialogTitle
-          >
-          <DialogDescription>This action cannot be undone.</DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button variant="outline" onclick={() => (deleteOpen = false)} disabled={deleteBusy}>
-            Cancel
-          </Button>
-          <Button
-            data-testid="canon-list-bulk-delete-confirm"
-            variant="destructive"
-            onclick={handleBulkDelete}
-            loading={deleteBusy}
-            disabled={deleteBusy}
-          >
-            Delete
-          </Button>
-        </DialogFooter>
-      </div>
-    </DialogContent>
-  </Dialog>
 </AdminGuard>

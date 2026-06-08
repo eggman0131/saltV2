@@ -367,6 +367,22 @@ APG pattern: **Alert / Status / Live Region**.
 - Action:
   - `ToastAction` must be a focusable element (e.g. `<button>`)
 
+### 6.6 Undo-able toast (app-level `action` / `onDismiss`)
+
+The `Toast` / `ToastAction` parts above are the primitives. The **undo-able toast** is an app-level composition over them, driven by the web-pwa `toastStore` (`addToast(message, variant, options)`), used by the deferred-delete pattern (ui-spec-v04 §9.3.3). Two options matter:
+
+- **`action: { label, onClick }`** — renders a `ToastAction` button (e.g. "Undo"). Pressing it runs `onClick` and dismisses the toast.
+- **`onDismiss()`** — called when the toast closes via **timeout or the close button**, but **not** when the action button is pressed. This is what lets a caller defer work (commit a delete) only if the user *let the toast lapse* rather than undoing.
+
+```ts
+addToast('3 items deleted', 'default', {
+  action: { label: 'Undo', onClick: () => unhide(ids) }, // pressed → no commit
+  onDismiss: () => commit(ids),                           // lapsed → commit
+});
+```
+
+The store lives in the app (`apps/web-pwa/src/lib/toastStore.ts`) and is wired into `ToastViewport` in `App.svelte`; `@salt/ui-components` owns only the `Toast`/`ToastAction` primitives. Relocating the store into the design system remains possible but is intentionally deferred.
+
 ---
 
 ## 7. Testing Requirements (v0.3)

@@ -198,7 +198,11 @@ export { default as FormPage } from './templates/FormPage/FormPage.svelte';
 export { default as DetailPage } from './templates/DetailPage/DetailPage.svelte';
 export { default as SelectableList } from './templates/SelectableList/SelectableList.svelte';
 
-export type { ListPageProps } from './templates/ListPage/ListPage.types';
+export type {
+  ListPageProps,
+  BulkAction,
+  BulkActionIcon,
+} from './templates/ListPage/ListPage.types';
 export { LIST_PAGE_CONTEXT } from './templates/ListPage/ListPage.context';
 export type { ListPageContext } from './templates/ListPage/ListPage.context';
 export type { FormPageProps } from './templates/FormPage/FormPage.types';

@@ -50,6 +50,8 @@
     moveSelectedItems,
   } from '../../lib/shoppingListService.svelte.js';
   import { addToast } from '../../lib/toastStore.js';
+  import { createDeferredDelete } from '../../lib/deferredDelete.svelte.js';
+  import type { BulkAction } from '@salt/ui-components';
 
   interface Props {
     params: { listId: string };
@@ -90,9 +92,9 @@
   // Selected items are hidden immediately, but the real Firestore delete is only
   // committed once the undo window closes. Pressing Undo cancels the commit, so
   // nothing is ever deleted — no soft-delete / restore plumbing required.
-  let pendingDeleteIds = $state(new Set<string>());
+  const deferredDelete = createDeferredDelete();
 
-  const visibleItems = $derived($itemsForActiveList.filter((i) => !pendingDeleteIds.has(i.id)));
+  const visibleItems = $derived(deferredDelete.visible($itemsForActiveList));
 
   const grouped = $derived(groupItemsByAisle(visibleItems, canonMap, aisleInfos));
 
@@ -277,42 +279,15 @@
   // ─── Bulk actions ─────────────────────────────────────────────────────────────
 
   let bulkBusy = $state(false);
-  let moveSheetOpen = $state(false);
-
-  function unhidePending(ids: readonly string[]): void {
-    const next = new Set(pendingDeleteIds);
-    for (const id of ids) next.delete(id);
-    pendingDeleteIds = next;
-  }
-
-  async function commitBulkDelete(ids: readonly string[]): Promise<void> {
-    const result = await removeItems(params.listId, ids);
-    if (result.kind !== 'ok') {
-      addToast('Failed to delete items.', 'destructive');
-    }
-    // Either the items are gone from Firestore (success) or the delete failed and
-    // they should reappear — in both cases stop hiding them.
-    unhidePending(ids);
-  }
 
   function handleBulkDelete(): void {
     if (selectedCount === 0) return;
     const ids = [...selected].filter((id) => allItemIds.includes(id));
     // Hide immediately and leave selection mode; commit (or undo) when the toast resolves.
-    pendingDeleteIds = new Set([...pendingDeleteIds, ...ids]);
     selectionMode = false; // the $effect on selectionMode clears `selected`
-    let undone = false;
-    addToast(`${ids.length} item${ids.length === 1 ? '' : 's'} deleted`, 'default', {
-      action: {
-        label: 'Undo',
-        onClick: () => {
-          undone = true;
-          unhidePending(ids);
-        },
-      },
-      onDismiss: () => {
-        if (!undone) void commitBulkDelete(ids);
-      },
+    deferredDelete.request(ids, async (delIds) => {
+      const result = await removeItems(params.listId, delIds);
+      if (result.kind !== 'ok') addToast('Failed to delete items.', 'destructive');
     });
   }
 
@@ -338,7 +313,6 @@
     const ids = [...selected];
     const result = await moveSelectedItems(params.listId, targetListId, ids);
     bulkBusy = false;
-    moveSheetOpen = false;
     if (result.kind !== 'ok') {
       addToast('Failed to move items.', 'destructive');
     } else {
@@ -350,6 +324,48 @@
     const result = await clearChecked(params.listId);
     if (result.kind !== 'ok') addToast('Failed to clear checked items.', 'destructive');
   }
+
+  // Contextual bottom action bar, supplied to ListPage. The template owns the bar
+  // chrome, the move picker sheet, and the BottomNav takeover.
+  const bulkActions = $derived<BulkAction[]>([
+    {
+      id: 'check',
+      label: 'Check',
+      icon: 'CircleCheck',
+      disabled: bulkBusy,
+      testId: 'shopping-bulk-check',
+      onSelect: () => void handleBulkCheck(),
+    },
+    {
+      id: 'uncheck',
+      label: 'Uncheck',
+      icon: 'Circle',
+      disabled: bulkBusy,
+      testId: 'shopping-bulk-uncheck',
+      onSelect: () => void handleBulkUncheck(),
+    },
+    {
+      kind: 'picker',
+      id: 'move',
+      label: 'Move',
+      icon: 'FolderInput',
+      disabled: bulkBusy || otherLists.length === 0,
+      testId: 'shopping-bulk-move-select',
+      sheetTitle: `Move ${selectedCount} item${selectedCount === 1 ? '' : 's'} to…`,
+      targets: otherLists.map((l) => ({ id: l.id, label: l.name })),
+      optionTestId: 'shopping-bulk-move-option',
+      onPick: (id) => void handleMoveTo(id),
+    },
+    {
+      id: 'delete',
+      label: 'Delete',
+      icon: 'Trash2',
+      variant: 'destructive',
+      disabled: bulkBusy,
+      testId: 'shopping-bulk-delete',
+      onSelect: handleBulkDelete,
+    },
+  ]);
 
   // ─── Item row helper ──────────────────────────────────────────────────────────
 
@@ -389,7 +405,9 @@
     isLoading={$isLoadingShoppingList}
     {isEmpty}
     bind:selectionMode
-    class="p-4 sm:p-6 {selectionMode ? 'pb-24' : ''}"
+    selectionCount={selectedCount}
+    {bulkActions}
+    class="p-4 sm:p-6"
     data-testid="shopping-list-page"
   >
     {#snippet actions()}
@@ -755,82 +773,6 @@
     {/snippet}
   </ListPage>
 {/if}
-
-<!-- Contextual bulk-action bar: while selecting, it occupies the bottom slot and
-     covers the app's bottom nav (Android-style contextual action mode). -->
-{#if selectionMode && selectedCount > 0}
-  <div
-    class="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card pb-[env(safe-area-inset-bottom)]"
-    role="toolbar"
-    aria-label="Bulk actions"
-    data-testid="shopping-bulk-bar"
-  >
-    <div class="mx-auto flex w-full max-w-lg items-stretch">
-      <button
-        type="button"
-        class="flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-xs text-foreground transition-colors hover:bg-accent disabled:opacity-40"
-        onclick={handleBulkCheck}
-        disabled={bulkBusy}
-        data-testid="shopping-bulk-check"
-      >
-        <Icon name="CircleCheck" size={20} />
-        Check
-      </button>
-      <button
-        type="button"
-        class="flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-xs text-foreground transition-colors hover:bg-accent disabled:opacity-40"
-        onclick={handleBulkUncheck}
-        disabled={bulkBusy}
-        data-testid="shopping-bulk-uncheck"
-      >
-        <Icon name="Circle" size={20} />
-        Uncheck
-      </button>
-      <button
-        type="button"
-        class="flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-xs text-foreground transition-colors hover:bg-accent disabled:opacity-40"
-        onclick={() => (moveSheetOpen = true)}
-        disabled={bulkBusy || otherLists.length === 0}
-        data-testid="shopping-bulk-move-select"
-      >
-        <Icon name="FolderInput" size={20} />
-        Move
-      </button>
-      <button
-        type="button"
-        class="flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-xs text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-40"
-        onclick={handleBulkDelete}
-        disabled={bulkBusy}
-        data-testid="shopping-bulk-delete"
-      >
-        <Icon name="Trash2" size={20} />
-        Delete
-      </button>
-    </div>
-  </div>
-{/if}
-
-<!-- Move-to-list sheet -->
-<Sheet bind:open={moveSheetOpen}>
-  <SheetContent side="bottom" class="flex flex-col gap-2 p-4 pb-8">
-    <SheetHeader>
-      <SheetTitle>Move {selectedCount} item{selectedCount === 1 ? '' : 's'} to…</SheetTitle>
-    </SheetHeader>
-    <div class="flex flex-col">
-      {#each otherLists as list (list.id)}
-        <button
-          type="button"
-          class="w-full rounded px-3 py-3 text-left text-sm transition-colors hover:bg-accent disabled:opacity-40"
-          onclick={() => handleMoveTo(list.id)}
-          disabled={bulkBusy}
-          data-testid="shopping-bulk-move-option"
-        >
-          {list.name}
-        </button>
-      {/each}
-    </div>
-  </SheetContent>
-</Sheet>
 
 <!-- Edit item sheet -->
 <Sheet

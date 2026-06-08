@@ -20,6 +20,7 @@
     SelectTrigger,
     SortableList,
     TextArea,
+    type BulkAction,
   } from '@salt/ui-components';
   import {
     aisles,
@@ -192,6 +193,27 @@
     mergeOpen = true;
   }
 
+  // Contextual bottom action bar. Merge needs ≥2 aisles; both actions open their
+  // existing dialogs (structural ops with disclosure / per-item choices).
+  const bulkActions = $derived<BulkAction[]>([
+    {
+      id: 'merge',
+      label: 'Merge',
+      icon: 'Merge',
+      disabled: selectedCount < 2,
+      testId: 'bulk-merge-button',
+      onSelect: openMerge,
+    },
+    {
+      id: 'delete',
+      label: 'Delete',
+      icon: 'Trash2',
+      variant: 'destructive',
+      testId: 'bulk-delete-button',
+      onSelect: () => (deleteOpen = true),
+    },
+  ]);
+
   async function handleBulkDelete() {
     deleteBusy = true;
     deleteError = '';
@@ -234,6 +256,8 @@
       isLoading={$isLoadingAisles}
       isEmpty={$aisles.length === 0 && !$isLoadingAisles}
       bind:selectionMode
+      selectionCount={selectedCount}
+      {bulkActions}
     >
       {#snippet actions()}
         <Button size="sm" onclick={() => push('/admin/canon')}>
@@ -250,20 +274,6 @@
           onCheckedChange={toggleSelectAll}
           label={selectedCount > 0 ? `${selectedCount} selected` : 'Select all'}
         />
-        {#if selectedCount > 0}
-          <div class="flex items-center gap-2">
-            <Button variant="outline" size="sm" onclick={openMerge} disabled={selectedCount < 2}>
-              Merge…
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              data-testid="bulk-delete-button"
-              onclick={() => (deleteOpen = true)}>Delete</Button
-            >
-            <Button variant="ghost" size="sm" onclick={() => (selected = new Set())}>Clear</Button>
-          </div>
-        {/if}
       {/snippet}
 
       {#snippet children()}
