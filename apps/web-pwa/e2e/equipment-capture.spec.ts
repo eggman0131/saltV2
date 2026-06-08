@@ -174,16 +174,30 @@ test.describe('equipment — capture, edit, and persistence', () => {
       .filter({ has: page.locator('[data-equipment-id="to-delete"]') });
     await row.getByRole('checkbox').click();
 
-    await page.getByRole('button', { name: /^delete$/i }).click();
+    // Bulk delete uses the shared deferred-delete + Undo snackbar (no confirm
+    // dialog, no soft-delete): the row hides immediately and the real delete
+    // commits only once the Undo toast lapses.
+    await page.getByTestId('equipment-bulk-delete').click();
 
-    await expect(page.getByTestId('equipment-delete-dialog')).toBeVisible();
-    await page.getByTestId('equipment-delete-confirm').click();
+    const undo = page.getByRole('button', { name: /undo/i });
+    await expect(undo).toBeVisible({ timeout: SYNC_TIMEOUT });
 
+    // Row hides right away.
     await expect(
       page
         .getByTestId('equipment-list')
         .getByTestId('equipment-list-item')
         .filter({ hasText: 'Old Blender' }),
-    ).not.toBeVisible({ timeout: SYNC_TIMEOUT });
+    ).toHaveCount(0, { timeout: SYNC_TIMEOUT });
+
+    // Let the snackbar lapse — the delete commits to Firestore and survives a reload.
+    await expect(undo).toHaveCount(0, { timeout: SYNC_TIMEOUT });
+    await page.reload();
+    await expect(
+      page
+        .getByTestId('equipment-list')
+        .getByTestId('equipment-list-item')
+        .filter({ hasText: 'Old Blender' }),
+    ).toHaveCount(0, { timeout: SYNC_TIMEOUT });
   });
 });
