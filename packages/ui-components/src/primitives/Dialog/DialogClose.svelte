@@ -1,7 +1,7 @@
 <!-- spec: SPEC.md §8.6 v0.2.3 -->
 <script lang="ts">
   import { Dialog } from 'bits-ui';
-  import { X } from 'lucide-svelte';
+  import { X } from '@lucide/svelte';
   import { cn } from '../../lib/cn';
   import type { DialogPartProps } from './Dialog.types';
 

@@ -1,5 +1,5 @@
 // spec: SPEC.md §8.12 v0.2.3
-// Type-level test: verifies Icon `name` prop is keyof typeof import('lucide-svelte').
+// Type-level test: verifies Icon `name` prop is keyof the @lucide/svelte `icons` namespace.
 import { expectTypeOf } from 'vitest';
 import type { IconProps } from '../src/primitives/Icon/Icon.types';
 

@@ -1,6 +1,6 @@
 <!-- spec: SPEC.md §3 v0.3 -->
 <script lang="ts">
-  import { ChevronDown } from 'lucide-svelte';
+  import { ChevronDown } from '@lucide/svelte';
   import { cn } from '../../lib/cn';
   import { SELECT_CONTEXT } from '../../headless/Select.headless.svelte';
   import { selectTriggerVariants } from './Select.variants';
