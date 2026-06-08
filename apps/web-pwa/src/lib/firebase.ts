@@ -1,4 +1,9 @@
-import { initFirebase, createFirebaseAuth, type FirebaseOptions } from '@salt/firebase-sync';
+import {
+  initFirebase,
+  createFirebaseAuth,
+  type FirebaseOptions,
+  type AppCheckConfig,
+} from '@salt/firebase-sync';
 import { createLDErrorReportingAdapter } from '@salt/ld-observability';
 
 export const useEmulators = import.meta.env.VITE_USE_EMULATORS === 'true';
@@ -25,6 +30,19 @@ const options: FirebaseOptions = useEmulators
       appId: import.meta.env.VITE_FIREBASE_APP_ID,
     };
 
-initFirebase(options, useEmulators, !useEmulators);
+// App Check (issue #145). Only configured for real backends; under emulators
+// initFirebase skips it. The site key is public; the optional debug token is for
+// unattested local/CI access to a real backend and must come from an untracked
+// env / CI secret, never a committed/deployed value.
+const appCheckSiteKey = import.meta.env.VITE_FIREBASE_APPCHECK_SITE_KEY;
+const appCheckDebugToken = import.meta.env.VITE_FIREBASE_APPCHECK_DEBUG_TOKEN;
+const appCheck: AppCheckConfig | undefined = appCheckSiteKey
+  ? {
+      siteKey: appCheckSiteKey,
+      ...(appCheckDebugToken ? { debugToken: appCheckDebugToken } : {}),
+    }
+  : undefined;
+
+initFirebase(options, useEmulators, !useEmulators, appCheck);
 
 export const authProvider = createFirebaseAuth(createLDErrorReportingAdapter());
