@@ -36,8 +36,15 @@ const geminiApiKey = defineSecret('GEMINI_API_KEY');
 // Optional — when unset, the flow falls back to firebase-functions/logger only.
 const ldSdkKey = defineSecret('LD_SDK_KEY');
 
+// App Check enforcement for every callable. Monitor-first (#145): unverified
+// requests are still allowed but reported to App Check metrics. Flip this single
+// line to `true` once staging metrics confirm legitimate traffic verifies — that
+// is the enforcement step of the rollout (callables first, the AI cost surface).
+const APP_CHECK_ENFORCEMENT = { enforceAppCheck: false } as const;
+
 export const embedText = onCallGenkit(
   {
+    ...APP_CHECK_ENFORCEMENT,
     secrets: [geminiApiKey],
     authPolicy: isSignedIn(),
   },
@@ -46,6 +53,7 @@ export const embedText = onCallGenkit(
 
 export const arbitrateCanon = onCallGenkit(
   {
+    ...APP_CHECK_ENFORCEMENT,
     secrets: [geminiApiKey],
     authPolicy: isSignedIn(),
   },
@@ -69,6 +77,7 @@ export const arbitrateCanon = onCallGenkit(
 // sites at once.
 export const matchOrCreateCanon = onCall(
   {
+    ...APP_CHECK_ENFORCEMENT,
     secrets: [geminiApiKey, ldSdkKey],
   },
   async (request) => {
@@ -91,6 +100,7 @@ export const matchOrCreateCanon = onCall(
 
 export const identifyEquipment = onCallGenkit(
   {
+    ...APP_CHECK_ENFORCEMENT,
     secrets: [geminiApiKey],
     authPolicy: isSignedIn(),
   },
@@ -99,6 +109,7 @@ export const identifyEquipment = onCallGenkit(
 
 export const populateEquipmentEntry = onCallGenkit(
   {
+    ...APP_CHECK_ENFORCEMENT,
     secrets: [geminiApiKey],
     authPolicy: isSignedIn(),
   },
