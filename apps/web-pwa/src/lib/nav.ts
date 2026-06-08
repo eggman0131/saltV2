@@ -1,10 +1,10 @@
-import { Home, Settings, Shield, ShoppingCart, Utensils } from 'lucide-svelte';
+import { Blender, Home, Settings, Shield, ShoppingCart } from '@lucide/svelte';
 import type { NavItem } from '@salt/ui-components';
 
 export const navItems: NavItem[] = [
   { id: 'home', label: 'Home', icon: Home, href: '#/' },
   { id: 'shopping', label: 'Shop', icon: ShoppingCart, href: '#/shopping' },
-  { id: 'equipment', label: 'Kitchen', icon: Utensils, href: '#/equipment' },
+  { id: 'equipment', label: 'Kitchen', icon: Blender, href: '#/equipment' },
   { id: 'settings', label: 'Settings', icon: Settings, href: '#/settings' },
 ];
 

@@ -44,7 +44,7 @@
   </div>
 
   <div class="subsection">
-    <h3 class="subsection-title">Icon (lucide-svelte)</h3>
+    <h3 class="subsection-title">Icon (@lucide/svelte)</h3>
     <div class="flex flex-wrap gap-4">
       {#each ['Bell', 'Check', 'ChevronDown', 'CircleAlert', 'Download', 'Heart', 'Home', 'Info', 'LogOut', 'Mail', 'Menu', 'Plus', 'Search', 'Settings', 'Star', 'Trash', 'User', 'X'] as name}
         <div class="flex flex-col items-center gap-1">

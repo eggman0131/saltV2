@@ -1,6 +1,6 @@
 <!-- spec: ui-spec-v04.md §2 v0.4 -->
 <script lang="ts">
-  import { ChevronDown } from 'lucide-svelte';
+  import { ChevronDown } from '@lucide/svelte';
   import { cn } from '../../lib/cn';
   import { COMBOBOX_CONTEXT } from '../../headless/Combobox.headless.svelte';
   import { comboboxTriggerVariants } from './Combobox.variants';

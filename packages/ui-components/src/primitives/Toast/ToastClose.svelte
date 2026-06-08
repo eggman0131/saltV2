@@ -1,6 +1,6 @@
 <!-- spec: SPEC.md §6 v0.3 -->
 <script lang="ts">
-  import { X } from 'lucide-svelte';
+  import { X } from '@lucide/svelte';
   import { cn } from '../../lib/cn';
   import { TOAST_ITEM_CONTEXT } from '../../headless/Toast.headless.svelte';
   import type { ToastPartProps } from './Toast.types';

@@ -1,6 +1,6 @@
 <!-- spec: SPEC.md §8.12 v0.2.3 -->
 <script lang="ts">
-  import * as icons from 'lucide-svelte';
+  import { icons } from '@lucide/svelte';
   import { cn } from '../../lib/cn';
   import type { IconProps } from './Icon.types';
 
