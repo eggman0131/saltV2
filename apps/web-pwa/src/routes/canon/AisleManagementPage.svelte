@@ -1,5 +1,6 @@
 <script lang="ts">
   import { push } from 'svelte-spa-router';
+  import AdminGuard from '../admin/AdminGuard.svelte';
   import {
     Button,
     Checkbox,
@@ -225,278 +226,282 @@
   }
 </script>
 
-<div class="p-4 sm:p-6">
-  <ListPage
-    title="Manage Aisles"
-    description="Organise and sort your store aisles."
-    isLoading={$isLoadingAisles}
-    isEmpty={$aisles.length === 0 && !$isLoadingAisles}
-    bind:selectionMode
-  >
-    {#snippet actions()}
-      <Button size="sm" onclick={() => push('/canon')}>
-        <Icon name="ArrowLeft" size={16} />
-        Back
-      </Button>
-      <Button size="sm" data-testid="aisle-add-button" onclick={() => (addOpen = true)}>Add</Button>
-    {/snippet}
-    {#snippet selectionBar()}
-      <Checkbox
-        checked={allSelected ? true : someSelected ? 'indeterminate' : false}
-        onCheckedChange={toggleSelectAll}
-        label={selectedCount > 0 ? `${selectedCount} selected` : 'Select all'}
-      />
-      {#if selectedCount > 0}
-        <div class="flex items-center gap-2">
-          <Button variant="outline" size="sm" onclick={openMerge} disabled={selectedCount < 2}>
-            Merge…
-          </Button>
-          <Button
-            variant="destructive"
-            size="sm"
-            data-testid="bulk-delete-button"
-            onclick={() => (deleteOpen = true)}>Delete</Button
-          >
-          <Button variant="ghost" size="sm" onclick={() => (selected = new Set())}>Clear</Button>
-        </div>
-      {/if}
-    {/snippet}
+<AdminGuard>
+  <div class="p-4 sm:p-6">
+    <ListPage
+      title="Manage Aisles"
+      description="Organise and sort your store aisles."
+      isLoading={$isLoadingAisles}
+      isEmpty={$aisles.length === 0 && !$isLoadingAisles}
+      bind:selectionMode
+    >
+      {#snippet actions()}
+        <Button size="sm" onclick={() => push('/admin/canon')}>
+          <Icon name="ArrowLeft" size={16} />
+          Back
+        </Button>
+        <Button size="sm" data-testid="aisle-add-button" onclick={() => (addOpen = true)}
+          >Add</Button
+        >
+      {/snippet}
+      {#snippet selectionBar()}
+        <Checkbox
+          checked={allSelected ? true : someSelected ? 'indeterminate' : false}
+          onCheckedChange={toggleSelectAll}
+          label={selectedCount > 0 ? `${selectedCount} selected` : 'Select all'}
+        />
+        {#if selectedCount > 0}
+          <div class="flex items-center gap-2">
+            <Button variant="outline" size="sm" onclick={openMerge} disabled={selectedCount < 2}>
+              Merge…
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              data-testid="bulk-delete-button"
+              onclick={() => (deleteOpen = true)}>Delete</Button
+            >
+            <Button variant="ghost" size="sm" onclick={() => (selected = new Set())}>Clear</Button>
+          </div>
+        {/if}
+      {/snippet}
 
-    {#snippet children()}
-      <!-- Filter bar -->
-      <div class="mb-4 flex flex-wrap items-end gap-2">
-        <div class="flex-1">
-          <input
-            class="w-full rounded border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground"
-            placeholder="Filter aisles…"
-            type="search"
-            bind:value={filterText}
+      {#snippet children()}
+        <!-- Filter bar -->
+        <div class="mb-4 flex flex-wrap items-end gap-2">
+          <div class="flex-1">
+            <input
+              class="w-full rounded border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground"
+              placeholder="Filter aisles…"
+              type="search"
+              bind:value={filterText}
+            />
+          </div>
+          <Select value={showFilter} onValueChange={(v) => (showFilter = v as typeof showFilter)}>
+            <SelectTrigger class="w-36">
+              {showFilter === 'all' ? 'Show all' : showFilter === 'in-use' ? 'In use' : 'Empty'}
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Show all</SelectItem>
+              <SelectItem value="in-use">In use</SelectItem>
+              <SelectItem value="empty">Empty</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <!-- Sortable list -->
+        <SortableList
+          items={filteredAisles}
+          getId={(a) => a.id}
+          onReorder={handleReorder}
+          class="divide-y divide-border rounded border"
+        >
+          {#snippet row(aisle)}
+            <div data-testid={`aisle-row-${aisle.id}`} class="flex items-center gap-2 px-3 py-2">
+              {#if selectionMode}
+                <span data-testid={`aisle-row-checkbox-${aisle.id}`}>
+                  <Checkbox
+                    checked={selected.has(aisle.id)}
+                    onCheckedChange={() => toggleSelect(aisle.id)}
+                    labelledBy={`aisle-name-${aisle.id}`}
+                  />
+                </span>
+              {/if}
+
+              <span
+                data-testid={`aisle-drag-handle-${aisle.id}`}
+                class="cursor-grab text-muted-foreground"
+              >
+                <Icon name="GripVertical" size={16} />
+              </span>
+
+              {#if editingId === aisle.id}
+                <input
+                  bind:this={editInputEl}
+                  class="flex-1 rounded border border-input bg-background px-2 py-0.5 text-sm"
+                  bind:value={editingName}
+                  onblur={() => commitRename(aisle.id)}
+                  onkeydown={(e) => handleRenameKeydown(e, aisle.id)}
+                />
+              {:else}
+                <button
+                  id={`aisle-name-${aisle.id}`}
+                  class="flex-1 truncate text-left text-sm font-medium hover:underline"
+                  onclick={() => startRename(aisle)}
+                >
+                  {titleCase(aisle.name)}
+                </button>
+              {/if}
+
+              {#if ($aisleUsage.get(aisle.id) ?? 0) > 0}
+                <span class="shrink-0 text-xs text-muted-foreground">
+                  {$aisleUsage.get(aisle.id)}
+                </span>
+              {/if}
+            </div>
+          {/snippet}
+        </SortableList>
+      {/snippet}
+    </ListPage>
+  </div>
+
+  <!-- Add dialog -->
+  <Dialog
+    bind:open={addOpen}
+    onOpenChange={(v) => {
+      if (!v) {
+        addText = '';
+        addError = '';
+      }
+    }}
+  >
+    <DialogContent>
+      <div data-testid="aisle-add-dialog">
+        <DialogHeader>
+          <DialogTitle>Add aisles</DialogTitle>
+        </DialogHeader>
+        <div class="py-2">
+          <TextArea
+            label="Aisle name(s)"
+            description="Enter one per line to add multiple at once."
+            placeholder="Produce&#10;Dairy&#10;Bakery"
+            rows={4}
+            bind:value={addText}
+            onkeydown={handleAddKeydown}
+            error={addError}
+            data-testid="aisle-add-textarea"
           />
         </div>
-        <Select value={showFilter} onValueChange={(v) => (showFilter = v as typeof showFilter)}>
-          <SelectTrigger class="w-36">
-            {showFilter === 'all' ? 'Show all' : showFilter === 'in-use' ? 'In use' : 'Empty'}
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Show all</SelectItem>
-            <SelectItem value="in-use">In use</SelectItem>
-            <SelectItem value="empty">Empty</SelectItem>
-          </SelectContent>
-        </Select>
+        <DialogFooter>
+          <Button variant="outline" onclick={() => (addOpen = false)} disabled={addBusy}
+            >Cancel</Button
+          >
+          <Button
+            data-testid="aisle-add-submit"
+            onclick={handleAdd}
+            loading={addBusy}
+            disabled={addBusy}>Add</Button
+          >
+        </DialogFooter>
       </div>
+    </DialogContent>
+  </Dialog>
 
-      <!-- Sortable list -->
-      <SortableList
-        items={filteredAisles}
-        getId={(a) => a.id}
-        onReorder={handleReorder}
-        class="divide-y divide-border rounded border"
-      >
-        {#snippet row(aisle)}
-          <div data-testid={`aisle-row-${aisle.id}`} class="flex items-center gap-2 px-3 py-2">
-            {#if selectionMode}
-              <span data-testid={`aisle-row-checkbox-${aisle.id}`}>
-                <Checkbox
-                  checked={selected.has(aisle.id)}
-                  onCheckedChange={() => toggleSelect(aisle.id)}
-                  labelledBy={`aisle-name-${aisle.id}`}
-                />
-              </span>
-            {/if}
-
-            <span
-              data-testid={`aisle-drag-handle-${aisle.id}`}
-              class="cursor-grab text-muted-foreground"
-            >
-              <Icon name="GripVertical" size={16} />
-            </span>
-
-            {#if editingId === aisle.id}
-              <input
-                bind:this={editInputEl}
-                class="flex-1 rounded border border-input bg-background px-2 py-0.5 text-sm"
-                bind:value={editingName}
-                onblur={() => commitRename(aisle.id)}
-                onkeydown={(e) => handleRenameKeydown(e, aisle.id)}
-              />
-            {:else}
-              <button
-                id={`aisle-name-${aisle.id}`}
-                class="flex-1 truncate text-left text-sm font-medium hover:underline"
-                onclick={() => startRename(aisle)}
-              >
-                {titleCase(aisle.name)}
-              </button>
-            {/if}
-
-            {#if ($aisleUsage.get(aisle.id) ?? 0) > 0}
-              <span class="shrink-0 text-xs text-muted-foreground">
-                {$aisleUsage.get(aisle.id)}
-              </span>
-            {/if}
-          </div>
-        {/snippet}
-      </SortableList>
-    {/snippet}
-  </ListPage>
-</div>
-
-<!-- Add dialog -->
-<Dialog
-  bind:open={addOpen}
-  onOpenChange={(v) => {
-    if (!v) {
-      addText = '';
-      addError = '';
-    }
-  }}
->
-  <DialogContent>
-    <div data-testid="aisle-add-dialog">
-      <DialogHeader>
-        <DialogTitle>Add aisles</DialogTitle>
-      </DialogHeader>
-      <div class="py-2">
-        <TextArea
-          label="Aisle name(s)"
-          description="Enter one per line to add multiple at once."
-          placeholder="Produce&#10;Dairy&#10;Bakery"
-          rows={4}
-          bind:value={addText}
-          onkeydown={handleAddKeydown}
-          error={addError}
-          data-testid="aisle-add-textarea"
-        />
+  <!-- Bulk delete dialog -->
+  <Dialog
+    bind:open={deleteOpen}
+    onOpenChange={(v) => {
+      if (!v) deleteError = '';
+    }}
+  >
+    <DialogContent>
+      <div data-testid="bulk-delete-dialog">
+        <DialogHeader>
+          <DialogTitle>Delete aisles</DialogTitle>
+          <DialogDescription>
+            These items will become unassigned and flagged for review.
+          </DialogDescription>
+        </DialogHeader>
+        {#if deleteAffectedItems.length > 0}
+          <ul class="max-h-48 divide-y divide-border overflow-y-auto rounded border py-1">
+            {#each deleteAffectedItems as item (item.id)}
+              <li class="px-3 py-2 text-sm">{titleCase(item.name)}</li>
+            {/each}
+          </ul>
+        {:else}
+          <p class="py-2 text-sm text-muted-foreground">No items reference the selected aisles.</p>
+        {/if}
+        {#if deleteError}
+          <p class="text-sm text-destructive">{deleteError}</p>
+        {/if}
+        <DialogFooter>
+          <Button variant="outline" onclick={() => (deleteOpen = false)} disabled={deleteBusy}>
+            Cancel
+          </Button>
+          <Button
+            data-testid="bulk-delete-confirm"
+            variant="destructive"
+            onclick={handleBulkDelete}
+            loading={deleteBusy}
+            disabled={deleteBusy}
+          >
+            Continue
+          </Button>
+        </DialogFooter>
       </div>
-      <DialogFooter>
-        <Button variant="outline" onclick={() => (addOpen = false)} disabled={addBusy}
-          >Cancel</Button
-        >
-        <Button
-          data-testid="aisle-add-submit"
-          onclick={handleAdd}
-          loading={addBusy}
-          disabled={addBusy}>Add</Button
-        >
-      </DialogFooter>
-    </div>
-  </DialogContent>
-</Dialog>
+    </DialogContent>
+  </Dialog>
 
-<!-- Bulk delete dialog -->
-<Dialog
-  bind:open={deleteOpen}
-  onOpenChange={(v) => {
-    if (!v) deleteError = '';
-  }}
->
-  <DialogContent>
-    <div data-testid="bulk-delete-dialog">
+  <!-- Bulk merge dialog -->
+  <Dialog
+    bind:open={mergeOpen}
+    onOpenChange={(v) => {
+      if (!v) {
+        mergeError = '';
+      }
+    }}
+  >
+    <DialogContent>
       <DialogHeader>
-        <DialogTitle>Delete aisles</DialogTitle>
+        <DialogTitle>Merge aisles</DialogTitle>
         <DialogDescription>
-          These items will become unassigned and flagged for review.
+          Choose a target aisle. Items from the other selected aisles will be moved or unassigned.
         </DialogDescription>
       </DialogHeader>
-      {#if deleteAffectedItems.length > 0}
-        <ul class="max-h-48 divide-y divide-border overflow-y-auto rounded border py-1">
-          {#each deleteAffectedItems as item (item.id)}
-            <li class="px-3 py-2 text-sm">{titleCase(item.name)}</li>
-          {/each}
-        </ul>
-      {:else}
-        <p class="py-2 text-sm text-muted-foreground">No items reference the selected aisles.</p>
-      {/if}
-      {#if deleteError}
-        <p class="text-sm text-destructive">{deleteError}</p>
+      <div class="space-y-4 py-2">
+        <Select value={mergeTargetId} onValueChange={(v: string) => (mergeTargetId = v)}>
+          <SelectTrigger>
+            {mergeTargetId
+              ? titleCase($aisles.find((a) => a.id === mergeTargetId)?.name ?? 'Pick target…')
+              : 'Pick target aisle…'}
+          </SelectTrigger>
+          <SelectContent>
+            {#each [...selected] as id (id)}
+              {@const a = $aisles.find((a) => a.id === id)}
+              {#if a}
+                <SelectItem value={a.id}>{titleCase(a.name)}</SelectItem>
+              {/if}
+            {/each}
+          </SelectContent>
+        </Select>
+
+        {#if mergeAffectedItems.length > 0}
+          <div class="max-h-64 divide-y divide-border overflow-y-auto rounded border">
+            {#each mergeAffectedItems as item (item.id)}
+              <div class="flex items-center justify-between gap-4 px-3 py-2">
+                <span class="min-w-0 flex-1 truncate text-sm">{titleCase(item.name)}</span>
+                <RadioGroup
+                  label={titleCase(item.name)}
+                  value={mergeChoices.get(item.id) ?? 'move'}
+                  orientation="horizontal"
+                  class="sr-only-label"
+                  onValueChange={(v: string) => mergeChoices.set(item.id, v as 'move' | 'unassign')}
+                >
+                  <RadioGroupItem value="move" label="Move" />
+                  <RadioGroupItem value="unassign" label="Unassign" />
+                </RadioGroup>
+              </div>
+            {/each}
+          </div>
+        {:else if mergeSourceIds.length > 0}
+          <p class="text-sm text-muted-foreground">No items reference these aisles.</p>
+        {/if}
+      </div>
+      {#if mergeError}
+        <p class="text-sm text-destructive">{mergeError}</p>
       {/if}
       <DialogFooter>
-        <Button variant="outline" onclick={() => (deleteOpen = false)} disabled={deleteBusy}>
+        <Button variant="outline" onclick={() => (mergeOpen = false)} disabled={mergeBusy}>
           Cancel
         </Button>
         <Button
-          data-testid="bulk-delete-confirm"
-          variant="destructive"
-          onclick={handleBulkDelete}
-          loading={deleteBusy}
-          disabled={deleteBusy}
+          onclick={handleBulkMerge}
+          loading={mergeBusy}
+          disabled={mergeBusy || !mergeTargetId || mergeSourceIds.length === 0}
         >
-          Continue
+          Merge
         </Button>
       </DialogFooter>
-    </div>
-  </DialogContent>
-</Dialog>
-
-<!-- Bulk merge dialog -->
-<Dialog
-  bind:open={mergeOpen}
-  onOpenChange={(v) => {
-    if (!v) {
-      mergeError = '';
-    }
-  }}
->
-  <DialogContent>
-    <DialogHeader>
-      <DialogTitle>Merge aisles</DialogTitle>
-      <DialogDescription>
-        Choose a target aisle. Items from the other selected aisles will be moved or unassigned.
-      </DialogDescription>
-    </DialogHeader>
-    <div class="space-y-4 py-2">
-      <Select value={mergeTargetId} onValueChange={(v: string) => (mergeTargetId = v)}>
-        <SelectTrigger>
-          {mergeTargetId
-            ? titleCase($aisles.find((a) => a.id === mergeTargetId)?.name ?? 'Pick target…')
-            : 'Pick target aisle…'}
-        </SelectTrigger>
-        <SelectContent>
-          {#each [...selected] as id (id)}
-            {@const a = $aisles.find((a) => a.id === id)}
-            {#if a}
-              <SelectItem value={a.id}>{titleCase(a.name)}</SelectItem>
-            {/if}
-          {/each}
-        </SelectContent>
-      </Select>
-
-      {#if mergeAffectedItems.length > 0}
-        <div class="max-h-64 divide-y divide-border overflow-y-auto rounded border">
-          {#each mergeAffectedItems as item (item.id)}
-            <div class="flex items-center justify-between gap-4 px-3 py-2">
-              <span class="min-w-0 flex-1 truncate text-sm">{titleCase(item.name)}</span>
-              <RadioGroup
-                label={titleCase(item.name)}
-                value={mergeChoices.get(item.id) ?? 'move'}
-                orientation="horizontal"
-                class="sr-only-label"
-                onValueChange={(v: string) => mergeChoices.set(item.id, v as 'move' | 'unassign')}
-              >
-                <RadioGroupItem value="move" label="Move" />
-                <RadioGroupItem value="unassign" label="Unassign" />
-              </RadioGroup>
-            </div>
-          {/each}
-        </div>
-      {:else if mergeSourceIds.length > 0}
-        <p class="text-sm text-muted-foreground">No items reference these aisles.</p>
-      {/if}
-    </div>
-    {#if mergeError}
-      <p class="text-sm text-destructive">{mergeError}</p>
-    {/if}
-    <DialogFooter>
-      <Button variant="outline" onclick={() => (mergeOpen = false)} disabled={mergeBusy}>
-        Cancel
-      </Button>
-      <Button
-        onclick={handleBulkMerge}
-        loading={mergeBusy}
-        disabled={mergeBusy || !mergeTargetId || mergeSourceIds.length === 0}
-      >
-        Merge
-      </Button>
-    </DialogFooter>
-  </DialogContent>
-</Dialog>
+    </DialogContent>
+  </Dialog>
+</AdminGuard>

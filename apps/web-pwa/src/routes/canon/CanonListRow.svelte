@@ -85,7 +85,7 @@
   {#snippet narrow()}
     <button
       class="flex min-w-0 flex-1 items-center justify-between text-left"
-      onclick={() => push(`/canon/${item.id}`)}
+      onclick={() => push(`/admin/canon/${item.id}`)}
     >
       <Text>{titleCase(item.name)}</Text>
       {#if item.needs_approval}
@@ -101,7 +101,7 @@
   {#snippet wide()}
     <button
       class="min-w-[120px] flex-1 truncate text-left text-sm font-medium"
-      onclick={() => push(`/canon/${item.id}`)}
+      onclick={() => push(`/admin/canon/${item.id}`)}
       data-testid="canon-list-row-name"
     >
       {titleCase(item.name)}

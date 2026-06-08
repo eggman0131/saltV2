@@ -5,7 +5,7 @@ import type { CanonItem } from '@salt/domain';
 
 // ─── Mock stores (hoisted so vi.mock factories can reference them) ─────────────
 
-const { mockCanonItems, mockAisles } = vi.hoisted(() => {
+const { mockCanonItems, mockAisles, mockMembers, mockIsLoading, mockAuth } = vi.hoisted(() => {
   function makeStore<T>(initial: T) {
     let value = initial;
     const subs = new Set<(v: T) => void>();
@@ -26,6 +26,10 @@ const { mockCanonItems, mockAisles } = vi.hoisted(() => {
   return {
     mockCanonItems: makeStore<CanonItem[]>([]),
     mockAisles: makeStore<{ id: string; name: string; position: number }[]>([]),
+    // AdminGuard (canon now lives behind /admin, #157) reads these.
+    mockMembers: makeStore<{ email: string; admin: boolean }[]>([]),
+    mockIsLoading: makeStore<boolean>(false),
+    mockAuth: { user: { email: 'admin@e.org' } as { email: string } | null },
   };
 });
 
@@ -33,6 +37,11 @@ const { mockCanonItems, mockAisles } = vi.hoisted(() => {
 
 vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
 vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
+vi.mock('../src/lib/auth.svelte.js', () => ({ auth: mockAuth }));
+vi.mock('../src/lib/membersService.js', () => ({
+  members: mockMembers,
+  isLoadingMembers: mockIsLoading,
+}));
 vi.mock('../src/lib/canonService.js', () => ({
   canonItems: mockCanonItems,
   addCanonItem: vi.fn(),
@@ -80,6 +89,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockCanonItems._set([]);
   mockAisles._set([]);
+  // Pass AdminGuard: signed-in user is an admin member (#157).
+  mockAuth.user = { email: 'admin@e.org' };
+  mockIsLoading._set(false);
+  mockMembers._set([{ email: 'admin@e.org', admin: true }]);
 });
 
 // ─── Helper: open combobox and type ───────────────────────────────────────────
@@ -165,7 +178,7 @@ describe('CanonCreatePage', () => {
           expect.stringContaining('Garlic'),
           'success',
         );
-        expect(vi.mocked(push)).toHaveBeenCalledWith('/canon/g1');
+        expect(vi.mocked(push)).toHaveBeenCalledWith('/admin/canon/g1');
       });
     });
   });
@@ -178,7 +191,7 @@ describe('CanonCreatePage', () => {
       await openAndType('olive oil');
       await userEvent.click(screen.getByRole('option', { name: /Create "olive oil"/ }));
 
-      await waitFor(() => expect(vi.mocked(push)).toHaveBeenCalledWith('/canon/oo1'));
+      await waitFor(() => expect(vi.mocked(push)).toHaveBeenCalledWith('/admin/canon/oo1'));
     });
   });
 
@@ -190,7 +203,7 @@ describe('CanonCreatePage', () => {
       await openAndType('liquid gold');
       await userEvent.click(screen.getByRole('option', { name: /Create "liquid gold"/ }));
 
-      await waitFor(() => expect(vi.mocked(push)).toHaveBeenCalledWith('/canon/oo1'));
+      await waitFor(() => expect(vi.mocked(push)).toHaveBeenCalledWith('/admin/canon/oo1'));
     });
   });
 
@@ -202,7 +215,7 @@ describe('CanonCreatePage', () => {
       await userEvent.click(screen.getByRole('option', { name: 'Olive Oil' }));
 
       await waitFor(() => {
-        expect(vi.mocked(push)).toHaveBeenCalledWith('/canon/oo1');
+        expect(vi.mocked(push)).toHaveBeenCalledWith('/admin/canon/oo1');
       });
       expect(vi.mocked(addCanonItem)).not.toHaveBeenCalled();
     });

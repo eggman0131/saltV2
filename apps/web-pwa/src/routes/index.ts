@@ -19,10 +19,6 @@ import NotFound from './NotFound.svelte';
 // More-specific static routes must precede parameterised ones when using a Map.
 export const routes: RouteDefinition = new Map([
   ['/', HomePage],
-  ['/canon', CanonListPage],
-  ['/canon/aisles', AisleManagementPage],
-  ['/canon/new', CanonCreatePage],
-  ['/canon/:id', CanonDetailPage],
   ['/equipment', EquipmentListPage],
   ['/equipment/new', EquipmentCapturePage],
   ['/equipment/:id', EquipmentEditPage],
@@ -31,9 +27,15 @@ export const routes: RouteDefinition = new Map([
   ['/shopping/lists', ShoppingListsManagePage],
   ['/shopping/:listId', ShoppingListPage],
   ['/settings', SettingsPage],
-  // Operator area (issue #155). Both routes are guarded client-side by
+  // Operator area (issues #155, #157). All routes are guarded client-side by
   // AdminGuard; the real boundary is server-side (rules + CF admin checks).
+  // Canon management lives here (not the user nav) because approving/curating
+  // canon records is an operator activity — see #157.
   ['/admin', AdminHomePage],
   ['/admin/members', AdminMembersPage],
+  ['/admin/canon', CanonListPage],
+  ['/admin/canon/aisles', AisleManagementPage],
+  ['/admin/canon/new', CanonCreatePage],
+  ['/admin/canon/:id', CanonDetailPage],
   ['*', NotFound],
 ]);
