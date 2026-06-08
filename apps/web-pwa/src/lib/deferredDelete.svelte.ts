@@ -17,12 +17,6 @@ import { addToast } from './toastStore.js';
 export function createDeferredDelete() {
   let pending = $state(new Set<string>());
 
-  // Undo window for the snackbar. Deliberately longer than the Toast default
-  // (5s): this is a destructive bulk action, so the user gets a comfortable
-  // window to react — which also keeps the undo path off a wall-clock race in
-  // slower environments (e.g. CI).
-  const UNDO_WINDOW_MS = 10_000;
-
   function unhide(ids: readonly string[]): void {
     const next = new Set(pending);
     for (const id of ids) next.delete(id);
@@ -49,7 +43,7 @@ export function createDeferredDelete() {
     request(
       ids: readonly string[],
       commit: (ids: readonly string[]) => Promise<void> | void,
-      opts: { noun?: string; nounPlural?: string; durationMs?: number } = {},
+      opts: { noun?: string; nounPlural?: string } = {},
     ): void {
       if (ids.length === 0) return;
       const list = [...ids];
@@ -61,7 +55,6 @@ export function createDeferredDelete() {
 
       let undone = false;
       addToast(`${list.length} ${label} deleted`, 'default', {
-        duration: opts.durationMs ?? UNDO_WINDOW_MS,
         action: {
           label: 'Undo',
           onClick: () => {
