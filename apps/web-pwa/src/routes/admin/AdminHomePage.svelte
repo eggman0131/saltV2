@@ -3,15 +3,21 @@
   import { push } from 'svelte-spa-router';
   import AdminGuard from './AdminGuard.svelte';
 
-  // Operator home (issue #155). Members is the first and only tool for now;
-  // future cross-domain operator tools (backup, one-off data migrations /
-  // repairs) are added here as additional cards/routes — none are in scope yet.
+  // Operator home (issues #155, #157). Future cross-domain operator tools
+  // (backup, one-off data migrations / repairs) are added here as additional
+  // cards/routes.
   const tools = [
     {
       id: 'members',
       title: 'Members',
       description: 'Manage who can sign in and who is an admin.',
       href: '/admin/members',
+    },
+    {
+      id: 'canon',
+      title: 'Canon items',
+      description: 'Review and curate the shared item catalog and aisles.',
+      href: '/admin/canon',
     },
   ];
 </script>
