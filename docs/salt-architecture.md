@@ -100,9 +100,9 @@ The domain exposes:
 
 - Entities and value objects for:
   - Recipes (single-document model)
-  - Canon items (name, synonyms, aisle, optional embedding)
+  - Canon items (name, synonyms, aisle, optional embedding, thumbnail icon)
   - Shopping lists (items, checked state, canon links)
-  - Workspace (single‑family membership + per‑user roles)
+  - Members (email-keyed allowlist membership records, admin role, email normalisation)
 - Commands (write operations)
 - Queries (read operations)
 - Validation rules and Zod schemas (via `@salt/domain/schemas` subpath) — covers all Firestore document shapes, callable CF inputs, and AI flow output types; TypeScript types are derived via `z.infer`
@@ -142,6 +142,7 @@ This model is intentionally narrow. Multi‑workspace, sharing, or per‑documen
   - Shopping lists: `subscribeShoppingLists`, `listShoppingLists`, `createShoppingList`, `renameShoppingList`, `deleteShoppingList`
   - Shopping list items: `subscribeShoppingListItems`, `listShoppingListItems`, `saveShoppingListItem`, `deleteShoppingListItem`, `deleteShoppingListItems`, `moveShoppingListItems`
   - Shopping list config: `subscribeShoppingListsConfig`, `loadShoppingListsConfig`, `saveShoppingListsConfig`
+  - Members: `subscribeMembers`, `upsertMember`, `deleteMember`
 - Validates all Firestore document reads using Zod schemas from `@salt/domain/schemas`; collection and subscription reads skip invalid documents (log the error, return the valid subset); single-document reads return `Failure<StorageError>` on parse failure.
 - Must not import IndexedDB or any local‑storage code.
 - Must not contain UI logic.
@@ -238,8 +239,9 @@ No Firebase error codes may cross the boundary.
 
 Cloud Functions cover two categories of server-side work:
 
-1. **Gen-AI callables** (`embedText`, `arbitrateCanon`, `matchOrCreateCanon`, `identifyEquipment`, `populateEquipmentEntry`) — HTTPS callables invoked by the client.
-2. **Firestore write triggers** (`onShoppingListItemWrite`) — respond to document writes and run domain logic (e.g. canon matching) server-side, writing results back to Firestore.
+1. **Gen-AI callables** (`embedText`, `arbitrateCanon`, `matchOrCreateCanon`, `identifyEquipment`, `populateEquipmentEntry`, `regenerateCanonIcon`) — HTTPS callables invoked by the client.
+2. **Firestore write triggers** (`onShoppingListItemWrite`, `onCanonItemWritten`) — respond to document writes and run domain logic server-side, writing results back to Firestore.
+3. **Identity Platform blocking functions** (`beforeMemberCreated`) — reject account creation for any email not on the member allowlist; requires Identity Platform to be enabled on the target project.
 
 Both categories are intentionally minimal.
 
@@ -266,6 +268,7 @@ The PWA:
 - Wires `AuthProvider`, `ErrorReportingPort`, `MatchLoggingPort`, `EmbeddingPort`, and `CanonArbitrationPort` at composition time
 - Starts `initCanonSync()` from `App.svelte` when the user authenticates — subscriptions begin once at auth time, not on individual page mounts
 - In-memory Svelte stores (`canonItems`, `aisles`, `aisleUsage`) are the UI's read layer; `upsertCanonItem` and `saveAisles` are the write path
+- **Admin operator area** (`/admin` route group): `AdminGuard` redirects non-admins; the Members CRUD screen (`/admin/members`) lets admins add, edit, and remove allowlist members; `membersService` exposes a sorted roster store backed by `subscribeMembers`. Client-side gating is cosmetic — real enforcement is in Firestore rules and the `beforeMemberCreated` blocking function.
 - Offline data is provided by Firestore's `persistentLocalCache`. The service worker never caches Firestore traffic or any app data.
 - **PWA installability (Tier-1):** A Workbox-generated service worker (`vite-plugin-pwa`, `generateSW` strategy) precaches the built app shell and static assets only. The service worker is the sole consumer of the Cache API; no other module may touch `caches` directly (CLAUDE.md hard rule #3). The SW is disabled in dev (no interference with HMR). Manifest identity is env-distinct: `VITE_PWA_NAME`, `VITE_PWA_SHORT_NAME`, and `VITE_PWA_THEME_COLOR` are read at build time from `.env.<mode>` so staging and production install as distinct apps. The auto-update flow (owned by `src/lib/pwa.ts`) defers page reloads to safe moments (hash route change or tab refocus) and never reloads mid-interaction.
 
