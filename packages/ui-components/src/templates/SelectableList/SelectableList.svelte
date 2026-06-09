@@ -4,7 +4,13 @@
   import RowSelectCheckbox from './RowSelectCheckbox.svelte';
   import type { SelectableListItem, SelectableListProps } from './SelectableList.types';
 
-  let { items, selection, row, class: className }: SelectableListProps<T> = $props();
+  let {
+    items,
+    selection,
+    getRowCheckboxLabel = (item: T) => `Select ${item.id}`,
+    row,
+    class: className,
+  }: SelectableListProps<T> = $props();
 </script>
 
 <ul class={cn('flex flex-col gap-1', className)}>
@@ -17,7 +23,11 @@
       )}
     >
       {#if selection.selectionMode}
-        <RowSelectCheckbox {selection} id={item.id} />
+        <RowSelectCheckbox
+          {selection}
+          id={item.id}
+          aria-label={getRowCheckboxLabel(item)}
+        />
       {/if}
       <div class="flex-1 min-w-0">
         {@render row(item, { selected: isSelected, toggle: () => selection.toggle(item.id) })}

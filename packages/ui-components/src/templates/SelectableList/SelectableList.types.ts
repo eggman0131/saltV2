@@ -8,6 +8,8 @@ export type SelectableListProps<T extends SelectableListItem = SelectableListIte
   items: T[];
   /** Shared selection controller (see `createListSelection`). */
   selection: ListSelection;
+  /** Accessible label for each row checkbox. Defaults to `Select ${item.id}`. */
+  getRowCheckboxLabel?: (item: T) => string;
   row: Snippet<[T, { selected: boolean; toggle: () => void }]>;
   class?: string;
 };

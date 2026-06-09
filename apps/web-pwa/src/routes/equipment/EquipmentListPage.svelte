@@ -73,7 +73,11 @@
 
   {#snippet children()}
     <div data-testid="equipment-list">
-      <SelectableList items={visibleItems} {selection}>
+      <SelectableList
+        items={visibleItems}
+        {selection}
+        getRowCheckboxLabel={(item) => `Select ${item.name}`}
+      >
         {#snippet row(item)}
           <button
             class="w-full text-left text-sm font-medium hover:underline"
