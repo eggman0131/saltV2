@@ -23,11 +23,7 @@
       )}
     >
       {#if selection.selectionMode}
-        <RowSelectCheckbox
-          {selection}
-          id={item.id}
-          aria-label={getRowCheckboxLabel(item)}
-        />
+        <RowSelectCheckbox {selection} id={item.id} aria-label={getRowCheckboxLabel(item)} />
       {/if}
       <div class="flex-1 min-w-0">
         {@render row(item, { selected: isSelected, toggle: () => selection.toggle(item.id) })}
