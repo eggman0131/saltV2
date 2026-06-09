@@ -203,19 +203,21 @@
                   data-testid={`${testid}-time-${m.id}`}
                 />
               {/if}
-              <!-- Chef is independent of attending: a chef need not eat. -->
-              <Button
-                variant="outline"
-                size="sm"
-                class={isChef(m.id)
-                  ? 'border-amber-500 bg-amber-500 text-white hover:bg-amber-600 hover:text-white'
-                  : ''}
+              <!-- Chef is independent of attending: a chef need not eat. Plain
+                   button (not the salt Button) so both states are fully Tailwind:
+                   selected = filled amber, unselected = clear neutral. -->
+              <button
+                type="button"
+                class="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm font-medium transition-colors
+                  {isChef(m.id)
+                  ? 'border-amber-500 bg-amber-500 text-white hover:bg-amber-600'
+                  : 'border-input bg-background text-muted-foreground hover:bg-muted'}"
                 onclick={() => onChefToggle(m.id)}
                 aria-pressed={isChef(m.id)}
                 data-testid={`${testid}-chef-${m.id}`}
               >
-                <ChefHat class="mr-1 h-3.5 w-3.5" /> Chef
-              </Button>
+                <ChefHat class="h-3.5 w-3.5" strokeWidth={2.5} /> Chef
+              </button>
             </div>
             {#if isAttending(m.id)}
               <input
