@@ -3,7 +3,6 @@
   import AdminGuard from '../admin/AdminGuard.svelte';
   import {
     Button,
-    Checkbox,
     Dialog,
     DialogContent,
     DialogDescription,
@@ -14,12 +13,15 @@
     ListPage,
     RadioGroup,
     RadioGroupItem,
+    RowSelectCheckbox,
     Select,
+    SelectAllCheckbox,
     SelectContent,
     SelectItem,
     SelectTrigger,
     SortableList,
     TextArea,
+    createListSelection,
     type BulkAction,
   } from '@salt/ui-components';
   import {
@@ -55,12 +57,6 @@
   let editingName = $state('');
   let editInputEl = $state<HTMLInputElement | undefined>();
 
-  // Selection
-  let selected = $state(new Set<string>());
-  $effect(() => {
-    if (!selectionMode) selected = new Set();
-  });
-
   // Delete modal
   let deleteOpen = $state(false);
   let deleteBusy = $state(false);
@@ -84,25 +80,10 @@
     }),
   );
 
-  let selectedCount = $derived(filteredAisles.filter((a) => selected.has(a.id)).length);
-  let allSelected = $derived(
-    filteredAisles.length > 0 && filteredAisles.every((a) => selected.has(a.id)),
-  );
-  let someSelected = $derived(selectedCount > 0 && !allSelected);
-
-  function toggleSelect(id: string) {
-    const s = new Set(selected);
-    if (s.has(id)) s.delete(id);
-    else s.add(id);
-    selected = s;
-  }
-
-  function toggleSelectAll() {
-    const s = new Set(selected);
-    if (allSelected) filteredAisles.forEach((a) => s.delete(a.id));
-    else filteredAisles.forEach((a) => s.add(a.id));
-    selected = s;
-  }
+  const selection = createListSelection({
+    getAllIds: () => filteredAisles.map((a) => a.id),
+    isSelectionMode: () => selectionMode,
+  });
 
   // Add
   async function handleAdd() {
@@ -168,11 +149,11 @@
 
   // Derived: canon items affected by a bulk delete of all selected aisles
   let deleteAffectedItems = $derived(
-    $canonItems.filter((item) => item.aisleId !== null && selected.has(item.aisleId)),
+    $canonItems.filter((item) => item.aisleId !== null && selection.isSelected(item.aisleId)),
   );
 
   // Derived: source aisle ids for the merge (all selected except the target)
-  let mergeSourceIds = $derived([...selected].filter((id) => id !== mergeTargetId));
+  let mergeSourceIds = $derived([...selection.selected].filter((id) => id !== mergeTargetId));
 
   // Derived: canon items that will be affected by the merge (belong to a source aisle)
   let mergeAffectedItems = $derived(
@@ -189,7 +170,7 @@
   });
 
   function openMerge() {
-    mergeTargetId = [...selected][0] ?? '';
+    mergeTargetId = [...selection.selected][0] ?? '';
     mergeOpen = true;
   }
 
@@ -200,7 +181,7 @@
       id: 'merge',
       label: 'Merge',
       icon: 'Merge',
-      disabled: selectedCount < 2,
+      disabled: selection.count < 2,
       testId: 'bulk-merge-button',
       onSelect: openMerge,
     },
@@ -217,10 +198,10 @@
   async function handleBulkDelete() {
     deleteBusy = true;
     deleteError = '';
-    const result = await deleteAisles([...selected]);
+    const result = await deleteAisles([...selection.selected]);
     deleteBusy = false;
     if (result.kind === 'ok') {
-      selected = new Set();
+      selection.clear();
       deleteOpen = false;
     } else {
       deleteError = 'Failed to delete aisles. Try again.';
@@ -240,7 +221,7 @@
     });
     mergeBusy = false;
     if (result.kind === 'ok') {
-      selected = new Set();
+      selection.clear();
       mergeOpen = false;
     } else {
       mergeError = 'Failed to merge aisles. Try again.';
@@ -256,7 +237,7 @@
       isLoading={$isLoadingAisles}
       isEmpty={$aisles.length === 0 && !$isLoadingAisles}
       bind:selectionMode
-      selectionCount={selectedCount}
+      selectionCount={selection.count}
       {bulkActions}
     >
       {#snippet actions()}
@@ -269,11 +250,7 @@
         >
       {/snippet}
       {#snippet selectionBar()}
-        <Checkbox
-          checked={allSelected ? true : someSelected ? 'indeterminate' : false}
-          onCheckedChange={toggleSelectAll}
-          label={selectedCount > 0 ? `${selectedCount} selected` : 'Select all'}
-        />
+        <SelectAllCheckbox {selection} />
       {/snippet}
 
       {#snippet children()}
@@ -310,9 +287,9 @@
             <div data-testid={`aisle-row-${aisle.id}`} class="flex items-center gap-2 px-3 py-2">
               {#if selectionMode}
                 <span data-testid={`aisle-row-checkbox-${aisle.id}`}>
-                  <Checkbox
-                    checked={selected.has(aisle.id)}
-                    onCheckedChange={() => toggleSelect(aisle.id)}
+                  <RowSelectCheckbox
+                    {selection}
+                    id={aisle.id}
                     labelledBy={`aisle-name-${aisle.id}`}
                   />
                 </span>
@@ -466,7 +443,7 @@
               : 'Pick target aisle…'}
           </SelectTrigger>
           <SelectContent>
-            {#each [...selected] as id (id)}
+            {#each [...selection.selected] as id (id)}
               {@const a = $aisles.find((a) => a.id === id)}
               {#if a}
                 <SelectItem value={a.id}>{titleCase(a.name)}</SelectItem>

@@ -1,13 +1,14 @@
 <script lang="ts">
   import {
     Button,
-    Checkbox,
     Icon,
     ListPage,
     Select,
+    SelectAllCheckbox,
     SelectContent,
     SelectItem,
     SelectTrigger,
+    createListSelection,
     type BulkAction,
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
@@ -30,12 +31,6 @@
 
   // Selection mode
   let selectionMode = $state(false);
-
-  // Selection
-  let selected = $state(new Set<string>());
-  $effect(() => {
-    if (!selectionMode) selected = new Set();
-  });
 
   // Deferred bulk delete (hide immediately, commit on undo-lapse — no confirm dialog).
   const deferredDelete = createDeferredDelete();
@@ -100,42 +95,28 @@
 
   // Derived: selection state
   const allVisibleIds = $derived(filteredItems.map((i) => i.id));
-  const allSelected = $derived(
-    allVisibleIds.length > 0 && allVisibleIds.every((id) => selected.has(id)),
-  );
-  const someSelected = $derived(allVisibleIds.some((id) => selected.has(id)) && !allSelected);
-  const selectedCount = $derived(allVisibleIds.filter((id) => selected.has(id)).length);
+  const selection = createListSelection({
+    getAllIds: () => allVisibleIds,
+    isSelectionMode: () => selectionMode,
+  });
 
   const selectedApprovalIds = $derived(
-    [...selected].filter((id) => filteredItems.find((i) => i.id === id)?.needs_approval),
+    [...selection.selected].filter((id) => filteredItems.find((i) => i.id === id)?.needs_approval),
   );
 
-  function toggleItem(id: string) {
-    const s = new Set(selected);
-    if (s.has(id)) s.delete(id);
-    else s.add(id);
-    selected = s;
-  }
-
-  function toggleAll() {
-    selected = allSelected ? new Set() : new Set(allVisibleIds);
-  }
-
   function selectPending() {
-    const s = new Set(selected);
-    filteredItems.filter((i) => i.needs_approval).forEach((i) => s.add(i.id));
-    selected = s;
+    selection.add(filteredItems.filter((i) => i.needs_approval).map((i) => i.id));
   }
 
   async function handleBulkApprove() {
     await approveCanonItems(selectedApprovalIds);
-    selected = new Set([...selected].filter((id) => !selectedApprovalIds.includes(id)));
+    selection.remove(selectedApprovalIds);
   }
 
   function handleBulkDelete() {
-    if (selectedCount === 0) return;
-    const ids = [...selected].filter((id) => allVisibleIds.includes(id));
-    selectionMode = false; // the $effect on selectionMode clears `selected`
+    if (selection.count === 0) return;
+    const ids = selection.ids;
+    selectionMode = false; // exiting selection mode clears the selection
     deferredDelete.request(ids, async (delIds) => {
       const results = await Promise.all(delIds.map((id) => deleteCanonItem(id)));
       if (results.some((r) => r.kind !== 'ok')) {
@@ -177,7 +158,7 @@
     isEmpty={$canonItems.length === 0}
     class="p-4 sm:p-6"
     bind:selectionMode
-    selectionCount={selectedCount}
+    selectionCount={selection.count}
     {bulkActions}
   >
     {#snippet actions()}
@@ -194,11 +175,7 @@
     {/snippet}
 
     {#snippet selectionBar()}
-      <Checkbox
-        checked={allSelected ? true : someSelected ? 'indeterminate' : false}
-        onCheckedChange={toggleAll}
-        label={selectedCount > 0 ? `${selectedCount} selected` : 'Select all'}
-      />
+      <SelectAllCheckbox {selection} />
     {/snippet}
 
     {#snippet children()}
@@ -249,8 +226,8 @@
               <CanonListRow
                 {item}
                 aisles={$aisles}
-                selected={selected.has(item.id)}
-                onToggleSelect={selectionMode ? () => toggleItem(item.id) : undefined}
+                selected={selection.isSelected(item.id)}
+                onToggleSelect={selectionMode ? () => selection.toggle(item.id) : undefined}
               />
             {/each}
           </ul>
@@ -270,8 +247,8 @@
                   <CanonListRow
                     {item}
                     aisles={$aisles}
-                    selected={selected.has(item.id)}
-                    onToggleSelect={selectionMode ? () => toggleItem(item.id) : undefined}
+                    selected={selection.isSelected(item.id)}
+                    onToggleSelect={selectionMode ? () => selection.toggle(item.id) : undefined}
                   />
                 {/each}
               </ul>

@@ -2,7 +2,6 @@
   import {
     Button,
     CanonIcon,
-    Checkbox,
     Combobox,
     ComboboxContent,
     ComboboxCreate,
@@ -12,6 +11,8 @@
     ComboboxItem,
     Icon,
     ListPage,
+    RowSelectCheckbox,
+    SelectAllCheckbox,
     Popover,
     PopoverContent,
     PopoverTrigger,
@@ -24,6 +25,7 @@
     TextArea,
     TextField,
     EmptyState,
+    createListSelection,
   } from '@salt/ui-components';
   import { titleCase } from '../../lib/titleCase.js';
   import { tick } from 'svelte';
@@ -130,26 +132,10 @@
 
   let selectionMode = $state(false);
 
-  let selected = $state(new Set<string>());
-
-  $effect(() => {
-    if (!selectionMode) selected = new Set();
+  const selection = createListSelection({
+    getAllIds: () => allItemIds,
+    isSelectionMode: () => selectionMode,
   });
-
-  const selectedCount = $derived(allItemIds.filter((id) => selected.has(id)).length);
-  const allSelected = $derived(allItemIds.length > 0 && allItemIds.every((id) => selected.has(id)));
-  const someSelected = $derived(allItemIds.some((id) => selected.has(id)) && !allSelected);
-
-  function toggleSelection(id: string): void {
-    const next = new Set(selected);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    selected = next;
-  }
-
-  function toggleAll(): void {
-    selected = allSelected ? new Set() : new Set(allItemIds);
-  }
 
   // ─── Item capture ─────────────────────────────────────────────────────────────
 
@@ -281,10 +267,10 @@
   let bulkBusy = $state(false);
 
   function handleBulkDelete(): void {
-    if (selectedCount === 0) return;
-    const ids = [...selected].filter((id) => allItemIds.includes(id));
+    if (selection.count === 0) return;
+    const ids = selection.ids;
     // Hide immediately and leave selection mode; commit (or undo) when the toast resolves.
-    selectionMode = false; // the $effect on selectionMode clears `selected`
+    selectionMode = false; // exiting selection mode clears the selection
     deferredDelete.request(ids, async (delIds) => {
       const result = await removeItems(params.listId, delIds);
       if (result.kind !== 'ok') addToast('Failed to delete items.', 'destructive');
@@ -292,25 +278,25 @@
   }
 
   async function handleBulkCheck(): Promise<void> {
-    if (selectedCount === 0) return;
+    if (selection.count === 0) return;
     bulkBusy = true;
-    await checkItems(params.listId, [...selected]);
+    await checkItems(params.listId, [...selection.selected]);
     bulkBusy = false;
-    selected = new Set();
+    selection.clear();
   }
 
   async function handleBulkUncheck(): Promise<void> {
-    if (selectedCount === 0) return;
+    if (selection.count === 0) return;
     bulkBusy = true;
-    await uncheckItems(params.listId, [...selected]);
+    await uncheckItems(params.listId, [...selection.selected]);
     bulkBusy = false;
-    selected = new Set();
+    selection.clear();
   }
 
   async function handleMoveTo(targetListId: string): Promise<void> {
-    if (selectedCount === 0) return;
+    if (selection.count === 0) return;
     bulkBusy = true;
-    const ids = [...selected];
+    const ids = [...selection.selected];
     const result = await moveSelectedItems(params.listId, targetListId, ids);
     bulkBusy = false;
     if (result.kind !== 'ok') {
@@ -351,7 +337,7 @@
       icon: 'FolderInput',
       disabled: bulkBusy || otherLists.length === 0,
       testId: 'shopping-bulk-move-select',
-      sheetTitle: `Move ${selectedCount} item${selectedCount === 1 ? '' : 's'} to…`,
+      sheetTitle: `Move ${selection.count} item${selection.count === 1 ? '' : 's'} to…`,
       targets: otherLists.map((l) => ({ id: l.id, label: l.name })),
       optionTestId: 'shopping-bulk-move-option',
       onPick: (id) => void handleMoveTo(id),
@@ -405,7 +391,7 @@
     isLoading={$isLoadingShoppingList}
     {isEmpty}
     bind:selectionMode
-    selectionCount={selectedCount}
+    selectionCount={selection.count}
     {bulkActions}
     class="p-4 sm:p-6"
     data-testid="shopping-list-page"
@@ -513,11 +499,7 @@
     {/snippet}
 
     {#snippet selectionBar()}
-      <Checkbox
-        checked={allSelected ? true : someSelected ? 'indeterminate' : false}
-        onCheckedChange={toggleAll}
-        label={selectedCount > 0 ? `${selectedCount} selected` : 'Select all'}
-      />
+      <SelectAllCheckbox {selection} />
     {/snippet}
 
     {#snippet empty()}
@@ -551,7 +533,7 @@
 
             {#if !aisleCollapsed}
               {#each aisleGroup.items as item (item.id)}
-                {@const isSelected = selected.has(item.id)}
+                {@const isSelected = selection.isSelected(item.id)}
                 {@const amountStr = formatAmount(item.amount, item.unit)}
                 <div
                   class="flex items-center gap-3 rounded border px-3 py-2 text-sm {isSelected
@@ -561,9 +543,9 @@
                   data-item-id={item.id}
                 >
                   {#if selectionMode}
-                    <Checkbox
-                      checked={isSelected}
-                      onCheckedChange={() => toggleSelection(item.id)}
+                    <RowSelectCheckbox
+                      {selection}
+                      id={item.id}
                       label=""
                       aria-label="Select {item.rawText}"
                     />
@@ -625,7 +607,7 @@
               {/if}
             </div>
             {#each grouped.other.contributors as { item, isPending } (item.id)}
-              {@const isSelected = selected.has(item.id)}
+              {@const isSelected = selection.isSelected(item.id)}
               {@const amountStr = formatAmount(item.amount, item.unit)}
               <div
                 class="flex items-center gap-3 rounded border px-3 py-2 text-sm {isSelected
@@ -635,9 +617,9 @@
                 data-item-id={item.id}
               >
                 {#if selectionMode}
-                  <Checkbox
-                    checked={isSelected}
-                    onCheckedChange={() => toggleSelection(item.id)}
+                  <RowSelectCheckbox
+                    {selection}
+                    id={item.id}
                     label=""
                     aria-label="Select {item.rawText}"
                   />
@@ -714,7 +696,7 @@
             </div>
             {#if !checkedCollapsed}
               {#each grouped.checked.contributors as item (item.id)}
-                {@const isSelected = selected.has(item.id)}
+                {@const isSelected = selection.isSelected(item.id)}
                 {@const amountStr = formatAmount(item.amount, item.unit)}
                 <div
                   class="flex items-center gap-3 rounded border px-3 py-2 text-sm {isSelected
@@ -724,9 +706,9 @@
                   data-item-id={item.id}
                 >
                   {#if selectionMode}
-                    <Checkbox
-                      checked={isSelected}
-                      onCheckedChange={() => toggleSelection(item.id)}
+                    <RowSelectCheckbox
+                      {selection}
+                      id={item.id}
                       label=""
                       aria-label="Select {item.rawText}"
                     />
