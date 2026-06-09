@@ -74,6 +74,11 @@
   let dragging = false;
 
   function onpointerdown(e: PointerEvent) {
+    // Don't start a swipe (and don't capture the pointer) when the press lands
+    // on an interactive control like the Undo action or the close button.
+    // Capturing here retargets the resulting `click` to this container, so the
+    // button's own onclick would never fire.
+    if ((e.target as HTMLElement).closest('button')) return;
     pointerStartX = e.clientX;
     dragging = true;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
