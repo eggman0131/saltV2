@@ -137,6 +137,7 @@ This model is intentionally narrow. Multi‑workspace, sharing, or per‑documen
 - Implements realtime subscriptions and direct writes using Firestore `onSnapshot` and `setDoc`.
 - Implements `AuthProvider` using Firebase Auth.
 - Initialises Firestore with `persistentLocalCache()` in production (disabled in emulator tests to avoid stale cache).
+- Initialises Firebase App Check (reCAPTCHA Enterprise, `isTokenAutoRefreshEnabled: true`) when an optional `AppCheckConfig` is provided and emulators are not in use. Must initialise before any other Firebase service so tokens are attached to requests. The exported `AppCheckConfig` interface carries a public `siteKey` and an optional `debugToken` for unattested environments (local dev / CI hitting a real backend); the debug token must never be baked into a deployed bundle.
 - Exposes the following as its primary data API:
   - Canon: `subscribeCanonItems`, `subscribeAisles`, `upsertCanonItem`, `deleteCanonItem`, `saveAisles`
   - Shopping lists: `subscribeShoppingLists`, `listShoppingLists`, `createShoppingList`, `renameShoppingList`, `deleteShoppingList`
@@ -239,7 +240,7 @@ No Firebase error codes may cross the boundary.
 
 Cloud Functions cover two categories of server-side work:
 
-1. **Gen-AI callables** (`embedText`, `arbitrateCanon`, `matchOrCreateCanon`, `identifyEquipment`, `populateEquipmentEntry`, `regenerateCanonIcon`) — HTTPS callables invoked by the client.
+1. **Gen-AI callables** (`embedText`, `arbitrateCanon`, `matchOrCreateCanon`, `identifyEquipment`, `populateEquipmentEntry`, `regenerateCanonIcon`) — HTTPS callables invoked by the client. All carry `enforceAppCheck: false` (monitor-first rollout — unverified requests are allowed but reported to App Check metrics; flip the shared `APP_CHECK_ENFORCEMENT` constant in `index.ts` to `{ enforceAppCheck: true }` once staging metrics confirm legitimate traffic passes attestation).
 2. **Firestore write triggers** (`onShoppingListItemWrite`, `onCanonItemWritten`) — respond to document writes and run domain logic server-side, writing results back to Firestore.
 3. **Identity Platform blocking functions** (`beforeMemberCreated`) — reject account creation for any email not on the member allowlist; requires Identity Platform to be enabled on the target project.
 
@@ -268,7 +269,7 @@ The PWA:
 - Wires `AuthProvider`, `ErrorReportingPort`, `MatchLoggingPort`, `EmbeddingPort`, and `CanonArbitrationPort` at composition time
 - Starts `initCanonSync()` from `App.svelte` when the user authenticates — subscriptions begin once at auth time, not on individual page mounts
 - In-memory Svelte stores (`canonItems`, `aisles`, `aisleUsage`) are the UI's read layer; `upsertCanonItem` and `saveAisles` are the write path
-- **Admin operator area** (`/admin` route group): `AdminGuard` redirects non-admins; the Members CRUD screen (`/admin/members`) lets admins add, edit, and remove allowlist members; `membersService` exposes a sorted roster store backed by `subscribeMembers`. Client-side gating is cosmetic — real enforcement is in Firestore rules and the `beforeMemberCreated` blocking function.
+- **Admin operator area** (`/admin` route group): `AdminGuard` redirects non-admins; the Members CRUD screen (`/admin/members`) lets admins add, edit, and remove allowlist members; `membersService` exposes a sorted roster store backed by `subscribeMembers`. Canon management (`/admin/canon`, `/admin/canon/new`, `/admin/canon/aisles`, `/admin/canon/:id`) is also gated here — canon stewardship is an operator function, not an everyday user activity, so the list, create, detail, and aisle management pages all sit under `AdminGuard`. The `needs_approval` count badge is surfaced on the Admin nav entry so operators can see the review queue from anywhere in the app. Client-side gating is cosmetic — real enforcement is in Firestore rules and the `beforeMemberCreated` blocking function.
 - Offline data is provided by Firestore's `persistentLocalCache`. The service worker never caches Firestore traffic or any app data.
 - **PWA installability (Tier-1):** A Workbox-generated service worker (`vite-plugin-pwa`, `generateSW` strategy) precaches the built app shell and static assets only. The service worker is the sole consumer of the Cache API; no other module may touch `caches` directly (CLAUDE.md hard rule #3). The SW is disabled in dev (no interference with HMR). Manifest identity is env-distinct: `VITE_PWA_NAME`, `VITE_PWA_SHORT_NAME`, and `VITE_PWA_THEME_COLOR` are read at build time from `.env.<mode>` so staging and production install as distinct apps. The auto-update flow (owned by `src/lib/pwa.ts`) defers page reloads to safe moments (hash route change or tab refocus) and never reloads mid-interaction.
 
