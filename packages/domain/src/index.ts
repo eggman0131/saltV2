@@ -168,5 +168,32 @@ export {
   sortMembers,
 } from './members/index.js';
 
+// Meal planning module — published surface (issue #169).
+export type {
+  Weekday,
+  Attendee,
+  Day,
+  MealPlanConfig,
+  MealPlanTemplate,
+  MealPlanWeek,
+} from './mealPlan/index.js';
+export {
+  WEEKDAYS,
+  WEEKDAY_INDEX,
+  weekStartFor,
+  weekDates,
+  weekdayOf,
+  emptyDay,
+  emptyWeek,
+  emptyTemplate,
+  instantiateWeek,
+  setDayNote,
+  setDayChefs,
+  addAttendee,
+  removeAttendee,
+  setAttendeeHomeTime,
+  setAttendeeNote,
+} from './mealPlan/index.js';
+
 // Cross-cutting ports.
 export type { ErrorReportingPort } from './ErrorReportingPort.js';
