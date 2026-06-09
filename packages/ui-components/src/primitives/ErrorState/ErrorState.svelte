@@ -23,7 +23,7 @@
   role="alert"
 >
   <div class="text-destructive">
-    <Icon name="AlertTriangle" size={28} ariaLabel="Error" />
+    <Icon name="TriangleAlert" size={28} ariaLabel="Error" />
   </div>
   <h3 class="text-base font-semibold text-foreground">{title}</h3>
   {#if description}

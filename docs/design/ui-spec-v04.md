@@ -17,7 +17,7 @@ All global rules, architecture, naming, styling, and testing conventions from v0
 v0.4 introduces:
 
 - **Combobox** — text input + popup listbox + filtering + optional custom values, with the optional `ComboboxField` joined-input frame (§3.4)
-- **ListPage Selection Mode** — app-wide hide-by-default multi-select pattern, plus the `titleSlot` header override (§9)
+- **ListPage Selection Mode** — app-wide hide-by-default multi-select with a **contextual bottom action bar** (`bulkActions`, incl. a move/target-picker sheet) that replaces the `BottomNav`, plus deferred-delete + Undo and the `titleSlot` header override (§9)
 - **SelectableList** — list template with `selectionMode`-gated per-row checkboxes (§10)
 - **EditableRow** — single-row primitive with an `onToggleSelect`-gated checkbox (§11)
 
@@ -411,34 +411,120 @@ Rationale:
 
 ## 9.1 Overview
 
-`ListPage` supports an app-wide **Selection Mode** pattern: multi-select is hidden by default; the list is "clean" with only each row's primary action visible. A built-in **"Select" button** in the page header switches into selection mode, revealing the `selectionBar` and per-row select controls. A **"Done" button** (replacing "Select" in the header) exits selection mode.
+`ListPage` supports an app-wide **Selection Mode** built around a **contextual action mode** (Android-style): multi-select is hidden by default; the list is "clean" with only each row's primary action visible. A built-in **"Select" button** in the page header switches into selection mode, revealing the top **select-all** control (`selectionBar`) and per-row select controls. A **"Done" button** (replacing "Select" in the header) exits selection mode.
 
-Pattern precedent: iOS Reminders, Apple Mail, Google Tasks, Todoist.
+Once at least one item is selected, bulk actions appear in a **contextual bottom action bar** that the template renders and that **replaces** the app's `BottomNav` (it is painted over the nav at a higher z-index, not stacked above it). Pages declare these actions declaratively via the `bulkActions` prop — they do **not** render their own bottom bar. A `picker`-type action (e.g. "Move to…") opens a template-owned bottom `Sheet` of targets. Bulk **delete** uses **deferred-delete + an Undo snackbar** — items hide immediately and the real delete commits only when the undo window lapses; there is **no confirm dialog** and **no soft-delete/tombstones** (see §9.3.3).
+
+Pattern precedent: Android contextual action bar; iOS Reminders/Mail multi-select.
 
 ## 9.2 Behaviour
 
 ### Default state (selection mode off)
 - No per-row select checkboxes are visible.
-- The `selectionBar` snippet is not rendered.
+- The `selectionBar` (top select-all) snippet is not rendered, and no contextual bottom bar is shown.
 - The header shows a "Select" `outline`, `size="sm"` button (only when a `selectionBar` snippet is provided).
 
 ### Selection mode on
-- The `selectionBar` snippet is rendered in the grey bar between toolbar and content.
+- The `selectionBar` snippet (typically a single select-all `Checkbox`) is rendered in the bar between toolbar and content.
 - Per-row select controls become visible (consuming pages gate them on their page-local `selectionMode` — see §9.4).
 - The "Select" button is replaced by a "Done" `outline`, `size="sm"` button in the header.
+- **Once `selectionCount > 0`**, the contextual bottom action bar (`bulkActions`) appears, replacing the `BottomNav`; the template reserves matching bottom content padding so the last rows are not hidden behind it.
 
 > Button variant: the Select/Done toggle uses `variant="outline"` (not `ghost`) so it reads as an affordance against the header background and lines up with the `size="sm"` convention documented on the `actions` prop.
 
 ### Exiting selection mode
 - Tapping "Done" sets `selectionMode = false` inside `ListPage`, which propagates back to the consuming page via the binding.
-- The `selectionBar` is hidden again; per-row controls disappear.
+- The `selectionBar`, per-row controls, and the contextual bottom bar are all hidden again; the `BottomNav` returns.
 - Consuming pages clear their `selected` Set by reacting to `selectionMode` becoming `false` (see §9.5).
 
 ## 9.3 `ListPage` props changes
 
-One new prop: `selectionMode?: boolean` (bindable, default `false`). Consuming pages bind to it to observe and react to mode state. The "Select"/"Done" toggle still appears automatically whenever a `selectionBar` snippet is provided — the page never needs to manage the toggle itself.
+Three selection-related props:
+
+- `selectionMode?: boolean` (bindable, default `false`). Consuming pages bind to it to observe and react to mode state. The "Select"/"Done" toggle still appears automatically whenever a `selectionBar` snippet is provided — the page never needs to manage the toggle itself.
+- `selectionCount?: number` (default `0`). The number of currently-selected items. Drives contextual-bar visibility (the bar shows only when `selectionMode && selectionCount > 0`) and the default picker-sheet title. The page owns selection state; this prop is just the count.
+- `bulkActions?: BulkAction[]`. The actions rendered in the contextual bottom bar (§9.3.1).
 
 `ListPageProps` is an open interface that extends `Omit<HTMLAttributes<HTMLElement>, 'class'>`. Any attribute valid on `<section>` is accepted and spread onto the root `<section>` element (e.g. `data-*`, `aria-*`, `id`). The `class` prop is reserved and handled internally.
+
+### 9.3.1 `BulkAction` — declarative contextual bar
+
+Each bar entry is a `BulkAction`. The template owns the bar chrome (layout, icon-over-label buttons, destructive tint, disabled state) so every list page looks identical; pages supply only data + handlers. Icons are names from the shared `Icon` set (`BulkActionIcon = keyof typeof import('@lucide/svelte').icons`).
+
+```ts
+type BulkAction =
+  | {
+      kind?: 'button';            // default
+      id: string;                 // stable key
+      label: string;              // "Check", "Delete"
+      icon: BulkActionIcon;       // "CircleCheck", "Trash2"
+      variant?: 'default' | 'destructive';
+      disabled?: boolean;
+      testId?: string;            // data-testid override (else "list-page-bulk-action")
+      onSelect: () => void;
+    }
+  | {
+      kind: 'picker';             // opens a template-owned bottom Sheet of targets
+      id: string;
+      label: string;              // "Move"
+      icon: BulkActionIcon;       // "FolderInput"
+      disabled?: boolean;
+      testId?: string;
+      sheetTitle?: string;        // "Move 3 items to…" (defaults to label)
+      targets: { id: string; label: string }[];
+      optionTestId?: string;      // data-testid for each option (else "list-page-bulk-picker-option")
+      onPick: (targetId: string) => void;
+    };
+```
+
+Worked call-site (shopping):
+
+```svelte
+<ListPage
+  bind:selectionMode
+  selectionCount={selectedCount}
+  bulkActions={[
+    { id: 'check',   label: 'Check',   icon: 'CircleCheck', onSelect: handleBulkCheck },
+    { id: 'uncheck', label: 'Uncheck', icon: 'Circle',      onSelect: handleBulkUncheck },
+    { kind: 'picker', id: 'move', label: 'Move', icon: 'FolderInput',
+      disabled: otherLists.length === 0,
+      sheetTitle: `Move ${selectedCount} item${selectedCount === 1 ? '' : 's'} to…`,
+      targets: otherLists.map((l) => ({ id: l.id, label: l.name })),
+      onPick: handleMoveTo },
+    { id: 'delete', label: 'Delete', icon: 'Trash2', variant: 'destructive', onSelect: handleBulkDelete },
+  ]}
+>
+  {#snippet selectionBar()}<Checkbox … />{/snippet}
+  {#snippet children()}…rows…{/snippet}
+</ListPage>
+```
+
+### 9.3.2 Move / target picker
+
+A `kind: 'picker'` action renders, in the bottom bar, a button that opens a template-owned bottom `Sheet` listing `targets`. Selecting one fires `onPick(targetId)` and closes the sheet. The template owns the sheet entirely — pages do not render their own move sheet. Use a picker for "move into one of N containers" flows (shopping lists, folders); use a plain `button` action whose `onSelect` opens a bespoke `Dialog` for genuinely complex flows that the simple target list can't represent (e.g. aisle merge with per-item choices, or an aisle delete that must disclose affected items).
+
+### 9.3.3 Deferred bulk delete + Undo snackbar
+
+The canonical bulk-delete is **deferred-delete + Undo snackbar, with no confirm dialog and no soft-delete/tombstones** (true to Firestore-as-master): selected items hide immediately, and the real Firestore delete commits only once the Undo toast lapses. Pressing **Undo** cancels the commit, so nothing is ever deleted and no restore path is required.
+
+`ListPage` stays toast-free — the toast is app-level (§ Toast / `toastStore`), because `@salt/ui-components` must not depend on the app's toast store. The repeated hide → commit → undo orchestration lives in the shared web-pwa helper `createDeferredDelete()` (`apps/web-pwa/src/lib/deferredDelete.svelte.ts`):
+
+```ts
+const deferredDelete = createDeferredDelete();
+// hide pending-deleted rows from rendering:
+const visibleItems = $derived(deferredDelete.visible($items));
+
+function handleBulkDelete() {
+  const ids = [...selected];
+  selectionMode = false;
+  deferredDelete.request(ids, async (delIds) => {
+    const result = await removeItems(delIds);
+    if (result.kind !== 'ok') addToast('Failed to delete items.', 'destructive');
+  });
+}
+```
+
+A `Delete` `BulkAction` (`variant: 'destructive'`) simply calls the page's `handleBulkDelete` from `onSelect`; the template renders the button but owns none of the delete semantics. Pages with consequential structural deletes that need disclosure (aisle management) keep a `Dialog`, triggered from a bar action's `onSelect` instead.
 
 ### `titleSlot` — custom header title
 
@@ -524,6 +610,8 @@ Do **not** call `LIST_PAGE_CONTEXT.get()` in a consuming page's own `<script>` b
 ## 9.8 Forbidden
 
 - Do not re-implement the "Select"/"Done" toggle in consuming pages.
+- Do not render a bespoke bottom action bar or move/target `Sheet` in a consuming page — declare `bulkActions` (incl. `kind: 'picker'`) and let `ListPage` own the chrome. (Pre-`#115` pages each hand-rolled a `fixed bottom-0` bar; that is now superseded.)
+- Do not gate bulk **delete** behind a confirm dialog or implement soft-delete/tombstones — use the deferred-delete + Undo pattern via `createDeferredDelete()` (§9.3.3). The only exception is a consequential structural delete that must disclose side-effects (aisle management), which may keep a `Dialog` triggered from a bar action.
 - Do not call `LIST_PAGE_CONTEXT.get()` from a consuming page's `<script>` block — it is outside the context tree and will throw.
 
 ---
@@ -533,6 +621,8 @@ Do **not** call `LIST_PAGE_CONTEXT.get()` in a consuming page's own `<script>` b
 ## 10.1 Overview
 
 `SelectableList<T>` renders a vertical list of rows from an `items` array, each row produced by a caller-supplied `row` snippet, with an optional per-row select `Checkbox` driven by a bound `selected` Set. It is the row-rendering counterpart to `ListPage`'s Selection Mode (§9): a consuming page typically passes its own `selectionMode` down so the checkboxes appear only while selecting.
+
+> **Scope: rows only.** `SelectableList` renders rows + per-row checkboxes and tracks the `selected` Set; it does **not** own bulk actions. Bulk actions belong to `ListPage`'s contextual action bar via `bulkActions` (§9.3.1). `SelectableList` has no `bulkActions` prop — a page composes `SelectableList` inside `ListPage`'s `children` and declares `bulkActions` on the `ListPage`.
 
 ## 10.2 Props
 

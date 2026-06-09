@@ -2,15 +2,10 @@
   import {
     Button,
     Checkbox,
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
     ListPage,
     SelectableList,
     Spinner,
+    type BulkAction,
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
   import {
@@ -19,20 +14,22 @@
     removeEquipmentItems,
   } from '../../lib/equipmentService.js';
   import { addToast } from '../../lib/toastStore.js';
+  import { createDeferredDelete } from '../../lib/deferredDelete.svelte.js';
 
   let selectionMode = $state(false);
   let selected = $state(new Set<string>());
-  let showDeleteDialog = $state(false);
-  let deleteBusy = $state(false);
 
   $effect(() => {
     if (!selectionMode) selected = new Set();
   });
 
+  const deferredDelete = createDeferredDelete();
+
   const items = $derived($equipment?.items ?? []);
   const sorted = $derived([...items].sort((a, b) => a.name.localeCompare(b.name)));
+  const visibleItems = $derived(deferredDelete.visible(sorted));
 
-  const allIds = $derived(sorted.map((i) => i.id));
+  const allIds = $derived(visibleItems.map((i) => i.id));
   const allSelected = $derived(allIds.length > 0 && allIds.every((id) => selected.has(id)));
   const someSelected = $derived(allIds.some((id) => selected.has(id)) && !allSelected);
   const selectedCount = $derived(allIds.filter((id) => selected.has(id)).length);
@@ -41,27 +38,37 @@
     selected = allSelected ? new Set() : new Set(allIds);
   }
 
-  async function handleDelete(): Promise<void> {
+  function handleBulkDelete(): void {
     if (selectedCount === 0) return;
-    deleteBusy = true;
-    const ids = [...selected];
-    const result = await removeEquipmentItems(ids);
-    deleteBusy = false;
-    showDeleteDialog = false;
-    selected = new Set();
-    if (result.kind !== 'ok') {
-      addToast('Failed to delete items.', 'error');
-    }
+    const ids = [...selected].filter((id) => allIds.includes(id));
+    selectionMode = false; // the $effect on selectionMode clears `selected`
+    deferredDelete.request(ids, async (delIds) => {
+      const result = await removeEquipmentItems([...delIds]);
+      if (result.kind !== 'ok') addToast('Failed to delete items.', 'destructive');
+    });
   }
+
+  const bulkActions = $derived<BulkAction[]>([
+    {
+      id: 'delete',
+      label: 'Delete',
+      icon: 'Trash2',
+      variant: 'destructive',
+      testId: 'equipment-bulk-delete',
+      onSelect: handleBulkDelete,
+    },
+  ]);
 </script>
 
 <ListPage
   title="Kitchen"
   description="Your equipment manifest."
   isLoading={$isLoadingEquipment}
-  isEmpty={items.length === 0}
+  isEmpty={visibleItems.length === 0}
   class="p-4 sm:p-6"
   bind:selectionMode
+  selectionCount={selectedCount}
+  {bulkActions}
 >
   {#snippet actions()}
     <Button size="sm" onclick={() => push('/equipment/new')}>Add equipment</Button>
@@ -73,19 +80,11 @@
       onCheckedChange={toggleAll}
       label={selectedCount > 0 ? `${selectedCount} selected` : 'Select all'}
     />
-    {#if selectedCount > 0}
-      <div class="flex items-center gap-2">
-        <Button variant="destructive" size="sm" onclick={() => (showDeleteDialog = true)}>
-          Delete
-        </Button>
-        <Button variant="ghost" size="sm" onclick={() => (selected = new Set())}>Clear</Button>
-      </div>
-    {/if}
   {/snippet}
 
   {#snippet children()}
     <div data-testid="equipment-list">
-      <SelectableList items={sorted} bind:selected {selectionMode}>
+      <SelectableList items={visibleItems} bind:selected {selectionMode}>
         {#snippet row(item)}
           <button
             class="w-full text-left text-sm font-medium hover:underline"
@@ -110,38 +109,6 @@
     </div>
   {/snippet}
 </ListPage>
-
-<Dialog
-  open={showDeleteDialog}
-  onOpenChange={(v) => {
-    if (!v) showDeleteDialog = false;
-  }}
->
-  <DialogContent>
-    <div class="flex flex-col gap-4" data-testid="equipment-delete-dialog">
-      <DialogHeader>
-        <DialogTitle>
-          Delete {selectedCount} item{selectedCount === 1 ? '' : 's'}?
-        </DialogTitle>
-        <DialogDescription>This cannot be undone.</DialogDescription>
-      </DialogHeader>
-      <DialogFooter>
-        <Button variant="outline" onclick={() => (showDeleteDialog = false)} disabled={deleteBusy}>
-          Cancel
-        </Button>
-        <Button
-          variant="destructive"
-          onclick={handleDelete}
-          loading={deleteBusy}
-          disabled={deleteBusy}
-          data-testid="equipment-delete-confirm"
-        >
-          Delete
-        </Button>
-      </DialogFooter>
-    </div>
-  </DialogContent>
-</Dialog>
 
 {#if $isLoadingEquipment}
   <div class="flex items-center justify-center py-8">

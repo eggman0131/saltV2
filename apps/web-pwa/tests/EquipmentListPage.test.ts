@@ -38,6 +38,7 @@ vi.mock('../src/lib/equipmentService.js', () => ({
 import EquipmentListPage from '../src/routes/equipment/EquipmentListPage.svelte';
 import { push } from 'svelte-spa-router';
 import { removeEquipmentItems } from '../src/lib/equipmentService.js';
+import { addToast } from '../src/lib/toastStore.js';
 
 function item(
   id: string,
@@ -132,36 +133,71 @@ describe('EquipmentListPage', () => {
     await waitFor(() => expect(screen.getByText(/2 selected/i)).toBeInTheDocument());
   });
 
-  it('clear button deselects all items', async () => {
+  it('toggling select-all off deselects all items and hides the bulk action bar', async () => {
     mockEquipment._set(manifest([item('a', 'Blender')]));
     render(EquipmentListPage);
     await userEvent.click(screen.getByRole('button', { name: /^select$/i }));
     await userEvent.click(screen.getByRole('checkbox', { name: /select all/i }));
-    await waitFor(() => screen.getByRole('button', { name: /clear/i }));
-    await userEvent.click(screen.getByRole('button', { name: /clear/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^delete$/i })).toBeInTheDocument(),
+    );
+    // The select-all checkbox now reads "1 selected"; clicking it again clears the selection.
+    await userEvent.click(screen.getByRole('checkbox', { name: /1 selected/i }));
     await waitFor(() =>
       expect(screen.queryByRole('button', { name: /^delete$/i })).not.toBeInTheDocument(),
     );
   });
 
-  it('multi-select confirm-and-delete flow calls removeEquipmentItems', async () => {
+  it('multi-select delete hides the item immediately and commits on undo-toast dismiss', async () => {
     mockEquipment._set(manifest([item('to-delete', 'Old Blender')]));
     render(EquipmentListPage);
 
     await userEvent.click(screen.getByRole('button', { name: /^select$/i }));
-    const checkbox = screen.getByRole('checkbox', { name: /select all/i });
-    await userEvent.click(checkbox);
+    await userEvent.click(screen.getByRole('checkbox', { name: /select all/i }));
 
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /^delete$/i })).toBeInTheDocument(),
     );
     await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
 
-    await waitFor(() => screen.getByTestId('equipment-delete-dialog'));
-    await userEvent.click(screen.getByTestId('equipment-delete-confirm'));
+    // Deferred-delete: the row is hidden immediately and an Undo toast is raised,
+    // but the real delete has not run yet (no confirm dialog).
+    await waitFor(() =>
+      expect(screen.queryByTestId('equipment-list-item')).not.toBeInTheDocument(),
+    );
+    expect(vi.mocked(addToast)).toHaveBeenCalledTimes(1);
+    const [message, , options] = vi.mocked(addToast).mock.calls[0]!;
+    expect(message).toMatch(/deleted/i);
+    expect(options?.action?.label).toBe('Undo');
+    expect(vi.mocked(removeEquipmentItems)).not.toHaveBeenCalled();
 
-    await waitFor(() => {
-      expect(vi.mocked(removeEquipmentItems)).toHaveBeenCalledWith(['to-delete']);
-    });
+    // Letting the toast lapse commits the delete.
+    options?.onDismiss?.();
+    await waitFor(() =>
+      expect(vi.mocked(removeEquipmentItems)).toHaveBeenCalledWith(['to-delete']),
+    );
+  });
+
+  it('undoing the delete keeps the item and never calls removeEquipmentItems', async () => {
+    mockEquipment._set(manifest([item('keep', 'Old Blender')]));
+    render(EquipmentListPage);
+
+    await userEvent.click(screen.getByRole('button', { name: /^select$/i }));
+    await userEvent.click(screen.getByRole('checkbox', { name: /select all/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^delete$/i })).toBeInTheDocument(),
+    );
+    await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('equipment-list-item')).not.toBeInTheDocument(),
+    );
+    const [, , options] = vi.mocked(addToast).mock.calls[0]!;
+
+    // Undo reveals the item; a subsequent dismiss must not commit the delete.
+    options?.action?.onClick?.();
+    await waitFor(() => expect(screen.getByTestId('equipment-list-item')).toBeInTheDocument());
+    options?.onDismiss?.();
+    expect(vi.mocked(removeEquipmentItems)).not.toHaveBeenCalled();
   });
 });
