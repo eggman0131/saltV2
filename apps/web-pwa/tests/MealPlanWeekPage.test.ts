@@ -285,6 +285,25 @@ describe('MealPlanWeekPage', () => {
     expect(vi.mocked(setWeekDayChefs)).toHaveBeenCalledWith('2026-06-08', ['alice@e.org']);
   });
 
+  it('chef toggle styling reacts to selection state', async () => {
+    const chefDay = (chefs: string[]) => ({
+      ...emptyWeek('2026-06-08'),
+      days: {
+        ...emptyWeek('2026-06-08').days,
+        '2026-06-08': { note: '', recipeIds: [], chefs, attendees: [], guests: 0 },
+      },
+    });
+    mockWeek._set(chefDay(['alice@e.org']));
+    render(MealPlanWeekPage);
+    await expandDay('2026-06-08');
+    const btn = screen.getByTestId('day-2026-06-08-chef-alice@e.org');
+    expect(btn.className).toContain('bg-amber-500');
+
+    // Deselecting (chefs back to empty) must drop the selected colour.
+    mockWeek._set(chefDay([]));
+    await waitFor(() => expect(btn.className).not.toContain('bg-amber-500'));
+  });
+
   it('adjusts the guest count through the service', async () => {
     render(MealPlanWeekPage);
     await expandDay('2026-06-08');

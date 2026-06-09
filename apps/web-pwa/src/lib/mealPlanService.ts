@@ -90,6 +90,10 @@ export const currentWeek: Readable<MealPlanWeek> = derived(
 let configUnsub: (() => void) | null = null;
 let templateUnsub: (() => void) | null = null;
 let weekUnsub: (() => void) | null = null;
+// Newest week `updatedAt` we've applied (from a local optimistic write or an
+// accepted snapshot). Guards against an in-flight stale snapshot echo landing
+// after a newer local edit and reverting it (e.g. select-then-deselect chef).
+let latestWeekUpdatedAt = '';
 
 function firstDay(): Weekday {
   return get(_config)?.firstDayOfWeek ?? DEFAULT_FIRST_DAY;
@@ -103,10 +107,17 @@ function syncWeekSubscription(): void {
   weekUnsub?.();
   _subscribedStart.set(start);
   _week.set(null);
+  latestWeekUpdatedAt = '';
   _isLoadingWeek.set(true);
   weekUnsub = subscribeMealPlanWeek(
     start,
     (w) => {
+      // Drop a stale snapshot that predates a newer local edit of this week.
+      if (w && w.updatedAt < latestWeekUpdatedAt) {
+        _isLoadingWeek.set(false);
+        return;
+      }
+      if (w) latestWeekUpdatedAt = w.updatedAt;
       _week.set(w);
       _isLoadingWeek.set(false);
     },
@@ -172,6 +183,7 @@ function currentTemplateObject(): MealPlanTemplate {
 // Stamp updatedAt, update the store optimistically, then persist.
 async function persistWeek(week: MealPlanWeek): Promise<ReadResult<void, DomainError>> {
   const stamped: MealPlanWeek = { ...week, updatedAt: new Date().toISOString() };
+  latestWeekUpdatedAt = stamped.updatedAt;
   _week.set(stamped);
   return saveMealPlanWeek(stamped);
 }
@@ -259,6 +271,7 @@ export function __resetMealPlanServiceForTest(): void {
   templateUnsub?.();
   weekUnsub?.();
   configUnsub = templateUnsub = weekUnsub = null;
+  latestWeekUpdatedAt = '';
   _config.set(null);
   _template.set(null);
   _week.set(null);
@@ -283,6 +296,7 @@ export function seedMealPlanTemplate(template: MealPlanTemplate | null): void {
 export function seedMealPlanWeek(week: MealPlanWeek): void {
   _anchorDate.set(week.startDate);
   _subscribedStart.set(week.startDate);
+  latestWeekUpdatedAt = week.updatedAt;
   _week.set(week);
   _isLoadingWeek.set(false);
 }

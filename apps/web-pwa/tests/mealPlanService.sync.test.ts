@@ -31,6 +31,7 @@ import {
   prevWeek,
   loadTemplateIntoCurrentWeek,
   setWeekDayNote,
+  setWeekDayChefs,
   saveFirstDayOfWeek,
   setTemplateDayNote,
   seedMealPlanConfig,
@@ -97,6 +98,34 @@ describe('mealPlanService — subscriptions', () => {
     const week = get(currentWeek);
     expect(Object.keys(week.days)).toHaveLength(7);
     expect(week.updatedAt).toBe('');
+  });
+
+  it('ignores a stale week snapshot that predates a newer local edit', () => {
+    const { emitWeek } = wireSubscriptions();
+    initMealPlanSync();
+    seedMealPlanConfig(CONFIG);
+    goToWeek('2026-06-08');
+    const start = '2026-06-08';
+    const chefWeek = (chefs: string[], updatedAt: string): MealPlanWeek => ({
+      ...emptyWeek(start),
+      days: {
+        ...emptyWeek(start).days,
+        [start]: { note: '', recipeIds: [], chefs, attendees: [], guests: 0 },
+      },
+      updatedAt,
+    });
+
+    // Initial doc has alice as chef (older timestamp).
+    emitWeek(chefWeek(['alice@e.org'], '2026-06-08T10:00:00.000Z'));
+    expect(getMealPlanWeekSnapshot().days[start]!.chefs).toEqual(['alice@e.org']);
+
+    // Local deselect → optimistic update stamps a newer updatedAt.
+    void setWeekDayChefs(start, []);
+    expect(getMealPlanWeekSnapshot().days[start]!.chefs).toEqual([]);
+
+    // A stale in-flight snapshot echo of the OLD chef state must be ignored.
+    emitWeek(chefWeek(['alice@e.org'], '2026-06-08T10:00:00.000Z'));
+    expect(getMealPlanWeekSnapshot().days[start]!.chefs).toEqual([]);
   });
 
   it('re-subscribes when firstDayOfWeek changes which date the week starts on', () => {
