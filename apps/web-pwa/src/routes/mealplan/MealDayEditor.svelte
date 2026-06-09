@@ -181,12 +181,11 @@
                   data-testid={`${testid}-attend-${m.id}`}
                 />
               </div>
-              {#if isAttending(m.id) || isChef(m.id)}
+              {#if isAttending(m.id)}
                 <input
                   type="time"
-                  class="h-8 rounded-md border bg-background px-2 text-sm disabled:opacity-40"
+                  class="h-8 rounded-md border bg-background px-2 text-sm"
                   value={a?.homeTime ?? ''}
-                  disabled={!isAttending(m.id)}
                   onfocus={(e) => {
                     // Seed the picker from the usual dinner time when blank (DOM
                     // only — nothing is saved until the user actually picks one).
@@ -203,15 +202,20 @@
                   aria-label={`${m.name} home time`}
                   data-testid={`${testid}-time-${m.id}`}
                 />
-                <Button
-                  variant={isChef(m.id) ? 'default' : 'outline'}
-                  size="sm"
-                  onclick={() => onChefToggle(m.id)}
-                  data-testid={`${testid}-chef-${m.id}`}
-                >
-                  <ChefHat class="mr-1 h-3.5 w-3.5" /> Chef
-                </Button>
               {/if}
+              <!-- Chef is independent of attending: a chef need not eat. -->
+              <Button
+                variant="outline"
+                size="sm"
+                class={isChef(m.id)
+                  ? 'border-amber-500 bg-amber-500 text-white hover:bg-amber-600 hover:text-white'
+                  : ''}
+                onclick={() => onChefToggle(m.id)}
+                aria-pressed={isChef(m.id)}
+                data-testid={`${testid}-chef-${m.id}`}
+              >
+                <ChefHat class="mr-1 h-3.5 w-3.5" /> Chef
+              </Button>
             </div>
             {#if isAttending(m.id)}
               <input

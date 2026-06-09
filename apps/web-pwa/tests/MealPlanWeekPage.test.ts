@@ -62,6 +62,7 @@ import {
   loadTemplateIntoCurrentWeek,
   setWeekDayNote,
   setWeekDayGuests,
+  setWeekDayChefs,
   addWeekAttendee,
   setWeekAttendeeHomeTime,
 } from '../src/lib/mealPlanService.js';
@@ -274,6 +275,14 @@ describe('MealPlanWeekPage', () => {
     // Blurring without picking re-syncs back to the committed blank value.
     await fireEvent.blur(timeInput);
     expect(timeInput.value).toBe('');
+  });
+
+  it('lets a non-attending member be set as chef', async () => {
+    render(MealPlanWeekPage);
+    await expandDay('2026-06-08');
+    // Alice is not attending; the Chef toggle is still present and works.
+    await userEvent.click(screen.getByTestId('day-2026-06-08-chef-alice@e.org'));
+    expect(vi.mocked(setWeekDayChefs)).toHaveBeenCalledWith('2026-06-08', ['alice@e.org']);
   });
 
   it('adjusts the guest count through the service', async () => {
