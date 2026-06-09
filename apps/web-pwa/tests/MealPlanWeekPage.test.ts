@@ -133,7 +133,7 @@ describe('MealPlanWeekPage', () => {
     await userEvent.click(within(attendWrap).getByRole('checkbox'));
     expect(vi.mocked(addWeekAttendee)).toHaveBeenCalledWith(
       '2026-06-08',
-      expect.objectContaining({ memberId: 'alice@e.org', homeTime: null }),
+      expect.objectContaining({ memberId: 'alice@e.org', homeTime: '18:30' }),
     );
 
     // With Alice attending, the home-time input appears; leaving it blank saves null.
@@ -202,6 +202,49 @@ describe('MealPlanWeekPage', () => {
     render(MealPlanWeekPage);
     await expandDay('2026-06-08');
     expect(screen.getByTestId('day-2026-06-08-unknown-gone@e.org')).toBeInTheDocument();
+  });
+
+  it('shows home time and a note indicator on the collapsed row', () => {
+    mockWeek._set({
+      ...emptyWeek('2026-06-08'),
+      days: {
+        ...emptyWeek('2026-06-08').days,
+        '2026-06-08': {
+          note: 'Roast',
+          recipeIds: [],
+          chefs: [],
+          attendees: [
+            { memberId: 'alice@e.org', homeTime: '18:00', note: 'late' },
+            { memberId: 'bob@e.org', homeTime: null, note: '' },
+          ],
+          guests: 0,
+        },
+      },
+    });
+    render(MealPlanWeekPage);
+    const summary = screen.getByTestId('day-2026-06-08-summary');
+    // Alice's time shows; Bob's blank time shows nothing.
+    expect(summary.textContent).toContain('18:00');
+    // A note exists, so the indicator is present.
+    expect(screen.getByTestId('day-2026-06-08-note-indicator')).toBeInTheDocument();
+  });
+
+  it('omits the note indicator when no attendee has a note', () => {
+    mockWeek._set({
+      ...emptyWeek('2026-06-08'),
+      days: {
+        ...emptyWeek('2026-06-08').days,
+        '2026-06-08': {
+          note: 'Roast',
+          recipeIds: [],
+          chefs: [],
+          attendees: [{ memberId: 'alice@e.org', homeTime: '18:00', note: '' }],
+          guests: 0,
+        },
+      },
+    });
+    render(MealPlanWeekPage);
+    expect(screen.queryByTestId('day-2026-06-08-note-indicator')).not.toBeInTheDocument();
   });
 
   it('adjusts the guest count through the service', async () => {

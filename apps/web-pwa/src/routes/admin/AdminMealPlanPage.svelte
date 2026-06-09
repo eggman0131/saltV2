@@ -51,7 +51,8 @@
     if (attending) {
       void removeTemplateAttendee(weekday, memberId);
     } else {
-      const attendee: Attendee = { memberId, homeTime: null, note: '' };
+      // Default to the usual dinner time; clearable to blank afterwards.
+      const attendee: Attendee = { memberId, homeTime: '18:30', note: '' };
       void addTemplateAttendee(weekday, attendee);
     }
   }
