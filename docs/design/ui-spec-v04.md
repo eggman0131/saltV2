@@ -1,7 +1,7 @@
 # Salt 2.0 — UI Primitives Specification (v0.4)
 
 **Status:** Planning  
-**Scope:** `@salt/ui-components` — Combobox (incl. `ComboboxField`); ListPage Selection Mode (incl. `titleSlot`); SelectableList; EditableRow  
+**Scope:** `@salt/ui-components` — Combobox (incl. `ComboboxField`); ListPage Selection Mode (incl. `titleSlot`); list selection (`createListSelection` + `SelectableList` / `SelectAllCheckbox` / `RowSelectCheckbox`); EditableRow  
 **Audience:** AI code-generation agents + human contributors
 
 > Rule: If anything is missing or ambiguous → STOP → extend this spec → regenerate.  
@@ -18,7 +18,7 @@ v0.4 introduces:
 
 - **Combobox** — text input + popup listbox + filtering + optional custom values, with the optional `ComboboxField` joined-input frame (§3.4)
 - **ListPage Selection Mode** — app-wide hide-by-default multi-select with a **contextual bottom action bar** (`bulkActions`, incl. a move/target-picker sheet) that replaces the `BottomNav`, plus deferred-delete + Undo and the `titleSlot` header override (§9)
-- **SelectableList** — list template with `selectionMode`-gated per-row checkboxes (§10)
+- **List selection** — one shared `createListSelection` controller behind `SelectableList`, `SelectAllCheckbox`, and `RowSelectCheckbox`, so every list page shares the same selection logic instead of hand-rolling it (§10)
 - **EditableRow** — single-row primitive with an `onToggleSelect`-gated checkbox (§11)
 
 APG pattern: **Autocomplete (Listbox)**.
@@ -616,44 +616,81 @@ Do **not** call `LIST_PAGE_CONTEXT.get()` in a consuming page's own `<script>` b
 
 ---
 
-# 10. SelectableList (template)
+# 10. List selection (`createListSelection` + `SelectableList` / `SelectAllCheckbox` / `RowSelectCheckbox`)
 
 ## 10.1 Overview
 
-`SelectableList<T>` renders a vertical list of rows from an `items` array, each row produced by a caller-supplied `row` snippet, with an optional per-row select `Checkbox` driven by a bound `selected` Set. It is the row-rendering counterpart to `ListPage`'s Selection Mode (§9): a consuming page typically passes its own `selectionMode` down so the checkboxes appear only while selecting.
+Multi-selection across the app's list pages is owned by **one** shared controller, `createListSelection`, plus three thin presentational components that read from it. Before, every list page (shopping, canon, aisle, equipment) hand-rolled the same `selected` Set, the `allSelected` / `someSelected` / `count` deriveds, the `toggle` / `toggleAll` helpers, the auto-clear `$effect`, and its own select-all / per-row checkboxes. That logic now lives once, in the controller.
 
-> **Scope: rows only.** `SelectableList` renders rows + per-row checkboxes and tracks the `selected` Set; it does **not** own bulk actions. Bulk actions belong to `ListPage`'s contextual action bar via `bulkActions` (§9.3.1). `SelectableList` has no `bulkActions` prop — a page composes `SelectableList` inside `ListPage`'s `children` and declares `bulkActions` on the `ListPage`.
+The pieces:
 
-## 10.2 Props
+- **`createListSelection(options)`** — the selection "brain". Owns the `selected` Set and derives `allSelected` / `someSelected` / `count` from a scope (`getAllIds`). Sources selection mode from the page (`isSelectionMode`) and **auto-clears the selection when mode turns off**, replacing the per-page `$effect`.
+- **`SelectableList<T>`** — renders a flat `<ul>` of rows from `items`, each produced by a caller `row` snippet, with the per-row select checkbox gated on `selection.selectionMode`. Used for simple flat lists (equipment).
+- **`SelectAllCheckbox`** — the header/`selectionBar` select-all control (tri-state + "N selected" label), wired entirely from the controller.
+- **`RowSelectCheckbox`** — a single per-row select checkbox wired to the controller by `id`, for pages whose row layout is bespoke (shopping's trolley rows, aisle's drag-drop `SortableList` rows) and so cannot use `SelectableList`'s flat container.
 
-| Name            | Type                                                       | Default          | Notes                                                       |
-| --------------- | ---------------------------------------------------------- | ---------------- | ----------------------------------------------------------- |
-| `items`         | `T[]` where `T extends { id: string }`                     | —                | Rows to render; keyed by `item.id`                          |
-| `selected`      | `Set<string>` (bindable)                                   | `new Set()`      | IDs currently selected                                      |
-| `selectionMode` | `boolean`                                                  | `false`          | When `false`, the per-row `Checkbox` is **not rendered**    |
-| `row`           | `Snippet<[T, { selected: boolean; toggle: () => void }]>`  | —                | Renders each row's content; receives the item + row helpers |
-| `class`         | `string \| undefined`                                      | —                | Merged onto the `<ul>`                                      |
+> **Why a controller, not one mega-component.** The four lists are structurally divergent — flat (equipment), grouped + sectioned (canon, shopping), collapsible (shopping), and drag-drop sortable (aisle). Forcing them all through a single list container would couple selection to grouping/sorting. Instead the *selection logic* is unified in the controller; each page keeps its own structure and composes the shared checkboxes. Canon reuses `EditableRow`'s built-in checkbox (driven by the controller via `selected` / `onToggleSelect`).
 
-## 10.3 Behaviour
+> **Scope: selection only.** None of these own bulk actions. Bulk actions belong to `ListPage`'s contextual action bar via `bulkActions` (§9.3.1). A page composes the list/checkboxes inside `ListPage`'s `children` / `selectionBar` and declares `bulkActions` on the `ListPage`, passing `selectionCount={selection.count}`.
 
-- **`selectionMode` gates the checkbox.** When `selectionMode` is `false` (the default), no `Checkbox` is rendered and the list reads as a plain, clean list. When `true`, each row renders a leading `Checkbox` bound to membership in `selected`.
-- Toggling a row's checkbox (or calling the `toggle` helper passed into the `row` snippet) adds/removes that `item.id` from `selected` immutably (a new `Set` is assigned so bindings react).
-- Selected rows get a `ring-2 ring-ring border-ring` treatment on the row container.
-- Rows use the base `rounded` (4px) surface radius (ui-spec-v02 §2.3).
+## 10.2 `createListSelection(options)`
 
-> **Default-off is a deliberate, behaviour-breaking contract.** A caller that does not pass `selectionMode` gets **no** checkboxes. This matches the app-wide hide-by-default selection pattern (§9.2); it is not a regression.
+**Options**
 
-## 10.4 Accessibility
+| Name              | Type               | Notes                                                                 |
+| ----------------- | ------------------ | --------------------------------------------------------------------- |
+| `getAllIds`       | `() => string[]`   | All currently-selectable ids in scope; drives `all`/`some`/`count` + `toggleAll` |
+| `isSelectionMode` | `() => boolean`    | Page's selection mode (bound to `ListPage`); selection clears on exit |
 
-- The list root is a `<ul>`; each row is an `<li>`.
-- When rendered, the `Checkbox` carries the selection state for assistive tech; the `row` snippet is responsible for the row's own accessible label/content.
+**Returns `ListSelection`**
 
-## 10.5 Testing requirements
+| Member         | Type                       | Notes                                                          |
+| -------------- | -------------------------- | -------------------------------------------------------------- |
+| `selectionMode`| `boolean` (readonly)       | Mirror of `isSelectionMode()`                                  |
+| `selected`     | `Set<string>` (readonly)   | Live selected ids (reactive)                                   |
+| `ids`          | `string[]` (readonly)      | Selected ids still in scope (`getAllIds`)                      |
+| `count`        | `number` (readonly)        | `ids.length`                                                   |
+| `allSelected`  | `boolean` (readonly)       | Every in-scope id selected                                     |
+| `someSelected` | `boolean` (readonly)       | Some, but not all, in-scope ids selected                       |
+| `isSelected(id)`| `(id) => boolean`         | Membership test                                                |
+| `toggle(id)`   | `(id) => void`             | Add/remove one id (immutable Set swap)                         |
+| `toggleAll()`  | `() => void`               | Select all in-scope, or clear when all already selected        |
+| `add(ids)`     | `(ids) => void`            | Add a subset (e.g. "select all pending")                       |
+| `remove(ids)`  | `(ids) => void`            | Remove a subset (e.g. after a partial bulk action)             |
+| `clear()`      | `() => void`               | Clear the whole selection                                      |
 
-- Checkbox is **absent** when `selectionMode={false}` (default) and **present** when `selectionMode={true}`.
-- Toggling a checkbox updates the bound `selected` Set (add and remove).
-- Selected rows reflect the selected styling.
-- `row` snippet receives the correct `selected` flag and a working `toggle`.
+## 10.3 Component props
+
+**`SelectableList<T>`**
+
+| Name        | Type                                                      | Default | Notes                                          |
+| ----------- | -------------------------------------------------------- | ------- | ---------------------------------------------- |
+| `items`     | `T[]` where `T extends { id: string }`                   | —       | Rows to render; keyed by `item.id`             |
+| `selection` | `ListSelection`                                          | —       | Shared controller; gates + drives the checkbox |
+| `row`       | `Snippet<[T, { selected: boolean; toggle: () => void }]>`| —       | Renders each row's content                     |
+| `class`     | `string \| undefined`                                    | —       | Merged onto the `<ul>`                         |
+
+**`SelectAllCheckbox`** — `{ selection: ListSelection }` (extra attrs forwarded to `Checkbox`).
+**`RowSelectCheckbox`** — `{ selection: ListSelection; id: string }` (extra attrs — `aria-label`, `labelledBy`, `data-testid`… — forwarded to `Checkbox`).
+
+## 10.4 Behaviour
+
+- **`selection.selectionMode` gates the per-row checkbox.** When mode is off, `SelectableList` renders no checkbox and reads as a plain list; bespoke pages gate their `RowSelectCheckbox` behind their own `{#if selectionMode}`.
+- `toggle` / `toggleAll` / `add` / `remove` mutate the selection immutably (a new `Set` is assigned so deriveds and bindings react).
+- Leaving selection mode (`isSelectionMode()` → `false`) clears the selection automatically.
+- Selected rows in `SelectableList` get a `ring-2 ring-ring border-ring` treatment; rows use the base `rounded` (4px) surface radius (ui-spec-v02 §2.3).
+
+## 10.5 Accessibility
+
+- `SelectableList`'s root is a `<ul>`; each row is an `<li>`.
+- The select checkboxes carry selection state for assistive tech; the `row` snippet (or bespoke row) is responsible for the row's own accessible label/content. `SelectAllCheckbox` exposes a "Select all" / "N selected" label.
+
+## 10.6 Testing requirements
+
+- Per-row checkbox is **absent** when `selection.selectionMode` is `false` and **present** when `true`.
+- Toggling a checkbox updates the controller's selection (add and remove); `toggleAll` selects/clears the in-scope set.
+- Leaving selection mode clears the selection.
+- Selected rows reflect the selected styling; the `row` snippet receives the correct `selected` flag and a working `toggle`.
 
 ---
 

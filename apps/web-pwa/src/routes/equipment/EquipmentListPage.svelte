@@ -1,10 +1,11 @@
 <script lang="ts">
   import {
     Button,
-    Checkbox,
     ListPage,
     SelectableList,
+    SelectAllCheckbox,
     Spinner,
+    createListSelection,
     type BulkAction,
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
@@ -17,11 +18,6 @@
   import { createDeferredDelete } from '../../lib/deferredDelete.svelte.js';
 
   let selectionMode = $state(false);
-  let selected = $state(new Set<string>());
-
-  $effect(() => {
-    if (!selectionMode) selected = new Set();
-  });
 
   const deferredDelete = createDeferredDelete();
 
@@ -30,18 +26,15 @@
   const visibleItems = $derived(deferredDelete.visible(sorted));
 
   const allIds = $derived(visibleItems.map((i) => i.id));
-  const allSelected = $derived(allIds.length > 0 && allIds.every((id) => selected.has(id)));
-  const someSelected = $derived(allIds.some((id) => selected.has(id)) && !allSelected);
-  const selectedCount = $derived(allIds.filter((id) => selected.has(id)).length);
-
-  function toggleAll() {
-    selected = allSelected ? new Set() : new Set(allIds);
-  }
+  const selection = createListSelection({
+    getAllIds: () => allIds,
+    isSelectionMode: () => selectionMode,
+  });
 
   function handleBulkDelete(): void {
-    if (selectedCount === 0) return;
-    const ids = [...selected].filter((id) => allIds.includes(id));
-    selectionMode = false; // the $effect on selectionMode clears `selected`
+    if (selection.count === 0) return;
+    const ids = selection.ids;
+    selectionMode = false; // exiting selection mode clears the selection
     deferredDelete.request(ids, async (delIds) => {
       const result = await removeEquipmentItems([...delIds]);
       if (result.kind !== 'ok') addToast('Failed to delete items.', 'destructive');
@@ -67,7 +60,7 @@
   isEmpty={visibleItems.length === 0}
   class="p-4 sm:p-6"
   bind:selectionMode
-  selectionCount={selectedCount}
+  selectionCount={selection.count}
   {bulkActions}
 >
   {#snippet actions()}
@@ -75,16 +68,12 @@
   {/snippet}
 
   {#snippet selectionBar()}
-    <Checkbox
-      checked={allSelected ? true : someSelected ? 'indeterminate' : false}
-      onCheckedChange={toggleAll}
-      label={selectedCount > 0 ? `${selectedCount} selected` : 'Select all'}
-    />
+    <SelectAllCheckbox {selection} />
   {/snippet}
 
   {#snippet children()}
     <div data-testid="equipment-list">
-      <SelectableList items={visibleItems} bind:selected {selectionMode}>
+      <SelectableList items={visibleItems} {selection}>
         {#snippet row(item)}
           <button
             class="w-full text-left text-sm font-medium hover:underline"

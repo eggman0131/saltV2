@@ -197,6 +197,9 @@ export { default as ListPage } from './templates/ListPage/ListPage.svelte';
 export { default as FormPage } from './templates/FormPage/FormPage.svelte';
 export { default as DetailPage } from './templates/DetailPage/DetailPage.svelte';
 export { default as SelectableList } from './templates/SelectableList/SelectableList.svelte';
+export { default as SelectAllCheckbox } from './templates/SelectableList/SelectAllCheckbox.svelte';
+export { default as RowSelectCheckbox } from './templates/SelectableList/RowSelectCheckbox.svelte';
+export { createListSelection } from './templates/SelectableList/listSelection.svelte.js';
 
 export type {
   ListPageProps,
@@ -211,3 +214,7 @@ export type {
   SelectableListProps,
   SelectableListItem,
 } from './templates/SelectableList/SelectableList.types';
+export type {
+  ListSelection,
+  CreateListSelectionOptions,
+} from './templates/SelectableList/listSelection.svelte.js';
