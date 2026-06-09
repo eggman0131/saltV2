@@ -16,12 +16,14 @@ export const AttendeeSchema = z.object({
 
 // The shared day shape used by both the template (weekday-keyed) and a concrete
 // week (date-keyed). `recipeIds` is a reserved seam for recipes (#17); it ships
-// as an always-empty array until that module lands.
+// as an always-empty array until that module lands. `guests` is a simple count
+// of extra, unnamed diners (occasional guests with no member record).
 export const MealPlanDaySchema = z.object({
   note: z.string().default(''),
   recipeIds: z.array(z.string()).default([]),
   chefs: z.array(z.string()).default([]),
   attendees: z.array(AttendeeSchema).default([]),
+  guests: z.number().int().nonnegative().default(0),
 });
 
 export type WeekdayDoc = z.infer<typeof WeekdayEnum>;

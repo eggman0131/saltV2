@@ -48,6 +48,7 @@ vi.mock('../src/lib/mealPlanService.js', () => ({
   loadTemplateIntoCurrentWeek: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   setWeekDayNote: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   setWeekDayChefs: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  setWeekDayGuests: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   addWeekAttendee: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   removeWeekAttendee: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   setWeekAttendeeHomeTime: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
@@ -60,9 +61,14 @@ import {
   prevWeek,
   loadTemplateIntoCurrentWeek,
   setWeekDayNote,
+  setWeekDayGuests,
   addWeekAttendee,
   setWeekAttendeeHomeTime,
 } from '../src/lib/mealPlanService.js';
+
+async function expandDay(date: string): Promise<void> {
+  await userEvent.click(screen.getByTestId(`day-${date}-summary`));
+}
 
 function member(id: string, name: string): Member {
   return {
@@ -94,11 +100,13 @@ beforeEach(() => {
 });
 
 describe('MealPlanWeekPage', () => {
-  it('renders seven day editors and the week range', () => {
+  it('renders seven collapsed day rows and the week range', () => {
     render(MealPlanWeekPage);
     expect(screen.getByTestId('day-2026-06-08')).toBeInTheDocument();
     expect(screen.getByTestId('day-2026-06-14')).toBeInTheDocument();
     expect(screen.getByTestId('week-range').textContent).toContain('Jun');
+    // Detail is hidden until a day is expanded.
+    expect(screen.queryByTestId('day-2026-06-08-detail')).not.toBeInTheDocument();
   });
 
   it('navigates with prev/next', async () => {
@@ -109,8 +117,9 @@ describe('MealPlanWeekPage', () => {
     expect(vi.mocked(prevWeek)).toHaveBeenCalled();
   });
 
-  it('edits a meal note through the service', async () => {
+  it('edits a meal note through the service after expanding the day', async () => {
     render(MealPlanWeekPage);
+    await expandDay('2026-06-08');
     const noteInput = screen.getByTestId('day-2026-06-08-note');
     await userEvent.type(noteInput, 'Pasta');
     await waitFor(() => expect(vi.mocked(setWeekDayNote)).toHaveBeenCalled());
@@ -119,6 +128,7 @@ describe('MealPlanWeekPage', () => {
 
   it('toggles an attendee and reveals a savable blank home-time', async () => {
     render(MealPlanWeekPage);
+    await expandDay('2026-06-08');
     const attendWrap = screen.getByTestId('day-2026-06-08-attend-alice@e.org');
     await userEvent.click(within(attendWrap).getByRole('checkbox'));
     expect(vi.mocked(addWeekAttendee)).toHaveBeenCalledWith(
@@ -136,6 +146,7 @@ describe('MealPlanWeekPage', () => {
           recipeIds: [],
           chefs: [],
           attendees: [{ memberId: 'alice@e.org', homeTime: '18:00', note: '' }],
+          guests: 0,
         },
       },
     });
@@ -174,7 +185,7 @@ describe('MealPlanWeekPage', () => {
     expect(vi.mocked(loadTemplateIntoCurrentWeek)).toHaveBeenCalled();
   });
 
-  it('renders an unknown attendee as removable', async () => {
+  it('renders an unknown attendee as removable in the detail panel', async () => {
     mockWeek._set({
       ...emptyWeek('2026-06-08'),
       days: {
@@ -184,17 +195,26 @@ describe('MealPlanWeekPage', () => {
           recipeIds: [],
           chefs: [],
           attendees: [{ memberId: 'gone@e.org', homeTime: null, note: '' }],
+          guests: 0,
         },
       },
     });
     render(MealPlanWeekPage);
+    await expandDay('2026-06-08');
     expect(screen.getByTestId('day-2026-06-08-unknown-gone@e.org')).toBeInTheDocument();
+  });
+
+  it('adjusts the guest count through the service', async () => {
+    render(MealPlanWeekPage);
+    await expandDay('2026-06-08');
+    await userEvent.click(screen.getByTestId('day-2026-06-08-guests-inc'));
+    expect(vi.mocked(setWeekDayGuests)).toHaveBeenCalledWith('2026-06-08', 1);
   });
 
   it('shows a spinner while the week is loading', () => {
     mockLoading._set(true);
     render(MealPlanWeekPage);
-    // ListPage renders its loading state; the day editors are absent.
+    // ListPage renders its loading state; the day rows are absent.
     expect(screen.queryByTestId('day-2026-06-08')).not.toBeInTheDocument();
   });
 });

@@ -23,6 +23,7 @@
     loadTemplateIntoCurrentWeek,
     setWeekDayNote,
     setWeekDayChefs,
+    setWeekDayGuests,
     addWeekAttendee,
     removeWeekAttendee,
     setWeekAttendeeHomeTime,
@@ -128,6 +129,7 @@
             onAttendeeToggle={(id) => toggleAttendee(date, id)}
             onAttendeeHomeTime={(id, t) => void setWeekAttendeeHomeTime(date, id, t)}
             onAttendeeNote={(id, n) => void setWeekAttendeeNote(date, id, n)}
+            onGuestsChange={(g) => void setWeekDayGuests(date, g)}
           />
         {/if}
       {/each}

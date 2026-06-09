@@ -4,9 +4,9 @@ import type { MealPlanWeek } from '../entities/MealPlanWeek.js';
 import { WEEKDAYS } from '../entities/Weekday.js';
 import { weekDates } from '../queries/weekdays.js';
 
-// A blank day: no meal note, no recipes, no chefs, no attendees.
+// A blank day: no meal note, no recipes, no chefs, no attendees, no guests.
 export function emptyDay(): Day {
-  return { note: '', recipeIds: [], chefs: [], attendees: [] };
+  return { note: '', recipeIds: [], chefs: [], attendees: [], guests: 0 };
 }
 
 // A blank template with all seven weekdays empty.

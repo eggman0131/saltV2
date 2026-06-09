@@ -11,6 +11,7 @@
     saveFirstDayOfWeek,
     setTemplateDayNote,
     setTemplateDayChefs,
+    setTemplateDayGuests,
     addTemplateAttendee,
     removeTemplateAttendee,
     setTemplateAttendeeHomeTime,
@@ -103,6 +104,7 @@
             onAttendeeToggle={(id) => toggleAttendee(wd, id)}
             onAttendeeHomeTime={(id, t) => void setTemplateAttendeeHomeTime(wd, id, t)}
             onAttendeeNote={(id, n) => void setTemplateAttendeeNote(wd, id, n)}
+            onGuestsChange={(g) => void setTemplateDayGuests(wd, g)}
           />
         {/if}
       {/each}

@@ -16,6 +16,7 @@ export { instantiateWeek } from './commands/instantiateWeek.js';
 export {
   setDayNote,
   setDayChefs,
+  setDayGuests,
   addAttendee,
   removeAttendee,
   setAttendeeHomeTime,

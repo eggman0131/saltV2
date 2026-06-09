@@ -12,6 +12,7 @@ function cloneDay(day: Day): Day {
     recipeIds: [...day.recipeIds],
     chefs: [...day.chefs],
     attendees: day.attendees.map((a) => ({ ...a })),
+    guests: day.guests,
   };
 }
 

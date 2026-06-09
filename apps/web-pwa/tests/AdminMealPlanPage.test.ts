@@ -45,6 +45,7 @@ vi.mock('../src/lib/mealPlanService.js', () => ({
   saveFirstDayOfWeek: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   setTemplateDayNote: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   setTemplateDayChefs: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  setTemplateDayGuests: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   addTemplateAttendee: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   removeTemplateAttendee: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   setTemplateAttendeeHomeTime: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
@@ -84,23 +85,25 @@ beforeEach(() => {
 });
 
 describe('AdminMealPlanPage', () => {
-  it('renders the first-day setting and seven weekday editors', () => {
+  it('renders the first-day setting and seven weekday rows', () => {
     render(AdminMealPlanPage);
     expect(screen.getByTestId('first-day-setting')).toBeInTheDocument();
     expect(screen.getByTestId('tmpl-mon')).toBeInTheDocument();
     expect(screen.getByTestId('tmpl-sun')).toBeInTheDocument();
   });
 
-  it('edits a weekday template note through the service', async () => {
+  it('edits a weekday template note through the service after expanding the day', async () => {
     render(AdminMealPlanPage);
+    await userEvent.click(screen.getByTestId('tmpl-fri-summary'));
     await userEvent.type(screen.getByTestId('tmpl-fri-note'), 'Pizza');
     await waitFor(() => expect(vi.mocked(setTemplateDayNote)).toHaveBeenCalled());
     expect(vi.mocked(setTemplateDayNote).mock.calls[0]![0]).toBe('fri');
   });
 
-  it('reflects an existing template note', () => {
+  it('reflects an existing template note when expanded', async () => {
     mockTemplate._set(setDayNote(emptyTemplate(), 'mon', 'Roast'));
     render(AdminMealPlanPage);
+    await userEvent.click(screen.getByTestId('tmpl-mon-summary'));
     expect((screen.getByTestId('tmpl-mon-note') as HTMLInputElement).value).toBe('Roast');
   });
 

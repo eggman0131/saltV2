@@ -18,4 +18,6 @@ export interface Day {
   // Zero or more chefs; a chef need NOT be an attendee. Member refs only.
   readonly chefs: readonly string[];
   readonly attendees: readonly Attendee[];
+  // Count of extra, unnamed diners (occasional guests with no member record).
+  readonly guests: number;
 }

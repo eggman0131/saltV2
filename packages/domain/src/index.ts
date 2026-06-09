@@ -189,6 +189,7 @@ export {
   instantiateWeek,
   setDayNote,
   setDayChefs,
+  setDayGuests,
   addAttendee,
   removeAttendee,
   setAttendeeHomeTime,

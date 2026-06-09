@@ -40,6 +40,15 @@ export function setDayChefs<K extends string, T extends DayContainer<K>>(
   return withDay(container, dayKey, (day) => ({ ...day, chefs: [...chefs] }));
 }
 
+// Set the count of extra unnamed guests. Negative inputs are clamped to 0.
+export function setDayGuests<K extends string, T extends DayContainer<K>>(
+  container: T,
+  dayKey: K,
+  guests: number,
+): T {
+  return withDay(container, dayKey, (day) => ({ ...day, guests: Math.max(0, Math.trunc(guests)) }));
+}
+
 // Add an attendee. Idempotent on memberId: an existing entry for the same member
 // is replaced, so a member can never appear twice.
 export function addAttendee<K extends string, T extends DayContainer<K>>(

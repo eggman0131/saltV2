@@ -13,6 +13,7 @@ import {
   instantiateWeek,
   setDayNote,
   setDayChefs,
+  setDayGuests,
   addAttendee,
   removeAttendee,
   setAttendeeHomeTime,
@@ -199,6 +200,9 @@ export function setWeekDayNote(dateKey: string, note: string) {
 export function setWeekDayChefs(dateKey: string, chefs: readonly string[]) {
   return persistWeek(setDayChefs(currentWeekObject(), dateKey, chefs));
 }
+export function setWeekDayGuests(dateKey: string, guests: number) {
+  return persistWeek(setDayGuests(currentWeekObject(), dateKey, guests));
+}
 export function addWeekAttendee(dateKey: string, attendee: Attendee) {
   return persistWeek(addAttendee(currentWeekObject(), dateKey, attendee));
 }
@@ -227,6 +231,9 @@ export function setTemplateDayNote(weekday: Weekday, note: string) {
 }
 export function setTemplateDayChefs(weekday: Weekday, chefs: readonly string[]) {
   return persistTemplate(setDayChefs(currentTemplateObject(), weekday, chefs));
+}
+export function setTemplateDayGuests(weekday: Weekday, guests: number) {
+  return persistTemplate(setDayGuests(currentTemplateObject(), weekday, guests));
 }
 export function addTemplateAttendee(weekday: Weekday, attendee: Attendee) {
   return persistTemplate(addAttendee(currentTemplateObject(), weekday, attendee));

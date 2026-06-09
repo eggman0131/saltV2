@@ -10,6 +10,7 @@ import {
   instantiateWeek,
   setDayNote,
   setDayChefs,
+  setDayGuests,
   addAttendee,
   removeAttendee,
   setAttendeeHomeTime,
@@ -83,7 +84,7 @@ describe('weekDates', () => {
 
 describe('emptyDay / emptyWeek / emptyTemplate', () => {
   it('emptyDay is fully blank', () => {
-    expect(emptyDay()).toEqual({ note: '', recipeIds: [], chefs: [], attendees: [] });
+    expect(emptyDay()).toEqual({ note: '', recipeIds: [], chefs: [], attendees: [], guests: 0 });
   });
 
   it('emptyTemplate has all seven weekdays blank', () => {
@@ -152,6 +153,13 @@ describe('day mutators (immutability + correctness)', () => {
     const next = setDayChefs(base, key, ['a@x.org', 'b@x.org']);
     expect(next.days[key]!.chefs).toEqual(['a@x.org', 'b@x.org']);
     expect(base.days[key]!.chefs).toEqual([]);
+  });
+
+  it('setDayGuests sets a non-negative integer count and clamps junk to 0', () => {
+    expect(setDayGuests(base, key, 3).days[key]!.guests).toBe(3);
+    expect(setDayGuests(base, key, -2).days[key]!.guests).toBe(0);
+    expect(setDayGuests(base, key, 2.9).days[key]!.guests).toBe(2);
+    expect(base.days[key]!.guests).toBe(0);
   });
 
   it('addAttendee appends and is idempotent on memberId', () => {
