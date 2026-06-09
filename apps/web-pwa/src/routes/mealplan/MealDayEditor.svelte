@@ -86,8 +86,8 @@
       {#if sublabel}<span class="text-[11px] text-muted-foreground">{sublabel}</span>{/if}
     </span>
 
-    <span class="min-w-0 flex-1">
-      <span class="flex items-center gap-1.5">
+    <span class="flex min-w-0 flex-1 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-6">
+      <span class="flex items-center gap-1.5 sm:flex-1">
         <span
           class="min-w-0 truncate text-sm {day.note ? 'text-foreground' : 'text-muted-foreground'}"
         >
@@ -102,7 +102,7 @@
           />
         {/if}
       </span>
-      <span class="mt-1.5 flex flex-wrap items-start gap-2.5">
+      <span class="flex flex-wrap items-start gap-2.5 sm:shrink-0 sm:justify-end">
         {#each members as m (m.id)}
           {@const a = attendeeOf(m.id)}
           <span class="flex flex-col items-center gap-0.5">
