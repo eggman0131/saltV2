@@ -31,6 +31,14 @@ export {
   saveShoppingListsConfig,
 } from './shoppingListsConfigSubscription.js';
 export { subscribeMembers, upsertMember, deleteMember } from './membersSubscription.js';
+export {
+  subscribeMealPlanConfig,
+  subscribeMealPlanTemplate,
+  subscribeMealPlanWeek,
+  saveMealPlanConfig,
+  saveMealPlanTemplate,
+  saveMealPlanWeek,
+} from './mealPlanSync.js';
 export type {
   IdentifyEquipmentCandidate,
   IdentifyEquipmentResult,
