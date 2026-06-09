@@ -48,15 +48,22 @@
   // shrink as the roster grows (the household is small, ~5, with rare guests).
   const chip = $derived(
     members.length <= 4
-      ? { box: 'h-9 w-9 text-xs', time: 'text-[11px]', badge: 'h-4 w-4', hat: 'h-3 w-3' }
+      ? { box: 'h-9 w-9 text-xs', h: 'h-9', time: 'text-[11px]', badge: 'h-4 w-4', hat: 'h-3 w-3' }
       : members.length <= 6
         ? {
             box: 'h-8 w-8 text-[11px]',
+            h: 'h-8',
             time: 'text-[10px]',
             badge: 'h-3.5 w-3.5',
             hat: 'h-2.5 w-2.5',
           }
-        : { box: 'h-7 w-7 text-[10px]', time: 'text-[9px]', badge: 'h-3 w-3', hat: 'h-2 w-2' },
+        : {
+            box: 'h-7 w-7 text-[10px]',
+            h: 'h-7',
+            time: 'text-[9px]',
+            badge: 'h-3 w-3',
+            hat: 'h-2 w-2',
+          },
   );
 
   const isAttending = (id: string): boolean => day.attendees.some((a) => a.memberId === id);
@@ -102,39 +109,46 @@
           />
         {/if}
       </span>
-      <span class="flex flex-wrap items-start gap-2.5 sm:shrink-0 sm:justify-end">
-        {#each members as m (m.id)}
-          {@const a = attendeeOf(m.id)}
-          <span class="flex flex-col items-center gap-0.5">
-            <span
-              class="relative flex {chip.box} items-center justify-center rounded-full font-semibold
-                {isAttending(m.id)
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted text-muted-foreground/50'}"
-              title={m.name}
-              data-testid={`${testid}-chip-${m.id}`}
-            >
-              {memberInitials(m.name)}
-              {#if isChef(m.id)}
-                <span
-                  class="absolute -bottom-1 -right-1 flex {chip.badge} items-center justify-center rounded-full bg-amber-500 ring-2 ring-background"
-                  aria-label="chef"
-                >
-                  <ChefHat class="{chip.hat} text-white" strokeWidth={2.5} />
-                </span>
+      <span class="flex items-start gap-3 sm:shrink-0">
+        <!-- Member chips: fixed roster → constant width, so they line up across
+             every row regardless of guests. Slightly more relaxed on wide screens. -->
+        <span class="flex items-start gap-2.5 lg:gap-4">
+          {#each members as m (m.id)}
+            {@const a = attendeeOf(m.id)}
+            <span class="flex flex-col items-center gap-0.5">
+              <span
+                class="relative flex {chip.box} items-center justify-center rounded-full font-semibold
+                  {isAttending(m.id)
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-muted-foreground/50'}"
+                title={m.name}
+                data-testid={`${testid}-chip-${m.id}`}
+              >
+                {memberInitials(m.name)}
+                {#if isChef(m.id)}
+                  <span
+                    class="absolute -bottom-1 -right-1 flex {chip.badge} items-center justify-center rounded-full bg-amber-500 ring-2 ring-background"
+                    aria-label="chef"
+                  >
+                    <ChefHat class="{chip.hat} text-white" strokeWidth={2.5} />
+                  </span>
+                {/if}
+              </span>
+              {#if isAttending(m.id) && a?.homeTime}
+                <span class="{chip.time} tabular-nums text-muted-foreground">{a.homeTime}</span>
               {/if}
             </span>
-            {#if isAttending(m.id) && a?.homeTime}
-              <span class="{chip.time} tabular-nums text-muted-foreground">{a.homeTime}</span>
-            {/if}
-          </span>
-        {/each}
-        {#if day.guests > 0}
-          <span
-            class="rounded-full bg-secondary px-2 py-0.5 text-xs font-semibold text-secondary-foreground"
-            data-testid={`${testid}-guest-badge`}>+{day.guests}</span
-          >
-        {/if}
+          {/each}
+        </span>
+        <!-- Guests: their own reserved column so the member chips never shift. -->
+        <span class="flex {chip.h} w-8 shrink-0 items-center justify-start">
+          {#if day.guests > 0}
+            <span
+              class="rounded-full bg-secondary px-2 py-0.5 text-xs font-semibold text-secondary-foreground"
+              data-testid={`${testid}-guest-badge`}>+{day.guests}</span
+            >
+          {/if}
+        </span>
       </span>
     </span>
 
