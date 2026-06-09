@@ -39,6 +39,26 @@
 
   let open = $state(false);
 
+  // Home time stays blank by default; opening the picker on a blank field starts
+  // from the usual dinner time rather than 00:00 (DOM-only — not persisted until
+  // the user actually picks a value).
+  const EDIT_START_TIME = '18:30';
+
+  // Initial-chips grow to use the available width when there are few members and
+  // shrink as the roster grows (the household is small, ~5, with rare guests).
+  const chip = $derived(
+    members.length <= 4
+      ? { box: 'h-9 w-9 text-xs', time: 'text-[11px]', badge: 'h-4 w-4', hat: 'h-3 w-3' }
+      : members.length <= 6
+        ? {
+            box: 'h-8 w-8 text-[11px]',
+            time: 'text-[10px]',
+            badge: 'h-3.5 w-3.5',
+            hat: 'h-2.5 w-2.5',
+          }
+        : { box: 'h-7 w-7 text-[10px]', time: 'text-[9px]', badge: 'h-3 w-3', hat: 'h-2 w-2' },
+  );
+
   const isAttending = (id: string): boolean => day.attendees.some((a) => a.memberId === id);
   const isChef = (id: string): boolean => day.chefs.includes(id);
   const attendeeOf = (id: string) => day.attendees.find((a) => a.memberId === id);
@@ -75,18 +95,19 @@
         </span>
         {#if hasNotes}
           <StickyNote
-            class="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+            class="h-4 w-4 shrink-0 text-primary"
+            strokeWidth={2.5}
             aria-label="has notes"
             data-testid={`${testid}-note-indicator`}
           />
         {/if}
       </span>
-      <span class="mt-1 flex flex-wrap items-start gap-1.5">
+      <span class="mt-1.5 flex flex-wrap items-start gap-2.5">
         {#each members as m (m.id)}
           {@const a = attendeeOf(m.id)}
           <span class="flex flex-col items-center gap-0.5">
             <span
-              class="relative flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold
+              class="relative flex {chip.box} items-center justify-center rounded-full font-semibold
                 {isAttending(m.id)
                 ? 'bg-primary text-primary-foreground'
                 : 'bg-muted text-muted-foreground/50'}"
@@ -96,21 +117,21 @@
               {memberInitials(m.name)}
               {#if isChef(m.id)}
                 <span
-                  class="absolute -bottom-1 -right-1 flex h-3 w-3 items-center justify-center rounded-full bg-background"
+                  class="absolute -bottom-1 -right-1 flex {chip.badge} items-center justify-center rounded-full bg-amber-500 ring-2 ring-background"
                   aria-label="chef"
                 >
-                  <ChefHat class="h-2.5 w-2.5 text-primary" />
+                  <ChefHat class="{chip.hat} text-white" strokeWidth={2.5} />
                 </span>
               {/if}
             </span>
             {#if isAttending(m.id) && a?.homeTime}
-              <span class="text-[9px] tabular-nums text-muted-foreground">{a.homeTime}</span>
+              <span class="{chip.time} tabular-nums text-muted-foreground">{a.homeTime}</span>
             {/if}
           </span>
         {/each}
         {#if day.guests > 0}
           <span
-            class="rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-semibold text-secondary-foreground"
+            class="rounded-full bg-secondary px-2 py-0.5 text-xs font-semibold text-secondary-foreground"
             data-testid={`${testid}-guest-badge`}>+{day.guests}</span
           >
         {/if}
@@ -152,9 +173,18 @@
                   class="h-8 rounded-md border bg-background px-2 text-sm disabled:opacity-40"
                   value={a?.homeTime ?? ''}
                   disabled={!isAttending(m.id)}
+                  onfocus={(e) => {
+                    // Seed the picker from the usual dinner time when blank (DOM
+                    // only — nothing is saved until the user actually picks one).
+                    if (e.currentTarget.value === '') e.currentTarget.value = EDIT_START_TIME;
+                  }}
                   oninput={(e) => {
                     const v = e.currentTarget.value;
                     onAttendeeHomeTime(m.id, v === '' ? null : v);
+                  }}
+                  onblur={(e) => {
+                    // Re-sync to the committed value, discarding an unpicked seed.
+                    e.currentTarget.value = attendeeOf(m.id)?.homeTime ?? '';
                   }}
                   aria-label={`${m.name} home time`}
                   data-testid={`${testid}-time-${m.id}`}

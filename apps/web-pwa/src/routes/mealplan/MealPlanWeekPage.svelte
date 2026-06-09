@@ -31,8 +31,6 @@
   } from '../../lib/mealPlanService.js';
   import { addToast } from '../../lib/toastStore.js';
 
-  const DEFAULT_HOME_TIME = '18:30';
-
   const dates = $derived(weekDates($selectedStartDate));
 
   // Friendly labels for the week range and each day, formatted from the UTC date.
@@ -83,8 +81,8 @@
     if (attending) {
       void removeWeekAttendee(date, memberId);
     } else {
-      // Default to the usual dinner time; clearable to blank afterwards.
-      const attendee: Attendee = { memberId, homeTime: DEFAULT_HOME_TIME, note: '' };
+      // Home time starts blank; the picker seeds 18:30 when first opened.
+      const attendee: Attendee = { memberId, homeTime: null, note: '' };
       void addWeekAttendee(date, attendee);
     }
   }

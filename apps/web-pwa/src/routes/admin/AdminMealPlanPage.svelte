@@ -51,8 +51,8 @@
     if (attending) {
       void removeTemplateAttendee(weekday, memberId);
     } else {
-      // Default to the usual dinner time; clearable to blank afterwards.
-      const attendee: Attendee = { memberId, homeTime: '18:30', note: '' };
+      // Home time starts blank; the picker seeds 18:30 when first opened.
+      const attendee: Attendee = { memberId, homeTime: null, note: '' };
       void addTemplateAttendee(weekday, attendee);
     }
   }

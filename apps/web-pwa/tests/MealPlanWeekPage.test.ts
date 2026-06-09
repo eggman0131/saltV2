@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, cleanup, waitFor, within } from '@testing-library/svelte';
+import { render, screen, cleanup, waitFor, within, fireEvent } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { emptyWeek, setDayNote, type MealPlanWeek, type Member } from '@salt/domain';
 
@@ -133,7 +133,7 @@ describe('MealPlanWeekPage', () => {
     await userEvent.click(within(attendWrap).getByRole('checkbox'));
     expect(vi.mocked(addWeekAttendee)).toHaveBeenCalledWith(
       '2026-06-08',
-      expect.objectContaining({ memberId: 'alice@e.org', homeTime: '18:30' }),
+      expect.objectContaining({ memberId: 'alice@e.org', homeTime: null }),
     );
 
     // With Alice attending, the home-time input appears; leaving it blank saves null.
@@ -245,6 +245,35 @@ describe('MealPlanWeekPage', () => {
     });
     render(MealPlanWeekPage);
     expect(screen.queryByTestId('day-2026-06-08-note-indicator')).not.toBeInTheDocument();
+  });
+
+  it('seeds the time picker from 18:30 when blank, without persisting on cancel', async () => {
+    mockWeek._set({
+      ...emptyWeek('2026-06-08'),
+      days: {
+        ...emptyWeek('2026-06-08').days,
+        '2026-06-08': {
+          note: '',
+          recipeIds: [],
+          chefs: [],
+          attendees: [{ memberId: 'alice@e.org', homeTime: null, note: '' }],
+          guests: 0,
+        },
+      },
+    });
+    render(MealPlanWeekPage);
+    await expandDay('2026-06-08');
+    const timeInput = screen.getByTestId('day-2026-06-08-time-alice@e.org') as HTMLInputElement;
+    expect(timeInput.value).toBe('');
+
+    await fireEvent.focus(timeInput);
+    expect(timeInput.value).toBe('18:30');
+    // Focus alone does not persist anything.
+    expect(vi.mocked(setWeekAttendeeHomeTime)).not.toHaveBeenCalled();
+
+    // Blurring without picking re-syncs back to the committed blank value.
+    await fireEvent.blur(timeInput);
+    expect(timeInput.value).toBe('');
   });
 
   it('adjusts the guest count through the service', async () => {
