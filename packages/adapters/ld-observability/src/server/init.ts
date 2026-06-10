@@ -119,6 +119,19 @@ const NOOP_OTEL_SPAN: OtelSpan = {
   recordException: () => undefined,
 } as unknown as OtelSpan;
 
+// Rename the currently-active OTel span. Call this inside a Genkit flow body to
+// append a human-readable descriptor (e.g. the item name) to the otherwise
+// generic flow span name, so traces are scannable in the LD list. The flow span
+// is the active span inside the flow body. No-op when observability isn't
+// initialised or no span is active. Caps length so span names stay bounded even
+// when fed long raw input.
+const MAX_SPAN_NAME = 80;
+export function setActiveSpanName(name: string): void {
+  if (!provider) return;
+  const trimmed = name.length > MAX_SPAN_NAME ? `${name.slice(0, MAX_SPAN_NAME - 1)}…` : name;
+  trace.getActiveSpan()?.updateName(trimmed);
+}
+
 export function startSpan(name: string, opts?: StartSpanOptions): ObservabilitySpan {
   if (!provider) return wrap(NOOP_OTEL_SPAN);
 
