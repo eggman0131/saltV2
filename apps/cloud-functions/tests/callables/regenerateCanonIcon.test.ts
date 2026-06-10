@@ -25,8 +25,11 @@ vi.mock('firebase-functions/https', () => ({
 
 const { regenerateCanonIcon } = await import('../../src/callables/regenerateCanonIcon.js');
 
+const NOW = 1_700_000_000_000;
+
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.spyOn(Date, 'now').mockReturnValue(NOW);
 });
 
 describe('regenerateCanonIcon callable', () => {
@@ -52,7 +55,11 @@ describe('regenerateCanonIcon callable', () => {
 
     expect(mockCollection).toHaveBeenCalledWith('canonItems');
     expect(mockDoc).toHaveBeenCalledWith('canon-123');
-    expect(mockUpdate).toHaveBeenCalledWith({ thumbnail: null, iconHint: DELETE_SENTINEL });
+    expect(mockUpdate).toHaveBeenCalledWith({
+      thumbnail: null,
+      iconHint: DELETE_SENTINEL,
+      iconRequestedAt: NOW,
+    });
     expect(result).toEqual({ ok: true });
   });
 
@@ -62,6 +69,10 @@ describe('regenerateCanonIcon callable', () => {
       data: { canonId: 'canon-123', hint: 'show it as a tin' },
     });
 
-    expect(mockUpdate).toHaveBeenCalledWith({ thumbnail: null, iconHint: 'show it as a tin' });
+    expect(mockUpdate).toHaveBeenCalledWith({
+      thumbnail: null,
+      iconHint: 'show it as a tin',
+      iconRequestedAt: NOW,
+    });
   });
 });
