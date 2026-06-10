@@ -122,6 +122,16 @@ A reusable **`<CanonIcon>`** in `@salt/ui-components`:
 - bare tile placeholder when `thumbnail` is `null` or `"hidden"`;
 - lazy-loaded.
 
+### `CanonIcon` props
+
+| Name        | Type                       | Default | Notes                                                                                                                            |
+| ----------- | -------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `thumbnail` | `string \| null`           | —       | The canon item's `thumbnail` field, tri-state: a real URL renders an `<img>`; `null` (no icon yet) or `"hidden"` show a bare tile |
+| `name`      | `string \| undefined`      | —       | Item name, used for the image `alt` text                                                                                         |
+| `size`      | `number`                   | `30`    | Tile (and icon) edge length in px                                                                                                |
+| `dimmed`    | `boolean`                  | `false` | Dim the icon — e.g. for checked shopping-list items                                                                              |
+| `class`     | `string \| undefined`      | —       | Merged onto the tile                                                                                                              |
+
 Consumers: `ShoppingListPage` rows (icon at row start, dimmed when checked; include
 `thumbnail` in the page's `canonMap`, which currently drops it); later, recipe
 ingredient lists and canon management views. Manual **regenerate/hide** lives in the
