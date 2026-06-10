@@ -5,6 +5,7 @@ export {
   whenServerObservabilityReady,
   flushServerObservability,
   startSpan,
+  setActiveSpanName,
   extractTraceHeaders,
   runWithExtractedTraceContext,
   addServerSpanProcessor,

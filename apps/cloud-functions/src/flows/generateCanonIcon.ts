@@ -1,5 +1,6 @@
 import { z } from 'genkit';
 import { googleAI } from '@genkit-ai/google-genai';
+import { setActiveSpanName } from '@salt/ld-observability/server';
 import { ai } from '../genkit.js';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { loadCanonIconSeed } from './assets/canonIconSeed.js';
@@ -63,6 +64,7 @@ export const generateCanonIconFlow = ai.defineFlow(
     outputSchema: GenerateCanonIconOutputSchema,
   },
   async ({ name, hint }) => {
+    setActiveSpanName(`generateCanonIcon: ${name}`);
     const seed = loadCanonIconSeed();
 
     const result = await withAiTimeout(

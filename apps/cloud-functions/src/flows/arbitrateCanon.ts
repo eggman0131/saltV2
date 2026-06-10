@@ -1,6 +1,7 @@
 import { z } from 'genkit';
 import { googleAI } from '@genkit-ai/google-genai';
 import { ArbitrationRequestSchema, CanonArbitrationAIOutputSchema } from '@salt/domain/schemas';
+import { setActiveSpanName } from '@salt/ld-observability/server';
 import { ai } from '../genkit.js';
 
 const GENERATION_MODEL = googleAI.model('gemini-flash-latest');
@@ -39,6 +40,7 @@ export const arbitrateCanonFlow = ai.defineFlow(
     outputSchema: ArbitrationResultSchema,
   },
   async (req) => {
+    setActiveSpanName(`arbitrateCanon: ${req.normalisedName}`);
     const builtPrompt = buildPrompt(req);
     const result = await ai.generate({
       model: GENERATION_MODEL,

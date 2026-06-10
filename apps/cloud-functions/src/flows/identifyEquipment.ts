@@ -3,6 +3,7 @@ import {
   IdentifyEquipmentAIOutputSchema,
   IdentifyEquipmentInputSchema,
 } from '@salt/domain/schemas';
+import { setActiveSpanName } from '@salt/ld-observability/server';
 import { ai } from '../genkit.js';
 
 const GENERATION_MODEL = googleAI.model('gemini-flash-latest');
@@ -14,6 +15,7 @@ export const identifyEquipmentFlow = ai.defineFlow(
     outputSchema: IdentifyEquipmentAIOutputSchema,
   },
   async ({ rawName }) => {
+    setActiveSpanName(`identifyEquipment: ${rawName}`);
     const result = await ai.generate({
       model: GENERATION_MODEL,
       system: SYSTEM_INSTRUCTIONS,
