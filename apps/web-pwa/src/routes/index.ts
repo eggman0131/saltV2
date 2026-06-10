@@ -11,9 +11,11 @@ import ShoppingListRedirectPage from './shopping/ShoppingListRedirectPage.svelte
 import ShoppingListCreatePage from './shopping/ShoppingListCreatePage.svelte';
 import ShoppingListsManagePage from './shopping/ShoppingListsManagePage.svelte';
 import ShoppingListPage from './shopping/ShoppingListPage.svelte';
+import MealPlanWeekPage from './mealplan/MealPlanWeekPage.svelte';
 import SettingsPage from './settings/SettingsPage.svelte';
 import AdminHomePage from './admin/AdminHomePage.svelte';
 import AdminMembersPage from './admin/AdminMembersPage.svelte';
+import AdminMealPlanPage from './admin/AdminMealPlanPage.svelte';
 import NotFound from './NotFound.svelte';
 
 // More-specific static routes must precede parameterised ones when using a Map.
@@ -26,6 +28,7 @@ export const routes: RouteDefinition = new Map([
   ['/shopping/new', ShoppingListCreatePage],
   ['/shopping/lists', ShoppingListsManagePage],
   ['/shopping/:listId', ShoppingListPage],
+  ['/mealplan', MealPlanWeekPage],
   ['/settings', SettingsPage],
   // Operator area (issues #155, #157). All routes are guarded client-side by
   // AdminGuard; the real boundary is server-side (rules + CF admin checks).
@@ -33,6 +36,7 @@ export const routes: RouteDefinition = new Map([
   // canon records is an operator activity — see #157.
   ['/admin', AdminHomePage],
   ['/admin/members', AdminMembersPage],
+  ['/admin/mealplan', AdminMealPlanPage],
   ['/admin/canon', CanonListPage],
   ['/admin/canon/aisles', AisleManagementPage],
   ['/admin/canon/new', CanonCreatePage],

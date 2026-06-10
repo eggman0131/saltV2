@@ -59,3 +59,15 @@ export type { ShoppingListsConfigDoc } from './shoppingListsConfig.js';
 
 export { MemberSchema } from './member.js';
 export type { MemberDoc } from './member.js';
+
+export { WeekdayEnum, AttendeeSchema, MealPlanDaySchema } from './mealPlanDay.js';
+export type { WeekdayDoc, AttendeeDoc, MealPlanDayDoc } from './mealPlanDay.js';
+
+export { MealPlanConfigSchema } from './mealPlanConfig.js';
+export type { MealPlanConfigDoc } from './mealPlanConfig.js';
+
+export { MealPlanTemplateSchema } from './mealPlanTemplate.js';
+export type { MealPlanTemplateDoc } from './mealPlanTemplate.js';
+
+export { MealPlanWeekSchema } from './mealPlanWeek.js';
+export type { MealPlanWeekDoc } from './mealPlanWeek.js';

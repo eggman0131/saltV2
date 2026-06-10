@@ -19,6 +19,12 @@
       description: 'Review and curate the shared item catalog and aisles.',
       href: '/admin/canon',
     },
+    {
+      id: 'mealplan',
+      title: 'Meal plan',
+      description: 'Edit the standard weekly template and the big-shop day.',
+      href: '/admin/mealplan',
+    },
   ];
 </script>
 

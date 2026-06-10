@@ -144,3 +144,69 @@ describe.skipIf(!reachable)('firestore.rules — members allowlist', () => {
     await assertFails(setDoc(doc(db, 'members', 'x@e.org'), memberDoc('x@e.org', false)));
   });
 });
+
+describe.skipIf(!reachable)('firestore.rules — meal planning (issue #169)', () => {
+  let testEnv: RulesTestEnvironment;
+
+  beforeAll(async () => {
+    testEnv = await initializeTestEnvironment({
+      projectId: PROJECT_ID,
+      firestore: {
+        host: HOST,
+        port: PORT,
+        rules: readFileSync(RULES_PATH, 'utf8'),
+      },
+    });
+  });
+
+  afterAll(async () => {
+    await testEnv?.cleanup();
+  });
+
+  beforeEach(async () => {
+    await testEnv.clearFirestore();
+  });
+
+  function userCtx() {
+    // Any signed-in user is already an allowlisted member; no member doc needed
+    // because meal-plan rules never call get(/members/...) (writes are open).
+    return testEnv.authenticatedContext('uid-user', { email: 'user@e.org' }).firestore();
+  }
+
+  it('lets any signed-in user read and write the config singleton', async () => {
+    const db = userCtx();
+    await assertSucceeds(
+      setDoc(doc(db, 'mealPlanConfig', 'singleton'), { firstDayOfWeek: 'mon', schemaVersion: 1 }),
+    );
+    await assertSucceeds(getDoc(doc(db, 'mealPlanConfig', 'singleton')));
+  });
+
+  it('lets any signed-in user read and write the template singleton', async () => {
+    const db = userCtx();
+    await assertSucceeds(
+      setDoc(doc(db, 'mealPlanTemplate', 'singleton'), { schemaVersion: 1, days: {} }),
+    );
+    await assertSucceeds(getDoc(doc(db, 'mealPlanTemplate', 'singleton')));
+  });
+
+  it('lets any signed-in user read and write a week doc', async () => {
+    const db = userCtx();
+    await assertSucceeds(
+      setDoc(doc(db, 'mealPlans', '2026-06-08'), {
+        id: '2026-06-08',
+        schemaVersion: 1,
+        startDate: '2026-06-08',
+        days: {},
+        updatedAt: '2026-06-08T00:00:00.000Z',
+      }),
+    );
+    await assertSucceeds(getDoc(doc(db, 'mealPlans', '2026-06-08')));
+  });
+
+  it('denies an unauthenticated caller on every meal-plan doc', async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, 'mealPlanConfig', 'singleton')));
+    await assertFails(getDoc(doc(db, 'mealPlanTemplate', 'singleton')));
+    await assertFails(getDoc(doc(db, 'mealPlans', '2026-06-08')));
+  });
+});
