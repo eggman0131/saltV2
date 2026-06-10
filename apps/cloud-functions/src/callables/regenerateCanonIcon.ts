@@ -2,8 +2,12 @@ import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { onCall, HttpsError } from 'firebase-functions/https';
 import { RegenerateCanonIconInputSchema } from '@salt/domain/schemas';
 
-// Manual regenerate / un-hide escape hatch (issue #148). Clearing `thumbnail`
-// (→ null) re-fires onCanonItemWritten, whose icon branch then regenerates.
+// Manual regenerate / un-hide escape hatch (issue #148). Setting `thumbnail`
+// (→ null) and stamping the `iconRequestedAt` nonce re-fires onCanonItemWritten,
+// whose icon branch then regenerates. The nonce is load-bearing: when the item
+// has no icon yet `thumbnail` is *already* null, so writing null again is a
+// no-op and Firestore emits no write event — the trigger never fires. A fresh
+// `iconRequestedAt` guarantees the update always mutates the doc.
 // Auth-gated: only signed-in callers may trigger (re)generation. "Hide"
 // (setting the "hidden" sentinel) is a client-side write — it needs no server
 // authority, so there is no hide callable.
@@ -26,11 +30,17 @@ export const regenerateCanonIcon = onCall(
     }
     const { canonId, hint } = parsed.data;
     // Clear the icon (→ trigger regenerates) and carry the one-shot steer, if any.
-    // No hint clears any stale hint so the regeneration is plain.
+    // No hint clears any stale hint so the regeneration is plain. iconRequestedAt
+    // forces the write to mutate the doc so the trigger fires even when the item
+    // had no icon (thumbnail already null) — see the header note.
     await getFirestore()
       .collection('canonItems')
       .doc(canonId)
-      .update({ thumbnail: null, iconHint: hint ? hint : FieldValue.delete() });
+      .update({
+        thumbnail: null,
+        iconHint: hint ? hint : FieldValue.delete(),
+        iconRequestedAt: Date.now(),
+      });
     return { ok: true } as const;
   },
 );

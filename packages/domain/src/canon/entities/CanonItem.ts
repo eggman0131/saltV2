@@ -14,6 +14,10 @@ export interface CanonItem {
   // Transient one-shot steer for the next icon (re)generation (issue #148);
   // written on regenerate, consumed + cleared by the CF icon branch.
   readonly iconHint?: string;
+  // Regenerate nonce (epoch ms): stamped on every regenerate request so the
+  // write always mutates the doc (even when thumbnail is already null) and the
+  // onCanonItemWritten icon branch re-fires. See CanonItemSchema.
+  readonly iconRequestedAt?: number;
   readonly embedding: readonly number[] | null;
   readonly needs_approval: boolean;
   readonly shoppingBehavior: ShoppingBehavior;

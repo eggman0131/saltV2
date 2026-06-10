@@ -11,6 +11,12 @@ export const CanonItemSchema = z.object({
   // Written by the regenerateCanonIcon callable alongside thumbnail: null;
   // consumed and cleared by the onCanonItemWritten icon branch.
   iconHint: z.string().optional(),
+  // Regenerate nonce (epoch ms): the regenerateCanonIcon callable stamps this on
+  // every request so the write always mutates the doc — even when thumbnail is
+  // already null — which is what re-fires the onCanonItemWritten icon branch
+  // (Firestore emits no write event for a no-op update). Number, not a Firestore
+  // Timestamp, so both the trigger and the client subscription parse it cleanly.
+  iconRequestedAt: z.number().optional(),
   embedding: z.array(z.number()).nullable(),
   needs_approval: z.boolean(),
   shoppingBehavior: z.enum(['stocked', 'check', 'needed']),
