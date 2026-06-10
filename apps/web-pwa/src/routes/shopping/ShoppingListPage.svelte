@@ -554,7 +554,7 @@
                     thumbnail={thumbnailFor(item.canonId)}
                     name={item.rawText}
                     dimmed={item.checked}
-                    size={28}
+                    size={34}
                   />
                   <button
                     type="button"
@@ -628,7 +628,7 @@
                   thumbnail={thumbnailFor(item.canonId)}
                   name={item.rawText}
                   dimmed={item.checked}
-                  size={28}
+                  size={34}
                 />
                 <button
                   type="button"
@@ -717,7 +717,7 @@
                     thumbnail={thumbnailFor(item.canonId)}
                     name={item.rawText}
                     dimmed={item.checked}
-                    size={28}
+                    size={34}
                   />
                   <button
                     type="button"
@@ -767,7 +767,16 @@
 >
   <SheetContent side="bottom" class="flex flex-col gap-4 p-4 pb-8">
     <SheetHeader>
-      <SheetTitle>Edit item</SheetTitle>
+      <div class="flex items-center gap-3">
+        {#if editingItem}
+          <CanonIcon
+            thumbnail={thumbnailFor(editingItem.canonId)}
+            name={editingItem.rawText}
+            size={64}
+          />
+        {/if}
+        <SheetTitle>Edit item</SheetTitle>
+      </div>
     </SheetHeader>
 
     <div class="flex flex-col gap-3">

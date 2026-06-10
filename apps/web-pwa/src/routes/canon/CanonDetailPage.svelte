@@ -363,7 +363,7 @@
           <section class="flex flex-col gap-2" data-testid="canon-detail-icon-section">
             <h2 class="text-sm font-medium text-foreground">Icon</h2>
             <div class="flex items-center gap-3">
-              <CanonIcon thumbnail={item.thumbnail} name={item.name} size={48} />
+              <CanonIcon thumbnail={item.thumbnail} name={item.name} size={96} />
               <div class="flex gap-2">
                 <Button
                   data-testid="canon-detail-icon-regenerate"

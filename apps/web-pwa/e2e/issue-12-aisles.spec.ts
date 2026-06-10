@@ -13,7 +13,7 @@ test('add, reorder, and bulk-delete aisles unassigns referencing canon items', a
   await page.goto('/');
   await signIn(page, email, { admin: true });
 
-  await page.goto('/#/admin/canon/aisles');
+  await page.goto('/#/admin/aisles');
   await expect(ui.heading).toBeVisible();
 
   await ui.addButton.click();

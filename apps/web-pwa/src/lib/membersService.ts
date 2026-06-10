@@ -100,6 +100,22 @@ export async function deleteMemberEntry(id: string): Promise<ReadResult<void, Do
   return deleteMember(id);
 }
 
+// Drag-and-drop reorder: reassign sortOrder to the new sequential position and
+// persist only the members whose position actually changed. Mirrors the aisle
+// reorder UX; members absent from `orderedIds` keep their existing order.
+export async function reorderMembers(orderedIds: string[]): Promise<void> {
+  const byId = new Map(get(_members).map((m) => [m.id, m]));
+  const now = new Date().toISOString();
+  const writes: Promise<ReadResult<void, DomainError>>[] = [];
+  orderedIds.forEach((id, index) => {
+    const member = byId.get(id);
+    if (member && member.sortOrder !== index) {
+      writes.push(upsertMember(updateMember(member, { sortOrder: index }, now)));
+    }
+  });
+  await Promise.all(writes);
+}
+
 // ─── Test / e2e helpers ───────────────────────────────────────────────────────
 
 export function __resetMembersServiceForTest(): void {

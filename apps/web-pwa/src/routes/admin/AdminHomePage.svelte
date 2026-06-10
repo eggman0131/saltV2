@@ -2,6 +2,11 @@
   import { Card, CardHeader, CardTitle, CardDescription } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
   import AdminGuard from './AdminGuard.svelte';
+  import { canonItems } from '../../lib/canonService.js';
+
+  // Needs-approval backlog count — mirrors the badge on the Admin nav entry
+  // (App.svelte) so the same number also surfaces on the Canon items tile.
+  const needsApprovalCount = $derived($canonItems.filter((i) => i.needs_approval).length);
 
   // Operator home (issues #155, #157). Future cross-domain operator tools
   // (backup, one-off data migrations / repairs) are added here as additional
@@ -16,8 +21,14 @@
     {
       id: 'canon',
       title: 'Canon items',
-      description: 'Review and curate the shared item catalog and aisles.',
+      description: 'Review and curate the shared item catalog.',
       href: '/admin/canon',
+    },
+    {
+      id: 'aisles',
+      title: 'Aisles',
+      description: 'Organise and sort the store aisles items are grouped into.',
+      href: '/admin/aisles',
     },
     {
       id: 'mealplan',
@@ -43,7 +54,17 @@
         >
           <Card class="h-full transition-colors hover:bg-muted/50">
             <CardHeader>
-              <CardTitle>{tool.title}</CardTitle>
+              <CardTitle class="flex items-center gap-2">
+                <span>{tool.title}</span>
+                {#if tool.id === 'canon' && needsApprovalCount > 0}
+                  <span
+                    class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-xs leading-none text-primary-foreground"
+                    data-testid="admin-tool-canon-badge"
+                  >
+                    {needsApprovalCount}
+                  </span>
+                {/if}
+              </CardTitle>
               <CardDescription>{tool.description}</CardDescription>
             </CardHeader>
           </Card>

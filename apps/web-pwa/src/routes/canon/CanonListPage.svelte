@@ -1,7 +1,6 @@
 <script lang="ts">
   import {
     Button,
-    Icon,
     ListPage,
     Select,
     SelectAllCheckbox,
@@ -163,15 +162,6 @@
   >
     {#snippet actions()}
       <Button size="sm" onclick={() => push('/admin/canon/new')}>Add item</Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        onclick={() => push('/admin/canon/aisles')}
-        data-testid="canon-aisles-btn"
-        aria-label="Manage aisles"
-      >
-        <Icon name="Store" size={16} />
-      </Button>
     {/snippet}
 
     {#snippet selectionBar()}
