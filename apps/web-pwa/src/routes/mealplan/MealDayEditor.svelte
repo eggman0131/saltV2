@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { TextField, Checkbox, Button } from '@salt/ui-components';
+  import { Checkbox, Button } from '@salt/ui-components';
   import { ChevronDown, ChevronRight, ChefHat, StickyNote } from '@lucide/svelte';
   import { memberInitials, type Day, type Member } from '@salt/domain';
 
@@ -77,6 +77,17 @@
   );
   const attendingCount = $derived(day.attendees.length + day.guests);
   const hasNotes = $derived(day.attendees.some((a) => a.note.trim() !== ''));
+
+  // Auto-grow the multiline meal field to fit its content. Re-runs whenever the
+  // note changes (typing, or load-template swapping the value in).
+  let noteEl: HTMLTextAreaElement | undefined = $state();
+  $effect(() => {
+    const _note = day.note; // track
+    if (noteEl) {
+      noteEl.style.height = 'auto';
+      noteEl.style.height = `${noteEl.scrollHeight}px`;
+    }
+  });
 </script>
 
 <div class="overflow-hidden rounded-lg border" data-testid={testid}>
@@ -159,13 +170,19 @@
 
   {#if open}
     <div class="flex flex-col gap-3 border-t px-3 py-3" data-testid={`${testid}-detail`}>
-      <TextField
-        label="Meal"
-        placeholder="What's for dinner?"
-        value={day.note}
-        onValueChange={(v) => onNoteChange(v)}
-        data-testid={`${testid}-note`}
-      />
+      <div class="flex flex-col gap-1.5">
+        <label class="text-sm font-medium text-foreground" for={`${testid}-note`}>Meal</label>
+        <textarea
+          bind:this={noteEl}
+          id={`${testid}-note`}
+          rows="1"
+          class="w-full resize-none overflow-hidden rounded-md border bg-background px-3 py-2 text-sm"
+          placeholder="What's for dinner?"
+          value={day.note}
+          oninput={(e) => onNoteChange(e.currentTarget.value)}
+          data-testid={`${testid}-note`}
+        ></textarea>
+      </div>
 
       <div class="flex flex-col gap-2.5">
         <span class="text-xs font-medium text-muted-foreground">Who's eating</span>
