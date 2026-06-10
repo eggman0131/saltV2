@@ -16,6 +16,7 @@
     isLoadingAisles,
     deleteCanonItem,
     approveCanonItems,
+    regenerateCanonIcon,
   } from '../../lib/canonService.js';
   import { aisles } from '../../lib/aisleService.js';
   import { titleCase } from '../../lib/titleCase.js';
@@ -112,6 +113,18 @@
     selection.remove(selectedApprovalIds);
   }
 
+  async function handleBulkRegenerateIcon() {
+    if (selection.count === 0) return;
+    const ids = selection.ids;
+    selectionMode = false; // exiting selection mode clears the selection
+    const results = await Promise.all(ids.map((id) => regenerateCanonIcon(id)));
+    if (results.some((r) => r.kind !== 'ok')) {
+      addToast('Failed to regenerate some icons.', 'destructive');
+    } else {
+      addToast(`Regenerating ${ids.length} icon${ids.length === 1 ? '' : 's'}…`, 'success');
+    }
+  }
+
   function handleBulkDelete() {
     if (selection.count === 0) return;
     const ids = selection.ids;
@@ -138,6 +151,13 @@
           } satisfies BulkAction,
         ]
       : []),
+    {
+      id: 'regenerate-icon',
+      label: 'Regenerate icon',
+      icon: 'RefreshCw',
+      testId: 'canon-list-bulk-regenerate-icon',
+      onSelect: () => void handleBulkRegenerateIcon(),
+    },
     {
       id: 'delete',
       label: 'Delete',
