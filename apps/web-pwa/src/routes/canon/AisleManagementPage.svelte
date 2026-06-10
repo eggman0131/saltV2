@@ -241,7 +241,7 @@
       {bulkActions}
     >
       {#snippet actions()}
-        <Button size="sm" onclick={() => push('/admin/canon')}>
+        <Button size="sm" onclick={() => push('/admin')}>
           <Icon name="ArrowLeft" size={16} />
           Back
         </Button>

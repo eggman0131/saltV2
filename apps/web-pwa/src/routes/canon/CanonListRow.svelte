@@ -1,5 +1,6 @@
 <script lang="ts">
   import {
+    CanonIcon,
     Combobox,
     ComboboxContent,
     ComboboxEmpty,
@@ -83,22 +84,26 @@
 
 <EditableRow {selected} shaded={item.needs_approval} {onToggleSelect}>
   {#snippet narrow()}
-    <button
-      class="flex min-w-0 flex-1 items-center justify-between text-left"
-      onclick={() => push(`/admin/canon/${item.id}`)}
-    >
-      <Text>{titleCase(item.name)}</Text>
-      {#if item.needs_approval}
-        <span
-          class="ml-2 shrink-0 rounded-full bg-amber-200 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-800 dark:text-amber-200"
-        >
-          Review
-        </span>
-      {/if}
-    </button>
+    <div class="flex min-w-0 items-center gap-2">
+      <CanonIcon thumbnail={item.thumbnail} name={item.name} size={34} />
+      <button
+        class="flex min-w-0 flex-1 items-center justify-between text-left"
+        onclick={() => push(`/admin/canon/${item.id}`)}
+      >
+        <Text>{titleCase(item.name)}</Text>
+        {#if item.needs_approval}
+          <span
+            class="ml-2 shrink-0 rounded-full bg-amber-200 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-800 dark:text-amber-200"
+          >
+            Review
+          </span>
+        {/if}
+      </button>
+    </div>
   {/snippet}
 
   {#snippet wide()}
+    <CanonIcon thumbnail={item.thumbnail} name={item.name} size={34} />
     <button
       class="min-w-[120px] flex-1 truncate text-left text-sm font-medium"
       onclick={() => push(`/admin/canon/${item.id}`)}

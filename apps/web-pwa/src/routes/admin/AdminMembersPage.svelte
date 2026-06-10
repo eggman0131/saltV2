@@ -8,7 +8,9 @@
     DialogFooter,
     DialogHeader,
     DialogTitle,
+    Icon,
     ListPage,
+    SortableList,
     TextField,
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
@@ -20,6 +22,7 @@
     createMemberEntry,
     updateMemberEntry,
     deleteMemberEntry,
+    reorderMembers,
   } from '../../lib/membersService.js';
   import { addToast } from '../../lib/toastStore.js';
 
@@ -29,7 +32,6 @@
   let formName = $state('');
   let formEmail = $state('');
   let formAdmin = $state(false);
-  let formSortOrder = $state('');
   let saving = $state(false);
 
   const isEditing = $derived(editingId !== null);
@@ -39,7 +41,6 @@
     formName = '';
     formEmail = '';
     formAdmin = false;
-    formSortOrder = '';
     showEditor = true;
   }
 
@@ -48,7 +49,6 @@
     formName = member.name;
     formEmail = member.email;
     formAdmin = member.admin;
-    formSortOrder = String(member.sortOrder);
     showEditor = true;
   }
 
@@ -60,17 +60,9 @@
       return;
     }
     saving = true;
-    const parsedOrder = formSortOrder.trim() === '' ? undefined : Number(formSortOrder);
-    const sortOrder =
-      parsedOrder !== undefined && Number.isFinite(parsedOrder) ? parsedOrder : undefined;
-
     const result = isEditing
-      ? await updateMemberEntry(editingId!, {
-          name,
-          admin: formAdmin,
-          ...(sortOrder !== undefined ? { sortOrder } : {}),
-        })
-      : await createMemberEntry({ name, email, admin: formAdmin, sortOrder });
+      ? await updateMemberEntry(editingId!, { name, admin: formAdmin })
+      : await createMemberEntry({ name, email, admin: formAdmin });
     saving = false;
 
     if (result.kind !== 'ok') {
@@ -110,42 +102,55 @@
     {/snippet}
 
     {#snippet children()}
-      <ul class="divide-y" data-testid="members-list">
-        {#each $members as member (member.id)}
-          <li
-            class="flex items-center gap-3 py-3"
-            data-testid="member-row"
-            data-member-id={member.id}
-          >
-            <span
-              class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground"
-              aria-hidden="true"
+      <div data-testid="members-list">
+        <SortableList
+          items={$members}
+          getId={(m) => m.id}
+          onReorder={reorderMembers}
+          class="divide-y divide-border rounded border"
+        >
+          {#snippet row(member)}
+            <div
+              class="flex items-center gap-3 px-3 py-3"
+              data-testid="member-row"
+              data-member-id={member.id}
             >
-              {memberInitials(member.name)}
-            </span>
-            <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-2">
-                <span class="truncate text-sm font-medium">{member.name}</span>
-                {#if member.admin}
-                  <span
-                    class="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary"
-                    data-testid="member-admin-badge"
-                  >
-                    Admin
-                  </span>
-                {/if}
-              </div>
-              <span class="truncate text-xs text-muted-foreground">{member.email}</span>
-            </div>
-            <div class="flex items-center gap-1">
-              <Button variant="ghost" size="sm" onclick={() => openEdit(member)}>Edit</Button>
-              <Button variant="ghost" size="sm" onclick={() => (deleteTarget = member)}
-                >Remove</Button
+              <span
+                data-testid={`member-drag-handle-${member.id}`}
+                class="cursor-grab text-muted-foreground"
               >
+                <Icon name="GripVertical" size={16} />
+              </span>
+              <span
+                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground"
+                aria-hidden="true"
+              >
+                {memberInitials(member.name)}
+              </span>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2">
+                  <span class="truncate text-sm font-medium">{member.name}</span>
+                  {#if member.admin}
+                    <span
+                      class="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary"
+                      data-testid="member-admin-badge"
+                    >
+                      Admin
+                    </span>
+                  {/if}
+                </div>
+                <span class="truncate text-xs text-muted-foreground">{member.email}</span>
+              </div>
+              <div class="flex items-center gap-1">
+                <Button variant="ghost" size="sm" onclick={() => openEdit(member)}>Edit</Button>
+                <Button variant="ghost" size="sm" onclick={() => (deleteTarget = member)}
+                  >Remove</Button
+                >
+              </div>
             </div>
-          </li>
-        {/each}
-      </ul>
+          {/snippet}
+        </SortableList>
+      </div>
     {/snippet}
   </ListPage>
 </AdminGuard>
@@ -174,13 +179,6 @@
         bind:value={formEmail}
         disabled={isEditing}
         data-testid="member-email-input"
-      />
-      <TextField
-        label="Sort order"
-        type="number"
-        bind:value={formSortOrder}
-        description="Lower numbers appear first. Leave blank to add at the end."
-        data-testid="member-sortorder-input"
       />
       <Checkbox bind:checked={formAdmin} label="Admin" data-testid="member-admin-input" />
       <DialogFooter>
