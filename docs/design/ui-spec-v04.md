@@ -80,6 +80,7 @@ A text input that:
 | `restrict`     | boolean                                            | false          | If true, must select from `items` |
 | `name`         | string \| undefined                                | —              | Hidden input name                 |
 | `placeholder`  | string \| undefined                                | —              | Input placeholder                 |
+| `openOnClick`  | boolean                                            | true           | If false, clicking/focusing the input does **not** open the popup — it opens only once the user types. Shopping-list add field sets this `false`; canon page keeps the default |
 | `portal`       | HTMLElement \| string \| false                     | "body"         | Portal target for content         |
 | `filterFn`     | (input: string, item: { value; label }) => boolean | default filter | Optional custom filter function   |
 | `class`        | string \| undefined                                | —              | Root class                        |
@@ -177,6 +178,7 @@ When input is focused:
 ### 4.3 Pointer interaction
 
 - Clicking `ComboboxTrigger` toggles `open`.
+- Clicking/focusing `ComboboxInput` opens the popup **only when `openOnClick` is true** (the default). When `openOnClick` is false, the popup stays closed until the user types; the `ComboboxTrigger` caret still toggles `open` regardless.
 - Clicking an item selects it and closes popup.
 - Mouse hover may update active item (optional; not required).
 
@@ -668,6 +670,7 @@ The pieces:
 | `items`     | `T[]` where `T extends { id: string }`                   | —       | Rows to render; keyed by `item.id`             |
 | `selection` | `ListSelection`                                          | —       | Shared controller; gates + drives the checkbox |
 | `row`       | `Snippet<[T, { selected: boolean; toggle: () => void }]>`| —       | Renders each row's content                     |
+| `getRowCheckboxLabel` | `((item: T) => string) \| undefined`           | see Notes | Accessible label for each row's select checkbox; defaults to ``(item) => `Select ${item.id}` `` when omitted |
 | `class`     | `string \| undefined`                                    | —       | Merged onto the `<ul>`                         |
 
 **`SelectAllCheckbox`** — `{ selection: ListSelection }` (extra attrs forwarded to `Checkbox`).

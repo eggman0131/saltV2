@@ -55,7 +55,7 @@ Generators must not implement v0.3 primitives until the v0.3 spec exists.
 | Headless      | bits-ui ≥ 1.0.0; melt-ui ≥ 1.0.0-svelte5 (fallback only)                           |
 | Variants      | class-variance-authority (CVA)                                                     |
 | Class merging | tailwind-merge + clsx via `cn()`                                                   |
-| Icons         | lucide-svelte (typed as `keyof typeof import('lucide-svelte')`)                    |
+| Icons         | @lucide/svelte (typed as `keyof typeof import('@lucide/svelte').icons`)            |
 | Testing       | Vitest + @testing-library/svelte + user-event + axe-core                           |
 | TS            | strict: true                                                                       |
 
@@ -67,7 +67,7 @@ Generators must not implement v0.3 primitives until the v0.3 spec exists.
 
 Allowed imports:
 
-- bits-ui, melt-ui, lucide-svelte
+- bits-ui, melt-ui, @lucide/svelte
 - Svelte internals
 - Tailwind utilities
 
@@ -78,7 +78,7 @@ Forbidden:
 - Node built-ins
 - Browser APIs except inside Svelte actions or `$effect` blocks
 
-Consumers may NOT import bits-ui / melt-ui / lucide-svelte directly. All access is through `@salt/ui-components` entry points.
+Consumers may NOT import bits-ui / melt-ui / @lucide/svelte directly. All access is through `@salt/ui-components` entry points.
 
 ---
 
@@ -1430,7 +1430,7 @@ Note: `as` is constrained to a union — **not** an arbitrary string — to keep
 
 | Name        | Type                                   | Default      |
 | ----------- | -------------------------------------- | ------------ |
-| `name`      | `keyof typeof import('lucide-svelte')` | — (required) |
+| `name`      | `keyof typeof import('@lucide/svelte').icons` | — (required) |
 | `size`      | `number`                               | `16`         |
 | `ariaLabel` | `string \| undefined`                  | —            |
 | `class`     | `string \| undefined`                  | —            |
@@ -1561,6 +1561,7 @@ Numeric transform (allowed by §2.3): determinate indicator uses `style="transfo
 
 | Date       | Version | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ---------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-06-08 | v0.2.5  | Icon library migrated `lucide-svelte` → `@lucide/svelte` (commit `4822a19`). §1.1 design-system table, §1.2 allowed-imports + consumer restriction, and §8.12 Icon `name` prop updated. Icon `name` surface is now `keyof typeof import('@lucide/svelte').icons` (the named `icons` namespace export, not `import *`); `NavItem.icon` is typed as the `LucideIcon` component from `@lucide/svelte`. Ratifies the migration in issue #167.                                                                                                                            |
 | 2026-05-30 | v0.2.4  | §8.2 TextField: `label` relaxed from required to `string \| undefined`. Callers omitting `label` must supply `aria-label` or `aria-labelledby`. Ratifies code change from PR #71.                                                                                                                                                                                                                                                                        |
 | 2026-04-22 | v0.2.3  | §1.2 tightened to truly leaf (external-only) to match root CLAUDE.md and eslint.config.js. Removed `@salt/shared-types` from allowed imports list.                                                                                                                                                                                                                                                                                                       |
 | 2026-04-22 | v0.2.2  | Locked four implementation decisions: Svelte pin `^5.55.0` (§1.1), Icon surface `keyof typeof import('lucide-svelte')` (§1.1 + §8.12 unchanged), `tailwindcss-animate` registered by preset (§1.1 + §3.3), `useId` kept as module-scope counter explicitly **not SSR-safe** (§2.6). No breaking change to generated code.                                                                                                                                |
