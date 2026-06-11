@@ -123,10 +123,13 @@
             <ul class="flex flex-col gap-1">
               {#each group.items as ingredient (ingredient.id)}
                 <li class="text-sm" data-testid="recipe-view-ingredient">
-                  {ingredient.rawText}
-                  {#if ingredient.isOptional}
-                    <span class="ml-1 text-xs text-muted-foreground">(optional)</span>
-                  {/if}
+                  {ingredient.rawText}{#if ingredient.parsed?.convertedWeight}<span
+                      class="ml-1 text-xs text-muted-foreground"
+                      >({ingredient.parsed.convertedWeight.value}{ingredient.parsed.convertedWeight
+                        .unit})</span
+                    >{/if}{#if ingredient.isOptional}<span
+                      class="ml-1 text-xs text-muted-foreground">(optional)</span
+                    >{/if}
                 </li>
               {/each}
             </ul>

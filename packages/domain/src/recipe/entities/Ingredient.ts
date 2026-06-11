@@ -15,6 +15,9 @@ export interface ParsedIngredient {
   readonly item: string;
   readonly preparation: readonly string[];
   readonly notes: string | null;
+  // Metric conversion of volumetric measures (cup/tbsp/tsp → g or ml).
+  // null when no conversion applies: unit is already metric, item-based, or absent.
+  readonly convertedWeight: { readonly value: number; readonly unit: 'g' | 'ml' } | null;
 }
 
 export interface Ingredient {

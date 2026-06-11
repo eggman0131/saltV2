@@ -39,6 +39,7 @@ type AiIngredient = {
   preparation: string[];
   notes: string | null;
   isOptional: boolean;
+  convertedWeight: { value: number; unit: 'g' | 'ml' } | null;
 };
 
 function aiOutput(groups: Array<{ name: string | null; items: AiIngredient[] }>) {
@@ -53,6 +54,7 @@ function simpleIngredient(overrides: Partial<AiIngredient> & { rawText: string }
     preparation: [],
     notes: null,
     isOptional: false,
+    convertedWeight: null,
     ...overrides,
   };
 }
@@ -242,6 +244,65 @@ describe('parseRecipeIngredients — optional garnish', () => {
 
     expect(result[0].items[0].isOptional).toBe(true);
     expect(result[0].items[0].rawText).toBe('fresh parsley to serve (optional)');
+  });
+});
+
+// ─── Unit conversion ─────────────────────────────────────────────────────────
+
+describe('parseRecipeIngredients — unit conversion', () => {
+  it('threads convertedWeight through to the parsed field', async () => {
+    mockGenerate.mockResolvedValue({
+      output: aiOutput([
+        {
+          name: null,
+          items: [
+            simpleIngredient({
+              rawText: '½ cup butter, melted',
+              quantity: { type: 'mixed', whole: 0, numerator: 1, denominator: 2 },
+              unit: 'cup',
+              item: 'butter',
+              preparation: ['melted'],
+              convertedWeight: { value: 113, unit: 'g' },
+            }),
+            simpleIngredient({
+              rawText: '1 tbsp olive oil',
+              quantity: { type: 'single', value: 1 },
+              unit: 'tbsp',
+              item: 'olive oil',
+              convertedWeight: { value: 15, unit: 'ml' },
+            }),
+          ],
+        },
+      ]),
+    });
+
+    const result = await (parseRecipeIngredientsFlow as Function)({
+      rawText: '½ cup butter, melted\n1 tbsp olive oil',
+    });
+
+    expect(result[0].items[0].parsed.convertedWeight).toEqual({ value: 113, unit: 'g' });
+    expect(result[0].items[1].parsed.convertedWeight).toEqual({ value: 15, unit: 'ml' });
+  });
+
+  it('passes null convertedWeight through unchanged', async () => {
+    mockGenerate.mockResolvedValue({
+      output: aiOutput([
+        {
+          name: null,
+          items: [
+            simpleIngredient({
+              rawText: '2 cloves garlic',
+              item: 'garlic',
+              convertedWeight: null,
+            }),
+          ],
+        },
+      ]),
+    });
+
+    const result = await (parseRecipeIngredientsFlow as Function)({ rawText: '2 cloves garlic' });
+
+    expect(result[0].items[0].parsed.convertedWeight).toBeNull();
   });
 });
 

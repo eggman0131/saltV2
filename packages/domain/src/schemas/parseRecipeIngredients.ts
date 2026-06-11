@@ -15,6 +15,7 @@ const ParsedIngredientAISchema = z.object({
   preparation: z.array(z.string()),
   notes: z.string().nullable(),
   isOptional: z.boolean(),
+  convertedWeight: z.object({ value: z.number(), unit: z.enum(['g', 'ml']) }).nullable(),
 });
 
 const IngredientGroupAISchema = z.object({

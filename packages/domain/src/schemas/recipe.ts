@@ -40,6 +40,13 @@ export const ParsedIngredientSchema = z.object({
   item: z.string(),
   preparation: z.array(z.string()),
   notes: z.string().nullable(),
+  // Metric conversion of volumetric measures: g for solids, ml for liquids.
+  // null = no conversion applicable (already metric, item-based unit, or no quantity).
+  // .default(null) so documents written before this field was added still parse.
+  convertedWeight: z
+    .object({ value: z.number(), unit: z.enum(['g', 'ml']) })
+    .nullable()
+    .default(null),
 });
 
 export const IngredientSchema = z.object({
