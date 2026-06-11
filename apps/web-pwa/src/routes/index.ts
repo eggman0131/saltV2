@@ -12,6 +12,9 @@ import ShoppingListCreatePage from './shopping/ShoppingListCreatePage.svelte';
 import ShoppingListsManagePage from './shopping/ShoppingListsManagePage.svelte';
 import ShoppingListPage from './shopping/ShoppingListPage.svelte';
 import MealPlanWeekPage from './mealplan/MealPlanWeekPage.svelte';
+import RecipeListPage from './recipes/RecipeListPage.svelte';
+import RecipeEditPage from './recipes/RecipeEditPage.svelte';
+import RecipeViewPage from './recipes/RecipeViewPage.svelte';
 import SettingsPage from './settings/SettingsPage.svelte';
 import AdminHomePage from './admin/AdminHomePage.svelte';
 import AdminMembersPage from './admin/AdminMembersPage.svelte';
@@ -29,6 +32,12 @@ export const routes: RouteDefinition = new Map([
   ['/shopping/lists', ShoppingListsManagePage],
   ['/shopping/:listId', ShoppingListPage],
   ['/mealplan', MealPlanWeekPage],
+  // Recipe module (issue #179). More-specific static/edit routes precede the
+  // parameterised view route.
+  ['/recipes', RecipeListPage],
+  ['/recipes/new', RecipeEditPage],
+  ['/recipes/:id/edit', RecipeEditPage],
+  ['/recipes/:id', RecipeViewPage],
   ['/settings', SettingsPage],
   // Operator area (issues #155, #157). All routes are guarded client-side by
   // AdminGuard; the real boundary is server-side (rules + CF admin checks).

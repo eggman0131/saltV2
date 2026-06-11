@@ -20,6 +20,7 @@
   import { initShoppingListSync } from './lib/shoppingListService.svelte.js';
   import { members, initMembersSync } from './lib/membersService.js';
   import { initMealPlanSync } from './lib/mealPlanService.js';
+  import { initRecipeSync } from './lib/recipeService.js';
   import { normaliseMemberEmail } from '@salt/domain';
   import SessionOverlay from './lib/dev/SessionOverlay.svelte';
 
@@ -31,12 +32,14 @@
     const unsubShopping = initShoppingListSync();
     const unsubMembers = initMembersSync();
     const unsubMealPlan = initMealPlanSync();
+    const unsubRecipes = initRecipeSync();
     return () => {
       unsubCanon();
       unsubEquipment();
       unsubShopping();
       unsubMembers();
       unsubMealPlan();
+      unsubRecipes();
     };
   });
 
