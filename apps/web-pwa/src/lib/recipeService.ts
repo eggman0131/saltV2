@@ -8,7 +8,7 @@ import {
 } from '@salt/firebase-sync';
 import { createLDErrorReportingAdapter } from '@salt/ld-observability';
 import { addItem } from '@salt/domain';
-import type { Recipe, IngredientGroup, Quantity, SourceRef } from '@salt/domain';
+import type { Recipe, Ingredient, IngredientGroup, Quantity, SourceRef } from '@salt/domain';
 import { success, type DomainError, type ReadResult } from '@salt/shared-types';
 import { writable, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
@@ -150,6 +150,38 @@ export async function canonicaliseIngredients(
   }));
 
   return persistRecipe({ ...recipe, ingredients: updatedGroups });
+}
+
+// Parse and canon-match a single ingredient line. Chains callParseRecipeIngredients
+// → callCanonicaliseRecipeIngredients (batch-of-one) and folds the result into the
+// ingredient. Operates on the in-memory draft; the caller must persist the result.
+export async function matchIngredient(
+  ing: Ingredient,
+): Promise<ReadResult<Ingredient, DomainError>> {
+  const parseResult = await callParseRecipeIngredients(ing.rawText);
+  if (parseResult.kind === 'err') return parseResult;
+
+  const firstItem = parseResult.value[0]?.items[0];
+  if (!firstItem?.parsed) {
+    return success({ ...ing, parsed: null, canonId: null, matchState: 'failed' as const });
+  }
+  const parsed = firstItem.parsed;
+
+  const canonResult = await callCanonicaliseRecipeIngredients({
+    items: [{ rawName: parsed.item, rawText: ing.rawText }],
+  });
+  if (canonResult.kind === 'err') return canonResult;
+
+  const slot = canonResult.value[0]!;
+  if (slot.kind === 'err') {
+    return success({ ...ing, parsed, canonId: null, matchState: 'failed' as const });
+  }
+  return success({
+    ...ing,
+    parsed,
+    canonId: slot.value.item.id,
+    matchState: 'matched' as const,
+  });
 }
 
 export async function removeRecipe(id: string): Promise<ReadResult<void, DomainError>> {

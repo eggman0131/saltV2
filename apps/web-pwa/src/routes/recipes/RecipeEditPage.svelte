@@ -13,7 +13,12 @@
     type Step,
     type RecipeMetadata,
   } from '@salt/domain';
-  import { recipes, persistRecipe, parseIngredients } from '../../lib/recipeService.js';
+  import {
+    recipes,
+    persistRecipe,
+    parseIngredients,
+    matchIngredient,
+  } from '../../lib/recipeService.js';
   import { addToast } from '../../lib/toastStore.js';
 
   interface Props {
@@ -215,6 +220,29 @@
       draft.steps.map((s) =>
         s.id === stepId ? { ...s, note: trimmed === '' ? null : trimmed } : s,
       ),
+    );
+  }
+
+  // ─── Per-row match ───────────────────────────────────────────────────────────
+  let matchingIds = $state<Record<string, boolean>>({});
+
+  async function handleMatchIngredient(group: IngredientGroup, ing: Ingredient): Promise<void> {
+    if (matchingIds[ing.id]) return;
+    matchingIds = { ...matchingIds, [ing.id]: true };
+    const result = await matchIngredient(ing);
+    matchingIds = { ...matchingIds, [ing.id]: false };
+    if (result.kind !== 'ok') {
+      addToast('Failed to match ingredient.', 'destructive');
+      return;
+    }
+    // Discard stale result if text was edited while the match was in flight.
+    const currentGroup = draft.ingredients.find((g) => g.id === group.id);
+    if (!currentGroup) return;
+    const currentIng = currentGroup.items.find((i) => i.id === ing.id);
+    if (!currentIng || currentIng.rawText !== ing.rawText) return;
+    updateGroupItems(
+      group.id,
+      currentGroup.items.map((i) => (i.id === ing.id ? result.value : i)),
     );
   }
 
@@ -435,6 +463,26 @@
                 class="flex-1"
                 data-testid="recipe-ingredient-input"
               />
+              {#if ingredient.matchState === 'matched'}
+                <span data-testid="recipe-ingredient-match-ok" class="shrink-0 text-green-600">
+                  <Icon name="Check" size={16} />
+                </span>
+              {:else if ingredient.matchState === 'failed'}
+                <span data-testid="recipe-ingredient-match-err" class="shrink-0 text-destructive">
+                  <Icon name="CircleX" size={16} />
+                </span>
+              {/if}
+              <Button
+                variant="ghost"
+                size="sm"
+                onclick={() => handleMatchIngredient(group, ingredient)}
+                loading={matchingIds[ingredient.id] ?? false}
+                disabled={ingredient.rawText.trim() === '' || (matchingIds[ingredient.id] ?? false)}
+                aria-label="Match ingredient"
+                data-testid="recipe-ingredient-match-btn"
+              >
+                <Icon name="Wand2" size={16} />
+              </Button>
               <Switch
                 label="Optional"
                 checked={ingredient.isOptional}
