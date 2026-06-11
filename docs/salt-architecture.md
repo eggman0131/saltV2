@@ -103,6 +103,7 @@ The domain exposes:
   - Canon items (name, synonyms, aisle, optional embedding, thumbnail icon)
   - Shopping lists (items, checked state, canon links)
   - Members (email-keyed allowlist membership records, admin role, email normalisation)
+  - Meal plan (MealPlanConfig, MealPlanTemplate, MealPlanWeek, Day, Attendee, Weekday — weekly evening-meal planner with a weekday-keyed template and per-day guest count)
 - Commands (write operations)
 - Queries (read operations)
 - Validation rules and Zod schemas (via `@salt/domain/schemas` subpath) — covers all Firestore document shapes, callable CF inputs, and AI flow output types; TypeScript types are derived via `z.infer`
@@ -120,7 +121,7 @@ The domain is the single source of truth for business logic, data shapes, and va
 
 Salt 2.0 is built for a **single shared family workspace**:
 
-- All authenticated members see all recipes, canon, and shopping lists.
+- All authenticated members see all recipes, canon, shopping lists, and meal plan data.
 - There is no per‑recipe ACL; there are no private collections.
 - **Admin functions** (e.g. inviting members, managing canon at scale, destructive bulk operations) are gated by a per‑user `role` field on the workspace membership record.
 - Role checks are domain logic, not adapter logic. Adapters surface the role; domain decides what's allowed.
@@ -144,6 +145,7 @@ This model is intentionally narrow. Multi‑workspace, sharing, or per‑documen
   - Shopping list items: `subscribeShoppingListItems`, `listShoppingListItems`, `saveShoppingListItem`, `deleteShoppingListItem`, `deleteShoppingListItems`, `moveShoppingListItems`
   - Shopping list config: `subscribeShoppingListsConfig`, `loadShoppingListsConfig`, `saveShoppingListsConfig`
   - Members: `subscribeMembers`, `upsertMember`, `deleteMember`
+  - Meal plan: `subscribeMealPlanConfig`, `subscribeMealPlanTemplate`, `subscribeMealPlanWeek`, `saveMealPlanConfig`, `saveMealPlanTemplate`, `saveMealPlanWeek`
 - Validates all Firestore document reads using Zod schemas from `@salt/domain/schemas`; collection and subscription reads skip invalid documents (log the error, return the valid subset); single-document reads return `Failure<StorageError>` on parse failure.
 - Must not import IndexedDB or any local‑storage code.
 - Must not contain UI logic.
@@ -163,6 +165,7 @@ Ships two subpath entrypoints from a single package:
 - Initialises an OTel `NodeTracerProvider` that ships CF spans to LaunchDarkly's OTLP endpoint.
 - Implements `MatchLoggingPort` for the CF side via `createServerLDMatchLoggingAdapter`.
 - Exposes `addServerSpanProcessor` so CF-local concerns (e.g. Genkit dev-trace routing) can register additional span processors without touching the adapter internals.
+- Exposes `setActiveSpanName(name)` to rename the currently-active OTel span from inside a Genkit flow body, appending a human-readable entity descriptor (e.g. the item name) so traces are scannable in the LaunchDarkly trace list. No-op when observability is uninitialised or no span is active; length-capped at 80 characters.
 - `firebase-functions/logger` is used additively for top-level summary logs to Cloud Logging.
 
 Both subpaths share a runtime-neutral schema mapper (`src/shared/`) so the `canon.match` wire schema cannot drift between fast-path and CF emissions.
@@ -267,9 +270,10 @@ The PWA:
 - Never contains business logic (including conflict resolution policy)
 - Uses domain commands/queries as its API
 - Wires `AuthProvider`, `ErrorReportingPort`, `MatchLoggingPort`, `EmbeddingPort`, and `CanonArbitrationPort` at composition time
-- Starts `initCanonSync()` from `App.svelte` when the user authenticates — subscriptions begin once at auth time, not on individual page mounts
+- Starts `initCanonSync()` and `initMealPlanSync()` from `App.svelte` when the user authenticates — subscriptions begin once at auth time, not on individual page mounts
 - In-memory Svelte stores (`canonItems`, `aisles`, `aisleUsage`) are the UI's read layer; `upsertCanonItem` and `saveAisles` are the write path
-- **Admin operator area** (`/admin` route group): `AdminGuard` redirects non-admins; the Members CRUD screen (`/admin/members`) lets admins add, edit, and remove allowlist members; `membersService` exposes a sorted roster store backed by `subscribeMembers`. Canon management (`/admin/canon`, `/admin/canon/new`, `/admin/canon/aisles`, `/admin/canon/:id`) is also gated here — canon stewardship is an operator function, not an everyday user activity, so the list, create, detail, and aisle management pages all sit under `AdminGuard`. The `needs_approval` count badge is surfaced on the Admin nav entry so operators can see the review queue from anywhere in the app. Client-side gating is cosmetic — real enforcement is in Firestore rules and the `beforeMemberCreated` blocking function.
+- **Meal plan** (`/mealplan`): the weekly evening-meal planner, accessible to all members. Shows a seven-day week with prev/next/this-week navigation and a Load-template button. `mealPlanService` drives the page; subscriptions are started at auth time via `initMealPlanSync()`.
+- **Admin operator area** (`/admin` route group): `AdminGuard` redirects non-admins; the Members CRUD screen (`/admin/members`) lets admins add, edit, and remove allowlist members; `membersService` exposes a sorted roster store backed by `subscribeMembers`. Canon management (`/admin/canon`, `/admin/canon/new`, `/admin/canon/aisles`, `/admin/canon/:id`) is also gated here — canon stewardship is an operator function, not an everyday user activity, so the list, create, detail, and aisle management pages all sit under `AdminGuard`. The `needs_approval` count badge is surfaced on the Admin nav entry so operators can see the review queue from anywhere in the app. Meal plan template administration (`/admin/mealplan`) lets operators edit the standard weekday-keyed template and the `firstDayOfWeek` setting; gated by `AdminGuard` (cosmetic — Firestore rules allow any authenticated member to write meal plan documents). Client-side gating is cosmetic — real enforcement is in Firestore rules and the `beforeMemberCreated` blocking function.
 - Offline data is provided by Firestore's `persistentLocalCache`. The service worker never caches Firestore traffic or any app data.
 - **PWA installability (Tier-1):** A Workbox-generated service worker (`vite-plugin-pwa`, `generateSW` strategy) precaches the built app shell and static assets only. The service worker is the sole consumer of the Cache API; no other module may touch `caches` directly (CLAUDE.md hard rule #3). The SW is disabled in dev (no interference with HMR). Manifest identity is env-distinct: `VITE_PWA_NAME`, `VITE_PWA_SHORT_NAME`, and `VITE_PWA_THEME_COLOR` are read at build time from `.env.<mode>` so staging and production install as distinct apps. The auto-update flow (owned by `src/lib/pwa.ts`) defers page reloads to safe moments (hash route change or tab refocus) and never reloads mid-interaction.
 
