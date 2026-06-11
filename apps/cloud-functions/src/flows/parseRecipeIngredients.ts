@@ -16,14 +16,20 @@ export const parseRecipeIngredientsFlow = ai.defineFlow(
     outputSchema: ParseRecipeIngredientsOutputSchema,
   },
   async ({ rawText }) => {
-    const result = await withAiTimeout('parseRecipeIngredients', () =>
-      ai.generate({
-        model: GENERATION_MODEL,
-        system: SYSTEM_INSTRUCTIONS,
-        prompt: rawText,
-        output: { schema: ParseRecipeIngredientsAIOutputSchema },
-        config: { temperature: 0 },
-      }),
+    // Recipe lists are much larger prompts than single-entry calls, so Flash can
+    // take 30–50s on a full ingredient list. Use a higher timeout with no retry:
+    // retrying a large legitimate request just doubles the wait for no gain.
+    const result = await withAiTimeout(
+      'parseRecipeIngredients',
+      () =>
+        ai.generate({
+          model: GENERATION_MODEL,
+          system: SYSTEM_INSTRUCTIONS,
+          prompt: rawText,
+          output: { schema: ParseRecipeIngredientsAIOutputSchema },
+          config: { temperature: 0 },
+        }),
+      { timeoutMs: 55_000, retries: 0 },
     );
 
     const parsed = ParseRecipeIngredientsAIOutputSchema.safeParse(result.output);

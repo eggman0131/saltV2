@@ -117,11 +117,14 @@ export const populateEquipmentEntry = onCallGenkit(
   populateEquipmentEntryFlow,
 );
 
+// Recipe lists are larger prompts than single-entry flows — allow 90s so the
+// 55s withAiTimeout has sufficient headroom within the function lifetime.
 export const parseRecipeIngredients = onCallGenkit(
   {
     ...APP_CHECK_ENFORCEMENT,
     secrets: [geminiApiKey],
     authPolicy: isSignedIn(),
+    timeoutSeconds: 90,
   },
   parseRecipeIngredientsFlow,
 );
