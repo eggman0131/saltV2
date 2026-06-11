@@ -3,10 +3,11 @@ import {
   saveRecipe as saveRecipeDoc,
   deleteRecipe as deleteRecipeDoc,
   callParseRecipeIngredients,
+  callMatchOrCreate,
 } from '@salt/firebase-sync';
 import { createLDErrorReportingAdapter } from '@salt/ld-observability';
 import type { Recipe, IngredientGroup } from '@salt/domain';
-import type { DomainError, ReadResult } from '@salt/shared-types';
+import { success, type DomainError, type ReadResult } from '@salt/shared-types';
 import { writable, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 
@@ -96,6 +97,56 @@ export async function parseIngredients(
   rawText: string,
 ): Promise<ReadResult<IngredientGroup[], DomainError>> {
   return callParseRecipeIngredients(rawText);
+}
+
+// Canonicalise all parsed-but-unmatched ingredients in a recipe by calling
+// matchOrCreate for each and writing back canonId + matchState. Only processes
+// ingredients with parsed !== null and matchState 'pending' or 'failed'.
+// All calls are fired in parallel; results are applied wholesale via persistRecipe.
+export async function canonicaliseIngredients(
+  recipe: Recipe,
+): Promise<ReadResult<void, DomainError>> {
+  // Collect ingredients that need canonicalisation: parsed and not yet matched.
+  const toProcess: Array<{ ingredientId: string; rawName: string; rawText: string }> = [];
+  for (const group of recipe.ingredients) {
+    for (const ing of group.items) {
+      if (ing.parsed !== null && (ing.matchState === 'pending' || ing.matchState === 'failed')) {
+        toProcess.push({ ingredientId: ing.id, rawName: ing.parsed.item, rawText: ing.rawText });
+      }
+    }
+  }
+
+  if (toProcess.length === 0) return success(undefined);
+
+  const settled = await Promise.all(
+    toProcess.map(({ rawName, rawText }) => callMatchOrCreate({ rawName, rawText })),
+  );
+
+  // Map ingredientId → matchOrCreate result for O(1) lookup.
+  const resultById = new Map(
+    toProcess.map((p, i) => {
+      const r = settled[i];
+      return [p.ingredientId, r] as const;
+    }),
+  );
+
+  const updatedGroups = recipe.ingredients.map((group) => ({
+    ...group,
+    items: group.items.map((ing) => {
+      const result = resultById.get(ing.id);
+      if (result === undefined) return ing;
+      if (result.kind === 'err') {
+        return { ...ing, matchState: 'failed' as const, canonId: null };
+      }
+      return {
+        ...ing,
+        canonId: result.value.item.id,
+        matchState: 'matched' as const,
+      };
+    }),
+  }));
+
+  return persistRecipe({ ...recipe, ingredients: updatedGroups });
 }
 
 export async function removeRecipe(id: string): Promise<ReadResult<void, DomainError>> {

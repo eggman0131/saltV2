@@ -54,8 +54,7 @@ export const IngredientSchema = z.object({
   rawText: z.string(),
   parsed: ParsedIngredientSchema.nullable(),
   canonId: z.string().nullable(),
-  // SAME enum as shoppingListItem (issue #179).
-  matchState: z.enum(['pending', 'matched', 'needs_approval', 'failed']),
+  matchState: z.enum(['pending', 'matched', 'failed']),
   isOptional: z.boolean(),
   firstUsedInStepId: z.string().nullable(),
 });

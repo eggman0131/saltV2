@@ -14,7 +14,12 @@
     PopoverContent,
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
-  import { recipes, isLoadingRecipes, removeRecipe } from '../../lib/recipeService.js';
+  import {
+    recipes,
+    isLoadingRecipes,
+    removeRecipe,
+    canonicaliseIngredients,
+  } from '../../lib/recipeService.js';
   import { addToast } from '../../lib/toastStore.js';
 
   interface Props {
@@ -33,6 +38,31 @@
     if (m.cookTimeMinutes !== null) parts.push(`Cook ${m.cookTimeMinutes} min`);
     if (m.totalTimeMinutes !== null) parts.push(`Total ${m.totalTimeMinutes} min`);
     return parts;
+  }
+
+  // ─── Canonicalise ────────────────────────────────────────────────────────────
+  let canonalising = $state(false);
+
+  const hasParsedPending = $derived(
+    recipe !== null &&
+      recipe.ingredients.some((g) =>
+        g.items.some(
+          (ing) =>
+            ing.parsed !== null && (ing.matchState === 'pending' || ing.matchState === 'failed'),
+        ),
+      ),
+  );
+
+  async function handleCanonicalise(): Promise<void> {
+    if (!recipe) return;
+    canonalising = true;
+    const result = await canonicaliseIngredients(recipe);
+    canonalising = false;
+    if (result.kind !== 'ok') {
+      addToast('Canonicalisation failed.', 'destructive');
+      return;
+    }
+    addToast('Ingredients matched.', 'success');
   }
 
   // ─── Delete ─────────────────────────────────────────────────────────────────
@@ -111,7 +141,22 @@
 
       <!-- Ingredients -->
       <section class="flex flex-col gap-3">
-        <p class="text-sm font-medium">Ingredients</p>
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium">Ingredients</p>
+          {#if hasParsedPending}
+            <Button
+              size="sm"
+              variant="outline"
+              onclick={handleCanonicalise}
+              loading={canonalising}
+              disabled={canonalising}
+              data-testid="recipe-canonicalise-button"
+            >
+              {#snippet leading()}<Icon name="Link" size={14} />{/snippet}
+              Canonicalise
+            </Button>
+          {/if}
+        </div>
         {#if recipe.ingredients.length === 0}
           <p class="text-sm text-muted-foreground">No ingredients.</p>
         {/if}
@@ -129,6 +174,14 @@
                         .unit})</span
                     >{/if}{#if ingredient.isOptional}<span
                       class="ml-1 text-xs text-muted-foreground">(optional)</span
+                    >{/if}{#if ingredient.matchState === 'matched'}<span
+                      class="ml-1 text-xs text-green-600"
+                      title="Matched"
+                      data-testid="match-state-matched">✓</span
+                    >{:else if ingredient.matchState === 'failed'}<span
+                      class="ml-1 text-xs text-destructive"
+                      title="Match failed"
+                      data-testid="match-state-failed">✗</span
                     >{/if}
                 </li>
               {/each}

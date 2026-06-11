@@ -4,7 +4,7 @@ import type { Quantity } from './Quantity.js';
 // ingredient and a shopping-list item describe their canon match the same way.
 // Defined locally to keep the recipe module self-contained, like the other
 // domain modules; the wire contract is enforced by the zod enum on read.
-export type MatchState = 'pending' | 'matched' | 'needs_approval' | 'failed';
+export type MatchState = 'pending' | 'matched' | 'failed';
 
 // The structured interpretation of an ingredient line. `item` is the cleaned,
 // pre-canon name only — canon owns the canonical name (stored as `canonId` on
