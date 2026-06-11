@@ -57,6 +57,7 @@ export {
   getAisleUsage,
   CANON_ICON_HIDDEN,
   isCanonIconRenderable,
+  hasLiveCanonMatch,
 } from './canon/index.js';
 export type {
   ConflictStrategy,

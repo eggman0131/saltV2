@@ -9,7 +9,9 @@ import {
 import { createLDErrorReportingAdapter } from '@salt/ld-observability';
 import { addItem } from '@salt/domain';
 import type { Recipe, Ingredient, IngredientGroup, Quantity, SourceRef } from '@salt/domain';
+import { hasLiveCanonMatch } from '@salt/domain';
 import { success, type DomainError, type ReadResult } from '@salt/shared-types';
+import { getCanonItemsSnapshot } from './canonService.js';
 import { writable, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 
@@ -107,11 +109,13 @@ export async function parseIngredients(
 export async function canonicaliseIngredients(
   recipe: Recipe,
 ): Promise<ReadResult<void, DomainError>> {
-  // Collect ingredients that need canonicalisation: parsed and not yet matched.
+  // Collect ingredients that need canonicalisation: parsed and without a live match
+  // (pending, failed, or matched-but-canon-item-deleted).
+  const canonIds = new Set(getCanonItemsSnapshot().map((c) => c.id));
   const toProcess: Array<{ ingredientId: string; rawName: string; rawText: string }> = [];
   for (const group of recipe.ingredients) {
     for (const ing of group.items) {
-      if (ing.parsed !== null && (ing.matchState === 'pending' || ing.matchState === 'failed')) {
+      if (ing.parsed !== null && !hasLiveCanonMatch(ing, canonIds)) {
         toProcess.push({ ingredientId: ing.id, rawName: ing.parsed.item, rawText: ing.rawText });
       }
     }
@@ -223,10 +227,11 @@ export async function addRecipeToShoppingList(
   };
 
   const saves: Promise<ReadResult<void, DomainError>>[] = [];
+  const liveCanonIds = new Set(getCanonItemsSnapshot().map((c) => c.id));
 
   for (const group of recipe.ingredients) {
     for (const ing of group.items) {
-      const isMatched = ing.matchState === 'matched' && ing.canonId !== null;
+      const isMatched = hasLiveCanonMatch(ing, liveCanonIds);
 
       let amount: number | undefined;
       let unit: string | undefined;

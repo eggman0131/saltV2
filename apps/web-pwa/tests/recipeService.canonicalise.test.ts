@@ -14,6 +14,15 @@ vi.mock('@salt/ld-observability', () => ({
   createLDErrorReportingAdapter: vi.fn(() => ({ report: vi.fn() })),
 }));
 
+// ─── Mock canonService ───────────────────────────────────────────────────────
+const { mockGetCanonItemsSnapshot } = vi.hoisted(() => ({
+  mockGetCanonItemsSnapshot: vi.fn(() => [] as import('@salt/domain').CanonItem[]),
+}));
+
+vi.mock('../src/lib/canonService.js', () => ({
+  getCanonItemsSnapshot: mockGetCanonItemsSnapshot,
+}));
+
 import * as firebaseSync from '@salt/firebase-sync';
 import { canonicaliseIngredients } from '../src/lib/recipeService.js';
 
@@ -75,6 +84,8 @@ const parsedIngredient = {
 beforeEach(() => {
   vi.clearAllMocks();
   fs.saveRecipe.mockResolvedValue({ kind: 'ok', value: undefined });
+  // Default: empty canon store (no live matches).
+  mockGetCanonItemsSnapshot.mockReturnValue([]);
 });
 
 describe('canonicaliseIngredients', () => {
@@ -214,7 +225,9 @@ describe('canonicaliseIngredients', () => {
     expect(saved.ingredients[0].items[0].matchState).toBe('matched');
   });
 
-  it('skips already-matched ingredients', async () => {
+  it('skips ingredients whose canonId is live in the canon store', async () => {
+    mockGetCanonItemsSnapshot.mockReturnValue([makeCanonItem('canon-flour')]);
+
     const recipe = makeRecipe([
       makeGroup([
         {
@@ -234,6 +247,38 @@ describe('canonicaliseIngredients', () => {
     expect(result).toEqual({ kind: 'ok', value: undefined });
     expect(fs.callCanonicaliseRecipeIngredients).not.toHaveBeenCalled();
     expect(fs.saveRecipe).not.toHaveBeenCalled();
+  });
+
+  it('re-canonicalises a matched ingredient whose canon item was deleted (dangling)', async () => {
+    // canon store is empty — 'canon-flour' no longer exists.
+    mockGetCanonItemsSnapshot.mockReturnValue([]);
+
+    const canon = makeCanonItem('canon-flour-new');
+    fs.callCanonicaliseRecipeIngredients.mockResolvedValue({
+      kind: 'ok',
+      value: [{ kind: 'ok', value: { decision: 'matched', item: canon } }],
+    });
+
+    const recipe = makeRecipe([
+      makeGroup([
+        {
+          id: 'i1',
+          rawText: 'flour',
+          parsed: parsedIngredient,
+          canonId: 'canon-flour',
+          matchState: 'matched',
+          isOptional: false,
+          firstUsedInStepId: null,
+        },
+      ]),
+    ]);
+
+    await canonicaliseIngredients(recipe);
+
+    expect(fs.callCanonicaliseRecipeIngredients).toHaveBeenCalledOnce();
+    const saved = (fs.saveRecipe as ReturnType<typeof vi.fn>).mock.calls[0][0] as Recipe;
+    expect(saved.ingredients[0].items[0].canonId).toBe('canon-flour-new');
+    expect(saved.ingredients[0].items[0].matchState).toBe('matched');
   });
 
   it('calls the batch CF with rawName from parsed.item and rawText from ingredient', async () => {
