@@ -21,6 +21,8 @@
     canonicaliseIngredients,
     addRecipeToShoppingList,
   } from '../../lib/recipeService.js';
+  import { canonItems } from '../../lib/canonService.js';
+  import { hasLiveCanonMatch } from '@salt/domain';
   import { defaultListId } from '../../lib/shoppingListService.svelte.js';
   import { addToast } from '../../lib/toastStore.js';
 
@@ -42,16 +44,16 @@
     return parts;
   }
 
+  // ─── Canon live-id set (for dangling-match derivation) ───────────────────────
+  const liveCanonIds = $derived(new Set($canonItems.map((c) => c.id)));
+
   // ─── Canonicalise ────────────────────────────────────────────────────────────
   let canonalising = $state(false);
 
   const hasParsedPending = $derived(
     recipe !== null &&
       recipe.ingredients.some((g) =>
-        g.items.some(
-          (ing) =>
-            ing.parsed !== null && (ing.matchState === 'pending' || ing.matchState === 'failed'),
-        ),
+        g.items.some((ing) => ing.parsed !== null && !hasLiveCanonMatch(ing, liveCanonIds)),
       ),
   );
 
@@ -215,7 +217,7 @@
                         .unit})</span
                     >{/if}{#if ingredient.isOptional}<span
                       class="ml-1 text-xs text-muted-foreground">(optional)</span
-                    >{/if}{#if ingredient.matchState === 'matched'}<span
+                    >{/if}{#if hasLiveCanonMatch(ingredient, liveCanonIds)}<span
                       class="ml-1 text-xs text-green-600"
                       title="Matched"
                       data-testid="match-state-matched">✓</span

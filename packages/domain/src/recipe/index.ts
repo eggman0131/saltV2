@@ -18,4 +18,5 @@ export type { Step, StepTimer } from './entities/Step.js';
 export type { Recipe, RecipeImage, RecipeMetadata, RecipeSource } from './entities/Recipe.js';
 
 export { emptyRecipe, emptyIngredientGroup, newIngredient, newStep } from './commands/builders.js';
+export { clearIngredientMatch } from './commands/clearIngredientMatch.js';
 export { flattenIngredients } from './queries/ingredients.js';

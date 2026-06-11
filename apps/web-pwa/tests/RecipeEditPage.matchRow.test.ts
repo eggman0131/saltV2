@@ -1,0 +1,150 @@
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { render, screen, cleanup, waitFor } from '@testing-library/svelte';
+import userEvent from '@testing-library/user-event';
+import { newIngredient, emptyIngredientGroup } from '@salt/domain';
+import type { Recipe, Ingredient } from '@salt/domain';
+
+// ─── Mock stores and services ──────────────────────────────────────────────────
+
+const { mockRecipes } = vi.hoisted(() => {
+  function makeStore<T>(initial: T) {
+    let value = initial;
+    const subs = new Set<(v: T) => void>();
+    return {
+      subscribe(fn: (v: T) => void) {
+        subs.add(fn);
+        fn(value);
+        return () => {
+          subs.delete(fn);
+        };
+      },
+      _set(v: T) {
+        value = v;
+        subs.forEach((fn) => fn(v));
+      },
+    };
+  }
+  return { mockRecipes: makeStore<readonly Recipe[]>([]) };
+});
+
+vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
+vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
+vi.mock('../src/lib/recipeService.js', () => ({
+  recipes: mockRecipes,
+  persistRecipe: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  parseIngredients: vi.fn(),
+  matchIngredient: vi.fn(),
+}));
+
+import RecipeEditPage from '../src/routes/recipes/RecipeEditPage.svelte';
+import { persistRecipe, matchIngredient } from '../src/lib/recipeService.js';
+
+// ─── Fixtures ─────────────────────────────────────────────────────────────────
+
+function makePendingIngredient(): Ingredient {
+  return {
+    ...newIngredient('ing-1', '2 cups flour'),
+    parsed: null,
+    canonId: null,
+    matchState: 'pending',
+  };
+}
+
+function makeRecipe(ing: Ingredient): Recipe {
+  return {
+    id: 'recipe-1',
+    schemaVersion: 1,
+    title: 'Test Recipe',
+    description: null,
+    ingredients: [{ ...emptyIngredientGroup('group-1'), items: [ing] }],
+    steps: [],
+    metadata: {
+      servings: null,
+      prepTimeMinutes: null,
+      cookTimeMinutes: null,
+      totalTimeMinutes: null,
+      tags: [],
+    },
+    source: null,
+    notes: null,
+    image: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
+}
+
+const matchedIngredient: Ingredient = {
+  id: 'ing-1',
+  rawText: '2 cups flour',
+  parsed: {
+    quantity: { type: 'single', value: 2 },
+    unit: 'cups',
+    item: 'flour',
+    preparation: [],
+    notes: null,
+    convertedWeight: null,
+  },
+  canonId: 'canon-flour',
+  matchState: 'matched',
+  isOptional: false,
+  firstUsedInStepId: null,
+};
+
+afterEach(() => {
+  cleanup();
+  document.body.innerHTML = '';
+  vi.clearAllMocks();
+});
+
+// ─── Tests ────────────────────────────────────────────────────────────────────
+
+describe('RecipeEditPage — per-row Match button', () => {
+  it('shows the matched indicator after clicking Match on a pending ingredient', async () => {
+    vi.mocked(matchIngredient).mockResolvedValue({ kind: 'ok', value: matchedIngredient });
+    mockRecipes._set([makeRecipe(makePendingIngredient())]);
+    render(RecipeEditPage, { props: { params: { id: 'recipe-1' } } });
+
+    await userEvent.click(screen.getByTestId('recipe-ingredient-match-btn'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('recipe-ingredient-match-ok')).toBeInTheDocument();
+    });
+  });
+
+  it('persists the matched ingredient (canonId + matchState) on save', async () => {
+    vi.mocked(matchIngredient).mockResolvedValue({ kind: 'ok', value: matchedIngredient });
+    mockRecipes._set([makeRecipe(makePendingIngredient())]);
+    render(RecipeEditPage, { props: { params: { id: 'recipe-1' } } });
+
+    await userEvent.click(screen.getByTestId('recipe-ingredient-match-btn'));
+    await waitFor(() => {
+      expect(screen.getByTestId('recipe-ingredient-match-ok')).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByTestId('recipe-save-btn'));
+    await waitFor(() => {
+      expect(vi.mocked(persistRecipe)).toHaveBeenCalledTimes(1);
+    });
+
+    const saved = vi.mocked(persistRecipe).mock.calls[0]![0] as Recipe;
+    const ing = saved.ingredients[0]!.items[0]!;
+    expect(ing.matchState).toBe('matched');
+    expect(ing.canonId).toBe('canon-flour');
+  });
+
+  it('shows the error indicator when matchIngredient returns failed', async () => {
+    const failedIngredient: Ingredient = {
+      ...makePendingIngredient(),
+      matchState: 'failed',
+    };
+    vi.mocked(matchIngredient).mockResolvedValue({ kind: 'ok', value: failedIngredient });
+    mockRecipes._set([makeRecipe(makePendingIngredient())]);
+    render(RecipeEditPage, { props: { params: { id: 'recipe-1' } } });
+
+    await userEvent.click(screen.getByTestId('recipe-ingredient-match-btn'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('recipe-ingredient-match-err')).toBeInTheDocument();
+    });
+  });
+});
