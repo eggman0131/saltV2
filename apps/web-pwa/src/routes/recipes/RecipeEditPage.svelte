@@ -12,7 +12,7 @@
     type Step,
     type RecipeMetadata,
   } from '@salt/domain';
-  import { recipes, persistRecipe } from '../../lib/recipeService.js';
+  import { recipes, persistRecipe, parseIngredients } from '../../lib/recipeService.js';
   import { addToast } from '../../lib/toastStore.js';
 
   interface Props {
@@ -213,6 +213,25 @@
     );
   }
 
+  // ─── AI parse ────────────────────────────────────────────────────────────────
+  let showPasteArea = $state(false);
+  let pasteText = $state('');
+  let parsing = $state(false);
+
+  async function handleParse(): Promise<void> {
+    if (parsing || pasteText.trim() === '') return;
+    parsing = true;
+    const result = await parseIngredients(pasteText);
+    parsing = false;
+    if (result.kind !== 'ok') {
+      addToast('Failed to parse ingredients.', 'destructive');
+      return;
+    }
+    setGroups(result.value);
+    showPasteArea = false;
+    pasteText = '';
+  }
+
   // ─── Save ─────────────────────────────────────────────────────────────────────
   let saving = $state(false);
   const canSave = $derived(draft.title.trim().length > 0);
@@ -289,11 +308,63 @@
     <section class="flex flex-col gap-3">
       <div class="flex items-center justify-between">
         <p class="text-sm font-medium">Ingredients</p>
-        <Button variant="outline" size="sm" onclick={addGroup} data-testid="recipe-add-group-btn">
-          {#snippet leading()}<Icon name="Plus" size={16} />{/snippet}
-          Add group
-        </Button>
+        <div class="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onclick={() => (showPasteArea = !showPasteArea)}
+            data-testid="recipe-parse-toggle-btn"
+          >
+            {#snippet leading()}<Icon name="Wand2" size={16} />{/snippet}
+            Parse from text
+          </Button>
+          <Button variant="outline" size="sm" onclick={addGroup} data-testid="recipe-add-group-btn">
+            {#snippet leading()}<Icon name="Plus" size={16} />{/snippet}
+            Add group
+          </Button>
+        </div>
       </div>
+
+      {#if showPasteArea}
+        <div
+          class="flex flex-col gap-2 rounded border border-border bg-muted/50 p-3"
+          data-testid="recipe-parse-area"
+        >
+          <p class="text-sm text-muted-foreground">
+            Paste an ingredient list. The AI will detect groups and structure each ingredient while
+            preserving the original text.
+          </p>
+          <TextArea
+            label="Ingredient list"
+            placeholder="1 cup plain flour, sifted&#10;2 eggs&#10;&#10;For the sauce:&#10;2 cloves garlic, crushed"
+            value={pasteText}
+            onValueChange={(v) => (pasteText = v)}
+            rows={6}
+            data-testid="recipe-parse-text-input"
+          />
+          <div class="flex gap-2">
+            <Button
+              size="sm"
+              onclick={handleParse}
+              loading={parsing}
+              disabled={pasteText.trim() === '' || parsing}
+              data-testid="recipe-parse-btn"
+            >
+              Parse
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onclick={() => {
+                showPasteArea = false;
+                pasteText = '';
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      {/if}
 
       {#if draft.ingredients.length === 0}
         <p class="text-sm text-muted-foreground">

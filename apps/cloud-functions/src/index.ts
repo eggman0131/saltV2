@@ -13,6 +13,7 @@ import { arbitrateCanonFlow } from './flows/arbitrateCanon.js';
 import { matchOrCreateCanonFlow } from './flows/matchOrCreateCanon.js';
 import { identifyEquipmentFlow } from './flows/identifyEquipment.js';
 import { populateEquipmentEntryFlow } from './flows/populateEquipmentEntry.js';
+import { parseRecipeIngredientsFlow } from './flows/parseRecipeIngredients.js';
 import { onShoppingListItemWrite } from './triggers/onShoppingListItemWrite.js';
 import { onCanonItemWritten } from './triggers/onCanonItemWritten.js';
 
@@ -114,6 +115,15 @@ export const populateEquipmentEntry = onCallGenkit(
     authPolicy: isSignedIn(),
   },
   populateEquipmentEntryFlow,
+);
+
+export const parseRecipeIngredients = onCallGenkit(
+  {
+    ...APP_CHECK_ENFORCEMENT,
+    secrets: [geminiApiKey],
+    authPolicy: isSignedIn(),
+  },
+  parseRecipeIngredientsFlow,
 );
 
 export { onShoppingListItemWrite };

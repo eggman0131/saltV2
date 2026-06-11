@@ -32,6 +32,7 @@ export {
 } from './shoppingListsConfigSubscription.js';
 export { subscribeMembers, upsertMember, deleteMember } from './membersSubscription.js';
 export { subscribeRecipes, loadRecipe, saveRecipe, deleteRecipe } from './recipeSubscription.js';
+export { callParseRecipeIngredients } from './recipeCallables.js';
 export {
   subscribeMealPlanConfig,
   subscribeMealPlanTemplate,

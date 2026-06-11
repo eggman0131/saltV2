@@ -73,6 +73,17 @@ export { MealPlanWeekSchema } from './mealPlanWeek.js';
 export type { MealPlanWeekDoc } from './mealPlanWeek.js';
 
 export {
+  ParseRecipeIngredientsInputSchema,
+  ParseRecipeIngredientsAIOutputSchema,
+  ParseRecipeIngredientsOutputSchema,
+} from './parseRecipeIngredients.js';
+export type {
+  ParseRecipeIngredientsInput,
+  ParseRecipeIngredientsAIOutput,
+  ParseRecipeIngredientsOutput,
+} from './parseRecipeIngredients.js';
+
+export {
   SingleQuantitySchema,
   RangeQuantitySchema,
   MixedQuantitySchema,

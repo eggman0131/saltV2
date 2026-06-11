@@ -2,9 +2,10 @@ import {
   subscribeRecipes,
   saveRecipe as saveRecipeDoc,
   deleteRecipe as deleteRecipeDoc,
+  callParseRecipeIngredients,
 } from '@salt/firebase-sync';
 import { createLDErrorReportingAdapter } from '@salt/ld-observability';
-import type { Recipe } from '@salt/domain';
+import type { Recipe, IngredientGroup } from '@salt/domain';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { writable, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
@@ -89,6 +90,12 @@ export async function persistRecipe(recipe: Recipe): Promise<ReadResult<void, Do
   const others = get(_recipes).filter((r) => r.id !== stamped.id);
   _recipes.set([...others, stamped]);
   return saveRecipeDoc(stamped);
+}
+
+export async function parseIngredients(
+  rawText: string,
+): Promise<ReadResult<IngredientGroup[], DomainError>> {
+  return callParseRecipeIngredients(rawText);
 }
 
 export async function removeRecipe(id: string): Promise<ReadResult<void, DomainError>> {
