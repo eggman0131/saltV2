@@ -50,6 +50,7 @@ export const IngredientSchema = z.object({
   // SAME enum as shoppingListItem (issue #179).
   matchState: z.enum(['pending', 'matched', 'needs_approval', 'failed']),
   isOptional: z.boolean(),
+  firstUsedInStepId: z.string().nullable(),
 });
 
 export const IngredientGroupSchema = z.object({
@@ -67,6 +68,7 @@ export const StepSchema = z.object({
   id: z.string(),
   text: z.string(),
   timer: StepTimerSchema.nullable(),
+  note: z.string().nullable(),
 });
 
 export const RecipeMetadataSchema = z.object({
@@ -89,6 +91,11 @@ export const RecipeSourceSchema = z.object({
     .optional(),
 });
 
+export const RecipeImageSchema = z.object({
+  url: z.string(),
+  source: z.enum(['ai', 'upload']),
+});
+
 export const RecipeSchema = z.object({
   id: z.string(),
   schemaVersion: z.literal(1),
@@ -99,6 +106,7 @@ export const RecipeSchema = z.object({
   metadata: RecipeMetadataSchema,
   source: RecipeSourceSchema.nullable(),
   notes: z.string().nullable(),
+  image: RecipeImageSchema.nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -114,4 +122,5 @@ export type StepTimerDoc = z.infer<typeof StepTimerSchema>;
 export type StepDoc = z.infer<typeof StepSchema>;
 export type RecipeMetadataDoc = z.infer<typeof RecipeMetadataSchema>;
 export type RecipeSourceDoc = z.infer<typeof RecipeSourceSchema>;
+export type RecipeImageDoc = z.infer<typeof RecipeImageSchema>;
 export type RecipeDoc = z.infer<typeof RecipeSchema>;

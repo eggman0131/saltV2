@@ -1,6 +1,13 @@
 import type { IngredientGroup } from './Ingredient.js';
 import type { Step } from './Step.js';
 
+// Seam for the deferred AI epic. `source` distinguishes AI-generated from
+// user-uploaded so the gen trigger never clobbers a manual photo.
+export interface RecipeImage {
+  readonly url: string;
+  readonly source: 'ai' | 'upload';
+}
+
 // Free-form numeric metadata. Every field is `number | null`: null means "not
 // recorded", which is a valid authored state, not a missing value.
 export interface RecipeMetadata {
@@ -38,6 +45,8 @@ export interface Recipe {
   readonly source: RecipeSource | null;
   // User-authored, never parsed or canonicalised.
   readonly notes: string | null;
+  // Seam only in this epic. AI generation + upload CF callable land in the AI epic.
+  readonly image: RecipeImage | null;
   readonly createdAt: string; // ISO-8601
   readonly updatedAt: string; // ISO-8601; stamped by the service on save
 }

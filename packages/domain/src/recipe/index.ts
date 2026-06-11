@@ -15,7 +15,7 @@ export type {
   IngredientGroup,
 } from './entities/Ingredient.js';
 export type { Step, StepTimer } from './entities/Step.js';
-export type { Recipe, RecipeMetadata, RecipeSource } from './entities/Recipe.js';
+export type { Recipe, RecipeImage, RecipeMetadata, RecipeSource } from './entities/Recipe.js';
 
 export { emptyRecipe, emptyIngredientGroup, newIngredient, newStep } from './commands/builders.js';
 export { flattenIngredients } from './queries/ingredients.js';

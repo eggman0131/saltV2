@@ -84,6 +84,7 @@ export {
   StepSchema,
   RecipeMetadataSchema,
   RecipeSourceSchema,
+  RecipeImageSchema,
   RecipeSchema,
 } from './recipe.js';
 export type {
@@ -98,5 +99,6 @@ export type {
   StepDoc,
   RecipeMetadataDoc,
   RecipeSourceDoc,
+  RecipeImageDoc,
   RecipeDoc,
 } from './recipe.js';

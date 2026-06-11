@@ -8,4 +8,6 @@ export interface Step {
   readonly id: string;
   readonly text: string;
   readonly timer: StepTimer | null;
+  // Manual, hand-authored note. AI may populate this in the deferred AI epic.
+  readonly note: string | null;
 }

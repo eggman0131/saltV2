@@ -68,6 +68,7 @@ const RECIPE: Recipe = {
           canonId: null,
           matchState: 'pending',
           isOptional: false,
+          firstUsedInStepId: null,
         },
       ],
     },

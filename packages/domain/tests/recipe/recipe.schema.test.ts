@@ -6,8 +6,8 @@ import {
   newStep,
   flattenIngredients,
 } from '@salt/domain';
-import type { Recipe, Ingredient } from '@salt/domain';
-import { RecipeSchema, QuantitySchema } from '@salt/domain/schemas';
+import type { Recipe, Ingredient, RecipeImage } from '@salt/domain';
+import { RecipeSchema, QuantitySchema, RecipeImageSchema } from '@salt/domain/schemas';
 
 // A deliberately messy recipe that exercises the union types: two groups (one
 // named, one default/unnamed), a single quantity, a range, a mixed "1 ½", a bare
@@ -23,6 +23,8 @@ function messyRecipe(): Recipe {
         preparation: ['minced'],
         notes: null,
       },
+      // firstUsedInStepId seam: links to step-1
+      firstUsedInStepId: 'step-1',
     },
     {
       ...newIngredient('ing-2', '2–3 tbsp olive oil'),
@@ -66,12 +68,13 @@ function messyRecipe(): Recipe {
     title: 'Messy Test Pasta',
     description: 'A fixture, not a meal.',
     notes: 'Double the sauce.',
+    image: { url: 'https://storage.example/recipe-1.jpg', source: 'ai' },
     ingredients: [
       { ...emptyIngredientGroup('grp-1', 'For the sauce'), items: sauce },
       { ...emptyIngredientGroup('grp-2'), items: base },
     ],
     steps: [
-      newStep('step-1', 'Mix the dry ingredients.'),
+      { ...newStep('step-1', 'Mix the dry ingredients.'), note: 'Sift the flour first.' },
       {
         ...newStep('step-2', 'Simmer the sauce.'),
         timer: { durationMinutes: 20, description: 'low heat' },
@@ -150,5 +153,83 @@ describe('RecipeSchema', () => {
 
   it('type-level: schemaVersion is the literal 1', () => {
     expectTypeOf<Recipe['schemaVersion']>().toEqualTypeOf<1>();
+  });
+
+  // --- Phase 1 (issue #180): new fields ---
+
+  it('round-trips a step note', () => {
+    const recipe = messyRecipe();
+    const result = RecipeSchema.safeParse(recipe);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.steps[0]!.note).toBe('Sift the flour first.');
+      expect(result.data.steps[1]!.note).toBeNull();
+    }
+  });
+
+  it('round-trips ingredient firstUsedInStepId', () => {
+    const recipe = messyRecipe();
+    const result = RecipeSchema.safeParse(recipe);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      const garlic = flattenIngredients(result.data).find((i) => i.id === 'ing-1');
+      expect(garlic?.firstUsedInStepId).toBe('step-1');
+      const oil = flattenIngredients(result.data).find((i) => i.id === 'ing-2');
+      expect(oil?.firstUsedInStepId).toBeNull();
+    }
+  });
+
+  it('round-trips recipe image with source "ai"', () => {
+    const recipe = messyRecipe();
+    const result = RecipeSchema.safeParse(recipe);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.image).toEqual({
+        url: 'https://storage.example/recipe-1.jpg',
+        source: 'ai',
+      });
+    }
+  });
+
+  it('round-trips recipe image with source "upload"', () => {
+    const recipe: Recipe = {
+      ...messyRecipe(),
+      image: { url: 'https://storage.example/upload.jpg', source: 'upload' },
+    };
+    const result = RecipeSchema.safeParse(recipe);
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.image?.source).toBe('upload');
+  });
+
+  it('rejects an unknown image source', () => {
+    const recipe = { ...messyRecipe(), image: { url: 'https://x.com/img.jpg', source: 'camera' } };
+    expect(RecipeSchema.safeParse(recipe).success).toBe(false);
+  });
+
+  it('RecipeImageSchema validates ai and upload sources', () => {
+    expect(RecipeImageSchema.safeParse({ url: 'https://x.com/a.jpg', source: 'ai' }).success).toBe(
+      true,
+    );
+    expect(
+      RecipeImageSchema.safeParse({ url: 'https://x.com/b.jpg', source: 'upload' }).success,
+    ).toBe(true);
+    expect(
+      RecipeImageSchema.safeParse({ url: 'https://x.com/c.jpg', source: 'other' }).success,
+    ).toBe(false);
+  });
+
+  it('builders default new fields to null', () => {
+    const step = newStep('s1', 'text');
+    expect(step.note).toBeNull();
+
+    const ingredient = newIngredient('i1', 'raw');
+    expect(ingredient.firstUsedInStepId).toBeNull();
+
+    const recipe = emptyRecipe('r1', '2026-06-11T00:00:00.000Z');
+    expect(recipe.image).toBeNull();
+  });
+
+  it('type-level: RecipeImage source is "ai" | "upload"', () => {
+    expectTypeOf<RecipeImage['source']>().toEqualTypeOf<'ai' | 'upload'>();
   });
 });

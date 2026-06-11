@@ -28,6 +28,9 @@ export interface Ingredient {
   readonly canonId: string | null;
   readonly matchState: MatchState;
   readonly isOptional: boolean;
+  // id of the Step that first uses this ingredient. AI populates in the deferred
+  // AI epic; delete-step must clear inbound links (also deferred). Links by id only.
+  readonly firstUsedInStepId: string | null;
 }
 
 // A named section of ingredients, e.g. "For the sauce". `name` is null for the

@@ -25,6 +25,7 @@ export function emptyRecipe(id: string, now: string): Recipe {
     },
     source: null,
     notes: null,
+    image: null,
     createdAt: now,
     updatedAt: '',
   };
@@ -45,10 +46,11 @@ export function newIngredient(id: string, rawText: string, isOptional = false): 
     canonId: null,
     matchState: 'pending',
     isOptional,
+    firstUsedInStepId: null,
   };
 }
 
-// A fresh step with no timer.
+// A fresh step with no timer and no note.
 export function newStep(id: string, text: string): Step {
-  return { id, text, timer: null };
+  return { id, text, timer: null, note: null };
 }
