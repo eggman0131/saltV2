@@ -1,4 +1,5 @@
 import type { ShoppingListItem } from '../entities/ShoppingListItem.js';
+import { hasLiveCanonMatch } from '../../canon/index.js';
 
 export interface CanonInfo {
   readonly id: string;
@@ -47,6 +48,7 @@ export function groupItemsByAisle(
   const otherContributors: OtherContributor[] = [];
   const checkedItems: ShoppingListItem[] = [];
   const aisleMap = new Map<string, ShoppingListItem[]>();
+  const liveCanonIds = new Set(canonMap.keys());
 
   for (const item of items) {
     if (item.checked) {
@@ -55,10 +57,7 @@ export function groupItemsByAisle(
     }
 
     const isMatchedToAisle =
-      (item.matchState === 'matched' || item.matchState === 'needs_approval') &&
-      item.canonId !== null &&
-      canonMap.has(item.canonId) &&
-      canonMap.get(item.canonId)!.aisleId !== null;
+      hasLiveCanonMatch(item, liveCanonIds) && canonMap.get(item.canonId!)!.aisleId !== null;
 
     if (!isMatchedToAisle) {
       otherContributors.push({
