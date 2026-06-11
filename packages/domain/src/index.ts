@@ -208,6 +208,7 @@ export type {
   Step,
   StepTimer,
   Recipe,
+  RecipeImage,
   RecipeMetadata,
   RecipeSource,
 } from './recipe/index.js';

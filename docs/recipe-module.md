@@ -63,7 +63,7 @@ ParsedIngredient { quantity: Quantity | null, unit: string | null, item: string,
 
 Quantity = { type:'single', value }
          | { type:'range', min, max }
-         | { type:'mixed', whole, fraction }       // "1 ½ cups"
+         | { type:'mixed', whole, numerator, denominator }   // "1 ½ cups"
 
 Step      { id, text, timer: StepTimer | null, note: string | null }   // note: one manual note (issue #180)
 StepTimer { durationMinutes: number, description: string | null }

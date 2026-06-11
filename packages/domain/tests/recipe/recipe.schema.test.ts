@@ -22,6 +22,7 @@ function messyRecipe(): Recipe {
         item: 'garlic',
         preparation: ['minced'],
         notes: null,
+        convertedWeight: null,
       },
       // firstUsedInStepId seam: links to step-1
       firstUsedInStepId: 'step-1',
@@ -34,6 +35,7 @@ function messyRecipe(): Recipe {
         item: 'olive oil',
         preparation: [],
         notes: null,
+        convertedWeight: null,
       },
     },
   ];
@@ -47,6 +49,7 @@ function messyRecipe(): Recipe {
         item: 'flour',
         preparation: [],
         notes: null,
+        convertedWeight: null,
       },
     },
     {
@@ -57,6 +60,7 @@ function messyRecipe(): Recipe {
         item: 'salt',
         preparation: [],
         notes: 'or to taste',
+        convertedWeight: null,
       },
     },
     // An optional, still-unparsed garnish.

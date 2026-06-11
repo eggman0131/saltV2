@@ -64,6 +64,7 @@ const RECIPE: Recipe = {
             item: 'passata',
             preparation: [],
             notes: null,
+            convertedWeight: null,
           },
           canonId: null,
           matchState: 'pending',
