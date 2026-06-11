@@ -339,7 +339,7 @@ This document defines the repeatable pattern for domain modules:
 - UI calling domain, not infrastructure
 
 Canon is the worked example. The same pattern applies to recipe, shopping,
-and members.
+members, and mealPlan.
 
 The goal is not architectural purity. The goal is hard, enforceable
 boundaries so that drift — by humans or AI agents — is caught by the
