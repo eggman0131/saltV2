@@ -208,10 +208,22 @@
   let saving = $state(false);
   const canSave = $derived(draft.title.trim().length > 0);
 
+  // Drop editor noise on save: ingredient rows with no rawText, groups left
+  // empty once those are removed, and stepless steps. `rawText` itself is never
+  // trimmed or rewritten — only blank rows are dropped, so the sacred original
+  // of every kept ingredient survives verbatim.
+  function pruneDraft(r: Recipe): Recipe {
+    const ingredients = r.ingredients
+      .map((g) => ({ ...g, items: g.items.filter((i) => i.rawText.trim() !== '') }))
+      .filter((g) => g.items.length > 0);
+    const steps = r.steps.filter((s) => s.text.trim() !== '');
+    return { ...r, title: r.title.trim(), ingredients, steps };
+  }
+
   async function handleSave(): Promise<void> {
     if (!canSave || saving) return;
     saving = true;
-    const toSave: Recipe = { ...draft, title: draft.title.trim() };
+    const toSave: Recipe = pruneDraft(draft);
     const result = await persistRecipe(toSave);
     saving = false;
     if (result.kind !== 'ok') {
