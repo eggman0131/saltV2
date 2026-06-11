@@ -32,7 +32,11 @@ test.describe('recipe → shopping list extraction', () => {
     await expect(page).toHaveURL(/#\/shopping\/new/, { timeout: 10_000 });
     await page.getByTestId('shopping-create-list-name').fill('Weekly shop');
     await page.getByRole('button', { name: /create/i }).click();
-    await expect(page).toHaveURL(/#\/shopping\/[a-z0-9-]+$/, { timeout: SYNC_TIMEOUT });
+    // Wait for the real list id (a UUID), not the `/shopping/new` create page —
+    // `[a-z0-9-]+` would match "new" and let the test race ahead before the
+    // create page's deferred push to the new list fires, yanking us off
+    // /recipes/new mid-edit.
+    await expect(page).toHaveURL(/#\/shopping\/[0-9a-f-]{36}$/, { timeout: SYNC_TIMEOUT });
 
     // ── Create a recipe with two ingredient groups (servings: 4) ─────────────
     await page.goto('/#/recipes/new');
@@ -108,7 +112,10 @@ test.describe('recipe → shopping list extraction', () => {
     await expect(page).toHaveURL(/#\/shopping\/new/, { timeout: 10_000 });
     await page.getByTestId('shopping-create-list-name').fill('Test list');
     await page.getByRole('button', { name: /create/i }).click();
-    await expect(page).toHaveURL(/#\/shopping\/[a-z0-9-]+$/, { timeout: SYNC_TIMEOUT });
+    // Wait for the real list id (a UUID), not the `/shopping/new` create page —
+    // see the note in the first test: a permissive `[a-z0-9-]+` matches "new"
+    // and lets the deferred push race the recipe navigation.
+    await expect(page).toHaveURL(/#\/shopping\/[0-9a-f-]{36}$/, { timeout: SYNC_TIMEOUT });
 
     // Create a recipe with servings: 2.
     await page.goto('/#/recipes/new');
