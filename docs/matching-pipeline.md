@@ -281,6 +281,34 @@ Arbitration stays per-unmatched-item; batching the arbitration *prompt* is out o
 
 ---
 
+## Reference integrity — edits and canon deletion
+
+A stored match (`canonId` + `matchState: 'matched'`) is a pointer into the canon collection. Two events can invalidate it: the referencing item's text is edited (the old match no longer describes the line), or the canon item it points at is deleted (the pointer dangles). Salt handles the two differently, and deliberately so.
+
+### Edits clear the match eagerly
+
+When an item's `rawText` changes, the old match is provably wrong, so it is cleared at the moment of the edit — `parsed`/`canonId` → `null`, `matchState` → `'pending'`.
+
+- **Shopping list:** `editItemRawText` resets the fields, and the `onShoppingListItemWrite` trigger re-matches automatically. No user action needed.
+- **Recipe ingredients:** there is no per-ingredient trigger — recipe matching is on-demand batch (see [Batch entry point](#batch-entry-point--recipe-ingredient-canonicalisation)). The editor clears the match on edit, and the user re-runs matching explicitly: the per-row **Match** button in edit mode, or the view-page **Canonicalise** button (batch).
+
+### Canon deletion is resolved at display time — never written back
+
+When a canon item is deleted, referencing recipe ingredients and shopping-list items are **not** rewritten. There is no delete trigger and no client reconciliation pass. Instead, a `canonId` that no longer resolves in the live canon snapshot is treated as **unmatched at the point of use**. The stored `matched` flag stays on disk but is inert.
+
+This is the existing behaviour of `groupItemsByAisle` (a list item whose `canonId` is absent from the canon map falls into the "other" bucket), generalised into one pure predicate — `hasLiveCanonMatch({ matchState, canonId }, canonIds)` — applied at **every** consumer of a live match:
+
+- the ✓ "matched" badge (recipe view, shopping list);
+- the "needs canonicalising" eligibility filter and the Canonicalise button — so a dangling ingredient is offered for re-matching exactly like a `pending`/`failed` one;
+- `addRecipeToShoppingList`'s canon carry — a dangling ingredient is added as raw text, not with a stale `canonId`;
+- aisle grouping.
+
+The predicate is pure domain (`packages/domain`); the canon-id set is built from the in-memory canon store by the `web-pwa` caller and passed in, so domain takes no I/O dependency on canon.
+
+**Why display-time, not write-back.** Recipe ingredients live nested at `ingredients[].items[].canonId`, which Firestore cannot index or query — a delete trigger would have to full-scan the recipes collection. And rewriting a shopping-list item back to `pending` would re-fire `onShoppingListItemWrite`, re-matching it and potentially re-creating the very canon item just deleted. Display-time derivation sidesteps both, costs nothing on the delete path, and is correct regardless of which client (or an offline one) performed the deletion. The user **sees** the item go unmatched and re-triggers matching themselves — nothing silently rewrites their data.
+
+---
+
 ## Thresholds at a glance
 
 | Constant | Value | Used at |
