@@ -41,6 +41,7 @@ Recipe {
   steps: Step[]
   metadata: RecipeMetadata
   source: RecipeSource | null      // kept for later URL/photo import; no migration needed
+  image: RecipeImage | null        // seam (issue #180); AI-epic generates/uploads. null = none
   notes: string | null             // user-authored, never parsed
   createdAt, updatedAt: string
 }
@@ -54,6 +55,7 @@ Ingredient {
   canonId: string | null
   matchState: 'pending' | 'matched' | 'needs_approval' | 'failed'   // SAME enum as shoppingListItem
   isOptional: boolean
+  firstUsedInStepId: string | null // seam (issue #180); id of the step that first uses it. AI-populated
 }
 
 ParsedIngredient { quantity: Quantity | null, unit: string | null, item: string,
@@ -63,8 +65,10 @@ Quantity = { type:'single', value }
          | { type:'range', min, max }
          | { type:'mixed', whole, fraction }       // "1 ½ cups"
 
-Step      { id, text, timer: StepTimer | null }
+Step      { id, text, timer: StepTimer | null, note: string | null }   // note: one manual note (issue #180)
 StepTimer { durationMinutes: number, description: string | null }
+
+RecipeImage { url: string, source: 'ai' | 'upload' }   // structured so gen never clobbers an upload
 
 RecipeMetadata { servings, totalTimeMinutes, prepTimeMinutes, cookTimeMinutes: number | null,
                  tags: string[] }
@@ -79,6 +83,26 @@ Key invariants:
   string. `parsed.item` is the cleaned pre-canon name only.
 - `unit` is a plain string (consistent with `shoppingListItem.unit`), not a
   structured type.
+
+### Schema extensions (issue #180)
+
+Three additive fields were added after the Phase-1/2 hand-entry stress-test
+(greenfield, `schemaVersion` stays `1`, no migration). Only `Step.note` is
+functional in the foundation epic; `image` and `firstUsedInStepId` are **dormant
+seams** whose features belong to the deferred AI epic (below) — the same
+seam-now / AI-logic-later pattern as `source`/`recipeIds`.
+
+- **`Step.note`** — one hand-authored free-text note per step (popover in the
+  view). The parser never writes it; manual for hand-entered recipes.
+- **`Ingredient.firstUsedInStepId`** — links an ingredient to the step that
+  first uses it, **by `id` (never text)**. Powers a future step-view "ingredients
+  introduced here, with quantities" display. Integrity: a re-parse must fill
+  `parsed` on the *existing* ingredient/step without re-minting ids, and
+  delete-step must clear inbound links — both owned by the AI epic that
+  populates the links (no links exist until then).
+- **`Recipe.image`** — `{ url, source: 'ai' | 'upload' }`, structured so the
+  future auto-generation trigger can skip a user upload rather than clobber it.
+  Reuses the canon **Tier-2** Storage conventions (see `docs/canon-icons.md`).
 
 ## Canon interaction — reuse `matchOrCreate`, no new port
 
@@ -117,6 +141,19 @@ shared-data / canon-write-path-open principle. No `AdminGuard` on recipes.
 
 Captured here so the design isn't lost:
 
+- **Recipe image (Tier-2 hero).** `onRecipeCreated`-style trigger generates a
+  photorealistic hero, reusing canon's Storage + public-read conventions, writing
+  `image = { url, source: 'ai' }`. Manual **regenerate** callable (canon-icon
+  pattern). **Optional upload** via a **CF-callable upload path** (client → CF →
+  Storage; `firebase-sync` stays Storage-SDK-free), writing `source: 'upload'` —
+  and the gen trigger must **skip** when `source === 'upload'`.
+- **Ingredient→step link population + display.** AI sets `firstUsedInStepId`
+  during AI-create / update / URL-parse; the step-view "ingredients introduced
+  here, with quantities" display ships *with* the population so it has data the
+  day it appears. Carries the integrity rule above (id stability; delete-step
+  clears inbound links).
+- **AI-authored step notes.** AI-create / update / parse-URL may populate
+  `Step.note`; #179 Phase 3's ingredient parser does not (notes stay manual).
 - **Kitchen Agent equipment knowledge** — keep equipment lean; pass each item's
   `name + accessories + rules[]` into the Agent prompt and let Gemini infer
   faff-cost / suitability. A Genkit equipment-**search tool** was considered but
