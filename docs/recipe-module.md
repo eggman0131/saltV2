@@ -104,14 +104,29 @@ seam-now / AI-logic-later pattern as `source`/`recipeIds`.
   future auto-generation trigger can skip a user upload rather than clobber it.
   Reuses the canon **Tier-2** Storage conventions (see `docs/canon-icons.md`).
 
-## Canon interaction — reuse `matchOrCreate`, no new port
+## Canon interaction — batch CF, one read per recipe
 
 The #28 draft's `CanonLookupPort` is obsolete. Canon matching is a **unified
-server-side CF** (`matchOrCreate`) and canon owns the canonical name. Recipe
-ingredient parsing becomes a **fifth entry point** into that same pipeline:
-per parsed ingredient call `matchOrCreate({ rawName: parsed.item, rawText })`,
-store the returned `canonId` + `matchState`. Unmatched/ambiguous results flow
-into the **existing review queue** — no parallel logic, no new domain port.
+server-side CF** and canon owns the canonical name. Recipe ingredient
+canonicalisation is a **fifth entry point** into the same pipeline, routed
+through the `canonicaliseRecipeIngredients` callable (issue #187):
+
+- All parsed-but-unmatched ingredients from one recipe are sent in a **single
+  batch call** — `{ items: [{ rawName, rawText }, …] }`.
+- The CF reads the `canonItems` collection **once**, batch-embeds all names,
+  and runs `resolveOne` per ingredient against a growing in-memory snapshot so
+  two ingredients resolving to the same new item collapse to one canon item.
+- Results come back as an **order-preserving array**, one `{ kind, value/error }`
+  per input item. The client writes `canonId` + `matchState` back onto each
+  ingredient exactly as before.
+- Unmatched/ambiguous results flow into the **existing review queue** via
+  `needs_approval` — same semantics as all other entry points.
+
+See `docs/matching-pipeline.md` § "Batch entry point — recipe ingredient
+canonicalisation" for the full `resolveOne` / `matchOrCreateBatch` design.
+
+The single-item `matchOrCreateCanon` callable is unchanged and still backs the
+add-item and shopping-list-trigger flows.
 
 ## Cross-module seams (already shipped, awaiting this module)
 

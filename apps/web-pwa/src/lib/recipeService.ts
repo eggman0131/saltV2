@@ -3,7 +3,7 @@ import {
   saveRecipe as saveRecipeDoc,
   deleteRecipe as deleteRecipeDoc,
   callParseRecipeIngredients,
-  callMatchOrCreate,
+  callCanonicaliseRecipeIngredients,
   saveShoppingListItem,
 } from '@salt/firebase-sync';
 import { createLDErrorReportingAdapter } from '@salt/ld-observability';
@@ -101,10 +101,9 @@ export async function parseIngredients(
   return callParseRecipeIngredients(rawText);
 }
 
-// Canonicalise all parsed-but-unmatched ingredients in a recipe by calling
-// matchOrCreate for each and writing back canonId + matchState. Only processes
-// ingredients with parsed !== null and matchState 'pending' or 'failed'.
-// All calls are fired in parallel; results are applied wholesale via persistRecipe.
+// Canonicalise all parsed-but-unmatched ingredients in a recipe via a single
+// batch CF call. Only processes ingredients with parsed !== null and matchState
+// 'pending' or 'failed'. Results are applied wholesale via persistRecipe.
 export async function canonicaliseIngredients(
   recipe: Recipe,
 ): Promise<ReadResult<void, DomainError>> {
@@ -120,9 +119,11 @@ export async function canonicaliseIngredients(
 
   if (toProcess.length === 0) return success(undefined);
 
-  const settled = await Promise.all(
-    toProcess.map(({ rawName, rawText }) => callMatchOrCreate({ rawName, rawText })),
-  );
+  const batchResult = await callCanonicaliseRecipeIngredients({
+    items: toProcess.map(({ rawName, rawText }) => ({ rawName, rawText })),
+  });
+  if (batchResult.kind === 'err') return batchResult;
+  const settled = batchResult.value;
 
   // Map ingredientId → matchOrCreate result for O(1) lookup.
   const resultById = new Map(

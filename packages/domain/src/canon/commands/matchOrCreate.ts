@@ -2,6 +2,7 @@ import { failure, success } from '@salt/shared-types';
 import { ErrorCode } from '@salt/shared-types';
 import type { DomainError, ReadResult, ShoppingBehavior, CanonItemUnit } from '@salt/shared-types';
 import type { CanonItem } from '../entities/CanonItem.js';
+import type { Aisle } from '../entities/Aisle.js';
 import type { MatchCandidate } from '../entities/MatchCandidate.js';
 import type { FinalDecision } from '../entities/MatchLogEntry.js';
 import type { CanonLocalStorePort } from '../ports/CanonLocalStorePort.js';
@@ -54,12 +55,104 @@ export interface MatchOrCreatePorts {
   readonly logging: MatchLoggingPort | null;
 }
 
+/**
+ * Single-item entry point. Preserved public signature and behaviour — it is a
+ * batch of one, so there is exactly one matching implementation (`resolveOne`)
+ * that the batch and single-item paths cannot drift apart from.
+ */
 export async function matchOrCreate(
   input: MatchOrCreateInput,
   ports: MatchOrCreatePorts,
 ): Promise<ReadResult<MatchOrCreateResult, DomainError>> {
+  return (await matchOrCreateBatch([input], ports))[0]!;
+}
+
+/**
+ * The one matching function. Reads the canon snapshot and aisle list **once**,
+ * batch-embeds every input name into a warm cache, then runs `resolveOne` per
+ * input against a **growing** in-memory snapshot: each resolved item (new
+ * creations and synonym/`needs_approval` mutations alike) is folded back so
+ * later inputs see what a fresh re-read would show and two inputs resolving to
+ * the same new item collapse to one. Returns an order-preserving array of
+ * results, one per input.
+ */
+export async function matchOrCreateBatch(
+  inputs: readonly MatchOrCreateInput[],
+  ports: MatchOrCreatePorts,
+): Promise<ReadResult<MatchOrCreateResult, DomainError>[]> {
+  // One canon read for the whole batch. A failure surfaces to every input.
+  const itemsResult = await ports.store.list();
+  if (itemsResult.kind !== 'ok') return inputs.map(() => itemsResult);
+
+  const snapshot = new Map<string, CanonItem>();
+  for (const item of itemsResult.value) snapshot.set(item.id, item);
+
+  // One aisle read for the whole batch.
+  const aisles = await loadAisles(ports.aisleStore);
+
+  // Pre-compute every input's query embedding in one batched call and serve
+  // `embedMatch` (unchanged) from the warm cache via a wrapped port.
+  const resolvePorts: MatchOrCreatePorts = {
+    ...ports,
+    embedding: await buildEmbeddingCache(ports.embedding, inputs),
+  };
+
+  const results: ReadResult<MatchOrCreateResult, DomainError>[] = [];
+  for (const input of inputs) {
+    const result = await resolveOne(input, [...snapshot.values()], aisles, resolvePorts);
+    if (result.kind === 'ok') snapshot.set(result.value.item.id, result.value.item);
+    results.push(result);
+  }
+  return results;
+}
+
+/**
+ * Wrap an `EmbeddingPort` so `computeEmbedding(name)` is served from a cache
+ * pre-filled by a single `computeEmbeddings` call over all input names. When
+ * the underlying port has no batch method, the cache stays empty and lookups
+ * fall through to per-name `computeEmbedding` — identical to the old behaviour.
+ */
+async function buildEmbeddingCache(
+  base: EmbeddingPort,
+  inputs: readonly MatchOrCreateInput[],
+): Promise<EmbeddingPort> {
+  const names = inputs
+    .map((i) => normaliseName(i.rawName))
+    .filter((n): n is string => n.length > 0);
+  const unique = [...new Set(names)];
+
+  const cache = new Map<string, ReadResult<readonly number[], DomainError>>();
+  if (unique.length > 0 && base.computeEmbeddings) {
+    const batched = await base.computeEmbeddings(unique);
+    if (batched.kind === 'ok') {
+      unique.forEach((name, i) => {
+        const vec = batched.value[i];
+        if (vec !== undefined) cache.set(name, success(vec));
+      });
+    } else {
+      for (const name of unique) cache.set(name, batched);
+    }
+  }
+
+  return {
+    ...base,
+    computeEmbedding: async (text) => cache.get(text) ?? base.computeEmbedding(text),
+  };
+}
+
+/**
+ * Per-item matching core (stages 1–6 + arbitration + persist). The canon
+ * snapshot and aisle list are **injected** rather than loaded here, so the
+ * batch can share one read across all inputs. Sole source of matching truth.
+ */
+async function resolveOne(
+  input: MatchOrCreateInput,
+  items: readonly CanonItem[],
+  aisles: readonly Aisle[],
+  ports: MatchOrCreatePorts,
+): Promise<ReadResult<MatchOrCreateResult, DomainError>> {
   const { rawName, selectedAisleId, forceCreate = false, rawText } = input;
-  const { store, aisleStore, embedding, arbitration, ids, logging } = ports;
+  const { store, embedding, arbitration, ids, logging } = ports;
 
   const normalisedName = normaliseName(rawName);
   if (!normalisedName) {
@@ -82,7 +175,6 @@ export async function matchOrCreate(
 
   // Force-create: skip match stages, still run arbitration to populate aisle + item metadata.
   if (forceCreate) {
-    const aisles = await loadAisles(aisleStore);
     let suggestedAisleId: string | null = null;
     let forceExtras: ArbitrationExtras | undefined;
     let forceName = rawName;
@@ -114,9 +206,6 @@ export async function matchOrCreate(
     );
   }
 
-  const itemsResult = await store.list();
-  if (itemsResult.kind !== 'ok') return itemsResult;
-  const items = itemsResult.value;
   logBuilder?.setInputItemCount(items.length);
 
   // Stages 1–4: pure deterministic matching
@@ -135,7 +224,7 @@ export async function matchOrCreate(
       rawText,
       selectedAisleId ?? null,
       store,
-      aisleStore,
+      aisles,
       arbitration,
       ids,
       commitLog,
@@ -170,7 +259,7 @@ export async function matchOrCreate(
       rawText,
       selectedAisleId ?? null,
       store,
-      aisleStore,
+      aisles,
       arbitration,
       ids,
       commitLog,
@@ -184,7 +273,6 @@ export async function matchOrCreate(
   let newExtras: ArbitrationExtras | undefined;
   let createName = rawName;
   if (finalAisleId === null) {
-    const aisles = await loadAisles(aisleStore);
     if (aisles.length > 0) {
       const arbT0 = Date.now();
       const arbResult = await arbitration.arbitrate({
@@ -322,7 +410,7 @@ async function arbitrateShortlist(
   rawText: string | undefined,
   selectedAisleId: string | null,
   store: CanonLocalStorePort,
-  aisleStore: AisleLocalStorePort,
+  aisles: readonly Aisle[],
   arbitration: CanonArbitrationPort,
   ids: IdGenerator,
   commitLog: (
@@ -332,8 +420,6 @@ async function arbitrateShortlist(
   ) => void,
   logBuilder: MatchLogBuilder | null,
 ): Promise<ReadResult<MatchOrCreateResult, DomainError>> {
-  const aisles = await loadAisles(aisleStore);
-
   const arbT0 = Date.now();
   const arbResult = await arbitration.arbitrate({
     normalisedName,

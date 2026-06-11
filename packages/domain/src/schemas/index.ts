@@ -32,6 +32,15 @@ export type {
 export { MatchOrCreateCanonInputSchema } from './matchOrCreateCanonInput.js';
 export type { MatchOrCreateCanonInput } from './matchOrCreateCanonInput.js';
 
+export {
+  CanonicaliseRecipeIngredientsItemSchema,
+  CanonicaliseRecipeIngredientsInputSchema,
+} from './canonicaliseRecipeIngredientsInput.js';
+export type {
+  CanonicaliseRecipeIngredientsItem,
+  CanonicaliseRecipeIngredientsInput,
+} from './canonicaliseRecipeIngredientsInput.js';
+
 export { RegenerateCanonIconInputSchema } from './regenerateCanonIcon.js';
 export type { RegenerateCanonIconInput } from './regenerateCanonIcon.js';
 

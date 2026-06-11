@@ -1,5 +1,6 @@
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import type { MatchOrCreateInput, MatchOrCreateResult } from '@salt/domain';
+import type { CanonicaliseRecipeIngredientsInput } from '@salt/domain/schemas';
 import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
 
 // The CF returns the Result envelope from matchOrCreate verbatim; the client
@@ -40,6 +41,30 @@ export async function callMatchOrCreate(
         : input;
     const res = await fn(wireInput);
     return res.data;
+  } catch (err) {
+    const code = (err as { code?: string }).code ?? '';
+    if (code === 'functions/unauthenticated') {
+      return failure({ kind: 'AuthError', reason: 'unauthenticated' });
+    }
+    if (code === 'functions/permission-denied') {
+      return failure({ kind: 'AuthError', reason: 'forbidden' });
+    }
+    return failure({ kind: 'NetworkError', reason: 'transient' });
+  }
+}
+
+type WireBatchResult = ReadResult<MatchOrCreateResult, DomainError>[];
+
+export async function callCanonicaliseRecipeIngredients(
+  input: CanonicaliseRecipeIngredientsInput,
+): Promise<ReadResult<WireBatchResult, DomainError>> {
+  try {
+    const fn = httpsCallable<CanonicaliseRecipeIngredientsInput, WireBatchResult>(
+      getFunctions(undefined, 'europe-west2'),
+      'canonicaliseRecipeIngredients',
+    );
+    const res = await fn(input);
+    return success(res.data);
   } catch (err) {
     const code = (err as { code?: string }).code ?? '';
     if (code === 'functions/unauthenticated') {

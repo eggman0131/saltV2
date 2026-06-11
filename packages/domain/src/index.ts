@@ -45,6 +45,7 @@ export {
   embedMatch,
   findClosestMatch,
   matchOrCreate,
+  matchOrCreateBatch,
   appendCanonSynonym,
   createAisle,
   createAislesBulk,
