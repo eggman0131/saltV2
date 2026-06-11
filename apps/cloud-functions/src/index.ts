@@ -2,7 +2,10 @@ import { initializeApp } from 'firebase-admin/app';
 import { setGlobalOptions } from 'firebase-functions/v2';
 import { defineSecret } from 'firebase-functions/params';
 import { onCall, onCallGenkit, isSignedIn, HttpsError } from 'firebase-functions/https';
-import { MatchOrCreateCanonInputSchema } from '@salt/domain/schemas';
+import {
+  MatchOrCreateCanonInputSchema,
+  CanonicaliseRecipeIngredientsInputSchema,
+} from '@salt/domain/schemas';
 import {
   initServerObservability,
   whenServerObservabilityReady,
@@ -11,6 +14,7 @@ import { registerGenkitDevTracing } from './genkitTracing.js';
 import { embedTextFlow } from './flows/embedText.js';
 import { arbitrateCanonFlow } from './flows/arbitrateCanon.js';
 import { matchOrCreateCanonFlow } from './flows/matchOrCreateCanon.js';
+import { canonicaliseRecipeIngredientsFlow } from './flows/canonicaliseRecipeIngredients.js';
 import { identifyEquipmentFlow } from './flows/identifyEquipment.js';
 import { populateEquipmentEntryFlow } from './flows/populateEquipmentEntry.js';
 import { parseRecipeIngredientsFlow } from './flows/parseRecipeIngredients.js';
@@ -96,6 +100,28 @@ export const matchOrCreateCanon = onCall(
     // DORMANT: trace propagation — see block comment above.
     // Was: runWithExtractedTraceContext(data?._trace, () => matchOrCreateCanonFlow(request.data))
     return matchOrCreateCanonFlow(request.data);
+  },
+);
+
+// Batch callable: one canon-collection read + batched embeddings for a full
+// recipe. Mirrors matchOrCreateCanon's port-wiring but fans inputs through
+// matchOrCreateBatch so later items see items created earlier in the batch.
+export const canonicaliseRecipeIngredients = onCall(
+  {
+    ...APP_CHECK_ENFORCEMENT,
+    secrets: [geminiApiKey, ldSdkKey],
+    timeoutSeconds: 120,
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Sign in required.');
+    }
+    const parsed = CanonicaliseRecipeIngredientsInputSchema.safeParse(request.data);
+    if (!parsed.success) {
+      throw new HttpsError('invalid-argument', 'Invalid request payload.');
+    }
+    await whenServerObservabilityReady();
+    return canonicaliseRecipeIngredientsFlow(parsed.data);
   },
 );
 

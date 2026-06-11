@@ -1,8 +1,12 @@
 import { logger } from 'firebase-functions';
+import { googleAI } from '@genkit-ai/google-genai';
 import type { EmbeddingPort } from '@salt/domain';
 import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
 import { embedTextFlow } from '../flows/embedText.js';
 import { withAiTimeout } from './withAiTimeout.js';
+import { ai } from '../genkit.js';
+
+const EMBEDDING_MODEL = 'gemini-embedding-001';
 
 export function createServerEmbeddingAdapter(): EmbeddingPort {
   return {
@@ -12,6 +16,23 @@ export function createServerEmbeddingAdapter(): EmbeddingPort {
         return success(values);
       } catch (err) {
         logger.error('matchOrCreateCanon: embedding failed', { err });
+        return failure({ kind: 'NetworkError', reason: 'transient' });
+      }
+    },
+    async computeEmbeddings(
+      texts: readonly string[],
+    ): Promise<ReadResult<readonly (readonly number[])[], DomainError>> {
+      try {
+        const allEmbeddings = await withAiTimeout('batchEmbedTexts', () =>
+          Promise.all(
+            texts.map((text) =>
+              ai.embed({ embedder: googleAI.embedder(EMBEDDING_MODEL), content: text }),
+            ),
+          ),
+        );
+        return success(allEmbeddings.map((e) => e[0]!.embedding));
+      } catch (err) {
+        logger.error('canonicaliseRecipeIngredients: batch embedding failed', { err });
         return failure({ kind: 'NetworkError', reason: 'transient' });
       }
     },
