@@ -242,6 +242,45 @@ The fast-path's `canon.add` span and the CF's `canon.matchOrCreateCanon` span ar
 
 ---
 
+## Batch entry point — recipe ingredient canonicalisation
+
+A recipe canonicalises many ingredient names at once (a 35-ingredient recipe). The naive shape — one `matchOrCreateCanon` call per ingredient — re-reads the entire `canonItems` collection (each doc's 3072-float embedding) once per ingredient, and lets two ingredients race to create the same new item because no call sees what another just created. The `canonicaliseRecipeIngredients` callable resolves the whole list in **one** invocation: it reads the canon snapshot once, embeds names in batched calls, and accumulates in-batch creations so duplicates collapse.
+
+**There is one matching path. A single item is a batch of one.** Both stages and orchestration are shared, so stages, thresholds, arbitration, `needs_approval`, and per-item match-log emission cannot drift between single and batch.
+
+### One path: batch, with single as `n = 1`
+
+`matchOrCreate`'s body splits into a per-item core and a batch orchestrator, and the single-item entry point becomes a thin alias:
+
+- **`resolveOne(input, snapshot, aisles, ports)`** — stages 1–6 + arbitration + persist. The sole source of truth for matching behaviour. Reads candidates from the injected `snapshot`; persists via `ports.store.upsert`.
+- **`matchOrCreateBatch(inputs, ports)`** — the one matching function. Loads snapshot + aisles **once**, batch-embeds all names into a cache (below), then calls `resolveOne` per input against a growing in-memory snapshot. Returns an order-preserving array of `MatchOrCreateResult`.
+- **`matchOrCreate(input, ports)`** — unchanged public signature, now a one-line alias: `(await matchOrCreateBatch([input], ports))[0]`. The hot single-item path (add-item, shopping-list trigger, single ingredient update) runs through the same orchestration with a batch of one — a one-element embed call and a one-entry map. Negligible overhead; zero behavioural difference.
+
+Because single-item *is* a batch of one, there is no second implementation to keep in step. The parity test below confirms `batch([x])` behaves like `batch([x, y, z])` for the same `x` — true by construction — rather than reconciling two code paths.
+
+The two **Cloud Function callables** are unaffected by this: `matchOrCreateCanon` (single-item callers) and `canonicaliseRecipeIngredients` (recipe batch) both call into the one domain `matchOrCreateBatch`. Keeping both callables is a wire/API decision; the matching logic underneath is single-sourced.
+
+### Growing snapshot
+
+The batch holds the canon set as an in-memory map keyed by id, seeded by the single `store.list()`. After each input resolves, the returned `CanonItem` is folded back into the map — both new creations **and** synonym-appended / `needs_approval` mutations of matched items — so later inputs see exactly what a fresh re-read would show. Two ingredients that resolve to the same new item therefore collapse to one canon item. The map is the matching view; writes still go through `store.upsert` per item.
+
+### Batched embedding without forking stage 5
+
+Stage 5 (`embedMatch`) is unchanged and runs identically in both paths. The batch pre-computes query embeddings for **all** input names in one `EmbeddingPort.computeEmbeddings([...])` call, stores them in a cache, and wraps the port so `computeEmbedding(name)` is served from that cache. `embedMatch` still calls `computeEmbedding(name)` exactly as on the single path — it just hits a warm cache. `EmbeddingPort` gains `computeEmbeddings`; the single-item `computeEmbedding` is untouched. (Embedding every name, including those that match at stages 1–4, is deliberate: it keeps the flow to one batched call and avoids a pre-pass whose stage-1–4 outcomes would shift as the snapshot grows. The cost #187 targets is the canon-read amplification, not the embed calls.)
+
+In-batch newly-created items carry no embedding yet — canon-name embeddings are written asynchronously by the `onCanonItemWritten` trigger — so they participate in stages 1–4 and stage-6 token/string similarity but not stage-5 cosine. This is correct and needs no special-casing.
+
+### Parity guarantee
+
+Identity is structural — single-item is literally `matchOrCreateBatch([input])` — so the tests confirm the orchestration is order- and size-invariant rather than reconcile two implementations:
+
+- Running each input of a fixed corpus as its own `batch([x])` against an accumulating store yields the same per-input `decision`, resolved item id, synonyms, and `needs_approval` as running them all as one `batch([x, y, z])`.
+- Two inputs resolving to the same new item produce a single canon item (intra-batch dedup).
+
+Arbitration stays per-unmatched-item; batching the arbitration *prompt* is out of scope.
+
+---
+
 ## Thresholds at a glance
 
 | Constant | Value | Used at |
