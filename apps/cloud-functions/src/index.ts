@@ -13,6 +13,7 @@ import { arbitrateCanonFlow } from './flows/arbitrateCanon.js';
 import { matchOrCreateCanonFlow } from './flows/matchOrCreateCanon.js';
 import { identifyEquipmentFlow } from './flows/identifyEquipment.js';
 import { populateEquipmentEntryFlow } from './flows/populateEquipmentEntry.js';
+import { parseRecipeIngredientsFlow } from './flows/parseRecipeIngredients.js';
 import { onShoppingListItemWrite } from './triggers/onShoppingListItemWrite.js';
 import { onCanonItemWritten } from './triggers/onCanonItemWritten.js';
 
@@ -114,6 +115,18 @@ export const populateEquipmentEntry = onCallGenkit(
     authPolicy: isSignedIn(),
   },
   populateEquipmentEntryFlow,
+);
+
+// Recipe lists are larger prompts than single-entry flows — allow 90s so the
+// 55s withAiTimeout has sufficient headroom within the function lifetime.
+export const parseRecipeIngredients = onCallGenkit(
+  {
+    ...APP_CHECK_ENFORCEMENT,
+    secrets: [geminiApiKey],
+    authPolicy: isSignedIn(),
+    timeoutSeconds: 90,
+  },
+  parseRecipeIngredientsFlow,
 );
 
 export { onShoppingListItemWrite };

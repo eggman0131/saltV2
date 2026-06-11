@@ -196,5 +196,29 @@ export {
   setAttendeeNote,
 } from './mealPlan/index.js';
 
+// Recipe module — published surface (issue #179).
+export type {
+  SingleQuantity,
+  RangeQuantity,
+  MixedQuantity,
+  Quantity,
+  ParsedIngredient,
+  Ingredient,
+  IngredientGroup,
+  Step,
+  StepTimer,
+  Recipe,
+  RecipeImage,
+  RecipeMetadata,
+  RecipeSource,
+} from './recipe/index.js';
+export {
+  emptyRecipe,
+  emptyIngredientGroup,
+  newIngredient,
+  newStep,
+  flattenIngredients,
+} from './recipe/index.js';
+
 // Cross-cutting ports.
 export type { ErrorReportingPort } from './ErrorReportingPort.js';

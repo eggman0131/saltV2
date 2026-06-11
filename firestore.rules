@@ -63,6 +63,11 @@ service cloud.firestore {
     match /mealPlans/{startDate} {
       allow read, write: if request.auth != null;
     }
+    // Recipes (issue #179) — shared, family-wide; any authenticated user can
+    // read and write. No AdminGuard on recipes (writes are open to members).
+    match /recipes/{recipeId} {
+      allow read, write: if request.auth != null;
+    }
     match /{document=**} {
       allow read, write: if false;
     }
