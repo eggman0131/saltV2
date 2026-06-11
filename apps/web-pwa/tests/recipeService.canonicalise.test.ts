@@ -7,7 +7,7 @@ vi.mock('@salt/firebase-sync', () => ({
   saveRecipe: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   deleteRecipe: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   callParseRecipeIngredients: vi.fn(),
-  callMatchOrCreate: vi.fn(),
+  callCanonicaliseRecipeIngredients: vi.fn(),
 }));
 
 vi.mock('@salt/ld-observability', () => ({
@@ -96,15 +96,15 @@ describe('canonicaliseIngredients', () => {
     const result = await canonicaliseIngredients(recipe);
 
     expect(result).toEqual({ kind: 'ok', value: undefined });
-    expect(fs.callMatchOrCreate).not.toHaveBeenCalled();
+    expect(fs.callCanonicaliseRecipeIngredients).not.toHaveBeenCalled();
     expect(fs.saveRecipe).not.toHaveBeenCalled();
   });
 
-  it('sets matched + canonId when matchOrCreate succeeds with a known item', async () => {
+  it('sets matched + canonId when batch returns a matched item', async () => {
     const canon = makeCanonItem('canon-flour', false);
-    fs.callMatchOrCreate.mockResolvedValue({
+    fs.callCanonicaliseRecipeIngredients.mockResolvedValue({
       kind: 'ok',
-      value: { decision: 'matched', item: canon },
+      value: [{ kind: 'ok', value: { decision: 'matched', item: canon } }],
     });
 
     const recipe = makeRecipe([
@@ -131,9 +131,9 @@ describe('canonicaliseIngredients', () => {
 
   it('sets matched even when the returned canon item has needs_approval = true', async () => {
     const canon = makeCanonItem('canon-novel', true);
-    fs.callMatchOrCreate.mockResolvedValue({
+    fs.callCanonicaliseRecipeIngredients.mockResolvedValue({
       kind: 'ok',
-      value: { decision: 'created', item: canon },
+      value: [{ kind: 'ok', value: { decision: 'created', item: canon } }],
     });
 
     const recipe = makeRecipe([
@@ -158,10 +158,10 @@ describe('canonicaliseIngredients', () => {
     expect(ing.matchState).toBe('matched');
   });
 
-  it('sets failed + null canonId when matchOrCreate returns an error', async () => {
-    fs.callMatchOrCreate.mockResolvedValue({
-      kind: 'err',
-      error: { kind: 'NetworkError', reason: 'transient' },
+  it('sets failed + null canonId when the batch item slot returns an error', async () => {
+    fs.callCanonicaliseRecipeIngredients.mockResolvedValue({
+      kind: 'ok',
+      value: [{ kind: 'err', error: { kind: 'NetworkError', reason: 'transient' } }],
     });
 
     const recipe = makeRecipe([
@@ -188,9 +188,9 @@ describe('canonicaliseIngredients', () => {
 
   it('retries failed ingredients (matchState failed + parsed)', async () => {
     const canon = makeCanonItem('canon-butter', false);
-    fs.callMatchOrCreate.mockResolvedValue({
+    fs.callCanonicaliseRecipeIngredients.mockResolvedValue({
       kind: 'ok',
-      value: { decision: 'matched', item: canon },
+      value: [{ kind: 'ok', value: { decision: 'matched', item: canon } }],
     });
 
     const recipe = makeRecipe([
@@ -209,7 +209,7 @@ describe('canonicaliseIngredients', () => {
 
     await canonicaliseIngredients(recipe);
 
-    expect(fs.callMatchOrCreate).toHaveBeenCalledOnce();
+    expect(fs.callCanonicaliseRecipeIngredients).toHaveBeenCalledOnce();
     const saved = (fs.saveRecipe as ReturnType<typeof vi.fn>).mock.calls[0][0] as Recipe;
     expect(saved.ingredients[0].items[0].matchState).toBe('matched');
   });
@@ -232,15 +232,15 @@ describe('canonicaliseIngredients', () => {
     const result = await canonicaliseIngredients(recipe);
 
     expect(result).toEqual({ kind: 'ok', value: undefined });
-    expect(fs.callMatchOrCreate).not.toHaveBeenCalled();
+    expect(fs.callCanonicaliseRecipeIngredients).not.toHaveBeenCalled();
     expect(fs.saveRecipe).not.toHaveBeenCalled();
   });
 
-  it('calls matchOrCreate with rawName from parsed.item and rawText from ingredient', async () => {
+  it('calls the batch CF with rawName from parsed.item and rawText from ingredient', async () => {
     const canon = makeCanonItem('canon-butter', false);
-    fs.callMatchOrCreate.mockResolvedValue({
+    fs.callCanonicaliseRecipeIngredients.mockResolvedValue({
       kind: 'ok',
-      value: { decision: 'matched', item: canon },
+      value: [{ kind: 'ok', value: { decision: 'matched', item: canon } }],
     });
 
     const recipe = makeRecipe([
@@ -259,18 +259,21 @@ describe('canonicaliseIngredients', () => {
 
     await canonicaliseIngredients(recipe);
 
-    expect(fs.callMatchOrCreate).toHaveBeenCalledWith({
-      rawName: 'butter',
-      rawText: '100g unsalted butter, melted',
+    expect(fs.callCanonicaliseRecipeIngredients).toHaveBeenCalledWith({
+      items: [{ rawName: 'butter', rawText: '100g unsalted butter, melted' }],
     });
   });
 
-  it('handles multiple ingredients across groups in parallel', async () => {
+  it('handles multiple ingredients across groups in a single batch call', async () => {
     const canonFlour = makeCanonItem('canon-flour', false);
     const canonSugar = makeCanonItem('canon-sugar', false);
-    fs.callMatchOrCreate
-      .mockResolvedValueOnce({ kind: 'ok', value: { decision: 'matched', item: canonFlour } })
-      .mockResolvedValueOnce({ kind: 'ok', value: { decision: 'matched', item: canonSugar } });
+    fs.callCanonicaliseRecipeIngredients.mockResolvedValue({
+      kind: 'ok',
+      value: [
+        { kind: 'ok', value: { decision: 'matched', item: canonFlour } },
+        { kind: 'ok', value: { decision: 'matched', item: canonSugar } },
+      ],
+    });
 
     const recipe = makeRecipe([
       {
@@ -307,7 +310,7 @@ describe('canonicaliseIngredients', () => {
 
     await canonicaliseIngredients(recipe);
 
-    expect(fs.callMatchOrCreate).toHaveBeenCalledTimes(2);
+    expect(fs.callCanonicaliseRecipeIngredients).toHaveBeenCalledOnce();
     const saved = (fs.saveRecipe as ReturnType<typeof vi.fn>).mock.calls[0][0] as Recipe;
     expect(saved.ingredients[0].items[0].canonId).toBe('canon-flour');
     expect(saved.ingredients[1].items[0].canonId).toBe('canon-sugar');
