@@ -4,9 +4,11 @@ import {
   deleteRecipe as deleteRecipeDoc,
   callParseRecipeIngredients,
   callMatchOrCreate,
+  saveShoppingListItem,
 } from '@salt/firebase-sync';
 import { createLDErrorReportingAdapter } from '@salt/ld-observability';
-import type { Recipe, IngredientGroup } from '@salt/domain';
+import { addItem } from '@salt/domain';
+import type { Recipe, IngredientGroup, Quantity, SourceRef } from '@salt/domain';
 import { success, type DomainError, type ReadResult } from '@salt/shared-types';
 import { writable, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
@@ -154,4 +156,78 @@ export async function removeRecipe(id: string): Promise<ReadResult<void, DomainE
   latestLocalEdit.set(id, new Date().toISOString());
   _recipes.set(get(_recipes).filter((r) => r.id !== id));
   return deleteRecipeDoc(id);
+}
+
+// ─── Shopping-list extraction ─────────────────────────────────────────────────
+
+function quantityToNumber(q: Quantity): number {
+  if (q.type === 'single') return q.value;
+  if (q.type === 'range') return q.min;
+  return q.whole + q.numerator / q.denominator;
+}
+
+const _itemIds = { newListId: () => crypto.randomUUID(), newItemId: () => crypto.randomUUID() };
+
+// Push all canonicalised (and unmatched) ingredients from a recipe into a
+// shopping list. Matched ingredients carry convertedWeight (g/ml) scaled by
+// servings; falls back to parsed.quantity / parsed.unit when convertedWeight is
+// null. Unmatched items are added as rawText entries so nothing is silently
+// dropped.
+export async function addRecipeToShoppingList(
+  recipe: Recipe,
+  listId: string,
+  servings: number,
+): Promise<ReadResult<void, DomainError>> {
+  const now = new Date().toISOString();
+  const baseServings = recipe.metadata.servings ?? 1;
+  const scale = servings / baseServings;
+
+  const source: SourceRef = {
+    kind: 'recipe',
+    recipeId: recipe.id,
+    servings,
+    label: recipe.title,
+  };
+
+  const saves: Promise<ReadResult<void, DomainError>>[] = [];
+
+  for (const group of recipe.ingredients) {
+    for (const ing of group.items) {
+      const isMatched = ing.matchState === 'matched' && ing.canonId !== null;
+
+      let amount: number | undefined;
+      let unit: string | undefined;
+
+      if (isMatched && ing.parsed !== null) {
+        if (ing.parsed.convertedWeight !== null) {
+          amount = Math.round(ing.parsed.convertedWeight.value * scale * 10) / 10;
+          unit = ing.parsed.convertedWeight.unit;
+        } else if (ing.parsed.quantity !== null) {
+          amount = Math.round(quantityToNumber(ing.parsed.quantity) * scale * 100) / 100;
+          unit = ing.parsed.unit ?? undefined;
+        }
+      }
+
+      const result = addItem(
+        [],
+        {
+          rawText: ing.rawText,
+          source,
+          now,
+          ...(isMatched ? { canonId: ing.canonId, matchState: 'matched' as const } : {}),
+          ...(amount !== undefined ? { amount } : {}),
+          ...(unit !== undefined ? { unit } : {}),
+        },
+        _itemIds,
+      );
+
+      if (result.kind !== 'ok') return result;
+      saves.push(saveShoppingListItem(listId, result.value[0]!));
+    }
+  }
+
+  if (saves.length === 0) return success(undefined);
+
+  const results = await Promise.all(saves);
+  return results.find((r) => r.kind !== 'ok') ?? success(undefined);
 }
