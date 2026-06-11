@@ -218,6 +218,7 @@ export {
   emptyIngredientGroup,
   newIngredient,
   newStep,
+  clearIngredientMatch,
   flattenIngredients,
 } from './recipe/index.js';
 

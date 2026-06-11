@@ -6,6 +6,7 @@
     emptyIngredientGroup,
     newIngredient,
     newStep,
+    clearIngredientMatch,
     type Recipe,
     type IngredientGroup,
     type Ingredient,
@@ -133,7 +134,11 @@
   ): void {
     updateGroupItems(
       group.id,
-      group.items.map((i) => (i.id === ingredientId ? { ...i, rawText } : i)),
+      group.items.map((i) => {
+        if (i.id !== ingredientId) return i;
+        if (i.rawText === rawText) return i;
+        return { ...clearIngredientMatch(i), rawText };
+      }),
     );
   }
 
