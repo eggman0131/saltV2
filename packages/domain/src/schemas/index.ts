@@ -71,3 +71,32 @@ export type { MealPlanTemplateDoc } from './mealPlanTemplate.js';
 
 export { MealPlanWeekSchema } from './mealPlanWeek.js';
 export type { MealPlanWeekDoc } from './mealPlanWeek.js';
+
+export {
+  SingleQuantitySchema,
+  RangeQuantitySchema,
+  MixedQuantitySchema,
+  QuantitySchema,
+  ParsedIngredientSchema,
+  IngredientSchema,
+  IngredientGroupSchema,
+  StepTimerSchema,
+  StepSchema,
+  RecipeMetadataSchema,
+  RecipeSourceSchema,
+  RecipeSchema,
+} from './recipe.js';
+export type {
+  SingleQuantityDoc,
+  RangeQuantityDoc,
+  MixedQuantityDoc,
+  QuantityDoc,
+  ParsedIngredientDoc,
+  IngredientDoc,
+  IngredientGroupDoc,
+  StepTimerDoc,
+  StepDoc,
+  RecipeMetadataDoc,
+  RecipeSourceDoc,
+  RecipeDoc,
+} from './recipe.js';
