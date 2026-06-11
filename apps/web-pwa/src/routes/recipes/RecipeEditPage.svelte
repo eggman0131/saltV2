@@ -204,6 +204,15 @@
     );
   }
 
+  function setStepNote(stepId: string, value: string): void {
+    const trimmed = value.trim();
+    setSteps(
+      draft.steps.map((s) =>
+        s.id === stepId ? { ...s, note: trimmed === '' ? null : trimmed } : s,
+      ),
+    );
+  }
+
   // ─── Save ─────────────────────────────────────────────────────────────────────
   let saving = $state(false);
   const canSave = $derived(draft.title.trim().length > 0);
@@ -216,7 +225,7 @@
     const ingredients = r.ingredients
       .map((g) => ({ ...g, items: g.items.filter((i) => i.rawText.trim() !== '') }))
       .filter((g) => g.items.length > 0);
-    const steps = r.steps.filter((s) => s.text.trim() !== '');
+    const steps = r.steps.filter((s) => s.text.trim() !== '' || s.note !== null);
     return { ...r, title: r.title.trim(), ingredients, steps };
   }
 
@@ -465,6 +474,17 @@
                 data-testid="recipe-step-timer-description"
               />
             {/if}
+          </div>
+
+          <div class="pl-6">
+            <TextArea
+              label="Note (optional)"
+              placeholder="Any note for this step"
+              value={step.note ?? ''}
+              onValueChange={(v) => setStepNote(step.id, v)}
+              rows={2}
+              data-testid="recipe-step-note-input"
+            />
           </div>
         </div>
       {/each}

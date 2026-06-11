@@ -9,6 +9,9 @@
     DialogHeader,
     DialogTitle,
     Icon,
+    Popover,
+    PopoverTrigger,
+    PopoverContent,
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
   import { recipes, isLoadingRecipes, removeRecipe } from '../../lib/recipeService.js';
@@ -141,8 +144,31 @@
           {#each recipe.steps as step, idx (step.id)}
             <li class="flex gap-3 text-sm" data-testid="recipe-view-step">
               <span class="font-medium text-muted-foreground">{idx + 1}.</span>
-              <div class="flex flex-col gap-1">
-                <span>{step.text}</span>
+              <div class="flex flex-col gap-1 flex-1">
+                <div class="flex items-start gap-1">
+                  <span class="flex-1">{step.text}</span>
+                  {#if step.note}
+                    <Popover>
+                      <PopoverTrigger>
+                        <button
+                          class="shrink-0 text-muted-foreground hover:text-foreground"
+                          aria-label="View step note"
+                          data-testid="recipe-step-note-trigger"
+                        >
+                          <Icon name="StickyNote" size={14} />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent side="top" align="end" class="max-w-xs">
+                        <p
+                          class="text-sm whitespace-pre-wrap"
+                          data-testid="recipe-step-note-content"
+                        >
+                          {step.note}
+                        </p>
+                      </PopoverContent>
+                    </Popover>
+                  {/if}
+                </div>
                 {#if step.timer}
                   <span class="text-xs text-muted-foreground">
                     ⏱ {step.timer.durationMinutes} min{step.timer.description
