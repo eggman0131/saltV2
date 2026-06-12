@@ -62,16 +62,20 @@ test.describe('recipe → shopping list extraction', () => {
     const recipeId = page.url().match(/#\/recipes\/([a-z0-9-]+)/)?.[1];
     expect(recipeId).toBeTruthy();
 
-    // ── Open dialog: default servings = 4, confirm ────────────────────────────
+    // ── Open review sheet: default servings = 4, confirm ──────────────────────
+    // Unmatched ingredients (no AI CFs in e2e) default to add: true, so all
+    // three rows are included; the confirm button reads "Add 3 to list".
     await page.getByTestId('recipe-add-to-list-button').click();
-    await expect(page.getByTestId('recipe-add-to-list-dialog')).toBeVisible();
+    await expect(page.getByTestId('recipe-add-review-list')).toBeVisible();
     await expect(page.getByTestId('recipe-servings-value')).toContainText('4');
 
     await page.getByTestId('recipe-add-to-list-confirm').click();
-    await expect(page.getByTestId('recipe-add-to-list-dialog')).not.toBeVisible({
+    await expect(page.getByTestId('recipe-add-review-list')).not.toBeVisible({
       timeout: SYNC_TIMEOUT,
     });
-    await expect(page.getByText(/added to shopping list/i)).toBeVisible({ timeout: SYNC_TIMEOUT });
+    await expect(page.getByText(/added \d+ items? to the list/i)).toBeVisible({
+      timeout: SYNC_TIMEOUT,
+    });
 
     // ── Navigate to shopping list and verify all three items appear ───────────
     await page.goto('/#/shopping');
@@ -128,9 +132,9 @@ test.describe('recipe → shopping list extraction', () => {
     await page.getByTestId('recipe-save-btn').click();
     await expect(page).toHaveURL(/#\/recipes\/(?!new)[a-z0-9-]+$/, { timeout: SYNC_TIMEOUT });
 
-    // Open dialog: default should be 2.
+    // Open review sheet: default should be 2.
     await page.getByTestId('recipe-add-to-list-button').click();
-    await expect(page.getByTestId('recipe-add-to-list-dialog')).toBeVisible();
+    await expect(page.getByTestId('recipe-add-review-list')).toBeVisible();
     await expect(page.getByTestId('recipe-servings-value')).toContainText('2');
 
     // Decrease to 1 — then the button should be disabled.
@@ -145,7 +149,9 @@ test.describe('recipe → shopping list extraction', () => {
     await expect(page.getByTestId('recipe-servings-value')).toContainText('6');
 
     await page.getByTestId('recipe-add-to-list-confirm').click();
-    await expect(page.getByText(/added to shopping list/i)).toBeVisible({ timeout: SYNC_TIMEOUT });
+    await expect(page.getByText(/added \d+ items? to the list/i)).toBeVisible({
+      timeout: SYNC_TIMEOUT,
+    });
 
     // Verify SourceRef.servings = 6 via the shopping list store.
     await page.goto('/#/shopping');

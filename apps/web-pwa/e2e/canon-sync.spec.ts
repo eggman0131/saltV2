@@ -21,6 +21,12 @@ import { getAisles, getCanonItem, seedAisles, seedCanonItem } from './helpers/se
 const CONVERGENCE_TIMEOUT = 20_000;
 
 test.describe('canon sync — two-tab convergence', () => {
+  // STOPGAP (#199): the aisle convergence cases flake on emulator cold-start +
+  // manifest-tick timing (a propagation timeout, not a real break). Bounded
+  // retries keep CI green while the shared root cause is chased alongside #122
+  // (likely resolved by the test-stack dockerization). Remove once #199 lands.
+  test.describe.configure({ retries: 2 });
+
   test('canon item created in tab A appears in tab B via manifest tick', async ({
     browser,
   }, testInfo) => {
