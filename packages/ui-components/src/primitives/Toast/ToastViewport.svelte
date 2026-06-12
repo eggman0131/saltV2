@@ -8,7 +8,10 @@
 
 <div
   class={cn(
-    'fixed bottom-0 right-0 z-[100] flex max-h-screen w-full flex-col-reverse gap-2 p-4 md:max-w-[420px]',
+    // pointer-events-none: the viewport spans a fixed, full-width strip at the
+    // bottom (above the BottomNav in z-order) even when empty — without this it
+    // swallows taps meant for the nav. Each Toast re-enables pointer-events-auto.
+    'pointer-events-none fixed bottom-0 right-0 z-[100] flex max-h-screen w-full flex-col-reverse gap-2 p-4 md:max-w-[420px]',
     className,
   )}
 >

@@ -20,7 +20,7 @@
   )}
   aria-label="Main navigation"
 >
-  <ul class="mx-auto flex h-14 w-full max-w-lg items-center justify-around" role="list">
+  <ul class="mx-auto flex h-14 w-full max-w-lg items-stretch justify-around" role="list">
     {#each items as item (item.id)}
       {@const active = isActive(item.href, currentPath)}
       {@const Icon = item.icon}
