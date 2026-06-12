@@ -15,7 +15,8 @@ test.describe('recipes — manual CRUD', () => {
   test('create with two groups + steps, reload, edit, delete', async ({ page }, testInfo) => {
     test.setTimeout(60_000);
     const email = uniqueEmail(testInfo.testId);
-    await gotoAndSignIn(page, email);
+    // Recipes are gated to admins while the module is incomplete (#179).
+    await gotoAndSignIn(page, email, '/', { admin: true });
 
     // ── Create ─────────────────────────────────────────────────────────────
     await page.goto('/#/recipes/new');

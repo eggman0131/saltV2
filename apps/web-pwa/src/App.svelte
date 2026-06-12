@@ -12,7 +12,7 @@
   } from '@salt/ui-components';
   import AuthGate from './components/AuthGate.svelte';
   import { auth } from './lib/auth.svelte.js';
-  import { navItems, adminNavItem } from './lib/nav.js';
+  import { navItems, adminNavItem, recipesNavItem } from './lib/nav.js';
   import { routes } from './routes/index.js';
   import { toasts, dismissToast } from './lib/toastStore.js';
   import { canonItems, initCanonSync } from './lib/canonService.js';
@@ -54,6 +54,9 @@
   const needsApprovalCount = $derived($canonItems.filter((i) => i.needs_approval).length);
   const decoratedNavItems = $derived([
     ...navItems,
+    // Recipes is admin-only for now (incomplete module, #179) — same cosmetic
+    // gating as the operator entry below.
+    ...(isAdmin ? [recipesNavItem] : []),
     ...(isAdmin
       ? [needsApprovalCount > 0 ? { ...adminNavItem, badge: needsApprovalCount } : adminNavItem]
       : []),
@@ -69,7 +72,12 @@
       {/snippet}
       <Router {routes} />
     </AppShell>
-    <ToastViewport>
+    <!--
+      Lift toasts above the mobile BottomNav so they don't cover it. Mirrors the
+      nav reservation used by AppShell's <main> (h-14 = 3.5rem + safe-area).
+      lg:bottom-0: the BottomNav is hidden on desktop, so drop back to the edge.
+    -->
+    <ToastViewport class="bottom-[calc(3.5rem_+_env(safe-area-inset-bottom))] lg:bottom-0">
       {#each $toasts as toast (toast.id)}
         <Toast
           defaultOpen={true}

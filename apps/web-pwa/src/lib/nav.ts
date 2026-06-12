@@ -13,10 +13,20 @@ export const navItems: NavItem[] = [
   { id: 'home', label: 'Home', icon: Home, href: '#/' },
   { id: 'shopping', label: 'Shop', icon: ShoppingCart, href: '#/shopping' },
   { id: 'mealplan', label: 'Meals', icon: CalendarDays, href: '#/mealplan' },
-  { id: 'recipes', label: 'Recipes', icon: BookOpen, href: '#/recipes' },
   { id: 'equipment', label: 'Kitchen', icon: Blender, href: '#/equipment' },
   { id: 'settings', label: 'Settings', icon: Settings, href: '#/settings' },
 ];
+
+// The recipe module is still incomplete (issue #179). Until it's ready for
+// everyone, keep it out of the default nav and surface it only to admins — the
+// same cosmetic gating used for the operator area. Route-level AdminGuard on the
+// recipe pages is the matching server-agnostic backstop against direct URLs.
+export const recipesNavItem: NavItem = {
+  id: 'recipes',
+  label: 'Recipes',
+  icon: BookOpen,
+  href: '#/recipes',
+};
 
 // Operator-area entry (issues #155, #157). Appended to the nav only for admins —
 // see App.svelte, which also hangs the canon needs-approval badge here now that

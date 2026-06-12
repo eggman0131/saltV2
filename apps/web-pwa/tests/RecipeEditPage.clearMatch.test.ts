@@ -29,6 +29,21 @@ const { mockRecipes } = vi.hoisted(() => {
 
 vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
 vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
+// RecipeEditPage is wrapped in AdminGuard (#179); seed an admin context so the
+// guard renders the form under test.
+vi.mock('../src/lib/auth.svelte.js', () => ({ auth: { user: { email: 'admin@test' } } }));
+vi.mock('../src/lib/membersService.js', () => {
+  const readable = <T>(v: T) => ({
+    subscribe(fn: (x: T) => void) {
+      fn(v);
+      return () => {};
+    },
+  });
+  return {
+    members: readable([{ email: 'admin@test', admin: true }]),
+    isLoadingMembers: readable(false),
+  };
+});
 vi.mock('../src/lib/recipeService.js', () => ({
   recipes: mockRecipes,
   persistRecipe: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),

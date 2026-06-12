@@ -8,7 +8,6 @@
     SheetFooter,
     SheetHeader,
     SheetTitle,
-    Spinner,
   } from '@salt/ui-components';
   import { titleCase } from '../../lib/titleCase.js';
   import type { Recipe } from '@salt/domain';
@@ -62,6 +61,12 @@
     row.add = value;
     // Check implies Add — drop the verification flag when an item leaves the list.
     if (!value) row.check = false;
+  }
+
+  function setCheck(row: RecipeAddRow, value: boolean): void {
+    row.check = value;
+    // Check implies Add — selecting Check pulls the item onto the list.
+    if (value) row.add = true;
   }
 
   async function handleConfirm(): Promise<void> {
@@ -157,8 +162,7 @@
           <div class="flex w-12 justify-center">
             <Checkbox
               checked={row.check}
-              disabled={!row.add}
-              onCheckedChange={(v) => (row.check = v === true)}
+              onCheckedChange={(v) => setCheck(row, v === true)}
               aria-label="Check {rowLabel(row)}"
               data-testid="recipe-add-review-check"
             />
@@ -178,7 +182,6 @@
         disabled={busy}
         data-testid="recipe-add-to-list-confirm"
       >
-        {#if busy}<Spinner size={14} />{/if}
         Add {addCount} to list
       </Button>
     </SheetFooter>
