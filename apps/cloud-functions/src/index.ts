@@ -111,6 +111,11 @@ export const canonicaliseRecipeIngredients = onCall(
     ...APP_CHECK_ENFORCEMENT,
     secrets: [geminiApiKey, ldSdkKey],
     timeoutSeconds: 120,
+    // Batch canonicalisation reads the whole canon collection and batches
+    // embeddings for every ingredient in the recipe, so it exceeds the default
+    // 256 MiB and the instance is OOM-killed (surfaces as 500/504 + a CORS
+    // error in the browser because the dead response carries no CORS headers).
+    memory: '512MiB',
   },
   async (request) => {
     if (!request.auth) {
