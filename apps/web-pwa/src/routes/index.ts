@@ -12,6 +12,8 @@ import ShoppingListCreatePage from './shopping/ShoppingListCreatePage.svelte';
 import ShoppingListsManagePage from './shopping/ShoppingListsManagePage.svelte';
 import ShoppingListPage from './shopping/ShoppingListPage.svelte';
 import MealPlanWeekPage from './mealplan/MealPlanWeekPage.svelte';
+import ChatListPage from './chat/ChatListPage.svelte';
+import ChatSessionPage from './chat/ChatSessionPage.svelte';
 import RecipeListPage from './recipes/RecipeListPage.svelte';
 import RecipeEditPage from './recipes/RecipeEditPage.svelte';
 import RecipeViewPage from './recipes/RecipeViewPage.svelte';
@@ -32,6 +34,9 @@ export const routes: RouteDefinition = new Map([
   ['/shopping/lists', ShoppingListsManagePage],
   ['/shopping/:listId', ShoppingListPage],
   ['/mealplan', MealPlanWeekPage],
+  // Chat / AI Kitchen Assistant (issue #206).
+  ['/chat', ChatListPage],
+  ['/chat/:id', ChatSessionPage],
   // Recipe module (issue #179). More-specific static/edit routes precede the
   // parameterised view route.
   ['/recipes', RecipeListPage],
