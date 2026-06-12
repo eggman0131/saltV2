@@ -400,11 +400,11 @@
     return text.charAt(0).toUpperCase() + text.slice(1);
   }
 
-  // Label a row by its canon name when live-matched (title-cased, as canon names
-  // are shown elsewhere), falling back to its sentence-cased raw text otherwise.
+  // Label a row by its canon name when live-matched, falling back to its raw
+  // text otherwise — title-cased either way so every item reads consistently.
   function displayLabel(item: ShoppingListItem): string {
     const resolved = resolveItemDisplayName(item, canonMap, liveCanonIds);
-    return resolved.source === 'canon' ? titleCase(resolved.text) : toSentenceCase(resolved.text);
+    return titleCase(resolved.text);
   }
 
   function sourceLabel(item: ShoppingListItem): string {

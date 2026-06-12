@@ -25,7 +25,8 @@ test.describe('recipe → shopping list extraction', () => {
   }, testInfo) => {
     test.setTimeout(90_000);
     const email = uniqueEmail(testInfo.testId);
-    await gotoAndSignIn(page, email);
+    // Recipes are gated to admins while the module is incomplete (#179).
+    await gotoAndSignIn(page, email, '/', { admin: true });
 
     // ── Bootstrap: create the shopping list ──────────────────────────────────
     await page.goto('/#/shopping');
@@ -109,7 +110,8 @@ test.describe('recipe → shopping list extraction', () => {
   }, testInfo) => {
     test.setTimeout(90_000);
     const email = uniqueEmail(testInfo.testId);
-    await gotoAndSignIn(page, email);
+    // Recipes are gated to admins while the module is incomplete (#179).
+    await gotoAndSignIn(page, email, '/', { admin: true });
 
     // Bootstrap shopping list.
     await page.goto('/#/shopping');
