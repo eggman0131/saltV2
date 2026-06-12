@@ -54,6 +54,9 @@ export type {
   GroupItemsOptions,
 } from './queries/groupItemsByAisle.js';
 
+export { groupItemsByRecipe } from './queries/groupItemsByRecipe.js';
+export type { RecipeGroup, ManualBucket, GroupedByRecipe } from './queries/groupItemsByRecipe.js';
+
 export { resolveItemDisplayName } from './queries/resolveItemDisplayName.js';
 export type { ItemDisplayName } from './queries/resolveItemDisplayName.js';
 
