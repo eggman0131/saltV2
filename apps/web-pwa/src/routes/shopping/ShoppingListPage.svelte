@@ -30,7 +30,7 @@
   import { titleCase } from '../../lib/titleCase.js';
   import { tick } from 'svelte';
   import { push } from 'svelte-spa-router';
-  import { groupItemsByAisle, resolveItemDisplayName } from '@salt/domain';
+  import { groupItemsByAisle, groupItemsByRecipe, resolveItemDisplayName } from '@salt/domain';
   import type { ShoppingListItem, AisleRow, AmountSubtotal } from '@salt/domain';
   import { canonItems, aisles } from '../../lib/canonService.js';
   import {
@@ -104,13 +104,39 @@
 
   const visibleItems = $derived(deferredDelete.visible($itemsForActiveList));
 
+  // ─── Sort mode ──────────────────────────────────────────────────────────────
+  // Toggle between grouping by aisle (default) and by source recipe. Ephemeral —
+  // resets on reload; no Firestore/local-storage backing (storage rules forbid it).
+  let sortMode = $state<'aisle' | 'recipe'>('aisle');
+
+  // ─── Verify filter ───────────────────────────────────────────────────────────
+  // When the list holds amber "Need it?" items (recipe-add flagged, #185), offer a
+  // toggle that narrows the view to just those, so the shopper can resolve them in
+  // one pass. The button only appears while such items exist; clearing the last one
+  // drops the filter so the full list returns (effect below).
+  const verifyItems = $derived(visibleItems.filter((i) => needsVerify(i)));
+  const hasVerifyItems = $derived(verifyItems.length > 0);
+  let verifyFilterActive = $state(false);
+
+  $effect(() => {
+    if (verifyFilterActive && !hasVerifyItems) verifyFilterActive = false;
+  });
+
+  // Items fed into grouping/selection — narrowed to verify items when the filter
+  // is on. `isEmpty` stays keyed off the full list so the empty state means "no
+  // items", never "filtered to none".
+  const displayItems = $derived(verifyFilterActive ? verifyItems : visibleItems);
+
   // Combine recipe-sourced rows in the normal view; in selection mode show every
   // item individually so bulk check/delete/move act per-item (issue #184).
   const grouped = $derived(
-    groupItemsByAisle(visibleItems, canonMap, aisleInfos, { combine: !selectionMode }),
+    groupItemsByAisle(displayItems, canonMap, aisleInfos, { combine: !selectionMode }),
   );
 
-  const allItemIds = $derived(visibleItems.map((i) => i.id));
+  // Recipe-sorted view: recipe groups, then a Manual section, then checked.
+  const recipeGrouped = $derived(groupItemsByRecipe(displayItems));
+
+  const allItemIds = $derived(displayItems.map((i) => i.id));
 
   const isEmpty = $derived(!$isLoadingShoppingList && visibleItems.length === 0);
 
@@ -132,6 +158,15 @@
   // ─── List switcher ──────────────────────────────────────────────────────────────
 
   let listSwitcherOpen = $state(false);
+
+  // ─── Overflow menu ────────────────────────────────────────────────────────────
+
+  let overflowMenuOpen = $state(false);
+
+  function selectSortMode(mode: 'aisle' | 'recipe'): void {
+    sortMode = mode;
+    overflowMenuOpen = false;
+  }
 
   // ─── Selection state ──────────────────────────────────────────────────────────
 
@@ -455,26 +490,86 @@
 </script>
 
 {#snippet verifyControls(ids: string[])}
-  <div class="flex items-center gap-1" data-testid="shopping-verify">
+  <div class="flex items-center gap-2" data-testid="shopping-verify">
     <span class="text-xs font-medium text-amber-600 dark:text-amber-500">Need it?</span>
     <button
       type="button"
-      class="flex items-center justify-center rounded p-1 text-amber-600 hover:bg-amber-100 dark:text-amber-500 dark:hover:bg-amber-950"
+      class="flex h-10 w-10 items-center justify-center rounded-md text-amber-600 hover:bg-amber-100 dark:text-amber-500 dark:hover:bg-amber-950"
       onclick={() => void handleConfirmNeeded(ids)}
       aria-label="Confirm needed"
       data-testid="shopping-verify-confirm"
     >
-      <Icon name="Check" size={16} />
+      <Icon name="Check" size={20} />
     </button>
     <button
       type="button"
-      class="flex items-center justify-center rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+      class="flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
       onclick={() => void handleDropNeeded(ids)}
       aria-label="Not needed, remove"
       data-testid="shopping-verify-drop"
     >
-      <Icon name="X" size={16} />
+      <Icon name="X" size={20} />
     </button>
+  </div>
+{/snippet}
+
+{#snippet plainItemRow(item: ShoppingListItem, pending: boolean)}
+  {@const isSelected = selection.isSelected(item.id)}
+  {@const amountStr = formatAmount(item.amount, item.unit)}
+  <div
+    class="flex items-center gap-3 rounded border px-3 py-2 text-sm {isSelected
+      ? 'border-ring ring-2 ring-ring bg-card'
+      : needsVerify(item)
+        ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/20'
+        : 'border-border bg-card'}"
+    data-testid="shopping-item-row"
+    data-item-id={item.id}
+  >
+    {#if selectionMode}
+      <RowSelectCheckbox {selection} id={item.id} label="" aria-label="Select {item.rawText}" />
+    {/if}
+    <CanonIcon
+      thumbnail={thumbnailFor(item.canonId)}
+      name={displayLabel(item)}
+      dimmed={item.checked}
+      size={34}
+    />
+    <button
+      type="button"
+      class="flex-1 min-w-0 text-left"
+      onclick={() => openEditSheet(item)}
+      aria-label="Edit {item.rawText}"
+      data-testid="shopping-item-edit-btn"
+    >
+      <span class="block truncate {item.checked ? 'line-through text-muted-foreground' : ''}">
+        {displayLabel(item)}{#if amountStr}{' '}<span class="text-muted-foreground"
+            >({amountStr})</span
+          >{/if}
+      </span>
+      {#if item.notes}
+        <span class="block text-xs text-muted-foreground truncate"
+          >{toSentenceCase(item.notes)}</span
+        >
+      {/if}
+    </button>
+    {#if pending}
+      <Spinner size={14} />
+    {/if}
+    {#if needsVerify(item)}
+      {@render verifyControls([item.id])}
+    {:else}
+      <button
+        type="button"
+        class="flex items-center justify-center p-1 rounded transition-colors {item.checked
+          ? 'text-green-500'
+          : 'text-muted-foreground hover:text-foreground'}"
+        onclick={() => void toggleItemChecked(params.listId, item)}
+        aria-label={item.checked ? 'Uncheck' : 'Mark as done'}
+        data-testid="shopping-item-check"
+      >
+        <Icon name={item.checked ? 'CircleCheck' : 'Circle'} size={18} />
+      </button>
+    {/if}
   </div>
 {/snippet}
 
@@ -495,15 +590,71 @@
     data-testid="shopping-list-page"
   >
     {#snippet actions()}
-      <Button
-        variant="ghost"
-        size="sm"
-        onclick={() => push('/shopping/lists')}
-        data-testid="shopping-lists-btn"
-        aria-label="Manage lists"
-      >
-        <Icon name="LayoutList" size={16} />
-      </Button>
+      {#if hasVerifyItems}
+        <button
+          type="button"
+          class="inline-flex items-center gap-1 rounded-md h-8 px-2 text-xs font-medium transition-colors {verifyFilterActive
+            ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400'
+            : 'text-amber-600 hover:bg-amber-50 dark:text-amber-500 dark:hover:bg-amber-950/40'}"
+          onclick={() => (verifyFilterActive = !verifyFilterActive)}
+          aria-pressed={verifyFilterActive}
+          aria-label={verifyFilterActive ? 'Show all items' : 'Show only items to verify'}
+          data-testid="shopping-verify-filter"
+        >
+          <Icon name="ListFilter" size={14} />
+          {verifyItems.length}
+        </button>
+      {/if}
+      <Popover bind:open={overflowMenuOpen}>
+        <PopoverTrigger>
+          {#snippet children()}
+            <button
+              type="button"
+              class="inline-flex items-center justify-center rounded-md h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground"
+              data-testid="shopping-overflow-btn"
+              aria-label="List options"
+            >
+              <Icon name="EllipsisVertical" size={16} />
+            </button>
+          {/snippet}
+        </PopoverTrigger>
+        <PopoverContent align="end" class="p-1 min-w-52">
+          <p class="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Sort by
+          </p>
+          <button
+            type="button"
+            class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+            onclick={() => selectSortMode('aisle')}
+            data-testid="shopping-sort-aisle"
+          >
+            <Icon name="Check" size={14} class={sortMode === 'aisle' ? '' : 'invisible'} />
+            Aisle
+          </button>
+          <button
+            type="button"
+            class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+            onclick={() => selectSortMode('recipe')}
+            data-testid="shopping-sort-recipe"
+          >
+            <Icon name="Check" size={14} class={sortMode === 'recipe' ? '' : 'invisible'} />
+            Recipe
+          </button>
+          <div class="my-1 h-px bg-border"></div>
+          <button
+            type="button"
+            class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+            onclick={() => {
+              overflowMenuOpen = false;
+              push('/shopping/lists');
+            }}
+            data-testid="shopping-lists-btn"
+          >
+            <Icon name="LayoutList" size={14} />
+            Manage lists
+          </button>
+        </PopoverContent>
+      </Popover>
     {/snippet}
 
     {#snippet titleSlot()}
@@ -606,253 +757,220 @@
 
     {#snippet children()}
       <div class="flex flex-col gap-4" data-testid="shopping-list-content">
-        <!-- Aisle groups -->
-        {#each grouped.aisles as aisleGroup (aisleGroup.aisleId)}
-          {@const aisleCollapsed = collapsedAisles.has(aisleGroup.aisleId)}
-          <section
-            class="flex flex-col gap-1"
-            data-testid="shopping-aisle-group"
-            data-aisle-id={aisleGroup.aisleId}
-          >
-            <button
-              type="button"
-              class="flex items-center gap-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1 hover:text-foreground"
-              onclick={() => toggleAisle(aisleGroup.aisleId)}
-              aria-expanded={!aisleCollapsed}
-              data-testid="shopping-aisle-toggle"
+        {#if sortMode === 'aisle'}
+          <!-- Aisle groups -->
+          {#each grouped.aisles as aisleGroup (aisleGroup.aisleId)}
+            {@const aisleCollapsed = collapsedAisles.has(aisleGroup.aisleId)}
+            <section
+              class="flex flex-col gap-1"
+              data-testid="shopping-aisle-group"
+              data-aisle-id={aisleGroup.aisleId}
             >
-              <Icon name={aisleCollapsed ? 'ChevronRight' : 'ChevronDown'} size={14} />
-              {aisleGroup.aisleName}
-              {#if aisleCollapsed}
-                <span class="normal-case text-muted-foreground/70">({aisleGroup.rows.length})</span>
-              {/if}
-            </button>
-
-            {#if !aisleCollapsed}
-              {#each aisleGroup.rows as row (row.key)}
-                {@const amountStr = formatSubtotals(row.subtotals)}
-                {#if row.combined}
-                  {@const expanded = expandedRows.has(row.key)}
-                  <div
-                    class="flex items-center gap-3 rounded border px-3 py-2 text-sm {row.needsCheck
-                      ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/20'
-                      : 'border-border bg-card'}"
-                    data-testid="shopping-item-row"
-                    data-combined="true"
-                    data-canon-id={row.canonId}
+              <button
+                type="button"
+                class="flex items-center gap-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1 hover:text-foreground"
+                onclick={() => toggleAisle(aisleGroup.aisleId)}
+                aria-expanded={!aisleCollapsed}
+                data-testid="shopping-aisle-toggle"
+              >
+                <Icon name={aisleCollapsed ? 'ChevronRight' : 'ChevronDown'} size={14} />
+                {aisleGroup.aisleName}
+                {#if aisleCollapsed}
+                  <span class="normal-case text-muted-foreground/70"
+                    >({aisleGroup.rows.length})</span
                   >
-                    <CanonIcon
-                      thumbnail={thumbnailFor(row.canonId)}
-                      name={rowLabel(row)}
-                      size={34}
-                    />
-                    <button
-                      type="button"
-                      class="flex-1 min-w-0 text-left"
-                      onclick={() => toggleRow(row.key)}
-                      aria-expanded={expanded}
-                      data-testid="shopping-combined-toggle"
-                    >
-                      <span class="block truncate">
-                        {rowLabel(row)}{#if amountStr}{' '}<span class="text-muted-foreground"
-                            >({amountStr})</span
-                          >{/if}
-                      </span>
-                      <span class="flex items-center gap-1 text-xs text-muted-foreground/70">
-                        <Icon name={expanded ? 'ChevronDown' : 'ChevronRight'} size={12} />
-                        {row.contributors.length} recipes
-                      </span>
-                    </button>
-                    {#if row.needsCheck}
-                      {@render verifyControls(flaggedIds(row))}
-                    {:else}
-                      <button
-                        type="button"
-                        class="flex items-center justify-center p-1 rounded text-muted-foreground transition-colors hover:text-foreground"
-                        onclick={() => void markRowDone(row)}
-                        aria-label="Mark as done"
-                        data-testid="shopping-item-check"
-                      >
-                        <Icon name="Circle" size={18} />
-                      </button>
-                    {/if}
-                  </div>
-                  {#if expanded}
+                {/if}
+              </button>
+
+              {#if !aisleCollapsed}
+                {#each aisleGroup.rows as row (row.key)}
+                  {@const amountStr = formatSubtotals(row.subtotals)}
+                  {#if row.combined}
+                    {@const expanded = expandedRows.has(row.key)}
                     <div
-                      class="ml-10 flex flex-col gap-1 pb-1"
-                      data-testid="shopping-combined-breakdown"
-                    >
-                      {#each row.contributors as c (c.id)}
-                        {@const cAmount = formatAmount(c.amount, c.unit)}
-                        <div class="flex items-center gap-2 text-xs text-muted-foreground">
-                          <span class="flex-1 truncate" data-testid="shopping-contributor"
-                            >{describeSource(c.sources[0])}{#if cAmount}
-                              — {cAmount}{/if}</span
-                          >
-                          <button
-                            type="button"
-                            class="flex items-center justify-center rounded p-1 hover:bg-accent hover:text-foreground"
-                            onclick={() => void handleDeleteContributor(c)}
-                            aria-label="Remove this contribution"
-                            data-testid="shopping-contributor-delete"
-                          >
-                            <Icon name="X" size={14} />
-                          </button>
-                        </div>
-                      {/each}
-                    </div>
-                  {/if}
-                {:else}
-                  {@const item = row.contributors[0]}
-                  {@const isSelected = selection.isSelected(item.id)}
-                  <div
-                    class="flex items-center gap-3 rounded border px-3 py-2 text-sm {isSelected
-                      ? 'border-ring ring-2 ring-ring bg-card'
-                      : needsVerify(item)
+                      class="flex items-center gap-3 rounded border px-3 py-2 text-sm {row.needsCheck
                         ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/20'
                         : 'border-border bg-card'}"
-                    data-testid="shopping-item-row"
-                    data-item-id={item.id}
-                  >
-                    {#if selectionMode}
-                      <RowSelectCheckbox
-                        {selection}
-                        id={item.id}
-                        label=""
-                        aria-label="Select {item.rawText}"
-                      />
-                    {/if}
-                    <CanonIcon
-                      thumbnail={thumbnailFor(item.canonId)}
-                      name={displayLabel(item)}
-                      dimmed={item.checked}
-                      size={34}
-                    />
-                    <button
-                      type="button"
-                      class="flex-1 min-w-0 text-left"
-                      onclick={() => openEditSheet(item)}
-                      aria-label="Edit {item.rawText}"
-                      data-testid="shopping-item-edit-btn"
+                      data-testid="shopping-item-row"
+                      data-combined="true"
+                      data-canon-id={row.canonId}
                     >
-                      <span class="block truncate">
-                        {displayLabel(item)}{#if amountStr}{' '}<span class="text-muted-foreground"
-                            >({amountStr})</span
-                          >{/if}
-                      </span>
-                      {#if item.notes}
-                        <span class="block text-xs text-muted-foreground truncate"
-                          >{toSentenceCase(item.notes)}</span
-                        >
-                      {/if}
-                      {#if sourceLabel(item)}
-                        <span class="block text-xs text-muted-foreground/70"
-                          >{sourceLabel(item)}</span
-                        >
-                      {/if}
-                    </button>
-                    {#if needsVerify(item)}
-                      {@render verifyControls([item.id])}
-                    {:else}
+                      <CanonIcon
+                        thumbnail={thumbnailFor(row.canonId)}
+                        name={rowLabel(row)}
+                        size={34}
+                      />
                       <button
                         type="button"
-                        class="flex items-center justify-center p-1 rounded transition-colors {item.checked
-                          ? 'text-green-500'
-                          : 'text-muted-foreground hover:text-foreground'}"
-                        onclick={() => void toggleItemChecked(params.listId, item)}
-                        aria-label={item.checked ? 'Uncheck' : 'Mark as done'}
-                        data-testid="shopping-item-check"
+                        class="flex-1 min-w-0 text-left"
+                        onclick={() => toggleRow(row.key)}
+                        aria-expanded={expanded}
+                        data-testid="shopping-combined-toggle"
                       >
-                        <Icon name={item.checked ? 'CircleCheck' : 'Circle'} size={18} />
+                        <span class="block truncate">
+                          {rowLabel(row)}{#if amountStr}{' '}<span class="text-muted-foreground"
+                              >({amountStr})</span
+                            >{/if}
+                        </span>
+                        <span class="flex items-center gap-1 text-xs text-muted-foreground/70">
+                          <Icon name={expanded ? 'ChevronDown' : 'ChevronRight'} size={12} />
+                          {row.contributors.length} recipes
+                        </span>
                       </button>
+                      {#if row.needsCheck}
+                        {@render verifyControls(flaggedIds(row))}
+                      {:else}
+                        <button
+                          type="button"
+                          class="flex items-center justify-center p-1 rounded text-muted-foreground transition-colors hover:text-foreground"
+                          onclick={() => void markRowDone(row)}
+                          aria-label="Mark as done"
+                          data-testid="shopping-item-check"
+                        >
+                          <Icon name="Circle" size={18} />
+                        </button>
+                      {/if}
+                    </div>
+                    {#if expanded}
+                      <div
+                        class="ml-10 flex flex-col gap-1 pb-1"
+                        data-testid="shopping-combined-breakdown"
+                      >
+                        {#each row.contributors as c (c.id)}
+                          {@const cAmount = formatAmount(c.amount, c.unit)}
+                          <div class="flex items-center gap-2 text-xs text-muted-foreground">
+                            <span class="flex-1 truncate" data-testid="shopping-contributor"
+                              >{describeSource(c.sources[0])}{#if cAmount}
+                                — {cAmount}{/if}</span
+                            >
+                            <button
+                              type="button"
+                              class="flex items-center justify-center rounded p-1 hover:bg-accent hover:text-foreground"
+                              onclick={() => void handleDeleteContributor(c)}
+                              aria-label="Remove this contribution"
+                              data-testid="shopping-contributor-delete"
+                            >
+                              <Icon name="X" size={14} />
+                            </button>
+                          </div>
+                        {/each}
+                      </div>
                     {/if}
-                  </div>
-                {/if}
-              {/each}
-            {/if}
-          </section>
-        {/each}
-
-        <!-- Other (pending / failed / no-aisle items) -->
-        {#if grouped.other.contributors.length > 0}
-          <section class="flex flex-col gap-1" data-testid="shopping-other">
-            <div class="flex items-center gap-2 mb-1">
-              <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Other
-              </p>
-              {#if grouped.other.contributors.some((c) => c.isPending)}
-                <Spinner size={12} />
-              {/if}
-            </div>
-            {#each grouped.other.contributors as { item, isPending } (item.id)}
-              {@const isSelected = selection.isSelected(item.id)}
-              {@const amountStr = formatAmount(item.amount, item.unit)}
-              <div
-                class="flex items-center gap-3 rounded border px-3 py-2 text-sm {isSelected
-                  ? 'border-ring ring-2 ring-ring bg-card'
-                  : needsVerify(item)
-                    ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/20'
-                    : 'border-border bg-card'}"
-                data-testid="shopping-item-row"
-                data-item-id={item.id}
-              >
-                {#if selectionMode}
-                  <RowSelectCheckbox
-                    {selection}
-                    id={item.id}
-                    label=""
-                    aria-label="Select {item.rawText}"
-                  />
-                {/if}
-                <CanonIcon
-                  thumbnail={thumbnailFor(item.canonId)}
-                  name={displayLabel(item)}
-                  dimmed={item.checked}
-                  size={34}
-                />
-                <button
-                  type="button"
-                  class="flex-1 min-w-0 text-left"
-                  onclick={() => openEditSheet(item)}
-                  aria-label="Edit {item.rawText}"
-                  data-testid="shopping-item-edit-btn"
-                >
-                  <span
-                    class="block truncate {item.checked
-                      ? 'line-through text-muted-foreground'
-                      : ''}"
-                  >
-                    {displayLabel(item)}{#if amountStr}{' '}<span class="text-muted-foreground"
-                        >({amountStr})</span
-                      >{/if}
-                  </span>
-                  {#if item.notes}
-                    <span class="block text-xs text-muted-foreground truncate"
-                      >{toSentenceCase(item.notes)}</span
+                  {:else}
+                    {@const item = row.contributors[0]}
+                    {@const isSelected = selection.isSelected(item.id)}
+                    <div
+                      class="flex items-center gap-3 rounded border px-3 py-2 text-sm {isSelected
+                        ? 'border-ring ring-2 ring-ring bg-card'
+                        : needsVerify(item)
+                          ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/20'
+                          : 'border-border bg-card'}"
+                      data-testid="shopping-item-row"
+                      data-item-id={item.id}
                     >
+                      {#if selectionMode}
+                        <RowSelectCheckbox
+                          {selection}
+                          id={item.id}
+                          label=""
+                          aria-label="Select {item.rawText}"
+                        />
+                      {/if}
+                      <CanonIcon
+                        thumbnail={thumbnailFor(item.canonId)}
+                        name={displayLabel(item)}
+                        dimmed={item.checked}
+                        size={34}
+                      />
+                      <button
+                        type="button"
+                        class="flex-1 min-w-0 text-left"
+                        onclick={() => openEditSheet(item)}
+                        aria-label="Edit {item.rawText}"
+                        data-testid="shopping-item-edit-btn"
+                      >
+                        <span class="block truncate">
+                          {displayLabel(item)}{#if amountStr}{' '}<span
+                              class="text-muted-foreground">({amountStr})</span
+                            >{/if}
+                        </span>
+                        {#if item.notes}
+                          <span class="block text-xs text-muted-foreground truncate"
+                            >{toSentenceCase(item.notes)}</span
+                          >
+                        {/if}
+                        {#if sourceLabel(item)}
+                          <span class="block text-xs text-muted-foreground/70"
+                            >{sourceLabel(item)}</span
+                          >
+                        {/if}
+                      </button>
+                      {#if needsVerify(item)}
+                        {@render verifyControls([item.id])}
+                      {:else}
+                        <button
+                          type="button"
+                          class="flex items-center justify-center p-1 rounded transition-colors {item.checked
+                            ? 'text-green-500'
+                            : 'text-muted-foreground hover:text-foreground'}"
+                          onclick={() => void toggleItemChecked(params.listId, item)}
+                          aria-label={item.checked ? 'Uncheck' : 'Mark as done'}
+                          data-testid="shopping-item-check"
+                        >
+                          <Icon name={item.checked ? 'CircleCheck' : 'Circle'} size={18} />
+                        </button>
+                      {/if}
+                    </div>
                   {/if}
-                </button>
-                {#if isPending}
-                  <Spinner size={14} />
-                {/if}
-                {#if needsVerify(item)}
-                  {@render verifyControls([item.id])}
-                {:else}
-                  <button
-                    type="button"
-                    class="flex items-center justify-center p-1 rounded transition-colors {item.checked
-                      ? 'text-green-500'
-                      : 'text-muted-foreground hover:text-foreground'}"
-                    onclick={() => void toggleItemChecked(params.listId, item)}
-                    aria-label={item.checked ? 'Uncheck' : 'Mark as done'}
-                    data-testid="shopping-item-check"
-                  >
-                    <Icon name={item.checked ? 'CircleCheck' : 'Circle'} size={18} />
-                  </button>
+                {/each}
+              {/if}
+            </section>
+          {/each}
+
+          <!-- Other (pending / failed / no-aisle items) -->
+          {#if grouped.other.contributors.length > 0}
+            <section class="flex flex-col gap-1" data-testid="shopping-other">
+              <div class="flex items-center gap-2 mb-1">
+                <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Other
+                </p>
+                {#if grouped.other.contributors.some((c) => c.isPending)}
+                  <Spinner size={12} />
                 {/if}
               </div>
-            {/each}
-          </section>
+              {#each grouped.other.contributors as { item, isPending } (item.id)}
+                {@render plainItemRow(item, isPending)}
+              {/each}
+            </section>
+          {/if}
+        {:else}
+          <!-- Recipe groups -->
+          {#each recipeGrouped.recipes as recipeGroup (recipeGroup.recipeId)}
+            <section
+              class="flex flex-col gap-1"
+              data-testid="shopping-recipe-group"
+              data-recipe-id={recipeGroup.recipeId}
+            >
+              <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+                {recipeGroup.recipeName}
+              </p>
+              {#each recipeGroup.items as item (item.id)}
+                {@render plainItemRow(item, item.matchState === 'pending')}
+              {/each}
+            </section>
+          {/each}
+
+          <!-- Manual items -->
+          {#if recipeGrouped.manual.items.length > 0}
+            <section class="flex flex-col gap-1" data-testid="shopping-manual-group">
+              <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+                Manual
+              </p>
+              {#each recipeGrouped.manual.items as item (item.id)}
+                {@render plainItemRow(item, item.matchState === 'pending')}
+              {/each}
+            </section>
+          {/if}
         {/if}
 
         <!-- Checked items -->
@@ -880,57 +998,7 @@
             </div>
             {#if !checkedCollapsed}
               {#each grouped.checked.contributors as item (item.id)}
-                {@const isSelected = selection.isSelected(item.id)}
-                {@const amountStr = formatAmount(item.amount, item.unit)}
-                <div
-                  class="flex items-center gap-3 rounded border px-3 py-2 text-sm {isSelected
-                    ? 'border-ring ring-2 ring-ring bg-card'
-                    : 'border-border bg-card'}"
-                  data-testid="shopping-item-row"
-                  data-item-id={item.id}
-                >
-                  {#if selectionMode}
-                    <RowSelectCheckbox
-                      {selection}
-                      id={item.id}
-                      label=""
-                      aria-label="Select {item.rawText}"
-                    />
-                  {/if}
-                  <CanonIcon
-                    thumbnail={thumbnailFor(item.canonId)}
-                    name={displayLabel(item)}
-                    dimmed={item.checked}
-                    size={34}
-                  />
-                  <button
-                    type="button"
-                    class="flex-1 min-w-0 text-left"
-                    onclick={() => openEditSheet(item)}
-                    aria-label="Edit {item.rawText}"
-                    data-testid="shopping-item-edit-btn"
-                  >
-                    <span class="block truncate line-through text-muted-foreground">
-                      {displayLabel(item)}{#if amountStr}{' '}({amountStr}){/if}
-                    </span>
-                    {#if item.notes}
-                      <span class="block text-xs text-muted-foreground/60 truncate"
-                        >{toSentenceCase(item.notes)}</span
-                      >
-                    {/if}
-                  </button>
-                  <button
-                    type="button"
-                    class="flex items-center justify-center p-1 rounded transition-colors {item.checked
-                      ? 'text-green-500'
-                      : 'text-muted-foreground hover:text-foreground'}"
-                    onclick={() => void toggleItemChecked(params.listId, item)}
-                    aria-label={item.checked ? 'Uncheck' : 'Mark as done'}
-                    data-testid="shopping-item-check"
-                  >
-                    <Icon name={item.checked ? 'CircleCheck' : 'Circle'} size={18} />
-                  </button>
-                </div>
+                {@render plainItemRow(item, false)}
               {/each}
             {/if}
           </section>

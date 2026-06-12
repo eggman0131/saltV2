@@ -23,6 +23,7 @@ async function createSecondList(
   page: import('@playwright/test').Page,
   name: string,
 ): Promise<void> {
+  await page.getByTestId('shopping-overflow-btn').click();
   await page.getByTestId('shopping-lists-btn').click();
   await expect(page).toHaveURL(/#\/shopping\/lists/, { timeout: SYNC_TIMEOUT });
   await page.getByTestId('shopping-lists-name-input').fill(name);
@@ -78,7 +79,8 @@ test.describe('shopping list — multi-list', () => {
 
     await createFirstList(page);
 
-    // Navigate to the lists management page
+    // Navigate to the lists management page (via the overflow menu)
+    await page.getByTestId('shopping-overflow-btn').click();
     await page.getByTestId('shopping-lists-btn').click();
     await expect(page).toHaveURL(/#\/shopping\/lists/, { timeout: SYNC_TIMEOUT });
 
