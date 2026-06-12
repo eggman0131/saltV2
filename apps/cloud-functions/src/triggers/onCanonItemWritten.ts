@@ -111,7 +111,15 @@ export const onCanonItemWritten = onDocumentWritten(
     // Image generation (~5–8s+) plus sharp processing need more headroom than
     // the default text-only triggers.
     timeoutSeconds: 300,
-    memory: '512MiB',
+    // A batch of new canon items (e.g. a recipe creating 34) fires this trigger
+    // many times at once. Cloud Run packs concurrent invocations onto one
+    // instance, and each icon decode holds a libvips/sharp image buffer — a few
+    // in parallel blow past the memory cap and the instance is OOM-killed,
+    // losing every in-flight icon. concurrency:1 serialises icon work per
+    // instance (Cloud Run scales out instances instead), bounding memory
+    // regardless of batch size; 1GiB gives the single decode comfortable room.
+    concurrency: 1,
+    memory: '1GiB',
   },
   async (event) => {
     const after = event.data?.after;
