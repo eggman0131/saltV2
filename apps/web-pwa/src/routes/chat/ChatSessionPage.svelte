@@ -3,6 +3,8 @@
   import { push } from 'svelte-spa-router';
   import { sessions, isLoadingSessions, sendMessage } from '../../lib/chatService.js';
   import { addToast } from '../../lib/toastStore.js';
+  import { callAuthorRecipe } from '@salt/firebase-sync';
+  import { saveRecipe as saveRecipeDoc } from '@salt/firebase-sync';
   import type { ChatSessionDoc } from '@salt/domain/schemas';
 
   interface Props {
@@ -48,6 +50,31 @@
     }
   }
 
+  // Save as recipe — calls the librarian flow and navigates to the new recipe.
+  let isSavingRecipe = $state(false);
+
+  async function handleSaveAsRecipe(): Promise<void> {
+    if (!session || isSavingRecipe) return;
+    isSavingRecipe = true;
+    const result = await callAuthorRecipe({ messages: session.messages });
+    if (result.kind !== 'ok') {
+      isSavingRecipe = false;
+      addToast('Failed to generate recipe.', 'destructive');
+      return;
+    }
+    const recipe = result.value;
+    const now = new Date().toISOString();
+    const stamped = { ...recipe, id: recipe.id, createdAt: now, updatedAt: now };
+    const saveResult = await saveRecipeDoc(stamped);
+    isSavingRecipe = false;
+    if (saveResult.kind !== 'ok') {
+      addToast('Failed to save recipe.', 'destructive');
+      return;
+    }
+    addToast('Recipe saved!', 'success');
+    push(`/recipes/${stamped.id}`);
+  }
+
   function handleKeydown(e: KeyboardEvent): void {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -75,6 +102,21 @@
     backLabel="Chef"
     class="flex flex-col"
   >
+    {#snippet actions()}
+      {#if !session.recipeId && session.messages.some((m) => m.role === 'assistant')}
+        <Button
+          size="sm"
+          variant="outline"
+          onclick={handleSaveAsRecipe}
+          loading={isSavingRecipe}
+          disabled={isSavingRecipe || isSending}
+          data-testid="chat-save-recipe-btn"
+        >
+          {#snippet leading()}<Icon name="BookOpen" size={16} />{/snippet}
+          Save as recipe
+        </Button>
+      {/if}
+    {/snippet}
     <!-- Message list -->
     <div
       class="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-4 sm:px-6"

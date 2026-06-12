@@ -98,6 +98,15 @@ export type { MessageDoc, ChatSessionDoc } from './chatSession.js';
 export { ChefChatInputSchema } from './chefChat.js';
 export type { ChefChatInput } from './chefChat.js';
 
+export { AuthorRecipeInputSchema, LibrarianOutputSchema } from './authorRecipe.js';
+export type {
+  AuthorRecipeInput,
+  LibrarianOutput,
+  LibrarianGroup,
+  LibrarianIngredient,
+  LibrarianStep,
+} from './authorRecipe.js';
+
 export {
   SingleQuantitySchema,
   RangeQuantitySchema,
