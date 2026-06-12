@@ -18,6 +18,7 @@ import { canonicaliseRecipeIngredientsFlow } from './flows/canonicaliseRecipeIng
 import { identifyEquipmentFlow } from './flows/identifyEquipment.js';
 import { populateEquipmentEntryFlow } from './flows/populateEquipmentEntry.js';
 import { parseRecipeIngredientsFlow } from './flows/parseRecipeIngredients.js';
+import { chefChatFlow } from './flows/chefChat.js';
 import { onShoppingListItemWrite } from './triggers/onShoppingListItemWrite.js';
 import { onCanonItemWritten } from './triggers/onCanonItemWritten.js';
 
@@ -158,6 +159,16 @@ export const parseRecipeIngredients = onCallGenkit(
     timeoutSeconds: 90,
   },
   parseRecipeIngredientsFlow,
+);
+
+export const chefChat = onCallGenkit(
+  {
+    ...APP_CHECK_ENFORCEMENT,
+    secrets: [geminiApiKey],
+    authPolicy: isSignedIn(),
+    timeoutSeconds: 120,
+  },
+  chefChatFlow,
 );
 
 export { onShoppingListItemWrite };

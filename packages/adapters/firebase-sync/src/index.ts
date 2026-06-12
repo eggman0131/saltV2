@@ -42,6 +42,7 @@ export {
   saveChatSession,
   deleteChatSession,
 } from './chatSessionSubscription.js';
+export { streamChefChat } from './chatCallables.js';
 export { callParseRecipeIngredients } from './recipeCallables.js';
 export {
   subscribeMealPlanConfig,

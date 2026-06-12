@@ -95,6 +95,9 @@ export type {
 export { MessageSchema, ChatSessionSchema } from './chatSession.js';
 export type { MessageDoc, ChatSessionDoc } from './chatSession.js';
 
+export { ChefChatInputSchema } from './chefChat.js';
+export type { ChefChatInput } from './chefChat.js';
+
 export {
   SingleQuantitySchema,
   RangeQuantitySchema,

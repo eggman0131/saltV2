@@ -1,0 +1,143 @@
+import { z } from 'genkit';
+import { getFirestore } from 'firebase-admin/firestore';
+import { googleAI } from '@genkit-ai/google-genai';
+import { logger } from 'firebase-functions';
+import { ChefChatInputSchema } from '@salt/domain/schemas';
+import { EquipmentManifestSchema, RecipeSchema } from '@salt/domain/schemas';
+import { withAiTimeout } from '../adapters/withAiTimeout.js';
+import { ai } from '../genkit.js';
+
+// Pro-tier model for conversational quality (design principle #3, issue #206).
+const CHEF_MODEL = googleAI.model('gemini-pro-latest');
+
+const EQUIPMENT_DOC_PATH = 'equipmentManifest/manifest';
+
+async function readEquipmentContext(db: ReturnType<typeof getFirestore>): Promise<string> {
+  try {
+    const snap = await db.doc(EQUIPMENT_DOC_PATH).get();
+    if (!snap.exists) return '';
+    const result = EquipmentManifestSchema.safeParse(snap.data());
+    if (!result.success) {
+      logger.warn('chefChat: equipmentManifest failed validation, proceeding without kit context');
+      return '';
+    }
+    const { items } = result.data;
+    if (items.length === 0) return '';
+    const lines = items.map((item) => {
+      const parts = [`- ${item.name}`];
+      const ownedAccessories = item.accessories.filter((a) => a.owned);
+      if (ownedAccessories.length > 0) {
+        parts.push(`  accessories: ${ownedAccessories.map((a) => a.name).join(', ')}`);
+      }
+      if (item.rules.length > 0) {
+        parts.push(`  notes: ${item.rules.join('; ')}`);
+      }
+      return parts.join('\n');
+    });
+    return lines.join('\n');
+  } catch (err) {
+    logger.warn('chefChat: failed to read equipmentManifest', { err });
+    return '';
+  }
+}
+
+async function readRecipeContext(
+  db: ReturnType<typeof getFirestore>,
+  recipeId: string,
+): Promise<string> {
+  try {
+    const snap = await db.collection('recipes').doc(recipeId).get();
+    if (!snap.exists) return '';
+    const result = RecipeSchema.safeParse(snap.data());
+    if (!result.success) {
+      logger.warn('chefChat: recipe failed validation', { recipeId });
+      return '';
+    }
+    const r = result.data;
+    const ingredientLines: string[] = [];
+    for (const group of r.ingredients) {
+      if (group.name) ingredientLines.push(`${group.name}:`);
+      for (const ing of group.items) {
+        ingredientLines.push(`  - ${ing.rawText}${ing.isOptional ? ' (optional)' : ''}`);
+      }
+    }
+    const stepLines = r.steps.map((s, i) => `  ${i + 1}. ${s.text}`);
+    const parts = [`Recipe: ${r.title}`];
+    if (r.description) parts.push(`Description: ${r.description}`);
+    if (ingredientLines.length > 0) parts.push(`Ingredients:\n${ingredientLines.join('\n')}`);
+    if (stepLines.length > 0) parts.push(`Method:\n${stepLines.join('\n')}`);
+    return parts.join('\n\n');
+  } catch (err) {
+    logger.warn('chefChat: failed to read recipe', { recipeId, err });
+    return '';
+  }
+}
+
+function buildSystemPrompt(equipmentContext: string, recipeContext: string): string {
+  const sections: string[] = [CHEF_SYSTEM_BASE];
+
+  if (equipmentContext) {
+    sections.push(
+      `## Your equipment\nThe following kitchen equipment is available. Draw on it when it genuinely helps the conversation, but never feel obliged to mention or use it.\n\n${equipmentContext}`,
+    );
+  }
+
+  if (recipeContext) {
+    sections.push(
+      `## Current recipe\nThe user is asking about this recipe. Use it as context for the conversation.\n\n${recipeContext}`,
+    );
+  }
+
+  return sections.join('\n\n');
+}
+
+export const chefChatFlow = ai.defineFlow(
+  {
+    name: 'chefChat',
+    inputSchema: ChefChatInputSchema,
+    outputSchema: z.string(),
+    streamSchema: z.string(),
+  },
+  async (input, streamingCallback) => {
+    const db = getFirestore();
+    const [equipmentContext, recipeContext] = await Promise.all([
+      readEquipmentContext(db),
+      input.recipeId ? readRecipeContext(db, input.recipeId) : Promise.resolve(''),
+    ]);
+
+    const systemPrompt = buildSystemPrompt(equipmentContext, recipeContext);
+
+    // Convert Message[] history to Genkit MessageData format.
+    const history = input.messages.map((m) => ({
+      role: m.role as 'user' | 'model',
+      content: [{ text: m.text }],
+    }));
+
+    const { stream, response } = ai.generateStream({
+      model: CHEF_MODEL,
+      system: systemPrompt,
+      messages: history,
+      prompt: input.newMessage,
+    });
+
+    for await (const chunk of stream) {
+      const text = chunk.text;
+      if (text) streamingCallback(text);
+    }
+
+    const finalResponse = await withAiTimeout('chefChat', () => response, {
+      timeoutMs: 55_000,
+      retries: 0,
+    });
+
+    return finalResponse.text;
+  },
+);
+
+const CHEF_SYSTEM_BASE = `You are a skilled, knowledgeable kitchen assistant and conversational chef. \
+Your goal is to have genuinely helpful, creative, and practical cooking conversations. \
+You can discuss recipes, techniques, flavour pairings, substitutions, dietary adaptations, \
+and anything else related to cooking and food. \
+Speak naturally and warmly — like a knowledgeable friend in the kitchen, not a recipe generator. \
+When you suggest a recipe or technique, feel free to riff, improvise, and add your own perspective. \
+You are not bound to any particular list of ingredients or equipment.`;
