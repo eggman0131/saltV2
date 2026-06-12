@@ -6,7 +6,7 @@ import type { Recipe, Ingredient } from '@salt/domain';
 
 // ─── Mock stores and services ──────────────────────────────────────────────────
 
-const { mockRecipes } = vi.hoisted(() => {
+const { mockRecipes, mockCanonItems } = vi.hoisted(() => {
   function makeStore<T>(initial: T) {
     let value = initial;
     const subs = new Set<(v: T) => void>();
@@ -24,7 +24,10 @@ const { mockRecipes } = vi.hoisted(() => {
       },
     };
   }
-  return { mockRecipes: makeStore<readonly Recipe[]>([]) };
+  return {
+    mockRecipes: makeStore<readonly Recipe[]>([]),
+    mockCanonItems: makeStore<readonly { id: string }[]>([]),
+  };
 });
 
 vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
@@ -35,6 +38,7 @@ vi.mock('../src/lib/recipeService.js', () => ({
   parseIngredients: vi.fn(),
   matchIngredient: vi.fn(),
 }));
+vi.mock('../src/lib/canonService.js', () => ({ canonItems: mockCanonItems }));
 
 import RecipeEditPage from '../src/routes/recipes/RecipeEditPage.svelte';
 import { persistRecipe, matchIngredient } from '../src/lib/recipeService.js';
@@ -93,32 +97,39 @@ const matchedIngredient: Ingredient = {
 afterEach(() => {
   cleanup();
   document.body.innerHTML = '';
+  mockCanonItems._set([]);
   vi.clearAllMocks();
 });
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('RecipeEditPage — per-row Match button', () => {
-  it('shows the matched indicator after clicking Match on a pending ingredient', async () => {
+  it('clears the unmatched indicator after clicking it on a pending ingredient', async () => {
     vi.mocked(matchIngredient).mockResolvedValue({ kind: 'ok', value: matchedIngredient });
+    mockCanonItems._set([{ id: 'canon-flour' }]);
     mockRecipes._set([makeRecipe(makePendingIngredient())]);
     render(RecipeEditPage, { props: { params: { id: 'recipe-1' } } });
 
+    // A pending, non-blank ingredient shows the clickable unmatched cross up front.
+    expect(screen.getByTestId('recipe-ingredient-match-btn')).toBeInTheDocument();
+
     await userEvent.click(screen.getByTestId('recipe-ingredient-match-btn'));
 
+    // Once matched the indicator (which is also the trigger) disappears.
     await waitFor(() => {
-      expect(screen.getByTestId('recipe-ingredient-match-ok')).toBeInTheDocument();
+      expect(screen.queryByTestId('recipe-ingredient-match-btn')).not.toBeInTheDocument();
     });
   });
 
   it('persists the matched ingredient (canonId + matchState) on save', async () => {
     vi.mocked(matchIngredient).mockResolvedValue({ kind: 'ok', value: matchedIngredient });
+    mockCanonItems._set([{ id: 'canon-flour' }]);
     mockRecipes._set([makeRecipe(makePendingIngredient())]);
     render(RecipeEditPage, { props: { params: { id: 'recipe-1' } } });
 
     await userEvent.click(screen.getByTestId('recipe-ingredient-match-btn'));
     await waitFor(() => {
-      expect(screen.getByTestId('recipe-ingredient-match-ok')).toBeInTheDocument();
+      expect(screen.queryByTestId('recipe-ingredient-match-btn')).not.toBeInTheDocument();
     });
 
     await userEvent.click(screen.getByTestId('recipe-save-btn'));
@@ -132,7 +143,7 @@ describe('RecipeEditPage — per-row Match button', () => {
     expect(ing.canonId).toBe('canon-flour');
   });
 
-  it('shows the error indicator when matchIngredient returns failed', async () => {
+  it('keeps the unmatched indicator when matchIngredient returns failed', async () => {
     const failedIngredient: Ingredient = {
       ...makePendingIngredient(),
       matchState: 'failed',
@@ -143,8 +154,10 @@ describe('RecipeEditPage — per-row Match button', () => {
 
     await userEvent.click(screen.getByTestId('recipe-ingredient-match-btn'));
 
+    // A failed match is still unmatched, so the clickable cross remains.
     await waitFor(() => {
-      expect(screen.getByTestId('recipe-ingredient-match-err')).toBeInTheDocument();
+      expect(vi.mocked(matchIngredient)).toHaveBeenCalledTimes(1);
     });
+    expect(screen.getByTestId('recipe-ingredient-match-btn')).toBeInTheDocument();
   });
 });

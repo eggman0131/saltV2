@@ -20,9 +20,11 @@
     removeRecipe,
     canonicaliseIngredients,
     addRecipeToShoppingList,
+    matchIngredient,
+    persistRecipe,
   } from '../../lib/recipeService.js';
   import { canonItems } from '../../lib/canonService.js';
-  import { hasLiveCanonMatch } from '@salt/domain';
+  import { hasLiveCanonMatch, type IngredientGroup, type Ingredient } from '@salt/domain';
   import { defaultListId } from '../../lib/shoppingListService.svelte.js';
   import { addToast } from '../../lib/toastStore.js';
 
@@ -67,6 +69,39 @@
       return;
     }
     addToast('Ingredients matched.', 'success');
+  }
+
+  // ─── Per-row rematch ─────────────────────────────────────────────────────────
+  // The unmatched indicator (✗) is the trigger: tapping it parses + canon-matches
+  // that single ingredient and persists the recipe. Re-derives from the current
+  // store copy and discards the result if the row changed mid-flight.
+  let matchingIds = $state<Record<string, boolean>>({});
+
+  async function handleRematch(group: IngredientGroup, ing: Ingredient): Promise<void> {
+    if (!recipe || matchingIds[ing.id]) return;
+    matchingIds = { ...matchingIds, [ing.id]: true };
+    const result = await matchIngredient(ing);
+    matchingIds = { ...matchingIds, [ing.id]: false };
+    if (result.kind !== 'ok') {
+      addToast('Failed to match ingredient.', 'destructive');
+      return;
+    }
+    const current = $recipes.find((r) => r.id === recipe.id);
+    if (!current) return;
+    const updatedGroups = current.ingredients.map((g) =>
+      g.id !== group.id
+        ? g
+        : {
+            ...g,
+            items: g.items.map((i) =>
+              i.id === ing.id && i.rawText === ing.rawText ? result.value : i,
+            ),
+          },
+    );
+    const persisted = await persistRecipe({ ...current, ingredients: updatedGroups });
+    if (persisted.kind !== 'ok') {
+      addToast('Failed to save match.', 'destructive');
+    }
   }
 
   // ─── Add to shopping list ─────────────────────────────────────────────────
@@ -217,14 +252,15 @@
                         .unit})</span
                     >{/if}{#if ingredient.isOptional}<span
                       class="ml-1 text-xs text-muted-foreground">(optional)</span
-                    >{/if}{#if hasLiveCanonMatch(ingredient, liveCanonIds)}<span
-                      class="ml-1 text-xs text-green-600"
-                      title="Matched"
-                      data-testid="match-state-matched">✓</span
-                    >{:else if ingredient.matchState === 'failed'}<span
-                      class="ml-1 text-xs text-destructive"
-                      title="Match failed"
-                      data-testid="match-state-failed">✗</span
+                    >{/if}{#if !hasLiveCanonMatch(ingredient, liveCanonIds)}<button
+                      type="button"
+                      class="ml-1 text-xs text-destructive hover:underline disabled:opacity-50"
+                      title="Not matched — tap to match"
+                      aria-label="Not matched — tap to match"
+                      onclick={() => handleRematch(group, ingredient)}
+                      disabled={matchingIds[ingredient.id] ?? false}
+                      data-testid="match-state-unmatched"
+                      >{(matchingIds[ingredient.id] ?? false) ? '…' : '✗'}</button
                     >{/if}
                 </li>
               {/each}
