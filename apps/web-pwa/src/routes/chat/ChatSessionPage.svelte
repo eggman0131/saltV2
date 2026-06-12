@@ -3,8 +3,8 @@
   import { push } from 'svelte-spa-router';
   import { sessions, isLoadingSessions, sendMessage } from '../../lib/chatService.js';
   import { addToast } from '../../lib/toastStore.js';
-  import { callAuthorRecipe } from '@salt/firebase-sync';
-  import { saveRecipe as saveRecipeDoc } from '@salt/firebase-sync';
+  import { callAuthorRecipe, saveRecipe as saveRecipeDoc } from '@salt/firebase-sync';
+  import { recipes } from '../../lib/recipeService.js';
   import type { ChatSessionDoc } from '@salt/domain/schemas';
 
   interface Props {
@@ -75,6 +75,43 @@
     push(`/recipes/${stamped.id}`);
   }
 
+  // Apply changes — re-runs the librarian against the conversation and updates
+  // the attached recipe in place (same id, original createdAt, new updatedAt).
+  let isApplying = $state(false);
+
+  async function handleApplyChanges(): Promise<void> {
+    if (!session?.recipeId || isApplying) return;
+    const existing = $recipes.find((r) => r.id === session!.recipeId);
+    if (!existing) {
+      addToast('Recipe not found.', 'destructive');
+      return;
+    }
+    isApplying = true;
+    const result = await callAuthorRecipe({ messages: session.messages });
+    if (result.kind !== 'ok') {
+      isApplying = false;
+      addToast('Failed to generate recipe update.', 'destructive');
+      return;
+    }
+    const draft = result.value;
+    const now = new Date().toISOString();
+    // Preserve the existing recipe's id and createdAt; bump updatedAt.
+    const updated = {
+      ...draft,
+      id: existing.id,
+      createdAt: existing.createdAt,
+      updatedAt: now,
+    };
+    const saveResult = await saveRecipeDoc(updated);
+    isApplying = false;
+    if (saveResult.kind !== 'ok') {
+      addToast('Failed to save recipe update.', 'destructive');
+      return;
+    }
+    addToast('Recipe updated!', 'success');
+    push(`/recipes/${existing.id}`);
+  }
+
   function handleKeydown(e: KeyboardEvent): void {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -114,6 +151,27 @@
         >
           {#snippet leading()}<Icon name="BookOpen" size={16} />{/snippet}
           Save as recipe
+        </Button>
+      {/if}
+      {#if session.recipeId && session.messages.some((m) => m.role === 'assistant')}
+        <Button
+          size="sm"
+          variant="outline"
+          onclick={() => push(`/recipes/${session!.recipeId}`)}
+          data-testid="chat-view-recipe-btn"
+        >
+          {#snippet leading()}<Icon name="BookOpen" size={16} />{/snippet}
+          View recipe
+        </Button>
+        <Button
+          size="sm"
+          onclick={handleApplyChanges}
+          loading={isApplying}
+          disabled={isApplying || isSending}
+          data-testid="chat-apply-changes-btn"
+        >
+          {#snippet leading()}<Icon name="Check" size={16} />{/snippet}
+          Apply changes
         </Button>
       {/if}
     {/snippet}

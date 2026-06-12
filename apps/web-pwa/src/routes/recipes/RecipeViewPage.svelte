@@ -27,6 +27,8 @@
   import { hasLiveCanonMatch, type IngredientGroup, type Ingredient } from '@salt/domain';
   import { defaultListId } from '../../lib/shoppingListService.svelte.js';
   import { addToast } from '../../lib/toastStore.js';
+  import { auth } from '../../lib/auth.svelte.js';
+  import { createChatSession } from '../../lib/chatService.js';
   import AdminGuard from '../admin/AdminGuard.svelte';
 
   interface Props {
@@ -118,6 +120,23 @@
     addToListOpen = true;
   }
 
+  // ─── Ask / amend ────────────────────────────────────────────────────────────
+  let amendBusy = $state(false);
+
+  async function handleAskAmend(): Promise<void> {
+    if (!recipe) return;
+    const uid = auth.user?.uid;
+    if (!uid) return;
+    amendBusy = true;
+    const result = await createChatSession(uid, recipe.id);
+    amendBusy = false;
+    if (result.kind !== 'ok') {
+      addToast('Failed to open chat.', 'destructive');
+      return;
+    }
+    push(`/chat/${result.value.id}`);
+  }
+
   // ─── Delete ─────────────────────────────────────────────────────────────────
   let deleteOpen = $state(false);
   let deleteBusy = $state(false);
@@ -159,6 +178,17 @@
       class="p-4 sm:p-6"
     >
       {#snippet actions()}
+        <Button
+          size="sm"
+          variant="outline"
+          onclick={handleAskAmend}
+          loading={amendBusy}
+          disabled={amendBusy}
+          data-testid="recipe-ask-amend-button"
+        >
+          {#snippet leading()}<Icon name="ChefHat" size={16} />{/snippet}
+          Ask / amend
+        </Button>
         <Button
           size="sm"
           variant="outline"
