@@ -68,6 +68,17 @@ service cloud.firestore {
     match /recipes/{recipeId} {
       allow read, write: if request.auth != null;
     }
+    // Chat sessions (issue #206) — the first per-user-scoped data in Salt.
+    // A session may only be read or written by the user who owns it.
+    // On create, the client must set ownerUid to their own uid.
+    // List queries are scoped to ownerUid == request.auth.uid via client-side
+    // where() so the rule only needs to check the authenticated user.
+    match /chatSessions/{sessionId} {
+      allow read, write: if request.auth != null
+        && resource.data.ownerUid == request.auth.uid;
+      allow create: if request.auth != null
+        && request.resource.data.ownerUid == request.auth.uid;
+    }
     match /{document=**} {
       allow read, write: if false;
     }

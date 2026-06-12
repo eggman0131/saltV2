@@ -92,6 +92,9 @@ export type {
   ParseRecipeIngredientsOutput,
 } from './parseRecipeIngredients.js';
 
+export { MessageSchema, ChatSessionSchema } from './chatSession.js';
+export type { MessageDoc, ChatSessionDoc } from './chatSession.js';
+
 export {
   SingleQuantitySchema,
   RangeQuantitySchema,
