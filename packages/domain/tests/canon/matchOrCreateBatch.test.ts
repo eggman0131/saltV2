@@ -147,10 +147,24 @@ describe('batch parity — single batch vs sequential batches-of-one', () => {
     return out;
   }
 
+  // The three-phase batch allocates runIds (logging) for all inputs during the
+  // parallel classify phase, so absolute ID counter values diverge from the
+  // sequential path. normalizeIds maps IDs to order-of-first-appearance so the
+  // comparison focuses on item-identity structure rather than exact strings.
+  function normalizeIds(shapes: Shape[]): Shape[] {
+    const map = new Map<string, string>();
+    let n = 0;
+    return shapes.map((s) => {
+      if (s.kind !== 'ok' || s.id === undefined) return s;
+      if (!map.has(s.id)) map.set(s.id, `item-${++n}`);
+      return { ...s, id: map.get(s.id)! };
+    });
+  }
+
   it('produces identical per-input results either way', async () => {
     const combined = await runCombined();
     const sequential = await runSequential();
-    expect(combined).toEqual(sequential);
+    expect(normalizeIds(combined)).toEqual(normalizeIds(sequential));
   });
 
   it('the second input matches the new item created by the first', async () => {
