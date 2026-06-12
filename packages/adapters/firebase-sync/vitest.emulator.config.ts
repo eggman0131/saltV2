@@ -30,12 +30,15 @@ export default defineConfig({
     // hit the emulator (init, anon sign-in, data clear).
     testTimeout: 20_000,
     hookTimeout: 30_000,
-    // Stopgap for the flaky Firestore realtime Listen stream (issue #122): on CI
-    // the gRPC Listen stream intermittently breaks with a bogus multi-GB
-    // RESOURCE_EXHAUSTED, after which the subscription delivers nothing and every
-    // waitFor times out. A longer timeout can't help (the stream is dead), but a
-    // retry re-runs on a fresh subscription and clears the transient. This masks
-    // the symptom; the root fix (emulator cold-start / teardown) stays in #122.
+    // Residual insurance for the flaky Firestore realtime Listen stream (#122).
+    // Root cause: the default gRPC streaming transport intermittently breaks the
+    // emulator Listen stream with a bogus multi-GB RESOURCE_EXHAUSTED, poisoning
+    // the channel for the client's lifetime — and since the clients live in
+    // beforeAll, retries reused the dead channel, so retry alone never cleared
+    // it. The landed root fix forces long-polling on the emulator transport
+    // (init.ts + the writer app here), which removes the streaming framing bug.
+    // retry:2 stays as cheap insurance; drop it once main stays green for a
+    // stretch without it.
     retry: 2,
   },
 });
