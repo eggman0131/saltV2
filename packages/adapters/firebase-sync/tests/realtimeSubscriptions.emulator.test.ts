@@ -11,7 +11,7 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { initializeApp, deleteApp, type FirebaseApp } from 'firebase/app';
-import { getFirestore, connectFirestoreEmulator, doc, setDoc } from 'firebase/firestore';
+import { initializeFirestore, connectFirestoreEmulator, doc, setDoc } from 'firebase/firestore';
 import type { Firestore } from 'firebase/firestore';
 import { getAuth, connectAuthEmulator, signInAnonymously } from 'firebase/auth';
 import { subscribeCanonItems, upsertCanonItem, deleteCanonItem } from '../src/canonSubscription.js';
@@ -84,7 +84,10 @@ beforeAll(async () => {
   await initFirebaseEmulator();
 
   writerApp = initializeApp({ projectId: PROJECT_ID, apiKey: 'demo-api-key' }, 'rt-writer');
-  writerDb = getFirestore(writerApp);
+  // Force long-polling for the same reason as the default app (see init.ts): the
+  // emulator's gRPC streaming transport intermittently corrupts the Listen
+  // channel and poisons the writer's connection. (#122)
+  writerDb = initializeFirestore(writerApp, { experimentalForceLongPolling: true });
   connectFirestoreEmulator(writerDb, '127.0.0.1', WRITER_FIRESTORE_PORT);
   const writerAuth = getAuth(writerApp);
   connectAuthEmulator(writerAuth, `http://127.0.0.1:${WRITER_AUTH_PORT}`, {
