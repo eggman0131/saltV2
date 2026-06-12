@@ -19,10 +19,10 @@
     isLoadingRecipes,
     removeRecipe,
     canonicaliseIngredients,
-    addRecipeToShoppingList,
     matchIngredient,
     persistRecipe,
   } from '../../lib/recipeService.js';
+  import RecipeAddToListSheet from './RecipeAddToListSheet.svelte';
   import { canonItems } from '../../lib/canonService.js';
   import { hasLiveCanonMatch, type IngredientGroup, type Ingredient } from '@salt/domain';
   import { defaultListId } from '../../lib/shoppingListService.svelte.js';
@@ -105,33 +105,16 @@
   }
 
   // ─── Add to shopping list ─────────────────────────────────────────────────
+  // The review sheet (issue #185) owns servings + per-ingredient Add/Check
+  // toggles + the commit; this page only guards that a default list exists.
   let addToListOpen = $state(false);
-  let addToListBusy = $state(false);
-  let selectedServings = $state(1);
 
-  $effect(() => {
-    if (addToListOpen) {
-      selectedServings = recipe?.metadata.servings ?? 1;
-    }
-  });
-
-  async function handleAddToList(): Promise<void> {
-    if (!recipe) return;
-    const listId = $defaultListId;
-    if (!listId) {
+  function openAddToList(): void {
+    if (!$defaultListId) {
       addToast('No shopping list found. Create one first.', 'destructive');
-      addToListOpen = false;
       return;
     }
-    addToListBusy = true;
-    const result = await addRecipeToShoppingList(recipe, listId, selectedServings);
-    addToListBusy = false;
-    if (result.kind !== 'ok') {
-      addToast('Failed to add to shopping list.', 'destructive');
-      return;
-    }
-    addToListOpen = false;
-    addToast('Added to shopping list.', 'success');
+    addToListOpen = true;
   }
 
   // ─── Delete ─────────────────────────────────────────────────────────────────
@@ -176,7 +159,7 @@
       <Button
         size="sm"
         variant="outline"
-        onclick={() => (addToListOpen = true)}
+        onclick={openAddToList}
         data-testid="recipe-add-to-list-button"
       >
         {#snippet leading()}<Icon name="ShoppingCart" size={16} />{/snippet}
@@ -327,62 +310,10 @@
   </DetailPage>
 {/if}
 
-<!-- Add to shopping list dialog -->
-<Dialog
-  bind:open={addToListOpen}
-  onOpenChange={(v) => {
-    if (!v) addToListBusy = false;
-  }}
->
-  <DialogContent>
-    <div class="flex flex-col gap-4" data-testid="recipe-add-to-list-dialog">
-      <DialogHeader>
-        <DialogTitle>Add to shopping list</DialogTitle>
-        <DialogDescription>Choose how many servings to shop for.</DialogDescription>
-      </DialogHeader>
-      <div class="flex items-center justify-center gap-3">
-        <Button
-          variant="outline"
-          size="sm"
-          onclick={() => (selectedServings = Math.max(1, selectedServings - 1))}
-          disabled={selectedServings <= 1 || addToListBusy}
-          aria-label="Decrease servings"
-          data-testid="recipe-servings-decrease"
-        >
-          <Icon name="Minus" size={14} />
-        </Button>
-        <span
-          class="min-w-[3rem] text-center text-sm font-medium"
-          data-testid="recipe-servings-value"
-          >{selectedServings} serving{selectedServings === 1 ? '' : 's'}</span
-        >
-        <Button
-          variant="outline"
-          size="sm"
-          onclick={() => (selectedServings = selectedServings + 1)}
-          disabled={addToListBusy}
-          aria-label="Increase servings"
-          data-testid="recipe-servings-increase"
-        >
-          <Icon name="Plus" size={14} />
-        </Button>
-      </div>
-      <DialogFooter>
-        <Button variant="outline" onclick={() => (addToListOpen = false)} disabled={addToListBusy}>
-          Cancel
-        </Button>
-        <Button
-          onclick={handleAddToList}
-          loading={addToListBusy}
-          disabled={addToListBusy}
-          data-testid="recipe-add-to-list-confirm"
-        >
-          Add to list
-        </Button>
-      </DialogFooter>
-    </div>
-  </DialogContent>
-</Dialog>
+<!-- Add to shopping list review sheet -->
+{#if recipe && $defaultListId}
+  <RecipeAddToListSheet {recipe} listId={$defaultListId} bind:open={addToListOpen} />
+{/if}
 
 <!-- Delete confirm dialog -->
 <Dialog

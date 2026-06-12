@@ -128,11 +128,38 @@ canonicalisation" for the full `resolveOne` / `matchOrCreateBatch` design.
 The single-item `matchOrCreateCanon` callable is unchanged and still backs the
 add-item and shopping-list-trigger flows.
 
+## Shopping-list extraction (recipe → list)
+
+Adding a recipe to the list is a **reviewed** step, not a silent dump (#194,
+bundling #183/#184/#185). The recipe view opens a sheet listing every ingredient
+with **Add** and **Check** toggles (Check implies Add), seeded from each matched
+canon item's `shoppingBehavior`: `needed` → Add, `check` → Add + Check, `stocked`
+→ neither *unless* the scaled requirement exceeds the canon item's
+`largeQuantityThreshold` (then Add). Unmatched ingredients default to Add so
+nothing is silently dropped. Only Add rows are written; Check rows land with a
+stored `needsCheck` flag and are highlighted on the list with a one-tap
+confirm/drop — a staple you may already have neither joins the buy list nor
+vanishes without the shopper's say-so.
+
+Decisions:
+- **Defaults are a pure domain function** (`recipeItemAddDefault`) fed
+  behaviour + scaled amount + threshold; the sheet only renders and commits.
+- **`needsCheck` is its own stored flag**, distinct from `checked` — a
+  verification state, not a done state.
+- **Canon owns the displayed name** here too: a matched row labels by canon
+  name, raw text only when there is no live match (`resolveItemDisplayName`).
+- **Combining is display-time and recipe-only.** `groupItemsByAisle` merges
+  recipe-sourced items resolving to the same canon into one row (per-unit
+  subtotals, a contributor breakdown, row-level check/delete). Manual items
+  never combine — a duplicate manual add is assumed intentional. Combining is
+  suppressed in selection mode so bulk actions stay per-item. No stored merge,
+  consistent with the display-time amount/unit model (#101).
+
 ## Cross-module seams (already shipped, awaiting this module)
 
-- **Shopping list** — `shoppingListItem.sources` already carries a `recipe`
-  `SourceRef` (`recipeId` + `servings` + `label`). Phase 5 populates it; servings
-  scaling has a home there.
+- **Shopping list** — `shoppingListItem.sources` carries a `recipe` `SourceRef`
+  (`recipeId` + `servings` + `label`); extraction populates it and scales by the
+  chosen servings (see above).
 - **Meal plan** — `Day.recipeIds: string[]` ships empty today; the recipe IDs
   this module mints will populate it later.
 

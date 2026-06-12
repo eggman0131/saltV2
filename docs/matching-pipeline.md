@@ -300,7 +300,7 @@ This is the existing behaviour of `groupItemsByAisle` (a list item whose `canonI
 
 - the ✓ "matched" badge (recipe view, shopping list);
 - the "needs canonicalising" eligibility filter and the Canonicalise button — so a dangling ingredient is offered for re-matching exactly like a `pending`/`failed` one;
-- `addRecipeToShoppingList`'s canon carry — a dangling ingredient is added as raw text, not with a stale `canonId`;
+- recipe→list extraction's canon carry (`buildRecipeAddPlan`) — a dangling ingredient is added as raw text, not with a stale `canonId`;
 - aisle grouping.
 
 The predicate is pure domain (`packages/domain`); the canon-id set is built from the in-memory canon store by the `web-pwa` caller and passed in, so domain takes no I/O dependency on canon.

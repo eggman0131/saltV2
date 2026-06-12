@@ -22,6 +22,7 @@ import {
   editItemNotes,
   editItemAmountUnit,
   checkItem,
+  confirmItemNeeded as domainConfirmItemNeeded,
   uncheckItem,
   deleteItem,
   clearCheckedItems,
@@ -243,6 +244,37 @@ export async function toggleItemChecked(
   if (result.kind !== 'ok') return result;
   const updated = result.value.find((i) => i.id === item.id)!;
   return saveShoppingListItem(listId, updated);
+}
+
+// Clear an item's verification flag — the shopper confirmed they need it (issue
+// #185). Dropping an unwanted flagged item uses removeItem instead.
+export async function confirmItemNeeded(
+  listId: string,
+  itemId: string,
+): Promise<ReadResult<void, DomainError>> {
+  const items = get(_itemsForActiveList);
+  const now = new Date().toISOString();
+  const result = domainConfirmItemNeeded(items, { id: itemId, now });
+  if (result.kind !== 'ok') return result;
+  const updated = result.value.find((i) => i.id === itemId)!;
+  return saveShoppingListItem(listId, updated);
+}
+
+// Clear the verification flag on several items at once — confirming a combined
+// row that several recipe contributions flagged (issue #184/#185).
+export async function confirmItemsNeeded(
+  listId: string,
+  itemIds: readonly string[],
+): Promise<void> {
+  const items = get(_itemsForActiveList);
+  const now = new Date().toISOString();
+  let working = [...items];
+  for (const id of itemIds) {
+    const result = domainConfirmItemNeeded(working, { id, now });
+    if (result.kind === 'ok') working = result.value;
+  }
+  const toSave = working.filter((i) => itemIds.includes(i.id));
+  await Promise.all(toSave.map((item) => saveShoppingListItem(listId, item)));
 }
 
 export async function checkItems(listId: string, itemIds: readonly string[]): Promise<void> {

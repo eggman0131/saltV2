@@ -9,6 +9,7 @@ import {
   editItemRawText,
   editItemNotes,
   checkItem,
+  confirmItemNeeded,
   uncheckItem,
   deleteItem,
   clearCheckedItems,
@@ -58,6 +59,7 @@ function makeItem(id: string, overrides: Partial<ShoppingListItem> = {}): Shoppi
     canonId: null,
     matchState: 'pending',
     checked: false,
+    needsCheck: false,
     schemaVersion: 1 as const,
     createdAt: NOW,
     updatedAt: NOW,
@@ -188,6 +190,16 @@ describe('addItem', () => {
     expect(item.checked).toBe(false);
     expect(item.notes).toBe('');
     expect(item.sources).toEqual([{ kind: 'manual' }]);
+    expect(item.needsCheck).toBe(false);
+  });
+
+  it('sets needsCheck when requested (recipe-add "check" row)', () => {
+    const result = addItem(
+      [],
+      { rawText: 'flour', source: { kind: 'manual' }, now: NOW, needsCheck: true },
+      makeIds(),
+    );
+    expect(result.kind === 'ok' && result.value[0].needsCheck).toBe(true);
   });
 
   it('trims whitespace from rawText', () => {
@@ -321,6 +333,26 @@ describe('uncheckItem', () => {
 
   it('returns NotFound for unknown id', () => {
     const result = uncheckItem([], { id: 'no-such', now: NOW });
+    expect(result.kind).toBe('err');
+    if (result.kind !== 'err') return;
+    expect(result.error).toEqual({ kind: 'NotFound', resource: 'shoppingListItem', id: 'no-such' });
+  });
+});
+
+// ── confirmItemNeeded ─────────────────────────────────────────────────────────
+
+describe('confirmItemNeeded', () => {
+  it('clears needsCheck and stamps updatedAt', () => {
+    const items = [makeItem('item-1', { needsCheck: true })];
+    const result = confirmItemNeeded(items, { id: 'item-1', now: NOW2 });
+    expect(result.kind).toBe('ok');
+    if (result.kind !== 'ok') return;
+    expect(result.value[0].needsCheck).toBe(false);
+    expect(result.value[0].updatedAt).toBe(NOW2);
+  });
+
+  it('returns NotFound for unknown id', () => {
+    const result = confirmItemNeeded([], { id: 'no-such', now: NOW });
     expect(result.kind).toBe('err');
     if (result.kind !== 'err') return;
     expect(result.error).toEqual({ kind: 'NotFound', resource: 'shoppingListItem', id: 'no-such' });
