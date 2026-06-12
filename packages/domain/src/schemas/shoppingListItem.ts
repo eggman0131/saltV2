@@ -24,6 +24,7 @@ export const ShoppingListItemSchema = z.object({
   amount: z.number().optional(),
   unit: z.string().optional(),
   checked: z.boolean().default(false),
+  needsCheck: z.boolean().default(false),
   schemaVersion: z.literal(1).default(1),
   createdAt: z.string().default(''),
   updatedAt: z.string().default(''),

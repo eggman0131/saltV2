@@ -12,6 +12,11 @@ export interface ShoppingListItem {
   readonly amount?: number;
   readonly unit?: string;
   readonly checked: boolean;
+  // Flagged for verification at extraction time (issue #185): a recipe-add put
+  // this on the list as a "check you need it" item (e.g. a near-threshold staple).
+  // Distinct from `checked` — the shopper confirms-keep (clears the flag) or drops
+  // it from the list screen. Always present; defaults false for manual adds.
+  readonly needsCheck: boolean;
   readonly schemaVersion: 1;
   readonly createdAt: string; // ISO-8601
   readonly updatedAt: string; // ISO-8601
