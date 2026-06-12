@@ -30,6 +30,8 @@ export { editItemAmountUnit } from './commands/editItemAmountUnit.js';
 export type { EditItemAmountUnitInput } from './commands/editItemAmountUnit.js';
 export { checkItem } from './commands/checkItem.js';
 export type { CheckItemInput } from './commands/checkItem.js';
+export { confirmItemNeeded } from './commands/confirmItemNeeded.js';
+export type { ConfirmItemNeededInput } from './commands/confirmItemNeeded.js';
 export { uncheckItem } from './commands/uncheckItem.js';
 export type { UncheckItemInput } from './commands/uncheckItem.js';
 export { deleteItem } from './commands/deleteItem.js';
@@ -45,9 +47,18 @@ export type {
   OtherContributor,
   OtherBucket,
   CheckedBucket,
+  AmountSubtotal,
+  AisleRow,
   AisleGroup,
   GroupedShoppingList,
+  GroupItemsOptions,
 } from './queries/groupItemsByAisle.js';
+
+export { resolveItemDisplayName } from './queries/resolveItemDisplayName.js';
+export type { ItemDisplayName } from './queries/resolveItemDisplayName.js';
+
+export { recipeItemAddDefault } from './queries/recipeItemAddDefault.js';
+export type { RecipeItemAddDefault } from './queries/recipeItemAddDefault.js';
 
 export { parseShoppingListEntry } from './queries/parseEntry.js';
 export type { ParsedEntry } from './queries/parseEntry.js';

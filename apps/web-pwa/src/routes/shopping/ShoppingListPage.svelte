@@ -30,8 +30,8 @@
   import { titleCase } from '../../lib/titleCase.js';
   import { tick } from 'svelte';
   import { push } from 'svelte-spa-router';
-  import { groupItemsByAisle } from '@salt/domain';
-  import type { ShoppingListItem } from '@salt/domain';
+  import { groupItemsByAisle, resolveItemDisplayName } from '@salt/domain';
+  import type { ShoppingListItem, AisleRow, AmountSubtotal } from '@salt/domain';
   import { canonItems, aisles } from '../../lib/canonService.js';
   import {
     lists,
@@ -50,6 +50,8 @@
     removeItems,
     clearChecked,
     moveSelectedItems,
+    confirmItemNeeded,
+    confirmItemsNeeded,
   } from '../../lib/shoppingListService.svelte.js';
   import { addToast } from '../../lib/toastStore.js';
   import { createDeferredDelete } from '../../lib/deferredDelete.svelte.js';
@@ -81,6 +83,10 @@
     ),
   );
 
+  // Live canon ids — same set semantics groupItemsByAisle uses, so a row's
+  // display name and its aisle grouping never disagree about what's matched.
+  const liveCanonIds = $derived(new Set(canonMap.keys()));
+
   // Tri-state icon thumbnail for a row, looked up by its matched canon id.
   // Returns null (→ bare tile) for unmatched/pending rows.
   function thumbnailFor(canonId: string | null): string | null {
@@ -98,16 +104,15 @@
 
   const visibleItems = $derived(deferredDelete.visible($itemsForActiveList));
 
-  const grouped = $derived(groupItemsByAisle(visibleItems, canonMap, aisleInfos));
-
-  const allItemIds = $derived(visibleItems.map((i) => i.id));
-  const totalItems = $derived(
-    grouped.other.contributors.length +
-      grouped.checked.contributors.length +
-      grouped.aisles.reduce((sum, ag) => sum + ag.items.length, 0),
+  // Combine recipe-sourced rows in the normal view; in selection mode show every
+  // item individually so bulk check/delete/move act per-item (issue #184).
+  const grouped = $derived(
+    groupItemsByAisle(visibleItems, canonMap, aisleInfos, { combine: !selectionMode }),
   );
 
-  const isEmpty = $derived(!$isLoadingShoppingList && totalItems === 0);
+  const allItemIds = $derived(visibleItems.map((i) => i.id));
+
+  const isEmpty = $derived(!$isLoadingShoppingList && visibleItems.length === 0);
 
   // ─── Collapsible groups ─────────────────────────────────────────────────────────
 
@@ -360,6 +365,13 @@
     return text.charAt(0).toUpperCase() + text.slice(1);
   }
 
+  // Label a row by its canon name when live-matched (title-cased, as canon names
+  // are shown elsewhere), falling back to its sentence-cased raw text otherwise.
+  function displayLabel(item: ShoppingListItem): string {
+    const resolved = resolveItemDisplayName(item, canonMap, liveCanonIds);
+    return resolved.source === 'canon' ? titleCase(resolved.text) : toSentenceCase(resolved.text);
+  }
+
   function sourceLabel(item: ShoppingListItem): string {
     const src = item.sources[0];
     if (!src || src.kind === 'manual') return '';
@@ -372,6 +384,68 @@
     return unit ? `${amount} ${unit}` : `${amount}`;
   }
 
+  // ─── Verify flag (recipe-add "check" items, #185) ───────────────────────────
+  // A flagged item is highlighted with a quick confirm/drop affordance so the
+  // shopper can resolve it without opening the edit sheet. The controls act on a
+  // set of ids: a single item, or the flagged contributors of a combined row.
+  function needsVerify(item: ShoppingListItem): boolean {
+    return item.needsCheck && !item.checked;
+  }
+
+  async function handleConfirmNeeded(ids: readonly string[]): Promise<void> {
+    if (ids.length === 1) {
+      const result = await confirmItemNeeded(params.listId, ids[0]);
+      if (result.kind !== 'ok') addToast('Failed to update item.', 'destructive');
+      return;
+    }
+    await confirmItemsNeeded(params.listId, ids);
+  }
+
+  async function handleDropNeeded(ids: readonly string[]): Promise<void> {
+    const result = await removeItems(params.listId, ids);
+    if (result.kind !== 'ok') addToast('Failed to remove item.', 'destructive');
+  }
+
+  // ─── Aisle rows (combining, #184) ───────────────────────────────────────────
+  // A combined row stands for several recipe contributions of the same canon.
+  // Tapping it reveals the per-contributor breakdown; row-level actions act on
+  // all contributors.
+  let expandedRows = $state(new Set<string>());
+
+  function toggleRow(key: string): void {
+    const next = new Set(expandedRows);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    expandedRows = next;
+  }
+
+  function rowLabel(row: AisleRow): string {
+    if (row.combined) return titleCase(canonMap.get(row.canonId)?.name ?? '');
+    return displayLabel(row.contributors[0]);
+  }
+
+  function formatSubtotals(subtotals: readonly AmountSubtotal[]): string | null {
+    if (subtotals.length === 0) return null;
+    return subtotals.map((s) => (s.unit ? `${s.amount} ${s.unit}` : `${s.amount}`)).join(' + ');
+  }
+
+  function rowIds(row: AisleRow): string[] {
+    return row.contributors.map((c) => c.id);
+  }
+
+  function flaggedIds(row: AisleRow): string[] {
+    return row.contributors.filter((c) => c.needsCheck).map((c) => c.id);
+  }
+
+  async function markRowDone(row: AisleRow): Promise<void> {
+    await checkItems(params.listId, rowIds(row));
+  }
+
+  async function handleDeleteContributor(item: ShoppingListItem): Promise<void> {
+    const result = await removeItem(params.listId, item.id);
+    if (result.kind !== 'ok') addToast('Failed to remove item.', 'destructive');
+  }
+
   function describeSource(src: ShoppingListItem['sources'][number]): string {
     if (src.kind === 'manual') return 'Added manually';
     const label = src.label ?? 'Recipe';
@@ -379,6 +453,30 @@
     return `${label} (${servings})`;
   }
 </script>
+
+{#snippet verifyControls(ids: string[])}
+  <div class="flex items-center gap-1" data-testid="shopping-verify">
+    <span class="text-xs font-medium text-amber-600 dark:text-amber-500">Need it?</span>
+    <button
+      type="button"
+      class="flex items-center justify-center rounded p-1 text-amber-600 hover:bg-amber-100 dark:text-amber-500 dark:hover:bg-amber-950"
+      onclick={() => void handleConfirmNeeded(ids)}
+      aria-label="Confirm needed"
+      data-testid="shopping-verify-confirm"
+    >
+      <Icon name="Check" size={16} />
+    </button>
+    <button
+      type="button"
+      class="flex items-center justify-center rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+      onclick={() => void handleDropNeeded(ids)}
+      aria-label="Not needed, remove"
+      data-testid="shopping-verify-drop"
+    >
+      <Icon name="X" size={16} />
+    </button>
+  </div>
+{/snippet}
 
 {#if !$isLoadingShoppingList && currentList === null}
   <div class="p-4 sm:p-6 flex flex-col gap-3">
@@ -526,70 +624,150 @@
               <Icon name={aisleCollapsed ? 'ChevronRight' : 'ChevronDown'} size={14} />
               {aisleGroup.aisleName}
               {#if aisleCollapsed}
-                <span class="normal-case text-muted-foreground/70">({aisleGroup.items.length})</span
-                >
+                <span class="normal-case text-muted-foreground/70">({aisleGroup.rows.length})</span>
               {/if}
             </button>
 
             {#if !aisleCollapsed}
-              {#each aisleGroup.items as item (item.id)}
-                {@const isSelected = selection.isSelected(item.id)}
-                {@const amountStr = formatAmount(item.amount, item.unit)}
-                <div
-                  class="flex items-center gap-3 rounded border px-3 py-2 text-sm {isSelected
-                    ? 'border-ring ring-2 ring-ring bg-card'
-                    : 'border-border bg-card'}"
-                  data-testid="shopping-item-row"
-                  data-item-id={item.id}
-                >
-                  {#if selectionMode}
-                    <RowSelectCheckbox
-                      {selection}
-                      id={item.id}
-                      label=""
-                      aria-label="Select {item.rawText}"
+              {#each aisleGroup.rows as row (row.key)}
+                {@const amountStr = formatSubtotals(row.subtotals)}
+                {#if row.combined}
+                  {@const expanded = expandedRows.has(row.key)}
+                  <div
+                    class="flex items-center gap-3 rounded border px-3 py-2 text-sm {row.needsCheck
+                      ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/20'
+                      : 'border-border bg-card'}"
+                    data-testid="shopping-item-row"
+                    data-combined="true"
+                    data-canon-id={row.canonId}
+                  >
+                    <CanonIcon
+                      thumbnail={thumbnailFor(row.canonId)}
+                      name={rowLabel(row)}
+                      size={34}
                     />
+                    <button
+                      type="button"
+                      class="flex-1 min-w-0 text-left"
+                      onclick={() => toggleRow(row.key)}
+                      aria-expanded={expanded}
+                      data-testid="shopping-combined-toggle"
+                    >
+                      <span class="block truncate">
+                        {rowLabel(row)}{#if amountStr}{' '}<span class="text-muted-foreground"
+                            >({amountStr})</span
+                          >{/if}
+                      </span>
+                      <span class="flex items-center gap-1 text-xs text-muted-foreground/70">
+                        <Icon name={expanded ? 'ChevronDown' : 'ChevronRight'} size={12} />
+                        {row.contributors.length} recipes
+                      </span>
+                    </button>
+                    {#if row.needsCheck}
+                      {@render verifyControls(flaggedIds(row))}
+                    {:else}
+                      <button
+                        type="button"
+                        class="flex items-center justify-center p-1 rounded text-muted-foreground transition-colors hover:text-foreground"
+                        onclick={() => void markRowDone(row)}
+                        aria-label="Mark as done"
+                        data-testid="shopping-item-check"
+                      >
+                        <Icon name="Circle" size={18} />
+                      </button>
+                    {/if}
+                  </div>
+                  {#if expanded}
+                    <div
+                      class="ml-10 flex flex-col gap-1 pb-1"
+                      data-testid="shopping-combined-breakdown"
+                    >
+                      {#each row.contributors as c (c.id)}
+                        {@const cAmount = formatAmount(c.amount, c.unit)}
+                        <div class="flex items-center gap-2 text-xs text-muted-foreground">
+                          <span class="flex-1 truncate" data-testid="shopping-contributor"
+                            >{describeSource(c.sources[0])}{#if cAmount}
+                              — {cAmount}{/if}</span
+                          >
+                          <button
+                            type="button"
+                            class="flex items-center justify-center rounded p-1 hover:bg-accent hover:text-foreground"
+                            onclick={() => void handleDeleteContributor(c)}
+                            aria-label="Remove this contribution"
+                            data-testid="shopping-contributor-delete"
+                          >
+                            <Icon name="X" size={14} />
+                          </button>
+                        </div>
+                      {/each}
+                    </div>
                   {/if}
-                  <CanonIcon
-                    thumbnail={thumbnailFor(item.canonId)}
-                    name={item.rawText}
-                    dimmed={item.checked}
-                    size={34}
-                  />
-                  <button
-                    type="button"
-                    class="flex-1 min-w-0 text-left"
-                    onclick={() => openEditSheet(item)}
-                    aria-label="Edit {item.rawText}"
-                    data-testid="shopping-item-edit-btn"
+                {:else}
+                  {@const item = row.contributors[0]}
+                  {@const isSelected = selection.isSelected(item.id)}
+                  <div
+                    class="flex items-center gap-3 rounded border px-3 py-2 text-sm {isSelected
+                      ? 'border-ring ring-2 ring-ring bg-card'
+                      : needsVerify(item)
+                        ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/20'
+                        : 'border-border bg-card'}"
+                    data-testid="shopping-item-row"
+                    data-item-id={item.id}
                   >
-                    <span class="block truncate">
-                      {toSentenceCase(item.rawText)}{#if amountStr}{' '}<span
-                          class="text-muted-foreground">({amountStr})</span
-                        >{/if}
-                    </span>
-                    {#if item.notes}
-                      <span class="block text-xs text-muted-foreground truncate"
-                        >{toSentenceCase(item.notes)}</span
-                      >
+                    {#if selectionMode}
+                      <RowSelectCheckbox
+                        {selection}
+                        id={item.id}
+                        label=""
+                        aria-label="Select {item.rawText}"
+                      />
                     {/if}
-                    {#if sourceLabel(item)}
-                      <span class="block text-xs text-muted-foreground/70">{sourceLabel(item)}</span
+                    <CanonIcon
+                      thumbnail={thumbnailFor(item.canonId)}
+                      name={displayLabel(item)}
+                      dimmed={item.checked}
+                      size={34}
+                    />
+                    <button
+                      type="button"
+                      class="flex-1 min-w-0 text-left"
+                      onclick={() => openEditSheet(item)}
+                      aria-label="Edit {item.rawText}"
+                      data-testid="shopping-item-edit-btn"
+                    >
+                      <span class="block truncate">
+                        {displayLabel(item)}{#if amountStr}{' '}<span class="text-muted-foreground"
+                            >({amountStr})</span
+                          >{/if}
+                      </span>
+                      {#if item.notes}
+                        <span class="block text-xs text-muted-foreground truncate"
+                          >{toSentenceCase(item.notes)}</span
+                        >
+                      {/if}
+                      {#if sourceLabel(item)}
+                        <span class="block text-xs text-muted-foreground/70"
+                          >{sourceLabel(item)}</span
+                        >
+                      {/if}
+                    </button>
+                    {#if needsVerify(item)}
+                      {@render verifyControls([item.id])}
+                    {:else}
+                      <button
+                        type="button"
+                        class="flex items-center justify-center p-1 rounded transition-colors {item.checked
+                          ? 'text-green-500'
+                          : 'text-muted-foreground hover:text-foreground'}"
+                        onclick={() => void toggleItemChecked(params.listId, item)}
+                        aria-label={item.checked ? 'Uncheck' : 'Mark as done'}
+                        data-testid="shopping-item-check"
                       >
+                        <Icon name={item.checked ? 'CircleCheck' : 'Circle'} size={18} />
+                      </button>
                     {/if}
-                  </button>
-                  <button
-                    type="button"
-                    class="flex items-center justify-center p-1 rounded transition-colors {item.checked
-                      ? 'text-green-500'
-                      : 'text-muted-foreground hover:text-foreground'}"
-                    onclick={() => void toggleItemChecked(params.listId, item)}
-                    aria-label={item.checked ? 'Uncheck' : 'Mark as done'}
-                    data-testid="shopping-item-check"
-                  >
-                    <Icon name={item.checked ? 'CircleCheck' : 'Circle'} size={18} />
-                  </button>
-                </div>
+                  </div>
+                {/if}
               {/each}
             {/if}
           </section>
@@ -612,7 +790,9 @@
               <div
                 class="flex items-center gap-3 rounded border px-3 py-2 text-sm {isSelected
                   ? 'border-ring ring-2 ring-ring bg-card'
-                  : 'border-border bg-card'}"
+                  : needsVerify(item)
+                    ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/20'
+                    : 'border-border bg-card'}"
                 data-testid="shopping-item-row"
                 data-item-id={item.id}
               >
@@ -626,7 +806,7 @@
                 {/if}
                 <CanonIcon
                   thumbnail={thumbnailFor(item.canonId)}
-                  name={item.rawText}
+                  name={displayLabel(item)}
                   dimmed={item.checked}
                   size={34}
                 />
@@ -642,8 +822,8 @@
                       ? 'line-through text-muted-foreground'
                       : ''}"
                   >
-                    {toSentenceCase(item.rawText)}{#if amountStr}{' '}<span
-                        class="text-muted-foreground">({amountStr})</span
+                    {displayLabel(item)}{#if amountStr}{' '}<span class="text-muted-foreground"
+                        >({amountStr})</span
                       >{/if}
                   </span>
                   {#if item.notes}
@@ -655,17 +835,21 @@
                 {#if isPending}
                   <Spinner size={14} />
                 {/if}
-                <button
-                  type="button"
-                  class="flex items-center justify-center p-1 rounded transition-colors {item.checked
-                    ? 'text-green-500'
-                    : 'text-muted-foreground hover:text-foreground'}"
-                  onclick={() => void toggleItemChecked(params.listId, item)}
-                  aria-label={item.checked ? 'Uncheck' : 'Mark as done'}
-                  data-testid="shopping-item-check"
-                >
-                  <Icon name={item.checked ? 'CircleCheck' : 'Circle'} size={18} />
-                </button>
+                {#if needsVerify(item)}
+                  {@render verifyControls([item.id])}
+                {:else}
+                  <button
+                    type="button"
+                    class="flex items-center justify-center p-1 rounded transition-colors {item.checked
+                      ? 'text-green-500'
+                      : 'text-muted-foreground hover:text-foreground'}"
+                    onclick={() => void toggleItemChecked(params.listId, item)}
+                    aria-label={item.checked ? 'Uncheck' : 'Mark as done'}
+                    data-testid="shopping-item-check"
+                  >
+                    <Icon name={item.checked ? 'CircleCheck' : 'Circle'} size={18} />
+                  </button>
+                {/if}
               </div>
             {/each}
           </section>
@@ -715,7 +899,7 @@
                   {/if}
                   <CanonIcon
                     thumbnail={thumbnailFor(item.canonId)}
-                    name={item.rawText}
+                    name={displayLabel(item)}
                     dimmed={item.checked}
                     size={34}
                   />
@@ -727,7 +911,7 @@
                     data-testid="shopping-item-edit-btn"
                   >
                     <span class="block truncate line-through text-muted-foreground">
-                      {toSentenceCase(item.rawText)}{#if amountStr}{' '}({amountStr}){/if}
+                      {displayLabel(item)}{#if amountStr}{' '}({amountStr}){/if}
                     </span>
                     {#if item.notes}
                       <span class="block text-xs text-muted-foreground/60 truncate"
@@ -771,7 +955,7 @@
         {#if editingItem}
           <CanonIcon
             thumbnail={thumbnailFor(editingItem.canonId)}
-            name={editingItem.rawText}
+            name={displayLabel(editingItem)}
             size={64}
           />
         {/if}

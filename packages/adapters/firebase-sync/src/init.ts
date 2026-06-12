@@ -54,14 +54,32 @@ export function initFirebase(
   }
 
   if (isNew && usePersistentCache) {
-    initializeFirestore(app, { localCache: persistentLocalCache() });
+    // Under emulators, also force long-polling — the e2e/dev PWA hits the same
+    // gRPC Listen-stream corruption as the integration suite (#122/#199), which
+    // surfaces as flaky cross-tab convergence (canon-sync aisle specs). Real
+    // backends keep default gRPC streaming. (see the emulator branch below)
+    initializeFirestore(app, {
+      localCache: persistentLocalCache(),
+      ...(useEmulators ? { experimentalForceLongPolling: true } : {}),
+    });
   }
 
   if (useEmulators && !emulatorsConnected) {
     const _env = (import.meta as { env?: Record<string, string | undefined> }).env ?? {};
     const firestorePort = Number(_env['VITE_EMULATOR_FIRESTORE_PORT'] ?? 8080);
     const functionsPort = Number(_env['VITE_EMULATOR_FUNCTIONS_PORT'] ?? 5001);
-    connectFirestoreEmulator(getFirestore(app), '127.0.0.1', firestorePort);
+    // Force long-polling for the emulator transport. The default gRPC streaming
+    // Listen channel intermittently corrupts against the Firestore emulator —
+    // bogus "RESOURCE_EXHAUSTED: Received message larger than max" framing
+    // errors (a multi-GB phantom size) that poison the channel for the client's
+    // lifetime, after which realtime subscriptions never deliver and the
+    // integration suite times out. Long-polling sidesteps the streaming
+    // transport entirely. Emulator-only — production keeps default gRPC. (#122)
+    const db =
+      isNew && !usePersistentCache
+        ? initializeFirestore(app, { experimentalForceLongPolling: true })
+        : getFirestore(app);
+    connectFirestoreEmulator(db, '127.0.0.1', firestorePort);
     connectFunctionsEmulator(getFunctions(app, 'europe-west2'), '127.0.0.1', functionsPort);
     connectAuthEmulatorOnce(getAuth(app));
     emulatorsConnected = true;

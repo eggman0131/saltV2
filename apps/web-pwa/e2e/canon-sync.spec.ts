@@ -21,6 +21,15 @@ import { getAisles, getCanonItem, seedAisles, seedCanonItem } from './helpers/se
 const CONVERGENCE_TIMEOUT = 20_000;
 
 test.describe('canon sync — two-tab convergence', () => {
+  // RESIDUAL FLAKE INSURANCE (#199): the root fix for the cross-client Listen
+  // flake — forcing long-polling on the emulator transport (#122, init.ts) —
+  // removed the bulk of these failures, but a fresh single-doc aisle listen
+  // still occasionally loses the convergence race on emulator cold paths (a
+  // propagation timeout, not a real break). Bounded retries absorb that
+  // residual; it self-recovers on the first retry. Do NOT remove without
+  // confirming the bare suite stays green across several CI runs.
+  test.describe.configure({ retries: 2 });
+
   test('canon item created in tab A appears in tab B via manifest tick', async ({
     browser,
   }, testInfo) => {

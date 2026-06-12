@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, type Mocked } from 'vitest';
-import type { Recipe, CanonItem, IngredientGroup } from '@salt/domain';
+import type { Recipe, CanonItem, IngredientGroup, ShoppingBehavior } from '@salt/domain';
 
 // ─── Mock firebase-sync ──────────────────────────────────────────────────────
 vi.mock('@salt/firebase-sync', () => ({
@@ -25,22 +25,28 @@ vi.mock('../src/lib/canonService.js', () => ({
 }));
 
 import * as firebaseSync from '@salt/firebase-sync';
-import { addRecipeToShoppingList } from '../src/lib/recipeService.js';
+import { buildRecipeAddPlan, commitRecipeAddPlan } from '../src/lib/recipeService.js';
 
 const fs = firebaseSync as Mocked<typeof firebaseSync>;
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
-function makeCanonItem(id: string): CanonItem {
+function makeCanonItem(
+  id: string,
+  shoppingBehavior: ShoppingBehavior,
+  largeQuantityThreshold?: number,
+): CanonItem {
   return {
     id,
-    schemaVersion: 2,
+    schemaVersion: 5,
     name: id,
     synonyms: [],
     aisleId: null,
     thumbnail: null,
     embedding: null,
     needs_approval: false,
+    shoppingBehavior,
+    ...(largeQuantityThreshold !== undefined ? { largeQuantityThreshold } : {}),
     updatedAt: '',
   };
 }
@@ -71,7 +77,7 @@ function makeRecipe(groups: IngredientGroup[]): Recipe {
   };
 }
 
-const parsedIngredient = {
+const countIngredient = {
   quantity: { type: 'single' as const, value: 2 },
   unit: 'cups',
   item: 'flour',
@@ -80,7 +86,28 @@ const parsedIngredient = {
   convertedWeight: null,
 };
 
-// ─── Tests ───────────────────────────────────────────────────────────────────
+function weightIngredient(grams: number) {
+  return {
+    quantity: { type: 'single' as const, value: 1 },
+    unit: 'g',
+    item: 'flour',
+    preparation: [],
+    notes: null,
+    convertedWeight: { value: grams, unit: 'g' as const },
+  };
+}
+
+function matchedIngredient(id: string, canonId: string, parsed: unknown) {
+  return {
+    id,
+    rawText: '2 cups flour',
+    parsed: parsed as never,
+    canonId,
+    matchState: 'matched' as const,
+    isOptional: false,
+    firstUsedInStepId: null,
+  };
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -88,63 +115,56 @@ beforeEach(() => {
   mockGetCanonItemsSnapshot.mockReturnValue([]);
 });
 
-describe('addRecipeToShoppingList', () => {
-  it('adds a matched ingredient with canonId when the canon item is live', async () => {
-    mockGetCanonItemsSnapshot.mockReturnValue([makeCanonItem('canon-flour')]);
+// ─── buildRecipeAddPlan ────────────────────────────────────────────────────────
 
+describe('buildRecipeAddPlan', () => {
+  it("matched 'needed' ingredient → add on, check off, canon name + scaled amount", () => {
+    mockGetCanonItemsSnapshot.mockReturnValue([makeCanonItem('canon-flour', 'needed')]);
     const recipe = makeRecipe([
-      makeGroup([
-        {
-          id: 'i1',
-          rawText: '2 cups flour',
-          parsed: parsedIngredient,
-          canonId: 'canon-flour',
-          matchState: 'matched',
-          isOptional: false,
-          firstUsedInStepId: null,
-        },
-      ]),
+      makeGroup([matchedIngredient('i1', 'canon-flour', countIngredient)]),
     ]);
 
-    const result = await addRecipeToShoppingList(recipe, 'list-1', 2);
-
-    expect(result).toEqual({ kind: 'ok', value: undefined });
-    expect(fs.saveShoppingListItem).toHaveBeenCalledOnce();
-    const savedItem = (fs.saveShoppingListItem as ReturnType<typeof vi.fn>).mock.calls[0][1];
-    expect(savedItem.canonId).toBe('canon-flour');
-    expect(savedItem.matchState).toBe('matched');
+    const rows = buildRecipeAddPlan(recipe, 2); // servings == base, scale 1
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      ingredientId: 'i1',
+      name: 'canon-flour',
+      fromCanon: true,
+      matched: true,
+      canonId: 'canon-flour',
+      amount: 2,
+      unit: 'cups',
+      add: true,
+      check: false,
+    });
   });
 
-  it('adds a dangling-matched ingredient as raw text when the canon item is absent from the store', async () => {
-    // canon store is empty — 'canon-flour' was deleted
-    mockGetCanonItemsSnapshot.mockReturnValue([]);
-
+  it("matched 'check' ingredient → add and check on", () => {
+    mockGetCanonItemsSnapshot.mockReturnValue([makeCanonItem('canon-flour', 'check')]);
     const recipe = makeRecipe([
-      makeGroup([
-        {
-          id: 'i1',
-          rawText: '2 cups flour',
-          parsed: parsedIngredient,
-          canonId: 'canon-flour',
-          matchState: 'matched',
-          isOptional: false,
-          firstUsedInStepId: null,
-        },
-      ]),
+      makeGroup([matchedIngredient('i1', 'canon-flour', countIngredient)]),
     ]);
-
-    const result = await addRecipeToShoppingList(recipe, 'list-1', 2);
-
-    expect(result).toEqual({ kind: 'ok', value: undefined });
-    expect(fs.saveShoppingListItem).toHaveBeenCalledOnce();
-    const savedItem = (fs.saveShoppingListItem as ReturnType<typeof vi.fn>).mock.calls[0][1];
-    // Dangling ingredient: falls back to raw text (no live canon match).
-    expect(savedItem.canonId).toBeNull();
-    expect(savedItem.matchState).toBe('pending');
-    expect(savedItem.rawText).toBe('2 cups flour');
+    const rows = buildRecipeAddPlan(recipe, 2);
+    expect(rows[0]).toMatchObject({ add: true, check: true });
   });
 
-  it('adds an unmatched ingredient as raw text', async () => {
+  it("matched 'stocked' under threshold → neither; over threshold → add on", () => {
+    mockGetCanonItemsSnapshot.mockReturnValue([makeCanonItem('canon-flour', 'stocked', 500)]);
+
+    const under = buildRecipeAddPlan(
+      makeRecipe([makeGroup([matchedIngredient('i1', 'canon-flour', weightIngredient(100))])]),
+      2,
+    );
+    expect(under[0]).toMatchObject({ add: false, check: false });
+
+    const over = buildRecipeAddPlan(
+      makeRecipe([makeGroup([matchedIngredient('i1', 'canon-flour', weightIngredient(750))])]),
+      2,
+    );
+    expect(over[0]).toMatchObject({ add: true, check: false });
+  });
+
+  it('unmatched ingredient → add on, check off, raw-text name, matched false', () => {
     const recipe = makeRecipe([
       makeGroup([
         {
@@ -158,12 +178,87 @@ describe('addRecipeToShoppingList', () => {
         },
       ]),
     ]);
+    const rows = buildRecipeAddPlan(recipe, 2);
+    expect(rows[0]).toMatchObject({
+      name: 'some unknown thing',
+      fromCanon: false,
+      matched: false,
+      canonId: null,
+      add: true,
+      check: false,
+    });
+  });
 
-    await addRecipeToShoppingList(recipe, 'list-1', 2);
+  it('dangling match (canon deleted) → treated as unmatched', () => {
+    mockGetCanonItemsSnapshot.mockReturnValue([]); // canon-flour absent
+    const recipe = makeRecipe([
+      makeGroup([matchedIngredient('i1', 'canon-flour', countIngredient)]),
+    ]);
+    const rows = buildRecipeAddPlan(recipe, 2);
+    expect(rows[0]).toMatchObject({ matched: false, canonId: null, add: true, check: false });
+  });
 
-    const savedItem = (fs.saveShoppingListItem as ReturnType<typeof vi.fn>).mock.calls[0][1];
-    expect(savedItem.canonId).toBeNull();
-    expect(savedItem.matchState).toBe('pending');
-    expect(savedItem.rawText).toBe('some unknown thing');
+  it('scales amount by servings', () => {
+    mockGetCanonItemsSnapshot.mockReturnValue([makeCanonItem('canon-flour', 'needed')]);
+    const recipe = makeRecipe([
+      makeGroup([matchedIngredient('i1', 'canon-flour', countIngredient)]),
+    ]);
+    const rows = buildRecipeAddPlan(recipe, 4); // base 2 → scale 2
+    expect(rows[0].amount).toBe(4);
+  });
+});
+
+// ─── commitRecipeAddPlan ─────────────────────────────────────────────────────
+
+describe('commitRecipeAddPlan', () => {
+  it('writes only add=true rows, carrying needsCheck from check', async () => {
+    mockGetCanonItemsSnapshot.mockReturnValue([makeCanonItem('canon-flour', 'check')]);
+    const recipe = makeRecipe([
+      makeGroup([matchedIngredient('i1', 'canon-flour', countIngredient)]),
+    ]);
+    const rows = buildRecipeAddPlan(recipe, 2); // add+check both true
+
+    const result = await commitRecipeAddPlan(recipe, 'list-1', 2, rows);
+    expect(result).toEqual({ kind: 'ok', value: undefined });
+    expect(fs.saveShoppingListItem).toHaveBeenCalledOnce();
+    const saved = (fs.saveShoppingListItem as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(saved.canonId).toBe('canon-flour');
+    expect(saved.matchState).toBe('matched');
+    expect(saved.needsCheck).toBe(true);
+    expect(saved.rawText).toBe('2 cups flour');
+  });
+
+  it('skips rows the user left as add=false', async () => {
+    mockGetCanonItemsSnapshot.mockReturnValue([makeCanonItem('canon-flour', 'stocked', 500)]);
+    const recipe = makeRecipe([
+      makeGroup([matchedIngredient('i1', 'canon-flour', weightIngredient(100))]),
+    ]);
+    const rows = buildRecipeAddPlan(recipe, 2); // stocked, under threshold → add false
+
+    const result = await commitRecipeAddPlan(recipe, 'list-1', 2, rows);
+    expect(result).toEqual({ kind: 'ok', value: undefined });
+    expect(fs.saveShoppingListItem).not.toHaveBeenCalled();
+  });
+
+  it('records the recipe source on written items', async () => {
+    const recipe = makeRecipe([
+      makeGroup([
+        {
+          id: 'i1',
+          rawText: 'salt',
+          parsed: null,
+          canonId: null,
+          matchState: 'pending',
+          isOptional: false,
+          firstUsedInStepId: null,
+        },
+      ]),
+    ]);
+    const rows = buildRecipeAddPlan(recipe, 3);
+    await commitRecipeAddPlan(recipe, 'list-1', 3, rows);
+    const saved = (fs.saveShoppingListItem as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(saved.sources).toEqual([
+      { kind: 'recipe', recipeId: 'recipe-1', servings: 3, label: 'Test Recipe' },
+    ]);
   });
 });

@@ -7,8 +7,15 @@ import {
   saveShoppingListItem,
 } from '@salt/firebase-sync';
 import { createLDErrorReportingAdapter } from '@salt/ld-observability';
-import { addItem } from '@salt/domain';
-import type { Recipe, Ingredient, IngredientGroup, Quantity, SourceRef } from '@salt/domain';
+import { addItem, recipeItemAddDefault } from '@salt/domain';
+import type {
+  Recipe,
+  Ingredient,
+  IngredientGroup,
+  Quantity,
+  SourceRef,
+  CanonItem,
+} from '@salt/domain';
 import { hasLiveCanonMatch } from '@salt/domain';
 import { success, type DomainError, type ReadResult } from '@salt/shared-types';
 import { getCanonItemsSnapshot } from './canonService.js';
@@ -205,20 +212,97 @@ function quantityToNumber(q: Quantity): number {
 
 const _itemIds = { newListId: () => crypto.randomUUID(), newItemId: () => crypto.randomUUID() };
 
-// Push all canonicalised (and unmatched) ingredients from a recipe into a
-// shopping list. Matched ingredients carry convertedWeight (g/ml) scaled by
-// servings; falls back to parsed.quantity / parsed.unit when convertedWeight is
-// null. Unmatched items are added as rawText entries so nothing is silently
-// dropped.
-export async function addRecipeToShoppingList(
+// One ingredient row in the recipe-add review step (issue #185). Carries the
+// scaled amount/unit and resolved canon match, the default Add/Check toggles
+// (from the canon item's shoppingBehavior), and the current user-chosen toggles
+// (seeded from the defaults, mutated by the review sheet). `commitRecipeAddPlan`
+// writes only the rows the user left as `add: true`.
+export interface RecipeAddRow {
+  readonly ingredientId: string;
+  readonly rawText: string;
+  /** Canon name when live-matched, else the raw text — the label the sheet shows. */
+  readonly name: string;
+  readonly fromCanon: boolean;
+  readonly isOptional: boolean;
+  readonly canonId: string | null;
+  readonly matched: boolean;
+  readonly amount?: number;
+  readonly unit?: string;
+  add: boolean;
+  check: boolean;
+}
+
+// Compute the scaled amount/unit for an ingredient: convertedWeight (g/ml) when
+// available, falling back to parsed.quantity / parsed.unit. Only meaningful for
+// matched ingredients; mirrors the pre-#185 extraction arithmetic.
+function scaledAmountUnit(ing: Ingredient, scale: number): { amount?: number; unit?: string } {
+  if (ing.parsed === null) return {};
+  if (ing.parsed.convertedWeight !== null) {
+    return {
+      amount: Math.round(ing.parsed.convertedWeight.value * scale * 10) / 10,
+      unit: ing.parsed.convertedWeight.unit,
+    };
+  }
+  if (ing.parsed.quantity !== null) {
+    const amount = Math.round(quantityToNumber(ing.parsed.quantity) * scale * 100) / 100;
+    return ing.parsed.unit !== null ? { amount, unit: ing.parsed.unit } : { amount };
+  }
+  return {};
+}
+
+// Build the review plan for adding a recipe to a list at the given servings.
+// Every ingredient becomes a row with its scaled amount and a default Add/Check
+// state driven by the matched canon item's shoppingBehavior (issue #185). The
+// caller (review sheet) lets the user adjust the toggles, then hands the rows to
+// commitRecipeAddPlan. Pure read against the canon snapshot — no writes here.
+export function buildRecipeAddPlan(recipe: Recipe, servings: number): RecipeAddRow[] {
+  const baseServings = recipe.metadata.servings ?? 1;
+  const scale = servings / baseServings;
+  const canonById = new Map<string, CanonItem>(getCanonItemsSnapshot().map((c) => [c.id, c]));
+  const liveCanonIds = new Set(canonById.keys());
+
+  const rows: RecipeAddRow[] = [];
+  for (const group of recipe.ingredients) {
+    for (const ing of group.items) {
+      const matched = hasLiveCanonMatch(ing, liveCanonIds);
+      const canon = matched ? (canonById.get(ing.canonId!) ?? null) : null;
+      const { amount, unit } = matched ? scaledAmountUnit(ing, scale) : {};
+
+      const dflt = recipeItemAddDefault(
+        canon?.shoppingBehavior ?? null,
+        amount ?? null,
+        canon?.largeQuantityThreshold,
+      );
+
+      rows.push({
+        ingredientId: ing.id,
+        rawText: ing.rawText,
+        name: canon?.name ?? ing.rawText,
+        fromCanon: canon !== null,
+        isOptional: ing.isOptional,
+        canonId: matched ? ing.canonId : null,
+        matched,
+        ...(amount !== undefined ? { amount } : {}),
+        ...(unit !== undefined ? { unit } : {}),
+        add: dflt.add,
+        check: dflt.check,
+      });
+    }
+  }
+  return rows;
+}
+
+// Write the user-confirmed rows of a recipe-add plan to the shopping list. Only
+// rows left as `add: true` are written; `check: true` rows land flagged for
+// verification (needsCheck). Matched rows carry their canonId + matchState and
+// scaled amount/unit. One item per row — combining is display-time (Phase 3).
+export async function commitRecipeAddPlan(
   recipe: Recipe,
   listId: string,
   servings: number,
+  rows: readonly RecipeAddRow[],
 ): Promise<ReadResult<void, DomainError>> {
   const now = new Date().toISOString();
-  const baseServings = recipe.metadata.servings ?? 1;
-  const scale = servings / baseServings;
-
   const source: SourceRef = {
     kind: 'recipe',
     recipeId: recipe.id,
@@ -227,41 +311,23 @@ export async function addRecipeToShoppingList(
   };
 
   const saves: Promise<ReadResult<void, DomainError>>[] = [];
-  const liveCanonIds = new Set(getCanonItemsSnapshot().map((c) => c.id));
-
-  for (const group of recipe.ingredients) {
-    for (const ing of group.items) {
-      const isMatched = hasLiveCanonMatch(ing, liveCanonIds);
-
-      let amount: number | undefined;
-      let unit: string | undefined;
-
-      if (isMatched && ing.parsed !== null) {
-        if (ing.parsed.convertedWeight !== null) {
-          amount = Math.round(ing.parsed.convertedWeight.value * scale * 10) / 10;
-          unit = ing.parsed.convertedWeight.unit;
-        } else if (ing.parsed.quantity !== null) {
-          amount = Math.round(quantityToNumber(ing.parsed.quantity) * scale * 100) / 100;
-          unit = ing.parsed.unit ?? undefined;
-        }
-      }
-
-      const result = addItem(
-        [],
-        {
-          rawText: ing.rawText,
-          source,
-          now,
-          ...(isMatched ? { canonId: ing.canonId, matchState: 'matched' as const } : {}),
-          ...(amount !== undefined ? { amount } : {}),
-          ...(unit !== undefined ? { unit } : {}),
-        },
-        _itemIds,
-      );
-
-      if (result.kind !== 'ok') return result;
-      saves.push(saveShoppingListItem(listId, result.value[0]!));
-    }
+  for (const row of rows) {
+    if (!row.add) continue;
+    const result = addItem(
+      [],
+      {
+        rawText: row.rawText,
+        source,
+        now,
+        needsCheck: row.check,
+        ...(row.matched ? { canonId: row.canonId, matchState: 'matched' as const } : {}),
+        ...(row.amount !== undefined ? { amount: row.amount } : {}),
+        ...(row.unit !== undefined ? { unit: row.unit } : {}),
+      },
+      _itemIds,
+    );
+    if (result.kind !== 'ok') return result;
+    saves.push(saveShoppingListItem(listId, result.value[0]!));
   }
 
   if (saves.length === 0) return success(undefined);

@@ -15,6 +15,8 @@ export interface AddItemInput {
   readonly matchState?: MatchState;
   readonly amount?: number;
   readonly unit?: string;
+  /** Flag this item for verification on the list (recipe-add "check" rows). Defaults false. */
+  readonly needsCheck?: boolean;
 }
 
 export function addItem(
@@ -34,6 +36,7 @@ export function addItem(
     canonId: input.canonId ?? null,
     matchState: input.matchState ?? ('pending' as const),
     checked: false,
+    needsCheck: input.needsCheck ?? false,
     schemaVersion: 1 as const,
     createdAt: input.now,
     updatedAt: input.now,
