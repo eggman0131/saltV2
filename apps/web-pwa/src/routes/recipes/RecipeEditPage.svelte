@@ -7,6 +7,7 @@
     newIngredient,
     newStep,
     clearIngredientMatch,
+    hasLiveCanonMatch,
     type Recipe,
     type IngredientGroup,
     type Ingredient,
@@ -19,6 +20,7 @@
     parseIngredients,
     matchIngredient,
   } from '../../lib/recipeService.js';
+  import { canonItems } from '../../lib/canonService.js';
   import { addToast } from '../../lib/toastStore.js';
 
   interface Props {
@@ -28,6 +30,11 @@
   let { params }: Props = $props();
 
   const editingId = $derived(params?.id ?? null);
+
+  // Live canon ids drive the unmatched indicator: an ingredient whose canon
+  // item has since been deleted reads as unmatched (re-matchable), same as the
+  // view page and shopping list (reference-integrity, #188).
+  const liveCanonIds = $derived(new Set($canonItems.map((c) => c.id)));
 
   // The draft is a local, mutable copy of the recipe entity assembled with the
   // Phase 1 builders. It is validated only on read (adapter/schema); the whole
@@ -463,26 +470,21 @@
                 class="flex-1"
                 data-testid="recipe-ingredient-input"
               />
-              {#if ingredient.matchState === 'matched'}
-                <span data-testid="recipe-ingredient-match-ok" class="shrink-0 text-green-600">
-                  <Icon name="Check" size={16} />
-                </span>
-              {:else if ingredient.matchState === 'failed'}
-                <span data-testid="recipe-ingredient-match-err" class="shrink-0 text-destructive">
+              {#if ingredient.rawText.trim() !== '' && !hasLiveCanonMatch(ingredient, liveCanonIds)}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onclick={() => handleMatchIngredient(group, ingredient)}
+                  loading={matchingIds[ingredient.id] ?? false}
+                  disabled={matchingIds[ingredient.id] ?? false}
+                  aria-label="Not matched — tap to match this ingredient"
+                  title="Not matched — tap to match this ingredient"
+                  class="shrink-0 text-destructive"
+                  data-testid="recipe-ingredient-match-btn"
+                >
                   <Icon name="CircleX" size={16} />
-                </span>
+                </Button>
               {/if}
-              <Button
-                variant="ghost"
-                size="sm"
-                onclick={() => handleMatchIngredient(group, ingredient)}
-                loading={matchingIds[ingredient.id] ?? false}
-                disabled={ingredient.rawText.trim() === '' || (matchingIds[ingredient.id] ?? false)}
-                aria-label="Match ingredient"
-                data-testid="recipe-ingredient-match-btn"
-              >
-                <Icon name="Wand2" size={16} />
-              </Button>
               <Switch
                 label="Optional"
                 checked={ingredient.isOptional}

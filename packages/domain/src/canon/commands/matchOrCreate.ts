@@ -56,9 +56,7 @@ export interface MatchOrCreatePorts {
 }
 
 /**
- * Single-item entry point. Preserved public signature and behaviour — it is a
- * batch of one, so there is exactly one matching implementation (`resolveOne`)
- * that the batch and single-item paths cannot drift apart from.
+ * Single-item entry point — a batch of one.
  */
 export async function matchOrCreate(
   input: MatchOrCreateInput,
@@ -68,49 +66,83 @@ export async function matchOrCreate(
 }
 
 /**
- * The one matching function. Reads the canon snapshot and aisle list **once**,
- * batch-embeds every input name into a warm cache, then runs `resolveOne` per
- * input against a **growing** in-memory snapshot: each resolved item (new
- * creations and synonym/`needs_approval` mutations alike) is folded back so
- * later inputs see what a fresh re-read would show and two inputs resolving to
- * the same new item collapse to one. Returns an order-preserving array of
- * results, one per input.
+ * Three-phase batch pipeline:
+ *
+ *   Phase 1 — Classify: run stages 1-5 (deterministic + embedding) for every
+ *             input in parallel. No AI calls. Each input is classified as a
+ *             direct match, a no-AI create, or "needs arbitration".
+ *
+ *   Phase 2 — Arbitrate: fire all needed AI calls in parallel. For a recipe
+ *             with 35 new ingredients this collapses from ~35 × 3 s = 105 s
+ *             sequential to ~3 s total.
+ *
+ *   Phase 3 — Apply: apply classification + AI result for each input in order,
+ *             folding new items back into the in-memory snapshot so that later
+ *             inputs in the same batch can match a just-created item.
+ *
+ * Trade-off: two inputs that both lack candidates are classified against the
+ * snapshot that existed before either was created, so they cannot prevent each
+ * other from creating near-duplicate canon items. The needs_approval queue
+ * catches any such duplicates for human review.
  */
 export async function matchOrCreateBatch(
   inputs: readonly MatchOrCreateInput[],
   ports: MatchOrCreatePorts,
 ): Promise<ReadResult<MatchOrCreateResult, DomainError>[]> {
-  // One canon read for the whole batch. A failure surfaces to every input.
   const itemsResult = await ports.store.list();
   if (itemsResult.kind !== 'ok') return inputs.map(() => itemsResult);
 
   const snapshot = new Map<string, CanonItem>();
   for (const item of itemsResult.value) snapshot.set(item.id, item);
 
-  // One aisle read for the whole batch.
   const aisles = await loadAisles(ports.aisleStore);
 
-  // Pre-compute every input's query embedding in one batched call and serve
-  // `embedMatch` (unchanged) from the warm cache via a wrapped port.
   const resolvePorts: MatchOrCreatePorts = {
     ...ports,
     embedding: await buildEmbeddingCache(ports.embedding, inputs),
   };
 
+  // Phase 1: classify all inputs in parallel (stages 1-5, no AI)
+  const classifications = await Promise.all(
+    inputs.map((input) => classifyOne(input, [...snapshot.values()], aisles, resolvePorts)),
+  );
+
+  // Phase 2: fire all needed AI calls in parallel
+  const arbOutcomes = await Promise.all(
+    classifications.map((c) => {
+      if (c.kind !== 'needs_ai') return null;
+      const t0 = Date.now();
+      return resolvePorts.arbitration
+        .arbitrate({
+          normalisedName: c.normalisedName,
+          candidates: [...c.shortlist],
+          aisles: c.aisles,
+          ...(c.input.rawText !== undefined ? { rawText: c.input.rawText } : {}),
+        })
+        .then((result) => ({ result, durationMs: Math.max(0, Date.now() - t0) }));
+    }),
+  );
+
+  // Phase 3: apply results in order, maintaining snapshot for intra-batch dedup
   const results: ReadResult<MatchOrCreateResult, DomainError>[] = [];
-  for (const input of inputs) {
-    const result = await resolveOne(input, [...snapshot.values()], aisles, resolvePorts);
+  for (let i = 0; i < classifications.length; i++) {
+    const result = await applyClassification(
+      classifications[i]!,
+      arbOutcomes[i] ?? null,
+      snapshot,
+      resolvePorts,
+    );
     if (result.kind === 'ok') snapshot.set(result.value.item.id, result.value.item);
     results.push(result);
   }
   return results;
 }
 
+// ─── Embedding cache ─────────────────────────────────────────────────────────
+
 /**
  * Wrap an `EmbeddingPort` so `computeEmbedding(name)` is served from a cache
- * pre-filled by a single `computeEmbeddings` call over all input names. When
- * the underlying port has no batch method, the cache stays empty and lookups
- * fall through to per-name `computeEmbedding` — identical to the old behaviour.
+ * pre-filled by a single `computeEmbeddings` call over all input names.
  */
 async function buildEmbeddingCache(
   base: EmbeddingPort,
@@ -140,162 +172,279 @@ async function buildEmbeddingCache(
   };
 }
 
+// ─── Phase 1: Classification ─────────────────────────────────────────────────
+
+type CommitLog = (
+  decision: FinalDecision,
+  finalItemId: string | null,
+  finalItemName?: string | null,
+) => void;
+
+type ArbOutcome = Awaited<ReturnType<CanonArbitrationPort['arbitrate']>>;
+
+type Classification =
+  | { kind: 'failure'; result: ReadResult<MatchOrCreateResult, DomainError> }
+  | {
+      kind: 'direct_match';
+      item: CanonItem;
+      rawName: string;
+      logBuilder: MatchLogBuilder | null;
+      commitLog: CommitLog;
+    }
+  | {
+      kind: 'create_no_ai';
+      name: string;
+      aisleId: string | null;
+      /** True when forceCreate was set — skip the intra-batch snapshot re-check. */
+      forceCreate: boolean;
+      logBuilder: MatchLogBuilder | null;
+      commitLog: CommitLog;
+    }
+  | {
+      kind: 'needs_ai';
+      input: MatchOrCreateInput;
+      normalisedName: string;
+      /** Empty shortlist → new-item AI call; non-empty → arbitration against candidates. */
+      shortlist: readonly MatchCandidate[];
+      reason: string;
+      aisles: readonly Aisle[];
+      logBuilder: MatchLogBuilder | null;
+      runId: string;
+      commitLog: CommitLog;
+    };
+
 /**
- * Per-item matching core (stages 1–6 + arbitration + persist). The canon
- * snapshot and aisle list are **injected** rather than loaded here, so the
- * batch can share one read across all inputs. Sole source of matching truth.
+ * Runs stages 1-5 (deterministic + embedding) for a single input against the
+ * current snapshot. No AI calls. Safe to run in parallel across all inputs.
  */
-async function resolveOne(
+async function classifyOne(
   input: MatchOrCreateInput,
   items: readonly CanonItem[],
   aisles: readonly Aisle[],
   ports: MatchOrCreatePorts,
-): Promise<ReadResult<MatchOrCreateResult, DomainError>> {
-  const { rawName, selectedAisleId, forceCreate = false, rawText } = input;
-  const { store, embedding, arbitration, ids, logging } = ports;
+): Promise<Classification> {
+  const { rawName, selectedAisleId, forceCreate = false } = input;
+  const { ids, logging } = ports;
 
   const normalisedName = normaliseName(rawName);
   if (!normalisedName) {
-    return failure({ kind: 'ValidationError', code: ErrorCode.INVALID_CANON_NAME });
+    return {
+      kind: 'failure',
+      result: failure({ kind: 'ValidationError', code: ErrorCode.INVALID_CANON_NAME }),
+    };
   }
 
   const logBuilder = logging ? new MatchLogBuilder() : null;
   const runId = ids.newCanonId();
   logBuilder?.start(rawName, normalisedName);
 
-  const commitLog = (
-    decision: FinalDecision,
-    finalItemId: string | null,
-    finalItemName: string | null = null,
-  ): void => {
+  const commitLog: CommitLog = (decision, finalItemId, finalItemName = null): void => {
     if (!logBuilder || !logging) return;
     const entry = logBuilder.complete(runId, decision, finalItemId, finalItemName);
     void logging.write(entry).catch(() => {});
   };
 
-  // Force-create: skip match stages, still run arbitration to populate aisle + item metadata.
   if (forceCreate) {
-    let suggestedAisleId: string | null = null;
-    let forceExtras: ArbitrationExtras | undefined;
-    let forceName = rawName;
-    if (aisles.length > 0 && selectedAisleId == null) {
-      const arbT0 = Date.now();
-      const arbResult = await arbitration.arbitrate({
+    if (aisles.length > 0 && (selectedAisleId ?? null) === null) {
+      return {
+        kind: 'needs_ai',
+        input,
         normalisedName,
-        candidates: [],
+        shortlist: [],
+        reason: 'aisle_suggestion',
         aisles,
-        ...(rawText !== undefined ? { rawText } : {}),
-      });
-      const arbDuration = Math.max(0, Date.now() - arbT0);
-      if (arbResult.kind === 'ok' && arbResult.value.kind === 'new') {
-        suggestedAisleId = arbResult.value.aisleId ?? null;
-        forceExtras = extrasFromNew(arbResult.value);
-        forceName = arbResult.value.canonName;
-      } else {
-        forceExtras = { reasoning: arbitrationFailureReasoning(arbResult) };
-      }
-      logArbitration(logBuilder, 'aisle_suggestion', 0, aisles.length, arbResult, arbDuration);
+        logBuilder,
+        runId,
+        commitLog,
+      };
     }
-    return persistNew(
-      store,
-      ids,
-      forceName,
-      selectedAisleId ?? suggestedAisleId ?? null,
+    return {
+      kind: 'create_no_ai',
+      name: rawName,
+      aisleId: selectedAisleId ?? null,
+      forceCreate: true,
+      logBuilder,
       commitLog,
-      forceExtras,
-    );
+    };
   }
 
   logBuilder?.setInputItemCount(items.length);
 
-  // Stages 1–4: pure deterministic matching
   const stage1to4 = findClosestMatch(items, rawName, logBuilder ?? undefined);
 
   if (stage1to4.kind === 'match') {
-    return resolveMatch(store, stage1to4.candidate.item, rawName, 'matched', commitLog);
+    return { kind: 'direct_match', item: stage1to4.candidate.item, rawName, logBuilder, commitLog };
   }
 
   if (stage1to4.kind === 'ambiguous') {
-    return arbitrateShortlist(
-      [...stage1to4.candidates],
-      'ambiguous_near_tie',
+    return {
+      kind: 'needs_ai',
+      input,
       normalisedName,
-      rawName,
-      rawText,
-      selectedAisleId ?? null,
-      store,
+      shortlist: [...stage1to4.candidates],
+      reason: 'ambiguous_near_tie',
       aisles,
-      arbitration,
-      ids,
-      commitLog,
       logBuilder,
-    );
+      runId,
+      commitLog,
+    };
   }
 
-  // stage1to4.kind === 'none': fall through to embedding + near-miss shortlist.
-
+  // Stage 5: embedding (served from pre-built cache — fast)
   const embedCandidates = await embedMatch(
-    embedding,
+    ports.embedding,
     normalisedName,
     items,
     logBuilder ?? undefined,
   );
-
   const shortlist = buildShortlist(embedCandidates, items, normalisedName);
 
-  // Single near-miss from a deterministic stage: match directly without calling AI.
-  // Embedding candidates (stage 5) always go to arbitration — cosine similarity
-  // at 0.75 is not precise enough to auto-bind without AI review.
   if (shortlist.length === 1 && shortlist[0]!.stage !== 5) {
-    return resolveMatch(store, shortlist[0]!.item, rawName, 'matched', commitLog);
+    return { kind: 'direct_match', item: shortlist[0]!.item, rawName, logBuilder, commitLog };
   }
 
   if (shortlist.length > 0) {
-    return arbitrateShortlist(
-      shortlist,
-      'near_miss_shortlist',
+    return {
+      kind: 'needs_ai',
+      input,
       normalisedName,
-      rawName,
-      rawText,
-      selectedAisleId ?? null,
-      store,
+      shortlist,
+      reason: 'near_miss_shortlist',
       aisles,
-      arbitration,
-      ids,
-      commitLog,
       logBuilder,
-    );
+      runId,
+      commitLog,
+    };
   }
 
-  // No candidates anywhere — create a new item from rawName.
-  // Run arbitration with empty candidates to populate aisle + item metadata.
-  let finalAisleId = selectedAisleId ?? null;
+  // No candidates: AI for aisle/name unless caller already supplied an aisle
+  if (aisles.length > 0 && (selectedAisleId ?? null) === null) {
+    return {
+      kind: 'needs_ai',
+      input,
+      normalisedName,
+      shortlist: [],
+      reason: 'aisle_suggestion',
+      aisles,
+      logBuilder,
+      runId,
+      commitLog,
+    };
+  }
+
+  return {
+    kind: 'create_no_ai',
+    name: rawName,
+    aisleId: selectedAisleId ?? null,
+    forceCreate: false,
+    logBuilder,
+    commitLog,
+  };
+}
+
+// ─── Phase 3: Apply ───────────────────────────────────────────────────────────
+
+/**
+ * Applies a classification (plus its AI result, if any) and persists the
+ * outcome. Uses the live snapshot to pick up synonym additions made by earlier
+ * items in the same batch.
+ */
+async function applyClassification(
+  c: Classification,
+  arb: { result: ArbOutcome; durationMs: number } | null,
+  snapshot: Map<string, CanonItem>,
+  ports: MatchOrCreatePorts,
+): Promise<ReadResult<MatchOrCreateResult, DomainError>> {
+  const { store, ids } = ports;
+
+  if (c.kind === 'failure') return c.result;
+
+  if (c.kind === 'direct_match') {
+    // Use the snapshot-current version of the item so that synonym additions
+    // by earlier batch items are not lost via a stale overwrite.
+    const currentItem = snapshot.get(c.item.id) ?? c.item;
+    return resolveMatch(store, currentItem, c.rawName, 'matched', c.commitLog);
+  }
+
+  if (c.kind === 'create_no_ai') {
+    if (!c.forceCreate) {
+      const hit = findSnapshotMatch(c.name, snapshot);
+      if (hit) return resolveMatch(store, hit, c.name, 'matched', c.commitLog);
+    }
+    return persistNew(store, ids, c.name, c.aisleId, c.commitLog);
+  }
+
+  // kind === 'needs_ai'
+  const { input, normalisedName: _norm, shortlist, aisles, logBuilder, commitLog } = c;
+  const { rawName, selectedAisleId } = input;
+
+  // Re-check snapshot before applying the AI result: an earlier item in this
+  // batch may have created or updated an item that is now a deterministic match.
+  const snapshotHit = findSnapshotMatch(rawName, snapshot);
+  if (snapshotHit) return resolveMatch(store, snapshotHit, rawName, 'matched', commitLog);
+
+  const durationMs = arb?.durationMs ?? 0;
+  const arbResult =
+    arb?.result ??
+    failure({ kind: 'ValidationError', code: ErrorCode.INVALID_CANON_NAME } as DomainError);
+
+  logArbitration(logBuilder, c.reason, shortlist.length, aisles.length, arbResult, durationMs);
+
+  if (shortlist.length > 0) {
+    if (arbResult.kind === 'ok') {
+      const decision = arbResult.value;
+      if (decision.kind === 'match') {
+        const candidate = shortlist.find((s) => s.item.id === decision.itemId);
+        if (candidate) {
+          const currentItem = snapshot.get(candidate.item.id) ?? candidate.item;
+          return resolveMatch(
+            store,
+            currentItem,
+            rawName,
+            'ai_arbitrated',
+            commitLog,
+            decision.reasoning,
+          );
+        }
+        // AI returned an unknown id — fall through to fallback
+      } else if (decision.kind === 'new') {
+        return persistNew(
+          store,
+          ids,
+          decision.canonName,
+          selectedAisleId ?? decision.aisleId ?? null,
+          commitLog,
+          extrasFromNew(decision),
+        );
+      }
+      // decision.kind === 'no-match': fall through to highest-confidence fallback
+    }
+    // AI errored, returned unknown id, or said no-match
+    const fallback = shortlist[0];
+    if (fallback) {
+      const currentItem = snapshot.get(fallback.item.id) ?? fallback.item;
+      return resolveMatch(store, currentItem, rawName, 'ai_arbitrated', commitLog);
+    }
+    return persistNew(store, ids, rawName, selectedAisleId ?? null, commitLog);
+  }
+
+  // Empty shortlist: new-item creation with AI name/aisle suggestion
+  let finalAisleId: string | null = selectedAisleId ?? null;
   let newExtras: ArbitrationExtras | undefined;
   let createName = rawName;
-  if (finalAisleId === null) {
-    if (aisles.length > 0) {
-      const arbT0 = Date.now();
-      const arbResult = await arbitration.arbitrate({
-        normalisedName,
-        candidates: [],
-        aisles,
-        ...(rawText !== undefined ? { rawText } : {}),
-      });
-      const arbDuration = Math.max(0, Date.now() - arbT0);
-      if (arbResult.kind === 'ok' && arbResult.value.kind === 'new') {
-        finalAisleId = arbResult.value.aisleId ?? null;
-        newExtras = extrasFromNew(arbResult.value);
-        createName = arbResult.value.canonName;
-      } else {
-        newExtras = { reasoning: arbitrationFailureReasoning(arbResult) };
-      }
-      logArbitration(logBuilder, 'aisle_suggestion', 0, aisles.length, arbResult, arbDuration);
-    }
+
+  if (arbResult.kind === 'ok' && arbResult.value.kind === 'new') {
+    finalAisleId = arbResult.value.aisleId ?? null;
+    newExtras = extrasFromNew(arbResult.value);
+    createName = arbResult.value.canonName;
+  } else {
+    newExtras = { reasoning: arbitrationFailureReasoning(arbResult) };
   }
+
   return persistNew(store, ids, createName, finalAisleId, commitLog, newExtras);
 }
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 interface ArbitrationExtras {
   readonly shoppingBehavior?: ShoppingBehavior;
@@ -352,6 +501,18 @@ function logArbitration(
   });
 }
 
+/**
+ * Run stages 1-4 (deterministic, no AI) against the current in-memory snapshot.
+ * Used in phase 3 to catch items created by earlier applications in the same batch.
+ */
+function findSnapshotMatch(rawName: string, snapshot: Map<string, CanonItem>): CanonItem | null {
+  if (snapshot.size === 0) return null;
+  const result = findClosestMatch([...snapshot.values()], rawName, undefined);
+  return result.kind === 'match'
+    ? (snapshot.get(result.candidate.item.id) ?? result.candidate.item)
+    : null;
+}
+
 function buildShortlist(
   embedCandidates: readonly MatchCandidate[],
   items: readonly CanonItem[],
@@ -384,11 +545,7 @@ async function resolveMatch(
   item: CanonItem,
   rawName: string,
   decision: 'matched' | 'ai_arbitrated',
-  commitLog: (
-    decision: FinalDecision,
-    finalItemId: string | null,
-    finalItemName?: string | null,
-  ) => void,
+  commitLog: CommitLog,
   reasoning?: string,
 ): Promise<ReadResult<MatchOrCreateResult, DomainError>> {
   const updated = appendCanonSynonym(item, rawName, reasoning);
@@ -402,77 +559,12 @@ async function resolveMatch(
   return success({ item: finalItem, decision });
 }
 
-async function arbitrateShortlist(
-  shortlist: MatchCandidate[],
-  reason: 'ambiguous_near_tie' | 'near_miss_shortlist',
-  normalisedName: string,
-  rawName: string,
-  rawText: string | undefined,
-  selectedAisleId: string | null,
-  store: CanonLocalStorePort,
-  aisles: readonly Aisle[],
-  arbitration: CanonArbitrationPort,
-  ids: IdGenerator,
-  commitLog: (
-    decision: FinalDecision,
-    finalItemId: string | null,
-    finalItemName?: string | null,
-  ) => void,
-  logBuilder: MatchLogBuilder | null,
-): Promise<ReadResult<MatchOrCreateResult, DomainError>> {
-  const arbT0 = Date.now();
-  const arbResult = await arbitration.arbitrate({
-    normalisedName,
-    candidates: [...shortlist],
-    aisles,
-    ...(rawText !== undefined ? { rawText } : {}),
-  });
-  const arbDuration = Math.max(0, Date.now() - arbT0);
-  logArbitration(logBuilder, reason, shortlist.length, aisles.length, arbResult, arbDuration);
-
-  if (arbResult.kind === 'ok') {
-    const arb = arbResult.value;
-    if (arb.kind === 'match') {
-      const matchedItem = shortlist.find((c) => c.item.id === arb.itemId)?.item ?? null;
-      if (matchedItem !== null) {
-        return resolveMatch(store, matchedItem, rawName, 'ai_arbitrated', commitLog, arb.reasoning);
-      }
-      // AI returned an unknown id — fall through to highest-confidence fallback.
-    } else if (arb.kind === 'new') {
-      return persistNew(
-        store,
-        ids,
-        arb.canonName,
-        selectedAisleId ?? arb.aisleId ?? null,
-        commitLog,
-        extrasFromNew(arb),
-      );
-    }
-    // arb.kind === 'no-match' falls through to fallback: from a non-empty shortlist,
-    // the candidates have meaningful confidence — defer to human review (needs_approval)
-    // rather than silently creating a duplicate.
-  }
-
-  // AI errored, returned an unknown id, or said no-match. Fall back to the
-  // highest-confidence shortlist candidate and rely on needs_approval (set
-  // via appendCanonSynonym) to surface this for review.
-  const fallback = shortlist[0];
-  if (fallback) {
-    return resolveMatch(store, fallback.item, rawName, 'ai_arbitrated', commitLog);
-  }
-  return persistNew(store, ids, rawName, selectedAisleId, commitLog);
-}
-
 async function persistNew(
   store: CanonLocalStorePort,
   ids: IdGenerator,
   name: string,
   aisleId: string | null,
-  commitLog: (
-    decision: FinalDecision,
-    finalItemId: string | null,
-    finalItemName?: string | null,
-  ) => void,
+  commitLog: CommitLog,
   extras?: ArbitrationExtras,
 ): Promise<ReadResult<MatchOrCreateResult, DomainError>> {
   const result = createCanonItem(
