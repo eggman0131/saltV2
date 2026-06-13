@@ -31,6 +31,23 @@ cloud-functions            →  shared-types, domain, ld-observability/server
 9. **`shared-types` imports nothing from `@salt/*`.** It may only depend on external packages or nothing.
 10. **Adapters never throw for operational errors.** All failures cross the boundary as `Failure<DomainError>` or `Conflict<T>` (see [docs/salt-architecture.md §7](docs/salt-architecture.md)).
 
+## Data model conventions
+
+- **All data is family-shared.** No `userId`, `householdId`, or per-user scoping on any collection. Equipment, recipes, shopping list, canon, aisles, and meal planner all live in single shared collections. Do not add user-scoped fields to new collections.
+- **No soft-delete, no tombstones.** Firestore is the master; delete means delete. Canon has a vestigial `deletedAt` field from the local-first era — do not copy this pattern to new schemas.
+- **LWW per document.** Last-write-wins at the document level. No merge logic at the storage layer; conflict resolution lives in `packages/domain`.
+
+## AI / Genkit conventions
+
+- **All AI access via Genkit callables.** Every Gemini call goes through a Genkit flow invoked as a Firebase callable Cloud Function. No AI API keys in the client.
+- **Wrap every AI call in `withAiTimeout`.** Bare Genkit flow calls have no built-in timeout and will hang the function for the full 60 s quota on a slow or hung model response. This applies to callable flows and Firestore triggers alike. Functions calling AI must also declare their AI-related secrets.
+- **Trace propagation is dormant.** Cross-callable trace context propagation was disabled 2026-05-11 (it broke the Genkit Dev UI). New callable flows use `onCallGenkit`. Do not re-add `runWithExtractedTraceContext` without first resolving that regression. Grep `DORMANT: trace propagation` to find all plumbing sites.
+
+## Workflow
+
+- **Issue-first for substantial changes.** New packages, new dependencies, layer-map edits, and cross-package refactors require a GitHub issue and explicit go-ahead before implementation. Design Q&A in chat is not a greenlight.
+- **Production data back-compat.** Canon, Aisles, Equipment, Shopping List, and Meal Planner collections hold real production data — schema changes must be backward-compatible on read, or require a one-off migration. Recipe schema changes are currently free (greenfield). See also: Zod schema conventions below.
+
 ## Zod schema conventions
 
 - **Schemas live in `@salt/domain/schemas`.** All zod schemas are defined under `packages/domain/src/schemas/` and exported via the `@salt/domain/schemas` subpath. Do not define schemas in adapters, apps, or `@salt/shared-types`.
@@ -48,8 +65,8 @@ cloud-functions            →  shared-types, domain, ld-observability/server
 - `pnpm lint` — ESLint with `eslint-plugin-boundaries` checks the import graph.
 - `pnpm typecheck` — TypeScript project references prevent out-of-graph imports at compile time.
 - `pnpm boundary:test` — Runs `.boundary-tests/run.sh` which lints deliberate violation fixtures and asserts each produces an error.
-- Pre-commit (Phase 3): Husky + lint-staged blocks bad commits locally.
-- CI (Phase 7): GitHub Actions blocks bad PRs before merge.
+- Husky + lint-staged — blocks bad commits locally at pre-commit.
+- GitHub Actions CI — blocks bad PRs before merge.
 
 ## Package names
 
