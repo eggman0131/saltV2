@@ -1,8 +1,4 @@
-<!-- Renders a markdown string as safe DOM. Used for assistant chat replies
-     (issue #206), which arrive as markdown. Built on svelte-exmarkdown, which
-     renders to real Svelte components (no {@html}) and drops raw HTML by default
-     via remark-rehype — so LLM output is XSS-safe by construction with no
-     bespoke sanitizer. GFM (tables, strikethrough, autolinks) is enabled. -->
+<!-- spec: ai-kitchen-assistant.md §Surfaces v1.0 -->
 <script lang="ts">
   import { Markdown as ExMarkdown } from 'svelte-exmarkdown';
   import { gfmPlugin } from 'svelte-exmarkdown/gfm';
