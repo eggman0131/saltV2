@@ -15,9 +15,6 @@
     DialogTitle,
     Icon,
     Markdown,
-    Popover,
-    PopoverContent,
-    PopoverTrigger,
     Spinner,
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
@@ -36,6 +33,7 @@
   import { addToast } from '../../lib/toastStore.js';
   import { auth } from '../../lib/auth.svelte.js';
   import { createChatSession, sessions, sendMessage } from '../../lib/chatService.js';
+  import { callAuthorRecipe, saveRecipe as saveRecipeDoc } from '@salt/firebase-sync';
   import AdminGuard from '../admin/AdminGuard.svelte';
 
   interface Props {
@@ -208,6 +206,45 @@
     sidebarInputText = el.value;
     el.style.height = 'auto';
     el.style.height = `${el.scrollHeight}px`;
+  }
+
+  let sidebarIsApplying = $state(false);
+
+  async function handleSidebarApplyChanges(): Promise<void> {
+    if (!activeSession || !recipe || sidebarIsApplying) return;
+    sidebarIsApplying = true;
+    const existingTags = [...new Set($recipes.flatMap((r) => r.metadata.tags))];
+    const result = await callAuthorRecipe({ messages: activeSession.messages, existingTags });
+    if (result.kind !== 'ok') {
+      sidebarIsApplying = false;
+      addToast('Failed to generate recipe update.', 'destructive');
+      return;
+    }
+    const now = new Date().toISOString();
+    const ai = result.value;
+    const updated = {
+      ...ai,
+      id: recipe.id,
+      createdAt: recipe.createdAt,
+      updatedAt: now,
+      // Preserve fields the AI always returns as null/empty (it only extracts from conversation)
+      image: recipe.image,
+      source: recipe.source,
+      metadata: {
+        servings: ai.metadata.servings ?? recipe.metadata.servings,
+        totalTimeMinutes: ai.metadata.totalTimeMinutes ?? recipe.metadata.totalTimeMinutes,
+        prepTimeMinutes: ai.metadata.prepTimeMinutes ?? recipe.metadata.prepTimeMinutes,
+        cookTimeMinutes: ai.metadata.cookTimeMinutes ?? recipe.metadata.cookTimeMinutes,
+        tags: ai.metadata.tags.length > 0 ? ai.metadata.tags : recipe.metadata.tags,
+      },
+    };
+    const saveResult = await saveRecipeDoc(updated);
+    sidebarIsApplying = false;
+    if (saveResult.kind !== 'ok') {
+      addToast('Failed to save recipe update.', 'destructive');
+      return;
+    }
+    addToast('Recipe updated!', 'success');
   }
 
   // ─── Delete ─────────────────────────────────────────────────────────────────
@@ -401,31 +438,21 @@
                     <span class="mt-0.5 shrink-0 font-semibold text-muted-foreground"
                       >{idx + 1}</span
                     >
-                    <div class="flex flex-1 flex-col gap-1">
-                      <div class="flex items-start gap-1">
-                        <span class="flex-1">{step.text}</span>
-                        {#if step.note}
-                          <Popover>
-                            <PopoverTrigger>
-                              <button
-                                class="shrink-0 text-muted-foreground hover:text-foreground"
-                                aria-label="View step note"
-                                data-testid="recipe-step-note-trigger"
-                              >
-                                <Icon name="StickyNote" size={14} />
-                              </button>
-                            </PopoverTrigger>
-                            <PopoverContent side="top" align="end" class="max-w-xs">
-                              <p
-                                class="whitespace-pre-wrap text-sm"
-                                data-testid="recipe-step-note-content"
-                              >
-                                {step.note}
-                              </p>
-                            </PopoverContent>
-                          </Popover>
-                        {/if}
-                      </div>
+                    <div class="flex flex-1 flex-col gap-1.5">
+                      <span>{step.text}</span>
+                      {#if step.note}
+                        <div
+                          class="flex items-start gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
+                          data-testid="recipe-step-note-content"
+                        >
+                          <Icon
+                            name="TriangleAlert"
+                            size={13}
+                            class="mt-0.5 shrink-0 text-amber-500"
+                          />
+                          <span class="whitespace-pre-wrap">{step.note}</span>
+                        </div>
+                      {/if}
                       {#if step.timer}
                         <span class="text-xs text-muted-foreground">
                           ⏱ {step.timer.durationMinutes} min{step.timer.description
@@ -536,6 +563,23 @@
                   <div bind:this={sidebarMessagesEnd}></div>
                 </div>
               </div>
+
+              <!-- Update recipe -->
+              {#if activeSession.messages.some((m) => m.role === 'assistant')}
+                <div class="shrink-0 border-t px-3 pt-3">
+                  <Button
+                    variant="outline"
+                    class="w-full"
+                    onclick={handleSidebarApplyChanges}
+                    loading={sidebarIsApplying}
+                    disabled={sidebarIsApplying || sidebarIsSending}
+                    data-testid="sidebar-apply-changes-btn"
+                  >
+                    {#snippet leading()}<Icon name="RefreshCw" size={14} />{/snippet}
+                    Update recipe
+                  </Button>
+                </div>
+              {/if}
 
               <!-- Input -->
               <div class="shrink-0 border-t p-3">

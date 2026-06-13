@@ -173,7 +173,9 @@ Given a cooking conversation between a user and a chef, extract and structure a 
   firstUsedInStepOrdinal (0-based index into the steps array for the first step that uses this
   ingredient; null if the ingredient has no obvious first step).
 - steps: numbered method steps. Each step: text (clear instruction), timerMinutes (integer or null),
-  note (clarification or null). All temperatures must be in °C only — never Fahrenheit.
+  note: a genuine warning or non-obvious caveat only — something that would ruin the dish if missed
+  (e.g. "don't let the heat exceed 80°C or the custard will scramble"). Leave null for routine
+  instructions; most steps should have no note. All temperatures must be in °C only — never Fahrenheit.
 - notes: chef's overall notes or tips, or null.
 
 Extract only what is present in the conversation. Do not invent ingredients or steps not discussed.`;
