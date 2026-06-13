@@ -3,18 +3,24 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { googleAI } from '@genkit-ai/google-genai';
 import { logger } from 'firebase-functions';
 import { ChefChatInputSchema } from '@salt/domain/schemas';
-import { EquipmentManifestSchema, RecipeSchema } from '@salt/domain/schemas';
+import {
+  EquipmentManifestSchema,
+  RecipeSchema,
+  EQUIPMENT_MANIFEST_COLLECTION,
+  EQUIPMENT_MANIFEST_DOC_ID,
+} from '@salt/domain/schemas';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 
 // Pro-tier model for conversational quality (design principle #3, issue #206).
 const CHEF_MODEL = googleAI.model('gemini-pro-latest');
 
-const EQUIPMENT_DOC_PATH = 'equipmentManifest/manifest';
-
 async function readEquipmentContext(db: ReturnType<typeof getFirestore>): Promise<string> {
   try {
-    const snap = await db.doc(EQUIPMENT_DOC_PATH).get();
+    const snap = await db
+      .collection(EQUIPMENT_MANIFEST_COLLECTION)
+      .doc(EQUIPMENT_MANIFEST_DOC_ID)
+      .get();
     if (!snap.exists) return '';
     const result = EquipmentManifestSchema.safeParse(snap.data());
     if (!result.success) {
@@ -107,9 +113,13 @@ export const chefChatFlow = ai.defineFlow(
 
     const systemPrompt = buildSystemPrompt(equipmentContext, recipeContext);
 
-    // Convert Message[] history to Genkit MessageData format.
+    // Convert Message[] history to Genkit MessageData format. Our domain role is
+    // 'user' | 'assistant'; Genkit/Gemini uses 'user' | 'model', so the assistant
+    // turns must be remapped (a bare cast leaves 'assistant' at runtime, which
+    // Genkit rejects with "messages.N.role: must be equal to one of the allowed
+    // values").
     const history = input.messages.map((m) => ({
-      role: m.role as 'user' | 'model',
+      role: (m.role === 'assistant' ? 'model' : 'user') as 'user' | 'model',
       content: [{ text: m.text }],
     }));
 

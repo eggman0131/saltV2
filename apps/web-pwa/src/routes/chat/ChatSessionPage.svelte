@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, DetailPage, Icon, Spinner } from '@salt/ui-components';
+  import { Button, DetailPage, Icon, Markdown, Spinner } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
   import { sessions, isLoadingSessions, sendMessage } from '../../lib/chatService.js';
   import { addToast } from '../../lib/toastStore.js';
@@ -196,7 +196,11 @@
               ? 'bg-primary text-primary-foreground'
               : 'bg-muted text-foreground'}"
           >
-            {msg.text}
+            {#if msg.role === 'assistant'}
+              <Markdown text={msg.text} />
+            {:else}
+              {msg.text}
+            {/if}
           </div>
         </div>
       {/each}
@@ -205,7 +209,7 @@
       {#if isSending && streamingText}
         <div class="flex flex-col gap-1 items-start" data-testid="chat-message-streaming">
           <div class="max-w-[85%] rounded-2xl bg-muted px-4 py-2 text-sm text-foreground">
-            {streamingText}<span class="animate-pulse">▌</span>
+            <Markdown text={streamingText} />
           </div>
         </div>
       {:else if isSending}

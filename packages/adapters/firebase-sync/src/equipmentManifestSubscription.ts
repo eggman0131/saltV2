@@ -2,11 +2,12 @@ import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import type { EquipmentManifest } from '@salt/domain';
 import type { DomainError } from '@salt/shared-types';
-import { EquipmentManifestSchema } from '@salt/domain/schemas';
+import {
+  EquipmentManifestSchema,
+  EQUIPMENT_MANIFEST_COLLECTION,
+  EQUIPMENT_MANIFEST_DOC_ID,
+} from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
-
-const EQUIPMENT_MANIFEST_COLLECTION = 'equipmentManifest';
-const EQUIPMENT_MANIFEST_DOC_ID = 'current';
 
 export function subscribeEquipmentManifest(
   onManifest: (manifest: EquipmentManifest | null) => void,

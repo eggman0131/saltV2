@@ -37,6 +37,7 @@ export { default as Grid } from './primitives/Grid/Grid.svelte';
 export { default as Heading } from './primitives/Heading/Heading.svelte';
 export { default as Icon } from './primitives/Icon/Icon.svelte';
 export { default as Inline } from './primitives/Inline/Inline.svelte';
+export { default as Markdown } from './primitives/Markdown/Markdown.svelte';
 export { default as Popover } from './primitives/Popover/Popover.svelte';
 export { default as PopoverContent } from './primitives/Popover/PopoverContent.svelte';
 export { default as PopoverTrigger } from './primitives/Popover/PopoverTrigger.svelte';

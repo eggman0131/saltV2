@@ -1,5 +1,12 @@
 import { z } from 'zod';
 
+// Canonical Firestore location of the single shared equipment manifest. Both the
+// client store (firebase-sync) and the server-side chef flow (cloud-functions)
+// read this doc; sharing the identifiers here is the one source of truth so the
+// two sides can't drift (which silently broke the chef's equipment context once).
+export const EQUIPMENT_MANIFEST_COLLECTION = 'equipmentManifest';
+export const EQUIPMENT_MANIFEST_DOC_ID = 'current';
+
 export const AccessorySchema = z.object({
   id: z.string(),
   name: z.string(),

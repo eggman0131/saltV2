@@ -54,6 +54,8 @@ export {
   AccessorySchema,
   EquipmentItemSchema,
   EquipmentManifestSchema,
+  EQUIPMENT_MANIFEST_COLLECTION,
+  EQUIPMENT_MANIFEST_DOC_ID,
 } from './equipmentManifest.js';
 export type { AccessoryDoc, EquipmentItemDoc, EquipmentManifestDoc } from './equipmentManifest.js';
 

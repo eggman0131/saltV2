@@ -137,10 +137,13 @@ export async function sendMessage(
     title: session.messages.length === 0 ? text.slice(0, 60) : session.title,
   };
 
-  // Optimistically update with user message.
+  // Optimistically update with user message. Snapshot the prior store state so a
+  // failed send can be rolled back — the turn is only persisted on success, so a
+  // left-behind optimistic turn would otherwise accumulate as a ghost on retry.
+  const prevSessions = get(_sessions);
   const stampedUser = { ...sessionWithUser, updatedAt: now() };
   latestLocalEdit.set(stampedUser.id, stampedUser.updatedAt);
-  const others = get(_sessions).filter((s) => s.id !== stampedUser.id);
+  const others = prevSessions.filter((s) => s.id !== stampedUser.id);
   _sessions.set([...others, stampedUser]);
 
   const streamResult = await streamChefChat(
@@ -148,7 +151,10 @@ export async function sendMessage(
     onChunk,
   );
 
-  if (streamResult.kind === 'err') return streamResult;
+  if (streamResult.kind === 'err') {
+    _sessions.set(prevSessions);
+    return streamResult;
+  }
 
   const assistantMsg: ChatSessionDoc['messages'][number] = {
     id: crypto.randomUUID(),
