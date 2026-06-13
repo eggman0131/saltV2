@@ -22,7 +22,7 @@ function messyRecipe(): Recipe {
         item: 'garlic',
         preparation: ['minced'],
         notes: null,
-        convertedWeight: null,
+        displayText: null,
       },
       // firstUsedInStepId seam: links to step-1
       firstUsedInStepId: 'step-1',
@@ -30,12 +30,12 @@ function messyRecipe(): Recipe {
     {
       ...newIngredient('ing-2', '2–3 tbsp olive oil'),
       parsed: {
-        quantity: { type: 'range', min: 2, max: 3 },
-        unit: 'tbsp',
+        quantity: { type: 'range', min: 30, max: 45 },
+        unit: 'ml',
         item: 'olive oil',
         preparation: [],
         notes: null,
-        convertedWeight: null,
+        displayText: '2–3 tbsp',
       },
     },
   ];
@@ -44,23 +44,23 @@ function messyRecipe(): Recipe {
     {
       ...newIngredient('ing-3', '1 ½ cups flour'),
       parsed: {
-        quantity: { type: 'mixed', whole: 1, numerator: 1, denominator: 2 },
-        unit: 'cups',
+        quantity: { type: 'single', value: 180 },
+        unit: 'g',
         item: 'flour',
         preparation: [],
         notes: null,
-        convertedWeight: null,
+        displayText: '1½ cups',
       },
     },
     {
       ...newIngredient('ing-4', '½ tsp salt'),
       parsed: {
-        quantity: { type: 'mixed', whole: 0, numerator: 1, denominator: 2 },
-        unit: 'tsp',
+        quantity: { type: 'single', value: 2.5 },
+        unit: 'ml',
         item: 'salt',
         preparation: [],
         notes: 'or to taste',
-        convertedWeight: null,
+        displayText: '½ tsp',
       },
     },
     // An optional, still-unparsed garnish.
@@ -104,15 +104,12 @@ describe('RecipeSchema', () => {
     if (result.success) expect(result.data).toEqual(recipe);
   });
 
-  it('preserves an exact "1 ½" rather than collapsing to 1.5', () => {
+  it('stores displayText for non-metric source measures', () => {
     const recipe = messyRecipe();
     const flour = flattenIngredients(recipe).find((i) => i.id === 'ing-3');
-    expect(flour?.parsed?.quantity).toEqual({
-      type: 'mixed',
-      whole: 1,
-      numerator: 1,
-      denominator: 2,
-    });
+    expect(flour?.parsed?.displayText).toBe('1½ cups');
+    expect(flour?.parsed?.unit).toBe('g');
+    expect(flour?.parsed?.quantity).toEqual({ type: 'single', value: 180 });
   });
 
   it('keeps rawText for an unparsed optional ingredient', () => {

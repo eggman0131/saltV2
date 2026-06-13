@@ -66,7 +66,7 @@ function makeMatchedIngredient(): Ingredient {
       item: 'garlic',
       preparation: [],
       notes: null,
-      convertedWeight: null,
+      displayText: null,
     },
   };
 }

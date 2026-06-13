@@ -11,7 +11,7 @@ function matchedIngredient(overrides: Partial<Ingredient> = {}): Ingredient {
       item: 'garlic',
       preparation: ['minced'],
       notes: null,
-      convertedWeight: null,
+      displayText: null,
     },
     canonId: 'canon-abc',
     matchState: 'matched',

@@ -232,22 +232,12 @@ export interface RecipeAddRow {
   check: boolean;
 }
 
-// Compute the scaled amount/unit for an ingredient: convertedWeight (g/ml) when
-// available, falling back to parsed.quantity / parsed.unit. Only meaningful for
-// matched ingredients; mirrors the pre-#185 extraction arithmetic.
+// Compute the scaled amount/unit for an ingredient. quantity is always in metric
+// (g/ml) so no conversion needed — scale and round directly.
 function scaledAmountUnit(ing: Ingredient, scale: number): { amount?: number; unit?: string } {
-  if (ing.parsed === null) return {};
-  if (ing.parsed.convertedWeight !== null) {
-    return {
-      amount: Math.round(ing.parsed.convertedWeight.value * scale * 10) / 10,
-      unit: ing.parsed.convertedWeight.unit,
-    };
-  }
-  if (ing.parsed.quantity !== null) {
-    const amount = Math.round(quantityToNumber(ing.parsed.quantity) * scale * 100) / 100;
-    return ing.parsed.unit !== null ? { amount, unit: ing.parsed.unit } : { amount };
-  }
-  return {};
+  if (ing.parsed === null || ing.parsed.quantity === null) return {};
+  const amount = Math.round(quantityToNumber(ing.parsed.quantity) * scale * 10) / 10;
+  return ing.parsed.unit !== null ? { amount, unit: ing.parsed.unit } : { amount };
 }
 
 // Build the review plan for adding a recipe to a list at the given servings.

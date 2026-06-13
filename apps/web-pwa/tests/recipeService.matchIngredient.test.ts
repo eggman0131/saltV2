@@ -35,12 +35,12 @@ function makePendingIngredient(): Ingredient {
 }
 
 const parsedFlour = {
-  quantity: { type: 'single' as const, value: 2 },
-  unit: 'cups',
+  quantity: { type: 'single' as const, value: 240 },
+  unit: 'g' as const,
   item: 'flour',
   preparation: [],
   notes: null,
-  convertedWeight: null,
+  displayText: '2 cups',
 };
 
 const parseGroup: IngredientGroup = {

@@ -77,23 +77,23 @@ function makeRecipe(groups: IngredientGroup[]): Recipe {
   };
 }
 
-const countIngredient = {
-  quantity: { type: 'single' as const, value: 2 },
-  unit: 'cups',
+const gramIngredient = {
+  quantity: { type: 'single' as const, value: 200 },
+  unit: 'g' as const,
   item: 'flour',
   preparation: [],
   notes: null,
-  convertedWeight: null,
+  displayText: null,
 };
 
 function weightIngredient(grams: number) {
   return {
-    quantity: { type: 'single' as const, value: 1 },
-    unit: 'g',
+    quantity: { type: 'single' as const, value: grams },
+    unit: 'g' as const,
     item: 'flour',
     preparation: [],
     notes: null,
-    convertedWeight: { value: grams, unit: 'g' as const },
+    displayText: null,
   };
 }
 
@@ -121,7 +121,7 @@ describe('buildRecipeAddPlan', () => {
   it("matched 'needed' ingredient → add on, check off, canon name + scaled amount", () => {
     mockGetCanonItemsSnapshot.mockReturnValue([makeCanonItem('canon-flour', 'needed')]);
     const recipe = makeRecipe([
-      makeGroup([matchedIngredient('i1', 'canon-flour', countIngredient)]),
+      makeGroup([matchedIngredient('i1', 'canon-flour', gramIngredient)]),
     ]);
 
     const rows = buildRecipeAddPlan(recipe, 2); // servings == base, scale 1
@@ -132,8 +132,8 @@ describe('buildRecipeAddPlan', () => {
       fromCanon: true,
       matched: true,
       canonId: 'canon-flour',
-      amount: 2,
-      unit: 'cups',
+      amount: 200,
+      unit: 'g',
       add: true,
       check: false,
     });
@@ -142,7 +142,7 @@ describe('buildRecipeAddPlan', () => {
   it("matched 'check' ingredient → add and check on", () => {
     mockGetCanonItemsSnapshot.mockReturnValue([makeCanonItem('canon-flour', 'check')]);
     const recipe = makeRecipe([
-      makeGroup([matchedIngredient('i1', 'canon-flour', countIngredient)]),
+      makeGroup([matchedIngredient('i1', 'canon-flour', gramIngredient)]),
     ]);
     const rows = buildRecipeAddPlan(recipe, 2);
     expect(rows[0]).toMatchObject({ add: true, check: true });

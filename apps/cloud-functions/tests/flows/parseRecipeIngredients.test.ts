@@ -34,12 +34,12 @@ beforeEach(() => {
 type AiIngredient = {
   rawText: string;
   quantity: unknown;
-  unit: string | null;
+  unit: 'g' | 'ml' | null;
   item: string;
   preparation: string[];
   notes: string | null;
   isOptional: boolean;
-  convertedWeight: { value: number; unit: 'g' | 'ml' } | null;
+  displayText: string | null;
 };
 
 function aiOutput(groups: Array<{ name: string | null; items: AiIngredient[] }>) {
@@ -54,7 +54,7 @@ function simpleIngredient(overrides: Partial<AiIngredient> & { rawText: string }
     preparation: [],
     notes: null,
     isOptional: false,
-    convertedWeight: null,
+    displayText: null,
     ...overrides,
   };
 }
@@ -62,7 +62,7 @@ function simpleIngredient(overrides: Partial<AiIngredient> & { rawText: string }
 // ─── Range quantity ───────────────────────────────────────────────────────────
 
 describe('parseRecipeIngredients — range quantity', () => {
-  it('maps a range quantity to the ingredient parsed field', async () => {
+  it('maps a range quantity (in metric ml) to the ingredient parsed field', async () => {
     mockGenerate.mockResolvedValue({
       output: aiOutput([
         {
@@ -70,9 +70,10 @@ describe('parseRecipeIngredients — range quantity', () => {
           items: [
             simpleIngredient({
               rawText: '2-3 tbsp olive oil',
-              quantity: { type: 'range', min: 2, max: 3 },
-              unit: 'tbsp',
+              quantity: { type: 'range', min: 30, max: 45 },
+              unit: 'ml',
               item: 'olive oil',
+              displayText: '2-3 tbsp',
             }),
           ],
         },
@@ -84,16 +85,17 @@ describe('parseRecipeIngredients — range quantity', () => {
     });
 
     expect(result[0].items[0].rawText).toBe('2-3 tbsp olive oil');
-    expect(result[0].items[0].parsed.quantity).toEqual({ type: 'range', min: 2, max: 3 });
-    expect(result[0].items[0].parsed.unit).toBe('tbsp');
+    expect(result[0].items[0].parsed.quantity).toEqual({ type: 'range', min: 30, max: 45 });
+    expect(result[0].items[0].parsed.unit).toBe('ml');
+    expect(result[0].items[0].parsed.displayText).toBe('2-3 tbsp');
     expect(result[0].items[0].parsed.item).toBe('olive oil');
   });
 });
 
-// ─── Mixed "1 ½" quantity ─────────────────────────────────────────────────────
+// ─── Non-metric source quantities ────────────────────────────────────────────
 
-describe('parseRecipeIngredients — mixed fraction quantity', () => {
-  it('maps a mixed fraction to the whole/numerator/denominator form', async () => {
+describe('parseRecipeIngredients — non-metric source quantities', () => {
+  it('stores metric equivalent and original displayText for cup measures', async () => {
     mockGenerate.mockResolvedValue({
       output: aiOutput([
         {
@@ -101,10 +103,11 @@ describe('parseRecipeIngredients — mixed fraction quantity', () => {
           items: [
             simpleIngredient({
               rawText: '1 ½ cups plain flour, sifted',
-              quantity: { type: 'mixed', whole: 1, numerator: 1, denominator: 2 },
-              unit: 'cups',
+              quantity: { type: 'single', value: 180 },
+              unit: 'g',
               item: 'plain flour',
               preparation: ['sifted'],
+              displayText: '1½ cups',
             }),
           ],
         },
@@ -117,17 +120,13 @@ describe('parseRecipeIngredients — mixed fraction quantity', () => {
 
     const ingredient = result[0].items[0];
     expect(ingredient.rawText).toBe('1 ½ cups plain flour, sifted');
-    expect(ingredient.parsed.quantity).toEqual({
-      type: 'mixed',
-      whole: 1,
-      numerator: 1,
-      denominator: 2,
-    });
-    expect(ingredient.parsed.unit).toBe('cups');
+    expect(ingredient.parsed.quantity).toEqual({ type: 'single', value: 180 });
+    expect(ingredient.parsed.unit).toBe('g');
+    expect(ingredient.parsed.displayText).toBe('1½ cups');
     expect(ingredient.parsed.preparation).toEqual(['sifted']);
   });
 
-  it('handles a bare fraction (whole: 0)', async () => {
+  it('stores metric ml and original displayText for tsp measures', async () => {
     mockGenerate.mockResolvedValue({
       output: aiOutput([
         {
@@ -135,9 +134,10 @@ describe('parseRecipeIngredients — mixed fraction quantity', () => {
           items: [
             simpleIngredient({
               rawText: '½ tsp salt',
-              quantity: { type: 'mixed', whole: 0, numerator: 1, denominator: 2 },
-              unit: 'tsp',
+              quantity: { type: 'single', value: 2.5 },
+              unit: 'ml',
               item: 'salt',
+              displayText: '½ tsp',
             }),
           ],
         },
@@ -146,12 +146,9 @@ describe('parseRecipeIngredients — mixed fraction quantity', () => {
 
     const result = await (parseRecipeIngredientsFlow as Function)({ rawText: '½ tsp salt' });
 
-    expect(result[0].items[0].parsed.quantity).toEqual({
-      type: 'mixed',
-      whole: 0,
-      numerator: 1,
-      denominator: 2,
-    });
+    expect(result[0].items[0].parsed.quantity).toEqual({ type: 'single', value: 2.5 });
+    expect(result[0].items[0].parsed.unit).toBe('ml');
+    expect(result[0].items[0].parsed.displayText).toBe('½ tsp');
   });
 });
 
@@ -178,7 +175,7 @@ describe('parseRecipeIngredients — grouped recipe', () => {
             simpleIngredient({
               rawText: '2 cloves garlic, crushed',
               quantity: { type: 'single', value: 2 },
-              unit: 'cloves',
+              unit: null,
               item: 'garlic',
               preparation: ['crushed'],
             }),
@@ -247,10 +244,10 @@ describe('parseRecipeIngredients — optional garnish', () => {
   });
 });
 
-// ─── Unit conversion ─────────────────────────────────────────────────────────
+// ─── displayText threading ────────────────────────────────────────────────────
 
-describe('parseRecipeIngredients — unit conversion', () => {
-  it('threads convertedWeight through to the parsed field', async () => {
+describe('parseRecipeIngredients — displayText threading', () => {
+  it('threads metric quantity/unit and displayText through to the parsed field', async () => {
     mockGenerate.mockResolvedValue({
       output: aiOutput([
         {
@@ -258,18 +255,18 @@ describe('parseRecipeIngredients — unit conversion', () => {
           items: [
             simpleIngredient({
               rawText: '½ cup butter, melted',
-              quantity: { type: 'mixed', whole: 0, numerator: 1, denominator: 2 },
-              unit: 'cup',
+              quantity: { type: 'single', value: 113 },
+              unit: 'g',
               item: 'butter',
               preparation: ['melted'],
-              convertedWeight: { value: 113, unit: 'g' },
+              displayText: '½ cup',
             }),
             simpleIngredient({
               rawText: '1 tbsp olive oil',
-              quantity: { type: 'single', value: 1 },
-              unit: 'tbsp',
+              quantity: { type: 'single', value: 15 },
+              unit: 'ml',
               item: 'olive oil',
-              convertedWeight: { value: 15, unit: 'ml' },
+              displayText: '1 tbsp',
             }),
           ],
         },
@@ -280,11 +277,15 @@ describe('parseRecipeIngredients — unit conversion', () => {
       rawText: '½ cup butter, melted\n1 tbsp olive oil',
     });
 
-    expect(result[0].items[0].parsed.convertedWeight).toEqual({ value: 113, unit: 'g' });
-    expect(result[0].items[1].parsed.convertedWeight).toEqual({ value: 15, unit: 'ml' });
+    expect(result[0].items[0].parsed.quantity).toEqual({ type: 'single', value: 113 });
+    expect(result[0].items[0].parsed.unit).toBe('g');
+    expect(result[0].items[0].parsed.displayText).toBe('½ cup');
+    expect(result[0].items[1].parsed.quantity).toEqual({ type: 'single', value: 15 });
+    expect(result[0].items[1].parsed.unit).toBe('ml');
+    expect(result[0].items[1].parsed.displayText).toBe('1 tbsp');
   });
 
-  it('passes null convertedWeight through unchanged', async () => {
+  it('sets displayText null for count/item-based ingredients', async () => {
     mockGenerate.mockResolvedValue({
       output: aiOutput([
         {
@@ -293,7 +294,7 @@ describe('parseRecipeIngredients — unit conversion', () => {
             simpleIngredient({
               rawText: '2 cloves garlic',
               item: 'garlic',
-              convertedWeight: null,
+              displayText: null,
             }),
           ],
         },
@@ -302,7 +303,8 @@ describe('parseRecipeIngredients — unit conversion', () => {
 
     const result = await (parseRecipeIngredientsFlow as Function)({ rawText: '2 cloves garlic' });
 
-    expect(result[0].items[0].parsed.convertedWeight).toBeNull();
+    expect(result[0].items[0].parsed.displayText).toBeNull();
+    expect(result[0].items[0].parsed.unit).toBeNull();
   });
 });
 
