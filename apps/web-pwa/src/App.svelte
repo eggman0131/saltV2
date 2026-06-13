@@ -21,6 +21,7 @@
   import { members, initMembersSync } from './lib/membersService.js';
   import { initMealPlanSync } from './lib/mealPlanService.js';
   import { initRecipeSync } from './lib/recipeService.js';
+  import { initChatSync } from './lib/chatService.js';
   import { normaliseMemberEmail } from '@salt/domain';
   import SessionOverlay from './lib/dev/SessionOverlay.svelte';
 
@@ -33,6 +34,7 @@
     const unsubMembers = initMembersSync();
     const unsubMealPlan = initMealPlanSync();
     const unsubRecipes = initRecipeSync();
+    const unsubChat = initChatSync(auth.user.uid);
     return () => {
       unsubCanon();
       unsubEquipment();
@@ -40,6 +42,7 @@
       unsubMembers();
       unsubMealPlan();
       unsubRecipes();
+      unsubChat();
     };
   });
 

@@ -2,6 +2,7 @@ import {
   Blender,
   BookOpen,
   CalendarDays,
+  ChefHat,
   Home,
   Settings,
   Shield,
@@ -14,6 +15,8 @@ export const navItems: NavItem[] = [
   { id: 'shopping', label: 'Shop', icon: ShoppingCart, href: '#/shopping' },
   { id: 'mealplan', label: 'Meals', icon: CalendarDays, href: '#/mealplan' },
   { id: 'equipment', label: 'Kitchen', icon: Blender, href: '#/equipment' },
+  // AI Kitchen Assistant (issue #206) — available to all members.
+  { id: 'chat', label: 'Chef', icon: ChefHat, href: '#/chat' },
   { id: 'settings', label: 'Settings', icon: Settings, href: '#/settings' },
 ];
 

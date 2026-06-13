@@ -54,6 +54,8 @@ export {
   AccessorySchema,
   EquipmentItemSchema,
   EquipmentManifestSchema,
+  EQUIPMENT_MANIFEST_COLLECTION,
+  EQUIPMENT_MANIFEST_DOC_ID,
 } from './equipmentManifest.js';
 export type { AccessoryDoc, EquipmentItemDoc, EquipmentManifestDoc } from './equipmentManifest.js';
 
@@ -91,6 +93,21 @@ export type {
   ParseRecipeIngredientsAIOutput,
   ParseRecipeIngredientsOutput,
 } from './parseRecipeIngredients.js';
+
+export { MessageSchema, ChatSessionSchema } from './chatSession.js';
+export type { MessageDoc, ChatSessionDoc } from './chatSession.js';
+
+export { ChefChatInputSchema } from './chefChat.js';
+export type { ChefChatInput } from './chefChat.js';
+
+export { AuthorRecipeInputSchema, LibrarianOutputSchema } from './authorRecipe.js';
+export type {
+  AuthorRecipeInput,
+  LibrarianOutput,
+  LibrarianGroup,
+  LibrarianIngredient,
+  LibrarianStep,
+} from './authorRecipe.js';
 
 export {
   SingleQuantitySchema,

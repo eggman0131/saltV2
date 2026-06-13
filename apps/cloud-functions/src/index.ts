@@ -5,6 +5,7 @@ import { onCall, onCallGenkit, isSignedIn, HttpsError } from 'firebase-functions
 import {
   MatchOrCreateCanonInputSchema,
   CanonicaliseRecipeIngredientsInputSchema,
+  AuthorRecipeInputSchema,
 } from '@salt/domain/schemas';
 import {
   initServerObservability,
@@ -18,6 +19,8 @@ import { canonicaliseRecipeIngredientsFlow } from './flows/canonicaliseRecipeIng
 import { identifyEquipmentFlow } from './flows/identifyEquipment.js';
 import { populateEquipmentEntryFlow } from './flows/populateEquipmentEntry.js';
 import { parseRecipeIngredientsFlow } from './flows/parseRecipeIngredients.js';
+import { chefChatFlow } from './flows/chefChat.js';
+import { authorRecipeFlow } from './flows/authorRecipe.js';
 import { onShoppingListItemWrite } from './triggers/onShoppingListItemWrite.js';
 import { onCanonItemWritten } from './triggers/onCanonItemWritten.js';
 
@@ -158,6 +161,39 @@ export const parseRecipeIngredients = onCallGenkit(
     timeoutSeconds: 90,
   },
   parseRecipeIngredientsFlow,
+);
+
+// Librarian: conversation → recipe draft with canon-matched ingredients.
+// Uses onCall (not onCallGenkit) so we can bump memory for the batch
+// canonicalisation, mirroring canonicaliseRecipeIngredients.
+export const authorRecipe = onCall(
+  {
+    ...APP_CHECK_ENFORCEMENT,
+    secrets: [geminiApiKey, ldSdkKey],
+    timeoutSeconds: 120,
+    memory: '512MiB',
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Sign in required.');
+    }
+    const parsed = AuthorRecipeInputSchema.safeParse(request.data);
+    if (!parsed.success) {
+      throw new HttpsError('invalid-argument', 'Invalid request payload.');
+    }
+    await whenServerObservabilityReady();
+    return authorRecipeFlow(parsed.data);
+  },
+);
+
+export const chefChat = onCallGenkit(
+  {
+    ...APP_CHECK_ENFORCEMENT,
+    secrets: [geminiApiKey],
+    authPolicy: isSignedIn(),
+    timeoutSeconds: 120,
+  },
+  chefChatFlow,
 );
 
 export { onShoppingListItemWrite };

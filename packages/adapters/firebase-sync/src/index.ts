@@ -36,6 +36,14 @@ export {
 } from './shoppingListsConfigSubscription.js';
 export { subscribeMembers, upsertMember, deleteMember } from './membersSubscription.js';
 export { subscribeRecipes, loadRecipe, saveRecipe, deleteRecipe } from './recipeSubscription.js';
+export {
+  subscribeChatSessions,
+  loadChatSession,
+  saveChatSession,
+  deleteChatSession,
+} from './chatSessionSubscription.js';
+export { streamChefChat } from './chatCallables.js';
+export { callAuthorRecipe } from './authorRecipeCallable.js';
 export { callParseRecipeIngredients } from './recipeCallables.js';
 export {
   subscribeMealPlanConfig,
