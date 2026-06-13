@@ -441,6 +441,14 @@ async function applyClassification(
     newExtras = { reasoning: arbitrationFailureReasoning(arbResult) };
   }
 
+  // Failsafe: the AI may return a clean canonical name (e.g. "Garlic") that
+  // already exists in the snapshot even though the raw name (e.g. "1 head of
+  // garlic") failed all deterministic stages. Check before creating a duplicate.
+  const canonNameHit = findSnapshotMatch(createName, snapshot);
+  if (canonNameHit) {
+    return resolveMatch(store, canonNameHit, rawName, 'ai_arbitrated', commitLog);
+  }
+
   return persistNew(store, ids, createName, finalAisleId, commitLog, newExtras);
 }
 

@@ -6,6 +6,7 @@ import type { RecipeDoc, IngredientGroupDoc } from '@salt/domain/schemas';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 import { canonicaliseRecipeIngredientsFlow } from './canonicaliseRecipeIngredients.js';
+import { parseRecipeIngredientsFlow } from './parseRecipeIngredients.js';
 
 // Flash + temperature:0 for the librarian — accuracy over creativity (issue #206).
 const LIBRARIAN_MODEL = googleAI.model('gemini-flash-latest');
@@ -66,12 +67,33 @@ async function assembleDraft(raw: LibrarianOutput): Promise<RecipeDoc> {
     }
   }
 
+  // Parse raw texts to extract clean item names (strips quantity, unit, prep phrases).
+  // This mirrors what recipeService.canonicaliseIngredients does on the manual-entry path
+  // and ensures the canon matching stages see "garlic" not "1 head of garlic".
+  const parsedItemMap = new Map<string, string>();
+  if (allIngredients.length > 0) {
+    try {
+      const joinedRawText = allIngredients.map((i) => i.rawText).join('\n');
+      const parseResult = await parseRecipeIngredientsFlow({ rawText: joinedRawText });
+      for (const group of parseResult) {
+        for (const item of group.items) {
+          if (item.parsed?.item) parsedItemMap.set(item.rawText, item.parsed.item);
+        }
+      }
+    } catch {
+      // Parse failure is non-fatal — fall back to rawText as rawName below.
+    }
+  }
+
   // Batch canonicalise all ingredient raw texts.
   let canonResults: Awaited<ReturnType<typeof canonicaliseRecipeIngredientsFlow>> = [];
   if (allIngredients.length > 0) {
     try {
       canonResults = await canonicaliseRecipeIngredientsFlow({
-        items: allIngredients.map((i) => ({ rawName: i.rawText, rawText: i.rawText })),
+        items: allIngredients.map((i) => ({
+          rawName: parsedItemMap.get(i.rawText) ?? i.rawText,
+          rawText: i.rawText,
+        })),
       });
     } catch {
       // Canon failure is non-fatal — ingredients land as pending.
