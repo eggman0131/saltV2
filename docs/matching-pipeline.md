@@ -127,6 +127,8 @@ The pipeline falls back to the **highest-confidence shortlist candidate**, flagg
 
 The empty-shortlist case is different: with no candidates to fall back to, AI error or `'no-match'` results in a fresh create (with whatever aisle/metadata arbitration managed to return, or none). All four entry points (canon add, shopping list add, recipe add, recipe ingredient update) inherit this same rule via the shared CF.
 
+**Failsafe before `persistNew` (empty-shortlist and `forceCreate` paths):** After arbitration returns a `canonName` for the new item, `applyClassification` runs `findSnapshotMatch(canonName, snapshot)` before calling `persistNew`. If the name already exists in the snapshot (e.g., the AI correctly returns "Garlic" for a raw input of "1 head of garlic" that scored below threshold on stages 1–4), the pipeline resolves to the existing item as `ai_arbitrated` rather than creating a duplicate. This guard is needed because callers such as `authorRecipe` may pass raw ingredient text — quantity/unit tokens collapse stage 1–4 scores below threshold, landing on the empty-shortlist path, yet the AI often identifies the right canonical name.
+
 | AI response (non-empty shortlist) | Pipeline action | Decision returned |
 |---|---|---|
 | `match` with valid `itemId` | `appendCanonSynonym` on chosen item; AI `reasoning` stored on item if present | `ai_arbitrated` |
