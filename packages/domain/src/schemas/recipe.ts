@@ -36,17 +36,15 @@ export const QuantitySchema = z.discriminatedUnion('type', [
 
 export const ParsedIngredientSchema = z.object({
   quantity: QuantitySchema.nullable(),
-  unit: z.string().nullable(),
+  // Metric unit only. null for count/item-based ingredients (cloves, rashers, etc.)
+  unit: z.enum(['g', 'ml']).nullable(),
   item: z.string(),
   preparation: z.array(z.string()),
   notes: z.string().nullable(),
-  // Metric conversion of volumetric measures: g for solids, ml for liquids.
-  // null = no conversion applicable (already metric, item-based unit, or no quantity).
+  // Human-friendly display string for the original non-metric measure, e.g. "½ tsp"
+  // or "1 cup". null when the source was already in g/ml or has no unit.
   // .default(null) so documents written before this field was added still parse.
-  convertedWeight: z
-    .object({ value: z.number(), unit: z.enum(['g', 'ml']) })
-    .nullable()
-    .default(null),
+  displayText: z.string().nullable().default(null),
 });
 
 export const IngredientSchema = z.object({

@@ -92,17 +92,16 @@
   {#snippet children()}
     <ul class="flex flex-col gap-1" data-testid="chat-session-list">
       {#each sorted as session (session.id)}
-        <li class="flex items-center gap-2">
+        <li class="flex items-center gap-3 rounded border border-border bg-card px-3 py-2 text-sm">
           <button
-            class="flex-1 rounded px-2 py-2 text-left text-sm font-medium hover:bg-muted"
+            class="min-w-0 flex-1 text-left"
             onclick={() => push(`/chat/${session.id}`)}
             data-testid="chat-session-item"
           >
-            <span class="block truncate">{session.title}</span>
-            <span class="block text-xs font-normal text-muted-foreground">
-              {formatDate(session.updatedAt)}
-              {#if session.recipeId}<span class="ml-1 text-xs text-muted-foreground">· recipe</span
-                >{/if}
+            <span class="block truncate font-medium">{session.title}</span>
+            <span class="block text-xs text-muted-foreground">
+              {formatDate(session.updatedAt)}{#if session.recipeId}
+                · recipe{/if}
             </span>
           </button>
           <Button

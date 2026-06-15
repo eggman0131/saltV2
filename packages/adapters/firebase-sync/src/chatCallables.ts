@@ -15,6 +15,22 @@ function getErr(err: unknown): DomainError {
   return { kind: 'NetworkError', reason: 'transient' };
 }
 
+export async function callGenerateChatTitle(
+  userMessage: string,
+  assistantResponse: string,
+): Promise<ReadResult<string, DomainError>> {
+  try {
+    const fn = httpsCallable<{ userMessage: string; assistantResponse: string }, string>(
+      getFunctions(undefined, REGION),
+      'generateChatTitle',
+    );
+    const res = await fn({ userMessage, assistantResponse });
+    return success(res.data);
+  } catch (err) {
+    return failure(getErr(err));
+  }
+}
+
 // Streams the chef's reply chunk-by-chunk. onChunk is called for each text
 // fragment as it arrives. The returned promise resolves to the full reply text
 // once the stream is complete, or a Failure on error.

@@ -85,13 +85,37 @@
     return Number.isFinite(n) ? n : null;
   }
 
-  const tagsText = $derived(draft.metadata.tags.join(', '));
-  function setTags(value: string): void {
-    const tags = value
-      .split(',')
-      .map((t) => t.trim())
-      .filter((t) => t.length > 0);
-    setMetadata({ tags });
+  function normalizeTag(raw: string): string {
+    return raw.toLowerCase().trim().replace(/\s+/g, '-');
+  }
+
+  let tagInput = $state('');
+
+  const allExistingTags = $derived([...new Set($recipes.flatMap((r) => r.metadata.tags))].sort());
+
+  const availableSuggestions = $derived(
+    allExistingTags.filter((t) => !draft.metadata.tags.includes(t)),
+  );
+
+  function addTag(raw: string): void {
+    const tag = normalizeTag(raw);
+    if (tag && !draft.metadata.tags.includes(tag)) {
+      setMetadata({ tags: [...draft.metadata.tags, tag] });
+    }
+    tagInput = '';
+  }
+
+  function removeTag(tag: string): void {
+    setMetadata({ tags: draft.metadata.tags.filter((t) => t !== tag) });
+  }
+
+  function handleTagKeydown(e: KeyboardEvent): void {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      if (tagInput.trim()) addTag(tagInput);
+    } else if (e.key === 'Backspace' && !tagInput && draft.metadata.tags.length > 0) {
+      removeTag(draft.metadata.tags[draft.metadata.tags.length - 1]!);
+    }
   }
 
   // ─── Ingredient-group helpers ─────────────────────────────────────────────────
@@ -343,6 +367,7 @@
           value={draft.description ?? ''}
           onValueChange={(v) => (draft = { ...draft, description: v.trim() === '' ? null : v })}
           rows={2}
+          autoresize
           data-testid="recipe-description-input"
         />
       </section>
@@ -388,6 +413,7 @@
               value={pasteText}
               onValueChange={(v) => (pasteText = v)}
               rows={6}
+              autoresize
               data-testid="recipe-parse-text-input"
             />
             <div class="flex gap-2">
@@ -556,6 +582,7 @@
                 value={step.text}
                 onValueChange={(v) => setStepText(step.id, v)}
                 rows={2}
+                autoresize
                 class="flex-1"
                 data-testid="recipe-step-input"
               />
@@ -622,6 +649,7 @@
                 value={step.note ?? ''}
                 onValueChange={(v) => setStepNote(step.id, v)}
                 rows={2}
+                autoresize
                 data-testid="recipe-step-note-input"
               />
             </div>
@@ -668,13 +696,50 @@
             data-testid="recipe-total-input"
           />
         </div>
-        <TextField
-          label="Tags"
-          description="Comma-separated, e.g. vegetarian, weeknight"
-          value={tagsText}
-          onValueChange={setTags}
-          data-testid="recipe-tags-input"
-        />
+        <!-- Tag picker -->
+        <div class="flex flex-col gap-1.5">
+          <p class="text-sm font-medium">Tags</p>
+          <div
+            class="flex min-h-9 flex-wrap items-center gap-1.5 rounded border border-input bg-background px-3 py-1.5 focus-within:ring-2 focus-within:ring-ring"
+          >
+            {#each draft.metadata.tags as tag (tag)}
+              <span
+                class="inline-flex items-center gap-1 rounded bg-muted px-2 py-0.5 text-xs font-medium"
+              >
+                {tag}
+                <button
+                  type="button"
+                  class="text-muted-foreground hover:text-foreground"
+                  onclick={() => removeTag(tag)}
+                  aria-label="Remove {tag}"
+                >
+                  <Icon name="X" size={10} />
+                </button>
+              </span>
+            {/each}
+            <input
+              type="text"
+              class="min-w-24 flex-1 bg-transparent py-0.5 text-sm outline-none placeholder:text-muted-foreground"
+              placeholder={draft.metadata.tags.length === 0 ? 'Add tags…' : ''}
+              bind:value={tagInput}
+              onkeydown={handleTagKeydown}
+              data-testid="recipe-tags-input"
+            />
+          </div>
+          {#if availableSuggestions.length > 0}
+            <div class="flex flex-wrap gap-1.5">
+              {#each availableSuggestions as tag (tag)}
+                <button
+                  type="button"
+                  class="rounded border border-dashed border-muted-foreground/40 px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:border-muted-foreground hover:text-foreground"
+                  onclick={() => addTag(tag)}
+                >
+                  + {tag}
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
       </section>
 
       <!-- Notes -->
@@ -686,6 +751,7 @@
           value={draft.notes ?? ''}
           onValueChange={(v) => (draft = { ...draft, notes: v.trim() === '' ? null : v })}
           rows={3}
+          autoresize
           data-testid="recipe-notes-input"
         />
       </section>

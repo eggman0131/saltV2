@@ -24,12 +24,17 @@ export const authorRecipeFlow = ai.defineFlow(
       .map((m) => `${m.role === 'user' ? 'User' : 'Chef'}: ${m.text}`)
       .join('\n\n');
 
+    const tagVocab =
+      input.existingTags.length > 0
+        ? `\n\nExisting tags in this recipe collection (prefer these where appropriate; add a new tag only if meaningfully different): ${input.existingTags.join(', ')}.`
+        : '';
+
     const result = await withAiTimeout(
       'authorRecipe',
       () =>
         ai.generate({
           model: LIBRARIAN_MODEL,
-          system: LIBRARIAN_SYSTEM,
+          system: LIBRARIAN_SYSTEM + tagVocab,
           prompt: conversationText,
           output: { schema: LibrarianOutputSchema },
           config: { temperature: 0 },
@@ -141,7 +146,9 @@ async function assembleDraft(raw: LibrarianOutput): Promise<RecipeDoc> {
       totalTimeMinutes: raw.totalTimeMinutes,
       prepTimeMinutes: raw.prepTimeMinutes,
       cookTimeMinutes: raw.cookTimeMinutes,
-      tags: raw.tags,
+      tags: raw.tags
+        .map((t) => t.toLowerCase().trim().replace(/\s+/g, '-'))
+        .filter((t) => t.length > 0),
     },
     source: { type: 'manual' },
     notes: raw.notes,
@@ -161,11 +168,14 @@ Given a cooking conversation between a user and a chef, extract and structure a 
 - totalTimeMinutes/prepTimeMinutes/cookTimeMinutes: integers in minutes, or null.
 - tags: short lowercase keywords (e.g. ["vegetarian","quick","pasta"]). Empty array if none.
 - ingredientGroups: group ingredients by course/stage (null name = default group).
-  Each ingredient: rawText (verbatim as stated), isOptional (true only if explicitly optional),
+  Each ingredient: rawText (verbatim as stated — preserve the original wording including any
+  tsp/tbsp/cup measures the chef used), isOptional (true only if explicitly optional),
   firstUsedInStepOrdinal (0-based index into the steps array for the first step that uses this
   ingredient; null if the ingredient has no obvious first step).
 - steps: numbered method steps. Each step: text (clear instruction), timerMinutes (integer or null),
-  note (clarification or null).
+  note: a genuine warning or non-obvious caveat only — something that would ruin the dish if missed
+  (e.g. "don't let the heat exceed 80°C or the custard will scramble"). Leave null for routine
+  instructions; most steps should have no note. All temperatures must be in °C only — never Fahrenheit.
 - notes: chef's overall notes or tips, or null.
 
 Extract only what is present in the conversation. Do not invent ingredients or steps not discussed.`;

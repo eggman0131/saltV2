@@ -10,12 +10,13 @@ export type ParseRecipeIngredientsInput = z.infer<typeof ParseRecipeIngredientsI
 const ParsedIngredientAISchema = z.object({
   rawText: z.string(),
   quantity: QuantitySchema.nullable(),
-  unit: z.string().nullable(),
+  unit: z.enum(['g', 'ml']).nullable(),
   item: z.string(),
   preparation: z.array(z.string()),
   notes: z.string().nullable(),
   isOptional: z.boolean(),
-  convertedWeight: z.object({ value: z.number(), unit: z.enum(['g', 'ml']) }).nullable(),
+  // Human-friendly original measure (e.g. "½ tsp"). null if source was already metric.
+  displayText: z.string().nullable(),
 });
 
 const IngredientGroupAISchema = z.object({

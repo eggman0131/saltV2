@@ -115,17 +115,23 @@ const saltComponentPlugin = plugin(({ addComponents }) => {
       '@apply inline-flex items-center justify-center gap-2 rounded font-medium transition-colors duration-fast ease-standard motion-reduce:transition-none disabled:pointer-events-none data-[disabled]:opacity-50':
         {},
     },
-    '.salt-button--solid': { '@apply bg-primary text-primary-foreground hover:bg-primary/90': {} },
+    '.salt-button--solid': {
+      '@apply border border-transparent bg-primary text-primary-foreground hover:bg-primary/90': {},
+    },
     '.salt-button--outline': {
       '@apply border border-secondary text-secondary bg-background hover:bg-secondary hover:text-secondary-foreground':
         {},
     },
-    '.salt-button--ghost': { '@apply bg-transparent hover:bg-muted hover:text-foreground': {} },
+    '.salt-button--ghost': {
+      '@apply border border-transparent bg-transparent hover:bg-muted hover:text-foreground': {},
+    },
     '.salt-button--link': {
-      '@apply bg-transparent underline-offset-4 hover:underline text-primary': {},
+      '@apply border border-transparent bg-transparent underline-offset-4 hover:underline text-primary':
+        {},
     },
     '.salt-button--destructive': {
-      '@apply bg-destructive text-destructive-foreground hover:bg-destructive/90': {},
+      '@apply border border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/90':
+        {},
     },
     '.salt-button--sm': { '@apply h-8 px-3 text-sm': {} },
     '.salt-button--md': { '@apply h-9 px-4 text-sm': {} },

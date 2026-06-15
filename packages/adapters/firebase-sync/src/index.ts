@@ -42,7 +42,7 @@ export {
   saveChatSession,
   deleteChatSession,
 } from './chatSessionSubscription.js';
-export { streamChefChat } from './chatCallables.js';
+export { streamChefChat, callGenerateChatTitle } from './chatCallables.js';
 export { callAuthorRecipe } from './authorRecipeCallable.js';
 export { callParseRecipeIngredients } from './recipeCallables.js';
 export {

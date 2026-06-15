@@ -11,13 +11,14 @@ export type MatchState = 'pending' | 'matched' | 'failed';
 // the Ingredient). null fields mean "absent", not "unknown".
 export interface ParsedIngredient {
   readonly quantity: Quantity | null;
-  readonly unit: string | null;
+  // Metric unit only ('g' | 'ml'). null for count/item-based ingredients.
+  readonly unit: 'g' | 'ml' | null;
   readonly item: string;
   readonly preparation: readonly string[];
   readonly notes: string | null;
-  // Metric conversion of volumetric measures (cup/tbsp/tsp → g or ml).
-  // null when no conversion applies: unit is already metric, item-based, or absent.
-  readonly convertedWeight: { readonly value: number; readonly unit: 'g' | 'ml' } | null;
+  // Human-friendly original measure (e.g. "½ tsp", "1 cup"). null if source
+  // was already in g/ml or has no unit.
+  readonly displayText: string | null;
 }
 
 export interface Ingredient {
