@@ -28,7 +28,9 @@ const DEV_CONTEXT_KEY = 'dev-local';
 
 export function identifyUser(user: User): void {
   const key = _useEmulators ? DEV_CONTEXT_KEY : user.uid;
-  identifyObservabilityUser(key, user.email ?? undefined);
+  // It's a single-family app with no privacy concerns, so surface the email as
+  // the human-readable name in the LD UI (the key stays the stable uid).
+  identifyObservabilityUser(key, user.email ?? undefined, user.email ?? undefined);
 }
 
 export function identifyAnonymous(): void {
