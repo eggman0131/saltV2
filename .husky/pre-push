@@ -1,1 +1,8 @@
-/home/eggman/.local/share/pnpm/pnpm test
+# Resolve pnpm from PATH so the hook is portable across machines/shells
+# (macOS, Linux, WSL). Falls back to corepack if pnpm isn't on PATH.
+pnpm_bin="$(command -v pnpm || true)"
+if [ -z "$pnpm_bin" ]; then
+  pnpm_bin="corepack pnpm"
+fi
+
+$pnpm_bin test
