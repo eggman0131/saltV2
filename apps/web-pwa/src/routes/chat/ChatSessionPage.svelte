@@ -34,6 +34,7 @@
     if (!session || !inputText.trim() || isSending) return;
     const text = inputText.trim();
     inputText = '';
+    if (inputEl) inputEl.style.height = '';
     isSending = true;
     streamingText = '';
 
@@ -56,7 +57,8 @@
   async function handleSaveAsRecipe(): Promise<void> {
     if (!session || isSavingRecipe) return;
     isSavingRecipe = true;
-    const result = await callAuthorRecipe({ messages: session.messages });
+    const existingTags = [...new Set($recipes.flatMap((r) => r.metadata.tags))];
+    const result = await callAuthorRecipe({ messages: session.messages, existingTags });
     if (result.kind !== 'ok') {
       isSavingRecipe = false;
       addToast('Failed to generate recipe.', 'destructive');
@@ -87,7 +89,8 @@
       return;
     }
     isApplying = true;
-    const result = await callAuthorRecipe({ messages: session.messages });
+    const existingTags = [...new Set($recipes.flatMap((r) => r.metadata.tags))];
+    const result = await callAuthorRecipe({ messages: session.messages, existingTags });
     if (result.kind !== 'ok') {
       isApplying = false;
       addToast('Failed to generate recipe update.', 'destructive');
@@ -118,6 +121,15 @@
       void handleSend();
     }
   }
+
+  let inputEl: HTMLTextAreaElement | undefined = $state();
+
+  function handleInput(e: Event): void {
+    const el = e.target as HTMLTextAreaElement;
+    inputText = el.value;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }
 </script>
 
 {#if session === null}
@@ -137,7 +149,7 @@
     title={session.title}
     onBack={() => push('/chat')}
     backLabel="Chef"
-    class="flex flex-col"
+    class="p-4 sm:p-6"
   >
     {#snippet actions()}
       {#if !session.recipeId && session.messages.some((m) => m.role === 'assistant')}
@@ -175,26 +187,22 @@
         </Button>
       {/if}
     {/snippet}
-    <!-- Message list -->
-    <div
-      class="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-4 sm:px-6"
-      data-testid="chat-messages"
-    >
+
+    <!-- pb-36 keeps the last message clear of the fixed input bar -->
+    <div class="mx-auto flex w-full max-w-2xl flex-col gap-4 pb-36" data-testid="chat-messages">
       {#if session.messages.length === 0 && !isSending}
-        <p class="text-center text-sm text-muted-foreground py-12">
+        <p class="py-12 text-center text-sm text-muted-foreground">
           Ask me anything about cooking.
         </p>
       {/if}
 
       {#each session.messages as msg (msg.id)}
         <div
-          class="flex flex-col gap-1 {msg.role === 'user' ? 'items-end' : 'items-start'}"
+          class="flex {msg.role === 'user' ? 'justify-end' : 'justify-start'}"
           data-testid="chat-message-{msg.role}"
         >
           <div
-            class="max-w-[85%] rounded-2xl px-4 py-2 text-sm {msg.role === 'user'
-              ? 'bg-primary text-primary-foreground'
-              : 'bg-muted text-foreground'}"
+            class="max-w-[85%] text-sm {msg.role === 'user' ? 'rounded-lg bg-muted px-3 py-2' : ''}"
           >
             {#if msg.role === 'assistant'}
               <Markdown text={msg.text} />
@@ -205,10 +213,9 @@
         </div>
       {/each}
 
-      <!-- Streaming assistant reply in progress -->
       {#if isSending && streamingText}
-        <div class="flex flex-col gap-1 items-start" data-testid="chat-message-streaming">
-          <div class="max-w-[85%] rounded-2xl bg-muted px-4 py-2 text-sm text-foreground">
+        <div class="flex justify-start" data-testid="chat-message-streaming">
+          <div class="max-w-[85%] text-sm">
             <Markdown text={streamingText} />
           </div>
         </div>
@@ -221,31 +228,41 @@
 
       <div bind:this={messagesEnd}></div>
     </div>
+  </DetailPage>
 
-    <!-- Input bar -->
-    <div class="border-t bg-background px-4 py-3 sm:px-6" data-testid="chat-input-bar">
-      <div class="flex items-end gap-2">
+  <!-- Input bar — fixed above BottomNav on mobile, at viewport bottom on desktop -->
+  <div
+    class="fixed inset-x-0 bottom-14 z-20 border-t border-border bg-card px-4 py-3 lg:bottom-0"
+    data-testid="chat-input-bar"
+  >
+    <div class="mx-auto flex max-w-2xl items-end gap-3">
+      <div
+        class="flex flex-1 items-start rounded-md border border-input bg-background px-3 text-sm focus-within:ring-2 focus-within:ring-ring {isSending
+          ? 'opacity-50'
+          : ''}"
+      >
         <textarea
-          class="flex-1 resize-none rounded-lg border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-          rows={1}
+          bind:this={inputEl}
+          class="flex-1 resize-none bg-transparent py-2 outline-none placeholder:text-muted-foreground"
+          rows={3}
           placeholder="Message the chef…"
-          bind:value={inputText}
+          value={inputText}
           onkeydown={handleKeydown}
+          oninput={handleInput}
           disabled={isSending}
           data-testid="chat-input"
         ></textarea>
-        <Button
-          size="sm"
-          onclick={handleSend}
-          disabled={isSending || !inputText.trim()}
-          loading={isSending}
-          aria-label="Send"
-          data-testid="chat-send-btn"
-        >
-          {#snippet leading()}<Icon name="SendHorizontal" size={16} />{/snippet}
-          Send
-        </Button>
       </div>
+      <Button
+        onclick={handleSend}
+        disabled={isSending || !inputText.trim()}
+        loading={isSending}
+        aria-label="Send"
+        data-testid="chat-send-btn"
+      >
+        {#snippet leading()}<Icon name="SendHorizontal" size={16} />{/snippet}
+        Send
+      </Button>
     </div>
-  </DetailPage>
+  </div>
 {/if}

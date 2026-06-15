@@ -21,6 +21,7 @@ import { populateEquipmentEntryFlow } from './flows/populateEquipmentEntry.js';
 import { parseRecipeIngredientsFlow } from './flows/parseRecipeIngredients.js';
 import { chefChatFlow } from './flows/chefChat.js';
 import { authorRecipeFlow } from './flows/authorRecipe.js';
+import { generateChatTitleFlow } from './flows/generateChatTitle.js';
 import { onShoppingListItemWrite } from './triggers/onShoppingListItemWrite.js';
 import { onCanonItemWritten } from './triggers/onCanonItemWritten.js';
 
@@ -194,6 +195,15 @@ export const chefChat = onCallGenkit(
     timeoutSeconds: 120,
   },
   chefChatFlow,
+);
+
+export const generateChatTitle = onCallGenkit(
+  {
+    ...APP_CHECK_ENFORCEMENT,
+    secrets: [geminiApiKey],
+    authPolicy: isSignedIn(),
+  },
+  generateChatTitleFlow,
 );
 
 export { onShoppingListItemWrite };

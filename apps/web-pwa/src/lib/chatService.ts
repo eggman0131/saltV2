@@ -3,6 +3,7 @@ import {
   saveChatSession,
   deleteChatSession,
   streamChefChat,
+  callGenerateChatTitle,
 } from '@salt/firebase-sync';
 import { createLDErrorReportingAdapter } from '@salt/ld-observability';
 import type { ChatSessionDoc } from '@salt/domain/schemas';
@@ -124,6 +125,8 @@ export async function sendMessage(
   text: string,
   onChunk: (chunk: string) => void,
 ): Promise<ReadResult<ChatSessionDoc, DomainError>> {
+  const isFirstExchange = session.messages.length === 0;
+
   const userMsg: ChatSessionDoc['messages'][number] = {
     id: crypto.randomUUID(),
     role: 'user',
@@ -134,7 +137,6 @@ export async function sendMessage(
   const sessionWithUser: ChatSessionDoc = {
     ...session,
     messages: [...session.messages, userMsg],
-    title: session.messages.length === 0 ? text.slice(0, 60) : session.title,
   };
 
   // Optimistically update with user message. Snapshot the prior store state so a
@@ -170,5 +172,15 @@ export async function sendMessage(
 
   const saveResult = await persistSession(finalSession);
   if (saveResult.kind === 'err') return saveResult;
+
+  if (isFirstExchange) {
+    // Generate a short title in the background — doesn't block the response.
+    void callGenerateChatTitle(text, streamResult.value).then((titleResult) => {
+      if (titleResult.kind === 'ok' && titleResult.value.trim()) {
+        void persistSession({ ...finalSession, title: titleResult.value.trim() });
+      }
+    });
+  }
+
   return success(finalSession);
 }

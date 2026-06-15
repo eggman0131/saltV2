@@ -5,6 +5,7 @@ import { MessageSchema } from './chatSession.js';
 // user wants to turn into a recipe (issue #206, Phase 4).
 export const AuthorRecipeInputSchema = z.object({
   messages: z.array(MessageSchema),
+  existingTags: z.array(z.string()).optional().default([]),
 });
 
 export type AuthorRecipeInput = z.infer<typeof AuthorRecipeInputSchema>;
