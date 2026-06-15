@@ -205,9 +205,7 @@ class TaskPilotProvider {
   }
 
   runningExecution(label) {
-    return vscode.tasks.taskExecutions.find(
-      (execution) => getTaskLabel(execution.task) === label,
-    );
+    return vscode.tasks.taskExecutions.find((execution) => getTaskLabel(execution.task) === label);
   }
 
   async findTask(label) {
