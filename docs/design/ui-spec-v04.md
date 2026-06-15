@@ -791,3 +791,31 @@ All styles are applied via `:global()` selectors scoped under `.salt-md` so they
 - GFM features (tables, strikethrough) are parsed and rendered (not passed through as raw text).
 - The `class` prop is merged onto the wrapper `<div>` alongside `salt-md`.
 - The component does **not** expose event handlers or interactive behaviour — it is display-only.
+
+---
+
+# 13. Pinned interaction constraints
+
+This section records deliberate interaction decisions for existing primitives that are not otherwise captured in v0.2–v0.3. These constraints must be preserved when regenerating or refactoring these components.
+
+## 13.1 `ToastViewport` — `pointer-events-none` container
+
+**Constraint:** The `ToastViewport` container div must carry `pointer-events-none`. Each rendered `Toast` must re-enable `pointer-events-auto` on its own root element.
+
+**Rationale:** `ToastViewport` is a fixed, full-width strip anchored at the bottom of the viewport (above `BottomNav` in z-order). This strip is present in the DOM even when no toasts are visible. Without `pointer-events-none` on the container, the empty strip swallows tap events intended for the `BottomNav` beneath it.
+
+**Contract:**
+- `ToastViewport` class string must include `pointer-events-none`.
+- `Toast` (root) class string must include `pointer-events-auto`.
+- Do not remove either class during style refactors.
+
+## 13.2 `BottomNav` — full-height tap targets (`items-stretch`)
+
+**Constraint:** The `BottomNav` `<ul>` must use `items-stretch` (not `items-center`). Each `<li>` must be `flex flex-1`; each `<a>` must be `flex flex-1`.
+
+**Rationale:** Without `items-stretch`, each `<a>` is only as tall as its content (icon + label), leaving dead strips above and below the tappable area within the `h-14` nav bar. `items-stretch` makes the `<a>` fill the full column height so the entire strip is tappable regardless of where the finger lands.
+
+**Contract:**
+- `<ul class="... items-stretch ...">` — `items-center` is forbidden here.
+- `<li class="flex flex-1">` — each tab column must fill the row height.
+- `<a class="... flex flex-1 ...">` — the anchor inherits the full height via flex stretch.
