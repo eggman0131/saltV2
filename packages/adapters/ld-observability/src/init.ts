@@ -26,8 +26,11 @@ export function initLDObservability(clientSideId: string, opts?: LDObservability
   void client.start();
 }
 
-export function identifyObservabilityUser(uid: string, email?: string): void {
-  void client?.identify({ kind: 'user', key: uid, email, anonymous: false });
+// `name` sets the human-readable label LaunchDarkly's Contexts and session-replay
+// UI show in place of the opaque `key`. The key stays the stable uid so MAU dedup
+// is unaffected; `name` is display-only.
+export function identifyObservabilityUser(uid: string, email?: string, name?: string): void {
+  void client?.identify({ kind: 'user', key: uid, name, email, anonymous: false });
 }
 
 export function identifyObservabilityAnonymous(): void {
