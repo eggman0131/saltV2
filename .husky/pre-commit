@@ -1,4 +1,10 @@
-# Use absolute path to pnpm for sandboxed environments
-/home/eggman/.local/share/pnpm/pnpm exec lint-staged
-/home/eggman/.local/share/pnpm/pnpm typecheck
-/home/eggman/.local/share/pnpm/pnpm depcruise --config .dependency-cruiser.cjs packages apps
+# Resolve pnpm from PATH so the hook is portable across machines/shells
+# (macOS, Linux, WSL). Falls back to corepack if pnpm isn't on PATH.
+pnpm_bin="$(command -v pnpm || true)"
+if [ -z "$pnpm_bin" ]; then
+  pnpm_bin="corepack pnpm"
+fi
+
+$pnpm_bin exec lint-staged
+$pnpm_bin typecheck
+$pnpm_bin depcruise --config .dependency-cruiser.cjs packages apps
