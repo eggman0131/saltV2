@@ -8,7 +8,7 @@
     "node": "22"
   },
   "scripts": {
-    "build": "rm -rf dist && esbuild src/index.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/index.js --external:firebase-admin --external:firebase-admin/* --external:firebase-functions --external:firebase-functions/* --external:sharp --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\" && cp src/flows/assets/canon-icon-seed.png dist/canon-icon-seed.png && node scripts/write-deploy-package.mjs && npm install --prefix dist --omit=dev --no-audit --no-fund --loglevel=error",
+    "build": "rm -rf dist && esbuild src/index.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/index.js --external:firebase-admin --external:firebase-admin/* --external:firebase-functions --external:firebase-functions/* --external:sharp --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\" && cp src/flows/assets/canon-icon-seed.png dist/canon-icon-seed.png && node scripts/write-deploy-package.mjs && npm install --prefix dist --omit=dev --no-audit --no-fund --loglevel=error --os=linux --cpu=$(node -p process.arch) --libc=glibc --include=optional",
     "dev": "NODE_OPTIONS='--disable-warning=DEP0040' genkit start --port 4001 -- tsx --env-file=.secret.local --watch src/dev.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
