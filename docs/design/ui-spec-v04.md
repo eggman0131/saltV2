@@ -726,3 +726,68 @@ The pieces:
 - The `Checkbox` reflects `selected` and invokes `onToggleSelect` on change.
 - `shaded` and `selected` styling render as specified.
 - `narrow` and `wide` snippets render at the correct breakpoints.
+
+---
+
+# 12. Markdown (primitive)
+
+## 12.1 Overview
+
+`Markdown` is a lightweight read-only Markdown renderer. It wraps [`svelte-exmarkdown`](https://www.npmjs.com/package/svelte-exmarkdown) with the GFM (GitHub Flavored Markdown) plugin and scopes all output under the `salt-md` CSS class so host pages never need to supply prose styles.
+
+Primary use case: rendering AI-generated assistant responses in the chat UI (AI Kitchen Assistant). The primitive lives in `@salt/ui-components` so any future feature that needs rich-text display can reuse it without pulling in a second Markdown library.
+
+## 12.2 Props
+
+| Name    | Type                  | Default | Notes                                                      |
+| ------- | --------------------- | ------- | ---------------------------------------------------------- |
+| `text`  | `string`              | —       | Markdown source string to render                           |
+| `class` | `string \| undefined` | —       | Extra classes merged onto the `salt-md` wrapper `<div>`    |
+
+## 12.3 Implementation
+
+- **File:** `packages/ui-components/src/primitives/Markdown/Markdown.svelte`
+- **Renderer:** `svelte-exmarkdown` (`<Markdown md={text} plugins={[gfmPlugin()]} />`)
+- **Plugin:** `gfmPlugin()` from `svelte-exmarkdown/gfm` — adds tables, strikethrough, task lists, and autolinks.
+- **Wrapper:** `<div class={cn('salt-md', className)}>` — the `salt-md` scope prevents styles from leaking into or out of the component.
+
+## 12.4 `salt-md` CSS scope
+
+All styles are applied via `:global()` selectors scoped under `.salt-md` so they target only `svelte-exmarkdown`'s rendered HTML without polluting the rest of the app.
+
+| Element          | Style applied                                                           |
+| ---------------- | ----------------------------------------------------------------------- |
+| `:first-child`   | `margin-top: 0`                                                         |
+| `:last-child`    | `margin-bottom: 0`                                                      |
+| `p`              | `margin: 0`; successive paragraphs separated by `0.5rem` top margin     |
+| `ul`             | `margin: 0.25rem 0; padding-left: 1.25rem; list-style: disc`           |
+| `ol`             | `margin: 0.25rem 0; padding-left: 1.25rem; list-style: decimal`        |
+| `li`             | `margin: 0.125rem 0`                                                    |
+| `h1`–`h6`        | `font-weight: 600; line-height: 1.3; margin: 0.5rem 0 0.25rem`; font sizes step from `1.125rem` (h1) down to `1rem` (h3); h4–h6 inherit h3 size |
+| `strong`         | `font-weight: 600`                                                      |
+| `em`             | `font-style: italic`                                                    |
+| `a`              | `text-decoration: underline`                                            |
+| `code` (inline)  | `font-family: ui-monospace, monospace; font-size: 0.875em; background: rgb(0 0 0 / 0.06); padding: 0.0625rem 0.25rem; border-radius: 0.25rem` |
+| `pre`            | `background: rgb(0 0 0 / 0.06); padding: 0.5rem 0.75rem; border-radius: 0.5rem; overflow-x: auto; margin: 0.5rem 0` |
+| `pre code`       | Resets `background` and `padding` so block-code doesn't double-apply the inline-code tint |
+| `blockquote`     | `border-left: 3px solid currentColor; opacity: 0.85; padding-left: 0.75rem; margin: 0.5rem 0` |
+| `hr`             | `border: none; border-top: 1px solid currentColor; opacity: 0.2; margin: 0.5rem 0` |
+| `table`          | `border-collapse: collapse; margin: 0.5rem 0`                           |
+| `th`, `td`       | `border: 1px solid currentColor; padding: 0.25rem 0.5rem`              |
+
+## 12.5 Usage example
+
+```svelte
+<script lang="ts">
+  import { Markdown } from '@salt/ui-components';
+</script>
+
+<Markdown text={assistantReply} class="text-sm" />
+```
+
+## 12.6 Testing requirements
+
+- Renders plain text without wrapping it in extra elements.
+- GFM features (tables, strikethrough) are parsed and rendered (not passed through as raw text).
+- The `class` prop is merged onto the wrapper `<div>` alongside `salt-md`.
+- The component does **not** expose event handlers or interactive behaviour — it is display-only.
