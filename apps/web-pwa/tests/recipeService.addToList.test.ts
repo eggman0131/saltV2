@@ -97,6 +97,17 @@ function weightIngredient(grams: number) {
   };
 }
 
+// Count/item-based ingredient (e.g. "2 eggs") — no metric unit, so unit is null
+// (see recipe schema: unit is null for count/item-based ingredients).
+const countIngredient = {
+  quantity: { type: 'single' as const, value: 2 },
+  unit: null,
+  item: 'eggs',
+  preparation: [],
+  notes: null,
+  displayText: null,
+};
+
 function matchedIngredient(id: string, canonId: string, parsed: unknown) {
   return {
     id,
