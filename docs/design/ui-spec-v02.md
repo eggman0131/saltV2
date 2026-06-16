@@ -474,31 +474,28 @@ export function createButtonState(opts: {
 ### `src/primitives/Button/Button.variants.ts`
 
 ```ts
-// spec: SPEC.md §8.1 v0.2.1
+// spec: SPEC.md §8.1 v0.2.3
 import { cva, type VariantProps } from '../../lib/variants';
 
-export const buttonVariants = cva(
-  'salt-focus-ring inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors motion-reduce:transition-none disabled:pointer-events-none data-[disabled]:opacity-50',
-  {
-    variants: {
-      variant: {
-        solid: 'bg-primary text-primary-foreground hover:bg-primary/90',
-        outline: 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
-        ghost: 'bg-transparent hover:bg-muted hover:text-foreground',
-        link: 'bg-transparent underline-offset-4 hover:underline text-primary',
-        destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
-      },
-      size: {
-        sm: 'h-8 px-3 text-sm',
-        md: 'h-9 px-4 text-sm',
-        lg: 'h-10 px-6 text-base',
-        icon: 'h-9 w-9 p-0',
-      },
-      fullWidth: { true: 'w-full', false: '' },
+export const buttonVariants = cva('salt-button', {
+  variants: {
+    variant: {
+      solid: 'salt-button--solid',
+      outline: 'salt-button--outline',
+      ghost: 'salt-button--ghost',
+      link: 'salt-button--link',
+      destructive: 'salt-button--destructive',
     },
-    defaultVariants: { variant: 'solid', size: 'md', fullWidth: false },
+    size: {
+      sm: 'salt-button--sm',
+      md: 'salt-button--md',
+      lg: 'salt-button--lg',
+      icon: 'salt-button--icon',
+    },
+    fullWidth: { true: 'salt-button--full', false: '' },
   },
-);
+  defaultVariants: { variant: 'solid', size: 'md', fullWidth: false },
+});
 
 export type ButtonVariants = VariantProps<typeof buttonVariants>;
 ```
@@ -1004,9 +1001,21 @@ Trigger an action.
 - Label (`children`) remains visible during loading.
 - Trailing snippet is hidden during loading.
 
-### Styling (CVA)
+### Styling
 
-See §3.6. This is the canonical reference — all other primitives follow the same shape.
+Visual styles are defined as `.salt-button--*` CSS component classes in `packages/ui-components/src/tailwind-preset.ts`. `Button.variants.ts` maps CVA axes to these class names (see §3.6).
+
+**Box-model contract:** All button variants carry `border` so that mixed-variant rows (e.g. a `solid` next to an `outline`) share the same computed height. Non-outline variants use `border-transparent` to keep the border invisible while holding the box space; `outline` overrides with `border-secondary`.
+
+| Variant       | Classes                                                                                      |
+| ------------- | -------------------------------------------------------------------------------------------- |
+| `solid`       | `border border-transparent bg-primary text-primary-foreground hover:bg-primary/90`           |
+| `outline`     | `border border-secondary text-secondary bg-background hover:bg-secondary hover:text-secondary-foreground` |
+| `ghost`       | `border border-transparent bg-transparent hover:bg-muted hover:text-foreground`              |
+| `link`        | `border border-transparent bg-transparent underline-offset-4 hover:underline text-primary`   |
+| `destructive` | `border border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/90` |
+
+The base `.salt-button` class (applied to every variant) carries layout, typography, and motion tokens; see `tailwind-preset.ts` for the authoritative list.
 
 ### Forbidden
 
