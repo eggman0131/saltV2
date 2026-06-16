@@ -63,7 +63,11 @@ class AuthStore {
   private async maybeCompleteFromUrl(): Promise<void> {
     const url = window.location.href;
     if (!authProvider.isMagicLink(url)) {
-      this.loading = false;
+      // Not a magic-link return. Leave `loading` true and let the auth-state
+      // observer resolve it: Firebase restores a persisted session
+      // asynchronously, so `getCurrentUser()` is still null here on a cold
+      // load. Setting `loading = false` now would flash the login screen for
+      // the 1–5s the SDK takes to rehydrate an already-signed-in user.
       return;
     }
     const email = readPendingEmail();
