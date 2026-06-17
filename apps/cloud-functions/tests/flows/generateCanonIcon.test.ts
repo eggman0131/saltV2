@@ -19,10 +19,10 @@ vi.mock('firebase-functions', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-// Avoid reading the real ~1MB seed PNG; the smoke test only cares that a
+// Avoid reading the real seed asset; the smoke test only cares that a
 // reference media part is passed through.
 vi.mock('../../src/flows/assets/canonIconSeed.js', () => ({
-  loadCanonIconSeed: () => ({ url: 'data:image/png;base64,SEED', contentType: 'image/png' }),
+  loadCanonIconSeed: () => ({ url: 'data:image/webp;base64,SEED', contentType: 'image/webp' }),
 }));
 
 const { generateCanonIconFlow } = await import('../../src/flows/generateCanonIcon.js');
@@ -52,7 +52,7 @@ describe('generateCanonIcon flow', () => {
     const opts = mockGenerate.mock.calls[0]![0];
     // Reference image (seed) is the first prompt part.
     expect(opts.prompt[0]).toEqual({
-      media: { url: 'data:image/png;base64,SEED', contentType: 'image/png' },
+      media: { url: 'data:image/webp;base64,SEED', contentType: 'image/webp' },
     });
     const text = opts.prompt[1].text as string;
     expect(text).toContain('two litre plastic bottle of milk');
