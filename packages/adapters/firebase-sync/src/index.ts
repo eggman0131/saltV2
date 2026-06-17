@@ -53,6 +53,7 @@ export {
   saveMealPlanTemplate,
   saveMealPlanWeek,
 } from './mealPlanSync.js';
+export { subscribeDevSettings, saveDevSettings } from './devSettingsSync.js';
 export type {
   IdentifyEquipmentCandidate,
   IdentifyEquipmentResult,

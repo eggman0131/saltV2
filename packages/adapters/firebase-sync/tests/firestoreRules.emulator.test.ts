@@ -210,3 +210,54 @@ describe.skipIf(!reachable)('firestore.rules — meal planning (issue #169)', ()
     await assertFails(getDoc(doc(db, 'mealPlans', '2026-06-08')));
   });
 });
+
+describe.skipIf(!reachable)('firestore.rules — devSettings (issue #238)', () => {
+  let testEnv: RulesTestEnvironment;
+
+  beforeAll(async () => {
+    testEnv = await initializeTestEnvironment({
+      projectId: PROJECT_ID,
+      firestore: {
+        host: HOST,
+        port: PORT,
+        rules: readFileSync(RULES_PATH, 'utf8'),
+      },
+    });
+  });
+
+  afterAll(async () => {
+    await testEnv?.cleanup();
+  });
+
+  beforeEach(async () => {
+    await testEnv.clearFirestore();
+    // devSettings writes are admin-gated via get(/members/...), so seed a roster.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, 'members', 'admin@e.org'), memberDoc('admin@e.org', true));
+      await setDoc(doc(db, 'members', 'kid@e.org'), memberDoc('kid@e.org', false));
+    });
+  });
+
+  const settings = { canonIconGenerationEnabled: false, schemaVersion: 1 };
+
+  it('lets an admin write the settings singleton', async () => {
+    const db = testEnv.authenticatedContext('uid-admin', { email: 'admin@e.org' }).firestore();
+    await assertSucceeds(setDoc(doc(db, 'devSettings', 'singleton'), settings));
+  });
+
+  it('lets any signed-in user read the settings singleton', async () => {
+    const db = testEnv.authenticatedContext('uid-kid', { email: 'kid@e.org' }).firestore();
+    await assertSucceeds(getDoc(doc(db, 'devSettings', 'singleton')));
+  });
+
+  it('denies a non-admin member from writing the settings', async () => {
+    const db = testEnv.authenticatedContext('uid-kid', { email: 'kid@e.org' }).firestore();
+    await assertFails(setDoc(doc(db, 'devSettings', 'singleton'), settings));
+  });
+
+  it('denies an unauthenticated caller from reading the settings', async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, 'devSettings', 'singleton')));
+  });
+});

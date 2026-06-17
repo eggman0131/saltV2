@@ -68,6 +68,15 @@ service cloud.firestore {
     match /recipes/{recipeId} {
       allow read, write: if request.auth != null;
     }
+    // Development settings (issue #238) — per-environment operator switches
+    // (e.g. the canon-icon generation kill-switch). Any signed-in user may read
+    // (the CF trigger uses the Admin SDK and bypasses rules anyway); only admins
+    // may change them. Unlike the cosmetic AdminGuard on meal-plan settings,
+    // admin-only writes ARE enforced here.
+    match /devSettings/{document} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
     // Chat sessions (issue #206) — the first per-user-scoped data in Salt.
     // A session may only be read or written by the user who owns it.
     // On create, the client must set ownerUid to their own uid.
