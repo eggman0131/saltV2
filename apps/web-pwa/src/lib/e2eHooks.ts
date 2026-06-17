@@ -3,7 +3,7 @@ import { upsertCanonItem, setFirestoreNetwork } from '@salt/firebase-sync';
 import type { CanonItem } from '@salt/domain';
 import { devSignIn } from './auth.svelte.js';
 import { addAislesBulk, aisles } from './aisleService.js';
-import { canonItems } from './canonService.js';
+import { canonItems, isLoadingAisles } from './canonService.js';
 import { seedEquipmentManifest, getEquipmentSnapshot } from './equipmentService.js';
 import {
   getShoppingListsSnapshot,
@@ -60,6 +60,13 @@ export function installE2EHooks(): void {
 
     getAisles() {
       return get(aisles);
+    },
+
+    isCanonSynced() {
+      // initCanonSync sets isLoadingAisles=false once both the items and aisles
+      // listeners have fired their first snapshot — our "listeners attached and
+      // settled" signal for the convergence tests.
+      return !get(isLoadingAisles);
     },
 
     async getCanonItem(id) {
