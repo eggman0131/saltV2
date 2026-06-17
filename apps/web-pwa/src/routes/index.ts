@@ -21,6 +21,7 @@ import SettingsPage from './settings/SettingsPage.svelte';
 import AdminHomePage from './admin/AdminHomePage.svelte';
 import AdminMembersPage from './admin/AdminMembersPage.svelte';
 import AdminMealPlanPage from './admin/AdminMealPlanPage.svelte';
+import DevSettingsPage from './admin/DevSettingsPage.svelte';
 import NotFound from './NotFound.svelte';
 
 // More-specific static routes must precede parameterised ones when using a Map.
@@ -51,6 +52,7 @@ export const routes: RouteDefinition = new Map([
   ['/admin', AdminHomePage],
   ['/admin/members', AdminMembersPage],
   ['/admin/mealplan', AdminMealPlanPage],
+  ['/admin/dev-settings', DevSettingsPage],
   ['/admin/aisles', AisleManagementPage],
   ['/admin/canon', CanonListPage],
   ['/admin/canon/new', CanonCreatePage],
