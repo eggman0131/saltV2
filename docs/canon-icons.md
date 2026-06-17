@@ -182,6 +182,11 @@ image. Seed subject was `a red apple`:
 
 > A cute cartoon icon of a red apple. {STYLE}
 
+The committed seed is downscaled to a 384×384 WebP (issue #236) — it only conveys
+*style*, not detail we keep, so it is sized to a single Gemini input tile (≤384px) and
+re-encoded as WebP to minimise per-call input tokens and payload. Resolution beyond this
+buys nothing because the prompt negative-guides against copying the seed's subject.
+
 **Step 2 — per-item generation** (multimodal: `[ {media: referenceImage}, {text: …} ]`):
 
 > Generate a cute cartoon icon of {ITEM}. {UK} Copy ONLY the rendering STYLE of the reference image — its line weight, outline, colouring technique, palette and plain background. Do NOT copy the apple, and do NOT add any leaf, stem, sprig, red colouring or face that came from the reference. Draw only {ITEM} and nothing else. {STYLE}
