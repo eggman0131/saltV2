@@ -72,3 +72,11 @@ jobs:
       # GEMINI_API_KEY / LD_SDK_KEY are already in prod Secret Manager.
       - name: Deploy to Firebase (production)
         run: pnpm exec firebase deploy -P production --non-interactive --force
+
+      # `firebase deploy --non-interactive` skips the "allow unauthenticated
+      # invocations?" prompt, so newly created/updated 2nd-gen callables come up
+      # PRIVATE and reject browser calls with a 403/no-CORS error (#234). The
+      # callables auth the *user* inside the function; Cloud Run must still allow
+      # allUsers to invoke. Re-apply that binding here. Idempotent.
+      - name: Grant public invoker on client callables
+        run: ./scripts/grant-callable-invokers.sh s2-prod-e46bd

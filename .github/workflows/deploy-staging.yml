@@ -128,3 +128,12 @@ jobs:
       - name: Deploy to Firebase (staging)
         if: ${{ steps.guard.outputs.should_deploy == 'true' }}
         run: pnpm exec firebase deploy -P staging --non-interactive --force
+
+      # `firebase deploy --non-interactive` skips the "allow unauthenticated
+      # invocations?" prompt, so newly created/updated 2nd-gen callables come up
+      # PRIVATE and reject browser calls with a 403/no-CORS error (#234). The
+      # callables auth the *user* inside the function; Cloud Run must still allow
+      # allUsers to invoke. Re-apply that binding here. Idempotent.
+      - name: Grant public invoker on client callables
+        if: ${{ steps.guard.outputs.should_deploy == 'true' }}
+        run: ./scripts/grant-callable-invokers.sh s2-stage-ccb22
