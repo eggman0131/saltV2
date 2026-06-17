@@ -28,6 +28,17 @@ export async function getCanonItem(page: Page, id: string): Promise<CanonItem | 
   return page.evaluate((i) => window.__e2e!.getCanonItem(i), id);
 }
 
+// Wait until a tab's canon sync has attached and delivered its first snapshot.
+// Cross-tab convergence tests call this on the reader tab before the writer
+// seeds: it ensures the reader's onSnapshot listeners settle in a calm window
+// rather than mid-navigation, where the emulator's forced long-polling
+// transport can drop the update (residual flake, #199).
+export async function waitForCanonReady(page: Page): Promise<void> {
+  await page.waitForFunction(() => window.__e2e?.isCanonSynced() === true, null, {
+    timeout: 15_000,
+  });
+}
+
 export async function clearAllStores(page: Page): Promise<void> {
   await page.evaluate(() => window.__e2e!.clearStores());
 }
