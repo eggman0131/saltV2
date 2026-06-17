@@ -155,6 +155,40 @@ describe('onCanonItemWritten — Firestore emulator', () => {
     expect(snap.data()!['iconHint']).toBeUndefined();
   });
 
+  it('skips icon generation when the dev kill-switch is off (issue #238)', async () => {
+    const db = getFirestore(adminApp);
+    await db
+      .collection('devSettings')
+      .doc('singleton')
+      .set({ canonIconGenerationEnabled: false, schemaVersion: 1 });
+    const item = makeCanonItem('canon-off', { thumbnail: null });
+    await db.collection('canonItems').doc('canon-off').set(item);
+
+    await (onCanonItemWritten as Function)(makeEvent('canon-off', item));
+
+    // No generation; thumbnail stays null so it can regenerate later if re-enabled.
+    expect(mockGenerateIcon).not.toHaveBeenCalled();
+    expect(mockSave).not.toHaveBeenCalled();
+    const snap = await db.collection('canonItems').doc('canon-off').get();
+    expect(snap.data()!['thumbnail']).toBeNull();
+    // The embedding branch is independent of the switch and still runs.
+    expect(mockEmbed).toHaveBeenCalledOnce();
+  });
+
+  it('generates when the dev kill-switch is explicitly on', async () => {
+    const db = getFirestore(adminApp);
+    await db
+      .collection('devSettings')
+      .doc('singleton')
+      .set({ canonIconGenerationEnabled: true, schemaVersion: 1 });
+    const item = makeCanonItem('canon-on', { thumbnail: null });
+    await db.collection('canonItems').doc('canon-on').set(item);
+
+    await (onCanonItemWritten as Function)(makeEvent('canon-on', item));
+
+    expect(mockGenerateIcon).toHaveBeenCalledOnce();
+  });
+
   it('skips icon generation when thumbnail is "hidden"', async () => {
     const db = getFirestore(adminApp);
     const item = makeCanonItem('canon-2', { thumbnail: 'hidden', embedding: [9, 9] });

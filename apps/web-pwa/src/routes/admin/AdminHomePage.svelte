@@ -36,6 +36,12 @@
       description: 'Edit the standard weekly template and the big-shop day.',
       href: '/admin/mealplan',
     },
+    {
+      id: 'dev-settings',
+      title: 'Development settings',
+      description: 'Per-environment operator switches, e.g. canon icon generation.',
+      href: '/admin/dev-settings',
+    },
   ];
 </script>
 

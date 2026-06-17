@@ -4,7 +4,7 @@ import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { defineSecret } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { normaliseName } from '@salt/domain';
-import { CanonItemSchema, type CanonItemDoc } from '@salt/domain/schemas';
+import { CanonItemSchema, DevSettingsSchema, type CanonItemDoc } from '@salt/domain/schemas';
 import { embedTextFlow } from '../flows/embedText.js';
 import { generateCanonIconFlow } from '../flows/generateCanonIcon.js';
 import { removeFlatBackground } from '../imaging/removeFlatBackground.js';
@@ -50,6 +50,14 @@ async function maybeGenerateIcon(id: string, item: CanonItemDoc): Promise<void> 
   const name = item.name.trim();
   if (!name) return;
 
+  // Per-environment kill-switch (issue #238). Checked only once the cheap
+  // in-memory guards pass (i.e. we would otherwise generate). Turning it off
+  // stops EVERY generation path — create, the update self-heal, and the manual
+  // regenerate callable (which routes through this trigger). Re-enabling does
+  // not backfill: items written while off keep thumbnail null and regenerate
+  // only when next written.
+  if (!(await isCanonIconGenerationEnabled())) return;
+
   // Optional one-shot user steer written by the regenerate callable.
   const hint = item.iconHint?.trim();
 
@@ -66,6 +74,29 @@ async function maybeGenerateIcon(id: string, item: CanonItemDoc): Promise<void> 
   } catch (err) {
     // Leave thumbnail null so a later write retries; never block the trigger.
     logger.error('onCanonItemWritten: icon generation failed', { id, err });
+  }
+}
+
+/**
+ * Reads the per-environment canon-icon kill-switch (issue #238) from
+ * `devSettings/singleton`. Fails OPEN: a missing doc, an unexpected shape, or a
+ * read error all default to ENABLED, so an environment that never configured the
+ * switch keeps the greenfield behaviour and a transient read glitch never
+ * silently halts generation.
+ */
+async function isCanonIconGenerationEnabled(): Promise<boolean> {
+  try {
+    const snap = await getFirestore().collection('devSettings').doc('singleton').get();
+    if (!snap.exists) return true;
+    const parsed = DevSettingsSchema.safeParse(snap.data());
+    if (!parsed.success) {
+      logger.warn('onCanonItemWritten: invalid devSettings doc, defaulting to enabled');
+      return true;
+    }
+    return parsed.data.canonIconGenerationEnabled;
+  } catch (err) {
+    logger.warn('onCanonItemWritten: devSettings read failed, defaulting to enabled', { err });
+    return true;
   }
 }
 
