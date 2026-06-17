@@ -69,6 +69,15 @@ project**, and are bound to the functions via `defineSecret()` in
 The LD OTLP trace endpoint is a hardcoded constant in
 `ld-observability/server` — there is **no** separate OTLP secret or endpoint var.
 
+> **Gemini billing caveat — dev and staging share one Google AI Studio project.**
+> The `dev` and `staging` deploy targets use **different** `GEMINI_API_KEY` values,
+> but **both keys belong to the same Google AI Studio project, `s2-stage-ccb22`**.
+> Gemini/Genkit usage therefore bills and quotas against that one project regardless
+> of which key issued the call. When investigating unexpected AI spend or quota
+> exhaustion in staging, you **must** account for local `dev` usage as well — it lands
+> on the same bill. (Distinct API keys do **not** imply distinct AI Studio projects —
+> verify the project, not just the key, before assuming any environment is isolated.)
+
 ### 3. CI / GitHub Environments
 
 CI authenticates to Firebase via **Workload Identity Federation** (no long-lived
