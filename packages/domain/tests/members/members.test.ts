@@ -4,6 +4,7 @@ import {
   updateMember,
   normaliseMemberEmail,
   memberInitials,
+  memberFirstName,
   sortMembers,
   type Member,
 } from '@salt/domain';
@@ -53,6 +54,24 @@ describe('memberInitials', () => {
 
   it('uppercases lowercase names', () => {
     expect(memberInitials('alice smith')).toBe('AS');
+  });
+});
+
+describe('memberFirstName', () => {
+  it('returns the first word of a full name', () => {
+    expect(memberFirstName('Daniel Pendery')).toBe('Daniel');
+  });
+
+  it('returns the whole name for a single word', () => {
+    expect(memberFirstName('Cher')).toBe('Cher');
+  });
+
+  it('ignores surrounding and inner whitespace', () => {
+    expect(memberFirstName('  Mary  Jane Watson ')).toBe('Mary');
+  });
+
+  it('returns empty string for empty input', () => {
+    expect(memberFirstName('   ')).toBe('');
   });
 });
 

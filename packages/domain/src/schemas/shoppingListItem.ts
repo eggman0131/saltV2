@@ -1,6 +1,11 @@
 import { z } from 'zod';
 
-const ManualSourceRefSchema = z.object({ kind: z.literal('manual') });
+const ManualSourceRefSchema = z.object({
+  kind: z.literal('manual'),
+  // First name of the member who added the item. Optional: omitted on items
+  // added before this field existed, and when the adder can't be resolved.
+  addedBy: z.string().optional(),
+});
 
 const RecipeSourceRefSchema = z.object({
   kind: z.literal('recipe'),

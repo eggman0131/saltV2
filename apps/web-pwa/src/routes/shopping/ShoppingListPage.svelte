@@ -409,7 +409,8 @@
 
   function sourceLabel(item: ShoppingListItem): string {
     const src = item.sources[0];
-    if (!src || src.kind === 'manual') return '';
+    if (!src) return '';
+    if (src.kind === 'manual') return src.addedBy ? `Added by ${src.addedBy}` : '';
     if (src.kind === 'recipe') return src.label ?? 'Recipe';
     return '';
   }
@@ -482,7 +483,7 @@
   }
 
   function describeSource(src: ShoppingListItem['sources'][number]): string {
-    if (src.kind === 'manual') return 'Added manually';
+    if (src.kind === 'manual') return src.addedBy ? `Added by ${src.addedBy}` : 'Added manually';
     const label = src.label ?? 'Recipe';
     const servings = `${src.servings} serving${src.servings === 1 ? '' : 's'}`;
     return `${label} (${servings})`;
