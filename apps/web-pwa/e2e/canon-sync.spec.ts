@@ -15,7 +15,13 @@
  */
 import { expect, test } from './fixtures/test';
 import { gotoAndSignIn, uniqueEmail } from './helpers/auth';
-import { getAisles, getCanonItem, seedAisles, seedCanonItem } from './helpers/seed';
+import {
+  getAisles,
+  getCanonItem,
+  seedAisles,
+  seedCanonItem,
+  waitForCanonReady,
+} from './helpers/seed';
 
 // How long to wait for cross-tab propagation (emulator is fast but sync is async).
 const CONVERGENCE_TIMEOUT = 20_000;
@@ -47,6 +53,12 @@ test.describe('canon sync — two-tab convergence', () => {
       await gotoAndSignIn(page1, emailA);
       await gotoAndSignIn(page2, emailB);
 
+      // Both tabs must have their canon listeners attached and settled before
+      // any cross-tab write — otherwise a listener attaching mid-navigation can
+      // miss the delta on the emulator's forced long-polling transport (#199).
+      await waitForCanonReady(page1);
+      await waitForCanonReady(page2);
+
       // Tab A seeds a new canon item.
       await seedCanonItem(page1, { id: itemId, name: 'Sync Test Item' });
 
@@ -75,6 +87,12 @@ test.describe('canon sync — two-tab convergence', () => {
       await gotoAndSignIn(page1, emailA);
       await gotoAndSignIn(page2, emailB);
 
+      // Both tabs must have their canon listeners attached and settled before
+      // any cross-tab write — otherwise a listener attaching mid-navigation can
+      // miss the delta on the emulator's forced long-polling transport (#199).
+      await waitForCanonReady(page1);
+      await waitForCanonReady(page2);
+
       // Tab A writes aisles.
       const created = await seedAisles(page1, ['Produce', 'Dairy']);
       expect(created).toHaveLength(2);
@@ -100,6 +118,12 @@ test.describe('canon sync — two-tab convergence', () => {
 
       await gotoAndSignIn(page1, emailA);
       await gotoAndSignIn(page2, emailB);
+
+      // Both tabs must have their canon listeners attached and settled before
+      // any cross-tab write — otherwise a listener attaching mid-navigation can
+      // miss the delta on the emulator's forced long-polling transport (#199).
+      await waitForCanonReady(page1);
+      await waitForCanonReady(page2);
 
       // Write an aisle first.
       await seedAisles(page1, ['Bakery']);
@@ -135,6 +159,12 @@ test.describe('canon sync — two-tab convergence', () => {
 
       await gotoAndSignIn(page1, emailA);
       await gotoAndSignIn(page2, emailB);
+
+      // Both tabs must have their canon listeners attached and settled before
+      // any cross-tab write — otherwise a listener attaching mid-navigation can
+      // miss the delta on the emulator's forced long-polling transport (#199).
+      await waitForCanonReady(page1);
+      await waitForCanonReady(page2);
 
       // Take ctx1 offline via the SDK (more reliable than browser-level setOffline on WSL).
       await page1.evaluate(() => window.__e2e!.setFirestoreOffline(true));
