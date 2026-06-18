@@ -126,7 +126,9 @@ chat session doc (Firestore)         ← owned by web-pwa + firebase-sync (clien
 - No new package and **no layer-map change** — schemas in `@salt/domain`, flows in
   `cloud-functions`, adapter/store in `firebase-sync` + `web-pwa`, UI primitives via
   `@salt/ui-components`.
-- Recipe schema is still greenfield (free to evolve); chat schema is brand-new
+- Recipe schema now holds live production data (module shipped to all members
+  in #240, 2026-06-17) — recipe schema changes need back-compat on read or a
+  migration, like any other production collection. Chat schema is brand-new
   (no back-compat burden yet).
 </content>
 </invoke>
