@@ -46,7 +46,7 @@ cloud-functions            →  shared-types, domain, ld-observability/server
 ## Workflow
 
 - **Issue-first for substantial changes.** New packages, new dependencies, layer-map edits, and cross-package refactors require a GitHub issue and explicit go-ahead before implementation. Design Q&A in chat is not a greenlight.
-- **Production data back-compat.** Canon, Aisles, Equipment, Shopping List, and Meal Planner collections hold real production data — schema changes must be backward-compatible on read, or require a one-off migration. Recipe schema changes are currently free (greenfield). See also: Zod schema conventions below.
+- **Production data back-compat.** Canon, Aisles, Equipment, Shopping List, Meal Planner, and Recipes collections hold real production data — schema changes must be backward-compatible on read, or require a one-off migration. (Recipes lost their greenfield status when the module shipped to all members in #240, 2026-06-17; treat recipe schema changes like any other production collection from here on.) See also: Zod schema conventions below.
 
 ## Zod schema conventions
 
