@@ -180,6 +180,7 @@ export {
   createMember,
   updateMember,
   memberInitials,
+  memberFirstName,
   sortMembers,
 } from './members/index.js';
 

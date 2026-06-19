@@ -11,4 +11,5 @@ export { updateMember } from './commands/updateMember.js';
 export type { UpdateMemberPatch } from './commands/updateMember.js';
 
 export { memberInitials } from './queries/memberInitials.js';
+export { memberFirstName } from './queries/memberFirstName.js';
 export { sortMembers } from './queries/sortMembers.js';

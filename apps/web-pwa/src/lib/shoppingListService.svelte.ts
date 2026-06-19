@@ -27,11 +27,14 @@ import {
   deleteItem,
   clearCheckedItems,
   moveItems,
+  memberFirstName,
 } from '@salt/domain';
-import type { ShoppingList, ShoppingListItem, ShoppingListsConfig } from '@salt/domain';
+import type { ShoppingList, ShoppingListItem, ShoppingListsConfig, SourceRef } from '@salt/domain';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { writable, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
+import { auth } from './auth.svelte.js';
+import { findMemberByEmail } from './membersService.js';
 
 // ─── ID generators ───────────────────────────────────────────────────────────
 
@@ -186,7 +189,12 @@ export async function addItemToList(
 ): Promise<ReadResult<void, DomainError>> {
   const items = get(_itemsForActiveList);
   const now = new Date().toISOString();
-  const result = addItem(items, { rawText, source: { kind: 'manual' }, now }, ids);
+  // Stamp the adder's first name onto the manual source when we can resolve
+  // their member doc; otherwise leave it off (back-compatible plain manual).
+  const member = findMemberByEmail(auth.user?.email);
+  const addedBy = member ? memberFirstName(member.name) : '';
+  const source: SourceRef = addedBy ? { kind: 'manual', addedBy } : { kind: 'manual' };
+  const result = addItem(items, { rawText, source, now }, ids);
   if (result.kind !== 'ok') return result;
   const newItem = result.value[result.value.length - 1]!;
   return saveShoppingListItem(listId, newItem);
