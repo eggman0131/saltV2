@@ -75,7 +75,14 @@ async function assembleDraft(raw: LibrarianOutput): Promise<RecipeDoc> {
   // Parse raw texts to extract clean item names (strips quantity, unit, prep phrases).
   // This mirrors what recipeService.canonicaliseIngredients does on the manual-entry path
   // and ensures the canon matching stages see "garlic" not "1 head of garlic".
+  // We also retain the full structured `parsed` object (quantity/unit/displayText/etc.) keyed
+  // by rawText so the assembled RecipeDoc threads it through instead of dropping it as null.
+  // Duplicate rawText: last occurrence wins, matching parsedItemMap's tolerated behavior.
   const parsedItemMap = new Map<string, string>();
+  type ParsedIngredient = Awaited<
+    ReturnType<typeof parseRecipeIngredientsFlow>
+  >[number]['items'][number]['parsed'];
+  const parsedMap = new Map<string, ParsedIngredient>();
   if (allIngredients.length > 0) {
     try {
       const joinedRawText = allIngredients.map((i) => i.rawText).join('\n');
@@ -83,10 +90,12 @@ async function assembleDraft(raw: LibrarianOutput): Promise<RecipeDoc> {
       for (const group of parseResult) {
         for (const item of group.items) {
           if (item.parsed?.item) parsedItemMap.set(item.rawText, item.parsed.item);
+          if (item.parsed) parsedMap.set(item.rawText, item.parsed);
         }
       }
     } catch {
-      // Parse failure is non-fatal — fall back to rawText as rawName below.
+      // Parse failure is non-fatal — fall back to rawText as rawName below
+      // and to parsed: null on the assembled ingredient.
     }
   }
 
@@ -125,7 +134,7 @@ async function assembleDraft(raw: LibrarianOutput): Promise<RecipeDoc> {
       return {
         id: crypto.randomUUID(),
         rawText: ing.rawText,
-        parsed: null,
+        parsed: parsedMap.get(ing.rawText) ?? null,
         canonId,
         matchState,
         isOptional: ing.isOptional,
