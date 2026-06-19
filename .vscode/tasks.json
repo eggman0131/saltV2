@@ -2,6 +2,24 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Stop Firebase Emulators",
+      "detail": "Gracefully stop the emulators (runs export-on-exit so dev data is preserved). Use this instead of the terminate button on the 'Firebase Emulators' task — terminating that task signals only the top of the process tree and does NOT reach firebase, so the export never runs.",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["stop:emulators"],
+      "isBackground": false,
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "dedicated",
+        "close": false,
+        "showReuseMessage": true,
+        "clear": false
+      }
+    },
+    {
       "label": "Firebase Emulators",
       "type": "shell",
       "command": "pnpm",
