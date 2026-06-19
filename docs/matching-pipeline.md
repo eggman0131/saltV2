@@ -248,7 +248,7 @@ Three adapters write the `MatchLogEntry`. The two LD adapters share a runtime-ne
 
 The fast-path's `canon.add` span and the CF's `canon.matchOrCreateCanon` span are designed to be linked by W3C trace context so a fast-path-ambiguous → CF-resolved flow renders as a single distributed trace in LaunchDarkly. The client extracts `traceparent` (and `tracestate` when present) from its active span via [`extractTraceHeaders`](../packages/adapters/ld-observability/src/init.ts) and piggy-backs it on the callable payload as `_trace`. `httpsCallable` is used because it's the project's standard wire — custom request headers aren't first-class in that API, hence the payload-level propagation.
 
-**Why it is currently dormant:** When the CF flow span is parented under the browser trace, Genkit treats it as a non-root span and the Genkit Dev UI's trace list filters it out, making local development and debugging significantly harder. The infrastructure to re-enable propagation (passing `_trace` headers to `runWithExtractedTraceContext` in `apps/cloud-functions/src/index.ts`) is a one-line change at the call site. The `_trace` field is still forwarded by `canonMatching.ts` and accepted by the CF's `InputSchema` so the wire shape remains stable while propagation is disabled.
+**Why it is currently dormant:** When the CF flow span is parented under the browser trace, Genkit treats it as a non-root span and the Genkit Dev UI's trace list filters it out, making local development and debugging significantly harder. The infrastructure to re-enable propagation (passing `_trace` headers to `runWithExtractedTraceContext` in `apps/cloud-functions/src/index.ts`) is a one-line change at the call site. The `_trace` field is still forwarded by `canonMatching.ts`; the CF's `MatchOrCreateCanonInputSchema` does not declare it, but the handler validates against that schema and then forwards the raw `request.data` (not the stripped parse result) to the flow, so `_trace` survives and the wire shape remains stable while propagation is disabled.
 
 ---
 
@@ -260,13 +260,17 @@ A recipe canonicalises many ingredient names at once (a 35-ingredient recipe). T
 
 ### One path: batch, with single as `n = 1`
 
-`matchOrCreate`'s body splits into a per-item core and a batch orchestrator, and the single-item entry point becomes a thin alias:
+`matchOrCreate`'s body is a **three-phase batch orchestrator** that fans each phase across the whole input list, and the single-item entry point becomes a thin alias:
 
-- **`resolveOne(input, snapshot, aisles, ports)`** — stages 1–6 + arbitration + persist. The sole source of truth for matching behaviour. Reads candidates from the injected `snapshot`; persists via `ports.store.upsert`.
-- **`matchOrCreateBatch(inputs, ports)`** — the one matching function. Loads snapshot + aisles **once**, batch-embeds all names into a cache (below), then calls `resolveOne` per input against a growing in-memory snapshot. Returns an order-preserving array of `MatchOrCreateResult`.
-- **`matchOrCreate(input, ports)`** — unchanged public signature, now a one-line alias: `(await matchOrCreateBatch([input], ports))[0]`. The hot single-item path (add-item, shopping-list trigger, single ingredient update) runs through the same orchestration with a batch of one — a one-element embed call and a one-entry map. Negligible overhead; zero behavioural difference.
+- **`matchOrCreateBatch(inputs, ports)`** — the one matching function. Loads snapshot + aisles **once**, batch-embeds all names into a cache (below), then runs three phases:
+  1. **Classify** — `classifyOne(input, snapshot, aisles, ports)` runs stages 1–5 plus shortlist construction for **every** input in parallel. **No AI calls and no persist.** Each input is classified as a direct match, a no-AI create, or "needs arbitration".
+  2. **Arbitrate** — every classification tagged `needs_ai` fires its `arbitrate` call in parallel. For a 35-ingredient recipe this collapses ~35 × 3 s sequential into ~3 s total — the entire reason the batch path exists.
+  3. **Apply** — `applyClassification(classification, arbOutcome, snapshot, ports)` applies the classification + AI result and persists via `ports.store.upsert`, **in order**, folding each resolved `CanonItem` back into the snapshot so later inputs see it.
 
-Because single-item *is* a batch of one, there is no second implementation to keep in step. The parity test below confirms `batch([x])` behaves like `batch([x, y, z])` for the same `x` — true by construction — rather than reconciling two code paths.
+  Returns an order-preserving array of `MatchOrCreateResult`.
+- **`matchOrCreate(input, ports)`** — unchanged public signature, now a one-line alias: `(await matchOrCreateBatch([input], ports))[0]`. The hot single-item path (add-item, shopping-list trigger, single ingredient update) runs through the same three phases with a batch of one — a one-element embed call, one classify, at most one arbitrate. Negligible overhead; zero behavioural difference.
+
+The single source of truth for matching behaviour is the `classifyOne` → arbitrate → `applyClassification` chain; there is no separate per-item resolver and no second implementation to keep in step. The parity test below confirms `batch([x])` behaves like `batch([x, y, z])` for the same `x` — true by construction — rather than reconciling two code paths.
 
 The two **Cloud Function callables** are unaffected by this: `matchOrCreateCanon` (single-item callers) and `canonicaliseRecipeIngredients` (recipe batch) both call into the one domain `matchOrCreateBatch`. Keeping both callables is a wire/API decision; the matching logic underneath is single-sourced.
 
@@ -297,7 +301,7 @@ A stored match (`canonId` + `matchState: 'matched'`) is a pointer into the canon
 
 ### Edits clear the match eagerly
 
-When an item's `rawText` changes, the old match is provably wrong, so it is cleared at the moment of the edit — `parsed`/`canonId` → `null`, `matchState` → `'pending'`.
+When an item's `rawText` changes, the old match is provably wrong, so it is cleared at the moment of the edit — `canonId` → `null`, `matchState` → `'pending'`.
 
 - **Shopping list:** `editItemRawText` resets the fields, and the `onShoppingListItemWrite` trigger re-matches automatically. No user action needed.
 - **Recipe ingredients:** there is no per-ingredient trigger — recipe matching is on-demand batch (see [Batch entry point](#batch-entry-point--recipe-ingredient-canonicalisation)). The editor clears the match on edit, and the user re-runs matching explicitly: the per-row **Match** button in edit mode, or the view-page **Canonicalise** button (batch).
