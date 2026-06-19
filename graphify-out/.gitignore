@@ -1,0 +1,8 @@
+# Local / machine-specific / regenerable graphify state — do not commit.
+# Committed deliverables (graph.json, graph.html, GRAPH_REPORT.md) are force-added.
+.graphify_python
+.graphify_root
+.graphify_labels.json
+manifest.json
+cost.json
+cache/
