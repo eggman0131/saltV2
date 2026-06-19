@@ -299,6 +299,33 @@ describe('stage 6 — single near-miss: direct match', () => {
   });
 });
 
+// ─── Stage 6: lone edit-distance near-miss → AI, never a silent match ────────
+// Regression: "olives" vs "limes" normalises to "olive" vs "lime", a Levenshtein
+// similarity of exactly 0.6 — at aiThreshold but only stage 4 (edit distance, a
+// spelling coincidence). A lone stage-4 candidate must NOT auto-bind the way a
+// stage-2 token candidate does; it escalates to AI like embeddings, so unrelated
+// foods are never silently merged.
+
+describe('stage 6 — lone edit-distance near-miss escalates to AI', () => {
+  it('does not silently match "olives" to "limes"', async () => {
+    const limes = canonItem({ id: 'lime1', name: 'limes' });
+    const arbitrateSpy = vi.fn().mockResolvedValue({ kind: 'ok', value: { kind: 'no-match' } });
+    const { run } = makePipeline({
+      items: [limes],
+      arbitration: { arbitrate: arbitrateSpy },
+    });
+    const result = await run('olives');
+    // It consults AI rather than auto-binding to the 0.6 Levenshtein neighbour…
+    expect(arbitrateSpy).toHaveBeenCalled();
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      // …and with a no-match verdict a fresh canon item is created, not limes.
+      expect(result.value.item.id).not.toBe('lime1');
+      expect(result.value.decision).not.toBe('matched');
+    }
+  });
+});
+
 // ─── Stage 6: multiple near-misses → AI arbitration is sole decider ──────────
 
 describe('stage 6 — multiple near-misses: AI arbitrates', () => {

@@ -299,7 +299,16 @@ async function classifyOne(
   );
   const shortlist = buildShortlist(embedCandidates, items, normalisedName);
 
-  if (shortlist.length === 1 && shortlist[0]!.stage !== 5) {
+  // A lone shortlist candidate may bypass AI arbitration only when it comes from
+  // token overlap (stage 2) — structural word-sharing, the legitimate fast path
+  // (e.g. "olive oil" → "olive oil extra"). Edit-distance (stage 4) and
+  // embedding (stage 5) candidates in the [aiThreshold, stop) band are
+  // similarity coincidences, not confident matches — "olives" vs "limes"
+  // normalises to "olive"/"lime" and scores exactly 0.6 Levenshtein — so they
+  // escalate to AI like the rest of the shortlist instead of silently binding.
+  // Genuine typos already clear stage 4's 0.85 stop (or normalise to an exact
+  // stage-1 hit) inside findClosestMatch and never reach here.
+  if (shortlist.length === 1 && shortlist[0]!.stage === 2) {
     return { kind: 'direct_match', item: shortlist[0]!.item, rawName, logBuilder, commitLog };
   }
 
@@ -419,8 +428,13 @@ async function applyClassification(
       }
       // decision.kind === 'no-match': fall through to highest-confidence fallback
     }
-    // AI errored, returned unknown id, or said no-match
-    const fallback = shortlist[0];
+    // AI errored, returned unknown id, or said no-match. Fall back to the best
+    // candidate — but never to a pure edit-distance (stage-4) neighbour. Those
+    // are spelling coincidences ("olives" vs "limes" — 0.6 Levenshtein) that
+    // bind only on a POSITIVE AI match, never via this degraded path. Token
+    // overlap (stage 2) and embedding (stage 5) candidates stay valid fallbacks;
+    // a stage-4-only shortlist creates a new item instead of mis-binding.
+    const fallback = shortlist.find((c) => c.stage !== 4);
     if (fallback) {
       const currentItem = snapshot.get(fallback.item.id) ?? fallback.item;
       return resolveMatch(store, currentItem, rawName, 'ai_arbitrated', commitLog);
