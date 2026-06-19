@@ -55,14 +55,15 @@ flowchart TD
     S5 --> S6[Stage 6\nMerge w/ token+similarity ≥ 0.60]
 
     S6 -->|0 candidates| EMPTY[Arbitrate w/ empty shortlist\nfor aisle + metadata]
-    S6 -->|1 candidate| MATCH
+    S6 -->|1 candidate, stage 2 token| MATCH
+    S6 -->|1 candidate, stage 4/5| ARB
     S6 -->|≥2 candidates| ARB
 
     EMPTY --> CREATEAI
 
     ARB -->|AI 'match' w/ valid id| AIMATCH[appendCanonSynonym on chosen\nReturn ai_arbitrated]
     ARB -->|AI 'new' from non-empty shortlist| CREATEAI2[Create new w/ AI metadata]
-    ARB -->|AI error / unknown id / 'no-match'| FALLBACK[Fall back: highest-confidence\ncandidate; appendCanonSynonym\nflags needs_approval\nReturn ai_arbitrated]
+    ARB -->|AI error / unknown id / 'no-match'| FALLBACK[Fall back: highest-confidence\nnon-stage-4 candidate; needs_approval\nstage-4-only shortlist creates new\nReturn ai_arbitrated]
 
     MATCH --> LOG[Log canon.match path=cf]
     AIMATCH --> LOG
@@ -104,8 +105,11 @@ Gemini embedding of the query, cosine similarity against every canon item with a
 Stage 6 re-runs token overlap and string similarity at the lower **0.60** `aiThreshold` and merges them with stage-5 candidates into a single deduplicated shortlist ordered by confidence.
 
 - 0 candidates → arbitrate with an empty shortlist (purely for aisle/metadata) and create.
-- 1 candidate → `match` directly without calling arbitration.
+- 1 candidate, **from token overlap (stage 2)** → `match` directly without calling arbitration.
+- 1 candidate, **from string similarity (stage 4) or embedding (stage 5)** → AI arbitration (treated like a multi-candidate shortlist; see [Stage 4 is AI-confirm-only](#stage-4-edit-distance-is-ai-confirm-only)).
 - ≥2 candidates → AI arbitration on the shortlist.
+
+A lone candidate bypasses AI only when it comes from token overlap — structural word-sharing ("olive oil" → "olive oil extra"). Edit-distance and embedding similarity are coincidence-prone signals that must be AI-confirmed before they bind.
 
 ---
 
@@ -117,13 +121,17 @@ When `rawText` (the original user entry) differs from the normalised item name, 
 
 ### AI-fallback rule (behavioural contract)
 
-The pipeline falls back to the **highest-confidence shortlist candidate**, flagged `needs_approval` (set by `appendCanonSynonym`), on any of these three triggers:
+The pipeline falls back to the **highest-confidence shortlist candidate that is not a pure edit-distance (stage-4) match**, flagged `needs_approval` (set by `appendCanonSynonym`), on any of these three triggers:
 
 1. **AI adapter error.**
 2. **AI returns `kind: 'match'` with an `itemId` not present in the shortlist** (unknown id).
 3. **AI returns `kind: 'no-match'` from a non-empty shortlist.**
 
-`AI 'new'` is the **only** path that creates a brand-new item from a non-empty shortlist.
+`AI 'new'` is the **only** path that creates a brand-new item from a non-empty shortlist — except that a shortlist whose only members are stage-4 candidates also creates a new item (the fallback skips them; see below).
+
+#### Stage 4 (edit distance) is AI-confirm-only
+
+Edit-distance (stage-4) candidates in the `[0.60, 0.85)` band are spelling coincidences, not confident matches — `"olives"` and `"limes"` normalise to `"olive"`/`"lime"` and score exactly **0.60** Levenshtein. Such a candidate binds **only** when the AI returns a positive `kind: 'match'` for it. It never binds via the lone-candidate shortcut (Stage 6, above) nor via this degraded fallback. A stage-4-only shortlist therefore resolves to a **new item** on AI error / unknown-id / `no-match`, rather than silently merging unrelated foods. Token overlap (stage 2) and embedding (stage 5) candidates remain valid fallback targets. Genuine typos are unaffected: they either clear stage 4's 0.85 stop or normalise to an exact stage-1 hit inside `findClosestMatch`, never reaching this band.
 
 The empty-shortlist case is different: with no candidates to fall back to, AI error or `'no-match'` results in a fresh create (with whatever aisle/metadata arbitration managed to return, or none). All four entry points (canon add, shopping list add, recipe add, recipe ingredient update) inherit this same rule via the shared CF.
 
@@ -132,10 +140,10 @@ The empty-shortlist case is different: with no candidates to fall back to, AI er
 | AI response (non-empty shortlist) | Pipeline action | Decision returned |
 |---|---|---|
 | `match` with valid `itemId` | `appendCanonSynonym` on chosen item; AI `reasoning` stored on item if present | `ai_arbitrated` |
-| `match` with unknown `itemId` | Fall back to top-confidence candidate, flag `needs_approval` | `ai_arbitrated` |
+| `match` with unknown `itemId` | Fall back to top-confidence **non-stage-4** candidate, flag `needs_approval`; stage-4-only shortlist creates new | `ai_arbitrated` / `created` |
 | `new` (with metadata) | Create new item with AI-suggested aisle, behaviour, unit; `reasoning` stored if present | `created` |
-| `no-match` | Fall back to top-confidence candidate, flag `needs_approval` | `ai_arbitrated` |
-| Error | Fall back to top-confidence candidate, flag `needs_approval` | `ai_arbitrated` |
+| `no-match` | Fall back to top-confidence **non-stage-4** candidate, flag `needs_approval`; stage-4-only shortlist creates new | `ai_arbitrated` / `created` |
+| Error | Fall back to top-confidence **non-stage-4** candidate, flag `needs_approval`; stage-4-only shortlist creates new | `ai_arbitrated` / `created` |
 
 ### Why fall back rather than create new
 
