@@ -396,11 +396,15 @@
                 <ul class="flex flex-col gap-1">
                   {#each group.items as ingredient (ingredient.id)}
                     <li class="text-sm" data-testid="recipe-view-ingredient">
-                      {ingredient.rawText}{#if ingredient.parsed?.displayText && ingredient.parsed?.quantity && ingredient.parsed?.unit}<span
-                          class="ml-1 text-xs text-muted-foreground"
-                          >({formatMetricQty(ingredient.parsed.quantity)}{ingredient.parsed
-                            .unit})</span
-                        >{/if}{#if ingredient.isOptional}<span
+                      {#if ingredient.parsed?.quantity && ingredient.parsed?.unit}{formatMetricQty(
+                          ingredient.parsed.quantity,
+                        )}{ingredient.parsed.unit}
+                        {ingredient.parsed.item}{#if ingredient.parsed.preparation.length > 0}, {ingredient.parsed.preparation.join(
+                            ', ',
+                          )}{/if}{#if ingredient.parsed.displayText}<span
+                            class="ml-1 text-xs text-muted-foreground"
+                            >({ingredient.parsed.displayText})</span
+                          >{/if}{:else}{ingredient.rawText}{/if}{#if ingredient.isOptional}<span
                           class="ml-1 text-xs text-muted-foreground">(optional)</span
                         >{/if}{#if !hasLiveCanonMatch(ingredient, liveCanonIds)}<button
                           type="button"
