@@ -1,5 +1,4 @@
 import type { RouteDefinition } from 'svelte-spa-router';
-import HomePage from './home/HomePage.svelte';
 import CanonListPage from './canon/CanonListPage.svelte';
 import CanonCreatePage from './canon/CanonCreatePage.svelte';
 import CanonDetailPage from './canon/CanonDetailPage.svelte';
@@ -26,7 +25,8 @@ import NotFound from './NotFound.svelte';
 
 // More-specific static routes must precede parameterised ones when using a Map.
 export const routes: RouteDefinition = new Map([
-  ['/', HomePage],
+  // Shopping is the default view; '/' redirects to the user's shopping list.
+  ['/', ShoppingListRedirectPage],
   ['/equipment', EquipmentListPage],
   ['/equipment/new', EquipmentCapturePage],
   ['/equipment/:id', EquipmentEditPage],
