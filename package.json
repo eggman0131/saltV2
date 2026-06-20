@@ -38,6 +38,13 @@
     ]
   },
   "pnpm": {
+    "onlyBuiltDependencies": [
+      "@firebase/util",
+      "esbuild",
+      "protobufjs",
+      "re2",
+      "sharp"
+    ],
     "overrides": {
       "@opentelemetry/api": "1.9.0",
       "@tootallnate/once": "^2.0.1",
