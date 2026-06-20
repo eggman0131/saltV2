@@ -477,11 +477,6 @@
     await checkItems(params.listId, rowIds(row));
   }
 
-  async function handleDeleteContributor(item: ShoppingListItem): Promise<void> {
-    const result = await removeItem(params.listId, item.id);
-    if (result.kind !== 'ok') addToast('Failed to remove item.', 'destructive');
-  }
-
   function describeSource(src: ShoppingListItem['sources'][number]): string {
     if (src.kind === 'manual') return src.addedBy ? `Added by ${src.addedBy}` : 'Added manually';
     const label = src.label ?? 'Recipe';
@@ -514,11 +509,18 @@
   </div>
 {/snippet}
 
-{#snippet plainItemRow(item: ShoppingListItem, pending: boolean)}
+{#snippet plainItemRow(
+  item: ShoppingListItem,
+  pending: boolean,
+  subordinate = false,
+  showSource = false,
+)}
   {@const isSelected = selection.isSelected(item.id)}
   {@const amountStr = formatAmount(item.amount, item.unit)}
   <div
-    class="flex items-center gap-3 rounded border px-3 py-2 text-sm {isSelected
+    class="flex items-center gap-3 rounded border px-3 py-2 text-sm {subordinate
+      ? 'ml-[46px]'
+      : ''} {isSelected
       ? 'border-ring ring-2 ring-ring bg-card'
       : needsVerify(item)
         ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/20'
@@ -529,12 +531,14 @@
     {#if selectionMode}
       <RowSelectCheckbox {selection} id={item.id} label="" aria-label="Select {item.rawText}" />
     {/if}
-    <CanonIcon
-      thumbnail={thumbnailFor(item.canonId)}
-      name={displayLabel(item)}
-      dimmed={item.checked}
-      size={34}
-    />
+    {#if !subordinate}
+      <CanonIcon
+        thumbnail={thumbnailFor(item.canonId)}
+        name={displayLabel(item)}
+        dimmed={item.checked}
+        size={34}
+      />
+    {/if}
     <button
       type="button"
       class="flex-1 min-w-0 text-left"
@@ -551,6 +555,9 @@
         <span class="block text-xs text-muted-foreground truncate"
           >{toSentenceCase(item.notes)}</span
         >
+      {/if}
+      {#if showSource && sourceLabel(item)}
+        <span class="block text-xs text-muted-foreground/70">{sourceLabel(item)}</span>
       {/if}
     </button>
     {#if pending}
@@ -834,94 +841,16 @@
                     </div>
                     {#if expanded}
                       <div
-                        class="ml-10 flex flex-col gap-1 pb-1"
+                        class="flex flex-col gap-1 pb-1"
                         data-testid="shopping-combined-breakdown"
                       >
                         {#each row.contributors as c (c.id)}
-                          {@const cAmount = formatAmount(c.amount, c.unit)}
-                          <div class="flex items-center gap-2 text-xs text-muted-foreground">
-                            <span class="flex-1 truncate" data-testid="shopping-contributor"
-                              >{describeSource(c.sources[0])}{#if cAmount}
-                                — {cAmount}{/if}</span
-                            >
-                            <button
-                              type="button"
-                              class="flex items-center justify-center rounded p-1 hover:bg-accent hover:text-foreground"
-                              onclick={() => void handleDeleteContributor(c)}
-                              aria-label="Remove this contribution"
-                              data-testid="shopping-contributor-delete"
-                            >
-                              <Icon name="X" size={14} />
-                            </button>
-                          </div>
+                          {@render plainItemRow(c, false, true, true)}
                         {/each}
                       </div>
                     {/if}
                   {:else}
-                    {@const item = row.contributors[0]}
-                    {@const isSelected = selection.isSelected(item.id)}
-                    <div
-                      class="flex items-center gap-3 rounded border px-3 py-2 text-sm {isSelected
-                        ? 'border-ring ring-2 ring-ring bg-card'
-                        : needsVerify(item)
-                          ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/20'
-                          : 'border-border bg-card'}"
-                      data-testid="shopping-item-row"
-                      data-item-id={item.id}
-                    >
-                      {#if selectionMode}
-                        <RowSelectCheckbox
-                          {selection}
-                          id={item.id}
-                          label=""
-                          aria-label="Select {item.rawText}"
-                        />
-                      {/if}
-                      <CanonIcon
-                        thumbnail={thumbnailFor(item.canonId)}
-                        name={displayLabel(item)}
-                        dimmed={item.checked}
-                        size={34}
-                      />
-                      <button
-                        type="button"
-                        class="flex-1 min-w-0 text-left"
-                        onclick={() => openEditSheet(item)}
-                        aria-label="Edit {item.rawText}"
-                        data-testid="shopping-item-edit-btn"
-                      >
-                        <span class="block truncate">
-                          {displayLabel(item)}{#if amountStr}{' '}<span
-                              class="text-muted-foreground">({amountStr})</span
-                            >{/if}
-                        </span>
-                        {#if item.notes}
-                          <span class="block text-xs text-muted-foreground truncate"
-                            >{toSentenceCase(item.notes)}</span
-                          >
-                        {/if}
-                        {#if sourceLabel(item)}
-                          <span class="block text-xs text-muted-foreground/70"
-                            >{sourceLabel(item)}</span
-                          >
-                        {/if}
-                      </button>
-                      {#if needsVerify(item)}
-                        {@render verifyControls([item.id])}
-                      {:else}
-                        <button
-                          type="button"
-                          class="flex items-center justify-center p-1 rounded transition-colors {item.checked
-                            ? 'text-green-500'
-                            : 'text-muted-foreground hover:text-foreground'}"
-                          onclick={() => void toggleItemChecked(params.listId, item)}
-                          aria-label={item.checked ? 'Uncheck' : 'Mark as done'}
-                          data-testid="shopping-item-check"
-                        >
-                          <Icon name={item.checked ? 'CircleCheck' : 'Circle'} size={18} />
-                        </button>
-                      {/if}
-                    </div>
+                    {@render plainItemRow(row.contributors[0], false, false, true)}
                   {/if}
                 {/each}
               {/if}
