@@ -285,7 +285,9 @@ describe('parseRecipeIngredients — displayText threading', () => {
     expect(result[0].items[1].parsed.displayText).toBe('1 tbsp');
   });
 
-  it('sets displayText null for count/item-based ingredients', async () => {
+  it('threads metric weight, "g" unit, and a count displayText for count/item-based ingredients', async () => {
+    // Count items are now converted to estimated metric weight by the model; the original
+    // count form rides along in displayText. The flow threads whatever the model returns.
     mockGenerate.mockResolvedValue({
       output: aiOutput([
         {
@@ -293,8 +295,10 @@ describe('parseRecipeIngredients — displayText threading', () => {
           items: [
             simpleIngredient({
               rawText: '2 cloves garlic',
+              quantity: { type: 'single', value: 6 },
+              unit: 'g',
               item: 'garlic',
-              displayText: null,
+              displayText: '2 cloves',
             }),
           ],
         },
@@ -303,8 +307,34 @@ describe('parseRecipeIngredients — displayText threading', () => {
 
     const result = await (parseRecipeIngredientsFlow as Function)({ rawText: '2 cloves garlic' });
 
-    expect(result[0].items[0].parsed.displayText).toBeNull();
+    expect(result[0].items[0].parsed.quantity).toEqual({ type: 'single', value: 6 });
+    expect(result[0].items[0].parsed.unit).toBe('g');
+    expect(result[0].items[0].parsed.displayText).toBe('2 cloves');
+  });
+
+  it('keeps quantity and unit null for genuinely unquantifiable items', async () => {
+    mockGenerate.mockResolvedValue({
+      output: aiOutput([
+        {
+          name: null,
+          items: [
+            simpleIngredient({
+              rawText: 'salt to taste',
+              quantity: null,
+              unit: null,
+              item: 'salt',
+              displayText: null,
+            }),
+          ],
+        },
+      ]),
+    });
+
+    const result = await (parseRecipeIngredientsFlow as Function)({ rawText: 'salt to taste' });
+
+    expect(result[0].items[0].parsed.quantity).toBeNull();
     expect(result[0].items[0].parsed.unit).toBeNull();
+    expect(result[0].items[0].parsed.displayText).toBeNull();
   });
 });
 
@@ -387,5 +417,18 @@ describe('parseRecipeIngredients — prompt construction', () => {
     const { system } = mockGenerate.mock.calls[0]![0];
     expect(system).toContain('rawText');
     expect(system).toContain('verbatim');
+  });
+
+  it('mandates converting count/pack ingredients to metric in the system prompt', async () => {
+    mockGenerate.mockResolvedValue({ output: aiOutput([{ name: null, items: [] }]) });
+
+    await (parseRecipeIngredientsFlow as Function)({ rawText: '2 cloves garlic' });
+
+    const { system } = mockGenerate.mock.calls[0]![0];
+    // New always-metric mandate: count/pack ingredients are converted, not left unit:null.
+    expect(system).toContain('EVERY quantified ingredient must be converted to metric');
+    expect(system).toContain('1 clove garlic ≈ 3g');
+    // unit:null is now reserved for genuinely unquantifiable items only.
+    expect(system).toContain('genuinely unquantifiable');
   });
 });

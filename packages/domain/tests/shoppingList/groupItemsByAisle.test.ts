@@ -230,6 +230,35 @@ describe('groupItemsByAisle — combining recipe rows (#184)', () => {
     expect(result.aisles[0].rows[0].key).toBe('r1');
   });
 
+  it('aggregates recipe-sourced metric (g) contributions of the same canon into one summed row', () => {
+    // End-to-end win: now that recipe ingredients carry metric weights, two
+    // recipe contributions of the same canon (150g + 300g carrots) collapse into
+    // a single aisle row whose g subtotal sums to 450.
+    const canonCarrots = makeCanonMap([{ id: 'c-carrot', name: 'Carrots', aisleId: 'aisle-1' }]);
+    const items = [
+      makeItem('r1', {
+        matchState: 'matched',
+        canonId: 'c-carrot',
+        sources: [recipeSource('soup')],
+        amount: 150,
+        unit: 'g',
+      }),
+      makeItem('r2', {
+        matchState: 'matched',
+        canonId: 'c-carrot',
+        sources: [recipeSource('stew')],
+        amount: 300,
+        unit: 'g',
+      }),
+    ];
+    const result = groupItemsByAisle(items, canonCarrots, AISLES);
+    expect(result.aisles[0].rows).toHaveLength(1);
+    const row = result.aisles[0].rows[0];
+    expect(row.combined).toBe(true);
+    expect(row.contributors).toHaveLength(2);
+    expect(row.subtotals).toEqual([{ unit: 'g', amount: 450 }]);
+  });
+
   it('sums per unit and lists mixed units separately', () => {
     const items = [
       makeItem('r1', {

@@ -9,6 +9,7 @@
     DialogTitle,
     ListPage,
   } from '@salt/ui-components';
+  import { onMount } from 'svelte';
   import { ChevronLeft, ChevronRight } from '@lucide/svelte';
   import { weekDates, type Attendee } from '@salt/domain';
   import MealDayEditor from './MealDayEditor.svelte';
@@ -30,6 +31,12 @@
     setWeekAttendeeNote,
   } from '../../lib/mealPlanService.js';
   import { addToast } from '../../lib/toastStore.js';
+
+  // The week store is a module-level singleton, so it retains whatever week was
+  // last viewed. Reset to the current week each time the planner is opened.
+  onMount(() => {
+    thisWeek();
+  });
 
   const dates = $derived(weekDates($selectedStartDate));
 
