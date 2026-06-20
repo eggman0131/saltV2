@@ -19,3 +19,7 @@ apps/cloud-functions/.secret.local
 apps/cloud-functions/.genkit/
 coverage/
 tmp/
+
+# Marker written by e2e globalSetup recording the build inputs the running
+# test-emulator image was built from (drives the stale-image rebuild check).
+docker/test-emulators/.image-build-hash

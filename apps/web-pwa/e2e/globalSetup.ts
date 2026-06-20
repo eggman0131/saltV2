@@ -1,4 +1,5 @@
 import { execFileSync, spawn } from 'child_process';
+import { createHash } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -42,6 +43,75 @@ function dockerCompose(args: string[]): void {
     cwd: REPO_ROOT,
     stdio: 'inherit',
   });
+}
+
+// Container name from docker-compose.test.yml (`container_name:`).
+const CONTAINER_NAME = 'salt-test-emulators';
+// Image build inputs, relative to the compose file's directory. A change to
+// either is baked into the image only by a rebuild.
+const IMAGE_BUILD_INPUTS = ['Dockerfile', 'healthcheck.sh'] as const;
+// Records the content hash of the inputs the running image was built from, so a
+// later run can tell whether the image is still current. Gitignored.
+const IMAGE_HASH_MARKER = path.join(REPO_ROOT, path.dirname(COMPOSE_FILE), '.image-build-hash');
+
+function dockerInspect(args: string[]): string | null {
+  try {
+    return execFileSync('docker', args, {
+      cwd: REPO_ROOT,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+      .toString()
+      .trim();
+  } catch {
+    return null;
+  }
+}
+
+// A content hash (not mtime) of the image build inputs. Content-based so a bare
+// `git checkout`/`pull` — which bumps file mtimes without changing bytes —
+// never triggers a spurious rebuild, and so the marker converges: a cache-hit
+// rebuild reproduces the same hash. mtime / image-`Created` comparisons do NOT
+// converge (a fully-cached rebuild keeps the original image timestamp).
+function imageBuildInputsHash(): string {
+  const buildDir = path.join(REPO_ROOT, path.dirname(COMPOSE_FILE));
+  const h = createHash('sha256');
+  for (const f of IMAGE_BUILD_INPUTS) h.update(fs.readFileSync(path.join(buildDir, f)));
+  return h.digest('hex');
+}
+
+// `docker compose up` reuses an existing image and never rebuilds it on a
+// Dockerfile change, so a base-image / firebase-tools bump (e.g. #247, which
+// pinned firebase-tools to 15.21) can silently leave an OLD emulator toolchain
+// running in a long-lived dev container — surfacing as wedged Functions workers
+// and callables that fail with ERR_CONNECTION_REFUSED, while CI (which always
+// builds fresh) stays green. Detect it by comparing the build inputs' current
+// hash to the marker recorded at the last rebuild, and force a from-scratch
+// rebuild when they diverge. Best-effort: any docker/fs hiccup returns false so
+// a detection problem never blocks the suite.
+function emulatorImageIsStale(): boolean {
+  // Only meaningful once an image/container exists; with none, `up` builds the
+  // image fresh and recordImageBuildInputs() writes the marker afterwards.
+  if (!dockerInspect(['inspect', CONTAINER_NAME, '--format', '{{.Id}}'])) return false;
+  let recorded: string | null = null;
+  try {
+    recorded = fs.readFileSync(IMAGE_HASH_MARKER, 'utf8').trim();
+  } catch {
+    recorded = null;
+  }
+  // A missing marker means the image predates this check (or was built by an
+  // out-of-band `up`): rebuild once so the container lands on the current
+  // Dockerfile, after which the marker converges and the fast path resumes.
+  return recorded !== imageBuildInputsHash();
+}
+
+// Asserts "the now-running image corresponds to the current build inputs".
+// Called after every successful `up`, so the marker converges on the first run.
+function recordImageBuildInputs(): void {
+  try {
+    fs.writeFileSync(IMAGE_HASH_MARKER, imageBuildInputsHash());
+  } catch {
+    // best-effort: a write failure just means the next run re-checks
+  }
 }
 
 // The Functions emulator loads apps/cloud-functions/dist/index.js from the
@@ -119,18 +189,32 @@ async function ensureE2eServer(): Promise<void> {
 }
 
 export default async function globalSetup(): Promise<void> {
-  const forceFresh = process.env.E2E_FRESH === '1';
-
-  // E2E_FRESH=1 forces a clean stack: drop the container + scratch volume so
-  // the next `up` rebuilds from a cold emulator. Without it, `up --wait` is
+  const stale = emulatorImageIsStale();
+  if (stale) {
+    console.log(
+      'globalSetup: emulator image predates its Dockerfile — rebuilding the stack from scratch ' +
+        '(picks up base-image / firebase-tools changes a plain `up` would skip).',
+    );
+  }
+  // E2E_FRESH=1 (manual) or a stale image (auto) forces a clean stack: drop the
+  // container + scratch volume and rebuild the image, so the next `up` comes up
+  // on the current toolchain from a cold emulator. Without it, `up --wait` is
   // idempotent — a stack already healthy from a prior run is reused (local
   // ergonomics; teardown stays gated by CI / E2E_TEARDOWN in globalTeardown).
+  const forceFresh = process.env.E2E_FRESH === '1' || stale;
   if (forceFresh) {
     dockerCompose(['down', '-v']);
   }
 
   buildCloudFunctions();
-  dockerCompose(['up', '--wait']);
+  // `--build` only on the fresh path: it rebuilds the image (cache-fast when
+  // the Dockerfile is unchanged) so a stale-detected or E2E_FRESH run actually
+  // picks up the new Dockerfile. The reuse path stays a plain `up --wait` to
+  // keep rapid local iteration free of a per-run build-cache check.
+  dockerCompose(forceFresh ? ['up', '--wait', '--build'] : ['up', '--wait']);
+  // Record the inputs the now-running image was built from so the next run's
+  // staleness check converges (and the fast path resumes until they change).
+  recordImageBuildInputs();
 
   // `up --wait` returns once the healthcheck passes (triggers registered), but
   // a reused stack still carries the prior run's data — wipe unconditionally so
