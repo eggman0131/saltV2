@@ -4,6 +4,7 @@ import {
   deleteRecipe as deleteRecipeDoc,
   callParseRecipeIngredients,
   callCanonicaliseRecipeIngredients,
+  callExtractRecipeFromUrl,
   saveShoppingListItem,
 } from '@salt/firebase-sync';
 import { createLDErrorReportingAdapter } from '@salt/ld-observability';
@@ -16,8 +17,9 @@ import type {
   SourceRef,
   CanonItem,
 } from '@salt/domain';
+import type { UrlImportFailureCode } from '@salt/domain/schemas';
 import { hasLiveCanonMatch } from '@salt/domain';
-import { success, type DomainError, type ReadResult } from '@salt/shared-types';
+import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
 import { getCanonItemsSnapshot } from './canonService.js';
 import { writable, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
@@ -108,6 +110,57 @@ export async function parseIngredients(
   rawText: string,
 ): Promise<ReadResult<IngredientGroup[], DomainError>> {
   return callParseRecipeIngredients(rawText);
+}
+
+// ─── URL import ────────────────────────────────────────────────────────────────
+// SSRF-hardened import: paste a recipe URL, get back a fully-converted (metric +
+// British) draft. The draft is NOT persisted here — the caller hydrates the
+// editor with it so the user reviews/saves. On failure we return a specific,
+// friendly message keyed off the import failure code; the UI shows it and lets
+// the user fall back to manual/chat.
+
+// User-facing copy per failure code. Mirrors the CF entrypoint's HttpsError
+// messages but lives client-side so we never depend on the server message text.
+const URL_IMPORT_COPY: Record<UrlImportFailureCode, string> = {
+  'invalid-url': "That doesn't look like a valid web address.",
+  'blocked-url': "That link can't be imported.",
+  'fetch-failed': "We couldn't reach that page — it may be down, paywalled, or blocking us.",
+  'not-a-recipe': "We couldn't find a recipe on that page.",
+  'ai-failed': 'The recipe reader had trouble with that page — try again, or add it manually.',
+};
+
+export function urlImportMessage(code: UrlImportFailureCode): string {
+  return URL_IMPORT_COPY[code];
+}
+
+// Import a recipe from a URL. Returns the assembled draft as a Recipe entity
+// (RecipeDoc is structurally identical), with source.type='url' already set.
+// `updatedAt` is left as the server stamp; the editor re-stamps on save.
+export async function importRecipeFromUrl(
+  url: string,
+): Promise<ReadResult<Recipe, UrlImportFailureCode>> {
+  const result = await callExtractRecipeFromUrl({ url: url.trim() });
+  if (result.kind !== 'ok') return failure(result.error);
+  // RecipeDoc and Recipe are the same shape (the adapter casts both ways on
+  // read/write); accept the draft as a Recipe for the editor.
+  return success(result.value as unknown as Recipe);
+}
+
+// Hand-off slot for the imported draft. The list page imports, stashes the
+// draft here, then routes to /recipes/new; the edit page consumes it once on
+// mount (single-use — taking it clears it so a later blank "New recipe" doesn't
+// pick up a stale import). Kept in module state (not the route) because the
+// draft is a rich object that doesn't belong in a URL.
+let _pendingImportDraft: Recipe | null = null;
+
+export function stashImportedDraft(draft: Recipe): void {
+  _pendingImportDraft = draft;
+}
+
+export function takeImportedDraft(): Recipe | null {
+  const d = _pendingImportDraft;
+  _pendingImportDraft = null;
+  return d;
 }
 
 // Canonicalise all parsed-but-unmatched ingredients in a recipe via a single

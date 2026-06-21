@@ -19,6 +19,7 @@
     persistRecipe,
     parseIngredients,
     matchIngredient,
+    takeImportedDraft,
   } from '../../lib/recipeService.js';
   import { canonItems } from '../../lib/canonService.js';
   import { addToast } from '../../lib/toastStore.js';
@@ -43,6 +44,13 @@
   let loaded = $state(false);
 
   function buildInitialDraft(): Recipe {
+    // On /recipes/new, consume a one-shot imported draft if the URL-import flow
+    // stashed one (single-use: takeImportedDraft clears it). Clone so editing
+    // doesn't mutate the stashed object. Otherwise start from a blank recipe.
+    if ((params?.id ?? null) === null) {
+      const imported = takeImportedDraft();
+      if (imported) return cloneRecipe(imported);
+    }
     return emptyRecipe(crypto.randomUUID(), new Date().toISOString());
   }
 
@@ -115,6 +123,17 @@
     } else if (e.key === 'Backspace' && !tagInput && draft.metadata.tags.length > 0) {
       removeTag(draft.metadata.tags[draft.metadata.tags.length - 1]!);
     }
+  }
+
+  // ─── Source helpers ───────────────────────────────────────────────────────────
+  // The source URL is surfaced so imported recipes show their provenance and it
+  // survives an edit/save. An empty url clears the source entirely (back to a
+  // manual recipe); a non-empty url marks it as url-sourced.
+  const sourceUrl = $derived(draft.source?.type === 'url' ? (draft.source.url ?? '') : '');
+
+  function setSourceUrl(value: string): void {
+    const trimmed = value.trim();
+    draft = { ...draft, source: trimmed === '' ? null : { type: 'url', url: trimmed } };
   }
 
   // ─── Ingredient-group helpers ─────────────────────────────────────────────────
@@ -683,6 +702,15 @@
           data-testid="recipe-total-input"
         />
       </div>
+      <!-- Source -->
+      <TextField
+        label="Source URL"
+        type="url"
+        placeholder="https://example.com/original-recipe (optional)"
+        value={sourceUrl}
+        onValueChange={setSourceUrl}
+        data-testid="recipe-source-input"
+      />
       <!-- Tag picker -->
       <div class="flex flex-col gap-1.5">
         <p class="text-sm font-medium">Tags</p>

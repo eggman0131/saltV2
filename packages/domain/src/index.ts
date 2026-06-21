@@ -236,6 +236,16 @@ export {
   clearIngredientMatch,
   flattenIngredients,
 } from './recipe/index.js';
+export type { ParsedImportUrl, IpClass } from './recipe/index.js';
+export {
+  parseImportUrl,
+  isHttpsScheme,
+  hostnameAsIpLiteral,
+  classifyIp,
+  isPublicIp,
+  isIpv4,
+  isIpv6,
+} from './recipe/index.js';
 
 // Cross-cutting ports.
 export type { ErrorReportingPort } from './ErrorReportingPort.js';

@@ -44,7 +44,7 @@ export {
 } from './chatSessionSubscription.js';
 export { streamChefChat, callGenerateChatTitle } from './chatCallables.js';
 export { callAuthorRecipe } from './authorRecipeCallable.js';
-export { callParseRecipeIngredients } from './recipeCallables.js';
+export { callParseRecipeIngredients, callExtractRecipeFromUrl } from './recipeCallables.js';
 export {
   subscribeMealPlanConfig,
   subscribeMealPlanTemplate,
