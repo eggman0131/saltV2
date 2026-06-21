@@ -24,7 +24,7 @@ No implementation detail. Written for a non-coder deciding if this is right.]
 
 ## Architecture Notes
 [Layer map references. Packages touched. Key decisions made. Constraints from CLAUDE.md.
-What must NOT be done. Existing patterns to reuse. Written for a fresh Sonnet agent.]
+What must NOT be done. Existing patterns to reuse. Written for a fresh agent with no prior context.]
 
 ## Open Questions / Decisions
 [Every architecture risk or fork raised in Step 2 goes here, each as:
