@@ -10,6 +10,7 @@ import { ssrfGuardedFetch, SsrfFetchError } from '../adapters/ssrfFetch.js';
 import { extractRecipeJsonLd, type JsonLdRecipe } from '../adapters/jsonLdRecipe.js';
 import { canonicaliseRecipeIngredientsFlow } from './canonicaliseRecipeIngredients.js';
 import { parseRecipeIngredientsFlow } from './parseRecipeIngredients.js';
+import { resolveModel } from '../ai/resolveModel.js';
 
 // SSRF-hardened URL import (recipe URL import epic, Phases 1 & 3).
 //
@@ -22,9 +23,6 @@ import { parseRecipeIngredientsFlow } from './parseRecipeIngredients.js';
 //
 // The flow throws a UrlImportError tagged with a failure code; the onCall
 // entrypoint maps each code to the right HttpsError + user-facing copy.
-
-// Flash + temperature:0 — accuracy over creativity, mirrors the librarian flow.
-const EXTRACT_MODEL = googleAI.model('gemini-flash-latest');
 
 // When no JSON-LD Recipe is present we forward the raw page HTML to the model.
 // Cap it so a huge page can't blow the prompt budget; recipes always appear well
@@ -98,13 +96,15 @@ export const extractRecipeFromUrlFlow = ai.defineFlow(
       ? buildJsonLdPrompt(jsonLd, parsed.href)
       : buildHtmlPrompt(html, parsed.href);
 
+    // Flash + temperature:0 — accuracy over creativity, mirrors the librarian flow.
+    const extractModel = googleAI.model(await resolveModel('fast', 'extractRecipeFromUrl'));
     let extracted: ExtractRecipeAIOutput;
     try {
       extracted = await withAiTimeout(
         'extractRecipeFromUrl',
         async () => {
           const result = await ai.generate({
-            model: EXTRACT_MODEL,
+            model: extractModel,
             system,
             prompt,
             output: { schema: ExtractRecipeAIOutputSchema },

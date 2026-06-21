@@ -77,6 +77,14 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow write: if isAdmin();
     }
+    // AI model settings (admin-managed model selection) — per-environment
+    // singleton naming the Gemini model for each AI role. The CF model resolver
+    // reads it via the Admin SDK (bypasses rules); any signed-in user may read
+    // (the admin UI shows the effective config); only admins may change it.
+    match /appSettings/{document} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
     // Chat sessions (issue #206) — the first per-user-scoped data in Salt.
     // A session may only be read or written by the user who owns it.
     // On create, the client must set ownerUid to their own uid.
