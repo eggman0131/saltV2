@@ -63,7 +63,7 @@ remediation require? What is the risk of NOT fixing.]
 ## Architecture Notes & Constraints
 [Layer map references, packages touched, constraints from CLAUDE.md (purity, schema/back-compat).
 **Behavior that must be preserved**, and the tests that encode it. What must NOT be done.
-Written for a fresh Sonnet agent.]
+Written for a fresh agent with no prior context.]
 
 ## Open Questions / Decisions
 [Every fork raised in Step 3, each as:
