@@ -33,11 +33,17 @@
       addToast(urlImportMessage(result.error), 'destructive');
       return;
     }
-    // Hand the converted draft to the editor and route into it pre-filled.
+    // Hand the converted draft to the editor and route into it pre-filled. If
+    // navigation itself fails, surface it rather than silently closing the form
+    // and stranding the user with no editor and no error.
     stashImportedDraft(result.value);
-    showImport = false;
-    importUrl = '';
-    push('/recipes/new');
+    try {
+      push('/recipes/new');
+      showImport = false;
+      importUrl = '';
+    } catch {
+      addToast('Could not open the editor — please try again.', 'destructive');
+    }
   }
 </script>
 
