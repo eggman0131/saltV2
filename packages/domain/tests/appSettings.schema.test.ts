@@ -9,6 +9,7 @@ describe('AppSettingsSchema', () => {
   it('defaults every role to today exact production literal for an empty doc', () => {
     expect(AppSettingsSchema.parse({})).toEqual({
       fast: 'gemini-flash-latest',
+      lite: 'gemini-flash-lite-latest',
       pro: 'gemini-pro-latest',
       embedding: 'gemini-embedding-001',
       image: 'gemini-2.5-flash-image',
@@ -19,14 +20,30 @@ describe('AppSettingsSchema', () => {
   it('AI_MODEL_DEFAULTS match the schema defaults', () => {
     const parsed = AppSettingsSchema.parse({});
     expect(parsed.fast).toBe(AI_MODEL_DEFAULTS.fast);
+    expect(parsed.lite).toBe(AI_MODEL_DEFAULTS.lite);
     expect(parsed.pro).toBe(AI_MODEL_DEFAULTS.pro);
     expect(parsed.embedding).toBe(AI_MODEL_DEFAULTS.embedding);
     expect(parsed.image).toBe(AI_MODEL_DEFAULTS.image);
   });
 
+  // Back-compat: a Phase 1/2 doc written before the `lite` role existed has no
+  // `lite` field; it MUST still parse and resolve `lite` to today's default so
+  // the reassigned flows keep working without a migration.
+  it('a doc without lite parses and yields the lite default (back-compat)', () => {
+    const parsed = AppSettingsSchema.parse({
+      fast: 'gemini-flash-latest',
+      pro: 'gemini-pro-latest',
+      embedding: 'gemini-embedding-001',
+      image: 'gemini-2.5-flash-image',
+    });
+    expect(parsed.lite).toBe('gemini-flash-lite-latest');
+    expect(parsed.lite).toBe(AI_MODEL_DEFAULTS.lite);
+  });
+
   it('fills only the unset roles with defaults (partial doc)', () => {
     const parsed = AppSettingsSchema.parse({ fast: 'custom-fast-model' });
     expect(parsed.fast).toBe('custom-fast-model');
+    expect(parsed.lite).toBe(AI_MODEL_DEFAULTS.lite);
     expect(parsed.pro).toBe(AI_MODEL_DEFAULTS.pro);
     expect(parsed.embedding).toBe(AI_MODEL_DEFAULTS.embedding);
     expect(parsed.image).toBe(AI_MODEL_DEFAULTS.image);
@@ -35,6 +52,7 @@ describe('AppSettingsSchema', () => {
   it('preserves explicit per-role overrides and audit metadata', () => {
     const parsed = AppSettingsSchema.parse({
       fast: 'a',
+      lite: 'a-lite',
       pro: 'b',
       embedding: 'c',
       image: 'd',
@@ -43,6 +61,7 @@ describe('AppSettingsSchema', () => {
     });
     expect(parsed).toEqual({
       fast: 'a',
+      lite: 'a-lite',
       pro: 'b',
       embedding: 'c',
       image: 'd',

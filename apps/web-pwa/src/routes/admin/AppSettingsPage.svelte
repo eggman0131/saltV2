@@ -46,7 +46,13 @@
       role: 'fast',
       title: 'Fast model',
       description:
-        'Used by quick text flows: entry/recipe parsing, canon arbitration, equipment, chat titles, and URL recipe import.',
+        'Used by quick text flows that still want solid quality: recipe authoring, equipment identification, and URL recipe import.',
+    },
+    {
+      role: 'lite',
+      title: 'Lite model',
+      description:
+        'Cheap/fast tier for lightweight flows — entry/recipe-ingredient parsing, canon arbitration, equipment entry population, and chat titles — where a small quality trade-off is worth the cost and latency savings.',
     },
     {
       role: 'pro',
@@ -69,12 +75,14 @@
   // placeholder shows the default). Re-seeds whenever the saved doc changes.
   let drafts = $state<Record<AiModelRole, string>>({
     fast: '',
+    lite: '',
     pro: '',
     embedding: '',
     image: '',
   });
   let saving = $state<Record<AiModelRole, boolean>>({
     fast: false,
+    lite: false,
     pro: false,
     embedding: false,
     image: false,

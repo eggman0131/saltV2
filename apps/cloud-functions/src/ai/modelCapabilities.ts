@@ -87,6 +87,7 @@ function isTextModel(model: CatalogModelLike): boolean {
 export const ROLE_CAPABILITY_PREDICATE: Record<AiModelRole, (model: CatalogModelLike) => boolean> =
   {
     fast: isTextModel,
+    lite: isTextModel,
     pro: isTextModel,
     embedding: isEmbeddingModel,
     image: isImageModel,

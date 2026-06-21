@@ -17,6 +17,11 @@ const textPro: CatalogModelLike = {
   name: 'gemini-pro-latest',
   supportedGenerationMethods: ['generateContent', 'countTokens'],
 };
+const textFlashLite: CatalogModelLike = {
+  name: 'gemini-flash-lite-latest',
+  displayName: 'Gemini Flash Lite',
+  supportedGenerationMethods: ['generateContent', 'countTokens'],
+};
 const embedder: CatalogModelLike = {
   name: 'gemini-embedding-001',
   supportedGenerationMethods: ['embedContent'],
@@ -37,6 +42,15 @@ describe('modelSupportsRole', () => {
     expect(modelSupportsRole('pro', textFlash)).toBe(true);
     expect(modelSupportsRole('fast', textPro)).toBe(true);
     expect(modelSupportsRole('pro', textPro)).toBe(true);
+  });
+
+  it('admits text models (incl. flash-lite) for the lite role and excludes embedding/image', () => {
+    expect(modelSupportsRole('lite', textFlashLite)).toBe(true);
+    expect(modelSupportsRole('lite', textFlash)).toBe(true);
+    expect(modelSupportsRole('lite', textPro)).toBe(true);
+    // The lite role reuses the text/reasoning predicate, so non-text models are out.
+    expect(modelSupportsRole('lite', embedder)).toBe(false);
+    expect(modelSupportsRole('lite', imageModel)).toBe(false);
   });
 
   it('keeps embedders and image models out of the reasoning roles', () => {
