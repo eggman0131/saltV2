@@ -170,7 +170,12 @@ function normalizeRecipeNode(raw: z.infer<typeof RawJsonLdRecipeSchema>): JsonLd
   const node = raw as Record<string, unknown>;
   const title = coerceText(node['name'] ?? node['headline']);
   const ingredients = coerceTextList(node['recipeIngredient'] ?? node['ingredients']);
-  if (title === null || ingredients.length === 0) return null;
+  const steps = coerceTextList(node['recipeInstructions']);
+  // Require a title, at least one ingredient, AND at least one step. An
+  // ingredient-only stub (some sites emit a Recipe node with no instructions)
+  // isn't a usable recipe — fall through so the HTML path or not-a-recipe can
+  // take over rather than feeding the model a recipe with no method.
+  if (title === null || ingredients.length === 0 || steps.length === 0) return null;
 
   return {
     title,
@@ -181,7 +186,7 @@ function normalizeRecipeNode(raw: z.infer<typeof RawJsonLdRecipeSchema>): JsonLd
     cookTimeMinutes: coerceDurationMinutes(node['cookTime']),
     tags: coerceTags(node),
     ingredients,
-    steps: coerceTextList(node['recipeInstructions']),
+    steps,
   };
 }
 
