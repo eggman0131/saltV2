@@ -9,15 +9,16 @@ import { z } from 'zod';
 // empty, or never-configured doc resolves to the current behaviour — deleting
 // or corrupting the doc leaves AI fully working on defaults.
 
-// The four AI roles flows are bucketed into. Free-text model names per role for
+// The AI roles flows are bucketed into. Free-text model names per role for
 // now (no live catalog yet); a later phase adds validation against a catalog.
-export const AI_MODEL_ROLES = ['fast', 'pro', 'embedding', 'image'] as const;
+export const AI_MODEL_ROLES = ['fast', 'lite', 'pro', 'embedding', 'image'] as const;
 export type AiModelRole = (typeof AI_MODEL_ROLES)[number];
 
 // Today's exact production model literals — the fallback for every role. These
 // MUST stay in sync with the hardcoded literals the flows used before Phase 1.
 export const AI_MODEL_DEFAULTS = {
   fast: 'gemini-flash-latest',
+  lite: 'gemini-flash-lite-latest',
   pro: 'gemini-pro-latest',
   embedding: 'gemini-embedding-001',
   image: 'gemini-2.5-flash-image',
@@ -32,17 +33,17 @@ export const AI_MODEL_DEFAULTS = {
 // `perFlow` map of the production `appSettings` doc — renaming one orphans any
 // saved override. Add new flows here; do not rename existing ones.
 export const AI_FLOW_ROLES = {
-  arbitrateCanon: 'fast',
+  arbitrateCanon: 'lite',
   authorRecipe: 'fast',
   chefChat: 'pro',
   embedText: 'embedding',
   extractRecipeFromUrl: 'fast',
   generateCanonIcon: 'image',
-  generateChatTitle: 'fast',
+  generateChatTitle: 'lite',
   identifyEquipment: 'fast',
-  parseEntry: 'fast',
-  parseRecipeIngredients: 'fast',
-  populateEquipmentEntry: 'fast',
+  parseEntry: 'lite',
+  parseRecipeIngredients: 'lite',
+  populateEquipmentEntry: 'lite',
   serverEmbedding: 'embedding',
 } as const satisfies Record<string, AiModelRole>;
 
@@ -51,6 +52,7 @@ export const AI_FLOW_IDS = Object.keys(AI_FLOW_ROLES) as AiFlowId[];
 
 export const AppSettingsSchema = z.object({
   fast: z.string().min(1).default(AI_MODEL_DEFAULTS.fast),
+  lite: z.string().min(1).default(AI_MODEL_DEFAULTS.lite),
   pro: z.string().min(1).default(AI_MODEL_DEFAULTS.pro),
   embedding: z.string().min(1).default(AI_MODEL_DEFAULTS.embedding),
   image: z.string().min(1).default(AI_MODEL_DEFAULTS.image),

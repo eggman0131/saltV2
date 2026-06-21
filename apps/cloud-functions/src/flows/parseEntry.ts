@@ -19,7 +19,7 @@ export const parseEntryFlow = ai.defineFlow(
     setActiveSpanName(`parseEntry: ${rawText}`);
     const prompt = buildPrompt(rawText);
     const result = await ai.generate({
-      model: googleAI.model(await resolveModel('fast', 'parseEntry')),
+      model: googleAI.model(await resolveModel('lite', 'parseEntry')),
       prompt,
       output: { schema: ParseEntryAIOutputSchema },
       config: { temperature: 0 },
