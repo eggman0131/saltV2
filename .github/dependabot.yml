@@ -1,0 +1,42 @@
+# Dependabot configuration for the Salt pnpm monorepo.
+# A single npm entry covers every workspace package via the root pnpm-lock.yaml.
+# Routine minor/patch bumps are grouped into a couple of weekly PRs; majors stay
+# individual so breaking upgrades get reviewed on their own.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+    groups:
+      # Non-breaking production dependency bumps → one PR.
+      production-minor-patch:
+        dependency-type: "production"
+        update-types:
+          - "minor"
+          - "patch"
+      # Non-breaking dev/tooling bumps → one PR.
+      dev-minor-patch:
+        dependency-type: "development"
+        update-types:
+          - "minor"
+          - "patch"
+    # Major updates match no group above, so Dependabot opens them as
+    # individual PRs that warrant a closer look.
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
