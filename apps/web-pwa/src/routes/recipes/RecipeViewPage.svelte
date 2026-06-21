@@ -42,6 +42,14 @@
 
   const recipe = $derived($recipes.find((r) => r.id === params.id) ?? null);
 
+  // Outbound link to the original recipe, only for url-sourced (imported) recipes
+  // with a non-empty url. Manual/legacy recipes (source null) render nothing.
+  const sourceUrl = $derived(
+    recipe?.source?.type === 'url' && (recipe.source.url ?? '').trim() !== ''
+      ? recipe.source.url!
+      : null,
+  );
+
   function timeParts(): string[] {
     if (!recipe) return [];
     const m = recipe.metadata;
@@ -335,7 +343,7 @@
       <!-- Left column: main recipe content -->
       <div class="flex flex-col gap-4">
         <!-- Description + meta chips -->
-        {#if recipe.description || timeParts().length > 0 || recipe.metadata.tags.length > 0}
+        {#if recipe.description || timeParts().length > 0 || recipe.metadata.tags.length > 0 || sourceUrl}
           <Card>
             <CardContent class="flex flex-col gap-3 p-4">
               {#if recipe.description}
@@ -354,6 +362,18 @@
                     >
                   {/each}
                 </div>
+              {/if}
+              {#if sourceUrl}
+                <a
+                  href={sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="inline-flex items-center gap-1.5 self-start text-sm text-primary hover:underline"
+                  data-testid="recipe-source-link"
+                >
+                  <Icon name="ExternalLink" size={14} />
+                  View original recipe
+                </a>
               {/if}
             </CardContent>
           </Card>

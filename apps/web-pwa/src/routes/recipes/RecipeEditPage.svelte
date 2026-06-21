@@ -125,6 +125,17 @@
     }
   }
 
+  // ─── Source helpers ───────────────────────────────────────────────────────────
+  // The source URL is surfaced so imported recipes show their provenance and it
+  // survives an edit/save. An empty url clears the source entirely (back to a
+  // manual recipe); a non-empty url marks it as url-sourced.
+  const sourceUrl = $derived(draft.source?.type === 'url' ? (draft.source.url ?? '') : '');
+
+  function setSourceUrl(value: string): void {
+    const trimmed = value.trim();
+    draft = { ...draft, source: trimmed === '' ? null : { type: 'url', url: trimmed } };
+  }
+
   // ─── Ingredient-group helpers ─────────────────────────────────────────────────
   function setGroups(groups: IngredientGroup[]): void {
     draft = { ...draft, ingredients: groups };
@@ -691,6 +702,15 @@
           data-testid="recipe-total-input"
         />
       </div>
+      <!-- Source -->
+      <TextField
+        label="Source URL"
+        type="url"
+        placeholder="https://example.com/original-recipe (optional)"
+        value={sourceUrl}
+        onValueChange={setSourceUrl}
+        data-testid="recipe-source-input"
+      />
       <!-- Tag picker -->
       <div class="flex flex-col gap-1.5">
         <p class="text-sm font-medium">Tags</p>
