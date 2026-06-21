@@ -40,7 +40,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Sonnet risk/impact assessment (major bumps only)
+      - name: Opus risk/impact assessment (major bumps only)
         if: ${{ steps.meta.outputs.update-type == 'version-update:semver-major' }}
         uses: anthropics/claude-code-action@v1
         with:
@@ -50,7 +50,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           claude_args: >-
             --max-turns 30
-            --model claude-sonnet-4-6
+            --model claude-opus-4-8
             --allowed-tools "Read,Grep,Glob,WebFetch,WebSearch,Bash(git log:*),Bash(git diff:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*)"
           prompt: |
             You are assessing a MAJOR-version Dependabot update for a NON-TECHNICAL
