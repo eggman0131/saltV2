@@ -107,16 +107,19 @@ jobs:
             **Effort if changes are needed:** <None / Small (a few edits) / Large
             (multi-file migration — warrants its own issue)>
 
-            **Recommendation:** <pick the ONE that fits:
+            **Recommendation:** Give the single clearest, most useful recommendation
+            for THIS specific situation, in your own words. The cases below are common
+            examples to orient you — NOT an exhaustive menu and NOT a constraint. If
+            the right call is something else, say that instead. Common examples:
             ✅ Safe to merge as-is — low risk, used safely /
             ⚠️ Merge, but watch <X> /
             🔧 Small code changes first (listed above) — fixable inline /
             🗺️ Large migration — do NOT merge as-is; open a dedicated issue + plan
-               (this is too big for a drive-by; consider /spec to scope it) /
-            🗑️ Remove instead of upgrade — this dependency appears unused or
-               trivially replaceable here (evidence above) /
-            ⛔ Hold — <reason, e.g. abandoned upstream, security concern, conflicts
-               with architecture>>
+               (too big for a drive-by; consider /spec to scope it) /
+            🗑️ Remove instead of upgrade — appears unused or trivially replaceable /
+            ⛔ Hold — <reason, e.g. abandoned upstream, security concern, architecture
+               conflict>
+            ...or any other recommendation that genuinely fits better.
 
             **Confidence:** <Low / Medium / High> — <one line on why, e.g. couldn't
             find a changelog>
