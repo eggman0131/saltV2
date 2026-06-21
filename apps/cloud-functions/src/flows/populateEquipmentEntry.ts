@@ -16,7 +16,7 @@ export const populateEquipmentEntryFlow = ai.defineFlow(
   async ({ confirmedName }) => {
     setActiveSpanName(`populateEquipmentEntry: ${confirmedName}`);
     const result = await ai.generate({
-      model: googleAI.model(await resolveModel('fast', 'populateEquipmentEntry')),
+      model: googleAI.model(await resolveModel('lite', 'populateEquipmentEntry')),
       system: SYSTEM_INSTRUCTIONS,
       prompt: `"${confirmedName}"`,
       output: { schema: PopulateEquipmentEntryAIOutputSchema },

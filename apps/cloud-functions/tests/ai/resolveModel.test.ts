@@ -30,9 +30,40 @@ describe('resolveModel', () => {
   it('falls back to defaults when the doc is absent', async () => {
     mockGet.mockResolvedValue({ exists: false });
     expect(await resolveModel('fast')).toBe(AI_MODEL_DEFAULTS.fast);
+    expect(await resolveModel('lite')).toBe(AI_MODEL_DEFAULTS.lite);
     expect(await resolveModel('pro')).toBe(AI_MODEL_DEFAULTS.pro);
     expect(await resolveModel('embedding')).toBe(AI_MODEL_DEFAULTS.embedding);
     expect(await resolveModel('image')).toBe(AI_MODEL_DEFAULTS.image);
+  });
+
+  // ─── Lite role (reassigned flows) ─────────────────────────────────────────
+  // parseRecipeIngredients (and its siblings) moved from `fast` to `lite`. The
+  // resolver is role-generic, so the contract is: a reassigned flow resolved on
+  // the `lite` role falls open to the lite default when the doc is absent or
+  // invalid, and honours a configured/overridden lite value.
+  describe('lite role', () => {
+    it('resolves the lite default for a reassigned flow when the doc is absent', async () => {
+      mockGet.mockResolvedValue({ exists: false });
+      expect(await resolveModel('lite', 'parseRecipeIngredients')).toBe(AI_MODEL_DEFAULTS.lite);
+    });
+
+    it('resolves the lite default for a reassigned flow when the doc is invalid', async () => {
+      mockGet.mockResolvedValue({ exists: true, data: () => ({ lite: 123 }) });
+      expect(await resolveModel('lite', 'parseRecipeIngredients')).toBe(AI_MODEL_DEFAULTS.lite);
+    });
+
+    it('honours a configured lite role value', async () => {
+      mockGet.mockResolvedValue({ exists: true, data: () => ({ lite: 'custom-lite-model' }) });
+      expect(await resolveModel('lite', 'parseRecipeIngredients')).toBe('custom-lite-model');
+    });
+
+    it('honours a per-flow override over the lite role value', async () => {
+      mockGet.mockResolvedValue({
+        exists: true,
+        data: () => ({ lite: 'role-lite', perFlow: { parseRecipeIngredients: 'flow-lite' } }),
+      });
+      expect(await resolveModel('lite', 'parseRecipeIngredients')).toBe('flow-lite');
+    });
   });
 
   it('falls back to defaults when the doc is invalid (corrupt)', async () => {

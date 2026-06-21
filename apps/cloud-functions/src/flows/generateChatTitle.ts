@@ -24,7 +24,7 @@ export const generateChatTitleFlow = ai.defineFlow(
   async (input) => {
     const prompt = `User's message: "${input.userMessage}"\n\nChef's reply:\n${input.assistantResponse.slice(0, 500)}`;
 
-    const model = googleAI.model(await resolveModel('fast', 'generateChatTitle'));
+    const model = googleAI.model(await resolveModel('lite', 'generateChatTitle'));
     const result = await withAiTimeout(
       'generateChatTitle',
       () =>

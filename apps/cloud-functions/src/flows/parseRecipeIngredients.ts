@@ -18,7 +18,7 @@ export const parseRecipeIngredientsFlow = ai.defineFlow(
     // Recipe lists are much larger prompts than single-entry calls, so Flash can
     // take 30–50s on a full ingredient list. Use a higher timeout with no retry:
     // retrying a large legitimate request just doubles the wait for no gain.
-    const model = googleAI.model(await resolveModel('fast', 'parseRecipeIngredients'));
+    const model = googleAI.model(await resolveModel('lite', 'parseRecipeIngredients'));
     const result = await withAiTimeout(
       'parseRecipeIngredients',
       () =>
