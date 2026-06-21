@@ -19,6 +19,7 @@
     persistRecipe,
     parseIngredients,
     matchIngredient,
+    takeImportedDraft,
   } from '../../lib/recipeService.js';
   import { canonItems } from '../../lib/canonService.js';
   import { addToast } from '../../lib/toastStore.js';
@@ -43,6 +44,13 @@
   let loaded = $state(false);
 
   function buildInitialDraft(): Recipe {
+    // On /recipes/new, consume a one-shot imported draft if the URL-import flow
+    // stashed one (single-use: takeImportedDraft clears it). Clone so editing
+    // doesn't mutate the stashed object. Otherwise start from a blank recipe.
+    if ((params?.id ?? null) === null) {
+      const imported = takeImportedDraft();
+      if (imported) return cloneRecipe(imported);
+    }
     return emptyRecipe(crypto.randomUUID(), new Date().toISOString());
   }
 

@@ -6,6 +6,7 @@ import {
   MatchOrCreateCanonInputSchema,
   CanonicaliseRecipeIngredientsInputSchema,
   AuthorRecipeInputSchema,
+  ExtractRecipeFromUrlInputSchema,
 } from '@salt/domain/schemas';
 import {
   initServerObservability,
@@ -21,6 +22,11 @@ import { populateEquipmentEntryFlow } from './flows/populateEquipmentEntry.js';
 import { parseRecipeIngredientsFlow } from './flows/parseRecipeIngredients.js';
 import { chefChatFlow } from './flows/chefChat.js';
 import { authorRecipeFlow } from './flows/authorRecipe.js';
+import {
+  extractRecipeFromUrlFlow,
+  UrlImportError,
+  type UrlImportFailureCode,
+} from './flows/extractRecipeFromUrl.js';
 import { generateChatTitleFlow } from './flows/generateChatTitle.js';
 import { onShoppingListItemWrite } from './triggers/onShoppingListItemWrite.js';
 import { onCanonItemWritten } from './triggers/onCanonItemWritten.js';
@@ -184,6 +190,62 @@ export const authorRecipe = onCall(
     }
     await whenServerObservabilityReady();
     return authorRecipeFlow(parsed.data);
+  },
+);
+
+// SSRF-hardened URL import (recipe URL import epic). Uses onCall (not
+// onCallGenkit) so we can map the flow's UrlImportError taxonomy to specific
+// HttpsError codes with user-safe copy (no internal SSRF detail leaked), and
+// bump memory for the batch canonicalisation like authorRecipe. The flow does
+// outbound DNS + a network fetch in addition to the AI call, so the function
+// timeout is generous.
+function mapUrlImportFailure(code: UrlImportFailureCode): HttpsError {
+  switch (code) {
+    case 'invalid-url':
+      return new HttpsError('invalid-argument', "That doesn't look like a valid web address.");
+    case 'blocked-url':
+      // No internal detail leaked.
+      return new HttpsError('invalid-argument', "That link can't be imported.");
+    case 'fetch-failed':
+      return new HttpsError(
+        'unavailable',
+        "We couldn't reach that page — it may be down, paywalled, or blocking us.",
+      );
+    case 'not-a-recipe':
+      return new HttpsError('failed-precondition', "We couldn't find a recipe on that page.");
+    case 'ai-failed':
+      return new HttpsError(
+        'internal',
+        'The recipe reader had trouble with that page — try again, or add it manually.',
+      );
+  }
+}
+
+export const extractRecipeFromUrl = onCall(
+  {
+    ...APP_CHECK_ENFORCEMENT,
+    secrets: [geminiApiKey, ldSdkKey],
+    timeoutSeconds: 120,
+    memory: '512MiB',
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Sign in required.');
+    }
+    const parsed = ExtractRecipeFromUrlInputSchema.safeParse(request.data);
+    if (!parsed.success) {
+      throw new HttpsError('invalid-argument', "That doesn't look like a valid web address.");
+    }
+    await whenServerObservabilityReady();
+    try {
+      return await extractRecipeFromUrlFlow(parsed.data);
+    } catch (err) {
+      if (err instanceof UrlImportError) throw mapUrlImportFailure(err.code);
+      throw new HttpsError(
+        'internal',
+        'The recipe reader had trouble with that page — try again, or add it manually.',
+      );
+    }
   },
 );
 

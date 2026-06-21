@@ -113,6 +113,25 @@ export type {
 } from './authorRecipe.js';
 
 export {
+  ExtractRecipeFromUrlInputSchema,
+  ExtractRecipeFromUrlOutputSchema,
+  ExtractRecipeAIOutputSchema,
+  ExtractedIngredientSchema,
+  ExtractedIngredientGroupSchema,
+  ExtractedStepSchema,
+  URL_IMPORT_FAILURE_CODES,
+} from './extractRecipeFromUrl.js';
+export type {
+  ExtractRecipeFromUrlInput,
+  ExtractRecipeFromUrlOutput,
+  ExtractRecipeAIOutput,
+  ExtractedIngredient,
+  ExtractedIngredientGroup,
+  ExtractedStep,
+  UrlImportFailureCode,
+} from './extractRecipeFromUrl.js';
+
+export {
   SingleQuantitySchema,
   RangeQuantitySchema,
   MixedQuantitySchema,
