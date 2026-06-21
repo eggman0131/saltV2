@@ -30,6 +30,8 @@ import {
 import { generateChatTitleFlow } from './flows/generateChatTitle.js';
 import { onShoppingListItemWrite } from './triggers/onShoppingListItemWrite.js';
 import { onCanonItemWritten } from './triggers/onCanonItemWritten.js';
+import { handleListAiModels } from './ai/listAiModels.js';
+import { handleTestModel } from './ai/testModel.js';
 
 initializeApp();
 
@@ -266,6 +268,26 @@ export const generateChatTitle = onCallGenkit(
     authPolicy: isSignedIn(),
   },
   generateChatTitleFlow,
+);
+
+// Admin-only AI model catalog + probe (Phase 3 — admin-managed model selection).
+// Both re-check admin server-side (issue #155) and declare the AI secret so the
+// catalog fetch / probe can read GEMINI_API_KEY from process.env. App Check
+// monitor-first like every other callable.
+export const listAiModels = onCall(
+  {
+    ...APP_CHECK_ENFORCEMENT,
+    secrets: [geminiApiKey],
+  },
+  handleListAiModels,
+);
+
+export const testModel = onCall(
+  {
+    ...APP_CHECK_ENFORCEMENT,
+    secrets: [geminiApiKey],
+  },
+  handleTestModel,
 );
 
 export { onShoppingListItemWrite };

@@ -10,6 +10,7 @@ import { ssrfGuardedFetch, SsrfFetchError } from '../adapters/ssrfFetch.js';
 import { extractRecipeJsonLd, type JsonLdRecipe } from '../adapters/jsonLdRecipe.js';
 import { canonicaliseRecipeIngredientsFlow } from './canonicaliseRecipeIngredients.js';
 import { parseRecipeIngredientsFlow } from './parseRecipeIngredients.js';
+import { resolveModel } from '../ai/resolveModel.js';
 
 // SSRF-hardened URL import (recipe URL import epic, Phases 1 & 3).
 //
@@ -22,9 +23,6 @@ import { parseRecipeIngredientsFlow } from './parseRecipeIngredients.js';
 //
 // The flow throws a UrlImportError tagged with a failure code; the onCall
 // entrypoint maps each code to the right HttpsError + user-facing copy.
-
-// Flash + temperature:0 — accuracy over creativity, mirrors the librarian flow.
-const EXTRACT_MODEL = googleAI.model('gemini-flash-latest');
 
 // When no JSON-LD Recipe is present we forward the raw page HTML to the model.
 // Cap it so a huge page can't blow the prompt budget; recipes always appear well
@@ -98,31 +96,36 @@ export const extractRecipeFromUrlFlow = ai.defineFlow(
       ? buildJsonLdPrompt(jsonLd, parsed.href)
       : buildHtmlPrompt(html, parsed.href);
 
+    // Flash + temperature:0 — accuracy over creativity, mirrors the librarian flow.
+    const extractModel = googleAI.model(await resolveModel('fast', 'extractRecipeFromUrl'));
     let extracted: ExtractRecipeAIOutput;
     try {
-      const result = await withAiTimeout(
+      extracted = await withAiTimeout(
         'extractRecipeFromUrl',
-        () =>
-          ai.generate({
-            model: EXTRACT_MODEL,
+        async () => {
+          const result = await ai.generate({
+            model: extractModel,
             system,
             prompt,
             output: { schema: ExtractRecipeAIOutputSchema },
             config: { temperature: 0 },
-          }),
-        { timeoutMs: 55_000, retries: 0 },
+          });
+          // Validate INSIDE the retried op: an empty/malformed structured
+          // response (Gemini occasionally returns one even at temperature:0, and
+          // structured-output coercion can fail transiently) then gets a fresh
+          // attempt rather than failing the whole import on a single flaky
+          // generation. Only a persistent failure surfaces as ai-failed.
+          const validated = ExtractRecipeAIOutputSchema.safeParse(result.output);
+          if (!validated.success) {
+            throw new Error(`extractor returned invalid structure: ${validated.error.message}`);
+          }
+          return validated.data;
+        },
+        { timeoutMs: 40_000, retries: 1 },
       );
-      const validated = ExtractRecipeAIOutputSchema.safeParse(result.output);
-      if (!validated.success) {
-        throw new UrlImportError(
-          'ai-failed',
-          `extractor returned invalid structure: ${validated.error.message}`,
-        );
-      }
-      extracted = validated.data;
     } catch (err) {
-      if (err instanceof UrlImportError) throw err;
-      // AI timeout / transport / model error all surface as ai-failed.
+      // AI timeout / transport / model error / invalid output all surface as
+      // ai-failed after the retry is exhausted.
       throw new UrlImportError('ai-failed', err instanceof Error ? err.message : 'ai error');
     }
 
@@ -150,6 +153,13 @@ export const extractRecipeFromUrlFlow = ai.defineFlow(
 //   a blog post shouldn't pass as a recipe). This keeps the failure taxonomy
 //   intact — it only fires not-a-recipe on a stronger combined signal.
 function hasUsableRecipe(extracted: ExtractRecipeAIOutput, hadJsonLd: boolean): boolean {
+  // A recipe with no title is a broken extraction — never assemble an untitled
+  // draft. Checked here (not at the schema) so an isRecipe=false response, which
+  // legitimately leaves the title empty, still maps to not-a-recipe rather than
+  // ai-failed.
+  if (extracted.title.trim().length === 0) {
+    return false;
+  }
   const ingredientCount = extracted.ingredientGroups.reduce(
     (sum, g) => sum + g.ingredients.length,
     0,
@@ -196,10 +206,33 @@ function buildJsonLdPrompt(
   };
 }
 
+// Strip the parts of a page that carry no recipe signal but burn tokens before
+// we forward HTML to the model: <script> (often hundreds of KB of bundles),
+// <style>, <head>, <noscript>, <template>, <svg> (icon paths), HTML comments,
+// and inline base64 `data:` URIs (which can each be tens of KB). A recipe page's
+// actual content survives intact. This runs on the fallback path only — most
+// mainstream sites carry JSON-LD and never reach here. Dependency-free regex,
+// consistent with jsonLdRecipe (no cheerio/jsdom — issue-gated).
+function stripHtmlNoise(html: string): string {
+  return html
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script[^>]*>/gi, ' ')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style[^>]*>/gi, ' ')
+    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript[^>]*>/gi, ' ')
+    .replace(/<template\b[^>]*>[\s\S]*?<\/template[^>]*>/gi, ' ')
+    .replace(/<svg\b[^>]*>[\s\S]*?<\/svg[^>]*>/gi, ' ')
+    .replace(/<head\b[^>]*>[\s\S]*?<\/head[^>]*>/gi, ' ')
+    .replace(/\bsrc\s*=\s*["']data:[^"']*["']/gi, 'src=""')
+    .replace(/[ \t\f\v]{2,}/g, ' ')
+    .replace(/(\s*\n\s*){2,}/g, '\n');
+}
+
 // Build the prompt for the HTML fallback path (no JSON-LD found): the model both
-// finds the recipe in the page and converts it.
+// finds the recipe in the page and converts it. We strip script/style/svg noise
+// FIRST, then cap — so the budget is spent on real content, not bundles.
 function buildHtmlPrompt(html: string, sourceUrl: string): { system: string; prompt: string } {
-  const trimmedHtml = html.length > MAX_HTML_CHARS ? html.slice(0, MAX_HTML_CHARS) : html;
+  const cleaned = stripHtmlNoise(html);
+  const trimmedHtml = cleaned.length > MAX_HTML_CHARS ? cleaned.slice(0, MAX_HTML_CHARS) : cleaned;
   return {
     system: EXTRACT_SYSTEM,
     prompt: `Source URL: ${sourceUrl}\n\nPage HTML:\n${trimmedHtml}`,
@@ -301,12 +334,26 @@ async function assembleDraft(raw: ExtractRecipeAIOutput, sourceUrl: string): Pro
     steps,
     metadata: {
       servings: raw.servings,
-      totalTimeMinutes: raw.totalTimeMinutes,
+      // Derive a total from prep + cook when the source only gives the parts
+      // (common — e.g. the page states prep and cook but no explicit total), so
+      // the editor shows a total time instead of a blank.
+      totalTimeMinutes:
+        raw.totalTimeMinutes ??
+        (raw.prepTimeMinutes !== null && raw.cookTimeMinutes !== null
+          ? raw.prepTimeMinutes + raw.cookTimeMinutes
+          : null),
       prepTimeMinutes: raw.prepTimeMinutes,
       cookTimeMinutes: raw.cookTimeMinutes,
-      tags: raw.tags
-        .map((t) => t.toLowerCase().trim().replace(/\s+/g, '-'))
-        .filter((t) => t.length > 0),
+      // Split comma-joined tags ("vegetarian, quick" → two tags) before
+      // kebab-normalising, then dedupe.
+      tags: [
+        ...new Set(
+          raw.tags
+            .flatMap((t) => t.split(','))
+            .map((t) => t.toLowerCase().trim().replace(/\s+/g, '-'))
+            .filter((t) => t.length > 0),
+        ),
+      ],
     },
     source: { type: 'url', url: sourceUrl },
     notes: raw.notes,

@@ -42,6 +42,12 @@
       description: 'Per-environment operator switches, e.g. canon icon generation.',
       href: '/admin/dev-settings',
     },
+    {
+      id: 'app-settings',
+      title: 'AI model settings',
+      description: 'Choose the Gemini model used for each AI role in this environment.',
+      href: '/admin/app-settings',
+    },
   ];
 </script>
 
