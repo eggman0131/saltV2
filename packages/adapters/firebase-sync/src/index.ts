@@ -55,6 +55,8 @@ export {
 } from './mealPlanSync.js';
 export { subscribeDevSettings, saveDevSettings } from './devSettingsSync.js';
 export { subscribeAppSettings, saveAppSettings } from './appSettingsSync.js';
+export { callListAiModels, callTestModel } from './aiModelCallables.js';
+export type { AiCatalogModel, AiModelCatalog, TestModelOutcome } from './aiModelCallables.js';
 export type {
   IdentifyEquipmentCandidate,
   IdentifyEquipmentResult,

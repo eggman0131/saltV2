@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, TextField } from '@salt/ui-components';
+  import { Button } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
   import {
     AI_MODEL_DEFAULTS,
@@ -10,6 +10,14 @@
     type AiFlowId,
   } from '@salt/domain/schemas';
   import AdminGuard from './AdminGuard.svelte';
+  import ModelComboField from './ModelComboField.svelte';
+  import {
+    catalogByRole,
+    isCatalogLoading,
+    isCatalogUnavailable,
+    ensureCatalog,
+    refreshCatalog,
+  } from '../../lib/aiModelCatalogService.js';
   import {
     appSettings,
     effectiveModels,
@@ -192,6 +200,23 @@
     const when = new Date(s.updatedAt).toLocaleString();
     return s.updatedBy ? `Last changed by ${s.updatedBy} on ${when}` : `Last changed on ${when}`;
   });
+
+  // ─── Phase 3: live model catalog ────────────────────────────────────────────
+  // Lazily load the capability-filtered Gemini catalog so each field's combobox
+  // can suggest currently-available models. Best-effort: if it fails the
+  // comboboxes degrade to free-text (allowCustom), so the page never blocks.
+  $effect(() => {
+    void ensureCatalog();
+  });
+
+  async function onRefreshCatalog(): Promise<void> {
+    await refreshCatalog();
+    if ($isCatalogUnavailable) {
+      addToast('Could not refresh the model catalog — free-text entry still works.', 'error');
+    } else {
+      addToast('Model catalog refreshed.', 'success');
+    }
+  }
 </script>
 
 <AdminGuard>
@@ -204,8 +229,29 @@
           and production each have their own).
         </p>
       </div>
-      <Button size="sm" onclick={() => push('/admin')}>Back to admin</Button>
+      <div class="flex shrink-0 items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onclick={() => void onRefreshCatalog()}
+          disabled={$isCatalogLoading}
+          data-testid="app-settings-refresh-catalog"
+        >
+          {$isCatalogLoading ? 'Refreshing…' : 'Refresh models'}
+        </Button>
+        <Button size="sm" onclick={() => push('/admin')}>Back to admin</Button>
+      </div>
     </div>
+
+    {#if $isCatalogUnavailable && !$isCatalogLoading}
+      <div
+        class="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"
+        data-testid="app-settings-catalog-unavailable"
+      >
+        The live model catalog is unavailable, so the dropdowns are empty — you can still type a
+        model name by hand. Use "Refresh models" to try again.
+      </div>
+    {/if}
 
     <div
       class="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"
@@ -257,33 +303,35 @@
             </div>
           {/if}
 
-          <div class="mt-3 flex items-end gap-2">
-            <div class="flex-1">
-              <TextField
-                label={meta.title}
-                placeholder={`Default: ${AI_MODEL_DEFAULTS[meta.role]}`}
-                bind:value={drafts[meta.role]}
+          <div class="mt-3 flex flex-col gap-2">
+            <ModelComboField
+              label={meta.title}
+              placeholder={`Default: ${AI_MODEL_DEFAULTS[meta.role]}`}
+              bind:value={drafts[meta.role]}
+              models={$catalogByRole[meta.role]}
+              role={meta.role}
+              disabled={$isLoadingAppSettings || saving[meta.role]}
+              testId={meta.role}
+            />
+            <div class="flex gap-2">
+              <Button
+                size="sm"
+                onclick={() => void onSave(meta.role)}
                 disabled={$isLoadingAppSettings || saving[meta.role]}
-                data-testid="app-settings-input-{meta.role}"
-              />
+                data-testid="app-settings-save-{meta.role}"
+              >
+                Save
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onclick={() => void onReset(meta.role)}
+                disabled={$isLoadingAppSettings || saving[meta.role]}
+                data-testid="app-settings-reset-{meta.role}"
+              >
+                Reset to default
+              </Button>
             </div>
-            <Button
-              size="sm"
-              onclick={() => void onSave(meta.role)}
-              disabled={$isLoadingAppSettings || saving[meta.role]}
-              data-testid="app-settings-save-{meta.role}"
-            >
-              Save
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onclick={() => void onReset(meta.role)}
-              disabled={$isLoadingAppSettings || saving[meta.role]}
-              data-testid="app-settings-reset-{meta.role}"
-            >
-              Reset to default
-            </Button>
           </div>
         </div>
       {/each}
@@ -331,35 +379,37 @@
                       {/if}
                     </p>
 
-                    <div class="mt-2 flex items-end gap-2">
-                      <div class="flex-1">
-                        <TextField
-                          label="Model override"
-                          placeholder={`Follows ${group.role} role: ${$effectiveModels[group.role]}`}
-                          bind:value={flowDrafts[flowId]}
-                          disabled={$isLoadingAppSettings || flowSaving[flowId]}
-                          data-testid="app-settings-flow-input-{flowId}"
-                        />
-                      </div>
-                      <Button
-                        size="sm"
-                        onclick={() => void onSaveFlow(flowId)}
+                    <div class="mt-2 flex flex-col gap-2">
+                      <ModelComboField
+                        label="Model override"
+                        placeholder={`Follows ${group.role} role: ${$effectiveModels[group.role]}`}
+                        bind:value={flowDrafts[flowId]}
+                        models={$catalogByRole[group.role]}
+                        role={group.role}
                         disabled={$isLoadingAppSettings || flowSaving[flowId]}
-                        data-testid="app-settings-flow-save-{flowId}"
-                      >
-                        Save
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onclick={() => void onResetFlow(flowId)}
-                        disabled={$isLoadingAppSettings ||
-                          flowSaving[flowId] ||
-                          !flowHasOverride[flowId]}
-                        data-testid="app-settings-flow-reset-{flowId}"
-                      >
-                        Reset to role
-                      </Button>
+                        testId="flow-{flowId}"
+                      />
+                      <div class="flex gap-2">
+                        <Button
+                          size="sm"
+                          onclick={() => void onSaveFlow(flowId)}
+                          disabled={$isLoadingAppSettings || flowSaving[flowId]}
+                          data-testid="app-settings-flow-save-{flowId}"
+                        >
+                          Save
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onclick={() => void onResetFlow(flowId)}
+                          disabled={$isLoadingAppSettings ||
+                            flowSaving[flowId] ||
+                            !flowHasOverride[flowId]}
+                          data-testid="app-settings-flow-reset-{flowId}"
+                        >
+                          Reset to role
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 {/each}
