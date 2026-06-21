@@ -4,6 +4,7 @@ import { setActiveSpanName } from '@salt/ld-observability/server';
 import { ai } from '../genkit.js';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { loadCanonIconSeed } from './assets/canonIconSeed.js';
+import { resolveModel } from '../ai/resolveModel.js';
 
 // Tier-1 canon-item pictogram generation (issue #148).
 //
@@ -12,8 +13,6 @@ import { loadCanonIconSeed } from './assets/canonIconSeed.js';
 // VERBATIM from docs/canon-icons.md → "Proven prompt"; do NOT paraphrase —
 // wording changes drift the house style. The negative clauses are keyed to the
 // red-apple seed (see canonIconSeed.ts) — update them if the seed changes.
-
-const IMAGE_MODEL = googleAI.model('gemini-2.5-flash-image');
 
 // Image generation is far slower than text (~5–8s, occasionally more). Give it
 // a generous deadline; the trigger's function timeout is raised to match.
@@ -67,11 +66,12 @@ export const generateCanonIconFlow = ai.defineFlow(
     setActiveSpanName(`generateCanonIcon: ${name}`);
     const seed = loadCanonIconSeed();
 
+    const imageModel = googleAI.model(await resolveModel('image'));
     const result = await withAiTimeout(
       'generateCanonIcon',
       () =>
         ai.generate({
-          model: IMAGE_MODEL,
+          model: imageModel,
           prompt: [
             { media: { url: seed.url, contentType: seed.contentType } },
             { text: buildIconPrompt(name, hint) },

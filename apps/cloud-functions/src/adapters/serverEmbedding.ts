@@ -5,8 +5,7 @@ import { failure, success, type DomainError, type ReadResult } from '@salt/share
 import { embedTextFlow } from '../flows/embedText.js';
 import { withAiTimeout } from './withAiTimeout.js';
 import { ai } from '../genkit.js';
-
-const EMBEDDING_MODEL = 'gemini-embedding-001';
+import { resolveModel } from '../ai/resolveModel.js';
 
 export function createServerEmbeddingAdapter(): EmbeddingPort {
   return {
@@ -23,12 +22,13 @@ export function createServerEmbeddingAdapter(): EmbeddingPort {
       texts: readonly string[],
     ): Promise<ReadResult<readonly (readonly number[])[], DomainError>> {
       try {
+        // Free-text admin model (Phase 1) is wider than the SDK's literal-union
+        // embedder param — launder it across the boundary.
+        const embedder = googleAI.embedder(
+          (await resolveModel('embedding')) as Parameters<typeof googleAI.embedder>[0],
+        );
         const allEmbeddings = await withAiTimeout('batchEmbedTexts', () =>
-          Promise.all(
-            texts.map((text) =>
-              ai.embed({ embedder: googleAI.embedder(EMBEDDING_MODEL), content: text }),
-            ),
-          ),
+          Promise.all(texts.map((text) => ai.embed({ embedder, content: text }))),
         );
         return success(allEmbeddings.map((e) => e[0]!.embedding));
       } catch (err) {

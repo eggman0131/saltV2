@@ -7,9 +7,7 @@ import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 import { canonicaliseRecipeIngredientsFlow } from './canonicaliseRecipeIngredients.js';
 import { parseRecipeIngredientsFlow } from './parseRecipeIngredients.js';
-
-// Flash + temperature:0 for the librarian — accuracy over creativity (issue #206).
-const LIBRARIAN_MODEL = googleAI.model('gemini-flash-latest');
+import { resolveModel } from '../ai/resolveModel.js';
 
 const OutputSchema = z.custom<RecipeDoc>();
 
@@ -29,11 +27,13 @@ export const authorRecipeFlow = ai.defineFlow(
         ? `\n\nExisting tags in this recipe collection (prefer these where appropriate; add a new tag only if meaningfully different): ${input.existingTags.join(', ')}.`
         : '';
 
+    // Flash + temperature:0 for the librarian — accuracy over creativity (issue #206).
+    const model = googleAI.model(await resolveModel('fast'));
     const result = await withAiTimeout(
       'authorRecipe',
       () =>
         ai.generate({
-          model: LIBRARIAN_MODEL,
+          model,
           system: LIBRARIAN_SYSTEM + tagVocab,
           prompt: conversationText,
           output: { schema: LibrarianOutputSchema },

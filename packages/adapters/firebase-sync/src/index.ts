@@ -54,6 +54,7 @@ export {
   saveMealPlanWeek,
 } from './mealPlanSync.js';
 export { subscribeDevSettings, saveDevSettings } from './devSettingsSync.js';
+export { subscribeAppSettings, saveAppSettings } from './appSettingsSync.js';
 export type {
   IdentifyEquipmentCandidate,
   IdentifyEquipmentResult,

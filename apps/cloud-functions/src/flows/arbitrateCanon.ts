@@ -3,8 +3,7 @@ import { googleAI } from '@genkit-ai/google-genai';
 import { ArbitrationRequestSchema, CanonArbitrationAIOutputSchema } from '@salt/domain/schemas';
 import { setActiveSpanName } from '@salt/ld-observability/server';
 import { ai } from '../genkit.js';
-
-const GENERATION_MODEL = googleAI.model('gemini-flash-latest');
+import { resolveModel } from '../ai/resolveModel.js';
 
 // Flow output — discriminated union matching ArbitrationResult; includes prompt and rawResponse.
 const ArbitrationResultSchema = z.discriminatedUnion('kind', [
@@ -43,7 +42,7 @@ export const arbitrateCanonFlow = ai.defineFlow(
     setActiveSpanName(`arbitrateCanon: ${req.normalisedName}`);
     const builtPrompt = buildPrompt(req);
     const result = await ai.generate({
-      model: GENERATION_MODEL,
+      model: googleAI.model(await resolveModel('fast')),
       prompt: builtPrompt,
       output: { schema: CanonArbitrationAIOutputSchema },
       config: { temperature: 0 },

@@ -3,8 +3,7 @@ import { googleAI } from '@genkit-ai/google-genai';
 import { ParseEntryAIOutputSchema } from '@salt/domain/schemas';
 import { setActiveSpanName } from '@salt/ld-observability/server';
 import { ai } from '../genkit.js';
-
-const GENERATION_MODEL = googleAI.model('gemini-flash-latest');
+import { resolveModel } from '../ai/resolveModel.js';
 
 const ParseEntryInputSchema = z.object({
   rawText: z.string(),
@@ -20,7 +19,7 @@ export const parseEntryFlow = ai.defineFlow(
     setActiveSpanName(`parseEntry: ${rawText}`);
     const prompt = buildPrompt(rawText);
     const result = await ai.generate({
-      model: GENERATION_MODEL,
+      model: googleAI.model(await resolveModel('fast')),
       prompt,
       output: { schema: ParseEntryAIOutputSchema },
       config: { temperature: 0 },

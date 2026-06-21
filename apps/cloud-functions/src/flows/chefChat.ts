@@ -11,9 +11,7 @@ import {
 } from '@salt/domain/schemas';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
-
-// Pro-tier model for conversational quality (design principle #3, issue #206).
-const CHEF_MODEL = googleAI.model('gemini-pro-latest');
+import { resolveModel } from '../ai/resolveModel.js';
 
 async function readEquipmentContext(db: ReturnType<typeof getFirestore>): Promise<string> {
   try {
@@ -123,8 +121,9 @@ export const chefChatFlow = ai.defineFlow(
       content: [{ text: m.text }],
     }));
 
+    // Pro-tier model for conversational quality (design principle #3, issue #206).
     const { stream, response } = ai.generateStream({
-      model: CHEF_MODEL,
+      model: googleAI.model(await resolveModel('pro')),
       system: systemPrompt,
       messages: history,
       prompt: input.newMessage,
