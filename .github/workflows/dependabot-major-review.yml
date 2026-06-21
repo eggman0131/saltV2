@@ -71,9 +71,15 @@ jobs:
             3. Determine how THIS repo actually uses the package: Grep/Glob/Read for
                its import name and the specific APIs/exports the code relies on. A
                breaking change only matters if it touches an API this repo uses.
-            4. Where relevant, cross-check repo conventions in CLAUDE.md (e.g. the
+            4. Assess NECESSITY. Is it a direct dependency (in a package.json) or only
+               transitive? Is it actually imported/used anywhere? If it appears unused
+               or trivially replaceable, removal may beat upgrading — say so.
+            5. Estimate EFFORT if changes are needed: a one-line tweak, a handful of
+               call-site edits, or a large multi-file/architectural migration. A large
+               migration should be tracked as its own issue + plan, NOT a drive-by fix.
+            6. Where relevant, cross-check repo conventions in CLAUDE.md (e.g. the
                Firebase-only-in-firebase-sync rule, AI/Genkit conventions).
-            5. Decide a risk level and a recommendation.
+            7. Decide a risk level, an effort estimate, and a recommendation.
 
             ## Output
 
@@ -94,13 +100,23 @@ jobs:
 
             **What could break:** <plain language, or "Nothing obvious">
 
-            **Code changes needed before merging:** <"None" or a short list>
+            **Is this dependency still needed?** <"Yes — used in <where>" / "Looks
+            unused or transitive — see recommendation" / "Direct dep, lightly used">
 
-            **Recommendation:** <pick one:
-            ✅ Safe to merge as-is /
+            **Code changes needed before merging:** <"None" or a short list>
+            **Effort if changes are needed:** <None / Small (a few edits) / Large
+            (multi-file migration — warrants its own issue)>
+
+            **Recommendation:** <pick the ONE that fits:
+            ✅ Safe to merge as-is — low risk, used safely /
             ⚠️ Merge, but watch <X> /
-            🔧 Needs code changes first (summarised above) /
-            ⛔ Hold — <reason>>
+            🔧 Small code changes first (listed above) — fixable inline /
+            🗺️ Large migration — do NOT merge as-is; open a dedicated issue + plan
+               (this is too big for a drive-by; consider /spec to scope it) /
+            🗑️ Remove instead of upgrade — this dependency appears unused or
+               trivially replaceable here (evidence above) /
+            ⛔ Hold — <reason, e.g. abandoned upstream, security concern, conflicts
+               with architecture>>
 
             **Confidence:** <Low / Medium / High> — <one line on why, e.g. couldn't
             find a changelog>
