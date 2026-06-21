@@ -66,7 +66,7 @@ export const generateCanonIconFlow = ai.defineFlow(
     setActiveSpanName(`generateCanonIcon: ${name}`);
     const seed = loadCanonIconSeed();
 
-    const imageModel = googleAI.model(await resolveModel('image'));
+    const imageModel = googleAI.model(await resolveModel('image', 'generateCanonIcon'));
     const result = await withAiTimeout(
       'generateCanonIcon',
       () =>

@@ -123,7 +123,7 @@ export const chefChatFlow = ai.defineFlow(
 
     // Pro-tier model for conversational quality (design principle #3, issue #206).
     const { stream, response } = ai.generateStream({
-      model: googleAI.model(await resolveModel('pro')),
+      model: googleAI.model(await resolveModel('pro', 'chefChat')),
       system: systemPrompt,
       messages: history,
       prompt: input.newMessage,

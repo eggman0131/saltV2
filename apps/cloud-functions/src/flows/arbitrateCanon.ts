@@ -42,7 +42,7 @@ export const arbitrateCanonFlow = ai.defineFlow(
     setActiveSpanName(`arbitrateCanon: ${req.normalisedName}`);
     const builtPrompt = buildPrompt(req);
     const result = await ai.generate({
-      model: googleAI.model(await resolveModel('fast')),
+      model: googleAI.model(await resolveModel('fast', 'arbitrateCanon')),
       prompt: builtPrompt,
       output: { schema: CanonArbitrationAIOutputSchema },
       config: { temperature: 0 },

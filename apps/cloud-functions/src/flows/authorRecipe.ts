@@ -28,7 +28,7 @@ export const authorRecipeFlow = ai.defineFlow(
         : '';
 
     // Flash + temperature:0 for the librarian — accuracy over creativity (issue #206).
-    const model = googleAI.model(await resolveModel('fast'));
+    const model = googleAI.model(await resolveModel('fast', 'authorRecipe'));
     const result = await withAiTimeout(
       'authorRecipe',
       () =>

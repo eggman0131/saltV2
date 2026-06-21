@@ -16,7 +16,7 @@ export const identifyEquipmentFlow = ai.defineFlow(
   async ({ rawName }) => {
     setActiveSpanName(`identifyEquipment: ${rawName}`);
     const result = await ai.generate({
-      model: googleAI.model(await resolveModel('fast')),
+      model: googleAI.model(await resolveModel('fast', 'identifyEquipment')),
       system: SYSTEM_INSTRUCTIONS,
       prompt: `"${rawName}"`,
       output: { schema: IdentifyEquipmentAIOutputSchema },

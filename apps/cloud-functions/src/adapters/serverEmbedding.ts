@@ -25,7 +25,9 @@ export function createServerEmbeddingAdapter(): EmbeddingPort {
         // Free-text admin model (Phase 1) is wider than the SDK's literal-union
         // embedder param — launder it across the boundary.
         const embedder = googleAI.embedder(
-          (await resolveModel('embedding')) as Parameters<typeof googleAI.embedder>[0],
+          (await resolveModel('embedding', 'serverEmbedding')) as Parameters<
+            typeof googleAI.embedder
+          >[0],
         );
         const allEmbeddings = await withAiTimeout('batchEmbedTexts', () =>
           Promise.all(texts.map((text) => ai.embed({ embedder, content: text }))),

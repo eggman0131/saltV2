@@ -4,14 +4,19 @@ import {
   AppSettingsSchema,
   AI_MODEL_DEFAULTS,
   type AiModelRole,
+  type AiFlowId,
   type AppSettings,
 } from '@salt/domain/schemas';
 
-// CF-side AI model resolver (Phase 1). Reads the admin-managed
+// CF-side AI model resolver (Phase 1 + Phase 2). Reads the admin-managed
 // `appSettings/singleton` doc directly via the Admin SDK (Cloud Functions must
 // NOT import @salt/firebase-sync). Fails OPEN to today's defaults: a missing,
 // empty, invalid, or unreadable doc resolves every role to its hardcoded
 // production literal, so deleting/corrupting the doc leaves AI fully working.
+//
+// Phase 2 adds an optional per-flow override: when a caller passes its flowId,
+// a non-empty `perFlow[flowId]` entry wins over the role's model. Precedence is
+// per-flow override → role → code default.
 //
 // An in-process TTL cache (180s) keeps per-invocation Firestore reads cheap and
 // bounds propagation latency: an admin change takes effect within ~3 minutes as
@@ -54,15 +59,24 @@ async function loadSettings(): Promise<AppSettings> {
 }
 
 /**
- * Resolves the configured Gemini model name for an AI role, falling back to the
- * production default for that role. Returns the bare model id (e.g.
- * `gemini-flash-latest`) — callers wrap it in `googleAI.model(...)` /
- * `googleAI.embedder(...)` as before.
+ * Resolves the Gemini model name a flow should use. Precedence:
+ *   1. per-flow override — `perFlow[flowId]`, if `flowId` is given and that key
+ *      holds a non-empty value;
+ *   2. the role's configured model;
+ *   3. the role's production default.
+ * Returns the bare model id (e.g. `gemini-flash-latest`) — callers wrap it in
+ * `googleAI.model(...)` / `googleAI.embedder(...)` as before. Omitting `flowId`
+ * preserves the Phase 1 role-only behaviour.
  */
-export async function resolveModel(role: AiModelRole): Promise<string> {
+export async function resolveModel(role: AiModelRole, flowId?: AiFlowId): Promise<string> {
   const settings = await loadSettings();
-  // Schema defaults guarantee a non-empty value, but belt-and-braces fall back
-  // to the literal if anything ever slips through.
+  // Per-flow override wins when present and non-empty. The schema already
+  // rejects empty override values, but guard anyway so a hand-edited doc can
+  // never resolve to an empty model id.
+  const override = flowId ? settings.perFlow?.[flowId] : undefined;
+  if (override && override.trim()) return override;
+  // Schema defaults guarantee a non-empty role value, but belt-and-braces fall
+  // back to the literal if anything ever slips through.
   return settings[role] || AI_MODEL_DEFAULTS[role];
 }
 

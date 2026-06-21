@@ -16,7 +16,7 @@ export const embedTextFlow = ai.defineFlow(
     // The admin-configured model is free text (Phase 1), so it is wider than
     // the SDK's literal-union embedder param — launder it across the boundary.
     const embedder = googleAI.embedder(
-      (await resolveModel('embedding')) as Parameters<typeof googleAI.embedder>[0],
+      (await resolveModel('embedding', 'embedText')) as Parameters<typeof googleAI.embedder>[0],
     );
     const embeddings = await ai.embed({ embedder, content: text });
     return { values: embeddings[0]!.embedding };

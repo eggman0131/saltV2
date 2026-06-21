@@ -1,15 +1,25 @@
 <script lang="ts">
   import { Button, TextField } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
-  import { AI_MODEL_DEFAULTS, AI_MODEL_ROLES, type AiModelRole } from '@salt/domain/schemas';
+  import {
+    AI_MODEL_DEFAULTS,
+    AI_MODEL_ROLES,
+    AI_FLOW_ROLES,
+    AI_FLOW_IDS,
+    type AiModelRole,
+    type AiFlowId,
+  } from '@salt/domain/schemas';
   import AdminGuard from './AdminGuard.svelte';
   import {
     appSettings,
     effectiveModels,
+    effectiveFlowModels,
     isLoadingAppSettings,
     isAppSettingsCorrupt,
     setModelRole,
     resetModelRole,
+    setFlowOverride,
+    resetFlowOverride,
   } from '../../lib/appSettingsService.js';
   import { addToast } from '../../lib/toastStore.js';
 
@@ -17,6 +27,10 @@
   // defaults to today's exact production model literal, so clearing a field (or
   // a missing/corrupt doc) falls back to the default. Changes take up to ~3
   // minutes to propagate (the CF resolver caches for 180s).
+  //
+  // Phase 2 adds an "Advanced: per-flow overrides" section: an optional override
+  // for a single flow that takes precedence over its role's model. Same
+  // field/save/reset pattern as the role cards.
 
   type RoleMeta = { role: AiModelRole; title: string; description: string };
   const ROLE_META: RoleMeta[] = [
@@ -91,6 +105,86 @@
       addToast('Reset to default.', 'success');
     }
   }
+
+  // ─── Phase 2: per-flow overrides ────────────────────────────────────────────
+  // Human-readable label per flow id; the role is derived from AI_FLOW_ROLES.
+  const FLOW_LABELS: Record<AiFlowId, string> = {
+    arbitrateCanon: 'Canon arbitration',
+    authorRecipe: 'Recipe author (librarian)',
+    chefChat: 'Chef Chat',
+    embedText: 'Embed text (callable)',
+    extractRecipeFromUrl: 'Recipe import from URL',
+    generateCanonIcon: 'Canon icon generation',
+    generateChatTitle: 'Chat title generation',
+    identifyEquipment: 'Equipment identification',
+    parseEntry: 'Entry parsing',
+    parseRecipeIngredients: 'Recipe ingredient parsing',
+    populateEquipmentEntry: 'Equipment entry population',
+    serverEmbedding: 'Server embedding (canon/recipe vectors)',
+  };
+
+  // Flow ids grouped by role, so the Advanced section mirrors the role cards.
+  const FLOWS_BY_ROLE: { role: AiModelRole; flows: AiFlowId[] }[] = AI_MODEL_ROLES.map((role) => ({
+    role,
+    flows: AI_FLOW_IDS.filter((flowId) => AI_FLOW_ROLES[flowId] === role),
+  })).filter((g) => g.flows.length > 0);
+
+  const initialFlowDrafts = (): Record<AiFlowId, string> =>
+    Object.fromEntries(AI_FLOW_IDS.map((id) => [id, ''])) as Record<AiFlowId, string>;
+  const initialFlowSaving = (): Record<AiFlowId, boolean> =>
+    Object.fromEntries(AI_FLOW_IDS.map((id) => [id, false])) as Record<AiFlowId, boolean>;
+
+  let flowDrafts = $state<Record<AiFlowId, string>>(initialFlowDrafts());
+  let flowSaving = $state<Record<AiFlowId, boolean>>(initialFlowSaving());
+  // Whether the Advanced section is expanded. Auto-opens when any override is
+  // already set so an admin lands on existing config.
+  let showAdvanced = $state(false);
+
+  $effect(() => {
+    const s = $appSettings;
+    let anyOverride = false;
+    for (const flowId of AI_FLOW_IDS) {
+      // Mirror only an explicitly-set override into the field; leave it blank
+      // (placeholder shows the inherited role model) when no override exists.
+      const saved = s?.perFlow?.[flowId];
+      flowDrafts[flowId] = saved ?? '';
+      if (saved) anyOverride = true;
+    }
+    if (anyOverride) showAdvanced = true;
+  });
+
+  async function onSaveFlow(flowId: AiFlowId): Promise<void> {
+    flowSaving[flowId] = true;
+    const result = await setFlowOverride(flowId, flowDrafts[flowId]);
+    flowSaving[flowId] = false;
+    if (result.kind !== 'ok') {
+      addToast('Failed to save the flow override.', 'error');
+    } else {
+      addToast('Flow override saved. It may take up to ~3 minutes to take effect.', 'success');
+    }
+  }
+
+  async function onResetFlow(flowId: AiFlowId): Promise<void> {
+    flowSaving[flowId] = true;
+    flowDrafts[flowId] = '';
+    const result = await resetFlowOverride(flowId);
+    flowSaving[flowId] = false;
+    if (result.kind !== 'ok') {
+      addToast('Failed to clear the flow override.', 'error');
+    } else {
+      addToast('Override cleared — flow now follows its role.', 'success');
+    }
+  }
+
+  // True when a flow currently has an explicit override in the saved doc.
+  const flowHasOverride = $derived.by(() => {
+    const perFlow = $appSettings?.perFlow;
+    const out = {} as Record<AiFlowId, boolean>;
+    for (const flowId of AI_FLOW_IDS) {
+      out[flowId] = Boolean(perFlow?.[flowId]);
+    }
+    return out;
+  });
 
   const lastUpdatedLabel = $derived.by(() => {
     const s = $appSettings;
@@ -193,6 +287,87 @@
           </div>
         </div>
       {/each}
+    </div>
+
+    <div class="rounded-lg border" data-testid="app-settings-advanced">
+      <button
+        type="button"
+        class="flex w-full items-center justify-between gap-3 p-4 text-left"
+        onclick={() => (showAdvanced = !showAdvanced)}
+        aria-expanded={showAdvanced}
+        data-testid="app-settings-advanced-toggle"
+      >
+        <span>
+          <span class="text-base font-medium">Advanced: per-flow overrides</span>
+          <span class="mt-0.5 block text-sm text-muted-foreground">
+            Override the model for a single flow. An override takes precedence over the flow's role;
+            leave it blank to follow the role. For one-off experiments — most flows should follow
+            their role.
+          </span>
+        </span>
+        <span class="text-sm text-muted-foreground">{showAdvanced ? 'Hide' : 'Show'}</span>
+      </button>
+
+      {#if showAdvanced}
+        <div class="flex flex-col gap-4 border-t p-4">
+          {#each FLOWS_BY_ROLE as group (group.role)}
+            <div data-testid="app-settings-flow-group-{group.role}">
+              <h3 class="text-sm font-semibold text-muted-foreground uppercase">
+                {group.role} role
+              </h3>
+              <div class="mt-2 flex flex-col gap-4">
+                {#each group.flows as flowId (flowId)}
+                  <div class="rounded-md border p-3" data-testid="app-settings-flow-{flowId}">
+                    <p class="text-sm font-medium">{FLOW_LABELS[flowId]}</p>
+                    <p class="mt-1 text-sm" data-testid="app-settings-flow-effective-{flowId}">
+                      Effective model:
+                      <code class="rounded bg-muted px-1 py-0.5 text-xs"
+                        >{$effectiveFlowModels[flowId]}</code
+                      >
+                      {#if flowHasOverride[flowId]}
+                        <span class="text-muted-foreground">(override)</span>
+                      {:else}
+                        <span class="text-muted-foreground">(follows {group.role} role)</span>
+                      {/if}
+                    </p>
+
+                    <div class="mt-2 flex items-end gap-2">
+                      <div class="flex-1">
+                        <TextField
+                          label="Model override"
+                          placeholder={`Follows ${group.role} role: ${$effectiveModels[group.role]}`}
+                          bind:value={flowDrafts[flowId]}
+                          disabled={$isLoadingAppSettings || flowSaving[flowId]}
+                          data-testid="app-settings-flow-input-{flowId}"
+                        />
+                      </div>
+                      <Button
+                        size="sm"
+                        onclick={() => void onSaveFlow(flowId)}
+                        disabled={$isLoadingAppSettings || flowSaving[flowId]}
+                        data-testid="app-settings-flow-save-{flowId}"
+                      >
+                        Save
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onclick={() => void onResetFlow(flowId)}
+                        disabled={$isLoadingAppSettings ||
+                          flowSaving[flowId] ||
+                          !flowHasOverride[flowId]}
+                        data-testid="app-settings-flow-reset-{flowId}"
+                      >
+                        Reset to role
+                      </Button>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
     </div>
   </div>
 </AdminGuard>

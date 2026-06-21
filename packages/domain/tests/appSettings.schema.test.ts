@@ -59,4 +59,37 @@ describe('AppSettingsSchema', () => {
   it('rejects a non-string model name', () => {
     expect(AppSettingsSchema.safeParse({ fast: 123 }).success).toBe(false);
   });
+
+  // ─── Phase 2: optional per-flow overrides ─────────────────────────────────
+  it('a Phase 1 doc with no perFlow parses and yields no overrides (back-compat)', () => {
+    const parsed = AppSettingsSchema.parse({
+      fast: 'a',
+      pro: 'b',
+      embedding: 'c',
+      image: 'd',
+    });
+    // Absent field stays absent — "no overrides", never an empty object.
+    expect(parsed.perFlow).toBeUndefined();
+  });
+
+  it('preserves an explicit perFlow override map', () => {
+    const parsed = AppSettingsSchema.parse({
+      fast: 'role-fast',
+      perFlow: { authorRecipe: 'flow-specific', chefChat: 'flow-pro' },
+    });
+    expect(parsed.perFlow).toEqual({ authorRecipe: 'flow-specific', chefChat: 'flow-pro' });
+  });
+
+  it('accepts an empty perFlow map (degenerate but valid)', () => {
+    const parsed = AppSettingsSchema.parse({ perFlow: {} });
+    expect(parsed.perFlow).toEqual({});
+  });
+
+  it('rejects an empty-string override value', () => {
+    expect(AppSettingsSchema.safeParse({ perFlow: { authorRecipe: '' } }).success).toBe(false);
+  });
+
+  it('rejects a non-string override value', () => {
+    expect(AppSettingsSchema.safeParse({ perFlow: { authorRecipe: 123 } }).success).toBe(false);
+  });
 });
