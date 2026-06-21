@@ -480,8 +480,10 @@
       </div>
 
       <!-- Right column: embedded chat sidebar (desktop only) -->
-      <div class="hidden lg:sticky lg:top-4 lg:flex lg:flex-col lg:self-start">
-        <Card class="flex flex-col overflow-hidden" style="height: calc(100dvh - 5.5rem)">
+      <div class="hidden lg:flex lg:flex-col">
+        <Card
+          class="flex flex-col overflow-hidden lg:sticky lg:top-4 lg:min-h-0 lg:max-h-[calc(100dvh_-_5.5rem)] lg:flex-1"
+        >
           <CardHeader class="shrink-0 border-b px-4 py-3">
             <div class="flex items-center justify-between">
               <CardTitle class="text-sm">Chef Chat</CardTitle>
@@ -525,7 +527,7 @@
             </CardContent>
           {:else}
             <!-- Messages -->
-            <div class="flex-1 overflow-y-auto p-4">
+            <div class="min-h-0 flex-1 overflow-y-auto p-4">
               <div class="flex flex-col gap-3">
                 {#if activeSession.messages.length === 0 && !sidebarIsSending}
                   <p class="py-8 text-center text-xs text-muted-foreground">
