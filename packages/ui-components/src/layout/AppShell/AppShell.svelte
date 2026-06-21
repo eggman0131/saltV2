@@ -16,7 +16,7 @@
   }: AppShellProps = $props();
 </script>
 
-<div class={cn('flex min-h-screen flex-col bg-background text-foreground', className)}>
+<div class={cn('flex h-dvh flex-col bg-background text-foreground', className)}>
   <TopBar {title} {actions} />
 
   <div class="flex flex-1 overflow-hidden">
