@@ -17,6 +17,22 @@ Extract and hold:
 
 Do not re-read the issue during execution. Your held copy is authoritative.
 
+### Create the working branch (once, before phase 1)
+
+From the current branch, create and check out a new branch for this issue:
+
+```
+git checkout -b <type>/<slug>-ISSUE_NUMBER
+```
+
+- `<type>` matches the change's nature using the repo convention: `feat`, `fix`, `chore`, `docs`, or `perf`.
+- `<slug>` is a short kebab-case summary derived from the issue title (≤4 words).
+- Example: issue #261 "Add meal-planner drag reorder" → `feat/meal-planner-drag-reorder-261`.
+
+If the current branch is already a dedicated branch for this issue (it contains `-ISSUE_NUMBER`), reuse it instead of nesting a new one. Never run phases directly on `main` — if `HEAD` is `main`, you must create the branch first.
+
+All phase commits land on this branch. Hold its name; you need it for the PR at the end.
+
 ---
 
 ## Per-phase loop (N = 1 to final)
@@ -101,7 +117,7 @@ The user either confirms "continue" or redirects. Do not assume continuation.
 
 ### 6. Merge and commit
 
-Merge the subagent's worktree branch into the current branch.
+Merge the subagent's worktree branch into the issue branch created during Setup.
 
 Commit message:
 ```
@@ -115,7 +131,7 @@ Phase N. [1-2 sentences on what this phase delivers and why.]
 Refs #ISSUE_NUMBER
 ```
 
-Use `Refs` for all phases except the last. Use `Closes` on the final phase only.
+Use `Refs #ISSUE_NUMBER` for every phase commit, including the last — the PR closes the issue, not the commits.
 No `#N` anywhere except the footer. Nothing after the issue number.
 
 If CI fails: spawn a claude subagent (worktree isolated) with the CI output and instruction to diagnose and fix. If the fix subagent cannot resolve it, stop and ask the user.
@@ -123,7 +139,30 @@ If CI fails: spawn a claude subagent (worktree isolated) with the CI output and 
 ### 7. Continue or conclude
 
 - More phases: immediately begin N+1 (back to step 1)
-- Final phase done: post a summary comment on the issue listing what was built across all phases, then report done
+- Final phase done:
+  1. Push the issue branch: `git push -u origin <type>/<slug>-ISSUE_NUMBER`
+  2. Open a pull request (do NOT merge it):
+     ```
+     gh pr create --base main --head <type>/<slug>-ISSUE_NUMBER \
+       --title "type(scope): short description" \
+       --body "<see below>"
+     ```
+     PR body:
+     ```
+     Closes #ISSUE_NUMBER
+
+     ## Summary
+     [what was built across all phases — one bullet per phase]
+
+     ## Phases
+     - Phase 1: [outcome]
+     - Phase N: [outcome]
+
+     ## For reviewers
+     [key decisions and anything intentionally out of scope]
+     ```
+  3. Post a summary comment on the issue listing what was built across all phases and linking the PR.
+  4. Report done with the PR URL. Leave the PR open for the user to review and merge — never merge it yourself.
 
 ---
 
