@@ -103,6 +103,16 @@ describe('extractRecipeJsonLd', () => {
     expect(extractRecipeJsonLd(page(JSON.stringify(thin)))).toBeNull();
   });
 
+  it('rejects a Recipe node with ingredients but no method steps', () => {
+    const noSteps = {
+      '@type': 'Recipe',
+      name: 'Stub',
+      recipeIngredient: ['200g flour', '2 eggs'],
+      recipeInstructions: [],
+    };
+    expect(extractRecipeJsonLd(page(JSON.stringify(noSteps)))).toBeNull();
+  });
+
   it('flattens HowToSection instructions into a flat list of steps', () => {
     const sectioned = {
       ...RECIPE,

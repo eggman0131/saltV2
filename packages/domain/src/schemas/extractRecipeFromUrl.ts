@@ -75,10 +75,14 @@ export const ExtractRecipeAIOutputSchema = z.object({
   isRecipe: z.boolean(),
   title: z.string(),
   description: z.string().nullable(),
-  servings: z.number().nullable(),
-  totalTimeMinutes: z.number().nullable(),
-  prepTimeMinutes: z.number().nullable(),
-  cookTimeMinutes: z.number().nullable(),
+  // Positive integers only — null is the "not stated" sentinel (also what an
+  // isRecipe=false response uses). This rejects nonsensical 0 / negative values
+  // a model glitch might emit (e.g. servings: 0) without breaking the
+  // not-a-recipe path, which leaves these null.
+  servings: z.number().int().positive().nullable(),
+  totalTimeMinutes: z.number().int().positive().nullable(),
+  prepTimeMinutes: z.number().int().positive().nullable(),
+  cookTimeMinutes: z.number().int().positive().nullable(),
   tags: z.array(z.string()),
   ingredientGroups: z.array(ExtractedIngredientGroupSchema),
   steps: z.array(ExtractedStepSchema),
