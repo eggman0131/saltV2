@@ -23,6 +23,7 @@
   import { initRecipeSync } from './lib/recipeService.js';
   import { initChatSync } from './lib/chatService.js';
   import { initDevSettingsSync } from './lib/devSettingsService.js';
+  import { initAppSettingsSync } from './lib/appSettingsService.js';
   import { normaliseMemberEmail } from '@salt/domain';
   import SessionOverlay from './lib/dev/SessionOverlay.svelte';
 
@@ -37,6 +38,7 @@
     const unsubRecipes = initRecipeSync();
     const unsubChat = initChatSync(auth.user.uid);
     const unsubDevSettings = initDevSettingsSync();
+    const unsubAppSettings = initAppSettingsSync();
     return () => {
       unsubCanon();
       unsubEquipment();
@@ -46,6 +48,7 @@
       unsubRecipes();
       unsubChat();
       unsubDevSettings();
+      unsubAppSettings();
     };
   });
 

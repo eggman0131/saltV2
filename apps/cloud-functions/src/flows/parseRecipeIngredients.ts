@@ -6,8 +6,7 @@ import {
 } from '@salt/domain/schemas';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
-
-const GENERATION_MODEL = googleAI.model('gemini-flash-latest');
+import { resolveModel } from '../ai/resolveModel.js';
 
 export const parseRecipeIngredientsFlow = ai.defineFlow(
   {
@@ -19,11 +18,12 @@ export const parseRecipeIngredientsFlow = ai.defineFlow(
     // Recipe lists are much larger prompts than single-entry calls, so Flash can
     // take 30–50s on a full ingredient list. Use a higher timeout with no retry:
     // retrying a large legitimate request just doubles the wait for no gain.
+    const model = googleAI.model(await resolveModel('fast', 'parseRecipeIngredients'));
     const result = await withAiTimeout(
       'parseRecipeIngredients',
       () =>
         ai.generate({
-          model: GENERATION_MODEL,
+          model,
           system: SYSTEM_INSTRUCTIONS,
           prompt: rawText,
           output: { schema: ParseRecipeIngredientsAIOutputSchema },

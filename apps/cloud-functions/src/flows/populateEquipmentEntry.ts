@@ -5,8 +5,7 @@ import {
 } from '@salt/domain/schemas';
 import { setActiveSpanName } from '@salt/ld-observability/server';
 import { ai } from '../genkit.js';
-
-const GENERATION_MODEL = googleAI.model('gemini-flash-latest');
+import { resolveModel } from '../ai/resolveModel.js';
 
 export const populateEquipmentEntryFlow = ai.defineFlow(
   {
@@ -17,7 +16,7 @@ export const populateEquipmentEntryFlow = ai.defineFlow(
   async ({ confirmedName }) => {
     setActiveSpanName(`populateEquipmentEntry: ${confirmedName}`);
     const result = await ai.generate({
-      model: GENERATION_MODEL,
+      model: googleAI.model(await resolveModel('fast', 'populateEquipmentEntry')),
       system: SYSTEM_INSTRUCTIONS,
       prompt: `"${confirmedName}"`,
       output: { schema: PopulateEquipmentEntryAIOutputSchema },

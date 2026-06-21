@@ -16,7 +16,7 @@ vi.mock('@genkit-ai/google-genai', () => ({
 }));
 
 vi.mock('firebase-functions', () => ({
-  logger: { error: vi.fn() },
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
 // Import after mocks so defineFlow returns the handler directly.
