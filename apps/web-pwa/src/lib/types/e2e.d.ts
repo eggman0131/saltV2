@@ -37,6 +37,14 @@ export interface E2EBridge {
   getShoppingListItems(): readonly ShoppingListItem[];
   tagSession(meta: ObservabilitySessionMeta): void;
   getLDSessionURL(): string | null;
+  // E2E AI stub seam (test-infra Phase 1). Registers the canned answer the CF
+  // fake model returns for a flow. Writes `_e2e_ai_stubs/{flowName}` to the
+  // shared emulator Firestore; the CF fake model (FUNCTIONS_AI_FAKE=1) reads it
+  // and returns `response` as the model output, so the real callable + flow run
+  // unchanged with a deterministic answer. `flowName` is the Genkit flow name
+  // (e.g. 'populateEquipmentEntry'); `response` is the structured object the
+  // flow's `ai.generate({ output })` should resolve to. Emulator-only.
+  stubAi(flowName: string, response: unknown): Promise<void>;
 }
 
 declare global {

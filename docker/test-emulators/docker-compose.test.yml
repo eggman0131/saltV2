@@ -34,6 +34,23 @@ services:
     # that port-scoped `fuser -k` used to orphan (issue #84 cause #2).
     init: true
     working_dir: /work
+    environment:
+      # E2E fake-model seam (test-infra Phase 1). The Functions emulator runtime
+      # inherits this from the emulator process env, so apps/cloud-functions sees
+      # FUNCTIONS_AI_FAKE=1 and swaps the Genkit model for a deterministic fake
+      # (apps/cloud-functions/src/ai/fakeModel.ts). Scoped to this test stack
+      # ONLY — it never reaches any deployed environment, so the real model path
+      # ships unchanged. The fake reads its canned answers from the shared
+      # emulator Firestore (`_e2e_ai_stubs/{flow}`), written by stubAi().
+      FUNCTIONS_AI_FAKE: "1"
+      # The @genkit-ai/google-genai plugin validates that an API key is PRESENT
+      # at plugin-init time (it does not call the API to check it). Genkit
+      # initialises the plugin on the first ai.generate() regardless of which
+      # model that call selects, so even a flow using the fake model trips this
+      # check. Supply a dummy key so the plugin initialises cleanly; under
+      # FUNCTIONS_AI_FAKE=1 the fake model serves the answer, so this key is
+      # never used for a real Gemini call. Emulator-only, obviously not a secret.
+      GEMINI_API_KEY: "fake-emulator-key-not-used"
     volumes:
       # Repo read-only: config + the prebuilt CF bundle + pnpm's relative
       # workspace symlinks (firebase-admin/firebase-functions resolve because

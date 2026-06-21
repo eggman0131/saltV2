@@ -1,0 +1,154 @@
+import { getFirestore } from 'firebase-admin/firestore';
+import { logger } from 'firebase-functions';
+import { googleAI } from '@genkit-ai/google-genai';
+import type { ModelAction } from 'genkit/model';
+import { AI_FLOW_IDS, type AiFlowId, type AiModelRole } from '@salt/domain/schemas';
+import { ai } from '../genkit.js';
+import { resolveModel } from './resolveModel.js';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// E2E fake-model seam (test-infra Phase 1).
+//
+// PURPOSE
+//   Under the Functions emulator ONLY, swap the Genkit *model* used by an AI
+//   flow for a deterministic fake whose answer is read from Firestore. The full
+//   callable → flow → Firestore-write pipeline still runs unchanged; only the
+//   model output is faked. This lets e2e specs assert AI-driven UI behaviour
+//   without a live Gemini key and without flaky model output.
+//
+//   The real model path is BYTE-FOR-BYTE unchanged when the flag is off — this
+//   module's only entrypoint, `flowModel`, returns exactly the production
+//   `googleAI.model(await resolveModel(role, flowId))` when `FUNCTIONS_AI_FAKE`
+//   is not '1'. The fake is unreachable in production (the flag is never set
+//   there; only the emulator harness sets it).
+//
+// HARD GATE
+//   Activates ONLY when `process.env.FUNCTIONS_AI_FAKE === '1'`. The e2e harness
+//   sets this on the Functions emulator (see docker-compose.test.yml). It is
+//   never set in any deployed environment.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// CROSS-PROCESS STUB CONTRACT (read this before wiring a new flow in a later
+// phase — phases 2–6 all depend on it)
+//
+//   `window.__e2e.stubAi(flowName, response)` runs in the BROWSER; this fake
+//   model runs in the CLOUD FUNCTIONS process. They cannot share memory. The
+//   emulator's Firestore IS shared between both, so it is the rendezvous:
+//
+//     • The browser writes the canned answer to `_e2e_ai_stubs/{flowName}`.
+//       Document shape: `{ response: <JSON>, updatedAt: <ISO string> }` where
+//       `response` is the exact object the flow's `ai.generate({ output: ... })`
+//       should resolve to (i.e. the structured `result.output`).
+//     • This fake model reads `_e2e_ai_stubs/{flowName}` and returns
+//       `JSON.stringify(response)` as the model's text content. Genkit's
+//       `output: { schema }` formatter then parses that text back into
+//       `result.output`, exactly as a real model response would be parsed.
+//
+//   KEYING: by flow name only (one stub per flow). This is deliberately simple
+//   and sufficient for Phase 1's single-call specs. Flow name === Genkit flow
+//   name === `AiFlowId` (e.g. 'populateEquipmentEntry', 'parseRecipeIngredients',
+//   'chefChat'). A later phase that needs per-input answers can extend the key
+//   to `{flowName}__{inputHash}` and have `stubAi` accept an optional input
+//   matcher — change BOTH the writer (e2eHooks.ts) and this reader together.
+//
+//   COLLECTION: `_e2e_ai_stubs`. The underscore prefix marks it as test-only
+//   scaffolding; it never exists in production Firestore.
+//
+// WIRING A FLOW (per later phase)
+//   Replace the flow's model expression
+//       googleAI.model(await resolveModel(role, flowId))
+//   with
+//       await flowModel(role, flowId)
+//   Everything else (system prompt, output schema, withAiTimeout) stays. When
+//   the flag is off this is a no-op; when on, the flow's model reads its stub.
+//   This swaps the MODEL, not the callable boundary — the contract CLAUDE.md
+//   requires ("replace the model, not the callable boundary").
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Firestore collection holding one canned answer per flow. Test-only. */
+export const E2E_AI_STUB_COLLECTION = '_e2e_ai_stubs';
+
+/** True only under the emulator harness; never set in any deployed env. */
+export function aiFakeEnabled(): boolean {
+  return process.env['FUNCTIONS_AI_FAKE'] === '1';
+}
+
+// One fake ModelAction per flow. Genkit forbids defining actions at request
+// time ("Cannot define new actions at runtime"), so these MUST be created at
+// module load, not lazily inside a flow. We register one per AiFlowId up front
+// when the flag is on; each closes over its flow id so its runner reads the
+// right stub doc. Per-flow (rather than one shared model) keeps the model name
+// meaningful in traces and keys the Firestore read without threading the flow
+// id through generate().
+const fakeModels = new Map<AiFlowId, ModelAction>();
+
+function defineFakeModel(flowId: AiFlowId): ModelAction {
+  return ai.defineModel(
+    {
+      name: `e2e-fake/${flowId}`,
+      supports: { multiturn: true, tools: false, systemRole: true, output: ['text', 'json'] },
+    },
+    async () => {
+      const snap = await getFirestore().collection(E2E_AI_STUB_COLLECTION).doc(flowId).get();
+
+      if (!snap.exists) {
+        // No stub registered for this flow. Fail loudly: a spec that drives an
+        // AI flow under FUNCTIONS_AI_FAKE without first calling stubAi() has a
+        // bug, and a silent empty answer would surface as a confusing schema
+        // parse error downstream.
+        throw new Error(
+          `e2e fake model: no stub registered at ${E2E_AI_STUB_COLLECTION}/${flowId}. ` +
+            `Call window.__e2e.stubAi('${flowId}', <response>) before invoking the flow.`,
+        );
+      }
+
+      const response = snap.data()?.['response'];
+      logger.info('e2e fake model: returning stubbed answer', { flowId });
+
+      // Return the canned answer as JSON text. Genkit's output formatter parses
+      // this back into result.output against the flow's output schema, mirroring
+      // how a real structured-output model response is handled.
+      return {
+        finishReason: 'stop',
+        message: {
+          role: 'model',
+          content: [{ text: JSON.stringify(response) }],
+        },
+      };
+    },
+  );
+}
+
+// Eagerly register a fake model for every flow id, but only under the flag — in
+// production this block never runs, so no fake action is ever registered and the
+// real model path is untouched. Done at module load to satisfy Genkit's
+// "actions defined at load time" rule.
+if (aiFakeEnabled()) {
+  for (const flowId of AI_FLOW_IDS) {
+    fakeModels.set(flowId, defineFakeModel(flowId));
+  }
+}
+
+/**
+ * Resolves the model a text-generation flow should pass to `ai.generate()`.
+ *
+ *   • Flag OFF (production, and emulator without the flag): returns exactly
+ *     `googleAI.model(await resolveModel(role, flowId))` — the unchanged
+ *     production path.
+ *   • Flag ON (emulator e2e harness): returns the deterministic fake model
+ *     (registered at module load) that reads its canned answer from
+ *     `_e2e_ai_stubs/{flowId}`.
+ *
+ * Drop-in replacement for `googleAI.model(await resolveModel(role, flowId))` at
+ * a flow's model site. Awaitable in both branches so the call site is identical.
+ */
+export async function flowModel(
+  role: AiModelRole,
+  flowId: AiFlowId,
+): Promise<ReturnType<typeof googleAI.model> | ModelAction> {
+  if (aiFakeEnabled()) {
+    // Registered at module load above; AI_FLOW_IDS covers every flow id.
+    return fakeModels.get(flowId)!;
+  }
+  return googleAI.model(await resolveModel(role, flowId));
+}

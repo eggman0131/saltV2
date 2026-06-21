@@ -56,6 +56,9 @@ export {
 export { subscribeDevSettings, saveDevSettings } from './devSettingsSync.js';
 export { subscribeAppSettings, saveAppSettings } from './appSettingsSync.js';
 export { callListAiModels, callTestModel } from './aiModelCallables.js';
+// E2E-only AI stub writer (test-infra Phase 1). Used by apps/web-pwa's e2e
+// bridge to register canned answers for the CF fake model; never used in prod.
+export { setAiStub } from './e2eAiStubSync.js';
 export type { AiCatalogModel, AiModelCatalog, TestModelOutcome } from './aiModelCallables.js';
 export type {
   IdentifyEquipmentCandidate,
