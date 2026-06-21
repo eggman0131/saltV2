@@ -1,0 +1,114 @@
+name: Dependabot major-update review
+
+# Posts an automated risk/impact assessment + recommendation on MAJOR-version
+# Dependabot PRs. It NEVER approves or merges — it only comments, to help a
+# non-coder decide whether a major bump is safe to merge.
+#
+# Why pull_request_target: Dependabot-triggered runs can't read Actions secrets
+# (needed for CLAUDE_CODE_OAUTH_TOKEN). pull_request_target runs from the base
+# branch (main) with secret access. To stay safe we NEVER check out or execute
+# the updated dependency — the review only reads existing code, the PR diff via
+# `gh`, and public changelogs.
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: dependabot-major-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  major-review:
+    runs-on: ubuntu-latest
+    # Any PR authored by Dependabot (regardless of who opened/reopened it).
+    if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
+    steps:
+      - name: Check out base branch (main) — never the PR head
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sonnet risk/impact assessment (major bumps only)
+        if: ${{ steps.meta.outputs.update-type == 'version-update:semver-major' }}
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: >-
+            --max-turns 30
+            --model claude-sonnet-4-6
+            --allowed-tools "Read,Grep,Glob,WebFetch,WebSearch,Bash(git log:*),Bash(git diff:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*)"
+          prompt: |
+            You are assessing a MAJOR-version Dependabot update for a NON-TECHNICAL
+            repository owner. Produce a risk/impact assessment and a clear
+            recommendation. You do NOT approve or merge — you only post one comment.
+
+            PR number: ${{ github.event.pull_request.number }}
+            PR title: ${{ github.event.pull_request.title }}
+            Package(s): ${{ steps.meta.outputs.dependency-names }}
+            Update: ${{ steps.meta.outputs.previous-version }} → ${{ steps.meta.outputs.new-version }}
+
+            ## Steps
+
+            1. Run `gh pr view ${{ github.event.pull_request.number }} --json title,body`
+               and `gh pr diff ${{ github.event.pull_request.number }}` to confirm
+               exactly which package(s) bump and the old → new versions. Dependabot's
+               PR body usually links release notes / changelogs — note them.
+            2. Use WebFetch / WebSearch to find the official changelog, release notes,
+               or migration guide for the NEW major version. Focus on documented
+               BREAKING CHANGES. If you can't find reliable notes, say so and lower
+               your confidence rather than guessing.
+            3. Determine how THIS repo actually uses the package: Grep/Glob/Read for
+               its import name and the specific APIs/exports the code relies on. A
+               breaking change only matters if it touches an API this repo uses.
+            4. Where relevant, cross-check repo conventions in CLAUDE.md (e.g. the
+               Firebase-only-in-firebase-sync rule, AI/Genkit conventions).
+            5. Decide a risk level and a recommendation.
+
+            ## Output
+
+            Post EXACTLY ONE comment with
+            `gh pr comment ${{ github.event.pull_request.number }} --body "..."`,
+            in plain English a non-coder can act on, using this structure:
+
+            ## 🤖 Automated major-update assessment (not an approval)
+
+            **Package:** <name> <old> → <new>
+            **Risk:** 🟢 Low / 🟡 Medium / 🔴 High
+
+            **What this update is:** <1–2 plain sentences>
+
+            **Breaking changes that matter here:** <bullets of the breaking changes
+            that actually touch how this repo uses the package — or "None found that
+            affect this repo's usage">
+
+            **What could break:** <plain language, or "Nothing obvious">
+
+            **Code changes needed before merging:** <"None" or a short list>
+
+            **Recommendation:** <pick one:
+            ✅ Safe to merge as-is /
+            ⚠️ Merge, but watch <X> /
+            🔧 Needs code changes first (summarised above) /
+            ⛔ Hold — <reason>>
+
+            **Confidence:** <Low / Medium / High> — <one line on why, e.g. couldn't
+            find a changelog>
+
+            ## Rules
+            - Do NOT edit any files. Do NOT approve or merge the PR.
+            - Keep it concise and concrete; no filler.
+            - Never execute or install the updated dependency; analyse from the diff,
+              the existing code, and public docs only.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
