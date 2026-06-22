@@ -43,6 +43,13 @@ updates:
       # individual major PRs (currently #279) until the migration in #300 lands.
       - dependency-name: "@opentelemetry/*"
         update-types: ["version-update:semver-major"]
+      # firebase-admin 14 is blocked on firebase-functions: its latest release
+      # (7.2.5) peers firebase-admin ^11||^12||^13, excluding 14. pnpm only
+      # warns, but the CF deploy build's `npm install --prefix dist` enforces
+      # peers strictly and fails ERESOLVE, breaking E2E globalSetup. Re-enable
+      # once firebase-functions peers firebase-admin ^14 and #303 lands.
+      - dependency-name: "firebase-admin"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
