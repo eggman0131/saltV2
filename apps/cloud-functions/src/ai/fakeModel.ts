@@ -105,14 +105,26 @@ function defineFakeModel(flowId: AiFlowId): ModelAction {
       const response = snap.data()?.['response'];
       logger.info('e2e fake model: returning stubbed answer', { flowId });
 
-      // Return the canned answer as JSON text. Genkit's output formatter parses
-      // this back into result.output against the flow's output schema, mirroring
-      // how a real structured-output model response is handled.
+      // Emit the canned answer as the model's text content.
+      //
+      //   • Structured-output flows (z.object/array — parseRecipeIngredients,
+      //     populateEquipmentEntry, authorRecipe) stub an OBJECT. A real
+      //     structured model emits JSON text that Genkit's output formatter parses
+      //     back into result.output, so we JSON.stringify the object — byte-for-
+      //     byte the original Phase 1 behaviour.
+      //   • String-output flows (z.string() — chefChat, generateChatTitle) stub a
+      //     STRING. A real model emits that prose verbatim, NOT JSON-quoted; for a
+      //     streaming string flow the chunks ARE the displayed reply, so quoting
+      //     would surface literal quotes in the chat bubble. Emit the string as-is.
+      //
+      // Keying-by-flow contract is unchanged; only the text encoding adapts to the
+      // stub's runtime type, matching what a real model would emit for each schema.
+      const text = typeof response === 'string' ? response : JSON.stringify(response);
       return {
         finishReason: 'stop',
         message: {
           role: 'model',
-          content: [{ text: JSON.stringify(response) }],
+          content: [{ text }],
         },
       };
     },

@@ -1,8 +1,7 @@
 import { z } from 'genkit';
-import { googleAI } from '@genkit-ai/google-genai';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
-import { resolveModel } from '../ai/resolveModel.js';
+import { flowModel } from '../ai/fakeModel.js';
 
 const InputSchema = z.object({
   userMessage: z.string(),
@@ -24,7 +23,7 @@ export const generateChatTitleFlow = ai.defineFlow(
   async (input) => {
     const prompt = `User's message: "${input.userMessage}"\n\nChef's reply:\n${input.assistantResponse.slice(0, 500)}`;
 
-    const model = googleAI.model(await resolveModel('lite', 'generateChatTitle'));
+    const model = await flowModel('lite', 'generateChatTitle');
     const result = await withAiTimeout(
       'generateChatTitle',
       () =>

@@ -8,6 +8,7 @@ import type {
   ShoppingListItem,
 } from '@salt/domain';
 import type { ObservabilitySessionMeta } from '@salt/ld-observability';
+import type { ChatSessionDoc } from '@salt/domain/schemas';
 
 export interface SeedCanonItemInput {
   readonly id?: string;
@@ -45,6 +46,13 @@ export interface E2EBridge {
   // planner spec assert per-day config (note, attendees, chefs, guests) and
   // prove the Firestore round-trip across reload.
   getMealPlanSnapshot(): MealPlanWeek;
+  // Synchronous snapshot of the owner-scoped chat-sessions store (test-infra
+  // Phase 5). Chat is the one owner-scoped exception to the family-shared rule:
+  // each user's store holds only their own sessions (subscribeChatSessions
+  // filters where ownerUid == uid). Lets the chat spec assert owner-scoping —
+  // user B's snapshot must be empty of user A's sessions — and the session
+  // lifecycle/persistence across reload.
+  getChatSessions(): readonly ChatSessionDoc[];
   tagSession(meta: ObservabilitySessionMeta): void;
   getLDSessionURL(): string | null;
   // E2E AI stub seam (test-infra Phase 1). Registers the canned answer the CF

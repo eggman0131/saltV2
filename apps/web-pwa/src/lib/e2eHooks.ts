@@ -7,6 +7,7 @@ import { canonItems, isLoadingAisles } from './canonService.js';
 import { seedEquipmentManifest, getEquipmentSnapshot } from './equipmentService.js';
 import { getRecipesSnapshot } from './recipeService.js';
 import { getMealPlanWeekSnapshot } from './mealPlanService.js';
+import { getChatSessionsSnapshot } from './chatService.js';
 import {
   getShoppingListsSnapshot,
   getDefaultListIdSnapshot,
@@ -105,6 +106,10 @@ export function installE2EHooks(): void {
 
     getMealPlanSnapshot() {
       return getMealPlanWeekSnapshot();
+    },
+
+    getChatSessions() {
+      return getChatSessionsSnapshot();
     },
 
     async setFirestoreOffline(offline: boolean) {

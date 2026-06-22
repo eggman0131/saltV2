@@ -1,6 +1,5 @@
 import { z } from 'genkit';
 import { getFirestore } from 'firebase-admin/firestore';
-import { googleAI } from '@genkit-ai/google-genai';
 import { logger } from 'firebase-functions';
 import { ChefChatInputSchema } from '@salt/domain/schemas';
 import {
@@ -11,7 +10,7 @@ import {
 } from '@salt/domain/schemas';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
-import { resolveModel } from '../ai/resolveModel.js';
+import { flowModel } from '../ai/fakeModel.js';
 
 async function readEquipmentContext(db: ReturnType<typeof getFirestore>): Promise<string> {
   try {
@@ -123,7 +122,7 @@ export const chefChatFlow = ai.defineFlow(
 
     // Pro-tier model for conversational quality (design principle #3, issue #206).
     const { stream, response } = ai.generateStream({
-      model: googleAI.model(await resolveModel('pro', 'chefChat')),
+      model: await flowModel('pro', 'chefChat'),
       system: systemPrompt,
       messages: history,
       prompt: input.newMessage,
