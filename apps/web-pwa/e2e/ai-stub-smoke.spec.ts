@@ -20,6 +20,10 @@ import { expect, test } from './fixtures/test';
 import { gotoAndSignIn, uniqueEmail } from './helpers/auth';
 
 const SYNC_TIMEOUT = 15_000;
+// First post-navigation render hydrates the SPA route after sign-in + a fresh
+// emulator wipe; under sustained load (--repeat-each) it can exceed SYNC_TIMEOUT,
+// so the initial-render assertion uses this larger explicit budget.
+const HYDRATE_TIMEOUT = 30_000;
 
 // A make-believe accessory a real Gemini key would never return for this input —
 // so its presence in the UI/store can only have come from the stub.
@@ -31,22 +35,41 @@ test.describe('AI fake-model seam — stubAi round-trip', () => {
   }, testInfo) => {
     test.setTimeout(60_000);
     const email = uniqueEmail(testInfo.testId);
-    await gotoAndSignIn(page, email);
+    // Sign in directly at the capture route: AuthGate renders the router only
+    // once authenticated, so the route mounts fresh after sign-in rather than
+    // via a post-auth hashchange the SPA router can drop under load.
+    await gotoAndSignIn(page, email, '/#/equipment/new');
 
-    // Register the canned model answer BEFORE invoking the flow. Shape must
-    // satisfy PopulateEquipmentEntryAIOutputSchema ({ name, accessories[] }).
+    // Register the canned model answers BEFORE invoking the flows. The capture
+    // flow drives TWO AI callables: identifyEquipment (step 1 → 2) and
+    // populateEquipmentEntry (step 2 → 3). Under FUNCTIONS_AI_FAKE=1 the fake
+    // model throws if a driven flow has no stub, so BOTH must be registered up
+    // front — stubbing only populateEquipmentEntry left identifyEquipment racing
+    // the UI's error fallback, which was the source of this spec's flake.
     await page.evaluate(
-      ({ accessory }) =>
-        window.__e2e!.stubAi('populateEquipmentEntry', {
+      ({ accessory }) => {
+        const stubIdentify = window.__e2e!.stubAi('identifyEquipment', {
+          // Shape must satisfy IdentifyEquipmentAIOutputSchema
+          // ({ candidates: [{ name, rationale }] }).
+          candidates: [{ name: 'Stubbed Stand Mixer', rationale: 'Deterministic stub candidate.' }],
+        });
+        const stubPopulate = window.__e2e!.stubAi('populateEquipmentEntry', {
+          // Shape must satisfy PopulateEquipmentEntryAIOutputSchema
+          // ({ name, accessories[] }).
           name: 'Stubbed Stand Mixer',
           accessories: [{ name: accessory, included: true }],
-        }),
+        });
+        return Promise.all([stubIdentify, stubPopulate]);
+      },
       { accessory: STUB_ACCESSORY },
     );
 
     // ── Drive the capture flow to the point it calls the real callable ──
-    await page.goto('/#/equipment/new');
-    await expect(page.getByRole('heading', { name: /add equipment/i })).toBeVisible();
+    // Already on /#/equipment/new (signed in there). The route mounts after
+    // AuthGate reveals the router; give the first render an explicit budget.
+    await expect(page.getByRole('heading', { name: /add equipment/i })).toBeVisible({
+      timeout: HYDRATE_TIMEOUT,
+    });
 
     await page.getByTestId('equipment-raw-name-input').fill('Stand Mixer');
     await page.getByRole('button', { name: /identify/i }).click();

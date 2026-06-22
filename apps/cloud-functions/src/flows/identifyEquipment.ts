@@ -1,11 +1,10 @@
-import { googleAI } from '@genkit-ai/google-genai';
 import {
   IdentifyEquipmentAIOutputSchema,
   IdentifyEquipmentInputSchema,
 } from '@salt/domain/schemas';
 import { setActiveSpanName } from '@salt/ld-observability/server';
 import { ai } from '../genkit.js';
-import { resolveModel } from '../ai/resolveModel.js';
+import { flowModel } from '../ai/fakeModel.js';
 
 export const identifyEquipmentFlow = ai.defineFlow(
   {
@@ -16,7 +15,7 @@ export const identifyEquipmentFlow = ai.defineFlow(
   async ({ rawName }) => {
     setActiveSpanName(`identifyEquipment: ${rawName}`);
     const result = await ai.generate({
-      model: googleAI.model(await resolveModel('fast', 'identifyEquipment')),
+      model: await flowModel('fast', 'identifyEquipment'),
       system: SYSTEM_INSTRUCTIONS,
       prompt: `"${rawName}"`,
       output: { schema: IdentifyEquipmentAIOutputSchema },
