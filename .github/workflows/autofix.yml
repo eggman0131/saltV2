@@ -75,6 +75,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.ref }}
+          # Do NOT persist the default GITHUB_TOKEN as an http.extraheader auth
+          # header: that header overrides the App-token credentials embedded in
+          # the push URL below, so the push would go out as the read-only
+          # github-actions[bot] and be denied (403). With this off, the push
+          # uses only the App token. (The clone itself still uses the default
+          # token; it just isn't left behind in .git/config.)
+          persist-credentials: false
 
       - uses: pnpm/action-setup@v4
         with:
@@ -128,7 +135,14 @@ jobs:
           set -euo pipefail
           git config user.name "${APP_SLUG}[bot]"
           git config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
-          git commit -am "style: apply prettier formatting"
+          # --no-verify: `pnpm install` installs husky's hooks, so a plain
+          # commit would fire the local pre-commit hook (lint-staged + typecheck
+          # + dependency-cruiser) inside CI. That is wasteful and, worse, would
+          # ABORT the formatting commit whenever the dependency bump breaks
+          # typecheck — exactly when we still want the format fix pushed so only
+          # the real failure remains. Autofix must never gate on those checks;
+          # ci.yml runs them as required status checks on the pushed commit.
+          git commit --no-verify -am "style: apply prettier formatting"
           # Push with the App token (re-triggers CI). No --force: if the branch
           # advanced meanwhile the push is rejected and the next synchronize
           # re-runs this workflow on the newer commit.
