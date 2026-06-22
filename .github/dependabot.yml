@@ -27,6 +27,14 @@ updates:
           - "patch"
     # Major updates match no group above, so Dependabot opens them as
     # individual PRs that warrant a closer look.
+    ignore:
+      # zod 4 is blocked: @genkit-ai/core (the sole zod source for the Genkit
+      # stack) pins zod ^3.23.8 up to its latest release (1.37.0), so zod 4's
+      # ZodObject fails Genkit's zod-3 ZodTypeAny constraint at every flow
+      # boundary. Re-enable once a Genkit release accepts zod 4 and the lockstep
+      # migration in #298 lands. (Minor/patch within zod 3 still flow normally.)
+      - dependency-name: "zod"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
