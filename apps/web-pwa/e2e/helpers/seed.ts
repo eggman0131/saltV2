@@ -1,6 +1,6 @@
 /// <reference path="../../src/lib/types/e2e.d.ts" />
 import type { Page } from '@playwright/test';
-import type { Aisle, CanonItem } from '@salt/domain';
+import type { Aisle, CanonItem, ShoppingListItem } from '@salt/domain';
 
 export interface SeedCanonItemInput {
   readonly id?: string;
@@ -41,4 +41,12 @@ export async function waitForCanonReady(page: Page): Promise<void> {
 
 export async function clearAllStores(page: Page): Promise<void> {
   await page.evaluate(() => window.__e2e!.clearStores());
+}
+
+// Snapshot of the active shopping list's items straight from the store —
+// the observable post-trigger state (canonId, matchState, rawText, amount,
+// unit, notes). Used to assert the onShoppingListItemWrite trigger's rewrite
+// deterministically, without racing the DOM.
+export async function getShoppingListItems(page: Page): Promise<readonly ShoppingListItem[]> {
+  return page.evaluate(() => window.__e2e!.getShoppingListItems());
 }
