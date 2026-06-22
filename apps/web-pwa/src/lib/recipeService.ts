@@ -34,6 +34,13 @@ import type { Readable } from 'svelte/store';
 const _recipes = writable<readonly Recipe[]>([]);
 export const recipes: Readable<readonly Recipe[]> = _recipes;
 
+// Synchronous snapshot of the recipes store. Used by the e2e bridge to assert
+// the parsed/canonical ingredient structure that lives in the store but is only
+// partially surfaced in the DOM. Mirrors getShoppingListItems / getCanonItem.
+export function getRecipesSnapshot(): readonly Recipe[] {
+  return get(_recipes);
+}
+
 const _isLoadingRecipes = writable(true);
 export const isLoadingRecipes: Readable<boolean> = _isLoadingRecipes;
 

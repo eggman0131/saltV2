@@ -96,6 +96,18 @@ service cloud.firestore {
       allow create: if request.auth != null
         && request.resource.data.ownerUid == request.auth.uid;
     }
+    // E2E AI fake-model stubs (test-infra Phase 1). The browser e2e bridge
+    // writes canned AI answers here; the CF fake model reads them (Admin SDK,
+    // bypasses rules). Underscore-prefixed: test-only scaffolding that never
+    // exists in production data. The CF fake model that consumes it is itself
+    // hard-gated on FUNCTIONS_AI_FAKE=1 (emulator only), so even though this
+    // rule ships in the production ruleset the collection is inert there —
+    // nothing writes it (the bridge is gated on VITE_USE_EMULATORS) and nothing
+    // reads it (the fake model is unreachable without the emulator flag). Scoped
+    // to allowlisted, signed-in members only.
+    match /_e2e_ai_stubs/{flowName} {
+      allow read, write: if request.auth != null;
+    }
     match /{document=**} {
       allow read, write: if false;
     }

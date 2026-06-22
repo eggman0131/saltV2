@@ -18,6 +18,15 @@ import type { Readable } from 'svelte/store';
 const _sessions = writable<readonly ChatSessionDoc[]>([]);
 export const sessions: Readable<readonly ChatSessionDoc[]> = _sessions;
 
+// Synchronous snapshot of the chat-sessions store for e2e (test-infra Phase 5).
+// Mirrors getRecipesSnapshot/getMealPlanWeekSnapshot. Lets specs assert the
+// owner-scoped session set the realtime subscription actually delivered — the
+// crux of the owner-scoping check (Chat is the one owner-scoped exception to the
+// family-shared rule), since two users' stores must never cross-contaminate.
+export function getChatSessionsSnapshot(): readonly ChatSessionDoc[] {
+  return get(_sessions);
+}
+
 const _isLoadingSessions = writable(true);
 export const isLoadingSessions: Readable<boolean> = _isLoadingSessions;
 

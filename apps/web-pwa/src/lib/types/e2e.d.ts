@@ -2,10 +2,13 @@ import type {
   Aisle,
   CanonItem,
   EquipmentManifest,
+  MealPlanWeek,
+  Recipe,
   ShoppingList,
   ShoppingListItem,
 } from '@salt/domain';
 import type { ObservabilitySessionMeta } from '@salt/ld-observability';
+import type { ChatSessionDoc } from '@salt/domain/schemas';
 
 export interface SeedCanonItemInput {
   readonly id?: string;
@@ -35,8 +38,31 @@ export interface E2EBridge {
   getShoppingLists(): readonly ShoppingList[];
   getDefaultListId(): string | null | undefined;
   getShoppingListItems(): readonly ShoppingListItem[];
+  // Synchronous snapshot of the recipes store. Lets specs assert the parsed /
+  // canonical ingredient structure (quantity, unit, item, canonId, matchState)
+  // that lives in the store but is only partially surfaced in the DOM.
+  getRecipes(): readonly Recipe[];
+  // Synchronous snapshot of the current meal-plan week store. Lets the meal
+  // planner spec assert per-day config (note, attendees, chefs, guests) and
+  // prove the Firestore round-trip across reload.
+  getMealPlanSnapshot(): MealPlanWeek;
+  // Synchronous snapshot of the owner-scoped chat-sessions store (test-infra
+  // Phase 5). Chat is the one owner-scoped exception to the family-shared rule:
+  // each user's store holds only their own sessions (subscribeChatSessions
+  // filters where ownerUid == uid). Lets the chat spec assert owner-scoping —
+  // user B's snapshot must be empty of user A's sessions — and the session
+  // lifecycle/persistence across reload.
+  getChatSessions(): readonly ChatSessionDoc[];
   tagSession(meta: ObservabilitySessionMeta): void;
   getLDSessionURL(): string | null;
+  // E2E AI stub seam (test-infra Phase 1). Registers the canned answer the CF
+  // fake model returns for a flow. Writes `_e2e_ai_stubs/{flowName}` to the
+  // shared emulator Firestore; the CF fake model (FUNCTIONS_AI_FAKE=1) reads it
+  // and returns `response` as the model output, so the real callable + flow run
+  // unchanged with a deterministic answer. `flowName` is the Genkit flow name
+  // (e.g. 'populateEquipmentEntry'); `response` is the structured object the
+  // flow's `ai.generate({ output })` should resolve to. Emulator-only.
+  stubAi(flowName: string, response: unknown): Promise<void>;
 }
 
 declare global {
