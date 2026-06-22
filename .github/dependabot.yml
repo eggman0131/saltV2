@@ -50,6 +50,15 @@ updates:
       # once firebase-functions peers firebase-admin ^14 and #303 lands.
       - dependency-name: "firebase-admin"
         update-types: ["version-update:semver-major"]
+      # @sveltejs/vite-plugin-svelte 7 peers Vite 8 (beta), while plugin 6 caps
+      # at Vite 7 — so the plugin and Vite majors are locked together and
+      # neither can move alone. Bumping the plugin to 7 against Vite 7 stops the
+      # app's Vite server from booting and times out E2E (#274). Both majors are
+      # ignored until the lockstep Vite 8 migration in #304 lands.
+      - dependency-name: "@sveltejs/vite-plugin-svelte"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "vite"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
