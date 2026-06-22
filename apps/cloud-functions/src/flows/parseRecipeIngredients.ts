@@ -1,4 +1,3 @@
-import { googleAI } from '@genkit-ai/google-genai';
 import {
   ParseRecipeIngredientsInputSchema,
   ParseRecipeIngredientsAIOutputSchema,
@@ -6,7 +5,7 @@ import {
 } from '@salt/domain/schemas';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
-import { resolveModel } from '../ai/resolveModel.js';
+import { flowModel } from '../ai/fakeModel.js';
 
 export const parseRecipeIngredientsFlow = ai.defineFlow(
   {
@@ -18,7 +17,12 @@ export const parseRecipeIngredientsFlow = ai.defineFlow(
     // Recipe lists are much larger prompts than single-entry calls, so Flash can
     // take 30–50s on a full ingredient list. Use a higher timeout with no retry:
     // retrying a large legitimate request just doubles the wait for no gain.
-    const model = googleAI.model(await resolveModel('lite', 'parseRecipeIngredients'));
+    //
+    // Production: googleAI.model(resolveModel('lite', 'parseRecipeIngredients')).
+    // Under FUNCTIONS_AI_FAKE=1 (emulator e2e only) flowModel returns the
+    // deterministic fake model instead; byte-identical otherwise. See
+    // ../ai/fakeModel.ts for the cross-process stub contract.
+    const model = await flowModel('lite', 'parseRecipeIngredients');
     const result = await withAiTimeout(
       'parseRecipeIngredients',
       () =>

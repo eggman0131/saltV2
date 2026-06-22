@@ -5,6 +5,7 @@ import { devSignIn } from './auth.svelte.js';
 import { addAislesBulk, aisles } from './aisleService.js';
 import { canonItems, isLoadingAisles } from './canonService.js';
 import { seedEquipmentManifest, getEquipmentSnapshot } from './equipmentService.js';
+import { getRecipesSnapshot } from './recipeService.js';
 import {
   getShoppingListsSnapshot,
   getDefaultListIdSnapshot,
@@ -95,6 +96,10 @@ export function installE2EHooks(): void {
 
     getShoppingListItems() {
       return getItemsSnapshot();
+    },
+
+    getRecipes() {
+      return getRecipesSnapshot();
     },
 
     async setFirestoreOffline(offline: boolean) {

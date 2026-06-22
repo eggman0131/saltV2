@@ -2,6 +2,7 @@ import type {
   Aisle,
   CanonItem,
   EquipmentManifest,
+  Recipe,
   ShoppingList,
   ShoppingListItem,
 } from '@salt/domain';
@@ -35,6 +36,10 @@ export interface E2EBridge {
   getShoppingLists(): readonly ShoppingList[];
   getDefaultListId(): string | null | undefined;
   getShoppingListItems(): readonly ShoppingListItem[];
+  // Synchronous snapshot of the recipes store. Lets specs assert the parsed /
+  // canonical ingredient structure (quantity, unit, item, canonId, matchState)
+  // that lives in the store but is only partially surfaced in the DOM.
+  getRecipes(): readonly Recipe[];
   tagSession(meta: ObservabilitySessionMeta): void;
   getLDSessionURL(): string | null;
   // E2E AI stub seam (test-infra Phase 1). Registers the canned answer the CF
