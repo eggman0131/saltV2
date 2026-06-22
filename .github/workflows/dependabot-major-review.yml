@@ -48,6 +48,11 @@ jobs:
           # Pass the workflow token explicitly so the action does NOT attempt the
           # GitHub App OIDC token exchange, which 401s under pull_request_target.
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          # claude-code-action rejects bot-initiated runs by default ("Workflow
+          # initiated by non-human actor"). This workflow exists ONLY to review
+          # Dependabot PRs, and the job-level `if:` already gates on that exact
+          # author, so allow just dependabot[bot] (not '*') to clear the gate.
+          allowed_bots: "dependabot[bot]"
           claude_args: >-
             --max-turns 30
             --model claude-opus-4-8
