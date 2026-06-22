@@ -2,6 +2,7 @@ import type {
   Aisle,
   CanonItem,
   EquipmentManifest,
+  MealPlanWeek,
   Recipe,
   ShoppingList,
   ShoppingListItem,
@@ -40,6 +41,10 @@ export interface E2EBridge {
   // canonical ingredient structure (quantity, unit, item, canonId, matchState)
   // that lives in the store but is only partially surfaced in the DOM.
   getRecipes(): readonly Recipe[];
+  // Synchronous snapshot of the current meal-plan week store. Lets the meal
+  // planner spec assert per-day config (note, attendees, chefs, guests) and
+  // prove the Firestore round-trip across reload.
+  getMealPlanSnapshot(): MealPlanWeek;
   tagSession(meta: ObservabilitySessionMeta): void;
   getLDSessionURL(): string | null;
   // E2E AI stub seam (test-infra Phase 1). Registers the canned answer the CF
