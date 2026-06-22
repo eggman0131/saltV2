@@ -150,6 +150,7 @@ test.describe('chat — stubbed chef reply, lifecycle, owner-scoping', () => {
       // receive user A's owner-scoped session).
       await expect.poll(() => getSessions(page2), { timeout: SYNC_TIMEOUT }).toHaveLength(0);
       // Hold for a moment and re-assert: no cross-user leak ever arrives.
+      // eslint-disable-next-line playwright/no-wait-for-timeout -- NF-A2: bounded negative hold (no cross-user leak)
       await page2.waitForTimeout(2000);
       expect(await getSessions(page2)).toHaveLength(0);
       await expect(page2.getByTestId('chat-session-item')).toHaveCount(0);

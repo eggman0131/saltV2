@@ -141,7 +141,9 @@ test.describe('shopping list — multi-list', () => {
     const email = uniqueEmail(testInfo.testId);
     await gotoAndSignIn(page, email);
 
-    const firstListUrl = await createFirstList(page);
+    // First list provides the "another list exists" precondition; we only assert
+    // on the second below, so its URL is unused.
+    await createFirstList(page);
 
     // Create second list
     await createSecondList(page, 'Second list');
@@ -157,12 +159,7 @@ test.describe('shopping list — multi-list', () => {
     await page.goto(secondListUrl);
 
     // Should still be on the second list (not redirected to default)
-    await expect(page).toHaveURL(
-      new URL(secondListUrl).hash.slice(1) !== new URL(firstListUrl).hash.slice(1)
-        ? secondListUrl
-        : secondListUrl,
-      { timeout: SYNC_TIMEOUT },
-    );
+    await expect(page).toHaveURL(secondListUrl, { timeout: SYNC_TIMEOUT });
     await expect(page.getByTestId('shopping-list-page')).toBeVisible({ timeout: SYNC_TIMEOUT });
   });
 });
