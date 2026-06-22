@@ -180,8 +180,7 @@
           placeholder="What's for dinner?"
           value={day.note}
           oninput={(e) => onNoteChange(e.currentTarget.value)}
-          data-testid={`${testid}-note`}
-        ></textarea>
+          data-testid={`${testid}-note`}></textarea>
       </div>
 
       <div class="flex flex-col gap-2.5">

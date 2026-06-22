@@ -618,8 +618,7 @@
                     value={sidebarInputText}
                     onkeydown={handleSidebarKeydown}
                     oninput={handleSidebarInput}
-                    disabled={sidebarIsSending}
-                  ></textarea>
+                    disabled={sidebarIsSending}></textarea>
                 </div>
                 <Button
                   size="sm"

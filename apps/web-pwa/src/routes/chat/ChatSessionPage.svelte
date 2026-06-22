@@ -250,8 +250,7 @@
           onkeydown={handleKeydown}
           oninput={handleInput}
           disabled={isSending}
-          data-testid="chat-input"
-        ></textarea>
+          data-testid="chat-input"></textarea>
       </div>
       <Button
         onclick={handleSend}
