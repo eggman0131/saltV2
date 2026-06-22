@@ -71,7 +71,7 @@
     "eslint-plugin-boundaries": "^6.0.2",
     "firebase-tools": "^15.22.0",
     "husky": "^9.1.7",
-    "lint-staged": "^16.4.0",
+    "lint-staged": "^17.0.8",
     "prettier": "^3.8.4",
     "prettier-plugin-svelte": "^4.1.1",
     "typescript": "^5.8.3",
