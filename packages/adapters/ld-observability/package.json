@@ -17,17 +17,17 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@launchdarkly/js-client-sdk": "^4.6.3",
-    "@launchdarkly/observability": "^1.0.0",
-    "@launchdarkly/session-replay": "^1.1.6",
-    "@opentelemetry/api": "1.9.0",
-    "@opentelemetry/exporter-trace-otlp-http": "^0.52.1",
-    "@opentelemetry/instrumentation": "^0.52.1",
-    "@opentelemetry/instrumentation-grpc": "^0.52.1",
-    "@opentelemetry/instrumentation-http": "^0.52.1",
-    "@opentelemetry/resources": "^1.25.1",
-    "@opentelemetry/sdk-trace-node": "^1.25.1",
-    "@opentelemetry/semantic-conventions": "^1.25.1",
+    "@launchdarkly/js-client-sdk": "^4.9.0",
+    "@launchdarkly/observability": "^1.1.15",
+    "@launchdarkly/session-replay": "^1.1.15",
+    "@opentelemetry/api": "1.9.1",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.219.0",
+    "@opentelemetry/instrumentation": "^0.219.0",
+    "@opentelemetry/instrumentation-grpc": "^0.219.0",
+    "@opentelemetry/instrumentation-http": "^0.219.0",
+    "@opentelemetry/resources": "^1.30.1",
+    "@opentelemetry/sdk-trace-node": "^1.30.1",
+    "@opentelemetry/semantic-conventions": "^1.41.1",
     "@salt/domain": "workspace:*",
     "@salt/shared-types": "workspace:*"
   }
