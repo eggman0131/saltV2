@@ -170,13 +170,14 @@ test.describe('canon sync — two-tab convergence', () => {
       await page1.evaluate(() => window.__e2e!.setFirestoreOffline(true));
       await seedCanonItem(page1, { id: itemId, name: 'Offline Edit' });
 
-      // While offline, tab B should not yet see it.
-      await expect
-        .poll(() => getCanonItem(page2, itemId), { timeout: 3000 })
-        .toBeNull()
-        .catch(() => {
-          // toBeNull polling timeout is acceptable — item shouldn't be there
-        });
+      // While ctx1 is offline, the offline write must NOT reach tab B (negative
+      // property — no early leak before ctx1 reconnects). Hold a window, then
+      // confirm tab B still sees nothing. The prior `.poll().toBeNull().catch()`
+      // was a no-op: it passed trivially (the item was already absent on B) and
+      // the `.catch` silently swallowed the one case that mattered — a leak.
+      // eslint-disable-next-line playwright/no-wait-for-timeout -- NF-A2: bounded negative hold (no early leak while offline)
+      await page2.waitForTimeout(2000);
+      expect(await getCanonItem(page2, itemId)).toBeNull();
 
       // Bring ctx1 back online — pending writes drain and propagate.
       await page1.evaluate(() => window.__e2e!.setFirestoreOffline(false));

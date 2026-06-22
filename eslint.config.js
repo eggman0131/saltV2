@@ -1,5 +1,6 @@
 import boundaries from 'eslint-plugin-boundaries';
 import tsParser from '@typescript-eslint/parser';
+import playwright from 'eslint-plugin-playwright';
 
 // Element definitions used by eslint-plugin-boundaries.
 const ELEMENTS = [
@@ -120,7 +121,6 @@ export default [
       '**/.svelte-kit/**',
       '**/__boundary_tests__/**',
       '**/.boundary-tests/**',
-      'apps/web-pwa/e2e/**',
     ],
   },
 
@@ -128,6 +128,20 @@ export default [
     files: ['**/*.ts'],
     languageOptions: {
       parser: tsParser,
+    },
+  },
+
+  // e2e Playwright specs: mechanise the NF-spec flake rules via the plugin's
+  // flat/recommended set — errors on the correctness rules (missing-playwright-await,
+  // prefer-web-first-assertions, no-networkidle, no-focused-test, valid-*), warns on
+  // style. no-eval is OFF — the window.__e2e bridge runs via page.evaluate. The two
+  // legit negative-hold waitForTimeouts carry inline eslint-disable + NF-A2 reasons.
+  {
+    files: ['apps/web-pwa/e2e/**/*.ts'],
+    plugins: { playwright },
+    rules: {
+      ...playwright.configs['flat/recommended'].rules,
+      'playwright/no-eval': 'off',
     },
   },
 

@@ -17,7 +17,13 @@ export default defineConfig({
 
   use: {
     baseURL: 'http://127.0.0.1:5174',
-    trace: 'on-first-retry',
+    // retain-on-failure, NOT on-first-retry: for a "passes on retry" flake,
+    // on-first-retry keeps the trace of the *retry* (which passed) — useless for
+    // diagnosis. retain-on-failure keeps the trace + video of whichever attempt
+    // actually failed. These are the CI debugging path (download the artifact,
+    // `npx playwright show-trace`); see docs/e2e-test-spec.md (NF-G4).
+    trace: 'retain-on-failure',
+    video: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
 

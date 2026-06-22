@@ -5,6 +5,11 @@ emulator (`window.__e2e.devSignIn`), tags the LaunchDarkly Observability session
 session-replay URL to the test result. See issue #14 for the foundation rationale and locked
 decisions.
 
+> **Writing or reviewing a spec?** The stability contract every test must satisfy — the
+> pre-review gate for determinism, isolation, realtime/AI-trigger races, and timeouts — lives in
+> [docs/e2e-test-spec.md](e2e-test-spec.md). This document covers the emulator/CI mechanics; that
+> one covers the non-functional rules layered on top.
+
 The emulator-backed test stacks are **containerized** (issue #84). Both the e2e (Playwright) stack
 and the Vitest emulator-integration stack run as healthcheck-gated `docker compose` services with a
 deterministic `down -v` teardown. This is what makes the suites reliable on this WSL2 host: the

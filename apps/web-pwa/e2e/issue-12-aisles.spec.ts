@@ -3,6 +3,7 @@ import { signIn, uniqueEmail } from './helpers/auth';
 import { getAisles, getCanonItem, seedCanonItem } from './helpers/seed';
 import { aislesPage } from './helpers/locators';
 import { keyboardReorder } from './helpers/dnd';
+import { SYNC_TIMEOUT } from './helpers/timeouts';
 
 test('add, reorder, and bulk-delete aisles unassigns referencing canon items', async ({
   page,
@@ -28,6 +29,7 @@ test('add, reorder, and bulk-delete aisles unassigns referencing canon items', a
 
   const aisles = await getAisles(page);
   const bakery = aisles.find((a) => a.name === 'Bakery');
+  // eslint-disable-next-line playwright/no-conditional-in-test -- setup precondition + type-narrow, not branching test logic
   if (!bakery) throw new Error('Bakery aisle not found after add');
 
   const seededItem = await seedCanonItem(page, {
@@ -53,8 +55,14 @@ test('add, reorder, and bulk-delete aisles unassigns referencing canon items', a
   await expect(ui.bulkDeleteDialog).toBeHidden();
   await expect(page.getByText('Bakery', { exact: true })).toBeHidden();
 
+  // Deleting the Bakery aisle unassigns referencing canon items (aisleId → null,
+  // needs_approval → true) as a follow-on write that can lag the row removal
+  // asserted above — poll the store for the rewrite instead of reading it once.
+  await expect
+    .poll(async () => (await getCanonItem(page, seededItem.id))?.aisleId, { timeout: SYNC_TIMEOUT })
+    .toBeNull();
+
   const updatedItem = await getCanonItem(page, seededItem.id);
   expect(updatedItem).not.toBeNull();
-  expect(updatedItem?.aisleId).toBeNull();
   expect(updatedItem?.needs_approval).toBe(true);
 });
