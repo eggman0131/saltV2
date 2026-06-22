@@ -1,11 +1,10 @@
-import { googleAI } from '@genkit-ai/google-genai';
 import {
   PopulateEquipmentEntryAIOutputSchema,
   PopulateEquipmentEntryInputSchema,
 } from '@salt/domain/schemas';
 import { setActiveSpanName } from '@salt/ld-observability/server';
 import { ai } from '../genkit.js';
-import { resolveModel } from '../ai/resolveModel.js';
+import { flowModel } from '../ai/fakeModel.js';
 
 export const populateEquipmentEntryFlow = ai.defineFlow(
   {
@@ -16,7 +15,11 @@ export const populateEquipmentEntryFlow = ai.defineFlow(
   async ({ confirmedName }) => {
     setActiveSpanName(`populateEquipmentEntry: ${confirmedName}`);
     const result = await ai.generate({
-      model: googleAI.model(await resolveModel('lite', 'populateEquipmentEntry')),
+      // Production: googleAI.model(resolveModel('lite', 'populateEquipmentEntry')).
+      // Under FUNCTIONS_AI_FAKE=1 (emulator e2e only) this returns the
+      // deterministic fake model instead; byte-identical otherwise. See
+      // ../ai/fakeModel.ts for the cross-process stub contract.
+      model: await flowModel('lite', 'populateEquipmentEntry'),
       system: SYSTEM_INSTRUCTIONS,
       prompt: `"${confirmedName}"`,
       output: { schema: PopulateEquipmentEntryAIOutputSchema },

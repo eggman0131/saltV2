@@ -1,10 +1,13 @@
 import { get } from 'svelte/store';
-import { upsertCanonItem, setFirestoreNetwork } from '@salt/firebase-sync';
+import { upsertCanonItem, setFirestoreNetwork, setAiStub } from '@salt/firebase-sync';
 import type { CanonItem } from '@salt/domain';
 import { devSignIn } from './auth.svelte.js';
 import { addAislesBulk, aisles } from './aisleService.js';
 import { canonItems, isLoadingAisles } from './canonService.js';
 import { seedEquipmentManifest, getEquipmentSnapshot } from './equipmentService.js';
+import { getRecipesSnapshot } from './recipeService.js';
+import { getMealPlanWeekSnapshot } from './mealPlanService.js';
+import { getChatSessionsSnapshot } from './chatService.js';
 import {
   getShoppingListsSnapshot,
   getDefaultListIdSnapshot,
@@ -97,8 +100,29 @@ export function installE2EHooks(): void {
       return getItemsSnapshot();
     },
 
+    getRecipes() {
+      return getRecipesSnapshot();
+    },
+
+    getMealPlanSnapshot() {
+      return getMealPlanWeekSnapshot();
+    },
+
+    getChatSessions() {
+      return getChatSessionsSnapshot();
+    },
+
     async setFirestoreOffline(offline: boolean) {
       await setFirestoreNetwork(!offline);
+    },
+
+    async stubAi(flowName, response) {
+      // Register the canned answer the CF fake model returns for `flowName`.
+      // Cross-process seam: this writes `_e2e_ai_stubs/{flowName}` to the shared
+      // emulator Firestore; the CF fake model (FUNCTIONS_AI_FAKE=1) reads it.
+      // See packages/adapters/firebase-sync/src/e2eAiStubSync.ts and
+      // apps/cloud-functions/src/ai/fakeModel.ts for the full contract.
+      await setAiStub(flowName, response);
     },
 
     tagSession(meta) {

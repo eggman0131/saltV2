@@ -1,0 +1,100 @@
+/**
+ * AI fake-model seam smoke test (test-infra Phase 1).
+ *
+ * Proves the cross-process stub seam round-trips end to end:
+ *
+ *   stubAi() writes `_e2e_ai_stubs/{flow}` to the shared emulator Firestore
+ *     → the equipment capture UI calls the REAL populateEquipmentEntry callable
+ *       → the CF runs the REAL flow, but under FUNCTIONS_AI_FAKE=1 its Genkit
+ *         *model* is the deterministic fake, which reads the stub doc
+ *         → the flow returns the stubbed answer through the unchanged callable
+ *           → the UI renders the stubbed accessories and saves the manifest
+ *             → the manifest (with the stubbed accessory) lands in the store.
+ *
+ * Only the model output is faked: the callable boundary, the Genkit flow, the
+ * Firestore write, and the realtime store subscription are all the production
+ * code paths. This is the seam phases 2–6 build on; see fakeModel.ts for the
+ * keying/storage contract.
+ */
+import { expect, test } from './fixtures/test';
+import { gotoAndSignIn, uniqueEmail } from './helpers/auth';
+
+const SYNC_TIMEOUT = 15_000;
+// First post-navigation render hydrates the SPA route after sign-in + a fresh
+// emulator wipe; under sustained load (--repeat-each) it can exceed SYNC_TIMEOUT,
+// so the initial-render assertion uses this larger explicit budget.
+const HYDRATE_TIMEOUT = 30_000;
+
+// A make-believe accessory a real Gemini key would never return for this input —
+// so its presence in the UI/store can only have come from the stub.
+const STUB_ACCESSORY = 'Deterministic Stub Whisk';
+
+test.describe('AI fake-model seam — stubAi round-trip', () => {
+  test('a stubbed populateEquipmentEntry answer reaches the store via the real callable', async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(60_000);
+    const email = uniqueEmail(testInfo.testId);
+    // Sign in directly at the capture route: AuthGate renders the router only
+    // once authenticated, so the route mounts fresh after sign-in rather than
+    // via a post-auth hashchange the SPA router can drop under load.
+    await gotoAndSignIn(page, email, '/#/equipment/new');
+
+    // Register the canned model answers BEFORE invoking the flows. The capture
+    // flow drives TWO AI callables: identifyEquipment (step 1 → 2) and
+    // populateEquipmentEntry (step 2 → 3). Under FUNCTIONS_AI_FAKE=1 the fake
+    // model throws if a driven flow has no stub, so BOTH must be registered up
+    // front — stubbing only populateEquipmentEntry left identifyEquipment racing
+    // the UI's error fallback, which was the source of this spec's flake.
+    await page.evaluate(
+      ({ accessory }) => {
+        const stubIdentify = window.__e2e!.stubAi('identifyEquipment', {
+          // Shape must satisfy IdentifyEquipmentAIOutputSchema
+          // ({ candidates: [{ name, rationale }] }).
+          candidates: [{ name: 'Stubbed Stand Mixer', rationale: 'Deterministic stub candidate.' }],
+        });
+        const stubPopulate = window.__e2e!.stubAi('populateEquipmentEntry', {
+          // Shape must satisfy PopulateEquipmentEntryAIOutputSchema
+          // ({ name, accessories[] }).
+          name: 'Stubbed Stand Mixer',
+          accessories: [{ name: accessory, included: true }],
+        });
+        return Promise.all([stubIdentify, stubPopulate]);
+      },
+      { accessory: STUB_ACCESSORY },
+    );
+
+    // ── Drive the capture flow to the point it calls the real callable ──
+    // Already on /#/equipment/new (signed in there). The route mounts after
+    // AuthGate reveals the router; give the first render an explicit budget.
+    await expect(page.getByRole('heading', { name: /add equipment/i })).toBeVisible({
+      timeout: HYDRATE_TIMEOUT,
+    });
+
+    await page.getByTestId('equipment-raw-name-input').fill('Stand Mixer');
+    await page.getByRole('button', { name: /identify/i }).click();
+
+    await expect(page.getByRole('heading', { name: /confirm name/i })).toBeVisible({
+      timeout: 10_000,
+    });
+    await page.getByTestId('equipment-confirmed-name-input').fill('My Stand Mixer');
+
+    // Confirm → calls the real populateEquipmentEntry callable, whose model is
+    // the fake reading our stub. The stubbed accessory must render in step 3.
+    await page.getByTestId('equipment-confirm-name-btn').click();
+
+    await expect(
+      page.getByTestId('equipment-draft-accessory').filter({ hasText: STUB_ACCESSORY }),
+    ).toBeVisible({ timeout: 30_000 });
+
+    // ── Save, then assert it round-trips into the store ──
+    await page.getByTestId('equipment-save-btn').click();
+
+    await expect(page).toHaveURL(/#\/equipment\/(?!new)[a-z0-9-]+$/, { timeout: SYNC_TIMEOUT });
+
+    // The faked AI accessory is now persisted in the equipment manifest store.
+    const manifest = await page.evaluate(() => window.__e2e!.getEquipmentManifest());
+    const accessoryNames = manifest?.items.flatMap((i) => i.accessories.map((a) => a.name)) ?? [];
+    expect(accessoryNames).toContain(STUB_ACCESSORY);
+  });
+});
