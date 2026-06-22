@@ -47,7 +47,7 @@ red flag, not a phase.]
 ## Architecture Notes
 [Target-state layer map. Packages touched. Migration approach: in-place / parallel-implementation
 behind a flag / strangler (incremental call-site migration). Existing patterns to reuse.
-Constraints from CLAUDE.md. Written for a fresh Sonnet agent.]
+Constraints from CLAUDE.md. Written for a fresh agent with no prior context.]
 
 ## Open Questions / Decisions
 [Every cut-point or risk raised in Step 2, each as:

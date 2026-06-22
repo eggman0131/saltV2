@@ -11,9 +11,9 @@ permissions:
   actions: read
 
 jobs:
-  # Decide whether a PR touches anything other than documentation. The heavy
-  # emulator + Playwright suites are skipped for docs-only PRs, but this
-  # workflow still TRIGGERS on every PR so the required status checks report
+  # Decide whether a PR touches app code. The heavy emulator + Playwright
+  # suites are skipped for non-app PRs (docs / CI / tooling — see the allowlist
+  # below), but this workflow still TRIGGERS on every PR so the required status checks report
   # (a skipped required job passes; an un-triggered one would block merge
   # forever waiting on a context that never appears).
   changes:
@@ -23,7 +23,7 @@ jobs:
       code: ${{ steps.detect.outputs.code }}
       uptodate: ${{ steps.detect.outputs.uptodate }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -49,16 +49,31 @@ jobs:
           echo "Changed files:"
           echo "$changed"
 
-          # Documentation-only allowlist. Anything NOT matched here counts as
-          # code and triggers the full suite, so a mixed code+docs PR runs
-          # everything. Conservative by design.
-          non_doc=$(echo "$changed" | grep -vE '^(docs/|.*\.md$|LICENSE$)' || true)
+          # Non-app allowlist. These paths cannot change the runtime behaviour
+          # of the app, so the heavy emulator + Playwright suites (which only
+          # exercise app behaviour) are pure waste for them:
+          #   - docs/, *.md, LICENSE        — documentation
+          #   - .github/                    — CI / dependabot config
+          #   - .claude/                    — AI-agent tooling (commands, settings)
+          #   - .vscode/, .editorconfig,
+          #     .nvmrc, .gitignore,
+          #     .vexpignore                 — editor / meta dotfiles
+          # Anything NOT matched here counts as code and triggers the full
+          # suite, so a mixed code+non-app PR runs everything. Conservative by
+          # design. Lint/typecheck/unit/boundary (the `ci` job) always run
+          # regardless — only the heavy suites are gated.
+          #
+          # Caveat: a change to the e2e / vitest-integration job setup *inside*
+          # .github/workflows/ci.yml will itself skip those suites, so such a
+          # change cannot be validated green by this run — verify it on a
+          # follow-up PR that also touches app code.
+          non_app=$(echo "$changed" | grep -vE '^(docs/|.*\.md$|LICENSE$|\.github/|\.claude/|\.vscode/|\.editorconfig$|\.nvmrc$|\.gitignore$|\.vexpignore$)' || true)
 
-          if [ -n "$non_doc" ]; then
-            echo "Non-documentation changes detected — running full CI."
+          if [ -n "$non_app" ]; then
+            echo "App-impacting changes detected — running full CI."
             code=true
           else
-            echo "Documentation-only change — skipping emulator + e2e suites."
+            echo "Non-app change (docs / CI / tooling) — skipping emulator + e2e suites."
             code=false
           fi
           echo "code=$code" >> "$GITHUB_OUTPUT"
@@ -90,13 +105,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: '10.33.0'
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: 'pnpm'
@@ -140,8 +155,8 @@ jobs:
   # the structural isolation (distinct project + ports 8082/9101 vs 8081/9100)
   # is belt-and-suspenders here. They stay non-concurrent for LOCAL runs only.
   #
-  # Skipped (→ passes as a required check) for documentation-only PRs and for
-  # branches behind origin/main (strict ruleset forces a rebase that
+  # Skipped (→ passes as a required check) for non-app PRs (docs / CI / tooling)
+  # and for branches behind origin/main (strict ruleset forces a rebase that
   # re-triggers CI — see the `changes` job's uptodate gate).
   vitest-integration:
     name: Vitest integration (emulator)
@@ -150,13 +165,13 @@ jobs:
     if: ${{ needs.changes.outputs.code == 'true' && needs.changes.outputs.uptodate == 'true' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: '10.33.0'
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: 'pnpm'
@@ -180,19 +195,19 @@ jobs:
     # test-emulators, 8081/9100/5002) never collides with the Vitest stack
     # (8082/9101) — the #84 non-concurrency rule is a single-host constraint
     # that does not apply across GitHub Actions jobs (see vitest-integration).
-    # Skipped (→ passes as a required check) for documentation-only PRs and for
-    # branches behind origin/main (see the `changes` job's uptodate gate).
+    # Skipped (→ passes as a required check) for non-app PRs (docs / CI / tooling)
+    # and for branches behind origin/main (see the `changes` job's uptodate gate).
     needs: [changes, ci]
     if: ${{ needs.changes.outputs.code == 'true' && needs.changes.outputs.uptodate == 'true' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: '10.33.0'
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: 'pnpm'
@@ -202,7 +217,7 @@ jobs:
 
       - name: Cache Playwright browsers
         id: playwright-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
@@ -227,7 +242,7 @@ jobs:
 
       - name: Upload Playwright report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report
           path: apps/web-pwa/playwright-report/
@@ -235,7 +250,7 @@ jobs:
 
       - name: Upload test results
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-test-results
           path: apps/web-pwa/test-results/
