@@ -12,6 +12,6 @@
   },
   "dependencies": {
     "@salt/shared-types": "workspace:*",
-    "zod": "^3.23.8"
+    "zod": "^4.4.3"
   }
 }
