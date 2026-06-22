@@ -1,0 +1,135 @@
+name: Autofix (prettier)
+
+# Re-applies the prettier formatting that the local `.husky/pre-commit` hook
+# (lint-staged → `prettier --write`) applies before every local commit, but
+# which bot/agent commits skip. Without this, two cases fail ci.yml's
+# `Format check` and block the merge:
+#   1. Agent-authored PRs that add unformatted .ts/.svelte/.css/.html.
+#   2. Dependabot bumps of the FORMATTER TOOLCHAIN itself — `prettier` or
+#      `prettier-plugin-svelte`. A new prettier version reformats files that
+#      were clean under the old one, so `prettier --check` (run with the bumped
+#      version) reports drift even though dependabot edited no source file.
+#      (See PR #276: a prettier-plugin-svelte 3→4 bump reformatted 4 files.)
+# This workflow runs `pnpm format` on the PR head and pushes the result back
+# IF (and only if) something changed.
+#
+# Why `pull_request_target` (not `pull_request`):
+#   On a plain `pull_request` event, GitHub denies Dependabot access to Actions
+#   secrets, so the App-token step would hard-fail on exactly the PRs we most
+#   need to fix. `pull_request_target` runs in the base-branch context, where
+#   secrets ARE available for dependabot too — the same reason
+#   dependabot-major-review.yml uses it.
+#
+# Why a GitHub App token (not the default GITHUB_TOKEN):
+#   The `main` ruleset uses strict required status checks. A push authored by
+#   the default GITHUB_TOKEN does NOT re-trigger workflows, so the fix commit
+#   would leave a new head SHA with no CI status and block the PR (and stall
+#   dependabot auto-merge) forever. An App installation token is a distinct
+#   identity whose push DOES re-trigger CI on the new commit. That re-run fires
+#   this workflow again; the `git diff --quiet` guard makes it a no-op, so there
+#   is no loop.
+#
+# Security posture — this trigger is a known footgun, so note the guardrails:
+#   - SAME-REPO HEAD ONLY (`head.repo.full_name == github.repository`). Fork PRs
+#     from arbitrary users are excluded, so the only head code that ever runs
+#     here is from write-access collaborators or Dependabot.
+#   - The App write-token is generated AFTER install+format and is used ONLY for
+#     the push step. PR/dependency code never executes with that token in env.
+#   - The default GITHUB_TOKEN is pinned to `contents: read`.
+#   This is a reasoned extension of dependabot-major-review.yml's "never execute
+#   the updated dependency" stance: that workflow is pure analysis and has no
+#   need to execute. The regular `ci` job ALREADY runs `pnpm install` on the
+#   dependabot head on every PR, so the dependency executes regardless; the only
+#   new exposure is the deferred, repo-scoped, ~1h App token — which dependency
+#   code never sees.
+#
+# One-time setup (repo settings):
+#   - Create (or reuse) a GitHub App with repository permission
+#     `Contents: Read and write`, installed on this repo.
+#   - Store its App ID as the `AUTOFIX_APP_ID` secret and its private key as
+#     the `AUTOFIX_APP_PRIVATE_KEY` secret (Settings → Secrets and variables →
+#     Actions).
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read # the push uses the App token below, not GITHUB_TOKEN
+
+concurrency:
+  group: autofix-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  autofix:
+    runs-on: ubuntu-latest
+    # Same-repo head branches only — never fork PRs (see security note above).
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+
+    steps:
+      # Check out the PR head branch tip using the (read-only) default token.
+      # The App token is deliberately NOT in scope yet, so prettier + any
+      # install scripts run without write credentials available.
+      - name: Check out the PR head branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '10.33.0'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Mirrors the local pre-commit hook: prettier --write only. eslint is run
+      # WITHOUT --fix locally (lint-staged) and most lint errors aren't
+      # auto-fixable, so applying `eslint --fix` here would risk semantic edits
+      # and could fail the job on unfixable rules. Prettier-only keeps autofix
+      # boring and predictable.
+      - name: Apply prettier
+        run: pnpm format
+
+      - name: Stop early if already formatted
+        id: diff
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "Tree already prettier-clean — nothing to push."
+            echo "dirty=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "dirty=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Token is minted only now, once the formatting diff exists and all
+      # untrusted code has finished running.
+      - name: Generate GitHub App token
+        if: ${{ steps.diff.outputs.dirty == 'true' }}
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.AUTOFIX_APP_ID }}
+          private-key: ${{ secrets.AUTOFIX_APP_PRIVATE_KEY }}
+
+      - name: Commit and push the formatting fix
+        if: ${{ steps.diff.outputs.dirty == 'true' }}
+        env:
+          TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
+          git commit -am "style: apply prettier formatting"
+          # Push with the App token (re-triggers CI). No --force: if the branch
+          # advanced meanwhile the push is rejected and the next synchronize
+          # re-runs this workflow on the newer commit.
+          git push "https://x-access-token:${TOKEN}@github.com/${REPO}.git" "HEAD:${HEAD_REF}"
