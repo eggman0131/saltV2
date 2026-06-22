@@ -157,7 +157,7 @@ importers:
         specifier: ^5.56.3
         version: 5.56.3(@typescript-eslint/types@8.61.1)
       svelte-spa-router:
-        specifier: 5.0.1
+        specifier: ~5.0.1
         version: 5.0.1
     devDependencies:
       '@playwright/test':

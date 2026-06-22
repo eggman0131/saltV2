@@ -24,7 +24,7 @@
     "@salt/shared-types": "workspace:*",
     "@salt/ui-components": "workspace:*",
     "svelte": "^5.56.3",
-    "svelte-spa-router": "5.0.1"
+    "svelte-spa-router": "~5.0.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.0",
