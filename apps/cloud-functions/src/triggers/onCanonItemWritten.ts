@@ -8,6 +8,8 @@ import { CanonItemSchema, DevSettingsSchema, type CanonItemDoc } from '@salt/dom
 import { embedTextFlow } from '../flows/embedText.js';
 import { generateCanonIconFlow } from '../flows/generateCanonIcon.js';
 import { removeFlatBackground } from '../imaging/removeFlatBackground.js';
+import { withAiTimeout } from '../adapters/withAiTimeout.js';
+import { aiFakeEnabled } from '../ai/fakeModel.js';
 
 // Defined here (not imported from index.ts) to avoid a circular import; the
 // Firebase CLI aggregates same-named defineSecret calls across files at deploy
@@ -28,7 +30,7 @@ async function maybeGenerateEmbedding(id: string, item: CanonItemDoc): Promise<v
   if (!normalised) return;
 
   try {
-    const { values } = await embedTextFlow({ text: normalised });
+    const { values } = await withAiTimeout('embedText', () => embedTextFlow({ text: normalised }));
     await getFirestore().collection('canonItems').doc(id).update({ embedding: values });
   } catch (err) {
     logger.error('onCanonItemWritten: embedding failed', { id, err });
@@ -47,6 +49,12 @@ async function maybeGenerateEmbedding(id: string, item: CanonItemDoc): Promise<v
 async function maybeGenerateIcon(id: string, item: CanonItemDoc): Promise<void> {
   if (item.thumbnail !== null) return; // real URL or "hidden" sentinel → skip
 
+  // E2E (FUNCTIONS_AI_FAKE): skip icon generation entirely. The real image model
+  // and the Storage upload (which authenticates via the GCE metadata server) are
+  // not emulator-safe and hang the trigger; no e2e spec asserts a generated icon.
+  // Unreachable in production (the flag is never set there).
+  if (aiFakeEnabled()) return;
+
   const name = item.name.trim();
   if (!name) return;
 
@@ -62,7 +70,9 @@ async function maybeGenerateIcon(id: string, item: CanonItemDoc): Promise<void> 
   const hint = item.iconHint?.trim();
 
   try {
-    const { imageBase64 } = await generateCanonIconFlow({ name, ...(hint ? { hint } : {}) });
+    const { imageBase64 } = await withAiTimeout('generateCanonIcon', () =>
+      generateCanonIconFlow({ name, ...(hint ? { hint } : {}) }),
+    );
     const raw = Buffer.from(imageBase64, 'base64');
     const webp = await removeFlatBackground(raw);
     const url = await uploadCanonIcon(id, webp);
