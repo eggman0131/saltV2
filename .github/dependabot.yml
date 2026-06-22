@@ -35,6 +35,14 @@ updates:
       # migration in #298 lands. (Minor/patch within zod 3 still flow normally.)
       - dependency-name: "zod"
         update-types: ["version-update:semver-major"]
+      # OpenTelemetry SDK 2.x is a lockstep migration across every
+      # @opentelemetry/* package, plus 2.0 API breaks (NodeTracerProvider
+      # addSpanProcessor removed; Resource construction changed) in
+      # ld-observability/server and cloud-functions tracing. Bumping one otel
+      # package alone leaves incompatible 1.x/2.x copies in the tree. Suppress
+      # individual major PRs (currently #279) until the migration in #300 lands.
+      - dependency-name: "@opentelemetry/*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
