@@ -17,6 +17,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  id-token: write # required by claude-code-action for OIDC token exchange
 
 concurrency:
   group: dependabot-major-review-${{ github.event.pull_request.number }}
@@ -29,24 +30,27 @@ jobs:
     if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
     steps:
       - name: Check out base branch (main) — never the PR head
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: main
 
       - name: Fetch Dependabot metadata
         id: meta
-        uses: dependabot/fetch-metadata@v2
+        uses: dependabot/fetch-metadata@v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Sonnet risk/impact assessment (major bumps only)
+      - name: Opus risk/impact assessment (major bumps only)
         if: ${{ steps.meta.outputs.update-type == 'version-update:semver-major' }}
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Pass the workflow token explicitly so the action does NOT attempt the
+          # GitHub App OIDC token exchange, which 401s under pull_request_target.
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           claude_args: >-
             --max-turns 30
-            --model claude-sonnet-4-6
+            --model claude-opus-4-8
             --allowed-tools "Read,Grep,Glob,WebFetch,WebSearch,Bash(git log:*),Bash(git diff:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*)"
           prompt: |
             You are assessing a MAJOR-version Dependabot update for a NON-TECHNICAL
