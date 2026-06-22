@@ -87,8 +87,7 @@
       oninput={handleInput}
       {onfocus}
       {onblur}
-      {...rest}
-    ></textarea>
+      {...rest}></textarea>
   </div>
 
   {#if description}
