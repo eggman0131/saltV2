@@ -46,6 +46,9 @@ importers:
       eslint-plugin-boundaries:
         specifier: ^6.0.2
         version: 6.0.2(@typescript-eslint/parser@8.61.1(eslint@10.5.0(jiti@2.6.1))(typescript@5.9.3))(eslint@10.5.0(jiti@2.6.1))
+      eslint-plugin-playwright:
+        specifier: ^2.10.4
+        version: 2.10.4(eslint@10.5.0(jiti@2.6.1))
       firebase-tools:
         specifier: ^15.22.0
         version: 15.22.0(@cfworker/json-schema@4.1.1)(@types/node@26.0.0)
@@ -228,8 +231,8 @@ importers:
         version: 12.15.0
     devDependencies:
       '@firebase/rules-unit-testing':
-        specifier: ^4.0.1
-        version: 4.0.1(firebase@12.15.0)
+        specifier: ^5.0.1
+        version: 5.0.1(firebase@12.15.0)
 
   packages/adapters/ld-observability:
     dependencies:
@@ -1444,11 +1447,11 @@ packages:
     peerDependencies:
       '@firebase/app': 0.x
 
-  '@firebase/rules-unit-testing@4.0.1':
-    resolution: {integrity: sha512-Vu8iMLP+dO9hCAqUCitWZQdORyM6CxucilRZtleeTZd5bejZmyOiaBPwYm3NOYG6025ac99CEeA+ETmJRxa9zg==}
-    engines: {node: '>=18.0.0'}
+  '@firebase/rules-unit-testing@5.0.1':
+    resolution: {integrity: sha512-EvbxUvgoY2cG7vgtdhKc7gjalKzeO3AWr2NiUuyEEmcXaSaOJanV3hXLj3Viigs+Y/jFYQmtVPpSoiwUs/ZlPg==}
+    engines: {node: '>=20.0.0'}
     peerDependencies:
-      firebase: ^11.0.0
+      firebase: ^12.0.0
 
   '@firebase/storage-compat@0.4.3':
     resolution: {integrity: sha512-gruVqjtUGX8tEoeNbaWXZm0Zfcfcb7fvmDmBxV8yPAbWvExRnZYLO2+qw9idxNE7BvPXt5csyjSYHy//dAizxw==}
@@ -4224,6 +4227,12 @@ packages:
     peerDependencies:
       eslint: '>=6.0.0'
 
+  eslint-plugin-playwright@2.10.4:
+    resolution: {integrity: sha512-l0V/VxyqfFbtqCTxj5AdRn3Q6S/hIW4nKBnKZVleVbZ24N2My6Usj//ytX3dKKqAoSbvKck9YtSytfdZ5qjLuA==}
+    engines: {node: '>=16.9.0'}
+    peerDependencies:
+      eslint: '>=8.40.0'
+
   eslint-scope@9.1.2:
     resolution: {integrity: sha512-xS90H51cKw0jltxmvmHy2Iai1LIqrfbw57b79w/J7MfvDfkIkFZ+kj6zC3BjtUwh150HsSSdxXZcsuv72miDFQ==}
     engines: {node: ^20.19.0 || ^22.13.0 || >=24}
@@ -4687,6 +4696,10 @@ packages:
   global-dirs@3.0.1:
     resolution: {integrity: sha512-NBcGGFbBA9s1VzD41QXDG+3++t9Mn5t1FpLdhESY6oKY4gYTFpX4wO3sqGUa0Srjtbfj3szX0RnemmrVRUdULA==}
     engines: {node: '>=10'}
+
+  globals@17.7.0:
+    resolution: {integrity: sha512-Czmyns5dUsq4seFBR/Kdydhmo8y9kC79hiSkPn0YcGtNnYWnrgt0vjrSjx9tspoDGWm2CMarffRuLjM4xUz8xg==}
+    engines: {node: '>=18'}
 
   globalthis@1.0.4:
     resolution: {integrity: sha512-DpLKbNU4WylpxJykQujfCcwYWiV/Jhm50Goo0wrVILAv5jOr9d+H+UR3PhSCD2rCCEIg0uc+G+muBTwD54JhDQ==}
@@ -8953,7 +8966,7 @@ snapshots:
       '@firebase/util': 1.15.1
       tslib: 2.8.1
 
-  '@firebase/rules-unit-testing@4.0.1(firebase@12.15.0)':
+  '@firebase/rules-unit-testing@5.0.1(firebase@12.15.0)':
     dependencies:
       firebase: 12.15.0
 
@@ -12183,6 +12196,11 @@ snapshots:
       - eslint-import-resolver-webpack
       - supports-color
 
+  eslint-plugin-playwright@2.10.4(eslint@10.5.0(jiti@2.6.1)):
+    dependencies:
+      eslint: 10.5.0(jiti@2.6.1)
+      globals: 17.7.0
+
   eslint-scope@9.1.2:
     dependencies:
       '@types/esrecurse': 4.3.1
@@ -12996,6 +13014,8 @@ snapshots:
   global-dirs@3.0.1:
     dependencies:
       ini: 2.0.0
+
+  globals@17.7.0: {}
 
   globalthis@1.0.4:
     dependencies:

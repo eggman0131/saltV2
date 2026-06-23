@@ -99,7 +99,7 @@ test.describe('shopping list — happy path', () => {
     // The cleared item is genuinely gone (deleted), not merely rewritten —
     // match the canonical substring so this asserts deletion, not just the
     // absence of the original raw string.
-    await expect(page.getByText(/heinz baked beans/i)).not.toBeVisible();
+    await expect(page.getByText(/heinz baked beans/i)).toBeHidden();
   });
 
   test('item edit sheet — update raw text and notes', async ({ page }, testInfo) => {
