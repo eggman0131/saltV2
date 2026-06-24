@@ -3,7 +3,6 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test as baseTest, expect } from '@playwright/test';
-import type { ObservabilitySessionMeta } from '@salt/ld-observability';
 import { FIRESTORE_EMULATOR_CLEAR_URL } from '../helpers/emulator';
 
 declare const process: { env: Record<string, string | undefined> };
@@ -17,20 +16,8 @@ const E2E_RAW_DIR = join(
 );
 
 interface AutoFixtures {
-  readonly observabilitySession: void;
   readonly clearFirestore: void;
   readonly coverageData: void;
-}
-
-function buildSessionMeta(testName: string, testId: string): ObservabilitySessionMeta {
-  return {
-    e2e: true,
-    testName,
-    testId,
-    runId: process.env.GITHUB_RUN_ID ?? 'local',
-    branch: process.env.GITHUB_REF_NAME ?? 'local',
-    ...(process.env.GITHUB_JOB ? { ciJob: process.env.GITHUB_JOB } : {}),
-  };
 }
 
 export const test = baseTest.extend<AutoFixtures>({
@@ -41,29 +28,6 @@ export const test = baseTest.extend<AutoFixtures>({
         throw new Error(`Failed to clear Firestore emulator: HTTP ${resp.status}`);
       }
       await use();
-    },
-    { auto: true },
-  ],
-
-  observabilitySession: [
-    async ({ page }, use, testInfo) => {
-      const meta = buildSessionMeta(testInfo.title, testInfo.testId);
-      await page.addInitScript((m) => {
-        window.__e2eAutoTag = m;
-      }, meta);
-
-      await use();
-
-      const url = await page
-        .evaluate(() => window.__e2e?.getLDSessionURL() ?? null)
-        .catch(() => null);
-      if (url) {
-        await testInfo.attach('ld-session', {
-          body: url,
-          contentType: 'text/uri-list',
-        });
-        (testInfo as { ldSessionURL?: string }).ldSessionURL = url;
-      }
     },
     { auto: true },
   ],

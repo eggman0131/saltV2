@@ -36,6 +36,13 @@ const TEST_EMULATOR_ENV = {
   VITE_EMULATOR_FIRESTORE_PORT: FIRESTORE_EMULATOR_PORT_STRING,
   VITE_EMULATOR_AUTH_PORT: '9100',
   VITE_EMULATOR_FUNCTIONS_PORT: '5002',
+  // Gate LaunchDarkly OFF under e2e: an empty client-side id makes the app's
+  // `if (_ldKey)` guard in src/lib/observability.ts falsy, so no LD client is
+  // created. Vite prioritizes an env var already in process.env over
+  // .env.development, so this empty string wins. LD session-replay is a no-op
+  // under emulators (manualStart, never started), so this removes the dead LD
+  // client without touching app code. Prod/staging LD init is unaffected.
+  VITE_LD_CLIENT_SIDE_ID: '',
 };
 
 function dockerCompose(args: string[]): void {
