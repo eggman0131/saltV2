@@ -22,9 +22,8 @@ import {
   seedCanonItem,
   waitForCanonReady,
 } from './helpers/seed';
-
-// How long to wait for cross-tab propagation (emulator is fast but sync is async).
-const CONVERGENCE_TIMEOUT = 20_000;
+// CONVERGENCE_TIMEOUT bounds cross-tab propagation (emulator is fast but sync is async).
+import { CONVERGENCE_TIMEOUT } from './helpers/timeouts';
 
 test.describe('canon sync — two-tab convergence', () => {
   // RESIDUAL FLAKE INSURANCE (#199): the root fix for the cross-client Listen

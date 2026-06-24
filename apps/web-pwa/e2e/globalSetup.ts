@@ -3,6 +3,7 @@ import { createHash } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { FIRESTORE_EMULATOR_CLEAR_URL, FIRESTORE_EMULATOR_PORT_STRING } from './helpers/emulator';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
@@ -16,8 +17,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 // resolve against the compose file's directory, so cwd is REPO_ROOT.
 const COMPOSE_FILE = 'docker/test-emulators/docker-compose.test.yml';
 
-const FIRESTORE_CLEAR_URL =
-  'http://127.0.0.1:8081/emulator/v1/projects/demo-salt/databases/(default)/documents';
+const FIRESTORE_CLEAR_URL = FIRESTORE_EMULATOR_CLEAR_URL;
 const AUTH_CLEAR_URL = 'http://127.0.0.1:9100/emulator/v1/projects/demo-salt/accounts';
 const TIMEOUT_MS = 120_000;
 const POLL_MS = 500;
@@ -33,7 +33,7 @@ const E2E_APP_HOST = '127.0.0.1';
 const E2E_APP_PORT = 5174;
 const E2E_APP_URL = `http://${E2E_APP_HOST}:${E2E_APP_PORT}`;
 const TEST_EMULATOR_ENV = {
-  VITE_EMULATOR_FIRESTORE_PORT: '8081',
+  VITE_EMULATOR_FIRESTORE_PORT: FIRESTORE_EMULATOR_PORT_STRING,
   VITE_EMULATOR_AUTH_PORT: '9100',
   VITE_EMULATOR_FUNCTIONS_PORT: '5002',
 };

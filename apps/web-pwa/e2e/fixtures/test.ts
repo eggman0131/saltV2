@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test as baseTest, expect } from '@playwright/test';
 import type { ObservabilitySessionMeta } from '@salt/ld-observability';
+import { FIRESTORE_EMULATOR_CLEAR_URL } from '../helpers/emulator';
 
 declare const process: { env: Record<string, string | undefined> };
 
@@ -14,9 +15,6 @@ const E2E_RAW_DIR = join(
   'coverage',
   'e2e-raw',
 );
-
-const FIRESTORE_EMULATOR_CLEAR_URL =
-  'http://127.0.0.1:8081/emulator/v1/projects/demo-salt/databases/(default)/documents';
 
 interface AutoFixtures {
   readonly observabilitySession: void;
