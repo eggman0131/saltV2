@@ -3,6 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test as baseTest, expect } from '@playwright/test';
+import { attachFailureSnapshot } from '../helpers/diagnostics';
 import { FIRESTORE_EMULATOR_CLEAR_URL } from '../helpers/emulator';
 
 declare const process: { env: Record<string, string | undefined> };
@@ -18,6 +19,7 @@ const E2E_RAW_DIR = join(
 interface AutoFixtures {
   readonly clearFirestore: void;
   readonly coverageData: void;
+  readonly failureSnapshot: void;
 }
 
 export const test = baseTest.extend<AutoFixtures>({
@@ -46,6 +48,19 @@ export const test = baseTest.extend<AutoFixtures>({
         join(E2E_RAW_DIR, `${safeName}-${testInfo.testId}.json`),
         JSON.stringify(coverage),
       );
+    },
+    { auto: true },
+  ],
+
+  // PURE DIAGNOSTICS: on a failing test, attach the primary page's last-seen
+  // store state so the next CI flake is diagnosable from the artifacts alone.
+  // Passing tests are a no-op (status === expectedStatus → early return); this
+  // never changes a pass/fail outcome. Reads the page during fixture teardown,
+  // which is safe — the page is still alive (same pattern as coverageData).
+  failureSnapshot: [
+    async ({ page }, use, testInfo) => {
+      await use();
+      await attachFailureSnapshot(testInfo, page);
     },
     { auto: true },
   ],

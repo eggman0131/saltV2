@@ -37,6 +37,7 @@
  */
 import { expect, test } from './fixtures/test';
 import { gotoAndSignIn, uniqueEmail, waitForBridge } from './helpers/auth';
+import { withConvergenceDiagnostics } from './helpers/diagnostics';
 import { getShoppingListItems, seedAisles, seedCanonItem } from './helpers/seed';
 // TRIGGER_TIMEOUT bounds the in-band Functions-emulator trigger, which is still
 // an async round-trip (write → trigger → match → write-back → onSnapshot).
@@ -87,15 +88,17 @@ test.describe('canon real-time match — onShoppingListItemWrite trigger', () =>
     // ── Poll the store snapshot until the trigger has matched the item ───────
     // Assert the OBSERVABLE store state, not implementation. The trigger flips
     // matchState pending → matched and rewrites the doc; we wait for that.
-    await expect
-      .poll(
-        async () => {
-          const items = await getShoppingListItems(page);
-          return items.find((i) => i.canonId === cheddarCanon.id)?.matchState ?? null;
-        },
-        { timeout: TRIGGER_TIMEOUT },
-      )
-      .toBe('matched');
+    await withConvergenceDiagnostics(testInfo, page, 'cheddar-matchstate', async () => {
+      await expect
+        .poll(
+          async () => {
+            const items = await getShoppingListItems(page);
+            return items.find((i) => i.canonId === cheddarCanon.id)?.matchState ?? null;
+          },
+          { timeout: TRIGGER_TIMEOUT },
+        )
+        .toBe('matched');
+    });
 
     // ── Assert the FULL post-trigger matched state deterministically ─────────
     const items = await getShoppingListItems(page);
@@ -136,15 +139,17 @@ test.describe('canon real-time match — onShoppingListItemWrite trigger', () =>
     await page.goto(currentUrl);
     await expect(page.getByTestId('shopping-list-page')).toBeVisible({ timeout: SYNC_TIMEOUT });
 
-    await expect
-      .poll(
-        async () => {
-          const reloaded = await getShoppingListItems(page);
-          const m = reloaded.find((i) => i.canonId === cheddarCanon.id);
-          return m ? { rawText: m.rawText, matchState: m.matchState, amount: m.amount } : null;
-        },
-        { timeout: SYNC_TIMEOUT },
-      )
-      .toEqual({ rawText: 'cheddar cheese', matchState: 'matched', amount: 2 });
+    await withConvergenceDiagnostics(testInfo, page, 'matched-state-persists', async () => {
+      await expect
+        .poll(
+          async () => {
+            const reloaded = await getShoppingListItems(page);
+            const m = reloaded.find((i) => i.canonId === cheddarCanon.id);
+            return m ? { rawText: m.rawText, matchState: m.matchState, amount: m.amount } : null;
+          },
+          { timeout: SYNC_TIMEOUT },
+        )
+        .toEqual({ rawText: 'cheddar cheese', matchState: 'matched', amount: 2 });
+    });
   });
 });
