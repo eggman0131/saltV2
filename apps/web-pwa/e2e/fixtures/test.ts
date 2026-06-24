@@ -6,8 +6,6 @@ import { test as baseTest, expect } from '@playwright/test';
 import { attachFailureSnapshot } from '../helpers/diagnostics';
 import { FIRESTORE_EMULATOR_CLEAR_URL } from '../helpers/emulator';
 
-declare const process: { env: Record<string, string | undefined> };
-
 const E2E_RAW_DIR = join(
   dirname(fileURLToPath(import.meta.url)),
   '..',
