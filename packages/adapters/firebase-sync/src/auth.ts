@@ -13,16 +13,19 @@ import { getApp } from 'firebase/app';
 import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
 import type { AuthProvider, User, ErrorReportingPort } from '@salt/domain';
 
-let authEmulatorConnected = false;
+// Keyed to the Auth instance (not a module-global boolean) so a re-created
+// default app — as the emulator integration suite does per test, #319 — gets
+// its fresh Auth wired to the emulator rather than skipped by a stale flag.
+const authEmulatorConnected = new WeakSet<Auth>();
 
 // Composition helper: connect the Auth emulator. Called from initFirebase
-// when useEmulators=true. Idempotent.
+// when useEmulators=true. Idempotent per Auth instance.
 export function connectAuthEmulatorOnce(auth: Auth): void {
-  if (authEmulatorConnected) return;
+  if (authEmulatorConnected.has(auth)) return;
   const _env = (import.meta as { env?: Record<string, string | undefined> }).env ?? {};
   const authPort = _env['VITE_EMULATOR_AUTH_PORT'] ?? '9099';
   connectAuthEmulator(auth, `http://127.0.0.1:${authPort}`, { disableWarnings: true });
-  authEmulatorConnected = true;
+  authEmulatorConnected.add(auth);
 }
 
 function toUser(fb: FirebaseUser): User {

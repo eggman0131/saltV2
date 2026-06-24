@@ -33,10 +33,14 @@ export default defineConfig({
     // Residual insurance for the flaky Firestore realtime Listen stream (#122).
     // Root cause: the default gRPC streaming transport intermittently breaks the
     // emulator Listen stream with a bogus multi-GB RESOURCE_EXHAUSTED, poisoning
-    // the channel for the client's lifetime — and since the clients live in
-    // beforeAll, retries reused the dead channel, so retry alone never cleared
-    // it. The landed root fix forces long-polling on the emulator transport
-    // (init.ts + the writer app here), which removes the streaming framing bug.
+    // the channel for the client's lifetime. Two landed fixes attack it: (1)
+    // long-polling on the emulator transport (init.ts + the writer app), which
+    // removes the streaming framing bug; (2) the realtime suite now re-creates
+    // the default + writer apps per test (#319), so a poisoned channel is
+    // contained to the one test that hit it instead of cascading into a later
+    // subscribeAisles convergence timeout — and because Vitest re-runs beforeEach
+    // on retry, each retry now gets a fresh client (previously the apps lived in
+    // beforeAll, so retries reused the dead channel and never cleared it).
     // retry:2 stays as cheap insurance; drop it once main stays green for a
     // stretch without it.
     retry: 2,
