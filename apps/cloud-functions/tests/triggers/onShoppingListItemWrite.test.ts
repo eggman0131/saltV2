@@ -300,6 +300,49 @@ describe('onShoppingListItemWrite', () => {
     });
   });
 
+  describe('unexpected exception → failed matchState (never limbo)', () => {
+    it('writes matchState: failed when matchOrCreate throws', async () => {
+      mockMatchOrCreate.mockRejectedValue(new Error('arbitrateCanon timed out after 20000ms'));
+
+      await (onShoppingListItemWrite as Function)(makeEvent({ before: null, after: PENDING_ITEM }));
+
+      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ matchState: 'failed' }));
+      // A thrown error must not write a canonId — the item is terminal-uncategorised.
+      expect(mockUpdate).not.toHaveBeenCalledWith(
+        expect.objectContaining({ canonId: expect.anything() }),
+      );
+    });
+
+    it('does not rethrow — the handler resolves so the trigger is not retried into limbo', async () => {
+      mockMatchOrCreate.mockRejectedValue(new Error('boom'));
+
+      await expect(
+        (onShoppingListItemWrite as Function)(makeEvent({ before: null, after: PENDING_ITEM })),
+      ).resolves.toBeUndefined();
+    });
+
+    it('still ends the span and flushes when an exception is thrown', async () => {
+      mockMatchOrCreate.mockRejectedValue(new Error('boom'));
+
+      await (onShoppingListItemWrite as Function)(makeEvent({ before: null, after: PENDING_ITEM }));
+
+      expect(mockSpan.end).toHaveBeenCalled();
+      expect(mockLoggerInfo).toHaveBeenCalledWith(
+        'onShoppingListItemWrite',
+        expect.objectContaining({ scope: 'shoppingListItem', errorCategory: 'exception' }),
+      );
+    });
+
+    it('swallows a failed terminal-state write so the handler still resolves', async () => {
+      mockMatchOrCreate.mockRejectedValue(new Error('boom'));
+      mockUpdate.mockRejectedValueOnce(new Error('firestore unavailable'));
+
+      await expect(
+        (onShoppingListItemWrite as Function)(makeEvent({ before: null, after: PENDING_ITEM })),
+      ).resolves.toBeUndefined();
+    });
+  });
+
   describe('entry parsing', () => {
     it('feeds the clean parsed name to matchOrCreate for "for" entries', async () => {
       mockMatchOrCreate.mockResolvedValue({
