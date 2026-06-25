@@ -1,5 +1,6 @@
 /// <reference path="../../src/lib/types/e2e.d.ts" />
 import type { Page } from '@playwright/test';
+import { FIRESTORE_DOCUMENTS_BASE_URL } from './emulator';
 
 export function uniqueEmail(testId: string): string {
   return `e2e-${testId}@salt.test`;
@@ -12,14 +13,10 @@ export function uniqueEmail(testId: string): string {
 // directly into the Firestore emulator via its owner REST endpoint (which
 // bypasses security rules — the equivalent of an admin having pre-added them),
 // using the same host/port globalSetup.ts targets for the test stack.
-const FIRESTORE_EMULATOR = 'http://127.0.0.1:8081';
-const EMULATOR_PROJECT = 'demo-salt';
 
 async function seedMemberAllowlist(email: string, admin = false): Promise<void> {
   const id = email.trim().toLowerCase(); // matches normaliseMemberEmail / the blocking-fn lookup
-  const url =
-    `${FIRESTORE_EMULATOR}/v1/projects/${EMULATOR_PROJECT}/databases/(default)/documents/` +
-    `members/${encodeURIComponent(id)}`;
+  const url = `${FIRESTORE_DOCUMENTS_BASE_URL}/members/${encodeURIComponent(id)}`;
   const body = {
     fields: {
       id: { stringValue: id },
@@ -42,7 +39,7 @@ async function seedMemberAllowlist(email: string, admin = false): Promise<void> 
   }
 }
 
-async function waitForBridge(page: Page): Promise<void> {
+export async function waitForBridge(page: Page): Promise<void> {
   await page.waitForFunction(() => Boolean(window.__e2e), null, { timeout: 10_000 });
 }
 

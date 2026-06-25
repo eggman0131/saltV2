@@ -22,8 +22,7 @@
  */
 import { expect, test } from './fixtures/test';
 import { gotoAndSignIn, uniqueEmail } from './helpers/auth';
-
-const SYNC_TIMEOUT = 15_000;
+import { SYNC_TIMEOUT } from './helpers/timeouts';
 
 // Read the current week's startDate from the in-page store bridge.
 async function readStartDate(page: import('@playwright/test').Page): Promise<string> {

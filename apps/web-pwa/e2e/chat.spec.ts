@@ -27,10 +27,9 @@
  */
 import { expect, test } from './fixtures/test';
 import { gotoAndSignIn, uniqueEmail } from './helpers/auth';
+import { SYNC_TIMEOUT } from './helpers/timeouts';
 import type { ChatSessionDoc } from '@salt/domain/schemas';
 import type { Page } from '@playwright/test';
-
-const SYNC_TIMEOUT = 15_000;
 
 // The canned assistant reply. The chefChat flow's output schema is z.string(),
 // so the fake model returns JSON.stringify(<this string>) and Genkit's string

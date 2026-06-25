@@ -26,6 +26,15 @@ export function initLDObservability(clientSideId: string, opts?: LDObservability
   void client.start();
 }
 
+// True once initLDObservability has created the LD client and registered the
+// Observe/Record plugins. The adapter entrypoints that reach LDObserve/LDRecord
+// directly gate on this so they stay inert — rather than throwing — when LD is
+// uninitialised (e.g. gated off in the e2e build via an empty
+// VITE_LD_CLIENT_SIDE_ID). Adapters never throw for operational reasons.
+export function isObservabilityReady(): boolean {
+  return client !== null;
+}
+
 // `name` sets the human-readable label LaunchDarkly's Contexts and session-replay
 // UI show in place of the opaque `key`. The key stays the stable uid so MAU dedup
 // is unaffected; `name` is display-only.
@@ -46,7 +55,20 @@ export interface ObservabilitySpan {
   end(): void;
 }
 
+// Inert span returned when observability is uninitialised (see startSpan). Its
+// methods no-op and it exposes no spanContext, so extractTraceHeaders() yields
+// {} and callers parent nothing — exactly the "tracing disabled" path.
+const NOOP_SPAN: ObservabilitySpan = {
+  setAttribute() {},
+  end() {},
+};
+
 export function startSpan(name: string, opts?: { parent?: ObservabilitySpan }): ObservabilitySpan {
+  // Stay inert until initLDObservability has wired the LDObserve singleton — e.g.
+  // when LD is gated off in the e2e build. LDObserve.startManualSpan() throws
+  // before init, and callers open their span outside their own try/catch (e.g.
+  // canonService.addCanonItem), so the throw would abort the whole operation.
+  if (!isObservabilityReady()) return NOOP_SPAN;
   if (opts?.parent) {
     // ObservabilitySpan is our abstraction over the underlying OTel Span; the
     // LDObserve API requires the concrete type — runtime identity is preserved.

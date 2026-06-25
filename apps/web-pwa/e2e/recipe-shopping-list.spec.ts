@@ -16,10 +16,9 @@
  *   its own row, matching existing shopping list behaviour).
  */
 import { expect, test } from './fixtures/test';
-import { gotoAndSignIn, uniqueEmail } from './helpers/auth';
+import { gotoAndSignIn, uniqueEmail, waitForBridge } from './helpers/auth';
+import { SYNC_TIMEOUT } from './helpers/timeouts';
 import type { ShoppingListItem } from '@salt/domain';
-
-const SYNC_TIMEOUT = 15_000;
 
 test.describe('recipe → shopping list extraction', () => {
   test('adds all ingredients from all groups and carries recipe source', async ({
@@ -96,7 +95,7 @@ test.describe('recipe → shopping list extraction', () => {
     await expect(page.getByText('double cream')).toBeVisible({ timeout: SYNC_TIMEOUT });
 
     // ── Verify 'recipe' SourceRef on each item via the in-page store ──────────
-    await page.waitForFunction(() => Boolean(window.__e2e), null, { timeout: 10_000 });
+    await waitForBridge(page);
     const storeItems = await page.evaluate<ShoppingListItem[]>(
       () => window.__e2e!.getShoppingListItems() as ShoppingListItem[],
     );
@@ -170,7 +169,7 @@ test.describe('recipe → shopping list extraction', () => {
     await expect(page.getByTestId('shopping-list-page')).toBeVisible({ timeout: SYNC_TIMEOUT });
     await expect(page.getByText('1 onion')).toBeVisible({ timeout: SYNC_TIMEOUT });
 
-    await page.waitForFunction(() => Boolean(window.__e2e), null, { timeout: 10_000 });
+    await waitForBridge(page);
     const storeItems = await page.evaluate<ShoppingListItem[]>(
       () => window.__e2e!.getShoppingListItems() as ShoppingListItem[],
     );

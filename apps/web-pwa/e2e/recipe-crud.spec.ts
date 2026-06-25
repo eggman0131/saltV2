@@ -8,8 +8,7 @@
  */
 import { expect, test } from './fixtures/test';
 import { gotoAndSignIn, uniqueEmail } from './helpers/auth';
-
-const SYNC_TIMEOUT = 15_000;
+import { SYNC_TIMEOUT } from './helpers/timeouts';
 
 test.describe('recipes — manual CRUD', () => {
   test('create with two groups + steps, reload, edit, delete', async ({ page }, testInfo) => {
@@ -24,21 +23,29 @@ test.describe('recipes — manual CRUD', () => {
 
     await page.getByTestId('recipe-title-input').fill('Test Dahl');
 
-    // First group: named "For the dahl" with one ingredient.
+    // First group: named "For the dahl" with one ingredient. The .nth(0) here
+    // indexes the group rows THIS test just created via add-group-btn (it added
+    // exactly one so far) — not a global/pre-existing ordering.
     await page.getByTestId('recipe-add-group-btn').click();
     const group0 = page.getByTestId('recipe-group').nth(0);
     await group0.getByTestId('recipe-group-name-input').fill('For the dahl');
     await group0.getByTestId('recipe-add-ingredient-btn').click();
+    // .nth(0) = the single ingredient row this test just added inside group0.
     await group0.getByTestId('recipe-ingredient-input').nth(0).fill('1 ½ cups red lentils, rinsed');
 
-    // Second group: named "For the tarka".
+    // Second group: named "For the tarka". .nth(1) is the second group row this
+    // test created (it has now clicked add-group-btn twice) — its own set, not
+    // a global index.
     await page.getByTestId('recipe-add-group-btn').click();
     const group1 = page.getByTestId('recipe-group').nth(1);
     await group1.getByTestId('recipe-group-name-input').fill('For the tarka');
     await group1.getByTestId('recipe-add-ingredient-btn').click();
+    // .nth(0) = the single ingredient row this test just added inside group1.
     await group1.getByTestId('recipe-ingredient-input').nth(0).fill('2 tbsp ghee');
 
-    // Two steps.
+    // Two steps. Each .nth(N) indexes into the step rows this test is creating
+    // by clicking add-step-btn — .nth(0) is the first one it added, .nth(1) the
+    // second; both are the test's own self-created set.
     await page.getByTestId('recipe-add-step-btn').click();
     await page.getByTestId('recipe-step-input').nth(0).fill('Simmer the lentils until soft.');
     await page.getByTestId('recipe-add-step-btn').click();
@@ -53,6 +60,9 @@ test.describe('recipes — manual CRUD', () => {
       'For the dahl',
       'For the tarka',
     ]);
+    // .nth(0) = the first rendered ingredient of the recipe this test just
+    // created and saved (group0's lentils) — indexing the test's own data, not
+    // a global ingredient ordering.
     await expect(page.getByTestId('recipe-view-ingredient').nth(0)).toContainText(
       '1 ½ cups red lentils, rinsed',
     );
@@ -65,6 +75,8 @@ test.describe('recipes — manual CRUD', () => {
     await expect(page.getByRole('heading', { name: 'Test Dahl' })).toBeVisible({
       timeout: SYNC_TIMEOUT,
     });
+    // .nth(0) = the first ingredient of this test's own recipe, re-rendered from
+    // Firestore after reload — still the test's self-created set, not a global index.
     await expect(page.getByTestId('recipe-view-ingredient').nth(0)).toContainText(
       '1 ½ cups red lentils, rinsed',
     );

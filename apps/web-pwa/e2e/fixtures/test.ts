@@ -3,9 +3,8 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test as baseTest, expect } from '@playwright/test';
-import type { ObservabilitySessionMeta } from '@salt/ld-observability';
-
-declare const process: { env: Record<string, string | undefined> };
+import { attachFailureSnapshot } from '../helpers/diagnostics';
+import { FIRESTORE_EMULATOR_CLEAR_URL } from '../helpers/emulator';
 
 const E2E_RAW_DIR = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -15,24 +14,10 @@ const E2E_RAW_DIR = join(
   'e2e-raw',
 );
 
-const FIRESTORE_EMULATOR_CLEAR_URL =
-  'http://127.0.0.1:8081/emulator/v1/projects/demo-salt/databases/(default)/documents';
-
 interface AutoFixtures {
-  readonly observabilitySession: void;
   readonly clearFirestore: void;
   readonly coverageData: void;
-}
-
-function buildSessionMeta(testName: string, testId: string): ObservabilitySessionMeta {
-  return {
-    e2e: true,
-    testName,
-    testId,
-    runId: process.env.GITHUB_RUN_ID ?? 'local',
-    branch: process.env.GITHUB_REF_NAME ?? 'local',
-    ...(process.env.GITHUB_JOB ? { ciJob: process.env.GITHUB_JOB } : {}),
-  };
+  readonly failureSnapshot: void;
 }
 
 export const test = baseTest.extend<AutoFixtures>({
@@ -43,29 +28,6 @@ export const test = baseTest.extend<AutoFixtures>({
         throw new Error(`Failed to clear Firestore emulator: HTTP ${resp.status}`);
       }
       await use();
-    },
-    { auto: true },
-  ],
-
-  observabilitySession: [
-    async ({ page }, use, testInfo) => {
-      const meta = buildSessionMeta(testInfo.title, testInfo.testId);
-      await page.addInitScript((m) => {
-        window.__e2eAutoTag = m;
-      }, meta);
-
-      await use();
-
-      const url = await page
-        .evaluate(() => window.__e2e?.getLDSessionURL() ?? null)
-        .catch(() => null);
-      if (url) {
-        await testInfo.attach('ld-session', {
-          body: url,
-          contentType: 'text/uri-list',
-        });
-        (testInfo as { ldSessionURL?: string }).ldSessionURL = url;
-      }
     },
     { auto: true },
   ],
@@ -84,6 +46,19 @@ export const test = baseTest.extend<AutoFixtures>({
         join(E2E_RAW_DIR, `${safeName}-${testInfo.testId}.json`),
         JSON.stringify(coverage),
       );
+    },
+    { auto: true },
+  ],
+
+  // PURE DIAGNOSTICS: on a failing test, attach the primary page's last-seen
+  // store state so the next CI flake is diagnosable from the artifacts alone.
+  // Passing tests are a no-op (status === expectedStatus → early return); this
+  // never changes a pass/fail outcome. Reads the page during fixture teardown,
+  // which is safe — the page is still alive (same pattern as coverageData).
+  failureSnapshot: [
+    async ({ page }, use, testInfo) => {
+      await use();
+      await attachFailureSnapshot(testInfo, page);
     },
     { auto: true },
   ],
