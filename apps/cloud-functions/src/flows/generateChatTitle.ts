@@ -1,7 +1,8 @@
 import { z } from 'genkit';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
-import { flowModel } from '../ai/fakeModel.js';
+import { flowModel, aiModelLabel } from '../ai/fakeModel.js';
+import { tracedGenerate } from '../ai/aiGenerationTelemetry.js';
 
 const InputSchema = z.object({
   userMessage: z.string(),
@@ -24,15 +25,18 @@ export const generateChatTitleFlow = ai.defineFlow(
     const prompt = `User's message: "${input.userMessage}"\n\nChef's reply:\n${input.assistantResponse.slice(0, 500)}`;
 
     const model = await flowModel('lite', 'generateChatTitle');
+    const modelLabel = await aiModelLabel('lite', 'generateChatTitle');
     const result = await withAiTimeout(
       'generateChatTitle',
       () =>
-        ai.generate({
-          model,
-          system: SYSTEM_PROMPT,
-          prompt,
-          config: { temperature: 0.3 },
-        }),
+        tracedGenerate('generateChatTitle', modelLabel, () =>
+          ai.generate({
+            model,
+            system: SYSTEM_PROMPT,
+            prompt,
+            config: { temperature: 0.3 },
+          }),
+        ),
       { timeoutMs: 15_000, retries: 0 },
     );
 

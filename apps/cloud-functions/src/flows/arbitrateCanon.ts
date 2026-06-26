@@ -1,9 +1,10 @@
 import { z } from 'genkit';
 import { googleAI } from '@genkit-ai/google-genai';
 import { ArbitrationRequestSchema, CanonArbitrationAIOutputSchema } from '@salt/domain/schemas';
-import { setActiveSpanName } from '@salt/ld-observability/server';
+import { setActiveSpanName } from '@salt/observability/server';
 import { ai } from '../genkit.js';
 import { resolveModel } from '../ai/resolveModel.js';
+import { tracedGenerate } from '../ai/aiGenerationTelemetry.js';
 
 // Flow output — discriminated union matching ArbitrationResult; includes prompt and rawResponse.
 const ArbitrationResultSchema = z.discriminatedUnion('kind', [
@@ -41,12 +42,15 @@ export const arbitrateCanonFlow = ai.defineFlow(
   async (req) => {
     setActiveSpanName(`arbitrateCanon: ${req.normalisedName}`);
     const builtPrompt = buildPrompt(req);
-    const result = await ai.generate({
-      model: googleAI.model(await resolveModel('lite', 'arbitrateCanon')),
-      prompt: builtPrompt,
-      output: { schema: CanonArbitrationAIOutputSchema },
-      config: { temperature: 0 },
-    });
+    const model = await resolveModel('lite', 'arbitrateCanon');
+    const result = await tracedGenerate('arbitrateCanon', model, () =>
+      ai.generate({
+        model: googleAI.model(model),
+        prompt: builtPrompt,
+        output: { schema: CanonArbitrationAIOutputSchema },
+        config: { temperature: 0 },
+      }),
+    );
     const output = result.output!;
     const rawResponse = result.text ?? JSON.stringify(output);
 

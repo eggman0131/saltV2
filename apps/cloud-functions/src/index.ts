@@ -8,10 +8,8 @@ import {
   AuthorRecipeInputSchema,
   ExtractRecipeFromUrlInputSchema,
 } from '@salt/domain/schemas';
-import {
-  initServerObservability,
-  whenServerObservabilityReady,
-} from '@salt/ld-observability/server';
+import { enableFirebaseTelemetry } from '@genkit-ai/firebase';
+import { initServerObservability, whenServerObservabilityReady } from '@salt/observability/server';
 import { registerGenkitDevTracing } from './genkitTracing.js';
 import { embedTextFlow } from './flows/embedText.js';
 import { arbitrateCanonFlow } from './flows/arbitrateCanon.js';
@@ -37,21 +35,35 @@ initializeApp();
 
 setGlobalOptions({ region: 'europe-west2' });
 
-// Initialise LD observability and Genkit dev-trace routing at module load so
-// every exported callable flow (embedText, arbitrateCanon, matchOrCreateCanon,
-// identifyEquipment, populateEquipmentEntry) and the onCanonItemWritten
-// trigger share the same OTel provider and forward their Genkit spans to the
-// dev server when GENKIT_TELEMETRY_SERVER is set.
-const _ldSdkKeyAtLoad = process.env['LD_SDK_KEY'];
-if (_ldSdkKeyAtLoad) {
-  initServerObservability(_ldSdkKeyAtLoad);
-  registerGenkitDevTracing();
+// Telemetry, owned at module load so it's in place before any flow runs:
+//
+//  1. enableFirebaseTelemetry() owns the single process-wide OTel
+//     NodeTracerProvider — it is the Genkit-native telemetry integration, so
+//     every exported callable flow and the onCanonItemWritten trigger emit
+//     spans/metrics through it (to Firebase Genkit Monitoring in prod). It is
+//     safe in the local emulator: with GENKIT_ENV=dev and forceDevExport off
+//     (the default) it does not export to GCP, so absent credentials never
+//     crash. Wrapped so a telemetry-init failure can never take down the CF.
+//  2. PostHog server telemetry (posthog-node) — the $ai_generation cost events,
+//     the cf-path canon.match event, and server error reporting. No-ops when
+//     POSTHOG_API_KEY is absent (e.g. an emulator run without the secret).
+//  3. registerGenkitDevTracing() points Genkit's native trace export at the
+//     local Dev UI when GENKIT_TELEMETRY_SERVER is set (pnpm dev:emulators).
+try {
+  void enableFirebaseTelemetry().catch(() => {
+    // Non-fatal: telemetry export setup failed (e.g. no GCP creds locally).
+  });
+} catch {
+  // enableFirebaseTelemetry is async, but guard the synchronous path too.
 }
+initServerObservability(process.env['POSTHOG_API_KEY'] ?? '');
+registerGenkitDevTracing();
 
 const geminiApiKey = defineSecret('GEMINI_API_KEY');
-// LaunchDarkly server SDK key for observability in matchOrCreateCanon.
-// Optional — when unset, the flow falls back to firebase-functions/logger only.
-const ldSdkKey = defineSecret('LD_SDK_KEY');
+// PostHog project API key for server-side telemetry (posthog-node) in the
+// AI/match functions. Optional — when unset, server observability no-ops and
+// firebase-functions/logger still emits match logs additively.
+const posthogApiKey = defineSecret('POSTHOG_API_KEY');
 
 // App Check enforcement for every callable. Monitor-first (#145): unverified
 // requests are still allowed but reported to App Check metrics. Flip this single
@@ -86,16 +98,19 @@ export const arbitrateCanon = onCallGenkit(
 // under the browser span makes it a non-root in OTel, and the Genkit Dev UI's
 // trace list only surfaces flow-rooted traces — so unified traces in LD came
 // at the cost of zero traces in the local dev view. The owner accepts split
-// browser/CF traces in LD to keep the Dev UI working. To re-enable unified
-// traces, restore the `runWithExtractedTraceContext` wrapper below; the
-// supporting plumbing (`_trace` payload field, `extractTraceHeaders` on the
-// browser, `runWithExtractedTraceContext` in @salt/ld-observability/server)
-// is still in place. Search for "DORMANT: trace propagation" to find all
-// sites at once.
+// browser/CF traces to keep the Dev UI working. To re-enable unified traces,
+// restore the `runWithExtractedTraceContext` wrapper below; the supporting
+// plumbing (`_trace` payload field, `extractTraceHeaders` on the browser) is
+// still in place. NOTE: `runWithExtractedTraceContext` was a
+// @salt/ld-observability/server helper and was NOT ported to
+// @salt/observability/server with this migration — re-enabling propagation now
+// also means re-adding that helper (operating on the active OTel context owned
+// by enableFirebaseTelemetry). Search for "DORMANT: trace propagation" to find
+// all sites at once.
 export const matchOrCreateCanon = onCall(
   {
     ...APP_CHECK_ENFORCEMENT,
-    secrets: [geminiApiKey, ldSdkKey],
+    secrets: [geminiApiKey, posthogApiKey],
   },
   async (request) => {
     if (!request.auth) {
@@ -121,7 +136,7 @@ export const matchOrCreateCanon = onCall(
 export const canonicaliseRecipeIngredients = onCall(
   {
     ...APP_CHECK_ENFORCEMENT,
-    secrets: [geminiApiKey, ldSdkKey],
+    secrets: [geminiApiKey, posthogApiKey],
     timeoutSeconds: 120,
     // Batch canonicalisation reads the whole canon collection and batches
     // embeddings for every ingredient in the recipe, so it exceeds the default
@@ -178,7 +193,7 @@ export const parseRecipeIngredients = onCallGenkit(
 export const authorRecipe = onCall(
   {
     ...APP_CHECK_ENFORCEMENT,
-    secrets: [geminiApiKey, ldSdkKey],
+    secrets: [geminiApiKey, posthogApiKey],
     timeoutSeconds: 120,
     memory: '512MiB',
   },
@@ -226,7 +241,7 @@ function mapUrlImportFailure(code: UrlImportFailureCode): HttpsError {
 export const extractRecipeFromUrl = onCall(
   {
     ...APP_CHECK_ENFORCEMENT,
-    secrets: [geminiApiKey, ldSdkKey],
+    secrets: [geminiApiKey, posthogApiKey],
     timeoutSeconds: 120,
     memory: '512MiB',
   },

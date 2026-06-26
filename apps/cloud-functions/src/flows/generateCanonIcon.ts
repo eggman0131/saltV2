@@ -1,10 +1,11 @@
 import { z } from 'genkit';
 import { googleAI } from '@genkit-ai/google-genai';
-import { setActiveSpanName } from '@salt/ld-observability/server';
+import { setActiveSpanName } from '@salt/observability/server';
 import { ai } from '../genkit.js';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { loadCanonIconSeed } from './assets/canonIconSeed.js';
 import { resolveModel } from '../ai/resolveModel.js';
+import { tracedGenerate } from '../ai/aiGenerationTelemetry.js';
 
 // Tier-1 canon-item pictogram generation (issue #148).
 //
@@ -66,17 +67,20 @@ export const generateCanonIconFlow = ai.defineFlow(
     setActiveSpanName(`generateCanonIcon: ${name}`);
     const seed = loadCanonIconSeed();
 
-    const imageModel = googleAI.model(await resolveModel('image', 'generateCanonIcon'));
+    const modelId = await resolveModel('image', 'generateCanonIcon');
+    const imageModel = googleAI.model(modelId);
     const result = await withAiTimeout(
       'generateCanonIcon',
       () =>
-        ai.generate({
-          model: imageModel,
-          prompt: [
-            { media: { url: seed.url, contentType: seed.contentType } },
-            { text: buildIconPrompt(name, hint) },
-          ],
-        }),
+        tracedGenerate('generateCanonIcon', modelId, () =>
+          ai.generate({
+            model: imageModel,
+            prompt: [
+              { media: { url: seed.url, contentType: seed.contentType } },
+              { text: buildIconPrompt(name, hint) },
+            ],
+          }),
+        ),
       { timeoutMs: ICON_GEN_TIMEOUT_MS, retries: 1 },
     );
 

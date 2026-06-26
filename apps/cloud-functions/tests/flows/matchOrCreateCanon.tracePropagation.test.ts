@@ -67,7 +67,7 @@ const fakeSpan = {
   end: vi.fn(),
 };
 
-vi.mock('@salt/ld-observability/server', () => ({
+vi.mock('@salt/observability/server', () => ({
   initServerObservability: vi.fn(),
   isServerObservabilityInitialised: () => true,
   whenServerObservabilityReady: vi.fn(async () => {}),
@@ -76,9 +76,10 @@ vi.mock('@salt/ld-observability/server', () => ({
     startSpanCalls.push({ name, opts: opts as { headers?: Record<string, string> } });
     return fakeSpan;
   }),
-  createServerLDMatchLoggingAdapter: () => ({
+  createServerObservabilityMatchLoggingAdapter: () => ({
     write: vi.fn(async () => {}),
   }),
+  captureAiGeneration: vi.fn(),
 }));
 
 const { matchOrCreateCanonFlow } = await import('../../src/flows/matchOrCreateCanon.js');

@@ -183,7 +183,7 @@ export default [
             },
             {
               from: 'cloud-functions',
-              allow: ['shared-types', 'domain', 'ld-observability'],
+              allow: ['shared-types', 'domain', 'ld-observability', 'observability'],
             },
           ],
         },
@@ -581,6 +581,11 @@ export default [
               message:
                 'web-pwa must not import @salt/ld-observability/server (Node SDK). Use the default @salt/ld-observability subpath.',
             },
+            {
+              name: '@salt/observability/server',
+              message:
+                'web-pwa must not import @salt/observability/server (posthog-node + Node OTel). Use the default @salt/observability subpath.',
+            },
           ],
           patterns: [
             ...forbidGroup(STAGE_INTERNAL_SUBPATHS, STAGE_INTERNAL_MESSAGE),
@@ -606,6 +611,11 @@ export default [
               name: '@salt/ld-observability',
               message:
                 'Cloud Functions must not import the default @salt/ld-observability subpath (browser SDK). Use @salt/ld-observability/server instead.',
+            },
+            {
+              name: '@salt/observability',
+              message:
+                'Cloud Functions must not import the default @salt/observability subpath (browser posthog-js SDK). Use @salt/observability/server instead.',
             },
           ],
           patterns: [

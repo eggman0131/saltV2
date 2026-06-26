@@ -8,6 +8,7 @@ import { ai } from '../genkit.js';
 import { canonicaliseRecipeIngredientsFlow } from './canonicaliseRecipeIngredients.js';
 import { parseRecipeIngredientsFlow } from './parseRecipeIngredients.js';
 import { resolveModel } from '../ai/resolveModel.js';
+import { tracedGenerate } from '../ai/aiGenerationTelemetry.js';
 
 const OutputSchema = z.custom<RecipeDoc>();
 
@@ -28,17 +29,20 @@ export const authorRecipeFlow = ai.defineFlow(
         : '';
 
     // Flash + temperature:0 for the librarian — accuracy over creativity (issue #206).
-    const model = googleAI.model(await resolveModel('fast', 'authorRecipe'));
+    const modelId = await resolveModel('fast', 'authorRecipe');
+    const model = googleAI.model(modelId);
     const result = await withAiTimeout(
       'authorRecipe',
       () =>
-        ai.generate({
-          model,
-          system: LIBRARIAN_SYSTEM + tagVocab,
-          prompt: conversationText,
-          output: { schema: LibrarianOutputSchema },
-          config: { temperature: 0 },
-        }),
+        tracedGenerate('authorRecipe', modelId, () =>
+          ai.generate({
+            model,
+            system: LIBRARIAN_SYSTEM + tagVocab,
+            prompt: conversationText,
+            output: { schema: LibrarianOutputSchema },
+            config: { temperature: 0 },
+          }),
+        ),
       { timeoutMs: 55_000, retries: 0 },
     );
 

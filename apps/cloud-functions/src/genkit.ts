@@ -1,27 +1,22 @@
 import { genkit } from 'genkit';
-import { disableGenkitOTelInitialization, disableOTelRootSpanDetection } from 'genkit/tracing';
 import { googleAI } from '@genkit-ai/google-genai';
 
-// Genkit lazy-initialises its own OpenTelemetry NodeSDK on first flow
-// invocation. That setGlobalTracerProvider call wins the race against the
-// LaunchDarkly Observability Node SDK (which initialises later, inside the
-// flow body), so LD's TracerProvider gets rejected as a duplicate and our
-// CF spans never reach LD's OTLP endpoint. Disabling Genkit's OTel keeps
-// the global free for LD to claim.
+// Genkit's own OpenTelemetry initialisation is intentionally left ENABLED.
 //
-// This is an internal Genkit API marked "subject to breaking changes" — if
-// it disappears in a future Genkit version, we'll need to invert the order:
-// initialise LD first (at module load), then let Genkit attempt second.
-disableGenkitOTelInitialization();
-
-// By default, Genkit's runInNewSpan passes { root: true } to OTel when no
-// Genkit-internal parent step exists, which makes flow spans IGNORE the
-// active OTel context — they start a fresh trace even when the callable
-// entrypoint installs the propagated browser trace via context.with().
-// This opt-out tells Genkit to leave OTel's default root-detection in
-// place, so flow spans inherit context.active() like every other span.
-// Same "subject to breaking changes" caveat as the line above.
-disableOTelRootSpanDetection();
+// History: until the PostHog migration we called disableGenkitOTelInitialization()
+// and disableOTelRootSpanDetection() here. Those existed only to stop Genkit's
+// global TracerProvider from racing the LaunchDarkly Observability Node SDK
+// (which self-owned a NodeTracerProvider inside the flow body) and to let flow
+// spans inherit a propagated browser trace. LaunchDarkly is gone now:
+//   • OTel is owned by enableFirebaseTelemetry() (apps/cloud-functions/src/index.ts),
+//     which is the Genkit-native telemetry integration — it works THROUGH Genkit's
+//     OTel pipeline, not against it, so disabling Genkit's init would break it.
+//   • Trace propagation stays DORMANT, so flow spans should remain flow-rooted —
+//     which is exactly Genkit's default root-span behaviour, and is what the
+//     Genkit Dev UI's trace list needs to surface them.
+// Both disables are therefore removed; Genkit collects and exports spans natively
+// (to GCP/Firebase Monitoring in prod, to the Dev UI via GENKIT_TELEMETRY_SERVER
+// locally — see genkitTracing.ts).
 
 // googleAI() reads GEMINI_API_KEY (or GOOGLE_API_KEY) from process.env at request time.
 export const ai = genkit({

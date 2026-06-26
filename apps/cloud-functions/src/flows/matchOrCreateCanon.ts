@@ -4,14 +4,14 @@ import { matchOrCreate } from '@salt/domain';
 import type { MatchLoggingPort, MatchOrCreateInput, MatchOrCreatePorts } from '@salt/domain';
 import { MatchOrCreateCanonInputSchema } from '@salt/domain/schemas';
 import {
-  createServerLDMatchLoggingAdapter,
+  createServerObservabilityMatchLoggingAdapter,
   flushServerObservability,
   initServerObservability,
   isServerObservabilityInitialised,
   startSpan,
   whenServerObservabilityReady,
   type ObservabilitySpan,
-} from '@salt/ld-observability/server';
+} from '@salt/observability/server';
 import { ai } from '../genkit.js';
 import { createFirestoreCanonStore } from '../adapters/firestoreCanonStore.js';
 import { createFirestoreAisleStore } from '../adapters/firestoreAisleStore.js';
@@ -65,20 +65,21 @@ export function buildMatchOrCreatePorts(parentSpan?: ObservabilitySpan): MatchOr
     ids: { newCanonId: () => crypto.randomUUID(), newAisleId: () => crypto.randomUUID() },
     logging: composeMatchLogging(
       createServerMatchLoggingAdapter(),
-      createServerLDMatchLoggingAdapter(parentSpan),
+      createServerObservabilityMatchLoggingAdapter(parentSpan),
     ),
   };
 }
 
 function ensureObservabilityInitialised(): void {
   if (isServerObservabilityInitialised()) return;
-  // LD_SDK_KEY is bound on the matchOrCreateCanon callable's secrets list in
-  // index.ts; absence here means LD observability is disabled for this env
-  // (e.g. emulator without the secret) — the firebase-functions/logger
-  // adapter still emits, and the LD adapter falls back to a no-op span.
-  const sdkKey = process.env['LD_SDK_KEY'];
-  if (!sdkKey) return;
-  initServerObservability(sdkKey);
+  // POSTHOG_API_KEY is bound on the matchOrCreateCanon callable's secrets list
+  // in index.ts; index.ts also inits at module load. This lazy guard covers the
+  // direct-flow paths that don't go through that module load (the shopping-list
+  // trigger, tests). Absence means PostHog server telemetry is disabled for this
+  // env (e.g. emulator without the secret) — initServerObservability no-ops on
+  // an empty key, the firebase-functions/logger adapter still emits, and the
+  // PostHog match adapter silently drops.
+  initServerObservability(process.env['POSTHOG_API_KEY'] ?? '');
 }
 
 export const matchOrCreateCanonFlow = ai.defineFlow(
@@ -89,9 +90,10 @@ export const matchOrCreateCanonFlow = ai.defineFlow(
   },
   async (input) => {
     ensureObservabilityInitialised();
-    // Wait for LD to load its sampling config before opening the first span on
-    // a cold start, otherwise the span is created with a stale "don't sample"
-    // decision and gets dropped at end() time.
+    // Retained for call-site parity with the previous LD adapter (which awaited
+    // an SDK readiness handshake before the first span). posthog-node has no
+    // such handshake, so this resolves immediately; kept so the flow body's
+    // structure is unchanged.
     await whenServerObservabilityReady();
 
     // Strip wire-only fields before they reach the domain.
