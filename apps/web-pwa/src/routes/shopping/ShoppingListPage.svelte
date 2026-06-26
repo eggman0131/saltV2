@@ -83,10 +83,6 @@
     ),
   );
 
-  // Live canon ids — same set semantics groupItemsByAisle uses, so a row's
-  // display name and its aisle grouping never disagree about what's matched.
-  const liveCanonIds = $derived(new Set(canonMap.keys()));
-
   // Tri-state icon thumbnail for a row, looked up by its matched canon id.
   // Returns null (→ bare tile) for unmatched/pending rows.
   function thumbnailFor(canonId: string | null): string | null {
@@ -400,12 +396,13 @@
     return text.charAt(0).toUpperCase() + text.slice(1);
   }
 
-  // Label a row by the user's own wording (rawText), title-cased — the amount,
-  // unit and notes the parser lifted out are rendered separately, so the label
-  // stays close to what was entered without duplicating those fields.
+  // Label a single row, title-cased: the user's / recipe's wording with the
+  // amount, unit and context the parser lifts out removed ("1 whole chicken" →
+  // "Whole Chicken"), so it reads as the item without the quantity that's shown
+  // separately, and without collapsing to the leaner canon name ("Chicken").
+  // Combined aggregate rows label by canon name instead — see rowLabel.
   function displayLabel(item: ShoppingListItem): string {
-    const resolved = resolveItemDisplayName(item, liveCanonIds);
-    return titleCase(resolved.text);
+    return titleCase(resolveItemDisplayName(item));
   }
 
   function sourceLabel(item: ShoppingListItem): string {
