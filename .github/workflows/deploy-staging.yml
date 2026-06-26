@@ -94,10 +94,17 @@ jobs:
         with:
           version: '10.33.0'
 
+      # Node 20, NOT 22, for the deploy CLI: firebase-tools' bundled
+      # google-auth-library (gaxios/undici) throws "Premature close" on the
+      # sts.googleapis.com WIF token exchange under Node 22.23.0 (the patch
+      # ubuntu-latest picked up ~2026-06-25 — the exact break). gcloud's own
+      # exchange succeeds, proving WIF/IAM are fine; only the Node 22 HTTP
+      # client is affected. The deployed Functions runtime stays node22 (an
+      # esbuild --target, set in the CF build, independent of the CLI's Node).
       - uses: actions/setup-node@v6
         if: ${{ steps.guard.outputs.should_deploy == 'true' }}
         with:
-          node-version: '22'
+          node-version: '20'
           cache: 'pnpm'
 
       - name: Install dependencies
@@ -118,19 +125,6 @@ jobs:
           project_id: s2-stage-ccb22
           workload_identity_provider: ${{ vars.WIF_PROVIDER }}
           service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
-
-      # firebase-tools authenticates in CI via Application Default Credentials,
-      # but ONLY "if gcloud is configured" — it does not consume the WIF
-      # external-account credential file directly (the GOOGLE_APPLICATION_
-      # CREDENTIALS path expects a service-account KEY). The auth step above
-      # exports CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE, so once the gcloud SDK is
-      # on PATH the CLI's ADC path resolves. ubuntu-latest stopped bundling
-      # gcloud (~2026-06-25), which silently broke deploys: the credential file
-      # is still created, but firebase deploy fails with "Failed to authenticate,
-      # have you run firebase login?". Installing gcloud restores the ADC path.
-      - name: Set up Cloud SDK (firebase-tools needs gcloud on PATH for ADC)
-        if: ${{ steps.guard.outputs.should_deploy == 'true' }}
-        uses: google-github-actions/setup-gcloud@v2
 
       # Deploys all targets in firebase.json: hosting, functions, firestore rules
       # + indexes, and storage rules (canon icons, #148). Storage rules deploy
