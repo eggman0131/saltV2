@@ -57,15 +57,24 @@ jobs:
           # E2E outcomes instead of reasoning purely from changelogs. We NEVER
           # fail this job on a red check — a failing CI run is precisely the
           # signal we want the reviewer to incorporate.
+          #
+          # Poll ONLY the checks the assessment reads, BY NAME. We can't wait for
+          # "no pending checks" because (a) this major-review job is itself a check
+          # on the PR, so it would wait on itself until the cap; and (b) the loop
+          # must survive a settled-but-FAILED run — `gh pr checks` exits 1 on
+          # failure / 8 on pending, so the old `$(...) || summary=""` blanked the
+          # JSON on exactly the red runs we care about. Capture with `|| true`.
           deadline=$(( $(date +%s) + 900 )) # 15-minute cap (typecheck finishes in ~3m)
+          want='typecheck|E2E|integration' # the assessment-relevant check names
           while [ "$(date +%s)" -lt "$deadline" ]; do
-            summary=$(gh pr checks "$PR" --json bucket 2>/dev/null) || summary=""
+            summary=$(gh pr checks "$PR" --json name,bucket 2>/dev/null) || true
             if [ -z "$summary" ] || [ "$summary" = "[]" ]; then
               sleep 15 # checks not registered yet
               continue
             fi
-            pending=$(printf '%s' "$summary" | jq '[.[] | select(.bucket=="pending")] | length')
-            [ "$pending" = "0" ] && break # every check reached a terminal state
+            pending=$(printf '%s' "$summary" \
+              | jq --arg w "$want" '[.[] | select(.name | test($w)) | select(.bucket == "pending")] | length')
+            [ "$pending" = "0" ] && break # the checks we read have all settled
             sleep 20
           done
           echo "::group::CI check summary at assessment time"
@@ -105,11 +114,22 @@ jobs:
                theory.** Run `gh pr checks ${{ github.event.pull_request.number }}`.
                For every failed check, read its failing log with
                `gh run view --log-failed <run-id>` (the run id is in the check's
-               link URL). Your final assessment MUST be consistent with what CI
-               actually did: if typecheck, lint, unit, integration or E2E FAILED,
-               this bump is not "safe to merge" or "merge but verify" no matter how
-               clean the changelog looks — explain what failed and why. If checks
-               are still pending or were skipped, say so and lower your confidence.
+               link URL), and ATTRIBUTE the failure before you weigh it:
+               - **Bump-related gates** — the `Lint, typecheck, test, boundary`
+                 check (lint, typecheck, unit, boundary). A failure here is real and
+                 decisive: never call the bump "safe to merge" or "merge but verify"
+                 while it is red, no matter how clean the changelog looks — explain
+                 what failed and why.
+               - **Flaky suites** — `E2E (Playwright)` and `Vitest integration
+                 (emulator)` are KNOWN-FLAKY in this repo. Read the failing log and
+                 decide whether the failure is mechanistically linked to THIS bump
+                 (is the bumped package actually exercised by the failing path?). If
+                 it is, treat it as real. If it's the known flake or you can't tie it
+                 to the dependency, say so explicitly and do NOT let it veto an
+                 otherwise-safe bump.
+               If checks are still pending or were skipped, say so and lower your
+               confidence — a green run with the meaningful job skipped is not
+               evidence of safety.
             2. Run `gh pr view ${{ github.event.pull_request.number }} --json title,body`
                and `gh pr diff ${{ github.event.pull_request.number }}` to confirm
                exactly which package(s) bump and the old → new versions. Dependabot's
@@ -117,7 +137,12 @@ jobs:
             3. Use WebFetch / WebSearch to find the official changelog, release notes,
                or migration guide for the NEW major version. Focus on documented
                BREAKING CHANGES. If you can't find reliable notes, say so and lower
-               your confidence rather than guessing.
+               your confidence rather than guessing. For a major in a
+               build/type/lint/bundler/codegen tool (typescript, eslint, vite, etc.),
+               a clean "none of the removed options apply to us" audit does NOT mean
+               no impact — these routinely emit NEW or stricter diagnostics on code
+               you already have. Don't infer "no impact" from removed-options
+               analysis alone; floor risk at Medium until CI (step 1) confirms clean.
             4. Determine how THIS repo actually uses the package: Grep/Glob/Read for
                its import name and the specific APIs/exports the code relies on. A
                breaking change only matters if it touches an API this repo uses.
@@ -198,8 +223,11 @@ jobs:
               the existing code, and public docs only. (Reading the PR's existing CI
               results with `gh pr checks` / `gh run view` is fine and required — that
               is reading what CI already ran, not running the dependency yourself.)
-            - Your assessment must NOT contradict the PR's CI results. CI is
-              empirical; a changelog is not. When they disagree, CI wins.
+            - Don't contradict a RED bump-related gate (`Lint, typecheck, test,
+              boundary`): CI is empirical and a changelog is not, so when they
+              disagree there, CI wins. A red flaky suite (E2E / integration) is
+              weaker evidence — attribute it per step 1 before letting it change
+              your recommendation.
             - Cite versions RESOLVED in `pnpm-lock.yaml`, and confirm any consumer's
               support for the new major from its PUBLISHED npm manifest — never from
               unreleased/`main`/changelog sources.
