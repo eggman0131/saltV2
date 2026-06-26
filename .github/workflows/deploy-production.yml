@@ -74,7 +74,7 @@ jobs:
       # is still created, but firebase deploy fails with "Failed to authenticate,
       # have you run firebase login?". Installing gcloud restores the ADC path.
       - name: Set up Cloud SDK (firebase-tools needs gcloud on PATH for ADC)
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
 
       # Deploys hosting, functions, firestore rules + indexes, and storage rules
       # (canon icons, #148) to production. Storage rules deploy requires the
