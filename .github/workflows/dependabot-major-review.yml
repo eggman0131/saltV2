@@ -18,6 +18,8 @@ permissions:
   contents: read
   pull-requests: write
   id-token: write # required by claude-code-action for OIDC token exchange
+  checks: read # read the PR's own CI check-run outcomes (typecheck/E2E/etc.)
+  statuses: read # `gh pr checks` rolls up commit statuses too
 
 concurrency:
   group: dependabot-major-review-${{ github.event.pull_request.number }}
@@ -36,9 +38,39 @@ jobs:
 
       - name: Fetch Dependabot metadata
         id: meta
+        # Don't hard-fail the job if metadata can't be resolved (e.g. Dependabot
+        # couldn't resolve the dependency files, as on the tailwindcss v4 PR).
+        # The fallback step below turns that silence into an explicit "review
+        # manually" comment instead of no signal at all.
+        continue-on-error: true
         uses: dependabot/fetch-metadata@v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Wait for the PR's own CI checks to settle
+        if: ${{ steps.meta.outputs.update-type == 'version-update:semver-major' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          # Best-effort wait so the assessment below can read REAL typecheck /
+          # E2E outcomes instead of reasoning purely from changelogs. We NEVER
+          # fail this job on a red check — a failing CI run is precisely the
+          # signal we want the reviewer to incorporate.
+          deadline=$(( $(date +%s) + 900 )) # 15-minute cap (typecheck finishes in ~3m)
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            summary=$(gh pr checks "$PR" --json bucket 2>/dev/null) || summary=""
+            if [ -z "$summary" ] || [ "$summary" = "[]" ]; then
+              sleep 15 # checks not registered yet
+              continue
+            fi
+            pending=$(printf '%s' "$summary" | jq '[.[] | select(.bucket=="pending")] | length')
+            [ "$pending" = "0" ] && break # every check reached a terminal state
+            sleep 20
+          done
+          echo "::group::CI check summary at assessment time"
+          gh pr checks "$PR" || true
+          echo "::endgroup::"
 
       - name: Opus risk/impact assessment (major bumps only)
         if: ${{ steps.meta.outputs.update-type == 'version-update:semver-major' }}
@@ -56,7 +88,7 @@ jobs:
           claude_args: >-
             --max-turns 30
             --model claude-opus-4-8
-            --allowed-tools "Read,Grep,Glob,WebFetch,WebSearch,Bash(git log:*),Bash(git diff:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*)"
+            --allowed-tools "Read,Grep,Glob,WebFetch,WebSearch,Bash(git log:*),Bash(git diff:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr checks:*),Bash(gh run view:*)"
           prompt: |
             You are assessing a MAJOR-version Dependabot update for a NON-TECHNICAL
             repository owner. Produce a risk/impact assessment and a clear
@@ -69,26 +101,52 @@ jobs:
 
             ## Steps
 
-            1. Run `gh pr view ${{ github.event.pull_request.number }} --json title,body`
+            1. **Read the PR's own CI results FIRST — this is ground truth, not
+               theory.** Run `gh pr checks ${{ github.event.pull_request.number }}`.
+               For every failed check, read its failing log with
+               `gh run view --log-failed <run-id>` (the run id is in the check's
+               link URL). Your final assessment MUST be consistent with what CI
+               actually did: if typecheck, lint, unit, integration or E2E FAILED,
+               this bump is not "safe to merge" or "merge but verify" no matter how
+               clean the changelog looks — explain what failed and why. If checks
+               are still pending or were skipped, say so and lower your confidence.
+            2. Run `gh pr view ${{ github.event.pull_request.number }} --json title,body`
                and `gh pr diff ${{ github.event.pull_request.number }}` to confirm
                exactly which package(s) bump and the old → new versions. Dependabot's
                PR body usually links release notes / changelogs — note them.
-            2. Use WebFetch / WebSearch to find the official changelog, release notes,
+            3. Use WebFetch / WebSearch to find the official changelog, release notes,
                or migration guide for the NEW major version. Focus on documented
                BREAKING CHANGES. If you can't find reliable notes, say so and lower
                your confidence rather than guessing.
-            3. Determine how THIS repo actually uses the package: Grep/Glob/Read for
+            4. Determine how THIS repo actually uses the package: Grep/Glob/Read for
                its import name and the specific APIs/exports the code relies on. A
                breaking change only matters if it touches an API this repo uses.
-            4. Assess NECESSITY. Is it a direct dependency (in a package.json) or only
+               Always cite the version RESOLVED in `pnpm-lock.yaml`, not the `^x`
+               floor declared in package.json — they often differ.
+            5. **Check ecosystem readiness before calling a bump safe.** If another
+               package in this repo CONSUMES the bumped one through a peer/dependency
+               range (e.g. genkit ↔ zod, firebase-functions ↔ firebase-admin,
+               @sveltejs/vite-plugin-svelte ↔ vite), the bump is BLOCKED unless that
+               consumer's range already admits the new major. Read the consumer's
+               RESOLVED version from `pnpm-lock.yaml`, then fetch that exact version's
+               PUBLISHED manifest from `https://registry.npmjs.org/<pkg>/<version>`
+               and quote its real dependency/peer range. NEVER infer support from a
+               project's `main` branch, an unreleased changelog, a merged-but-
+               unpublished PR, or a "coming soon" note. If the published range
+               excludes the new major → the bump is blocked upstream, full stop —
+               regardless of how cleanly the repo's own code maps onto it.
+            6. Assess NECESSITY. Is it a direct dependency (in a package.json) or only
                transitive? Is it actually imported/used anywhere? If it appears unused
                or trivially replaceable, removal may beat upgrading — say so.
-            5. Estimate EFFORT if changes are needed: a one-line tweak, a handful of
+            7. Estimate EFFORT if changes are needed: a one-line tweak, a handful of
                call-site edits, or a large multi-file/architectural migration. A large
                migration should be tracked as its own issue + plan, NOT a drive-by fix.
-            6. Where relevant, cross-check repo conventions in CLAUDE.md (e.g. the
+            8. Where relevant, cross-check repo conventions in CLAUDE.md (e.g. the
                Firebase-only-in-firebase-sync rule, AI/Genkit conventions).
-            7. Decide a risk level, an effort estimate, and a recommendation.
+            9. Decide a risk level, an effort estimate, and a recommendation. If CI
+               failed (step 1) but the changelog looked clean, trust CI and explain
+               the gap — that contradiction is usually an ecosystem/peer-range block
+               (step 5), not a code-mapping question.
 
             ## Output
 
@@ -137,6 +195,30 @@ jobs:
             - Do NOT edit any files. Do NOT approve or merge the PR.
             - Keep it concise and concrete; no filler.
             - Never execute or install the updated dependency; analyse from the diff,
-              the existing code, and public docs only.
+              the existing code, and public docs only. (Reading the PR's existing CI
+              results with `gh pr checks` / `gh run view` is fine and required — that
+              is reading what CI already ran, not running the dependency yourself.)
+            - Your assessment must NOT contradict the PR's CI results. CI is
+              empirical; a changelog is not. When they disagree, CI wins.
+            - Cite versions RESOLVED in `pnpm-lock.yaml`, and confirm any consumer's
+              support for the new major from its PUBLISHED npm manifest — never from
+              unreleased/`main`/changelog sources.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fallback notice when the update can't be classified
+        # Don't fail silently: a missing comment reads as "safe". If Dependabot's
+        # metadata didn't resolve to a known update type (e.g. it couldn't resolve
+        # the dependency files, as on the tailwindcss v4 PR #311), post an explicit
+        # "review manually" nudge. Deliberately does NOT fire for cleanly-classified
+        # minor/patch bumps, to avoid noise on routine auto-merge PRs.
+        if: ${{ steps.meta.outcome == 'failure' || steps.meta.outputs.update-type == '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr comment "$PR" --body "## 🤖 Automated major-update assessment (not an approval)
+
+          ⚠️ **Could not auto-assess this update.** Dependabot's metadata did not resolve to a known update type — often because the dependency files or lockfile could not be resolved — so the automated major-version risk review was skipped.
+
+          This is **not** a safety signal in either direction. Please review manually before merging, especially if the title looks like a major bump: check this PR's CI checks and the package's changelog by hand."
