@@ -17,10 +17,6 @@ const ELEMENTS = [
     pattern: ['packages/adapters/firebase-sync/**', '@salt/firebase-sync'],
   },
   {
-    type: 'ld-observability',
-    pattern: ['packages/adapters/ld-observability/**', '@salt/ld-observability'],
-  },
-  {
     type: 'observability',
     pattern: ['packages/adapters/observability/**', '@salt/observability'],
   },
@@ -105,8 +101,8 @@ const DOMAIN_BASE_PATTERNS = [
     [
       '@salt/firebase-sync',
       '@salt/firebase-sync/*',
-      '@salt/ld-observability',
-      '@salt/ld-observability/*',
+      '@salt/observability',
+      '@salt/observability/*',
       '@salt/ui-components',
       '@salt/ui-components/*',
       '@salt/testing-utils',
@@ -163,27 +159,19 @@ export default [
             { from: 'shared-types', allow: [] },
             { from: 'domain', allow: ['shared-types'] },
             { from: 'firebase-sync', allow: ['domain', 'shared-types'] },
-            { from: 'ld-observability', allow: ['domain', 'shared-types'] },
             { from: 'observability', allow: ['domain', 'shared-types'] },
             { from: 'ui-components', allow: [] },
             {
               from: 'testing-utils',
-              allow: ['shared-types', 'domain', 'firebase-sync', 'ld-observability'],
+              allow: ['shared-types', 'domain', 'firebase-sync'],
             },
             {
               from: 'web-pwa',
-              allow: [
-                'shared-types',
-                'domain',
-                'firebase-sync',
-                'ld-observability',
-                'observability',
-                'ui-components',
-              ],
+              allow: ['shared-types', 'domain', 'firebase-sync', 'observability', 'ui-components'],
             },
             {
               from: 'cloud-functions',
-              allow: ['shared-types', 'domain', 'ld-observability', 'observability'],
+              allow: ['shared-types', 'domain', 'observability'],
             },
           ],
         },
@@ -276,8 +264,8 @@ export default [
                 '@salt/domain/*',
                 '@salt/firebase-sync',
                 '@salt/firebase-sync/*',
-                '@salt/ld-observability',
-                '@salt/ld-observability/*',
+                '@salt/observability',
+                '@salt/observability/*',
                 '@salt/ui-components',
                 '@salt/ui-components/*',
                 '@salt/testing-utils',
@@ -302,41 +290,7 @@ export default [
             ...forbidGroup(SALT_APP_IMPORTS, 'Adapters must not import from apps.'),
             ...forbidGroup(INDEXEDDB_PKGS, 'Browser storage (IndexedDB) imports are forbidden.'),
             ...forbidGroup(
-              [
-                '@salt/ld-observability',
-                '@salt/ld-observability/*',
-                '@salt/observability',
-                '@salt/observability/*',
-              ],
-              'Adapters must not import each other. Compose them at the application layer.',
-            ),
-          ],
-        },
-      ],
-    },
-  },
-
-  // @salt/ld-observability — must not import Firebase SDKs, IndexedDB, or sibling adapters.
-  {
-    files: ['packages/adapters/ld-observability/**/*.ts'],
-    rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: [
-            ...forbidGroup(SALT_APP_IMPORTS, 'Adapters must not import from apps.'),
-            ...forbidGroup(
-              FIREBASE_PKGS,
-              'Firebase SDK imports are only allowed in @salt/firebase-sync.',
-            ),
-            ...forbidGroup(INDEXEDDB_PKGS, 'Browser storage (IndexedDB) imports are forbidden.'),
-            ...forbidGroup(
-              [
-                '@salt/firebase-sync',
-                '@salt/firebase-sync/*',
-                '@salt/observability',
-                '@salt/observability/*',
-              ],
+              ['@salt/observability', '@salt/observability/*'],
               'Adapters must not import each other. Compose them at the application layer.',
             ),
           ],
@@ -360,12 +314,7 @@ export default [
             ),
             ...forbidGroup(INDEXEDDB_PKGS, 'Browser storage (IndexedDB) imports are forbidden.'),
             ...forbidGroup(
-              [
-                '@salt/firebase-sync',
-                '@salt/firebase-sync/*',
-                '@salt/ld-observability',
-                '@salt/ld-observability/*',
-              ],
+              ['@salt/firebase-sync', '@salt/firebase-sync/*'],
               'Adapters must not import each other. Compose them at the application layer.',
             ),
           ],
@@ -440,8 +389,8 @@ export default [
                 '@salt/domain/*',
                 '@salt/firebase-sync',
                 '@salt/firebase-sync/*',
-                '@salt/ld-observability',
-                '@salt/ld-observability/*',
+                '@salt/observability',
+                '@salt/observability/*',
                 '@salt/ui-components',
                 '@salt/ui-components/*',
                 '@salt/testing-utils',
@@ -465,35 +414,7 @@ export default [
             ...forbidGroup(SALT_APP_IMPORTS, 'Packages must not import from apps.'),
             ...forbidGroup(INDEXEDDB_PKGS, 'Browser storage (IndexedDB) imports are forbidden.'),
             ...forbidGroup(
-              [
-                '@salt/ld-observability',
-                '@salt/ld-observability/*',
-                '@salt/observability',
-                '@salt/observability/*',
-              ],
-              'Adapters must not import each other.',
-            ),
-          ],
-        },
-      ],
-    },
-  },
-
-  {
-    files: ['packages/adapters/ld-observability/src/__boundary_tests__/**/*.ts'],
-    rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: [
-            ...forbidGroup(SALT_APP_IMPORTS, 'Packages must not import from apps.'),
-            ...forbidGroup(
-              FIREBASE_PKGS,
-              'Firebase SDK imports are only allowed in @salt/firebase-sync.',
-            ),
-            ...forbidGroup(INDEXEDDB_PKGS, 'Browser storage (IndexedDB) imports are forbidden.'),
-            ...forbidGroup(
-              ['@salt/firebase-sync', '@salt/firebase-sync/*'],
+              ['@salt/observability', '@salt/observability/*'],
               'Adapters must not import each other.',
             ),
           ],
@@ -514,9 +435,9 @@ export default [
           // also forbid /server).
           paths: [
             {
-              name: '@salt/ld-observability',
+              name: '@salt/observability',
               message:
-                'Cloud Functions must not import the default @salt/ld-observability subpath (browser SDK). Use @salt/ld-observability/server instead.',
+                'Cloud Functions must not import the default @salt/observability subpath (browser posthog-js SDK). Use @salt/observability/server instead.',
             },
           ],
           patterns: [
@@ -542,9 +463,9 @@ export default [
         {
           paths: [
             {
-              name: '@salt/ld-observability/server',
+              name: '@salt/observability/server',
               message:
-                'web-pwa must not import @salt/ld-observability/server (Node SDK). Use the default @salt/ld-observability subpath.',
+                'web-pwa must not import @salt/observability/server (posthog-node + Node OTel). Use the default @salt/observability subpath.',
             },
           ],
           patterns: [
@@ -566,7 +487,7 @@ export default [
 
   // Apps (production code): must not call canon stage internals directly.
   // findClosestMatch (stages 1–4) and matchOrCreate are the only allowed entry points.
-  // Also enforces the ld-observability subpath split: web-pwa uses the default
+  // Also enforces the observability subpath split: web-pwa uses the default
   // subpath, cloud-functions uses /server.
   {
     files: ['apps/web-pwa/src/**/*.ts'],
@@ -576,11 +497,6 @@ export default [
         'error',
         {
           paths: [
-            {
-              name: '@salt/ld-observability/server',
-              message:
-                'web-pwa must not import @salt/ld-observability/server (Node SDK). Use the default @salt/ld-observability subpath.',
-            },
             {
               name: '@salt/observability/server',
               message:
@@ -607,11 +523,6 @@ export default [
         'error',
         {
           paths: [
-            {
-              name: '@salt/ld-observability',
-              message:
-                'Cloud Functions must not import the default @salt/ld-observability subpath (browser SDK). Use @salt/ld-observability/server instead.',
-            },
             {
               name: '@salt/observability',
               message:

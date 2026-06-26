@@ -6,7 +6,6 @@ export default defineConfig({
       'packages/shared-types/vitest.config.ts',
       'packages/domain/vitest.config.ts',
       'packages/adapters/firebase-sync/vitest.config.ts',
-      'packages/adapters/ld-observability/vitest.config.ts',
       'packages/adapters/observability/vitest.config.ts',
       'packages/ui-components/vitest.config.ts',
       'packages/testing-utils/vitest.config.ts',

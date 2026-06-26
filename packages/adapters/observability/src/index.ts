@@ -1,8 +1,8 @@
-// Pure re-export barrel. Mirrors @salt/ld-observability's layout: the client
-// singleton, init, guards, identify/track helpers and span shims live in the
-// leaf module src/init.ts, which the adapters and session modules import from.
-// This file is imported by NONE of them — keeping it a dependency-graph leaf so
-// there is no cycle (CLAUDE.md Rule 8 / dependency-cruiser no-circular).
+// Pure re-export barrel. The client singleton, init, guards, identify/track
+// helpers and span shims live in the leaf module src/init.ts, which the adapters
+// and session modules import from. This file is imported by NONE of them —
+// keeping it a dependency-graph leaf so there is no cycle (CLAUDE.md Rule 8 /
+// dependency-cruiser no-circular).
 export {
   initObservability,
   isObservabilityReady,

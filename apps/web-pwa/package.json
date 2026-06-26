@@ -20,7 +20,6 @@
     "@lucide/svelte": "^1.17.0",
     "@salt/domain": "workspace:*",
     "@salt/firebase-sync": "workspace:*",
-    "@salt/ld-observability": "workspace:*",
     "@salt/observability": "workspace:*",
     "@salt/shared-types": "workspace:*",
     "@salt/ui-components": "workspace:*",

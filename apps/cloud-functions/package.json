@@ -24,7 +24,6 @@
     "@genkit-ai/google-genai": "^1.33.0",
     "@opentelemetry/sdk-trace-node": "^1.25.1",
     "@salt/domain": "workspace:*",
-    "@salt/ld-observability": "workspace:*",
     "@salt/observability": "workspace:*",
     "@salt/shared-types": "workspace:*",
     "firebase-admin": "^13.9.0",

@@ -85,9 +85,6 @@ importers:
       '@salt/domain':
         specifier: workspace:*
         version: link:../../packages/domain
-      '@salt/ld-observability':
-        specifier: workspace:*
-        version: link:../../packages/adapters/ld-observability
       '@salt/observability':
         specifier: workspace:*
         version: link:../../packages/adapters/observability
@@ -153,9 +150,6 @@ importers:
       '@salt/firebase-sync':
         specifier: workspace:*
         version: link:../../packages/adapters/firebase-sync
-      '@salt/ld-observability':
-        specifier: workspace:*
-        version: link:../../packages/adapters/ld-observability
       '@salt/observability':
         specifier: workspace:*
         version: link:../../packages/adapters/observability
@@ -245,48 +239,6 @@ importers:
       '@firebase/rules-unit-testing':
         specifier: ^5.0.1
         version: 5.0.1(firebase@12.15.0)
-
-  packages/adapters/ld-observability:
-    dependencies:
-      '@launchdarkly/js-client-sdk':
-        specifier: ^4.6.3
-        version: 4.6.3
-      '@launchdarkly/observability':
-        specifier: ^1.0.0
-        version: 1.1.6
-      '@launchdarkly/session-replay':
-        specifier: ^1.1.6
-        version: 1.1.6
-      '@opentelemetry/api':
-        specifier: 1.9.0
-        version: 1.9.0
-      '@opentelemetry/exporter-trace-otlp-http':
-        specifier: ^0.52.1
-        version: 0.52.1(@opentelemetry/api@1.9.0)
-      '@opentelemetry/instrumentation':
-        specifier: ^0.52.1
-        version: 0.52.1(@opentelemetry/api@1.9.0)
-      '@opentelemetry/instrumentation-grpc':
-        specifier: ^0.52.1
-        version: 0.52.1(@opentelemetry/api@1.9.0)
-      '@opentelemetry/instrumentation-http':
-        specifier: ^0.52.1
-        version: 0.52.1(@opentelemetry/api@1.9.0)
-      '@opentelemetry/resources':
-        specifier: ^1.25.1
-        version: 1.25.1(@opentelemetry/api@1.9.0)
-      '@opentelemetry/sdk-trace-node':
-        specifier: ^1.25.1
-        version: 1.25.1(@opentelemetry/api@1.9.0)
-      '@opentelemetry/semantic-conventions':
-        specifier: ^1.25.1
-        version: 1.39.0
-      '@salt/domain':
-        specifier: workspace:*
-        version: link:../../domain
-      '@salt/shared-types':
-        specifier: workspace:*
-        version: link:../../shared-types
 
   packages/adapters/observability:
     dependencies:
@@ -2067,21 +2019,6 @@ packages:
     engines: {node: '>= 10.16.0'}
     peerDependencies:
       jsep: ^0.4.0||^1.0.0
-
-  '@launchdarkly/js-client-sdk-common@1.26.1':
-    resolution: {integrity: sha512-+5KCXfdK+YbEvTHBeFyJ/eY02ekZfNqTj/M3ul2jFk4Dc2uIPHDw4tWEDFTC7MO5p9212hcx2qt4LaQGEJcSBg==}
-
-  '@launchdarkly/js-client-sdk@4.6.3':
-    resolution: {integrity: sha512-vt+diYXzKV5E9+vspG/vlxV2akWfMpnuyVukCXU/4rwylBuukrucWyv05tumv3vM5XFD2sI7n/EwPnBc/ojmXQ==}
-
-  '@launchdarkly/js-sdk-common@2.24.2':
-    resolution: {integrity: sha512-SuWfR90NZ1ttGxz/2AeavfFXy/sFnFE7PhEBfg4mv0beTF9LeZwVa4XJsVeBe0Zb1PcuUQt7kn4VmFCctQIAzA==}
-
-  '@launchdarkly/observability@1.1.6':
-    resolution: {integrity: sha512-1giCEXw1X7FmePRpzt/O63dokP/aGLp9YcsDjfQmOe9+eBG6XYmCcSacAZfGQA8cNEE9MAmrMPce9GymVN5xKA==}
-
-  '@launchdarkly/session-replay@1.1.6':
-    resolution: {integrity: sha512-GQjlH1cZq36Z9AYdJiBRE5K7ez2j/93EV3S1IbmlGYMryUbm/1pbwmcMFsU9cBlDdnZCiVMsAyu0ESS14T7yJQ==}
 
   '@lucide/svelte@1.17.0':
     resolution: {integrity: sha512-q06YCFBN5CO8cd1ADmLCxWRVMVb7xxvHzqC0lvNoxGa+FLW6Cd1Y1AOxgbQk4Iwe68vkAMCRveNHint4WoaVKg==}
@@ -4900,9 +4837,6 @@ packages:
 
   highlight.js@10.7.3:
     resolution: {integrity: sha512-tzcUFauisWKNHaRkN4Wjl/ZA07gENAjFl3J/c480dprkGTg5EQstgaNFqBfUqCq54kZRIEcreTsAgF/m2quD7A==}
-
-  highlight.run@10.1.2:
-    resolution: {integrity: sha512-isCjDF5L7Metm/JS9+J5hcxE6+P4HPhic7f9rSjqPiF+egUQNB3WNAU89fYaLfGyWZBBQM3tkrmjuGXR7yaNvA==}
 
   hono@4.12.26:
     resolution: {integrity: sha512-uyZtpnYxM9CmQ7QsQknM4zN8EftNqhON1qYeIKM0Se67CCEe2c44xyGURwB0axX2fBDu1dqHrHAc1hmNT8ITkw==}
@@ -9773,24 +9707,6 @@ snapshots:
     dependencies:
       jsep: 1.4.0
 
-  '@launchdarkly/js-client-sdk-common@1.26.1':
-    dependencies:
-      '@launchdarkly/js-sdk-common': 2.24.2
-
-  '@launchdarkly/js-client-sdk@4.6.3':
-    dependencies:
-      '@launchdarkly/js-client-sdk-common': 1.26.1
-
-  '@launchdarkly/js-sdk-common@2.24.2': {}
-
-  '@launchdarkly/observability@1.1.6':
-    dependencies:
-      highlight.run: 10.1.2
-
-  '@launchdarkly/session-replay@1.1.6':
-    dependencies:
-      highlight.run: 10.1.2
-
   '@lucide/svelte@1.17.0(svelte@5.55.7(@typescript-eslint/types@8.61.1))':
     dependencies:
       svelte: 5.55.7(@typescript-eslint/types@8.61.1)
@@ -13231,11 +13147,6 @@ snapshots:
   heap-js@2.7.1: {}
 
   highlight.js@10.7.3: {}
-
-  highlight.run@10.1.2:
-    dependencies:
-      '@launchdarkly/js-client-sdk': 4.6.3
-      imurmurhash: 0.1.4
 
   hono@4.12.26: {}
 

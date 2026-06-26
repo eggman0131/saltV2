@@ -85,12 +85,12 @@ expect_depcruise_error \
   "circular imports are rejected"
 
 expect_lint_error \
-  "apps/cloud-functions/src/__boundary_tests__/no-ld-observability.ts" \
-  "cloud-functions cannot import the default @salt/ld-observability subpath (browser SDK)"
+  "apps/cloud-functions/src/__boundary_tests__/no-observability.ts" \
+  "cloud-functions cannot import the default @salt/observability subpath (browser SDK)"
 
 expect_lint_error \
-  "apps/web-pwa/src/__boundary_tests__/no-ld-observability-server.ts" \
-  "web-pwa cannot import @salt/ld-observability/server (Node SDK)"
+  "apps/web-pwa/src/__boundary_tests__/no-observability-server.ts" \
+  "web-pwa cannot import @salt/observability/server (Node SDK)"
 
 expect_lint_error \
   "apps/web-pwa/src/__boundary_tests__/no-firebase-sync-internal.ts" \

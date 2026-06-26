@@ -4,7 +4,6 @@
     { "path": "packages/shared-types" },
     { "path": "packages/domain" },
     { "path": "packages/adapters/firebase-sync" },
-    { "path": "packages/adapters/ld-observability" },
     { "path": "packages/adapters/observability" },
     { "path": "packages/ui-components" },
     { "path": "packages/testing-utils" },

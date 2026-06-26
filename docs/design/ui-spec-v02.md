@@ -73,7 +73,7 @@ Allowed imports:
 
 Forbidden:
 
-- All Salt app/domain packages (`@salt/domain`, `@salt/firebase-sync`, `@salt/ld-observability`, `@salt/web-pwa`, `@salt/cloud-functions`)
+- All Salt app/domain packages (`@salt/domain`, `@salt/firebase-sync`, `@salt/observability`, `@salt/web-pwa`, `@salt/cloud-functions`)
 - Firebase SDKs
 - Node built-ins
 - Browser APIs except inside Svelte actions or `$effect` blocks

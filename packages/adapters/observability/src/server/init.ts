@@ -30,20 +30,19 @@ export function isServerObservabilityInitialised(): boolean {
   return client !== null;
 }
 
-// Kept for call-site parity with the LD server adapter, which awaited an SDK
-// readiness handshake before opening the first span on a cold start. posthog-node
-// has no such handshake (capture is synchronous-enqueue + background flush), so
-// this resolves immediately. Retained so existing `await whenServerObservabilityReady()`
-// call sites keep compiling and reading sensibly.
+// Resolves immediately: posthog-node has no readiness handshake (capture is
+// synchronous-enqueue + background flush). Retained as a no-op so existing
+// `await whenServerObservabilityReady()` call sites keep compiling and reading
+// sensibly.
 export async function whenServerObservabilityReady(): Promise<void> {
   return Promise.resolve();
 }
 
 // Wires the posthog-node client. No-ops entirely when `key` is empty (mirrors
-// the browser no-op-on-empty-key contract and how an absent LD_SDK_KEY gated LD
-// off), so no client is built and every adapter method silently no-ops. Never
-// throws: a misconfig or constructor failure leaves the package inert rather
-// than crashing the function at module load.
+// the browser no-op-on-empty-key contract: an absent POSTHOG_API_KEY gates
+// server observability off), so no client is built and every adapter method
+// silently no-ops. Never throws: a misconfig or constructor failure leaves the
+// package inert rather than crashing the function at module load.
 export function initServerObservability(key: string): void {
   if (client) return;
   if (!key) return; // inert when the key is absent
@@ -149,8 +148,7 @@ export function captureAiGeneration(ev: AiGenerationEvent): void {
 
 // Flush pending telemetry. Cloud Functions should call this before returning so
 // queued events aren't lost when the Node process is paused between invocations
-// (posthog-node batches in the background). Repoints the LD server's
-// flushServerObservability() contract onto posthog-node's flush(). Export
+// (posthog-node batches in the background). Wraps posthog-node's flush(). Export
 // failures (e.g. DNS unreachable in local dev) are non-fatal — the adapter must
 // not surface operational telemetry errors to callers.
 export async function flushServerObservability(): Promise<void> {

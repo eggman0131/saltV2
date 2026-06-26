@@ -41,18 +41,21 @@ API-key restrictions, not by secrecy.
 | `VITE_FIREBASE_STORAGE_BUCKET`      | `<project>.firebasestorage.app`                    |
 | `VITE_FIREBASE_MESSAGING_SENDER_ID` | Sender ID                                          |
 | `VITE_FIREBASE_APP_ID`              | Web app ID                                         |
-| `VITE_LD_CLIENT_SIDE_ID`            | LaunchDarkly **client-side** ID — public, per **LD environment** (staging ≠ prod) |
+| `VITE_PUBLIC_POSTHOG_KEY`           | PostHog **browser project** key — public, per **PostHog project** (staging ≠ prod). An empty value gates browser observability off entirely (the e2e build relies on this). |
+| `VITE_PUBLIC_POSTHOG_HOST`          | PostHog ingestion host (optional; defaults to the EU region `https://eu.i.posthog.com`) |
 | `VITE_USE_EMULATORS`                | `false` for staging/production                     |
 
-Each environment must use its **own** values; in particular the LD client-side ID
-must point at the matching LaunchDarkly environment.
+Each environment must use its **own** values; in particular the PostHog browser
+project key must point at the matching PostHog project.
 
-Each deploy target maps to its own LaunchDarkly environment (dev / staging /
-production) — the client-side ID and SDK key are a matched pair per LD env.
+Each deploy target maps to its own PostHog project (dev / staging / production),
+all in the EU region — the browser project key and server API key are a matched
+pair per project.
 
-- `.env.development` — emulators; LD env `dev`.
-- `.env.staging` — fully populated for `s2-stage-ccb22`; LD env `staging`.
-- `.env.production` — fully populated for `s2-prod-e46bd`; LD env `production`.
+- `.env.development` — emulators; PostHog project `dev` (typically left empty so
+  observability no-ops locally).
+- `.env.staging` — fully populated for `s2-stage-ccb22`; PostHog `staging` project.
+- `.env.production` — fully populated for `s2-prod-e46bd`; PostHog `production` project.
 
 ### 2. Cloud Functions runtime secrets — Secret Manager, per project, **never committed**
 
@@ -64,10 +67,12 @@ project**, and are bound to the functions via `defineSecret()` in
 | Secret          | What it is                                              | Set with                                          |
 | --------------- | ------------------------------------------------------- | ------------------------------------------------- |
 | `GEMINI_API_KEY` | Gemini/Genkit API key for the AI flows                 | `firebase functions:secrets:set GEMINI_API_KEY -P <alias>` |
-| `LD_SDK_KEY`     | LaunchDarkly **server** SDK key; also used as the LD observability project id for CF span export | `firebase functions:secrets:set LD_SDK_KEY -P <alias>` |
+| `POSTHOG_API_KEY` | PostHog **server project** key (`posthog-node`) for CF event capture; absent ⇒ server observability no-ops | `firebase functions:secrets:set POSTHOG_API_KEY -P <alias>` |
 
-The LD OTLP trace endpoint is a hardcoded constant in
-`ld-observability/server` — there is **no** separate OTLP secret or endpoint var.
+There is **no** OTLP secret or endpoint var: server-side spans export to GCP /
+Firebase Monitoring via `enableFirebaseTelemetry()` (Genkit-native), and PostHog
+event ingestion uses the EU host baked into `observability/server` (overridable
+only via the optional `POSTHOG_HOST`).
 
 > **Gemini billing caveat — dev and staging share one Google AI Studio project.**
 > The `dev` and `staging` deploy targets use **different** `GEMINI_API_KEY` values,
@@ -181,9 +186,9 @@ A brand-new Firebase project needs one-time setup that the CI deployer SA
 
 - [x] Staging Firebase project (`s2-stage-ccb22`, Blaze) + alias + `.env.staging` config
 - [x] Production Firebase project (`s2-prod-e46bd`, Blaze) + alias + `.env.production` config
-- [x] `VITE_LD_CLIENT_SIDE_ID` for dev / staging / production (matched LD envs)
+- [x] `VITE_PUBLIC_POSTHOG_KEY` for dev / staging / production (matched PostHog projects)
 - [x] WIF setup — staging (repo-scoped) and production (environment-scoped)
-- [x] `LD_SDK_KEY` secret set in staging + production Secret Manager
+- [x] `POSTHOG_API_KEY` secret set in staging + production Secret Manager
 - [x] `GEMINI_API_KEY` secret set in staging + production Secret Manager
 - [x] GitHub Environments (`staging`, `production`) + production required-reviewer gate
 - [x] Staging deploy workflow (`deploy-staging.yml` — on CI success on `main`)

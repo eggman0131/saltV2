@@ -79,18 +79,18 @@ await loggingPort?.write(entry);
 
 ## Adapter behaviour
 
-Three live `MatchLoggingPort` adapters write canon match logs. None persists to Firestore — match logs are observability spans / structured CF logs, not a queryable ledger.
+Three live `MatchLoggingPort` adapters write canon match logs. None persists to Firestore — match logs are PostHog analytics events and structured CF logs, not a queryable ledger.
 
-`createLDMatchLoggingAdapter(path, parentSpan?)` — `packages/adapters/ld-observability/src/ldMatchLoggingAdapter.ts`
+`createPosthogMatchLoggingAdapter(path, parentSpan?)` — `packages/adapters/observability/src/posthogMatchLoggingAdapter.ts`
 
 - Browser-side adapter used by the web-pwa fast path.
-- Opens a `canon.stages: <rawInput>` span via the LaunchDarkly browser SDK and applies the entry through the shared `applyMatchLogAttrs` mapper.
-- `path` is `'fast'` or `'cf'`; `parentSpan` chains under an outer match span when provided.
+- Emits the slim `canon.match` PostHog event via `posthog-js` (`posthog.capture`), built through the shared `toCanonMatchEvent` mapper.
+- `path` is `'fast'` or `'cf'` and is carried on the event as `canon_path`; `parentSpan` is accepted for call-site signature parity but unused (PostHog has no span primitive).
 
-`createServerLDMatchLoggingAdapter(parentSpan?)` — `packages/adapters/ld-observability/src/server/serverMatchLoggingAdapter.ts`
+`createPosthogServerMatchLoggingAdapter(parentSpan?)` — `packages/adapters/observability/src/server/posthogServerMatchLoggingAdapter.ts`
 
-- Cloud Functions counterpart to the browser adapter. Emits the same `canon.stages: <rawInput>` span via the LaunchDarkly Node SDK.
-- Shares `applyMatchLogAttrs` with the browser adapter so the wire schema cannot drift between fast-path and CF emissions.
+- Cloud Functions counterpart to the browser adapter. Emits the same `canon.match` event via `posthog-node`, tagged `canon_path: 'cf'`.
+- Shares the `toCanonMatchEvent` mapper with the browser adapter so the wire schema cannot drift between fast-path and CF emissions.
 
 `createServerMatchLoggingAdapter()` — `apps/cloud-functions/src/adapters/serverMatchLog.ts`
 
@@ -103,5 +103,5 @@ All three are fire-and-forget: `MatchLogBuilder.complete()` is called regardless
 
 ## How to inspect logs manually
 
-- **Web fast path / CF traces:** open the LaunchDarkly observability UI and filter on `canon.stages` spans. The `canon.*` and `stage.{n}.*` attributes (defined in `applyMatchLogAttrs`) carry decision, scores, and per-stage outcomes.
+- **Web fast path / CF analytics:** open the PostHog UI and filter on the `canon.match` event. The `canon_*` properties (defined in `toCanonMatchEvent`) carry input, decision, result, winning stage, and confidence for both the `fast` and `cf` paths. For span-level CF traces (the flow span nesting), use the Genkit / Cloud trace view; spans export there via `enableFirebaseTelemetry()`.
 - **CF structured logs:** in the Firebase / Google Cloud Logs Explorer, filter on `jsonPayload.message = "canon.match"`. Each entry is one `matchOrCreate` invocation with the summary line and key fields inlined.
