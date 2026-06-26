@@ -1,27 +1,22 @@
 import type { ShoppingListItem } from '../entities/ShoppingListItem.js';
-import { hasLiveCanonMatch } from '../../canon/index.js';
+import { parseShoppingListEntry } from './parseEntry.js';
 
-// Where a shopping-list row's display label comes from. The `text` is always the
-// user/recipe-supplied `rawText` so a row reads as it was entered (minus the bits
-// the parser lifts out into amount/unit/notes, which the row renders separately).
-// `source` only signals whether a live canon match backs the row — `canon` rows
-// still own the icon/thumbnail via the matched canon item — it no longer changes
-// the text. The caller applies presentation casing.
-export interface ItemDisplayName {
-  readonly text: string;
-  readonly source: 'canon' | 'raw';
-}
-
-// Resolve the label a shopping-list item should display by. The text is always
-// `rawText` (the user's wording); a live canon match (matched / needs_approval,
-// with the canon item still present) is reported via `source: 'canon'` so the
-// caller can still source the icon from canon, but it does not rename the row.
-// Pure — the caller supplies the set of live canon ids (same set fed to
-// groupItemsByAisle, so display name and grouping never disagree).
-export function resolveItemDisplayName(
-  item: ShoppingListItem,
-  liveCanonIds: ReadonlySet<string>,
-): ItemDisplayName {
-  const source = hasLiveCanonMatch(item, liveCanonIds) ? 'canon' : 'raw';
-  return { text: item.rawText, source };
+// The label a single shopping-list row displays by: the user's (or recipe's)
+// wording with the amount / unit / context the parser lifts out removed, so the
+// row reads as the item itself ("whole chicken") without the quantity that's
+// already rendered separately, and without collapsing to the leaner canon name
+// ("chicken"). Manual and recipe rows are labelled identically — recipe wording
+// is clean by construction, so the same parse applies cleanly to both.
+//
+// Parsing at display time (rather than trusting `item.rawText` to have been
+// rewritten) keeps the label correct before the async match trigger runs, and for
+// the items it never rewrites — pending / failed / notes-bearing rows still carry
+// the raw "2 whole chickens" in `rawText`, and stripping it here drops the leading
+// "2" that's otherwise duplicated by the separate amount field.
+//
+// The combined aggregate row is the one place a canon name is shown instead; that
+// lives in the page's `rowLabel`, not here. Pure and I/O-free — the caller applies
+// presentation casing.
+export function resolveItemDisplayName(item: ShoppingListItem): string {
+  return parseShoppingListEntry(item.rawText).name;
 }

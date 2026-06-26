@@ -146,7 +146,6 @@ export type {
   RecipeGroup,
   ManualBucket,
   GroupedByRecipe,
-  ItemDisplayName,
   RecipeItemAddDefault,
   ParsedEntry,
   EntryParsePort,
