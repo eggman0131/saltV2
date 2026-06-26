@@ -4,9 +4,11 @@
  * Exercises the "Add to shopping list" action from the recipe view against the
  * Firestore + Auth + Functions emulators. Ingredients are written as raw entries
  * (matchState: pending); the onShoppingListItemWrite trigger then canonicalises
- * each one (clean name + structured amount/unit), so the rendered rows — and the
- * assertions here — settle on the canonical name, not the raw recipe text. The
- * 'recipe' SourceRef survives that rewrite untouched (issue #320).
+ * each one (clean name + structured amount/unit). The shopping row labels by the
+ * parsed name — resolveItemDisplayName strips the leading amount/unit at display
+ * time — so rows read "Spaghetti" / "Onion", not "400g spaghetti" / "1 onion",
+ * regardless of whether the async trigger has run. The 'recipe' SourceRef
+ * survives the trigger's rewrite untouched (issue #320).
  *
  * Covers:
  * - Items from all ingredient groups reach the shopping list.
@@ -83,13 +85,12 @@ test.describe('recipe → shopping list extraction', () => {
     await page.goto('/#/shopping');
     await expect(page.getByTestId('shopping-list-page')).toBeVisible({ timeout: SYNC_TIMEOUT });
 
-    // The onShoppingListItemWrite trigger canonicalises each entry asynchronously
-    // ("400g spaghetti" → name "spaghetti" + amount 400 / unit "g"), so the
-    // rendered row settles on the canonical name, not the raw recipe string.
-    // Assert the canonical name — which is also a substring of the raw entry, so
-    // the check holds whether or not it races the async rewrite. The old literal
-    // assertions only passed while the canon CF path was inert in e2e (before
-    // #297, which wired the fake-model seam + GEMINI_API_KEY); see issue #320.
+    // The shopping row labels by the parsed name (resolveItemDisplayName strips
+    // the leading amount/unit at display time), so "400g spaghetti" renders as
+    // "Spaghetti". The parsed name is a substring of the raw entry, so these
+    // checks hold immediately on the pending row and continue to hold after the
+    // async trigger writes the structured amount/unit; they never depend on the
+    // canon match resolving (relevant since #297 wired the fake-model seam).
     await expect(page.getByText('spaghetti')).toBeVisible({ timeout: SYNC_TIMEOUT });
     await expect(page.getByText('cloves garlic')).toBeVisible({ timeout: SYNC_TIMEOUT });
     await expect(page.getByText('double cream')).toBeVisible({ timeout: SYNC_TIMEOUT });
@@ -167,7 +168,9 @@ test.describe('recipe → shopping list extraction', () => {
     // Verify SourceRef.servings = 6 via the shopping list store.
     await page.goto('/#/shopping');
     await expect(page.getByTestId('shopping-list-page')).toBeVisible({ timeout: SYNC_TIMEOUT });
-    await expect(page.getByText('1 onion')).toBeVisible({ timeout: SYNC_TIMEOUT });
+    // Row labels by the parsed name — "1 onion" renders as "Onion" (the "1" is
+    // lifted into the separate amount field), so assert the parsed name.
+    await expect(page.getByText('onion')).toBeVisible({ timeout: SYNC_TIMEOUT });
 
     await waitForBridge(page);
     const storeItems = await page.evaluate<ShoppingListItem[]>(
