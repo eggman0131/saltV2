@@ -9,7 +9,11 @@ import {
   ExtractRecipeFromUrlInputSchema,
 } from '@salt/domain/schemas';
 import { enableFirebaseTelemetry } from '@genkit-ai/firebase';
-import { initServerObservability, whenServerObservabilityReady } from '@salt/observability/server';
+import {
+  initServerObservability,
+  whenServerObservabilityReady,
+  runWithExtractedTraceContext,
+} from '@salt/observability/server';
 import { registerGenkitDevTracing } from './genkitTracing.js';
 import { embedTextFlow } from './flows/embedText.js';
 import { arbitrateCanonFlow } from './flows/arbitrateCanon.js';
@@ -89,24 +93,22 @@ export const arbitrateCanon = onCallGenkit(
   arbitrateCanonFlow,
 );
 
-// Manual onCall (instead of onCallGenkit) so we *could* extract the W3C trace
-// context from the request body and set it as the active OTel context BEFORE
-// Genkit opens the flow span — joining the browser's trace to the CF trace.
+// Manual onCall (instead of onCallGenkit) so we can extract the inbound W3C
+// trace context and install it as the active OTel context BEFORE Genkit opens
+// the flow span — so the flow span nests under the platform request span and
+// each invocation renders as ONE coherent trace, instead of the flow re-rooting
+// a fresh trace.
 //
-// DORMANT: trace propagation is intentionally disabled below (see the
-// `return matchOrCreateCanonFlow(...)` site). Reason: parenting the flow span
-// under the browser span makes it a non-root in OTel, and the Genkit Dev UI's
-// trace list only surfaces flow-rooted traces — so unified traces in LD came
-// at the cost of zero traces in the local dev view. The owner accepts split
-// browser/CF traces to keep the Dev UI working. To re-enable unified traces,
-// restore the `runWithExtractedTraceContext` wrapper below; the supporting
-// plumbing (`_trace` payload field, `extractTraceHeaders` on the browser) is
-// still in place. NOTE: `runWithExtractedTraceContext` was a
-// @salt/ld-observability/server helper and was NOT ported to
-// @salt/observability/server with this migration — re-enabling propagation now
-// also means re-adding that helper (operating on the active OTel context owned
-// by enableFirebaseTelemetry). Search for "DORMANT: trace propagation" to find
-// all sites at once.
+// Env-gated on GENKIT_TELEMETRY_SERVER (set only by `pnpm dev:emulators`):
+//   • Local dev (set): SUPPRESS propagation — run the flow without installing
+//     any parent context, so it stays root-listed in the Genkit Dev UI (whose
+//     trace list only surfaces flow-rooted traces). This is the gate that
+//     resolves the 2026-05-11 regression that previously parked propagation.
+//   • Production (unset): honour the inbound trace context. The platform/GCP
+//     injects W3C trace headers on the underlying request; we read them off
+//     request.rawRequest.headers and run the flow within the extracted context
+//     via runWithExtractedTraceContext (which degrades to a plain call when no
+//     context is present, and never throws).
 export const matchOrCreateCanon = onCall(
   {
     ...APP_CHECK_ENFORCEMENT,
@@ -124,9 +126,14 @@ export const matchOrCreateCanon = onCall(
 
     await whenServerObservabilityReady();
 
-    // DORMANT: trace propagation — see block comment above.
-    // Was: runWithExtractedTraceContext(data?._trace, () => matchOrCreateCanonFlow(request.data))
-    return matchOrCreateCanonFlow(request.data);
+    // Suppress propagation locally so flows stay root-listed in the Dev UI.
+    if (process.env['GENKIT_TELEMETRY_SERVER']) {
+      return matchOrCreateCanonFlow(request.data);
+    }
+    // Production: nest the flow span under the inbound request trace.
+    return runWithExtractedTraceContext(request.rawRequest?.headers, () =>
+      matchOrCreateCanonFlow(request.data),
+    );
   },
 );
 

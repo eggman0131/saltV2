@@ -14,7 +14,7 @@ export {
   flushServerObservability,
   startSpan,
   setActiveSpanName,
-  extractTraceHeaders,
+  runWithExtractedTraceContext,
   captureServerEvent,
   captureServerException,
   captureAiGeneration,

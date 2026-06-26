@@ -1,6 +1,12 @@
 import type { IncomingHttpHeaders } from 'node:http';
 import { PostHog } from 'posthog-node';
-import { trace, context, type Span as OtelSpan } from '@opentelemetry/api';
+import {
+  trace,
+  context,
+  propagation,
+  defaultTextMapGetter,
+  type Span as OtelSpan,
+} from '@opentelemetry/api';
 
 // EU region is baked in as the default; the host is overridable via env only so
 // a self-hosted/dev proxy can be pointed at, never to silently leave the EU
@@ -186,9 +192,11 @@ function wrap(span: OtelSpan): ObservabilitySpan {
 
 export interface StartSpanOptions {
   readonly parent?: ObservabilitySpan;
-  // W3C traceparent / tracestate headers from the inbound request. Accepted for
-  // call-site parity with the LD server adapter; unused while trace propagation
-  // is DORMANT (see extractTraceHeaders below).
+  // W3C traceparent / tracestate headers from the inbound request. The
+  // callable entrypoint installs the inbound context via
+  // runWithExtractedTraceContext before the flow runs, so startSpan inherits
+  // it through context.active() rather than reading these here; retained for
+  // call-site parity and explicit-parent use.
   readonly headers?: IncomingHttpHeaders;
 }
 
@@ -219,13 +227,37 @@ export function startSpan(name: string, opts?: StartSpanOptions): ObservabilityS
   return wrap(span);
 }
 
-// W3C trace context extraction. Mirrors the browser-side helper's wire format.
+// Extract W3C trace context from inbound request headers and run `fn` within
+// that OTel context, so any span `fn` opens (e.g. the Genkit flow span) nests
+// under the request's trace instead of re-rooting a fresh one. This is the
+// server-side unification helper: enableFirebaseTelemetry() owns the global
+// provider/propagator, and this operates on that active context — it never
+// owns a provider of its own.
 //
-// DORMANT: trace propagation — currently returns {} so the CF parents nothing,
-// exactly the "tracing disabled" path. Cross-callable trace context propagation
-// was disabled 2026-05-11 (it broke the Genkit Dev UI). Kept exported so
-// re-enabling propagation is a one-line change at the call site. Grep
-// "DORMANT: trace propagation" to find all plumbing sites.
-export function extractTraceHeaders(_span: ObservabilitySpan): Record<string, string> {
-  return {};
+// Degrades safely: when there are no usable headers, or the registered
+// propagator yields no remote span context (e.g. Firebase telemetry off in the
+// emulator → the no-op propagator returns the context unchanged), `fn` runs in
+// the current context exactly as if this helper were absent. Wrapped so an
+// extraction/context failure can never propagate to the caller (CLAUDE.md
+// Rule 10) — the worst case is a split trace, never a thrown request.
+//
+// The callable entrypoint env-gates whether this is invoked at all: it is
+// SUPPRESSED under GENKIT_TELEMETRY_SERVER (local dev) so flows stay root-listed
+// in the Genkit Dev UI, and honoured in production for one coherent trace.
+export function runWithExtractedTraceContext<T>(
+  headers: IncomingHttpHeaders | undefined,
+  fn: () => T,
+): T {
+  if (!headers || Object.keys(headers).length === 0) return fn();
+  try {
+    const active = context.active();
+    const extracted = propagation.extract(active, headers, defaultTextMapGetter);
+    // No global propagator / no inbound traceparent → extract returns the
+    // context unchanged; running within it is equivalent to a plain fn() call.
+    if (extracted === active) return fn();
+    return context.with(extracted, fn);
+  } catch {
+    // Never surface a propagation failure to the request hot path.
+    return fn();
+  }
 }
