@@ -12,7 +12,7 @@
     "prepare": "husky",
     "lint": "eslint \"**/*.{ts,js}\"",
     "lint:boundaries": "eslint \"packages/**/*.ts\" \"apps/**/*.ts\" \".boundary-tests/**/*.ts\"",
-    "typecheck": "tsc --build",
+    "typecheck": "tsc --build && tsc -p apps/web-pwa/e2e/tsconfig.json",
     "boundary:test": "sh .boundary-tests/run.sh",
     "provenance:check": "pnpm --filter @salt/ui-components provenance:check",
     "theme:check": "pnpm --filter @salt/ui-components theme:check",
@@ -61,21 +61,21 @@
     }
   },
   "devDependencies": {
-    "@commitlint/cli": "^20.5.0",
+    "@commitlint/cli": "^21.0.2",
     "@commitlint/config-conventional": "^21.0.2",
     "@typescript-eslint/eslint-plugin": "^8.61.1",
     "@typescript-eslint/parser": "^8.61.1",
     "@vitest/coverage-v8": "^4.1.9",
-    "dependency-cruiser": "^16.9.0",
+    "dependency-cruiser": "^17.4.3",
     "eslint": "^10.5.0",
     "eslint-plugin-boundaries": "^6.0.2",
     "eslint-plugin-playwright": "^2.10.4",
     "firebase-tools": "^15.22.0",
     "husky": "^9.1.7",
-    "lint-staged": "^16.4.0",
+    "lint-staged": "^17.0.8",
     "prettier": "^3.8.4",
     "prettier-plugin-svelte": "^4.1.1",
-    "typescript": "^5.8.3",
+    "typescript": "^6.0.3",
     "vitest": "^4.1.9"
   }
 }

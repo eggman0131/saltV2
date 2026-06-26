@@ -15,6 +15,7 @@
  */
 import { expect, test } from './fixtures/test';
 import { gotoAndSignIn, uniqueEmail } from './helpers/auth';
+import { withConvergenceDiagnostics } from './helpers/diagnostics';
 import {
   getAisles,
   getCanonItem,
@@ -22,9 +23,8 @@ import {
   seedCanonItem,
   waitForCanonReady,
 } from './helpers/seed';
-
-// How long to wait for cross-tab propagation (emulator is fast but sync is async).
-const CONVERGENCE_TIMEOUT = 20_000;
+// CONVERGENCE_TIMEOUT bounds cross-tab propagation (emulator is fast but sync is async).
+import { CONVERGENCE_TIMEOUT } from './helpers/timeouts';
 
 test.describe('canon sync — two-tab convergence', () => {
   // RESIDUAL FLAKE INSURANCE (#199): the root fix for the cross-client Listen
@@ -63,9 +63,11 @@ test.describe('canon sync — two-tab convergence', () => {
       await seedCanonItem(page1, { id: itemId, name: 'Sync Test Item' });
 
       // Tab B polls until the item arrives via the manifest subscription.
-      await expect
-        .poll(() => getCanonItem(page2, itemId), { timeout: CONVERGENCE_TIMEOUT })
-        .not.toBeNull();
+      await withConvergenceDiagnostics(testInfo, page2, 'canon-item-arrives', async () => {
+        await expect
+          .poll(() => getCanonItem(page2, itemId), { timeout: CONVERGENCE_TIMEOUT })
+          .not.toBeNull();
+      });
     } finally {
       await ctx1.close();
       await ctx2.close();
@@ -98,7 +100,9 @@ test.describe('canon sync — two-tab convergence', () => {
       expect(created).toHaveLength(2);
 
       // Tab B polls until both aisles arrive.
-      await expect.poll(() => getAisles(page2), { timeout: CONVERGENCE_TIMEOUT }).toHaveLength(2);
+      await withConvergenceDiagnostics(testInfo, page2, 'aisles-converge', async () => {
+        await expect.poll(() => getAisles(page2), { timeout: CONVERGENCE_TIMEOUT }).toHaveLength(2);
+      });
     } finally {
       await ctx1.close();
       await ctx2.close();
@@ -127,17 +131,21 @@ test.describe('canon sync — two-tab convergence', () => {
 
       // Write an aisle first.
       await seedAisles(page1, ['Bakery']);
-      await expect
-        .poll(async () => (await getAisles(page2)).some((a) => a.name === 'Bakery'), {
-          timeout: CONVERGENCE_TIMEOUT,
-        })
-        .toBe(true);
+      await withConvergenceDiagnostics(testInfo, page2, 'bakery-aisle-converges', async () => {
+        await expect
+          .poll(async () => (await getAisles(page2)).some((a) => a.name === 'Bakery'), {
+            timeout: CONVERGENCE_TIMEOUT,
+          })
+          .toBe(true);
+      });
 
       // Now write an item — it must propagate independently.
       await seedCanonItem(page1, { id: itemId, name: 'Bread' });
-      await expect
-        .poll(() => getCanonItem(page2, itemId), { timeout: CONVERGENCE_TIMEOUT })
-        .not.toBeNull();
+      await withConvergenceDiagnostics(testInfo, page2, 'bread-item-converges', async () => {
+        await expect
+          .poll(() => getCanonItem(page2, itemId), { timeout: CONVERGENCE_TIMEOUT })
+          .not.toBeNull();
+      });
     } finally {
       await ctx1.close();
       await ctx2.close();
@@ -182,9 +190,11 @@ test.describe('canon sync — two-tab convergence', () => {
       // Bring ctx1 back online — pending writes drain and propagate.
       await page1.evaluate(() => window.__e2e!.setFirestoreOffline(false));
 
-      await expect
-        .poll(() => getCanonItem(page2, itemId), { timeout: CONVERGENCE_TIMEOUT })
-        .not.toBeNull();
+      await withConvergenceDiagnostics(testInfo, page2, 'offline-drain-converges', async () => {
+        await expect
+          .poll(() => getCanonItem(page2, itemId), { timeout: CONVERGENCE_TIMEOUT })
+          .not.toBeNull();
+      });
     } finally {
       await ctx1.close();
       await ctx2.close();

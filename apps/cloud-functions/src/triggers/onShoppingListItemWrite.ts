@@ -27,7 +27,23 @@ function looksCompound(text: string): boolean {
 }
 
 export const onShoppingListItemWrite = onDocumentWritten(
-  { document: TRIGGER_PATH, region: 'europe-west2', secrets: [geminiApiKey, ldSdkKey] },
+  {
+    document: TRIGGER_PATH,
+    region: 'europe-west2',
+    secrets: [geminiApiKey, ldSdkKey],
+    // The match pipeline makes up to three sequential AI calls — entry parse
+    // (compound items only), embedding, then arbitration — each bounded at ~40s
+    // by withAiTimeout (20s + 1 retry), so ~120s worst case. The default 60s
+    // function timeout SIGKILLs the invocation mid-flight before the matchState
+    // write-back runs, stranding the item at 'pending' forever: triggers don't
+    // auto-retry and the item gets no further write to re-fire on. 180s leaves
+    // headroom over the bounded AI budget so a terminal state is always written.
+    // 512MiB mirrors canonicaliseRecipeIngredients — the same list() over the
+    // whole canon collection + embeddings OOM-kills the default 256MiB instance,
+    // another mid-flight death that leaves the item stuck 'pending'.
+    timeoutSeconds: 180,
+    memory: '512MiB',
+  },
   async (event) => {
     const after = event.data?.after;
     const before = event.data?.before;
@@ -69,6 +85,8 @@ export const onShoppingListItemWrite = onDocumentWritten(
     const currentNotes = typeof afterData['notes'] === 'string' ? afterData['notes'] : '';
 
     const { listId, itemId } = event.params;
+    const db = getFirestore();
+    const docRef = db.collection('shoppingLists').doc(listId).collection('items').doc(itemId);
 
     await whenServerObservabilityReady();
     const span = startSpan(`shoppingList.matchItem: ${rawText}`);
@@ -82,9 +100,6 @@ export const onShoppingListItemWrite = onDocumentWritten(
         { rawName: cleanName, ...(rawText ? { rawText } : {}) },
         buildMatchOrCreatePorts(span),
       );
-
-      const db = getFirestore();
-      const docRef = db.collection('shoppingLists').doc(listId).collection('items').doc(itemId);
 
       if (result.kind === 'err') {
         errorCategory = result.error.kind;
@@ -113,6 +128,24 @@ export const onShoppingListItemWrite = onDocumentWritten(
         ...(parsedAmount !== undefined ? { amount: parsedAmount } : undefined),
         ...(parsedUnit !== undefined ? { unit: parsedUnit } : undefined),
       });
+    } catch (err) {
+      // matchOrCreate and the AI adapters convert operational failures into a
+      // Result (handled as 'failed' above), so reaching here means an unexpected
+      // throw — a Firestore write blip, an OOM survivor, or a bug. Write a
+      // terminal 'failed' so the item never sits in limbo: the user sees it
+      // uncategorised under OTHER (checkable, re-addable) instead of a spinner
+      // that never resolves. A hard timeout/OOM SIGKILL can't run this catch —
+      // that path is prevented by the timeoutSeconds/memory headroom above.
+      errorCategory = 'exception';
+      logger.error('onShoppingListItemWrite: unexpected error', { err, docId: itemId });
+      await docRef
+        .update({ matchState: 'failed', updatedAt: new Date().toISOString() })
+        .catch((writeErr) => {
+          logger.error('onShoppingListItemWrite: failed to write terminal state', {
+            writeErr,
+            docId: itemId,
+          });
+        });
     } finally {
       // DORMANT: trace propagation — trigger boundary; mark per convention.
       // When re-enabled, extract trace context from a header injected at write

@@ -66,6 +66,9 @@ describe('manualStart option', () => {
 describe('startObservabilitySession', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // The session controls now stay inert until the LD client is initialised
+    // (the e2e LD-gate fix); init the shared module so delegation is exercised.
+    initLDObservability('test-key');
   });
 
   it('calls LDRecord.start with forceNew', async () => {
@@ -91,6 +94,10 @@ describe('startObservabilitySession', () => {
 });
 
 describe('stopObservabilitySession', () => {
+  beforeEach(() => {
+    initLDObservability('test-key');
+  });
+
   it('calls LDRecord.stop', () => {
     stopObservabilitySession();
     expect(mockStop).toHaveBeenCalled();
@@ -98,6 +105,10 @@ describe('stopObservabilitySession', () => {
 });
 
 describe('isObservabilitySessionActive', () => {
+  beforeEach(() => {
+    initLDObservability('test-key');
+  });
+
   it('returns true when recording state is Recording', () => {
     mockGetRecordingState.mockReturnValue('Recording');
     expect(isObservabilitySessionActive()).toBe(true);
@@ -106,5 +117,28 @@ describe('isObservabilitySessionActive', () => {
   it('returns false when recording state is NotRecording', () => {
     mockGetRecordingState.mockReturnValue('NotRecording');
     expect(isObservabilitySessionActive()).toBe(false);
+  });
+});
+
+// Regression for the e2e LD-gate: when LD is gated off (initLDObservability never
+// called), LDRecord is unwired and calling it throws. The session controls must
+// stay inert rather than throw, so a gated-off build doesn't break user flows.
+describe('uninitialised (LD gated off) — session controls stay inert', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.resetModules();
+  });
+
+  it('no-ops every entrypoint and never touches LDRecord', async () => {
+    const session = await import('../src/sessionControl.js');
+
+    expect(() => session.startObservabilitySession('repro')).not.toThrow();
+    expect(() => session.stopObservabilitySession()).not.toThrow();
+    expect(session.isObservabilitySessionActive()).toBe(false);
+
+    expect(mockStart).not.toHaveBeenCalled();
+    expect(mockStop).not.toHaveBeenCalled();
+    expect(mockAddSessionProperties).not.toHaveBeenCalled();
+    expect(mockGetRecordingState).not.toHaveBeenCalled();
   });
 });

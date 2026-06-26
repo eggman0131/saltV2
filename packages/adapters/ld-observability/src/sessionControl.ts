@@ -1,6 +1,10 @@
 import { LDRecord } from '@launchdarkly/session-replay';
+import { isObservabilityReady } from './init.js';
 
 export function startObservabilitySession(name?: string): void {
+  // LDRecord throws before initLDObservability has wired the Record plugin; stay
+  // inert when LD is uninitialised (e.g. gated off in the e2e build).
+  if (!isObservabilityReady()) return;
   if (name) {
     LDRecord.addSessionProperties({
       devSessionName: name,
@@ -11,9 +15,10 @@ export function startObservabilitySession(name?: string): void {
 }
 
 export function stopObservabilitySession(): void {
+  if (!isObservabilityReady()) return;
   LDRecord.stop();
 }
 
 export function isObservabilitySessionActive(): boolean {
-  return LDRecord.getRecordingState() === 'Recording';
+  return isObservabilityReady() && LDRecord.getRecordingState() === 'Recording';
 }

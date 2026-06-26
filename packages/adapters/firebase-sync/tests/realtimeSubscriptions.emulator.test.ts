@@ -9,8 +9,8 @@
  * (8080/9099) as the ad-hoc fallback.
  * Run via: pnpm test:emulator
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { initializeApp, deleteApp, type FirebaseApp } from 'firebase/app';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { initializeApp, deleteApp, getApps, type FirebaseApp } from 'firebase/app';
 import { initializeFirestore, connectFirestoreEmulator, doc, setDoc } from 'firebase/firestore';
 import type { Firestore } from 'firebase/firestore';
 import { getAuth, connectAuthEmulator, signInAnonymously } from 'firebase/auth';
@@ -29,7 +29,7 @@ import {
   subscribeShoppingListsConfig,
   saveShoppingListsConfig,
 } from '../src/shoppingListsConfigSubscription.js';
-import { clearFirestoreEmulator, initFirebaseEmulator, PROJECT_ID } from './emulatorHelpers.js';
+import { clearFirestoreEmulator, resetDefaultApp, PROJECT_ID } from './emulatorHelpers.js';
 import type {
   CanonItem,
   Aisle,
@@ -57,6 +57,7 @@ const CONVERGENCE_MS = 15_000;
 const _env = (import.meta as { env?: Record<string, string | undefined> }).env ?? {};
 const WRITER_FIRESTORE_PORT = Number(_env['VITE_EMULATOR_FIRESTORE_PORT'] ?? 8080);
 const WRITER_AUTH_PORT = _env['VITE_EMULATOR_AUTH_PORT'] ?? '9099';
+const WRITER_APP_NAME = 'rt-writer';
 
 let writerApp: FirebaseApp;
 let writerDb: Firestore;
@@ -80,10 +81,18 @@ function makeAisle(id: string, name: string): Aisle {
   return { id, name, order: 0 };
 }
 
-beforeAll(async () => {
-  await initFirebaseEmulator();
-
-  writerApp = initializeApp({ projectId: PROJECT_ID, apiKey: 'demo-api-key' }, 'rt-writer');
+// Both apps are re-created per test (not once in beforeAll) so a Listen channel
+// poisoned by a prior test's emulator gRPC corruption cannot bleed into the next
+// — that cross-test connection-state bleed is what turned a single transient
+// hiccup into a hard `subscribeAisles` convergence timeout (#319). resetDefaultApp
+// rebuilds the default app the subscribe* functions read through; createWriterApp
+// rebuilds the cross-client "writer" app.
+async function createWriterApp(): Promise<void> {
+  const stale = getApps().find((app) => app.name === WRITER_APP_NAME);
+  if (stale) {
+    await deleteApp(stale);
+  }
+  writerApp = initializeApp({ projectId: PROJECT_ID, apiKey: 'demo-api-key' }, WRITER_APP_NAME);
   // Force long-polling for the same reason as the default app (see init.ts): the
   // emulator's gRPC streaming transport intermittently corrupts the Listen
   // channel and poisons the writer's connection. (#122)
@@ -94,14 +103,16 @@ beforeAll(async () => {
     disableWarnings: true,
   });
   await signInAnonymously(writerAuth);
-});
-
-afterAll(async () => {
-  await deleteApp(writerApp);
-});
+}
 
 beforeEach(async () => {
   await clearFirestoreEmulator();
+  await resetDefaultApp();
+  await createWriterApp();
+});
+
+afterEach(async () => {
+  await deleteApp(writerApp);
 });
 
 describe('realtimeSubscriptions — Firestore emulator', () => {

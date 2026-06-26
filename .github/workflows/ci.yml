@@ -255,7 +255,3 @@ jobs:
           name: playwright-test-results
           path: apps/web-pwa/test-results/
           retention-days: 14
-
-      - name: Surface LD replay URLs
-        if: failure()
-        run: echo "::notice::Search the 'Run E2E tests' log above for 'LD replay:' lines to find session-replay URLs for failed tests."

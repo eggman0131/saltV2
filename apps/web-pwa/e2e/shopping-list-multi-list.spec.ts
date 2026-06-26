@@ -7,8 +7,7 @@
  */
 import { expect, test } from './fixtures/test';
 import { gotoAndSignIn, uniqueEmail } from './helpers/auth';
-
-const SYNC_TIMEOUT = 15_000;
+import { SYNC_TIMEOUT } from './helpers/timeouts';
 
 async function createFirstList(page: import('@playwright/test').Page): Promise<string> {
   await page.goto('/#/shopping');
