@@ -9,9 +9,7 @@ export default defineConfig({
   forbidOnly: CI,
   retries: CI ? 1 : 0,
   workers: 1,
-  reporter: CI
-    ? [['html'], ['github'], ['./e2e/reporter/ldSessionReporter.ts']]
-    : [['html'], ['list'], ['./e2e/reporter/ldSessionReporter.ts']],
+  reporter: CI ? [['html'], ['github']] : [['html'], ['list']],
   globalSetup: './e2e/globalSetup.ts',
   globalTeardown: './e2e/globalTeardown.ts',
 

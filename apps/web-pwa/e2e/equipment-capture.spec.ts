@@ -14,14 +14,12 @@
  */
 import { expect, test } from './fixtures/test';
 import { gotoAndSignIn, uniqueEmail } from './helpers/auth';
-
-const SYNC_TIMEOUT = 15_000;
-// First post-navigation render: the SPA route hydrates after sign-in + a fresh
-// emulator wipe and (for seeded specs) the manifest subscription must deliver.
-// Under sustained load (--repeat-each) this first paint can exceed SYNC_TIMEOUT,
-// so initial-render assertions use this larger explicit budget rather than
-// relying on retries.
-const HYDRATE_TIMEOUT = 30_000;
+// HYDRATE_TIMEOUT covers the first post-navigation render: the SPA route
+// hydrates after sign-in + a fresh emulator wipe and (for seeded specs) the
+// manifest subscription must deliver. Under sustained load (--repeat-each) this
+// first paint can exceed SYNC_TIMEOUT, so initial-render assertions use this
+// larger explicit budget rather than relying on retries.
+import { HYDRATE_TIMEOUT, SYNC_TIMEOUT } from './helpers/timeouts';
 
 // Deterministic AI answers. These are values a real model would not reliably
 // produce for the given inputs, so their presence in the UI/store can only come

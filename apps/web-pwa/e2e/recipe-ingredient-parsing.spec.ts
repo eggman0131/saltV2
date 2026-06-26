@@ -25,11 +25,10 @@
  * on the rawText/pending fallback and never touch the AI path.
  */
 import { expect, test } from './fixtures/test';
-import { gotoAndSignIn, uniqueEmail } from './helpers/auth';
+import { gotoAndSignIn, uniqueEmail, waitForBridge } from './helpers/auth';
 import { seedAisles, seedCanonItem, waitForCanonReady } from './helpers/seed';
+import { SYNC_TIMEOUT } from './helpers/timeouts';
 import type { Recipe } from '@salt/domain';
-
-const SYNC_TIMEOUT = 15_000;
 
 // The canned answer the faked parseRecipeIngredients model returns. Shape must
 // satisfy ParseRecipeIngredientsAIOutputSchema — the slim pre-ID AI shape: the
@@ -157,7 +156,7 @@ test.describe('recipes — AI parse + canonicalise', () => {
     );
 
     // ── Assert the parsed structure landed in the recipe store ───────────────
-    await page.waitForFunction(() => Boolean(window.__e2e), null, { timeout: 10_000 });
+    await waitForBridge(page);
     const afterParse = await page.evaluate<Recipe[]>(() => window.__e2e!.getRecipes() as Recipe[]);
     const parsed = afterParse.find((r) => r.id === recipeId);
     expect(parsed).toBeTruthy();
@@ -220,7 +219,7 @@ test.describe('recipes — AI parse + canonicalise', () => {
       timeout: SYNC_TIMEOUT,
     });
 
-    await page.waitForFunction(() => Boolean(window.__e2e), null, { timeout: 10_000 });
+    await waitForBridge(page);
     const afterReload = await page.evaluate<Recipe[]>(() => window.__e2e!.getRecipes() as Recipe[]);
     const reloaded = afterReload.find((r) => r.id === recipeId)!;
     const reloadedItems = reloaded.ingredients.flatMap((g) => g.items);

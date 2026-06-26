@@ -13,10 +13,9 @@
  * trigger firing.
  */
 import { expect, test } from './fixtures/test';
-import { gotoAndSignIn, uniqueEmail } from './helpers/auth';
+import { gotoAndSignIn, uniqueEmail, waitForBridge } from './helpers/auth';
 import { seedAisles, seedCanonItem } from './helpers/seed';
-
-const SYNC_TIMEOUT = 15_000;
+import { SYNC_TIMEOUT } from './helpers/timeouts';
 
 test.describe('shopping list — happy path', () => {
   test('add items, check off, clear checked, reload, persist', async ({ page }, testInfo) => {
@@ -143,7 +142,7 @@ test.describe('shopping list — happy path', () => {
 
     // Seed an aisle and a canon item so any future-matched dupes share a canonId.
     await page.goto('/');
-    await page.waitForFunction(() => Boolean(window.__e2e), null, { timeout: 10_000 });
+    await waitForBridge(page);
 
     const [dairyAisle] = await page.evaluate(() => window.__e2e!.seedAisles(['Dairy']));
     const milkCanon = await page.evaluate(

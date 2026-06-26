@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import type { FirebaseOptions } from 'firebase/app';
+import type { FirebaseApp, FirebaseOptions } from 'firebase/app';
 import {
   getFirestore,
   initializeFirestore,
@@ -13,7 +13,14 @@ import { getAuth } from 'firebase/auth';
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
 import { connectAuthEmulatorOnce } from './auth.js';
 
-let emulatorsConnected = false;
+// Tracks which app instances have had their emulator transports wired up.
+// Keyed to the app instance (not a module-global boolean) so that a torn-down
+// and re-created default app — as the emulator integration suite now does per
+// test to isolate a poisoned Listen channel (#319) — re-establishes its
+// emulator connection instead of being skipped by a stale "already connected"
+// flag. Still idempotent per app: connectFirestoreEmulator throws if called
+// twice on the same Firestore instance, and a live app is only ever wired once.
+const emulatorConnectedApps = new WeakSet<FirebaseApp>();
 
 export interface AppCheckConfig {
   /** reCAPTCHA Enterprise site key. Public — it ships in the client bundle. */
@@ -64,7 +71,7 @@ export function initFirebase(
     });
   }
 
-  if (useEmulators && !emulatorsConnected) {
+  if (useEmulators && !emulatorConnectedApps.has(app)) {
     const _env = (import.meta as { env?: Record<string, string | undefined> }).env ?? {};
     const firestorePort = Number(_env['VITE_EMULATOR_FIRESTORE_PORT'] ?? 8080);
     const functionsPort = Number(_env['VITE_EMULATOR_FUNCTIONS_PORT'] ?? 5001);
@@ -82,7 +89,7 @@ export function initFirebase(
     connectFirestoreEmulator(db, '127.0.0.1', firestorePort);
     connectFunctionsEmulator(getFunctions(app, 'europe-west2'), '127.0.0.1', functionsPort);
     connectAuthEmulatorOnce(getAuth(app));
-    emulatorsConnected = true;
+    emulatorConnectedApps.add(app);
   }
 }
 

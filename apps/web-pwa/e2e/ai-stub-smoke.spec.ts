@@ -18,12 +18,11 @@
  */
 import { expect, test } from './fixtures/test';
 import { gotoAndSignIn, uniqueEmail } from './helpers/auth';
-
-const SYNC_TIMEOUT = 15_000;
-// First post-navigation render hydrates the SPA route after sign-in + a fresh
-// emulator wipe; under sustained load (--repeat-each) it can exceed SYNC_TIMEOUT,
-// so the initial-render assertion uses this larger explicit budget.
-const HYDRATE_TIMEOUT = 30_000;
+// HYDRATE_TIMEOUT covers the first post-navigation render, which hydrates the
+// SPA route after sign-in + a fresh emulator wipe; under sustained load
+// (--repeat-each) it can exceed SYNC_TIMEOUT, so the initial-render assertion
+// uses this larger explicit budget.
+import { HYDRATE_TIMEOUT, SYNC_TIMEOUT } from './helpers/timeouts';
 
 // A make-believe accessory a real Gemini key would never return for this input —
 // so its presence in the UI/store can only have come from the stub.
