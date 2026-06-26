@@ -51,7 +51,7 @@ event, never to wall-clock time.
   _Verify:_ no `expect(await page.…())` / `expect(await getX())` used to _wait_ for state.
 
 - **NF-A4 (MUST NOT) — No `networkidle` / `waitForLoadState` as a barrier.** The PWA holds open
-  Firestore Listen streams and an LD session, so the network is never idle; `networkidle` either
+  Firestore Listen streams, so the network is never idle; `networkidle` either
   hangs or resolves nondeterministically. Wait for a UI or bridge signal instead. (The suite is
   currently clean here — keep it that way.)
 
@@ -226,7 +226,8 @@ Changing them is a harness change, not a test change — issue-first.
   `screenshot: 'only-on-failure'` must stay on, and the CI `e2e` job must keep uploading the HTML
   report + traces + `test-results` as artifacts. **Those artifacts _are_ the CI debugging path:**
   download them and open with the normal Playwright UI (`npx playwright show-trace` / `show-report`)
-  and CI debugging is identical to local — LD is **not** the remote fallback (see NF-I1). **Trace
+  and CI debugging is identical to local — the downloaded Playwright trace is the only debugging path
+  (see NF-I1). **Trace
   mode must be `retain-on-failure`, not `on-first-retry`.** `on-first-retry` only traces the _retry_
   attempt, so for a "passes on retry" flake the retained trace is of a run that _passed_ — useless
   for this suite's exact symptom. `retain-on-failure` keeps the trace of whichever attempt actually
@@ -285,12 +286,10 @@ A test that fails opaquely costs more than the bug it caught.
   `@playwright/test` directly.** The shared fixture wires the auto-fixtures every spec depends on —
   the per-test Firestore clear (NF-C1) and JS coverage
   ([fixtures/test.ts](../apps/web-pwa/e2e/fixtures/test.ts)); bypassing it silently drops them.
-  **LD reality check (corrected):** LaunchDarkly session _replay_ is `manualStart` under emulators
-  and nothing in the e2e path starts it, so the `getLDSessionURL` attach and the `ldSessionReporter`
-  `LD replay:` line are a **no-op in automated runs**. LD is therefore _not_ the CI flake-debugging
-  tool — the downloaded Playwright trace is (NF-G4). The reliability refactor gates LD off in the
-  e2e build and removes this vestigial replay machinery; LD observability stays a local-only,
-  on-demand tool (the dev `SessionOverlay`).
+  **Diagnosis path:** the CI flake-debugging tool is the downloaded Playwright trace (NF-G4) — there
+  is no remote session-replay fallback. (Historically the e2e harness attached a LaunchDarkly
+  session-replay URL, but that machinery was always a no-op under emulators and was retired with the
+  PostHog migration.)
 
 - **NF-I2 (SHOULD) — Name the async path you're waiting on.** A descriptive constant (NF-A5) and a
   one-line comment on each non-obvious settle/hold turns a future timeout into a diagnosable line
@@ -346,7 +345,7 @@ Harness (only if config/setup touched)
 [ ] NF-G4  Trace = retain-on-failure (+ video); screenshot/report/test-results artifacts uploaded
 
 Observability
-[ ] NF-I1  Imports test/expect from ./fixtures/test (keeps Firestore clear + coverage); no reliance on LD replay
+[ ] NF-I1  Imports test/expect from ./fixtures/test (keeps Firestore clear + coverage); diagnosis is the downloaded Playwright trace
 [ ] NF-I2  Non-obvious waits named/commented
 ```
 
@@ -361,7 +360,7 @@ this records the verdicts so the spec stays honest about what it kept and why.
 | --- | --- | --- |
 | Web-first / retrying assertions | **Kept → NF-A3** | Core; the suite already leans on `expect.poll`/`toPass`. |
 | Ban `waitForTimeout` | **Kept but narrowed → NF-A1/A2** | A blanket ban would wrongly flag the legitimate negative-assertion hold in `chat.spec`. Carved a precise exception. |
-| Avoid `networkidle`/`waitForLoadState` | **Kept → NF-A4** | Doubly true: the PWA holds Firestore Listen + LD streams open, so it never idles. Suite is already clean — keep it. |
+| Avoid `networkidle`/`waitForLoadState` | **Kept → NF-A4** | Doubly true: the PWA holds Firestore Listen streams open, so it never idles. Suite is already clean — keep it. |
 | Accessible-first locators; `data-testid` sparingly | **Kept → NF-B1/B2** | Matches existing authoring conventions. |
 | No `nth`/structural CSS | **Kept → NF-B3** | ~25 `nth`/`locator(css)` sites exist; flagged for per-case audit rather than a blanket ban. |
 | Per-test unique data | **Kept → NF-C2** | `uniqueEmail(testId)` already does this; made it a hard rule. |
@@ -370,7 +369,7 @@ this records the verdicts so the spec stays honest about what it kept and why.
 | `storageState` auth-once | **Rejected** | The app's `window.__e2e.devSignIn` bridge + allowlist seed is the established, faster auth path; `storageState` would bypass the blocking-function ordering this app actually needs to exercise. |
 | `forbidOnly` on CI | **Already satisfied → NF-G2** | Set in config. |
 | `retries: 2` on CI | **Adapted → NF-G3** | Salt uses `1`; the valuable part isn't the number, it's "a retry-pass is a bug, not a green." |
-| `trace`/`screenshot`/`video` on failure | **Corrected → NF-G4/NF-I1** | Trace/screenshot kept, but trace mode moves `on-first-retry`→`retain-on-failure` (the former traces the passing retry, not the failure) and `video: 'retain-on-failure'` is adopted. Downloaded Playwright artifacts — not LD replay (a no-op in e2e) — are the CI debugging path. |
+| `trace`/`screenshot`/`video` on failure | **Corrected → NF-G4/NF-I1** | Trace/screenshot kept, but trace mode moves `on-first-retry`→`retain-on-failure` (the former traces the passing retry, not the failure) and `video: 'retain-on-failure'` is adopted. Downloaded Playwright artifacts are the CI debugging path. |
 | `webServer` for app readiness | **Conditional → NF-G1 + [Harness note](#harness-option-webserver-deferred)** | The blanket ban was a WSL2 socket-probe deadlock (issue #79), moot on Mac and Linux CI. Now allowed for the Vite server only, via `url`/`wait.stdout` readiness, with emulator/CF bring-up still in `globalSetup`. Deferred cleanup, not a flake fix. |
 | Mock 3rd-party/nondeterministic calls | **Specialised → NF-E1/E4** | Realised concretely as the `FUNCTIONS_AI_FAKE` stub seam + stub-before-fire ordering. |
 | Freeze time/randomness | **Kept implicitly → NF-E3 / date-anchoring** | #297 already date-anchors the meal planner off live `this-week` rather than hardcoded dates; folded into determinism. |

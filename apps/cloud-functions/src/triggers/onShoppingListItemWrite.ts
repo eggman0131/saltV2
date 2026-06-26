@@ -7,20 +7,20 @@ import {
   flushServerObservability,
   startSpan,
   whenServerObservabilityReady,
-} from '@salt/ld-observability/server';
+} from '@salt/observability/server';
 import { buildMatchOrCreatePorts } from '../flows/matchOrCreateCanon.js';
 import { createServerEntryParseAdapter } from '../adapters/serverEntryParse.js';
 
 const TRIGGER_PATH = 'shoppingLists/{listId}/items/{itemId}';
 
 // The trigger reaches Gemini (parse/embed/arbitrate) via matchOrCreate and
-// emits LD server observability, so both secrets must be bound to its runtime —
+// emits PostHog server telemetry, so both secrets must be bound to its runtime —
 // otherwise production has no GEMINI_API_KEY and every match fails. The emulator
 // masked this by sourcing the keys from process.env (.secret.local). Defined
 // here (not imported from index.ts) to avoid a circular import; the Firebase
 // CLI aggregates same-named defineSecret calls across files at deploy time.
 const geminiApiKey = defineSecret('GEMINI_API_KEY');
-const ldSdkKey = defineSecret('LD_SDK_KEY');
+const posthogApiKey = defineSecret('POSTHOG_API_KEY');
 
 function looksCompound(text: string): boolean {
   return text.trim().split(/\s+/).length >= 3;
@@ -30,7 +30,7 @@ export const onShoppingListItemWrite = onDocumentWritten(
   {
     document: TRIGGER_PATH,
     region: 'europe-west2',
-    secrets: [geminiApiKey, ldSdkKey],
+    secrets: [geminiApiKey, posthogApiKey],
     // The match pipeline makes up to three sequential AI calls — entry parse
     // (compound items only), embedding, then arbitration — each bounded at ~40s
     // by withAiTimeout (20s + 1 retry), so ~120s worst case. The default 60s

@@ -1,0 +1,26 @@
+{
+  "name": "@salt/observability",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./src/index.ts"
+    },
+    "./server": {
+      "types": "./dist/server/index.d.ts",
+      "default": "./src/server/index.ts"
+    }
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "1.9.0",
+    "@salt/domain": "workspace:*",
+    "@salt/shared-types": "workspace:*",
+    "posthog-js": "^1.393.5",
+    "posthog-node": "^5.38.5"
+  }
+}

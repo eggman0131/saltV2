@@ -151,7 +151,7 @@ MatchLoggingPort
   logMatch(entry: MatchLogEntry): void
 
 Cross‑cutting ports:
-- are implemented by adapters (e.g. ld-observability, observability
+- are implemented by adapters (e.g. observability
   solutions)
 - are used by multiple modules or by the entire domain layer
 - address concerns that do not fit a single module's responsibilities
@@ -164,13 +164,14 @@ Example:
   Shopping module may call it separately.
   The port itself belongs to neither module — it is shared infrastructure.
 
-Composition note: `ld-observability` ships two subpath entrypoints. The
+Composition note: `@salt/observability` ships two subpath entrypoints. The
 default subpath implements `ErrorReportingPort` and `MatchLoggingPort` using
-the browser LaunchDarkly SDK and is bundled into `web-pwa`. The
-`@salt/ld-observability/server` subpath implements `MatchLoggingPort` for
-Cloud Functions using the LaunchDarkly Node SDK, shipping CF spans to LD's
-OTLP endpoint. `firebase-functions/logger` is used additively on the CF side
-for top-level summary logs to Cloud Logging.
+the browser PostHog SDK (`posthog-js`) and is bundled into `web-pwa`. The
+`@salt/observability/server` subpath implements `MatchLoggingPort` for
+Cloud Functions using `posthog-node` + native OpenTelemetry; CF spans export
+to GCP / Firebase Monitoring via `enableFirebaseTelemetry()`.
+`firebase-functions/logger` is used additively on the CF side for top-level
+summary logs to Cloud Logging.
 
 ============================================================
 5. Coordinators (Cross‑Module Workflows)

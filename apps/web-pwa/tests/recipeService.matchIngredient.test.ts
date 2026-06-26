@@ -11,8 +11,8 @@ vi.mock('@salt/firebase-sync', () => ({
   saveShoppingListItem: vi.fn(),
 }));
 
-vi.mock('@salt/ld-observability', () => ({
-  createLDErrorReportingAdapter: vi.fn(() => ({ report: vi.fn() })),
+vi.mock('@salt/observability', () => ({
+  createObservabilityErrorReportingAdapter: vi.fn(() => ({ report: vi.fn() })),
 }));
 
 import * as firebaseSync from '@salt/firebase-sync';

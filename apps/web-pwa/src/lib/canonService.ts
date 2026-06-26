@@ -7,11 +7,10 @@ import {
   callRegenerateCanonIcon,
 } from '@salt/firebase-sync';
 import {
-  createLDErrorReportingAdapter,
-  createLDMatchLoggingAdapter,
-  extractTraceHeaders,
+  createObservabilityErrorReportingAdapter,
+  createObservabilityMatchLoggingAdapter,
   startSpan,
-} from '@salt/ld-observability';
+} from '@salt/observability';
 import {
   approveCanonItem,
   appendCanonSynonym,
@@ -59,9 +58,9 @@ export const isLoadingAisles: Readable<boolean> = _isLoadingAisles;
 
 // ─── Error reporting ────────────────────────────────────────────────────────────
 
-let _errorReporter: ReturnType<typeof createLDErrorReportingAdapter> | null = null;
+let _errorReporter: ReturnType<typeof createObservabilityErrorReportingAdapter> | null = null;
 function getErrorReporter() {
-  if (!_errorReporter) _errorReporter = createLDErrorReportingAdapter();
+  if (!_errorReporter) _errorReporter = createObservabilityErrorReportingAdapter();
   return _errorReporter;
 }
 
@@ -200,24 +199,21 @@ export async function addCanonItem(
         span.setAttribute('canon.path', 'fast');
         span.setAttribute('canon.result', updated.name);
         const entry = logBuilder.complete(crypto.randomUUID(), 'matched', updated.id, updated.name);
-        void createLDMatchLoggingAdapter('fast', span)
+        void createObservabilityMatchLoggingAdapter('fast', span)
           .write(entry)
           .catch(() => {});
         return success({ decision: 'matched' as const, item: updated });
       }
     }
-    // DORMANT: trace propagation — headers still extracted and sent so the
-    // wire shape stays consistent, but the CF currently ignores _trace. See
-    // apps/cloud-functions/src/index.ts for the rationale and re-enable site.
-    const traceHeaders = extractTraceHeaders(span);
-    const result = await callMatchOrCreate(
-      {
-        rawName,
-        selectedAisleId,
-        ...(forceCreate !== undefined && { forceCreate }),
-      },
-      Object.keys(traceHeaders).length > 0 ? { traceHeaders } : undefined,
-    );
+    // No browser→CF trace headers are sent. Server-side trace unification reads
+    // the inbound W3C trace context off the request at the callable entrypoint
+    // (see apps/cloud-functions/src/index.ts); browser→CF trace minting stays
+    // deferred.
+    const result = await callMatchOrCreate({
+      rawName,
+      selectedAisleId,
+      ...(forceCreate !== undefined && { forceCreate }),
+    });
     if (result.kind === 'ok') {
       span.setAttribute('canon.outcome', result.value.decision);
       span.setAttribute('canon.path', 'cf');

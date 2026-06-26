@@ -11,7 +11,7 @@ import {
   subscribeShoppingListsConfig,
   saveShoppingListsConfig,
 } from '@salt/firebase-sync';
-import { createLDErrorReportingAdapter } from '@salt/ld-observability';
+import { createObservabilityErrorReportingAdapter } from '@salt/observability';
 import {
   createList,
   renameList,
@@ -63,9 +63,9 @@ export const isLoadingShoppingList: Readable<boolean> = _isLoadingShoppingList;
 
 // ─── Error reporting ─────────────────────────────────────────────────────────
 
-let _errorReporter: ReturnType<typeof createLDErrorReportingAdapter> | null = null;
+let _errorReporter: ReturnType<typeof createObservabilityErrorReportingAdapter> | null = null;
 function getErrorReporter() {
-  if (!_errorReporter) _errorReporter = createLDErrorReportingAdapter();
+  if (!_errorReporter) _errorReporter = createObservabilityErrorReportingAdapter();
   return _errorReporter;
 }
 

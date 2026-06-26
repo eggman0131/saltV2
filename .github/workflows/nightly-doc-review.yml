@@ -62,7 +62,7 @@ jobs:
             |----------------------------------------------------------------------------------------|-----------------------------------------------------------------|
             | `packages/domain/**`                                                                   | `docs/domain-implementation.md`, `docs/salt-architecture.md` (§3, §6) |
             | `packages/adapters/firebase-sync/**`                                                   | `docs/salt-architecture.md` (§6.1, §11), `docs/matching-pipeline.md` |
-            | `packages/adapters/ld-observability/**`                                                | `docs/salt-architecture.md` (§6.2), `docs/matching-pipeline.md` |
+            | `packages/adapters/observability/**`                                                   | `docs/salt-architecture.md` (§6.2), `docs/matching-pipeline.md` |
             | `apps/cloud-functions/**`                                                              | `docs/matching-pipeline.md`, `docs/salt-architecture.md` (§8)   |
             | `apps/web-pwa/**`                                                                      | `docs/salt-architecture.md` (§7)                                |
             | `packages/ui-components/**`                                                            | `docs/design/ui-spec-v04.md` (and any other ui-spec doc cited in changed files) |

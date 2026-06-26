@@ -1,9 +1,9 @@
 # E2E & emulator integration tests
 
 Playwright specs live in [`apps/web-pwa/e2e/`](../apps/web-pwa/e2e/). Each test signs in through the
-emulator (`window.__e2e.devSignIn`), tags the LaunchDarkly Observability session, and attaches the
-session-replay URL to the test result. See issue #14 for the foundation rationale and locked
-decisions.
+emulator (`window.__e2e.devSignIn`). Browser observability is gated off in the e2e build (the
+PostHog key is left empty), so there is no session-replay tagging — the downloaded Playwright trace
+is the debugging artifact. See issue #14 for the foundation rationale and locked decisions.
 
 > **Writing or reviewing a spec?** The stability contract every test must satisfy — the
 > pre-review gate for determinism, isolation, realtime/AI-trigger races, and timeouts — lives in
@@ -183,8 +183,8 @@ CI runs the two stacks as **separate, sequenced jobs** in
 There are no flaky `sleep`s anywhere in the gate — readiness is the container healthcheck
 (`up --wait`), and teardown is the deterministic `down -v` (in `globalTeardown` for e2e, in a
 `finally` for the Vitest orchestrator). On failure the `e2e` job uploads the Playwright HTML
-report and traces as `playwright-report` / `playwright-test-results` artifacts (14-day retention),
-and `LD replay: <url>` lines in the job log link to the matching LaunchDarkly session-replay.
+report and traces as `playwright-report` / `playwright-test-results` artifacts (14-day retention);
+the downloaded Playwright trace is the CI debugging path.
 
 ## Spotting & clearing a poisoned environment
 

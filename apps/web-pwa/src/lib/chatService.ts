@@ -5,7 +5,7 @@ import {
   streamChefChat,
   callGenerateChatTitle,
 } from '@salt/firebase-sync';
-import { createLDErrorReportingAdapter } from '@salt/ld-observability';
+import { createObservabilityErrorReportingAdapter } from '@salt/observability';
 import type { ChatSessionDoc } from '@salt/domain/schemas';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success } from '@salt/shared-types';
@@ -30,9 +30,9 @@ export function getChatSessionsSnapshot(): readonly ChatSessionDoc[] {
 const _isLoadingSessions = writable(true);
 export const isLoadingSessions: Readable<boolean> = _isLoadingSessions;
 
-let _errorReporter: ReturnType<typeof createLDErrorReportingAdapter> | null = null;
+let _errorReporter: ReturnType<typeof createObservabilityErrorReportingAdapter> | null = null;
 function getErrorReporter() {
-  if (!_errorReporter) _errorReporter = createLDErrorReportingAdapter();
+  if (!_errorReporter) _errorReporter = createObservabilityErrorReportingAdapter();
   return _errorReporter;
 }
 

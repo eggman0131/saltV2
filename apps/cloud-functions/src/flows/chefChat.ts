@@ -10,7 +10,8 @@ import {
 } from '@salt/domain/schemas';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
-import { flowModel } from '../ai/fakeModel.js';
+import { flowModel, aiModelLabel } from '../ai/fakeModel.js';
+import { tracedGenerate } from '../ai/aiGenerationTelemetry.js';
 
 async function readEquipmentContext(db: ReturnType<typeof getFirestore>): Promise<string> {
   try {
@@ -121,8 +122,10 @@ export const chefChatFlow = ai.defineFlow(
     }));
 
     // Pro-tier model for conversational quality (design principle #3, issue #206).
+    const chatModel = await flowModel('pro', 'chefChat');
+    const modelLabel = await aiModelLabel('pro', 'chefChat');
     const { stream, response } = ai.generateStream({
-      model: await flowModel('pro', 'chefChat'),
+      model: chatModel,
       system: systemPrompt,
       messages: history,
       prompt: input.newMessage,
@@ -133,10 +136,17 @@ export const chefChatFlow = ai.defineFlow(
       if (text) streamingCallback(text);
     }
 
-    const finalResponse = await withAiTimeout('chefChat', () => response, {
-      timeoutMs: 55_000,
-      retries: 0,
-    });
+    // Emit $ai_generation off the final aggregated response (carries usage). The
+    // stream itself is already draining above; tracedGenerate just awaits the
+    // resolved response under the existing timeout and records model/tokens/latency.
+    const finalResponse = await withAiTimeout(
+      'chefChat',
+      () => tracedGenerate('chefChat', modelLabel, () => response),
+      {
+        timeoutMs: 55_000,
+        retries: 0,
+      },
+    );
 
     return finalResponse.text;
   },

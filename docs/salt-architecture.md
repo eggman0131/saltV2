@@ -40,11 +40,11 @@ Until the first production deploy, Salt is **greenfield** — no real data exist
   adapters/
     firebase-sync                 # Firebase Auth + Firestore implementation
                                   # of realtime subscriptions, direct writes, and auth ports
-    ld-observability              # LaunchDarkly Observability SDK implementation
+    observability                 # PostHog implementation (posthog-js / posthog-node)
                                   # of error reporting and match logging ports
 ```
 
-`firebase-sync` and `ld-observability` are **siblings** — they do not depend on each other; both are wired together by the UI/composition layer.
+`firebase-sync` and `observability` are **siblings** — they do not depend on each other; both are wired together by the UI/composition layer.
 
 ---
 
@@ -52,10 +52,10 @@ Until the first production deploy, Salt is **greenfield** — no real data exist
 
 ### Allowed
 
-- web-pwa → domain, shared-types, ui-components, firebase-sync, ld-observability
-- cloud-functions → domain, shared-types, ld-observability/server
+- web-pwa → domain, shared-types, ui-components, firebase-sync, observability
+- cloud-functions → domain, shared-types, observability/server
 - firebase-sync → domain, shared-types
-- ld-observability → domain, shared-types
+- observability → domain, shared-types
 - domain → shared-types
 - shared-types → (no dependencies)
 
@@ -64,13 +64,13 @@ Until the first production deploy, Salt is **greenfield** — no real data exist
 - UI → Cloud Functions
 - UI → Firebase SDK directly
 - UI → IndexedDB / browser storage directly (narrow exception below)
-- UI → LaunchDarkly SDK directly
+- UI → PostHog SDK directly
 - Domain → Firebase SDK / IndexedDB / Node / browser APIs
 - Domain → UI
 - Cloud Functions → UI
-- Cloud Functions → ld-observability (the default subpath wraps the browser-only LaunchDarkly SDK and cannot run in Node; use `ld-observability/server` instead)
+- Cloud Functions → observability (the default subpath wraps the browser-only PostHog SDK `posthog-js` and cannot run in Node; use `observability/server` instead)
 - Cloud Functions → firebase-sync (CF talks to Firestore directly via `firebase-admin`; `firebase-sync` wraps the browser SDK and is not for server-side use)
-- firebase-sync ↔ ld-observability (adapters must not import each other)
+- firebase-sync ↔ observability (adapters must not import each other)
 - Any module → apps/web-pwa or apps/cloud-functions
 
 These rules must be enforced via ESLint, tsconfig project references, and commit gateway checks.
@@ -79,7 +79,7 @@ These rules must be enforced via ESLint, tsconfig project references, and commit
 
 `apps/web-pwa` may use `window.localStorage` for pre-authentication ephemeral state that has no Firestore-backed alternative. The only sanctioned use today is the magic-link **pending email** in `apps/web-pwa/src/lib/auth.svelte.ts`: it must persist before any user is signed in (so `persistentLocalCache` cannot apply — there is no authenticated session to write to Firestore), and email clients open the magic link in a fresh tab/window, so `sessionStorage` would be lost. The exception is:
 
-- **Scoped to `apps/web-pwa` only.** It does **not** extend to any adapter (`firebase-sync`, `ld-observability`), `domain`, or `cloud-functions`.
+- **Scoped to `apps/web-pwa` only.** It does **not** extend to any adapter (`firebase-sync`, `observability`), `domain`, or `cloud-functions`.
 - **Limited to pre-auth ephemeral state.** It is not a general license to use browser storage for app data — all post-sign-in data still flows through Firestore's `persistentLocalCache`.
 - **Tolerant of failure.** Writes are wrapped so that a missing/blocked `localStorage` degrades gracefully (the magic link re-prompts for the email on return).
 
@@ -163,27 +163,27 @@ This model is intentionally narrow. Multi‑workspace, sharing, or per‑documen
 - Must not contain domain logic — including conflict resolution.
 - Must not leak Firebase types across the boundary.
 
-### 6.2 ld-observability adapter
+### 6.2 observability adapter
 
 Ships two subpath entrypoints from a single package:
 
-**Default subpath (`@salt/ld-observability`)** — browser-only, bundled into `web-pwa`:
-- Implements `ErrorReportingPort` and `MatchLoggingPort` using the LaunchDarkly browser SDK.
+**Default subpath (`@salt/observability`)** — browser-only, bundled into `web-pwa`:
+- Implements `ErrorReportingPort` and `MatchLoggingPort` using the PostHog browser SDK (`posthog-js`). The match logger (`createPosthogMatchLoggingAdapter`, also exported as `createObservabilityMatchLoggingAdapter`) emits the slim `canon.match` PostHog event for each match/create outcome.
 - Normalizes errors into `DomainError` categories before crossing the boundary.
 - Must not be imported by Cloud Functions.
-- All public entrypoints (`startSpan`, `startObservabilitySession`, `stopObservabilitySession`, `isObservabilitySessionActive`, `tagObservabilitySession`, and the error reporter) are inert — returning no-op spans or silently no-oping — when `initLDObservability` has not been called. They never throw before initialisation; this upholds the adapter non-throw contract (Rule 10) when LD is gated off (e.g. via an empty `VITE_LD_CLIENT_SIDE_ID` in the e2e build).
+- All public entrypoints (`startSpan`, `startObservabilitySession`, `stopObservabilitySession`, `isObservabilitySessionActive`, `tagObservabilitySession`, and the error reporter) are inert — returning no-op spans or silently no-oping — when `initObservability` has not been called. They never throw before initialisation; this upholds the adapter non-throw contract (Rule 10) when PostHog is gated off (e.g. via an empty `VITE_PUBLIC_POSTHOG_KEY` in the e2e build, which makes the whole adapter a no-op — `posthog.init` is never called).
 
-**Server subpath (`@salt/ld-observability/server`)** — Node-only, bundled into `cloud-functions`:
-- Initialises an OTel `NodeTracerProvider` that ships CF spans to LaunchDarkly's OTLP endpoint.
-- Implements `MatchLoggingPort` for the CF side via `createServerLDMatchLoggingAdapter`.
-- Exposes `addServerSpanProcessor` so CF-local concerns (e.g. Genkit dev-trace routing) can register additional span processors without touching the adapter internals.
-- Exposes `setActiveSpanName(name)` to rename the currently-active OTel span from inside a Genkit flow body, appending a human-readable entity descriptor (e.g. the item name) so traces are scannable in the LaunchDarkly trace list. No-op when observability is uninitialised or no span is active; length-capped at 80 characters.
+**Server subpath (`@salt/observability/server`)** — Node-only, bundled into `cloud-functions`:
+- Wraps `posthog-node` for event capture and native OpenTelemetry (`@opentelemetry/api`) for spans. It does **not** own a tracer provider: `enableFirebaseTelemetry()` (Genkit-native) registers the single process-wide `NodeTracerProvider` and ships CF spans to GCP / Firebase Monitoring; these helpers operate on whatever provider is globally registered. The server adapter is a complete no-op when `POSTHOG_API_KEY` is absent (the `posthog-node` client is never built).
+- Implements `MatchLoggingPort` for the CF side via `createPosthogServerMatchLoggingAdapter` (also exported as `createServerObservabilityMatchLoggingAdapter`), emitting the same slim `canon.match` event via `posthog-node`.
+- Exposes `runWithExtractedTraceContext(headers, fn)` to extract the inbound W3C trace context from the request headers and run a Genkit flow within it, so the flow span nests under the platform request span (env-gated — see §8 / CLAUDE.md). `flushServerObservability()` drains queued events before a function returns, and `captureAiGeneration` records per-call LLM cost/usage as a PostHog `$ai_generation` event.
+- Exposes `setActiveSpanName(name)` to rename the currently-active OTel span from inside a Genkit flow body, appending a human-readable entity descriptor (e.g. the item name) so traces are scannable in the Genkit / Cloud trace view. No-op when no span is active; length-capped at 80 characters.
 - `firebase-functions/logger` is used additively for top-level summary logs to Cloud Logging.
 
-Both subpaths share a runtime-neutral schema mapper (`src/shared/`) so the `canon.match` wire schema cannot drift between fast-path and CF emissions.
+Both subpaths share a runtime-neutral schema mapper (`src/shared/matchOutcomeEvent.ts`, exporting `toCanonMatchEvent` / `CANON_MATCH_EVENT`) so the `canon.match` wire schema cannot drift between fast-path and CF emissions.
 
 Common rules for both subpaths:
-- May import the LaunchDarkly SDK; nothing else in the codebase may.
+- May import the PostHog SDKs (`posthog-js` / `posthog-node`); nothing else in the codebase may.
 - Must not import Firebase, IndexedDB, browser storage, UI, or other adapters.
 - Must not contain domain logic or business rules.
 
@@ -193,7 +193,7 @@ Common rules for both subpaths:
 - All adapters use `shared-types` for DTOs and result types.
 - Adapters must not import each other; all are composed at the application layer.
 - `firebase-sync` is the **only** module permitted to import Firebase SDKs.
-- `ld-observability` is the **only** module permitted to import the LaunchDarkly Observability SDK.
+- `observability` is the **only** module permitted to import the PostHog SDKs (`posthog-js` / `posthog-node`).
 - IndexedDB, `idb`, `idb-keyval` are **forbidden** everywhere. Offline persistence is provided by Firestore's `persistentLocalCache`.
 
 ---
@@ -272,7 +272,7 @@ All categories are intentionally minimal.
 
 Cloud Functions:
 
-- Import domain + ld-observability/server (never the default `ld-observability` subpath, which wraps the browser-only SDK and cannot run in Node)
+- Import domain + observability/server (never the default `observability` subpath, which wraps the browser-only PostHog SDK `posthog-js` and cannot run in Node)
 - Talk to Firestore directly via `firebase-admin` — do not import `@salt/firebase-sync`, which wraps the browser SDK
 - Never import UI
 - Never contain business logic
@@ -286,8 +286,8 @@ Cloud Functions:
 
 The PWA:
 
-- Imports domain, firebase-sync, ld-observability, ui-components, shared-types
-- Never imports Firebase SDK, IndexedDB, or LaunchDarkly SDK directly
+- Imports domain, firebase-sync, observability, ui-components, shared-types
+- Never imports Firebase SDK, IndexedDB, or PostHog SDK directly
 - Never contains business logic (including conflict resolution policy)
 - Uses domain commands/queries as its API
 - Wires `AuthProvider`, `ErrorReportingPort`, `MatchLoggingPort`, `EmbeddingPort`, and `CanonArbitrationPort` at composition time
@@ -324,9 +324,9 @@ This module must remain extremely small and stable.
 - Enforce allowed import graph (boundaries plugin)
 - Forbid Firebase imports outside firebase-sync
 - Forbid IndexedDB / browser storage imports everywhere
-- Forbid LaunchDarkly Observability SDK imports outside ld-observability
-- Forbid the default `ld-observability` subpath imports in cloud-functions (browser-only); `ld-observability/server` is allowed
-- Forbid firebase-sync ↔ ld-observability imports (sibling adapters must not import each other)
+- Forbid PostHog SDK imports outside observability
+- Forbid the default `observability` subpath imports in cloud-functions (browser-only); `observability/server` is allowed
+- Forbid firebase-sync ↔ observability imports (sibling adapters must not import each other)
 - Forbid domain importing anything except shared-types
 - Forbid UI importing Cloud Functions
 - Forbid circular dependencies
@@ -349,7 +349,7 @@ Every commit must:
 - Pass formatting
 - Reject any Firebase import outside firebase-sync
 - Reject any IndexedDB import anywhere
-- Reject any LaunchDarkly SDK import outside ld-observability
+- Reject any PostHog SDK import outside observability
 - Reject any UI → backend leakage
 - Reject any domain impurity (Node/browser/Firebase imports)
 
@@ -367,9 +367,9 @@ Every commit must:
 - Unit tests with mocks
 - Integration tests against the Firebase emulator (Firestore only; persistent cache disabled in emulator tests)
 
-### ld-observability
+### observability
 
-- Unit tests with mocked LaunchDarkly SDK
+- Unit tests with mocked PostHog SDK
 - Tests that error normalization preserves error context
 
 ### Cloud Functions
@@ -390,8 +390,8 @@ Every commit must:
 - web-pwa → deployed as PWA
 - cloud-functions → deployed to Firebase Functions
 - firebase-sync → bundled into UI only (browser SDK; not imported by Cloud Functions)
-- ld-observability (default subpath) → bundled into UI only (browser-only SDK)
-- ld-observability/server → bundled into cloud-functions (Node SDK, OTLP exporter)
+- observability (default subpath) → bundled into UI only (browser-only PostHog SDK `posthog-js`)
+- observability/server → bundled into cloud-functions (`posthog-node` + native OTel; spans export via `enableFirebaseTelemetry()`)
 - domain → bundled into UI and Cloud Functions
 - shared-types → type-only package
 
@@ -401,11 +401,11 @@ Every commit must:
 
 - No Firebase SDK in UI
 - No IndexedDB / browser storage anywhere — use Firestore's persistent cache (one narrow exception: pre-auth ephemeral state in `web-pwa`, see §3)
-- No LaunchDarkly SDK in UI or other adapters (only in ld-observability)
+- No PostHog SDK in UI or other adapters (only in observability)
 - No business logic outside domain (including conflict resolution)
 - No cross-module imports outside the allowed graph
 - No global state
-- No leaking Firebase / LaunchDarkly types across boundaries
+- No leaking Firebase / PostHog types across boundaries
 - No circular dependencies
 - No untyped data flow
 - No per‑document ACLs or multi‑workspace logic until explicitly requested

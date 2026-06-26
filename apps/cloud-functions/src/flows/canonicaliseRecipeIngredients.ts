@@ -6,7 +6,7 @@ import {
   flushServerObservability,
   startSpan,
   whenServerObservabilityReady,
-} from '@salt/ld-observability/server';
+} from '@salt/observability/server';
 import { ai } from '../genkit.js';
 import { buildMatchOrCreatePorts } from './matchOrCreateCanon.js';
 
@@ -39,10 +39,10 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
       ...(item.rawText !== undefined ? { rawText: item.rawText } : {}),
       ...(item.selectedAisleId !== undefined ? { selectedAisleId: item.selectedAisleId } : {}),
     }));
-    // One parent span for the whole batch so every per-item canon.stages span
-    // is parented under a single trace. Without this the batch passes no parent
-    // to buildMatchOrCreatePorts, so each item's match-log span roots its own
-    // trace — N near-identical traces in LaunchDarkly for one recipe.
+    // One parent span for the whole batch so every per-item canon span is
+    // parented under a single trace. Without this the batch passes no parent to
+    // buildMatchOrCreatePorts, so each item's match-log span roots its own
+    // trace — N near-identical traces for one recipe.
     const batchSpan = startSpan(`canon.canonicaliseRecipeBatch: ${inputs.length} items`);
     try {
       batchSpan.setAttribute('canon.batchSize', inputs.length);

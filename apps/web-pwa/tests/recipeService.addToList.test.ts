@@ -11,8 +11,8 @@ vi.mock('@salt/firebase-sync', () => ({
   saveShoppingListItem: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
 }));
 
-vi.mock('@salt/ld-observability', () => ({
-  createLDErrorReportingAdapter: vi.fn(() => ({ report: vi.fn() })),
+vi.mock('@salt/observability', () => ({
+  createObservabilityErrorReportingAdapter: vi.fn(() => ({ report: vi.fn() })),
 }));
 
 // ─── Mock canonService ───────────────────────────────────────────────────────

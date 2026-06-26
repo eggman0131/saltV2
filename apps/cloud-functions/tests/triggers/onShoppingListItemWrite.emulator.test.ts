@@ -33,10 +33,16 @@ vi.mock('firebase-functions', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-vi.mock('@salt/ld-observability/server', () => ({
+vi.mock('@salt/observability/server', () => ({
   startSpan: vi.fn(() => ({ setAttribute: vi.fn(), end: vi.fn() })),
   flushServerObservability: vi.fn().mockResolvedValue(undefined),
   whenServerObservabilityReady: vi.fn().mockResolvedValue(undefined),
+  initServerObservability: vi.fn(),
+  isServerObservabilityInitialised: vi.fn(() => false),
+  createServerObservabilityMatchLoggingAdapter: vi.fn(() => ({
+    write: vi.fn().mockResolvedValue(undefined),
+  })),
+  captureAiGeneration: vi.fn(),
 }));
 
 const mockMatchOrCreate = vi.fn();

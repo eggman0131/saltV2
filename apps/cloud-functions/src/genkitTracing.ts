@@ -1,33 +1,21 @@
-import { BatchSpanProcessor, type ReadableSpan } from '@opentelemetry/sdk-trace-node';
-import { SPAN_TYPE_ATTR, TraceServerExporter, setTelemetryServerUrl } from 'genkit/tracing';
-import { addServerSpanProcessor } from '@salt/ld-observability/server';
+import { setTelemetryServerUrl } from 'genkit/tracing';
 
-// Register the Genkit dev-trace routing processor so that spans tagged by
-// Genkit (SPAN_TYPE_ATTR) are forwarded to the local Genkit Admin UI when
-// GENKIT_TELEMETRY_SERVER is set (i.e. during `pnpm dev:emulators`).
+// Route Genkit flow traces to the local Genkit Dev UI when GENKIT_TELEMETRY_SERVER
+// is set (i.e. during `pnpm dev:emulators`).
 //
-// This lives here — next to disableGenkitOTelInitialization() in genkit.ts —
-// so both halves of the LD ↔ Genkit OTel registration dance are co-located
-// in CF land. Call this after initServerObservability() to ensure the
-// provider exists before the processor is attached.
+// Re-homed for the PostHog migration. Previously this attached a manual
+// BatchSpanProcessor(TraceServerExporter) to the LaunchDarkly-owned
+// NodeTracerProvider via addServerSpanProcessor() — that workaround was only
+// needed because disableGenkitOTelInitialization() had turned OFF Genkit's
+// native span export so spans could be routed through LD's provider instead.
+//
+// With LD gone, Genkit's own OTel pipeline is enabled again (see genkit.ts), so
+// Genkit exports its spans to the telemetry server natively. Pointing it at the
+// dev server URL is all that's required — no provider, no manual span processor.
+// This path does NOT depend on any self-owned NodeTracerProvider; OTel for
+// production is owned by enableFirebaseTelemetry() in index.ts.
 export function registerGenkitDevTracing(): void {
   const genkitUrl = process.env['GENKIT_TELEMETRY_SERVER'];
   if (!genkitUrl) return;
-
   setTelemetryServerUrl(genkitUrl);
-  const genkitBatch = new BatchSpanProcessor(new TraceServerExporter());
-  addServerSpanProcessor({
-    onStart(): void {},
-    onEnd(span: ReadableSpan): void {
-      if (span.attributes[SPAN_TYPE_ATTR] !== undefined) {
-        genkitBatch.onEnd(span);
-      }
-    },
-    forceFlush(): Promise<void> {
-      return genkitBatch.forceFlush();
-    },
-    shutdown(): Promise<void> {
-      return genkitBatch.shutdown();
-    },
-  });
 }

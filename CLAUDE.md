@@ -8,23 +8,23 @@ This file is the authoritative, machine-enforced architecture contract. Violatin
 shared-types               →  (nothing)
 domain                     →  shared-types
 firebase-sync              →  domain, shared-types          # Firebase SDKs only; Firestore is the live data layer
-ld-observability           →  domain, shared-types          # LaunchDarkly browser SDK; default subpath
-ld-observability/server    →  domain, shared-types          # Ships CF spans to LD's OTLP endpoint; exposes a span-processor registration hook for CF-local concerns
+observability              →  domain, shared-types          # PostHog browser SDK (posthog-js); default subpath, for web-pwa
+observability/server       →  domain, shared-types          # posthog-node + native OTel; ships CF spans/events server-side, exposes a span-processor registration hook for CF-local concerns
 ui-components              →  (external only — shadcn/tailwind)
-testing-utils              →  shared-types, domain, firebase-sync, ld-observability
-web-pwa                    →  shared-types, domain, firebase-sync, ld-observability, ui-components
-cloud-functions            →  shared-types, domain, ld-observability/server
+testing-utils              →  shared-types, domain, firebase-sync
+web-pwa                    →  shared-types, domain, firebase-sync, observability, ui-components
+cloud-functions            →  shared-types, domain, observability/server
 ```
 
-`firebase-sync` and `ld-observability` are **siblings** — they must not import each other. `@salt/ld-observability` ships two subpath entrypoints from a single package: the default subpath wraps the LaunchDarkly browser SDK and is for `web-pwa`; `@salt/ld-observability/server` wraps the LaunchDarkly Node SDK and is for `cloud-functions`. The two subpaths share a runtime-neutral schema mapper (`src/shared/`) so the `canon.match` wire schema cannot drift between fast-path and CF emissions. Cross-runtime imports are forbidden: `web-pwa` must not import `/server`, and `cloud-functions` must not import the default subpath.
+`firebase-sync` and `observability` are **siblings** — they must not import each other. `@salt/observability` ships two subpath entrypoints from a single package: the default subpath wraps the PostHog browser SDK (`posthog-js`) and is for `web-pwa`; `@salt/observability/server` wraps `posthog-node` + native OpenTelemetry and is for `cloud-functions`. The two subpaths share a runtime-neutral schema mapper (`src/shared/`) so the `canon.match` wire schema cannot drift between fast-path and CF emissions. Cross-runtime imports are forbidden: `web-pwa` must not import `/server`, and `cloud-functions` must not import the default subpath.
 
 ## Hard rules
 
 1. **Domain is pure.** `packages/domain` must not import Firebase, Node.js built-ins, browser APIs, or any I/O. No side effects. Pure functions and types only. Conflict resolution policy lives here.
 2. **Firebase SDK only in `firebase-sync`.** The only place `firebase` or `firebase-admin` may be imported is `packages/adapters/firebase-sync`.
 3. **No IndexedDB / browser storage.** No package may import `idb`, `idb-keyval`, or touch `window.indexedDB` / `localStorage` / `sessionStorage` / `caches` directly. Offline reads and writes are handled by Firestore's `persistentLocalCache`. **Narrow exception:** `apps/web-pwa` may use `window.localStorage` for pre-authentication ephemeral state that has no Firestore-backed alternative — specifically the magic-link pending email in `apps/web-pwa/src/lib/auth.svelte.ts`, which must persist before any user is signed in (email clients open the link in a fresh tab/window, so `sessionStorage` is unavailable). This exception is scoped to `apps/web-pwa` only and explicitly excludes all adapters; everything else stays forbidden.
-4. **Adapters do not import each other.** `firebase-sync` ↔ `ld-observability` is forbidden in both directions.
-5. **Cloud Functions do not import the default `@salt/ld-observability` subpath.** That subpath wraps the browser-only LaunchDarkly SDK and cannot run in Node. Server-side observability uses `@salt/ld-observability/server` (LaunchDarkly Node SDK). `firebase-functions/logger` continues to be used additively for CF-side match logs.
+4. **Adapters do not import each other.** `firebase-sync` ↔ `observability` is forbidden in both directions.
+5. **Cloud Functions do not import the default `@salt/observability` subpath.** That subpath wraps the browser-only PostHog SDK (`posthog-js`) and cannot run in Node. Server-side observability uses `@salt/observability/server` (`posthog-node` + native OpenTelemetry). `firebase-functions/logger` continues to be used additively for CF-side match logs.
 6. **No importing apps.** Nothing may import `@salt/web-pwa` or `@salt/cloud-functions`.
 7. **UI primitives go through `@salt/ui-components`.** `apps/web-pwa` must never import `shadcn-svelte`, `bits-ui`, or `melt-ui` directly — always through `@salt/ui-components`.
 8. **No circular dependencies.** Enforced by dependency-cruiser.
@@ -41,7 +41,7 @@ cloud-functions            →  shared-types, domain, ld-observability/server
 
 - **All AI access via Genkit callables.** Every Gemini call goes through a Genkit flow invoked as a Firebase callable Cloud Function. No AI API keys in the client.
 - **Wrap every AI call in `withAiTimeout`.** Bare Genkit flow calls have no built-in timeout and will hang the function for the full 60 s quota on a slow or hung model response. This applies to callable flows and Firestore triggers alike. Functions calling AI must also declare their AI-related secrets.
-- **Trace propagation is dormant.** Cross-callable trace context propagation was disabled 2026-05-11 (it broke the Genkit Dev UI). New callable flows use `onCallGenkit`. Do not re-add `runWithExtractedTraceContext` without first resolving that regression. Grep `DORMANT: trace propagation` to find all plumbing sites.
+- **Server-side trace propagation is env-gated.** Each CF invocation renders as one coherent trace: in production the `matchOrCreateCanon` callable extracts the inbound W3C trace context from `request.rawRequest.headers` and runs the flow within it (`runWithExtractedTraceContext` in `@salt/observability/server`), so the Genkit flow span nests under the platform request span instead of re-rooting. This is SUPPRESSED when `GENKIT_TELEMETRY_SERVER` is set (local `pnpm dev:emulators`) so flows stay root-listed in the Genkit Dev UI — the env-gate is what resolved the 2026-05-11 regression that originally parked propagation. New callable flows that don't need this nesting can use `onCallGenkit`. Browser→CF trace unification (minting a fresh browser traceparent) stays deferred — the vestigial browser→CF `_trace` payload plumbing was removed, so do not re-add a `_trace` wire field; server-side unification reads the request headers, not the payload.
 
 ## Workflow
 
@@ -75,7 +75,7 @@ cloud-functions            →  shared-types, domain, ld-observability/server
 | `packages/shared-types`           | `@salt/shared-types`   |
 | `packages/domain`                 | `@salt/domain`         |
 | `packages/adapters/firebase-sync`  | `@salt/firebase-sync`  |
-| `packages/adapters/ld-observability` | `@salt/ld-observability` |
+| `packages/adapters/observability`  | `@salt/observability`  |
 | `packages/ui-components`           | `@salt/ui-components`  |
 | `packages/testing-utils`          | `@salt/testing-utils`  |
 | `apps/web-pwa`                    | `@salt/web-pwa`        |

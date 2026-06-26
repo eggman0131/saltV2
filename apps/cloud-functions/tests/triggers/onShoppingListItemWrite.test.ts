@@ -33,17 +33,23 @@ vi.mock('firebase-admin/firestore', () => ({
   }),
 }));
 
-// ─── Mock @salt/ld-observability/server ──────────────────────────────────────
+// ─── Mock @salt/observability/server ──────────────────────────────────────────
 
 const mockSpan = {
   setAttribute: vi.fn(),
   end: vi.fn(),
 };
 
-vi.mock('@salt/ld-observability/server', () => ({
+vi.mock('@salt/observability/server', () => ({
   startSpan: vi.fn(() => mockSpan),
   flushServerObservability: vi.fn().mockResolvedValue(undefined),
   whenServerObservabilityReady: vi.fn().mockResolvedValue(undefined),
+  initServerObservability: vi.fn(),
+  isServerObservabilityInitialised: vi.fn(() => false),
+  createServerObservabilityMatchLoggingAdapter: vi.fn(() => ({
+    write: vi.fn().mockResolvedValue(undefined),
+  })),
+  captureAiGeneration: vi.fn(),
 }));
 
 // ─── Mock matchOrCreate from @salt/domain ────────────────────────────────────

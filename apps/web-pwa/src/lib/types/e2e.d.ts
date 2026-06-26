@@ -7,7 +7,7 @@ import type {
   ShoppingList,
   ShoppingListItem,
 } from '@salt/domain';
-import type { ObservabilitySessionMeta } from '@salt/ld-observability';
+import type { ObservabilitySessionMeta } from '@salt/observability';
 import type { ChatSessionDoc } from '@salt/domain/schemas';
 
 export interface SeedCanonItemInput {

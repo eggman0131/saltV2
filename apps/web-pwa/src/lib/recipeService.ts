@@ -7,7 +7,7 @@ import {
   callExtractRecipeFromUrl,
   saveShoppingListItem,
 } from '@salt/firebase-sync';
-import { createLDErrorReportingAdapter } from '@salt/ld-observability';
+import { createObservabilityErrorReportingAdapter } from '@salt/observability';
 import { addItem, recipeItemAddDefault } from '@salt/domain';
 import type {
   Recipe,
@@ -46,9 +46,9 @@ export const isLoadingRecipes: Readable<boolean> = _isLoadingRecipes;
 
 // ─── Error reporting ────────────────────────────────────────────────────────────
 
-let _errorReporter: ReturnType<typeof createLDErrorReportingAdapter> | null = null;
+let _errorReporter: ReturnType<typeof createObservabilityErrorReportingAdapter> | null = null;
 function getErrorReporter() {
-  if (!_errorReporter) _errorReporter = createLDErrorReportingAdapter();
+  if (!_errorReporter) _errorReporter = createObservabilityErrorReportingAdapter();
   return _errorReporter;
 }
 

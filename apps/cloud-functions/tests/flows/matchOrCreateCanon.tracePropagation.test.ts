@@ -1,185 +1,220 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { CanonItem } from '@salt/domain';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// ─── In-memory Firestore mock ─────────────────────────────────────────────────
+// ─── Env-gated server-side trace unification at the callable boundary ─────────
+//
+// Phase 3 makes each CF invocation render as ONE coherent trace: the Genkit
+// flow span nests under the platform request span instead of re-rooting a fresh
+// trace. The unification is env-gated at the matchOrCreateCanon callable
+// entrypoint (apps/cloud-functions/src/index.ts):
+//
+//   • PRODUCTION (GENKIT_TELEMETRY_SERVER unset): the entrypoint reads the
+//     inbound W3C trace headers off request.rawRequest.headers and runs the flow
+//     within the extracted context via runWithExtractedTraceContext, so the flow
+//     span parents under the request trace.
+//   • LOCAL DEV (GENKIT_TELEMETRY_SERVER set, by `pnpm dev:emulators`):
+//     propagation is SUPPRESSED — the flow runs without any installed parent
+//     context so it stays root-listed in the Genkit Dev UI (whose trace list
+//     surfaces only flow-rooted traces). This gate is exactly what resolves the
+//     2026-05-11 regression that previously parked propagation.
+//
+// These tests import the real callable from index.ts (with onCall stubbed to
+// return the handler) and assert the gate's branch behaviour, plus that the
+// vestigial browser→CF `_trace` wire field is gone (no longer accepted or
+// forwarded — the flow is invoked with request.data verbatim).
 
-const collections = new Map<string, Map<string, Record<string, unknown>>>();
+// ─── Capture the runWithExtractedTraceContext + flow calls ────────────────────
 
-function getCollection(name: string) {
-  let c = collections.get(name);
-  if (!c) {
-    c = new Map();
-    collections.set(name, c);
-  }
-  return c;
-}
-
-function resetFirestore() {
-  collections.clear();
-}
-
-vi.mock('firebase-admin/firestore', () => ({
-  getFirestore: () => ({
-    collection: (name: string) => {
-      const store = getCollection(name);
-      return {
-        doc: (id: string) => ({
-          async set(data: Record<string, unknown>) {
-            store.set(id, data);
-          },
-          async get() {
-            return { exists: store.has(id), data: () => store.get(id) };
-          },
-          async delete() {
-            store.delete(id);
-          },
-        }),
-        async get() {
-          return { docs: [...store.values()].map((data) => ({ data: () => data })) };
-        },
-      };
-    },
-  }),
+const runWithExtractedTraceContext = vi.fn(
+  (_headers: unknown, fn: () => unknown) => fn() as unknown,
+);
+const matchOrCreateCanonFlow = vi.fn(async (_input: unknown) => ({
+  kind: 'ok' as const,
+  value: { decision: 'matched' as const, item: { name: 'Tomato' } },
 }));
 
-vi.mock('../../src/genkit.js', () => ({
-  ai: { defineFlow: (_cfg: unknown, handler: unknown) => handler },
-}));
-
-const mockEmbed = vi.fn(async () => ({ values: [0, 0, 0] }));
-const mockArbitrate = vi.fn();
-vi.mock('../../src/flows/embedText.js', () => ({
-  embedTextFlow: (input: { text: string }) => mockEmbed(input),
-}));
-vi.mock('../../src/flows/arbitrateCanon.js', () => ({
-  arbitrateCanonFlow: (input: unknown) => mockArbitrate(input),
-}));
-
-// ─── Spy on the server LD observability surface ───────────────────────────────
-
-const startSpanCalls: Array<{
-  name: string;
-  opts?: { headers?: Record<string, string>; parent?: unknown };
-}> = [];
-
-const fakeSpan = {
-  setAttribute: vi.fn(),
-  end: vi.fn(),
-};
-
-vi.mock('@salt/ld-observability/server', () => ({
+vi.mock('@salt/observability/server', () => ({
   initServerObservability: vi.fn(),
-  isServerObservabilityInitialised: () => true,
   whenServerObservabilityReady: vi.fn(async () => {}),
-  flushServerObservability: vi.fn(async () => {}),
-  startSpan: vi.fn((name: string, opts?: unknown) => {
-    startSpanCalls.push({ name, opts: opts as { headers?: Record<string, string> } });
-    return fakeSpan;
-  }),
-  createServerLDMatchLoggingAdapter: () => ({
-    write: vi.fn(async () => {}),
-  }),
+  runWithExtractedTraceContext,
 }));
 
-const { matchOrCreateCanonFlow } = await import('../../src/flows/matchOrCreateCanon.js');
+vi.mock('../../src/flows/matchOrCreateCanon.js', () => ({ matchOrCreateCanonFlow }));
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Stub everything else index.ts imports so module load is cheap & inert ────
 
-function makeItem(overrides: Partial<CanonItem> & { id: string; name: string }): CanonItem {
-  return {
-    schemaVersion: 5,
-    synonyms: [],
-    aisleId: null,
-    thumbnail: null,
-    embedding: null,
-    needs_approval: false,
-    shoppingBehavior: 'needed',
-    updatedAt: '',
-    ...overrides,
-  };
+class FakeHttpsError extends Error {
+  code: string;
+  constructor(code: string, message: string) {
+    super(message);
+    this.code = code;
+  }
 }
+
+// onCall returns the bare handler so the test can invoke it directly; the other
+// registration helpers return inert callables (the test only exercises
+// matchOrCreateCanon).
+vi.mock('firebase-functions/https', () => ({
+  onCall: (_opts: unknown, handler: unknown) => handler,
+  onCallGenkit: (_opts: unknown, _flow: unknown) => () => undefined,
+  isSignedIn: () => ({}),
+  HttpsError: FakeHttpsError,
+}));
+
+vi.mock('firebase-admin/app', () => ({ initializeApp: vi.fn() }));
+vi.mock('firebase-functions/v2', () => ({ setGlobalOptions: vi.fn() }));
+vi.mock('firebase-functions/params', () => ({
+  defineSecret: (name: string) => ({ name }),
+}));
+vi.mock('@genkit-ai/firebase', () => ({
+  // Resolves so the module-load `void enableFirebaseTelemetry().catch(...)`
+  // is a clean no-op under test.
+  enableFirebaseTelemetry: vi.fn(async () => {}),
+}));
+vi.mock('../../src/genkitTracing.js', () => ({ registerGenkitDevTracing: vi.fn() }));
+
+// The remaining flow/trigger/callable modules are imported by index.ts only to
+// register other functions; stub them so loading index.ts pulls in no genkit /
+// firestore machinery.
+vi.mock('../../src/flows/embedText.js', () => ({ embedTextFlow: vi.fn() }));
+vi.mock('../../src/flows/arbitrateCanon.js', () => ({ arbitrateCanonFlow: vi.fn() }));
+vi.mock('../../src/flows/canonicaliseRecipeIngredients.js', () => ({
+  canonicaliseRecipeIngredientsFlow: vi.fn(),
+}));
+vi.mock('../../src/flows/identifyEquipment.js', () => ({ identifyEquipmentFlow: vi.fn() }));
+vi.mock('../../src/flows/populateEquipmentEntry.js', () => ({
+  populateEquipmentEntryFlow: vi.fn(),
+}));
+vi.mock('../../src/flows/parseRecipeIngredients.js', () => ({
+  parseRecipeIngredientsFlow: vi.fn(),
+}));
+vi.mock('../../src/flows/chefChat.js', () => ({ chefChatFlow: vi.fn() }));
+vi.mock('../../src/flows/authorRecipe.js', () => ({ authorRecipeFlow: vi.fn() }));
+vi.mock('../../src/flows/extractRecipeFromUrl.js', () => ({
+  extractRecipeFromUrlFlow: vi.fn(),
+  UrlImportError: class UrlImportError extends Error {},
+}));
+vi.mock('../../src/flows/generateChatTitle.js', () => ({ generateChatTitleFlow: vi.fn() }));
+vi.mock('../../src/triggers/onShoppingListItemWrite.js', () => ({
+  onShoppingListItemWrite: vi.fn(),
+}));
+vi.mock('../../src/triggers/onCanonItemWritten.js', () => ({ onCanonItemWritten: vi.fn() }));
+vi.mock('../../src/ai/listAiModels.js', () => ({ handleListAiModels: vi.fn() }));
+vi.mock('../../src/ai/testModel.js', () => ({ handleTestModel: vi.fn() }));
+vi.mock('../../src/callables/regenerateCanonIcon.js', () => ({ regenerateCanonIcon: vi.fn() }));
+vi.mock('../../src/auth/beforeMemberCreated.js', () => ({ beforeMemberCreated: vi.fn() }));
+
+const { matchOrCreateCanon } = await import('../../src/index.js');
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const traceparent = '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01';
+
+function makeRequest(
+  data: Record<string, unknown>,
+  headers: Record<string, string> = { traceparent },
+) {
+  return {
+    auth: { uid: 'u1' },
+    data,
+    rawRequest: { headers },
+  } as unknown;
+}
+
+const invoke = (req: unknown) => (matchOrCreateCanon as unknown as Function)(req);
+
+const ORIGINAL_GENKIT_ENV = process.env['GENKIT_TELEMETRY_SERVER'];
 
 beforeEach(() => {
-  resetFirestore();
-  startSpanCalls.length = 0;
-  fakeSpan.setAttribute.mockClear();
-  fakeSpan.end.mockClear();
-  mockEmbed.mockClear();
-  mockArbitrate.mockReset();
+  runWithExtractedTraceContext.mockClear();
+  matchOrCreateCanonFlow.mockClear();
 });
 
-// ─── Tests ───────────────────────────────────────────────────────────────────
+afterEach(() => {
+  if (ORIGINAL_GENKIT_ENV === undefined) delete process.env['GENKIT_TELEMETRY_SERVER'];
+  else process.env['GENKIT_TELEMETRY_SERVER'] = ORIGINAL_GENKIT_ENV;
+});
 
-describe('matchOrCreateCanon — trace propagation + _trace stripping', () => {
-  const traceparent = '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01';
+// ─── Tests ──────────────────────────────────────────────────────────────────
 
-  // The flow opens spans with no headers option — they inherit from
-  // context.active(). This left the door open for the callable entrypoint
-  // (apps/cloud-functions/src/index.ts) to install the browser's W3C trace
-  // as the active OTel context via runWithExtractedTraceContext before the
-  // flow opened any span.
-  //
-  // DORMANT: trace propagation — the entrypoint currently does NOT install
-  // the propagated context (it broke the Genkit Dev UI's flow-rooted trace
-  // list). These tests still pass because they assert the flow strips
-  // _trace and opens parent-less spans — both still true. They guard the
-  // wire contract so re-enabling propagation later is safe.
-  it('opens the parent span without forwarding _trace (entrypoint sets active context)', async () => {
-    getCollection('canonItems').set(
-      'tomato-1',
-      makeItem({ id: 'tomato-1', name: 'Tomato' }) as unknown as Record<string, unknown>,
-    );
+describe('matchOrCreateCanon — env-gated server-side trace unification', () => {
+  it('LOCAL DEV: when GENKIT_TELEMETRY_SERVER is set, does NOT install a propagated context (flow stays root)', async () => {
+    process.env['GENKIT_TELEMETRY_SERVER'] = 'http://localhost:4033';
 
-    const result = await (matchOrCreateCanonFlow as Function)({
-      rawName: 'tomato',
-      _trace: { traceparent },
-    });
+    const result = await invoke(makeRequest({ rawName: 'tomato' }));
 
-    expect(result.kind).toBe('ok');
-    expect(startSpanCalls).toHaveLength(1);
-    expect(startSpanCalls[0]!.name).toBe('canon.matchOrCreateCanon: tomato');
-    expect(startSpanCalls[0]!.opts).toBeUndefined();
+    expect(result).toMatchObject({ kind: 'ok' });
+    // No propagation: the helper is never invoked, so no parent context is
+    // installed and the flow opens a root span the Dev UI can list.
+    expect(runWithExtractedTraceContext).not.toHaveBeenCalled();
+    expect(matchOrCreateCanonFlow).toHaveBeenCalledOnce();
+    expect(matchOrCreateCanonFlow).toHaveBeenCalledWith({ rawName: 'tomato' });
   });
 
-  it('opens the parent span without headers when _trace is absent', async () => {
-    getCollection('canonItems').set(
-      'tomato-1',
-      makeItem({ id: 'tomato-1', name: 'Tomato' }) as unknown as Record<string, unknown>,
-    );
+  it('PRODUCTION: when GENKIT_TELEMETRY_SERVER is unset, extracts inbound headers and runs the flow within the propagated context', async () => {
+    delete process.env['GENKIT_TELEMETRY_SERVER'];
 
-    await (matchOrCreateCanonFlow as Function)({ rawName: 'tomato' });
+    const result = await invoke(makeRequest({ rawName: 'tomato' }, { traceparent }));
 
-    expect(startSpanCalls).toHaveLength(1);
-    expect(startSpanCalls[0]!.opts).toBeUndefined();
+    expect(result).toMatchObject({ kind: 'ok' });
+    // The entrypoint reads the inbound trace headers off rawRequest and runs the
+    // flow within the extracted context, so the flow span nests under the
+    // request trace (one coherent trace).
+    expect(runWithExtractedTraceContext).toHaveBeenCalledOnce();
+    const [headersArg] = runWithExtractedTraceContext.mock.calls[0]!;
+    expect(headersArg).toEqual({ traceparent });
+    // The flow runs *inside* the propagated context (our mock invokes fn()).
+    expect(matchOrCreateCanonFlow).toHaveBeenCalledOnce();
+    expect(matchOrCreateCanonFlow).toHaveBeenCalledWith({ rawName: 'tomato' });
   });
 
-  it('does not leak _trace into the persisted CanonItem', async () => {
-    const result = await (matchOrCreateCanonFlow as Function)({
-      rawName: 'Cucumber',
-      forceCreate: true,
-      _trace: { traceparent, tracestate: 'rojo=00f067aa0ba902b7' },
-    });
+  it('PRODUCTION: tolerates a missing rawRequest (passes undefined headers; helper degrades)', async () => {
+    delete process.env['GENKIT_TELEMETRY_SERVER'];
 
-    expect(result.kind).toBe('ok');
-    expect(result.value.decision).toBe('created');
-    expect(result.value.item).not.toHaveProperty('_trace');
-    expect(result.value.item).not.toHaveProperty('traceparent');
+    const req = { auth: { uid: 'u1' }, data: { rawName: 'tomato' } } as unknown;
+    const result = await invoke(req);
 
-    const stored = [...getCollection('canonItems').values()][0]!;
-    expect(stored).not.toHaveProperty('_trace');
-    expect(stored).not.toHaveProperty('traceparent');
+    expect(result).toMatchObject({ kind: 'ok' });
+    expect(runWithExtractedTraceContext).toHaveBeenCalledOnce();
+    const [headersArg] = runWithExtractedTraceContext.mock.calls[0]!;
+    expect(headersArg).toBeUndefined();
   });
 
-  it('flushes telemetry and ends the parent span even when matchOrCreate errors', async () => {
-    // Empty rawName triggers ValidationError before any matching work.
-    const result = await (matchOrCreateCanonFlow as Function)({
-      rawName: '   ',
-      _trace: { traceparent },
-    });
+  it('the _trace wire field is gone: it is not accepted or forwarded as trace plumbing', async () => {
+    delete process.env['GENKIT_TELEMETRY_SERVER'];
 
-    expect(result.kind).toBe('err');
-    // Span was opened with the trace context, then closed.
-    expect(startSpanCalls).toHaveLength(1);
-    expect(fakeSpan.end).toHaveBeenCalledOnce();
+    // A legacy client that still tacks on _trace must not have it threaded into
+    // the flow as a trace-plumbing field; the entrypoint forwards request.data
+    // verbatim and the flow's input schema (MatchOrCreateCanonInputSchema) has
+    // no _trace, so there is nothing to strip and nothing to forward.
+    await invoke(makeRequest({ rawName: 'tomato', _trace: { traceparent } }));
+
+    expect(matchOrCreateCanonFlow).toHaveBeenCalledOnce();
+    // The entrypoint does not extract trace context from the payload; the only
+    // header source is the request itself.
+    const [headersArg] = runWithExtractedTraceContext.mock.calls[0]!;
+    expect(headersArg).toEqual({ traceparent });
+    // No CallMatchOrCreateOptions / traceHeaders-shaped argument is involved at
+    // this boundary.
+    const flowArg = matchOrCreateCanonFlow.mock.calls[0]![0] as Record<string, unknown>;
+    expect(flowArg).not.toHaveProperty('traceHeaders');
+  });
+
+  it('rejects unauthenticated callers before touching propagation', async () => {
+    delete process.env['GENKIT_TELEMETRY_SERVER'];
+
+    await expect(invoke({ auth: null, data: { rawName: 'tomato' } })).rejects.toMatchObject({
+      code: 'unauthenticated',
+    });
+    expect(runWithExtractedTraceContext).not.toHaveBeenCalled();
+    expect(matchOrCreateCanonFlow).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invalid payload with invalid-argument', async () => {
+    delete process.env['GENKIT_TELEMETRY_SERVER'];
+
+    await expect(invoke(makeRequest({ notRawName: 1 }))).rejects.toMatchObject({
+      code: 'invalid-argument',
+    });
+    expect(matchOrCreateCanonFlow).not.toHaveBeenCalled();
   });
 });

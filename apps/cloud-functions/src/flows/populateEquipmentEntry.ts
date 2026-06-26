@@ -2,9 +2,10 @@ import {
   PopulateEquipmentEntryAIOutputSchema,
   PopulateEquipmentEntryInputSchema,
 } from '@salt/domain/schemas';
-import { setActiveSpanName } from '@salt/ld-observability/server';
+import { setActiveSpanName } from '@salt/observability/server';
 import { ai } from '../genkit.js';
-import { flowModel } from '../ai/fakeModel.js';
+import { flowModel, aiModelLabel } from '../ai/fakeModel.js';
+import { tracedGenerate } from '../ai/aiGenerationTelemetry.js';
 
 export const populateEquipmentEntryFlow = ai.defineFlow(
   {
@@ -14,17 +15,23 @@ export const populateEquipmentEntryFlow = ai.defineFlow(
   },
   async ({ confirmedName }) => {
     setActiveSpanName(`populateEquipmentEntry: ${confirmedName}`);
-    const result = await ai.generate({
-      // Production: googleAI.model(resolveModel('lite', 'populateEquipmentEntry')).
-      // Under FUNCTIONS_AI_FAKE=1 (emulator e2e only) this returns the
-      // deterministic fake model instead; byte-identical otherwise. See
-      // ../ai/fakeModel.ts for the cross-process stub contract.
-      model: await flowModel('lite', 'populateEquipmentEntry'),
-      system: SYSTEM_INSTRUCTIONS,
-      prompt: `"${confirmedName}"`,
-      output: { schema: PopulateEquipmentEntryAIOutputSchema },
-      config: { temperature: 0 },
-    });
+    // Production: googleAI.model(resolveModel('lite', 'populateEquipmentEntry')).
+    // Under FUNCTIONS_AI_FAKE=1 (emulator e2e only) flowModel returns the
+    // deterministic fake model instead; byte-identical otherwise. See
+    // ../ai/fakeModel.ts for the cross-process stub contract.
+    const model = await flowModel('lite', 'populateEquipmentEntry');
+    const result = await tracedGenerate(
+      'populateEquipmentEntry',
+      await aiModelLabel('lite', 'populateEquipmentEntry'),
+      () =>
+        ai.generate({
+          model,
+          system: SYSTEM_INSTRUCTIONS,
+          prompt: `"${confirmedName}"`,
+          output: { schema: PopulateEquipmentEntryAIOutputSchema },
+          config: { temperature: 0 },
+        }),
+    );
     const output = result.output!;
     return { name: output.name, accessories: output.accessories };
   },

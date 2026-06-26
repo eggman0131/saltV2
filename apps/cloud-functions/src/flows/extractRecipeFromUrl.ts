@@ -11,6 +11,7 @@ import { extractRecipeJsonLd, type JsonLdRecipe } from '../adapters/jsonLdRecipe
 import { canonicaliseRecipeIngredientsFlow } from './canonicaliseRecipeIngredients.js';
 import { parseRecipeIngredientsFlow } from './parseRecipeIngredients.js';
 import { resolveModel } from '../ai/resolveModel.js';
+import { tracedGenerate } from '../ai/aiGenerationTelemetry.js';
 
 // SSRF-hardened URL import (recipe URL import epic, Phases 1 & 3).
 //
@@ -97,19 +98,22 @@ export const extractRecipeFromUrlFlow = ai.defineFlow(
       : buildHtmlPrompt(html, parsed.href);
 
     // Flash + temperature:0 — accuracy over creativity, mirrors the librarian flow.
-    const extractModel = googleAI.model(await resolveModel('fast', 'extractRecipeFromUrl'));
+    const extractModelId = await resolveModel('fast', 'extractRecipeFromUrl');
+    const extractModel = googleAI.model(extractModelId);
     let extracted: ExtractRecipeAIOutput;
     try {
       extracted = await withAiTimeout(
         'extractRecipeFromUrl',
         async () => {
-          const result = await ai.generate({
-            model: extractModel,
-            system,
-            prompt,
-            output: { schema: ExtractRecipeAIOutputSchema },
-            config: { temperature: 0 },
-          });
+          const result = await tracedGenerate('extractRecipeFromUrl', extractModelId, () =>
+            ai.generate({
+              model: extractModel,
+              system,
+              prompt,
+              output: { schema: ExtractRecipeAIOutputSchema },
+              config: { temperature: 0 },
+            }),
+          );
           // Validate INSIDE the retried op: an empty/malformed structured
           // response (Gemini occasionally returns one even at temperature:0, and
           // structured-output coercion can fail transiently) then gets a fresh
