@@ -171,6 +171,7 @@ Ships two subpath entrypoints from a single package:
 - Implements `ErrorReportingPort` and `MatchLoggingPort` using the LaunchDarkly browser SDK.
 - Normalizes errors into `DomainError` categories before crossing the boundary.
 - Must not be imported by Cloud Functions.
+- All public entrypoints (`startSpan`, `startObservabilitySession`, `stopObservabilitySession`, `isObservabilitySessionActive`, `tagObservabilitySession`, and the error reporter) are inert — returning no-op spans or silently no-oping — when `initLDObservability` has not been called. They never throw before initialisation; this upholds the adapter non-throw contract (Rule 10) when LD is gated off (e.g. via an empty `VITE_LD_CLIENT_SIDE_ID` in the e2e build).
 
 **Server subpath (`@salt/ld-observability/server`)** — Node-only, bundled into `cloud-functions`:
 - Initialises an OTel `NodeTracerProvider` that ships CF spans to LaunchDarkly's OTLP endpoint.
