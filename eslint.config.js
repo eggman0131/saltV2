@@ -21,6 +21,10 @@ const ELEMENTS = [
     pattern: ['packages/adapters/ld-observability/**', '@salt/ld-observability'],
   },
   {
+    type: 'observability',
+    pattern: ['packages/adapters/observability/**', '@salt/observability'],
+  },
+  {
     type: 'ui-components',
     pattern: ['packages/ui-components/**', '@salt/ui-components'],
   },
@@ -160,6 +164,7 @@ export default [
             { from: 'domain', allow: ['shared-types'] },
             { from: 'firebase-sync', allow: ['domain', 'shared-types'] },
             { from: 'ld-observability', allow: ['domain', 'shared-types'] },
+            { from: 'observability', allow: ['domain', 'shared-types'] },
             { from: 'ui-components', allow: [] },
             {
               from: 'testing-utils',
@@ -172,6 +177,7 @@ export default [
                 'domain',
                 'firebase-sync',
                 'ld-observability',
+                'observability',
                 'ui-components',
               ],
             },
@@ -296,7 +302,12 @@ export default [
             ...forbidGroup(SALT_APP_IMPORTS, 'Adapters must not import from apps.'),
             ...forbidGroup(INDEXEDDB_PKGS, 'Browser storage (IndexedDB) imports are forbidden.'),
             ...forbidGroup(
-              ['@salt/ld-observability', '@salt/ld-observability/*'],
+              [
+                '@salt/ld-observability',
+                '@salt/ld-observability/*',
+                '@salt/observability',
+                '@salt/observability/*',
+              ],
               'Adapters must not import each other. Compose them at the application layer.',
             ),
           ],
@@ -320,7 +331,41 @@ export default [
             ),
             ...forbidGroup(INDEXEDDB_PKGS, 'Browser storage (IndexedDB) imports are forbidden.'),
             ...forbidGroup(
-              ['@salt/firebase-sync', '@salt/firebase-sync/*'],
+              [
+                '@salt/firebase-sync',
+                '@salt/firebase-sync/*',
+                '@salt/observability',
+                '@salt/observability/*',
+              ],
+              'Adapters must not import each other. Compose them at the application layer.',
+            ),
+          ],
+        },
+      ],
+    },
+  },
+
+  // @salt/observability — must not import Firebase SDKs, IndexedDB, or sibling adapters.
+  {
+    files: ['packages/adapters/observability/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            ...forbidGroup(SALT_APP_IMPORTS, 'Adapters must not import from apps.'),
+            ...forbidGroup(
+              FIREBASE_PKGS,
+              'Firebase SDK imports are only allowed in @salt/firebase-sync.',
+            ),
+            ...forbidGroup(INDEXEDDB_PKGS, 'Browser storage (IndexedDB) imports are forbidden.'),
+            ...forbidGroup(
+              [
+                '@salt/firebase-sync',
+                '@salt/firebase-sync/*',
+                '@salt/ld-observability',
+                '@salt/ld-observability/*',
+              ],
               'Adapters must not import each other. Compose them at the application layer.',
             ),
           ],
@@ -420,7 +465,12 @@ export default [
             ...forbidGroup(SALT_APP_IMPORTS, 'Packages must not import from apps.'),
             ...forbidGroup(INDEXEDDB_PKGS, 'Browser storage (IndexedDB) imports are forbidden.'),
             ...forbidGroup(
-              ['@salt/ld-observability', '@salt/ld-observability/*'],
+              [
+                '@salt/ld-observability',
+                '@salt/ld-observability/*',
+                '@salt/observability',
+                '@salt/observability/*',
+              ],
               'Adapters must not import each other.',
             ),
           ],

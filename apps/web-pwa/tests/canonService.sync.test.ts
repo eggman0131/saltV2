@@ -12,8 +12,8 @@ vi.mock('@salt/firebase-sync', () => ({
   callMatchOrCreate: vi.fn(),
 }));
 
-vi.mock('@salt/ld-observability', () => ({
-  createLDErrorReportingAdapter: vi.fn(() => ({ report: vi.fn() })),
+vi.mock('@salt/observability', () => ({
+  createObservabilityErrorReportingAdapter: vi.fn(() => ({ report: vi.fn() })),
   startSpan: vi.fn(() => ({ setAttribute: vi.fn(), end: vi.fn() })),
 }));
 

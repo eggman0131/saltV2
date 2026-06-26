@@ -20,8 +20,8 @@ vi.mock('@salt/firebase-sync', () => ({
   deleteMember: vi.fn(),
 }));
 
-vi.mock('@salt/ld-observability', () => ({
-  createLDErrorReportingAdapter: vi.fn(() => ({ report: vi.fn() })),
+vi.mock('@salt/observability', () => ({
+  createObservabilityErrorReportingAdapter: vi.fn(() => ({ report: vi.fn() })),
 }));
 
 // Mutable auth stand-in: tests set `auth.user` to drive who's signed in.

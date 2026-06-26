@@ -10,9 +10,9 @@ vi.mock('@salt/firebase-sync', () => ({
   callRegenerateCanonIcon: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
 }));
 
-vi.mock('@salt/ld-observability', () => ({
-  createLDErrorReportingAdapter: vi.fn(() => ({ report: vi.fn() })),
-  createLDMatchLoggingAdapter: vi.fn(),
+vi.mock('@salt/observability', () => ({
+  createObservabilityErrorReportingAdapter: vi.fn(() => ({ report: vi.fn() })),
+  createObservabilityMatchLoggingAdapter: vi.fn(),
   extractTraceHeaders: vi.fn(() => ({})),
   startSpan: vi.fn(() => ({ setAttribute: vi.fn(), end: vi.fn() })),
 }));

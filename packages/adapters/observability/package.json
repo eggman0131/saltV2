@@ -1,0 +1,20 @@
+{
+  "name": "@salt/observability",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@salt/domain": "workspace:*",
+    "@salt/shared-types": "workspace:*",
+    "posthog-js": "^1.393.5"
+  }
+}

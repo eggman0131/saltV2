@@ -4,7 +4,7 @@ import {
   type FirebaseOptions,
   type AppCheckConfig,
 } from '@salt/firebase-sync';
-import { createLDErrorReportingAdapter } from '@salt/ld-observability';
+import { createObservabilityErrorReportingAdapter } from '@salt/observability';
 
 export const useEmulators = import.meta.env.VITE_USE_EMULATORS === 'true';
 
@@ -45,4 +45,4 @@ const appCheck: AppCheckConfig | undefined = appCheckSiteKey
 
 initFirebase(options, useEmulators, !useEmulators, appCheck);
 
-export const authProvider = createFirebaseAuth(createLDErrorReportingAdapter());
+export const authProvider = createFirebaseAuth(createObservabilityErrorReportingAdapter());

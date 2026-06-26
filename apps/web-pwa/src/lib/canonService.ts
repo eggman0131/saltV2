@@ -7,11 +7,11 @@ import {
   callRegenerateCanonIcon,
 } from '@salt/firebase-sync';
 import {
-  createLDErrorReportingAdapter,
-  createLDMatchLoggingAdapter,
+  createObservabilityErrorReportingAdapter,
+  createObservabilityMatchLoggingAdapter,
   extractTraceHeaders,
   startSpan,
-} from '@salt/ld-observability';
+} from '@salt/observability';
 import {
   approveCanonItem,
   appendCanonSynonym,
@@ -59,9 +59,9 @@ export const isLoadingAisles: Readable<boolean> = _isLoadingAisles;
 
 // ─── Error reporting ────────────────────────────────────────────────────────────
 
-let _errorReporter: ReturnType<typeof createLDErrorReportingAdapter> | null = null;
+let _errorReporter: ReturnType<typeof createObservabilityErrorReportingAdapter> | null = null;
 function getErrorReporter() {
-  if (!_errorReporter) _errorReporter = createLDErrorReportingAdapter();
+  if (!_errorReporter) _errorReporter = createObservabilityErrorReportingAdapter();
   return _errorReporter;
 }
 
@@ -200,7 +200,7 @@ export async function addCanonItem(
         span.setAttribute('canon.path', 'fast');
         span.setAttribute('canon.result', updated.name);
         const entry = logBuilder.complete(crypto.randomUUID(), 'matched', updated.id, updated.name);
-        void createLDMatchLoggingAdapter('fast', span)
+        void createObservabilityMatchLoggingAdapter('fast', span)
           .write(entry)
           .catch(() => {});
         return success({ decision: 'matched' as const, item: updated });
