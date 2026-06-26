@@ -400,10 +400,11 @@
     return text.charAt(0).toUpperCase() + text.slice(1);
   }
 
-  // Label a row by its canon name when live-matched, falling back to its raw
-  // text otherwise — title-cased either way so every item reads consistently.
+  // Label a row by the user's own wording (rawText), title-cased — the amount,
+  // unit and notes the parser lifted out are rendered separately, so the label
+  // stays close to what was entered without duplicating those fields.
   function displayLabel(item: ShoppingListItem): string {
-    const resolved = resolveItemDisplayName(item, canonMap, liveCanonIds);
+    const resolved = resolveItemDisplayName(item, liveCanonIds);
     return titleCase(resolved.text);
   }
 
