@@ -27,10 +27,12 @@ The export bucket must exist, and staging's Firestore service agent must be able
 to read it. The scripts print these commands if something's missing.
 
 ```bash
-# Create the export bucket in the same location as prod's database.
-LOC=$(gcloud firestore databases describe --project=s2-prod-e46bd --format='value(locationId)')
+# Create the export bucket co-located with prod's database. Firestore reports a
+# multi-region database as nam5 / eur3, but `buckets create --location` wants the
+# GCS multi-region name instead: nam5 -> US, eur3 -> EU. A regional database
+# (e.g. europe-west2) uses that region directly. Prod (and staging) are nam5 -> US.
 gcloud storage buckets create gs://s2-prod-e46bd-firestore-exports \
-  --project=s2-prod-e46bd --location="$LOC"
+  --project=s2-prod-e46bd --location=US
 
 # Let staging read the bucket (needed by the import step).
 NUM=$(gcloud projects describe s2-stage-ccb22 --format='value(projectNumber)')
