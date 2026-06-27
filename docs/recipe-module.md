@@ -146,8 +146,12 @@ Decisions:
   behaviour + scaled amount + threshold; the sheet only renders and commits.
 - **`needsCheck` is its own stored flag**, distinct from `checked` — a
   verification state, not a done state.
-- **Canon owns the displayed name** here too: a matched row labels by canon
-  name, raw text only when there is no live match (`resolveItemDisplayName`).
+- **User wording owns the displayed name** at the row level: `resolveItemDisplayName`
+  always labels a row by the parsed `rawText` (`parseShoppingListEntry` strips the
+  amount/unit/context the row already renders separately), preserving descriptive words
+  ("mature cheddar cheese") rather than collapsing to the leaner canon name
+  ("Cheddar Cheese"). The combined aggregate row is the one place a canon name is shown
+  (the page's `rowLabel`, unchanged).
 - **Combining is display-time and recipe-only.** `groupItemsByAisle` merges
   recipe-sourced items resolving to the same canon into one row (per-unit
   subtotals, a contributor breakdown, row-level check/delete). Manual items
