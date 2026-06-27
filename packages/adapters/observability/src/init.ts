@@ -12,6 +12,11 @@ export interface ObservabilityOptions {
   // automated runs pass this so they don't record every page. Mirrors the LD
   // `manualStart` flag.
   manualStart?: boolean;
+  // Deployment environment ('production' | 'staging' | 'development'). When set,
+  // it is registered as a PostHog super property so it rides on EVERY event the
+  // SDK emits — autocapture, pageviews, manual captures, exceptions, and replay
+  // metadata — without each call site having to attach it.
+  environment?: string;
 }
 
 // True once initObservability has successfully called posthog.init. Adapter
@@ -75,6 +80,16 @@ export function initObservability(key: string, opts?: ObservabilityOptions): voi
     // If init itself throws (misconfig, blocked network), stay inert rather
     // than crash the app at startup.
     ready = false;
+  }
+
+  // Register the environment as a super property so it persists in the SDK and
+  // is attached to every subsequent event. Guarded via safePosthog so a register
+  // failure can never unset readiness or throw at startup, and so it no-ops when
+  // init above failed (ready === false). Captured into a const so the value stays
+  // narrowed to string inside the closure.
+  const environment = opts?.environment;
+  if (environment) {
+    safePosthog((ph) => ph.register({ environment }));
   }
 }
 
