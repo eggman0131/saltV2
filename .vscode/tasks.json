@@ -103,6 +103,40 @@
         "showReuseMessage": true,
         "clear": false
       }
+    },
+    {
+      "label": "Export Prod Firestore",
+      "detail": "Read-only: export the PRODUCTION Firestore database to GCS. Safe half of the prod -> staging refresh; pair with 'Restore Staging from Prod'. No triggers fire; blocks until done.",
+      "type": "shell",
+      "command": "node",
+      "args": ["scripts/export-prod-firestore.mjs"],
+      "isBackground": false,
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "showReuseMessage": true,
+        "clear": true
+      }
+    },
+    {
+      "label": "Restore Staging from Prod",
+      "detail": "DESTRUCTIVE: wipes staging Firestore and restores it from the newest prod export. Requires typing STAGING to confirm; refuses to target prod. Run 'Export Prod Firestore' first.",
+      "type": "shell",
+      "command": "node",
+      "args": ["scripts/restore-staging-from-prod.mjs"],
+      "isBackground": false,
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "showReuseMessage": true,
+        "clear": true
+      }
     }
   ]
 }
