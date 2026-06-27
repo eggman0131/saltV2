@@ -60,12 +60,14 @@ export function initObservability(key: string, opts?: ObservabilityOptions): voi
       autocapture: true,
       capture_pageview: true,
       capture_pageleave: true,
-      // Session replay only in production; PostHog default masking (mask all
-      // text + all inputs) so no user content leaks into recordings.
+      // Session replay only in production. On-screen text is captured so
+      // recordings are legible — recipe-app content (recipes, shopping list,
+      // canon, aisles) is family-shared and non-PII. Inputs stay masked
+      // (maskAllInputs) so what users actively type — including the login
+      // email field — never lands in a recording.
       disable_session_recording: !replayEnabled,
       session_recording: {
         maskAllInputs: true,
-        maskTextSelector: '*',
       },
     });
     ready = true;
