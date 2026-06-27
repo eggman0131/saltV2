@@ -2,6 +2,13 @@
     "chat.tools.terminal.autoApprove": {
         "pnpm": true
     },
+    "taskPilot.labels": [
+        "Firebase Emulators",
+        "Vite Dev Server",
+        "Genkit Admin UI",
+        "Export Prod Firestore",
+        "Restore Staging from Prod"
+    ],
     "terminal.integrated.enablePersistentSessions": true,
     "terminal.integrated.persistentSessionReviveProcess": "onExitAndWindowClose",
     "task.reconnection": true,
