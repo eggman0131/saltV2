@@ -1,4 +1,4 @@
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { getFirestore, FieldValue, type DocumentSnapshot } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { defineSecret } from 'firebase-functions/params';
@@ -38,16 +38,51 @@ async function maybeGenerateEmbedding(id: string, item: CanonItemDoc): Promise<v
 }
 
 /**
- * Icon branch (issue #148): generate the Tier-1 pictogram if there is no valid
- * icon yet. Idempotency / opt-out guard: `thumbnail` must be exactly `null`.
- *   - a real URL  → already generated, skip
- *   - CANON_ICON_HIDDEN ("hidden") → user opted out, skip forever
- *   - null        → generate
- * Independent of the embedding guard, so each `.update()` only touches its own
- * field and the trigger self-terminates once both are set.
+ * Edge-trigger decision for the icon branch. The trigger fires on EVERY write to
+ * the doc, so generation must start only on the write that *transitions* the item
+ * into "needs an icon" — never merely because the thumbnail currently happens to
+ * be null. Otherwise an unrelated write landing while a generation is still in
+ * flight (most commonly the embedding `.update()` this same trigger issues on
+ * create) re-enters and starts a *duplicate* generation, because `thumbnail`
+ * stays null until the first one finishes.
+ *
+ * Generate when:
+ *   - create (no prior doc) with a null thumbnail
+ *   - thumbnail just went non-null → null (manual regenerate, or user cleared)
+ *   - the `iconRequestedAt` nonce changed — covers a forced regenerate of an item
+ *     whose thumbnail was *already* null (see regenerateCanonIcon)
+ * Skip when the thumbnail was already null before this write and stayed null: the
+ * write that first set it null already owns the in-flight generation.
+ *
+ * `thumbnail !== null` (a real URL, or the CANON_ICON_HIDDEN "hidden" sentinel)
+ * always skips: already generated, or the user opted out forever.
  */
-async function maybeGenerateIcon(id: string, item: CanonItemDoc): Promise<void> {
-  if (item.thumbnail !== null) return; // real URL or "hidden" sentinel → skip
+function iconNeedsGeneration(before: DocumentSnapshot | undefined, after: CanonItemDoc): boolean {
+  if (after.thumbnail !== null) return false; // real URL or "hidden" sentinel → skip
+  if (!before?.exists) return true; // create → generate
+  const prev = before.data();
+  if ((prev?.['thumbnail'] ?? null) !== null) return true; // just cleared → generate
+  // Already null and still null: only an explicit regenerate (nonce bump) re-fires;
+  // any other field change (embedding, rename, aisle…) must not start a duplicate.
+  return prev?.['iconRequestedAt'] !== after.iconRequestedAt;
+}
+
+/**
+ * Icon branch (issue #148): generate the Tier-1 pictogram when this write
+ * transitions the item into "needs an icon" (see iconNeedsGeneration). Independent
+ * of the embedding guard, so each `.update()` only touches its own field and the
+ * trigger self-terminates once both are set.
+ *
+ * Trade-off of edge-triggering: a generation that *fails* leaves `thumbnail` null
+ * but no longer self-heals on the next unrelated write — the regenerate callable
+ * (which bumps `iconRequestedAt`) is the retry path.
+ */
+async function maybeGenerateIcon(
+  id: string,
+  item: CanonItemDoc,
+  before: DocumentSnapshot | undefined,
+): Promise<void> {
+  if (!iconNeedsGeneration(before, item)) return;
 
   // E2E (FUNCTIONS_AI_FAKE): skip icon generation entirely. The real image model
   // and the Storage upload (which authenticates via the GCE metadata server) are
@@ -177,10 +212,11 @@ export const onCanonItemWritten = onDocumentWritten(
 
     const id = event.params.id;
     // Two independently-guarded side-effects. allSettled so a failure in one
-    // branch never rejects the handler (which would retry both).
+    // branch never rejects the handler (which would retry both). The icon branch
+    // is edge-triggered on before→after, so it needs the prior snapshot.
     await Promise.allSettled([
       maybeGenerateEmbedding(id, parsed.data),
-      maybeGenerateIcon(id, parsed.data),
+      maybeGenerateIcon(id, parsed.data, event.data?.before),
     ]);
   },
 );
