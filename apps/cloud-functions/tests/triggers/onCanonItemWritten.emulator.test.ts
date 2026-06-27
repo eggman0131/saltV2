@@ -92,11 +92,13 @@ async function clearEmulator(): Promise<void> {
   }
 }
 
-function makeEvent(id: string, after: CanonItemDoc | null) {
+function makeEvent(id: string, after: CanonItemDoc | null, before?: CanonItemDoc | null) {
   return {
     params: { id },
     data: {
-      before: { exists: false, data: () => undefined },
+      before: before
+        ? { exists: true, data: () => before }
+        : { exists: false, data: () => undefined },
       after: after ? { exists: true, data: () => after } : { exists: false, data: () => undefined },
     },
   };
@@ -225,5 +227,51 @@ describe('onCanonItemWritten — Firestore emulator', () => {
     await (onCanonItemWritten as Function)(makeEvent('canon-4', item));
 
     expect(mockEmbed).not.toHaveBeenCalled();
+  });
+
+  // Edge-trigger regression: the trigger fires on every write, but icon
+  // generation must start only on the write that transitions the item into
+  // "needs an icon". The duplicate-generation bug came from the embedding
+  // `.update()` re-firing the trigger while the create-fire's generation was
+  // still in flight (thumbnail still null), starting a second generation.
+  it('does not regenerate the icon when an unrelated field changes while thumbnail stays null', async () => {
+    const before = makeCanonItem('canon-reentry', { thumbnail: null, embedding: null });
+    // Same write the embedding branch issues on create: embedding added, thumbnail untouched.
+    const after = makeCanonItem('canon-reentry', { thumbnail: null, embedding: [0.1, 0.2, 0.3] });
+
+    await (onCanonItemWritten as Function)(makeEvent('canon-reentry', after, before));
+
+    expect(mockGenerateIcon).not.toHaveBeenCalled();
+    expect(mockSave).not.toHaveBeenCalled();
+  });
+
+  it('regenerates when thumbnail transitions from a URL to null', async () => {
+    const db = getFirestore(adminApp);
+    const before = makeCanonItem('canon-regen', {
+      thumbnail:
+        'https://firebasestorage.googleapis.com/v0/b/demo-salt.appspot.com/o/old.webp?alt=media',
+      embedding: [1],
+    });
+    const after = makeCanonItem('canon-regen', { thumbnail: null, embedding: [1] });
+    await db.collection('canonItems').doc('canon-regen').set(after);
+
+    await (onCanonItemWritten as Function)(makeEvent('canon-regen', after, before));
+
+    expect(mockGenerateIcon).toHaveBeenCalledOnce();
+  });
+
+  it('regenerates when iconRequestedAt is bumped even though thumbnail was already null', async () => {
+    const db = getFirestore(adminApp);
+    const before = makeCanonItem('canon-nonce', { thumbnail: null, embedding: [1] });
+    const after = makeCanonItem('canon-nonce', {
+      thumbnail: null,
+      embedding: [1],
+      iconRequestedAt: 1234,
+    });
+    await db.collection('canonItems').doc('canon-nonce').set(after);
+
+    await (onCanonItemWritten as Function)(makeEvent('canon-nonce', after, before));
+
+    expect(mockGenerateIcon).toHaveBeenCalledOnce();
   });
 });
