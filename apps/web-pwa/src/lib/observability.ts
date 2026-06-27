@@ -15,7 +15,12 @@ import type { User } from '@salt/domain';
 // session replay manually there so e2e/automated runs don't auto-record every page.
 const _phKey = import.meta.env.VITE_PUBLIC_POSTHOG_KEY as string | undefined;
 const _useEmulators = import.meta.env.VITE_USE_EMULATORS === 'true';
-if (_phKey) initObservability(_phKey, { manualStart: _useEmulators });
+// Vite's mode is the build target — 'development' (vite dev), 'staging'
+// (build:staging --mode staging), or 'production' (build). It maps 1:1 to the
+// deployment environment, so it becomes the PostHog `environment` super property
+// in the SAME vocabulary the cloud-functions side derives from its project id.
+if (_phKey)
+  initObservability(_phKey, { manualStart: _useEmulators, environment: import.meta.env.MODE });
 
 // Dev runs against the Firebase Auth emulator, whose uid is ephemeral (new on
 // every restart / sign-in) and whose e2e suite signs in as uniqueEmail() per

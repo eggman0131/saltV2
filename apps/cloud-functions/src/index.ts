@@ -16,6 +16,7 @@ import {
 } from '@salt/observability/server';
 import { registerGenkitDevTracing } from './genkitTracing.js';
 import { reportFlowError } from './observability/reportServerError.js';
+import { resolveServerEnvironment } from './observability/environment.js';
 import { embedTextFlow } from './flows/embedText.js';
 import { arbitrateCanonFlow } from './flows/arbitrateCanon.js';
 import { matchOrCreateCanonFlow } from './flows/matchOrCreateCanon.js';
@@ -61,7 +62,7 @@ try {
 } catch {
   // enableFirebaseTelemetry is async, but guard the synchronous path too.
 }
-initServerObservability(process.env['POSTHOG_API_KEY'] ?? '');
+initServerObservability(process.env['POSTHOG_API_KEY'] ?? '', resolveServerEnvironment());
 registerGenkitDevTracing();
 
 const geminiApiKey = defineSecret('GEMINI_API_KEY');

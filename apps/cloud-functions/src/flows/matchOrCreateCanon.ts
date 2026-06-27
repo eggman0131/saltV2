@@ -18,6 +18,7 @@ import { createFirestoreAisleStore } from '../adapters/firestoreAisleStore.js';
 import { createServerEmbeddingAdapter } from '../adapters/serverEmbedding.js';
 import { createServerArbitrationAdapter } from '../adapters/serverArbitration.js';
 import { createServerMatchLoggingAdapter } from '../adapters/serverMatchLog.js';
+import { resolveServerEnvironment } from '../observability/environment.js';
 
 // Trace context is no longer piggy-backed on the payload. Server-side trace
 // unification now happens at the callable entrypoint (index.ts), which extracts
@@ -74,7 +75,7 @@ function ensureObservabilityInitialised(): void {
   // env (e.g. emulator without the secret) — initServerObservability no-ops on
   // an empty key, the firebase-functions/logger adapter still emits, and the
   // PostHog match adapter silently drops.
-  initServerObservability(process.env['POSTHOG_API_KEY'] ?? '');
+  initServerObservability(process.env['POSTHOG_API_KEY'] ?? '', resolveServerEnvironment());
 }
 
 export const matchOrCreateCanonFlow = ai.defineFlow(

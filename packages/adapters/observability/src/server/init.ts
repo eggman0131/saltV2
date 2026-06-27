@@ -22,6 +22,15 @@ const SERVER_DISTINCT_ID = 'salt-cloud-functions';
 
 let client: PostHog | null = null;
 
+// Deployment environment ('production' | 'staging' | 'development'), recorded at
+// init and attached to every server event as the PostHog `environment` property.
+// posthog-node has NO register()/super-property concept like posthog-js, so the
+// value is merged into the properties of each capture from the emit helpers below
+// (withEnvironment) — the single chokepoint every server event funnels through.
+// undefined until init, or when the caller omits it, in which case nothing is
+// attached and the captures behave exactly as before.
+let serverEnvironment: string | undefined;
+
 // True once initServerObservability has built the posthog-node client. Adapter
 // entrypoints gate on this so they stay inert — rather than throwing — when
 // PostHog is uninitialised (e.g. POSTHOG_API_KEY not set in an emulator run).
@@ -43,7 +52,12 @@ export async function whenServerObservabilityReady(): Promise<void> {
 // server observability off), so no client is built and every adapter method
 // silently no-ops. Never throws: a misconfig or constructor failure leaves the
 // package inert rather than crashing the function at module load.
-export function initServerObservability(key: string): void {
+//
+// `environment` (e.g. 'production' | 'staging' | 'development') is recorded and
+// attached to every server event as the `environment` property — the posthog-node
+// equivalent of the browser side's posthog.register({ environment }). Optional:
+// an omitted environment attaches nothing.
+export function initServerObservability(key: string, environment?: string): void {
   if (client) return;
   if (!key) return; // inert when the key is absent
 
@@ -59,6 +73,9 @@ export function initServerObservability(key: string): void {
       flushAt: 1,
       flushInterval: 0,
     });
+    // Record the environment only after the client is live, so an init failure
+    // leaves both client and environment unset (the package stays fully inert).
+    serverEnvironment = environment;
   } catch {
     // Stay inert rather than crash the function at startup.
     client = null;
@@ -78,12 +95,24 @@ export function safePosthog(fn: (ph: PostHog) => void): void {
   }
 }
 
+// Merge the `environment` super-property into an event's properties. posthog-node
+// has no posthog-js-style register(), so every server capture site routes its
+// properties through here to pick up the environment. Returns the input unchanged
+// when no environment was recorded (pre-init callers / omitted on init). The
+// environment is spread FIRST so an explicit event property of the same name wins,
+// mirroring posthog-js semantics where event properties override super properties.
+function withEnvironment(properties: Record<string, unknown>): Record<string, unknown> {
+  return serverEnvironment === undefined
+    ? properties
+    : { environment: serverEnvironment, ...properties };
+}
+
 // Capture a plain server-side event under the synthetic server person. Used by
 // the match-logging adapter; exposed so other CF telemetry can reuse the same
 // inert/never-throw guard rather than touching the client directly.
 export function captureServerEvent(event: string, properties: Record<string, unknown>): void {
   safePosthog((ph) => {
-    ph.capture({ distinctId: SERVER_DISTINCT_ID, event, properties });
+    ph.capture({ distinctId: SERVER_DISTINCT_ID, event, properties: withEnvironment(properties) });
   });
 }
 
@@ -94,7 +123,15 @@ export function captureServerEvent(event: string, properties: Record<string, unk
 export function captureServerException(error: unknown): void {
   safePosthog((ph) => {
     const err = error instanceof Error ? error : new Error(String(error));
-    ph.captureException(err, SERVER_DISTINCT_ID);
+    // Attach the environment only when one was recorded — kept off the call
+    // entirely otherwise so no empty properties bag rides along (and so the
+    // "exactly two args / no user-content bag" payload-scrubbing invariant holds
+    // when telemetry runs un-environmented).
+    if (serverEnvironment === undefined) {
+      ph.captureException(err, SERVER_DISTINCT_ID);
+    } else {
+      ph.captureException(err, SERVER_DISTINCT_ID, { environment: serverEnvironment });
+    }
   });
 }
 
@@ -142,7 +179,11 @@ export function captureAiGeneration(ev: AiGenerationEvent): void {
     if (ev.usage?.outputTokens !== undefined) props.$ai_output_tokens = ev.usage.outputTokens;
     if (ev.latencyMs !== undefined) props.$ai_latency = ev.latencyMs / 1000;
     if (ev.isError !== undefined) props.$ai_is_error = ev.isError;
-    ph.capture({ distinctId: SERVER_DISTINCT_ID, event: '$ai_generation', properties: props });
+    ph.capture({
+      distinctId: SERVER_DISTINCT_ID,
+      event: '$ai_generation',
+      properties: withEnvironment(props),
+    });
   });
 }
 
