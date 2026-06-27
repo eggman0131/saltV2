@@ -248,7 +248,8 @@ describe('onCanonItemWritten — Firestore emulator', () => {
   it('regenerates when thumbnail transitions from a URL to null', async () => {
     const db = getFirestore(adminApp);
     const before = makeCanonItem('canon-regen', {
-      thumbnail: 'https://firebasestorage.googleapis.com/v0/b/demo-salt.appspot.com/o/old.webp?alt=media',
+      thumbnail:
+        'https://firebasestorage.googleapis.com/v0/b/demo-salt.appspot.com/o/old.webp?alt=media',
       embedding: [1],
     });
     const after = makeCanonItem('canon-regen', { thumbnail: null, embedding: [1] });
