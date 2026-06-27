@@ -6,6 +6,7 @@ import { setActiveSpanName } from '@salt/observability/server';
 import { ai } from '../genkit.js';
 import { flowModel, aiModelLabel } from '../ai/fakeModel.js';
 import { tracedGenerate } from '../ai/aiGenerationTelemetry.js';
+import { reportFlowError } from '../observability/reportServerError.js';
 
 export const identifyEquipmentFlow = ai.defineFlow(
   {
@@ -15,20 +16,29 @@ export const identifyEquipmentFlow = ai.defineFlow(
   },
   async ({ rawName }) => {
     setActiveSpanName(`identifyEquipment: ${rawName}`);
-    const model = await flowModel('fast', 'identifyEquipment');
-    const result = await tracedGenerate(
-      'identifyEquipment',
-      await aiModelLabel('fast', 'identifyEquipment'),
-      () =>
-        ai.generate({
-          model,
-          system: SYSTEM_INSTRUCTIONS,
-          prompt: `"${rawName}"`,
-          output: { schema: IdentifyEquipmentAIOutputSchema },
-          config: { temperature: 0 },
-        }),
-    );
-    return { candidates: result.output!.candidates };
+    try {
+      const model = await flowModel('fast', 'identifyEquipment');
+      const result = await tracedGenerate(
+        'identifyEquipment',
+        await aiModelLabel('fast', 'identifyEquipment'),
+        () =>
+          ai.generate({
+            model,
+            system: SYSTEM_INSTRUCTIONS,
+            prompt: `"${rawName}"`,
+            output: { schema: IdentifyEquipmentAIOutputSchema },
+            config: { temperature: 0 },
+          }),
+      );
+      return { candidates: result.output!.candidates };
+    } catch (err) {
+      // onCallGenkit owns the error path for this callable, so the AI/Genkit
+      // failure (incl. AiTimeoutError) is reported here at the flow boundary —
+      // the only path that reaches this flow. Report + flush, then re-throw so
+      // Genkit's behaviour is unchanged. Best-effort; never throws.
+      await reportFlowError(err);
+      throw err;
+    }
   },
 );
 

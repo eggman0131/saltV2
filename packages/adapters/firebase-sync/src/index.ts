@@ -2,6 +2,11 @@ export type { FirebaseOptions } from 'firebase/app';
 export { initFirebase, setFirestoreNetwork } from './init.js';
 export type { AppCheckConfig } from './init.js';
 export { createFirebaseAuth } from './auth.js';
+// Sign-out / token-refresh teardown-race reader. Service onError sites consult
+// this before reporting an AuthError so the in-flight-listener permission-denied
+// race is suppressed (a genuine rules-misconfig AuthError, with no transition in
+// flight, still reports).
+export { isAuthTransitioning } from './authTransition.js';
 export { subscribeCanonItems, upsertCanonItem, deleteCanonItem } from './canonSubscription.js';
 export { subscribeAisles, saveAisles } from './aisleSubscription.js';
 export {

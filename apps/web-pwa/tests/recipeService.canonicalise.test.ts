@@ -8,6 +8,7 @@ vi.mock('@salt/firebase-sync', () => ({
   deleteRecipe: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   callParseRecipeIngredients: vi.fn(),
   callCanonicaliseRecipeIngredients: vi.fn(),
+  isAuthTransitioning: vi.fn(() => false),
 }));
 
 vi.mock('@salt/observability', () => ({

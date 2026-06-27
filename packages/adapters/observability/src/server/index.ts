@@ -44,3 +44,7 @@ export {
 // barrel and so cf-side tests can assert against the single source of truth.
 export { CANON_MATCH_EVENT, toCanonMatchEvent } from '../shared/matchOutcomeEvent.js';
 export type { CanonMatchEventProps, CanonMatchPath } from '../shared/matchOutcomeEvent.js';
+
+// Same category-gated reporting predicate the browser barrel exports — shared so
+// the server adapter (Phase 3) reuses the single source of truth, not a copy.
+export { isReportableCategory } from '../shared/reportableCategory.js';

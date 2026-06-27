@@ -114,10 +114,10 @@ describe('subscribeRecipes', () => {
   it('classifies stream-level errors', () => {
     const onError = vi.fn();
     subscribeRecipes(() => {}, onError);
-    (mockOnSnapshot.mock.calls[0][2] as ErrorCallback)(
-      Object.assign(new Error('e'), { code: 'permission-denied' }),
-    );
-    expect(onError).toHaveBeenCalledWith({ kind: 'AuthError', reason: 'forbidden' });
+    const raw = Object.assign(new Error('e'), { code: 'permission-denied' });
+    (mockOnSnapshot.mock.calls[0][2] as ErrorCallback)(raw);
+    // onError forwards the raw error (real stack) alongside the classified kind.
+    expect(onError).toHaveBeenCalledWith({ kind: 'AuthError', reason: 'forbidden' }, raw);
   });
 });
 

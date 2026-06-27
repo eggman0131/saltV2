@@ -6,6 +6,7 @@ import { setActiveSpanName } from '@salt/observability/server';
 import { ai } from '../genkit.js';
 import { flowModel, aiModelLabel } from '../ai/fakeModel.js';
 import { tracedGenerate } from '../ai/aiGenerationTelemetry.js';
+import { reportFlowError } from '../observability/reportServerError.js';
 
 export const populateEquipmentEntryFlow = ai.defineFlow(
   {
@@ -15,25 +16,33 @@ export const populateEquipmentEntryFlow = ai.defineFlow(
   },
   async ({ confirmedName }) => {
     setActiveSpanName(`populateEquipmentEntry: ${confirmedName}`);
-    // Production: googleAI.model(resolveModel('lite', 'populateEquipmentEntry')).
-    // Under FUNCTIONS_AI_FAKE=1 (emulator e2e only) flowModel returns the
-    // deterministic fake model instead; byte-identical otherwise. See
-    // ../ai/fakeModel.ts for the cross-process stub contract.
-    const model = await flowModel('lite', 'populateEquipmentEntry');
-    const result = await tracedGenerate(
-      'populateEquipmentEntry',
-      await aiModelLabel('lite', 'populateEquipmentEntry'),
-      () =>
-        ai.generate({
-          model,
-          system: SYSTEM_INSTRUCTIONS,
-          prompt: `"${confirmedName}"`,
-          output: { schema: PopulateEquipmentEntryAIOutputSchema },
-          config: { temperature: 0 },
-        }),
-    );
-    const output = result.output!;
-    return { name: output.name, accessories: output.accessories };
+    try {
+      // Production: googleAI.model(resolveModel('lite', 'populateEquipmentEntry')).
+      // Under FUNCTIONS_AI_FAKE=1 (emulator e2e only) flowModel returns the
+      // deterministic fake model instead; byte-identical otherwise. See
+      // ../ai/fakeModel.ts for the cross-process stub contract.
+      const model = await flowModel('lite', 'populateEquipmentEntry');
+      const result = await tracedGenerate(
+        'populateEquipmentEntry',
+        await aiModelLabel('lite', 'populateEquipmentEntry'),
+        () =>
+          ai.generate({
+            model,
+            system: SYSTEM_INSTRUCTIONS,
+            prompt: `"${confirmedName}"`,
+            output: { schema: PopulateEquipmentEntryAIOutputSchema },
+            config: { temperature: 0 },
+          }),
+      );
+      const output = result.output!;
+      return { name: output.name, accessories: output.accessories };
+    } catch (err) {
+      // onCallGenkit owns this callable's error path; report the AI/Genkit
+      // failure here (the only path to this flow), flush, then re-throw
+      // unchanged. Best-effort; never throws.
+      await reportFlowError(err);
+      throw err;
+    }
   },
 );
 

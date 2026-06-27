@@ -36,6 +36,10 @@ vi.mock('@salt/observability/server', () => ({
   initServerObservability: vi.fn(),
   whenServerObservabilityReady: vi.fn(async () => {}),
   runWithExtractedTraceContext,
+  // index.ts now imports ../observability/reportServerError.js, which constructs
+  // the server error reporter at module load and flushes on the report path.
+  createServerObservabilityErrorReportingAdapter: vi.fn(() => ({ report: vi.fn() })),
+  flushServerObservability: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../../src/flows/matchOrCreateCanon.js', () => ({ matchOrCreateCanonFlow }));

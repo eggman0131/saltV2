@@ -12,6 +12,7 @@ import {
 import { getApp } from 'firebase/app';
 import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
 import type { AuthProvider, User, ErrorReportingPort } from '@salt/domain';
+import { setAuthTransitioning, isAuthTransitioning } from './authTransition.js';
 
 // Keyed to the Auth instance (not a module-global boolean) so a re-created
 // default app — as the emulator integration suite does per test, #319 — gets
@@ -45,6 +46,21 @@ function toAuthError(err: unknown): DomainError {
   return { kind: 'AuthError', reason: 'unauthenticated' };
 }
 
+// Categorise-first reporting for auth catch sites: the gate runs on the
+// DomainError category, not the raw error. The RAW error is what's reported (so
+// PostHog gets the real stack), keyed by the categorised kind. While a sign-out /
+// token-refresh transition is in flight we additionally suppress AuthError — the
+// teardown `permission-denied` race — distinguishing it from a genuine
+// rules-misconfig AuthError (no transition in flight), which still reports.
+function reportAuthFailure(
+  errors: ErrorReportingPort | null,
+  rawError: unknown,
+  domainError: DomainError,
+): void {
+  if (domainError.kind === 'AuthError' && isAuthTransitioning()) return;
+  errors?.report(rawError, domainError.kind);
+}
+
 export function createFirebaseAuth(errors: ErrorReportingPort | null = null): AuthProvider {
   const auth = getAuth(getApp());
 
@@ -60,8 +76,9 @@ export function createFirebaseAuth(errors: ErrorReportingPort | null = null): Au
         });
         return success(undefined);
       } catch (err) {
-        errors?.report(err);
-        return failure(toAuthError(err));
+        const domainError = toAuthError(err);
+        reportAuthFailure(errors, err, domainError);
+        return failure(domainError);
       }
     },
 
@@ -74,23 +91,37 @@ export function createFirebaseAuth(errors: ErrorReportingPort | null = null): Au
         const cred = await signInWithEmailLink(auth, email, url);
         return success(toUser(cred.user));
       } catch (err) {
-        errors?.report(err);
-        return failure(toAuthError(err));
+        const domainError = toAuthError(err);
+        reportAuthFailure(errors, err, domainError);
+        return failure(domainError);
       }
     },
 
     async signOut(): Promise<ReadResult<void, DomainError>> {
+      // Open the transition window BEFORE tearing down the session: in-flight
+      // Firestore listeners fire `permission-denied` (→ AuthError) as the rules
+      // stop matching the now-signed-out user. The flag suppresses that expected
+      // race at every AuthError report site until auth state settles to null.
+      setAuthTransitioning(true);
       try {
         await fbSignOut(auth);
         return success(undefined);
       } catch (err) {
-        errors?.report(err);
-        return failure(toAuthError(err));
+        // Sign-out itself failed: the session is NOT actually tearing down, so
+        // close the window immediately — this AuthError is genuine, not the race.
+        setAuthTransitioning(false);
+        const domainError = toAuthError(err);
+        reportAuthFailure(errors, err, domainError);
+        return failure(domainError);
       }
     },
 
     observe(callback: (user: User | null) => void): () => void {
       return onAuthStateChanged(auth, (fb) => {
+        // Auth state has settled. Once the user is null, the sign-out teardown is
+        // complete and the listener race window is closed — clear the flag so a
+        // subsequent genuine AuthError reports normally.
+        if (!fb) setAuthTransitioning(false);
         callback(fb ? toUser(fb) : null);
       });
     },

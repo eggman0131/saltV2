@@ -8,6 +8,7 @@ vi.mock('@salt/firebase-sync', () => ({
   deleteCanonItem: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   callMatchOrCreate: vi.fn(),
   callRegenerateCanonIcon: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  isAuthTransitioning: vi.fn(() => false),
 }));
 
 vi.mock('@salt/observability', () => ({

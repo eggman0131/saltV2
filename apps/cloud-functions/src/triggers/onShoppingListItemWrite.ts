@@ -10,6 +10,7 @@ import {
 } from '@salt/observability/server';
 import { buildMatchOrCreatePorts } from '../flows/matchOrCreateCanon.js';
 import { createServerEntryParseAdapter } from '../adapters/serverEntryParse.js';
+import { reportServerError } from '../observability/reportServerError.js';
 
 const TRIGGER_PATH = 'shoppingLists/{listId}/items/{itemId}';
 
@@ -138,6 +139,10 @@ export const onShoppingListItemWrite = onDocumentWritten(
       // that path is prevented by the timeoutSeconds/memory headroom above.
       errorCategory = 'exception';
       logger.error('onShoppingListItemWrite: unexpected error', { err, docId: itemId });
+      // Additive to the logger: surface this unexpected throw to PostHog error
+      // tracking. Uncategorised → reported. Best-effort (never throws). The
+      // finally block flushes before the function returns.
+      reportServerError(err);
       await docRef
         .update({ matchState: 'failed', updatedAt: new Date().toISOString() })
         .catch((writeErr) => {
@@ -145,6 +150,9 @@ export const onShoppingListItemWrite = onDocumentWritten(
             writeErr,
             docId: itemId,
           });
+          // A failed terminal-state write is a StorageError-class failure that
+          // leaves the item stuck; report it additively too.
+          reportServerError(writeErr);
         });
     } finally {
       // DORMANT: trace propagation — trigger boundary; mark per convention.

@@ -1,6 +1,12 @@
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { onCall, HttpsError } from 'firebase-functions/https';
+import { defineSecret } from 'firebase-functions/params';
 import { RegenerateCanonIconInputSchema } from '@salt/domain/schemas';
+import { reportFlowError } from '../observability/reportServerError.js';
+
+// Bound so an unexpected Firestore write failure here can be reported
+// (posthog-node). Optional like elsewhere — reporting no-ops when unset.
+const posthogApiKey = defineSecret('POSTHOG_API_KEY');
 
 // Manual regenerate / un-hide escape hatch (issue #148). Setting `thumbnail`
 // (→ null) and stamping the `iconRequestedAt` nonce re-fires onCanonItemWritten,
@@ -19,7 +25,7 @@ import { RegenerateCanonIconInputSchema } from '@salt/domain/schemas';
 // alongside the index.ts callables at the enforcement step (this also fires AI
 // image generation, so it is part of the cost surface App Check protects).
 export const regenerateCanonIcon = onCall(
-  { region: 'europe-west2', enforceAppCheck: false },
+  { region: 'europe-west2', enforceAppCheck: false, secrets: [posthogApiKey] },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Sign in required.');
@@ -33,14 +39,22 @@ export const regenerateCanonIcon = onCall(
     // No hint clears any stale hint so the regeneration is plain. iconRequestedAt
     // forces the write to mutate the doc so the trigger fires even when the item
     // had no icon (thumbnail already null) — see the header note.
-    await getFirestore()
-      .collection('canonItems')
-      .doc(canonId)
-      .update({
-        thumbnail: null,
-        iconHint: hint ? hint : FieldValue.delete(),
-        iconRequestedAt: Date.now(),
-      });
+    try {
+      await getFirestore()
+        .collection('canonItems')
+        .doc(canonId)
+        .update({
+          thumbnail: null,
+          iconHint: hint ? hint : FieldValue.delete(),
+          iconRequestedAt: Date.now(),
+        });
+    } catch (err) {
+      // An unexpected Firestore write failure (StorageError-class) — report it
+      // additively, flush, then re-throw so the callable's error path is
+      // unchanged. The auth/validation guards above throw HttpsError before this.
+      await reportFlowError(err);
+      throw err;
+    }
     return { ok: true } as const;
   },
 );

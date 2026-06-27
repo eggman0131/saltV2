@@ -18,6 +18,7 @@ vi.mock('@salt/firebase-sync', () => ({
   subscribeMembers: vi.fn(),
   upsertMember: vi.fn(),
   deleteMember: vi.fn(),
+  isAuthTransitioning: vi.fn(() => false),
 }));
 
 vi.mock('@salt/observability', () => ({

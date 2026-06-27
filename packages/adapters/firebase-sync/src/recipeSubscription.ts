@@ -23,7 +23,9 @@ const RECIPES_COLLECTION = 'recipes';
 
 export function subscribeRecipes(
   onRecipes: (recipes: Recipe[]) => void,
-  onError: (err: DomainError) => void,
+  // rawError forwards the original Firestore error for the real stack alongside
+  // the categorised DomainError. Optional + last-positional: backward-compatible.
+  onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
   const db = getFirestore(getApp());
   return onSnapshot(
@@ -40,7 +42,7 @@ export function subscribeRecipes(
       }
       onRecipes(valid);
     },
-    (err) => onError(classifyFirestoreError(err)),
+    (err) => onError(classifyFirestoreError(err), err),
   );
 }
 

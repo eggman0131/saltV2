@@ -245,9 +245,36 @@ No Firebase error codes may cross the boundary.
 
 ### 7.6 Logging and Error Reporting
 
-- Adapters may log internal errors for diagnostics via the `ErrorReportingPort`.
-- All error reporting is mediated through `ErrorReportingPort`.
-- **Cloud Functions** log via `firebase-functions/logger` with structured JSON shaped to match the `DomainError` taxonomy (`{ scope, docId, errorCategory }`).
+All error reporting is mediated through `ErrorReportingPort` — adapters never touch a telemetry SDK directly. Reporting is best-effort and must never throw across the boundary (§7.5, Rule 10): a dropped report is always preferable to a thrown error in a caller's hot path.
+
+**Principle: report the unexpected, suppress the expected.** The reason to report a *caught* error is that the friendly-handling path would otherwise hide it — a handled failure never throws, so nothing automatic will surface it. Reporting exists to make those invisible failures visible; it is **not** a mirror of every `Failure`. The decision to report is gated on the **`DomainError` category** (§7.2), not on which call site happens to have a `catch` or an `onError` callback.
+
+**Caught vs uncaught.** This gated port governs *caught* errors only. *Uncaught* errors — unhandled exceptions and promise rejections — are surfaced automatically by PostHog's exception autocapture as Error Tracking issues, independently of `ErrorReportingPort`. This is controlled by the PostHog **project-level** autocapture setting; the browser SDK init (`init.ts`) deliberately does not set `capture_exceptions`, so it neither forces nor blocks it. An uncaught error is unexpected by definition, so it is intentionally **not** subject to the category gate — there is nothing to suppress. Because caught errors are, by definition, caught, they never reach autocapture, so the two paths never double-report.
+
+**Report** to the error-tracking backend (PostHog) via `ErrorReportingPort`:
+
+- `StorageError` — corruption, quota exceeded, storage unavailable.
+- `SyncError` — a write the user attempted that failed unexpectedly.
+- `AuthError` — **except** the sign-out / token-refresh race, where in-flight realtime listeners receive `permission-denied` as auth tears down. That specific case is a known false positive and is suppressed.
+- Any error that maps to **no** known operational category (unknown / unexpected). These are the highest-signal reports.
+- **Server-side:** unhandled Cloud Function exceptions and AI/Genkit flow failures (timeouts, model errors).
+
+**Do not report** (handle with a friendly message only — these are expected operational states, not faults):
+
+- `NetworkError` / offline — expected by design; reads and writes degrade gracefully via `persistentLocalCache`.
+- The sign-out / token-refresh `AuthError` race described above.
+- `ValidationError` — invalid user input, not a system failure.
+- `NotFound` and `ConflictError` — expected; `ConflictError` is resolved by the LWW policy in `packages/domain`.
+
+**Coverage.** Apply the policy uniformly across *all* failure boundaries — command/write failures that return `Failure<DomainError>`, realtime read/stream `onError` callbacks, and server-side Cloud Functions — gated by category. Do not report at only the subset of sites that happen to expose an `onError` callback.
+
+**Reported context.** Data is family-shared (no per-user PII by design), but raw user input (e.g. canon match text) must be scrubbed from reported error context. Report the error's type/message/stack and the `DomainError` category; do not attach free-form user content.
+
+**Cloud Functions** continue to log via `firebase-functions/logger` with structured JSON shaped to match the `DomainError` taxonomy (`{ scope, docId, errorCategory }`). Server-side PostHog error reporting is **additive** to this logging, not a replacement.
+
+**Enforcement.** Unlike the import-graph rules (§11), this policy is a runtime-categorization convention — it is enforced by code review, the category-gating helper at the `ErrorReportingPort` boundary, and unit tests, not by `eslint-plugin-boundaries`.
+
+**Calibration.** For the post-rollout PostHog Error Tracking before/after check, the synthetic server person, and the known intentional client/server asymmetries, see [docs/error-reporting-calibration.md](error-reporting-calibration.md).
 
 ---
 
