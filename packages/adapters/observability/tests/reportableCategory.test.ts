@@ -37,4 +37,12 @@ describe('isReportableCategory', () => {
     // unexpected category — it must report, never silently drop.
     expect(isReportableCategory('SomethingBrandNew' as DomainError['kind'])).toBe(true);
   });
+
+  it('defaults an UNDEFINED (uncategorised) kind to reportable', () => {
+    // Phase 3 widening: server catch sites usually have a RAW exception with no
+    // DomainError classification (there is no server classifyFirestoreError), so
+    // they pass `undefined`. An absent category is "the unexpected" → report.
+    // This must NOT change behaviour for any known kind (asserted above).
+    expect(isReportableCategory(undefined)).toBe(true);
+  });
 });

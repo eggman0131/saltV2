@@ -26,6 +26,16 @@ const SUPPRESSED_CATEGORIES: ReadonlySet<DomainError['kind']> = new Set<DomainEr
   'ConflictError',
 ]);
 
-export function isReportableCategory(kind: DomainError['kind']): boolean {
+// `kind` is widened to `| undefined` so the SAME predicate gates both subpaths:
+//   • client (Phase 1/2) always passes a concrete DomainError['kind'] — behaviour
+//     for every known kind is unchanged.
+//   • server (Phase 3) usually catches RAW, uncategorised exceptions (there is no
+//     server classifyFirestoreError), so it passes `undefined`. An absent or
+//     unrecognised category is "the unexpected" → reportable, matching the policy
+//     north star ("report the unexpected, suppress the expected"). This is an
+//     evolution of the one source of truth, not a fork: suppression is still keyed
+//     ONLY off the explicit SUPPRESSED_CATEGORIES set.
+export function isReportableCategory(kind: DomainError['kind'] | undefined): boolean {
+  if (kind === undefined) return true; // uncategorised → report the unexpected
   return !SUPPRESSED_CATEGORIES.has(kind);
 }

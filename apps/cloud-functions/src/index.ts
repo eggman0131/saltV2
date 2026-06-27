@@ -15,6 +15,7 @@ import {
   runWithExtractedTraceContext,
 } from '@salt/observability/server';
 import { registerGenkitDevTracing } from './genkitTracing.js';
+import { reportFlowError } from './observability/reportServerError.js';
 import { embedTextFlow } from './flows/embedText.js';
 import { arbitrateCanonFlow } from './flows/arbitrateCanon.js';
 import { matchOrCreateCanonFlow } from './flows/matchOrCreateCanon.js';
@@ -126,14 +127,25 @@ export const matchOrCreateCanon = onCall(
 
     await whenServerObservabilityReady();
 
-    // Suppress propagation locally so flows stay root-listed in the Dev UI.
-    if (process.env['GENKIT_TELEMETRY_SERVER']) {
-      return matchOrCreateCanonFlow(request.data);
+    try {
+      // Suppress propagation locally so flows stay root-listed in the Dev UI.
+      if (process.env['GENKIT_TELEMETRY_SERVER']) {
+        return await matchOrCreateCanonFlow(request.data);
+      }
+      // Production: nest the flow span under the inbound request trace. The
+      // trace flow (env-gate + runWithExtractedTraceContext) is unchanged — the
+      // report() lives in the catch and never touches the active context.
+      return await runWithExtractedTraceContext(request.rawRequest?.headers, () =>
+        matchOrCreateCanonFlow(request.data),
+      );
+    } catch (err) {
+      // AI/Genkit flow failure (incl. AiTimeoutError). Report the genuine cause
+      // additively, flush, then re-throw so the callable's error path is
+      // unchanged. matchOrCreateCanonFlow's own finally also flushes; flush is
+      // idempotent + non-throwing.
+      await reportFlowError(err);
+      throw err;
     }
-    // Production: nest the flow span under the inbound request trace.
-    return runWithExtractedTraceContext(request.rawRequest?.headers, () =>
-      matchOrCreateCanonFlow(request.data),
-    );
   },
 );
 
@@ -160,14 +172,23 @@ export const canonicaliseRecipeIngredients = onCall(
       throw new HttpsError('invalid-argument', 'Invalid request payload.');
     }
     await whenServerObservabilityReady();
-    return canonicaliseRecipeIngredientsFlow(parsed.data);
+    try {
+      return await canonicaliseRecipeIngredientsFlow(parsed.data);
+    } catch (err) {
+      // AI/Genkit batch flow failure — report the cause additively, flush, then
+      // re-throw unchanged. The flow's finally also flushes (idempotent).
+      await reportFlowError(err);
+      throw err;
+    }
   },
 );
 
 export const identifyEquipment = onCallGenkit(
   {
     ...APP_CHECK_ENFORCEMENT,
-    secrets: [geminiApiKey],
+    // posthogApiKey bound so the flow's onCallGenkit-boundary error reporting
+    // (reportFlowError in the flow body) can read POSTHOG_API_KEY at runtime.
+    secrets: [geminiApiKey, posthogApiKey],
     authPolicy: isSignedIn(),
   },
   identifyEquipmentFlow,
@@ -176,7 +197,7 @@ export const identifyEquipment = onCallGenkit(
 export const populateEquipmentEntry = onCallGenkit(
   {
     ...APP_CHECK_ENFORCEMENT,
-    secrets: [geminiApiKey],
+    secrets: [geminiApiKey, posthogApiKey],
     authPolicy: isSignedIn(),
   },
   populateEquipmentEntryFlow,
@@ -213,7 +234,14 @@ export const authorRecipe = onCall(
       throw new HttpsError('invalid-argument', 'Invalid request payload.');
     }
     await whenServerObservabilityReady();
-    return authorRecipeFlow(parsed.data);
+    try {
+      return await authorRecipeFlow(parsed.data);
+    } catch (err) {
+      // Librarian flow failure (AI + batch canonicalise) — report the cause
+      // additively, flush, then re-throw unchanged.
+      await reportFlowError(err);
+      throw err;
+    }
   },
 );
 
@@ -264,7 +292,17 @@ export const extractRecipeFromUrl = onCall(
     try {
       return await extractRecipeFromUrlFlow(parsed.data);
     } catch (err) {
-      if (err instanceof UrlImportError) throw mapUrlImportFailure(err.code);
+      // Report the GENUINE cause before mapping to a user-facing HttpsError —
+      // the raw error/stack, never the HttpsError envelope. The UrlImportError
+      // taxonomy encodes EXPECTED user outcomes (bad/blocked URL, unreachable
+      // page, not-a-recipe) which are suppressed per policy; only `ai-failed`
+      // (the recipe-reader model itself failing) is the unexpected one worth
+      // surfacing. A non-UrlImportError throw is an unexpected bug → report.
+      if (err instanceof UrlImportError) {
+        if (err.code === 'ai-failed') await reportFlowError(err);
+        throw mapUrlImportFailure(err.code);
+      }
+      await reportFlowError(err);
       throw new HttpsError(
         'internal',
         'The recipe reader had trouble with that page — try again, or add it manually.',
@@ -276,7 +314,7 @@ export const extractRecipeFromUrl = onCall(
 export const chefChat = onCallGenkit(
   {
     ...APP_CHECK_ENFORCEMENT,
-    secrets: [geminiApiKey],
+    secrets: [geminiApiKey, posthogApiKey],
     authPolicy: isSignedIn(),
     timeoutSeconds: 120,
   },
@@ -286,7 +324,7 @@ export const chefChat = onCallGenkit(
 export const generateChatTitle = onCallGenkit(
   {
     ...APP_CHECK_ENFORCEMENT,
-    secrets: [geminiApiKey],
+    secrets: [geminiApiKey, posthogApiKey],
     authPolicy: isSignedIn(),
   },
   generateChatTitleFlow,
@@ -295,21 +333,38 @@ export const generateChatTitle = onCallGenkit(
 // Admin-only AI model catalog + probe (Phase 3 — admin-managed model selection).
 // Both re-check admin server-side (issue #155) and declare the AI secret so the
 // catalog fetch / probe can read GEMINI_API_KEY from process.env. App Check
-// monitor-first like every other callable.
+// monitor-first like every other callable. POSTHOG_API_KEY is bound so an
+// unexpected throw can be reported (the handlers map every EXPECTED operational
+// outcome to an HttpsError / a `{ ok:false }` result, so only a non-HttpsError
+// escaping is reported — see reportUnexpected).
+//
+// reportUnexpected: report a genuine bug (a non-HttpsError throw) before it
+// propagates, then re-throw unchanged. An HttpsError is an outcome the handler /
+// requireAdmin deliberately classified (auth, permission, unavailable catalog) —
+// expected, so suppressed. Flush before return so the report is not stranded.
+async function reportUnexpected<T>(op: () => Promise<T>): Promise<T> {
+  try {
+    return await op();
+  } catch (err) {
+    if (!(err instanceof HttpsError)) await reportFlowError(err);
+    throw err;
+  }
+}
+
 export const listAiModels = onCall(
   {
     ...APP_CHECK_ENFORCEMENT,
-    secrets: [geminiApiKey],
+    secrets: [geminiApiKey, posthogApiKey],
   },
-  handleListAiModels,
+  (request) => reportUnexpected(() => handleListAiModels(request)),
 );
 
 export const testModel = onCall(
   {
     ...APP_CHECK_ENFORCEMENT,
-    secrets: [geminiApiKey],
+    secrets: [geminiApiKey, posthogApiKey],
   },
-  handleTestModel,
+  (request) => reportUnexpected(() => handleTestModel(request)),
 );
 
 export { onShoppingListItemWrite };

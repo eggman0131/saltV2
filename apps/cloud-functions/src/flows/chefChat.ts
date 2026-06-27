@@ -12,6 +12,7 @@ import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 import { flowModel, aiModelLabel } from '../ai/fakeModel.js';
 import { tracedGenerate } from '../ai/aiGenerationTelemetry.js';
+import { reportFlowError } from '../observability/reportServerError.js';
 
 async function readEquipmentContext(db: ReturnType<typeof getFirestore>): Promise<string> {
   try {
@@ -103,52 +104,60 @@ export const chefChatFlow = ai.defineFlow(
     streamSchema: z.string(),
   },
   async (input, streamingCallback) => {
-    const db = getFirestore();
-    const [equipmentContext, recipeContext] = await Promise.all([
-      readEquipmentContext(db),
-      input.recipeId ? readRecipeContext(db, input.recipeId) : Promise.resolve(''),
-    ]);
+    try {
+      const db = getFirestore();
+      const [equipmentContext, recipeContext] = await Promise.all([
+        readEquipmentContext(db),
+        input.recipeId ? readRecipeContext(db, input.recipeId) : Promise.resolve(''),
+      ]);
 
-    const systemPrompt = buildSystemPrompt(equipmentContext, recipeContext);
+      const systemPrompt = buildSystemPrompt(equipmentContext, recipeContext);
 
-    // Convert Message[] history to Genkit MessageData format. Our domain role is
-    // 'user' | 'assistant'; Genkit/Gemini uses 'user' | 'model', so the assistant
-    // turns must be remapped (a bare cast leaves 'assistant' at runtime, which
-    // Genkit rejects with "messages.N.role: must be equal to one of the allowed
-    // values").
-    const history = input.messages.map((m) => ({
-      role: (m.role === 'assistant' ? 'model' : 'user') as 'user' | 'model',
-      content: [{ text: m.text }],
-    }));
+      // Convert Message[] history to Genkit MessageData format. Our domain role is
+      // 'user' | 'assistant'; Genkit/Gemini uses 'user' | 'model', so the assistant
+      // turns must be remapped (a bare cast leaves 'assistant' at runtime, which
+      // Genkit rejects with "messages.N.role: must be equal to one of the allowed
+      // values").
+      const history = input.messages.map((m) => ({
+        role: (m.role === 'assistant' ? 'model' : 'user') as 'user' | 'model',
+        content: [{ text: m.text }],
+      }));
 
-    // Pro-tier model for conversational quality (design principle #3, issue #206).
-    const chatModel = await flowModel('pro', 'chefChat');
-    const modelLabel = await aiModelLabel('pro', 'chefChat');
-    const { stream, response } = ai.generateStream({
-      model: chatModel,
-      system: systemPrompt,
-      messages: history,
-      prompt: input.newMessage,
-    });
+      // Pro-tier model for conversational quality (design principle #3, issue #206).
+      const chatModel = await flowModel('pro', 'chefChat');
+      const modelLabel = await aiModelLabel('pro', 'chefChat');
+      const { stream, response } = ai.generateStream({
+        model: chatModel,
+        system: systemPrompt,
+        messages: history,
+        prompt: input.newMessage,
+      });
 
-    for await (const chunk of stream) {
-      const text = chunk.text;
-      if (text) streamingCallback(text);
+      for await (const chunk of stream) {
+        const text = chunk.text;
+        if (text) streamingCallback(text);
+      }
+
+      // Emit $ai_generation off the final aggregated response (carries usage). The
+      // stream itself is already draining above; tracedGenerate just awaits the
+      // resolved response under the existing timeout and records model/tokens/latency.
+      const finalResponse = await withAiTimeout(
+        'chefChat',
+        () => tracedGenerate('chefChat', modelLabel, () => response),
+        {
+          timeoutMs: 55_000,
+          retries: 0,
+        },
+      );
+
+      return finalResponse.text;
+    } catch (err) {
+      // onCallGenkit owns this callable's error path; report the AI/Genkit
+      // failure (incl. AiTimeoutError, or a mid-stream model error) here, flush,
+      // then re-throw unchanged. Best-effort; never throws.
+      await reportFlowError(err);
+      throw err;
     }
-
-    // Emit $ai_generation off the final aggregated response (carries usage). The
-    // stream itself is already draining above; tracedGenerate just awaits the
-    // resolved response under the existing timeout and records model/tokens/latency.
-    const finalResponse = await withAiTimeout(
-      'chefChat',
-      () => tracedGenerate('chefChat', modelLabel, () => response),
-      {
-        timeoutMs: 55_000,
-        retries: 0,
-      },
-    );
-
-    return finalResponse.text;
   },
 );
 

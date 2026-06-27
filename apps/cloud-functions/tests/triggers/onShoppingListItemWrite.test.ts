@@ -40,15 +40,21 @@ const mockSpan = {
   end: vi.fn(),
 };
 
+// Spy on the server error reporter the trigger now wires through
+// ../observability/reportServerError.js (constructed at module load).
+const mockReport = vi.fn();
+const mockFlush = vi.fn().mockResolvedValue(undefined);
+
 vi.mock('@salt/observability/server', () => ({
   startSpan: vi.fn(() => mockSpan),
-  flushServerObservability: vi.fn().mockResolvedValue(undefined),
+  flushServerObservability: mockFlush,
   whenServerObservabilityReady: vi.fn().mockResolvedValue(undefined),
   initServerObservability: vi.fn(),
   isServerObservabilityInitialised: vi.fn(() => false),
   createServerObservabilityMatchLoggingAdapter: vi.fn(() => ({
     write: vi.fn().mockResolvedValue(undefined),
   })),
+  createServerObservabilityErrorReportingAdapter: vi.fn(() => ({ report: mockReport })),
   captureAiGeneration: vi.fn(),
 }));
 
@@ -339,6 +345,44 @@ describe('onShoppingListItemWrite', () => {
       );
     });
 
+    it('reports the unexpected error to PostHog and flushes before returning', async () => {
+      const boom = new Error('arbitrateCanon timed out after 20000ms');
+      mockMatchOrCreate.mockRejectedValue(boom);
+
+      await (onShoppingListItemWrite as Function)(makeEvent({ before: null, after: PENDING_ITEM }));
+
+      // Additive to the logger: the raw error is reported, uncategorised
+      // (undefined category → reportable). The terminal-state write succeeds, so
+      // only the matchOrCreate throw is reported.
+      expect(mockReport).toHaveBeenCalledWith(boom, undefined);
+      // The flush in the finally runs after the report so the event is not
+      // stranded when the function freezes.
+      expect(mockFlush).toHaveBeenCalled();
+    });
+
+    it('does not attach the raw shopping-list text to the report payload', async () => {
+      mockMatchOrCreate.mockRejectedValue(new Error('boom'));
+
+      await (onShoppingListItemWrite as Function)(
+        makeEvent({
+          before: null,
+          after: {
+            rawText: 'two pounds of organic heirloom tomatoes',
+            canonId: null,
+            matchState: 'pending',
+          },
+        }),
+      );
+
+      // report() is called with only (error, category) — never the rawText. The
+      // adapter forwards just the error/stack; free-form user content must not
+      // ride along (CLAUDE.md §Observability).
+      expect(mockReport).toHaveBeenCalledTimes(1);
+      const reportArgs = mockReport.mock.calls[0]!;
+      expect(reportArgs).toHaveLength(2);
+      expect(JSON.stringify(reportArgs)).not.toContain('organic heirloom tomatoes');
+    });
+
     it('swallows a failed terminal-state write so the handler still resolves', async () => {
       mockMatchOrCreate.mockRejectedValue(new Error('boom'));
       mockUpdate.mockRejectedValueOnce(new Error('firestore unavailable'));
@@ -346,6 +390,20 @@ describe('onShoppingListItemWrite', () => {
       await expect(
         (onShoppingListItemWrite as Function)(makeEvent({ before: null, after: PENDING_ITEM })),
       ).resolves.toBeUndefined();
+    });
+
+    it('reports BOTH the unexpected error and the failed terminal-state write', async () => {
+      const boom = new Error('boom');
+      const writeErr = new Error('firestore unavailable');
+      mockMatchOrCreate.mockRejectedValue(boom);
+      mockUpdate.mockRejectedValueOnce(writeErr);
+
+      await (onShoppingListItemWrite as Function)(makeEvent({ before: null, after: PENDING_ITEM }));
+
+      // The unexpected throw AND the StorageError-class terminal-write failure
+      // each report — the item is stuck either way, so both are surfaced.
+      expect(mockReport).toHaveBeenCalledWith(boom, undefined);
+      expect(mockReport).toHaveBeenCalledWith(writeErr, undefined);
     });
   });
 

@@ -5,17 +5,24 @@ import { defineSecret } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { normaliseName } from '@salt/domain';
 import { CanonItemSchema, DevSettingsSchema, type CanonItemDoc } from '@salt/domain/schemas';
+import { flushServerObservability } from '@salt/observability/server';
 import { embedTextFlow } from '../flows/embedText.js';
 import { generateCanonIconFlow } from '../flows/generateCanonIcon.js';
 import { removeFlatBackground } from '../imaging/removeFlatBackground.js';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { aiFakeEnabled } from '../ai/fakeModel.js';
+import { reportServerError } from '../observability/reportServerError.js';
 
 // Defined here (not imported from index.ts) to avoid a circular import; the
 // Firebase CLI aggregates same-named defineSecret calls across files at deploy
 // time. The trigger reaches Gemini for both the embedding and the icon, so the
 // key must be bound to its runtime.
 const geminiApiKey = defineSecret('GEMINI_API_KEY');
+// Bound so server error reporting (posthog-node) can read POSTHOG_API_KEY at
+// runtime — this trigger now reports embedding/icon/devSettings-read failures.
+// Optional like elsewhere: when unset, reporting no-ops and the logger still
+// emits.
+const posthogApiKey = defineSecret('POSTHOG_API_KEY');
 
 const ICON_STORAGE_PREFIX = 'canon-icons';
 
@@ -34,6 +41,10 @@ async function maybeGenerateEmbedding(id: string, item: CanonItemDoc): Promise<v
     await getFirestore().collection('canonItems').doc(id).update({ embedding: values });
   } catch (err) {
     logger.error('onCanonItemWritten: embedding failed', { id, err });
+    // Additive: an embedding flow failure (AI/Genkit) is unexpected → report it
+    // to PostHog alongside the logger. Best-effort, never throws. The handler's
+    // finally flushes before the function returns.
+    reportServerError(err);
   }
 }
 
@@ -119,6 +130,10 @@ async function maybeGenerateIcon(
   } catch (err) {
     // Leave thumbnail null so a later write retries; never block the trigger.
     logger.error('onCanonItemWritten: icon generation failed', { id, err });
+    // Additive: icon generation chains an AI flow, image processing and a Storage
+    // upload — a throw here is unexpected. Report it to PostHog alongside the
+    // logger. Best-effort, never throws; the handler's finally flushes.
+    reportServerError(err);
   }
 }
 
@@ -135,12 +150,20 @@ async function isCanonIconGenerationEnabled(): Promise<boolean> {
     if (!snap.exists) return true;
     const parsed = DevSettingsSchema.safeParse(snap.data());
     if (!parsed.success) {
+      // Expected validation fallback (a doc that doesn't match the schema, e.g.
+      // a partially-written settings doc): NOT reported — this is a
+      // ValidationError-class "expected" outcome, suppressed per policy. The
+      // fail-open default + the warn log are the contract.
       logger.warn('onCanonItemWritten: invalid devSettings doc, defaulting to enabled');
       return true;
     }
     return parsed.data.canonIconGenerationEnabled;
   } catch (err) {
     logger.warn('onCanonItemWritten: devSettings read failed, defaulting to enabled', { err });
+    // A read THROW (vs a shape mismatch above) is a StorageError-class failure.
+    // Non-critical (we fail open), but genuinely unexpected, so report it
+    // additively — best-effort, never throws.
+    reportServerError(err, 'StorageError');
     return true;
   }
 }
@@ -183,7 +206,7 @@ export const onCanonItemWritten = onDocumentWritten(
   {
     document: 'canonItems/{id}',
     region: 'europe-west2',
-    secrets: [geminiApiKey],
+    secrets: [geminiApiKey, posthogApiKey],
     // Image generation (~5–8s+) plus sharp processing need more headroom than
     // the default text-only triggers.
     timeoutSeconds: 300,
@@ -211,12 +234,19 @@ export const onCanonItemWritten = onDocumentWritten(
     }
 
     const id = event.params.id;
-    // Two independently-guarded side-effects. allSettled so a failure in one
-    // branch never rejects the handler (which would retry both). The icon branch
-    // is edge-triggered on before→after, so it needs the prior snapshot.
-    await Promise.allSettled([
-      maybeGenerateEmbedding(id, parsed.data),
-      maybeGenerateIcon(id, parsed.data, event.data?.before),
-    ]);
+    try {
+      // Two independently-guarded side-effects. allSettled so a failure in one
+      // branch never rejects the handler (which would retry both). The icon branch
+      // is edge-triggered on before→after, so it needs the prior snapshot.
+      await Promise.allSettled([
+        maybeGenerateEmbedding(id, parsed.data),
+        maybeGenerateIcon(id, parsed.data, event.data?.before),
+      ]);
+    } finally {
+      // The branch catches above report best-effort to posthog-node, which
+      // batches; flush before the function freezes so a report is not stranded.
+      // Non-throwing + no-op when uninitialised, so it is always safe to call.
+      await flushServerObservability();
+    }
   },
 );
