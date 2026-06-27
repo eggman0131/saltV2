@@ -88,7 +88,12 @@ export const embedText = onCallGenkit(
 export const arbitrateCanon = onCallGenkit(
   {
     ...APP_CHECK_ENFORCEMENT,
-    secrets: [geminiApiKey],
+    // posthogApiKey bound so the flow's tracedGenerate $ai_generation emit
+    // reaches PostHog when arbitrateCanon runs as its own callable. Without it,
+    // initServerObservability gets an empty key in this function's process and
+    // the emit silently no-ops (it only worked when invoked inside a
+    // posthog-bound parent like matchOrCreateCanon).
+    secrets: [geminiApiKey, posthogApiKey],
     authPolicy: isSignedIn(),
   },
   arbitrateCanonFlow,
@@ -208,7 +213,11 @@ export const populateEquipmentEntry = onCallGenkit(
 export const parseRecipeIngredients = onCallGenkit(
   {
     ...APP_CHECK_ENFORCEMENT,
-    secrets: [geminiApiKey],
+    // posthogApiKey bound so the flow's tracedGenerate $ai_generation emit
+    // reaches PostHog. Without it, POSTHOG_API_KEY is absent in this function's
+    // process, initServerObservability inits with an empty key, and the emit
+    // silently no-ops — so this callable's AI usage never lands in PostHog.
+    secrets: [geminiApiKey, posthogApiKey],
     authPolicy: isSignedIn(),
     timeoutSeconds: 90,
   },
@@ -317,6 +326,13 @@ export const chefChat = onCallGenkit(
     secrets: [geminiApiKey, posthogApiKey],
     authPolicy: isSignedIn(),
     timeoutSeconds: 120,
+    // Pro-tier streaming + equipment/recipe/history context reads exceed the
+    // 256 MiB default (observed "Memory limit of 256 MiB exceeded with 263 MiB
+    // used" in staging). The OOM SIGKILL also kills the instance before
+    // enableFirebaseTelemetry can flush the flow span, so chefChat never
+    // appeared in Genkit Monitoring. 512MiB matches the other heavy flows
+    // (authorRecipe, canonicaliseRecipeIngredients, extractRecipeFromUrl).
+    memory: '512MiB',
   },
   chefChatFlow,
 );
