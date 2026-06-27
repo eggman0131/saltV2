@@ -11,7 +11,9 @@ const CONFIG_DOC_ID = 'singleton';
 
 export function subscribeShoppingListsConfig(
   onConfig: (config: ShoppingListsConfig | null) => void,
-  onError: (err: DomainError) => void,
+  // rawError forwards the original Firestore error for the real stack; the
+  // synthetic schema-corruption DomainError below has none, so it omits it.
+  onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
   const db = getFirestore(getApp());
   return onSnapshot(
@@ -28,7 +30,7 @@ export function subscribeShoppingListsConfig(
       }
       onConfig(result.data);
     },
-    (err) => onError(classifyFirestoreError(err)),
+    (err) => onError(classifyFirestoreError(err), err),
   );
 }
 

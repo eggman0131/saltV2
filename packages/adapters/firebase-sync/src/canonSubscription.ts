@@ -10,7 +10,11 @@ const COLLECTION = 'canonItems';
 
 export function subscribeCanonItems(
   onItems: (items: CanonItem[]) => void,
-  onError: (err: DomainError) => void,
+  // rawError forwards the original Firestore error alongside the categorised
+  // DomainError so the service report site can send the REAL stack to PostHog
+  // (the synthetic DomainError carries none). Optional + last-positional, so
+  // existing two-arg callers stay source-compatible.
+  onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
   const db = getFirestore(getApp());
   return onSnapshot(
@@ -27,7 +31,7 @@ export function subscribeCanonItems(
       }
       onItems(valid);
     },
-    (err) => onError(classifyFirestoreError(err)),
+    (err) => onError(classifyFirestoreError(err), err),
   );
 }
 

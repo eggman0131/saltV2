@@ -32,7 +32,9 @@ function expiresAt(): string {
 export function subscribeChatSessions(
   ownerUid: string,
   onSessions: (sessions: ChatSessionDoc[]) => void,
-  onError: (err: DomainError) => void,
+  // rawError forwards the original Firestore error for the real stack alongside
+  // the categorised DomainError. Optional + last-positional: backward-compatible.
+  onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
   const db = getFirestore(getApp());
   const q = query(collection(db, COLLECTION), where('ownerUid', '==', ownerUid));
@@ -50,7 +52,7 @@ export function subscribeChatSessions(
       }
       onSessions(valid);
     },
-    (err) => onError(classifyFirestoreError(err)),
+    (err) => onError(classifyFirestoreError(err), err),
   );
 }
 

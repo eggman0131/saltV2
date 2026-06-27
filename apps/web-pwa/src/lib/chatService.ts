@@ -6,6 +6,7 @@ import {
   callGenerateChatTitle,
 } from '@salt/firebase-sync';
 import { createObservabilityErrorReportingAdapter } from '@salt/observability';
+import { reportSubscriptionError } from './errorReporting.js';
 import type { ChatSessionDoc } from '@salt/domain/schemas';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success } from '@salt/shared-types';
@@ -69,8 +70,8 @@ export function initChatSync(ownerUid: string): () => void {
       applySnapshot(incoming);
       _isLoadingSessions.set(false);
     },
-    (err) => {
-      errors.report(err);
+    (err, rawError) => {
+      reportSubscriptionError(errors, err, rawError);
       _isLoadingSessions.set(false);
     },
   );

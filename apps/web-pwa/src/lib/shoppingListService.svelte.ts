@@ -35,6 +35,7 @@ import { writable, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 import { auth } from './auth.svelte.js';
 import { findMemberByEmail } from './membersService.js';
+import { reportSubscriptionError } from './errorReporting.js';
 
 // ─── ID generators ───────────────────────────────────────────────────────────
 
@@ -97,7 +98,7 @@ export function setActiveListId(listId: string): void {
       _itemsForActiveList.set(items);
       markLoaded('items');
     },
-    (err) => errors.report(err),
+    (err, rawError) => reportSubscriptionError(errors, err, rawError),
   );
 }
 
@@ -119,7 +120,7 @@ export function initShoppingListSync(): () => void {
       _lists.set(incoming);
       markLoaded('lists');
     },
-    (err) => errors.report(err),
+    (err, rawError) => reportSubscriptionError(errors, err, rawError),
   );
 
   const unsubConfig = subscribeShoppingListsConfig(
@@ -127,7 +128,7 @@ export function initShoppingListSync(): () => void {
       _defaultListId.set(config?.defaultListId ?? null);
       markLoaded('config');
     },
-    (err) => errors.report(err),
+    (err, rawError) => reportSubscriptionError(errors, err, rawError),
   );
 
   return () => {

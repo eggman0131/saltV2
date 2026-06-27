@@ -21,7 +21,9 @@ const ITEMS_SUB = 'items';
 export function subscribeShoppingListItems(
   listId: string,
   onItems: (items: ShoppingListItem[]) => void,
-  onError: (err: DomainError) => void,
+  // rawError forwards the original Firestore error for the real stack alongside
+  // the categorised DomainError. Optional + last-positional: backward-compatible.
+  onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
   const db = getFirestore(getApp());
   return onSnapshot(
@@ -41,7 +43,7 @@ export function subscribeShoppingListItems(
       }
       onItems(valid);
     },
-    (err) => onError(classifyFirestoreError(err)),
+    (err) => onError(classifyFirestoreError(err), err),
   );
 }
 

@@ -101,9 +101,12 @@ describe('subscribeShoppingListsConfig', () => {
     subscribeShoppingListsConfig(() => {}, onError);
 
     const errCb = mockOnSnapshot.mock.calls[0][2] as ErrorCallback;
-    errCb(Object.assign(new Error('err'), { code: 'permission-denied' }));
+    const raw = Object.assign(new Error('err'), { code: 'permission-denied' });
+    errCb(raw);
 
-    expect(onError).toHaveBeenCalledWith({ kind: 'AuthError', reason: 'forbidden' });
+    // onError now forwards the raw error (real stack) alongside the classified
+    // DomainError so the service report site can send the stack to PostHog.
+    expect(onError).toHaveBeenCalledWith({ kind: 'AuthError', reason: 'forbidden' }, raw);
   });
 
   it('calls onError with classified DomainError on unauthenticated', () => {
@@ -111,9 +114,10 @@ describe('subscribeShoppingListsConfig', () => {
     subscribeShoppingListsConfig(() => {}, onError);
 
     const errCb = mockOnSnapshot.mock.calls[0][2] as ErrorCallback;
-    errCb(Object.assign(new Error('err'), { code: 'unauthenticated' }));
+    const raw = Object.assign(new Error('err'), { code: 'unauthenticated' });
+    errCb(raw);
 
-    expect(onError).toHaveBeenCalledWith({ kind: 'AuthError', reason: 'unauthenticated' });
+    expect(onError).toHaveBeenCalledWith({ kind: 'AuthError', reason: 'unauthenticated' }, raw);
   });
 });
 

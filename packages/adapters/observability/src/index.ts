@@ -31,3 +31,6 @@ export {
 } from './sessionControl.js';
 export { CANON_MATCH_EVENT } from './shared/matchOutcomeEvent.js';
 export type { CanonMatchEventProps, CanonMatchPath } from './shared/matchOutcomeEvent.js';
+// Category-gated error reporting predicate — single source of truth, shared with
+// the /server subpath (Phase 3) so the report/suppress gate cannot drift.
+export { isReportableCategory } from './shared/reportableCategory.js';

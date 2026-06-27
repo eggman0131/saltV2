@@ -39,6 +39,7 @@ import type {
 import { ErrorCode, failure, success, type DomainError, type Result } from '@salt/shared-types';
 import { writable, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
+import { reportSubscriptionError } from './errorReporting.js';
 
 export type { MatchOrCreateResult };
 
@@ -155,7 +156,7 @@ export function initCanonSync(): () => void {
       recomputeAisleUsage();
       markLoaded('items');
     },
-    (err) => errors.report(err),
+    (err, rawError) => reportSubscriptionError(errors, err, rawError),
   );
 
   const unsubAisles = subscribeAisles(
@@ -164,7 +165,7 @@ export function initCanonSync(): () => void {
       recomputeAisleUsage();
       markLoaded('aisles');
     },
-    (err) => errors.report(err),
+    (err, rawError) => reportSubscriptionError(errors, err, rawError),
   );
 
   return () => {

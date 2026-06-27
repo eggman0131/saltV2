@@ -8,6 +8,7 @@ import {
   saveShoppingListItem,
 } from '@salt/firebase-sync';
 import { createObservabilityErrorReportingAdapter } from '@salt/observability';
+import { reportSubscriptionError } from './errorReporting.js';
 import { addItem, recipeItemAddDefault } from '@salt/domain';
 import type {
   Recipe,
@@ -94,8 +95,8 @@ export function initRecipeSync(): () => void {
       applySnapshot(incoming);
       _isLoadingRecipes.set(false);
     },
-    (err) => {
-      errors.report(err);
+    (err, rawError) => {
+      reportSubscriptionError(errors, err, rawError);
       _isLoadingRecipes.set(false);
     },
   );

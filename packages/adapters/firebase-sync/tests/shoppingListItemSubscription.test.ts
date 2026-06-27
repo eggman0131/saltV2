@@ -256,9 +256,11 @@ describe('subscribeShoppingListItems', () => {
     subscribeShoppingListItems('list-1', () => {}, onError);
 
     const errCb = mockOnSnapshot.mock.calls[0][2] as ErrorCallback;
-    errCb(Object.assign(new Error('err'), { code: 'permission-denied' }));
+    const raw = Object.assign(new Error('err'), { code: 'permission-denied' });
+    errCb(raw);
 
-    expect(onError).toHaveBeenCalledWith({ kind: 'AuthError', reason: 'forbidden' });
+    // onError forwards the raw error (real stack) alongside the classified kind.
+    expect(onError).toHaveBeenCalledWith({ kind: 'AuthError', reason: 'forbidden' }, raw);
   });
 });
 
