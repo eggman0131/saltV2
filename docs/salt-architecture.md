@@ -272,6 +272,8 @@ All error reporting is mediated through `ErrorReportingPort` — adapters never 
 
 **Enforcement.** Unlike the import-graph rules (§11), this policy is a runtime-categorization convention — it is enforced by code review, the category-gating helper at the `ErrorReportingPort` boundary, and unit tests, not by `eslint-plugin-boundaries`.
 
+**Calibration.** For the post-rollout PostHog Error Tracking before/after check, the synthetic server person, and the known intentional client/server asymmetries, see [docs/error-reporting-calibration.md](error-reporting-calibration.md).
+
 ---
 
 ## 8. Cloud Functions requirements
