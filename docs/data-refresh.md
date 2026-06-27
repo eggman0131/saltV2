@@ -34,11 +34,17 @@ to read it. The scripts print these commands if something's missing.
 gcloud storage buckets create gs://s2-prod-e46bd-firestore-exports \
   --project=s2-prod-e46bd --location=US
 
-# Let staging read the bucket (needed by the import step).
+# Let staging read the bucket (needed by the import step). Cross-project import
+# requires BOTH storage.buckets.get and storage.objects.get on the bucket, so the
+# staging service agent needs objectViewer AND legacyBucketReader — objectViewer
+# alone is NOT enough (it omits storage.buckets.get, which import checks against
+# the bucket root and fails with PERMISSION_DENIED on the bucket path).
 NUM=$(gcloud projects describe s2-stage-ccb22 --format='value(projectNumber)')
-gcloud storage buckets add-iam-policy-binding gs://s2-prod-e46bd-firestore-exports \
-  --member="serviceAccount:service-$NUM@gcp-sa-firestore.iam.gserviceaccount.com" \
-  --role=roles/storage.objectViewer
+for ROLE in roles/storage.objectViewer roles/storage.legacyBucketReader; do
+  gcloud storage buckets add-iam-policy-binding gs://s2-prod-e46bd-firestore-exports \
+    --member="serviceAccount:service-$NUM@gcp-sa-firestore.iam.gserviceaccount.com" \
+    --role="$ROLE"
+done
 
 # (optional) auto-delete old exports after 7 days
 gcloud storage buckets update gs://s2-prod-e46bd-firestore-exports \

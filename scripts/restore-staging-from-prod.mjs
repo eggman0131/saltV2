@@ -109,11 +109,16 @@ console.log(`\n› Importing ${exportPath} into ${STAGING_PROJECT} … (blocks u
 try {
   run('gcloud', ['firestore', 'import', exportPath, `--project=${STAGING_PROJECT}`]);
 } catch {
-  console.error('\n✖ Import failed. If this is a permission error, grant staging read on the bucket:');
+  console.error('\n✖ Import failed. If this is a permission error, grant staging read on the bucket.');
+  console.error('  Cross-project import needs BOTH storage.buckets.get and storage.objects.get,');
+  console.error('  so grant objectViewer AND legacyBucketReader (objectViewer alone is NOT enough —');
+  console.error('  it lacks storage.buckets.get, which the import checks against the bucket root):');
   console.error(`    NUM=$(gcloud projects describe ${STAGING_PROJECT} --format='value(projectNumber)')`);
-  console.error(`    gcloud storage buckets add-iam-policy-binding ${BUCKET} \\`);
-  console.error(`      --member="serviceAccount:service-$NUM@gcp-sa-firestore.iam.gserviceaccount.com" \\`);
-  console.error('      --role=roles/storage.objectViewer');
+  console.error('    for ROLE in roles/storage.objectViewer roles/storage.legacyBucketReader; do');
+  console.error(`      gcloud storage buckets add-iam-policy-binding ${BUCKET} \\`);
+  console.error('        --member="serviceAccount:service-$NUM@gcp-sa-firestore.iam.gserviceaccount.com" \\');
+  console.error('        --role="$ROLE"');
+  console.error('    done');
   process.exit(1);
 }
 
