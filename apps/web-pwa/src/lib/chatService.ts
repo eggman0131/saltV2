@@ -6,7 +6,7 @@ import {
   callGenerateChatTitle,
 } from '@salt/firebase-sync';
 import { createObservabilityErrorReportingAdapter } from '@salt/observability';
-import { reportSubscriptionError } from './errorReporting.js';
+import { reportIfFailed, reportSubscriptionError, reportWriteError } from './errorReporting.js';
 import type { ChatSessionDoc } from '@salt/domain/schemas';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success } from '@salt/shared-types';
@@ -106,7 +106,10 @@ export async function createChatSession(
   latestLocalEdit.set(stamped.id, stamped.updatedAt);
   _sessions.set([...get(_sessions), stamped]);
   const result = await saveChatSession(stamped);
-  if (result.kind === 'err') return result;
+  if (result.kind === 'err') {
+    reportWriteError(getErrorReporter(), result.error);
+    return result;
+  }
   return success(stamped);
 }
 
@@ -117,13 +120,13 @@ export async function persistSession(
   latestLocalEdit.set(stamped.id, stamped.updatedAt);
   const others = get(_sessions).filter((s) => s.id !== stamped.id);
   _sessions.set([...others, stamped]);
-  return saveChatSession(stamped);
+  return reportIfFailed(getErrorReporter(), await saveChatSession(stamped));
 }
 
 export async function removeSession(id: string): Promise<ReadResult<void, DomainError>> {
   latestLocalEdit.set(id, now());
   _sessions.set(get(_sessions).filter((s) => s.id !== id));
-  return deleteChatSession(id);
+  return reportIfFailed(getErrorReporter(), await deleteChatSession(id));
 }
 
 // Send a user message: appends the user turn, streams the assistant reply,
@@ -165,6 +168,8 @@ export async function sendMessage(
 
   if (streamResult.kind === 'err') {
     _sessions.set(prevSessions);
+    // Report the chefChat AI-callable failure (gate drops NetworkError/offline).
+    reportWriteError(getErrorReporter(), streamResult.error);
     return streamResult;
   }
 

@@ -1,5 +1,5 @@
 import type { ErrorReportingPort } from '@salt/domain';
-import type { DomainError } from '@salt/shared-types';
+import type { DomainError, ReadResult, Result } from '@salt/shared-types';
 import { isAuthTransitioning } from '@salt/firebase-sync';
 
 // Shared report path for realtime-subscription onError sites across the service
@@ -23,4 +23,39 @@ export function reportSubscriptionError(
 ): void {
   if (err.kind === 'AuthError' && isAuthTransitioning()) return;
   errors.report(rawError ?? err, err.kind);
+}
+
+// Shared report path for WRITE/COMMAND failures across the service layer
+// (canon/chat/recipe/shopping). Unlike reportSubscriptionError, this is for
+// caller-initiated writes, NOT in-flight listeners — so it does NOT consult
+// isAuthTransitioning(). A write that fails with AuthError is a genuine
+// authorisation failure the user just triggered (not the sign-out teardown
+// race, which only affects subscription listeners), so write-path AuthError IS
+// reportable per policy.
+//
+// The category gate ("report the unexpected, suppress the expected") still
+// lives inside the injected port's report(): suppressed categories
+// (NetworkError/ValidationError/NotFound/ConflictError) no-op there, so callers
+// just always call this on the err branch without branching on category.
+//
+// The RAW error is forwarded when the adapter supplies it (it carries the real
+// stack); the synthetic DomainError is the fallback when there is none.
+export function reportWriteError(
+  errors: ErrorReportingPort,
+  error: DomainError,
+  rawError?: unknown,
+): void {
+  errors.report(rawError ?? error, error.kind);
+}
+
+// Ergonomic wrapper for the common one-line write site
+// `return reportIfFailed(getErrorReporter(), await saveX(...))`. No-ops on
+// `kind: 'ok'`, reports via reportWriteError on `kind: 'err'`, and returns the
+// result UNCHANGED so it can be returned directly — reporting stays a pure
+// side-effect that never alters control flow, return values, or toasts.
+export function reportIfFailed<
+  R extends Result<unknown, DomainError> | ReadResult<unknown, DomainError>,
+>(errors: ErrorReportingPort, result: R, rawError?: unknown): R {
+  if (result.kind === 'err') reportWriteError(errors, result.error, rawError);
+  return result;
 }

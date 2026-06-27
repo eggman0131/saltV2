@@ -39,7 +39,7 @@ import type {
 import { ErrorCode, failure, success, type DomainError, type Result } from '@salt/shared-types';
 import { writable, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
-import { reportSubscriptionError } from './errorReporting.js';
+import { reportIfFailed, reportSubscriptionError, reportWriteError } from './errorReporting.js';
 
 export type { MatchOrCreateResult };
 
@@ -221,6 +221,9 @@ export async function addCanonItem(
       span.setAttribute('canon.result', result.value.item.name);
     } else {
       span.setAttribute('canon.error', result.error.kind);
+      // AI-callable (matchOrCreateCanon) failure: report the unexpected
+      // (StorageError/SyncError/Auth/unknown); the gate drops NetworkError etc.
+      reportWriteError(getErrorReporter(), result.error);
     }
     return result;
   } finally {
@@ -319,7 +322,7 @@ export async function splitMostRecentSynonym(
 }
 
 export async function deleteCanonItem(id: string): Promise<Result<void, DomainError>> {
-  return deleteCanonItemDoc(id);
+  return reportIfFailed(getErrorReporter(), await deleteCanonItemDoc(id));
 }
 
 // ─── Icon (Tier-1 pictogram) escape hatch (issue #148) ───────────────────────────
@@ -333,7 +336,7 @@ export async function regenerateCanonIcon(
   id: string,
   hint?: string,
 ): Promise<Result<void, DomainError>> {
-  return callRegenerateCanonIcon(id, hint);
+  return reportIfFailed(getErrorReporter(), await callRegenerateCanonIcon(id, hint));
 }
 
 /** Hide a canon item's icon: sets `thumbnail` to the "hidden" sentinel so the
@@ -347,7 +350,7 @@ export async function hideCanonIcon(item: CanonItem): Promise<Result<CanonItem, 
 /** Un-hide a canon item's icon: clears the "hidden" sentinel (→ null) via the
  *  regenerate callable, which re-triggers generation. */
 export async function unhideCanonIcon(id: string): Promise<Result<void, DomainError>> {
-  return callRegenerateCanonIcon(id);
+  return reportIfFailed(getErrorReporter(), await callRegenerateCanonIcon(id));
 }
 
 // ─── Test helpers ────────────────────────────────────────────────────────────────

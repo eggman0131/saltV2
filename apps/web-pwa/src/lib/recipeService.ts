@@ -8,7 +8,7 @@ import {
   saveShoppingListItem,
 } from '@salt/firebase-sync';
 import { createObservabilityErrorReportingAdapter } from '@salt/observability';
-import { reportSubscriptionError } from './errorReporting.js';
+import { reportIfFailed, reportSubscriptionError } from './errorReporting.js';
 import { addItem, recipeItemAddDefault } from '@salt/domain';
 import type {
   Recipe,
@@ -111,7 +111,7 @@ export async function persistRecipe(recipe: Recipe): Promise<ReadResult<void, Do
   latestLocalEdit.set(stamped.id, stamped.updatedAt);
   const others = get(_recipes).filter((r) => r.id !== stamped.id);
   _recipes.set([...others, stamped]);
-  return saveRecipeDoc(stamped);
+  return reportIfFailed(getErrorReporter(), await saveRecipeDoc(stamped));
 }
 
 export async function parseIngredients(
@@ -194,7 +194,11 @@ export async function canonicaliseIngredients(
   const batchResult = await callCanonicaliseRecipeIngredients({
     items: toProcess.map(({ rawName, rawText }) => ({ rawName, rawText })),
   });
-  if (batchResult.kind === 'err') return batchResult;
+  // Report the batch CF transport failure (the whole canonicalise call failed).
+  // Per-row `settled[i]` slots below are per-ingredient match OUTCOMES folded
+  // into matchState:'failed' — expected results, not I/O failures — so they are
+  // intentionally not reported.
+  if (batchResult.kind === 'err') return reportIfFailed(getErrorReporter(), batchResult);
   const settled = batchResult.value;
 
   // Map ingredientId → matchOrCreate result for O(1) lookup.
@@ -231,7 +235,7 @@ export async function matchIngredient(
   ing: Ingredient,
 ): Promise<ReadResult<Ingredient, DomainError>> {
   const parseResult = await callParseRecipeIngredients(ing.rawText);
-  if (parseResult.kind === 'err') return parseResult;
+  if (parseResult.kind === 'err') return reportIfFailed(getErrorReporter(), parseResult);
 
   const firstItem = parseResult.value[0]?.items[0];
   if (!firstItem?.parsed) {
@@ -242,7 +246,7 @@ export async function matchIngredient(
   const canonResult = await callCanonicaliseRecipeIngredients({
     items: [{ rawName: parsed.item, rawText: ing.rawText }],
   });
-  if (canonResult.kind === 'err') return canonResult;
+  if (canonResult.kind === 'err') return reportIfFailed(getErrorReporter(), canonResult);
 
   const slot = canonResult.value[0]!;
   if (slot.kind === 'err') {
@@ -260,7 +264,7 @@ export async function removeRecipe(id: string): Promise<ReadResult<void, DomainE
   // Record the delete as a local edit so a stale echo can't resurrect the doc.
   latestLocalEdit.set(id, new Date().toISOString());
   _recipes.set(get(_recipes).filter((r) => r.id !== id));
-  return deleteRecipeDoc(id);
+  return reportIfFailed(getErrorReporter(), await deleteRecipeDoc(id));
 }
 
 // ─── Shopping-list extraction ─────────────────────────────────────────────────
@@ -384,5 +388,9 @@ export async function commitRecipeAddPlan(
   if (saves.length === 0) return success(undefined);
 
   const results = await Promise.all(saves);
-  return results.find((r) => r.kind !== 'ok') ?? success(undefined);
+  const firstFailure = results.find((r) => r.kind !== 'ok');
+  // Report the first shopping-list write failure (StorageError/SyncError/etc.);
+  // the addItem domain ValidationError above short-circuits before any write and
+  // is a suppressed category regardless, so it is intentionally not reported.
+  return firstFailure ? reportIfFailed(getErrorReporter(), firstFailure) : success(undefined);
 }
