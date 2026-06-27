@@ -249,6 +249,8 @@ All error reporting is mediated through `ErrorReportingPort` — adapters never 
 
 **Principle: report the unexpected, suppress the expected.** The reason to report a *caught* error is that the friendly-handling path would otherwise hide it — a handled failure never throws, so nothing automatic will surface it. Reporting exists to make those invisible failures visible; it is **not** a mirror of every `Failure`. The decision to report is gated on the **`DomainError` category** (§7.2), not on which call site happens to have a `catch` or an `onError` callback.
 
+**Caught vs uncaught.** This gated port governs *caught* errors only. *Uncaught* errors — unhandled exceptions and promise rejections — are surfaced automatically by PostHog's exception autocapture as Error Tracking issues, independently of `ErrorReportingPort`. This is controlled by the PostHog **project-level** autocapture setting; the browser SDK init (`init.ts`) deliberately does not set `capture_exceptions`, so it neither forces nor blocks it. An uncaught error is unexpected by definition, so it is intentionally **not** subject to the category gate — there is nothing to suppress. Because caught errors are, by definition, caught, they never reach autocapture, so the two paths never double-report.
+
 **Report** to the error-tracking backend (PostHog) via `ErrorReportingPort`:
 
 - `StorageError` — corruption, quota exceeded, storage unavailable.

@@ -45,6 +45,24 @@ Coverage is uniform across all failure boundaries — write/command failures,
 realtime `onError` callbacks, and server CF — gated by category, not by which
 call site happens to expose an `onError`.
 
+## Uncaught errors — separate, automatic path
+
+The category gate above governs **caught** errors only. **Uncaught** errors
+(unhandled exceptions and promise rejections) are captured automatically by
+PostHog's exception autocapture and appear as Error Tracking issues independently
+of `ErrorReportingPort`. This is controlled by the PostHog **project-level**
+autocapture setting — the browser SDK init (`init.ts`) does not set
+`capture_exceptions`, so no code change gates, forces, or duplicates it.
+
+Two consequences for the before/after read:
+
+- Caught errors are caught, so they never reach autocapture — nothing this
+  feature explicitly reports is double-counted.
+- The "should be ABSENT" list applies to the **explicit caught path**. A failure
+  in an otherwise-suppressed category (e.g. a `NetworkError`) that escapes
+  **uncaught** can still surface via autocapture. That is acceptable: an uncaught
+  error is genuinely unexpected regardless of the category it would have mapped to.
+
 ## Known, intentional asymmetries (NOT bugs)
 
 1. **Server reports carry no `error.category` property.** The client adapter

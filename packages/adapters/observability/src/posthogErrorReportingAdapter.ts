@@ -2,9 +2,12 @@ import type { ErrorReportingPort } from '@salt/domain';
 import { safePosthog } from './init.js';
 import { isReportableCategory } from './shared/reportableCategory.js';
 
-// Browser error reporter. Explicit reporting only — posthog-js exception
-// autocapture (`capture_exceptions`) stays OFF (see init.ts); failures reach
-// PostHog solely through this gated port.
+// Browser error reporter for CAUGHT errors — these reach PostHog solely through
+// this gated port (report the unexpected, suppress the expected). UNCAUGHT errors
+// (unhandled exceptions / promise rejections) are surfaced separately by PostHog's
+// exception autocapture, governed by the project-level setting — init.ts does not
+// set `capture_exceptions`, so there is no code-side gate or duplicate. An uncaught
+// error is unexpected by definition, so it is intentionally not category-gated here.
 export function createPosthogErrorReportingAdapter(): ErrorReportingPort {
   return {
     report(error: unknown, category): void {
