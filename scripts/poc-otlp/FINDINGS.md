@@ -42,7 +42,7 @@ Probe `traceId`: **`dca7434d76b3e329802740c93c44c063`**.
 | Q1 | Does an `ai.*`-only structural span (span 2) survive the AI-endpoint filter and surface as `$ai_span` with its custom `ai.*` attributes visible? | Retained as `$ai_span` | ✅ **YES** — `canon.matchOrCreateCanon` (only `ai.*` attrs, **no** `gen_ai.*`) was retained as `$ai_span`, nested under the root, with `ai.canon.outcome` / `ai.canon.result` / `ai.operation.name` all visible verbatim. The namespace trick works. |
 | Q2 | Does the full nested tree (root → match → {generation, embedding}) reconstruct with parent/child links and custom attributes visible on each span? | Tree intact; attrs visible | ✅ **YES** — `$ai_parent_id` chain reconstructs exactly: `$ai_trace` → `$ai_span` → {`$ai_generation`, `$ai_embedding`}. Custom `ai.*` attributes preserved verbatim as event properties on each retained span. |
 | Q3 | Does the EU endpoint (`eu.i.posthog.com/i/v0/ai/otel`) accept the payload? | HTTP 2xx, events appear | ✅ **YES** — `HTTP 200 OK`, response body `{}`; all 4 expected events queryable within ~2 min. |
-| Q4 | Is remapping Genkit's native span shape onto this OTLP/`$ai_*` mapping feasible? | — | _Phase 2_ |
+| Q4 | Is remapping Genkit's native span shape onto this OTLP/`$ai_*` mapping feasible? | — | ✅ **YES** — a real `gemini-2.5-flash` Genkit call's captured span (native `genkit:*` only, **no** `gen_ai.*`) was remapped to `gen_ai.*` and landed as `$ai_generation` with the real model id + real token counts. See [Phase 2](#phase-2--real-genkit-span-remap-q4) below. |
 
 ### Per-span observed classification
 
@@ -84,13 +84,32 @@ Probe `traceId`: **`dca7434d76b3e329802740c93c44c063`**.
 
 - **Screenshot link** (LLM-analytics / trace view in PostHog): _TODO (maintainer): open the LLM observability → Traces view, search trace `dca7434d76b3e329802740c93c44c063` (filter `service.name = poc-otlp`), and attach a screenshot of the rendered nested tree here. The MCP query above already proves the structure programmatically; the screenshot is visual corroboration._
 
+## Phase 2 — real Genkit span remap (Q4)
+
+`scripts/poc-otlp/send-genkit.ts` runs **one real** `ai.generate` (`gemini-2.5-flash`, prompt → "pong") with the `@genkit-ai/google-genai` plugin and a local `GEMINI_API_KEY`. It registers an in-process OTel `NodeTracerProvider` + in-memory `SpanProcessor` **before** importing Genkit (dynamic import), captures Genkit's native model span, remaps it to `gen_ai.*`, and ships a fresh 3-span trace (synthetic `ai.*` root + structural parent, real remapped generation leaf) to the same EU endpoint. Deps installed ad-hoc via a self-contained `scripts/poc-otlp/package.json` (`npm`, outside the workspace; `node_modules`/lockfile git-ignored).
+
+**Captured real Genkit model span** — name `googleai/gemini-2.5-flash`, attributes confirmed `genkit:*`-only with **no** `gen_ai.*`:
+`genkit:type=action`, `genkit:metadata:subtype=model`, `genkit:name=googleai/gemini-2.5-flash`, `genkit:key=/model/googleai/gemini-2.5-flash`, `genkit:path=…`, `genkit:state=success`, plus full `genkit:input`/`genkit:output` JSON (the latter embeds `usageMetadata`). Tokens were read from `result.usage` (`inputTokens` / `outputTokens`).
+
+**Remapped result** (trace `7bae6f5b658720130a0a945d55d9ef91`, verified by MCP):
+
+```
+event          | span_id          | parent_id        | span_name                | model            | in_tok | out_tok | genkit.source.span_name
+$ai_trace      | 9fae2e17aa4cf190 | None             | genkitPocWorkflow        | None             | None   | None    | None
+$ai_span       | e4f9a4c2445880e3 | 9fae2e17aa4cf190 | canon.matchOrCreateCanon | None             | None   | None    | None
+$ai_generation | e9a413a74a5cd35a | e4f9a4c2445880e3 | genkit.generate.remapped | gemini-2.5-flash | 9      | 1       | googleai/gemini-2.5-flash
+```
+
+**Q4 result:** ✅ **feasible.** The real Genkit span carries usage/model under `genkit:name` + `genkit:output.usageMetadata` (and the SDK result's `result.usage`); a small remap shim onto `gen_ai.response.model` / `gen_ai.usage.input_tokens` / `gen_ai.usage.output_tokens` is sufficient for PostHog to classify it as `$ai_generation` with the correct `$ai_model` and token counts, nested under a synthetic `ai.*` structural parent. The `genkit:* → gen_ai.*` bridge is the only production work this requires.
+
 ## Verdict
 
-**🟢 GREENLIGHT (Phase 1) for [#356](https://github.com/eggman0131/salt/issues/356)'s single-pipeline / namespace-trick approach.** Every load-bearing assumption held:
+**🟢 GREENLIGHT for [#356](https://github.com/eggman0131/salt/issues/356)'s single-pipeline / namespace-trick approach.** Every load-bearing assumption held — across both synthetic and real-Genkit evidence:
 
 - An `ai.*`-only structural (non-AI) span **survives** PostHog's AI-endpoint filter as `$ai_span` (Q1).
 - The full `$ai_trace → $ai_span → $ai_generation/$ai_embedding` tree **reconstructs nested**, with custom `ai.*` attributes visible verbatim (Q2).
 - The **EU** endpoint accepts OTLP/JSON (Q3).
-- The AI filter is **real** (negative control dropped), and every span to be kept needs an `ai.*`/`gen_ai.*` attribute — a concrete constraint for the production remap.
+- A **real** Genkit model span remaps cleanly to `gen_ai.*` and lands as `$ai_generation` with real model + tokens (Q4) — the production remap is feasible, not just the synthetic case.
+- The AI filter is **real** (negative control dropped): every span to be kept needs an `ai.*`/`gen_ai.*` attribute — a concrete constraint for the production remap (tag the root and structural parents too, not just model leaves).
 
-Remaining gate: **Q4** (real-Genkit-span remap feasibility) — see Phase 2 below. The endpoint is still alpha ("ingestion endpoint may change before GA"), so treat the wire shape as not-yet-frozen.
+**Caveat:** the endpoint is still **alpha** ("ingestion endpoint may change before GA"), so treat the OTLP wire shape as not-yet-frozen; revisit if behavior drifts. **Follow-up checks** deferred from this probe: protobuf (vs JSON) encoding parity, and whether browser→CF trace unification needs a minted traceparent (out of scope here).

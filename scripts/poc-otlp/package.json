@@ -1,0 +1,13 @@
+{
+  "name": "poc-otlp",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "genkit": "^1.33.0",
+    "@genkit-ai/google-genai": "^1.33.0",
+    "@opentelemetry/sdk-trace-node": "^1.25.1"
+  },
+  "devDependencies": {
+    "tsx": "^4"
+  }
+}
