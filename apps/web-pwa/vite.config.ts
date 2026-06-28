@@ -102,6 +102,16 @@ export default defineConfig(({ mode }) => {
         },
       }),
     ],
+    build: {
+      // 'hidden' emits .map files for every chunk WITHOUT appending a public
+      // `//# sourceMappingURL=` comment, so the deployed bundle never references
+      // them. The deploy workflows (deploy-production.yml / deploy-staging.yml)
+      // run PostHog/upload-source-maps against dist/ after the build: it injects
+      // a chunk id, uploads the maps to PostHog Error Tracking, and deletes the
+      // .map files before `firebase deploy` — so production exceptions
+      // symbolicate back to TS source without the maps ever being served (#359).
+      sourcemap: 'hidden',
+    },
     define: {
       __APP_VERSION__: JSON.stringify(appVersion),
       __APP_BUILD_TIME__: JSON.stringify(buildTime),
