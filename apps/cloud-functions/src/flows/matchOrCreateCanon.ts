@@ -54,7 +54,10 @@ function composeMatchLogging(...ports: MatchLoggingPort[]): MatchLoggingPort {
 export function buildMatchOrCreatePorts(parentSpan?: ObservabilitySpan): MatchOrCreatePorts {
   const db = getFirestore();
   return {
-    store: createFirestoreCanonStore(db),
+    // Thread the parent span so the canon-store Firestore spans (candidate
+    // load, write-back) nest under canon.matchOrCreateCanon / the recipe batch
+    // span instead of re-rooting — mirroring the match-logging adapter below.
+    store: createFirestoreCanonStore(db, parentSpan),
     aisleStore: createFirestoreAisleStore(db),
     embedding: createServerEmbeddingAdapter(),
     arbitration: createServerArbitrationAdapter(),

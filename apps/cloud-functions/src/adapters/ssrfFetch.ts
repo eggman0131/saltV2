@@ -2,6 +2,7 @@ import https from 'node:https';
 import { lookup as dnsLookupCb } from 'node:dns';
 import type { LookupAddress, LookupAllOptions, LookupOneOptions, LookupOptions } from 'node:dns';
 import { isHttpsScheme, parseImportUrl, isPublicIp } from '@salt/domain';
+import { startSpan, type ObservabilitySpan } from '@salt/observability/server';
 
 // SSRF-guarded HTTP(S) fetch for the URL-import flow. Lives in cloud-functions
 // (Node-only) — the *pure* classification policy (https-only, IP ranges) lives
@@ -181,7 +182,18 @@ function mapSocketError(err: unknown): SsrfFetchError {
 
 // Fetch a recipe page through the SSRF guard. Follows up to MAX_REDIRECTS
 // redirects, re-validating each hop. Returns the raw HTML and the final URL.
-export async function ssrfGuardedFetch(rawUrl: string): Promise<SsrfFetchResult> {
+//
+// Wrapped in a `Fetch recipe page` child span. The recipe-import flow body runs
+// inside the Genkit flow span (it is the active OTel context), so a plain
+// startSpan nests this under the flow trace; an explicit parent can still be
+// threaded for robustness/parity. The span is best-effort and never throws
+// (CLAUDE.md Rule 10): it is .end()-ed in a finally and its only attributes are
+// bounded scalars (final host, response byte size).
+export async function ssrfGuardedFetch(
+  rawUrl: string,
+  parentSpan?: ObservabilitySpan,
+): Promise<SsrfFetchResult> {
+  const span = startSpan('Fetch recipe page', parentSpan ? { parent: parentSpan } : {});
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
@@ -189,6 +201,8 @@ export async function ssrfGuardedFetch(rawUrl: string): Promise<SsrfFetchResult>
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
       const result = await fetchOnce(current, controller.signal);
       if (result.kind === 'body') {
+        span.setAttribute('http.host', current.host);
+        span.setAttribute('http.response_size', Buffer.byteLength(result.html, 'utf8'));
         return { html: result.html, finalUrl: current.href };
       }
       // Resolve the redirect target against the current URL, then re-validate.
@@ -198,5 +212,6 @@ export async function ssrfGuardedFetch(rawUrl: string): Promise<SsrfFetchResult>
     throw new SsrfFetchError('connection', 'too many redirects');
   } finally {
     clearTimeout(timer);
+    span.end();
   }
 }
