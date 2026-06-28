@@ -33,6 +33,13 @@ export const ShoppingListItemSchema = z.object({
   schemaVersion: z.literal(1).default(1),
   createdAt: z.string().default(''),
   updatedAt: z.string().default(''),
+  // Distributed-trace correlation field (issue #362, Phase 5). A W3C
+  // `traceparent` string the browser stamps onto the item at "add to shopping
+  // list" so the onShoppingListItemWrite trigger can continue the browser-rooted
+  // trace (it has no inbound HTTP headers to extract from). TRANSPORT ONLY —
+  // domain logic must never branch on it; it just rides on the doc. Optional and
+  // additive: old docs lack it and stay valid (back-compat on read).
+  traceContext: z.string().optional(),
 });
 
 export type SourceRefDoc = z.infer<typeof SourceRefSchema>;

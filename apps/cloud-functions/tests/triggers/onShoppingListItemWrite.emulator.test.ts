@@ -39,6 +39,10 @@ vi.mock('@salt/observability/server', () => ({
   whenServerObservabilityReady: vi.fn().mockResolvedValue(undefined),
   initServerObservability: vi.fn(),
   isServerObservabilityInitialised: vi.fn(() => false),
+  // Phase 5: the trigger trace-context helper (triggerTraceContext.ts) is not
+  // mocked, so it resolves the REAL runWithSuppliedTraceContext from here — it
+  // must exist. Just run the fn (no real OTel context in the isolated stack).
+  runWithSuppliedTraceContext: vi.fn(<T>(_traceparent: string | undefined, fn: () => T): T => fn()),
   createServerObservabilityMatchLoggingAdapter: vi.fn(() => ({
     write: vi.fn().mockResolvedValue(undefined),
   })),

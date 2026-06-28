@@ -51,13 +51,22 @@ function composeMatchLogging(...ports: MatchLoggingPort[]): MatchLoggingPort {
   };
 }
 
-export function buildMatchOrCreatePorts(parentSpan?: ObservabilitySpan): MatchOrCreatePorts {
+export function buildMatchOrCreatePorts(
+  parentSpan?: ObservabilitySpan,
+  // Distributed-trace correlation (issue #362, Phase 5). The shopping-list
+  // trigger threads the browser-rooted W3C `traceparent` here so the canon
+  // write-back stamps it as `traceContext` on the doc, letting the
+  // onCanonItemWritten icon/embedding trigger continue the same trace. Optional:
+  // the callable path passes nothing (its trace rides the request, not the doc).
+  traceContext?: string,
+): MatchOrCreatePorts {
   const db = getFirestore();
   return {
     // Thread the parent span so the canon-store Firestore spans (candidate
     // load, write-back) nest under canon.matchOrCreateCanon / the recipe batch
     // span instead of re-rooting — mirroring the match-logging adapter below.
-    store: createFirestoreCanonStore(db, parentSpan),
+    // traceContext rides through to the write-back so the icon trigger nests.
+    store: createFirestoreCanonStore(db, parentSpan, traceContext),
     aisleStore: createFirestoreAisleStore(db),
     embedding: createServerEmbeddingAdapter(),
     arbitration: createServerArbitrationAdapter(),

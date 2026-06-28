@@ -7,10 +7,12 @@ import {
   flushServerObservability,
   startSpan,
   whenServerObservabilityReady,
+  type ObservabilitySpan,
 } from '@salt/observability/server';
 import { buildMatchOrCreatePorts } from '../flows/matchOrCreateCanon.js';
 import { createServerEntryParseAdapter } from '../adapters/serverEntryParse.js';
 import { reportServerError } from '../observability/reportServerError.js';
+import { runTriggerWithTraceContext } from './triggerTraceContext.js';
 
 const TRIGGER_PATH = 'shoppingLists/{listId}/items/{itemId}';
 
@@ -58,6 +60,12 @@ export const onShoppingListItemWrite = onDocumentWritten(
     const rawText = typeof afterData['rawText'] === 'string' ? afterData['rawText'] : '';
     const canonId = typeof afterData['canonId'] === 'string' ? afterData['canonId'] : null;
     const matchState = typeof afterData['matchState'] === 'string' ? afterData['matchState'] : '';
+    // Distributed-trace correlation (issue #362, Phase 5). The browser stamped its
+    // action span's W3C traceparent here at "add to shopping list"; we continue
+    // that trace below so the match span nests under the browser action instead of
+    // re-rooting. Plain string read — absent/malformed degrades to a root trace.
+    const traceContext =
+      typeof afterData['traceContext'] === 'string' ? afterData['traceContext'] : undefined;
 
     // CF own write: the trigger wrote back canonId/matchState. matchState is
     // not 'pending' (matched/needs_approval/failed) or canonId is already set.
@@ -92,44 +100,61 @@ export const onShoppingListItemWrite = onDocumentWritten(
     const docRef = db.collection('shoppingLists').doc(listId).collection('items').doc(itemId);
 
     await whenServerObservabilityReady();
-    const span = startSpan(`shoppingList.matchItem: ${rawText}`);
-    span.setAttribute('entrySource', 'shoppingListItem');
-    span.setAttribute('listId', listId);
-    span.setAttribute('itemId', itemId);
 
     let errorCategory: string | null = null;
+    // Continue the browser-rooted trace carried by the doc's traceContext field
+    // (issue #362, Phase 5). The span is opened INSIDE the supplied context so it
+    // nests under the browser action span instead of re-rooting; the canon
+    // write-back also stamps traceContext (via buildMatchOrCreatePorts) so the
+    // onCanonItemWritten icon trigger continues the same trace. Env-gated:
+    // suppressed under GENKIT_TELEMETRY_SERVER (local dev → Dev UI root-listing).
+    // Absent/malformed traceContext degrades to a normal root trace, never throws.
+    //
+    // The span is opened inside the closure (to inherit the context) but ended in
+    // the finally below; a holder object publishes it back out. A plain `let`
+    // reassigned only inside the arrow narrows to `never` at the outer read under
+    // strict control-flow analysis — an object property sidesteps that.
+    const spanHolder: { current: ObservabilitySpan | null } = { current: null };
     try {
-      const result = await matchOrCreate(
-        { rawName: cleanName, ...(rawText ? { rawText } : {}) },
-        buildMatchOrCreatePorts(span),
-      );
+      await runTriggerWithTraceContext(traceContext, async () => {
+        const matchSpan = startSpan(`shoppingList.matchItem: ${rawText}`);
+        spanHolder.current = matchSpan; // hoist for the finally below (end + flush)
+        matchSpan.setAttribute('entrySource', 'shoppingListItem');
+        matchSpan.setAttribute('listId', listId);
+        matchSpan.setAttribute('itemId', itemId);
 
-      if (result.kind === 'err') {
-        errorCategory = result.error.kind;
+        const result = await matchOrCreate(
+          { rawName: cleanName, ...(rawText ? { rawText } : {}) },
+          buildMatchOrCreatePorts(matchSpan, traceContext),
+        );
+
+        if (result.kind === 'err') {
+          errorCategory = result.error.kind;
+          await docRef.update({
+            matchState: 'failed',
+            updatedAt: new Date().toISOString(),
+            ...(parsedAmount !== undefined ? { amount: parsedAmount } : undefined),
+            ...(parsedUnit !== undefined ? { unit: parsedUnit } : undefined),
+          });
+          return;
+        }
+
+        const { item, decision } = result.value;
+        const newMatchState = item.needs_approval ? 'needs_approval' : 'matched';
+
+        matchSpan.setAttribute('canon.outcome', decision);
+        matchSpan.setAttribute('canon.result', item.id);
+
+        const nameChanged = cleanName !== rawText;
+
         await docRef.update({
-          matchState: 'failed',
+          canonId: item.id,
+          matchState: newMatchState,
           updatedAt: new Date().toISOString(),
+          ...(nameChanged && currentNotes === '' && { rawText: cleanName, notes: context }),
           ...(parsedAmount !== undefined ? { amount: parsedAmount } : undefined),
           ...(parsedUnit !== undefined ? { unit: parsedUnit } : undefined),
         });
-        return;
-      }
-
-      const { item, decision } = result.value;
-      const newMatchState = item.needs_approval ? 'needs_approval' : 'matched';
-
-      span.setAttribute('canon.outcome', decision);
-      span.setAttribute('canon.result', item.id);
-
-      const nameChanged = cleanName !== rawText;
-
-      await docRef.update({
-        canonId: item.id,
-        matchState: newMatchState,
-        updatedAt: new Date().toISOString(),
-        ...(nameChanged && currentNotes === '' && { rawText: cleanName, notes: context }),
-        ...(parsedAmount !== undefined ? { amount: parsedAmount } : undefined),
-        ...(parsedUnit !== undefined ? { unit: parsedUnit } : undefined),
       });
     } catch (err) {
       // matchOrCreate and the AI adapters convert operational failures into a
@@ -157,15 +182,14 @@ export const onShoppingListItemWrite = onDocumentWritten(
           reportServerError(writeErr);
         });
     } finally {
-      // DORMANT: trace propagation — trigger boundary; mark per convention.
-      // When re-enabled, extract trace context from a header injected at write
-      // time and call runWithExtractedTraceContext before the span is opened.
       logger.info('onShoppingListItemWrite', {
         scope: 'shoppingListItem',
         docId: itemId,
         errorCategory,
       });
-      span.end();
+      // null only if startSpan threw before assignment (it cannot — it returns a
+      // no-op span when telemetry is off); guard for type-safety.
+      spanHolder.current?.end();
       await flushServerObservability();
     }
   },

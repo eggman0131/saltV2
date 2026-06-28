@@ -22,6 +22,14 @@ function classify(_err: unknown): DomainError {
 export function createFirestoreCanonStore(
   db: Firestore,
   parentSpan?: ObservabilitySpan,
+  // Distributed-trace correlation (issue #362, Phase 5). When the shopping-list
+  // trigger ran its match within a browser-rooted trace, it threads that W3C
+  // `traceparent` here so the written canon doc carries it as `traceContext`,
+  // letting onCanonItemWritten continue the SAME trace for icon/embedding work.
+  // CRITICAL — DOMAIN PURITY: the domain constructs the pure CanonItem (no
+  // traceContext); the ADAPTER adds the field here at write time only. Optional:
+  // direct-flow paths (the callable, tests) pass nothing and write no field.
+  traceContext?: string,
 ): CanonLocalStorePort {
   return {
     async upsert(item: CanonItem): Promise<ReadResult<CanonItem, DomainError>> {
@@ -39,7 +47,10 @@ export function createFirestoreCanonStore(
         await db
           .collection(COLLECTION)
           .doc(item.id)
-          .set({ ...item });
+          // The pure CanonItem plus the correlation field added at the adapter
+          // boundary only (domain never sees traceContext). Omitted entirely
+          // when absent so direct-flow paths write byte-identical docs.
+          .set({ ...item, ...(traceContext ? { traceContext } : {}) });
         return success(item);
       } catch (err) {
         return failure(classify(err));
