@@ -5,8 +5,7 @@ import {
 } from '@salt/domain/schemas';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
-import { flowModel, aiModelLabel } from '../ai/fakeModel.js';
-import { tracedGenerate } from '../ai/aiGenerationTelemetry.js';
+import { flowModel } from '../ai/fakeModel.js';
 
 export const parseRecipeIngredientsFlow = ai.defineFlow(
   {
@@ -24,19 +23,16 @@ export const parseRecipeIngredientsFlow = ai.defineFlow(
     // deterministic fake model instead; byte-identical otherwise. See
     // ../ai/fakeModel.ts for the cross-process stub contract.
     const model = await flowModel('lite', 'parseRecipeIngredients');
-    const modelLabel = await aiModelLabel('lite', 'parseRecipeIngredients');
     const result = await withAiTimeout(
       'parseRecipeIngredients',
       () =>
-        tracedGenerate('parseRecipeIngredients', modelLabel, () =>
-          ai.generate({
-            model,
-            system: SYSTEM_INSTRUCTIONS,
-            prompt: rawText,
-            output: { schema: ParseRecipeIngredientsAIOutputSchema },
-            config: { temperature: 0 },
-          }),
-        ),
+        ai.generate({
+          model,
+          system: SYSTEM_INSTRUCTIONS,
+          prompt: rawText,
+          output: { schema: ParseRecipeIngredientsAIOutputSchema },
+          config: { temperature: 0 },
+        }),
       { timeoutMs: 55_000, retries: 0 },
     );
 

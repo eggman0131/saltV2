@@ -10,8 +10,7 @@ import {
 } from '@salt/domain/schemas';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
-import { flowModel, aiModelLabel } from '../ai/fakeModel.js';
-import { tracedGenerate } from '../ai/aiGenerationTelemetry.js';
+import { flowModel } from '../ai/fakeModel.js';
 import { reportFlowError } from '../observability/reportServerError.js';
 
 async function readEquipmentContext(db: ReturnType<typeof getFirestore>): Promise<string> {
@@ -125,7 +124,6 @@ export const chefChatFlow = ai.defineFlow(
 
       // Pro-tier model for conversational quality (design principle #3, issue #206).
       const chatModel = await flowModel('pro', 'chefChat');
-      const modelLabel = await aiModelLabel('pro', 'chefChat');
       const { stream, response } = ai.generateStream({
         model: chatModel,
         system: systemPrompt,
@@ -138,17 +136,14 @@ export const chefChatFlow = ai.defineFlow(
         if (text) streamingCallback(text);
       }
 
-      // Emit $ai_generation off the final aggregated response (carries usage). The
-      // stream itself is already draining above; tracedGenerate just awaits the
-      // resolved response under the existing timeout and records model/tokens/latency.
-      const finalResponse = await withAiTimeout(
-        'chefChat',
-        () => tracedGenerate('chefChat', modelLabel, () => response),
-        {
-          timeoutMs: 55_000,
-          retries: 0,
-        },
-      );
+      // The stream is already draining above; await the resolved aggregated
+      // response under the existing timeout. AI model/token/cost telemetry rides
+      // the Genkit model span the AI-OTLP processor ships to PostHog (#356) — and
+      // span-derived usage fixes the old streamed-response empty-tokens gap.
+      const finalResponse = await withAiTimeout('chefChat', () => response, {
+        timeoutMs: 55_000,
+        retries: 0,
+      });
 
       return finalResponse.text;
     } catch (err) {

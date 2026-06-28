@@ -5,7 +5,6 @@ import { ai } from '../genkit.js';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { loadCanonIconSeed } from './assets/canonIconSeed.js';
 import { resolveModel } from '../ai/resolveModel.js';
-import { tracedGenerate } from '../ai/aiGenerationTelemetry.js';
 
 // Tier-1 canon-item pictogram generation (issue #148).
 //
@@ -72,15 +71,13 @@ export const generateCanonIconFlow = ai.defineFlow(
     const result = await withAiTimeout(
       'generateCanonIcon',
       () =>
-        tracedGenerate('generateCanonIcon', modelId, () =>
-          ai.generate({
-            model: imageModel,
-            prompt: [
-              { media: { url: seed.url, contentType: seed.contentType } },
-              { text: buildIconPrompt(name, hint) },
-            ],
-          }),
-        ),
+        ai.generate({
+          model: imageModel,
+          prompt: [
+            { media: { url: seed.url, contentType: seed.contentType } },
+            { text: buildIconPrompt(name, hint) },
+          ],
+        }),
       { timeoutMs: ICON_GEN_TIMEOUT_MS, retries: 1 },
     );
 

@@ -4,7 +4,6 @@ import { ParseEntryAIOutputSchema } from '@salt/domain/schemas';
 import { setActiveSpanName } from '@salt/observability/server';
 import { ai } from '../genkit.js';
 import { resolveModel } from '../ai/resolveModel.js';
-import { tracedGenerate } from '../ai/aiGenerationTelemetry.js';
 
 const ParseEntryInputSchema = z.object({
   rawText: z.string(),
@@ -20,14 +19,12 @@ export const parseEntryFlow = ai.defineFlow(
     setActiveSpanName(`parseEntry: ${rawText}`);
     const prompt = buildPrompt(rawText);
     const model = await resolveModel('lite', 'parseEntry');
-    const result = await tracedGenerate('parseEntry', model, () =>
-      ai.generate({
-        model: googleAI.model(model),
-        prompt,
-        output: { schema: ParseEntryAIOutputSchema },
-        config: { temperature: 0 },
-      }),
-    );
+    const result = await ai.generate({
+      model: googleAI.model(model),
+      prompt,
+      output: { schema: ParseEntryAIOutputSchema },
+      config: { temperature: 0 },
+    });
     return result.output!;
   },
 );
