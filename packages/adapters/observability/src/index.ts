@@ -15,6 +15,12 @@ export {
   extractTraceHeaders,
 } from './init.js';
 export type { ObservabilityOptions, ObservabilitySpan, SupportFeedbackTraits } from './init.js';
+// Browser-rooted distributed tracing (issue #362, Phase 4). The real OTel tracer
+// surface for instrumented user actions: start a ROOT span, get its W3C
+// traceparent for the firebase-sync callable wrappers, capture client-side timing.
+// initBrowserTracing is wired by initObservability; web-pwa uses startUserActionSpan.
+export { startUserActionSpan, isBrowserTracingReady, toBrowserOtlpSpan } from './browserTracer.js';
+export type { UserActionSpan, UserActionChildSpan } from './browserTracer.js';
 export {
   createPosthogMatchLoggingAdapter as createObservabilityMatchLoggingAdapter,
   createPosthogMatchLoggingAdapter,

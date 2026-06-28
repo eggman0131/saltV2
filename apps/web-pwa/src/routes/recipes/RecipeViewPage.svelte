@@ -25,6 +25,7 @@
     canonicaliseIngredients,
     matchIngredient,
     persistRecipe,
+    authorRecipeTraced,
   } from '../../lib/recipeService.js';
   import RecipeAddToListSheet from './RecipeAddToListSheet.svelte';
   import { canonItems } from '../../lib/canonService.js';
@@ -33,7 +34,7 @@
   import { addToast } from '../../lib/toastStore.js';
   import { auth } from '../../lib/auth.svelte.js';
   import { createChatSession, sessions, sendMessage } from '../../lib/chatService.js';
-  import { callAuthorRecipe, saveRecipe as saveRecipeDoc } from '@salt/firebase-sync';
+  import { saveRecipe as saveRecipeDoc } from '@salt/firebase-sync';
 
   interface Props {
     params: { id: string };
@@ -221,11 +222,14 @@
     if (!activeSession || !recipe || sidebarIsApplying) return;
     sidebarIsApplying = true;
     const existingTags = [...new Set($recipes.flatMap((r) => r.metadata.tags))];
-    const result = await callAuthorRecipe({
-      messages: activeSession.messages,
-      existingTags,
-      recipeId: recipe.id,
-    });
+    const result = await authorRecipeTraced(
+      {
+        messages: activeSession.messages,
+        existingTags,
+        recipeId: recipe.id,
+      },
+      recipe.title,
+    );
     if (result.kind !== 'ok') {
       sidebarIsApplying = false;
       addToast('Failed to generate recipe update.', 'destructive');

@@ -5,9 +5,11 @@ import {
   callParseRecipeIngredients,
   callCanonicaliseRecipeIngredients,
   callExtractRecipeFromUrl,
+  callAuthorRecipe,
   saveShoppingListItem,
 } from '@salt/firebase-sync';
-import { createObservabilityErrorReportingAdapter } from '@salt/observability';
+import { createObservabilityErrorReportingAdapter, startUserActionSpan } from '@salt/observability';
+import type { AuthorRecipeInput, RecipeDoc } from '@salt/domain/schemas';
 import { reportIfFailed, reportSubscriptionError } from './errorReporting.js';
 import { addItem, recipeItemAddDefault } from '@salt/domain';
 import type {
@@ -141,17 +143,82 @@ export function urlImportMessage(code: UrlImportFailureCode): string {
   return URL_IMPORT_COPY[code];
 }
 
+// Best-effort, bounded host extraction for the human-readable span name. Never
+// throws — a malformed URL just yields 'url' so the trace still names the action.
+function hostForSpan(url: string): string {
+  try {
+    return new URL(url.trim()).hostname || 'url';
+  } catch {
+    return 'url';
+  }
+}
+
 // Import a recipe from a URL. Returns the assembled draft as a Recipe entity
 // (RecipeDoc is structurally identical), with source.type='url' already set.
 // `updatedAt` is left as the server stamp; the editor re-stamps on save.
+//
+// Distributed tracing (issue #362, Phase 4): start a ROOT span at this user action
+// so the trace ORIGINATES here in the browser. Its W3C traceparent is handed to
+// the callable (2nd arg), and Phase 3's server side nests the CF + canon + AI
+// sub-tree under that same trace id. The callable round-trip is captured as a
+// child span so the client-side latency is visible. web-pwa OWNS the observability
+// dependency and bridges the traceparent to firebase-sync (Rule 4: firebase-sync
+// never imports observability). Tracing is best-effort: when it's inert the span
+// is a no-op and the traceparent is '' (omitted by the wrapper), so import works
+// exactly as before.
 export async function importRecipeFromUrl(
   url: string,
 ): Promise<ReadResult<Recipe, UrlImportFailureCode>> {
-  const result = await callExtractRecipeFromUrl({ url: url.trim() });
-  if (result.kind !== 'ok') return failure(result.error);
-  // RecipeDoc and Recipe are the same shape (the adapter casts both ways on
-  // read/write); accept the draft as a Recipe for the editor.
-  return success(result.value as unknown as Recipe);
+  const trimmed = url.trim();
+  const span = startUserActionSpan(`Import recipe from ${hostForSpan(trimmed)}`);
+  const child = span.child('callExtractRecipeFromUrl');
+  try {
+    const result = await callExtractRecipeFromUrl({ url: trimmed }, span.traceparent || undefined);
+    child.end();
+    if (result.kind !== 'ok') {
+      span.setAttribute('import.outcome', result.error);
+      span.setError();
+      return failure(result.error);
+    }
+    span.setAttribute('import.outcome', 'ok');
+    // RecipeDoc and Recipe are the same shape (the adapter casts both ways on
+    // read/write); accept the draft as a Recipe for the editor.
+    return success(result.value as unknown as Recipe);
+  } finally {
+    span.end();
+  }
+}
+
+// Author/apply a recipe via the librarian flow, wrapped in a browser-ROOT span
+// (issue #362, Phase 4) so the "Author recipe" action originates a distributed
+// trace at the click and the CF + canon + AI sub-tree nests under the same trace
+// id. Centralises the span + traceparent plumbing so the three Svelte call sites
+// (chat "Save as recipe", chat "Apply changes", recipe-view "Apply changes") don't
+// duplicate it. A bounded recipe title (when known) is appended to the span name —
+// family-shared content is allowed per the naming/privacy decision, but bounded.
+// Best-effort tracing: an inert tracer just yields a no-op span and an empty
+// traceparent, so authoring behaves exactly as a bare callAuthorRecipe call.
+export async function authorRecipeTraced(
+  input: AuthorRecipeInput,
+  titleHint?: string,
+): Promise<ReadResult<RecipeDoc, DomainError>> {
+  const name =
+    titleHint && titleHint.trim() ? `Author recipe: ${titleHint.trim()}` : 'Author recipe';
+  const span = startUserActionSpan(name);
+  const child = span.child('callAuthorRecipe');
+  try {
+    const result = await callAuthorRecipe(input, span.traceparent || undefined);
+    child.end();
+    if (result.kind !== 'ok') {
+      span.setAttribute('author.outcome', result.error.kind);
+      span.setError();
+    } else {
+      span.setAttribute('author.outcome', 'ok');
+    }
+    return result;
+  } finally {
+    span.end();
+  }
 }
 
 // Hand-off slot for the imported draft. The list page imports, stashes the
