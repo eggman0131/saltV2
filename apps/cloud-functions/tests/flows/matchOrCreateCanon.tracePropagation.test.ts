@@ -27,6 +27,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const runWithExtractedTraceContext = vi.fn(
   (_headers: unknown, fn: () => unknown) => fn() as unknown,
 );
+// Field-channel counterpart (issue #362): browser-supplied `traceparent` rides
+// the payload (the callable SDK can't carry a custom header), and the entrypoint
+// runs the flow within that supplied context when no inbound header is present.
+const runWithSuppliedTraceContext = vi.fn(
+  (_traceparent: unknown, fn: () => unknown) => fn() as unknown,
+);
 const matchOrCreateCanonFlow = vi.fn(async (_input: unknown) => ({
   kind: 'ok' as const,
   value: { decision: 'matched' as const, item: { name: 'Tomato' } },
@@ -36,6 +42,9 @@ vi.mock('@salt/observability/server', () => ({
   initServerObservability: vi.fn(),
   whenServerObservabilityReady: vi.fn(async () => {}),
   runWithExtractedTraceContext,
+  runWithSuppliedTraceContext,
+  attachAiOtlpSpanProcessor: vi.fn(),
+  attachDistributedSpanProcessor: vi.fn(),
   // index.ts now imports ../observability/reportServerError.js, which constructs
   // the server error reporter at module load and flushes on the report path.
   createServerObservabilityErrorReportingAdapter: vi.fn(() => ({ report: vi.fn() })),
@@ -130,6 +139,7 @@ const ORIGINAL_GENKIT_ENV = process.env['GENKIT_TELEMETRY_SERVER'];
 
 beforeEach(() => {
   runWithExtractedTraceContext.mockClear();
+  runWithSuppliedTraceContext.mockClear();
   matchOrCreateCanonFlow.mockClear();
 });
 
@@ -171,36 +181,75 @@ describe('matchOrCreateCanon — env-gated server-side trace unification', () =>
     expect(matchOrCreateCanonFlow).toHaveBeenCalledWith({ rawName: 'tomato' });
   });
 
-  it('PRODUCTION: tolerates a missing rawRequest (passes undefined headers; helper degrades)', async () => {
+  it('PRODUCTION: tolerates a missing rawRequest and no payload traceparent (both helpers degrade to a plain call)', async () => {
     delete process.env['GENKIT_TELEMETRY_SERVER'];
 
     const req = { auth: { uid: 'u1' }, data: { rawName: 'tomato' } } as unknown;
     const result = await invoke(req);
 
     expect(result).toMatchObject({ kind: 'ok' });
-    expect(runWithExtractedTraceContext).toHaveBeenCalledOnce();
-    const [headersArg] = runWithExtractedTraceContext.mock.calls[0]!;
-    expect(headersArg).toBeUndefined();
+    // No usable inbound header → header path skipped; with no payload
+    // traceparent either, the supplied path is taken with `undefined` and
+    // degrades to a plain flow call.
+    expect(runWithExtractedTraceContext).not.toHaveBeenCalled();
+    expect(runWithSuppliedTraceContext).toHaveBeenCalledOnce();
+    const [tpArg] = runWithSuppliedTraceContext.mock.calls[0]!;
+    expect(tpArg).toBeUndefined();
+    expect(matchOrCreateCanonFlow).toHaveBeenCalledWith({ rawName: 'tomato' });
   });
 
-  it('the _trace wire field is gone: it is not accepted or forwarded as trace plumbing', async () => {
+  it('the magic _trace wire field is still gone: an unknown _trace key is stripped, not threaded into the flow', async () => {
     delete process.env['GENKIT_TELEMETRY_SERVER'];
 
-    // A legacy client that still tacks on _trace must not have it threaded into
-    // the flow as a trace-plumbing field; the entrypoint forwards request.data
-    // verbatim and the flow's input schema (MatchOrCreateCanonInputSchema) has
-    // no _trace, so there is nothing to strip and nothing to forward.
+    // The named, typed `traceparent` field SUPERSEDES the old magic `_trace`
+    // plumbing. A legacy client that still tacks on `_trace` must not have it
+    // threaded into the flow: it is not in the wire-envelope schema, so Zod
+    // strips it. The inbound header still drives propagation here.
     await invoke(makeRequest({ rawName: 'tomato', _trace: { traceparent } }));
 
     expect(matchOrCreateCanonFlow).toHaveBeenCalledOnce();
-    // The entrypoint does not extract trace context from the payload; the only
-    // header source is the request itself.
+    // The flow receives the PURE domain input — no _trace, no traceparent.
+    expect(matchOrCreateCanonFlow).toHaveBeenCalledWith({ rawName: 'tomato' });
+    const flowArg = matchOrCreateCanonFlow.mock.calls[0]![0] as Record<string, unknown>;
+    expect(flowArg).not.toHaveProperty('_trace');
+    expect(flowArg).not.toHaveProperty('traceparent');
+    // Inbound header drives propagation (header > payload precedence).
     const [headersArg] = runWithExtractedTraceContext.mock.calls[0]!;
     expect(headersArg).toEqual({ traceparent });
-    // No CallMatchOrCreateOptions / traceHeaders-shaped argument is involved at
-    // this boundary.
-    const flowArg = matchOrCreateCanonFlow.mock.calls[0]![0] as Record<string, unknown>;
-    expect(flowArg).not.toHaveProperty('traceHeaders');
+  });
+
+  it('PRODUCTION: a browser-supplied payload `traceparent` (no inbound header) propagates via the supplied-context path and is stripped from the flow input', async () => {
+    delete process.env['GENKIT_TELEMETRY_SERVER'];
+
+    // No inbound trace header on the request → fall back to the named, typed
+    // `traceparent` field on the WIRE input. The entrypoint strips it and runs
+    // the flow within that supplied context (Phase 4 mints a real browser id;
+    // here it is synthetic).
+    const result = await invoke(makeRequest({ rawName: 'tomato', traceparent }, {}));
+
+    expect(result).toMatchObject({ kind: 'ok' });
+    // Header path is NOT used (no usable inbound headers); supplied path is.
+    expect(runWithExtractedTraceContext).not.toHaveBeenCalled();
+    expect(runWithSuppliedTraceContext).toHaveBeenCalledOnce();
+    const [tpArg] = runWithSuppliedTraceContext.mock.calls[0]!;
+    expect(tpArg).toBe(traceparent);
+    // The flow gets the PURE domain input — traceparent stripped (domain purity).
+    expect(matchOrCreateCanonFlow).toHaveBeenCalledWith({ rawName: 'tomato' });
+  });
+
+  it('PRODUCTION: an inbound header WINS over a payload `traceparent` (header > payload precedence)', async () => {
+    delete process.env['GENKIT_TELEMETRY_SERVER'];
+
+    const payloadOnly = '00-11111111111111111111111111111111-2222222222222222-01';
+    await invoke(makeRequest({ rawName: 'tomato', traceparent: payloadOnly }, { traceparent }));
+
+    // With a usable inbound header present, the header path is taken; the
+    // payload traceparent is not consulted.
+    expect(runWithExtractedTraceContext).toHaveBeenCalledOnce();
+    expect(runWithSuppliedTraceContext).not.toHaveBeenCalled();
+    const [headersArg] = runWithExtractedTraceContext.mock.calls[0]!;
+    expect(headersArg).toEqual({ traceparent });
+    expect(matchOrCreateCanonFlow).toHaveBeenCalledWith({ rawName: 'tomato' });
   });
 
   it('rejects unauthenticated callers before touching propagation', async () => {

@@ -9,6 +9,10 @@ vi.mock('@salt/observability', async () => {
   const actual = await vi.importActual<typeof import('@salt/observability')>('@salt/observability');
   return {
     isReportableCategory: actual.isReportableCategory,
+    // Phase 5: addItemToList roots a browser action span. The real helper is inert
+    // here (initBrowserTracing was never called → NOOP_ACTION, empty traceparent),
+    // so saveShoppingListItem writes no traceContext and the report path is unchanged.
+    startUserActionSpan: actual.startUserActionSpan,
     createObservabilityErrorReportingAdapter: vi.fn(() => ({
       report: (error: unknown, category: DomainError['kind']) => {
         if (!actual.isReportableCategory(category)) return;

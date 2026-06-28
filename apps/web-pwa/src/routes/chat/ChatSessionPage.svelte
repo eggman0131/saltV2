@@ -3,8 +3,8 @@
   import { push } from 'svelte-spa-router';
   import { sessions, isLoadingSessions, sendMessage } from '../../lib/chatService.js';
   import { addToast } from '../../lib/toastStore.js';
-  import { callAuthorRecipe, saveRecipe as saveRecipeDoc } from '@salt/firebase-sync';
-  import { recipes } from '../../lib/recipeService.js';
+  import { saveRecipe as saveRecipeDoc } from '@salt/firebase-sync';
+  import { recipes, authorRecipeTraced } from '../../lib/recipeService.js';
   import type { ChatSessionDoc } from '@salt/domain/schemas';
 
   interface Props {
@@ -58,7 +58,7 @@
     if (!session || isSavingRecipe) return;
     isSavingRecipe = true;
     const existingTags = [...new Set($recipes.flatMap((r) => r.metadata.tags))];
-    const result = await callAuthorRecipe({ messages: session.messages, existingTags });
+    const result = await authorRecipeTraced({ messages: session.messages, existingTags });
     if (result.kind !== 'ok') {
       isSavingRecipe = false;
       addToast('Failed to generate recipe.', 'destructive');
@@ -90,11 +90,14 @@
     }
     isApplying = true;
     const existingTags = [...new Set($recipes.flatMap((r) => r.metadata.tags))];
-    const result = await callAuthorRecipe({
-      messages: session.messages,
-      existingTags,
-      recipeId: session.recipeId,
-    });
+    const result = await authorRecipeTraced(
+      {
+        messages: session.messages,
+        existingTags,
+        recipeId: session.recipeId,
+      },
+      existing.title,
+    );
     if (result.kind !== 'ok') {
       isApplying = false;
       addToast('Failed to generate recipe update.', 'destructive');

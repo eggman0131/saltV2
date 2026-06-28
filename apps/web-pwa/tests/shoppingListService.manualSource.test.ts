@@ -23,6 +23,15 @@ vi.mock('@salt/firebase-sync', () => ({
 
 vi.mock('@salt/observability', () => ({
   createObservabilityErrorReportingAdapter: vi.fn(() => ({ report: vi.fn() })),
+  // Phase 5: addItemToList roots a browser action span. Inert no-op handle —
+  // empty traceparent → saveShoppingListItem writes no traceContext field.
+  startUserActionSpan: vi.fn(() => ({
+    traceparent: '',
+    child: vi.fn(() => ({ setError: vi.fn(), end: vi.fn() })),
+    setError: vi.fn(),
+    setAttribute: vi.fn(),
+    end: vi.fn(),
+  })),
 }));
 
 // Mutable auth stand-in: tests set `auth.user` to drive who's signed in.

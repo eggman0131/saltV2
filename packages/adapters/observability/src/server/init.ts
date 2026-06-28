@@ -8,6 +8,7 @@ import {
   type Span as OtelSpan,
 } from '@opentelemetry/api';
 import { flushAiOtlp } from './aiOtlpSpanProcessor.js';
+import { flushDistributedOtlp } from './distributedSpanProcessor.js';
 
 // EU region is baked in as the default; the host is overridable via env only so
 // a self-hosted/dev proxy can be pointed at, never to silently leave the EU
@@ -144,10 +145,12 @@ export function captureServerException(error: unknown): void {
 
 // Flush pending telemetry. Cloud Functions should call this before returning so
 // queued events aren't lost when the Node process is paused between invocations
-// (posthog-node batches in the background; the AI-OTLP processor exports per span
-// but its POSTs may still be in flight). Wraps posthog-node's flush() and drains
-// the AI-trace span exports. Export failures (e.g. DNS unreachable in local dev)
-// are non-fatal — the adapter must not surface operational telemetry errors.
+// (posthog-node batches in the background; the OTLP processors export per span
+// but their POSTs may still be in flight). Wraps posthog-node's flush() and
+// drains BOTH span-export legs — the AI-trace exporter (/i/v0/ai/otel) and the
+// distributed-trace exporter (/i/v1/traces). Export failures (e.g. DNS
+// unreachable in local dev) are non-fatal — the adapter must not surface
+// operational telemetry errors.
 export async function flushServerObservability(): Promise<void> {
   if (client) {
     try {
@@ -156,9 +159,9 @@ export async function flushServerObservability(): Promise<void> {
       // Non-fatal: never surface a telemetry export failure to the caller.
     }
   }
-  // Drain in-flight AI-trace span exports (a separate sink from posthog-node);
-  // never throws (Promise.allSettled internally).
-  await flushAiOtlp();
+  // Drain in-flight span exports from BOTH legs (separate sinks from
+  // posthog-node); neither throws (Promise.allSettled internally).
+  await Promise.all([flushAiOtlp(), flushDistributedOtlp()]);
 }
 
 // ── Span/trace helpers against the ACTIVE provider ────────────────────────────
@@ -259,4 +262,23 @@ export function runWithExtractedTraceContext<T>(
     // Never surface a propagation failure to the request hot path.
     return fn();
   }
+}
+
+// Run `fn` within the OTel context carried by a SUPPLIED W3C `traceparent`
+// string, so any span `fn` opens nests under that trace instead of re-rooting.
+// This is the field-channel counterpart to runWithExtractedTraceContext: the
+// Firebase callable SDK cannot carry a custom `traceparent` HTTP header (issue
+// #362 spike), so a browser-supplied trace id arrives as a named, typed,
+// optional input field on the callable WIRE input rather than a request header.
+// The CF entrypoint strips that field and hands the raw string here.
+//
+// Synthesizes a single-header carrier `{ traceparent }` and delegates to the
+// same propagation.extract path — keeping ONE extraction implementation and
+// keeping OTel concerns in the observability layer (not in CF). Degrades safely
+// and never throws (CLAUDE.md Rule 10): an absent/malformed traceparent (no
+// usable remote span context) just runs `fn` in the current context, so a bad
+// id costs at most a split trace, never a thrown request.
+export function runWithSuppliedTraceContext<T>(traceparent: string | undefined, fn: () => T): T {
+  if (!traceparent) return fn();
+  return runWithExtractedTraceContext({ traceparent }, fn);
 }

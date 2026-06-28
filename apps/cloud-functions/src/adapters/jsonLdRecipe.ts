@@ -1,4 +1,5 @@
 import { z } from 'genkit';
+import { startSpan, type ObservabilitySpan } from '@salt/observability/server';
 
 // schema.org/Recipe JSON-LD extraction (recipe URL import epic, Phase 3).
 //
@@ -233,18 +234,36 @@ function extractJsonLdBlocks(html: string): string[] {
 // Extract the first usable schema.org/Recipe from a page's HTML, or null if the
 // page has no parseable JSON-LD Recipe. Malformed JSON in one block never throws
 // — it's skipped and we move on to the next block.
-export function extractRecipeJsonLd(html: string): JsonLdRecipe | null {
-  const recipes: JsonLdRecipe[] = [];
-  for (const block of extractJsonLdBlocks(html)) {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(block);
-    } catch {
-      // A page may have invalid JSON-LD; skip and keep looking.
-      continue;
+//
+// Wrapped in a `Parse recipe JSON-LD` child span. The recipe-import flow body is
+// the active OTel context (Genkit flow span), so a plain startSpan nests this
+// under the flow trace; an explicit parent can still be threaded for parity.
+// Best-effort, never throws (CLAUDE.md Rule 10): .end()-ed in a finally, with a
+// single bounded boolean attribute (whether a recipe was found).
+export function extractRecipeJsonLd(
+  html: string,
+  parentSpan?: ObservabilitySpan,
+): JsonLdRecipe | null {
+  const span = startSpan('Parse recipe JSON-LD', parentSpan ? { parent: parentSpan } : {});
+  try {
+    const recipes: JsonLdRecipe[] = [];
+    for (const block of extractJsonLdBlocks(html)) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(block);
+      } catch {
+        // A page may have invalid JSON-LD; skip and keep looking.
+        continue;
+      }
+      collectRecipeNodes(parsed, recipes);
+      if (recipes.length > 0) {
+        span.setAttribute('recipe.jsonLdFound', true);
+        return recipes[0]!;
+      }
     }
-    collectRecipeNodes(parsed, recipes);
-    if (recipes.length > 0) return recipes[0]!;
+    span.setAttribute('recipe.jsonLdFound', false);
+    return null;
+  } finally {
+    span.end();
   }
-  return null;
 }

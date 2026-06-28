@@ -24,70 +24,27 @@
 // Types for `ReadableSpan` / the processor shape are declared STRUCTURALLY (not
 // imported from `@opentelemetry/sdk-trace-*`) so this package takes no new build
 // dependency — the same structural-typing approach the server adapter already
-// uses to avoid a build-time genkit dependency.
+// uses to avoid a build-time genkit dependency. The structural types + OTLP/JSON
+// wire layer (attribute encoders, HrTime→nanos, body builder, per-span POST) are
+// shared with the distributed exporter via otlpWire.ts, so the wire schema can't
+// drift between the two legs.
+import {
+  type Attribute,
+  type OtlpSpan,
+  type ReadableSpanLike,
+  type SpanProcessorLike,
+  SPAN_KIND_INTERNAL,
+  hrTimeToNanos,
+  intAttr,
+  parentSpanId,
+  postOtlpSpan,
+  strAttr,
+} from './otlpWire.js';
 
-// EU region baked in as default; host overridable via env only (never to silently
-// leave the EU data region). Mirrors init.ts / the browser adapter — Region = EU.
-const DEFAULT_POSTHOG_HOST = 'https://eu.i.posthog.com';
+export type { ReadableSpanLike, SpanProcessorLike, OtlpSpan };
+
+// AI ingestion endpoint — the only thing that differs from the distributed leg.
 const AI_OTLP_PATH = '/i/v0/ai/otel';
-const SERVICE_NAME = 'salt-cloud-functions';
-
-// ── Structural OTel types (no `@opentelemetry/sdk-trace-*` dependency) ─────────
-
-/** OTel HrTime: [epoch seconds, nanos-within-second]. */
-type HrTime = readonly [number, number];
-
-/** The subset of OTel `ReadableSpan` we read. */
-export interface ReadableSpanLike {
-  readonly name: string;
-  readonly attributes: Readonly<Record<string, unknown>>;
-  readonly startTime: HrTime;
-  readonly endTime: HrTime;
-  // OTel 1.x exposes `parentSpanId`; 2.x exposes `parentSpanContext`. Read both.
-  readonly parentSpanId?: string;
-  readonly parentSpanContext?: { readonly spanId?: string };
-  spanContext(): { readonly traceId: string; readonly spanId: string };
-}
-
-/** The `SpanProcessor` shape `BasicTracerProvider.addSpanProcessor` accepts. */
-export interface SpanProcessorLike {
-  onStart(): void;
-  onEnd(span: ReadableSpanLike): void;
-  forceFlush(): Promise<void>;
-  shutdown(): Promise<void>;
-}
-
-// ── OTLP/JSON wire helpers (mirror the PoC's proven shape) ─────────────────────
-
-type AttrValue = { stringValue: string } | { intValue: string } | { boolValue: boolean };
-interface Attribute {
-  key: string;
-  value: AttrValue;
-}
-export interface OtlpSpan {
-  traceId: string;
-  spanId: string;
-  parentSpanId?: string;
-  name: string;
-  kind: number;
-  startTimeUnixNano: string;
-  endTimeUnixNano: string;
-  attributes: Attribute[];
-}
-
-const strAttr = (key: string, v: string): Attribute => ({ key, value: { stringValue: v } });
-// int64 must be a string in OTLP/JSON to avoid JS number precision loss.
-const intAttr = (key: string, v: number): Attribute => ({ key, value: { intValue: String(v) } });
-
-const SPAN_KIND_INTERNAL = 1;
-
-/** HrTime → OTLP nanosecond string (BigInt: epoch-ns exceeds Number precision). */
-function hrTimeToNanos(t: HrTime): string {
-  if (!Array.isArray(t) || t.length < 2) return '0';
-  const seconds = Number(t[0]) || 0;
-  const nanos = Number(t[1]) || 0;
-  return (BigInt(Math.trunc(seconds)) * 1_000_000_000n + BigInt(Math.trunc(nanos))).toString();
-}
 
 /** `googleai/gemini-2.5-flash` → `gemini-2.5-flash`; passthrough when no prefix. */
 function stripModelPrefix(name: string): string {
@@ -249,10 +206,6 @@ function readUsage(attrs: Readonly<Record<string, unknown>>): {
   return out;
 }
 
-function parentSpanId(span: ReadableSpanLike): string | undefined {
-  return span.parentSpanId ?? span.parentSpanContext?.spanId ?? undefined;
-}
-
 /**
  * Remap a finished Genkit span to an OTLP span tagged in a PostHog-recognised
  * namespace, or `null` to drop it.
@@ -376,26 +329,9 @@ function track(p: Promise<void>): void {
 }
 
 async function postSpan(otlpSpan: OtlpSpan): Promise<void> {
-  const key = process.env['POSTHOG_API_KEY'];
-  if (!key) return;
-  const host = process.env['POSTHOG_HOST'] || DEFAULT_POSTHOG_HOST;
-  const body = {
-    resourceSpans: [
-      {
-        resource: { attributes: [strAttr('service.name', SERVICE_NAME)] },
-        scopeSpans: [{ scope: { name: SERVICE_NAME }, spans: [otlpSpan] }],
-      },
-    ],
-  };
-  try {
-    await fetch(`${host}${AI_OTLP_PATH}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-      body: JSON.stringify(body),
-    });
-  } catch {
-    // Never surface a telemetry export failure to the caller (Rule 10).
-  }
+  // Shared OTLP body + POST (otlpWire.postOtlpSpan); the AI path is what makes
+  // this the AI leg. No-ops without POSTHOG_API_KEY; never throws (Rule 10).
+  await postOtlpSpan(otlpSpan, AI_OTLP_PATH);
 }
 
 /** Await any in-flight AI-trace span exports. Called from flushServerObservability(). */

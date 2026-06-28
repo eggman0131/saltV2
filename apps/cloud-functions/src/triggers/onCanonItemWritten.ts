@@ -12,6 +12,7 @@ import { removeFlatBackground } from '../imaging/removeFlatBackground.js';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { aiFakeEnabled } from '../ai/fakeModel.js';
 import { reportServerError } from '../observability/reportServerError.js';
+import { runTriggerWithTraceContext } from './triggerTraceContext.js';
 
 // Defined here (not imported from index.ts) to avoid a circular import; the
 // Firebase CLI aggregates same-named defineSecret calls across files at deploy
@@ -236,14 +237,26 @@ export const onCanonItemWritten = onDocumentWritten(
     }
 
     const id = event.params.id;
+    // Distributed-trace correlation (issue #362, Phase 5). The
+    // onShoppingListItemWrite trigger stamped its browser-rooted W3C traceparent
+    // onto this canon doc as traceContext when it wrote the match; continuing it
+    // here nests the icon + embedding work under the SAME trace ("Add item …" →
+    // canon-match → icon) instead of re-rooting. Env-gated and degrades safely
+    // (absent/malformed → normal root trace, never throws — Rule 10). Reading
+    // traceContext is a no-op for the icon/embedding idempotency guards (they key
+    // off thumbnail/iconRequestedAt/embedding), so a bare traceContext-only
+    // re-fire of this trigger cannot loop into duplicate generation.
+    const traceContext = parsed.data.traceContext;
     try {
       // Two independently-guarded side-effects. allSettled so a failure in one
       // branch never rejects the handler (which would retry both). The icon branch
       // is edge-triggered on before→after, so it needs the prior snapshot.
-      await Promise.allSettled([
-        maybeGenerateEmbedding(id, parsed.data),
-        maybeGenerateIcon(id, parsed.data, event.data?.before),
-      ]);
+      await runTriggerWithTraceContext(traceContext, () =>
+        Promise.allSettled([
+          maybeGenerateEmbedding(id, parsed.data),
+          maybeGenerateIcon(id, parsed.data, event.data?.before),
+        ]),
+      );
     } finally {
       // The branch catches above report best-effort to posthog-node, which
       // batches; flush before the function freezes so a report is not stranded.

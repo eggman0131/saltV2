@@ -24,6 +24,17 @@ export const CanonItemSchema = z.object({
   unit: z.enum(['g', 'ml', 'count']).optional(),
   reasoning: z.string().optional(),
   updatedAt: z.string(),
+  // Distributed-trace correlation field (issue #362, Phase 5). A W3C
+  // `traceparent` string the onShoppingListItemWrite trigger stamps onto the
+  // canon doc at match write-back, so the onCanonItemWritten icon/embedding
+  // trigger can continue the same browser-rooted trace. TRANSPORT ONLY — domain
+  // logic must never branch on it, and the pure domain CanonItem never carries
+  // it: the firestoreCanonStore adapter adds the field at write time. Optional
+  // and additive: old docs lack it and stay valid (back-compat on read). A bare
+  // traceContext-only write is a no-op for the icon/embedding idempotency guards
+  // (they key off thumbnail/iconRequestedAt/embedding, never this field), so
+  // stamping it cannot loop the trigger.
+  traceContext: z.string().optional(),
 });
 
 export type CanonItemDoc = z.infer<typeof CanonItemSchema>;

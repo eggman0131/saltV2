@@ -11,7 +11,7 @@ import {
   subscribeShoppingListsConfig,
   saveShoppingListsConfig,
 } from '@salt/firebase-sync';
-import { createObservabilityErrorReportingAdapter } from '@salt/observability';
+import { createObservabilityErrorReportingAdapter, startUserActionSpan } from '@salt/observability';
 import {
   createList,
   renameList,
@@ -216,7 +216,24 @@ export async function addItemToList(
   const result = addItem(items, { rawText, source, now }, ids);
   if (result.kind !== 'ok') return result;
   const newItem = result.value[result.value.length - 1]!;
-  return reportIfFailed(getErrorReporter(), await saveShoppingListItem(listId, newItem));
+
+  // Distributed tracing (issue #362, Phase 5): root a browser action span so the
+  // whole "add to shopping list" path — the doc write, the onShoppingListItemWrite
+  // canon-match trigger, and the onCanonItemWritten icon trigger — renders as ONE
+  // trace. We hand the span's W3C traceparent to saveShoppingListItem, which
+  // stamps it onto the doc as `traceContext` for the triggers to continue. Inert
+  // no-op when tracing is off (empty traceparent → no field written). NOT the
+  // canon fast-path's inert startSpan shim — this is the real browser tracer.
+  const span = startUserActionSpan(`Add item: ${rawText}`);
+  try {
+    const traceparent = span.traceparent || undefined;
+    const saveResult = await saveShoppingListItem(listId, newItem, traceparent);
+    if (saveResult.kind === 'err') span.setError(saveResult.error);
+    return reportIfFailed(getErrorReporter(), saveResult);
+  } finally {
+    // End once the write settles so the span captures client-side latency.
+    span.end();
+  }
 }
 
 export async function updateItemRawText(

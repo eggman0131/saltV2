@@ -14,6 +14,7 @@ export {
   startSpan,
   setActiveSpanName,
   runWithExtractedTraceContext,
+  runWithSuppliedTraceContext,
   captureServerEvent,
   captureServerException,
   safePosthog,
@@ -24,6 +25,12 @@ export type { ObservabilitySpan, StartSpanOptions } from './init.js';
 // entrypoint after enableFirebaseTelemetry() resolves; ships Genkit's AI spans
 // to PostHog LLM observability as real traces (#356).
 export { attachAiOtlpSpanProcessor } from './attachAiOtlpProcessor.js';
+
+// Distributed-tracing span processor: attached ALONGSIDE the AI processor on the
+// same Genkit-owned provider; ships EVERY finished span to PostHog's
+// distributed-tracing endpoint (/i/v1/traces) so a CF invocation renders as one
+// coherent end-to-end trace correlated by trace_id to the AI generations.
+export { attachDistributedSpanProcessor } from './attachDistributedProcessor.js';
 
 // cf-path match logger. Exported under both the posthog-specific name and a
 // runtime-neutral alias (createServerObservabilityMatchLoggingAdapter) so call

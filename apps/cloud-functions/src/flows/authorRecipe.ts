@@ -5,6 +5,7 @@ import { logger } from 'firebase-functions';
 import { AuthorRecipeInputSchema, LibrarianOutputSchema, RecipeSchema } from '@salt/domain/schemas';
 import type { LibrarianOutput } from '@salt/domain/schemas';
 import type { RecipeDoc, IngredientGroupDoc, IngredientDoc } from '@salt/domain/schemas';
+import { setActiveSpanName } from '@salt/observability/server';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 import { canonicaliseRecipeIngredientsFlow } from './canonicaliseRecipeIngredients.js';
@@ -60,6 +61,12 @@ export const authorRecipeFlow = ai.defineFlow(
     if (!parsed.success) {
       throw new Error(`Librarian returned invalid recipe structure: ${parsed.error.message}`);
     }
+
+    // Human-readable top-level span name for the end-to-end trace view. The flow
+    // span is the active span inside an ai.defineFlow body; setActiveSpanName
+    // renames it (caps at 80 chars, no-op when no span is active). Recipe title is
+    // only known after the librarian generates, so name it here.
+    setActiveSpanName(`Author recipe: ${parsed.data.title}`);
 
     return assembleDraft(parsed.data, baseRecipe);
   },

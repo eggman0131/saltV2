@@ -322,6 +322,25 @@ describe('saveShoppingListItem', () => {
     const result = await saveShoppingListItem('list-1', ITEM_1);
     expect(result).toEqual({ kind: 'err', error: { kind: 'AuthError', reason: 'forbidden' } });
   });
+
+  // Distributed-trace correlation (issue #362, Phase 5): when the browser passes a
+  // W3C traceparent, it is stamped onto the doc as `traceContext` so the
+  // onShoppingListItemWrite trigger can continue the browser-rooted trace.
+  it('stamps traceContext on the doc when a traceparent is supplied', async () => {
+    const traceparent = '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01';
+    await saveShoppingListItem('list-1', ITEM_1, traceparent);
+    expect(mockSetDoc).toHaveBeenCalledWith('mock-doc-ref', {
+      ...ITEM_1,
+      traceContext: traceparent,
+    });
+  });
+
+  it('writes no traceContext field when no traceparent is supplied (back-compat)', async () => {
+    await saveShoppingListItem('list-1', ITEM_1);
+    expect(mockSetDoc).toHaveBeenCalledWith('mock-doc-ref', { ...ITEM_1 });
+    const written = mockSetDoc.mock.calls.at(-1)?.[1] as Record<string, unknown>;
+    expect(written).not.toHaveProperty('traceContext');
+  });
 });
 
 describe('deleteShoppingListItem', () => {

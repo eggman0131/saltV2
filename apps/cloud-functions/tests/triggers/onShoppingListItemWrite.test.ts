@@ -45,12 +45,20 @@ const mockSpan = {
 const mockReport = vi.fn();
 const mockFlush = vi.fn().mockResolvedValue(undefined);
 
+// runWithSuppliedTraceContext is consumed by the Phase-5 trigger trace-context
+// helper (triggerTraceContext.ts), which is NOT mocked, so it resolves the REAL
+// import from this mocked module — it must exist or the helper throws. The mock
+// just runs the fn (no real OTel context in unit tests); a dedicated test below
+// asserts it is actually invoked with the doc's traceContext.
+const mockRunWithSupplied = vi.fn(<T>(_traceparent: string | undefined, fn: () => T): T => fn());
+
 vi.mock('@salt/observability/server', () => ({
   startSpan: vi.fn(() => mockSpan),
   flushServerObservability: mockFlush,
   whenServerObservabilityReady: vi.fn().mockResolvedValue(undefined),
   initServerObservability: vi.fn(),
   isServerObservabilityInitialised: vi.fn(() => false),
+  runWithSuppliedTraceContext: mockRunWithSupplied,
   createServerObservabilityMatchLoggingAdapter: vi.fn(() => ({
     write: vi.fn().mockResolvedValue(undefined),
   })),
@@ -68,8 +76,9 @@ vi.mock('@salt/domain', async (importOriginal) => {
 
 // ─── Mock buildMatchOrCreatePorts from the flow ──────────────────────────────
 
+const mockBuildPorts = vi.fn(() => ({}));
 vi.mock('../../src/flows/matchOrCreateCanon.js', () => ({
-  buildMatchOrCreatePorts: vi.fn(() => ({})),
+  buildMatchOrCreatePorts: mockBuildPorts,
 }));
 
 // ─── Mock createServerEntryParseAdapter ──────────────────────────────────────
@@ -619,6 +628,82 @@ describe('onShoppingListItemWrite', () => {
       await (onShoppingListItemWrite as Function)(makeEvent({ before: null, after: PENDING_ITEM }));
 
       expect(mockSpan.end).toHaveBeenCalled();
+    });
+  });
+
+  // ─── Trace propagation via the traceContext doc field (issue #362, Phase 5) ──
+  describe('trace propagation (traceContext correlation field)', () => {
+    const TRACEPARENT = '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01';
+
+    function pendingWithTrace(traceContext?: string): Record<string, unknown> {
+      return { ...PENDING_ITEM, ...(traceContext ? { traceContext } : {}) };
+    }
+
+    it('continues the browser-rooted trace: runs the match within the doc traceContext', async () => {
+      mockMatchOrCreate.mockResolvedValue({
+        kind: 'ok',
+        value: { decision: 'matched', item: makeCanonItem({ id: 'c1', needs_approval: false }) },
+      });
+
+      await (onShoppingListItemWrite as Function)(
+        makeEvent({ before: null, after: pendingWithTrace(TRACEPARENT) as unknown as ItemData }),
+      );
+
+      // The canon-matching work ran inside runWithSuppliedTraceContext with the
+      // exact traceparent stamped on the doc by the browser.
+      expect(mockRunWithSupplied).toHaveBeenCalledWith(TRACEPARENT, expect.any(Function));
+    });
+
+    it('threads traceContext into buildMatchOrCreatePorts so the canon write-back carries it', async () => {
+      mockMatchOrCreate.mockResolvedValue({
+        kind: 'ok',
+        value: { decision: 'matched', item: makeCanonItem({ id: 'c1', needs_approval: false }) },
+      });
+
+      await (onShoppingListItemWrite as Function)(
+        makeEvent({ before: null, after: pendingWithTrace(TRACEPARENT) as unknown as ItemData }),
+      );
+
+      // 2nd arg is the traceContext the canon store stamps onto the written doc,
+      // so onCanonItemWritten can continue the same trace for the icon trigger.
+      expect(mockBuildPorts).toHaveBeenCalledWith(mockSpan, TRACEPARENT);
+    });
+
+    it('degrades to a normal root trace when the doc has no traceContext', async () => {
+      mockMatchOrCreate.mockResolvedValue({
+        kind: 'ok',
+        value: { decision: 'matched', item: makeCanonItem({ id: 'c1', needs_approval: false }) },
+      });
+
+      await (onShoppingListItemWrite as Function)(makeEvent({ before: null, after: PENDING_ITEM }));
+
+      // Wrapper still runs (so the span/match path is unchanged), but with an
+      // undefined traceparent → a plain root trace, never a thrown trigger.
+      expect(mockRunWithSupplied).toHaveBeenCalledWith(undefined, expect.any(Function));
+      expect(mockBuildPorts).toHaveBeenCalledWith(mockSpan, undefined);
+      expect(mockSpan.end).toHaveBeenCalled();
+    });
+
+    it('does not throw on a malformed traceContext — the match still completes', async () => {
+      mockMatchOrCreate.mockResolvedValue({
+        kind: 'ok',
+        value: { decision: 'matched', item: makeCanonItem({ id: 'c1', needs_approval: false }) },
+      });
+
+      await expect(
+        (onShoppingListItemWrite as Function)(
+          makeEvent({
+            before: null,
+            after: pendingWithTrace('not-a-valid-traceparent') as unknown as ItemData,
+          }),
+        ),
+      ).resolves.toBeUndefined();
+
+      // Terminal success state is still written — a bad id costs at most a split
+      // trace, never a failed match.
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ canonId: 'c1', matchState: 'matched' }),
+      );
     });
   });
 });

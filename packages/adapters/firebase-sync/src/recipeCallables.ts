@@ -63,15 +63,21 @@ function classifyUrlImportError(err: unknown): UrlImportFailureCode {
 // SSRF-hardened URL import. Sends a URL, receives a fully-assembled, metric +
 // British recipe draft (source.type='url'). On failure returns the specific
 // UrlImportFailureCode so the caller can show the right copy.
+// `traceparent` (issue #362) is an OPTIONAL, named transport field forwarded on
+// the payload — the Firebase callable SDK cannot carry a custom `traceparent`
+// HTTP header, so the browser-supplied W3C trace id rides here and the CF
+// entrypoint strips it before running the flow. firebase-sync only forwards the
+// string (Rule 4: no observability import). Optional → back-compat.
 export async function callExtractRecipeFromUrl(
   input: ExtractRecipeFromUrlInput,
+  traceparent?: string,
 ): Promise<ReadResult<RecipeDoc, UrlImportFailureCode>> {
   try {
-    const fn = httpsCallable<ExtractRecipeFromUrlInput, RecipeDoc>(
+    const fn = httpsCallable<ExtractRecipeFromUrlInput & { traceparent?: string }, RecipeDoc>(
       getFunctions(undefined, 'europe-west2'),
       'extractRecipeFromUrl',
     );
-    const res = await fn(input);
+    const res = await fn(traceparent ? { ...input, traceparent } : input);
     return success(res.data);
   } catch (err) {
     return failure(classifyUrlImportError(err));

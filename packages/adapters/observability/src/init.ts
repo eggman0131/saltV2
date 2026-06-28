@@ -1,4 +1,5 @@
 import posthog from 'posthog-js';
+import { initBrowserTracing } from './browserTracer.js';
 
 // EU region is baked in as the default; the host is overridable via env only so
 // a self-hosted/dev proxy can be pointed at, never to silently leave the EU
@@ -98,6 +99,14 @@ export function initObservability(key: string, opts?: ObservabilityOptions): voi
   if (Object.keys(superProperties).length > 0) {
     safePosthog((ph) => ph.register(superProperties));
   }
+
+  // Stand up the browser OTel tracer (issue #362, Phase 4) on the SAME public key
+  // PostHog uses. Gated/inert without a key exactly like posthog.init above, and
+  // never throws — a tracer build failure must not crash app startup. This is what
+  // makes "Import recipe" / "Author recipe" traces ROOT at the browser click and
+  // hand a W3C traceparent to the callable so the CF+canon+AI sub-tree nests under
+  // one trace id.
+  initBrowserTracing(key);
 }
 
 // `name`/`email` set the human-readable identity PostHog's Persons and replay
@@ -170,12 +179,16 @@ export async function sendSupportFeedback(
 
 // ── Span/trace compatibility shims ──────────────────────────────────────────
 // The fast-path call site (canonService.addCanonItem) opens an observability
-// span and extracts W3C trace headers for the CF. PostHog has no client-side
-// span/trace primitive, and cross-callable trace propagation is DORMANT
-// (CLAUDE.md — trace propagation disabled 2026-05-11). These shims preserve the
-// call-site surface: the span is inert (events are emitted via capture in the
-// match adapter, not via span attributes), and extractTraceHeaders yields {}
-// so the CF parents nothing — exactly the "tracing disabled" path.
+// span purely to label its in-app match logging; that span is intentionally inert
+// (events are emitted via capture in the match adapter, not via span attributes),
+// and extractTraceHeaders yields {} — the canon fast path does NOT mint a
+// browser→CF trace (server-side unification reads the request, not these).
+//
+// Browser-ROOTED distributed tracing (issue #362, Phase 4) is a SEPARATE, real
+// surface: see `startUserActionSpan` in browserTracer.ts, re-exported from the
+// barrel. That is what the instrumented user actions ("Import recipe", "Author
+// recipe") use to start a real OTel root span and hand its W3C traceparent to the
+// callable. These two shims stay for the canon fast-path call-site surface only.
 
 export interface ObservabilitySpan {
   setAttribute(key: string, value: string | number | boolean): void;

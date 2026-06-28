@@ -71,10 +71,21 @@ export async function listShoppingListItems(
 export async function saveShoppingListItem(
   listId: string,
   item: ShoppingListItem,
+  // Distributed-trace correlation (issue #362, Phase 5). When the browser roots a
+  // trace at "add to shopping list", it passes the action span's W3C `traceparent`
+  // here so it is stamped onto the doc as `traceContext`; the
+  // onShoppingListItemWrite trigger reads it back and continues that trace. Plain
+  // string only — firebase-sync NEVER imports observability (Rule 4); it just
+  // stores the value. Optional + last-positional so every existing call site
+  // (edits, check toggles, batch writes) stays unchanged and writes no field.
+  traceparent?: string,
 ): Promise<ReadResult<void, DomainError>> {
   try {
     const db = getFirestore(getApp());
-    await setDoc(doc(db, LISTS_COLLECTION, listId, ITEMS_SUB, item.id), { ...item });
+    await setDoc(doc(db, LISTS_COLLECTION, listId, ITEMS_SUB, item.id), {
+      ...item,
+      ...(traceparent ? { traceContext: traceparent } : {}),
+    });
     return success(undefined);
   } catch (err) {
     return failure(classifyFirestoreError(err));
