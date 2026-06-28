@@ -4,8 +4,7 @@ import {
 } from '@salt/domain/schemas';
 import { setActiveSpanName } from '@salt/observability/server';
 import { ai } from '../genkit.js';
-import { flowModel, aiModelLabel } from '../ai/fakeModel.js';
-import { tracedGenerate } from '../ai/aiGenerationTelemetry.js';
+import { flowModel } from '../ai/fakeModel.js';
 import { reportFlowError } from '../observability/reportServerError.js';
 
 export const populateEquipmentEntryFlow = ai.defineFlow(
@@ -22,18 +21,13 @@ export const populateEquipmentEntryFlow = ai.defineFlow(
       // deterministic fake model instead; byte-identical otherwise. See
       // ../ai/fakeModel.ts for the cross-process stub contract.
       const model = await flowModel('lite', 'populateEquipmentEntry');
-      const result = await tracedGenerate(
-        'populateEquipmentEntry',
-        await aiModelLabel('lite', 'populateEquipmentEntry'),
-        () =>
-          ai.generate({
-            model,
-            system: SYSTEM_INSTRUCTIONS,
-            prompt: `"${confirmedName}"`,
-            output: { schema: PopulateEquipmentEntryAIOutputSchema },
-            config: { temperature: 0 },
-          }),
-      );
+      const result = await ai.generate({
+        model,
+        system: SYSTEM_INSTRUCTIONS,
+        prompt: `"${confirmedName}"`,
+        output: { schema: PopulateEquipmentEntryAIOutputSchema },
+        config: { temperature: 0 },
+      });
       const output = result.output!;
       return { name: output.name, accessories: output.accessories };
     } catch (err) {

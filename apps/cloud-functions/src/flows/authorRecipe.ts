@@ -10,7 +10,6 @@ import { ai } from '../genkit.js';
 import { canonicaliseRecipeIngredientsFlow } from './canonicaliseRecipeIngredients.js';
 import { parseRecipeIngredientsFlow } from './parseRecipeIngredients.js';
 import { resolveModel } from '../ai/resolveModel.js';
-import { tracedGenerate } from '../ai/aiGenerationTelemetry.js';
 
 const OutputSchema = z.custom<RecipeDoc>();
 
@@ -47,15 +46,13 @@ export const authorRecipeFlow = ai.defineFlow(
     const result = await withAiTimeout(
       'authorRecipe',
       () =>
-        tracedGenerate('authorRecipe', modelId, () =>
-          ai.generate({
-            model,
-            system: systemPrompt,
-            prompt: conversationText,
-            output: { schema: LibrarianOutputSchema },
-            config: { temperature: 0 },
-          }),
-        ),
+        ai.generate({
+          model,
+          system: systemPrompt,
+          prompt: conversationText,
+          output: { schema: LibrarianOutputSchema },
+          config: { temperature: 0 },
+        }),
       { timeoutMs: 55_000, retries: 0 },
     );
 

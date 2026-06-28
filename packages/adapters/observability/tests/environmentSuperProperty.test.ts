@@ -67,7 +67,6 @@ import {
   initServerObservability,
   captureServerEvent,
   captureServerException,
-  captureAiGeneration,
 } from '../src/server/init.js';
 
 const ENV = 'staging';
@@ -93,15 +92,6 @@ describe('environment flag (super property browser-side, per-event server-side)'
     captureServerEvent('canon.match', { 'canon.path': 'cf' });
     const [arg] = serverCapture.mock.calls.at(-1)!;
     expect((arg as CaptureArg).properties).toMatchObject({ 'canon.path': 'cf', environment: ENV });
-  });
-
-  it('server: attaches environment to the $ai_generation event', () => {
-    captureAiGeneration({ flow: 'parseEntry', model: 'gemini-2.5-flash' });
-    const [arg] = serverCapture.mock.calls.at(-1)!;
-    expect((arg as CaptureArg).properties).toMatchObject({
-      environment: ENV,
-      $ai_model: 'gemini-2.5-flash',
-    });
   });
 
   it('server: passes environment as captureException additionalProperties', () => {

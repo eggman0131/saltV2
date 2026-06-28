@@ -4,8 +4,7 @@ import {
 } from '@salt/domain/schemas';
 import { setActiveSpanName } from '@salt/observability/server';
 import { ai } from '../genkit.js';
-import { flowModel, aiModelLabel } from '../ai/fakeModel.js';
-import { tracedGenerate } from '../ai/aiGenerationTelemetry.js';
+import { flowModel } from '../ai/fakeModel.js';
 import { reportFlowError } from '../observability/reportServerError.js';
 
 export const identifyEquipmentFlow = ai.defineFlow(
@@ -18,18 +17,13 @@ export const identifyEquipmentFlow = ai.defineFlow(
     setActiveSpanName(`identifyEquipment: ${rawName}`);
     try {
       const model = await flowModel('fast', 'identifyEquipment');
-      const result = await tracedGenerate(
-        'identifyEquipment',
-        await aiModelLabel('fast', 'identifyEquipment'),
-        () =>
-          ai.generate({
-            model,
-            system: SYSTEM_INSTRUCTIONS,
-            prompt: `"${rawName}"`,
-            output: { schema: IdentifyEquipmentAIOutputSchema },
-            config: { temperature: 0 },
-          }),
-      );
+      const result = await ai.generate({
+        model,
+        system: SYSTEM_INSTRUCTIONS,
+        prompt: `"${rawName}"`,
+        output: { schema: IdentifyEquipmentAIOutputSchema },
+        config: { temperature: 0 },
+      });
       return { candidates: result.output!.candidates };
     } catch (err) {
       // onCallGenkit owns the error path for this callable, so the AI/Genkit

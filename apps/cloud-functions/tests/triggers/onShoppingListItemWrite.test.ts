@@ -55,7 +55,6 @@ vi.mock('@salt/observability/server', () => ({
     write: vi.fn().mockResolvedValue(undefined),
   })),
   createServerObservabilityErrorReportingAdapter: vi.fn(() => ({ report: mockReport })),
-  captureAiGeneration: vi.fn(),
 }));
 
 // ─── Mock matchOrCreate from @salt/domain ────────────────────────────────────

@@ -7,6 +7,7 @@ import {
   defaultTextMapGetter,
   type Span as OtelSpan,
 } from '@opentelemetry/api';
+import { flushAiOtlp } from './aiOtlpSpanProcessor.js';
 
 // EU region is baked in as the default; the host is overridable via env only so
 // a self-hosted/dev proxy can be pointed at, never to silently leave the EU
@@ -135,70 +136,29 @@ export function captureServerException(error: unknown): void {
   });
 }
 
-// ── $ai_generation ──────────────────────────────────────────────────────────
-// Compact emitter for PostHog LLM observability. One `$ai_generation` event per
-// Genkit AI call, carrying model / token usage / cost / latency so the AI cost
-// surface is collected where it wasn't before. Property names follow PostHog's
-// documented $ai_* schema (see products/llm_analytics). All token/cost fields
-// are optional because Genkit's GenerationUsage fields are all optional and a
-// fake/offline model run carries none of them.
-
-// Genkit's GenerationUsage — only the fields we forward. Declared structurally
-// (not imported from genkit) so this adapter takes no build-time dependency on
-// the genkit package; the CF call sites pass `result.usage` straight in.
-export interface AiGenerationUsage {
-  readonly inputTokens?: number;
-  readonly outputTokens?: number;
-  readonly totalTokens?: number;
-}
-
-export interface AiGenerationEvent {
-  // The Genkit flow / call site name, e.g. 'parseEntry'. Becomes $ai_span_name.
-  readonly flow: string;
-  // The resolved model identifier passed to ai.generate, e.g. 'gemini-2.5-flash'.
-  readonly model: string;
-  // Provider is always Google's Gemini via @genkit-ai/google-genai.
-  readonly provider?: string;
-  // result.usage from the Genkit GenerateResponse (optional — absent for fakes).
-  readonly usage?: AiGenerationUsage;
-  // Wall-clock latency of the AI call in milliseconds (converted to seconds for
-  // PostHog's $ai_latency, which is documented in seconds).
-  readonly latencyMs?: number;
-  // True when the call threw / timed out before producing usage.
-  readonly isError?: boolean;
-}
-
-export function captureAiGeneration(ev: AiGenerationEvent): void {
-  safePosthog((ph) => {
-    const props: Record<string, unknown> = {
-      $ai_model: ev.model,
-      $ai_provider: ev.provider ?? 'gemini',
-      $ai_span_name: ev.flow,
-    };
-    if (ev.usage?.inputTokens !== undefined) props.$ai_input_tokens = ev.usage.inputTokens;
-    if (ev.usage?.outputTokens !== undefined) props.$ai_output_tokens = ev.usage.outputTokens;
-    if (ev.latencyMs !== undefined) props.$ai_latency = ev.latencyMs / 1000;
-    if (ev.isError !== undefined) props.$ai_is_error = ev.isError;
-    ph.capture({
-      distinctId: SERVER_DISTINCT_ID,
-      event: '$ai_generation',
-      properties: withEnvironment(props),
-    });
-  });
-}
+// AI model/token/cost telemetry is no longer emitted here as a flat
+// `$ai_generation` event. It is now derived from the OpenTelemetry spans Genkit
+// already emits and shipped to PostHog's AI-OTLP endpoint as a real nested trace
+// by the span processor in aiOtlpSpanProcessor.ts (see #356). flushAiOtlp()
+// below drains those exports on the same chokepoint as posthog-node.
 
 // Flush pending telemetry. Cloud Functions should call this before returning so
 // queued events aren't lost when the Node process is paused between invocations
-// (posthog-node batches in the background). Wraps posthog-node's flush(). Export
-// failures (e.g. DNS unreachable in local dev) are non-fatal — the adapter must
-// not surface operational telemetry errors to callers.
+// (posthog-node batches in the background; the AI-OTLP processor exports per span
+// but its POSTs may still be in flight). Wraps posthog-node's flush() and drains
+// the AI-trace span exports. Export failures (e.g. DNS unreachable in local dev)
+// are non-fatal — the adapter must not surface operational telemetry errors.
 export async function flushServerObservability(): Promise<void> {
-  if (!client) return;
-  try {
-    await client.flush();
-  } catch {
-    // Non-fatal: never surface a telemetry export failure to the caller.
+  if (client) {
+    try {
+      await client.flush();
+    } catch {
+      // Non-fatal: never surface a telemetry export failure to the caller.
+    }
   }
+  // Drain in-flight AI-trace span exports (a separate sink from posthog-node);
+  // never throws (Promise.allSettled internally).
+  await flushAiOtlp();
 }
 
 // ── Span/trace helpers against the ACTIVE provider ────────────────────────────

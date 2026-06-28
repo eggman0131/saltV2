@@ -42,7 +42,6 @@ vi.mock('@salt/observability/server', () => ({
   createServerObservabilityMatchLoggingAdapter: vi.fn(() => ({
     write: vi.fn().mockResolvedValue(undefined),
   })),
-  captureAiGeneration: vi.fn(),
 }));
 
 const mockMatchOrCreate = vi.fn();

@@ -13,6 +13,7 @@ import {
   initServerObservability,
   whenServerObservabilityReady,
   runWithExtractedTraceContext,
+  attachAiOtlpSpanProcessor,
 } from '@salt/observability/server';
 import { registerGenkitDevTracing } from './genkitTracing.js';
 import { reportFlowError } from './observability/reportServerError.js';
@@ -62,15 +63,26 @@ setGlobalOptions({ region: 'europe-west2', memory: '512MiB' });
 //     safe in the local emulator: with GENKIT_ENV=dev and forceDevExport off
 //     (the default) it does not export to GCP, so absent credentials never
 //     crash. Wrapped so a telemetry-init failure can never take down the CF.
-//  2. PostHog server telemetry (posthog-node) — the $ai_generation cost events,
-//     the cf-path canon.match event, and server error reporting. No-ops when
-//     POSTHOG_API_KEY is absent (e.g. an emulator run without the secret).
+//     Once it resolves (the provider is registered), attachAiOtlpSpanProcessor()
+//     adds our PostHog AI-OTLP span processor to that same provider, so Genkit's
+//     AI spans are remapped (genkit:* → gen_ai.*/ai.*) and shipped to PostHog LLM
+//     observability as real traces (#356). It no-ops without POSTHOG_API_KEY and
+//     is suppressed under GENKIT_TELEMETRY_SERVER (local dev → Genkit Dev UI only;
+//     set SALT_AI_OTLP_LOCAL=1 to opt back in for deliberate local verification).
+//  2. PostHog server telemetry (posthog-node) — the cf-path canon.match event and
+//     server error reporting (AI model/token/cost now rides the AI-OTLP spans in
+//     (1), not a flat $ai_generation event). No-ops when POSTHOG_API_KEY is absent
+//     (e.g. an emulator run without the secret).
 //  3. registerGenkitDevTracing() points Genkit's native trace export at the
 //     local Dev UI when GENKIT_TELEMETRY_SERVER is set (pnpm dev:emulators).
 try {
-  void enableFirebaseTelemetry().catch(() => {
-    // Non-fatal: telemetry export setup failed (e.g. no GCP creds locally).
-  });
+  void enableFirebaseTelemetry()
+    .then(() => {
+      attachAiOtlpSpanProcessor();
+    })
+    .catch(() => {
+      // Non-fatal: telemetry export setup failed (e.g. no GCP creds locally).
+    });
 } catch {
   // enableFirebaseTelemetry is async, but guard the synchronous path too.
 }
@@ -101,11 +113,12 @@ export const embedText = onCallGenkit(
 export const arbitrateCanon = onCallGenkit(
   {
     ...APP_CHECK_ENFORCEMENT,
-    // posthogApiKey bound so the flow's tracedGenerate $ai_generation emit
-    // reaches PostHog when arbitrateCanon runs as its own callable. Without it,
-    // initServerObservability gets an empty key in this function's process and
-    // the emit silently no-ops (it only worked when invoked inside a
-    // posthog-bound parent like matchOrCreateCanon).
+    // posthogApiKey bound so this function's AI spans reach PostHog when
+    // arbitrateCanon runs as its own callable. The key is both the posthog-node
+    // key (canon.match / error reporting) AND the bearer token for the AI-OTLP
+    // span exporter; without it the exporter no-ops in this function's process
+    // (it only ships when invoked inside a posthog-bound parent like
+    // matchOrCreateCanon).
     secrets: [geminiApiKey, posthogApiKey],
     authPolicy: isSignedIn(),
   },
@@ -224,10 +237,10 @@ export const populateEquipmentEntry = onCallGenkit(
 export const parseRecipeIngredients = onCallGenkit(
   {
     ...APP_CHECK_ENFORCEMENT,
-    // posthogApiKey bound so the flow's tracedGenerate $ai_generation emit
-    // reaches PostHog. Without it, POSTHOG_API_KEY is absent in this function's
-    // process, initServerObservability inits with an empty key, and the emit
-    // silently no-ops — so this callable's AI usage never lands in PostHog.
+    // posthogApiKey bound so this function's AI spans reach PostHog: it is the
+    // bearer token for the AI-OTLP span exporter (and the posthog-node key).
+    // Without it the exporter no-ops in this function's process, so this
+    // callable's AI usage never lands in PostHog.
     secrets: [geminiApiKey, posthogApiKey],
     authPolicy: isSignedIn(),
     timeoutSeconds: 90,

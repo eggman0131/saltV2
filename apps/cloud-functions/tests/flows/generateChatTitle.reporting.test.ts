@@ -25,14 +25,11 @@ vi.mock('../../src/genkit.js', () => ({
   },
 }));
 
-// ─── Mock model resolution + AI-generation telemetry passthrough ──────────────
+// ─── Mock model resolution ────────────────────────────────────────────────────
+// The flow calls ai.generate directly (mocked above); AI telemetry now rides the
+// Genkit spans shipped by the AI-OTLP processor, not a tracedGenerate wrapper.
 vi.mock('../../src/ai/fakeModel.js', () => ({
   flowModel: vi.fn(async () => 'fake-model'),
-  aiModelLabel: vi.fn(async () => 'fake-model-label'),
-}));
-// tracedGenerate just invokes the op; its telemetry is out of scope here.
-vi.mock('../../src/ai/aiGenerationTelemetry.js', () => ({
-  tracedGenerate: vi.fn((_flow: string, _model: string, op: () => unknown) => op()),
 }));
 
 // Import after mocks so defineFlow returns the handler directly.

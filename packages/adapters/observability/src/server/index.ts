@@ -16,15 +16,14 @@ export {
   runWithExtractedTraceContext,
   captureServerEvent,
   captureServerException,
-  captureAiGeneration,
   safePosthog,
 } from './init.js';
-export type {
-  ObservabilitySpan,
-  StartSpanOptions,
-  AiGenerationEvent,
-  AiGenerationUsage,
-} from './init.js';
+export type { ObservabilitySpan, StartSpanOptions } from './init.js';
+
+// AI-OTLP span processor: attached to the Genkit-owned OTel provider by the CF
+// entrypoint after enableFirebaseTelemetry() resolves; ships Genkit's AI spans
+// to PostHog LLM observability as real traces (#356).
+export { attachAiOtlpSpanProcessor } from './attachAiOtlpProcessor.js';
 
 // cf-path match logger. Exported under both the posthog-specific name and a
 // runtime-neutral alias (createServerObservabilityMatchLoggingAdapter) so call
