@@ -145,7 +145,7 @@ and serve system‑wide concerns. These live directly in
 Current cross‑cutting ports:
 
 ErrorReportingPort
-  report(error: DomainError): void
+  report(error: unknown, category?: DomainError['kind']): void
 
 MatchLoggingPort
   logMatch(entry: MatchLogEntry): void
