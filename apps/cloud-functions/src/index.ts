@@ -14,6 +14,7 @@ import {
   whenServerObservabilityReady,
   runWithExtractedTraceContext,
   attachAiOtlpSpanProcessor,
+  attachDistributedSpanProcessor,
 } from '@salt/observability/server';
 import { registerGenkitDevTracing } from './genkitTracing.js';
 import { reportFlowError } from './observability/reportServerError.js';
@@ -66,8 +67,12 @@ setGlobalOptions({ region: 'europe-west2', memory: '512MiB' });
 //     Once it resolves (the provider is registered), attachAiOtlpSpanProcessor()
 //     adds our PostHog AI-OTLP span processor to that same provider, so Genkit's
 //     AI spans are remapped (genkit:* → gen_ai.*/ai.*) and shipped to PostHog LLM
-//     observability as real traces (#356). It no-ops without POSTHOG_API_KEY and
-//     is suppressed under GENKIT_TELEMETRY_SERVER (local dev → Genkit Dev UI only;
+//     observability as real traces (#356), and attachDistributedSpanProcessor()
+//     adds — alongside it — the distributed-tracing processor, which ships EVERY
+//     finished span to PostHog's /i/v1/traces endpoint so the whole invocation
+//     (canon matching + parents + infra) renders as one coherent trace correlated
+//     by trace_id to the AI generations. Both no-op without POSTHOG_API_KEY and
+//     are suppressed under GENKIT_TELEMETRY_SERVER (local dev → Genkit Dev UI only;
 //     set SALT_AI_OTLP_LOCAL=1 to opt back in for deliberate local verification).
 //  2. PostHog server telemetry (posthog-node) — the cf-path canon.match event and
 //     server error reporting (AI model/token/cost now rides the AI-OTLP spans in
@@ -79,6 +84,7 @@ try {
   void enableFirebaseTelemetry()
     .then(() => {
       attachAiOtlpSpanProcessor();
+      attachDistributedSpanProcessor();
     })
     .catch(() => {
       // Non-fatal: telemetry export setup failed (e.g. no GCP creds locally).

@@ -4,6 +4,7 @@ import { isHttpsScheme, parseImportUrl } from '@salt/domain';
 import { ExtractRecipeFromUrlInputSchema, ExtractRecipeAIOutputSchema } from '@salt/domain/schemas';
 import type { ExtractRecipeAIOutput, UrlImportFailureCode } from '@salt/domain/schemas';
 import type { RecipeDoc, IngredientGroupDoc } from '@salt/domain/schemas';
+import { setActiveSpanName } from '@salt/observability/server';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 import { ssrfGuardedFetch, SsrfFetchError } from '../adapters/ssrfFetch.js';
@@ -65,6 +66,12 @@ export const extractRecipeFromUrlFlow = ai.defineFlow(
     if (!isHttpsScheme(parsed.protocol)) {
       throw new UrlImportError('blocked-url', 'non-https scheme');
     }
+
+    // Human-readable top-level span name for the end-to-end trace view. The flow
+    // span is the active span inside an ai.defineFlow body; setActiveSpanName
+    // renames it (caps at 80 chars, no-op when no span is active). The host is the
+    // scannable identifier — never the full URL (path/query are noise here).
+    setActiveSpanName(`Import recipe from ${parsed.hostname}`);
 
     // 2. SSRF-guarded fetch — raw HTML.
     let html: string;

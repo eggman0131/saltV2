@@ -8,6 +8,7 @@ import {
   type Span as OtelSpan,
 } from '@opentelemetry/api';
 import { flushAiOtlp } from './aiOtlpSpanProcessor.js';
+import { flushDistributedOtlp } from './distributedSpanProcessor.js';
 
 // EU region is baked in as the default; the host is overridable via env only so
 // a self-hosted/dev proxy can be pointed at, never to silently leave the EU
@@ -144,10 +145,12 @@ export function captureServerException(error: unknown): void {
 
 // Flush pending telemetry. Cloud Functions should call this before returning so
 // queued events aren't lost when the Node process is paused between invocations
-// (posthog-node batches in the background; the AI-OTLP processor exports per span
-// but its POSTs may still be in flight). Wraps posthog-node's flush() and drains
-// the AI-trace span exports. Export failures (e.g. DNS unreachable in local dev)
-// are non-fatal — the adapter must not surface operational telemetry errors.
+// (posthog-node batches in the background; the OTLP processors export per span
+// but their POSTs may still be in flight). Wraps posthog-node's flush() and
+// drains BOTH span-export legs — the AI-trace exporter (/i/v0/ai/otel) and the
+// distributed-trace exporter (/i/v1/traces). Export failures (e.g. DNS
+// unreachable in local dev) are non-fatal — the adapter must not surface
+// operational telemetry errors.
 export async function flushServerObservability(): Promise<void> {
   if (client) {
     try {
@@ -156,9 +159,9 @@ export async function flushServerObservability(): Promise<void> {
       // Non-fatal: never surface a telemetry export failure to the caller.
     }
   }
-  // Drain in-flight AI-trace span exports (a separate sink from posthog-node);
-  // never throws (Promise.allSettled internally).
-  await flushAiOtlp();
+  // Drain in-flight span exports from BOTH legs (separate sinks from
+  // posthog-node); neither throws (Promise.allSettled internally).
+  await Promise.all([flushAiOtlp(), flushDistributedOtlp()]);
 }
 
 // ── Span/trace helpers against the ACTIVE provider ────────────────────────────
