@@ -3,16 +3,17 @@ import { setGlobalOptions } from 'firebase-functions/v2';
 import { defineSecret } from 'firebase-functions/params';
 import { onCall, onCallGenkit, isSignedIn, HttpsError } from 'firebase-functions/https';
 import {
-  MatchOrCreateCanonInputSchema,
-  CanonicaliseRecipeIngredientsInputSchema,
-  AuthorRecipeInputSchema,
-  ExtractRecipeFromUrlInputSchema,
+  MatchOrCreateCanonWireInputSchema,
+  CanonicaliseRecipeIngredientsWireInputSchema,
+  AuthorRecipeWireInputSchema,
+  ExtractRecipeFromUrlWireInputSchema,
 } from '@salt/domain/schemas';
 import { enableFirebaseTelemetry } from '@genkit-ai/firebase';
 import {
   initServerObservability,
   whenServerObservabilityReady,
   runWithExtractedTraceContext,
+  runWithSuppliedTraceContext,
   attachAiOtlpSpanProcessor,
   attachDistributedSpanProcessor,
 } from '@salt/observability/server';
@@ -131,22 +132,57 @@ export const arbitrateCanon = onCallGenkit(
   arbitrateCanonFlow,
 );
 
-// Manual onCall (instead of onCallGenkit) so we can extract the inbound W3C
-// trace context and install it as the active OTel context BEFORE Genkit opens
-// the flow span — so the flow span nests under the platform request span and
-// each invocation renders as ONE coherent trace, instead of the flow re-rooting
-// a fresh trace.
+// ─── Browser→CF trace continuity (issue #362, Phase 3) ────────────────────────
+//
+// The canon-matching callables run their flow within a W3C trace context so the
+// flow span nests under one coherent invocation trace instead of re-rooting.
+// There are TWO sources for that context, applied with this precedence:
+//   1. A real inbound W3C trace HEADER on the underlying request
+//      (request.rawRequest.headers) — what the platform/GCP injects.
+//   2. Else a browser-SUPPLIED `traceparent` carried as a NAMED, TYPED, OPTIONAL
+//      field on the callable WIRE input. The Firebase JS callable SDK cannot
+//      carry a custom `traceparent` HTTP header (HttpsCallableOptions is only
+//      { timeout?, limitedUseAppCheckTokens? } and the transport sets its own
+//      fixed headers), so a browser-minted trace id rides as this field. It is
+//      schema-validated and stripped here before the flow runs — NOT the
+//      forbidden magic `_trace`. (Phase 4 mints the real browser trace id;
+//      until then it is synthetic/test.)
 //
 // Env-gated on GENKIT_TELEMETRY_SERVER (set only by `pnpm dev:emulators`):
 //   • Local dev (set): SUPPRESS propagation — run the flow without installing
 //     any parent context, so it stays root-listed in the Genkit Dev UI (whose
 //     trace list only surfaces flow-rooted traces). This is the gate that
 //     resolves the 2026-05-11 regression that previously parked propagation.
-//   • Production (unset): honour the inbound trace context. The platform/GCP
-//     injects W3C trace headers on the underlying request; we read them off
-//     request.rawRequest.headers and run the flow within the extracted context
-//     via runWithExtractedTraceContext (which degrades to a plain call when no
-//     context is present, and never throws).
+//   • Production (unset): honour the trace context per the precedence above via
+//     runWithExtractedTraceContext / runWithSuppliedTraceContext (both degrade
+//     to a plain call when no context is present, and never throw — Rule 10).
+//
+// A malformed/absent traceparent must NOT fail the call: it is optional and
+// best-effort, so we just skip propagation. Only a malformed WIRE ENVELOPE
+// (bad domain input) is rejected — with HttpsError('invalid-argument').
+function runFlowWithTraceContext<T>(
+  domainInput: unknown,
+  headers: import('node:http').IncomingHttpHeaders | undefined,
+  traceparent: string | undefined,
+  flow: (input: never) => T,
+): T {
+  // Local dev: suppress propagation so flows stay root-listed in the Dev UI.
+  if (process.env['GENKIT_TELEMETRY_SERVER']) {
+    return flow(domainInput as never);
+  }
+  // Production. Prefer a real inbound W3C header; else fall back to the
+  // browser-supplied payload `traceparent`. Both helpers degrade safely.
+  if (headers && Object.keys(headers).length > 0) {
+    return runWithExtractedTraceContext(headers, () => flow(domainInput as never));
+  }
+  return runWithSuppliedTraceContext(traceparent, () => flow(domainInput as never));
+}
+
+// Manual onCall (instead of onCallGenkit) so we can install the trace context as
+// the active OTel context BEFORE Genkit opens the flow span — so the flow span
+// nests under the request trace and each invocation renders as ONE coherent
+// trace, instead of the flow re-rooting a fresh trace. See runFlowWithTraceContext
+// above for the header→payload precedence and env-gating.
 export const matchOrCreateCanon = onCall(
   {
     ...APP_CHECK_ENFORCEMENT,
@@ -157,23 +193,23 @@ export const matchOrCreateCanon = onCall(
       throw new HttpsError('unauthenticated', 'Sign in required.');
     }
 
-    const parsed = MatchOrCreateCanonInputSchema.safeParse(request.data);
+    // Validate the WIRE envelope (domain input + optional traceparent). Strip
+    // traceparent so the flow receives the PURE domain input (domain purity).
+    const parsed = MatchOrCreateCanonWireInputSchema.safeParse(request.data);
     if (!parsed.success) {
       throw new HttpsError('invalid-argument', 'Invalid request payload.');
     }
+    const { traceparent, ...domainInput } = parsed.data;
 
     await whenServerObservabilityReady();
 
     try {
-      // Suppress propagation locally so flows stay root-listed in the Dev UI.
-      if (process.env['GENKIT_TELEMETRY_SERVER']) {
-        return await matchOrCreateCanonFlow(request.data);
-      }
-      // Production: nest the flow span under the inbound request trace. The
-      // trace flow (env-gate + runWithExtractedTraceContext) is unchanged — the
-      // report() lives in the catch and never touches the active context.
-      return await runWithExtractedTraceContext(request.rawRequest?.headers, () =>
-        matchOrCreateCanonFlow(request.data),
+      // The report() lives in the catch and never touches the active context.
+      return await runFlowWithTraceContext(
+        domainInput,
+        request.rawRequest?.headers,
+        traceparent,
+        matchOrCreateCanonFlow,
       );
     } catch (err) {
       // AI/Genkit flow failure (incl. AiTimeoutError). Report the genuine cause
@@ -202,13 +238,19 @@ export const canonicaliseRecipeIngredients = onCall(
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Sign in required.');
     }
-    const parsed = CanonicaliseRecipeIngredientsInputSchema.safeParse(request.data);
+    const parsed = CanonicaliseRecipeIngredientsWireInputSchema.safeParse(request.data);
     if (!parsed.success) {
       throw new HttpsError('invalid-argument', 'Invalid request payload.');
     }
+    const { traceparent, ...domainInput } = parsed.data;
     await whenServerObservabilityReady();
     try {
-      return await canonicaliseRecipeIngredientsFlow(parsed.data);
+      return await runFlowWithTraceContext(
+        domainInput,
+        request.rawRequest?.headers,
+        traceparent,
+        canonicaliseRecipeIngredientsFlow,
+      );
     } catch (err) {
       // AI/Genkit batch flow failure — report the cause additively, flush, then
       // re-throw unchanged. The flow's finally also flushes (idempotent).
@@ -268,13 +310,19 @@ export const authorRecipe = onCall(
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Sign in required.');
     }
-    const parsed = AuthorRecipeInputSchema.safeParse(request.data);
+    const parsed = AuthorRecipeWireInputSchema.safeParse(request.data);
     if (!parsed.success) {
       throw new HttpsError('invalid-argument', 'Invalid request payload.');
     }
+    const { traceparent, ...domainInput } = parsed.data;
     await whenServerObservabilityReady();
     try {
-      return await authorRecipeFlow(parsed.data);
+      return await runFlowWithTraceContext(
+        domainInput,
+        request.rawRequest?.headers,
+        traceparent,
+        authorRecipeFlow,
+      );
     } catch (err) {
       // Librarian flow failure (AI + batch canonicalise) — report the cause
       // additively, flush, then re-throw unchanged.
@@ -321,13 +369,19 @@ export const extractRecipeFromUrl = onCall(
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Sign in required.');
     }
-    const parsed = ExtractRecipeFromUrlInputSchema.safeParse(request.data);
+    const parsed = ExtractRecipeFromUrlWireInputSchema.safeParse(request.data);
     if (!parsed.success) {
       throw new HttpsError('invalid-argument', "That doesn't look like a valid web address.");
     }
+    const { traceparent, ...domainInput } = parsed.data;
     await whenServerObservabilityReady();
     try {
-      return await extractRecipeFromUrlFlow(parsed.data);
+      return await runFlowWithTraceContext(
+        domainInput,
+        request.rawRequest?.headers,
+        traceparent,
+        extractRecipeFromUrlFlow,
+      );
     } catch (err) {
       // Report the GENUINE cause before mapping to a user-facing HttpsError —
       // the raw error/stack, never the HttpsError envelope. The UrlImportError

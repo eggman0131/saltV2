@@ -263,3 +263,22 @@ export function runWithExtractedTraceContext<T>(
     return fn();
   }
 }
+
+// Run `fn` within the OTel context carried by a SUPPLIED W3C `traceparent`
+// string, so any span `fn` opens nests under that trace instead of re-rooting.
+// This is the field-channel counterpart to runWithExtractedTraceContext: the
+// Firebase callable SDK cannot carry a custom `traceparent` HTTP header (issue
+// #362 spike), so a browser-supplied trace id arrives as a named, typed,
+// optional input field on the callable WIRE input rather than a request header.
+// The CF entrypoint strips that field and hands the raw string here.
+//
+// Synthesizes a single-header carrier `{ traceparent }` and delegates to the
+// same propagation.extract path — keeping ONE extraction implementation and
+// keeping OTel concerns in the observability layer (not in CF). Degrades safely
+// and never throws (CLAUDE.md Rule 10): an absent/malformed traceparent (no
+// usable remote span context) just runs `fn` in the current context, so a bad
+// id costs at most a split trace, never a thrown request.
+export function runWithSuppliedTraceContext<T>(traceparent: string | undefined, fn: () => T): T {
+  if (!traceparent) return fn();
+  return runWithExtractedTraceContext({ traceparent }, fn);
+}

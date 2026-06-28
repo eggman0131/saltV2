@@ -10,19 +10,23 @@ type WireResult =
   | { readonly kind: 'ok'; readonly value: MatchOrCreateResult }
   | { readonly kind: 'err'; readonly error: DomainError };
 
-// The wire input is exactly the domain input. Trace context is no longer
-// piggy-backed on the payload: server-side trace unification now happens at the
-// callable entrypoint, which reads the inbound W3C trace headers off the
-// underlying request (see apps/cloud-functions/src/index.ts).
+// The wire input is the domain input plus an OPTIONAL, named `traceparent`
+// transport field (issue #362). The Firebase callable SDK cannot carry a custom
+// `traceparent` HTTP header, so a browser-supplied W3C trace id rides as this
+// named field on the payload; the CF entrypoint strips it before running the
+// flow. firebase-sync only FORWARDS the string it was handed — it never imports
+// observability and never mints a trace id (CLAUDE.md Rule 4). The arg is
+// optional, so existing callers stay backward-compatible.
 export async function callMatchOrCreate(
   input: MatchOrCreateInput,
+  traceparent?: string,
 ): Promise<ReadResult<MatchOrCreateResult, DomainError>> {
   try {
-    const fn = httpsCallable<MatchOrCreateInput, WireResult>(
+    const fn = httpsCallable<MatchOrCreateInput & { traceparent?: string }, WireResult>(
       getFunctions(undefined, 'europe-west2'),
       'matchOrCreateCanon',
     );
-    const res = await fn(input);
+    const res = await fn(traceparent ? { ...input, traceparent } : input);
     return res.data;
   } catch (err) {
     const code = (err as { code?: string }).code ?? '';
@@ -40,13 +44,14 @@ type WireBatchResult = ReadResult<MatchOrCreateResult, DomainError>[];
 
 export async function callCanonicaliseRecipeIngredients(
   input: CanonicaliseRecipeIngredientsInput,
+  traceparent?: string,
 ): Promise<ReadResult<WireBatchResult, DomainError>> {
   try {
-    const fn = httpsCallable<CanonicaliseRecipeIngredientsInput, WireBatchResult>(
-      getFunctions(undefined, 'europe-west2'),
-      'canonicaliseRecipeIngredients',
-    );
-    const res = await fn(input);
+    const fn = httpsCallable<
+      CanonicaliseRecipeIngredientsInput & { traceparent?: string },
+      WireBatchResult
+    >(getFunctions(undefined, 'europe-west2'), 'canonicaliseRecipeIngredients');
+    const res = await fn(traceparent ? { ...input, traceparent } : input);
     return success(res.data);
   } catch (err) {
     const code = (err as { code?: string }).code ?? '';

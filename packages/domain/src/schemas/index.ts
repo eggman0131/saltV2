@@ -32,6 +32,24 @@ export type {
 export { MatchOrCreateCanonInputSchema } from './matchOrCreateCanonInput.js';
 export type { MatchOrCreateCanonInput } from './matchOrCreateCanonInput.js';
 
+// Browser→CF trace-continuity wire envelopes (issue #362): the base callable
+// input + an optional, named, typed `traceparent` transport field. The CF
+// entrypoint validates these, strips `traceparent`, and passes the pure domain
+// input to the flow — flows never consume the field (domain purity).
+export {
+  TraceparentSchema,
+  MatchOrCreateCanonWireInputSchema,
+  CanonicaliseRecipeIngredientsWireInputSchema,
+  AuthorRecipeWireInputSchema,
+  ExtractRecipeFromUrlWireInputSchema,
+} from './traceContextWire.js';
+export type {
+  MatchOrCreateCanonWireInput,
+  CanonicaliseRecipeIngredientsWireInput,
+  AuthorRecipeWireInput,
+  ExtractRecipeFromUrlWireInput,
+} from './traceContextWire.js';
+
 export {
   CanonicaliseRecipeIngredientsItemSchema,
   CanonicaliseRecipeIngredientsInputSchema,
