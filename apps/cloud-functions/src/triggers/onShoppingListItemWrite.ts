@@ -39,9 +39,11 @@ export const onShoppingListItemWrite = onDocumentWritten(
     // write-back runs, stranding the item at 'pending' forever: triggers don't
     // auto-retry and the item gets no further write to re-fire on. 180s leaves
     // headroom over the bounded AI budget so a terminal state is always written.
-    // 512MiB mirrors canonicaliseRecipeIngredients — the same list() over the
-    // whole canon collection + embeddings OOM-kills the default 256MiB instance,
-    // another mid-flight death that leaves the item stuck 'pending'.
+    // memory: the same list() over the whole canon collection + embeddings would
+    // OOM-kill a 256MiB instance — another mid-flight death that strands the item
+    // at 'pending'. Pinned inline at the 512MiB floor rather than inherited from
+    // index.ts's setGlobalOptions: this trigger module is evaluated before that
+    // call runs, so the global never reaches it (same reason region is inline).
     timeoutSeconds: 180,
     memory: '512MiB',
   },

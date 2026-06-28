@@ -13,22 +13,27 @@ import { normaliseMemberEmail } from '@salt/domain';
 //
 // Throwing HttpsError aborts account creation and surfaces the message to the
 // client; returning normally allows it.
-export const beforeMemberCreated = beforeUserCreated({ region: 'europe-west2' }, async (event) => {
-  const rawEmail = event.data?.email;
-  if (!rawEmail) {
-    logger.warn('beforeMemberCreated: rejected account with no email');
-    throw new HttpsError('permission-denied', 'An email address is required to use Salt.');
-  }
+export const beforeMemberCreated = beforeUserCreated(
+  // memory: 512MiB floor, pinned inline (top-imported, runs before
+  // setGlobalOptions — same reason region is inline).
+  { region: 'europe-west2', memory: '512MiB' },
+  async (event) => {
+    const rawEmail = event.data?.email;
+    if (!rawEmail) {
+      logger.warn('beforeMemberCreated: rejected account with no email');
+      throw new HttpsError('permission-denied', 'An email address is required to use Salt.');
+    }
 
-  const email = normaliseMemberEmail(rawEmail);
-  const snap = await getFirestore().collection('members').doc(email).get();
-  if (!snap.exists) {
-    logger.warn('beforeMemberCreated: rejected off-list email', { email });
-    throw new HttpsError(
-      'permission-denied',
-      'This email address is not on the Salt member list. Ask an admin to add you.',
-    );
-  }
+    const email = normaliseMemberEmail(rawEmail);
+    const snap = await getFirestore().collection('members').doc(email).get();
+    if (!snap.exists) {
+      logger.warn('beforeMemberCreated: rejected off-list email', { email });
+      throw new HttpsError(
+        'permission-denied',
+        'This email address is not on the Salt member list. Ask an admin to add you.',
+      );
+    }
 
-  logger.info('beforeMemberCreated: allowed member', { email });
-});
+    logger.info('beforeMemberCreated: allowed member', { email });
+  },
+);
