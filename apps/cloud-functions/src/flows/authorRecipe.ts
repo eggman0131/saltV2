@@ -1,8 +1,10 @@
 import { z } from 'genkit';
 import { googleAI } from '@genkit-ai/google-genai';
-import { AuthorRecipeInputSchema, LibrarianOutputSchema } from '@salt/domain/schemas';
+import { getFirestore } from 'firebase-admin/firestore';
+import { logger } from 'firebase-functions';
+import { AuthorRecipeInputSchema, LibrarianOutputSchema, RecipeSchema } from '@salt/domain/schemas';
 import type { LibrarianOutput } from '@salt/domain/schemas';
-import type { RecipeDoc, IngredientGroupDoc } from '@salt/domain/schemas';
+import type { RecipeDoc, IngredientGroupDoc, IngredientDoc } from '@salt/domain/schemas';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 import { canonicaliseRecipeIngredientsFlow } from './canonicaliseRecipeIngredients.js';
@@ -28,6 +30,17 @@ export const authorRecipeFlow = ai.defineFlow(
         ? `\n\nExisting tags in this recipe collection (prefer these where appropriate; add a new tag only if meaningfully different): ${input.existingTags.join(', ')}.`
         : '';
 
+    // Edit mode: ground the librarian on the existing recipe so it returns the
+    // FULL recipe with the conversation's changes applied, rather than authoring
+    // a near-empty recipe from an incremental edit chat (e.g. "add some cheese").
+    // We keep the structured doc (not just the prompt text) so assembleDraft can
+    // diff against it and skip re-parsing/re-embedding unchanged ingredients.
+    const baseRecipe = input.recipeId ? await readBaseRecipe(getFirestore(), input.recipeId) : null;
+    const closing = baseRecipe
+      ? editModeSection(formatRecipeForPrompt(baseRecipe))
+      : CREATE_MODE_CLOSING;
+    const systemPrompt = `${LIBRARIAN_SYSTEM}\n\n${closing}${tagVocab}`;
+
     // Flash + temperature:0 for the librarian — accuracy over creativity (issue #206).
     const modelId = await resolveModel('fast', 'authorRecipe');
     const model = googleAI.model(modelId);
@@ -37,7 +50,7 @@ export const authorRecipeFlow = ai.defineFlow(
         tracedGenerate('authorRecipe', modelId, () =>
           ai.generate({
             model,
-            system: LIBRARIAN_SYSTEM + tagVocab,
+            system: systemPrompt,
             prompt: conversationText,
             output: { schema: LibrarianOutputSchema },
             config: { temperature: 0 },
@@ -51,11 +64,14 @@ export const authorRecipeFlow = ai.defineFlow(
       throw new Error(`Librarian returned invalid recipe structure: ${parsed.error.message}`);
     }
 
-    return assembleDraft(parsed.data);
+    return assembleDraft(parsed.data, baseRecipe);
   },
 );
 
-async function assembleDraft(raw: LibrarianOutput): Promise<RecipeDoc> {
+async function assembleDraft(
+  raw: LibrarianOutput,
+  baseRecipe: RecipeDoc | null = null,
+): Promise<RecipeDoc> {
   const now = new Date().toISOString();
 
   // Assign stable IDs to steps first so we can resolve step ordinals → IDs.
@@ -66,13 +82,29 @@ async function assembleDraft(raw: LibrarianOutput): Promise<RecipeDoc> {
     note: s.note,
   }));
 
-  // Flatten all ingredients for batch canonicalisation.
-  type IngMeta = { groupIdx: number; itemIdx: number; rawText: string };
-  const allIngredients: IngMeta[] = [];
-  for (let gi = 0; gi < raw.ingredientGroups.length; gi++) {
-    const group = raw.ingredientGroups[gi]!;
-    for (let ii = 0; ii < group.ingredients.length; ii++) {
-      allIngredients.push({ groupIdx: gi, itemIdx: ii, rawText: group.ingredients[ii]!.rawText });
+  // Edit mode: index the base recipe's ingredients by rawText. The librarian is
+  // told to keep unchanged ingredients' rawText verbatim, so a byte-identical
+  // rawText means "untouched" — we reuse its existing canon match, parsed data,
+  // and id, and skip it entirely from the parse + canon (embedding) flows below.
+  // Only genuinely new or edited ingredients get re-parsed and re-embedded, so a
+  // one-line "add cheese" edit costs one canon match instead of N.
+  const baseByRawText = new Map<string, IngredientDoc>();
+  if (baseRecipe) {
+    for (const group of baseRecipe.ingredients) {
+      for (const ing of group.items) baseByRawText.set(ing.rawText, ing);
+    }
+  }
+
+  // Flatten only the ingredients that actually need processing (new/edited).
+  // In create mode baseByRawText is empty, so this is every ingredient — exactly
+  // the previous behaviour.
+  const toProcess: string[] = [];
+  const seen = new Set<string>();
+  for (const group of raw.ingredientGroups) {
+    for (const ing of group.ingredients) {
+      if (baseByRawText.has(ing.rawText) || seen.has(ing.rawText)) continue;
+      seen.add(ing.rawText);
+      toProcess.push(ing.rawText);
     }
   }
 
@@ -87,9 +119,9 @@ async function assembleDraft(raw: LibrarianOutput): Promise<RecipeDoc> {
     ReturnType<typeof parseRecipeIngredientsFlow>
   >[number]['items'][number]['parsed'];
   const parsedMap = new Map<string, ParsedIngredient>();
-  if (allIngredients.length > 0) {
+  if (toProcess.length > 0) {
     try {
-      const joinedRawText = allIngredients.map((i) => i.rawText).join('\n');
+      const joinedRawText = toProcess.join('\n');
       const parseResult = await parseRecipeIngredientsFlow({ rawText: joinedRawText });
       for (const group of parseResult) {
         for (const item of group.items) {
@@ -103,15 +135,21 @@ async function assembleDraft(raw: LibrarianOutput): Promise<RecipeDoc> {
     }
   }
 
-  // Batch canonicalise all ingredient raw texts.
-  let canonResults: Awaited<ReturnType<typeof canonicaliseRecipeIngredientsFlow>> = [];
-  if (allIngredients.length > 0) {
+  // Batch canonicalise only the to-process raw texts; key results by rawText so
+  // the assembly step below can look each one up directly.
+  type CanonResult = Awaited<ReturnType<typeof canonicaliseRecipeIngredientsFlow>>[number];
+  const canonByRawText = new Map<string, CanonResult>();
+  if (toProcess.length > 0) {
     try {
-      canonResults = await canonicaliseRecipeIngredientsFlow({
-        items: allIngredients.map((i) => ({
-          rawName: parsedItemMap.get(i.rawText) ?? i.rawText,
-          rawText: i.rawText,
+      const canonResults = await canonicaliseRecipeIngredientsFlow({
+        items: toProcess.map((rawText) => ({
+          rawName: parsedItemMap.get(rawText) ?? rawText,
+          rawText,
         })),
+      });
+      toProcess.forEach((rawText, k) => {
+        const r = canonResults[k];
+        if (r) canonByRawText.set(rawText, r);
       });
     } catch {
       // Canon failure is non-fatal — ingredients land as pending.
@@ -119,21 +157,36 @@ async function assembleDraft(raw: LibrarianOutput): Promise<RecipeDoc> {
   }
 
   // Assemble ingredient groups with IDs, canon results, and firstUsedInStepId.
-  const ingredientGroups: IngredientGroupDoc[] = raw.ingredientGroups.map((group, gi) => ({
+  const ingredientGroups: IngredientGroupDoc[] = raw.ingredientGroups.map((group) => ({
     id: crypto.randomUUID(),
     name: group.name,
-    items: group.ingredients.map((ing, ii) => {
-      const flatIdx = allIngredients.findIndex((m) => m.groupIdx === gi && m.itemIdx === ii);
-      const canon = flatIdx >= 0 ? canonResults[flatIdx] : undefined;
-
-      const canonId = canon && canon.kind === 'ok' ? (canon.value.item as { id: string }).id : null;
-      const matchState: 'matched' | 'pending' | 'failed' =
-        canon && canon.kind === 'ok' ? 'matched' : canon ? 'failed' : 'pending';
-
-      // Resolve step ordinal → step ID.
+    items: group.ingredients.map((ing) => {
+      // Resolve step ordinal → step ID. Always taken from the fresh librarian
+      // output so reordered steps / flipped optional flags are respected even on
+      // otherwise-unchanged ingredients.
       const ord = ing.firstUsedInStepOrdinal;
       const firstUsedInStepId =
         ord !== null && ord >= 0 && ord < steps.length ? steps[ord]!.id : null;
+
+      // Unchanged ingredient — carry the existing canon match, parsed data, and
+      // id straight over (it was never sent to parse/canon above).
+      const base = baseByRawText.get(ing.rawText);
+      if (base) {
+        return {
+          id: base.id,
+          rawText: ing.rawText,
+          parsed: base.parsed,
+          canonId: base.canonId,
+          matchState: base.matchState,
+          isOptional: ing.isOptional,
+          firstUsedInStepId,
+        };
+      }
+
+      const canon = canonByRawText.get(ing.rawText);
+      const canonId = canon && canon.kind === 'ok' ? (canon.value.item as { id: string }).id : null;
+      const matchState: 'matched' | 'pending' | 'failed' =
+        canon && canon.kind === 'ok' ? 'matched' : canon ? 'failed' : 'pending';
 
       return {
         id: crypto.randomUUID(),
@@ -189,6 +242,87 @@ Given a cooking conversation between a user and a chef, extract and structure a 
   note: a genuine warning or non-obvious caveat only — something that would ruin the dish if missed
   (e.g. "don't let the heat exceed 80°C or the custard will scramble"). Leave null for routine
   instructions; most steps should have no note. All temperatures must be in °C only — never Fahrenheit.
-- notes: chef's overall notes or tips, or null.
+- notes: chef's overall notes or tips, or null.`;
 
-Extract only what is present in the conversation. Do not invent ingredients or steps not discussed.`;
+// Create mode: the conversation is the only source of truth.
+const CREATE_MODE_CLOSING = `Extract only what is present in the conversation. \
+Do not invent ingredients or steps not discussed.`;
+
+// Edit mode: the existing recipe is the source of truth and the conversation
+// describes a delta to apply. Without this, the librarian (told to "extract only
+// what is present in the conversation") drops everything not mentioned in the
+// edit chat — saving a recipe that is just the change.
+function editModeSection(baseRecipe: string): string {
+  return `## Editing an existing recipe
+The user is refining a recipe that ALREADY EXISTS. Its current full content is below, \
+and the conversation describes the change(s) they want to make to it.
+
+Return the COMPLETE updated recipe: start from the current recipe and apply ONLY the \
+changes discussed in the conversation. Preserve every ingredient, step, time, serving \
+count, tag, and detail the conversation does not change — keep the original wording \
+(rawText) of unchanged ingredients verbatim. Do not drop anything that was not discussed. \
+Integrate additions (e.g. a new ingredient) into the appropriate group and reference them \
+from the relevant steps.
+
+### Current recipe
+${baseRecipe}`;
+}
+
+// Reads and validates the existing recipe for edit mode. Returns null on a
+// missing/corrupt doc or any failure, so edit mode degrades to create mode
+// rather than throwing.
+async function readBaseRecipe(
+  db: ReturnType<typeof getFirestore>,
+  recipeId: string,
+): Promise<RecipeDoc | null> {
+  try {
+    const snap = await db.collection('recipes').doc(recipeId).get();
+    if (!snap.exists) return null;
+    const result = RecipeSchema.safeParse(snap.data());
+    if (!result.success) {
+      logger.warn('authorRecipe: base recipe failed validation', { recipeId });
+      return null;
+    }
+    return result.data;
+  } catch (err) {
+    logger.warn('authorRecipe: failed to read base recipe', { recipeId, err });
+    return null;
+  }
+}
+
+// Renders the existing recipe as plain text for the librarian's system prompt.
+// Mirrors chefChat's readRecipeContext but is richer: it includes
+// servings/times/tags/notes/timers so the librarian can faithfully reproduce the
+// whole recipe, not just title + ingredients + method.
+function formatRecipeForPrompt(r: RecipeDoc): string {
+  const parts: string[] = [`Title: ${r.title}`];
+  if (r.description) parts.push(`Description: ${r.description}`);
+
+  const meta: string[] = [];
+  if (r.metadata.servings != null) meta.push(`servings: ${r.metadata.servings}`);
+  if (r.metadata.prepTimeMinutes != null) meta.push(`prep: ${r.metadata.prepTimeMinutes} min`);
+  if (r.metadata.cookTimeMinutes != null) meta.push(`cook: ${r.metadata.cookTimeMinutes} min`);
+  if (r.metadata.totalTimeMinutes != null) meta.push(`total: ${r.metadata.totalTimeMinutes} min`);
+  if (meta.length > 0) parts.push(meta.join(', '));
+  if (r.metadata.tags.length > 0) parts.push(`Tags: ${r.metadata.tags.join(', ')}`);
+
+  const ingredientLines: string[] = [];
+  for (const group of r.ingredients) {
+    if (group.name) ingredientLines.push(`${group.name}:`);
+    for (const ing of group.items) {
+      ingredientLines.push(`  - ${ing.rawText}${ing.isOptional ? ' (optional)' : ''}`);
+    }
+  }
+  if (ingredientLines.length > 0) parts.push(`Ingredients:\n${ingredientLines.join('\n')}`);
+
+  const stepLines = r.steps.map((s, i) => {
+    const timer = s.timer ? ` [timer: ${s.timer.durationMinutes} min]` : '';
+    const note = s.note ? ` (note: ${s.note})` : '';
+    return `  ${i + 1}. ${s.text}${timer}${note}`;
+  });
+  if (stepLines.length > 0) parts.push(`Method:\n${stepLines.join('\n')}`);
+
+  if (r.notes) parts.push(`Notes: ${r.notes}`);
+
+  return parts.join('\n\n');
+}

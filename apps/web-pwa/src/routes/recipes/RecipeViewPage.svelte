@@ -221,7 +221,11 @@
     if (!activeSession || !recipe || sidebarIsApplying) return;
     sidebarIsApplying = true;
     const existingTags = [...new Set($recipes.flatMap((r) => r.metadata.tags))];
-    const result = await callAuthorRecipe({ messages: activeSession.messages, existingTags });
+    const result = await callAuthorRecipe({
+      messages: activeSession.messages,
+      existingTags,
+      recipeId: recipe.id,
+    });
     if (result.kind !== 'ok') {
       sidebarIsApplying = false;
       addToast('Failed to generate recipe update.', 'destructive');
