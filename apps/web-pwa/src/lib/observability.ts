@@ -7,6 +7,7 @@ import {
   startObservabilitySession,
   stopObservabilitySession,
   isObservabilitySessionActive,
+  sendSupportFeedback,
   type ObservabilitySessionMeta,
 } from '@salt/observability';
 import type { User } from '@salt/domain';
@@ -20,7 +21,13 @@ const _useEmulators = import.meta.env.VITE_USE_EMULATORS === 'true';
 // deployment environment, so it becomes the PostHog `environment` super property
 // in the SAME vocabulary the cloud-functions side derives from its project id.
 if (_phKey)
-  initObservability(_phKey, { manualStart: _useEmulators, environment: import.meta.env.MODE });
+  initObservability(_phKey, {
+    manualStart: _useEmulators,
+    environment: import.meta.env.MODE,
+    // Build commit (settings page "Version") → `app_version` super property on
+    // every event, so exceptions/feedback/analytics all carry the running build.
+    version: __APP_VERSION__,
+  });
 
 // Dev runs against the Firebase Auth emulator, whose uid is ephemeral (new on
 // every restart / sign-in) and whose e2e suite signs in as uniqueEmail() per
@@ -60,6 +67,31 @@ export function stopSession(): void {
 
 export function isSessionActive(): boolean {
   return isObservabilitySessionActive();
+}
+
+// Sends a user's settings-page feedback to PostHog Support as a new ticket. The
+// signed-in email is attached as the ticket identity — identifyUser already calls
+// posthog.identify with it, but passing it keeps the inbox ticket labelled
+// regardless. Resolves true on a confirmed send; the settings page renders
+// success/error from the boolean.
+//
+// Non-production feedback is footer-tagged with the deployment environment — the
+// SAME `import.meta.env.MODE` value we register as the PostHog `environment`
+// super property. The super property already rides on the $conversations_message_sent
+// event (so analytics can split by env), but the Support *inbox* can't filter
+// tickets by a super property, so the env has to live on the ticket itself. Prod
+// feedback (real users) is sent verbatim; dev/staging tickets self-label as test.
+export function submitFeedback(text: string, email?: string): Promise<boolean> {
+  const env = import.meta.env.MODE;
+  // Stamp every ticket with the running version (triage context for any bug
+  // report), and additionally flag non-prod submissions as test. The super
+  // properties carry these on the $conversations_message_sent event, but the
+  // Support inbox can't read super properties, so they go on the ticket body too.
+  const footer =
+    env === 'production'
+      ? `— version ${__APP_VERSION__}`
+      : `— version ${__APP_VERSION__} · sent from ${env} (test)`;
+  return sendSupportFeedback(`${text}\n\n${footer}`, email ? { name: email, email } : undefined);
 }
 
 export type { ObservabilitySessionMeta };

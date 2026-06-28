@@ -216,7 +216,9 @@ export const onCanonItemWritten = onDocumentWritten(
     // in parallel blow past the memory cap and the instance is OOM-killed,
     // losing every in-flight icon. concurrency:1 serialises icon work per
     // instance (Cloud Run scales out instances instead), bounding memory
-    // regardless of batch size; 1GiB gives the single decode comfortable room.
+    // regardless of batch size; 1GiB gives the single decode comfortable room —
+    // an upward override of the 512MiB floor, pinned inline (this trigger module
+    // loads before index.ts's setGlobalOptions, same reason region is inline).
     concurrency: 1,
     memory: '1GiB',
   },

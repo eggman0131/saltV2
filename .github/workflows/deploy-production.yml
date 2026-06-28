@@ -62,6 +62,12 @@ jobs:
       # Default Vite mode is production -> loads apps/web-pwa/.env.production
       # (prod Firebase config + PostHog browser key). Output -> apps/web-pwa/dist.
       - name: Build web-pwa (production)
+        env:
+          # The published release tag (or the ref chosen for a manual re-deploy),
+          # surfaced as the Settings "Version" and the `app_version` event super
+          # property. Passed explicitly because actions/checkout does not fetch git
+          # tags, so `git describe` can't recover the tag during the CI build.
+          APP_VERSION: ${{ github.event.release.tag_name || inputs.ref }}
         run: pnpm --filter @salt/web-pwa build
 
       - name: Authenticate to Google Cloud (WIF)

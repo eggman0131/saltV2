@@ -25,7 +25,14 @@ const posthogApiKey = defineSecret('POSTHOG_API_KEY');
 // alongside the index.ts callables at the enforcement step (this also fires AI
 // image generation, so it is part of the cost surface App Check protects).
 export const regenerateCanonIcon = onCall(
-  { region: 'europe-west2', enforceAppCheck: false, secrets: [posthogApiKey] },
+  {
+    region: 'europe-west2',
+    enforceAppCheck: false,
+    secrets: [posthogApiKey],
+    // 512MiB floor, pinned inline (top-imported, runs before setGlobalOptions —
+    // same reason region is inline above).
+    memory: '512MiB',
+  },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Sign in required.');

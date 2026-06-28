@@ -10,10 +10,11 @@ export {
   identifyObservabilityUser,
   identifyObservabilityAnonymous,
   trackObservabilityEvent,
+  sendSupportFeedback,
   startSpan,
   extractTraceHeaders,
 } from './init.js';
-export type { ObservabilityOptions, ObservabilitySpan } from './init.js';
+export type { ObservabilityOptions, ObservabilitySpan, SupportFeedbackTraits } from './init.js';
 export {
   createPosthogMatchLoggingAdapter as createObservabilityMatchLoggingAdapter,
   createPosthogMatchLoggingAdapter,

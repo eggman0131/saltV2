@@ -39,7 +39,19 @@ import { handleTestModel } from './ai/testModel.js';
 
 initializeApp();
 
-setGlobalOptions({ region: 'europe-west2' });
+// 512MiB is the memory floor for every function. The 256MiB default sits just
+// below this codebase's resting footprint — firebase-admin, Genkit/OTel
+// (enableFirebaseTelemetry), and posthog-node all load at module init — so a
+// function OOMs on its first real context read (chefChat died at "263 MiB used",
+// 7 over). Override UPWARD per function where proven (onCanonItemWritten's icon
+// decode needs 1GiB).
+//
+// NB: firebase-functions bakes global options into each function's __endpoint
+// EAGERLY at definition time, and ES imports evaluate before this line runs, so
+// this only reaches the callables defined inline below. The top-imported modules
+// (the triggers, regenerateCanonIcon, beforeMemberCreated) pin memory inline —
+// the same reason they already pin region inline.
+setGlobalOptions({ region: 'europe-west2', memory: '512MiB' });
 
 // Telemetry, owned at module load so it's in place before any flow runs:
 //
@@ -163,11 +175,9 @@ export const canonicaliseRecipeIngredients = onCall(
     ...APP_CHECK_ENFORCEMENT,
     secrets: [geminiApiKey, posthogApiKey],
     timeoutSeconds: 120,
-    // Batch canonicalisation reads the whole canon collection and batches
-    // embeddings for every ingredient in the recipe, so it exceeds the default
-    // 256 MiB and the instance is OOM-killed (surfaces as 500/504 + a CORS
-    // error in the browser because the dead response carries no CORS headers).
-    memory: '512MiB',
+    // Memory-heavy (whole-canon read + batched embeddings); covered by the
+    // 512MiB global floor — at 256 it OOM-killed (500/504 + a browser CORS error,
+    // since the dead response carries no CORS headers).
   },
   async (request) => {
     if (!request.auth) {
@@ -226,14 +236,14 @@ export const parseRecipeIngredients = onCallGenkit(
 );
 
 // Librarian: conversation → recipe draft with canon-matched ingredients.
-// Uses onCall (not onCallGenkit) so we can bump memory for the batch
-// canonicalisation, mirroring canonicaliseRecipeIngredients.
+// Uses onCall (not onCallGenkit) so the handler can wrap the batch-canonicalise
+// flow in reportFlowError, mirroring canonicaliseRecipeIngredients. Memory comes
+// from the 512MiB global floor.
 export const authorRecipe = onCall(
   {
     ...APP_CHECK_ENFORCEMENT,
     secrets: [geminiApiKey, posthogApiKey],
     timeoutSeconds: 120,
-    memory: '512MiB',
   },
   async (request) => {
     if (!request.auth) {
@@ -257,10 +267,9 @@ export const authorRecipe = onCall(
 
 // SSRF-hardened URL import (recipe URL import epic). Uses onCall (not
 // onCallGenkit) so we can map the flow's UrlImportError taxonomy to specific
-// HttpsError codes with user-safe copy (no internal SSRF detail leaked), and
-// bump memory for the batch canonicalisation like authorRecipe. The flow does
-// outbound DNS + a network fetch in addition to the AI call, so the function
-// timeout is generous.
+// HttpsError codes with user-safe copy (no internal SSRF detail leaked). The
+// flow does outbound DNS + a network fetch in addition to the AI call, so the
+// function timeout is generous. Memory comes from the 512MiB global floor.
 function mapUrlImportFailure(code: UrlImportFailureCode): HttpsError {
   switch (code) {
     case 'invalid-url':
@@ -288,7 +297,6 @@ export const extractRecipeFromUrl = onCall(
     ...APP_CHECK_ENFORCEMENT,
     secrets: [geminiApiKey, posthogApiKey],
     timeoutSeconds: 120,
-    memory: '512MiB',
   },
   async (request) => {
     if (!request.auth) {
@@ -327,13 +335,10 @@ export const chefChat = onCallGenkit(
     secrets: [geminiApiKey, posthogApiKey],
     authPolicy: isSignedIn(),
     timeoutSeconds: 120,
-    // Pro-tier streaming + equipment/recipe/history context reads exceed the
-    // 256 MiB default (observed "Memory limit of 256 MiB exceeded with 263 MiB
-    // used" in staging). The OOM SIGKILL also kills the instance before
-    // enableFirebaseTelemetry can flush the flow span, so chefChat never
-    // appeared in Genkit Monitoring. 512MiB matches the other heavy flows
-    // (authorRecipe, canonicaliseRecipeIngredients, extractRecipeFromUrl).
-    memory: '512MiB',
+    // Memory-heavy: pro-tier streaming + equipment/recipe/history context reads.
+    // Covered by the 512MiB global floor — at 256 it OOM'd ("263 MiB used"), and
+    // the SIGKILL killed the instance before enableFirebaseTelemetry flushed the
+    // flow span, so it never appeared in Genkit Monitoring.
   },
   chefChatFlow,
 );
