@@ -70,6 +70,23 @@ jobs:
           APP_VERSION: ${{ github.event.release.tag_name || inputs.ref }}
         run: pnpm --filter @salt/web-pwa build
 
+      # Symbolicate production exceptions: inject a chunk id into each built
+      # bundle, upload the `sourcemap: 'hidden'` maps to PostHog Error Tracking,
+      # then delete the .map files from dist/ — all BEFORE `firebase deploy`, so
+      # the maps power stack traces in PostHog but are never served publicly
+      # (#359). Needs no GCP auth, only the PostHog key, so it sits ahead of the
+      # WIF step. host is REQUIRED — we are EU-region. POSTHOG_PROJECT_ID /
+      # POSTHOG_CLI_API_KEY are `production` Environment secrets so the upload
+      # lands in the prod PostHog project.
+      - name: Inject & upload source maps to PostHog
+        uses: PostHog/upload-source-maps@v2
+        with:
+          directory: apps/web-pwa/dist
+          project-id: ${{ secrets.POSTHOG_PROJECT_ID }}
+          api-key: ${{ secrets.POSTHOG_CLI_API_KEY }}
+          host: https://eu.posthog.com
+          release-version: ${{ github.event.release.tag_name || inputs.ref }}
+
       - name: Authenticate to Google Cloud (WIF)
         uses: google-github-actions/auth@v3
         with:

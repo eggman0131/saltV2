@@ -118,6 +118,24 @@ jobs:
         if: ${{ steps.guard.outputs.should_deploy == 'true' }}
         run: pnpm --filter @salt/web-pwa build:staging
 
+      # Symbolicate staging exceptions: inject a chunk id into each built bundle,
+      # upload the `sourcemap: 'hidden'` maps to PostHog Error Tracking, then
+      # delete the .map files from dist/ — all BEFORE `firebase deploy`, so the
+      # maps power stack traces in PostHog but are never served publicly (#359).
+      # Needs no GCP auth, only the PostHog key, so it sits ahead of the WIF step.
+      # host is REQUIRED — we are EU-region. POSTHOG_PROJECT_ID /
+      # POSTHOG_CLI_API_KEY are `staging` Environment secrets so the upload lands
+      # in the staging PostHog project.
+      - name: Inject & upload source maps to PostHog
+        if: ${{ steps.guard.outputs.should_deploy == 'true' }}
+        uses: PostHog/upload-source-maps@v2
+        with:
+          directory: apps/web-pwa/dist
+          project-id: ${{ secrets.POSTHOG_PROJECT_ID }}
+          api-key: ${{ secrets.POSTHOG_CLI_API_KEY }}
+          host: https://eu.posthog.com
+          release-version: ${{ github.event.workflow_run.head_sha || github.sha }}
+
       - name: Authenticate to Google Cloud (WIF)
         if: ${{ steps.guard.outputs.should_deploy == 'true' }}
         uses: google-github-actions/auth@v3
