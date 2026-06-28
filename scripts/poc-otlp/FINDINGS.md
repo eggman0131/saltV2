@@ -123,4 +123,34 @@ That is a **separate product** from PostHog's general OpenTelemetry tracing/APM 
 - **"Non-AI step" = application logic you choose to model** (canon match, parse, arbitrate) → ✅ unified in the AI view via `ai.*` structural spans. This is exactly what #356's single-pipeline approach delivers.
 - **"Non-AI step" = auto-instrumented infrastructure span** (Firestore read, outbound HTTP, the platform request span) → ❌ not in the AI view, and `/i/v0/ai/otel` will not put it there. There is no single rendered tree spanning both products today.
 
-**Implication for #356:** the single-pipeline / namespace-trick approach yields one unified trace **provided every step is hand-emitted as an `ai.*`/`gen_ai.*` span into the AI endpoint**. It does not absorb infra/APM spans. If unifying auto-captured infrastructure spans is *also* a goal, that is a materially larger scope: it needs PostHog's general tracing product enabled and a separate OTLP-traces ingestion path, with AI and infra correlated by `trace_id` across two views (SQL-joinable, **not** one rendered tree). Not validated by this PoC.
+**Implication for #356:** the single-pipeline / namespace-trick approach yields one unified trace **provided every step is hand-emitted as an `ai.*`/`gen_ai.*` span into the AI endpoint**. It does not absorb infra/APM spans. If unifying auto-captured infrastructure spans is *also* a goal, the path is the **dual-write** below — the ingestion is validated; the rendered distributed trace is gated on enabling PostHog's tracing product.
+
+## Combined view — dual-write to `/i/v1/traces` (`send-distributed.ts`)
+
+The way to also capture **non-AI infrastructure spans** (Firestore, HTTP, the platform request span) is to run **two exporters in parallel** over the same spans (one shared `traceId`):
+
+| Exporter | Endpoint | Lands in | Carries |
+|----------|----------|----------|---------|
+| PostHog AI span processor | `/i/v0/ai/otel` | LLM observability (`$ai_*`) | AI + `ai.*`-modelled structural spans |
+| Standard OTLP span exporter | `/i/v1/traces` | Distributed tracing (`posthog.trace_spans`) | the **full** trace, AI + non-AI |
+
+`send-distributed.ts` demonstrates this with one hand-built trace (`root` + non-AI `firestore.query` + `ai.*` structural + `gen_ai.*` generation).
+
+**Probed 2026-06-28 (project 210211):**
+
+- ✅ `/i/v1/traces` **accepts** the full mixed AI + non-AI OTLP/JSON payload — `HTTP 200`, body `{}`.
+- ✅ It is a **distinct sink**: a trace sent only to `/i/v1/traces` produced **zero** `$ai_*` events (no leakage into LLM observability). Clean product separation.
+- ✅ The AI-view half of the dual-write still reconstructs the nested tree (verified for trace `0350cee7d80c2495cb493fc8ddc23c7a`: `$ai_trace` → `$ai_span` → `$ai_generation`/`gemini-2.5-flash`).
+- ⛔ **Gate:** the spans sent to `/i/v1/traces` are **not queryable/visible** — `posthog.trace_spans` does **not exist** in this project (`information_schema` lists only `system.trace_reviews`, an LLM-review table; `logs` is cataloged but its distributed table isn't materialized). PostHog's **distributed-tracing/APM product is not enabled** on project 210211, so `/i/v1/traces` is effectively accept-and-drop until it is turned on.
+- ⚠️ **Billing tradeoff** (as expected): once tracing is enabled, AI spans are ingested **twice** (once per endpoint) — counts toward both products' volume.
+
+**To complete this verification:** enable PostHog's tracing product on the project, re-run `send-distributed.ts`, then confirm the **non-AI** `firestore.query` span appears in distributed tracing under the same `traceId`:
+
+```sql
+SELECT name, service_name, kind
+FROM posthog.trace_spans
+WHERE hex(tryBase64Decode(trace_id)) = '<TRACEID-UPPER>'
+ORDER BY timestamp
+```
+
+**Verdict on the combined view:** the dual-write **architecture is mechanically valid and the AI half is proven**; realizing the full distributed (AI + infra) trace view is purely a **product-enablement** step on the PostHog side, not a technical blocker — and brings the documented double-ingestion cost.
