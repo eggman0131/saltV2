@@ -17,6 +17,11 @@ export interface ObservabilityOptions {
   // SDK emits — autocapture, pageviews, manual captures, exceptions, and replay
   // metadata — without each call site having to attach it.
   environment?: string;
+  // App version stamp (the release tag / __APP_VERSION__). Like `environment`, it
+  // is registered as a super property so EVERY event carries the version the user
+  // was running — invaluable for "which release introduced this exception?" and
+  // for triaging feedback against a specific build.
+  version?: string;
 }
 
 // True once initObservability has successfully called posthog.init. Adapter
@@ -82,14 +87,16 @@ export function initObservability(key: string, opts?: ObservabilityOptions): voi
     ready = false;
   }
 
-  // Register the environment as a super property so it persists in the SDK and
-  // is attached to every subsequent event. Guarded via safePosthog so a register
+  // Register environment + app version as super properties so they persist in the
+  // SDK and ride on every subsequent event. Guarded via safePosthog so a register
   // failure can never unset readiness or throw at startup, and so it no-ops when
-  // init above failed (ready === false). Captured into a const so the value stays
-  // narrowed to string inside the closure.
-  const environment = opts?.environment;
-  if (environment) {
-    safePosthog((ph) => ph.register({ environment }));
+  // init above failed (ready === false). Built into a local bag so both register
+  // in a single call and so absent values are simply omitted.
+  const superProperties: Record<string, string> = {};
+  if (opts?.environment) superProperties.environment = opts.environment;
+  if (opts?.version) superProperties.app_version = opts.version;
+  if (Object.keys(superProperties).length > 0) {
+    safePosthog((ph) => ph.register(superProperties));
   }
 }
 
@@ -112,6 +119,53 @@ export function identifyObservabilityAnonymous(): void {
 
 export function trackObservabilityEvent(key: string, data?: Record<string, unknown>): void {
   safePosthog((ph) => ph.capture(key, data));
+}
+
+// ── Support feedback (PostHog Conversations) ─────────────────────────────────
+// posthog-js exposes `posthog.conversations` once the Support product is enabled
+// for the project (conversations_enabled) AND the conversations module has lazily
+// loaded from remote config. sendMessage opens a support ticket that lands in the
+// PostHog inbox with the session replay + exceptions attached. The web-pwa
+// settings-page feedback box uses this in place of the floating chat widget.
+
+// Public traits shape for the adapter API — intentionally NOT posthog-js's
+// UserProvidedTraits, so the SDK type never leaks across the package boundary.
+export interface SupportFeedbackTraits {
+  name?: string;
+  email?: string;
+}
+
+// posthog-js types `conversations` as a tree-shakeable handle; narrow it to the
+// methods we use at this single SDK seam rather than depend on that wrapper type.
+interface ConversationsApi {
+  isAvailable(): boolean;
+  sendMessage(
+    message: string,
+    userTraits?: SupportFeedbackTraits,
+    newTicket?: boolean,
+  ): Promise<unknown>;
+}
+
+// Sends a one-off feedback message as a NEW support ticket. Resolves true on a
+// confirmed send; false when observability is inert, the conversations module is
+// unavailable (not yet loaded, Support disabled, or blocked by CSP), or the send
+// fails. Best-effort and never throws across the boundary (CLAUDE.md Rule 10) —
+// the caller renders success/error from the boolean.
+export async function sendSupportFeedback(
+  message: string,
+  traits?: SupportFeedbackTraits,
+): Promise<boolean> {
+  if (!ready) return false;
+  const conversations = posthog.conversations as unknown as ConversationsApi | undefined;
+  if (!conversations?.isAvailable()) return false;
+  try {
+    // newTicket=true so each submission is its own ticket instead of appending
+    // to a stale thread.
+    const response = await conversations.sendMessage(message, traits, true);
+    return Boolean(response);
+  } catch {
+    return false;
+  }
 }
 
 // ── Span/trace compatibility shims ──────────────────────────────────────────

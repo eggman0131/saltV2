@@ -4,21 +4,28 @@ import { VitePWA } from 'vite-plugin-pwa';
 import { resolve } from 'path';
 import { execSync } from 'node:child_process';
 
-// Build stamp shown on the Settings screen. The git SHA identifies the code; the
-// build timestamp guarantees every build is distinct — so a re-dispatched deploy
-// of the same commit still produces a visibly new version, which is what lets us
-// validate the open-client PWA auto-update flow (issue #141 Phase 3) with a plain
-// workflow_dispatch re-deploy, no throwaway commit required.
-function gitShortSha(): string {
+// Version stamp shown on the Settings screen and registered as the `app_version`
+// PostHog super property. Production CI passes the published GitHub Release tag via
+// APP_VERSION (e.g. 202606.15) — reliable because git tags are NOT fetched in CI.
+// Locally and on staging we derive it from git: `git describe --tags --always`
+// yields the nearest release tag, plus commits-ahead + short SHA when the build is
+// not exactly on a tag (e.g. 202606.15-3-gabc1234), falling back to a bare short
+// SHA, then 'unknown'. The build timestamp (below) still guarantees every build is
+// distinct — so a re-dispatched deploy of the SAME tag produces a visibly new
+// build, which validates the open-client PWA auto-update flow (issue #141 Phase 3)
+// via a plain workflow_dispatch re-deploy, no throwaway commit required.
+function resolveAppVersion(): string {
+  const fromEnv = process.env.APP_VERSION?.trim();
+  if (fromEnv) return fromEnv;
   try {
-    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+    return execSync('git describe --tags --always', { stdio: ['ignore', 'pipe', 'ignore'] })
       .toString()
       .trim();
   } catch {
     return 'unknown';
   }
 }
-const appCommit = gitShortSha();
+const appVersion = resolveAppVersion();
 const buildTime = new Date().toISOString();
 
 // PWA identity is env-distinct (issue #141): staging installs as "Salt (Staging)"
@@ -96,7 +103,7 @@ export default defineConfig(({ mode }) => {
       }),
     ],
     define: {
-      __APP_COMMIT__: JSON.stringify(appCommit),
+      __APP_VERSION__: JSON.stringify(appVersion),
       __APP_BUILD_TIME__: JSON.stringify(buildTime),
     },
     resolve: {

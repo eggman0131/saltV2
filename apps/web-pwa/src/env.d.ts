@@ -27,5 +27,5 @@ interface ImportMeta {
 }
 
 // Build stamp injected by Vite `define` (see vite.config.ts). Shown on Settings.
-declare const __APP_COMMIT__: string;
+declare const __APP_VERSION__: string;
 declare const __APP_BUILD_TIME__: string;
