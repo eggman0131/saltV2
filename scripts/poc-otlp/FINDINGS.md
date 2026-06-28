@@ -82,7 +82,7 @@ Probe `traceId`: **`dca7434d76b3e329802740c93c44c063`**.
   $ai_span  : ai.operation.name=canon_match, ai.canon.outcome=matched,              ai.canon.result=canon_poc_0001
   ```
 
-- **Screenshot link** (LLM-analytics / trace view in PostHog): _TODO (maintainer): open the LLM observability → Traces view, search trace `dca7434d76b3e329802740c93c44c063` (filter `service.name = poc-otlp`), and attach a screenshot of the rendered nested tree here. The MCP query above already proves the structure programmatically; the screenshot is visual corroboration._
+- **Screenshot** (LLM observability → Traces view): ✅ captured by maintainer 2026-06-28 for trace `7bae6f5b658720130a0a945d55d9ef91` — the rendered nested tree `genkitPocWorkflow` (TRACE) → `canon.matchOrCreateCanon` (SPAN) → `genkit.generate.remapped` (GENERATION, `gemini-2.5-flash`, 9→1 tokens) matches the MCP query exactly. Attach the image to PR #358. (Note: this is the LLM-trace view, not the general APM view — see Scope caveat.)
 
 ## Phase 2 — real Genkit span remap (Q4)
 
@@ -112,4 +112,15 @@ $ai_generation | e9a413a74a5cd35a | e4f9a4c2445880e3 | genkit.generate.remapped 
 - A **real** Genkit model span remaps cleanly to `gen_ai.*` and lands as `$ai_generation` with real model + tokens (Q4) — the production remap is feasible, not just the synthetic case.
 - The AI filter is **real** (negative control dropped): every span to be kept needs an `ai.*`/`gen_ai.*` attribute — a concrete constraint for the production remap (tag the root and structural parents too, not just model leaves).
 
-**Caveat:** the endpoint is still **alpha** ("ingestion endpoint may change before GA"), so treat the OTLP wire shape as not-yet-frozen; revisit if behavior drifts. **Follow-up checks** deferred from this probe: protobuf (vs JSON) encoding parity, and whether browser→CF trace unification needs a minted traceparent (out of scope here).
+**Caveat:** the endpoint is still **alpha** ("ingestion endpoint may change before GA"), so treat the OTLP wire shape as not-yet-frozen; revisit if behavior drifts. The unified tree is confined to the LLM-observability view — see **[Scope caveat](#scope-caveat--unified-within-the-llm-observability-view-not-across-posthogs-general-apm-tracing)** below; infra/APM spans are not included. **Follow-up checks** deferred from this probe: protobuf (vs JSON) encoding parity, and whether browser→CF trace unification needs a minted traceparent (out of scope here).
+
+## Scope caveat — unified *within the LLM-observability view*, not across PostHog's general APM tracing
+
+The reconstructed tree (confirmed by the maintainer screenshot of trace `7bae6f5b658720130a0a945d55d9ef91`: `genkitPocWorkflow` → `canon.matchOrCreateCanon` → `genkit.generate.remapped / gemini-2.5-flash`) renders in PostHog's **LLM observability → Traces** view, which is fed by the `$ai_*` event pipeline behind `/i/v0/ai/otel`. The non-AI step (`canon.matchOrCreateCanon`) appears there **only** because the `ai.*` namespace trick relabels it as an `$ai_span`.
+
+That is a **separate product** from PostHog's general OpenTelemetry tracing/APM (`posthog.trace_spans`, the spans explorer, `query-apm-spans`) and from `logs` / `metrics`. **Verified 2026-06-28** against project 210211: both `posthog.trace_spans` and `logs` resolve to non-existent `*_distributed` tables — those data planes are **not provisioned** in this project, and the AI-OTLP endpoint does **not** dual-write to them. Consequences:
+
+- **"Non-AI step" = application logic you choose to model** (canon match, parse, arbitrate) → ✅ unified in the AI view via `ai.*` structural spans. This is exactly what #356's single-pipeline approach delivers.
+- **"Non-AI step" = auto-instrumented infrastructure span** (Firestore read, outbound HTTP, the platform request span) → ❌ not in the AI view, and `/i/v0/ai/otel` will not put it there. There is no single rendered tree spanning both products today.
+
+**Implication for #356:** the single-pipeline / namespace-trick approach yields one unified trace **provided every step is hand-emitted as an `ai.*`/`gen_ai.*` span into the AI endpoint**. It does not absorb infra/APM spans. If unifying auto-captured infrastructure spans is *also* a goal, that is a materially larger scope: it needs PostHog's general tracing product enabled and a separate OTLP-traces ingestion path, with AI and infra correlated by `trace_id` across two views (SQL-joinable, **not** one rendered tree). Not validated by this PoC.
