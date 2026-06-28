@@ -141,7 +141,7 @@
       "properties": {
         "taskPilot.labels": {
           "type": "array",
-          "description": "Task labels to show, in order. Defaults to Firebase, Vite, and Genkit tasks.",
+          "description": "Task labels to show in the sidebar, in order. Defaults to Firebase, Vite, and Genkit tasks. Start All / Restart All act only on the long-running background services here; one-shot tasks (e.g. prod export, staging restore) stay listed and individually runnable but are excluded from bulk start/restart.",
           "items": {
             "type": "string"
           },

@@ -308,23 +308,38 @@ class TaskPilotProvider {
     await this.startTask(label);
   }
 
-  async startAll() {
+  // The configured labels that Start All / Restart All act on: the long-running
+  // background dev services (Firebase Emulators, Vite Dev Server, Genkit Admin
+  // UI). One-shot ops tasks like "Export Prod Firestore" / "Restore Staging from
+  // Prod" are intentionally EXCLUDED — they're `isBackground: false`, run to
+  // completion, and the staging restore is destructive, so they must never be
+  // swept into a bulk start/restart. They stay individually runnable from the
+  // sidebar rows. Filtering on `isBackground` keeps this self-maintaining: any
+  // future one-shot task added to the sidebar is automatically excluded.
+  async getSuiteTasks() {
     const labels = this.getConfiguredLabels();
     const allTasks = await vscode.tasks.fetchTasks();
+    return labels
+      .map((label) => ({
+        label,
+        task: allTasks.find((candidate) => getTaskLabel(candidate) === label),
+      }))
+      .filter(({ task }) => task && task.isBackground);
+  }
+
+  async startAll() {
+    const suite = await this.getSuiteTasks();
     const running = new Set(
       vscode.tasks.taskExecutions.map((execution) => getTaskLabel(execution.task)),
     );
 
     let started = 0;
-    for (const label of labels) {
+    for (const { label, task } of suite) {
       if (running.has(label)) {
         continue;
       }
-      const task = allTasks.find((candidate) => getTaskLabel(candidate) === label);
-      if (task) {
-        await vscode.tasks.executeTask(task);
-        started += 1;
-      }
+      await vscode.tasks.executeTask(task);
+      started += 1;
     }
 
     vscode.window.showInformationMessage(
@@ -335,8 +350,8 @@ class TaskPilotProvider {
   }
 
   async restartAll() {
-    const labels = this.getConfiguredLabels();
-    await Promise.all(labels.map((label) => this.restartTask(label)));
+    const suite = await this.getSuiteTasks();
+    await Promise.all(suite.map(({ label }) => this.restartTask(label)));
     vscode.window.showInformationMessage('Task Pilot: restarted the suite.');
   }
 
