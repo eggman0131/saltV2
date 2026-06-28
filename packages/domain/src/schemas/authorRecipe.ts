@@ -6,6 +6,11 @@ import { MessageSchema } from './chatSession.js';
 export const AuthorRecipeInputSchema = z.object({
   messages: z.array(MessageSchema),
   existingTags: z.array(z.string()).optional().default([]),
+  // Edit mode: when set, the flow reads this existing recipe from Firestore and
+  // grounds the librarian on it, returning the COMPLETE recipe with the
+  // conversation's changes applied. Omitted/null = author a fresh recipe from
+  // the conversation alone (create mode).
+  recipeId: z.string().nullable().optional(),
 });
 
 export type AuthorRecipeInput = z.infer<typeof AuthorRecipeInputSchema>;

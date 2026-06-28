@@ -90,7 +90,11 @@
     }
     isApplying = true;
     const existingTags = [...new Set($recipes.flatMap((r) => r.metadata.tags))];
-    const result = await callAuthorRecipe({ messages: session.messages, existingTags });
+    const result = await callAuthorRecipe({
+      messages: session.messages,
+      existingTags,
+      recipeId: session.recipeId,
+    });
     if (result.kind !== 'ok') {
       isApplying = false;
       addToast('Failed to generate recipe update.', 'destructive');
@@ -98,12 +102,16 @@
     }
     const draft = result.value;
     const now = new Date().toISOString();
-    // Preserve the existing recipe's id and createdAt; bump updatedAt.
+    // Preserve the existing recipe's id and createdAt; bump updatedAt. The
+    // librarian never returns an image or source (always null / manual), so
+    // carry those over from the existing recipe too.
     const updated = {
       ...draft,
       id: existing.id,
       createdAt: existing.createdAt,
       updatedAt: now,
+      image: existing.image,
+      source: existing.source,
     };
     const saveResult = await saveRecipeDoc(updated);
     isApplying = false;
