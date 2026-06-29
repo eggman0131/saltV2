@@ -1,6 +1,8 @@
 const vscode = require('vscode');
 const net = require('net');
 const cp = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
 const DEFAULT_LABELS = ['Firebase Emulators', 'Vite Dev Server', 'Genkit Admin UI'];
 
@@ -96,6 +98,149 @@ class TaskItem extends vscode.TreeItem {
   }
 }
 
+// ── Dev observability toggles ─────────────────────────────────────────────────
+// Three switches over what dev telemetry reaches PostHog. Each flips ONE line in
+// a dev env file the minimal way the docs describe:
+//   • the PostHog keys toggle by COMMENTING the line out — an absent/empty key
+//     makes the adapter a complete no-op — so the real key value is preserved
+//     across flips;
+//   • SALT_AI_OTLP_LOCAL flips its VALUE 0<->1 (the server span exporters gate on
+//     `=== '1'`, so 0 and "commented out" are equivalently off).
+// Toggling only edits the file; the value is read at process start, so the
+// affected dev service must be restarted to pick it up — hence the restart prompt.
+const OBS_TOGGLES = [
+  {
+    id: 'browserPosthog',
+    label: 'Browser PostHog',
+    file: 'apps/web-pwa/.env.development',
+    key: 'VITE_PUBLIC_POSTHOG_KEY',
+    mode: 'comment',
+    restart: 'Vite Dev Server',
+    detail: 'posthog-js — autocapture, pageviews, events, exceptions, browser-rooted traces.',
+  },
+  {
+    id: 'serverPosthog',
+    label: 'Server PostHog',
+    file: 'apps/cloud-functions/.secret.local',
+    key: 'POSTHOG_API_KEY',
+    mode: 'comment',
+    restart: 'Firebase Emulators',
+    detail:
+      'posthog-node — canon.match events + server error reporting, and the bearer token for span export.',
+  },
+  {
+    id: 'localAiSpans',
+    label: 'Local AI / trace spans → PostHog',
+    file: 'apps/cloud-functions/.secret.local',
+    key: 'SALT_AI_OTLP_LOCAL',
+    mode: 'value',
+    onValue: '1',
+    offValue: '0',
+    restart: 'Firebase Emulators',
+    detail:
+      'SALT_AI_OTLP_LOCAL=1 — ship AI ($ai_generation/$ai_embedding) and distributed trace spans from the emulator (otherwise suppressed locally).',
+  },
+];
+
+function workspaceRoot() {
+  return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+}
+
+// Matches a `KEY=...` env line — commented or not, optional leading `export`.
+// Groups: 1 indent, 2 comment marker, 3 export keyword, 4 value (rest of line).
+function envLineMatcher(key) {
+  return new RegExp(`^(\\s*)(#\\s*)?(export\\s+)?${key}\\s*=(.*)$`);
+}
+
+// The LAST line defining `key` (later wins, like dotenv), or null if absent.
+function findEnvLine(lines, key) {
+  const matcher = envLineMatcher(key);
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const m = lines[i].match(matcher);
+    if (m) {
+      return {
+        index: i,
+        indent: m[1],
+        commented: Boolean(m[2]),
+        exportKw: m[3] || '',
+        value: m[4],
+      };
+    }
+  }
+  return null;
+}
+
+function unquote(value) {
+  const t = value.trim();
+  const quoted = (t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"));
+  return quoted ? t.slice(1, -1) : t;
+}
+
+// Is the toggle currently ON, given its matched line?
+function isToggleEnabled(toggle, line) {
+  if (!line || line.commented) {
+    return false;
+  }
+  const value = unquote(line.value);
+  return toggle.mode === 'value' ? value === toggle.onValue : value.length > 0;
+}
+
+// The replacement line for the desired state, preserving the existing value.
+function composeEnvLine(toggle, line, enable) {
+  const { indent, exportKw, value } = line;
+  if (toggle.mode === 'value') {
+    return `${indent}${exportKw}${toggle.key}=${enable ? toggle.onValue : toggle.offValue}`;
+  }
+  const bare = `${indent}${exportKw}${toggle.key}=${value}`;
+  return enable ? bare : `${indent}# ${exportKw}${toggle.key}=${value}`;
+}
+
+class ObsGroupItem extends vscode.TreeItem {
+  constructor() {
+    super('Dev Observability', vscode.TreeItemCollapsibleState.Expanded);
+    this.contextValue = 'obsGroup';
+    this.iconPath = new vscode.ThemeIcon('eye');
+    this.tooltip = new vscode.MarkdownString(
+      'What dev telemetry is sent to PostHog. Each toggle flips one line in a dev ' +
+        'env file; the affected service must restart to pick it up.',
+    );
+  }
+}
+
+class ToggleItem extends vscode.TreeItem {
+  constructor(toggle, enabled, present) {
+    super(toggle.label, vscode.TreeItemCollapsibleState.None);
+    this.toggle = toggle;
+    this.contextValue = 'obsToggle';
+
+    if (!present) {
+      this.description = 'line not found';
+      this.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('charts.red'));
+      this.tooltip = `"${toggle.key}" is not in ${toggle.file}. Add it first, then toggle.`;
+    } else {
+      this.description = enabled ? '● On' : '○ Off';
+      this.iconPath = new vscode.ThemeIcon(
+        enabled ? 'circle-filled' : 'circle-outline',
+        new vscode.ThemeColor(enabled ? 'charts.green' : 'disabledForeground'),
+      );
+      const tooltip = new vscode.MarkdownString(
+        `**${toggle.label}** — ${enabled ? 'on' : 'off'}\n\n` +
+          `${toggle.detail}\n\n` +
+          `\`${toggle.key}\` in \`${toggle.file}\`\n\n` +
+          `Click to turn ${enabled ? 'OFF' : 'ON'}, then restart **${toggle.restart}**.`,
+      );
+      tooltip.isTrusted = true;
+      this.tooltip = tooltip;
+    }
+
+    this.command = {
+      command: 'taskPilot.toggleObs',
+      title: 'Toggle Dev Observability',
+      arguments: [this],
+    };
+  }
+}
+
 class TaskPilotProvider {
   constructor(context) {
     this.context = context;
@@ -183,17 +328,31 @@ class TaskPilotProvider {
     return configured;
   }
 
-  async getChildren() {
+  async getChildren(element) {
+    // Children of the "Dev Observability" group: the three telemetry toggles.
+    if (element?.contextValue === 'obsGroup') {
+      return OBS_TOGGLES.map((toggle) => {
+        const { present, enabled } = this.readToggleState(toggle);
+        return new ToggleItem(toggle, enabled, present);
+      });
+    }
+    if (element) {
+      return [];
+    }
+
+    // Root: the configured service rows, then the observability toggle group.
     const labels = this.getConfiguredLabels();
     const allTasks = await vscode.tasks.fetchTasks();
 
-    return labels.map((label) => {
+    const services = labels.map((label) => {
       const matchingTask = allTasks.find((task) => getTaskLabel(task) === label);
       const running = vscode.tasks.taskExecutions.some(
         (execution) => getTaskLabel(execution.task) === label,
       );
       return new TaskItem(label, matchingTask, running, Boolean(matchingTask));
     });
+
+    return [...services, new ObsGroupItem()];
   }
 
   getTreeItem(element) {
@@ -495,6 +654,103 @@ class TaskPilotProvider {
     this.refresh();
   }
 
+  // ── Dev observability toggles ───────────────────────────────────────────────
+
+  // Reads the toggle's env file and reports whether the line is present and on.
+  readToggleState(toggle) {
+    const root = workspaceRoot();
+    if (!root) {
+      return { present: false, enabled: false };
+    }
+    try {
+      const content = fs.readFileSync(path.join(root, toggle.file), 'utf8');
+      const line = findEnvLine(content.split(/\r?\n/), toggle.key);
+      return { present: Boolean(line), enabled: isToggleEnabled(toggle, line) };
+    } catch {
+      return { present: false, enabled: false };
+    }
+  }
+
+  async toggleObs(itemOrToggle) {
+    const toggle = itemOrToggle?.toggle || itemOrToggle;
+    if (!toggle?.file) {
+      return;
+    }
+    const root = workspaceRoot();
+    if (!root) {
+      vscode.window.showWarningMessage(
+        'Open the Salt workspace folder to use the observability toggles.',
+      );
+      return;
+    }
+
+    const fullPath = path.join(root, toggle.file);
+    let content;
+    try {
+      content = fs.readFileSync(fullPath, 'utf8');
+    } catch {
+      vscode.window.showWarningMessage(`Task Pilot: couldn't read ${toggle.file}.`);
+      return;
+    }
+
+    const lines = content.split(/\r?\n/);
+    const line = findEnvLine(lines, toggle.key);
+    if (!line) {
+      const openFile = 'Open file';
+      const choice = await vscode.window.showWarningMessage(
+        `Task Pilot: no "${toggle.key}" line in ${toggle.file} — add it before toggling.`,
+        openFile,
+      );
+      if (choice === openFile) {
+        this.openFile(toggle.file);
+      }
+      return;
+    }
+
+    const enable = !isToggleEnabled(toggle, line);
+    lines[line.index] = composeEnvLine(toggle, line, enable);
+    try {
+      fs.writeFileSync(fullPath, lines.join('\n'));
+    } catch {
+      vscode.window.showWarningMessage(`Task Pilot: couldn't write ${toggle.file}.`);
+      return;
+    }
+
+    this.refresh();
+    await this.announceToggle(toggle, enable);
+  }
+
+  // Tells the user the affected service needs a restart — and offers to do it —
+  // when that service is currently running. When it's stopped, the next start
+  // picks the change up, so just confirm in the status bar.
+  async announceToggle(toggle, enabled) {
+    const state = enabled ? 'ON' : 'OFF';
+    if (!this.runningExecution(toggle.restart)) {
+      vscode.window.setStatusBarMessage(
+        `Task Pilot: ${toggle.label} → ${state}. Applies on next ${toggle.restart} start.`,
+        5000,
+      );
+      return;
+    }
+    const restart = `Restart ${toggle.restart}`;
+    const choice = await vscode.window.showWarningMessage(
+      `${toggle.label} → ${state}. ${toggle.restart} is running — restart it for the change to take effect.`,
+      restart,
+    );
+    if (choice === restart) {
+      await this.restartTask(toggle.restart);
+    }
+  }
+
+  openFile(relativePath) {
+    const root = workspaceRoot();
+    if (!root) {
+      return;
+    }
+    const uri = vscode.Uri.file(path.join(root, relativePath));
+    vscode.workspace.openTextDocument(uri).then((doc) => vscode.window.showTextDocument(doc));
+  }
+
   async openUrl(itemOrLabel) {
     const label = this.labelOf(itemOrLabel);
     const meta = metaFor(label);
@@ -549,6 +805,7 @@ function activate(context) {
     vscode.window.registerTreeDataProvider('taskPilotView', provider),
     vscode.commands.registerCommand('taskPilot.refresh', () => provider.refresh()),
     vscode.commands.registerCommand('taskPilot.toggle', (item) => provider.toggleTask(item)),
+    vscode.commands.registerCommand('taskPilot.toggleObs', (item) => provider.toggleObs(item)),
     vscode.commands.registerCommand('taskPilot.start', (item) => provider.startTask(item)),
     vscode.commands.registerCommand('taskPilot.stop', (item) => provider.stopOne(item)),
     vscode.commands.registerCommand('taskPilot.restart', (item) => provider.restartTask(item)),
