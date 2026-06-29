@@ -11,6 +11,9 @@
 // Best-effort, never throws (CLAUDE.md Rule 10): postOtlpSpan swallows its own
 // errors. No new dependency — the OTel types are declared STRUCTURALLY.
 
+import { context } from '@opentelemetry/api';
+import { suppressTracing } from '@opentelemetry/core';
+
 import { buildOtlpBody, DEFAULT_POSTHOG_HOST, type OtlpSpan } from '../shared/otlpWire.js';
 
 // Re-export the runtime-neutral wire layer so every existing
@@ -49,11 +52,17 @@ export async function postOtlpSpan(otlpSpan: OtlpSpan, path: string): Promise<vo
   if (!key) return;
   const host = process.env['POSTHOG_HOST'] || DEFAULT_POSTHOG_HOST;
   try {
-    await fetch(`${host}${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-      body: JSON.stringify(buildOtlpBody(otlpSpan, SERVICE_NAME)),
-    });
+    // Suppress tracing for our own export call: enableFirebaseTelemetry() turns on
+    // HTTP auto-instrumentation, which would otherwise mint a CLIENT span for this
+    // very POST — that span would then be exported, minting another, a feedback
+    // loop. suppressTracing makes the instrumentation skip span creation here.
+    await context.with(suppressTracing(context.active()), () =>
+      fetch(`${host}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+        body: JSON.stringify(buildOtlpBody(otlpSpan, SERVICE_NAME)),
+      }),
+    );
   } catch {
     // Never surface a telemetry export failure to the caller (Rule 10).
   }

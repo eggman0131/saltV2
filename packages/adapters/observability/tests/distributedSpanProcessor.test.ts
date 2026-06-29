@@ -1,15 +1,17 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import {
   toDistributedOtlpSpan,
+  shouldShipDistributed,
   distributedSpanProcessor,
   flushDistributedOtlp,
 } from '../src/server/distributedSpanProcessor.js';
 import type { ReadableSpanLike, OtlpSpan } from '../src/server/otlpWire.js';
 
 // ---------------------------------------------------------------------------
-// toDistributedOtlpSpan: any finished span → OTLP span verbatim (no remap, no
-// drop). Unlike the AI leg it forwards EVERY span, keeps the live span.name
-// (which setActiveSpanName may have set), and encodes scalar attributes as-is.
+// toDistributedOtlpSpan: maps a span (whatever shouldShipDistributed kept) to an
+// OTLP span with no namespace remap — keeps the live span.name (which
+// setActiveSpanName may have set) and encodes scalar attributes as-is, but strips
+// Genkit's bulky genkit:* content attributes (those ride the AI leg).
 // ---------------------------------------------------------------------------
 
 function fakeSpan(opts: {
@@ -22,6 +24,8 @@ function fakeSpan(opts: {
   kind?: number;
   startTime?: readonly [number, number];
   endTime?: readonly [number, number];
+  scope?: string;
+  legacyScope?: string;
 }): ReadableSpanLike {
   return {
     name: opts.name ?? 'canon.matchOrCreateCanon: garlic',
@@ -31,6 +35,8 @@ function fakeSpan(opts: {
     parentSpanId: opts.parentSpanId,
     parentSpanContext: opts.parentSpanContext,
     kind: opts.kind,
+    instrumentationScope: opts.scope === undefined ? undefined : { name: opts.scope },
+    instrumentationLibrary: opts.legacyScope === undefined ? undefined : { name: opts.legacyScope },
     spanContext: () => ({ traceId: opts.traceId ?? 'trace-1', spanId: opts.spanId ?? 'span-1' }),
   };
 }
@@ -88,6 +94,21 @@ describe('toDistributedOtlpSpan', () => {
     expect(out.attributes.find((a) => a.key === 'missing')).toBeUndefined();
   });
 
+  it('strips genkit:* content attributes (they ride the AI leg) but keeps our own', () => {
+    const out = toDistributedOtlpSpan(
+      fakeSpan({
+        attributes: {
+          'genkit:input': '{"a big prompt blob":"..."}',
+          'genkit:output': '{"a big completion blob":"..."}',
+          'genkit:type': 'flow',
+          'canon.candidateCount': 12,
+        },
+      }),
+    );
+    expect(out.attributes.find((a) => a.key.startsWith('genkit:'))).toBeUndefined();
+    expect(attr(out, 'canon.candidateCount')).toBe('12');
+  });
+
   it('reads the OTel 2.x parentSpanContext.spanId when parentSpanId is absent', () => {
     const out = toDistributedOtlpSpan(fakeSpan({ parentSpanContext: { spanId: 'ctx-parent' } }));
     expect(out.parentSpanId).toBe('ctx-parent');
@@ -112,6 +133,64 @@ describe('toDistributedOtlpSpan', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// shouldShipDistributed: keep only app-level spans (our own tracer scope +
+// Genkit), drop OTel auto-instrumentation noise (fs/HTTP/firestore) so the
+// end-to-end view reads like the app, not SDK internals (issue #362 follow-up).
+// ---------------------------------------------------------------------------
+describe('shouldShipDistributed', () => {
+  it('ships our own spans (salt-cloud-functions tracer scope)', () => {
+    expect(
+      shouldShipDistributed(
+        fakeSpan({ name: 'Firestore: load canon candidates', scope: 'salt-cloud-functions' }),
+      ),
+    ).toBe(true);
+    expect(
+      shouldShipDistributed(
+        fakeSpan({ name: 'shoppingList.matchItem: soreen', scope: 'salt-cloud-functions' }),
+      ),
+    ).toBe(true);
+  });
+
+  it('ships Genkit spans (any genkit:* attribute), incl. renamed flow roots', () => {
+    expect(
+      shouldShipDistributed(
+        fakeSpan({
+          name: 'Import recipe from bbcgoodfood.com',
+          scope: 'genkit',
+          attributes: { 'genkit:type': 'flow' },
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it('also reads the legacy OTel 1.x instrumentationLibrary scope', () => {
+    expect(shouldShipDistributed(fakeSpan({ legacyScope: 'salt-cloud-functions' }))).toBe(true);
+  });
+
+  it('drops auto-instrumentation noise (fs / HTTP / firestore)', () => {
+    expect(
+      shouldShipDistributed(
+        fakeSpan({ name: 'fs realpathSync', scope: '@opentelemetry/instrumentation-fs' }),
+      ),
+    ).toBe(false);
+    expect(
+      shouldShipDistributed(
+        fakeSpan({ name: 'POST', kind: 2, scope: '@opentelemetry/instrumentation-http' }),
+      ),
+    ).toBe(false);
+    expect(
+      shouldShipDistributed(fakeSpan({ name: 'Batch.Commit', scope: '@google-cloud/firestore' })),
+    ).toBe(false);
+  });
+
+  it('drops a span with no recognised scope and no genkit attributes', () => {
+    expect(
+      shouldShipDistributed(fakeSpan({ name: 'PUT', attributes: { 'http.method': 'PUT' } })),
+    ).toBe(false);
+  });
+});
+
 describe('distributedSpanProcessor', () => {
   const prevKey = process.env['POSTHOG_API_KEY'];
   afterEach(() => {
@@ -125,5 +204,28 @@ describe('distributedSpanProcessor', () => {
       distributedSpanProcessor.onEnd(fakeSpan({ attributes: { 'canon.outcome': 'matched' } })),
     ).not.toThrow();
     await expect(flushDistributedOtlp()).resolves.toBeUndefined();
+  });
+
+  it('with a key, drops auto-instrumentation noise but ships app spans', async () => {
+    process.env['POSTHOG_API_KEY'] = 'phc_test';
+    const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    try {
+      // noise → not shipped
+      distributedSpanProcessor.onEnd(
+        fakeSpan({ name: 'fs realpathSync', scope: '@opentelemetry/instrumentation-fs' }),
+      );
+      // app span → shipped
+      distributedSpanProcessor.onEnd(
+        fakeSpan({ name: 'shoppingList.matchItem: soreen', scope: 'salt-cloud-functions' }),
+      );
+      await flushDistributedOtlp();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const url = String(fetchMock.mock.calls[0]?.[0]);
+      expect(url).toContain('/i/v1/traces');
+    } finally {
+      globalThis.fetch = prevFetch;
+    }
   });
 });
