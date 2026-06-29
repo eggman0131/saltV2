@@ -5,6 +5,7 @@ import {
   distributedSpanProcessor,
   flushDistributedOtlp,
 } from '../src/server/distributedSpanProcessor.js';
+import { setServerEnvironment } from '../src/server/serverEnvironment.js';
 import type { ReadableSpanLike, OtlpSpan } from '../src/server/otlpWire.js';
 
 // ---------------------------------------------------------------------------
@@ -107,6 +108,69 @@ describe('toDistributedOtlpSpan', () => {
     );
     expect(out.attributes.find((a) => a.key.startsWith('genkit:'))).toBeUndefined();
     expect(attr(out, 'canon.candidateCount')).toBe('12');
+  });
+
+  it('attaches short prompt + completion previews on a model span', () => {
+    const out = toDistributedOtlpSpan(
+      fakeSpan({
+        attributes: {
+          'genkit:type': 'action',
+          'genkit:metadata:subtype': 'model',
+          'genkit:input': JSON.stringify({
+            messages: [{ role: 'user', content: [{ text: 'two pounds of tomatoes' }] }],
+          }),
+          'genkit:output': JSON.stringify({
+            message: { role: 'model', content: [{ text: '{"name":"tomatoes"}' }] },
+          }),
+        },
+      }),
+    );
+    // The bulky genkit:* blobs are still stripped...
+    expect(out.attributes.find((a) => a.key.startsWith('genkit:'))).toBeUndefined();
+    // ...but a readable preview rides as a scalar attribute.
+    expect(attr(out, 'ai.prompt.preview')).toBe('two pounds of tomatoes');
+    expect(attr(out, 'ai.completion.preview')).toBe('{"name":"tomatoes"}');
+  });
+
+  it('previews an embedder prompt but no completion (embedding response is meaningless)', () => {
+    const out = toDistributedOtlpSpan(
+      fakeSpan({
+        attributes: {
+          'genkit:type': 'action',
+          'genkit:metadata:subtype': 'embedder',
+          'genkit:input': JSON.stringify({ input: [{ content: [{ text: 'garlic' }] }] }),
+        },
+      }),
+    );
+    expect(attr(out, 'ai.prompt.preview')).toBe('garlic');
+    expect(attr(out, 'ai.completion.preview')).toBeUndefined();
+  });
+
+  it('previews an image prompt but drops the image (media-only) response', () => {
+    const dataUri = 'data:image/png;base64,AAAABBBBCCCC';
+    const out = toDistributedOtlpSpan(
+      fakeSpan({
+        attributes: {
+          'genkit:type': 'action',
+          'genkit:metadata:subtype': 'model',
+          'genkit:input': JSON.stringify({
+            messages: [{ role: 'user', content: [{ text: 'draw a leek' }] }],
+          }),
+          'genkit:output': JSON.stringify({
+            message: { role: 'model', content: [{ media: { url: dataUri } }] },
+          }),
+        },
+      }),
+    );
+    expect(attr(out, 'ai.prompt.preview')).toBe('draw a leek');
+    expect(attr(out, 'ai.completion.preview')).toBeUndefined();
+    expect(JSON.stringify(out)).not.toContain('AAAABBBB');
+  });
+
+  it('adds no previews on a non-AI structural span (no genkit subtype)', () => {
+    const out = toDistributedOtlpSpan(fakeSpan({ attributes: { 'canon.outcome': 'matched' } }));
+    expect(attr(out, 'ai.prompt.preview')).toBeUndefined();
+    expect(attr(out, 'ai.completion.preview')).toBeUndefined();
   });
 
   it('reads the OTel 2.x parentSpanContext.spanId when parentSpanId is absent', () => {
@@ -226,6 +290,33 @@ describe('distributedSpanProcessor', () => {
       expect(url).toContain('/i/v1/traces');
     } finally {
       globalThis.fetch = prevFetch;
+    }
+  });
+
+  it('stamps the recorded server environment onto the exported span resource', async () => {
+    process.env['POSTHOG_API_KEY'] = 'phc_test';
+    setServerEnvironment('staging');
+    const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    try {
+      distributedSpanProcessor.onEnd(
+        fakeSpan({ name: 'shoppingList.matchItem: soreen', scope: 'salt-cloud-functions' }),
+      );
+      await flushDistributedOtlp();
+      const init = fetchMock.mock.calls[0]?.[1] as { body?: string } | undefined;
+      const body = JSON.parse(String(init?.body)) as {
+        resourceSpans: Array<{
+          resource: { attributes: Array<{ key: string; value: { stringValue: string } }> };
+        }>;
+      };
+      expect(body.resourceSpans[0]!.resource.attributes).toContainEqual({
+        key: 'deployment.environment',
+        value: { stringValue: 'staging' },
+      });
+    } finally {
+      globalThis.fetch = prevFetch;
+      setServerEnvironment(undefined); // don't leak into sibling tests
     }
   });
 });

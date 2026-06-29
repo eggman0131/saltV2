@@ -10,8 +10,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 //    value is merged into the properties of every capture from the three emit
 //    helpers (the single chokepoint server events funnel through).
 //
-// Both sides use the SAME property name (`environment`) and vocabulary so the
-// dimension is consistent across client and CF events in PostHog.
+// Both sides use the SAME property name (the OTel-standard `deployment.environment`)
+// and vocabulary so the dimension is consistent across client and CF events (and
+// spans) in PostHog.
 // ---------------------------------------------------------------------------
 
 const {
@@ -85,28 +86,31 @@ describe('environment flag (super property browser-side, per-event server-side)'
   });
 
   it('browser: registers the environment as a PostHog super property at init', () => {
-    expect(register).toHaveBeenCalledWith({ environment: ENV });
+    expect(register).toHaveBeenCalledWith({ 'deployment.environment': ENV });
   });
 
   it('server: attaches environment to a plain captured event', () => {
     captureServerEvent('canon.match', { 'canon.path': 'cf' });
     const [arg] = serverCapture.mock.calls.at(-1)!;
-    expect((arg as CaptureArg).properties).toMatchObject({ 'canon.path': 'cf', environment: ENV });
+    expect((arg as CaptureArg).properties).toMatchObject({
+      'canon.path': 'cf',
+      'deployment.environment': ENV,
+    });
   });
 
   it('server: passes environment as captureException additionalProperties', () => {
     const err = new Error('boom');
     captureServerException(err);
     expect(serverCaptureException).toHaveBeenCalledWith(err, expect.any(String), {
-      environment: ENV,
+      'deployment.environment': ENV,
     });
   });
 
   it('server: an explicit event property of the same name wins over the global', () => {
     // posthog-js semantics: event properties override super properties. The
     // server withEnvironment merge mirrors that (environment spread first).
-    captureServerEvent('canon.match', { environment: 'override' });
+    captureServerEvent('canon.match', { 'deployment.environment': 'override' });
     const [arg] = serverCapture.mock.calls.at(-1)!;
-    expect((arg as CaptureArg).properties.environment).toBe('override');
+    expect((arg as CaptureArg).properties['deployment.environment']).toBe('override');
   });
 });

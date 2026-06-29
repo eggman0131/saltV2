@@ -9,6 +9,10 @@ import {
 } from '@opentelemetry/api';
 import { flushAiOtlp } from './aiOtlpSpanProcessor.js';
 import { flushDistributedOtlp } from './distributedSpanProcessor.js';
+// `environment` state lives in a dedicated leaf so the span exporters (otlpWire.ts)
+// can read it without an init.ts ↔ otlpWire.ts import cycle (Rule 8). init.ts is
+// the writer (at init) + a reader (the event-capture chokepoints below).
+import { getServerEnvironment, setServerEnvironment } from './serverEnvironment.js';
 
 // EU region is baked in as the default; the host is overridable via env only so
 // a self-hosted/dev proxy can be pointed at, never to silently leave the EU
@@ -24,14 +28,14 @@ const SERVER_DISTINCT_ID = 'salt-cloud-functions';
 
 let client: PostHog | null = null;
 
-// Deployment environment ('production' | 'staging' | 'development'), recorded at
-// init and attached to every server event as the PostHog `environment` property.
-// posthog-node has NO register()/super-property concept like posthog-js, so the
-// value is merged into the properties of each capture from the emit helpers below
-// (withEnvironment) — the single chokepoint every server event funnels through.
-// undefined until init, or when the caller omits it, in which case nothing is
-// attached and the captures behave exactly as before.
-let serverEnvironment: string | undefined;
+// Deployment environment ('production' | 'staging' | 'development') is recorded at
+// init and attached to every server event under the OTel-standard
+// `deployment.environment` property (the same key the span resources + browser
+// events use). posthog-node has NO register()/super-property concept like posthog-js,
+// so the value is merged into the properties of each capture from the emit helpers
+// below (withEnvironment) — the single chokepoint every server event funnels through.
+// The value itself lives in serverEnvironment.ts (a leaf shared with the span
+// exporters); see the import note above.
 
 // True once initServerObservability has built the posthog-node client. Adapter
 // entrypoints gate on this so they stay inert — rather than throwing — when
@@ -56,9 +60,10 @@ export async function whenServerObservabilityReady(): Promise<void> {
 // package inert rather than crashing the function at module load.
 //
 // `environment` (e.g. 'production' | 'staging' | 'development') is recorded and
-// attached to every server event as the `environment` property — the posthog-node
-// equivalent of the browser side's posthog.register({ environment }). Optional:
-// an omitted environment attaches nothing.
+// attached to every server event as the OTel-standard `deployment.environment`
+// property — the posthog-node equivalent of the browser side's
+// posthog.register({ 'deployment.environment': … }). Optional: an omitted
+// environment attaches nothing.
 export function initServerObservability(key: string, environment?: string): void {
   if (client) return;
   if (!key) return; // inert when the key is absent
@@ -77,7 +82,7 @@ export function initServerObservability(key: string, environment?: string): void
     });
     // Record the environment only after the client is live, so an init failure
     // leaves both client and environment unset (the package stays fully inert).
-    serverEnvironment = environment;
+    setServerEnvironment(environment);
   } catch {
     // Stay inert rather than crash the function at startup.
     client = null;
@@ -104,9 +109,10 @@ export function safePosthog(fn: (ph: PostHog) => void): void {
 // environment is spread FIRST so an explicit event property of the same name wins,
 // mirroring posthog-js semantics where event properties override super properties.
 function withEnvironment(properties: Record<string, unknown>): Record<string, unknown> {
-  return serverEnvironment === undefined
-    ? properties
-    : { environment: serverEnvironment, ...properties };
+  const env = getServerEnvironment();
+  // OTel-standard `deployment.environment` key — matches the span resource attribute
+  // and the browser super property, so the dimension is consistent app-wide.
+  return env === undefined ? properties : { 'deployment.environment': env, ...properties };
 }
 
 // Capture a plain server-side event under the synthetic server person. Used by
@@ -129,10 +135,11 @@ export function captureServerException(error: unknown): void {
     // entirely otherwise so no empty properties bag rides along (and so the
     // "exactly two args / no user-content bag" payload-scrubbing invariant holds
     // when telemetry runs un-environmented).
-    if (serverEnvironment === undefined) {
+    const env = getServerEnvironment();
+    if (env === undefined) {
       ph.captureException(err, SERVER_DISTINCT_ID);
     } else {
-      ph.captureException(err, SERVER_DISTINCT_ID, { environment: serverEnvironment });
+      ph.captureException(err, SERVER_DISTINCT_ID, { 'deployment.environment': env });
     }
   });
 }

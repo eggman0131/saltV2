@@ -109,13 +109,20 @@ class PosthogOtlpSpanExporter implements SpanExporter {
   constructor(
     private readonly key: string,
     host: string,
+    // Deployment environment ('production' | 'staging' | 'development') from
+    // import.meta.env.MODE, stamped onto every exported span resource (under the
+    // OTel-standard `deployment.environment` key) so the browser trace carries the
+    // SAME `deployment.environment` dimension as browser events.
+    private readonly environment?: string,
   ) {
     this.endpoint = `${host}${DISTRIBUTED_OTLP_PATH}`;
   }
 
   export(spans: ReadableSpan[], resultCallback: (result: ExportResult) => void): void {
     try {
-      const body = JSON.stringify(buildOtlpBody(spans.map(toBrowserOtlpSpan), SERVICE_NAME));
+      const body = JSON.stringify(
+        buildOtlpBody(spans.map(toBrowserOtlpSpan), SERVICE_NAME, this.environment),
+      );
       // fetch keepalive lets the request outlive the export() call without us
       // awaiting it on a hot path; failures are swallowed (Rule 10).
       void fetch(this.endpoint, {
@@ -138,7 +145,9 @@ class PosthogOtlpSpanExporter implements SpanExporter {
   // where a normal fetch may be cancelled. Falls back to fetch keepalive.
   sendBeacon(spans: ReadableSpan[]): void {
     try {
-      const body = JSON.stringify(buildOtlpBody(spans.map(toBrowserOtlpSpan), SERVICE_NAME));
+      const body = JSON.stringify(
+        buildOtlpBody(spans.map(toBrowserOtlpSpan), SERVICE_NAME, this.environment),
+      );
       const beacon =
         typeof navigator !== 'undefined' ? navigator.sendBeacon?.bind(navigator) : null;
       if (beacon) {
@@ -180,14 +189,28 @@ function resolveHost(): string {
 // Build the in-memory tracer provider ONCE. No-op when `key` is empty (tracing
 // gated off, exactly like PostHog init) or when already initialised. Never throws
 // at startup — a provider construction failure leaves the package inert.
-export function initBrowserTracing(key: string): void {
+//
+// `environment` ('production' | 'staging' | 'development') is computed by web-pwa
+// from import.meta.env.MODE — the SAME value it hands to initObservability for the
+// PostHog super property — and stamped onto every exported span resource under the
+// OTel-standard `deployment.environment` key, so the browser-rooted trace carries
+// the `deployment.environment` dimension events already carry.
+export function initBrowserTracing(key: string, environment?: string): void {
   if (provider || tracer) return;
   if (!key) return; // inert when the key is absent — mirrors initObservability
   try {
     const host = resolveHost();
-    const exporter = new PosthogOtlpSpanExporter(key, host);
+    const exporter = new PosthogOtlpSpanExporter(key, host, environment);
     const built = new WebTracerProvider({
-      resource: new Resource({ 'service.name': SERVICE_NAME }),
+      // environment mirrored onto the provider resource alongside service.name under
+      // the OTel-standard `deployment.environment` key; the custom exporter stamps the
+      // wire resource directly (above), so this keeps the OTel provider's own resource
+      // consistent for any standard reader.
+      resource: new Resource(
+        environment
+          ? { 'service.name': SERVICE_NAME, 'deployment.environment': environment }
+          : { 'service.name': SERVICE_NAME },
+      ),
     });
     // BatchSpanProcessor: client spans are not in a paused-between-invocations
     // runtime (unlike CF), so batching is fine and cheaper than per-span POSTs.

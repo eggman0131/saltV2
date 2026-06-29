@@ -1,11 +1,12 @@
 // Resolves the deployment environment for server-side PostHog telemetry. The
 // value is passed to initServerObservability and attached to every server event
-// as the `environment` property — the server counterpart to the browser side,
-// which derives the same value from Vite's build mode (import.meta.env.MODE).
+// (and span resource) under the OTel-standard `deployment.environment` property —
+// the server counterpart to the browser side, which derives the same value from
+// Vite's build mode (import.meta.env.MODE).
 //
 // Kept in the SAME vocabulary as the browser ('production' | 'staging' |
-// 'development') so the `environment` dimension is consistent across client and
-// CF events in PostHog. Project ids come from .firebaserc.
+// 'development') so the `deployment.environment` dimension is consistent across
+// client and CF events in PostHog. Project ids come from .firebaserc.
 const PROJECT_ENVIRONMENTS: Readonly<Record<string, string>> = {
   's2-prod-e46bd': 'production',
   's2-stage-ccb22': 'staging',

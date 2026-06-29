@@ -13,10 +13,11 @@ export interface ObservabilityOptions {
   // automated runs pass this so they don't record every page. Mirrors the LD
   // `manualStart` flag.
   manualStart?: boolean;
-  // Deployment environment ('production' | 'staging' | 'development'). When set,
-  // it is registered as a PostHog super property so it rides on EVERY event the
-  // SDK emits — autocapture, pageviews, manual captures, exceptions, and replay
-  // metadata — without each call site having to attach it.
+  // Deployment environment ('production' | 'staging' | 'development'). When set, it
+  // is registered as a PostHog super property under the OTel-standard
+  // `deployment.environment` key so it rides on EVERY event the SDK emits —
+  // autocapture, pageviews, manual captures, exceptions, and replay metadata —
+  // without each call site having to attach it.
   environment?: string;
   // App version stamp (the release tag / __APP_VERSION__). Like `environment`, it
   // is registered as a super property so EVERY event carries the version the user
@@ -94,7 +95,9 @@ export function initObservability(key: string, opts?: ObservabilityOptions): voi
   // init above failed (ready === false). Built into a local bag so both register
   // in a single call and so absent values are simply omitted.
   const superProperties: Record<string, string> = {};
-  if (opts?.environment) superProperties.environment = opts.environment;
+  // OTel-standard `deployment.environment` — the single environment key across all
+  // telemetry (browser/server events + spans), so the app is standard + consistent.
+  if (opts?.environment) superProperties['deployment.environment'] = opts.environment;
   if (opts?.version) superProperties.app_version = opts.version;
   if (Object.keys(superProperties).length > 0) {
     safePosthog((ph) => ph.register(superProperties));
@@ -105,8 +108,9 @@ export function initObservability(key: string, opts?: ObservabilityOptions): voi
   // never throws — a tracer build failure must not crash app startup. This is what
   // makes "Import recipe" / "Author recipe" traces ROOT at the browser click and
   // hand a W3C traceparent to the callable so the CF+canon+AI sub-tree nests under
-  // one trace id.
-  initBrowserTracing(key);
+  // one trace id. The same `environment` registered as a super property above is
+  // handed down so the browser-rooted spans carry it as a resource attribute too.
+  initBrowserTracing(key, opts?.environment);
 }
 
 // `name`/`email` set the human-readable identity PostHog's Persons and replay

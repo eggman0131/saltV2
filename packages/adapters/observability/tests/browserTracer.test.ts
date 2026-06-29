@@ -140,6 +140,43 @@ describe('exporter OTLP body shape (shared buildOtlpBody)', () => {
     expect(rs.scopeSpans[0]!.scope.name).toBe('salt-web-pwa');
     expect(rs.scopeSpans[0]!.spans[0]!.name).toBe('Author recipe');
   });
+
+  it('stamps `deployment.environment` as a resource attribute when supplied (the events/logs dimension)', () => {
+    const span: OtlpSpan = {
+      traceId: 'a'.repeat(32),
+      spanId: 'b'.repeat(16),
+      name: 'Add item: tinned tomatoes',
+      kind: 1,
+      startTimeUnixNano: '1',
+      endTimeUnixNano: '2',
+      attributes: [],
+    };
+    const body = buildOtlpBody([span], 'salt-web-pwa', 'staging') as {
+      resourceSpans: Array<{
+        resource: { attributes: Array<{ key: string; value: { stringValue: string } }> };
+      }>;
+    };
+    expect(body.resourceSpans[0]!.resource.attributes).toContainEqual({
+      key: 'deployment.environment',
+      value: { stringValue: 'staging' },
+    });
+  });
+
+  it('omits `deployment.environment` when not supplied (un-environmented runs attach nothing)', () => {
+    const span: OtlpSpan = {
+      traceId: 'a'.repeat(32),
+      spanId: 'b'.repeat(16),
+      name: 'Author recipe',
+      kind: 1,
+      startTimeUnixNano: '1',
+      endTimeUnixNano: '2',
+      attributes: [],
+    };
+    const body = buildOtlpBody([span], 'salt-web-pwa') as {
+      resourceSpans: Array<{ resource: { attributes: Array<{ key: string }> } }>;
+    };
+    expect(body.resourceSpans[0]!.resource.attributes.map((a) => a.key)).toEqual(['service.name']);
+  });
 });
 
 describe('best-effort export (never throws)', () => {
