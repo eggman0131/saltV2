@@ -15,6 +15,7 @@ export {
   setActiveSpanName,
   runWithExtractedTraceContext,
   runWithSuppliedTraceContext,
+  activeTraceparent,
   captureServerEvent,
   captureServerException,
   safePosthog,
