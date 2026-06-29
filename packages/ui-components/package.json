@@ -19,12 +19,12 @@
   },
   "dependencies": {
     "@floating-ui/dom": "^1.7.0",
-    "@lucide/svelte": "^1.17.0",
+    "@lucide/svelte": "^1.22.0",
     "bits-ui": "^1.0.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
-    "svelte": "^5.55.7",
-    "svelte-dnd-action": "^0.9.69",
+    "svelte": "^5.56.4",
+    "svelte-dnd-action": "^0.9.70",
     "svelte-exmarkdown": "^5.0.2",
     "tailwind-merge": "^2.5.0"
   },
