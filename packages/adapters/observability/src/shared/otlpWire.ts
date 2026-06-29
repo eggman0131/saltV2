@@ -105,12 +105,31 @@ export function parentSpanId(span: ReadableSpanLike): string | undefined {
 // (`salt-cloud-functions` server-side, `salt-web-pwa` browser-side) so traces are
 // attributable to a runtime; the wire SHAPE is identical across both. Accepts a
 // single span (server per-span export) or an array (browser batch export).
-export function buildOtlpBody(span: OtlpSpan | OtlpSpan[], serviceName: string): unknown {
+//
+// `environment` ('production' | 'staging' | 'development') rides as a RESOURCE
+// attribute under the OTel-standard semantic-convention key `deployment.environment`
+// — the same dimension events/logs carry — so it applies to EVERY span in the batch
+// with one stamp. PostHog forwards any non-excluded resource/span attribute onto the
+// resulting event as-is, so it surfaces as the `deployment.environment` property on
+// BOTH OTLP endpoints (distributed `/i/v1/traces` and AI `/i/v0/ai/otel`). Computed
+// identically to the event/log dimension: the server resolves it from the Firebase
+// project id (resolveServerEnvironment), the browser from import.meta.env.MODE —
+// each runtime passes its value down to here. Omitted when absent (pre-init /
+// unconfigured) so nothing rides along, exactly like the event-side super-property
+// merge. `deployment.environment` is the single environment key across ALL telemetry
+// (spans + events + exceptions) so the app is OTel-standard and consistent.
+export function buildOtlpBody(
+  span: OtlpSpan | OtlpSpan[],
+  serviceName: string,
+  environment?: string,
+): unknown {
   const spans = Array.isArray(span) ? span : [span];
+  const attributes = [strAttr('service.name', serviceName)];
+  if (environment) attributes.push(strAttr('deployment.environment', environment));
   return {
     resourceSpans: [
       {
-        resource: { attributes: [strAttr('service.name', serviceName)] },
+        resource: { attributes },
         scopeSpans: [{ scope: { name: serviceName }, spans }],
       },
     ],

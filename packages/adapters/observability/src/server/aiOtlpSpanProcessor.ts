@@ -40,6 +40,9 @@ import {
   postOtlpSpan,
   strAttr,
 } from './otlpWire.js';
+// parseJson + flattenParts are shared with the distributed leg (genkitContent.ts)
+// so the content/media-redaction policy can't drift between the two export legs.
+import { flattenParts, parseJson } from './genkitContent.js';
 
 export type { ReadableSpanLike, SpanProcessorLike, OtlpSpan };
 
@@ -78,15 +81,6 @@ function servedModel(attrs: Readonly<Record<string, unknown>>, fallback: string)
 const GEN_CONTENT_MAX_CHARS = 50_000;
 const EMBED_PREVIEW_CHARS = 80;
 
-function parseJson(v: unknown): unknown {
-  if (typeof v !== 'string') return undefined;
-  try {
-    return JSON.parse(v);
-  } catch {
-    return undefined;
-  }
-}
-
 function truncate(s: string, max: number): string {
   return s.length > max ? `${s.slice(0, max)}…[truncated]` : s;
 }
@@ -95,27 +89,6 @@ function truncate(s: string, max: number): string {
 function mapRole(role: unknown): string {
   if (role === 'model') return 'assistant';
   return typeof role === 'string' && role ? role : 'user';
-}
-
-// Flatten a Genkit `Part[]` (or string) to text. Media/binary parts become a
-// placeholder so base64 data URIs are never forwarded.
-function flattenParts(content: unknown): string {
-  if (typeof content === 'string') return content;
-  if (!Array.isArray(content)) return '';
-  return content
-    .map((p) => {
-      if (typeof p === 'string') return p;
-      if (p && typeof p === 'object') {
-        const part = p as Record<string, unknown>;
-        if (typeof part['text'] === 'string') return part['text'];
-        if (part['media']) return '[media]';
-        if (part['toolRequest']) return '[toolRequest]';
-        if (part['toolResponse']) return '[toolResponse]';
-        if (part['data'] !== undefined) return '[data]';
-      }
-      return '';
-    })
-    .join('');
 }
 
 function toMessages(items: unknown, forcedRole?: string): Array<{ role: string; content: string }> {

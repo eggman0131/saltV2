@@ -15,6 +15,9 @@ import { context } from '@opentelemetry/api';
 import { suppressTracing } from '@opentelemetry/core';
 
 import { buildOtlpBody, DEFAULT_POSTHOG_HOST, type OtlpSpan } from '../shared/otlpWire.js';
+// Read-only: the `environment` recorded at init, stamped onto every exported span
+// resource. Lives in a leaf module so this does NOT cycle back through init.ts.
+import { getServerEnvironment } from './serverEnvironment.js';
 
 // Re-export the runtime-neutral wire layer so every existing
 // `from './otlpWire.js'` import (types, encoders, builders, host) keeps resolving.
@@ -60,7 +63,9 @@ export async function postOtlpSpan(otlpSpan: OtlpSpan, path: string): Promise<vo
       fetch(`${host}${path}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-        body: JSON.stringify(buildOtlpBody(otlpSpan, SERVICE_NAME)),
+        // Stamp the deployment environment onto the span resource — the same
+        // dimension server events/logs carry — so both legs' spans surface it.
+        body: JSON.stringify(buildOtlpBody(otlpSpan, SERVICE_NAME, getServerEnvironment())),
       }),
     );
   } catch {

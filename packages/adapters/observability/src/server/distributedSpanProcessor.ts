@@ -24,7 +24,14 @@
 // The OTLP/JSON span shape and the per-span POST are SHARED with the AI leg via
 // otlpWire.ts — only the endpoint path differs. We forward each kept span's name,
 // ids, timing, kind and scalar attributes; Genkit's bulky `genkit:*` content
-// attributes are stripped (they ride the AI leg into the LLM view instead).
+// attributes are stripped (the FULL prompt/completion rides the AI leg into the
+// LLM view instead). The one exception: on model/embedder spans we attach a SHORT
+// `ai.prompt.preview` / `ai.completion.preview` (≤200 chars, media redacted) so the
+// end-to-end trace carries enough AI context to read at a glance — there is no
+// consolidated AI+trace view, so the bare structural span had no readable context.
+// Embedding and image RESPONSES are intentionally omitted (no readable text — see
+// genkitCompletionPreview). The preview text is built by the SAME genkitContent.ts
+// flattener the AI leg uses, so the media-redaction policy can't drift.
 //
 // Best-effort, never throws (CLAUDE.md Rule 10): a dropped span is always better
 // than a thrown error in a hot path. No-ops entirely without POSTHOG_API_KEY.
@@ -45,6 +52,7 @@ import {
   postOtlpSpan,
   strAttr,
 } from './otlpWire.js';
+import { genkitCompletionPreview, genkitPromptPreview } from './genkitContent.js';
 
 // Distributed-tracing ingestion endpoint — the only thing that differs from the
 // AI leg (`/i/v0/ai/otel`).
@@ -103,6 +111,32 @@ function encodeAttr(key: string, value: unknown): Attribute | null {
   return null;
 }
 
+/** A Genkit model/embedder action span carries an extractable prompt/response. */
+function genkitSubtype(attrs: Readonly<Record<string, unknown>>): string {
+  const v = attrs['genkit:metadata:subtype'];
+  return typeof v === 'string' ? v : '';
+}
+
+/**
+ * Attach a short, media-redacted prompt/response preview on model & embedder
+ * spans so the end-to-end trace has AI context at a glance (the full prompt/
+ * completion rides the AI leg into the LLM view; there is no consolidated view).
+ * Embedding and image RESPONSES yield no readable text and are omitted by
+ * genkitCompletionPreview. The flattener is shared with the AI leg (genkitContent
+ * .ts) so the never-forward-base64 policy can't drift.
+ */
+function appendContentPreviews(
+  attrs: Readonly<Record<string, unknown>>,
+  attributes: Attribute[],
+): void {
+  const subtype = genkitSubtype(attrs);
+  if (subtype !== 'model' && subtype !== 'embedder') return;
+  const prompt = genkitPromptPreview(attrs);
+  if (prompt) attributes.push(strAttr('ai.prompt.preview', prompt));
+  const completion = genkitCompletionPreview(attrs);
+  if (completion) attributes.push(strAttr('ai.completion.preview', completion));
+}
+
 /**
  * Map a finished span to an OTLP span verbatim (no namespace remap). Forwards the
  * span's live name (which setActiveSpanName may have set to a human-readable
@@ -112,8 +146,9 @@ function encodeAttr(key: string, value: unknown): Attribute | null {
  */
 export function toDistributedOtlpSpan(span: ReadableSpanLike): OtlpSpan {
   const ctx = span.spanContext();
+  const attrs = span.attributes ?? {};
   const attributes: Attribute[] = [];
-  for (const [key, value] of Object.entries(span.attributes ?? {})) {
+  for (const [key, value] of Object.entries(attrs)) {
     // Genkit's bulky `genkit:input`/`genkit:output` blobs are the AI leg's
     // concern (it remaps + caps them into the LLM view); the distributed/
     // structural view keeps only name/timing/kind + our own scalar attrs.
@@ -121,6 +156,8 @@ export function toDistributedOtlpSpan(span: ReadableSpanLike): OtlpSpan {
     const encoded = encodeAttr(key, value);
     if (encoded) attributes.push(encoded);
   }
+  // ...plus a short prompt/response preview on AI spans (see above).
+  appendContentPreviews(attrs, attributes);
   const out: OtlpSpan = {
     traceId: ctx.traceId,
     spanId: ctx.spanId,

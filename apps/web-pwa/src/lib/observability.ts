@@ -18,8 +18,9 @@ const _phKey = import.meta.env.VITE_PUBLIC_POSTHOG_KEY as string | undefined;
 const _useEmulators = import.meta.env.VITE_USE_EMULATORS === 'true';
 // Vite's mode is the build target — 'development' (vite dev), 'staging'
 // (build:staging --mode staging), or 'production' (build). It maps 1:1 to the
-// deployment environment, so it becomes the PostHog `environment` super property
-// in the SAME vocabulary the cloud-functions side derives from its project id.
+// deployment environment, so it becomes the OTel-standard `deployment.environment`
+// super property in the SAME vocabulary the cloud-functions side derives from its
+// project id.
 if (_phKey)
   initObservability(_phKey, {
     manualStart: _useEmulators,
@@ -76,8 +77,8 @@ export function isSessionActive(): boolean {
 // success/error from the boolean.
 //
 // Non-production feedback is footer-tagged with the deployment environment — the
-// SAME `import.meta.env.MODE` value we register as the PostHog `environment`
-// super property. The super property already rides on the $conversations_message_sent
+// SAME `import.meta.env.MODE` value we register as the PostHog
+// `deployment.environment` super property. The super property already rides on the $conversations_message_sent
 // event (so analytics can split by env), but the Support *inbox* can't filter
 // tickets by a super property, so the env has to live on the ticket itself. Prod
 // feedback (real users) is sent verbatim; dev/staging tickets self-label as test.
