@@ -7,6 +7,8 @@ import {
   CanonicaliseRecipeIngredientsWireInputSchema,
   AuthorRecipeWireInputSchema,
   ExtractRecipeFromUrlWireInputSchema,
+  IdentifyEquipmentWireInputSchema,
+  PopulateEquipmentEntryWireInputSchema,
 } from '@salt/domain/schemas';
 import { enableFirebaseTelemetry } from '@genkit-ai/firebase';
 import {
@@ -277,24 +279,72 @@ export const canonicaliseRecipeIngredients = onCall(
   },
 );
 
-export const identifyEquipment = onCallGenkit(
+// Add-equipment grouping (issue #361). The multi-step add-equipment action fires
+// identifyEquipment then populateEquipmentEntry with human think-time between; the
+// browser mints ONE trace id and supplies the SAME `traceparent` to both calls.
+// Manual onCall (not onCallGenkit) so we can install that supplied trace context
+// as the active OTel context BEFORE Genkit opens the flow span — so both flows
+// nest under one trace instead of re-rooting two. See runFlowWithTraceContext
+// above for the field→header precedence and env-gating, and matchOrCreateCanon
+// for the wire-validation / strip / entrypoint-reporting shape these mirror.
+export const identifyEquipment = onCall(
   {
     ...APP_CHECK_ENFORCEMENT,
-    // posthogApiKey bound so the flow's onCallGenkit-boundary error reporting
-    // (reportFlowError in the flow body) can read POSTHOG_API_KEY at runtime.
+    // posthogApiKey is the bearer token for the AI-OTLP span exporter (and the
+    // posthog-node key) AND lets the entrypoint catch report a flow failure.
     secrets: [geminiApiKey, posthogApiKey],
-    authPolicy: isSignedIn(),
   },
-  identifyEquipmentFlow,
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Sign in required.');
+    }
+    const parsed = IdentifyEquipmentWireInputSchema.safeParse(request.data);
+    if (!parsed.success) {
+      throw new HttpsError('invalid-argument', 'Invalid request payload.');
+    }
+    const { traceparent, ...domainInput } = parsed.data;
+    await whenServerObservabilityReady();
+    try {
+      return await runFlowWithTraceContext(
+        domainInput,
+        request.rawRequest?.headers,
+        traceparent,
+        identifyEquipmentFlow,
+      );
+    } catch (err) {
+      await reportFlowError(err);
+      throw err;
+    }
+  },
 );
 
-export const populateEquipmentEntry = onCallGenkit(
+export const populateEquipmentEntry = onCall(
   {
     ...APP_CHECK_ENFORCEMENT,
     secrets: [geminiApiKey, posthogApiKey],
-    authPolicy: isSignedIn(),
   },
-  populateEquipmentEntryFlow,
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Sign in required.');
+    }
+    const parsed = PopulateEquipmentEntryWireInputSchema.safeParse(request.data);
+    if (!parsed.success) {
+      throw new HttpsError('invalid-argument', 'Invalid request payload.');
+    }
+    const { traceparent, ...domainInput } = parsed.data;
+    await whenServerObservabilityReady();
+    try {
+      return await runFlowWithTraceContext(
+        domainInput,
+        request.rawRequest?.headers,
+        traceparent,
+        populateEquipmentEntryFlow,
+      );
+    } catch (err) {
+      await reportFlowError(err);
+      throw err;
+    }
+  },
 );
 
 // Recipe lists are larger prompts than single-entry flows — allow 90s so the

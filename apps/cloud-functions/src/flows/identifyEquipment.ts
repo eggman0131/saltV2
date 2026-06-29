@@ -2,10 +2,9 @@ import {
   IdentifyEquipmentAIOutputSchema,
   IdentifyEquipmentInputSchema,
 } from '@salt/domain/schemas';
-import { setActiveSpanName } from '@salt/observability/server';
+import { flushServerObservability, setActiveSpanName } from '@salt/observability/server';
 import { ai } from '../genkit.js';
 import { flowModel } from '../ai/fakeModel.js';
-import { reportFlowError } from '../observability/reportServerError.js';
 
 export const identifyEquipmentFlow = ai.defineFlow(
   {
@@ -25,13 +24,14 @@ export const identifyEquipmentFlow = ai.defineFlow(
         config: { temperature: 0 },
       });
       return { candidates: result.output!.candidates };
-    } catch (err) {
-      // onCallGenkit owns the error path for this callable, so the AI/Genkit
-      // failure (incl. AiTimeoutError) is reported here at the flow boundary —
-      // the only path that reaches this flow. Report + flush, then re-throw so
-      // Genkit's behaviour is unchanged. Best-effort; never throws.
-      await reportFlowError(err);
-      throw err;
+    } finally {
+      // This callable is a manual onCall (index.ts) so the browser-supplied
+      // trace context can be installed before the flow opens its span (issue
+      // #361). Unlike onCallGenkit, onCall has no framework forceFlush, so drain
+      // the AI-OTLP span POSTs before the instance freezes (mirrors
+      // matchOrCreateCanonFlow). The entrypoint's catch owns error reporting.
+      // Idempotent + best-effort; never throws (Rule 10).
+      await flushServerObservability();
     }
   },
 );
