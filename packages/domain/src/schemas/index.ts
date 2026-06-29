@@ -95,12 +95,20 @@ export type { DevSettingsDoc } from './devSettings.js';
 
 export {
   AppSettingsSchema,
+  HomeLocationSchema,
+  parseGeocodingResponse,
   AI_MODEL_DEFAULTS,
   AI_MODEL_ROLES,
   AI_FLOW_ROLES,
   AI_FLOW_IDS,
 } from './appSettings.js';
-export type { AppSettings, AiModelRole, AiFlowId } from './appSettings.js';
+export type {
+  AppSettings,
+  HomeLocation,
+  GeocodingResult,
+  AiModelRole,
+  AiFlowId,
+} from './appSettings.js';
 
 export { MemberSchema } from './member.js';
 export type { MemberDoc } from './member.js';
