@@ -35,6 +35,13 @@ export interface ReadableSpanLike {
   readonly parentSpanId?: string;
   readonly parentSpanContext?: { readonly spanId?: string };
   readonly kind?: number;
+  // The originating tracer/instrumentation scope. OTel 1.x exposes
+  // `instrumentationLibrary`; newer SDKs expose `instrumentationScope`. Read both.
+  // The distributed leg uses this to keep our own/Genkit spans and drop the noisy
+  // auto-instrumentation (fs/HTTP/@google-cloud/firestore) that must NOT surface
+  // as top-level trace nodes (issue #362 follow-up).
+  readonly instrumentationScope?: { readonly name?: string };
+  readonly instrumentationLibrary?: { readonly name?: string };
   spanContext(): { readonly traceId: string; readonly spanId: string };
 }
 
