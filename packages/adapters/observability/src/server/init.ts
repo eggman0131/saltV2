@@ -282,3 +282,30 @@ export function runWithSuppliedTraceContext<T>(traceparent: string | undefined, 
   if (!traceparent) return fn();
   return runWithExtractedTraceContext({ traceparent }, fn);
 }
+
+// Serialize the CURRENTLY-ACTIVE OTel span context to a W3C `traceparent`
+// string, or undefined when there is no active/valid/recording span context.
+// This is the read-side counterpart to runWithSuppliedTraceContext: a flow body
+// running inside an installed browser-supplied trace (issue #362) can pull the
+// active traceparent back out and stamp it onto a Firestore doc, so a downstream
+// Firestore trigger (onCanonItemWritten) continues the SAME trace instead of
+// re-rooting — closing the loop without passing `traceparent` as a domain value
+// (domain purity).
+//
+// Symmetric to the extract path: rather than reaching into span-context internals
+// we inject the active context into a single-header carrier via the configured
+// W3C propagator and read `traceparent` back off it — keeping ONE serialization
+// implementation and yielding undefined whenever the propagator declines to write
+// a header (no global propagator, or no valid/recording span context to encode).
+// NEVER throws (CLAUDE.md Rule 10): any propagation failure degrades to undefined,
+// which downstream callers treat as "no context" → a normal root trace.
+export function activeTraceparent(): string | undefined {
+  try {
+    const carrier: Record<string, string> = {};
+    propagation.inject(context.active(), carrier);
+    const traceparent = carrier.traceparent;
+    return typeof traceparent === 'string' && traceparent.length > 0 ? traceparent : undefined;
+  } catch {
+    return undefined;
+  }
+}

@@ -3,6 +3,7 @@ import { matchOrCreateBatch } from '@salt/domain';
 import type { MatchOrCreateInput } from '@salt/domain';
 import { CanonicaliseRecipeIngredientsInputSchema } from '@salt/domain/schemas';
 import {
+  activeTraceparent,
   flushServerObservability,
   startSpan,
   whenServerObservabilityReady,
@@ -46,7 +47,18 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
     const batchSpan = startSpan(`canon.canonicaliseRecipeBatch: ${inputs.length} items`);
     try {
       batchSpan.setAttribute('canon.batchSize', inputs.length);
-      return await matchOrCreateBatch(inputs, buildMatchOrCreatePorts(batchSpan));
+      // Stamp the browser-rooted trace (installed as the active OTel context by
+      // the field-preferred callable entrypoint, issue #362 Phase 1) onto each
+      // new canon doc via traceContext, so onCanonItemWritten continues the SAME
+      // import trace — the per-ingredient icon/embedding work nests under the
+      // recipe import instead of N separate root traces. activeTraceparent()
+      // returns undefined when no context is active (local emulators / no inbound
+      // trace), and buildMatchOrCreatePorts then writes a byte-identical doc with
+      // no traceContext field — degrade-never-throw (Rule 10).
+      return await matchOrCreateBatch(
+        inputs,
+        buildMatchOrCreatePorts(batchSpan, activeTraceparent()),
+      );
     } finally {
       batchSpan.end();
       await flushServerObservability();
