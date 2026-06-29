@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   import { Button, Checkbox, FormPage, Spinner, TextField } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
+  import { startUserActionSpan } from '@salt/observability';
   import {
     callIdentifyEquipment,
     callPopulateEquipmentEntry,
@@ -9,6 +11,24 @@
   } from '../../lib/equipmentService.js';
   import { addToast } from '../../lib/toastStore.js';
   import type { IdentifyEquipmentCandidate } from '@salt/firebase-sync';
+
+  // ─── One browser-rooted trace across the whole add-equipment action (#361) ──
+  // The action fires two AI callables — identify → populate — with human
+  // think-time between (the user picks a candidate). We mint ONE root span at
+  // "Identify" and hand its W3C traceparent to BOTH calls, so the two CF flows
+  // nest under a single trace instead of re-rooting two. Inert no-op when browser
+  // tracing is off (empty traceparent → the callable wrappers omit the field).
+  // Never throws (Rule 10). Held in a plain let — not reactive UI state.
+  let actionSpan: ReturnType<typeof startUserActionSpan> | null = null;
+
+  function endActionSpan(): void {
+    actionSpan?.end();
+    actionSpan = null;
+  }
+
+  // Flush an in-flight trace if the user navigates away mid-action (bottom nav,
+  // browser back) without saving or cancelling.
+  onDestroy(endActionSpan);
 
   // ─── Step machine ─────────────────────────────────────────────────────────
   // step 1: raw name entry
@@ -25,10 +45,17 @@
   async function handleIdentify(): Promise<void> {
     const name = rawName.trim();
     if (!name) return;
+    // Fresh add attempt → fresh trace root. End any prior span (e.g. the user
+    // came Back and re-identified) so each attempt is its own trace.
+    endActionSpan();
+    actionSpan = startUserActionSpan(`Add equipment: ${name}`);
     identifyBusy = true;
-    const result = await callIdentifyEquipment(name);
+    const child = actionSpan.child('callIdentifyEquipment');
+    const result = await callIdentifyEquipment(name, actionSpan.traceparent || undefined);
+    child.end();
     identifyBusy = false;
     if (result.kind !== 'ok') {
+      actionSpan.setError();
       addToast('Could not reach AI. You can still type the name manually.', 'error');
       candidates = [];
     } else {
@@ -58,9 +85,14 @@
     if (!name) return;
     confirmedName = name;
     populateBusy = true;
-    const result = await callPopulateEquipmentEntry(name);
+    // SECOND leg of the same trace: reuse the action span's traceparent so this
+    // flow nests beside identifyEquipment under one root, not a fresh trace.
+    const child = actionSpan?.child('callPopulateEquipmentEntry');
+    const result = await callPopulateEquipmentEntry(name, actionSpan?.traceparent || undefined);
+    child?.end();
     populateBusy = false;
     if (result.kind !== 'ok') {
+      actionSpan?.setError();
       addToast('Could not fetch accessories. You can add them manually.', 'error');
       draftAccessories = [];
     } else {
@@ -101,16 +133,24 @@
 
   async function handleSave(): Promise<void> {
     saveBusy = true;
+    // The save is a local Firestore write (no CF/AI continuation), but recording
+    // it as a child gives the trace the client-side save timing under the same
+    // root before we close the action span.
+    const child = actionSpan?.child('captureEquipmentItem');
     const result = await captureEquipmentItem(
       confirmedName,
       draftAccessories.map((a) => ({ name: a.name, owned: a.owned, included: a.included })),
     );
+    child?.end();
     saveBusy = false;
     if (result.kind !== 'ok') {
+      actionSpan?.setError();
       addToast('Failed to save equipment.', 'error');
       return;
     }
     addToast(`Added ${confirmedName}`, 'success');
+    // Terminal success — close the add-equipment trace before navigating away.
+    endActionSpan();
     push(`/equipment/${result.value.itemId}`);
   }
 
@@ -129,7 +169,10 @@
     isSubmitting={identifyBusy}
     canSubmit={canIdentify}
     onSubmit={handleIdentify}
-    onCancel={() => push('/equipment')}
+    onCancel={() => {
+      endActionSpan();
+      push('/equipment');
+    }}
     class="p-4 sm:p-6"
   >
     <div class="flex flex-col gap-1.5">

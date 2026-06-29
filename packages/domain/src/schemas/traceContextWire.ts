@@ -3,6 +3,8 @@ import { MatchOrCreateCanonInputSchema } from './matchOrCreateCanonInput.js';
 import { CanonicaliseRecipeIngredientsInputSchema } from './canonicaliseRecipeIngredientsInput.js';
 import { AuthorRecipeInputSchema } from './authorRecipe.js';
 import { ExtractRecipeFromUrlInputSchema } from './extractRecipeFromUrl.js';
+import { IdentifyEquipmentInputSchema } from './identifyEquipment.js';
+import { PopulateEquipmentEntryInputSchema } from './populateEquipmentEntry.js';
 
 // ─── Browser→CF trace-continuity wire envelopes (issue #362, Phase 3) ──────────
 //
@@ -43,9 +45,23 @@ export const ExtractRecipeFromUrlWireInputSchema = ExtractRecipeFromUrlInputSche
   traceparent: TraceparentSchema,
 });
 
+// The two equipment-add callables (issue #361). The multi-step add-equipment
+// action fires identifyEquipment then populateEquipmentEntry with human
+// think-time between; the browser mints ONE trace id and supplies the SAME
+// `traceparent` to both, so both flows nest under one trace instead of two.
+export const IdentifyEquipmentWireInputSchema = IdentifyEquipmentInputSchema.extend({
+  traceparent: TraceparentSchema,
+});
+
+export const PopulateEquipmentEntryWireInputSchema = PopulateEquipmentEntryInputSchema.extend({
+  traceparent: TraceparentSchema,
+});
+
 export type MatchOrCreateCanonWireInput = z.infer<typeof MatchOrCreateCanonWireInputSchema>;
 export type CanonicaliseRecipeIngredientsWireInput = z.infer<
   typeof CanonicaliseRecipeIngredientsWireInputSchema
 >;
 export type AuthorRecipeWireInput = z.infer<typeof AuthorRecipeWireInputSchema>;
 export type ExtractRecipeFromUrlWireInput = z.infer<typeof ExtractRecipeFromUrlWireInputSchema>;
+export type IdentifyEquipmentWireInput = z.infer<typeof IdentifyEquipmentWireInputSchema>;
+export type PopulateEquipmentEntryWireInput = z.infer<typeof PopulateEquipmentEntryWireInputSchema>;

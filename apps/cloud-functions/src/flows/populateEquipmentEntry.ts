@@ -2,10 +2,9 @@ import {
   PopulateEquipmentEntryAIOutputSchema,
   PopulateEquipmentEntryInputSchema,
 } from '@salt/domain/schemas';
-import { setActiveSpanName } from '@salt/observability/server';
+import { flushServerObservability, setActiveSpanName } from '@salt/observability/server';
 import { ai } from '../genkit.js';
 import { flowModel } from '../ai/fakeModel.js';
-import { reportFlowError } from '../observability/reportServerError.js';
 
 export const populateEquipmentEntryFlow = ai.defineFlow(
   {
@@ -30,12 +29,13 @@ export const populateEquipmentEntryFlow = ai.defineFlow(
       });
       const output = result.output!;
       return { name: output.name, accessories: output.accessories };
-    } catch (err) {
-      // onCallGenkit owns this callable's error path; report the AI/Genkit
-      // failure here (the only path to this flow), flush, then re-throw
-      // unchanged. Best-effort; never throws.
-      await reportFlowError(err);
-      throw err;
+    } finally {
+      // Manual onCall (index.ts) installs the browser-supplied trace context so
+      // this flow nests under the add-equipment trace (issue #361). onCall has no
+      // framework forceFlush, so drain the AI-OTLP span POSTs before the instance
+      // freezes (mirrors matchOrCreateCanonFlow); the entrypoint's catch owns
+      // error reporting. Idempotent + best-effort; never throws (Rule 10).
+      await flushServerObservability();
     }
   },
 );

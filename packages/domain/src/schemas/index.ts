@@ -42,12 +42,16 @@ export {
   CanonicaliseRecipeIngredientsWireInputSchema,
   AuthorRecipeWireInputSchema,
   ExtractRecipeFromUrlWireInputSchema,
+  IdentifyEquipmentWireInputSchema,
+  PopulateEquipmentEntryWireInputSchema,
 } from './traceContextWire.js';
 export type {
   MatchOrCreateCanonWireInput,
   CanonicaliseRecipeIngredientsWireInput,
   AuthorRecipeWireInput,
   ExtractRecipeFromUrlWireInput,
+  IdentifyEquipmentWireInput,
+  PopulateEquipmentEntryWireInput,
 } from './traceContextWire.js';
 
 export {

@@ -24,8 +24,26 @@ const { mockIsLoadingEquipment } = vi.hoisted(() => {
   return { mockIsLoadingEquipment: makeStore<boolean>(false) };
 });
 
+// One browser-rooted action span across the add-equipment action (issue #361):
+// startUserActionSpan returns a handle whose `.traceparent` is handed to BOTH AI
+// calls. The mock exposes a fixed traceparent + spies so the tests can assert the
+// SAME id reaches both calls and the span is closed on terminal outcomes.
+const ACTION_TRACEPARENT = '00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01';
+const { mockActionSpan, mockStartUserActionSpan } = vi.hoisted(() => {
+  const tp = '00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01';
+  const span = {
+    traceparent: tp,
+    child: vi.fn(() => ({ setError: vi.fn(), end: vi.fn() })),
+    setError: vi.fn(),
+    setAttribute: vi.fn(),
+    end: vi.fn(),
+  };
+  return { mockActionSpan: span, mockStartUserActionSpan: vi.fn(() => span) };
+});
+
 vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
 vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
+vi.mock('@salt/observability', () => ({ startUserActionSpan: mockStartUserActionSpan }));
 vi.mock('../src/lib/equipmentService.js', () => ({
   isLoadingEquipment: mockIsLoadingEquipment,
   callIdentifyEquipment: vi.fn(),
@@ -147,5 +165,41 @@ describe('EquipmentCapturePage', () => {
       expect(vi.mocked(addToast)).toHaveBeenCalledWith(expect.stringMatching(/failed/i), 'error');
     });
     expect(vi.mocked(push)).not.toHaveBeenCalledWith(expect.stringContaining('/equipment/'));
+  });
+
+  // ─── One trace across both AI calls (issue #361) ────────────────────────────
+
+  it('mints ONE action span and hands the SAME traceparent to both AI calls', async () => {
+    vi.mocked(captureEquipmentItem).mockResolvedValueOnce({
+      kind: 'ok',
+      value: { itemId: 'new-id', manifest: makeManifest() },
+    });
+
+    render(EquipmentCapturePage);
+    await walkThroughCapture('KitchenAid');
+
+    // Exactly one root span, named for the action (the descriptive trace name).
+    expect(mockStartUserActionSpan).toHaveBeenCalledTimes(1);
+    expect(mockStartUserActionSpan).toHaveBeenCalledWith('Add equipment: KitchenAid');
+
+    // BOTH callables received the SAME browser-minted traceparent → one trace.
+    const idTp = vi.mocked(callIdentifyEquipment).mock.calls[0]![1];
+    const popTp = vi.mocked(callPopulateEquipmentEntry).mock.calls[0]![1];
+    expect(idTp).toBe(ACTION_TRACEPARENT);
+    expect(popTp).toBe(ACTION_TRACEPARENT);
+    expect(idTp).toBe(popTp);
+  });
+
+  it('closes the action span after a successful save', async () => {
+    vi.mocked(captureEquipmentItem).mockResolvedValueOnce({
+      kind: 'ok',
+      value: { itemId: 'new-id', manifest: makeManifest() },
+    });
+
+    render(EquipmentCapturePage);
+    await walkThroughCapture('Mixer');
+    await userEvent.click(screen.getByTestId('equipment-save-btn'));
+
+    await waitFor(() => expect(mockActionSpan.end).toHaveBeenCalled());
   });
 });
