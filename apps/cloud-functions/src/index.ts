@@ -142,17 +142,22 @@ export const arbitrateCanon = onCallGenkit(
 //
 // The canon-matching callables run their flow within a W3C trace context so the
 // flow span nests under one coherent invocation trace instead of re-rooting.
-// There are TWO sources for that context, applied with this precedence:
-//   1. A real inbound W3C trace HEADER on the underlying request
-//      (request.rawRequest.headers) — what the platform/GCP injects.
-//   2. Else a browser-SUPPLIED `traceparent` carried as a NAMED, TYPED, OPTIONAL
+// These are USER-INITIATED callables, so the browser-supplied field is the
+// PREFERRED channel. There are TWO sources for that context, applied with this
+// precedence:
+//   1. A browser-SUPPLIED `traceparent` carried as a NAMED, TYPED, OPTIONAL
 //      field on the callable WIRE input. The Firebase JS callable SDK cannot
 //      carry a custom `traceparent` HTTP header (HttpsCallableOptions is only
 //      { timeout?, limitedUseAppCheckTokens? } and the transport sets its own
-//      fixed headers), so a browser-minted trace id rides as this field. It is
-//      schema-validated and stripped here before the flow runs — NOT the
+//      fixed headers), so a browser-minted trace id can ONLY ride as this field.
+//      It is schema-validated and stripped here before the flow runs — NOT the
 //      forbidden magic `_trace`. (Phase 4 mints the real browser trace id;
-//      until then it is synthetic/test.)
+//      until then it is synthetic/test.) Preferred — it is the only channel that
+//      can unify the browser action with the server flow.
+//   2. Else the inbound W3C trace HEADER on the underlying request
+//      (request.rawRequest.headers). This is GCP's FRESH request-trace root, so
+//      it can never carry the browser's trace id — it is the fallback only when
+//      no non-empty supplied field is present.
 //
 // Env-gated on GENKIT_TELEMETRY_SERVER (set only by `pnpm dev:emulators`):
 //   • Local dev (set): SUPPRESS propagation — run the flow without installing
@@ -176,19 +181,25 @@ function runFlowWithTraceContext<T>(
   if (process.env['GENKIT_TELEMETRY_SERVER']) {
     return flow(domainInput as never);
   }
-  // Production. Prefer a real inbound W3C header; else fall back to the
-  // browser-supplied payload `traceparent`. Both helpers degrade safely.
-  if (headers && Object.keys(headers).length > 0) {
-    return runWithExtractedTraceContext(headers, () => flow(domainInput as never));
+  // Production. For these user-INITIATED callables the browser-supplied
+  // `traceparent` field WINS: it is the only channel that can carry the
+  // browser's trace id (the Firebase callable SDK can't carry a custom HTTP
+  // header), so it is the one that actually unifies the browser action with the
+  // server flow. The inbound W3C header is GCP's FRESH request-trace root —
+  // preferring it would re-root away from the browser trace and could never
+  // unify with it — so it is the fallback only when no non-empty field is
+  // present. Both helpers degrade safely to a plain call (Rule 10).
+  if (traceparent) {
+    return runWithSuppliedTraceContext(traceparent, () => flow(domainInput as never));
   }
-  return runWithSuppliedTraceContext(traceparent, () => flow(domainInput as never));
+  return runWithExtractedTraceContext(headers ?? {}, () => flow(domainInput as never));
 }
 
 // Manual onCall (instead of onCallGenkit) so we can install the trace context as
 // the active OTel context BEFORE Genkit opens the flow span — so the flow span
 // nests under the request trace and each invocation renders as ONE coherent
 // trace, instead of the flow re-rooting a fresh trace. See runFlowWithTraceContext
-// above for the header→payload precedence and env-gating.
+// above for the field→header precedence and env-gating.
 export const matchOrCreateCanon = onCall(
   {
     ...APP_CHECK_ENFORCEMENT,

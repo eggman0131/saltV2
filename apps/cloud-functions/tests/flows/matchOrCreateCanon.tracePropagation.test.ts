@@ -7,10 +7,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // trace. The unification is env-gated at the matchOrCreateCanon callable
 // entrypoint (apps/cloud-functions/src/index.ts):
 //
-//   • PRODUCTION (GENKIT_TELEMETRY_SERVER unset): the entrypoint reads the
-//     inbound W3C trace headers off request.rawRequest.headers and runs the flow
-//     within the extracted context via runWithExtractedTraceContext, so the flow
-//     span parents under the request trace.
+//   • PRODUCTION (GENKIT_TELEMETRY_SERVER unset): for these USER-INITIATED
+//     callables the browser-supplied `traceparent` field WINS — the entrypoint
+//     runs the flow within that supplied context via runWithSuppliedTraceContext.
+//     The field is the only channel that can carry the browser's trace id (the
+//     callable SDK can't carry a custom header), so it is what unifies the
+//     browser action with the server flow. The inbound W3C trace header off
+//     request.rawRequest.headers is GCP's fresh request-trace root and serves as
+//     the FALLBACK (runWithExtractedTraceContext) only when no non-empty field
+//     is present.
 //   • LOCAL DEV (GENKIT_TELEMETRY_SERVER set, by `pnpm dev:emulators`):
 //     propagation is SUPPRESSED — the flow runs without any installed parent
 //     context so it stays root-listed in the Genkit Dev UI (whose trace list
@@ -181,20 +186,20 @@ describe('matchOrCreateCanon — env-gated server-side trace unification', () =>
     expect(matchOrCreateCanonFlow).toHaveBeenCalledWith({ rawName: 'tomato' });
   });
 
-  it('PRODUCTION: tolerates a missing rawRequest and no payload traceparent (both helpers degrade to a plain call)', async () => {
+  it('PRODUCTION: tolerates a missing rawRequest and no payload traceparent (the header fallback degrades to a plain call)', async () => {
     delete process.env['GENKIT_TELEMETRY_SERVER'];
 
     const req = { auth: { uid: 'u1' }, data: { rawName: 'tomato' } } as unknown;
     const result = await invoke(req);
 
     expect(result).toMatchObject({ kind: 'ok' });
-    // No usable inbound header → header path skipped; with no payload
-    // traceparent either, the supplied path is taken with `undefined` and
-    // degrades to a plain flow call.
-    expect(runWithExtractedTraceContext).not.toHaveBeenCalled();
-    expect(runWithSuppliedTraceContext).toHaveBeenCalledOnce();
-    const [tpArg] = runWithSuppliedTraceContext.mock.calls[0]!;
-    expect(tpArg).toBeUndefined();
+    // No payload `traceparent` field → the supplied path is NOT taken; we fall
+    // back to the header path. There is no rawRequest either, so the header
+    // fallback runs with an empty header bag and degrades to a plain flow call.
+    expect(runWithSuppliedTraceContext).not.toHaveBeenCalled();
+    expect(runWithExtractedTraceContext).toHaveBeenCalledOnce();
+    const [headersArg] = runWithExtractedTraceContext.mock.calls[0]!;
+    expect(headersArg).toEqual({});
     expect(matchOrCreateCanonFlow).toHaveBeenCalledWith({ rawName: 'tomato' });
   });
 
@@ -213,7 +218,8 @@ describe('matchOrCreateCanon — env-gated server-side trace unification', () =>
     const flowArg = matchOrCreateCanonFlow.mock.calls[0]![0] as Record<string, unknown>;
     expect(flowArg).not.toHaveProperty('_trace');
     expect(flowArg).not.toHaveProperty('traceparent');
-    // Inbound header drives propagation (header > payload precedence).
+    // No real `traceparent` field survives the strip (`_trace` is not the field),
+    // so the inbound header drives propagation as the fallback.
     const [headersArg] = runWithExtractedTraceContext.mock.calls[0]!;
     expect(headersArg).toEqual({ traceparent });
   });
@@ -237,18 +243,20 @@ describe('matchOrCreateCanon — env-gated server-side trace unification', () =>
     expect(matchOrCreateCanonFlow).toHaveBeenCalledWith({ rawName: 'tomato' });
   });
 
-  it('PRODUCTION: an inbound header WINS over a payload `traceparent` (header > payload precedence)', async () => {
+  it('PRODUCTION: a payload `traceparent` field WINS over an inbound header (field > header precedence)', async () => {
     delete process.env['GENKIT_TELEMETRY_SERVER'];
 
-    const payloadOnly = '00-11111111111111111111111111111111-2222222222222222-01';
-    await invoke(makeRequest({ rawName: 'tomato', traceparent: payloadOnly }, { traceparent }));
+    // Both channels carry a trace: a browser-supplied field AND an inbound GCP
+    // header. The field WINS — it is the only channel that can carry the browser
+    // trace id, so it is what unifies the browser action with the server flow.
+    // The inbound header (GCP's fresh request-trace root) is not consulted.
+    const fieldValue = '00-11111111111111111111111111111111-2222222222222222-01';
+    await invoke(makeRequest({ rawName: 'tomato', traceparent: fieldValue }, { traceparent }));
 
-    // With a usable inbound header present, the header path is taken; the
-    // payload traceparent is not consulted.
-    expect(runWithExtractedTraceContext).toHaveBeenCalledOnce();
-    expect(runWithSuppliedTraceContext).not.toHaveBeenCalled();
-    const [headersArg] = runWithExtractedTraceContext.mock.calls[0]!;
-    expect(headersArg).toEqual({ traceparent });
+    expect(runWithSuppliedTraceContext).toHaveBeenCalledOnce();
+    expect(runWithExtractedTraceContext).not.toHaveBeenCalled();
+    const [tpArg] = runWithSuppliedTraceContext.mock.calls[0]!;
+    expect(tpArg).toBe(fieldValue);
     expect(matchOrCreateCanonFlow).toHaveBeenCalledWith({ rawName: 'tomato' });
   });
 
