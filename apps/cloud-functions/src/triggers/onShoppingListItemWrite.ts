@@ -12,6 +12,7 @@ import {
 import { buildMatchOrCreatePorts } from '../flows/matchOrCreateCanon.js';
 import { createServerEntryParseAdapter } from '../adapters/serverEntryParse.js';
 import { reportServerError } from '../observability/reportServerError.js';
+import { whenCfTelemetryReady } from '../observability/telemetryReady.js';
 import { runTriggerWithTraceContext } from './triggerTraceContext.js';
 
 const TRIGGER_PATH = 'shoppingLists/{listId}/items/{itemId}';
@@ -80,19 +81,6 @@ export const onShoppingListItemWrite = onDocumentWritten(
       if (beforeRawText === rawText) return;
     }
 
-    // Parse: deterministic first; AI fallback for compound entries the rule missed.
-    let parsed = parseShoppingListEntry(rawText);
-    if (parsed.context === '' && parsed.amount === undefined && looksCompound(rawText)) {
-      const aiResult = await createServerEntryParseAdapter().parse(rawText);
-      if (aiResult.kind === 'ok') {
-        parsed = aiResult.value;
-      }
-    }
-
-    const cleanName = parsed.name;
-    const context = parsed.context;
-    const parsedAmount = parsed.amount;
-    const parsedUnit = parsed.unit;
     const currentNotes = typeof afterData['notes'] === 'string' ? afterData['notes'] : '';
 
     const { listId, itemId } = event.params;
@@ -100,6 +88,10 @@ export const onShoppingListItemWrite = onDocumentWritten(
     const docRef = db.collection('shoppingLists').doc(listId).collection('items').doc(itemId);
 
     await whenServerObservabilityReady();
+    // Wait for the OTel pipeline (propagator + context manager) to be live before
+    // extracting the supplied browser trace, so a cold-started invocation does not
+    // silently drop it and re-root (issue #370). Resolves immediately once warm.
+    await whenCfTelemetryReady();
 
     let errorCategory: string | null = null;
     // Continue the browser-rooted trace carried by the doc's traceContext field
@@ -117,6 +109,22 @@ export const onShoppingListItemWrite = onDocumentWritten(
     const spanHolder: { current: ObservabilitySpan | null } = { current: null };
     try {
       await runTriggerWithTraceContext(traceContext, async () => {
+        // Parse INSIDE the installed trace context so the compound-entry AI
+        // fallback's `parseEntry` flow joins this trace instead of re-rooting a
+        // fresh one (issue #370 — it ran before the wrapper previously).
+        // Deterministic first; AI fallback only for compound entries the rule missed.
+        let parsed = parseShoppingListEntry(rawText);
+        if (parsed.context === '' && parsed.amount === undefined && looksCompound(rawText)) {
+          const aiResult = await createServerEntryParseAdapter().parse(rawText);
+          if (aiResult.kind === 'ok') {
+            parsed = aiResult.value;
+          }
+        }
+        const cleanName = parsed.name;
+        const context = parsed.context;
+        const parsedAmount = parsed.amount;
+        const parsedUnit = parsed.unit;
+
         const matchSpan = startSpan(`shoppingList.matchItem: ${rawText}`);
         spanHolder.current = matchSpan; // hoist for the finally below (end + flush)
         matchSpan.setAttribute('entrySource', 'shoppingListItem');

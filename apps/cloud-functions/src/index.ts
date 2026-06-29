@@ -20,6 +20,7 @@ import {
 import { registerGenkitDevTracing } from './genkitTracing.js';
 import { reportFlowError } from './observability/reportServerError.js';
 import { resolveServerEnvironment } from './observability/environment.js';
+import { armCfTelemetry } from './observability/telemetryReady.js';
 import { embedTextFlow } from './flows/embedText.js';
 import { arbitrateCanonFlow } from './flows/arbitrateCanon.js';
 import { matchOrCreateCanonFlow } from './flows/matchOrCreateCanon.js';
@@ -82,14 +83,19 @@ setGlobalOptions({ region: 'europe-west2', memory: '512MiB' });
 //  3. registerGenkitDevTracing() points Genkit's native trace export at the
 //     local Dev UI when GENKIT_TELEMETRY_SERVER is set (pnpm dev:emulators).
 try {
-  void enableFirebaseTelemetry()
-    .then(() => {
+  // Arm the trigger telemetry-readiness gate (issue #370) with the boot promise:
+  // Firestore triggers await it before extracting a supplied trace, so a cold-
+  // started handler does not run the OTel propagator/context-manager before this
+  // async init lands (which silently dropped the trace and re-rooted the flow).
+  // armCfTelemetry SETTLES readiness on rejection too, so a telemetry-export setup
+  // failure (e.g. no GCP creds locally) degrades to a root trace without a separate
+  // .catch and without an unhandled rejection.
+  armCfTelemetry(
+    enableFirebaseTelemetry().then(() => {
       attachAiOtlpSpanProcessor();
       attachDistributedSpanProcessor();
-    })
-    .catch(() => {
-      // Non-fatal: telemetry export setup failed (e.g. no GCP creds locally).
-    });
+    }),
+  );
 } catch {
   // enableFirebaseTelemetry is async, but guard the synchronous path too.
 }
