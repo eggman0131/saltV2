@@ -6,6 +6,13 @@
 // withAiTimeout wrapper, and the same removeFlatBackground post-process. The
 // only weather-specific part is the prompt text (buildWeatherIconPrompt).
 //
+// One extra, weather-only post-process runs after background removal:
+// normalizeIconFraming re-frames each icon to a uniform subject size and
+// centre. The model centres its subject only loosely, so a fixed 17-icon set
+// otherwise renders at mismatched apparent sizes — fine for one-off canon
+// icons, jarring for a side-by-side set. (Existing committed assets can be
+// re-framed without regenerating via scripts/normalize-weather-icons.mjs.)
+//
 // This is an OFFLINE, manual one-off — NOT a runtime path. The planner renders
 // the committed static WebP assets it writes; nothing calls this at request
 // time. It writes 128px WebP-with-alpha files to:
@@ -52,6 +59,8 @@ import {
   buildWeatherIconPrompt,
   WEATHER_ICON_IDS,
 } from '../src/flows/weatherIconPrompt.js';
+// Weather-only framing normaliser (offline tooling, see its header).
+import { normalizeIconFraming } from './lib/normalizeIconFraming.mjs';
 
 // Match the canon flow's image-generation deadline (its function timeout is
 // raised to suit; here there is no function, but reuse the same budget/retry).
@@ -106,8 +115,10 @@ async function generateOne(iconId, seed, imageModel) {
   const { base64 } = parseDataUrl(media.url);
   const raw = Buffer.from(base64, 'base64');
   // EXISTING post-process: flood-fill the flat background to transparent and
-  // emit a 128px square WebP with alpha (same as the canon trigger).
-  return removeFlatBackground(raw);
+  // emit a 128px square WebP with alpha (same as the canon trigger)…
+  const cut = await removeFlatBackground(raw);
+  // …then re-frame to a uniform subject size/centre so the 17-icon set matches.
+  return normalizeIconFraming(cut);
 }
 
 async function main() {

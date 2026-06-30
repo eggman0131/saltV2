@@ -14,6 +14,16 @@ prompt wording lives in `apps/cloud-functions/src/flows/weatherIconPrompt.ts`
 and reuses the locked canon `STYLE` string. Generation is NOT a runtime path —
 the planner renders the committed static `.webp` files in this directory.
 
+After background removal each icon is run through a weather-only framing pass
+(`scripts/lib/normalizeIconFraming.mjs`): the model centres its subject only
+loosely, so without it the set renders at mismatched apparent sizes. The pass
+trims to the subject's alpha box, scales its longer side to a fixed target, and
+re-pads it dead-centre in the 128px square — so all 17 share one bounding size
+and uniform margins (their differing short-axis extents are the real shapes:
+a wide overcast cloud vs. a tall heavy-rain). To re-frame the committed assets
+in place without regenerating via AI, run
+`node scripts/normalize-weather-icons.mjs` from `apps/cloud-functions`.
+
 The id set is the single source of truth in
 `packages/domain/src/weather/weatherIcon.ts` (`WeatherIconId`); `weatherIcon()`
 maps a WMO code (+ day/night) to one of these ids.
