@@ -60,7 +60,7 @@ export function initWeatherSync(): () => void {
 let refreshing = false;
 
 // On planner access: if a home location is set AND the cached forecast is stale
-// (>3h old or the home location moved), trigger a server-side refresh. We pass NO
+// (>1h old or the home location moved), trigger a server-side refresh. We pass NO
 // force — the server does its own staleness re-check and will skip the external
 // fetch if another client already refreshed (so concurrent planner opens don't
 // each refetch). No home location ⇒ no-op. Never throws (the callable wrapper

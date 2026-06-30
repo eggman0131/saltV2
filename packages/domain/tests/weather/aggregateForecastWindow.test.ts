@@ -297,7 +297,7 @@ describe('isForecastStale', () => {
 
   const freshCache = {
     days: {},
-    fetchedAt: now - 60 * 60 * 1000, // 1h old
+    fetchedAt: now - 30 * 60 * 1000, // 30m old
     location: LONDON,
     timezone: 'Europe/London',
   };
@@ -307,7 +307,7 @@ describe('isForecastStale', () => {
     expect(isForecastStale(undefined, LONDON, now)).toBe(true);
   });
 
-  it('is stale when the cache is older than the max age (default 3h)', () => {
+  it('is stale when the cache is older than the max age (default 1h)', () => {
     const stale = { ...freshCache, fetchedAt: now - (FORECAST_MAX_AGE_MS + 1) };
     expect(isForecastStale(stale, LONDON, now)).toBe(true);
   });

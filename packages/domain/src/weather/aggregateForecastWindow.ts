@@ -19,9 +19,9 @@ import { weatherSeverity } from './weatherSeverity.js';
 const WINDOW_START_HOUR = 16;
 const WINDOW_END_HOUR = 19;
 
-// Default cache lifetime for the staleness check: 3 hours. Beyond this a cached
+// Default cache lifetime for the staleness check: 1 hour. Beyond this a cached
 // forecast is considered stale and a refetch is warranted.
-export const FORECAST_MAX_AGE_MS = 3 * 60 * 60 * 1000;
+export const FORECAST_MAX_AGE_MS = 60 * 60 * 1000;
 
 // Pulls the local date (`YYYY-MM-DD`) and hour (0–23) out of an Open-Meteo hourly
 // `time` string (`YYYY-MM-DDTHH:mm`). Returns null for an unparseable string so a
@@ -188,7 +188,7 @@ function locationDiffers(a: HomeLocation, b: HomeLocation): boolean {
 
 // Decides whether a cached forecast needs a refetch. Returns true when:
 //   • the cache is absent (no forecast yet),
-//   • it is older than `maxAgeMs` (default 3h), or
+//   • it is older than `maxAgeMs` (default 1h), or
 //   • its location snapshot no longer matches the current home location.
 // Otherwise the cache is fresh and the CF can skip the external fetch. Pure —
 // `nowMs` is passed in so callers control the clock (and tests are deterministic).

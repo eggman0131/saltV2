@@ -53,7 +53,7 @@
 
   async function onRefresh(): Promise<void> {
     refreshing = true;
-    // force=true: a manual admin refresh bypasses the server-side <3h staleness
+    // force=true: a manual admin refresh bypasses the server-side <1h staleness
     // skip so the button always refetches.
     const result = await callRefreshWeatherForecast(true);
     refreshing = false;

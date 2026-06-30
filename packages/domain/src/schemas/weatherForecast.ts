@@ -53,7 +53,7 @@ export const WeatherForecastSchema = z.object({
   // consumer can look up a given date directly. Only days that had hours in the
   // 16:00–19:00 window appear here.
   days: z.record(z.string(), WeatherDaySummarySchema),
-  // When this cache was fetched (epoch ms). Used for the <3h staleness check.
+  // When this cache was fetched (epoch ms). Used for the <1h staleness check.
   fetchedAt: z.number(),
   // Snapshot of the home location this forecast was fetched for. `isForecastStale`
   // compares this against the current home location so a moved home invalidates
@@ -71,7 +71,7 @@ export type WeatherForecast = z.infer<typeof WeatherForecastSchema>;
 // The callable reads everything it needs server-side (the home location from
 // `appSettings/singleton`), so the domain input is essentially empty. The only
 // field is an optional `force` the admin "Refresh" button sets to bypass the
-// server-side <3h staleness skip; absent/`false` lets the skip apply. The
+// server-side <1h staleness skip; absent/`false` lets the skip apply. The
 // browser→CF `traceparent` rides on a sibling WIRE envelope
 // (`RefreshWeatherForecastWireInputSchema`) and is stripped before this domain
 // input reaches any flow logic (domain purity).
