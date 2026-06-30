@@ -18,8 +18,10 @@ import { resolveModel } from '../ai/resolveModel.js';
 // a generous deadline; the trigger's function timeout is raised to match.
 const ICON_GEN_TIMEOUT_MS = 60_000;
 
-// Shared style string (STYLE) — verbatim from docs/canon-icons.md.
-const STYLE =
+// Shared style string (STYLE) — verbatim from docs/canon-icons.md. Exported so
+// the weather-icon generator (issue #387) can reuse the locked house style
+// WITHOUT copying the wording; do not change this literal's text.
+export const STYLE =
   'Flat vector cartoon illustration. A single centered subject filling most of the frame. Thick, uniform, rounded dark outline. Soft cheerful limited pastel colour palette. Simple minimal friendly shapes, low detail. Plain solid off-white background. No border or frame around the image; the subject sits directly on the plain background. No faces, no eyes, no facial expressions on any object. No caption text, no separate labels, and no lettering added under, beside, or around the subject; any text must be part of the depicted item itself (such as wording printed on a tin or jar). No drop shadows, no background gradients. Square composition, app sticker / emoji style.';
 
 // UK steer string (UK) — verbatim from docs/canon-icons.md.

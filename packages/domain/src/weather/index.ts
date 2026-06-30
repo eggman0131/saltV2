@@ -10,3 +10,6 @@ export { temperatureBand } from './temperatureBand.js';
 export type { TemperatureBand } from './temperatureBand.js';
 export { classifyEatingMood } from './classifyEatingMood.js';
 export type { EatingMood } from './classifyEatingMood.js';
+export { weatherSeverity, mostSignificantWeatherCode } from './weatherSeverity.js';
+export { weatherIcon } from './weatherIcon.js';
+export type { WeatherIconId } from './weatherIcon.js';
