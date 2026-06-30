@@ -44,6 +44,7 @@ export {
   ExtractRecipeFromUrlWireInputSchema,
   IdentifyEquipmentWireInputSchema,
   PopulateEquipmentEntryWireInputSchema,
+  RefreshWeatherForecastWireInputSchema,
 } from './traceContextWire.js';
 export type {
   MatchOrCreateCanonWireInput,
@@ -52,7 +53,21 @@ export type {
   ExtractRecipeFromUrlWireInput,
   IdentifyEquipmentWireInput,
   PopulateEquipmentEntryWireInput,
+  RefreshWeatherForecastWireInput,
 } from './traceContextWire.js';
+
+export {
+  WeatherDaySummarySchema,
+  WeatherForecastSchema,
+  RefreshWeatherForecastInputSchema,
+  OpenMeteoForecastResponseSchema,
+} from './weatherForecast.js';
+export type {
+  WeatherDaySummary,
+  WeatherForecast,
+  RefreshWeatherForecastInput,
+  OpenMeteoForecastResponse,
+} from './weatherForecast.js';
 
 export {
   CanonicaliseRecipeIngredientsItemSchema,
@@ -95,12 +110,20 @@ export type { DevSettingsDoc } from './devSettings.js';
 
 export {
   AppSettingsSchema,
+  HomeLocationSchema,
+  parseGeocodingResponse,
   AI_MODEL_DEFAULTS,
   AI_MODEL_ROLES,
   AI_FLOW_ROLES,
   AI_FLOW_IDS,
 } from './appSettings.js';
-export type { AppSettings, AiModelRole, AiFlowId } from './appSettings.js';
+export type {
+  AppSettings,
+  HomeLocation,
+  GeocodingResult,
+  AiModelRole,
+  AiFlowId,
+} from './appSettings.js';
 
 export { MemberSchema } from './member.js';
 export type { MemberDoc } from './member.js';

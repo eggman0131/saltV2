@@ -9,6 +9,7 @@ import {
   ExtractRecipeFromUrlWireInputSchema,
   IdentifyEquipmentWireInputSchema,
   PopulateEquipmentEntryWireInputSchema,
+  RefreshWeatherForecastWireInputSchema,
 } from '@salt/domain/schemas';
 import { enableFirebaseTelemetry } from '@genkit-ai/firebase';
 import {
@@ -16,9 +17,11 @@ import {
   whenServerObservabilityReady,
   runWithExtractedTraceContext,
   runWithSuppliedTraceContext,
+  flushServerObservability,
   attachAiOtlpSpanProcessor,
   attachDistributedSpanProcessor,
 } from '@salt/observability/server';
+import { runRefreshWeatherForecast } from './weather/refreshWeatherForecast.js';
 import { registerGenkitDevTracing } from './genkitTracing.js';
 import { reportFlowError } from './observability/reportServerError.js';
 import { resolveServerEnvironment } from './observability/environment.js';
@@ -527,6 +530,61 @@ export const testModel = onCall(
     secrets: [geminiApiKey, posthogApiKey],
   },
   (request) => reportUnexpected(() => handleTestModel(request)),
+);
+
+// Forecast fetch + cache pipeline (issue #382, Phase 2). User-initiated from the
+// admin "Refresh" button (and, in a later phase, the planner), so it follows the
+// same browser-supplied-trace pattern as the canon-matching callables: validate
+// the WIRE envelope, strip `traceparent`, and run the work within the propagated
+// trace context (env-gated, degrades to a plain call). No AI, so only
+// posthogApiKey is bound (error reporting + the distributed-trace OTLP bearer);
+// no geminiApiKey, no withAiTimeout. The heavy lifting (read home location,
+// staleness re-check, Open-Meteo fetch + validate, pure aggregation, Firestore
+// write) lives in runRefreshWeatherForecast — the entrypoint only does wire
+// validation, trace context, error reporting, and the flush.
+export const refreshWeatherForecast = onCall(
+  {
+    ...APP_CHECK_ENFORCEMENT,
+    secrets: [posthogApiKey],
+    timeoutSeconds: 30,
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Sign in required.');
+    }
+
+    // Validate the WIRE envelope (domain input + optional traceparent). A bad
+    // wire envelope is rejected; an absent/malformed traceparent is NOT a failure
+    // (it is optional/best-effort). Strip traceparent so the work receives the
+    // PURE domain input (domain purity).
+    const parsed = RefreshWeatherForecastWireInputSchema.safeParse(request.data);
+    if (!parsed.success) {
+      throw new HttpsError('invalid-argument', 'Invalid request payload.');
+    }
+    const { traceparent, ...domainInput } = parsed.data;
+
+    await whenServerObservabilityReady();
+
+    try {
+      return await runFlowWithTraceContext(
+        domainInput,
+        request.rawRequest?.headers,
+        traceparent,
+        (input) => runRefreshWeatherForecast(input),
+      );
+    } catch (err) {
+      // Unexpected server failure (Firestore read/write, Open-Meteo fetch, or a
+      // malformed external payload). Report the genuine cause additively, then
+      // re-throw so the callable's error path is unchanged.
+      await reportFlowError(err);
+      throw err;
+    } finally {
+      // onCall has NO framework auto-flush (unlike onCallGenkit): drain any
+      // in-flight distributed-trace span exports before the function freezes.
+      // Idempotent + non-throwing, so the happy path flushing too is safe.
+      await flushServerObservability();
+    }
+  },
 );
 
 export { onShoppingListItemWrite };

@@ -50,6 +50,78 @@ export const AI_FLOW_ROLES = {
 export type AiFlowId = keyof typeof AI_FLOW_ROLES;
 export const AI_FLOW_IDS = Object.keys(AI_FLOW_ROLES) as AiFlowId[];
 
+// The family's home location, used to anchor location-dependent features (e.g.
+// the meal-planner weather forecast, added in a later phase). Set by an admin
+// via the app-settings page — either by picking an Open-Meteo geocoding result
+// or by entering coordinates by hand. `timezone` is an IANA zone (e.g.
+// `Europe/London`) supplied by the geocoder; `label` is a human-readable name
+// for the place (e.g. `London, England, United Kingdom`).
+export const HomeLocationSchema = z.object({
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  timezone: z.string().min(1),
+  label: z.string().min(1),
+});
+
+export type HomeLocation = z.infer<typeof HomeLocationSchema>;
+
+// ─── Open-Meteo geocoding (issue #382) ──────────────────────────────────────
+// The geocoding search runs as a keyless browser fetch in `web-pwa`; the
+// response parsing lives here (schemas live in `@salt/domain/schemas`, and this
+// stays a pure function over `unknown` — no I/O). We validate only the subset of
+// each result we consume and ignore the many other fields, so a shape change to
+// unused fields can't break the parse. `admin1`/`country` are optional (small
+// places omit them) and feed the human-readable label.
+const GeocodingResultSchema = z.object({
+  id: z.number(),
+  name: z.string().min(1),
+  latitude: z.number(),
+  longitude: z.number(),
+  timezone: z.string().min(1),
+  country: z.string().optional(),
+  admin1: z.string().optional(),
+});
+
+// The whole response. `results` is absent (not `[]`) when nothing matches.
+const GeocodingResponseSchema = z.object({
+  results: z.array(GeocodingResultSchema).optional(),
+});
+
+// A single place an admin can pick. `id` is stable per place (used as a list
+// key); `label` is the pretty name; `location` is exactly the doc shape we save.
+export type GeocodingResult = {
+  id: number;
+  label: string;
+  location: HomeLocation;
+};
+
+// Builds a human-readable place label, e.g. "London, England, United Kingdom",
+// dropping any absent admin1/country segments.
+function buildGeocodingLabel(name: string, admin1?: string, country?: string): string {
+  return [name, admin1, country].filter((p) => p && p.trim()).join(', ');
+}
+
+// Parses a raw Open-Meteo geocoding response (the `unknown` JSON the browser
+// fetched) into pickable results, or `null` if the payload is malformed. Pure —
+// the caller (web-pwa) does the fetch and decides how to surface a null.
+export function parseGeocodingResponse(raw: unknown): GeocodingResult[] | null {
+  const parsed = GeocodingResponseSchema.safeParse(raw);
+  if (!parsed.success) return null;
+  return (parsed.data.results ?? []).map((r) => {
+    const label = buildGeocodingLabel(r.name, r.admin1, r.country);
+    return {
+      id: r.id,
+      label,
+      location: {
+        latitude: r.latitude,
+        longitude: r.longitude,
+        timezone: r.timezone,
+        label,
+      },
+    };
+  });
+}
+
 export const AppSettingsSchema = z.object({
   fast: z.string().min(1).default(AI_MODEL_DEFAULTS.fast),
   lite: z.string().min(1).default(AI_MODEL_DEFAULTS.lite),
@@ -65,6 +137,11 @@ export const AppSettingsSchema = z.object({
   // value is a non-empty model name — clearing an override drops the key
   // entirely rather than storing an empty string.
   perFlow: z.record(z.string(), z.string().min(1)).optional(),
+  // Optional family home location (issue #382). Absent on every doc written
+  // before this field existed, so it must stay optional — an old doc with no
+  // `homeLocation` parses unchanged (back-compat on read). Cleared by deleting
+  // the key entirely rather than storing an empty object.
+  homeLocation: HomeLocationSchema.optional(),
   // Audit metadata: who last changed the doc and when (ms epoch). Optional so a
   // never-configured / defaulted doc still parses; the UI shows them when set.
   updatedAt: z.number().optional(),

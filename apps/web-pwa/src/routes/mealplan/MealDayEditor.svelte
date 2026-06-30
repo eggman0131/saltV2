@@ -2,6 +2,8 @@
   import { Checkbox, Button } from '@salt/ui-components';
   import { ChevronDown, ChevronRight, ChefHat, StickyNote } from '@lucide/svelte';
   import { memberInitials, type Day, type Member } from '@salt/domain';
+  import type { WeatherDaySummary } from '@salt/domain/schemas';
+  import WeatherSummary from './WeatherSummary.svelte';
 
   // Collapsible editor for a single Day, shared by the weekly page (date-keyed)
   // and the template editor (weekday-keyed). Collapsed it shows a one-line
@@ -10,12 +12,19 @@
   // roomy panel. It knows nothing about day keys: the parent supplies handlers
   // already bound to the right date/weekday. Members resolve live; an unknown
   // memberId renders as removable, never blocking. See docs/meal-planning.md.
+  //
+  // `weather` (issue #382, Phase 3) is the OPTIONAL per-day evening forecast. The
+  // PARENT does the in-window gating: the dated weekly page passes
+  // `forecast?.days[date]` (present only for concrete in-window days), while the
+  // weekday-keyed template editor never passes it — so weather renders only on
+  // in-window dated days and is blank for past/far-future days and the template.
   interface Props {
     label: string;
     sublabel?: string;
     day: Day;
     members: Member[];
     testid: string;
+    weather?: WeatherDaySummary;
     onNoteChange: (note: string) => void;
     onChefToggle: (memberId: string) => void;
     onAttendeeToggle: (memberId: string) => void;
@@ -29,6 +38,7 @@
     day,
     members,
     testid,
+    weather,
     onNoteChange,
     onChefToggle,
     onAttendeeToggle,
@@ -167,6 +177,16 @@
       {#if open}<ChevronDown class="h-4 w-4" />{:else}<ChevronRight class="h-4 w-4" />{/if}
     </span>
   </button>
+
+  <!-- Evening forecast (issue #382, Phase 3) — rendered ONLY for in-window dated
+       days (the parent passes `weather` then). Past/far-future days and the
+       template never receive it, so this whole block is absent (no placeholder).
+       Aligned under the day label so it reads as part of the day header. -->
+  {#if weather}
+    <div class="-mt-1 px-3 pb-2.5 pl-[5.25rem]">
+      <WeatherSummary {weather} testid={`${testid}-weather`} />
+    </div>
+  {/if}
 
   {#if open}
     <div class="flex flex-col gap-3 border-t px-3 py-3" data-testid={`${testid}-detail`}>
