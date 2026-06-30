@@ -38,7 +38,7 @@
   onMount(() => {
     thisWeek();
     // On-access weather refresh (issue #382, Phase 3): silently refetch the
-    // forecast when the cache is stale (>3h or the home location moved) and a home
+    // forecast when the cache is stale (>1h or the home location moved) and a home
     // location is set. No-ops otherwise; never blocks — the cache subscription
     // updates the day cells in place when the new doc arrives.
     void ensureFreshForecast();
