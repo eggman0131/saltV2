@@ -5,6 +5,7 @@ import { AuthorRecipeInputSchema } from './authorRecipe.js';
 import { ExtractRecipeFromUrlInputSchema } from './extractRecipeFromUrl.js';
 import { IdentifyEquipmentInputSchema } from './identifyEquipment.js';
 import { PopulateEquipmentEntryInputSchema } from './populateEquipmentEntry.js';
+import { RefreshWeatherForecastInputSchema } from './weatherForecast.js';
 
 // ─── Browser→CF trace-continuity wire envelopes (issue #362, Phase 3) ──────────
 //
@@ -57,6 +58,14 @@ export const PopulateEquipmentEntryWireInputSchema = PopulateEquipmentEntryInput
   traceparent: TraceparentSchema,
 });
 
+// The refreshWeatherForecast callable (issue #382, Phase 2). User-initiated from
+// the admin "Refresh" button (and, in a later phase, the planner), so the same
+// browser-supplied-trace pattern applies: the domain input (`{ force? }`) plus an
+// optional `traceparent` the entrypoint strips before the work runs.
+export const RefreshWeatherForecastWireInputSchema = RefreshWeatherForecastInputSchema.extend({
+  traceparent: TraceparentSchema,
+});
+
 export type MatchOrCreateCanonWireInput = z.infer<typeof MatchOrCreateCanonWireInputSchema>;
 export type CanonicaliseRecipeIngredientsWireInput = z.infer<
   typeof CanonicaliseRecipeIngredientsWireInputSchema
@@ -65,3 +74,4 @@ export type AuthorRecipeWireInput = z.infer<typeof AuthorRecipeWireInputSchema>;
 export type ExtractRecipeFromUrlWireInput = z.infer<typeof ExtractRecipeFromUrlWireInputSchema>;
 export type IdentifyEquipmentWireInput = z.infer<typeof IdentifyEquipmentWireInputSchema>;
 export type PopulateEquipmentEntryWireInput = z.infer<typeof PopulateEquipmentEntryWireInputSchema>;
+export type RefreshWeatherForecastWireInput = z.infer<typeof RefreshWeatherForecastWireInputSchema>;

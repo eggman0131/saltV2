@@ -61,6 +61,11 @@ export {
 export { subscribeDevSettings, saveDevSettings } from './devSettingsSync.js';
 export { subscribeAppSettings, saveAppSettings } from './appSettingsSync.js';
 export { callListAiModels, callTestModel } from './aiModelCallables.js';
+// Weather forecast cache (issue #382, Phase 2): client-side subscribe + the
+// refresh callable wrapper. Phase 3 (planner render) consumes the subscribe.
+export { subscribeWeatherForecast } from './weatherSync.js';
+export { callRefreshWeatherForecast } from './weatherCallables.js';
+export type { RefreshWeatherForecastResult } from './weatherCallables.js';
 // E2E-only AI stub writer (test-infra Phase 1). Used by apps/web-pwa's e2e
 // bridge to register canned answers for the CF fake model; never used in prod.
 export { setAiStub } from './e2eAiStubSync.js';

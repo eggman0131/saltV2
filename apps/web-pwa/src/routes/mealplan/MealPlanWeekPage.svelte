@@ -31,11 +31,17 @@
     setWeekAttendeeNote,
   } from '../../lib/mealPlanService.js';
   import { addToast } from '../../lib/toastStore.js';
+  import { weatherForecast, ensureFreshForecast } from '../../lib/weatherService.js';
 
   // The week store is a module-level singleton, so it retains whatever week was
   // last viewed. Reset to the current week each time the planner is opened.
   onMount(() => {
     thisWeek();
+    // On-access weather refresh (issue #382, Phase 3): silently refetch the
+    // forecast when the cache is stale (>3h or the home location moved) and a home
+    // location is set. No-ops otherwise; never blocks — the cache subscription
+    // updates the day cells in place when the new doc arrives.
+    void ensureFreshForecast();
   });
 
   const dates = $derived(weekDates($selectedStartDate));
@@ -132,6 +138,7 @@
             {day}
             members={$members}
             testid={`day-${date}`}
+            weather={$weatherForecast?.days[date]}
             onNoteChange={(note) => void setWeekDayNote(date, note)}
             onChefToggle={(id) => toggleChef(date, id)}
             onAttendeeToggle={(id) => toggleAttendee(date, id)}

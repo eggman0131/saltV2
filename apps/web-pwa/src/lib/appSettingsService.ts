@@ -7,6 +7,7 @@ import {
   type AppSettings,
   type AiModelRole,
   type AiFlowId,
+  type HomeLocation,
 } from '@salt/domain/schemas';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { writable, derived, get } from 'svelte/store';
@@ -164,6 +165,29 @@ export function setFlowOverride(
 // Clears a single flow's override, falling it back to its role's model.
 export function resetFlowOverride(flowId: AiFlowId): Promise<ReadResult<void, DomainError>> {
   return persist(buildNextFlow(flowId, undefined));
+}
+
+// Builds the next full doc applying the family home location. A defined location
+// sets the field; `undefined` clears it (delete the key) so the back-compat
+// "absent = not set" shape is preserved and we never store an empty object.
+function buildNextHomeLocation(location: HomeLocation | undefined): AppSettings {
+  const next: AppSettings = { ...currentDoc() };
+  if (location) {
+    next.homeLocation = location;
+  } else {
+    delete next.homeLocation;
+  }
+  return withAudit(next);
+}
+
+// Sets the family home location (from a geocoding pick or manual entry).
+export function setHomeLocation(location: HomeLocation): Promise<ReadResult<void, DomainError>> {
+  return persist(buildNextHomeLocation(location));
+}
+
+// Clears the family home location.
+export function resetHomeLocation(): Promise<ReadResult<void, DomainError>> {
+  return persist(buildNextHomeLocation(undefined));
 }
 
 export function __resetAppSettingsServiceForTest(): void {
