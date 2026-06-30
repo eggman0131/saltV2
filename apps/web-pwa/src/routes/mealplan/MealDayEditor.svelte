@@ -109,107 +109,153 @@
 </script>
 
 <div class="overflow-hidden rounded-lg border" data-testid={testid}>
-  <!-- Collapsed summary: tap anywhere to expand. -->
-  <button
-    type="button"
-    class="flex w-full items-start gap-5 px-3 py-2.5 text-left hover:bg-muted/40"
-    onclick={() => (open = !open)}
-    aria-expanded={open}
-    data-testid={`${testid}-summary`}
-  >
-    <span class="relative flex w-16 shrink-0 flex-col leading-tight">
-      <!-- Weather pictogram (issue #387) as a large, faint, decorative watermark
-           sitting BEHIND the weekday/date. Centred on the label block, lower in
-           the stack (the text spans are z-10 above it), pointer-transparent and
-           aria-hidden. Renders ONLY when `icon` is non-null — so past /
-           out-of-horizon / template days (no `weather`) show nothing, no box.
-           Opacity is tuned per theme: pastel raster art is faintest on light, so
-           we lift it in dark mode where the darker icons (rain/thunder/overcast)
-           are naturally subtler, while keeping the day text fully legible. -->
-      {#if icon}
-        <WeatherIcon
-          {icon}
-          class="pointer-events-none absolute left-1/2 top-1/2 z-0 h-14 w-14 -translate-x-1/2 -translate-y-1/2 opacity-[0.25] dark:opacity-[0.34]"
-        />
-      {/if}
-      <span class="relative z-10 text-sm font-semibold">{label}</span>
-      {#if sublabel}<span class="relative z-10 text-[11px] text-muted-foreground">{sublabel}</span
-        >{/if}
-    </span>
-
-    <span class="flex min-w-0 flex-1 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-6">
-      <span class="flex items-center gap-1.5 sm:flex-1">
-        <span
-          class="min-w-0 truncate text-sm {day.note ? 'text-foreground' : 'text-muted-foreground'}"
-        >
-          {day.note || 'No meal set'}
-        </span>
-        {#if hasNotes}
-          <StickyNote
-            class="h-4 w-4 shrink-0 text-primary"
-            strokeWidth={2.5}
-            aria-label="has notes"
-            data-testid={`${testid}-note-indicator`}
+  <!-- Collapsed header (issue #387): the summary row + the evening-forecast strip,
+       wrapped together (relative) so the weather pictogram can sit as a faint
+       watermark in the LEFT column, centred in the empty space UNDER the weekday/
+       date — not behind it. The watermark lane spans the full header height (top-0
+       bottom-0) and overlays the label column (left-3, w-16); inside it an INVISIBLE
+       clone of the weekday/date reserves the exact height the real label occupies
+       (same font + w-16 wrapping — on every breakpoint and for every day, whether the
+       weekday wraps or not), so the flex-1 region below it is PRECISELY the gap under
+       the date. The icon centres in that gap and scales to fill it (h-16 capped by
+       max-h/max-w-full + the component's object-contain): big where there's room (the
+       tall, stacked mobile summary), smaller where it's tight (the short, inline
+       desktop summary), always centred, never overlapping the text — no manual nudges
+       and no breakpoint-specific offsets. (NB: keep the clone's font classes in sync
+       with the real label spans below.) It's low in the stack (z-0) with the day text
+       bumped above it (relative z-10); the temps sit in a further-right column
+       (pl-[5.25rem]) so the icon never covers them. Renders ONLY when `icon` is
+       non-null, so past / out-of-horizon / template days show nothing (no box).
+       Opacity is lifted in dark mode, where the darker icons read fainter, to keep
+       the day text legible. -->
+  <!-- The whole collapsed header is ONE open/collapse unit: the hover tint lives
+       here on the wrapper (not the button), so hovering anywhere over it — the
+       summary row OR the forecast strip — lightens the entire header together. The
+       detail panel below is a sibling (outside this div), so it's never tinted. -->
+  <div class="relative transition-colors hover:bg-muted/40">
+    {#if icon}
+      <div
+        class="pointer-events-none absolute bottom-0 left-3 top-0 z-0 flex w-16 flex-col items-stretch pt-2.5 leading-tight"
+        aria-hidden="true"
+      >
+        <span class="invisible text-sm font-semibold">{label}</span>
+        {#if sublabel}<span class="invisible text-[11px]">{sublabel}</span>{/if}
+        <span class="flex min-h-0 flex-1 items-center justify-center pb-1">
+          <WeatherIcon
+            {icon}
+            class="h-16 max-h-full w-16 max-w-full opacity-[0.66] dark:opacity-[0.77]"
           />
-        {/if}
-      </span>
-      <span class="flex items-start gap-3 sm:shrink-0">
-        <!-- Member chips: fixed roster → constant width, so they line up across
-             every row regardless of guests. Slightly more relaxed on wide screens. -->
-        <span class="flex items-start gap-2.5 lg:gap-4">
-          {#each members as m (m.id)}
-            {@const a = attendeeOf(m.id)}
-            <span class="flex flex-col items-center gap-0.5">
-              <span
-                class="relative flex {chip.box} items-center justify-center rounded-full font-semibold
-                  {isAttending(m.id)
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted text-muted-foreground/50'}"
-                title={m.name}
-                data-testid={`${testid}-chip-${m.id}`}
-              >
-                {memberInitials(m.name)}
-                {#if isChef(m.id)}
-                  <span
-                    class="absolute -bottom-1 -right-1 flex {chip.badge} items-center justify-center rounded-full bg-amber-500 ring-2 ring-background"
-                    aria-label="chef"
-                  >
-                    <ChefHat class="{chip.hat} text-white" strokeWidth={2.5} />
-                  </span>
-                {/if}
-              </span>
-              {#if isAttending(m.id) && a?.homeTime}
-                <span class="{chip.time} tabular-nums text-muted-foreground">{a.homeTime}</span>
-              {/if}
-            </span>
-          {/each}
         </span>
-        <!-- Guests: their own reserved column so the member chips never shift. -->
-        <span class="flex {chip.h} w-8 shrink-0 items-center justify-start">
-          {#if day.guests > 0}
-            <span
-              class="rounded-full bg-secondary px-2 py-0.5 text-xs font-semibold text-secondary-foreground"
-              data-testid={`${testid}-guest-badge`}>+{day.guests}</span
-            >
+      </div>
+    {/if}
+
+    <!-- Collapsed summary: tap anywhere to expand. (Hover tint is on the wrapper.) -->
+    <button
+      type="button"
+      class="flex w-full items-start gap-5 px-3 py-2.5 text-left"
+      onclick={() => (open = !open)}
+      aria-expanded={open}
+      data-testid={`${testid}-summary`}
+    >
+      <span class="flex w-16 shrink-0 flex-col leading-tight">
+        <span class="relative z-10 text-sm font-semibold">{label}</span>
+        {#if sublabel}<span class="relative z-10 text-[11px] text-muted-foreground">{sublabel}</span
+          >{/if}
+      </span>
+
+      <span class="flex min-w-0 flex-1 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-6">
+        <span class="flex items-center gap-1.5 sm:flex-1">
+          <span
+            class="min-w-0 truncate text-sm {day.note
+              ? 'text-foreground'
+              : 'text-muted-foreground'}"
+          >
+            {day.note || 'No meal set'}
+          </span>
+          {#if hasNotes}
+            <StickyNote
+              class="h-4 w-4 shrink-0 text-primary"
+              strokeWidth={2.5}
+              aria-label="has notes"
+              data-testid={`${testid}-note-indicator`}
+            />
           {/if}
         </span>
+        <span class="flex items-start gap-3 sm:shrink-0">
+          <!-- Member chips: fixed roster → constant width, so they line up across
+             every row regardless of guests. Slightly more relaxed on wide screens. -->
+          <span class="flex items-start gap-2.5 lg:gap-4">
+            {#each members as m (m.id)}
+              {@const a = attendeeOf(m.id)}
+              <span class="flex flex-col items-center gap-0.5">
+                <span
+                  class="relative flex {chip.box} items-center justify-center rounded-full font-semibold
+                  {isAttending(m.id)
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted text-muted-foreground/50'}"
+                  title={m.name}
+                  data-testid={`${testid}-chip-${m.id}`}
+                >
+                  {memberInitials(m.name)}
+                  {#if isChef(m.id)}
+                    <span
+                      class="absolute -bottom-1 -right-1 flex {chip.badge} items-center justify-center rounded-full bg-amber-500 ring-2 ring-background"
+                      aria-label="chef"
+                    >
+                      <ChefHat class="{chip.hat} text-white" strokeWidth={2.5} />
+                    </span>
+                  {/if}
+                </span>
+                {#if isAttending(m.id) && a?.homeTime}
+                  <span class="{chip.time} tabular-nums text-muted-foreground">{a.homeTime}</span>
+                {/if}
+              </span>
+            {/each}
+          </span>
+          <!-- Guests: their own reserved column so the member chips never shift. -->
+          <span class="flex {chip.h} w-8 shrink-0 items-center justify-start">
+            {#if day.guests > 0}
+              <span
+                class="rounded-full bg-secondary px-2 py-0.5 text-xs font-semibold text-secondary-foreground"
+                data-testid={`${testid}-guest-badge`}>+{day.guests}</span
+              >
+            {/if}
+          </span>
+        </span>
       </span>
-    </span>
 
-    <span class="shrink-0 pt-0.5 text-muted-foreground" aria-hidden="true">
-      {#if open}<ChevronDown class="h-4 w-4" />{:else}<ChevronRight class="h-4 w-4" />{/if}
-    </span>
-  </button>
+      <span class="shrink-0 pt-0.5 text-muted-foreground" aria-hidden="true">
+        {#if open}<ChevronDown class="h-4 w-4" />{:else}<ChevronRight class="h-4 w-4" />{/if}
+      </span>
+    </button>
 
-  <!-- Evening forecast (issue #382, Phase 3) — rendered ONLY for in-window dated
+    <!-- Evening forecast (issue #382, Phase 3) — rendered ONLY for in-window dated
        days (the parent passes `weather` then). Past/far-future days and the
        template never receive it, so this whole block is absent (no placeholder).
        Aligned under the day label so it reads as part of the day header. -->
-  {#if weather}
-    <div class="-mt-1 px-3 pb-2.5 pl-[5.25rem]">
-      <WeatherSummary {weather} testid={`${testid}-weather`} />
-    </div>
-  {/if}
+    <!-- The forecast strip toggles the same card as the summary above, so the header
+         reads as one unit: a click on its empty areas (left gutter, gaps, padding)
+         expands / collapses. EXCEPT the metric chips, which render as buttons and own
+         their tap-to-open tooltips — `closest('button')` lets those taps through
+         untouched. Pointer-only by design: the summary button is the keyboard/AT
+         disclosure control, so a second focusable control here would just be
+         redundant noise — and the strip can't itself be a button (it contains the
+         chip buttons). Hence the a11y ignores below: two SINGLE-code comments, not
+         one multi-code comment, because Svelte 5.56 only honours the first code in a
+         multi-code svelte-ignore. -->
+    {#if weather}
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <div
+        class="-mt-1 px-3 pb-2.5 pl-[5.25rem]"
+        onclick={(e) => {
+          if (!(e.target as HTMLElement).closest('button')) open = !open;
+        }}
+      >
+        <WeatherSummary {weather} testid={`${testid}-weather`} />
+      </div>
+    {/if}
+  </div>
 
   {#if open}
     <div class="flex flex-col gap-3 border-t px-3 py-3" data-testid={`${testid}-detail`}>
