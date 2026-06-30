@@ -111,7 +111,8 @@ export type { DevSettingsDoc } from './devSettings.js';
 export {
   AppSettingsSchema,
   HomeLocationSchema,
-  parseGeocodingResponse,
+  parseNominatimResponse,
+  parseNominatimReverse,
   AI_MODEL_DEFAULTS,
   AI_MODEL_ROLES,
   AI_FLOW_ROLES,

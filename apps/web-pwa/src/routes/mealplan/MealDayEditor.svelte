@@ -217,28 +217,6 @@
                   data-testid={`${testid}-attend-${m.id}`}
                 />
               </div>
-              {#if isAttending(m.id)}
-                <input
-                  type="time"
-                  class="h-8 rounded-md border bg-background px-2 text-sm"
-                  value={a?.homeTime ?? ''}
-                  onfocus={(e) => {
-                    // Seed the picker from the usual dinner time when blank (DOM
-                    // only — nothing is saved until the user actually picks one).
-                    if (e.currentTarget.value === '') e.currentTarget.value = EDIT_START_TIME;
-                  }}
-                  oninput={(e) => {
-                    const v = e.currentTarget.value;
-                    onAttendeeHomeTime(m.id, v === '' ? null : v);
-                  }}
-                  onblur={(e) => {
-                    // Re-sync to the committed value, discarding an unpicked seed.
-                    e.currentTarget.value = attendeeOf(m.id)?.homeTime ?? '';
-                  }}
-                  aria-label={`${m.name} home time`}
-                  data-testid={`${testid}-time-${m.id}`}
-                />
-              {/if}
               <!-- Chef is independent of attending: a chef need not eat. Plain
                    button (not the salt Button) so both states are fully Tailwind:
                    selected = filled amber, unselected = clear neutral. -->
@@ -256,14 +234,38 @@
               </button>
             </div>
             {#if isAttending(m.id)}
-              <input
-                class="ml-1 h-8 w-full rounded-md border bg-background px-2 text-sm"
-                placeholder="Add a note (e.g. portion for tomorrow)"
-                value={a?.note ?? ''}
-                oninput={(e) => onAttendeeNote(m.id, e.currentTarget.value)}
-                aria-label={`${m.name} note`}
-                data-testid={`${testid}-attnote-${m.id}`}
-              />
+              <!-- Time entry sits to the left of the note; both share the same
+                   height so the row reads as one control. -->
+              <div class="ml-1 flex items-stretch gap-2">
+                <input
+                  type="time"
+                  class="h-8 shrink-0 rounded-md border bg-background px-2 text-sm"
+                  value={a?.homeTime ?? ''}
+                  onfocus={(e) => {
+                    // Seed the picker from the usual dinner time when blank (DOM
+                    // only — nothing is saved until the user actually picks one).
+                    if (e.currentTarget.value === '') e.currentTarget.value = EDIT_START_TIME;
+                  }}
+                  oninput={(e) => {
+                    const v = e.currentTarget.value;
+                    onAttendeeHomeTime(m.id, v === '' ? null : v);
+                  }}
+                  onblur={(e) => {
+                    // Re-sync to the committed value, discarding an unpicked seed.
+                    e.currentTarget.value = attendeeOf(m.id)?.homeTime ?? '';
+                  }}
+                  aria-label={`${m.name} home time`}
+                  data-testid={`${testid}-time-${m.id}`}
+                />
+                <input
+                  class="h-8 w-full flex-1 rounded-md border bg-background px-2 text-sm"
+                  placeholder="Add a note (e.g. portion for tomorrow)"
+                  value={a?.note ?? ''}
+                  oninput={(e) => onAttendeeNote(m.id, e.currentTarget.value)}
+                  aria-label={`${m.name} note`}
+                  data-testid={`${testid}-attnote-${m.id}`}
+                />
+              </div>
             {/if}
           </div>
         {/each}

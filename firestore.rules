@@ -85,6 +85,16 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow write: if isAdmin();
     }
+    // Weather forecast cache (issue #382) — a single CF-written singleton
+    // (weatherForecast/singleton). The refreshWeatherForecast callable writes it
+    // via the Admin SDK (which bypasses rules); any signed-in user may read it so
+    // the planner can render each in-window day's evening forecast. Clients never
+    // write it directly (refreshes go through the callable, not a direct doc
+    // write), so writes are closed here.
+    match /weatherForecast/{document} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
     // Chat sessions (issue #206) — the first per-user-scoped data in Salt.
     // A session may only be read or written by the user who owns it.
     // On create, the client must set ownerUid to their own uid.

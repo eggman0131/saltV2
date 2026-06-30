@@ -10,6 +10,8 @@
     defaultOpen = false,
     delayDuration = 700,
     disableHoverableContent = false,
+    disableCloseOnTriggerClick = false,
+    ignoreNonKeyboardFocus = false,
     children,
     onOpenChange,
   }: TooltipProps = $props();
@@ -32,6 +34,8 @@
     onOpenChange={handleOpenChange}
     {delayDuration}
     {disableHoverableContent}
+    {disableCloseOnTriggerClick}
+    {ignoreNonKeyboardFocus}
   >
     {@render children?.()}
   </Tooltip.Root>

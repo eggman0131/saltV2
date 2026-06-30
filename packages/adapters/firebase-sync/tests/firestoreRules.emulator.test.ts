@@ -261,3 +261,56 @@ describe.skipIf(!reachable)('firestore.rules — devSettings (issue #238)', () =
     await assertFails(getDoc(doc(db, 'devSettings', 'singleton')));
   });
 });
+
+describe.skipIf(!reachable)('firestore.rules — weatherForecast (issue #382)', () => {
+  let testEnv: RulesTestEnvironment;
+
+  beforeAll(async () => {
+    testEnv = await initializeTestEnvironment({
+      projectId: PROJECT_ID,
+      firestore: {
+        host: HOST,
+        port: PORT,
+        rules: readFileSync(RULES_PATH, 'utf8'),
+      },
+    });
+  });
+
+  afterAll(async () => {
+    await testEnv?.cleanup();
+  });
+
+  beforeEach(async () => {
+    await testEnv.clearFirestore();
+    // The cache is written by the refreshWeatherForecast CF (Admin SDK, bypasses
+    // rules); seed one with rules disabled so the read assertions have a doc.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, 'weatherForecast', 'singleton'), forecast);
+    });
+  });
+
+  const forecast = {
+    days: {},
+    fetchedAt: 0,
+    location: { latitude: 51.5085, longitude: -0.1257, timezone: 'Europe/London', label: 'Home' },
+    timezone: 'Europe/London',
+  };
+
+  it('lets any signed-in user read the forecast singleton', async () => {
+    const db = testEnv.authenticatedContext('uid-kid', { email: 'kid@e.org' }).firestore();
+    await assertSucceeds(getDoc(doc(db, 'weatherForecast', 'singleton')));
+  });
+
+  it('denies a signed-in client from writing the forecast directly', async () => {
+    // Clients only ever trigger a refresh via the callable; the doc is written by
+    // the CF Admin SDK, so direct client writes (even by an admin) are closed.
+    const db = testEnv.authenticatedContext('uid-admin', { email: 'admin@e.org' }).firestore();
+    await assertFails(setDoc(doc(db, 'weatherForecast', 'singleton'), forecast));
+  });
+
+  it('denies an unauthenticated caller from reading the forecast', async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, 'weatherForecast', 'singleton')));
+  });
+});

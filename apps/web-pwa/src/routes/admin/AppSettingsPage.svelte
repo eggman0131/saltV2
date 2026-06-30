@@ -233,24 +233,45 @@
   <div class="flex flex-col gap-4 p-4 sm:p-6" data-testid="admin-app-settings">
     <div class="flex items-start justify-between gap-3">
       <div>
-        <h1 class="text-xl font-semibold">AI model settings</h1>
+        <h1 class="text-xl font-semibold">Application settings</h1>
+        <p class="text-sm text-muted-foreground">
+          Family and environment settings for Salt: home location, weather, and the AI models used
+          by each flow.
+        </p>
+      </div>
+      <Button size="sm" onclick={() => push('/admin')}>Back to admin</Button>
+    </div>
+
+    {#if lastUpdatedLabel}
+      <p class="text-xs text-muted-foreground" data-testid="app-settings-audit">
+        {lastUpdatedLabel}
+      </p>
+    {/if}
+
+    <HomeLocationField />
+
+    <WeatherForecastField />
+
+    <!-- AI models — model selection for this environment. The home location and
+         weather above are general application settings; everything below this
+         heading configures the Gemini models the AI flows use. -->
+    <div class="mt-2 flex items-start justify-between gap-3" data-testid="app-settings-ai-section">
+      <div>
+        <h2 class="text-lg font-semibold">AI models</h2>
         <p class="text-sm text-muted-foreground">
           Choose the Gemini model for each AI role in <strong>this environment only</strong> (dev, staging
           and production each have their own).
         </p>
       </div>
-      <div class="flex shrink-0 items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onclick={() => void onRefreshCatalog()}
-          disabled={$isCatalogLoading}
-          data-testid="app-settings-refresh-catalog"
-        >
-          {$isCatalogLoading ? 'Refreshing…' : 'Refresh models'}
-        </Button>
-        <Button size="sm" onclick={() => push('/admin')}>Back to admin</Button>
-      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        onclick={() => void onRefreshCatalog()}
+        disabled={$isCatalogLoading}
+        data-testid="app-settings-refresh-catalog"
+      >
+        {$isCatalogLoading ? 'Refreshing…' : 'Refresh models'}
+      </Button>
     </div>
 
     {#if $isCatalogUnavailable && !$isCatalogLoading}
@@ -280,16 +301,6 @@
         defaults. Saving any field below will replace it with a valid document.
       </div>
     {/if}
-
-    {#if lastUpdatedLabel}
-      <p class="text-xs text-muted-foreground" data-testid="app-settings-audit">
-        {lastUpdatedLabel}
-      </p>
-    {/if}
-
-    <HomeLocationField />
-
-    <WeatherForecastField />
 
     <div class="flex flex-col gap-4">
       {#each ROLE_META as meta (meta.role)}

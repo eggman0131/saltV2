@@ -65,27 +65,27 @@ export const HomeLocationSchema = z.object({
 
 export type HomeLocation = z.infer<typeof HomeLocationSchema>;
 
-// ─── Open-Meteo geocoding (issue #382) ──────────────────────────────────────
-// The geocoding search runs as a keyless browser fetch in `web-pwa`; the
-// response parsing lives here (schemas live in `@salt/domain/schemas`, and this
-// stays a pure function over `unknown` — no I/O). We validate only the subset of
-// each result we consume and ignore the many other fields, so a shape change to
-// unused fields can't break the parse. `admin1`/`country` are optional (small
-// places omit them) and feed the human-readable label.
-const GeocodingResultSchema = z.object({
-  id: z.number(),
-  name: z.string().min(1),
-  latitude: z.number(),
-  longitude: z.number(),
-  timezone: z.string().min(1),
-  country: z.string().optional(),
-  admin1: z.string().optional(),
+// ─── Nominatim geocoding (issue #382) ───────────────────────────────────────
+// The home-location search runs as a keyless browser fetch in `web-pwa` against
+// OpenStreetMap Nominatim, which resolves free-form ADDRESSES and POSTCODES (the
+// previous Open-Meteo gazetteer only matched place names). Response parsing lives
+// here (schemas live in `@salt/domain/schemas`) and stays a pure function over
+// `unknown` — no I/O. We validate only the subset of each result we consume.
+//
+// Nominatim returns `lat`/`lon` as STRINGS and carries no timezone, so the caller
+// passes a `fallbackTimezone` (the browser's IANA zone — the family's home is
+// almost always in their own zone, and the forecast window's true zone is
+// resolved server-side via Open-Meteo `timezone=auto` and stored separately on
+// the forecast doc). `display_name` is the full human-readable label.
+const NominatimPlaceSchema = z.object({
+  place_id: z.number(),
+  lat: z.string(),
+  lon: z.string(),
+  display_name: z.string().min(1),
 });
 
-// The whole response. `results` is absent (not `[]`) when nothing matches.
-const GeocodingResponseSchema = z.object({
-  results: z.array(GeocodingResultSchema).optional(),
-});
+// A Nominatim *search* response is a bare array of places ([] when nothing matches).
+const NominatimSearchResponseSchema = z.array(NominatimPlaceSchema);
 
 // A single place an admin can pick. `id` is stable per place (used as a list
 // key); `label` is the pretty name; `location` is exactly the doc shape we save.
@@ -95,31 +95,39 @@ export type GeocodingResult = {
   location: HomeLocation;
 };
 
-// Builds a human-readable place label, e.g. "London, England, United Kingdom",
-// dropping any absent admin1/country segments.
-function buildGeocodingLabel(name: string, admin1?: string, country?: string): string {
-  return [name, admin1, country].filter((p) => p && p.trim()).join(', ');
+// Parses a raw Nominatim *search* response into pickable results, or `null` if
+// the payload is malformed. Rows with unparseable / out-of-range coordinates are
+// skipped (not fatal) so one bad row can't drop the whole list. Pure — the caller
+// (web-pwa) does the fetch and supplies the fallback timezone.
+export function parseNominatimResponse(
+  raw: unknown,
+  fallbackTimezone: string,
+): GeocodingResult[] | null {
+  const parsed = NominatimSearchResponseSchema.safeParse(raw);
+  if (!parsed.success) return null;
+  const timezone = fallbackTimezone.trim() || 'UTC';
+  const results: GeocodingResult[] = [];
+  for (const p of parsed.data) {
+    const latitude = Number(p.lat);
+    const longitude = Number(p.lon);
+    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) continue;
+    if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) continue;
+    results.push({
+      id: p.place_id,
+      label: p.display_name,
+      location: { latitude, longitude, timezone, label: p.display_name },
+    });
+  }
+  return results;
 }
 
-// Parses a raw Open-Meteo geocoding response (the `unknown` JSON the browser
-// fetched) into pickable results, or `null` if the payload is malformed. Pure —
-// the caller (web-pwa) does the fetch and decides how to surface a null.
-export function parseGeocodingResponse(raw: unknown): GeocodingResult[] | null {
-  const parsed = GeocodingResponseSchema.safeParse(raw);
-  if (!parsed.success) return null;
-  return (parsed.data.results ?? []).map((r) => {
-    const label = buildGeocodingLabel(r.name, r.admin1, r.country);
-    return {
-      id: r.id,
-      label,
-      location: {
-        latitude: r.latitude,
-        longitude: r.longitude,
-        timezone: r.timezone,
-        label,
-      },
-    };
-  });
+// Parses a raw Nominatim *reverse* response into a display label, or `null` when
+// the lookup failed / was malformed (Nominatim returns `{ error }` for no match).
+// Used to refresh the label after the admin drags the map pin. Pure.
+const NominatimReverseResponseSchema = z.object({ display_name: z.string().min(1) });
+export function parseNominatimReverse(raw: unknown): string | null {
+  const parsed = NominatimReverseResponseSchema.safeParse(raw);
+  return parsed.success ? parsed.data.display_name : null;
 }
 
 export const AppSettingsSchema = z.object({

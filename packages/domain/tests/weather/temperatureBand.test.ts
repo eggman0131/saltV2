@@ -27,12 +27,13 @@ describe('temperatureBand', () => {
     expect(temperatureBand(0)).toBe('cold');
     expect(temperatureBand(8)).toBe('cool');
     expect(temperatureBand(15)).toBe('mild');
-    expect(temperatureBand(21)).toBe('warm');
-    expect(temperatureBand(28)).toBe('hot');
+    expect(temperatureBand(20)).toBe('warm');
+    expect(temperatureBand(26)).toBe('hot');
     // Just below a cutoff stays in the cooler band.
     expect(temperatureBand(-0.1)).toBe('freezing');
     expect(temperatureBand(7.9)).toBe('cold'); // below the 8°C 'cool' cutoff
-    expect(temperatureBand(20.9)).toBe('mild'); // below the 21°C 'warm' cutoff
+    expect(temperatureBand(19.9)).toBe('mild'); // below the 20°C 'warm' cutoff
+    expect(temperatureBand(25.9)).toBe('warm'); // below the 26°C 'hot' cutoff
   });
 
   it('treats sub-zero as freezing and very hot as hot', () => {

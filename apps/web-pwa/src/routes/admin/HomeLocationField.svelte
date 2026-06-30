@@ -1,7 +1,8 @@
 <script lang="ts">
   import { Button, TextField } from '@salt/ui-components';
   import type { HomeLocation, GeocodingResult } from '@salt/domain/schemas';
-  import { searchLocations } from '../../lib/geocodingService.js';
+  import { searchLocations, reverseGeocode } from '../../lib/geocodingService.js';
+  import LocationMapField from './LocationMapField.svelte';
   import {
     appSettings,
     isLoadingAppSettings,
@@ -10,10 +11,43 @@
   } from '../../lib/appSettingsService.js';
   import { addToast } from '../../lib/toastStore.js';
 
-  // Family home location (issue #382). Search a place via Open-Meteo's keyless
-  // geocoding and pick a result, or enter coordinates by hand as a fallback.
-  // Picking/saving stores { latitude, longitude, timezone, label } on the
-  // app-settings doc. No weather is fetched or rendered here.
+  // Family home location (issue #382). Search an address or postcode via
+  // OpenStreetMap Nominatim and pick a result, fine-tune by dragging the map pin
+  // (or clicking the map), or enter coordinates by hand. The chosen-but-unsaved
+  // location is held as a `draft`; "Save location" persists { latitude, longitude,
+  // timezone, label } onto the app-settings doc. No weather is fetched here.
+
+  const saved = $derived<HomeLocation | null>($appSettings?.homeLocation ?? null);
+
+  // The location currently being composed (from a search pick, a map drag, or
+  // manual entry) but not yet saved. Null means "show the saved location".
+  let draft = $state<HomeLocation | null>(null);
+
+  // Where the map centres / drops its pin: the draft, else the saved location,
+  // else a sensible default so the map is never blank.
+  const DEFAULT_CENTER = { latitude: 51.5074, longitude: -0.1278 }; // London
+  const pinLat = $derived(draft?.latitude ?? saved?.latitude ?? DEFAULT_CENTER.latitude);
+  const pinLng = $derived(draft?.longitude ?? saved?.longitude ?? DEFAULT_CENTER.longitude);
+
+  function resolveBrowserTimezone(): string {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    } catch {
+      return 'UTC';
+    }
+  }
+
+  function sameLocation(a: HomeLocation, b: HomeLocation): boolean {
+    return (
+      a.latitude === b.latitude &&
+      a.longitude === b.longitude &&
+      a.timezone === b.timezone &&
+      a.label === b.label
+    );
+  }
+
+  // The draft is worth saving when it exists and differs from what's stored.
+  const canSaveDraft = $derived(!!draft && (!saved || !sameLocation(draft, saved!)));
 
   // ── Geocoding search ────────────────────────────────────────────────────────
   let query = $state('');
@@ -30,53 +64,54 @@
     try {
       results = await searchLocations(q);
       if (results.length === 0) {
-        searchError = 'No matching places — try a different name, or enter coordinates below.';
+        searchError = 'No matches — try a different address/postcode, or drop the pin on the map.';
       }
     } catch {
-      searchError = 'Location search failed. Check your connection, or enter coordinates below.';
+      searchError = 'Location search failed. Check your connection, or drop the pin on the map.';
     } finally {
       searching = false;
     }
   }
 
+  // Picking a result stages it as the draft (not an immediate save) so the admin
+  // can fine-tune it on the map before committing.
+  function onPick(r: GeocodingResult): void {
+    draft = r.location;
+    results = [];
+    searchError = null;
+  }
+
+  // ── Map fine-tuning ─────────────────────────────────────────────────────────
+  // Dragging the pin / clicking the map updates the draft coordinates, then
+  // reverse-geocodes to refresh the label. Optimistic: set the coords immediately
+  // with a coordinate label, then upgrade the label if the lookup succeeds.
+  async function onMapChange(latitude: number, longitude: number): Promise<void> {
+    const base = draft ?? saved;
+    const timezone = base?.timezone || resolveBrowserTimezone();
+    draft = {
+      latitude,
+      longitude,
+      timezone,
+      label: `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+    };
+    try {
+      const label = await reverseGeocode(latitude, longitude);
+      // Only apply if the pin hasn't moved again while we were waiting.
+      if (label && draft && draft.latitude === latitude && draft.longitude === longitude) {
+        draft = { ...draft, label };
+      }
+    } catch {
+      // Keep the coordinate label; reverse geocoding is best-effort.
+    }
+  }
+
   // ── Manual entry fallback ───────────────────────────────────────────────────
-  // Coordinates entered by hand. The browser's resolved IANA zone seeds the
-  // timezone (the schema needs a non-empty zone); an admin can override it.
   let manualLat = $state('');
   let manualLng = $state('');
   let manualTimezone = $state('');
   let manualLabel = $state('');
 
-  function resolveBrowserTimezone(): string {
-    try {
-      return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-    } catch {
-      return 'UTC';
-    }
-  }
-
-  // ── Shared save plumbing ────────────────────────────────────────────────────
-  let saving = $state(false);
-
-  async function save(location: HomeLocation): Promise<void> {
-    saving = true;
-    const result = await setHomeLocation(location);
-    saving = false;
-    if (result.kind !== 'ok') {
-      addToast('Failed to save the home location.', 'error');
-    } else {
-      addToast('Home location saved.', 'success');
-      // Clear the search UI; the saved-location readout reflects the new value.
-      results = [];
-      searchError = null;
-    }
-  }
-
-  async function onPick(r: GeocodingResult): Promise<void> {
-    await save(r.location);
-  }
-
-  async function onSaveManual(): Promise<void> {
+  function onUseManual(): void {
     const lat = Number(manualLat.trim());
     const lng = Number(manualLng.trim());
     if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
@@ -89,7 +124,26 @@
     }
     const timezone = manualTimezone.trim() || resolveBrowserTimezone();
     const label = manualLabel.trim() || `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
-    await save({ latitude: lat, longitude: lng, timezone, label });
+    draft = { latitude: lat, longitude: lng, timezone, label };
+  }
+
+  // ── Save / clear ────────────────────────────────────────────────────────────
+  let saving = $state(false);
+
+  async function onSaveDraft(): Promise<void> {
+    if (!draft) return;
+    saving = true;
+    const result = await setHomeLocation(draft);
+    saving = false;
+    if (result.kind !== 'ok') {
+      addToast('Failed to save the home location.', 'error');
+    } else {
+      addToast('Home location saved.', 'success');
+      // Saved value now drives the readout + map; drop the draft.
+      draft = null;
+      results = [];
+      searchError = null;
+    }
   }
 
   async function onReset(): Promise<void> {
@@ -100,18 +154,19 @@
       addToast('Failed to clear the home location.', 'error');
     } else {
       addToast('Home location cleared.', 'success');
+      draft = null;
     }
   }
 
-  const saved = $derived($appSettings?.homeLocation ?? null);
   const busy = $derived($isLoadingAppSettings || saving);
 </script>
 
 <div class="rounded-lg border p-4" data-testid="app-settings-home-location">
   <h2 class="text-base font-medium">Home location</h2>
   <p class="mt-0.5 text-sm text-muted-foreground">
-    The family's home location. Used to anchor location-dependent features. Search for a place
-    below, or enter coordinates by hand.
+    The family's home location, used to anchor location-dependent features like the weather
+    forecast. Search for an address or postcode, drag the pin on the map to fine-tune, or enter
+    coordinates by hand.
   </p>
 
   {#if saved}
@@ -132,9 +187,9 @@
   <div class="mt-3 flex items-end gap-2">
     <div class="flex-1">
       <TextField
-        label="Search for a place"
+        label="Search address or postcode"
         type="search"
-        placeholder="e.g. London"
+        placeholder="e.g. 10 Downing Street, or SW1A 2AA"
         bind:value={query}
         disabled={busy || searching}
         onkeydown={(e) => {
@@ -169,19 +224,55 @@
           <button
             type="button"
             class="flex w-full items-center justify-between gap-3 rounded-md border p-2 text-left text-sm hover:bg-muted disabled:opacity-50"
-            onclick={() => void onPick(r)}
+            onclick={() => onPick(r)}
             disabled={busy}
             data-testid="app-settings-home-location-result-{r.id}"
           >
-            <span>{r.label}</span>
-            <span class="text-xs text-muted-foreground">
-              {r.location.latitude.toFixed(2)}, {r.location.longitude.toFixed(2)} · {r.location
-                .timezone}
+            <span class="min-w-0 truncate">{r.label}</span>
+            <span class="shrink-0 text-xs text-muted-foreground">
+              {r.location.latitude.toFixed(2)}, {r.location.longitude.toFixed(2)}
             </span>
           </button>
         </li>
       {/each}
     </ul>
+  {/if}
+
+  <!-- Map: drag the pin or click to fine-tune. -->
+  <div class="mt-3">
+    <LocationMapField
+      latitude={pinLat}
+      longitude={pinLng}
+      onChange={(lat, lng) => void onMapChange(lat, lng)}
+      testid="app-settings-home-location-map"
+    />
+    <p class="mt-1 text-xs text-muted-foreground">
+      Drag the pin or click the map to set the exact spot.
+    </p>
+  </div>
+
+  <!-- Selected (unsaved) location + Save -->
+  {#if draft}
+    <div
+      class="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/30 p-3"
+      data-testid="app-settings-home-location-draft"
+    >
+      <p class="min-w-0 text-sm">
+        Selected:
+        <code class="rounded bg-muted px-1 py-0.5 text-xs">{draft.label}</code>
+        <span class="text-muted-foreground">
+          ({draft.latitude.toFixed(4)}, {draft.longitude.toFixed(4)} · {draft.timezone})
+        </span>
+      </p>
+      <Button
+        size="sm"
+        onclick={() => void onSaveDraft()}
+        disabled={busy || !canSaveDraft}
+        data-testid="app-settings-home-location-save"
+      >
+        Save location
+      </Button>
+    </div>
   {/if}
 
   <!-- Manual entry fallback -->
@@ -227,11 +318,12 @@
       <div>
         <Button
           size="sm"
-          onclick={() => void onSaveManual()}
+          variant="outline"
+          onclick={() => onUseManual()}
           disabled={busy}
-          data-testid="app-settings-home-location-manual-save"
+          data-testid="app-settings-home-location-manual-use"
         >
-          Save coordinates
+          Use these coordinates
         </Button>
       </div>
     </div>
