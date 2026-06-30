@@ -44,8 +44,9 @@
     },
     {
       id: 'app-settings',
-      title: 'AI model settings',
-      description: 'Choose the Gemini model used for each AI role in this environment.',
+      title: 'Application settings',
+      description:
+        'Home location, weather, and the AI model used for each role in this environment.',
       href: '/admin/app-settings',
     },
   ];

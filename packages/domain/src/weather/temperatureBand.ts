@@ -12,10 +12,10 @@ export type TemperatureBand = 'freezing' | 'cold' | 'cool' | 'mild' | 'warm' | '
 // bound at which that band starts; the first matching band from the top down (or
 // the implicit 'freezing' below the lowest cutoff) wins. Tuned for a temperate
 // climate's late-afternoon window (the home-location default is London): a "warm"
-// evening starts around 21°C, "hot" at 28°C, and sub-zero reads as "freezing".
+// evening runs 20–25°C, "hot" starts at 26°C, and sub-zero reads as "freezing".
 const BAND_CUTOFFS: ReadonlyArray<readonly [TemperatureBand, number]> = [
-  ['hot', 28],
-  ['warm', 21],
+  ['hot', 26],
+  ['warm', 20],
   ['mild', 15],
   ['cool', 8],
   ['cold', 0],
