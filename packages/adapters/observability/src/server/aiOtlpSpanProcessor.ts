@@ -65,8 +65,7 @@ function stripModelPrefix(name: string): string {
 // to the requested id when the served version isn't present (e.g. fake model).
 function servedModel(attrs: Readonly<Record<string, unknown>>, fallback: string): string {
   const out = parseJson(attrs['genkit:output']) as
-    | { custom?: { modelVersion?: unknown } }
-    | undefined;
+    { custom?: { modelVersion?: unknown } } | undefined;
   const served = out?.custom?.modelVersion;
   return typeof served === 'string' && served ? served : fallback;
 }
