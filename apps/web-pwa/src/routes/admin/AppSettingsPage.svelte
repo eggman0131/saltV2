@@ -12,6 +12,7 @@
   import AdminGuard from './AdminGuard.svelte';
   import ModelComboField from './ModelComboField.svelte';
   import HomeLocationField from './HomeLocationField.svelte';
+  import WeatherForecastField from './WeatherForecastField.svelte';
   import {
     catalogByRole,
     isCatalogLoading,
@@ -287,6 +288,8 @@
     {/if}
 
     <HomeLocationField />
+
+    <WeatherForecastField />
 
     <div class="flex flex-col gap-4">
       {#each ROLE_META as meta (meta.role)}

@@ -44,6 +44,7 @@ export {
   ExtractRecipeFromUrlWireInputSchema,
   IdentifyEquipmentWireInputSchema,
   PopulateEquipmentEntryWireInputSchema,
+  RefreshWeatherForecastWireInputSchema,
 } from './traceContextWire.js';
 export type {
   MatchOrCreateCanonWireInput,
@@ -52,7 +53,21 @@ export type {
   ExtractRecipeFromUrlWireInput,
   IdentifyEquipmentWireInput,
   PopulateEquipmentEntryWireInput,
+  RefreshWeatherForecastWireInput,
 } from './traceContextWire.js';
+
+export {
+  WeatherDaySummarySchema,
+  WeatherForecastSchema,
+  RefreshWeatherForecastInputSchema,
+  OpenMeteoForecastResponseSchema,
+} from './weatherForecast.js';
+export type {
+  WeatherDaySummary,
+  WeatherForecast,
+  RefreshWeatherForecastInput,
+  OpenMeteoForecastResponse,
+} from './weatherForecast.js';
 
 export {
   CanonicaliseRecipeIngredientsItemSchema,

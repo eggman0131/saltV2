@@ -246,5 +246,8 @@ export {
   isIpv6,
 } from './recipe/index.js';
 
+// Weather module — pure forecast aggregation + staleness logic (issue #382).
+export { aggregateForecastWindow, isForecastStale, FORECAST_MAX_AGE_MS } from './weather/index.js';
+
 // Cross-cutting ports.
 export type { ErrorReportingPort } from './ErrorReportingPort.js';
