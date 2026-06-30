@@ -1,9 +1,10 @@
 <script lang="ts">
   import { Checkbox, Button } from '@salt/ui-components';
   import { ChevronDown, ChevronRight, ChefHat, StickyNote } from '@lucide/svelte';
-  import { memberInitials, type Day, type Member } from '@salt/domain';
+  import { memberInitials, weatherIcon, type Day, type Member } from '@salt/domain';
   import type { WeatherDaySummary } from '@salt/domain/schemas';
   import WeatherSummary from './WeatherSummary.svelte';
+  import WeatherIcon from '$lib/weather-icons/WeatherIcon.svelte';
 
   // Collapsible editor for a single Day, shared by the weekly page (date-keyed)
   // and the template editor (weekday-keyed). Collapsed it shows a one-line
@@ -48,6 +49,13 @@
   }: Props = $props();
 
   let open = $state(false);
+
+  // The day's weather pictogram (issue #387), resolved from the forecast's
+  // weatherCode/isDay. Null for absent/unknown codes — and, crucially, null for
+  // every day the parent gives no `weather` (past, out-of-horizon, the template
+  // row), so the watermark below simply doesn't render for them: graceful
+  // absence identical to today's no-weather behaviour, no placeholder box.
+  const icon = $derived(weather ? weatherIcon(weather) : null);
 
   // Home time stays blank by default; opening the picker on a blank field starts
   // from the usual dinner time rather than 00:00 (DOM-only — not persisted until
@@ -109,9 +117,24 @@
     aria-expanded={open}
     data-testid={`${testid}-summary`}
   >
-    <span class="flex w-16 shrink-0 flex-col leading-tight">
-      <span class="text-sm font-semibold">{label}</span>
-      {#if sublabel}<span class="text-[11px] text-muted-foreground">{sublabel}</span>{/if}
+    <span class="relative flex w-16 shrink-0 flex-col leading-tight">
+      <!-- Weather pictogram (issue #387) as a large, faint, decorative watermark
+           sitting BEHIND the weekday/date. Centred on the label block, lower in
+           the stack (the text spans are z-10 above it), pointer-transparent and
+           aria-hidden. Renders ONLY when `icon` is non-null — so past /
+           out-of-horizon / template days (no `weather`) show nothing, no box.
+           Opacity is tuned per theme: pastel raster art is faintest on light, so
+           we lift it in dark mode where the darker icons (rain/thunder/overcast)
+           are naturally subtler, while keeping the day text fully legible. -->
+      {#if icon}
+        <WeatherIcon
+          {icon}
+          class="pointer-events-none absolute left-1/2 top-1/2 z-0 h-14 w-14 -translate-x-1/2 -translate-y-1/2 opacity-[0.25] dark:opacity-[0.34]"
+        />
+      {/if}
+      <span class="relative z-10 text-sm font-semibold">{label}</span>
+      {#if sublabel}<span class="relative z-10 text-[11px] text-muted-foreground">{sublabel}</span
+        >{/if}
     </span>
 
     <span class="flex min-w-0 flex-1 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-6">
