@@ -251,6 +251,8 @@ export {
 export { aggregateForecastWindow, isForecastStale, FORECAST_MAX_AGE_MS } from './weather/index.js';
 export { temperatureBand, classifyEatingMood } from './weather/index.js';
 export type { TemperatureBand, EatingMood } from './weather/index.js';
+export { weatherSeverity, mostSignificantWeatherCode, weatherIcon } from './weather/index.js';
+export type { WeatherIconId } from './weather/index.js';
 
 // Cross-cutting ports.
 export type { ErrorReportingPort } from './ErrorReportingPort.js';

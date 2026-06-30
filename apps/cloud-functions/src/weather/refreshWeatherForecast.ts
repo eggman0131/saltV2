@@ -29,7 +29,7 @@ const SINGLETON_DOC_ID = 'singleton';
 // fixed and trusted), no withAiTimeout (this isn't an AI call).
 const OPEN_METEO_BASE = 'https://api.open-meteo.com/v1/forecast';
 const HOURLY_VARS =
-  'temperature_2m,apparent_temperature,relative_humidity_2m,cloud_cover,precipitation_probability';
+  'temperature_2m,apparent_temperature,relative_humidity_2m,cloud_cover,precipitation_probability,weather_code,is_day';
 const FORECAST_DAYS = 14;
 // Wall-clock cap for the whole fetch, modelled on the CF external-fetch timeout
 // pattern (AbortController + setTimeout) used by ssrfFetch.

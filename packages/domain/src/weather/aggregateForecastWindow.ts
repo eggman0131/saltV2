@@ -4,6 +4,7 @@ import type {
   WeatherDaySummary,
   WeatherForecast,
 } from '../schemas/index.js';
+import { weatherSeverity } from './weatherSeverity.js';
 
 // Pure weather aggregation + staleness logic (issue #382, Phase 2). NO I/O, no
 // side effects (CLAUDE.md Rule 1): the CF does the Open-Meteo fetch and the
@@ -39,6 +40,15 @@ function mean(values: number[]): number {
   return values.reduce((a, b) => a + b, 0) / values.length;
 }
 
+// One in-window weather sample: a WMO code and the hour's day/night flag. Paired
+// (rather than two parallel arrays) so the is_day chosen for the day is exactly
+// the one belonging to the hour whose code was selected. `isDay` may be null when
+// Open-Meteo omitted it for an otherwise-valid code hour.
+interface WeatherSample {
+  code: number;
+  isDay: number | null;
+}
+
 // Accumulates the in-window hourly samples for one day before reducing to a
 // summary. Each metric collects only its present (non-null) samples.
 interface DayAccumulator {
@@ -47,14 +57,55 @@ interface DayAccumulator {
   humidity: number[];
   cloud: number[];
   precip: number[];
+  // (code, is_day) pairs for hours with a present, finite weather_code. is_day is
+  // carried alongside so the selected code's hour determines the day's isDay.
+  weather: WeatherSample[];
 }
 
 function emptyAccumulator(): DayAccumulator {
-  return { temps: [], apparent: [], humidity: [], cloud: [], precip: [] };
+  return { temps: [], apparent: [], humidity: [], cloud: [], precip: [], weather: [] };
 }
 
 function push(target: number[], value: number | null | undefined): void {
   if (typeof value === 'number' && Number.isFinite(value)) target.push(value);
+}
+
+// Collects a weather sample only when the hour has a present, finite weather_code
+// (the load-bearing field); is_day rides along as-is (it may be null). Mirrors
+// `push`'s "skip null/undefined" discipline for the code.
+function pushWeather(
+  target: WeatherSample[],
+  code: number | null | undefined,
+  isDay: number | null | undefined,
+): void {
+  if (typeof code === 'number' && Number.isFinite(code)) {
+    target.push({ code, isDay: typeof isDay === 'number' ? isDay : null });
+  }
+}
+
+// Reduces a day's in-window weather samples to the MOST-SIGNIFICANT code (by
+// `weatherSeverity`) plus that hour's day/night flag. Returns null when the day
+// has no valid weather_code sample, so the caller omits both fields rather than
+// writing a bogus default. The representative `isDay` is the flag of the SELECTED
+// code's hour (the most-significant sample); a tie resolves to the first such hour
+// (stable). The flag maps Open-Meteo's 1/0 → true/false; a null/non-1/0 flag
+// leaves isDay undefined so the icon mapper falls back to the day variant.
+function reduceWeather(
+  samples: readonly WeatherSample[],
+): { weatherCode: number; isDay?: boolean } | null {
+  let best: WeatherSample | null = null;
+  let bestRank = -Infinity;
+  for (const sample of samples) {
+    const rank = weatherSeverity(sample.code);
+    if (rank > bestRank) {
+      bestRank = rank;
+      best = sample;
+    }
+  }
+  if (!best) return null;
+  if (best.isDay === 1) return { weatherCode: best.code, isDay: true };
+  if (best.isDay === 0) return { weatherCode: best.code, isDay: false };
+  return { weatherCode: best.code };
 }
 
 // Reduces the already-fetched, validated Open-Meteo HOURLY data into a per-day
@@ -73,6 +124,8 @@ export function aggregateForecastWindow(
     relative_humidity_2m,
     cloud_cover,
     precipitation_probability,
+    weather_code,
+    is_day,
   } = response.hourly;
 
   const byDay = new Map<string, DayAccumulator>();
@@ -92,6 +145,7 @@ export function aggregateForecastWindow(
     push(acc.humidity, relative_humidity_2m[i]);
     push(acc.cloud, cloud_cover[i]);
     push(acc.precip, precipitation_probability[i]);
+    pushWeather(acc.weather, weather_code[i], is_day[i]);
   }
 
   const days: Record<string, WeatherDaySummary> = {};
@@ -100,6 +154,12 @@ export function aggregateForecastWindow(
     // the window (the primary metric). Without it there is no high/low to
     // report, so omit the day rather than emit NaNs.
     if (acc.temps.length === 0) continue;
+
+    // Reduce the window's weather codes to the most-significant one (+ its hour's
+    // day/night flag). Omit both fields entirely when the day has no valid
+    // in-window code sample — older fetches lacked these arrays, and a far-edge
+    // day may have temps but no code — rather than writing a bogus default.
+    const weather = reduceWeather(acc.weather);
 
     days[date] = {
       tempHigh: Math.round(Math.max(...acc.temps)),
@@ -111,6 +171,7 @@ export function aggregateForecastWindow(
       humidity: acc.humidity.length ? Math.round(mean(acc.humidity)) : 0,
       cloudCover: acc.cloud.length ? Math.round(mean(acc.cloud)) : 0,
       precipitationChance: acc.precip.length ? Math.round(mean(acc.precip)) : 0,
+      ...(weather ?? {}),
     };
   }
 

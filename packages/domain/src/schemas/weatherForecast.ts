@@ -32,6 +32,18 @@ export const WeatherDaySummarySchema = z.object({
   cloudCover: z.number(),
   // Precipitation (rain) probability, averaged over the window, %.
   precipitationChance: z.number(),
+  // The MOST-SIGNIFICANT WMO weather code across the window, chosen by severity
+  // rank (see `weatherSeverity`) — the icon mapper turns this into a pictogram
+  // (issue #387). OPTIONAL and additive: older cached docs were written before
+  // hourly `weather_code` was fetched and lack it, so this stays backward-
+  // compatible on read. A day with no valid in-window weather_code sample omits
+  // this entirely rather than writing a bogus default.
+  weatherCode: z.number().optional(),
+  // Day/night flag for the window, taken from the is_day value of the hour whose
+  // weather_code was selected. OPTIONAL and additive — omitted alongside
+  // `weatherCode` when no in-window sample is present. Open-Meteo's 0/1 integer is
+  // mapped to false/true upstream; lets the icon mapper pick day vs night variants.
+  isDay: z.boolean().optional(),
 });
 
 export type WeatherDaySummary = z.infer<typeof WeatherDaySummarySchema>;
@@ -85,6 +97,14 @@ export const OpenMeteoForecastResponseSchema = z.object({
     relative_humidity_2m: z.array(z.number().nullable()),
     cloud_cover: z.array(z.number().nullable()),
     precipitation_probability: z.array(z.number().nullable()),
+    // WMO weather interpretation code per hour (issue #387). Parallel-indexed with
+    // `time`. The aggregation reduces the in-window codes to the most-significant
+    // one (by `weatherSeverity`) for each day.
+    weather_code: z.array(z.number().nullable()),
+    // Day/night flag per hour, Open-Meteo's 0/1 integer (NOT a boolean): 1 = day,
+    // 0 = night. Parallel-indexed with `time`; the aggregation maps the selected
+    // hour's value to the boolean `isDay`.
+    is_day: z.array(z.number().nullable()),
   }),
 });
 
