@@ -32,16 +32,24 @@ function mapCallableError(err: unknown): DomainError {
 
 // Triggers a server-side forecast refresh. `force` bypasses the server's <3h
 // staleness skip (the admin "Refresh" button sets it so a manual refresh always
-// refetches). Resolves to a ReadResult rather than throwing.
+// refetches). The optional TRAILING `traceparent` (issue #382, Phase 3) is a
+// browser-supplied W3C trace id that rides on the callable WIRE input so the CF
+// flow nests under the browser's "Refresh weather" trace instead of re-rooting;
+// it is additive and back-compat — the Phase 2 admin caller passes only `force`
+// and an empty/absent value is simply not sent (the CF treats it as optional and
+// never fails on it). Resolves to a ReadResult rather than throwing.
 export async function callRefreshWeatherForecast(
   force = false,
+  traceparent?: string,
 ): Promise<ReadResult<RefreshWeatherForecastResult, DomainError>> {
   try {
-    const fn = httpsCallable<{ force: boolean }, RefreshWeatherForecastResult>(
-      getFunctions(undefined, 'europe-west2'),
-      'refreshWeatherForecast',
-    );
-    const res = await fn({ force });
+    const fn = httpsCallable<
+      { force: boolean; traceparent?: string },
+      RefreshWeatherForecastResult
+    >(getFunctions(undefined, 'europe-west2'), 'refreshWeatherForecast');
+    // Only attach `traceparent` when present so old-shape calls stay byte-for-byte
+    // identical to Phase 2 (the wire field is optional on the schema).
+    const res = await fn(traceparent ? { force, traceparent } : { force });
     return { kind: 'ok', value: res.data };
   } catch (err) {
     return failure(mapCallableError(err));
