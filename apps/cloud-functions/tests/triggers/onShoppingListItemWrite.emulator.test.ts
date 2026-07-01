@@ -39,6 +39,10 @@ vi.mock('@salt/observability/server', () => ({
   whenServerObservabilityReady: vi.fn().mockResolvedValue(undefined),
   initServerObservability: vi.fn(),
   isServerObservabilityInitialised: vi.fn(() => false),
+  // reportServerError.ts creates this adapter at module load (issue #348), and
+  // the trigger imports it, so the mock must expose it or the module eval throws
+  // (mirrors the sibling unit test). Only `report` is invoked here.
+  createServerObservabilityErrorReportingAdapter: vi.fn(() => ({ report: vi.fn() })),
   // Phase 5: the trigger trace-context helper (triggerTraceContext.ts) is not
   // mocked, so it resolves the REAL runWithSuppliedTraceContext from here — it
   // must exist. Just run the fn (no real OTel context in the isolated stack).
