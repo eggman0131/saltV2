@@ -63,7 +63,7 @@
     const result = await renameEquipmentItem(item.id, trimmed);
     nameBusy = false;
     if (result.kind !== 'ok') {
-      addToast('Failed to rename.', 'error');
+      addToast('Failed to rename.', 'destructive');
     } else {
       editingNameActive = false;
     }
@@ -80,7 +80,7 @@
     const result = await removeEquipmentItem(item.id);
     deleteBusy = false;
     if (result.kind !== 'ok') {
-      addToast('Failed to delete equipment.', 'error');
+      addToast('Failed to delete equipment.', 'destructive');
       return;
     }
     deleteOpen = false;
@@ -102,7 +102,7 @@
     const result = await addEquipmentAccessory(item.id, newAccessoryName, false, false);
     accessoryBusy = false;
     if (result.kind !== 'ok') {
-      addToast('Failed to add accessory.', 'error');
+      addToast('Failed to add accessory.', 'destructive');
     } else {
       newAccessoryName = '';
     }
@@ -114,7 +114,7 @@
     const result = await removeEquipmentAccessory(item.id, pendingAccessoryRemoval.id);
     accessoryRemoveBusy = false;
     if (result.kind !== 'ok') {
-      addToast('Failed to remove accessory.', 'error');
+      addToast('Failed to remove accessory.', 'destructive');
       return;
     }
     pendingAccessoryRemoval = null;
@@ -123,7 +123,7 @@
   async function handleToggleOwned(accessoryId: string, currentOwned: boolean): Promise<void> {
     if (!item) return;
     const result = await toggleEquipmentAccessoryOwned(item.id, accessoryId, !currentOwned);
-    if (result.kind !== 'ok') addToast('Failed to update accessory.', 'error');
+    if (result.kind !== 'ok') addToast('Failed to update accessory.', 'destructive');
   }
 
   // ─── Rules ────────────────────────────────────────────────────────────────
@@ -138,7 +138,7 @@
     const result = await addEquipmentRule(item.id, newRuleText);
     ruleBusy = false;
     if (result.kind !== 'ok') {
-      addToast('Failed to add rule.', 'error');
+      addToast('Failed to add rule.', 'destructive');
     } else {
       newRuleText = '';
     }
@@ -154,7 +154,7 @@
     const result = await removeEquipmentRule(item.id, pendingRuleRemoval.index);
     ruleRemoveBusy = false;
     if (result.kind !== 'ok') {
-      addToast('Failed to remove rule.', 'error');
+      addToast('Failed to remove rule.', 'destructive');
       return;
     }
     pendingRuleRemoval = null;
@@ -169,7 +169,7 @@
     if (editingRuleIndex === null || !item) return;
     const result = await editEquipmentRule(item.id, editingRuleIndex, editingRuleDraft);
     if (result.kind !== 'ok') {
-      addToast('Failed to update rule.', 'error');
+      addToast('Failed to update rule.', 'destructive');
     } else {
       editingRuleIndex = null;
     }

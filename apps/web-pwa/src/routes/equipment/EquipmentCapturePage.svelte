@@ -56,7 +56,7 @@
     identifyBusy = false;
     if (result.kind !== 'ok') {
       actionSpan.setError();
-      addToast('Could not reach AI. You can still type the name manually.', 'error');
+      addToast('Could not reach AI. You can still type the name manually.', 'destructive');
       candidates = [];
     } else {
       candidates = result.value.candidates;
@@ -93,7 +93,7 @@
     populateBusy = false;
     if (result.kind !== 'ok') {
       actionSpan?.setError();
-      addToast('Could not fetch accessories. You can add them manually.', 'error');
+      addToast('Could not fetch accessories. You can add them manually.', 'destructive');
       draftAccessories = [];
     } else {
       // Phase 3 contract: no id, no owned in response — mint both here.
@@ -145,7 +145,7 @@
     saveBusy = false;
     if (result.kind !== 'ok') {
       actionSpan?.setError();
-      addToast('Failed to save equipment.', 'error');
+      addToast('Failed to save equipment.', 'destructive');
       return;
     }
     addToast(`Added ${confirmedName}`, 'success');

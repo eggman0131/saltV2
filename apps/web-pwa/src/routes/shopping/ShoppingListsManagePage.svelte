@@ -23,7 +23,7 @@
     const result = await addList(name);
     addBusy = false;
     if (result.kind !== 'ok') {
-      addToast('Failed to create list.', 'error');
+      addToast('Failed to create list.', 'destructive');
     } else {
       newName = '';
       push(`/shopping/${result.value.id}`);
@@ -57,7 +57,7 @@
     const result = await renameListById(listId, name);
     renameBusy = false;
     if (result.kind !== 'ok') {
-      addToast('Failed to rename list.', 'error');
+      addToast('Failed to rename list.', 'destructive');
     } else {
       cancelEditing();
     }
@@ -72,7 +72,7 @@
     const result = await changeDefaultList(listId);
     defaultBusy = null;
     if (result.kind !== 'ok') {
-      addToast('Failed to set default list.', 'error');
+      addToast('Failed to set default list.', 'destructive');
     }
   }
 
@@ -85,7 +85,7 @@
     const result = await removeList(listId);
     deleteBusy = null;
     if (result.kind !== 'ok') {
-      addToast('Cannot delete the default list. Set another list as default first.', 'error');
+      addToast('Cannot delete the default list. Set another list as default first.', 'destructive');
     } else {
       addToast('List deleted.', 'success');
     }
