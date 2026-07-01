@@ -1,4 +1,4 @@
-# Salt 2.0 — UI Primitives Specification (v0.2.3)
+# Salt 2.0 — UI Primitives Specification (v0.2.6)
 
 **Status:** Authoritative
 **Audience:** AI code generators + human contributors
@@ -146,7 +146,7 @@ No deep imports. No side-effect imports in any barrel.
 
 ## 1.5 Spec Versioning & Amendment Rule
 
-The spec is versioned `vMAJOR.MINOR.PATCH` (currently v0.2.1).
+The spec is versioned `vMAJOR.MINOR.PATCH` (currently v0.2.6).
 
 - **PATCH** (v0.2.1 → v0.2.2): clarifications, typo fixes, tightened class matrices. No breaking change to generated code.
 - **MINOR** (v0.2.x → v0.3.0): new primitives, new props, new tokens.
@@ -1322,14 +1322,20 @@ content: 'z-popover w-72 rounded-md border bg-popover text-popover-foreground p-
 - `TooltipTrigger.svelte`
 - `TooltipContent.svelte`
 
+`TooltipTrigger` forwards `class` and native attributes (`aria-*`, `data-*`, …) to the underlying bits-ui trigger `<button>`, so callers can style the hover/focus/tap target; children-only usage stays backward-compatible.
+
 ### Props (Root)
 
-| Name                      | Type                 | Default |
-| ------------------------- | -------------------- | ------- |
-| `open`                    | `boolean` (bindable) | —       |
-| `defaultOpen`             | `boolean`            | `false` |
-| `delayDuration`           | `number`             | `700`   |
-| `disableHoverableContent` | `boolean`            | `false` |
+| Name                         | Type                 | Default |
+| ---------------------------- | -------------------- | ------- |
+| `open`                       | `boolean` (bindable) | —       |
+| `defaultOpen`                | `boolean`            | `false` |
+| `delayDuration`              | `number`             | `700`   |
+| `disableHoverableContent`    | `boolean`            | `false` |
+| `disableCloseOnTriggerClick` | `boolean`            | `false` |
+| `ignoreNonKeyboardFocus`     | `boolean`            | `false` |
+
+Per §1.4, the bindable `open` also exposes the matching `onOpenChange` callback. `disableCloseOnTriggerClick` and `ignoreNonKeyboardFocus` are pass-through to bits-ui `Tooltip.Root` and exist to make a tooltip readable on touch (see Behavior).
 
 ### Props (Content)
 
@@ -1344,6 +1350,13 @@ content: 'z-popover w-72 rounded-md border bg-popover text-popover-foreground p-
 - Never takes focus.
 - Open on hover + keyboard focus of the trigger.
 - Close on `Escape`, pointer leave, or blur.
+
+**Touch (tap-to-toggle).** Touch devices have no hover, and a single tap both focuses **and** clicks the trigger, so the default hover/focus model is unusable on touch. To make a tooltip readable on touch, drive `open` yourself (controlled) and toggle it on tap, combining:
+
+- `disableCloseOnTriggerClick` — the tap's click does not immediately re-close the tooltip it just opened.
+- `ignoreNonKeyboardFocus` — the incidental focus a tap incurs does not open the tooltip (only real keyboard focus does), so the tap's focus-open cannot race the click toggle.
+
+Both are optional, default `false`, and pass straight through to bits-ui `Tooltip.Root`. Mouse hover and keyboard `Tab` focus still open the tooltip normally; a missing/absent pair leaves the classic hover-only behaviour unchanged.
 
 ### Styling
 
@@ -1570,6 +1583,7 @@ Numeric transform (allowed by §2.3): determinate indicator uses `style="transfo
 
 | Date       | Version | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ---------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-07-01 | v0.2.6  | §8.8 Tooltip: added touch-readability props `disableCloseOnTriggerClick` and `ignoreNonKeyboardFocus` (both pass-through to bits-ui `Tooltip.Root`) and documented the touch tap-to-toggle pattern; noted `TooltipTrigger` now forwards `class` + native attributes to the trigger `<button>`. Ratifies shipped code from #382/#386, now on bits-ui 2.x (bump #380). Resolves doc/code drift issue #393.                                                                        |
 | 2026-06-08 | v0.2.5  | Icon library migrated `lucide-svelte` → `@lucide/svelte` (commit `4822a19`). §1.1 design-system table, §1.2 allowed-imports + consumer restriction, and §8.12 Icon `name` prop updated. Icon `name` surface is now `keyof typeof import('@lucide/svelte').icons` (the named `icons` namespace export, not `import *`); `NavItem.icon` is typed as the `LucideIcon` component from `@lucide/svelte`. Ratifies the migration in issue #167.                                                                                                                            |
 | 2026-05-30 | v0.2.4  | §8.2 TextField: `label` relaxed from required to `string \| undefined`. Callers omitting `label` must supply `aria-label` or `aria-labelledby`. Ratifies code change from PR #71.                                                                                                                                                                                                                                                                        |
 | 2026-04-22 | v0.2.3  | §1.2 tightened to truly leaf (external-only) to match root CLAUDE.md and eslint.config.js. Removed `@salt/shared-types` from allowed imports list.                                                                                                                                                                                                                                                                                                       |

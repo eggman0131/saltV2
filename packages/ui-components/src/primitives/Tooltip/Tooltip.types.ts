@@ -1,4 +1,4 @@
-// spec: SPEC.md §8.8 v0.2.3
+// spec: SPEC.md §8.8 v0.2.6
 import type { Snippet } from 'svelte';
 
 export type TooltipProviderProps = {

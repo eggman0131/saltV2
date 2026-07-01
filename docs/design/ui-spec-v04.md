@@ -819,3 +819,16 @@ This section records deliberate interaction decisions for existing primitives th
 - `<ul class="... items-stretch ...">` — `items-center` is forbidden here.
 - `<li class="flex flex-1">` — each tab column must fill the row height.
 - `<a class="... flex flex-1 ...">` — the anchor inherits the full height via flex stretch.
+
+## 13.3 `AppShell` — viewport-bounded shell (`h-dvh`), inner scroll
+
+**Constraint:** The `AppShell` root must be `h-dvh` (the **dynamic** viewport height) — not `min-h-screen`, `h-screen`, or `min-h-dvh`. The root is a `flex flex-col` column of three rows: `TopBar`, then a `flex flex-1 overflow-hidden` row holding `SideNav` + `<main>`, then `BottomNav`. The scrolling region is the inner `<main class="flex-1 overflow-y-auto">`, **never** the outer shell.
+
+**Rationale:** `h-dvh` caps the shell to the dynamic viewport so a tall page scrolls its inner `<main>` region instead of growing the whole document. This keeps sticky / viewport-anchored children — e.g. the desktop Chef Chat sidebar on `RecipeViewPage`, which sticks to the top with a bounded `max-height` — fixed within the viewport and lets their content scroll internally rather than pushing the page (regression fixed in #261, commit `c17120a`, which changed the root from `min-h-screen` → `h-dvh`). `h-dvh` (not `h-screen` / `100vh`) tracks the *dynamic* viewport, so mobile browser chrome collapsing or expanding neither clips nor gaps the shell.
+
+**Trade-off (explicit):** the outer shell can never be taller than the viewport. Any surface that genuinely needs to scroll the *whole* shell (rather than an inner region) must opt out locally at the page level — do not change this primitive to accommodate it.
+
+**Contract:**
+- `AppShell` root class must include `h-dvh` **and** `flex flex-col`. `min-h-screen`, `h-screen`, and `min-h-dvh` are forbidden here.
+- The `SideNav` + `<main>` row keeps `flex flex-1 overflow-hidden`; `<main>` keeps `flex-1 overflow-y-auto`. Scrolling lives in `<main>`, not the root.
+- `<main>` retains its BottomNav-safe bottom padding (`pb-[calc(3.5rem_+_env(safe-area-inset-bottom))] lg:pb-0`) so content clears the fixed mobile `BottomNav` (see §13.2).
