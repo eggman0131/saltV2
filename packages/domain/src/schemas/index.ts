@@ -158,6 +158,17 @@ export type { MessageDoc, ChatSessionDoc } from './chatSession.js';
 export { ChefChatInputSchema } from './chefChat.js';
 export type { ChefChatInput } from './chefChat.js';
 
+export {
+  CategoriseRecipeInputSchema,
+  CategoriseRecipeAIOutputSchema,
+  CategoriseRecipeOutputSchema,
+} from './categoriseRecipe.js';
+export type {
+  CategoriseRecipeInput,
+  CategoriseRecipeAIOutput,
+  CategoriseRecipeOutput,
+} from './categoriseRecipe.js';
+
 export { AuthorRecipeInputSchema, LibrarianOutputSchema } from './authorRecipe.js';
 export type {
   AuthorRecipeInput,

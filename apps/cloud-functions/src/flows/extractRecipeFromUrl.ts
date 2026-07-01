@@ -12,6 +12,7 @@ import { extractRecipeJsonLd, type JsonLdRecipe } from '../adapters/jsonLdRecipe
 import { canonicaliseRecipeIngredientsFlow } from './canonicaliseRecipeIngredients.js';
 import { parseRecipeIngredientsFlow } from './parseRecipeIngredients.js';
 import { resolveModel } from '../ai/resolveModel.js';
+import { CATEGORY_TAG_RULES } from './categoryTags.js';
 
 // SSRF-hardened URL import (recipe URL import epic, Phases 1 & 3).
 //
@@ -413,7 +414,7 @@ const FIELD_RULES = `## Fields
 - description: 1–2 sentence summary, or null.
 - servings: integer portions, or null if not stated.
 - totalTimeMinutes/prepTimeMinutes/cookTimeMinutes: integers in minutes, or null.
-- tags: short lowercase keywords (e.g. ["vegetarian","quick","pasta"]). Empty array if none.
+${CATEGORY_TAG_RULES}
 - ingredientGroups: group ingredients by course/stage (null name = default group).
   Each ingredient: rawText (the ingredient line, already converted to metric + British spelling/terms — \
 this is what the rest of the pipeline parses, so write a clean natural line e.g. "240ml whole milk" or \
