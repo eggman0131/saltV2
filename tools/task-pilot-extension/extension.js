@@ -100,21 +100,27 @@ class TaskItem extends vscode.TreeItem {
 
 // ── Dev observability toggles ─────────────────────────────────────────────────
 // Three switches over what dev telemetry reaches PostHog. Each flips ONE line in
-// a dev env file the minimal way the docs describe:
-//   • the PostHog keys toggle by COMMENTING the line out — an absent/empty key
-//     makes the adapter a complete no-op — so the real key value is preserved
-//     across flips;
-//   • SALT_AI_OTLP_LOCAL flips its VALUE 0<->1 (the server span exporters gate on
-//     `=== '1'`, so 0 and "commented out" are equivalently off).
+// a dev env file the minimal way the docs describe, and — crucially — only ever
+// touches GITIGNORED files, so toggling never dirties a tracked env file:
+//   • Browser PostHog is a `localOverride` on apps/web-pwa/.env.development.local
+//     (gitignored, loaded at HIGHER Vite priority than the committed
+//     .env.development). OFF writes `VITE_PUBLIC_POSTHOG_KEY=` — an empty key that
+//     overrides the tracked key and makes the adapter a complete no-op; ON DELETES
+//     the override line so the committed key wins again. The committed
+//     .env.development is left untouched either way.
+//   • Server PostHog toggles by COMMENTING its line in .secret.local (gitignored)
+//     — an absent/empty key makes the adapter a no-op, so the real value survives.
+//   • SALT_AI_OTLP_LOCAL flips its VALUE 0<->1 in .secret.local (the server span
+//     exporters gate on `=== '1'`, so 0 and "commented out" are equivalently off).
 // Toggling only edits the file; the value is read at process start, so the
 // affected dev service must be restarted to pick it up — hence the restart prompt.
 const OBS_TOGGLES = [
   {
     id: 'browserPosthog',
     label: 'Browser PostHog',
-    file: 'apps/web-pwa/.env.development',
+    file: 'apps/web-pwa/.env.development.local',
     key: 'VITE_PUBLIC_POSTHOG_KEY',
-    mode: 'comment',
+    mode: 'localOverride',
     restart: 'Vite Dev Server',
     detail: 'posthog-js — autocapture, pageviews, events, exceptions, browser-rooted traces.',
   },
@@ -178,6 +184,16 @@ function unquote(value) {
 
 // Is the toggle currently ON, given its matched line?
 function isToggleEnabled(toggle, line) {
+  if (toggle.mode === 'localOverride') {
+    // A gitignored override of a committed key. No override line (absent file or
+    // absent/commented line) means the committed key is in force → ON; a present,
+    // uncommented, EMPTY value is the override that gates the adapter off → OFF; a
+    // non-empty override key is still ON.
+    if (!line || line.commented) {
+      return true;
+    }
+    return unquote(line.value).length > 0;
+  }
   if (!line || line.commented) {
     return false;
   }
@@ -665,8 +681,15 @@ class TaskPilotProvider {
     try {
       const content = fs.readFileSync(path.join(root, toggle.file), 'utf8');
       const line = findEnvLine(content.split(/\r?\n/), toggle.key);
-      return { present: Boolean(line), enabled: isToggleEnabled(toggle, line) };
+      // A localOverride toggle is always operable: an absent override line is a
+      // valid ON state (committed key wins), not a "line not found" error.
+      const present = toggle.mode === 'localOverride' ? true : Boolean(line);
+      return { present, enabled: isToggleEnabled(toggle, line) };
     } catch {
+      // Missing override file → committed key wins → ON, and still operable.
+      if (toggle.mode === 'localOverride') {
+        return { present: true, enabled: true };
+      }
       return { present: false, enabled: false };
     }
   }
@@ -685,6 +708,12 @@ class TaskPilotProvider {
     }
 
     const fullPath = path.join(root, toggle.file);
+
+    if (toggle.mode === 'localOverride') {
+      await this.toggleLocalOverride(toggle, fullPath);
+      return;
+    }
+
     let content;
     try {
       content = fs.readFileSync(fullPath, 'utf8');
@@ -709,6 +738,57 @@ class TaskPilotProvider {
 
     const enable = !isToggleEnabled(toggle, line);
     lines[line.index] = composeEnvLine(toggle, line, enable);
+    try {
+      fs.writeFileSync(fullPath, lines.join('\n'));
+    } catch {
+      vscode.window.showWarningMessage(`Task Pilot: couldn't write ${toggle.file}.`);
+      return;
+    }
+
+    this.refresh();
+    await this.announceToggle(toggle, enable);
+  }
+
+  // Toggles a gitignored `.local` override (e.g. apps/web-pwa/.env.development.local)
+  // WITHOUT ever touching the committed env file. OFF writes `KEY=` — an empty value
+  // that, sitting at higher Vite priority, overrides the committed key and makes the
+  // adapter a no-op. ON DELETES the override line so the committed key wins again.
+  // The override file is created on demand and its other lines are left intact.
+  async toggleLocalOverride(toggle, fullPath) {
+    let content = '';
+    let existed = true;
+    try {
+      content = fs.readFileSync(fullPath, 'utf8');
+    } catch {
+      existed = false;
+    }
+
+    const lines = content.length ? content.split(/\r?\n/) : [];
+    const line = findEnvLine(lines, toggle.key);
+    const enable = !isToggleEnabled(toggle, line);
+
+    if (enable) {
+      // ON — drop any override line so the committed key takes over.
+      if (line) {
+        lines.splice(line.index, 1);
+      }
+    } else if (line) {
+      // OFF — force the existing override empty, in place (value preserved elsewhere).
+      lines[line.index] = `${line.indent}${line.exportKw}${toggle.key}=`;
+    } else {
+      // OFF — no override line yet; seed a fresh file with a note, then append it.
+      if (!existed && lines.length === 0) {
+        lines.push(
+          '# Local dev override (gitignored, wins over .env.development). An empty',
+          '# key makes the observability adapter a no-op; delete the line below to',
+          '# fall back to the committed key.',
+        );
+      } else if (lines.length && lines[lines.length - 1] !== '') {
+        lines.push('');
+      }
+      lines.push(`${toggle.key}=`);
+    }
+
     try {
       fs.writeFileSync(fullPath, lines.join('\n'));
     } catch {
