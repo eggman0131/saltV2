@@ -56,7 +56,7 @@
     const name = formName.trim();
     const email = formEmail.trim();
     if (!name || (!isEditing && !email)) {
-      addToast('Name and email are required.', 'error');
+      addToast('Name and email are required.', 'destructive');
       return;
     }
     saving = true;
@@ -66,7 +66,7 @@
     saving = false;
 
     if (result.kind !== 'ok') {
-      addToast(isEditing ? 'Failed to save member.' : 'Failed to add member.', 'error');
+      addToast(isEditing ? 'Failed to save member.' : 'Failed to add member.', 'destructive');
       return;
     }
     showEditor = false;
@@ -83,7 +83,7 @@
     deleting = false;
     deleteTarget = null;
     if (result.kind !== 'ok') {
-      addToast('Failed to remove member.', 'error');
+      addToast('Failed to remove member.', 'destructive');
     }
   }
 </script>

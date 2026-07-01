@@ -115,11 +115,11 @@
     const lat = Number(manualLat.trim());
     const lng = Number(manualLng.trim());
     if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
-      addToast('Latitude must be a number between -90 and 90.', 'error');
+      addToast('Latitude must be a number between -90 and 90.', 'destructive');
       return;
     }
     if (!Number.isFinite(lng) || lng < -180 || lng > 180) {
-      addToast('Longitude must be a number between -180 and 180.', 'error');
+      addToast('Longitude must be a number between -180 and 180.', 'destructive');
       return;
     }
     const timezone = manualTimezone.trim() || resolveBrowserTimezone();
@@ -136,7 +136,7 @@
     const result = await setHomeLocation(draft);
     saving = false;
     if (result.kind !== 'ok') {
-      addToast('Failed to save the home location.', 'error');
+      addToast('Failed to save the home location.', 'destructive');
     } else {
       addToast('Home location saved.', 'success');
       // Saved value now drives the readout + map; drop the draft.
@@ -151,7 +151,7 @@
     const result = await resetHomeLocation();
     saving = false;
     if (result.kind !== 'ok') {
-      addToast('Failed to clear the home location.', 'error');
+      addToast('Failed to clear the home location.', 'destructive');
     } else {
       addToast('Home location cleared.', 'success');
       draft = null;

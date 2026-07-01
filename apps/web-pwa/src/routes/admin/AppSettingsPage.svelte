@@ -106,7 +106,7 @@
     const result = await setModelRole(role, drafts[role]);
     saving[role] = false;
     if (result.kind !== 'ok') {
-      addToast('Failed to save the model setting.', 'error');
+      addToast('Failed to save the model setting.', 'destructive');
     } else {
       addToast('Model setting saved. It may take up to ~3 minutes to take effect.', 'success');
     }
@@ -118,7 +118,7 @@
     const result = await resetModelRole(role);
     saving[role] = false;
     if (result.kind !== 'ok') {
-      addToast('Failed to reset the model setting.', 'error');
+      addToast('Failed to reset the model setting.', 'destructive');
     } else {
       addToast('Reset to default.', 'success');
     }
@@ -176,7 +176,7 @@
     const result = await setFlowOverride(flowId, flowDrafts[flowId]);
     flowSaving[flowId] = false;
     if (result.kind !== 'ok') {
-      addToast('Failed to save the flow override.', 'error');
+      addToast('Failed to save the flow override.', 'destructive');
     } else {
       addToast('Flow override saved. It may take up to ~3 minutes to take effect.', 'success');
     }
@@ -188,7 +188,7 @@
     const result = await resetFlowOverride(flowId);
     flowSaving[flowId] = false;
     if (result.kind !== 'ok') {
-      addToast('Failed to clear the flow override.', 'error');
+      addToast('Failed to clear the flow override.', 'destructive');
     } else {
       addToast('Override cleared — flow now follows its role.', 'success');
     }
@@ -222,7 +222,7 @@
   async function onRefreshCatalog(): Promise<void> {
     await refreshCatalog();
     if ($isCatalogUnavailable) {
-      addToast('Could not refresh the model catalog — free-text entry still works.', 'error');
+      addToast('Could not refresh the model catalog — free-text entry still works.', 'destructive');
     } else {
       addToast('Model catalog refreshed.', 'success');
     }

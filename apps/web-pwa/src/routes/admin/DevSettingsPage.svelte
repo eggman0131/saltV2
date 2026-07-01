@@ -15,7 +15,7 @@
   async function onToggleIconGeneration(enabled: boolean): Promise<void> {
     const result = await setCanonIconGenerationEnabled(enabled);
     if (result.kind !== 'ok') {
-      addToast('Failed to save the icon-generation setting.', 'error');
+      addToast('Failed to save the icon-generation setting.', 'destructive');
     }
   }
 </script>
