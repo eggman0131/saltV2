@@ -342,6 +342,12 @@ This document defines the repeatable pattern for domain modules:
 Canon is the worked example. The same pattern applies to recipe, shopping,
 members, and mealPlan.
 
+The `weather` module is a lightweight variant — pure classification utilities
+(`weatherIcon`, `classifyEatingMood`, `temperatureBand`, `weatherSeverity`,
+`aggregateForecastWindow`) with no write operations or adapter ports; schemas
+(`WeatherForecastSchema`, `WeatherDaySummarySchema`) follow the standard
+`@salt/domain/schemas` convention.
+
 The goal is not architectural purity. The goal is hard, enforceable
 boundaries so that drift — by humans or AI agents — is caught by the
 build instead of accumulating into spaghetti.
