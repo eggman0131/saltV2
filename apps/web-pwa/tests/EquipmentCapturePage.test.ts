@@ -162,7 +162,10 @@ describe('EquipmentCapturePage', () => {
     await userEvent.click(screen.getByTestId('equipment-save-btn'));
 
     await waitFor(() => {
-      expect(vi.mocked(addToast)).toHaveBeenCalledWith(expect.stringMatching(/failed/i), 'error');
+      expect(vi.mocked(addToast)).toHaveBeenCalledWith(
+        expect.stringMatching(/failed/i),
+        'destructive',
+      );
     });
     expect(vi.mocked(push)).not.toHaveBeenCalledWith(expect.stringContaining('/equipment/'));
   });

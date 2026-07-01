@@ -58,11 +58,11 @@
     const result = await callRefreshWeatherForecast(true);
     refreshing = false;
     if (result.kind !== 'ok') {
-      addToast('Failed to refresh the weather forecast.', 'error');
+      addToast('Failed to refresh the weather forecast.', 'destructive');
       return;
     }
     if (!result.value.homeLocationSet) {
-      addToast('Set a home location first, then refresh the forecast.', 'error');
+      addToast('Set a home location first, then refresh the forecast.', 'destructive');
       return;
     }
     addToast('Weather forecast refreshed.', 'success');

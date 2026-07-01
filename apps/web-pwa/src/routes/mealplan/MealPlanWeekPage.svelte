@@ -77,7 +77,7 @@
   async function doLoadTemplate(): Promise<void> {
     showLoadConfirm = false;
     const result = await loadTemplateIntoCurrentWeek();
-    if (result.kind !== 'ok') addToast('Failed to load the template.', 'error');
+    if (result.kind !== 'ok') addToast('Failed to load the template.', 'destructive');
   }
 
   // ─── Day-editor handlers (bound to a concrete date) ───────────────────────

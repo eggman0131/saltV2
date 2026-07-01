@@ -35,7 +35,7 @@
 
   async function onFirstDayChange(value: string): Promise<void> {
     const result = await saveFirstDayOfWeek(value as Weekday);
-    if (result.kind !== 'ok') addToast('Failed to save the first day of the week.', 'error');
+    if (result.kind !== 'ok') addToast('Failed to save the first day of the week.', 'destructive');
   }
 
   function toggleChef(weekday: Weekday, memberId: string): void {
