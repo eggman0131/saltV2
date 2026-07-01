@@ -2,7 +2,7 @@
   "name": "task-pilot-extension",
   "displayName": "Task Pilot",
   "description": "Sidebar controls for starting, stopping, restarting, and opening workspace dev services.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "local",
   "engines": {
     "vscode": "^1.89.0"
