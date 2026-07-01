@@ -174,6 +174,8 @@ describe('recipeService — write/command failure reporting (Phase 2)', () => {
     const row: RecipeAddRow = {
       ingredientId: 'a',
       rawText: '2 eggs',
+      itemText: 'eggs',
+      notes: '',
       name: 'eggs',
       fromCanon: false,
       isOptional: false,

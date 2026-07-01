@@ -11,6 +11,7 @@ import { ai } from '../genkit.js';
 import { canonicaliseRecipeIngredientsFlow } from './canonicaliseRecipeIngredients.js';
 import { parseRecipeIngredientsFlow } from './parseRecipeIngredients.js';
 import { resolveModel } from '../ai/resolveModel.js';
+import { CATEGORY_TAG_RULES } from './categoryTags.js';
 
 const OutputSchema = z.custom<RecipeDoc>();
 
@@ -27,7 +28,7 @@ export const authorRecipeFlow = ai.defineFlow(
 
     const tagVocab =
       input.existingTags.length > 0
-        ? `\n\nExisting tags in this recipe collection (prefer these where appropriate; add a new tag only if meaningfully different): ${input.existingTags.join(', ')}.`
+        ? `\n\nExisting category tags in this recipe collection (prefer these where they genuinely fit; add a new tag only if meaningfully different, and still never an ingredient): ${input.existingTags.join(', ')}.`
         : '';
 
     // Edit mode: ground the librarian on the existing recipe so it returns the
@@ -236,7 +237,7 @@ Given a cooking conversation between a user and a chef, extract and structure a 
 - description: 1–2 sentence summary, or null.
 - servings: integer portions, or null if not stated.
 - totalTimeMinutes/prepTimeMinutes/cookTimeMinutes: integers in minutes, or null.
-- tags: short lowercase keywords (e.g. ["vegetarian","quick","pasta"]). Empty array if none.
+${CATEGORY_TAG_RULES}
 - ingredientGroups: group ingredients by course/stage (null name = default group).
   Each ingredient: rawText (verbatim as stated — preserve the original wording including any
   tsp/tbsp/cup measures the chef used), isOptional (true only if explicitly optional),

@@ -109,6 +109,18 @@ const countIngredient = {
   displayText: null,
 };
 
+// Parsed ingredient carrying preparation, a parenthetical note, and a friendly
+// displayText — exercises the clean-name mapping: item → rawText, notes → notes,
+// preparation dropped, displayText ignored (scaled metric wins).
+const prepNotesIngredient = {
+  quantity: { type: 'single' as const, value: 400 },
+  unit: 'g' as const,
+  item: 'tomatoes',
+  preparation: ['drained'],
+  notes: 'preferably San Marzano',
+  displayText: '1 tin',
+};
+
 function matchedIngredient(id: string, canonId: string, parsed: unknown) {
   return {
     id,
@@ -218,6 +230,35 @@ describe('buildRecipeAddPlan', () => {
     const rows = buildRecipeAddPlan(recipe, 4); // base 2 → scale 2
     expect(rows[0].amount).toBe(4);
   });
+
+  it('carries parsed.item as itemText and parsed.notes as notes, dropping preparation', () => {
+    mockGetCanonItemsSnapshot.mockReturnValue([makeCanonItem('canon-tomatoes', 'needed')]);
+    const recipe = makeRecipe([
+      makeGroup([matchedIngredient('i1', 'canon-tomatoes', prepNotesIngredient)]),
+    ]);
+    const rows = buildRecipeAddPlan(recipe, 2);
+    expect(rows[0]).toMatchObject({ itemText: 'tomatoes', notes: 'preferably San Marzano' });
+    // Preparation ("drained") is intentionally dropped from both name and notes.
+    expect(rows[0].notes).not.toContain('drained');
+  });
+
+  it('falls back to the raw line for itemText when the ingredient is unparsed', () => {
+    const recipe = makeRecipe([
+      makeGroup([
+        {
+          id: 'i1',
+          rawText: 'some unknown thing',
+          parsed: null,
+          canonId: null,
+          matchState: 'pending',
+          isOptional: false,
+          firstUsedInStepId: null,
+        },
+      ]),
+    ]);
+    const rows = buildRecipeAddPlan(recipe, 2);
+    expect(rows[0]).toMatchObject({ itemText: 'some unknown thing', notes: '' });
+  });
 });
 
 // ─── commitRecipeAddPlan ─────────────────────────────────────────────────────
@@ -237,7 +278,9 @@ describe('commitRecipeAddPlan', () => {
     expect(saved.canonId).toBe('canon-flour');
     expect(saved.matchState).toBe('matched');
     expect(saved.needsCheck).toBe(true);
-    expect(saved.rawText).toBe('2 cups flour');
+    // rawText is the parser's clean item name (parsed.item), not the raw line.
+    expect(saved.rawText).toBe('eggs');
+    expect(saved.notes).toBe('');
   });
 
   it('skips rows the user left as add=false', async () => {
@@ -250,6 +293,27 @@ describe('commitRecipeAddPlan', () => {
     const result = await commitRecipeAddPlan(recipe, 'list-1', 2, rows);
     expect(result).toEqual({ kind: 'ok', value: undefined });
     expect(fs.saveShoppingListItem).not.toHaveBeenCalled();
+  });
+
+  it('writes parsed.item as rawText and parsed.notes as notes, dropping preparation', async () => {
+    mockGetCanonItemsSnapshot.mockReturnValue([makeCanonItem('canon-tomatoes', 'needed')]);
+    const recipe = makeRecipe([
+      makeGroup([matchedIngredient('i1', 'canon-tomatoes', prepNotesIngredient)]),
+    ]);
+    const rows = buildRecipeAddPlan(recipe, 2);
+
+    await commitRecipeAddPlan(recipe, 'list-1', 2, rows);
+    const saved = (fs.saveShoppingListItem as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    // Clean item name, not the raw line and not the "1 tin" displayText.
+    expect(saved.rawText).toBe('tomatoes');
+    expect(saved.notes).toBe('preferably San Marzano');
+    // Scaled metric amount/unit remains the quantity source of truth.
+    expect(saved.amount).toBe(400);
+    expect(saved.unit).toBe('g');
+    // Preparation and displayText never leak into the written text.
+    expect(saved.rawText).not.toContain('drained');
+    expect(saved.rawText).not.toContain('tin');
+    expect(saved.notes).not.toContain('drained');
   });
 
   it('records the recipe source on written items', async () => {
