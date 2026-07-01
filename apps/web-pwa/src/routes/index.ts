@@ -1,4 +1,5 @@
-import type { RouteDefinition } from 'svelte-spa-router';
+import type { Component } from 'svelte';
+import type { RouteDefinition, WrappedComponent } from 'svelte-spa-router';
 import CanonListPage from './canon/CanonListPage.svelte';
 import CanonCreatePage from './canon/CanonCreatePage.svelte';
 import CanonDetailPage from './canon/CanonDetailPage.svelte';
@@ -25,7 +26,14 @@ import AppSettingsPage from './admin/AppSettingsPage.svelte';
 import NotFound from './NotFound.svelte';
 
 // More-specific static routes must precede parameterised ones when using a Map.
-export const routes: RouteDefinition = new Map([
+// The Map is typed with RouteDefinition's own value type: without it, `new Map`
+// infers a heterogeneous union of `Component<Props>` tuples that TS cannot unify
+// to a single readonly entry type under exactOptionalPropertyTypes (the pages
+// have differing `params` props), so the constructor overload fails to match.
+export const routes: RouteDefinition = new Map<
+  string | RegExp,
+  Component<any, any> | WrappedComponent
+>([
   // Shopping is the default view; '/' redirects to the user's shopping list.
   ['/', ShoppingListRedirectPage],
   ['/equipment', EquipmentListPage],

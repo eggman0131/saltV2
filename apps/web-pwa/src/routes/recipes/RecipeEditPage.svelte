@@ -399,7 +399,7 @@
             onclick={() => (showPasteArea = !showPasteArea)}
             data-testid="recipe-parse-toggle-btn"
           >
-            {#snippet leading()}<Icon name="Wand2" size={16} />{/snippet}
+            {#snippet leading()}<Icon name="Wand" size={16} />{/snippet}
             Parse from text
           </Button>
           <Button variant="outline" size="sm" onclick={addGroup} data-testid="recipe-add-group-btn">

@@ -438,10 +438,11 @@
                       items={aisleItems}
                       value={item.aisleId ?? ''}
                       onValueChange={saveAisle}
+                      placeholder="Search aisles…"
                       restrict
                     >
                       <ComboboxField>
-                        <ComboboxInput placeholder="Search aisles…" />
+                        <ComboboxInput />
                         <ComboboxTrigger />
                       </ComboboxField>
                       <ComboboxContent>
@@ -498,7 +499,7 @@
                 <div class="flex-1">
                   <TextField
                     label="Quantity threshold (optional)"
-                    type="number"
+                    inputmode="numeric"
                     value={editingThreshold}
                     onValueChange={(v) => (editingThreshold = v)}
                     placeholder="e.g. 500"
@@ -565,7 +566,7 @@
                 <div class="flex-1">
                   <TextField
                     label=""
-                    type="number"
+                    inputmode="numeric"
                     value={editingThreshold}
                     onValueChange={(v) => (editingThreshold = v)}
                     placeholder="e.g. 500"
@@ -611,10 +612,11 @@
                     items={aisleItems}
                     value={item.aisleId ?? ''}
                     onValueChange={saveAisle}
+                    placeholder="Search aisles…"
                     restrict
                   >
                     <ComboboxField>
-                      <ComboboxInput placeholder="Search aisles…" />
+                      <ComboboxInput />
                       <ComboboxTrigger />
                     </ComboboxField>
                     <ComboboxContent>

@@ -25,7 +25,9 @@
     day: Day;
     members: Member[];
     testid: string;
-    weather?: WeatherDaySummary;
+    // `| undefined` so the parent can pass `forecast?.days[date]` directly under
+    // exactOptionalPropertyTypes (noUncheckedIndexedAccess makes it optional).
+    weather?: WeatherDaySummary | undefined;
     onNoteChange: (note: string) => void;
     onChefToggle: (memberId: string) => void;
     onAttendeeToggle: (memberId: string) => void;

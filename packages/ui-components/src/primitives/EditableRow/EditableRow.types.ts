@@ -4,7 +4,10 @@ import type { Snippet } from 'svelte';
 export type EditableRowProps = {
   selected?: boolean;
   shaded?: boolean;
-  onToggleSelect?: () => void;
+  // `| undefined` so callers may pass a conditional handler
+  // (`cond ? fn : undefined`) under exactOptionalPropertyTypes; the component
+  // guards `{#if onToggleSelect !== undefined}`.
+  onToggleSelect?: (() => void) | undefined;
   narrow?: Snippet;
   wide?: Snippet;
 };

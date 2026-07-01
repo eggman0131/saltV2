@@ -33,7 +33,10 @@
     item: CanonItem;
     aisles: readonly Aisle[];
     selected: boolean;
-    onToggleSelect: () => void;
+    // Optional: the list only passes a handler in selection mode
+    // (`selectionMode ? fn : undefined`). Forwarded to EditableRow, which
+    // renders the checkbox only when a handler is present.
+    onToggleSelect?: (() => void) | undefined;
   } = $props();
 
   const aisleItems = $derived([
@@ -123,10 +126,11 @@
       items={aisleItems}
       value={item.aisleId ?? ''}
       onValueChange={handleAisleChange}
+      placeholder="Aisle…"
       restrict
     >
       <ComboboxField class="w-36 md:w-52 shrink-0">
-        <ComboboxInput class="h-7 px-2 text-xs" placeholder="Aisle…" />
+        <ComboboxInput class="h-7 px-2 text-xs" />
         <ComboboxTrigger class="h-7" />
       </ComboboxField>
       <ComboboxContent>

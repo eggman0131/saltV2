@@ -134,10 +134,11 @@ jobs:
       # does not parse .svelte, so a breaking UI-primitive API change can
       # otherwise pass fully green (see #390, follow-up to the bits-ui v1→v2 bump
       # in #380). Ungated like the rest of this job — it's cheap type-checking.
-      # Scoped to @salt/ui-components for now; apps/web-pwa needs a cleanup pass
-      # before it can be added (tracked separately).
+      # `pnpm check` fans out (`pnpm -r --if-present check`) to every package
+      # with a `check` script — @salt/ui-components (#395) and apps/web-pwa
+      # (#396) today. Add a `check` script to a new package to enrol it.
       - name: Svelte check
-        run: pnpm --filter @salt/ui-components check
+        run: pnpm check
 
       - name: Test
         run: pnpm test

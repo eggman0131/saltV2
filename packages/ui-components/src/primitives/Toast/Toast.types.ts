@@ -17,7 +17,9 @@ export type ToastViewportProps = {
 export type ToastProps = {
   open?: boolean;
   defaultOpen?: boolean;
-  duration?: number;
+  // `| undefined` so a toast may pass `duration: undefined` to mean "use the
+  // provider default" under exactOptionalPropertyTypes.
+  duration?: number | undefined;
   variant?: ToastVariants['variant'];
   class?: string;
   children?: Snippet;

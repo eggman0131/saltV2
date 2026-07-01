@@ -13,6 +13,7 @@
     "lint": "eslint \"**/*.{ts,js}\"",
     "lint:boundaries": "eslint \"packages/**/*.ts\" \"apps/**/*.ts\" \".boundary-tests/**/*.ts\"",
     "typecheck": "tsc --build && tsc -p apps/web-pwa/e2e/tsconfig.json",
+    "check": "pnpm -r --if-present check",
     "boundary:test": "sh .boundary-tests/run.sh",
     "provenance:check": "pnpm --filter @salt/ui-components provenance:check",
     "theme:check": "pnpm --filter @salt/ui-components theme:check",

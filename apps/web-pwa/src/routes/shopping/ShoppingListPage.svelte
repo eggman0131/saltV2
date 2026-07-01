@@ -123,6 +123,11 @@
   // items", never "filtered to none".
   const displayItems = $derived(verifyFilterActive ? verifyItems : visibleItems);
 
+  // Declared here (ahead of the selection block below) because the `grouped`
+  // derived reads it — a `$derived` is lazy at runtime, but the `let` must still
+  // be declared before its first textual use.
+  let selectionMode = $state(false);
+
   // Combine recipe-sourced rows in the normal view; in selection mode show every
   // item individually so bulk check/delete/move act per-item (issue #184).
   const grouped = $derived(
@@ -165,8 +170,8 @@
   }
 
   // ─── Selection state ──────────────────────────────────────────────────────────
-
-  let selectionMode = $state(false);
+  // `selectionMode` itself is declared above (before the `grouped` derived that
+  // reads it).
 
   const selection = createListSelection({
     getAllIds: () => allItemIds,
@@ -427,8 +432,9 @@
   }
 
   async function handleConfirmNeeded(ids: readonly string[]): Promise<void> {
-    if (ids.length === 1) {
-      const result = await confirmItemNeeded(params.listId, ids[0]);
+    const [singleId] = ids;
+    if (ids.length === 1 && singleId !== undefined) {
+      const result = await confirmItemNeeded(params.listId, singleId);
       if (result.kind !== 'ok') addToast('Failed to update item.', 'destructive');
       return;
     }
@@ -455,7 +461,8 @@
 
   function rowLabel(row: AisleRow): string {
     if (row.combined) return titleCase(canonMap.get(row.canonId)?.name ?? '');
-    return displayLabel(row.contributors[0]);
+    const first = row.contributors[0];
+    return first ? displayLabel(first) : '';
   }
 
   function formatSubtotals(subtotals: readonly AmountSubtotal[]): string | null {
@@ -848,7 +855,10 @@
                       </div>
                     {/if}
                   {:else}
-                    {@render plainItemRow(row.contributors[0], false, false, true)}
+                    {@const single = row.contributors[0]}
+                    {#if single}
+                      {@render plainItemRow(single, false, false, true)}
+                    {/if}
                   {/if}
                 {/each}
               {/if}
@@ -939,13 +949,14 @@
 <!-- Edit item sheet -->
 <Sheet
   bind:open={editSheetOpen}
+  side="bottom"
   onOpenChange={(v) => {
     if (!v) {
       editingItem = null;
     }
   }}
 >
-  <SheetContent side="bottom" class="flex flex-col gap-4 p-4 pb-8">
+  <SheetContent class="flex flex-col gap-4 p-4 pb-8">
     <SheetHeader>
       <div class="flex items-center gap-3">
         {#if editingItem}
