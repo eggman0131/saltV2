@@ -352,7 +352,11 @@ const _itemIds = { newListId: () => crypto.randomUUID(), newItemId: () => crypto
 export interface RecipeAddRow {
   readonly ingredientId: string;
   readonly rawText: string;
-  /** Canon name when live-matched, else the raw text — the label the sheet shows. */
+  /** Parser's clean item name (parsed.item), raw line as fallback — written as the shopping item's rawText. */
+  readonly itemText: string;
+  /** Parenthetical notes (parsed.notes) carried to the shopping item's notes field. '' when none. */
+  readonly notes: string;
+  /** Canon name when live-matched, else the clean item text — the label the sheet shows. */
   readonly name: string;
   readonly fromCanon: boolean;
   readonly isOptional: boolean;
@@ -396,10 +400,23 @@ export function buildRecipeAddPlan(recipe: Recipe, servings: number): RecipeAddR
         canon?.largeQuantityThreshold,
       );
 
+      // Prefer the parser's clean item name over the raw line so the shopping row
+      // reads without the recipe's amounts/units/prep ("1 x 400g tin chopped
+      // tomatoes, drained" → "tomatoes"). Falls back to the raw line when the
+      // ingredient is unparsed or the parse yielded an empty item. Preparation
+      // phrases are intentionally dropped; parenthetical notes ride to the item's
+      // notes field. `parsed.displayText` is deliberately ignored — it is a frozen
+      // parse-time measure that would not rescale with servings, so the scaled
+      // metric amount/unit stays the source of truth for quantity.
+      const itemText = ing.parsed?.item.trim() || ing.rawText;
+      const notes = ing.parsed?.notes ?? '';
+
       rows.push({
         ingredientId: ing.id,
         rawText: ing.rawText,
-        name: canon?.name ?? ing.rawText,
+        itemText,
+        notes,
+        name: canon?.name ?? itemText,
         fromCanon: canon !== null,
         isOptional: ing.isOptional,
         canonId: matched ? ing.canonId : null,
@@ -438,7 +455,8 @@ export async function commitRecipeAddPlan(
     const result = addItem(
       [],
       {
-        rawText: row.rawText,
+        rawText: row.itemText,
+        ...(row.notes ? { notes: row.notes } : {}),
         source,
         now,
         needsCheck: row.check,
