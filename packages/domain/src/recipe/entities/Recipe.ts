@@ -21,14 +21,20 @@ export interface RecipeMetadata {
 // Provenance of the recipe. Only `manual` is produced in this epic; `url`/`book`
 // are reserved seams for the deferred URL/photo import epic (no migration needed
 // when they arrive).
+// `url`/`book` are `| undefined` to match RecipeSourceSchema (z.optional() infers
+// `T | undefined`), so a schema-derived RecipeDoc assigns to a Recipe entity
+// under exactOptionalPropertyTypes without a cast. Additive/safe: readers of an
+// optional field already handle `undefined`.
 export interface RecipeSource {
   readonly type: 'url' | 'book' | 'manual';
-  readonly url?: string;
-  readonly book?: {
-    readonly title: string;
-    readonly author: string;
-    readonly page: number;
-  };
+  readonly url?: string | undefined;
+  readonly book?:
+    | {
+        readonly title: string;
+        readonly author: string;
+        readonly page: number;
+      }
+    | undefined;
 }
 
 // One Firestore document at `recipes/{id}`. Whole-document last-write-wins on

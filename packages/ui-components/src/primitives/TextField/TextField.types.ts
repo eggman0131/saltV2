@@ -6,9 +6,15 @@ import type { TextFieldFrameVariants } from './TextField.variants';
 export type TextFieldProps = {
   value?: string;
   defaultValue?: string;
-  label: string;
+  // Optional per SPEC §8.2: when omitted, the caller must supply `aria-label`
+  // or `aria-labelledby` (both flow through `...rest` onto the <input>). The
+  // component already guards `{#if label}` — this type matches that contract.
+  label?: string;
   description?: string;
-  error?: string;
+  // `| undefined` (SPEC §8.2: `string | undefined`) so callers can pass a
+  // conditional error (`hasError ? msg : undefined`) under
+  // exactOptionalPropertyTypes; empty/undefined both render no error.
+  error?: string | undefined;
   type?: 'text' | 'email' | 'password' | 'url' | 'tel' | 'search';
   placeholder?: string;
   size?: TextFieldFrameVariants['size'];

@@ -97,7 +97,7 @@
     <span class="mb-1 block text-sm font-medium">{label}</span>
     <Combobox
       {items}
-      value={value || undefined}
+      value={value || ''}
       allowCustom={true}
       {filterFn}
       {onValueChange}

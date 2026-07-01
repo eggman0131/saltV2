@@ -5,9 +5,15 @@ import type { TextareaFrameVariants } from './Textarea.variants';
 export type TextareaProps = {
   value?: string;
   defaultValue?: string;
-  label: string;
+  // Optional per SPEC §8.3 (same contract as TextField §8.2): when omitted, the
+  // caller must supply `aria-label`/`aria-labelledby`. The component guards
+  // `{#if label}`, so this type matches the rendered behaviour.
+  label?: string;
   description?: string;
-  error?: string;
+  // `| undefined` (SPEC §8.3: `string | undefined`) so callers can pass a
+  // conditional error (`hasError ? msg : undefined`) under
+  // exactOptionalPropertyTypes; empty/undefined both render no error.
+  error?: string | undefined;
   placeholder?: string;
   size?: TextareaFrameVariants['size'];
   rows?: number;

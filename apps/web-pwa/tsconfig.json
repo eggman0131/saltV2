@@ -4,7 +4,16 @@
     "rootDir": "src",
     "outDir": "dist",
     "composite": true,
-    "lib": ["ES2022", "DOM"]
+    "lib": ["ES2022", "DOM"],
+    // `$lib` is a Vite alias (vite.config.ts). svelte-check resolves module
+    // specifiers through tsconfig, not Vite, so mirror the alias here as a
+    // `paths` mapping — otherwise `$lib/*` imports report as "Cannot find
+    // module" (see #396). Resolved relative to this file under Bundler
+    // moduleResolution; no baseUrl required (TS 5+).
+    "paths": {
+      "$lib": ["./src/lib"],
+      "$lib/*": ["./src/lib/*"]
+    }
   },
   "include": ["src/**/*"],
   "references": [
