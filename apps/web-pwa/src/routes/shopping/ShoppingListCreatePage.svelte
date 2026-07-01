@@ -14,7 +14,7 @@
     const result = await addList(name);
     busy = false;
     if (result.kind !== 'ok') {
-      addToast('Failed to create list.', 'error');
+      addToast('Failed to create list.', 'destructive');
       return;
     }
     addToast(`Created "${result.value.name}"`, 'success');
