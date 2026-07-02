@@ -1,6 +1,7 @@
-import { execFileSync, execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { deleteSentinel, killPort, readSentinel } from './e2eServerRegistry';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
@@ -12,21 +13,21 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 const COMPOSE_FILE = 'docker/test-emulators/docker-compose.test.yml';
 
 // Must mirror E2E_APP_PORT in globalSetup.ts. The e2e Vite server stays
-// host-spawned (the container boundary is emulators-only, issue #84), and
-// globalSetup deliberately does not track the spawned vite process (no pid
-// file, no retained handle — issue #79), so it is stopped port-scoped here,
-// under the same gate as the emulator stack.
+// host-spawned (the container boundary is emulators-only, issue #84). It is now
+// tracked via a host-global sentinel (e2eServerRegistry.ts) written at spawn, so
+// teardown can kill it precisely (tracked pid) and portably here, under the same
+// gate as the emulator stack.
 const E2E_APP_PORT = 5174;
 
-// Best-effort, port-scoped kill of the host-spawned e2e Vite server. Never
-// throws: fuser may be absent or nothing may hold the port, and a failed
-// teardown kill must not mask the test run's result.
-function killE2eServer(signal: 'TERM' | 'KILL'): void {
-  try {
-    execSync(`fuser -k -${signal} ${E2E_APP_PORT}/tcp 2>/dev/null`, { stdio: 'ignore' });
-  } catch {
-    // fuser unavailable or no process on the port — best effort.
-  }
+// Best-effort kill of the host-spawned e2e Vite server. Cross-platform (macOS +
+// Linux) via lsof + process.kill — replaces the `fuser -k` that was a silent
+// no-op on macOS and leaked servers across sessions. Targets the tracked
+// sentinel pid first (precise), then any lsof-discovered :5174 listener. Never
+// throws: nothing may hold the port, and a failed teardown kill must not mask
+// the test run's result.
+function killE2eServer(signal: 'SIGTERM' | 'SIGKILL'): void {
+  const sentinel = readSentinel();
+  killPort(E2E_APP_PORT, signal, sentinel?.pid);
 }
 
 export default async function globalTeardown(): Promise<void> {
@@ -38,10 +39,12 @@ export default async function globalTeardown(): Promise<void> {
     return;
   }
   // Stop the e2e app server (graceful, then force) before the emulator stack
-  // it talks to.
-  killE2eServer('TERM');
+  // it talks to, then clear the host-global sentinel so a later run does not
+  // try to reuse a now-dead pid.
+  killE2eServer('SIGTERM');
   await new Promise((r) => setTimeout(r, 1000));
-  killE2eServer('KILL');
+  killE2eServer('SIGKILL');
+  deleteSentinel();
   execFileSync('docker', ['compose', '-f', COMPOSE_FILE, 'down', '-v'], {
     cwd: REPO_ROOT,
     stdio: 'inherit',
