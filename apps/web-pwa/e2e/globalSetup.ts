@@ -3,6 +3,16 @@ import { createHash } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import {
+  computeIdentity,
+  deleteSentinel,
+  gitShaOf,
+  killPort,
+  pidAlive,
+  readSentinel,
+  waitForPortFree,
+  writeSentinel,
+} from './e2eServerRegistry';
 import { FIRESTORE_EMULATOR_CLEAR_URL, FIRESTORE_EMULATOR_PORT_STRING } from './helpers/emulator';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -158,20 +168,29 @@ async function e2eServerHealthy(): Promise<boolean> {
   }
 }
 
-async function ensureE2eServer(): Promise<void> {
-  // Reuse contract: anything healthy on :5174 is treated as our e2e server;
-  // we do NOT verify it is env-wired to the test emulator ports. Accepted, not
-  // hardened: the dev server lives on :5173 and nothing else binds :5174 on
-  // this host, so in practice the only thing answering here is a prior e2e
-  // vite with the same TEST_EMULATOR_ENV. Judged an unlikely failure mode
-  // (issue #79); revisit if a non-e2e process ever contends for :5174.
-  if (await e2eServerHealthy()) {
-    console.log(`globalSetup: reused existing e2e app server at ${E2E_APP_URL}.`);
-    return;
-  }
+// The identity of the e2e server THIS run would spawn. A healthy :5174 is only
+// reused when its recorded identity matches — a server rooted at a different
+// checkout (appDir), built from a different commit (gitSha), or wired to
+// different emulator ports / a non-empty PostHog key (emulatorEnv) hashes
+// differently and is treated as stale/foreign. gitSha is best-effort (empty on
+// a missing .git — never throws).
+function currentServerIdentity(): string {
+  return computeIdentity({
+    gitSha: gitShaOf(APP_DIR),
+    appDir: APP_DIR,
+    emulatorEnv: TEST_EMULATOR_ENV,
+    ports: [E2E_APP_PORT],
+  });
+}
 
+// Spawn a fresh e2e Vite server, record its identity in the host-global
+// sentinel, and poll until it answers. Command / cwd / env / stdio / detached
+// are unchanged from the original spawn — only the returned child's pid is now
+// captured and persisted so a later run can identity-verify reuse and teardown
+// can kill it precisely.
+async function spawnE2eServer(identity: string): Promise<void> {
   const viteLog = process.env.CI ? fs.openSync('/tmp/e2e-vite.log', 'w') : null;
-  spawn(
+  const child = spawn(
     'pnpm',
     ['exec', 'vite', '--host', E2E_APP_HOST, '--port', String(E2E_APP_PORT), '--strictPort'],
     {
@@ -181,6 +200,14 @@ async function ensureE2eServer(): Promise<void> {
       detached: false,
     },
   );
+  if (typeof child.pid === 'number') {
+    writeSentinel({
+      pid: child.pid,
+      identity,
+      port: E2E_APP_PORT,
+      createdAt: new Date().toISOString(),
+    });
+  }
 
   const deadline = Date.now() + TIMEOUT_MS;
   while (Date.now() < deadline) {
@@ -193,6 +220,49 @@ async function ensureE2eServer(): Promise<void> {
   throw new Error(
     `e2e app server did not become ready at ${E2E_APP_URL} within ${TIMEOUT_MS / 1000}s`,
   );
+}
+
+async function ensureE2eServer(): Promise<void> {
+  // Reuse contract (hardened, issue #79 fallout): :5174 is HOST-GLOBAL and
+  // Playwright does not manage it, so a healthy server here could be a prior
+  // e2e vite from a DIFFERENT checkout / branch / emulator-env — or a foreign
+  // process entirely. We now identity-verify against a host-global sentinel
+  // before reuse: reuse ONLY a live server whose recorded identity matches this
+  // run's. Anything else healthy on :5174 is killed (cross-platform) and the
+  // port drained before we spawn fresh, because --strictPort fails immediately
+  // if the port is still bound.
+  const identity = currentServerIdentity();
+  const sentinel = readSentinel();
+
+  if (await e2eServerHealthy()) {
+    if (sentinel && sentinel.identity === identity && pidAlive(sentinel.pid)) {
+      console.log(
+        `globalSetup: reusing identity-matched e2e server at ${E2E_APP_URL} (pid ${sentinel.pid}).`,
+      );
+      return;
+    }
+    // Healthy but stale / wrong-branch / wrong-env / foreign — replace it.
+    console.log(
+      `globalSetup: replacing stale/foreign :5174 server (identity mismatch or dead sentinel) before spawning fresh.`,
+    );
+    killPort(E2E_APP_PORT, 'SIGTERM', sentinel?.pid);
+    await new Promise((r) => setTimeout(r, 1000));
+    killPort(E2E_APP_PORT, 'SIGKILL', sentinel?.pid);
+    deleteSentinel();
+    if (!(await waitForPortFree(E2E_APP_PORT))) {
+      throw new Error(
+        `globalSetup: :5174 still bound after killing the stale server; cannot spawn a fresh e2e app server (--strictPort).`,
+      );
+    }
+  } else if (sentinel) {
+    // Nothing healthy on :5174 but a stale sentinel lingers — best-effort clean
+    // up any leftover pid/entry before spawning fresh.
+    killPort(E2E_APP_PORT, 'SIGKILL', sentinel.pid);
+    deleteSentinel();
+  }
+
+  console.log(`globalSetup: spawning fresh e2e server at ${E2E_APP_URL}.`);
+  await spawnE2eServer(identity);
 }
 
 export default async function globalSetup(): Promise<void> {
