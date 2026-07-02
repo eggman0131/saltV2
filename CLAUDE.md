@@ -73,6 +73,7 @@ cloud-functions            →  shared-types, domain, observability/server
 
 - `pnpm lint` — ESLint with `eslint-plugin-boundaries` checks the import graph.
 - `pnpm typecheck` — TypeScript project references prevent out-of-graph imports at compile time.
+- `pnpm check` — `svelte-check` across `@salt/ui-components` and `@salt/web-pwa`; catches Svelte template type errors not caught by `tsc`.
 - `pnpm boundary:test` — Runs `.boundary-tests/run.sh` which lints deliberate violation fixtures and asserts each produces an error.
 - Husky + lint-staged — blocks bad commits locally at pre-commit.
 - GitHub Actions CI — blocks bad PRs before merge.
