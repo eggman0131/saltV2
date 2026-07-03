@@ -1,16 +1,16 @@
 # Graph Report - salt-vscode  (2026-07-03)
 
 ## Corpus Check
-- 902 files · ~360,678 words
+- 902 files · ~360,558 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 4436 nodes · 9125 edges · 447 communities (251 shown, 196 thin omitted)
+- 4436 nodes · 9136 edges · 447 communities (242 shown, 205 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 80 edges (avg confidence: 0.7)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `4d280276`
+- Built from commit: `b4443f4b`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -436,38 +436,38 @@
 10. `../../lib/equipmentService.js` - 56 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `isSessionActive()` --calls--> `isObservabilitySessionActive()`  [INFERRED]
-  apps/web-pwa/src/lib/observability.ts → packages/adapters/observability/src/sessionControl.ts
 - `coerceTextList()` --calls--> `push()`  [INFERRED]
   apps/cloud-functions/src/adapters/jsonLdRecipe.ts → packages/domain/src/weather/aggregateForecastWindow.ts
 - `reportFlowError()` --calls--> `flushServerObservability()`  [INFERRED]
   apps/cloud-functions/src/observability/reportServerError.ts → packages/adapters/observability/src/server/init.ts
 - `runTriggerWithTraceContext()` --calls--> `runWithSuppliedTraceContext()`  [INFERRED]
   apps/cloud-functions/src/triggers/triggerTraceContext.ts → packages/adapters/observability/src/server/init.ts
-- `setCanonIconGenerationEnabled()` --calls--> `saveDevSettings()`  [EXTRACTED]
-  apps/web-pwa/src/lib/devSettingsService.ts → packages/adapters/firebase-sync/src/devSettingsSync.ts
+- `CaptureResult` --references--> `EquipmentManifest`  [EXTRACTED]
+  apps/web-pwa/src/lib/equipmentService.ts → packages/domain/src/equipment/entities/EquipmentManifest.ts
+- `isSessionActive()` --calls--> `isObservabilitySessionActive()`  [INFERRED]
+  apps/web-pwa/src/lib/observability.ts → packages/adapters/observability/src/sessionControl.ts
 
 ## Import Cycles
 - 1-file cycle: `apps/cloud-functions/src/genkit.ts -> apps/cloud-functions/src/genkit.ts`
 - 1-file cycle: `apps/web-pwa/e2e/fixtures/test.ts -> apps/web-pwa/e2e/fixtures/test.ts`
-- 1-file cycle: `packages/adapters/firebase-sync/src/auth.ts -> packages/adapters/firebase-sync/src/auth.ts`
+- 3-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/chatService.ts -> packages/adapters/firebase-sync/src/index.ts -> apps/web-pwa/src/App.svelte`
 - 3-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/recipeService.ts -> packages/adapters/firebase-sync/src/index.ts -> apps/web-pwa/src/App.svelte`
-- 3-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/membersService.ts -> packages/adapters/firebase-sync/src/index.ts -> apps/web-pwa/src/App.svelte`
-- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/recipeService.ts -> apps/web-pwa/src/lib/canonService.ts -> packages/adapters/firebase-sync/src/index.ts -> apps/web-pwa/src/App.svelte`
-- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/recipeService.ts -> apps/web-pwa/src/lib/errorReporting.ts -> packages/adapters/firebase-sync/src/index.ts -> apps/web-pwa/src/App.svelte`
-- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/recipeService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/aisleSubscription.ts -> apps/web-pwa/src/App.svelte`
-- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/recipeService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/appSettingsSync.ts -> apps/web-pwa/src/App.svelte`
-- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/recipeService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/auth.ts -> apps/web-pwa/src/App.svelte`
-- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/recipeService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/canonSubscription.ts -> apps/web-pwa/src/App.svelte`
-- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/recipeService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/chatSessionSubscription.ts -> apps/web-pwa/src/App.svelte`
-- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/recipeService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/devSettingsSync.ts -> apps/web-pwa/src/App.svelte`
-- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/recipeService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/e2eAiStubSync.ts -> apps/web-pwa/src/App.svelte`
-- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/recipeService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/equipmentManifestSubscription.ts -> apps/web-pwa/src/App.svelte`
-- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/recipeService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/init.ts -> apps/web-pwa/src/App.svelte`
-- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/recipeService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/mealPlanSync.ts -> apps/web-pwa/src/App.svelte`
-- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/recipeService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/membersSubscription.ts -> apps/web-pwa/src/App.svelte`
-- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/recipeService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/recipeSubscription.ts -> apps/web-pwa/src/App.svelte`
-- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/recipeService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/shoppingListItemSubscription.ts -> apps/web-pwa/src/App.svelte`
+- 3-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/canonService.ts -> packages/adapters/firebase-sync/src/index.ts -> apps/web-pwa/src/App.svelte`
+- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/appSettingsService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/shoppingListsConfigSubscription.ts -> apps/web-pwa/src/App.svelte`
+- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/canonService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/shoppingListsConfigSubscription.ts -> apps/web-pwa/src/App.svelte`
+- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/chatService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/shoppingListsConfigSubscription.ts -> apps/web-pwa/src/App.svelte`
+- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/devSettingsService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/shoppingListsConfigSubscription.ts -> apps/web-pwa/src/App.svelte`
+- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/equipmentService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/shoppingListsConfigSubscription.ts -> apps/web-pwa/src/App.svelte`
+- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/mealPlanService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/shoppingListsConfigSubscription.ts -> apps/web-pwa/src/App.svelte`
+- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/membersService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/shoppingListsConfigSubscription.ts -> apps/web-pwa/src/App.svelte`
+- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/recipeService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/shoppingListsConfigSubscription.ts -> apps/web-pwa/src/App.svelte`
+- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/shoppingListService.svelte.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/shoppingListsConfigSubscription.ts -> apps/web-pwa/src/App.svelte`
+- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/weatherService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/shoppingListsConfigSubscription.ts -> apps/web-pwa/src/App.svelte`
+- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/chatService.ts -> apps/web-pwa/src/lib/errorReporting.ts -> packages/adapters/firebase-sync/src/index.ts -> apps/web-pwa/src/App.svelte`
+- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/chatService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/aisleSubscription.ts -> apps/web-pwa/src/App.svelte`
+- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/chatService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/appSettingsSync.ts -> apps/web-pwa/src/App.svelte`
+- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/chatService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/auth.ts -> apps/web-pwa/src/App.svelte`
+- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/chatService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/canonSubscription.ts -> apps/web-pwa/src/App.svelte`
 
 ## Hyperedges (group relationships)
 - **AI Kitchen Assistant flow composition** — docs_ai_kitchen_assistant_chat_session, docs_ai_kitchen_assistant_chef_flow, docs_ai_kitchen_assistant_librarian_flow, docs_matching_pipeline_canonicalise_recipe_ingredients [EXTRACTED 1.00]
@@ -477,11 +477,11 @@
 - **Canon Matching Entry Points & Shared Core** — docs_matching_pipeline_fast_path, docs_matching_pipeline_match_or_create_canon_callable, docs_matching_pipeline_on_shopping_list_item_write, docs_matching_pipeline_canonicalise_recipe_ingredients, docs_matching_pipeline_match_or_create_batch [EXTRACTED 1.00]
 - **Issue-Driven Agentic Workflow Commands** — commands_spec_feature_spec, commands_defect_defect_spec, commands_refactor_spec_refactor_spec, commands_run_run_issue [INFERRED 0.85]
 
-## Communities (447 total, 196 thin omitted)
+## Communities (447 total, 205 thin omitted)
 
 ### Community 0 - "Meal Planner & Attendees"
-Cohesion: 0.04
-Nodes (77): mockGet, AisleDoc, AisleSchema, AislesDocumentDoc, ArbitrationRequestInput, ArbitrationRequestSchema, CanonArbitrationAIOutput, CanonArbitrationAIOutputSchema (+69 more)
+Cohesion: 0.03
+Nodes (110): mockGet, AisleDoc, AisleSchema, AislesDocumentDoc, AislesDocumentSchema, AppSettingsSchema, AuthorRecipeInput_, AuthorRecipeInputSchema (+102 more)
 
 ### Community 1 - "Aisles & Canon Stores"
 Cohesion: 0.15
@@ -489,27 +489,27 @@ Nodes (12): 1. Client config — build-time, committed, **not secret**, 2. Cloud
 
 ### Community 2 - "Firebase-Sync Shopping Config"
 Cohesion: 0.05
-Nodes (93): ../../lib/mealPlanService.js, addDays(), addTemplateAttendee(), addWeekAttendee(), _anchorDate, _config, currentTemplateObject(), currentWeek (+85 more)
+Nodes (96): ../../lib/mealPlanService.js, addDays(), addTemplateAttendee(), addWeekAttendee(), _anchorDate, _config, currentTemplateObject(), currentWeek (+88 more)
 
 ### Community 3 - "Canon Approval UI"
 Cohesion: 0.08
-Nodes (26): createServerEntryParseAdapter(), embedTextFlow, generateCanonIconFlow, removeFlatBackground(), RemoveFlatBackgroundOptions, sampleBackgroundColour(), reportServerError(), armCfTelemetry() (+18 more)
+Nodes (26): createServerEntryParseAdapter(), embedTextFlow, generateCanonIconFlow, parseEntryFlow, reportServerError(), armCfTelemetry(), readiness, whenCfTelemetryReady() (+18 more)
 
 ### Community 4 - "Shopping List Commands"
 Cohesion: 0.09
 Nodes (30): AutoFixtures, E2E_RAW_DIR, test, gotoAndSignIn(), seedMemberAllowlist(), signIn(), uniqueEmail(), waitForBridge() (+22 more)
 
 ### Community 5 - "Headless UI Primitives"
-Cohesion: 0.05
-Nodes (41): beforeMemberCreated, posthogApiKey, regenerateCanonIcon, registerGenkitDevTracing(), APP_CHECK_ENFORCEMENT, arbitrateCanon, authorRecipe, canonicaliseRecipeIngredients (+33 more)
+Cohesion: 0.06
+Nodes (36): beforeMemberCreated, posthogApiKey, regenerateCanonIcon, authorRecipeFlow, readBaseRecipe(), chefChatFlow, readEquipmentContext(), readRecipeContext() (+28 more)
 
 ### Community 6 - "E2E Test Suite"
-Cohesion: 0.06
-Nodes (39): EMULATOR_HOST, FakeHttpsError, handler, auth, ../../lib/membersService.js, createMemberEntry(), CreateMemberEntryInput, deleteMemberEntry() (+31 more)
+Cohesion: 0.11
+Nodes (21): ../../lib/membersService.js, createMemberEntry(), CreateMemberEntryInput, deleteMemberEntry(), findMemberByEmail(), initMembersSync(), isEmailAdmin(), isLoadingMembers (+13 more)
 
 ### Community 7 - "Firestore Stores & Classify"
-Cohesion: 0.06
-Nodes (23): SeedCanonItemInput, Window, createAisle(), createAislesBulk(), deleteAisles(), mergeAisles(), renameAisle(), reorderAisles() (+15 more)
+Cohesion: 0.08
+Nodes (16): reporter, SeedCanonItemInput, Window, renameAisle(), reorderAisles(), Aisle, AislesDocument, AisleLocalStorePort (+8 more)
 
 ### Community 8 - "Shopping List UI"
 Cohesion: 0.06
@@ -520,16 +520,16 @@ Cohesion: 0.06
 Nodes (24): activate(), composeEnvLine(), cp, DEFAULT_LABELS, envLineMatcher(), FALLBACK_META, findEnvLine(), fs (+16 more)
 
 ### Community 10 - "Members Management"
-Cohesion: 0.06
-Nodes (57): decoratedNavItems, needsApprovalCount, subscribeAisles(), saveAppSettings(), deleteCanonItem(), subscribeCanonItems(), saveDevSettings(), setAiStub() (+49 more)
+Cohesion: 0.05
+Nodes (72): decoratedNavItems, needsApprovalCount, ../../lib/devSettingsService.js, canonIconGenerationEnabled, DEFAULTS, initDevSettingsSync(), _isLoading, setCanonIconGenerationEnabled() (+64 more)
 
 ### Community 11 - "Canon Matching Core"
 Cohesion: 0.08
 Nodes (36): authorRecipeTraced(), ensureFreshForecast(), clampName(), encodeAttr(), initBrowserTracing(), isBrowserTracingReady(), NOOP_ACTION, NOOP_CHILD (+28 more)
 
 ### Community 12 - "web-pwa Dependencies"
-Cohesion: 0.11
-Nodes (11): ApproveCanonItemOverrides, CreateCanonItemInput, ArbitrationExtras, setCanonItemShoppingBehavior(), setCanonItemThreshold(), CanonItem, CanonLocalStorePort, catalog (+3 more)
+Cohesion: 0.13
+Nodes (13): ApproveCanonItemOverrides, CreateCanonItemInput, ArbitrationExtras, renameCanonItem(), setCanonItemAisle(), setCanonItemShoppingBehavior(), setCanonItemThreshold(), setCanonItemSynonyms() (+5 more)
 
 ### Community 13 - "UI-Components Package"
 Cohesion: 0.05
@@ -540,12 +540,12 @@ Cohesion: 0.07
 Nodes (27): ../../src/primitives/Combobox/Combobox.svelte, ctx, filterValue, initialItem, inputId, inputValue, listboxId, ../../src/primitives/Combobox/ComboboxContent.svelte (+19 more)
 
 ### Community 15 - "Domain Zod Schemas"
-Cohesion: 0.10
-Nodes (33): addCanonItem(), appendCanonSynonym(), createCanonItem(), applyClassification(), arbitrationFailureReasoning(), ArbitrationNew, ArbOutcome, buildEmbeddingCache() (+25 more)
+Cohesion: 0.08
+Nodes (38): addCanonItem(), appendCanonSynonym(), createCanonItem(), applyClassification(), arbitrationFailureReasoning(), ArbitrationNew, ArbOutcome, buildEmbeddingCache() (+30 more)
 
 ### Community 16 - "Theme Check Tooling"
-Cohesion: 0.10
-Nodes (48): reportIfFailed(), commitRecipeAddPlan(), ../../lib/shoppingListService.svelte.js, activeListId, addItemToList(), addList(), changeDefaultList(), checkItems() (+40 more)
+Cohesion: 0.13
+Nodes (34): reportIfFailed(), reportSubscriptionError(), reportWriteError(), commitRecipeAddPlan(), ../../lib/shoppingListService.svelte.js, activeListId, addItemToList(), addList() (+26 more)
 
 ### Community 17 - "Canon Fast-Path Parity"
 Cohesion: 0.11
@@ -556,52 +556,52 @@ Cohesion: 0.09
 Nodes (29): @floating-ui/dom, ../../src/primitives/Select/Select.svelte, ctx, listboxId, triggerId, typeaheadBuffer, SelectContentProps, SelectGroupProps (+21 more)
 
 ### Community 20 - "Admin Routes"
-Cohesion: 0.07
-Nodes (35): AddItemInput, CheckItemInput, ConfirmItemNeededInput, CreateListInput, DeleteItemInput, EditItemAmountUnitInput, EditItemNotesInput, EditItemRawTextInput (+27 more)
+Cohesion: 0.06
+Nodes (50): addItem(), AddItemInput, checkItem(), CheckItemInput, clearCheckedItems(), confirmItemNeeded(), ConfirmItemNeededInput, createList() (+42 more)
 
 ### Community 21 - "Combobox & ListPage Types"
 Cohesion: 0.11
 Nodes (11): adminNavItem, navItems, AppShellProps, BottomNavProps, NavItem, SideNavProps, TopBarProps, ./AppShell.types (+3 more)
 
 ### Community 22 - "Task Pilot Manifest"
-Cohesion: 0.07
-Nodes (37): ../../lib/canonService.js, aisles, aisleUsage, approveCanonItemWithOverrides(), canonItems, commitCanonItemUpdate(), deleteCanonItem(), getErrorReporter() (+29 more)
+Cohesion: 0.06
+Nodes (52): ../../lib/aisleService.js, addAisle(), addAislesBulk(), deleteAisles(), idGen, mergeAisles(), renameAisle(), reorderAisles() (+44 more)
 
 ### Community 23 - "Dialog & Popover Primitives"
-Cohesion: 0.08
-Nodes (19): comboboxContentVariants, comboboxCreateVariants, comboboxInputVariants, comboboxItemVariants, comboboxTriggerVariants, DialogContentProps, DialogPartProps, DialogProps (+11 more)
+Cohesion: 0.10
+Nodes (14): DialogContentProps, DialogPartProps, DialogProps, DialogContentVariants, TooltipContentProps, TooltipPartProps, TooltipProps, TooltipProviderProps (+6 more)
 
 ### Community 24 - "Recipe Service"
-Cohesion: 0.08
-Nodes (26): ../../lib/recipeService.js, buildRecipeAddPlan(), canonicaliseIngredients(), getErrorReporter(), hostForSpan(), initRecipeSync(), isLoadingRecipes, _itemIds (+18 more)
+Cohesion: 0.04
+Nodes (57): ../../lib/recipeService.js, buildRecipeAddPlan(), canonicaliseIngredients(), getErrorReporter(), hostForSpan(), importRecipeFromUrl(), initRecipeSync(), isLoadingRecipes (+49 more)
 
 ### Community 25 - "Observability (PostHog)"
 Cohesion: 0.04
 Nodes (44): 0. v0.3 Scope, 1.1 Headless + Styled, 1.2 APG Compliance, 1. Shared v0.3 Rules, 2.1 Purpose, 2.2 Parts, 2.3 Root Props, 2.4 Item Props (+36 more)
 
 ### Community 26 - "Selectable List & Checkbox"
-Cohesion: 0.11
-Nodes (16): ../../primitives/Checkbox/Checkbox.svelte, CheckboxProps, CheckedState, CheckboxRootVariants, EditableRowProps, createListSelection(), CreateListSelectionOptions, ListSelection (+8 more)
+Cohesion: 0.13
+Nodes (13): ../../primitives/Checkbox/Checkbox.svelte, EditableRowProps, createListSelection(), CreateListSelectionOptions, ListSelection, ./RowSelectCheckbox.svelte, SelectableListItem, SelectableListProps (+5 more)
 
 ### Community 27 - "Layout Primitives"
-Cohesion: 0.08
-Nodes (14): DividerProps, GridProps, GridVariants, InlineProps, InlineVariants, StackProps, StackVariants, ./Divider.types (+6 more)
+Cohesion: 0.06
+Nodes (23): CheckboxProps, CheckedState, CheckboxRootVariants, comboboxContentVariants, comboboxCreateVariants, comboboxInputVariants, comboboxItemVariants, comboboxTriggerVariants (+15 more)
 
 ### Community 28 - "AI Flows & Telemetry"
-Cohesion: 0.10
-Nodes (23): addAccessory(), AddAccessoryInput, addEquipment(), AddEquipmentInput, addRule(), AddRuleInput, editRule(), EditRuleInput (+15 more)
+Cohesion: 0.11
+Nodes (21): AddAccessoryInput, AddEquipmentInput, addRule(), AddRuleInput, editRule(), EditRuleInput, removeAccessory(), RemoveAccessoryInput (+13 more)
 
 ### Community 29 - "AI Timeout Guard"
 Cohesion: 0.05
 Nodes (37): COLOR_MAP, CONTROLS_CHECKBOX_MAP, CONTROLS_SWITCH_MAP, cssVars, design, DESIGN_MD_PATH, designCheckbox, designColors (+29 more)
 
 ### Community 30 - "cloud-functions Dependencies"
-Cohesion: 0.17
-Nodes (15): fetchForecast(), readForecastCache(), readHomeLocation(), RefreshWeatherForecastResult, runRefreshWeatherForecast(), AppSettingsSchema, HomeLocation, OpenMeteoForecastResponseSchema (+7 more)
+Cohesion: 0.22
+Nodes (12): fetchForecast(), readForecastCache(), readHomeLocation(), runRefreshWeatherForecast(), HomeLocation, OpenMeteoForecastResponseSchema, WeatherForecastSchema, isForecastStale() (+4 more)
 
 ### Community 31 - "Recipe URL Import (SSRF)"
-Cohesion: 0.13
-Nodes (23): submitFeedback(), UserActionChildSpan, ConversationsApi, extractTraceHeaders(), identifyObservabilityAnonymous(), identifyObservabilityUser(), initObservability(), isObservabilityReady() (+15 more)
+Cohesion: 0.10
+Nodes (30): ../../lib/observability.js, getSessionURL(), identifyAnonymous(), identifyUser(), isSessionActive(), _phKey, startSession(), stopSession() (+22 more)
 
 ### Community 32 - "Match Logging"
 Cohesion: 0.11
@@ -621,23 +621,23 @@ Nodes (18): ../../src/primitives/Slider/Slider.svelte, activeThumbIdx, sliderSta
 
 ### Community 36 - "Entities"
 Cohesion: 0.10
-Nodes (41): ../../lib/equipmentService.js, addEquipmentAccessory(), addEquipmentItem(), addEquipmentRule(), applyAndSave(), CaptureAccessoryInput, captureEquipmentItem(), CaptureResult (+33 more)
+Nodes (44): ../../lib/equipmentService.js, addEquipmentAccessory(), addEquipmentItem(), addEquipmentRule(), applyAndSave(), CaptureAccessoryInput, captureEquipmentItem(), CaptureResult (+36 more)
 
 ### Community 37 - "Lib"
 Cohesion: 0.09
-Nodes (14): { mockCanonItems, mockAisles, mockLists, mockItems, mockDefaultListId, mockLoading }, DeleteListInput, RenameListInput, SetDefaultListInput, ShoppingList, ShoppingListsConfig, EntryParsePort, ShoppingListItemPort (+6 more)
+Nodes (13): User, AuthProvider, DeleteListInput, RenameListInput, SetDefaultListInput, ShoppingList, ShoppingListsConfig, ShoppingListItemPort (+5 more)
 
 ### Community 38 - "Sheet"
-Cohesion: 0.13
-Nodes (13): ../../primitives/Sheet/Sheet.svelte, SheetContentProps, SheetPartProps, SheetProps, SheetSide, SheetContentVariants, ../../primitives/Sheet/SheetContent.svelte, ../../primitives/Sheet/SheetHeader.svelte (+5 more)
+Cohesion: 0.15
+Nodes (12): ../../primitives/Sheet/Sheet.svelte, SheetContentProps, SheetPartProps, SheetProps, SheetSide, ../../primitives/Sheet/SheetContent.svelte, ../../primitives/Sheet/SheetHeader.svelte, ../../primitives/Sheet/SheetTitle.svelte (+4 more)
 
 ### Community 39 - "Button"
 Cohesion: 0.10
-Nodes (22): assembleDraft(), canonicaliseRecipeIngredientsFlow, assembleDraft(), buildHtmlPrompt(), extractRecipeFromUrlFlow, OutputSchema, stripHtmlNoise(), UrlImportError (+14 more)
+Nodes (7): deleteAisles(), ItemMergeChoice, mergeAisles(), PerItemMergeChoice, CanonLocalStorePort, getAisleUsage(), AISLES
 
 ### Community 40 - "Card"
 Cohesion: 0.12
-Nodes (18): generateOne(), main(), OUTPUT_DIR, parseDataUrl(), pkgRoot, selectIds(), normalizeIconFraming(), WEBP (+10 more)
+Nodes (19): generateOne(), main(), OUTPUT_DIR, parseDataUrl(), pkgRoot, selectIds(), normalizeIconFraming(), WEBP (+11 more)
 
 ### Community 41 - "Toast"
 Cohesion: 0.18
@@ -648,12 +648,12 @@ Cohesion: 0.13
 Nodes (9): ../../primitives/ErrorState/ErrorState.svelte, ErrorStateProps, ../../primitives/Icon/Icon.svelte, IconProps, DetailPageProps, _bad, ./ErrorState.types, ./Icon.types (+1 more)
 
 ### Community 43 - "Recipes"
-Cohesion: 0.11
-Nodes (29): ../../lib/chatService.js, createChatSession(), getErrorReporter(), initChatSync(), isLoadingSessions, latestLocalEdit, newSession(), now() (+21 more)
+Cohesion: 0.14
+Nodes (22): ../../lib/chatService.js, createChatSession(), getErrorReporter(), initChatSync(), isLoadingSessions, latestLocalEdit, newSession(), now() (+14 more)
 
 ### Community 44 - "Sidenav"
-Cohesion: 0.08
-Nodes (27): MatchLogBuilder, CreateAisleInput, CreateAislesBulkInput, DeleteAislesInput, MatchOrCreatePorts, ItemMergeChoice, PerItemMergeChoice, RenameAisleInput (+19 more)
+Cohesion: 0.11
+Nodes (18): MatchLogBuilder, CreateAisleInput, CreateAislesBulkInput, DeleteAislesInput, RenameAisleInput, ReorderAislesInput, ArbitrationLog, FinalDecision (+10 more)
 
 ### Community 45 - "Radiogroup"
 Cohesion: 0.13
@@ -664,8 +664,8 @@ Cohesion: 0.07
 Nodes (28): dependencies, firebase-admin, firebase-functions, genkit, @genkit-ai/firebase, @genkit-ai/google-genai, @opentelemetry/sdk-trace-node, @salt/domain (+20 more)
 
 ### Community 47 - "Lib"
-Cohesion: 0.11
-Nodes (17): reportSubscriptionError(), isAuthTransitioning, authEmulatorConnected, connectAuthEmulatorOnce(), reportAuthFailure(), isAuthTransitioning(), setAuthTransitioning(), emulatorConnectedApps (+9 more)
+Cohesion: 0.18
+Nodes (8): authEmulatorConnected, reportAuthFailure(), isAuthTransitioning(), setAuthTransitioning(), fbSignOut, sendSignInLinkToEmail, signInWithEmailLink, ErrorReportingPort
 
 ### Community 48 - "Design"
 Cohesion: 0.18
@@ -680,24 +680,24 @@ Cohesion: 0.17
 Nodes (7): ../admin/AdminGuard.svelte, isAdmin, settled, tools, routes, @salt/observability, @salt/shared-types
 
 ### Community 51 - "Canon"
-Cohesion: 0.14
-Nodes (16): makeMatchedIngredient(), makeRecipe(), { mockRecipes }, makePendingIngredient(), makeRecipe(), matchedIngredient, { mockRecipes, mockCanonItems }, emptyIngredientGroup() (+8 more)
+Cohesion: 0.05
+Nodes (58): makeMatchedIngredient(), makeRecipe(), { mockRecipes }, makePendingIngredient(), makeRecipe(), matchedIngredient, { mockRecipes, mockCanonItems }, emptyIngredientGroup() (+50 more)
 
 ### Community 52 - "Tests"
 Cohesion: 0.25
 Nodes (7): After a restore — re-apply staging-only config, One-time setup, Refreshing staging with prod data, Safety, Scope, Usage, Why managed export/import (and not a copy script)
 
 ### Community 53 - "Docs"
-Cohesion: 0.08
-Nodes (27): ../../lib/auth.svelte.js, AuthStore, clearPendingEmail(), devSignIn(), formatError(), readPendingEmail(), writePendingEmail(), getChatSessionsSnapshot() (+19 more)
+Cohesion: 0.29
+Nodes (6): AuthStore, clearPendingEmail(), devSignIn(), formatError(), readPendingEmail(), writePendingEmail()
 
 ### Community 54 - "Detailpage"
-Cohesion: 0.06
-Nodes (53): AiCatalogModel, bareId(), CacheEntry, CatalogModelSchema, CatalogResponseSchema, fetchCatalog(), handleListAiModels(), ListAiModelsInputSchema (+45 more)
+Cohesion: 0.13
+Nodes (20): AiCatalogModel, bareId(), CacheEntry, CatalogModelSchema, CatalogResponseSchema, fetchCatalog(), handleListAiModels(), ListAiModelsInputSchema (+12 more)
 
 ### Community 55 - "Observability"
-Cohesion: 0.21
-Nodes (13): MatchOrCreateInput, seed, cosine(), eX, failEmbedding(), makeAisleStore(), makeIds(), makePorts() (+5 more)
+Cohesion: 0.19
+Nodes (15): loadAisles(), matchOrCreateBatch(), MatchOrCreateInput, seed, cosine(), eX, failEmbedding(), makeAisleStore() (+7 more)
 
 ### Community 56 - "scripts"
 Cohesion: 0.10
@@ -717,15 +717,15 @@ Nodes (18): compilerOptions, declaration, declarationMap, exactOptionalPropertyT
 
 ### Community 61 - "Ai"
 Cohesion: 0.08
-Nodes (20): activeSession, addToListOpen, amendBusy, canonalising, current, deleteBusy, deleteOpen, existingTags (+12 more)
+Nodes (19): activeSession, addToListOpen, amendBusy, canonalising, current, deleteBusy, deleteOpen, existingTags (+11 more)
 
 ### Community 62 - "devDependencies"
 Cohesion: 0.12
 Nodes (17): devDependencies, @commitlint/cli, @commitlint/config-conventional, dependency-cruiser, eslint, eslint-plugin-boundaries, eslint-plugin-playwright, firebase-tools (+9 more)
 
 ### Community 63 - "Adapters"
-Cohesion: 0.23
-Nodes (14): clearIngredientMatch(), Ingredient, IngredientGroup, MatchState, ParsedIngredient, MixedQuantity, Quantity, RangeQuantity (+6 more)
+Cohesion: 0.13
+Nodes (13): ../../lib/auth.svelte.js, auth, authProvider, __resetShoppingListServiceForTest(), fs, NETWORK_ERR, { reportSpy }, STORAGE_ERR (+5 more)
 
 ### Community 64 - "Canon"
 Cohesion: 0.09
@@ -736,36 +736,36 @@ Cohesion: 0.09
 Nodes (22): devDependencies, autoprefixer, axe-core, istanbul-lib-coverage, istanbul-lib-report, istanbul-reports, jsdom, @playwright/test (+14 more)
 
 ### Community 67 - "E2E"
-Cohesion: 0.10
-Nodes (23): ../../lib/geocodingService.js, browserTimezone(), reverseGeocode(), searchLocations(), baseProps(), day, member, noop() (+15 more)
+Cohesion: 0.27
+Nodes (11): ../../lib/geocodingService.js, browserTimezone(), reverseGeocode(), searchLocations(), AI_FLOW_IDS, GeocodingResult, NominatimPlaceSchema, NominatimReverseResponseSchema (+3 more)
 
 ### Community 68 - "Flows"
 Cohesion: 0.09
 Nodes (21): default, dependencies, @opentelemetry/api, @opentelemetry/core, @opentelemetry/resources, @opentelemetry/sdk-trace-web, posthog-js, posthog-node (+13 more)
 
 ### Community 69 - "Schemas"
-Cohesion: 0.10
-Nodes (19): authorRecipeFlow, OutputSchema, readBaseRecipe(), readRecipeContext(), AuthorRecipeInput_, AuthorRecipeInputSchema, LibrarianGroup, LibrarianGroupSchema (+11 more)
+Cohesion: 0.23
+Nodes (10): getMembersSnapshot(), createMember(), CreateMemberInput, normaliseMemberEmail(), updateMember(), UpdateMemberPatch, Member, memberFirstName() (+2 more)
 
 ### Community 70 - "Tests"
-Cohesion: 0.09
-Nodes (17): matchOrCreate(), IdGenerator, aisleStore, failingArbitration, failingEmbedding, ids, makeStore(), runCfPath() (+9 more)
+Cohesion: 0.10
+Nodes (13): matchOrCreate(), MatchOrCreatePorts, CanonArbitrationPort, IdGenerator, cosine(), eX, eY, failEmbedding() (+5 more)
 
 ### Community 71 - "Tooltip"
 Cohesion: 0.06
 Nodes (31): Adapter serialisation, AI Arbitration, AI-fallback rule (behavioural contract), Authority and runtime, Batch entry point — recipe ingredient canonicalisation, Batched embedding without forking stage 5, Canon deletion is resolved at display time — never written back, Canon Item Matching Pipeline (+23 more)
 
 ### Community 72 - "Sections"
-Cohesion: 0.18
-Nodes (5): countIngredient, fs, gramIngredient, { mockGetCanonItemsSnapshot }, prepNotesIngredient
+Cohesion: 0.16
+Nodes (18): ../../lib/aiModelCatalogService.js, applyCatalog(), _byRole, catalogByRole, emptyByRole(), ensureCatalog(), _fetchedAt, hasCatalog (+10 more)
 
 ### Community 73 - "Docs"
-Cohesion: 0.12
-Nodes (13): apply, db, IngredientGroup, IngredientItem, Step, useEmulator, categoriseRecipeFlow, CategoriseRecipeAIOutput (+5 more)
+Cohesion: 0.22
+Nodes (7): apply, db, IngredientGroup, IngredientItem, Step, useEmulator, categoriseRecipeFlow
 
 ### Community 74 - "Firebase Sync"
 Cohesion: 0.14
-Nodes (24): ../../lib/appSettingsService.js, buildNext(), buildNextFlow(), buildNextHomeLocation(), currentDoc(), effectiveFlowModels, effectiveModels, initAppSettingsSync() (+16 more)
+Nodes (25): ../../lib/appSettingsService.js, buildNext(), buildNextFlow(), buildNextHomeLocation(), currentDoc(), effectiveFlowModels, effectiveModels, initAppSettingsSync() (+17 more)
 
 ### Community 75 - "Flows"
 Cohesion: 0.11
@@ -777,11 +777,11 @@ Nodes (11): Access & admin, Architecture placement, Canon interaction — batch 
 
 ### Community 77 - "Triggers"
 Cohesion: 0.07
-Nodes (33): AiTimeoutError, raceWithTimeout(), withAiTimeout(), WithAiTimeoutOptions, aiFakeEnabled(), aiModelLabel(), fakeModels, flowModel() (+25 more)
+Nodes (34): AiTimeoutError, raceWithTimeout(), withAiTimeout(), WithAiTimeoutOptions, aiFakeEnabled(), aiModelLabel(), fakeModels, flowModel() (+26 more)
 
 ### Community 79 - "Equipment"
-Cohesion: 0.25
-Nodes (8): ../../lib/devSettingsService.js, canonIconGenerationEnabled, DEFAULTS, initDevSettingsSync(), _isLoading, setCanonIconGenerationEnabled(), _settings, subscribeDevSettings()
+Cohesion: 0.20
+Nodes (15): CatalogModelLike, hasMethod(), isEmbeddingModel(), isImageModel(), isTextModel(), metaHaystack(), methods(), probeMethodFor() (+7 more)
 
 ### Community 80 - "package.json"
 Cohesion: 0.14
@@ -792,16 +792,12 @@ Cohesion: 0.14
 Nodes (14): esbuild, fast-xml-parser, firebase-admin>uuid, form-data@>=4.0.0 <4.0.6, hono, js-yaml@4, @opentelemetry/api, protobufjs (+6 more)
 
 ### Community 82 - "Src"
-Cohesion: 0.18
-Nodes (9): EmbeddingPort, embedMatch(), MATCH_THRESHOLDS, cosine(), eSim, eX, eY, failPort() (+1 more)
+Cohesion: 0.23
+Nodes (8): EmbeddingPort, MATCH_THRESHOLDS, cosine(), eSim, eX, eY, failPort(), okPort()
 
 ### Community 83 - "Queries"
 Cohesion: 0.12
 Nodes (16): Architecture Notes & Constraints, Blast Radius, Defect Spec, Definition of Done, Observed vs Expected, Open Questions / Decisions, Phase 1: [Name], Phase 2: [Name] (+8 more)
-
-### Community 84 - "Schemas"
-Cohesion: 0.12
-Nodes (5): activeTraceparent(), RoundTripPropagator, SUPPLIED_KEY, SyncContextManager, ThrowingPropagator
 
 ### Community 86 - "eslint.config.js"
 Cohesion: 0.11
@@ -820,8 +816,8 @@ Cohesion: 0.16
 Nodes (11): svelte-exmarkdown/gfm, CardContentProps, CardDescriptionProps, CardFooterProps, CardHeaderProps, CardPartProps, CardProps, CardTitleProps (+3 more)
 
 ### Community 90 - "Chat"
-Cohesion: 0.23
-Nodes (8): classifyEatingMood(), EatingMood, BAND_CUTOFFS, temperatureBand, mostSignificantWeatherCode(), RANK_BY_CODE, SEVERITY_GROUPS, weatherSeverity()
+Cohesion: 0.25
+Nodes (5): WeatherDaySummary, classifyEatingMood(), EatingMood, BAND_CUTOFFS, temperatureBand
 
 ### Community 91 - "Domain"
 Cohesion: 0.12
@@ -832,28 +828,20 @@ Cohesion: 0.24
 Nodes (4): HeadingProps, HeadingVariants, ./Heading.types, ./Heading.variants
 
 ### Community 93 - "Shared"
-Cohesion: 0.11
-Nodes (31): ensureObservabilityInitialised(), runFlowWithTraceContext(), flushAiOtlp(), flushDistributedOtlp(), captureServerEvent(), captureServerException(), flushServerObservability(), initServerObservability() (+23 more)
+Cohesion: 0.10
+Nodes (30): ensureObservabilityInitialised(), runFlowWithTraceContext(), flushAiOtlp(), flushDistributedOtlp(), activeTraceparent(), captureServerEvent(), captureServerException(), flushServerObservability() (+22 more)
 
 ### Community 94 - "Text"
 Cohesion: 0.21
 Nodes (5): TextProps, TextVariants, _bad, ./Text.types, ./Text.variants
-
-### Community 95 - "Ai"
-Cohesion: 0.12
-Nodes (4): SyncContextManager, TEST_KEY, TestPropagator, ThrowingPropagator
-
-### Community 96 - "Triggers"
-Cohesion: 0.12
-Nodes (4): SUPPLIED_KEY, SyncContextManager, ThrowingPropagator, TraceparentPropagator
 
 ### Community 99 - "Progress"
 Cohesion: 0.24
 Nodes (6): ProgressProps, ProgressIndicatorVariants, progressRootVariants, ../../headless/Progress.headless.svelte, ./Progress.types, ./Progress.variants
 
 ### Community 100 - "Recipes"
-Cohesion: 0.29
-Nodes (3): fs, { mockGetCanonItemsSnapshot }, parsedIngredient
+Cohesion: 0.20
+Nodes (8): getChatSessionsSnapshot(), installE2EHooks(), getEquipmentSnapshot(), registerServiceWorker(), getRecipesSnapshot(), getDefaultListIdSnapshot(), getItemsSnapshot(), getShoppingListsSnapshot()
 
 ### Community 101 - "Schemas"
 Cohesion: 0.13
@@ -864,16 +852,16 @@ Cohesion: 0.27
 Nodes (6): SwitchProps, SwitchRootVariants, switchThumbVariants, ../../headless/Switch.headless.svelte, ./Switch.types, ./Switch.variants
 
 ### Community 103 - "Testing Utils"
-Cohesion: 0.33
-Nodes (3): fs, parsedFlour, parseGroup
+Cohesion: 0.29
+Nodes (8): createPosthogMatchLoggingAdapter(), createPosthogServerMatchLoggingAdapter(), CANON_MATCH_EVENT, CanonMatchEventProps, CanonMatchPath, scaleScore(), toCanonMatchEvent(), fixture
 
 ### Community 104 - "Triggers"
 Cohesion: 0.31
 Nodes (9): collapse(), extractLeadingQuantity(), extractTrailingQuantity(), parseShoppingListEntry(), QuantityResult, stripLeadingOf(), TrailingQuantityResult, UNIT_WORDS (+1 more)
 
 ### Community 105 - "Cloud Functions"
-Cohesion: 0.12
-Nodes (17): importRecipeFromUrl(), matchIngredient(), callAuthorRecipe(), classifyError(), callCanonicaliseRecipeIngredients(), callMatchOrCreate(), callRegenerateCanonIcon(), WireBatchResult (+9 more)
+Cohesion: 0.25
+Nodes (7): RefreshWeatherForecastResult, RefreshWeatherForecastResult, HomeLocationSchema, OpenMeteoForecastResponse, RefreshWeatherForecastInput, WeatherDaySummarySchema, WeatherForecast
 
 ### Community 106 - "Heading"
 Cohesion: 0.14
@@ -884,8 +872,8 @@ Cohesion: 0.14
 Nodes (12): accessoryBusy, accessoryRemoveBusy, deleteBusy, deleteOpen, editingName, editingNameActive, editingRuleDraft, nameBusy (+4 more)
 
 ### Community 108 - "Community 108"
-Cohesion: 0.14
-Nodes (13): 0. Roadmap Split, 5.1 Universal Requirements, 5.2 Keyboard Map, 5.3 Focus Management, 5. Accessibility System, 6.1 Required Test Suites, 6.2 Test File Template, 6. Testing System (+5 more)
+Cohesion: 0.10
+Nodes (19): 0. Roadmap Split, 1.1 Technology Stack, 1.2 Boundaries, 1.3 Package Surface, 1.4 Event Naming Rule, 1.5 Spec Versioning & Amendment Rule, 1. Foundations, 5.1 Universal Requirements (+11 more)
 
 ### Community 109 - "Docs"
 Cohesion: 0.21
@@ -936,12 +924,12 @@ Cohesion: 0.18
 Nodes (6): FakeHttpsError, identifyEquipmentFlow, populateEquipmentEntryFlow, reportFlowError, runWithExtractedTraceContext, runWithSuppliedTraceContext
 
 ### Community 121 - "Tests"
-Cohesion: 0.22
-Nodes (9): createPosthogErrorReportingAdapter(), createPosthogServerErrorReportingAdapter(), isReportableCategory(), SUPPRESSED_CATEGORIES, { clientCapture, clientInit, serverCapture, FakePostHog }, { captureException, init }, { captureException, FakePostHog }, { clientCapture, clientInit, serverCapture, FakePostHog } (+1 more)
+Cohesion: 0.25
+Nodes (8): initObservability(), createPosthogErrorReportingAdapter(), isReportableCategory(), SUPPRESSED_CATEGORIES, { clientCapture, clientInit, serverCapture, FakePostHog }, { captureException, init }, { clientCapture, clientInit, serverCapture, FakePostHog }, EXPECTED_REPORT
 
 ### Community 122 - "Ui Components"
-Cohesion: 0.17
-Nodes (8): approveCanonItems(), ../../lib/titleCase.js, allVisibleIds, handleBulkApprove(), selectedApprovalIds, selection, topApprovalItems, ./RecipeAddToListSheet.svelte
+Cohesion: 0.22
+Nodes (6): approveCanonItems(), allVisibleIds, handleBulkApprove(), selectedApprovalIds, selection, topApprovalItems
 
 ### Community 123 - "Ai"
 Cohesion: 0.18
@@ -976,12 +964,12 @@ Cohesion: 0.20
 Nodes (9): compilerOptions, composite, module, moduleResolution, outDir, rootDir, extends, include (+1 more)
 
 ### Community 132 - "Schemas"
-Cohesion: 0.40
-Nodes (5): 8.5 Switch, Accessibility, Events, Props, Styling
+Cohesion: 0.29
+Nodes (4): MatchCandidate, MatchStage, ArbitrationRequest, CanonLookupPort
 
 ### Community 134 - "Scripts"
-Cohesion: 0.20
-Nodes (10): 8.10 Heading, 8.11 Text, 8.3 Textarea, 8. Primitive Definitions (v0.2 Core), Autoresize, Props, Props, Size styling (+2 more)
+Cohesion: 0.09
+Nodes (23): 8.10 Heading, 8.11 Text, 8.12 Icon, 8.3 Textarea, 8.5 Switch, 8.9 Card, 8. Primitive Definitions (v0.2 Core), Accessibility (+15 more)
 
 ### Community 135 - "Scripts"
 Cohesion: 0.20
@@ -1016,8 +1004,8 @@ Cohesion: 0.22
 Nodes (8): compilerOptions, composite, lib, outDir, rootDir, extends, include, references
 
 ### Community 145 - "Community 145"
-Cohesion: 0.50
-Nodes (4): 8.9 Card, Parts, Props (all parts), Styling
+Cohesion: 0.33
+Nodes (7): connectAuthEmulatorOnce(), emulatorConnectedApps, initFirebase(), setFirestoreNetwork(), clearFirestoreEmulator(), initFirebaseEmulator(), resetDefaultApp()
 
 ### Community 147 - "Schemas"
 Cohesion: 0.22
@@ -1060,8 +1048,8 @@ Cohesion: 0.25
 Nodes (7): compilerOptions, composite, outDir, rootDir, extends, include, references
 
 ### Community 160 - "CanonListPage.svelte"
-Cohesion: 0.22
-Nodes (9): SYSTEM_INSTRUCTIONS, IngredientGroupAISchema, ParsedIngredientAISchema, ParseRecipeIngredientsAIOutput, ParseRecipeIngredientsAIOutputSchema, ParseRecipeIngredientsInput, ParseRecipeIngredientsInputSchema, ParseRecipeIngredientsOutput (+1 more)
+Cohesion: 0.25
+Nodes (3): EMULATOR_HOST, FakeHttpsError, handler
 
 ### Community 161 - "Community 161"
 Cohesion: 0.25
@@ -1104,8 +1092,8 @@ Cohesion: 0.24
 Nodes (6): WEATHER_ICON_URL, DayNightVariant, ICON_BY_CODE, isVariant(), weatherIcon(), WeatherIconId
 
 ### Community 171 - "Flows"
-Cohesion: 0.29
-Nodes (7): 3.1 Folder Structure, 3.2 Export Rules, 3.3 Tailwind + Token Ownership, 3.4 bits-ui / melt-ui Versions, 3.7 bits-ui Mapping Table, 3.8 Provenance Header Convention, 3. Component Architecture
+Cohesion: 0.17
+Nodes (12): 3.1 Folder Structure, 3.2 Export Rules, 3.3 Tailwind + Token Ownership, 3.4 bits-ui / melt-ui Versions, 3.5 Helpers, 3.7 bits-ui Mapping Table, 3.8 Provenance Header Convention, 3. Component Architecture (+4 more)
 
 ### Community 172 - "Icons"
 Cohesion: 1.00
@@ -1124,8 +1112,8 @@ Cohesion: 1.00
 Nodes (3): Task Pilot Tasks Icon, Task List Visualization, Task Pilot VS Code Extension
 
 ### Community 176 - "TraceparentPropagator"
-Cohesion: 0.29
-Nodes (3): $lib/weather-icons/WeatherIcon.svelte, ./MealDayEditor.svelte, @salt/domain
+Cohesion: 0.19
+Nodes (5): ../../lib/titleCase.js, $lib/weather-icons/WeatherIcon.svelte, ./MealDayEditor.svelte, ./RecipeAddToListSheet.svelte, @salt/domain
 
 ### Community 177 - "Schemas"
 Cohesion: 0.29
@@ -1160,8 +1148,8 @@ Cohesion: 0.29
 Nodes (6): compilerOptions, composite, noEmit, rootDir, extends, include
 
 ### Community 186 - "Flows"
-Cohesion: 0.18
-Nodes (13): createFirestoreAisleStore(), createFirestoreCanonStore(), createServerArbitrationAdapter(), createServerEmbeddingAdapter(), createServerMatchLoggingAdapter(), ItemResultSchema, OutputSchema, buildMatchOrCreatePorts() (+5 more)
+Cohesion: 0.15
+Nodes (16): createFirestoreAisleStore(), createFirestoreCanonStore(), createServerArbitrationAdapter(), createServerEmbeddingAdapter(), createServerMatchLoggingAdapter(), buildMatchOrCreatePorts(), composeMatchLogging(), matchOrCreateCanonFlow (+8 more)
 
 ### Community 187 - "Ports"
 Cohesion: 0.33
@@ -1180,16 +1168,12 @@ Cohesion: 0.36
 Nodes (9): aggregateForecastWindow(), DayAccumulator, emptyAccumulator(), mean(), parseLocalDateHour(), push(), pushWeather(), reduceWeather() (+1 more)
 
 ### Community 194 - "recipe.schema.test.ts"
-Cohesion: 0.33
-Nodes (16): ../../lib/aisleService.js, addAisle(), addAislesBulk(), deleteAisles(), idGen, mergeAisles(), renameAisle(), reorderAisles() (+8 more)
-
-### Community 195 - "Web Pwa"
-Cohesion: 0.19
-Nodes (5): { mockCanonItems, mockAisles, mockLists, mockItems, mockDefaultListId, mockLoading }, CONFIG, ErrorCallback, { mockUnsubscribe, mockOnSnapshot, mockSetDoc, mockGetDoc, mockDoc, mockGetFirestore }, SnapCallback
+Cohesion: 0.40
+Nodes (5): baseProps(), day, member, noop(), sunnyDay
 
 ### Community 197 - "Tests"
-Cohesion: 0.33
-Nodes (6): 4.1 Tokens, Elevation, Motion, Radius, Semantic colors, Z-index
+Cohesion: 0.11
+Nodes (18): 4.1 Tokens, 4.2 Focus Ring, 4.3 Disabled + Loading, 4.4 Shared Size Scale, 4.5 Dark Mode, 4. Styling System, Control Size Scale (Checkbox, Switch), Dialog Size Scale (+10 more)
 
 ### Community 200 - "Tests"
 Cohesion: 0.33
@@ -1248,20 +1232,12 @@ Cohesion: 0.13
 Nodes (14): dependencies, firebase, @salt/domain, @salt/shared-types, devDependencies, @firebase/rules-unit-testing, exports, name (+6 more)
 
 ### Community 221 - "arbitrateCanon.ts"
-Cohesion: 0.40
-Nodes (5): captureProcessor, finished, makeCanonDoc(), makeDbStub(), sampleItem
-
-### Community 223 - "beforeMemberCreated.emulator.test.ts"
-Cohesion: 0.33
-Nodes (6): 4.2 Focus Ring, 4.3 Disabled + Loading, 4.5 Dark Mode, 4. Styling System, Disabled (terminal state — no interaction), Loading (transient state — disables interaction without terminal semantics)
+Cohesion: 0.53
+Nodes (4): mostSignificantWeatherCode(), RANK_BY_CODE, SEVERITY_GROUPS, weatherSeverity()
 
 ### Community 225 - "Lib"
 Cohesion: 0.11
 Nodes (26): tokens, cn(), twMerge, CanonIconProps, ComboboxContentProps, ComboboxCreateProps, ComboboxEmptyProps, ComboboxFieldProps (+18 more)
-
-### Community 253 - "shoppingListItem.ts"
-Cohesion: 0.33
-Nodes (6): 4.4 Shared Size Scale, Control Size Scale (Checkbox, Switch), Dialog Size Scale, Field Size Scale (TextField, Textarea frame, Button), Icon / Spinner sizes, Text Size Scale (Text primitive)
 
 ### Community 267 - "Community 267"
 Cohesion: 0.14
@@ -1307,41 +1283,29 @@ Nodes (5): 11. Enforcement rules, Commit gateway, dependency-cruiser, ESLint, ts
 Cohesion: 0.50
 Nodes (4): 3. Dependency graph (allowed imports), Allowed, Forbidden, Narrow exception: pre-authentication ephemeral state in `web-pwa`
 
-### Community 442 - "shoppingListService.manualSource.test.ts"
-Cohesion: 0.40
-Nodes (5): 3.5 Helpers, `src/lib/cn.ts`, `src/lib/context.ts`, `src/lib/useId.ts`, `src/lib/variants.ts`
-
-### Community 443 - "EquipmentCapturePage.test.ts"
-Cohesion: 0.50
-Nodes (4): 8.12 Icon, Accessibility, Props, Styling
-
-### Community 444 - "1. Foundations"
-Cohesion: 0.33
-Nodes (6): 1.1 Technology Stack, 1.2 Boundaries, 1.3 Package Surface, 1.4 Event Naming Rule, 1.5 Spec Versioning & Amendment Rule, 1. Foundations
-
 ### Community 445 - "recipeSubscription.test.ts"
 Cohesion: 0.50
 Nodes (4): 8.14 Spinner, Accessibility, Props, Styling
 
 ## Knowledge Gaps
-- **1547 isolated node(s):** `husky.sh script`, `name`, `version`, `private`, `type` (+1542 more)
+- **1546 isolated node(s):** `husky.sh script`, `name`, `version`, `private`, `type` (+1541 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **196 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **205 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `../../lib/recipeService.js` connect `Recipe Service` to `Meal Planner & Attendees`, `Firestore Stores & Classify`, `Members Management`, `Canon Matching Core`, `web-pwa Dependencies`, `Theme Check Tooling`, `Admin Routes`, `Task Pilot Manifest`, `Lib`, `Button`, `Lib`, `Lib`, `Canon`, `Docs`, `Ai`, `Adapters`, `recipe.schema.test.ts`, `Schemas`, `Sections`, `Recipes`, `Testing Utils`, `Cloud Functions`, `Web Pwa`, `Ui Components`, `Ai`?**
-  _High betweenness centrality (0.047) - this node is a cross-community bridge._
-- **Why does `DomainError` connect `Lib` to `Firebase-Sync Shopping Config`, `Headless UI Primitives`, `E2E Test Suite`, `Firestore Stores & Classify`, `Members Management`, `web-pwa Dependencies`, `Domain Zod Schemas`, `Theme Check Tooling`, `Admin Routes`, `Task Pilot Manifest`, `Recipe Service`, `AI Flows & Telemetry`, `Entities`, `Recipes`, `Sidenav`, `Lib`, `Detailpage`, `recipe.schema.test.ts`, `Firebase Sync`, `Triggers`, `Equipment`, `Src`, `Cloud Functions`, `User`, `Tests`?**
-  _High betweenness centrality (0.033) - this node is a cross-community bridge._
-- **Why does `../../lib/canonService.js` connect `Task Pilot Manifest` to `recipe.schema.test.ts`, `Lib`, `Firestore Stores & Classify`, `Cloud Functions`, `Members Management`, `Recipes`, `web-pwa Dependencies`, `Sidenav`, `Lib`, `Domain Zod Schemas`, `Theme Check Tooling`, `Lib`, `Docs`, `Recipe Service`, `Schemas`, `Ui Components`, `Ai`, `Ai`?**
-  _High betweenness centrality (0.023) - this node is a cross-community bridge._
+- **Why does `DomainError` connect `Lib` to `Firebase-Sync Shopping Config`, `Canon Approval UI`, `Schemas`, `E2E Test Suite`, `Firestore Stores & Classify`, `Members Management`, `web-pwa Dependencies`, `Domain Zod Schemas`, `Theme Check Tooling`, `Admin Routes`, `Task Pilot Manifest`, `Recipe Service`, `AI Flows & Telemetry`, `Entities`, `Button`, `Recipes`, `Lib`, `Adapters`, `Firebase Sync`, `Triggers`, `Src`, `Shared`, `Tests`?**
+  _High betweenness centrality (0.035) - this node is a cross-community bridge._
+- **Why does `../../lib/recipeService.js` connect `Recipe Service` to `Meal Planner & Attendees`, `Recipes`, `Headless UI Primitives`, `Lib`, `Firestore Stores & Classify`, `Members Management`, `Canon Matching Core`, `web-pwa Dependencies`, `Theme Check Tooling`, `TraceparentPropagator`, `Lib`, `Canon`, `Admin Routes`, `Web Pwa`, `Task Pilot Manifest`, `Ai`, `Ai`?**
+  _High betweenness centrality (0.034) - this node is a cross-community bridge._
+- **Why does `../../lib/auth.svelte.js` connect `Adapters` to `Recipes`, `Lib`, `Schemas`, `Firestore Stores & Classify`, `Members Management`, `Firebase Sync`, `Theme Check Tooling`, `Lib`, `Docs`, `Ai`, `Recipe URL Import (SSRF)`?**
+  _High betweenness centrality (0.027) - this node is a cross-community bridge._
 - **What connects `husky.sh script`, `name`, `version` to the rest of the system?**
-  _1593 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _1592 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Meal Planner & Attendees` be split into smaller, more focused modules?**
-  _Cohesion score 0.03801546391752577 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.028231000429368828 - nodes in this community are weakly interconnected._
 - **Should `Firebase-Sync Shopping Config` be split into smaller, more focused modules?**
-  _Cohesion score 0.050974512743628186 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.05028011204481793 - nodes in this community are weakly interconnected._
 - **Should `Canon Approval UI` be split into smaller, more focused modules?**
-  _Cohesion score 0.08108108108108109 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.08412698412698413 - nodes in this community are weakly interconnected._
