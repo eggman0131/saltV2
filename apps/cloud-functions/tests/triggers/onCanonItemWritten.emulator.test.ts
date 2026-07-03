@@ -135,8 +135,11 @@ describe('onCanonItemWritten — Firestore emulator', () => {
     expect(snap.data()!['thumbnail']).toBe(
       'https://firebasestorage.googleapis.com/v0/b/demo-salt.appspot.com/o/canon-icons%2Fcanon-1.webp?alt=media',
     );
-    // Embedding branch also ran.
-    expect(snap.data()!['embedding']).toEqual([0.1, 0.2, 0.3]);
+    // Embedding branch also ran — but the vector now lands in the server-only
+    // canonEmbeddings companion collection (#410), NOT inline on the canon doc.
+    const emb = await db.collection('canonEmbeddings').doc('canon-1').get();
+    expect(emb.data()!['embedding']).toEqual([0.1, 0.2, 0.3]);
+    expect(snap.data()!['embedding'] ?? null).toBeNull();
   });
 
   it('passes a one-shot iconHint to the flow and clears it after success', async () => {
@@ -219,7 +222,7 @@ describe('onCanonItemWritten — Firestore emulator', () => {
     expect(snap.data()!['thumbnail']).toBe(existing);
   });
 
-  it('skips the embedding branch when an embedding already exists', async () => {
+  it('skips the embedding branch when an inline (un-migrated) embedding still exists', async () => {
     const db = getFirestore(adminApp);
     const item = makeCanonItem('canon-4', { thumbnail: 'hidden', embedding: [0.5] });
     await db.collection('canonItems').doc('canon-4').set(item);
@@ -229,15 +232,51 @@ describe('onCanonItemWritten — Firestore emulator', () => {
     expect(mockEmbed).not.toHaveBeenCalled();
   });
 
+  it('skips the embedding branch when the relocated canonEmbeddings doc already exists (#410)', async () => {
+    const db = getFirestore(adminApp);
+    // Migrated shape: no inline vector on the canon doc, vector lives in the
+    // companion collection. The guard must consult the companion, not the doc.
+    const item = makeCanonItem('canon-emb', { thumbnail: 'hidden', embedding: null });
+    await db.collection('canonItems').doc('canon-emb').set(item);
+    await db
+      .collection('canonEmbeddings')
+      .doc('canon-emb')
+      .set({ embedding: [0.5] });
+
+    await (onCanonItemWritten as Function)(makeEvent('canon-emb', item));
+
+    expect(mockEmbed).not.toHaveBeenCalled();
+  });
+
+  it('writes the embedding to the companion collection when neither inline nor companion exists (#410)', async () => {
+    const db = getFirestore(adminApp);
+    // Migrated shape with no vector yet: brand-new item. The branch computes and
+    // writes the companion doc, leaving the canon doc's embedding untouched.
+    const item = makeCanonItem('canon-fresh', { thumbnail: 'hidden', embedding: null });
+    await db.collection('canonItems').doc('canon-fresh').set(item);
+
+    await (onCanonItemWritten as Function)(makeEvent('canon-fresh', item));
+
+    expect(mockEmbed).toHaveBeenCalledOnce();
+    const emb = await db.collection('canonEmbeddings').doc('canon-fresh').get();
+    expect(emb.exists).toBe(true);
+    expect(emb.data()!['embedding']).toEqual([0.1, 0.2, 0.3]);
+  });
+
   // Edge-trigger regression: the trigger fires on every write, but icon
   // generation must start only on the write that transitions the item into
-  // "needs an icon". The duplicate-generation bug came from the embedding
-  // `.update()` re-firing the trigger while the create-fire's generation was
-  // still in flight (thumbnail still null), starting a second generation.
+  // "needs an icon". A re-fire while the create-fire's generation is still in
+  // flight (thumbnail still null) must NOT start a second generation. Since #410
+  // the embedding write lands in a separate collection, so the representative
+  // re-fire is now another canon-doc write — here a traceContext stamp — landing
+  // while thumbnail stays null.
   it('does not regenerate the icon when an unrelated field changes while thumbnail stays null', async () => {
-    const before = makeCanonItem('canon-reentry', { thumbnail: null, embedding: null });
-    // Same write the embedding branch issues on create: embedding added, thumbnail untouched.
-    const after = makeCanonItem('canon-reentry', { thumbnail: null, embedding: [0.1, 0.2, 0.3] });
+    const before = makeCanonItem('canon-reentry', { thumbnail: null });
+    // A traceContext stamp (as a match write-back makes) — thumbnail untouched.
+    const after = makeCanonItem('canon-reentry', {
+      thumbnail: null,
+      traceContext: '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01',
+    });
 
     await (onCanonItemWritten as Function)(makeEvent('canon-reentry', after, before));
 

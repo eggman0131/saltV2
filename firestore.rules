@@ -26,6 +26,14 @@ service cloud.firestore {
     match /canonItems/{itemId} {
       allow read, write: if request.auth != null;
     }
+    // Canon embeddings (issue #410) — server-only name vectors, relocated off the
+    // client-subscribed canonItems doc. Written and read exclusively by the Cloud
+    // Functions match path via the Admin SDK (which bypasses these rules); no
+    // client ever needs them, so all client access is denied. Closing it here is
+    // what guarantees the browser stops paying to sync vectors it never reads.
+    match /canonEmbeddings/{itemId} {
+      allow read, write: if false;
+    }
     // Aisle config — shared; any authenticated user can read and write.
     match /canonData/{document} {
       allow read, write: if request.auth != null;

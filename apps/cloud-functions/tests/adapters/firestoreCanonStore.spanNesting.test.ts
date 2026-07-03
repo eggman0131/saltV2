@@ -67,15 +67,18 @@ function makeCanonDoc(id: string, name: string): Record<string, unknown> {
 }
 
 // Minimal Firestore stub: just enough surface for list()/upsert(). Returns two
-// schema-valid canon docs so list() reports a candidate count of 2.
+// schema-valid canon docs so list() reports a candidate count of 2. list() also
+// reads the canonEmbeddings companion collection (#410) — this test is about span
+// nesting, not vector merge, so that collection loads empty.
 function makeDbStub() {
   const docs = [makeCanonDoc('a', 'Apple'), makeCanonDoc('b', 'Banana')];
   return {
-    collection: () => ({
+    collection: (name: string) => ({
       doc: () => ({
         async set() {},
       }),
       async get() {
+        if (name === 'canonEmbeddings') return { docs: [] };
         return { docs: docs.map((d) => ({ id: d['id'], data: () => d })) };
       },
     }),

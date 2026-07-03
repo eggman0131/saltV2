@@ -2,23 +2,40 @@ import type { Firestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
 import type { CanonItem, CanonLocalStorePort } from '@salt/domain';
 import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
-import { CanonItemSchema } from '@salt/domain/schemas';
+import { CanonItemSchema, CanonEmbeddingSchema, type CanonItemDoc } from '@salt/domain/schemas';
 import { startSpan, type ObservabilitySpan } from '@salt/observability/server';
 
 const COLLECTION = 'canonItems';
+// Server-only companion collection holding name embeddings, keyed by canon id
+// (issue #410). Relocated off the client-subscribed canonItems doc; read here via
+// the Admin SDK, denied to clients by firestore.rules. See CanonEmbeddingSchema.
+const EMBEDDING_COLLECTION = 'canonEmbeddings';
 
 function classify(_err: unknown): DomainError {
   return { kind: 'StorageError', reason: 'unavailable' };
 }
 
-// The canon match parent span (canon.matchOrCreateCanon / the recipe batch span)
-// is created with a plain startSpan and is NOT installed as the active OTel
-// context during adapter execution, so a child span must be parented EXPLICITLY
-// via { parent } — relying on context.active() would re-root it. The parent is
-// threaded in from buildMatchOrCreatePorts(parentSpan), mirroring how the
-// match-logging adapter already receives it. parentSpan is optional: direct-flow
-// paths (the trigger, tests) pass nothing and the spans simply inherit the
-// active context (a no-op span when Firebase telemetry is off).
+/**
+ * Reassemble the pure-domain `CanonItem` (which still carries `embedding`) from a
+ * parsed canon doc plus the relocated vectors. Domain purity is preserved: the
+ * split storage layout is an adapter concern, invisible to the matcher.
+ *
+ * Precedence: the relocated `canonEmbeddings` vector wins; if absent (an
+ * un-migrated doc), fall back to any inline vector still on the canon doc; else
+ * null (an un-embedded item — stage 5 simply skips it). The inline fallback is
+ * what makes this back-compatible with zero degradation window regardless of
+ * when the one-off migration runs.
+ */
+function mergeEmbedding(
+  parsed: CanonItemDoc,
+  embeddings: ReadonlyMap<string, readonly number[]>,
+): CanonItem {
+  const embedding = embeddings.get(parsed.id) ?? parsed.embedding ?? null;
+  // exactOptionalPropertyTypes: zod's optional fields emit T | undefined while
+  // CanonItem uses bare optional properties; cast is load-bearing (as elsewhere).
+  return { ...parsed, embedding } as CanonItem;
+}
+
 export function createFirestoreCanonStore(
   db: Firestore,
   parentSpan?: ObservabilitySpan,
@@ -44,13 +61,22 @@ export function createFirestoreCanonStore(
       span.setAttribute('firestore.collection', COLLECTION);
       span.setAttribute('canon.itemId', item.id);
       try {
+        // Strip `embedding` before writing (issue #410): vectors live in the
+        // server-only canonEmbeddings collection now, never on this
+        // client-subscribed doc. The domain only ever produces a null embedding
+        // (createCanonItem) or round-trips an existing one loaded by list()/load()
+        // — either way the canon-write drops it, and the CF embedding branch owns
+        // canonEmbeddings as the single writer. A full-doc .set() also clears any
+        // inline vector still on an un-migrated doc; the onCanonItemWritten
+        // embedding guard then backfills canonEmbeddings on the resulting write.
+        const { embedding: _embedding, ...docFields } = item;
         await db
           .collection(COLLECTION)
           .doc(item.id)
-          // The pure CanonItem plus the correlation field added at the adapter
-          // boundary only (domain never sees traceContext). Omitted entirely
-          // when absent so direct-flow paths write byte-identical docs.
-          .set({ ...item, ...(traceContext ? { traceContext } : {}) });
+          // The pure CanonItem (minus embedding) plus the correlation field added
+          // at the adapter boundary only (domain never sees traceContext). Omitted
+          // entirely when absent so direct-flow paths write byte-identical docs.
+          .set({ ...docFields, ...(traceContext ? { traceContext } : {}) });
         return success(item);
       } catch (err) {
         return failure(classify(err));
@@ -60,7 +86,10 @@ export function createFirestoreCanonStore(
     },
     async load(id: string): Promise<ReadResult<CanonItem | null, DomainError>> {
       try {
-        const snap = await db.collection(COLLECTION).doc(id).get();
+        const [snap, embSnap] = await Promise.all([
+          db.collection(COLLECTION).doc(id).get(),
+          db.collection(EMBEDDING_COLLECTION).doc(id).get(),
+        ]);
         if (!snap.exists) return success(null);
         const result = CanonItemSchema.safeParse(snap.data());
         if (!result.success) {
@@ -70,9 +99,22 @@ export function createFirestoreCanonStore(
           });
           return failure({ kind: 'StorageError', reason: 'corruption' });
         }
-        // exactOptionalPropertyTypes: zod's .optional() emits T | undefined
-        // while CanonItem uses bare optional properties; cast is load-bearing.
-        return success(result.data as CanonItem);
+        // The embedding doc is a secondary read — a corrupt/missing one degrades
+        // to the inline fallback (or null), never fails the canon load: matching
+        // tolerates an absent embedding (stage 5 skips it).
+        const embeddings = new Map<string, readonly number[]>();
+        if (embSnap.exists) {
+          const parsed = CanonEmbeddingSchema.safeParse(embSnap.data());
+          if (parsed.success) {
+            embeddings.set(id, parsed.data.embedding);
+          } else {
+            logger.error('firestoreCanonStore: invalid embedding doc, ignoring', {
+              id,
+              error: parsed.error.message,
+            });
+          }
+        }
+        return success(mergeEmbedding(result.data, embeddings));
       } catch (err) {
         return failure(classify(err));
       }
@@ -90,9 +132,31 @@ export function createFirestoreCanonStore(
       );
       span.setAttribute('firestore.collection', COLLECTION);
       try {
-        const snap = await db.collection(COLLECTION).get();
+        // Two reads (issue #410): the light, embedding-free canon docs plus the
+        // server-only vectors, in parallel. The vectors are joined back by id so
+        // the pure matcher still sees CanonItem.embedding — the split is invisible
+        // above this adapter. (Optimising the server-side vector load itself —
+        // projection / native KNN — is issue #410 step 2/3, not this change.)
+        const [canonSnap, embSnap] = await Promise.all([
+          db.collection(COLLECTION).get(),
+          db.collection(EMBEDDING_COLLECTION).get(),
+        ]);
+
+        const embeddings = new Map<string, readonly number[]>();
+        for (const doc of embSnap.docs) {
+          const parsed = CanonEmbeddingSchema.safeParse(doc.data());
+          if (!parsed.success) {
+            logger.error('firestoreCanonStore: invalid embedding doc, skipping', {
+              id: doc.id,
+              error: parsed.error.message,
+            });
+            continue;
+          }
+          embeddings.set(doc.id, parsed.data.embedding);
+        }
+
         const items: CanonItem[] = [];
-        for (const doc of snap.docs) {
+        for (const doc of canonSnap.docs) {
           const result = CanonItemSchema.safeParse(doc.data());
           if (!result.success) {
             logger.error('firestoreCanonStore: invalid doc, skipping', {
@@ -101,10 +165,10 @@ export function createFirestoreCanonStore(
             });
             continue;
           }
-          // exactOptionalPropertyTypes: same cast rationale as load().
-          items.push(result.data as CanonItem);
+          items.push(mergeEmbedding(result.data, embeddings));
         }
         span.setAttribute('canon.candidateCount', items.length);
+        span.setAttribute('canon.embeddingCount', embeddings.size);
         return success(items);
       } catch (err) {
         return failure(classify(err));
@@ -114,7 +178,14 @@ export function createFirestoreCanonStore(
     },
     async delete(id: string): Promise<ReadResult<void, DomainError>> {
       try {
-        await db.collection(COLLECTION).doc(id).delete();
+        // Delete the canon doc and its relocated vector together — Firestore is
+        // the master, delete means delete (no tombstones). The embedding delete
+        // is best-effort in the same batch; an orphaned vector is inert (nothing
+        // reads it without its canon doc) but we clear it to avoid drift.
+        await Promise.all([
+          db.collection(COLLECTION).doc(id).delete(),
+          db.collection(EMBEDDING_COLLECTION).doc(id).delete(),
+        ]);
         return success(undefined);
       } catch (err) {
         return failure(classify(err));
