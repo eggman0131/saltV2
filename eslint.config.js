@@ -43,6 +43,14 @@ const ELEMENTS = [
 const FIREBASE_PKGS = ['firebase', 'firebase/*', 'firebase-admin', 'firebase-admin/*'];
 // Browser storage packages forbidden everywhere — Firestore's persistentLocalCache is the offline layer.
 const INDEXEDDB_PKGS = ['idb', 'idb/*', 'idb-keyval', 'idb-keyval/*', 'dexie', 'dexie/*'];
+// PostHog SDKs may be imported only inside @salt/observability, which wraps
+// them behind the ErrorReporting / MatchLogging ports (browser posthog-js on
+// the default subpath, posthog-node on /server). Everything else — apps
+// included — depends on those ports, never the SDK directly. depcruise's
+// no-posthog-outside-observability closes the same gap over the resolved tree.
+const POSTHOG_PKGS = ['posthog-js', 'posthog-js/*', 'posthog-node', 'posthog-node/*'];
+const POSTHOG_MESSAGE =
+  'PostHog SDK imports (posthog-js / posthog-node) are only allowed in @salt/observability. Depend on the @salt/observability ports (default subpath in web-pwa, /server in cloud-functions) instead.';
 const SALT_APP_IMPORTS = [
   '@salt/web-pwa',
   '@salt/web-pwa/*',
@@ -148,6 +156,7 @@ const DOMAIN_BASE_PATTERNS = [
     INDEXEDDB_PKGS,
     'Browser storage (IndexedDB) imports are forbidden — use the Firestore persistent cache instead.',
   ),
+  ...forbidGroup(POSTHOG_PKGS, POSTHOG_MESSAGE),
   ...forbidGroup(NODE_BUILTIN_PKGS, DOMAIN_NODE_MESSAGE),
   ...forbidGroup(
     [
@@ -337,6 +346,7 @@ export default [
         {
           patterns: [
             ...forbidGroup(SALT_APP_IMPORTS, 'Packages must not import from apps.'),
+            ...forbidGroup(POSTHOG_PKGS, POSTHOG_MESSAGE),
             ...forbidGroup(
               [
                 '@salt/domain',
@@ -368,6 +378,7 @@ export default [
           patterns: [
             ...forbidGroup(SALT_APP_IMPORTS, 'Adapters must not import from apps.'),
             ...forbidGroup(INDEXEDDB_PKGS, 'Browser storage (IndexedDB) imports are forbidden.'),
+            ...forbidGroup(POSTHOG_PKGS, POSTHOG_MESSAGE),
             ...forbidGroup(
               ['@salt/observability', '@salt/observability/*'],
               'Adapters must not import each other. Compose them at the application layer.',
@@ -415,6 +426,7 @@ export default [
               INDEXEDDB_PKGS,
               'UI components must not import browser storage (IndexedDB) packages.',
             ),
+            ...forbidGroup(POSTHOG_PKGS, POSTHOG_MESSAGE),
           ],
         },
       ],
@@ -428,7 +440,10 @@ export default [
       'no-restricted-imports': [
         'error',
         {
-          patterns: forbidGroup(SALT_APP_IMPORTS, 'Testing utilities must not import from apps.'),
+          patterns: [
+            ...forbidGroup(SALT_APP_IMPORTS, 'Testing utilities must not import from apps.'),
+            ...forbidGroup(POSTHOG_PKGS, POSTHOG_MESSAGE),
+          ],
         },
       ],
     },
@@ -587,6 +602,7 @@ export default [
             },
           ],
           patterns: [
+            ...forbidGroup(POSTHOG_PKGS, POSTHOG_MESSAGE),
             ...forbidGroup(UI_PRIMITIVE_PKGS, UI_PRIMITIVE_MESSAGE),
             ...forbidGroup(STAGE_INTERNAL_SUBPATHS, STAGE_INTERNAL_MESSAGE),
             {
@@ -614,6 +630,7 @@ export default [
             },
           ],
           patterns: [
+            ...forbidGroup(POSTHOG_PKGS, POSTHOG_MESSAGE),
             ...forbidGroup(STAGE_INTERNAL_SUBPATHS, STAGE_INTERNAL_MESSAGE),
             {
               group: ['@salt/domain', '@salt/domain/*'],
