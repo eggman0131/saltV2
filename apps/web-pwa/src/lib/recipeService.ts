@@ -181,9 +181,9 @@ export async function importRecipeFromUrl(
       return failure(result.error);
     }
     span.setAttribute('import.outcome', 'ok');
-    // RecipeDoc and Recipe are the same shape (the adapter casts both ways on
-    // read/write); accept the draft as a Recipe for the editor.
-    return success(result.value as unknown as Recipe);
+    // `Recipe` is an alias of `RecipeDoc` (issue #417), so the draft is already a
+    // Recipe — no cast needed.
+    return success(result.value);
   } finally {
     span.end();
   }

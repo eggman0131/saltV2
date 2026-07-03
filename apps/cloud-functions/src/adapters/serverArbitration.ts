@@ -1,5 +1,5 @@
 import { logger } from 'firebase-functions';
-import type { ArbitrationRequest, ArbitrationResult, CanonArbitrationPort } from '@salt/domain';
+import type { ArbitrationRequest, CanonArbitrationPort } from '@salt/domain';
 import { failure, success } from '@salt/shared-types';
 import { arbitrateCanonFlow } from '../flows/arbitrateCanon.js';
 import { withAiTimeout } from './withAiTimeout.js';
@@ -8,10 +8,9 @@ export function createServerArbitrationAdapter(): CanonArbitrationPort {
   return {
     async arbitrate(req: ArbitrationRequest) {
       try {
-        // Mutable copies for the flow's input schema; the typed return is cast
-        // through unknown because zod infers `T | undefined` for optional fields
-        // while the domain ArbitrationResult uses bare optional properties under
-        // exactOptionalPropertyTypes.
+        // Mutable copies for the flow's input schema. The flow's outputSchema is the
+        // shared `ArbitrationResultSchema` the domain `ArbitrationResult` derives from
+        // (issue #417), so the return type already matches the port — no cast needed.
         const flowInput = {
           normalisedName: req.normalisedName,
           candidates: req.candidates.map((c) => ({
@@ -21,9 +20,7 @@ export function createServerArbitrationAdapter(): CanonArbitrationPort {
           aisles: req.aisles.map((a) => ({ id: a.id, name: a.name })),
           ...(req.rawText !== undefined ? { rawText: req.rawText } : {}),
         };
-        const value = (await withAiTimeout('arbitrateCanon', () =>
-          arbitrateCanonFlow(flowInput),
-        )) as unknown as ArbitrationResult;
+        const value = await withAiTimeout('arbitrateCanon', () => arbitrateCanonFlow(flowInput));
         return success(value);
       } catch (err) {
         logger.error('matchOrCreateCanon: arbitration failed', { err });

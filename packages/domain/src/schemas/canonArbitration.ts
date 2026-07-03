@@ -14,6 +14,45 @@ export const ArbitrationRequestSchema = z.object({
 
 export type ArbitrationRequestInput = z.infer<typeof ArbitrationRequestSchema>;
 
+// The arbitration outcome the CF flow returns and the domain port yields (issue
+// #417). Single source of truth for the shape: the domain `ArbitrationResult`
+// type and the `arbitrateCanon` flow's outputSchema both derive from this, so the
+// flow output can no longer drift from the port contract behind an `as unknown`
+// cast. `prompt`/`rawResponse` are optional telemetry the flow always populates
+// but consumers treat as best-effort (`?? ''`). `shoppingBehavior`/`unit` mirror
+// `ShoppingBehavior`/`CanonItemUnit` from `@salt/shared-types`.
+export const ArbitrationResultSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('match'),
+    itemId: z.string(),
+    confidence: z.number(),
+    shoppingBehavior: z.enum(['stocked', 'check', 'needed']),
+    largeQuantityThreshold: z.number().optional(),
+    unit: z.enum(['g', 'ml', 'count']).optional(),
+    reasoning: z.string().optional(),
+    prompt: z.string().optional(),
+    rawResponse: z.string().optional(),
+  }),
+  z.object({
+    kind: z.literal('new'),
+    canonName: z.string(),
+    aisleId: z.string().nullable(),
+    shoppingBehavior: z.enum(['stocked', 'check', 'needed']),
+    largeQuantityThreshold: z.number().optional(),
+    unit: z.enum(['g', 'ml', 'count']).optional(),
+    reasoning: z.string().optional(),
+    prompt: z.string().optional(),
+    rawResponse: z.string().optional(),
+  }),
+  z.object({
+    kind: z.literal('no-match'),
+    prompt: z.string().optional(),
+    rawResponse: z.string().optional(),
+  }),
+]);
+
+export type ArbitrationResult = z.infer<typeof ArbitrationResultSchema>;
+
 // Flat shape returned by the Gemini model in the canon-matching flow.
 // Schema is the source of truth; the TS type is derived via z.infer.
 export const CanonArbitrationAIOutputSchema = z.object({

@@ -1,8 +1,9 @@
 import { z } from 'zod';
 
 // Recipe document schema (issue #179). Validated on read in firebase-sync and on
-// flow output in the parse CF (Phase 3). Mirrors the recipe entity graph in
-// packages/domain/src/recipe/entities; schema-first, types are inferred below.
+// flow output in the parse CF (Phase 3). This is the single source of truth for
+// the recipe shape: the recipe entity graph in packages/domain/src/recipe/entities
+// aliases the inferred types below (issue #417), so entity and document can't drift.
 
 // A plain numeric amount, e.g. "2", "0.5", "200".
 export const SingleQuantitySchema = z.object({
