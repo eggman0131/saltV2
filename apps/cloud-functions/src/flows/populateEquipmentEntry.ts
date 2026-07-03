@@ -5,6 +5,7 @@ import {
 import { flushServerObservability, setActiveSpanName } from '@salt/observability/server';
 import { ai } from '../genkit.js';
 import { flowModel } from '../ai/fakeModel.js';
+import { withAiTimeout } from '../adapters/withAiTimeout.js';
 
 export const populateEquipmentEntryFlow = ai.defineFlow(
   {
@@ -20,13 +21,15 @@ export const populateEquipmentEntryFlow = ai.defineFlow(
       // deterministic fake model instead; byte-identical otherwise. See
       // ../ai/fakeModel.ts for the cross-process stub contract.
       const model = await flowModel('lite', 'populateEquipmentEntry');
-      const result = await ai.generate({
-        model,
-        system: SYSTEM_INSTRUCTIONS,
-        prompt: `"${confirmedName}"`,
-        output: { schema: PopulateEquipmentEntryAIOutputSchema },
-        config: { temperature: 0 },
-      });
+      const result = await withAiTimeout('populateEquipmentEntry', () =>
+        ai.generate({
+          model,
+          system: SYSTEM_INSTRUCTIONS,
+          prompt: `"${confirmedName}"`,
+          output: { schema: PopulateEquipmentEntryAIOutputSchema },
+          config: { temperature: 0 },
+        }),
+      );
       const output = result.output!;
       return { name: output.name, accessories: output.accessories };
     } finally {
