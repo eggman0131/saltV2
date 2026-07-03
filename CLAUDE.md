@@ -20,7 +20,7 @@ cloud-functions            →  shared-types, domain, observability/server
 
 ## Hard rules
 
-1. **Domain is pure.** `packages/domain` must not import Firebase, Node.js built-ins, browser APIs, or any I/O. No side effects. Pure functions and types only. Conflict resolution policy lives here.
+1. **Domain is pure.** `packages/domain` must not import Firebase, Node.js built-ins, browser APIs, or any I/O. No side effects. Pure functions and types only. Any conflict-resolution policy belongs here (never in an adapter) — but none is wired in today: document-level LWW is enforced entirely by Firestore (see data-model conventions).
 2. **Firebase SDK only in `firebase-sync`.** The only place `firebase` or `firebase-admin` may be imported is `packages/adapters/firebase-sync`.
 3. **No IndexedDB / browser storage.** No package may import `idb`, `idb-keyval`, or touch `window.indexedDB` / `localStorage` / `sessionStorage` / `caches` directly. Offline reads and writes are handled by Firestore's `persistentLocalCache`. **Narrow exception:** `apps/web-pwa` may use `window.localStorage` for pre-authentication ephemeral state that has no Firestore-backed alternative — specifically the magic-link pending email in `apps/web-pwa/src/lib/auth.svelte.ts`, which must persist before any user is signed in (email clients open the link in a fresh tab/window, so `sessionStorage` is unavailable). This exception is scoped to `apps/web-pwa` only and explicitly excludes all adapters; everything else stays forbidden.
 4. **Adapters do not import each other.** `firebase-sync` ↔ `observability` is forbidden in both directions.
@@ -35,7 +35,7 @@ cloud-functions            →  shared-types, domain, observability/server
 
 - **All data is family-shared.** No `userId`, `householdId`, or per-user scoping on any collection. Equipment, recipes, shopping list, canon, aisles, and meal planner all live in single shared collections. Do not add user-scoped fields to new collections.
 - **No soft-delete, no tombstones.** Firestore is the master; delete means delete. Canon has a vestigial `deletedAt` field from the local-first era — do not copy this pattern to new schemas.
-- **LWW per document.** Last-write-wins at the document level. No merge logic at the storage layer; conflict resolution lives in `packages/domain`.
+- **LWW per document.** Last-write-wins at the document level, enforced entirely by Firestore's full-document `setDoc` — no merge logic at any layer. There is no live conflict-resolution policy today; if a document ever needs bespoke resolution it belongs in `packages/domain` (pure), never in an adapter. Note the granularity: a client `setDoc` rewrites the whole doc, so it can clobber a field a CF trigger wrote concurrently (e.g. `thumbnail`/`embedding`) — that is the LWW contract, not a bug. See the LWW integration test in `firebase-sync`.
 
 ## AI / Genkit conventions
 
