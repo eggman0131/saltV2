@@ -11,7 +11,13 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { initializeApp, deleteApp, getApps, type FirebaseApp } from 'firebase/app';
-import { initializeFirestore, connectFirestoreEmulator, doc, setDoc } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  connectFirestoreEmulator,
+  doc,
+  setDoc,
+  updateDoc,
+} from 'firebase/firestore';
 import type { Firestore } from 'firebase/firestore';
 import { getAuth, connectAuthEmulator, signInAnonymously } from 'firebase/auth';
 import { subscribeCanonItems, upsertCanonItem, deleteCanonItem } from '../src/canonSubscription.js';
@@ -483,6 +489,97 @@ describe('realtimeSubscriptions — Firestore emulator', () => {
 
       unsubscribe();
       expect(received.some((cfg) => cfg !== null && cfg.defaultListId === 'weekly')).toBe(true);
+    });
+  });
+
+  // LWW / concurrent-write semantics (issue #302). The product has no application
+  // merge policy — "conflict resolution" is purely Firestore's document-level
+  // last-write-wins (the domain merge helpers were vestigial and removed, #419).
+  // These pin the OBSERVABLE contract at the seam where our write shape meets
+  // Firestore: a client edit is a FULL-document `upsertCanonItem` (setDoc), while
+  // a CF trigger writes back a single field via `.update()` (onCanonItemWritten
+  // does `{ thumbnail: url }`). Whether a concurrent trigger field survives a
+  // client edit therefore depends only on whether the client held a fresh
+  // snapshot — never on a merge. Deterministic: every step is sequenced with
+  // waitFor on the subscription, never on wall-clock timing, so there is no
+  // cross-client race to flake on (contrast an e2e write/write race).
+  describe('LWW / concurrent-write semantics (issue #302)', () => {
+    // Newest observed state of one item across all delivered snapshots. The
+    // subscription re-delivers the whole collection on every change, so scan
+    // newest → oldest and return the item's most recent view.
+    function latestItem(received: CanonItem[][], id: string): CanonItem | undefined {
+      for (let i = received.length - 1; i >= 0; i--) {
+        const found = received[i]!.find((it) => it.id === id);
+        if (found) return found;
+      }
+      return undefined;
+    }
+
+    it('a full-doc client edit against a STALE snapshot clobbers a concurrently trigger-written field', async () => {
+      const id = 'lww-clobber';
+      const received: CanonItem[][] = [];
+      const unsubscribe = subscribeCanonItems(
+        (items) => received.push(items),
+        () => {},
+      );
+
+      try {
+        // Client creates the item (thumbnail null), exactly as the UI does.
+        await upsertCanonItem(makeItem(id, 'Tomato'));
+        await waitFor(() => latestItem(received, id) !== undefined, CONVERGENCE_MS);
+
+        // A CF trigger writes an icon back via a single-field `.update()`.
+        await updateDoc(doc(writerDb, 'canonItems', id), {
+          thumbnail: 'https://icons.example/tomato.webp',
+        });
+        await waitFor(() => Boolean(latestItem(received, id)?.thumbnail), CONVERGENCE_MS);
+
+        // The client renames using the snapshot it ORIGINALLY wrote — which never
+        // saw the trigger's thumbnail — and persists the whole document. This is
+        // the real lost-update window: setDoc overwrites the entire doc.
+        await upsertCanonItem({ ...makeItem(id, 'Tomatoes'), thumbnail: null });
+        await waitFor(() => latestItem(received, id)?.name === 'Tomatoes', CONVERGENCE_MS);
+
+        // Contract: LWW is per-DOCUMENT. The stale full-doc write won wholesale,
+        // so the trigger's thumbnail is gone. If this ever flips (e.g. canon
+        // edits move to field-scoped updateDoc), this assertion is the tripwire.
+        const final = latestItem(received, id)!;
+        expect(final.name).toBe('Tomatoes');
+        expect(final.thumbnail).toBeNull();
+      } finally {
+        unsubscribe();
+      }
+    });
+
+    it('a full-doc client edit against the FRESH snapshot preserves a trigger-written field', async () => {
+      const id = 'lww-fresh';
+      const received: CanonItem[][] = [];
+      const unsubscribe = subscribeCanonItems(
+        (items) => received.push(items),
+        () => {},
+      );
+
+      try {
+        await upsertCanonItem(makeItem(id, 'Onion'));
+        await waitFor(() => latestItem(received, id) !== undefined, CONVERGENCE_MS);
+
+        await updateDoc(doc(writerDb, 'canonItems', id), {
+          thumbnail: 'https://icons.example/onion.webp',
+        });
+        await waitFor(() => Boolean(latestItem(received, id)?.thumbnail), CONVERGENCE_MS);
+
+        // This time the client edits the FRESH item it just observed (thumbnail
+        // included), so its full-doc write carries the trigger's field forward.
+        const fresh = latestItem(received, id)!;
+        await upsertCanonItem({ ...fresh, name: 'Onions' });
+        await waitFor(() => latestItem(received, id)?.name === 'Onions', CONVERGENCE_MS);
+
+        const final = latestItem(received, id)!;
+        expect(final.name).toBe('Onions');
+        expect(final.thumbnail).toBe('https://icons.example/onion.webp');
+      } finally {
+        unsubscribe();
+      }
     });
   });
 });
