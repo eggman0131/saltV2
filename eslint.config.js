@@ -1,5 +1,6 @@
 import boundaries from 'eslint-plugin-boundaries';
 import tsParser from '@typescript-eslint/parser';
+import svelteParser from 'svelte-eslint-parser';
 import playwright from 'eslint-plugin-playwright';
 
 // Element definitions used by eslint-plugin-boundaries.
@@ -49,6 +50,56 @@ const SALT_APP_IMPORTS = [
   '@salt/cloud-functions/*',
 ];
 
+// UI-primitive libraries. web-pwa must reach these only through
+// @salt/ui-components (Rule 7) — a direct import bypasses the wrapper layer.
+// ui-components itself owns these deps and imports them directly.
+const UI_PRIMITIVE_PKGS = [
+  'bits-ui',
+  'bits-ui/*',
+  'shadcn-svelte',
+  'shadcn-svelte/*',
+  'melt-ui',
+  'melt-ui/*',
+  '@melt-ui/svelte',
+  '@melt-ui/*',
+];
+const UI_PRIMITIVE_MESSAGE =
+  'UI primitives (bits-ui / shadcn-svelte / melt-ui) must be imported via @salt/ui-components, never directly (Rule 7).';
+
+// Node built-ins + browser storage globals forbidden in @salt/domain: the domain
+// layer is pure (no I/O, no Node, no browser APIs). `node:*` covers the modern
+// prefix; the bare names cover the legacy specifier form.
+const NODE_BUILTIN_PKGS = [
+  'node:*',
+  'fs',
+  'fs/*',
+  'path',
+  'os',
+  'crypto',
+  'util',
+  'stream',
+  'child_process',
+  'http',
+  'https',
+  'net',
+  'zlib',
+  'events',
+  'process',
+];
+const DOMAIN_NODE_MESSAGE =
+  '@salt/domain is pure — no Node built-ins or I/O. Move platform code into an adapter.';
+const DOMAIN_BROWSER_GLOBALS = [
+  'window',
+  'document',
+  'localStorage',
+  'sessionStorage',
+  'indexedDB',
+  'caches',
+  'navigator',
+];
+const DOMAIN_BROWSER_GLOBALS_MESSAGE =
+  '@salt/domain is pure — no browser APIs. Move platform code into an adapter.';
+
 // Stage 1–4 / stage 5 internals that must only be reached via findClosestMatch
 // (or, in domain itself, matchOrCreate). Apps must never call these directly.
 const STAGE_INTERNAL_NAMES = ['tokenMatch', 'stringSimilarity', 'synonymMatch', 'embedMatch'];
@@ -97,6 +148,7 @@ const DOMAIN_BASE_PATTERNS = [
     INDEXEDDB_PKGS,
     'Browser storage (IndexedDB) imports are forbidden — use the Firestore persistent cache instead.',
   ),
+  ...forbidGroup(NODE_BUILTIN_PKGS, DOMAIN_NODE_MESSAGE),
   ...forbidGroup(
     [
       '@salt/firebase-sync',
@@ -110,6 +162,14 @@ const DOMAIN_BASE_PATTERNS = [
     ],
     '@salt/domain may only import @salt/shared-types from the workspace.',
   ),
+];
+
+// Browser + Node globals forbidden in @salt/domain (pure layer). Applied via
+// no-restricted-globals on the domain catch-all block; not overridden by the
+// per-module/coordinator blocks (they only set no-restricted-imports).
+const DOMAIN_RESTRICTED_GLOBALS = [
+  ...DOMAIN_BROWSER_GLOBALS.map((name) => ({ name, message: DOMAIN_BROWSER_GLOBALS_MESSAGE })),
+  { name: 'process', message: DOMAIN_NODE_MESSAGE },
 ];
 
 export default [
@@ -131,6 +191,21 @@ export default [
     },
   },
 
+  // .svelte files: parse the component with svelte-eslint-parser and its
+  // <script lang="ts"> block with the TS parser, so `import` statements inside
+  // <script> are visible to no-restricted-imports / boundaries. Only the parser
+  // is wired in (not eslint-plugin-svelte's rule set) — the goal is import-graph
+  // enforcement, not Svelte style linting (issue #413). The boundary rule blocks
+  // below extend their globs to `.{ts,svelte}` so a <script> import cannot
+  // bypass the layer contract.
+  {
+    files: ['**/*.svelte'],
+    languageOptions: {
+      parser: svelteParser,
+      parserOptions: { parser: tsParser },
+    },
+  },
+
   // e2e Playwright specs: mechanise the NF-spec flake rules via the plugin's
   // flat/recommended set — errors on the correctness rules (missing-playwright-await,
   // prefer-web-first-assertions, no-networkidle, no-focused-test, valid-*), warns on
@@ -147,7 +222,7 @@ export default [
 
   // boundaries: file-path-based import graph enforcement (packages only — apps are leaf nodes)
   {
-    files: ['packages/**/*.ts'],
+    files: ['packages/**/*.{ts,svelte}'],
     plugins: { boundaries },
     settings: { 'boundaries/elements': ELEMENTS },
     rules: {
@@ -181,7 +256,7 @@ export default [
 
   // Generic default: packages and boundary-test fixtures must not import apps.
   {
-    files: ['packages/**/*.ts', '**/.boundary-tests/**/*.ts'],
+    files: ['packages/**/*.{ts,svelte}', '**/.boundary-tests/**/*.ts'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -195,12 +270,16 @@ export default [
     },
   },
 
-  // @salt/domain — catch-all: must not import firebase, IndexedDB, or anything outside shared-types.
-  // Per-module and coordinator rules below override this for files within those scopes.
+  // @salt/domain — catch-all: must not import firebase, IndexedDB, Node built-ins,
+  // or anything outside shared-types, and must not touch browser/Node globals.
+  // Per-module and coordinator rules below override no-restricted-imports for
+  // files within those scopes, but no-restricted-globals (set only here) still
+  // applies to them.
   {
     files: ['packages/domain/**/*.ts'],
     rules: {
       'no-restricted-imports': ['error', { patterns: DOMAIN_BASE_PATTERNS }],
+      'no-restricted-globals': ['error', ...DOMAIN_RESTRICTED_GLOBALS],
     },
   },
 
@@ -325,7 +404,7 @@ export default [
 
   // @salt/ui-components — must not import Firebase SDKs or browser storage packages.
   {
-    files: ['packages/ui-components/**/*.ts'],
+    files: ['packages/ui-components/**/*.{ts,svelte}'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -356,6 +435,7 @@ export default [
   },
 
   // Boundary-test fixtures: apply the same restrictions as their target layer.
+  // (no-restricted-globals is inherited from the domain catch-all block above.)
   {
     files: ['packages/domain/src/__boundary_tests__/**/*.ts'],
     rules: {
@@ -368,6 +448,7 @@ export default [
               'Firebase SDK imports are only allowed in @salt/firebase-sync.',
             ),
             ...forbidGroup(INDEXEDDB_PKGS, 'Browser storage (IndexedDB) imports are forbidden.'),
+            ...forbidGroup(NODE_BUILTIN_PKGS, DOMAIN_NODE_MESSAGE),
             ...forbidGroup(SALT_APP_IMPORTS, 'Packages must not import from apps.'),
           ],
         },
@@ -455,8 +536,9 @@ export default [
 
   // web-pwa boundary-test fixtures: enforce that internal subpaths of sibling
   // adapters are never imported directly — only the published package root.
+  // Includes .svelte fixtures so the <script> import path is exercised (#413).
   {
-    files: ['apps/web-pwa/src/__boundary_tests__/**/*.ts'],
+    files: ['apps/web-pwa/src/__boundary_tests__/**/*.{ts,svelte}'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -469,6 +551,7 @@ export default [
             },
           ],
           patterns: [
+            ...forbidGroup(UI_PRIMITIVE_PKGS, UI_PRIMITIVE_MESSAGE),
             ...forbidGroup(
               ['@salt/firebase-sync/src', '@salt/firebase-sync/src/**'],
               'web-pwa must not import firebase-sync internals. Use the published package root (@salt/firebase-sync) only.',
@@ -490,7 +573,7 @@ export default [
   // Also enforces the observability subpath split: web-pwa uses the default
   // subpath, cloud-functions uses /server.
   {
-    files: ['apps/web-pwa/src/**/*.ts'],
+    files: ['apps/web-pwa/src/**/*.{ts,svelte}'],
     ignores: ['**/__boundary_tests__/**'],
     rules: {
       'no-restricted-imports': [
@@ -504,6 +587,7 @@ export default [
             },
           ],
           patterns: [
+            ...forbidGroup(UI_PRIMITIVE_PKGS, UI_PRIMITIVE_MESSAGE),
             ...forbidGroup(STAGE_INTERNAL_SUBPATHS, STAGE_INTERNAL_MESSAGE),
             {
               group: ['@salt/domain', '@salt/domain/*'],

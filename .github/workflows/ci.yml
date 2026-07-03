@@ -146,6 +146,15 @@ jobs:
       - name: Boundary tests
         run: pnpm boundary:test
 
+      # dependency-cruiser over the REAL tree (packages + apps). boundary:test
+      # only cruises the circular fixture, and eslint-plugin-boundaries can't see
+      # depcruise-only rules (no-cycles, resolved-path subpath checks,
+      # no-import-web-pwa). The pre-commit runs the same `depcruise` script, but
+      # that is bypassable (--no-verify) and never runs for bot/web-UI commits —
+      # this is the CI backstop (issue #413). Cheap, no emulator.
+      - name: Dependency cruiser (import graph)
+        run: pnpm depcruise
+
       - name: Provenance check
         run: pnpm provenance:check
 

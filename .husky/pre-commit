@@ -7,4 +7,4 @@ fi
 
 $pnpm_bin exec lint-staged
 $pnpm_bin typecheck
-$pnpm_bin depcruise --config .dependency-cruiser.cjs packages apps
+$pnpm_bin depcruise

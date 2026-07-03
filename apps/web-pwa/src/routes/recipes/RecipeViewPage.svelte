@@ -164,9 +164,9 @@
   let sidebarMessagesEnd = $state<HTMLDivElement | undefined>(undefined);
 
   $effect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    // Read these reactive values so the effect re-runs and scrolls to the bottom
+    // whenever messages or streaming text change.
     activeSession?.messages.length;
-    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
     sidebarStreamingText;
     sidebarMessagesEnd?.scrollIntoView({ behavior: 'smooth' });
   });

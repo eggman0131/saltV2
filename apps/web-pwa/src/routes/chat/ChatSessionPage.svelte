@@ -22,10 +22,9 @@
   let messagesEnd: HTMLDivElement | undefined = $state();
 
   $effect(() => {
-    // Scroll to bottom whenever messages or streaming text changes.
-    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    // Read these reactive values so the effect re-runs and scrolls to the bottom
+    // whenever messages or streaming text change.
     session?.messages.length;
-    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
     streamingText;
     messagesEnd?.scrollIntoView({ behavior: 'smooth' });
   });

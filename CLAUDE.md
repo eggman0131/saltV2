@@ -71,12 +71,13 @@ cloud-functions            →  shared-types, domain, observability/server
 
 ## Enforcement
 
-- `pnpm lint` — ESLint with `eslint-plugin-boundaries` checks the import graph.
+- `pnpm lint` — ESLint with `eslint-plugin-boundaries` checks the import graph. Globs `**/*.{ts,js,svelte}`; `.svelte` `<script>` blocks are parsed via `svelte-eslint-parser` so their imports are subject to the same boundary rules (Rule 7 and the domain/adapter restrictions included).
 - `pnpm typecheck` — TypeScript project references prevent out-of-graph imports at compile time.
 - `pnpm check` — `svelte-check` across `@salt/ui-components` and `@salt/web-pwa`; catches Svelte template type errors not caught by `tsc`.
-- `pnpm boundary:test` — Runs `.boundary-tests/run.sh` which lints deliberate violation fixtures and asserts each produces an error.
+- `pnpm boundary:test` — Runs `.boundary-tests/run.sh` which lints deliberate violation fixtures (`.ts` and `.svelte`) and asserts each produces an error.
+- `pnpm depcruise` — dependency-cruiser over the real `packages`/`apps` tree; enforces the no-cycles rule and the resolved-path subpath rules ESLint can't see. Runs in both the pre-commit hook and CI.
 - Husky + lint-staged — blocks bad commits locally at pre-commit.
-- GitHub Actions CI — blocks bad PRs before merge.
+- GitHub Actions CI — blocks bad PRs before merge (runs `depcruise` as a dedicated step, not just the pre-commit hook).
 
 ## Package names
 

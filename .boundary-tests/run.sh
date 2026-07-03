@@ -57,6 +57,14 @@ expect_lint_error \
   "domain cannot import IndexedDB packages"
 
 expect_lint_error \
+  "packages/domain/src/__boundary_tests__/no-node-builtin.ts" \
+  "domain cannot import Node built-ins (pure layer)"
+
+expect_lint_error \
+  "packages/domain/src/__boundary_tests__/no-browser-global.ts" \
+  "domain cannot touch browser globals (pure layer)"
+
+expect_lint_error \
   "packages/adapters/firebase-sync/src/__boundary_tests__/no-indexeddb.ts" \
   "firebase-sync cannot import IndexedDB packages"
 
@@ -91,6 +99,14 @@ expect_lint_error \
 expect_lint_error \
   "apps/web-pwa/src/__boundary_tests__/no-observability-server.ts" \
   "web-pwa cannot import @salt/observability/server (Node SDK)"
+
+expect_lint_error \
+  "apps/web-pwa/src/__boundary_tests__/no-observability-server.svelte" \
+  "web-pwa .svelte <script> imports are subject to the boundary rules (#413)"
+
+expect_lint_error \
+  "apps/web-pwa/src/__boundary_tests__/no-ui-primitive.ts" \
+  "web-pwa cannot import UI primitives directly — must go through @salt/ui-components (Rule 7)"
 
 expect_lint_error \
   "apps/web-pwa/src/__boundary_tests__/no-firebase-sync-internal.ts" \
