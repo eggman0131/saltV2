@@ -2,7 +2,6 @@ name: salt
 language: javascript
 appmap_dir: tmp/appmap
 packages:
-  - path: .
-    exclude:
-      - node_modules
-      - .yarn
+  - path: packages/domain/src
+  - path: apps/cloud-functions/src
+  - path: packages/adapters/firebase-sync/src
