@@ -29,18 +29,36 @@ const posthogApiKey = defineSecret('POSTHOG_API_KEY');
 const ICON_STORAGE_PREFIX = 'canon-icons';
 
 /**
- * Embedding branch (existing behaviour, unchanged): generate the name embedding
- * if absent. Idempotency guard: skip when an embedding is already present.
+ * Embedding branch: generate the name embedding if absent, writing it to the
+ * server-only `canonEmbeddings/{id}` collection (issue #410) rather than inline
+ * on this client-subscribed doc.
+ *
+ * Idempotency guard (two cheap checks): skip if an INLINE vector is still present
+ * (an un-migrated doc — already embedded, and the match adapter reads it via its
+ * inline fallback), or if the relocated `canonEmbeddings/{id}` doc already exists.
+ * A brand-new canon doc has neither and gets embedded here.
+ *
+ * SIDE BENEFIT vs the old inline `.update({ embedding })`: writing a DIFFERENT
+ * collection no longer re-fires this (`canonItems/{id}`) trigger, so the embedding
+ * computation no longer bounces the whole canon doc back out to every subscribed
+ * client — one of the write amplifiers issue #410 targets is removed outright.
  */
 async function maybeGenerateEmbedding(id: string, item: CanonItemDoc): Promise<void> {
   if (item.embedding) return;
+
+  const db = getFirestore();
+  const existing = await db.collection('canonEmbeddings').doc(id).get();
+  if (existing.exists) return;
 
   const normalised = normaliseName(item.name);
   if (!normalised) return;
 
   try {
     const { values } = await withAiTimeout('embedText', () => embedTextFlow({ text: normalised }));
-    await getFirestore().collection('canonItems').doc(id).update({ embedding: values });
+    await db
+      .collection('canonEmbeddings')
+      .doc(id)
+      .set({ embedding: values, updatedAt: new Date().toISOString() });
   } catch (err) {
     logger.error('onCanonItemWritten: embedding failed', { id, err });
     // Additive: an embedding flow failure (AI/Genkit) is unexpected → report it
@@ -55,9 +73,11 @@ async function maybeGenerateEmbedding(id: string, item: CanonItemDoc): Promise<v
  * the doc, so generation must start only on the write that *transitions* the item
  * into "needs an icon" — never merely because the thumbnail currently happens to
  * be null. Otherwise an unrelated write landing while a generation is still in
- * flight (most commonly the embedding `.update()` this same trigger issues on
- * create) re-enters and starts a *duplicate* generation, because `thumbnail`
- * stays null until the first one finishes.
+ * flight re-enters and starts a *duplicate* generation, because `thumbnail` stays
+ * null until the first one finishes. (Since issue #410 the embedding write lands
+ * in a separate collection and no longer re-fires this trigger; the guard still
+ * matters for OTHER concurrent canon-doc writes — a match synonym-append or a
+ * traceContext stamp landing mid-generation.)
  *
  * Generate when:
  *   - create (no prior doc) with a null thumbnail
@@ -76,7 +96,8 @@ function iconNeedsGeneration(before: DocumentSnapshot | undefined, after: CanonI
   const prev = before.data();
   if ((prev?.['thumbnail'] ?? null) !== null) return true; // just cleared → generate
   // Already null and still null: only an explicit regenerate (nonce bump) re-fires;
-  // any other field change (embedding, rename, aisle…) must not start a duplicate.
+  // any other field change (rename, aisle, traceContext stamp…) must not start a
+  // duplicate.
   return prev?.['iconRequestedAt'] !== after.iconRequestedAt;
 }
 

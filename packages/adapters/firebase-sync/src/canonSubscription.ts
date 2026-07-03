@@ -24,7 +24,11 @@ export function subscribeCanonItems(
       for (const d of snap.docs) {
         const result = CanonItemSchema.safeParse(d.data());
         if (result.success) {
-          valid.push(result.data as CanonItem);
+          // The client never uses embeddings — they're server-only since #410.
+          // Drop any inline vector still on an un-migrated doc so the in-memory
+          // canon store stays lean and a client-side edit can't write one back
+          // (see upsertCanonItem).
+          valid.push({ ...result.data, embedding: null } as CanonItem);
         } else {
           console.error(`[CanonItemSchema] Document ${d.id} failed validation`, result.error);
         }
@@ -37,7 +41,11 @@ export function subscribeCanonItems(
 
 export async function upsertCanonItem(item: CanonItem): Promise<void> {
   const db = getFirestore(getApp());
-  await setDoc(doc(db, COLLECTION, item.id), { ...item });
+  // Never write embeddings from the client (#410): vectors are server-only, in
+  // the canonEmbeddings collection. Strip it so a client edit can't reintroduce a
+  // vector inline; the CF embedding branch backfills canonEmbeddings on the write.
+  const { embedding: _embedding, ...rest } = item;
+  await setDoc(doc(db, COLLECTION, item.id), { ...rest });
 }
 
 export async function deleteCanonItem(id: string): Promise<ReadResult<void, DomainError>> {

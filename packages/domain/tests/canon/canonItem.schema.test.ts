@@ -61,4 +61,40 @@ describe('CanonItem schema', () => {
       expect(result.success && result.data.traceContext).toBe(traceparent);
     });
   });
+
+  // Embedding relocation (issue #410). The vector moved to the server-only
+  // canonEmbeddings collection; `embedding` is now OPTIONAL on the canon doc so
+  // both shapes stay valid on read: migrated docs (no field) and un-migrated docs
+  // (inline vector, read by the adapter's fallback).
+  describe('embedding field (relocation back-compat)', () => {
+    const baseDoc = {
+      id: 'c1',
+      schemaVersion: 5 as const,
+      name: 'Tomato',
+      synonyms: [],
+      aisleId: null,
+      thumbnail: null,
+      needs_approval: false,
+      shoppingBehavior: 'needed' as const,
+      updatedAt: '',
+    };
+
+    it('parses a migrated doc with NO embedding field', () => {
+      const result = CanonItemSchema.safeParse(baseDoc);
+      expect(result.success).toBe(true);
+      expect(result.success && result.data.embedding).toBeUndefined();
+    });
+
+    it('parses an un-migrated doc with an inline embedding array', () => {
+      const result = CanonItemSchema.safeParse({ ...baseDoc, embedding: [0.1, 0.2, 0.3] });
+      expect(result.success).toBe(true);
+      expect(result.success && result.data.embedding).toEqual([0.1, 0.2, 0.3]);
+    });
+
+    it('still parses a doc with an explicit null embedding', () => {
+      const result = CanonItemSchema.safeParse({ ...baseDoc, embedding: null });
+      expect(result.success).toBe(true);
+      expect(result.success && result.data.embedding).toBeNull();
+    });
+  });
 });

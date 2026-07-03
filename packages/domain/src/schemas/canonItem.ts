@@ -17,7 +17,15 @@ export const CanonItemSchema = z.object({
   // (Firestore emits no write event for a no-op update). Number, not a Firestore
   // Timestamp, so both the trigger and the client subscription parse it cleanly.
   iconRequestedAt: z.number().optional(),
-  embedding: z.array(z.number()).nullable(),
+  // RELOCATED (issue #410): the name embedding now lives in the server-only
+  // `canonEmbeddings/{id}` collection (see CanonEmbeddingSchema), not on this
+  // client-subscribed doc. Kept OPTIONAL — not removed — purely for back-compat
+  // on read: docs written before the migration still carry an inline vector and
+  // must stay valid, and the firestoreCanonStore adapter reads it as a fallback
+  // until the one-off migration relocates it. New writes never set it here (the
+  // adapter strips it; the CF embedding branch writes canonEmbeddings). Do NOT
+  // reintroduce writes to this field.
+  embedding: z.array(z.number()).nullable().optional(),
   needs_approval: z.boolean(),
   shoppingBehavior: z.enum(['stocked', 'check', 'needed']),
   largeQuantityThreshold: z.number().optional(),

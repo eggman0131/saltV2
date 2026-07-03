@@ -315,6 +315,53 @@ describe.skipIf(!reachable)('firestore.rules — weatherForecast (issue #382)', 
   });
 });
 
+describe.skipIf(!reachable)('firestore.rules — canonEmbeddings server-only (issue #410)', () => {
+  let testEnv: RulesTestEnvironment;
+
+  beforeAll(async () => {
+    testEnv = await initializeTestEnvironment({
+      projectId: PROJECT_ID,
+      firestore: {
+        host: HOST,
+        port: PORT,
+        rules: readFileSync(RULES_PATH, 'utf8'),
+      },
+    });
+  });
+
+  afterAll(async () => {
+    await testEnv?.cleanup();
+  });
+
+  beforeEach(async () => {
+    await testEnv.clearFirestore();
+    // Vectors are written by the CF match path (Admin SDK, bypasses rules); seed
+    // one with rules disabled so the read-deny assertion has a doc to be denied.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'canonEmbeddings', 'c1'), { embedding: [0.1, 0.2] });
+    });
+  });
+
+  // The whole point of #410: the collection is server-only. Unlike canonItems
+  // (open read/write to any signed-in user), NO client — signed-in or not — may
+  // read or write canonEmbeddings, so the browser never syncs vectors it never
+  // uses. The CF match path reaches it via the Admin SDK, which bypasses rules.
+  it('denies a signed-in user from reading a canonEmbeddings doc', async () => {
+    const db = testEnv.authenticatedContext('uid-user', { email: 'user@e.org' }).firestore();
+    await assertFails(getDoc(doc(db, 'canonEmbeddings', 'c1')));
+  });
+
+  it('denies a signed-in user from writing a canonEmbeddings doc', async () => {
+    const db = testEnv.authenticatedContext('uid-user', { email: 'user@e.org' }).firestore();
+    await assertFails(setDoc(doc(db, 'canonEmbeddings', 'c2'), { embedding: [0.3] }));
+  });
+
+  it('denies an unauthenticated caller on canonEmbeddings', async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, 'canonEmbeddings', 'c1')));
+  });
+});
+
 describe.skipIf(!reachable)('firestore.rules — notes collection removed (issue #408)', () => {
   let testEnv: RulesTestEnvironment;
 

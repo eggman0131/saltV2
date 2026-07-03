@@ -92,6 +92,9 @@ export type { RegenerateCanonIconInput } from './regenerateCanonIcon.js';
 export { CanonItemSchema } from './canonItem.js';
 export type { CanonItemDoc } from './canonItem.js';
 
+export { CanonEmbeddingSchema } from './canonEmbedding.js';
+export type { CanonEmbeddingDoc } from './canonEmbedding.js';
+
 export { AisleSchema, AislesDocumentSchema } from './aislesDocument.js';
 export type { AisleDoc, AislesDocumentDoc } from './aislesDocument.js';
 

@@ -34,14 +34,18 @@ vi.mock('../../src/imaging/removeFlatBackground.js', () => ({
   removeFlatBackground: mockRemoveBg,
 }));
 
-// Firestore admin: capture the embedding/thumbnail write-backs without a real DB.
+// Firestore admin: capture the write-backs without a real DB. `set` covers the
+// relocated embedding write to canonEmbeddings (#410); `update` the icon
+// thumbnail; `get` both the devSettings kill-switch read and the canonEmbeddings
+// existence guard (both default to exists:false → icon enabled, embed proceeds).
 const mockUpdate = vi.fn().mockResolvedValue(undefined);
+const mockSet = vi.fn().mockResolvedValue(undefined);
 const mockGet = vi.fn().mockResolvedValue({ exists: false });
 vi.mock('firebase-admin/firestore', () => ({
   FieldValue: { delete: () => '__delete__' },
   getFirestore: () => ({
     collection: () => ({
-      doc: () => ({ update: mockUpdate, get: mockGet }),
+      doc: () => ({ update: mockUpdate, set: mockSet, get: mockGet }),
     }),
   }),
 }));
