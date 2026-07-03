@@ -37,8 +37,6 @@ export {
   normaliseName,
   summarizeMatchLog,
   createCanonItem,
-  mergeCanonItems,
-  resolveCanonConflict,
   createCanonLookup,
   MatchLogBuilder,
   MATCH_THRESHOLDS,
@@ -60,7 +58,6 @@ export {
   hasLiveCanonMatch,
 } from './canon/index.js';
 export type {
-  ConflictStrategy,
   FindClosestMatchResult,
   MatchOrCreateInput,
   MatchOrCreatePorts,
