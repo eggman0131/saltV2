@@ -46,7 +46,8 @@ module.exports = {
     {
       name: 'firebase-sync-no-indexeddb',
       severity: 'error',
-      comment: '@salt/firebase-sync must not import browser storage. Offline reads/writes are handled by Firestore\'s persistentLocalCache.',
+      comment:
+        "@salt/firebase-sync must not import browser storage. Offline reads/writes are handled by Firestore's persistentLocalCache.",
       from: { path: '^packages/adapters/firebase-sync' },
       to: { path: '^node_modules/(idb|idb-keyval|dexie)' },
     },
@@ -67,7 +68,8 @@ module.exports = {
     {
       name: 'adapters-no-cross-import',
       severity: 'error',
-      comment: 'firebase-sync and observability must not import each other. Compose them at the application layer.',
+      comment:
+        'firebase-sync and observability must not import each other. Compose them at the application layer.',
       from: { path: '^packages/adapters/(firebase-sync|observability)' },
       to: { path: '^packages/adapters/(firebase-sync|observability)', pathNot: '$0' },
     },
@@ -86,6 +88,14 @@ module.exports = {
         'web-pwa must not import the /server subpath of @salt/observability. Use the default subpath (browser posthog-js SDK).',
       from: { path: '^apps/web-pwa' },
       to: { path: '^packages/adapters/observability/src/server' },
+    },
+    {
+      name: 'no-posthog-outside-observability',
+      severity: 'error',
+      comment:
+        'PostHog SDKs (posthog-js / posthog-node) may only be imported inside @salt/observability, which wraps them behind the ErrorReporting/MatchLogging ports. Everything else depends on those ports, never the SDK directly.',
+      from: { pathNot: '^packages/adapters/observability' },
+      to: { path: '^node_modules/(posthog-js|posthog-node)' },
     },
     {
       name: 'no-import-web-pwa',

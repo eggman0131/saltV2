@@ -5,6 +5,7 @@ import {
 import { flushServerObservability, setActiveSpanName } from '@salt/observability/server';
 import { ai } from '../genkit.js';
 import { flowModel } from '../ai/fakeModel.js';
+import { withAiTimeout } from '../adapters/withAiTimeout.js';
 
 export const identifyEquipmentFlow = ai.defineFlow(
   {
@@ -16,13 +17,15 @@ export const identifyEquipmentFlow = ai.defineFlow(
     setActiveSpanName(`identifyEquipment: ${rawName}`);
     try {
       const model = await flowModel('fast', 'identifyEquipment');
-      const result = await ai.generate({
-        model,
-        system: SYSTEM_INSTRUCTIONS,
-        prompt: `"${rawName}"`,
-        output: { schema: IdentifyEquipmentAIOutputSchema },
-        config: { temperature: 0 },
-      });
+      const result = await withAiTimeout('identifyEquipment', () =>
+        ai.generate({
+          model,
+          system: SYSTEM_INSTRUCTIONS,
+          prompt: `"${rawName}"`,
+          output: { schema: IdentifyEquipmentAIOutputSchema },
+          config: { temperature: 0 },
+        }),
+      );
       return { candidates: result.output!.candidates };
     } finally {
       // This callable is a manual onCall (index.ts) so the browser-supplied

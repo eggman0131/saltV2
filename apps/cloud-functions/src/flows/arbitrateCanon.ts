@@ -1,36 +1,18 @@
 import { z } from 'genkit';
 import { googleAI } from '@genkit-ai/google-genai';
-import { ArbitrationRequestSchema, CanonArbitrationAIOutputSchema } from '@salt/domain/schemas';
+import {
+  ArbitrationRequestSchema,
+  ArbitrationResultSchema,
+  CanonArbitrationAIOutputSchema,
+} from '@salt/domain/schemas';
 import { setActiveSpanName } from '@salt/observability/server';
 import { ai } from '../genkit.js';
 import { resolveModel } from '../ai/resolveModel.js';
 
-// Flow output — discriminated union matching ArbitrationResult; includes prompt and rawResponse.
-const ArbitrationResultSchema = z.discriminatedUnion('kind', [
-  z.object({
-    kind: z.literal('match'),
-    itemId: z.string(),
-    confidence: z.number(),
-    shoppingBehavior: z.enum(['stocked', 'check', 'needed']),
-    largeQuantityThreshold: z.number().optional(),
-    unit: z.enum(['g', 'ml', 'count']).optional(),
-    reasoning: z.string().optional(),
-    prompt: z.string(),
-    rawResponse: z.string(),
-  }),
-  z.object({
-    kind: z.literal('new'),
-    canonName: z.string(),
-    aisleId: z.string().nullable(),
-    shoppingBehavior: z.enum(['stocked', 'check', 'needed']),
-    largeQuantityThreshold: z.number().optional(),
-    unit: z.enum(['g', 'ml', 'count']).optional(),
-    reasoning: z.string().optional(),
-    prompt: z.string(),
-    rawResponse: z.string(),
-  }),
-  z.object({ kind: z.literal('no-match'), prompt: z.string(), rawResponse: z.string() }),
-]);
+// Flow output is the shared `ArbitrationResultSchema` from `@salt/domain/schemas`
+// (issue #417) — the same schema the domain `ArbitrationResult` type derives from,
+// so the flow output and the port contract can't drift. The flow always populates
+// `prompt`/`rawResponse` (optional in the schema).
 
 export const arbitrateCanonFlow = ai.defineFlow(
   {

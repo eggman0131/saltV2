@@ -1,5 +1,13 @@
-export { ArbitrationRequestSchema, CanonArbitrationAIOutputSchema } from './canonArbitration.js';
-export type { ArbitrationRequestInput, CanonArbitrationAIOutput } from './canonArbitration.js';
+export {
+  ArbitrationRequestSchema,
+  ArbitrationResultSchema,
+  CanonArbitrationAIOutputSchema,
+} from './canonArbitration.js';
+export type {
+  ArbitrationRequestInput,
+  ArbitrationResult,
+  CanonArbitrationAIOutput,
+} from './canonArbitration.js';
 
 export { EmbedTextInputSchema } from './embedTextInput.js';
 export type { EmbedTextInput } from './embedTextInput.js';

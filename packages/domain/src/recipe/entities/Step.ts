@@ -1,13 +1,8 @@
-// An optional timer attached to a step, e.g. "simmer for 20 minutes".
-export interface StepTimer {
-  readonly durationMinutes: number;
-  readonly description: string | null;
-}
+import type { StepDoc, StepTimerDoc } from '../../schemas/recipe.js';
 
-export interface Step {
-  readonly id: string;
-  readonly text: string;
-  readonly timer: StepTimer | null;
-  // Manual, hand-authored note. AI may populate this in the deferred AI epic.
-  readonly note: string | null;
-}
+// A recipe step and its optional timer (issue #179). Schema-first (issue #417):
+// aliases of the inferred `StepSchema`/`StepTimerSchema` types — the schemas in
+// `@salt/domain/schemas` are the single source of truth. `note` is a manual,
+// hand-authored field the AI may populate in the deferred AI epic.
+export type StepTimer = StepTimerDoc;
+export type Step = StepDoc;

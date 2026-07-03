@@ -35,7 +35,7 @@ export function subscribeRecipes(
       for (const d of snap.docs) {
         const result = RecipeSchema.safeParse(d.data());
         if (result.success) {
-          valid.push(result.data as Recipe);
+          valid.push(result.data);
         } else {
           console.error(`[RecipeSchema] Document ${d.id} failed validation`, result.error);
         }
@@ -53,7 +53,7 @@ export async function loadRecipe(id: string): Promise<ReadResult<Recipe | null, 
     if (!snap.exists()) return success(null);
     const result = RecipeSchema.safeParse(snap.data());
     if (!result.success) return failure({ kind: 'StorageError', reason: 'corruption' });
-    return success(result.data as Recipe);
+    return success(result.data);
   } catch (err) {
     return failure(classifyFirestoreError(err));
   }

@@ -1,7 +1,7 @@
 import https from 'node:https';
 import { lookup as dnsLookupCb } from 'node:dns';
 import type { LookupAddress, LookupAllOptions, LookupOneOptions, LookupOptions } from 'node:dns';
-import { isHttpsScheme, parseImportUrl, isPublicIp } from '@salt/domain';
+import { isHttpsScheme, parseImportUrl, isPublicIp, hostnameAsIpLiteral } from '@salt/domain';
 import { startSpan, type ObservabilitySpan } from '@salt/observability/server';
 
 // SSRF-guarded HTTP(S) fetch for the URL-import flow. Lives in cloud-functions
@@ -96,11 +96,21 @@ function guardedLookup(
 
 // Validate a single URL string for the SSRF guard (scheme + obvious IP-literal
 // hosts). DNS-based host validation happens in guardedLookup at connect time.
+//
+// IP-literal hosts must be classified here, not in guardedLookup: Node's
+// net/https layer skips the custom `lookup` callback entirely when the host is
+// already an IP literal (`isIP(host)` truthy → direct connect), so a URL like
+// `https://10.0.0.5/` or `https://[::1]/` would otherwise connect straight to an
+// internal address. Mirror what guardedLookup does for resolved names.
 function assertUrlAllowed(raw: string): URL {
   const parsed = parseImportUrl(raw);
   if (parsed === null) throw new SsrfFetchError('blocked', 'unparseable url');
   if (!isHttpsScheme(parsed.protocol)) {
     throw new SsrfFetchError('blocked', 'non-https scheme');
+  }
+  const ipLiteral = hostnameAsIpLiteral(parsed.hostname);
+  if (ipLiteral !== null && !isPublicIp(ipLiteral)) {
+    throw new SsrfFetchError('blocked', 'private/internal ip literal host');
   }
   return new URL(parsed.href);
 }

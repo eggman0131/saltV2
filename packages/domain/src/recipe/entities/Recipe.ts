@@ -1,58 +1,29 @@
-import type { IngredientGroup } from './Ingredient.js';
-import type { Step } from './Step.js';
+import type {
+  RecipeDoc,
+  RecipeImageDoc,
+  RecipeMetadataDoc,
+  RecipeSourceDoc,
+} from '../../schemas/recipe.js';
+
+// The recipe entity graph (issue #179). Schema-first (issue #417): these are
+// aliases of the inferred schema types from `@salt/domain/schemas` — `RecipeSchema`
+// & co. are the single source of truth, so the entity and the Firestore document
+// can no longer drift behind a cast. The entity aliases stay so the recipe
+// module's public surface (`@salt/domain`) is unchanged.
 
 // Seam for the deferred AI epic. `source` distinguishes AI-generated from
 // user-uploaded so the gen trigger never clobbers a manual photo.
-export interface RecipeImage {
-  readonly url: string;
-  readonly source: 'ai' | 'upload';
-}
+export type RecipeImage = RecipeImageDoc;
 
 // Free-form numeric metadata. Every field is `number | null`: null means "not
 // recorded", which is a valid authored state, not a missing value.
-export interface RecipeMetadata {
-  readonly servings: number | null;
-  readonly totalTimeMinutes: number | null;
-  readonly prepTimeMinutes: number | null;
-  readonly cookTimeMinutes: number | null;
-  readonly tags: readonly string[];
-}
+export type RecipeMetadata = RecipeMetadataDoc;
 
 // Provenance of the recipe. Only `manual` is produced in this epic; `url`/`book`
 // are reserved seams for the deferred URL/photo import epic (no migration needed
 // when they arrive).
-// `url`/`book` are `| undefined` to match RecipeSourceSchema (z.optional() infers
-// `T | undefined`), so a schema-derived RecipeDoc assigns to a Recipe entity
-// under exactOptionalPropertyTypes without a cast. Additive/safe: readers of an
-// optional field already handle `undefined`.
-export interface RecipeSource {
-  readonly type: 'url' | 'book' | 'manual';
-  readonly url?: string | undefined;
-  readonly book?:
-    | {
-        readonly title: string;
-        readonly author: string;
-        readonly page: number;
-      }
-    | undefined;
-}
+export type RecipeSource = RecipeSourceDoc;
 
 // One Firestore document at `recipes/{id}`. Whole-document last-write-wins on
 // `updatedAt` (Firestore-as-master; no tombstones, no revision counter).
-export interface Recipe {
-  readonly id: string;
-  readonly schemaVersion: 1;
-  readonly title: string;
-  readonly description: string | null;
-  readonly ingredients: readonly IngredientGroup[];
-  readonly steps: readonly Step[];
-  readonly metadata: RecipeMetadata;
-  // null until a non-manual source is recorded (URL/photo import epic).
-  readonly source: RecipeSource | null;
-  // User-authored, never parsed or canonicalised.
-  readonly notes: string | null;
-  // Seam only in this epic. AI generation + upload CF callable land in the AI epic.
-  readonly image: RecipeImage | null;
-  readonly createdAt: string; // ISO-8601
-  readonly updatedAt: string; // ISO-8601; stamped by the service on save
-}
+export type Recipe = RecipeDoc;

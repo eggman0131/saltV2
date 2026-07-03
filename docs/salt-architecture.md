@@ -379,15 +379,22 @@ This module must remain extremely small and stable.
 ### ESLint
 
 - Enforce allowed import graph (boundaries plugin)
-- Forbid Firebase imports outside firebase-sync
-- Forbid IndexedDB / browser storage imports everywhere
-- Forbid PostHog SDK imports outside observability
-- Forbid the default `observability` subpath imports in cloud-functions (browser-only); `observability/server` is allowed
+- Forbid Firebase SDK imports (`firebase` / `firebase-admin`) in `domain`, `observability`, and `ui-components`. The browser `firebase` SDK lives in `firebase-sync`; `firebase-admin` is used directly in `cloud-functions` (§3, §8) and is **not** restricted there.
+- Forbid IndexedDB / browser-storage package imports (`idb`, `idb-keyval`, `dexie`) in `domain`, `firebase-sync`, `observability`, and `ui-components`. This rule is **not** applied to the apps (`web-pwa`, `cloud-functions`) or `testing-utils` — the "no browser storage" contract (Rule 3) holds there by convention and review, not by lint.
+- Forbid PostHog SDK imports (`posthog-js` / `posthog-node`) outside `observability`: every non-observability package (`shared-types`, `domain`, `firebase-sync`, `ui-components`, `testing-utils`) and both apps go through the `@salt/observability` ports, never the SDK directly.
+- Forbid the wrong `observability` subpath per runtime: the default (browser `posthog-js`) subpath in cloud-functions, and the `observability/server` (`posthog-node`) subpath in web-pwa.
 - Forbid firebase-sync ↔ observability imports (sibling adapters must not import each other)
-- Forbid domain importing anything except shared-types
+- Forbid domain importing anything except shared-types — also blocks Node built-in imports (`no-restricted-imports`) and browser / `process` globals (`no-restricted-globals`), so domain purity re Node/browser is lint-enforced (issue #413)
 - Forbid UI importing Cloud Functions
-- Forbid circular dependencies
 - Enforce strict TypeScript rules
+
+### dependency-cruiser
+
+`pnpm depcruise` cruises the real `packages` + `apps` tree and enforces the resolved-path rules ESLint's specifier-based checks can't see. It runs in the pre-commit hook **and** as a dedicated CI step (issue #413), so it is not bypassable via `--no-verify` or a bot / web-UI commit:
+
+- Forbid **circular dependencies** (`no-circular`) — this is a dependency-cruiser rule, not an ESLint one
+- Re-enforce the Firebase / IndexedDB / PostHog (`no-posthog-outside-observability`) / adapter-cross-import / `domain-only-shared-types` / observability-subpath rules over resolved paths
+- Forbid importing `web-pwa` from anywhere (`no-import-web-pwa`) and packages importing apps (`packages-no-import-apps`)
 
 ### tsconfig
 
@@ -405,11 +412,12 @@ Every commit must:
 - Pass dependency graph checks
 - Pass unit tests
 - Pass formatting
-- Reject any Firebase import outside firebase-sync
-- Reject any IndexedDB import anywhere
-- Reject any PostHog SDK import outside observability
+- Reject any Firebase SDK import in `domain` / `observability` / `ui-components` (browser SDK lives in `firebase-sync`; `firebase-admin` is allowed in `cloud-functions`)
+- Reject any IndexedDB import in `domain` and the adapter/UI packages (`firebase-sync`, `observability`, `ui-components`)
+- Reject any PostHog SDK import (`posthog-js` / `posthog-node`) outside `observability`
+- Reject the wrong `observability` subpath per runtime (web-pwa → default, cloud-functions → `/server`)
 - Reject any UI → backend leakage
-- Reject any domain impurity (Node/browser/Firebase imports)
+- Reject any domain impurity (Firebase / Node-built-in imports, browser / `process` globals)
 
 ---
 
