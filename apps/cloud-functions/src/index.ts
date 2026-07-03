@@ -532,11 +532,14 @@ export const testModel = onCall(
   (request) => reportUnexpected(() => handleTestModel(request)),
 );
 
-// Forecast fetch + cache pipeline (issue #382, Phase 2). User-initiated from the
-// admin "Refresh" button (and, in a later phase, the planner), so it follows the
-// same browser-supplied-trace pattern as the canon-matching callables: validate
-// the WIRE envelope, strip `traceparent`, and run the work within the propagated
-// trace context (env-gated, degrades to a plain call). No AI, so only
+// Forecast fetch + cache pipeline (issue #382, Phase 2). Callable by any
+// signed-in member — deliberately NOT admin-gated (issue #408): the meal planner
+// silently refreshes a stale forecast on access for every member
+// (weatherService.ensureFreshForecast, force=false), and a manual refresh button
+// in the settings UI passes force=true to bypass the staleness re-check. It
+// follows the same browser-supplied-trace pattern as the canon-matching
+// callables: validate the WIRE envelope, strip `traceparent`, and run the work
+// within the propagated trace context (env-gated, degrades to a plain call). No AI, so only
 // posthogApiKey is bound (error reporting + the distributed-trace OTLP bearer);
 // no geminiApiKey, no withAiTimeout. The heavy lifting (read home location,
 // staleness re-check, Open-Meteo fetch + validate, pure aggregation, Firestore

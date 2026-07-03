@@ -25,7 +25,7 @@ import {
   assertFails,
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 
 const PROJECT_ID = 'demo-salt';
 const HOST = '127.0.0.1';
@@ -312,5 +312,119 @@ describe.skipIf(!reachable)('firestore.rules — weatherForecast (issue #382)', 
   it('denies an unauthenticated caller from reading the forecast', async () => {
     const db = testEnv.unauthenticatedContext().firestore();
     await assertFails(getDoc(doc(db, 'weatherForecast', 'singleton')));
+  });
+});
+
+describe.skipIf(!reachable)('firestore.rules — notes collection removed (issue #408)', () => {
+  let testEnv: RulesTestEnvironment;
+
+  beforeAll(async () => {
+    testEnv = await initializeTestEnvironment({
+      projectId: PROJECT_ID,
+      firestore: {
+        host: HOST,
+        port: PORT,
+        rules: readFileSync(RULES_PATH, 'utf8'),
+      },
+    });
+  });
+
+  afterAll(async () => {
+    await testEnv?.cleanup();
+  });
+
+  beforeEach(async () => {
+    await testEnv.clearFirestore();
+  });
+
+  // The old `notes` rule allowed unauthenticated reads (`allow read: if true`).
+  // The block was deleted, so `notes` now falls through to the terminal
+  // default-deny — no caller (authed or not) may read or write it.
+  it('denies an unauthenticated caller from reading notes', async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, 'notes', 'n1')));
+  });
+
+  it('denies a signed-in user from reading or writing notes', async () => {
+    const db = testEnv.authenticatedContext('uid-user', { email: 'user@e.org' }).firestore();
+    await assertFails(getDoc(doc(db, 'notes', 'n1')));
+    await assertFails(setDoc(doc(db, 'notes', 'n1'), { text: 'hi' }));
+  });
+});
+
+describe.skipIf(!reachable)('firestore.rules — chatSessions ownerUid (issue #206, #408)', () => {
+  let testEnv: RulesTestEnvironment;
+
+  beforeAll(async () => {
+    testEnv = await initializeTestEnvironment({
+      projectId: PROJECT_ID,
+      firestore: {
+        host: HOST,
+        port: PORT,
+        rules: readFileSync(RULES_PATH, 'utf8'),
+      },
+    });
+  });
+
+  afterAll(async () => {
+    await testEnv?.cleanup();
+  });
+
+  const session = (ownerUid: string) => ({
+    ownerUid,
+    title: 'Chat',
+    schemaVersion: 1,
+    updatedAt: '2026-07-03T00:00:00.000Z',
+  });
+
+  beforeEach(async () => {
+    await testEnv.clearFirestore();
+    // Seed a session owned by uid-a with rules disabled.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'chatSessions', 's1'), session('uid-a'));
+    });
+  });
+
+  function ownerDb() {
+    return testEnv.authenticatedContext('uid-a', { email: 'a@e.org' }).firestore();
+  }
+  function otherDb() {
+    return testEnv.authenticatedContext('uid-b', { email: 'b@e.org' }).firestore();
+  }
+
+  it('lets the owner create a session with their own uid', async () => {
+    const db = ownerDb();
+    await assertSucceeds(setDoc(doc(db, 'chatSessions', 's2'), session('uid-a')));
+  });
+
+  it('denies creating a session owned by someone else', async () => {
+    const db = ownerDb();
+    await assertFails(setDoc(doc(db, 'chatSessions', 's3'), session('uid-b')));
+  });
+
+  it('lets the owner read, update (keeping ownerUid), and delete their session', async () => {
+    const db = ownerDb();
+    await assertSucceeds(getDoc(doc(db, 'chatSessions', 's1')));
+    await assertSucceeds(updateDoc(doc(db, 'chatSessions', 's1'), { title: 'Renamed' }));
+    await assertSucceeds(deleteDoc(doc(db, 'chatSessions', 's1')));
+  });
+
+  // The core #408 fix: an owner must not be able to reassign ownerUid, which
+  // would plant a session in another user's list.
+  it('denies the owner reassigning ownerUid to another user', async () => {
+    const db = ownerDb();
+    await assertFails(updateDoc(doc(db, 'chatSessions', 's1'), { ownerUid: 'uid-b' }));
+  });
+
+  it("denies a non-owner from reading or writing another user's session", async () => {
+    const db = otherDb();
+    await assertFails(getDoc(doc(db, 'chatSessions', 's1')));
+    await assertFails(updateDoc(doc(db, 'chatSessions', 's1'), { title: 'hijack' }));
+    await assertFails(deleteDoc(doc(db, 'chatSessions', 's1')));
+  });
+
+  it('denies an unauthenticated caller on chatSessions', async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, 'chatSessions', 's1')));
   });
 });
