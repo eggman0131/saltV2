@@ -2,7 +2,7 @@ import {
   PopulateEquipmentEntryAIOutputSchema,
   PopulateEquipmentEntryInputSchema,
 } from '@salt/domain/schemas';
-import { flushServerObservability, setActiveSpanName } from '@salt/observability/server';
+import { setActiveSpanName } from '@salt/observability/server';
 import { ai } from '../genkit.js';
 import { flowModel } from '../ai/fakeModel.js';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
@@ -15,31 +15,25 @@ export const populateEquipmentEntryFlow = ai.defineFlow(
   },
   async ({ confirmedName }) => {
     setActiveSpanName(`populateEquipmentEntry: ${confirmedName}`);
-    try {
-      // Production: googleAI.model(resolveModel('lite', 'populateEquipmentEntry')).
-      // Under FUNCTIONS_AI_FAKE=1 (emulator e2e only) flowModel returns the
-      // deterministic fake model instead; byte-identical otherwise. See
-      // ../ai/fakeModel.ts for the cross-process stub contract.
-      const model = await flowModel('lite', 'populateEquipmentEntry');
-      const result = await withAiTimeout('populateEquipmentEntry', () =>
-        ai.generate({
-          model,
-          system: SYSTEM_INSTRUCTIONS,
-          prompt: `"${confirmedName}"`,
-          output: { schema: PopulateEquipmentEntryAIOutputSchema },
-          config: { temperature: 0 },
-        }),
-      );
-      const output = result.output!;
-      return { name: output.name, accessories: output.accessories };
-    } finally {
-      // Manual onCall (index.ts) installs the browser-supplied trace context so
-      // this flow nests under the add-equipment trace (issue #361). onCall has no
-      // framework forceFlush, so drain the AI-OTLP span POSTs before the instance
-      // freezes (mirrors matchOrCreateCanonFlow); the entrypoint's catch owns
-      // error reporting. Idempotent + best-effort; never throws (Rule 10).
-      await flushServerObservability();
-    }
+    // Span flushing + error reporting are owned by the makeTracedCallable
+    // entrypoint's finally (index.ts, issue #415) — the flow just does its work.
+    //
+    // Production: googleAI.model(resolveModel('lite', 'populateEquipmentEntry')).
+    // Under FUNCTIONS_AI_FAKE=1 (emulator e2e only) flowModel returns the
+    // deterministic fake model instead; byte-identical otherwise. See
+    // ../ai/fakeModel.ts for the cross-process stub contract.
+    const model = await flowModel('lite', 'populateEquipmentEntry');
+    const result = await withAiTimeout('populateEquipmentEntry', () =>
+      ai.generate({
+        model,
+        system: SYSTEM_INSTRUCTIONS,
+        prompt: `"${confirmedName}"`,
+        output: { schema: PopulateEquipmentEntryAIOutputSchema },
+        config: { temperature: 0 },
+      }),
+    );
+    const output = result.output!;
+    return { name: output.name, accessories: output.accessories };
   },
 );
 

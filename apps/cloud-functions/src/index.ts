@@ -14,13 +14,10 @@ import {
 import { enableFirebaseTelemetry } from '@genkit-ai/firebase';
 import {
   initServerObservability,
-  whenServerObservabilityReady,
-  runWithExtractedTraceContext,
-  runWithSuppliedTraceContext,
-  flushServerObservability,
   attachAiOtlpSpanProcessor,
   attachDistributedSpanProcessor,
 } from '@salt/observability/server';
+import { makeTracedCallable, APP_CHECK_ENFORCEMENT } from './tracedCallable.js';
 import { runRefreshWeatherForecast } from './weather/refreshWeatherForecast.js';
 import { registerGenkitDevTracing } from './genkitTracing.js';
 import { reportFlowError } from './observability/reportServerError.js';
@@ -113,11 +110,9 @@ const geminiApiKey = defineSecret('GEMINI_API_KEY');
 // firebase-functions/logger still emits match logs additively.
 const posthogApiKey = defineSecret('POSTHOG_API_KEY');
 
-// App Check enforcement for every callable. Monitor-first (#145): unverified
-// requests are still allowed but reported to App Check metrics. Flip this single
-// line to `true` once staging metrics confirm legitimate traffic verifies — that
-// is the enforcement step of the rollout (callables first, the AI cost surface).
-const APP_CHECK_ENFORCEMENT = { enforceAppCheck: false } as const;
+// APP_CHECK_ENFORCEMENT (monitor-first App Check, #145) is owned by
+// ./tracedCallable.js so the traced-callable factory applies it uniformly; it is
+// imported here for the onCallGenkit / non-traced onCall callables below.
 
 export const embedText = onCallGenkit(
   {
@@ -145,210 +140,48 @@ export const arbitrateCanon = onCallGenkit(
 
 // ─── Browser→CF trace continuity (issue #362, Phase 3) ────────────────────────
 //
-// The canon-matching callables run their flow within a W3C trace context so the
-// flow span nests under one coherent invocation trace instead of re-rooting.
-// These are USER-INITIATED callables, so the browser-supplied field is the
-// PREFERRED channel. There are TWO sources for that context, applied with this
-// precedence:
-//   1. A browser-SUPPLIED `traceparent` carried as a NAMED, TYPED, OPTIONAL
-//      field on the callable WIRE input. The Firebase JS callable SDK cannot
-//      carry a custom `traceparent` HTTP header (HttpsCallableOptions is only
-//      { timeout?, limitedUseAppCheckTokens? } and the transport sets its own
-//      fixed headers), so a browser-minted trace id can ONLY ride as this field.
-//      It is schema-validated and stripped here before the flow runs — NOT the
-//      forbidden magic `_trace`. (Phase 4 mints the real browser trace id;
-//      until then it is synthetic/test.) Preferred — it is the only channel that
-//      can unify the browser action with the server flow.
-//   2. Else the inbound W3C trace HEADER on the underlying request
-//      (request.rawRequest.headers). This is GCP's FRESH request-trace root, so
-//      it can never carry the browser's trace id — it is the fallback only when
-//      no non-empty supplied field is present.
-//
-// Env-gated on GENKIT_TELEMETRY_SERVER (set only by `pnpm dev:emulators`):
-//   • Local dev (set): SUPPRESS propagation — run the flow without installing
-//     any parent context, so it stays root-listed in the Genkit Dev UI (whose
-//     trace list only surfaces flow-rooted traces). This is the gate that
-//     resolves the 2026-05-11 regression that previously parked propagation.
-//   • Production (unset): honour the trace context per the precedence above via
-//     runWithExtractedTraceContext / runWithSuppliedTraceContext (both degrade
-//     to a plain call when no context is present, and never throw — Rule 10).
-//
-// A malformed/absent traceparent must NOT fail the call: it is optional and
-// best-effort, so we just skip propagation. Only a malformed WIRE ENVELOPE
-// (bad domain input) is rejected — with HttpsError('invalid-argument').
-function runFlowWithTraceContext<T>(
-  domainInput: unknown,
-  headers: import('node:http').IncomingHttpHeaders | undefined,
-  traceparent: string | undefined,
-  flow: (input: never) => T,
-): T {
-  // Local dev: suppress propagation so flows stay root-listed in the Dev UI.
-  if (process.env['GENKIT_TELEMETRY_SERVER']) {
-    return flow(domainInput as never);
-  }
-  // Production. For these user-INITIATED callables the browser-supplied
-  // `traceparent` field WINS: it is the only channel that can carry the
-  // browser's trace id (the Firebase callable SDK can't carry a custom HTTP
-  // header), so it is the one that actually unifies the browser action with the
-  // server flow. The inbound W3C header is GCP's FRESH request-trace root —
-  // preferring it would re-root away from the browser trace and could never
-  // unify with it — so it is the fallback only when no non-empty field is
-  // present. Both helpers degrade safely to a plain call (Rule 10).
-  if (traceparent) {
-    return runWithSuppliedTraceContext(traceparent, () => flow(domainInput as never));
-  }
-  return runWithExtractedTraceContext(headers ?? {}, () => flow(domainInput as never));
-}
-
-// Manual onCall (instead of onCallGenkit) so we can install the trace context as
-// the active OTel context BEFORE Genkit opens the flow span — so the flow span
-// nests under the request trace and each invocation renders as ONE coherent
-// trace, instead of the flow re-rooting a fresh trace. See runFlowWithTraceContext
-// above for the field→header precedence and env-gating.
-export const matchOrCreateCanon = onCall(
-  {
-    ...APP_CHECK_ENFORCEMENT,
-    secrets: [geminiApiKey, posthogApiKey],
-  },
-  async (request) => {
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Sign in required.');
-    }
-
-    // Validate the WIRE envelope (domain input + optional traceparent). Strip
-    // traceparent so the flow receives the PURE domain input (domain purity).
-    const parsed = MatchOrCreateCanonWireInputSchema.safeParse(request.data);
-    if (!parsed.success) {
-      throw new HttpsError('invalid-argument', 'Invalid request payload.');
-    }
-    const { traceparent, ...domainInput } = parsed.data;
-
-    await whenServerObservabilityReady();
-
-    try {
-      // The report() lives in the catch and never touches the active context.
-      return await runFlowWithTraceContext(
-        domainInput,
-        request.rawRequest?.headers,
-        traceparent,
-        matchOrCreateCanonFlow,
-      );
-    } catch (err) {
-      // AI/Genkit flow failure (incl. AiTimeoutError). Report the genuine cause
-      // additively, flush, then re-throw so the callable's error path is
-      // unchanged. matchOrCreateCanonFlow's own finally also flushes; flush is
-      // idempotent + non-throwing.
-      await reportFlowError(err);
-      throw err;
-    }
-  },
-);
+// These USER-INITIATED callables run their flow within a W3C trace context so the
+// flow span nests under one coherent invocation trace instead of re-rooting. The
+// whole entrypoint sequence — auth → wire safeParse → strip `traceparent` →
+// whenServerObservabilityReady → env-gated trace propagation (browser-supplied
+// field WINS over the inbound GCP header) → report-and-flush — lives in
+// makeTracedCallable (./tracedCallable.ts, issue #415), so each callable below is
+// just a declaration and the happy-path span flush is guaranteed uniform.
+export const matchOrCreateCanon = makeTracedCallable({
+  wireSchema: MatchOrCreateCanonWireInputSchema,
+  flow: matchOrCreateCanonFlow,
+  options: { secrets: [geminiApiKey, posthogApiKey] },
+});
 
 // Batch callable: one canon-collection read + batched embeddings for a full
 // recipe. Mirrors matchOrCreateCanon's port-wiring but fans inputs through
 // matchOrCreateBatch so later items see items created earlier in the batch.
-export const canonicaliseRecipeIngredients = onCall(
-  {
-    ...APP_CHECK_ENFORCEMENT,
-    secrets: [geminiApiKey, posthogApiKey],
-    timeoutSeconds: 120,
-    // Memory-heavy (whole-canon read + batched embeddings); covered by the
-    // 512MiB global floor — at 256 it OOM-killed (500/504 + a browser CORS error,
-    // since the dead response carries no CORS headers).
-  },
-  async (request) => {
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Sign in required.');
-    }
-    const parsed = CanonicaliseRecipeIngredientsWireInputSchema.safeParse(request.data);
-    if (!parsed.success) {
-      throw new HttpsError('invalid-argument', 'Invalid request payload.');
-    }
-    const { traceparent, ...domainInput } = parsed.data;
-    await whenServerObservabilityReady();
-    try {
-      return await runFlowWithTraceContext(
-        domainInput,
-        request.rawRequest?.headers,
-        traceparent,
-        canonicaliseRecipeIngredientsFlow,
-      );
-    } catch (err) {
-      // AI/Genkit batch flow failure — report the cause additively, flush, then
-      // re-throw unchanged. The flow's finally also flushes (idempotent).
-      await reportFlowError(err);
-      throw err;
-    }
-  },
-);
+// Memory-heavy (whole-canon read + batched embeddings); covered by the 512MiB
+// global floor — at 256 it OOM-killed (500/504 + a browser CORS error, since the
+// dead response carries no CORS headers).
+export const canonicaliseRecipeIngredients = makeTracedCallable({
+  wireSchema: CanonicaliseRecipeIngredientsWireInputSchema,
+  flow: canonicaliseRecipeIngredientsFlow,
+  options: { secrets: [geminiApiKey, posthogApiKey], timeoutSeconds: 120 },
+});
 
 // Add-equipment grouping (issue #361). The multi-step add-equipment action fires
 // identifyEquipment then populateEquipmentEntry with human think-time between; the
-// browser mints ONE trace id and supplies the SAME `traceparent` to both calls.
-// Manual onCall (not onCallGenkit) so we can install that supplied trace context
-// as the active OTel context BEFORE Genkit opens the flow span — so both flows
-// nest under one trace instead of re-rooting two. See runFlowWithTraceContext
-// above for the field→header precedence and env-gating, and matchOrCreateCanon
-// for the wire-validation / strip / entrypoint-reporting shape these mirror.
-export const identifyEquipment = onCall(
-  {
-    ...APP_CHECK_ENFORCEMENT,
-    // posthogApiKey is the bearer token for the AI-OTLP span exporter (and the
-    // posthog-node key) AND lets the entrypoint catch report a flow failure.
-    secrets: [geminiApiKey, posthogApiKey],
-  },
-  async (request) => {
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Sign in required.');
-    }
-    const parsed = IdentifyEquipmentWireInputSchema.safeParse(request.data);
-    if (!parsed.success) {
-      throw new HttpsError('invalid-argument', 'Invalid request payload.');
-    }
-    const { traceparent, ...domainInput } = parsed.data;
-    await whenServerObservabilityReady();
-    try {
-      return await runFlowWithTraceContext(
-        domainInput,
-        request.rawRequest?.headers,
-        traceparent,
-        identifyEquipmentFlow,
-      );
-    } catch (err) {
-      await reportFlowError(err);
-      throw err;
-    }
-  },
-);
+// browser mints ONE trace id and supplies the SAME `traceparent` to both calls, so
+// both flows nest under one trace instead of re-rooting two. posthogApiKey is the
+// bearer token for the AI-OTLP span exporter (and the posthog-node key) AND lets
+// the entrypoint catch report a flow failure.
+export const identifyEquipment = makeTracedCallable({
+  wireSchema: IdentifyEquipmentWireInputSchema,
+  flow: identifyEquipmentFlow,
+  options: { secrets: [geminiApiKey, posthogApiKey] },
+});
 
-export const populateEquipmentEntry = onCall(
-  {
-    ...APP_CHECK_ENFORCEMENT,
-    secrets: [geminiApiKey, posthogApiKey],
-  },
-  async (request) => {
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Sign in required.');
-    }
-    const parsed = PopulateEquipmentEntryWireInputSchema.safeParse(request.data);
-    if (!parsed.success) {
-      throw new HttpsError('invalid-argument', 'Invalid request payload.');
-    }
-    const { traceparent, ...domainInput } = parsed.data;
-    await whenServerObservabilityReady();
-    try {
-      return await runFlowWithTraceContext(
-        domainInput,
-        request.rawRequest?.headers,
-        traceparent,
-        populateEquipmentEntryFlow,
-      );
-    } catch (err) {
-      await reportFlowError(err);
-      throw err;
-    }
-  },
-);
+export const populateEquipmentEntry = makeTracedCallable({
+  wireSchema: PopulateEquipmentEntryWireInputSchema,
+  flow: populateEquipmentEntryFlow,
+  options: { secrets: [geminiApiKey, posthogApiKey] },
+});
 
 // Recipe lists are larger prompts than single-entry flows — allow 90s so the
 // 55s withAiTimeout has sufficient headroom within the function lifetime.
@@ -366,47 +199,21 @@ export const parseRecipeIngredients = onCallGenkit(
   parseRecipeIngredientsFlow,
 );
 
-// Librarian: conversation → recipe draft with canon-matched ingredients.
-// Uses onCall (not onCallGenkit) so the handler can wrap the batch-canonicalise
-// flow in reportFlowError, mirroring canonicaliseRecipeIngredients. Memory comes
-// from the 512MiB global floor.
-export const authorRecipe = onCall(
-  {
-    ...APP_CHECK_ENFORCEMENT,
-    secrets: [geminiApiKey, posthogApiKey],
-    timeoutSeconds: 120,
-  },
-  async (request) => {
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Sign in required.');
-    }
-    const parsed = AuthorRecipeWireInputSchema.safeParse(request.data);
-    if (!parsed.success) {
-      throw new HttpsError('invalid-argument', 'Invalid request payload.');
-    }
-    const { traceparent, ...domainInput } = parsed.data;
-    await whenServerObservabilityReady();
-    try {
-      return await runFlowWithTraceContext(
-        domainInput,
-        request.rawRequest?.headers,
-        traceparent,
-        authorRecipeFlow,
-      );
-    } catch (err) {
-      // Librarian flow failure (AI + batch canonicalise) — report the cause
-      // additively, flush, then re-throw unchanged.
-      await reportFlowError(err);
-      throw err;
-    }
-  },
-);
+// Librarian: conversation → recipe draft with canon-matched ingredients. The
+// default error handler reports the librarian flow failure (AI + batch
+// canonicalise) and re-throws unchanged. Memory comes from the 512MiB global
+// floor. #415 added the happy-path span flush this callable previously lacked.
+export const authorRecipe = makeTracedCallable({
+  wireSchema: AuthorRecipeWireInputSchema,
+  flow: authorRecipeFlow,
+  options: { secrets: [geminiApiKey, posthogApiKey], timeoutSeconds: 120 },
+});
 
-// SSRF-hardened URL import (recipe URL import epic). Uses onCall (not
-// onCallGenkit) so we can map the flow's UrlImportError taxonomy to specific
-// HttpsError codes with user-safe copy (no internal SSRF detail leaked). The
-// flow does outbound DNS + a network fetch in addition to the AI call, so the
-// function timeout is generous. Memory comes from the 512MiB global floor.
+// SSRF-hardened URL import (recipe URL import epic). A custom onError maps the
+// flow's UrlImportError taxonomy to specific HttpsError codes with user-safe copy
+// (no internal SSRF detail leaked). The flow does outbound DNS + a network fetch
+// in addition to the AI call, so the function timeout is generous. Memory comes
+// from the 512MiB global floor.
 function mapUrlImportFailure(code: UrlImportFailureCode): HttpsError {
   switch (code) {
     case 'invalid-url':
@@ -429,48 +236,30 @@ function mapUrlImportFailure(code: UrlImportFailureCode): HttpsError {
   }
 }
 
-export const extractRecipeFromUrl = onCall(
-  {
-    ...APP_CHECK_ENFORCEMENT,
-    secrets: [geminiApiKey, posthogApiKey],
-    timeoutSeconds: 120,
+export const extractRecipeFromUrl = makeTracedCallable({
+  wireSchema: ExtractRecipeFromUrlWireInputSchema,
+  flow: extractRecipeFromUrlFlow,
+  options: { secrets: [geminiApiKey, posthogApiKey], timeoutSeconds: 120 },
+  // A bad wire envelope is a malformed URL from the client — user-safe copy.
+  invalidArgumentMessage: "That doesn't look like a valid web address.",
+  // Report the GENUINE cause before mapping to a user-facing HttpsError — the raw
+  // error/stack, never the HttpsError envelope. The UrlImportError taxonomy
+  // encodes EXPECTED user outcomes (bad/blocked URL, unreachable page,
+  // not-a-recipe) which are suppressed per policy; only `ai-failed` (the
+  // recipe-reader model itself failing) is the unexpected one worth surfacing. A
+  // non-UrlImportError throw is an unexpected bug → report.
+  onError: async (err) => {
+    if (err instanceof UrlImportError) {
+      if (err.code === 'ai-failed') await reportFlowError(err);
+      throw mapUrlImportFailure(err.code);
+    }
+    await reportFlowError(err);
+    throw new HttpsError(
+      'internal',
+      'The recipe reader had trouble with that page — try again, or add it manually.',
+    );
   },
-  async (request) => {
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Sign in required.');
-    }
-    const parsed = ExtractRecipeFromUrlWireInputSchema.safeParse(request.data);
-    if (!parsed.success) {
-      throw new HttpsError('invalid-argument', "That doesn't look like a valid web address.");
-    }
-    const { traceparent, ...domainInput } = parsed.data;
-    await whenServerObservabilityReady();
-    try {
-      return await runFlowWithTraceContext(
-        domainInput,
-        request.rawRequest?.headers,
-        traceparent,
-        extractRecipeFromUrlFlow,
-      );
-    } catch (err) {
-      // Report the GENUINE cause before mapping to a user-facing HttpsError —
-      // the raw error/stack, never the HttpsError envelope. The UrlImportError
-      // taxonomy encodes EXPECTED user outcomes (bad/blocked URL, unreachable
-      // page, not-a-recipe) which are suppressed per policy; only `ai-failed`
-      // (the recipe-reader model itself failing) is the unexpected one worth
-      // surfacing. A non-UrlImportError throw is an unexpected bug → report.
-      if (err instanceof UrlImportError) {
-        if (err.code === 'ai-failed') await reportFlowError(err);
-        throw mapUrlImportFailure(err.code);
-      }
-      await reportFlowError(err);
-      throw new HttpsError(
-        'internal',
-        'The recipe reader had trouble with that page — try again, or add it manually.',
-      );
-    }
-  },
-);
+});
 
 export const chefChat = onCallGenkit(
   {
@@ -537,58 +326,20 @@ export const testModel = onCall(
 // silently refreshes a stale forecast on access for every member
 // (weatherService.ensureFreshForecast, force=false), and a manual refresh button
 // in the settings UI passes force=true to bypass the staleness re-check. It
-// follows the same browser-supplied-trace pattern as the canon-matching
-// callables: validate the WIRE envelope, strip `traceparent`, and run the work
-// within the propagated trace context (env-gated, degrades to a plain call). No AI, so only
-// posthogApiKey is bound (error reporting + the distributed-trace OTLP bearer);
-// no geminiApiKey, no withAiTimeout. The heavy lifting (read home location,
-// staleness re-check, Open-Meteo fetch + validate, pure aggregation, Firestore
-// write) lives in runRefreshWeatherForecast — the entrypoint only does wire
-// validation, trace context, error reporting, and the flush.
-export const refreshWeatherForecast = onCall(
-  {
-    ...APP_CHECK_ENFORCEMENT,
-    secrets: [posthogApiKey],
-    timeoutSeconds: 30,
-  },
-  async (request) => {
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Sign in required.');
-    }
-
-    // Validate the WIRE envelope (domain input + optional traceparent). A bad
-    // wire envelope is rejected; an absent/malformed traceparent is NOT a failure
-    // (it is optional/best-effort). Strip traceparent so the work receives the
-    // PURE domain input (domain purity).
-    const parsed = RefreshWeatherForecastWireInputSchema.safeParse(request.data);
-    if (!parsed.success) {
-      throw new HttpsError('invalid-argument', 'Invalid request payload.');
-    }
-    const { traceparent, ...domainInput } = parsed.data;
-
-    await whenServerObservabilityReady();
-
-    try {
-      return await runFlowWithTraceContext(
-        domainInput,
-        request.rawRequest?.headers,
-        traceparent,
-        (input) => runRefreshWeatherForecast(input),
-      );
-    } catch (err) {
-      // Unexpected server failure (Firestore read/write, Open-Meteo fetch, or a
-      // malformed external payload). Report the genuine cause additively, then
-      // re-throw so the callable's error path is unchanged.
-      await reportFlowError(err);
-      throw err;
-    } finally {
-      // onCall has NO framework auto-flush (unlike onCallGenkit): drain any
-      // in-flight distributed-trace span exports before the function freezes.
-      // Idempotent + non-throwing, so the happy path flushing too is safe.
-      await flushServerObservability();
-    }
-  },
-);
+// follows the same browser-supplied-trace pattern as the canon-matching callables
+// (validate the WIRE envelope, strip `traceparent`, run within the propagated
+// trace context, report + flush), so it uses the same makeTracedCallable factory.
+// No AI, so only posthogApiKey is bound (error reporting + the distributed-trace
+// OTLP bearer); no geminiApiKey, no withAiTimeout. The heavy lifting (read home
+// location, staleness re-check, Open-Meteo fetch + validate, pure aggregation,
+// Firestore write) lives in runRefreshWeatherForecast; the default onError reports
+// an unexpected server failure (Firestore read/write, Open-Meteo fetch, or a
+// malformed external payload) and re-throws unchanged.
+export const refreshWeatherForecast = makeTracedCallable({
+  wireSchema: RefreshWeatherForecastWireInputSchema,
+  flow: (input) => runRefreshWeatherForecast(input),
+  options: { secrets: [posthogApiKey], timeoutSeconds: 30 },
+});
 
 export { onShoppingListItemWrite };
 export { onCanonItemWritten };

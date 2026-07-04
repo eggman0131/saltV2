@@ -2,7 +2,7 @@ import {
   IdentifyEquipmentAIOutputSchema,
   IdentifyEquipmentInputSchema,
 } from '@salt/domain/schemas';
-import { flushServerObservability, setActiveSpanName } from '@salt/observability/server';
+import { setActiveSpanName } from '@salt/observability/server';
 import { ai } from '../genkit.js';
 import { flowModel } from '../ai/fakeModel.js';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
@@ -15,27 +15,19 @@ export const identifyEquipmentFlow = ai.defineFlow(
   },
   async ({ rawName }) => {
     setActiveSpanName(`identifyEquipment: ${rawName}`);
-    try {
-      const model = await flowModel('fast', 'identifyEquipment');
-      const result = await withAiTimeout('identifyEquipment', () =>
-        ai.generate({
-          model,
-          system: SYSTEM_INSTRUCTIONS,
-          prompt: `"${rawName}"`,
-          output: { schema: IdentifyEquipmentAIOutputSchema },
-          config: { temperature: 0 },
-        }),
-      );
-      return { candidates: result.output!.candidates };
-    } finally {
-      // This callable is a manual onCall (index.ts) so the browser-supplied
-      // trace context can be installed before the flow opens its span (issue
-      // #361). Unlike onCallGenkit, onCall has no framework forceFlush, so drain
-      // the AI-OTLP span POSTs before the instance freezes (mirrors
-      // matchOrCreateCanonFlow). The entrypoint's catch owns error reporting.
-      // Idempotent + best-effort; never throws (Rule 10).
-      await flushServerObservability();
-    }
+    // Span flushing + error reporting are owned by the makeTracedCallable
+    // entrypoint's finally (index.ts, issue #415) — the flow just does its work.
+    const model = await flowModel('fast', 'identifyEquipment');
+    const result = await withAiTimeout('identifyEquipment', () =>
+      ai.generate({
+        model,
+        system: SYSTEM_INSTRUCTIONS,
+        prompt: `"${rawName}"`,
+        output: { schema: IdentifyEquipmentAIOutputSchema },
+        config: { temperature: 0 },
+      }),
+    );
+    return { candidates: result.output!.candidates };
   },
 );
 
