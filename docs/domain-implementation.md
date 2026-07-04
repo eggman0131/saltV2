@@ -223,7 +223,6 @@ Canon owns:
 - canonical ingredient definitions
 - synonyms
 - aisle classification
-- merge semantics
 - canonicalisation rules
 
 Canon does not know:
