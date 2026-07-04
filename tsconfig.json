@@ -9,6 +9,6 @@
     { "path": "packages/testing-utils" },
     { "path": "apps/web-pwa" },
     { "path": "apps/cloud-functions" },
-    { "path": "apps/kitchen-sink" }
+    { "path": "apps/storybook" }
   ]
 }

@@ -1,0 +1,101 @@
+# Chromatic visual regression — SELECTIVE and NON-BLOCKING by design.
+#
+# This is a safety net for the @salt/ui-components design system (headline use
+# case: the upcoming Tailwind v3 -> v4 migration, which re-tokenises every
+# component and needs a wholesale visual diff). It is deliberately NOT a
+# per-PR required check: Chromatic snapshots every story on every run and the
+# free tier is finite, so we only spend snapshots when a human asks for them.
+#
+# Triggers (nothing else — NOT `push`, NOT every PR):
+#   - workflow_dispatch            → run on demand from the Actions tab
+#   - pull_request: [labeled]      → only when the `visual-review` label is added
+#                                    (gated in the job `if:` below; any other
+#                                    label is a no-op)
+#   - release: [published]         → capture a baseline at each release
+#
+# fetch-depth: 0 is MANDATORY — Chromatic walks git history to find each
+# story's baseline commit; a shallow clone breaks baseline detection and makes
+# every run look like a full change.
+#
+# TurboSnap / `--only-changed` is intentionally OFF. TurboSnap skips stories it
+# thinks are unaffected by the diff, but a design-token change (e.g. the v4
+# migration edits the Tailwind preset) touches everything transitively, so
+# TurboSnap would wrongly skip real diffs. We want a full re-snapshot.
+#
+# CHROMATIC_PROJECT_TOKEN is a REQUIRED repository secret (maintainer creates
+# the Chromatic project once, then adds the token — see
+# docs/visual-regression.md). When it is absent the job skips gracefully and
+# stays green, so this workflow never blocks a merge.
+name: Chromatic
+
+on:
+  workflow_dispatch: {}
+  pull_request:
+    types: [labeled]
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  chromatic:
+    name: Visual regression (Chromatic)
+    runs-on: ubuntu-latest
+    # Early gate: on a labeled PR, only proceed for the `visual-review` label.
+    # workflow_dispatch and release events have no label and always proceed.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.label.name == 'visual-review'
+    env:
+      CHROMATIC_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+
+    steps:
+      # Graceful skip when the secret is not configured — keeps the job green
+      # (never blocking) rather than failing an unconfigured repo/fork.
+      - name: Check for Chromatic token
+        id: token
+        run: |
+          if [ -n "$CHROMATIC_PROJECT_TOKEN" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::CHROMATIC_PROJECT_TOKEN is not set — skipping the Chromatic run."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Setup below is identical to the `ci` job in ci.yml (checkout@v7 /
+      # pnpm/action-setup@v6 10.33.0 / setup-node@v6 node 22 / frozen install),
+      # except for the mandatory fetch-depth: 0. Node 22 (not the Node-20 deploy
+      # pin) — Chromatic has no firebase-tools/WIF dependency.
+      - uses: actions/checkout@v7
+        if: steps.token.outputs.present == 'true'
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v6
+        if: steps.token.outputs.present == 'true'
+        with:
+          version: '10.33.0'
+
+      - uses: actions/setup-node@v6
+        if: steps.token.outputs.present == 'true'
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        if: steps.token.outputs.present == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Chromatic
+        if: steps.token.outputs.present == 'true'
+        uses: chromaui/action@v18
+        with:
+          projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+          workingDir: apps/storybook
+          buildScriptName: build-storybook
+          # Report diffs without failing the run — this workflow is never a
+          # blocking gate (see the file header).
+          exitZeroOnChanges: true
+          # TurboSnap OFF: full re-snapshot (design-token changes touch every
+          # story). Do NOT add `onlyChanged`.
