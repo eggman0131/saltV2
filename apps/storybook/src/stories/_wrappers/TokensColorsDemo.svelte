@@ -1,9 +1,8 @@
 <!-- Showcase wrapper for Colors.stories.ts. Reads the semantic colour tokens from
      @salt/ui-components/tokens (each is an `hsl(var(--salt-*))` string that resolves
      against the tokens.css variables loaded by the Storybook preview) and renders a
-     swatch per role plus a set of foreground-on-background role pairings. Mirrors
-     apps/kitchen-sink/src/sections/ColorsSection.svelte. Not a component playground —
-     no controls. Rule 7: only @salt/ui-components. -->
+     swatch per role plus a set of foreground-on-background role pairings. Not a
+     component playground — no controls. Rule 7: only @salt/ui-components. -->
 <script lang="ts">
   import { colors } from '@salt/ui-components/tokens';
 

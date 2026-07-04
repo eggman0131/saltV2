@@ -1,8 +1,7 @@
 <!-- Showcase wrapper for Typography.stories.ts. Renders the named type scale using
      the tailwind-preset component classes (.text-display / .text-h1 / .text-h2 /
      .text-body-lg / .text-body-md / .text-label-caps) and labels each row with its
-     size/weight read from the typography tokens. Mirrors
-     apps/kitchen-sink/src/sections/TypographySection.svelte. The class strings are
+     size/weight read from the typography tokens. The class strings are
      literal so Tailwind's content scanner emits them. Rule 7: only @salt/ui-components. -->
 <script lang="ts">
   import { typography } from '@salt/ui-components/tokens';

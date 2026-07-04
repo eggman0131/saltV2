@@ -34,8 +34,8 @@ pnpm --filter @salt/storybook storybook   # → http://localhost:6006
 
 - Imports go through `@salt/ui-components` only (Rule 7). Never import `bits-ui`,
   `melt-ui`, or `shadcn-svelte` directly.
-- **Light-only, like production.** There is no dark-mode toggle (see
-  `apps/kitchen-sink/README.md`); do not build/QA `dark:` variants against it.
+- **Light-only, like production.** There is no dark-mode toggle; do not
+  build/QA `dark:` variants against it.
 
 ## Enforcement & CI
 
@@ -49,4 +49,4 @@ Under the architecture contract:
   not part of the deploy or e2e pipelines.
 
 Port `6006` is Storybook's default and is deliberately distinct from web-pwa
-(`5173`), the e2e app server (`5174`), and kitchen-sink (`5175`).
+(`5173`) and the e2e app server (`5174`).

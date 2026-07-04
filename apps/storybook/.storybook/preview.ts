@@ -1,7 +1,7 @@
 import type { Preview } from '@storybook/svelte';
 // Global stylesheet: pulls in the --salt-* design tokens and the Tailwind
 // base/components/utilities layers so stories render with real design tokens,
-// exactly as web-pwa / kitchen-sink do.
+// exactly as web-pwa does.
 import './preview.css';
 
 const preview: Preview = {

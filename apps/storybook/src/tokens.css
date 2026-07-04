@@ -1,9 +1,8 @@
 /*
- * tokens.css — Design token CSS custom properties for @salt/kitchen-sink
+ * tokens.css — Design token CSS custom properties for the Salt design system
  *
- * Generated from:
- *   packages/ui-components/src/tailwind-preset.ts  (salt system tokens)
- *   apps/kitchen-sink/tailwind.config.ts            (kitchen-sink brand tokens)
+ * Generated from (source of truth: @salt/ui-components/tailwind-preset):
+ *   packages/ui-components/src/tailwind-preset.ts  (Salt design-system tokens)
  *
  * All color values are in hsl(<h> <s%> <l%>) channel format so they compose
  * with the / <alpha-value> syntax used by Tailwind:
@@ -50,7 +49,7 @@
   --color-ring: hsl(var(--salt-ring));
 }
 
-/* ── 2. Brand colors — Kitchen-Sink palette (static, no theme flip) ────── */
+/* ── 2. Brand colors — Salt palette (static, no theme flip) ────────────── */
 /*
  * Source: tailwind.config.ts `theme.extend.colors`
  * These are stable identity colors; they do not invert in dark mode.
@@ -73,7 +72,7 @@
 /* ── 3. Border-radius scale ────────────────────────────────────────────── */
 /*
  * Source: tailwind-preset.ts `theme.extend.borderRadius`
- * Actual values for the kitchen-sink theme come from app.css @layer base overrides.
+ * Actual values for the Salt theme come from @salt/ui-components/tailwind-preset.
  * These aliases expose them with a --radius-* naming convention.
  */
 :root {

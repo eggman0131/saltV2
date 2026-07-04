@@ -1,9 +1,9 @@
 /* Global stylesheet for the Storybook canvas.
  *
- * Mirrors apps/kitchen-sink/src/app.css: it imports the --salt-* design tokens
- * and the Tailwind base/components/utilities layers, plus the shared global
+ * Imports the --salt-* design tokens and the Tailwind
+ * base/components/utilities layers, plus the shared global
  * resets (focus ring, interactive-element defaults, popover positioning) that
- * @salt/ui-components depends on. The kitchen-sink-only showcase helpers
+ * @salt/ui-components depends on. The showcase-only helpers
  * (.section-title etc.) are intentionally omitted — stories don't use them. */
 
 @import '../src/tokens.css';

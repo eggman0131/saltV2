@@ -21,7 +21,7 @@ Tokens are promoted **reactively**, not speculatively. One real visual problem �
 3. **`packages/ui-components/src/tokens/*.ts`** — add a typed export only if the value is referenced from TS (most component sizes don't need this; colors/radius/motion do).
 4. **`packages/ui-components/tests/tokens.preset.test.ts`** — add a focused assertion that pins the new value. One test per token. Match the style of existing `it('...', () => { expect(...).toBe(...) })` blocks.
 5. **`packages/ui-components/src/primitives/{Component}.svelte`** (or wherever the primitive consumes the class) — refactor to use the token class. Remove any hardcoded value the token now replaces.
-6. **`apps/kitchen-sink`** — verify the affected page in the kitchen-sink renders correctly. Check sibling components (radio, switch) if the change implies they should match.
+6. **Storybook** — verify the affected component in Storybook (`pnpm --filter @salt/storybook storybook`) renders correctly. Check sibling components (radio, switch) if the change implies they should match.
 
 ## Verification
 
@@ -51,7 +51,7 @@ The current `md` checkbox is `h-4 w-4` (16px). The user wants 20px (`h-5 w-5`). 
 - `check-theme.ts` — extend the schema to validate the `controls.checkbox.*` keys against the preset (mirror the `SPACING_KEYS` pattern).
 - `tailwind-preset.ts` — change `.salt-control--checkbox-md` from `h-4 w-4` to `h-5 w-5`. Decide whether radio indicator and switch sizes should track this; if yes, update them in the same change.
 - `tokens.preset.test.ts` — add `it('checkbox md is h-5 w-5', ...)` that introspects the plugin output, matching the style used for `salt-focus-ring`.
-- Run kitchen-sink and confirm visually.
+- Verify the affected component in Storybook (`pnpm --filter @salt/storybook storybook`) and confirm visually.
 
 ## What NOT to do
 

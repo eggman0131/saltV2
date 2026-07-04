@@ -14,7 +14,6 @@ ui-components              →  (external only — shadcn/tailwind)
 testing-utils              →  shared-types, domain, firebase-sync
 web-pwa                    →  shared-types, domain, firebase-sync, observability, ui-components
 cloud-functions            →  shared-types, domain, observability/server
-kitchen-sink               →  ui-components                 # dev-only UI showcase; typecheck+check in CI, no build/e2e (see apps/kitchen-sink/README.md)
 storybook                  →  ui-components                 # dev-only Storybook; typecheck+check in CI, no build/e2e (see apps/storybook/README.md)
 ```
 
@@ -27,8 +26,8 @@ storybook                  →  ui-components                 # dev-only Storybo
 3. **No IndexedDB / browser storage.** No package may import `idb`, `idb-keyval`, or touch `window.indexedDB` / `localStorage` / `sessionStorage` / `caches` directly. Offline reads and writes are handled by Firestore's `persistentLocalCache`. **Narrow exception:** `apps/web-pwa` may use `window.localStorage` for pre-authentication ephemeral state that has no Firestore-backed alternative — specifically the magic-link pending email in `apps/web-pwa/src/lib/auth.svelte.ts`, which must persist before any user is signed in (email clients open the link in a fresh tab/window, so `sessionStorage` is unavailable). This exception is scoped to `apps/web-pwa` only and explicitly excludes all adapters; everything else stays forbidden.
 4. **Adapters do not import each other.** `firebase-sync` ↔ `observability` is forbidden in both directions.
 5. **Cloud Functions do not import the default `@salt/observability` subpath.** That subpath wraps the browser-only PostHog SDK (`posthog-js`) and cannot run in Node. Server-side observability uses `@salt/observability/server` (`posthog-node` + native OpenTelemetry). `firebase-functions/logger` continues to be used additively for CF-side match logs.
-6. **No importing apps.** Nothing may import `@salt/web-pwa`, `@salt/cloud-functions`, `@salt/kitchen-sink`, or `@salt/storybook`.
-7. **UI primitives go through `@salt/ui-components`.** `apps/web-pwa` (and the `apps/kitchen-sink` showcase) must never import `shadcn-svelte`, `bits-ui`, or `melt-ui` directly — always through `@salt/ui-components`. `kitchen-sink` may import `@salt/ui-components` and nothing else from the workspace.
+6. **No importing apps.** Nothing may import `@salt/web-pwa`, `@salt/cloud-functions`, or `@salt/storybook`.
+7. **UI primitives go through `@salt/ui-components`.** `apps/web-pwa` must never import `shadcn-svelte`, `bits-ui`, or `melt-ui` directly — always through `@salt/ui-components`.
 8. **No circular dependencies.** Enforced by dependency-cruiser.
 9. **`shared-types` imports nothing from `@salt/*`.** It may only depend on external packages or nothing.
 10. **Adapters never throw for operational errors.** All failures cross the boundary as `Failure<DomainError>` or `Conflict<T>` (see [docs/salt-architecture.md §7](docs/salt-architecture.md)).
@@ -94,7 +93,6 @@ storybook                  →  ui-components                 # dev-only Storybo
 | `packages/testing-utils`          | `@salt/testing-utils`   |
 | `apps/web-pwa`                    | `@salt/web-pwa`         |
 | `apps/cloud-functions`            | `@salt/cloud-functions` |
-| `apps/kitchen-sink`               | `@salt/kitchen-sink`    |
 | `apps/storybook`                  | `@salt/storybook`       |
 
 ## graphify
