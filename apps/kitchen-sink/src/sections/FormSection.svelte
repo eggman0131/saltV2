@@ -66,7 +66,7 @@
     <h3 class="subsection-title">Switch</h3>
     <div class="flex flex-col gap-3">
       <Switch label="Notifications" bind:checked={switchOn} />
-      <Switch label="Dark mode" defaultChecked={true} />
+      <Switch label="Publish to family" defaultChecked={true} />
       <Switch label="Disabled" disabled />
     </div>
   </div>

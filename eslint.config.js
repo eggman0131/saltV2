@@ -37,6 +37,10 @@ const ELEMENTS = [
     type: 'cloud-functions',
     pattern: ['apps/cloud-functions/**', '@salt/cloud-functions'],
   },
+  {
+    type: 'kitchen-sink',
+    pattern: ['apps/kitchen-sink/**', '@salt/kitchen-sink'],
+  },
 ];
 
 // Import specifier patterns that must never appear in certain layers.
@@ -56,6 +60,8 @@ const SALT_APP_IMPORTS = [
   '@salt/web-pwa/*',
   '@salt/cloud-functions',
   '@salt/cloud-functions/*',
+  '@salt/kitchen-sink',
+  '@salt/kitchen-sink/*',
 ];
 
 // UI-primitive libraries. web-pwa must reach these only through
@@ -637,6 +643,44 @@ export default [
               importNames: STAGE_INTERNAL_NAMES,
               message: STAGE_INTERNAL_MESSAGE,
             },
+          ],
+        },
+      ],
+    },
+  },
+
+  // @salt/kitchen-sink — a dev-only UI-components showcase (issue #414). Layer
+  // map: kitchen-sink → ui-components ONLY. It must reach UI primitives through
+  // @salt/ui-components (Rule 7) and must not pull in any other @salt/* package,
+  // Firebase, browser storage, or the PostHog SDK. Apps are leaf nodes, so this
+  // is enforced via no-restricted-imports (not boundaries/element-types).
+  {
+    files: ['apps/kitchen-sink/src/**/*.{ts,svelte}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            ...forbidGroup(SALT_APP_IMPORTS, 'Apps are leaf nodes — do not import another app.'),
+            ...forbidGroup(UI_PRIMITIVE_PKGS, UI_PRIMITIVE_MESSAGE),
+            ...forbidGroup(FIREBASE_PKGS, 'kitchen-sink must not import Firebase SDKs.'),
+            ...forbidGroup(INDEXEDDB_PKGS, 'Browser storage (IndexedDB) imports are forbidden.'),
+            ...forbidGroup(POSTHOG_PKGS, POSTHOG_MESSAGE),
+            ...forbidGroup(
+              [
+                '@salt/shared-types',
+                '@salt/shared-types/*',
+                '@salt/domain',
+                '@salt/domain/*',
+                '@salt/firebase-sync',
+                '@salt/firebase-sync/*',
+                '@salt/observability',
+                '@salt/observability/*',
+                '@salt/testing-utils',
+                '@salt/testing-utils/*',
+              ],
+              'kitchen-sink is a UI showcase — it may import @salt/ui-components only.',
+            ),
           ],
         },
       ],
