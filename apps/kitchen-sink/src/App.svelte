@@ -21,25 +21,17 @@
     { id: 'templates', label: 'Templates' },
   ];
 
-  let darkMode = $state(false);
-
-  $effect(() => {
-    document.documentElement.classList.toggle('dark', darkMode);
-  });
+  // NOTE: no dark-mode toggle. The production app (@salt/web-pwa) is light-only —
+  // it never applies the `.dark` class at runtime — so a working toggle here would
+  // mislead into QA-ing / building `dark:` variants that production never renders.
+  // The dormant `.dark` token overrides in app.css are kept only because
+  // ui-components' Tooltip renders on an inverted surface. See README.md.
 </script>
 
 <div class="min-h-screen bg-background text-foreground">
   <!-- Top bar — midnight navy per design spec -->
-  <header
-    class="sticky top-0 z-40 bg-primary text-primary-foreground px-6 py-3 flex items-center justify-between"
-  >
+  <header class="sticky top-0 z-40 bg-primary text-primary-foreground px-6 py-3 flex items-center">
     <span class="font-display font-semibold text-sm tracking-tight">Salt — Kitchen Sink</span>
-    <button
-      onclick={() => (darkMode = !darkMode)}
-      class="text-xs px-3 py-1.5 rounded-md border border-primary-foreground/30 hover:bg-primary-foreground/10 transition-colors"
-    >
-      {darkMode ? '☀ Light' : '☾ Dark'}
-    </button>
   </header>
 
   <div class="flex">
@@ -75,21 +67,3 @@
     </main>
   </div>
 </div>
-
-<style>
-  :global(.section-title) {
-    @apply text-h2 mb-6 pb-2 border-b border-border;
-  }
-
-  :global(.subsection) {
-    @apply mb-8;
-  }
-
-  :global(.subsection-title) {
-    @apply text-label-caps text-muted-foreground mb-3;
-  }
-
-  :global(.demo-box) {
-    @apply px-3 py-2 rounded-md border border-dashed border-border text-sm text-muted-foreground;
-  }
-</style>

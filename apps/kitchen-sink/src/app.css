@@ -106,3 +106,27 @@
     box-shadow: 0 2px 12px 0 hsl(195 77% 7% / 0.05);
   }
 }
+
+/* ── Kitchen-sink showcase helpers ───────────────────────────────────────────
+   Layout scaffolding for this showcase only (not production UI). Kept in this
+   global stylesheet rather than a component `<style>` block so `@apply` is
+   processed by PostCSS/Tailwind — svelte-check does not resolve `@apply` inside
+   Svelte `<style>` (matches web-pwa, which keeps `@apply` out of components).
+────────────────────────────────────────────────────────────────────────────── */
+@layer components {
+  .section-title {
+    @apply text-h2 mb-6 pb-2 border-b border-border;
+  }
+
+  .subsection {
+    @apply mb-8;
+  }
+
+  .subsection-title {
+    @apply text-label-caps text-muted-foreground mb-3;
+  }
+
+  .demo-box {
+    @apply px-3 py-2 rounded-md border border-dashed border-border text-sm text-muted-foreground;
+  }
+}

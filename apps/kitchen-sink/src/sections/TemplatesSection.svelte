@@ -4,6 +4,8 @@
     FormPage,
     DetailPage,
     SelectableList,
+    SelectAllCheckbox,
+    createListSelection,
     EmptyState,
     ErrorState,
     Button,
@@ -37,33 +39,17 @@
   );
 
   // ── ListPage contextual action mode (selection) demo ────────────────────────
+  // Selection is driven by the shared `createListSelection` controller — the same
+  // one the production list pages use — not hand-rolled Set logic. Exiting
+  // selection mode clears the selection automatically (owned by the controller).
   let listSelectionMode = $state(false);
-  let listSelected = $state(new Set<string>());
   let lastListAction = $state<string | null>(null);
 
-  $effect(() => {
-    if (!listSelectionMode) listSelected = new Set();
-  });
-
   const noteIds = $derived(filteredNotes.map((n) => n.id));
-  const listSelectedCount = $derived(noteIds.filter((id) => listSelected.has(id)).length);
-  const allNotesSelected = $derived(
-    noteIds.length > 0 && noteIds.every((id) => listSelected.has(id)),
-  );
-  const someNotesSelected = $derived(
-    noteIds.some((id) => listSelected.has(id)) && !allNotesSelected,
-  );
-
-  function toggleNote(id: string) {
-    const next = new Set(listSelected);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    listSelected = next;
-  }
-
-  function toggleAllNotes() {
-    listSelected = allNotesSelected ? new Set() : new Set(noteIds);
-  }
+  const listSelection = createListSelection({
+    getAllIds: () => noteIds,
+    isSelectionMode: () => listSelectionMode,
+  });
 
   const listBulkActions: BulkAction[] = $derived([
     {
@@ -71,7 +57,7 @@
       label: 'Archive',
       icon: 'Archive',
       onSelect: () => {
-        lastListAction = `Archived ${listSelectedCount} note(s)`;
+        lastListAction = `Archived ${listSelection.count} note(s)`;
         listSelectionMode = false;
       },
     },
@@ -80,13 +66,13 @@
       id: 'move',
       label: 'Move',
       icon: 'FolderInput',
-      sheetTitle: `Move ${listSelectedCount} note(s) to…`,
+      sheetTitle: `Move ${listSelection.count} note(s) to…`,
       targets: [
         { id: 'recipes', label: 'Recipes' },
         { id: 'archive-folder', label: 'Archive' },
       ],
       onPick: (target) => {
-        lastListAction = `Moved ${listSelectedCount} note(s) to ${target}`;
+        lastListAction = `Moved ${listSelection.count} note(s) to ${target}`;
         listSelectionMode = false;
       },
     },
@@ -96,7 +82,7 @@
       icon: 'Trash2',
       variant: 'destructive',
       onSelect: () => {
-        const ids = new Set(listSelected);
+        const ids = new Set(listSelection.selected);
         sampleNotes = sampleNotes.filter((n) => !ids.has(n.id));
         lastListAction = `Deleted ${ids.size} note(s)`;
         listSelectionMode = false;
@@ -126,8 +112,11 @@
     { id: 'c', name: 'Mozzarella', tag: 'dairy' },
     { id: 'd', name: 'Basil', tag: 'produce' },
   ]);
-  let selected = $state(new Set<string>());
   let selectableSelectionMode = $state(true);
+  const itemSelection = createListSelection({
+    getAllIds: () => items.map((i) => i.id),
+    isSelectionMode: () => selectableSelectionMode,
+  });
 </script>
 
 <section id="templates">
@@ -162,7 +151,7 @@
         isError={listMode === 'error'}
         isEmpty={listMode === 'empty' || (listMode === 'data' && filteredNotes.length === 0)}
         bind:selectionMode={listSelectionMode}
-        selectionCount={listSelectedCount}
+        selectionCount={listSelection.count}
         bulkActions={listBulkActions}
       >
         {#snippet actions()}
@@ -188,11 +177,7 @@
         {/snippet}
 
         {#snippet selectionBar()}
-          <Checkbox
-            checked={allNotesSelected ? true : someNotesSelected ? 'indeterminate' : false}
-            onCheckedChange={toggleAllNotes}
-            label={listSelectedCount > 0 ? `${listSelectedCount} selected` : 'Select all'}
-          />
+          <SelectAllCheckbox selection={listSelection} />
         {/snippet}
 
         {#snippet empty()}
@@ -211,8 +196,8 @@
             <li class="flex items-center gap-3 px-3 py-2 rounded-md border border-border bg-card">
               {#if listSelectionMode}
                 <Checkbox
-                  checked={listSelected.has(note.id)}
-                  onCheckedChange={() => toggleNote(note.id)}
+                  checked={listSelection.isSelected(note.id)}
+                  onCheckedChange={() => listSelection.toggle(note.id)}
                   label=""
                   aria-label={`Select ${note.title}`}
                 />
@@ -316,13 +301,13 @@
     </p>
     <div class="flex items-center gap-2 mb-3">
       <Switch label="Selection mode" bind:checked={selectableSelectionMode} />
-      <span class="text-xs text-muted-foreground">{selected.size} selected</span>
+      <span class="text-xs text-muted-foreground">{itemSelection.count} selected</span>
     </div>
     <div class="rounded-lg border border-border p-6 bg-background max-w-2xl">
       {#if items.length === 0}
         <EmptyState title="All cleared" description="You deleted everything." />
       {:else}
-        <SelectableList {items} bind:selected selectionMode={selectableSelectionMode}>
+        <SelectableList {items} selection={itemSelection}>
           {#snippet row(item)}
             <div class="flex items-center justify-between gap-3">
               <span class="text-sm font-medium">{item.name}</span>

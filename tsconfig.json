@@ -8,6 +8,7 @@
     { "path": "packages/ui-components" },
     { "path": "packages/testing-utils" },
     { "path": "apps/web-pwa" },
-    { "path": "apps/cloud-functions" }
+    { "path": "apps/cloud-functions" },
+    { "path": "apps/kitchen-sink" }
   ]
 }
