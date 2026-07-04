@@ -83,10 +83,12 @@ export default defineConfig(({ mode }) => {
           // calls are deliberately NOT cached here — Firestore persistentLocalCache
           // owns offline data (CLAUDE.md hard rule #3); the SW owns only the shell.
           globPatterns: ['**/*.{js,css,html,svg,png,ico,woff,woff2}'],
-          // The app currently ships as one ~3 MB JS chunk (no code-splitting yet),
-          // above Workbox's 2 MiB default. Raise the cap so the shell precaches;
-          // 4 MiB leaves headroom. (Bundle-size reduction is out of scope here.)
-          maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+          // Since #411 the bundle is code-split: routes are lazy chunks and the
+          // Firebase/PostHog SDKs are separate vendor chunks (see manualChunks
+          // above). The largest single precached file is now the Firebase chunk
+          // (~650 KB) and the app chunk (~1.15 MB), both comfortably under
+          // Workbox's 2 MiB default — so no override is needed.
+          maximumFileSizeToCacheInBytes: 2 * 1024 * 1024,
           // SPA app-shell fallback so an offline navigation still boots the app.
           navigateFallback: '/index.html',
           // New SW takes control as soon as it installs; the app then reloads at a
@@ -111,6 +113,24 @@ export default defineConfig(({ mode }) => {
       // .map files before `firebase deploy` — so production exceptions
       // symbolicate back to TS source without the maps ever being served (#359).
       sourcemap: 'hidden',
+      rollupOptions: {
+        output: {
+          // Split the large, rarely-changing vendor SDKs into their own
+          // content-hashed chunks (issue #411). Firebase and PostHog change far
+          // less often than app code, so isolating them means a typical deploy
+          // only invalidates the app chunk — the browser (and the SW precache)
+          // keeps the cached vendor chunks instead of re-downloading them on
+          // every update. The `node_modules` guard excludes workspace source
+          // (e.g. @salt/firebase-sync resolves outside node_modules), so only
+          // the real Firebase/PostHog SDK modules land in these chunks.
+          manualChunks(id: string): string | undefined {
+            if (!id.includes('node_modules')) return undefined;
+            if (id.includes('firebase')) return 'firebase';
+            if (id.includes('posthog')) return 'posthog';
+            return undefined;
+          },
+        },
+      },
     },
     define: {
       __APP_VERSION__: JSON.stringify(appVersion),
