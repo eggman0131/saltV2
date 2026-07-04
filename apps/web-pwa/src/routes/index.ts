@@ -1,9 +1,7 @@
 import type { Component } from 'svelte';
 import type { RouteDefinition, WrappedComponent } from 'svelte-spa-router';
-import CanonListPage from './canon/CanonListPage.svelte';
-import CanonCreatePage from './canon/CanonCreatePage.svelte';
-import CanonDetailPage from './canon/CanonDetailPage.svelte';
-import AisleManagementPage from './canon/AisleManagementPage.svelte';
+import { wrap } from 'svelte-spa-router/wrap';
+import type { AsyncSvelteComponent } from 'svelte-spa-router/wrap';
 import EquipmentListPage from './equipment/EquipmentListPage.svelte';
 import EquipmentCapturePage from './equipment/EquipmentCapturePage.svelte';
 import EquipmentEditPage from './equipment/EquipmentEditPage.svelte';
@@ -12,18 +10,20 @@ import ShoppingListCreatePage from './shopping/ShoppingListCreatePage.svelte';
 import ShoppingListsManagePage from './shopping/ShoppingListsManagePage.svelte';
 import ShoppingListPage from './shopping/ShoppingListPage.svelte';
 import MealPlanWeekPage from './mealplan/MealPlanWeekPage.svelte';
-import ChatListPage from './chat/ChatListPage.svelte';
-import ChatSessionPage from './chat/ChatSessionPage.svelte';
-import RecipeListPage from './recipes/RecipeListPage.svelte';
-import RecipeEditPage from './recipes/RecipeEditPage.svelte';
-import RecipeViewPage from './recipes/RecipeViewPage.svelte';
 import SettingsPage from './settings/SettingsPage.svelte';
-import AdminHomePage from './admin/AdminHomePage.svelte';
-import AdminMembersPage from './admin/AdminMembersPage.svelte';
-import AdminMealPlanPage from './admin/AdminMealPlanPage.svelte';
-import DevSettingsPage from './admin/DevSettingsPage.svelte';
-import AppSettingsPage from './admin/AppSettingsPage.svelte';
 import NotFound from './NotFound.svelte';
+import RouteLoading from './RouteLoading.svelte';
+
+// Lazily code-split routes (issue #411). Each `import()` becomes its own chunk,
+// kept out of the boot bundle: the admin area drags in Leaflet (the map picker
+// in AppSettings → HomeLocationField → LocationMapField), and chat + recipes are
+// large, module-specific screens ~most sessions never open. Deferring them
+// shrinks first load and lets a deploy that touches only one area re-download
+// just that chunk. `RouteLoading` is a dependency-free placeholder shown while
+// the chunk is fetched. The core daily-use views (shopping, equipment, meal
+// plan, settings) stay eagerly imported so the default route paints immediately.
+const lazy = (asyncComponent: AsyncSvelteComponent): WrappedComponent =>
+  wrap({ asyncComponent, loadingComponent: RouteLoading });
 
 // More-specific static routes must precede parameterised ones when using a Map.
 // The Map is typed with RouteDefinition's own value type: without it, `new Map`
@@ -44,28 +44,30 @@ export const routes: RouteDefinition = new Map<
   ['/shopping/lists', ShoppingListsManagePage],
   ['/shopping/:listId', ShoppingListPage],
   ['/mealplan', MealPlanWeekPage],
-  // Chat / AI Kitchen Assistant (issue #206).
-  ['/chat', ChatListPage],
-  ['/chat/:id', ChatSessionPage],
+  // Chat / AI Kitchen Assistant (issue #206). Lazy-loaded (#411).
+  ['/chat', lazy(() => import('./chat/ChatListPage.svelte'))],
+  ['/chat/:id', lazy(() => import('./chat/ChatSessionPage.svelte'))],
   // Recipe module (issue #179). More-specific static/edit routes precede the
-  // parameterised view route.
-  ['/recipes', RecipeListPage],
-  ['/recipes/new', RecipeEditPage],
-  ['/recipes/:id/edit', RecipeEditPage],
-  ['/recipes/:id', RecipeViewPage],
+  // parameterised view route. Lazy-loaded (#411).
+  ['/recipes', lazy(() => import('./recipes/RecipeListPage.svelte'))],
+  ['/recipes/new', lazy(() => import('./recipes/RecipeEditPage.svelte'))],
+  ['/recipes/:id/edit', lazy(() => import('./recipes/RecipeEditPage.svelte'))],
+  ['/recipes/:id', lazy(() => import('./recipes/RecipeViewPage.svelte'))],
   ['/settings', SettingsPage],
   // Operator area (issues #155, #157). All routes are guarded client-side by
   // AdminGuard; the real boundary is server-side (rules + CF admin checks).
   // Canon management lives here (not the user nav) because approving/curating
-  // canon records is an operator activity — see #157.
-  ['/admin', AdminHomePage],
-  ['/admin/members', AdminMembersPage],
-  ['/admin/mealplan', AdminMealPlanPage],
-  ['/admin/dev-settings', DevSettingsPage],
-  ['/admin/app-settings', AppSettingsPage],
-  ['/admin/aisles', AisleManagementPage],
-  ['/admin/canon', CanonListPage],
-  ['/admin/canon/new', CanonCreatePage],
-  ['/admin/canon/:id', CanonDetailPage],
+  // canon records is an operator activity — see #157. Lazy-loaded (#411): the
+  // whole admin area (incl. Leaflet, pulled in by the app-settings map picker)
+  // is code-split out of the boot path.
+  ['/admin', lazy(() => import('./admin/AdminHomePage.svelte'))],
+  ['/admin/members', lazy(() => import('./admin/AdminMembersPage.svelte'))],
+  ['/admin/mealplan', lazy(() => import('./admin/AdminMealPlanPage.svelte'))],
+  ['/admin/dev-settings', lazy(() => import('./admin/DevSettingsPage.svelte'))],
+  ['/admin/app-settings', lazy(() => import('./admin/AppSettingsPage.svelte'))],
+  ['/admin/aisles', lazy(() => import('./canon/AisleManagementPage.svelte'))],
+  ['/admin/canon', lazy(() => import('./canon/CanonListPage.svelte'))],
+  ['/admin/canon/new', lazy(() => import('./canon/CanonCreatePage.svelte'))],
+  ['/admin/canon/:id', lazy(() => import('./canon/CanonDetailPage.svelte'))],
   ['*', NotFound],
 ]);
