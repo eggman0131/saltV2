@@ -13,7 +13,7 @@ const TEST_ENV = {
 };
 
 export default defineConfig({
-  plugins: [svelte({ hot: false })],
+  plugins: [svelte()],
   resolve: {
     alias: {
       $lib: resolve(__dirname, 'src/lib'),
