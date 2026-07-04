@@ -1,5 +1,3 @@
-import sharp from 'sharp';
-
 // Background removal for Tier-1 canon icons (issue #148).
 //
 // gemini-2.5-flash-image cannot emit alpha — it paints the icon on a flat
@@ -53,6 +51,14 @@ export async function removeFlatBackground(
   input: Buffer,
   options: RemoveFlatBackgroundOptions = {},
 ): Promise<Buffer> {
+  // `sharp` is a heavy native binary. Load it lazily so it stays out of the
+  // shared Cloud Functions module graph: index.ts statically imports this module
+  // via onCanonItemWritten, so a module-scope `import sharp` would resident-load
+  // it on the cold start of every function (listAiModels, refreshWeatherForecast,
+  // …) that never touches imaging. Only the icon path pulls it in, at call time
+  // (issue #412).
+  const sharp = (await import('sharp')).default;
+
   const size = options.size ?? TARGET_SIZE;
   const tolerance = options.tolerance ?? DEFAULT_COLOUR_TOLERANCE;
   const tolSq = tolerance * tolerance;
