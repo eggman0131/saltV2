@@ -1,0 +1,95 @@
+/* Global stylesheet for the Storybook canvas.
+ *
+ * Mirrors apps/kitchen-sink/src/app.css: it imports the --salt-* design tokens
+ * and the Tailwind base/components/utilities layers, plus the shared global
+ * resets (focus ring, interactive-element defaults, popover positioning) that
+ * @salt/ui-components depends on. The kitchen-sink-only showcase helpers
+ * (.section-title etc.) are intentionally omitted — stories don't use them. */
+
+@import '../src/tokens.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* ── Focus ring ──────────────────────────────────────────────────────── */
+  :focus-visible {
+    outline: 2px solid hsl(var(--salt-ring));
+    outline-offset: 2px;
+    border-radius: var(--salt-radius-sm);
+  }
+
+  /* ── Interactive element resets ──────────────────────────────────────── */
+  input,
+  textarea,
+  select {
+    border-radius: var(--salt-radius-md);
+    border: 1px solid hsl(var(--salt-border));
+    background-color: hsl(var(--salt-background));
+    color: hsl(var(--salt-foreground));
+    font-family: inherit;
+    font-size: inherit;
+    outline: none;
+  }
+
+  button {
+    border-radius: var(--salt-radius-md);
+    font-family: inherit;
+    font-size: inherit;
+    min-height: 3rem; /* 48px hit target */
+    cursor: pointer;
+    outline: none;
+  }
+
+  [popover],
+  [role='dialog'],
+  [role='listbox'],
+  [role='menu'] {
+    border-radius: var(--salt-radius-lg);
+    background-color: hsl(var(--salt-popover));
+    color: hsl(var(--salt-popover-foreground));
+    border: 1px solid hsl(var(--salt-border));
+  }
+}
+
+@layer utilities {
+  /* ─── Button: active press state (all interactive variants) ─────────
+   * Not defined in any variant; provides tactile press feedback. */
+  button:not([disabled]):not([data-disabled]):active {
+    opacity: 0.8;
+  }
+}
+
+/* ── Popup Positioning Layer ─────────────────────────────────────────────
+   Shared CSS contract for all popover-style content panels.
+   SelectContent, ComboboxContent, TooltipContent, and anchored DialogContent
+   all participate. DialogContent (centered modal) is excluded.
+────────────────────────────────────────────────────────────────────────── */
+
+@layer components {
+  .salt-popup-wrapper {
+    position: absolute;
+    top: var(--popup-offset, 8px);
+    left: 0;
+    min-width: var(--popup-min-width, max-content);
+    z-index: 40; /* z-popover */
+  }
+}
+
+@layer utilities {
+  [role='listbox'] {
+    border-radius: var(--salt-radius-lg);
+    background-color: hsl(var(--salt-popover));
+    color: hsl(var(--salt-popover-foreground));
+    border: 1px solid hsl(var(--salt-border));
+    box-shadow: 0 2px 12px 0 hsl(195 77% 7% / 0.05);
+    padding: 8px; /* spacing.sm */
+    min-width: var(--popup-min-width, max-content);
+  }
+
+  [role='tooltip'] {
+    border-radius: var(--salt-radius-lg);
+    box-shadow: 0 2px 12px 0 hsl(195 77% 7% / 0.05);
+  }
+}

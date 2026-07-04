@@ -41,6 +41,10 @@ const ELEMENTS = [
     type: 'kitchen-sink',
     pattern: ['apps/kitchen-sink/**', '@salt/kitchen-sink'],
   },
+  {
+    type: 'storybook',
+    pattern: ['apps/storybook/**', '@salt/storybook'],
+  },
 ];
 
 // Import specifier patterns that must never appear in certain layers.
@@ -62,6 +66,8 @@ const SALT_APP_IMPORTS = [
   '@salt/cloud-functions/*',
   '@salt/kitchen-sink',
   '@salt/kitchen-sink/*',
+  '@salt/storybook',
+  '@salt/storybook/*',
 ];
 
 // UI-primitive libraries. web-pwa must reach these only through
@@ -680,6 +686,44 @@ export default [
                 '@salt/testing-utils/*',
               ],
               'kitchen-sink is a UI showcase — it may import @salt/ui-components only.',
+            ),
+          ],
+        },
+      ],
+    },
+  },
+
+  // @salt/storybook — a dev-only UI-components Storybook (mirror of kitchen-sink).
+  // Layer map: storybook → ui-components ONLY. It must reach UI primitives through
+  // @salt/ui-components (Rule 7) and must not pull in any other @salt/* package,
+  // Firebase, browser storage, or the PostHog SDK. Apps are leaf nodes, so this
+  // is enforced via no-restricted-imports (not boundaries/element-types).
+  {
+    files: ['apps/storybook/src/**/*.{ts,svelte}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            ...forbidGroup(SALT_APP_IMPORTS, 'Apps are leaf nodes — do not import another app.'),
+            ...forbidGroup(UI_PRIMITIVE_PKGS, UI_PRIMITIVE_MESSAGE),
+            ...forbidGroup(FIREBASE_PKGS, 'storybook must not import Firebase SDKs.'),
+            ...forbidGroup(INDEXEDDB_PKGS, 'Browser storage (IndexedDB) imports are forbidden.'),
+            ...forbidGroup(POSTHOG_PKGS, POSTHOG_MESSAGE),
+            ...forbidGroup(
+              [
+                '@salt/shared-types',
+                '@salt/shared-types/*',
+                '@salt/domain',
+                '@salt/domain/*',
+                '@salt/firebase-sync',
+                '@salt/firebase-sync/*',
+                '@salt/observability',
+                '@salt/observability/*',
+                '@salt/testing-utils',
+                '@salt/testing-utils/*',
+              ],
+              'storybook is a UI showcase — it may import @salt/ui-components only.',
             ),
           ],
         },
