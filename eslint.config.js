@@ -198,6 +198,7 @@ export default [
     ignores: [
       '**/node_modules/**',
       '**/dist/**',
+      '**/storybook-static/**',
       '**/coverage/**',
       '**/.svelte-kit/**',
       '**/__boundary_tests__/**',

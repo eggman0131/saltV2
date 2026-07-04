@@ -1,5 +1,6 @@
 node_modules/
 dist/
+storybook-static/
 .svelte-kit/
 .firebase/
 *.local

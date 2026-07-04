@@ -6,6 +6,7 @@
   "scripts": {
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
+    "chromatic": "chromatic --build-script-name=build-storybook --exit-zero-on-changes",
     "check": "svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
@@ -19,6 +20,7 @@
     "@storybook/svelte-vite": "^10.4.6",
     "@sveltejs/vite-plugin-svelte": "^7",
     "autoprefixer": "^10.5.2",
+    "chromatic": "^18.0.1",
     "postcss": "^8.5.16",
     "storybook": "^10.4.6",
     "svelte-check": "^4.7.1",

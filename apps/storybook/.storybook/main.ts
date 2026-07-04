@@ -1,12 +1,10 @@
 import type { StorybookConfig } from '@storybook/svelte-vite';
+import { svelte } from '@sveltejs/vite-plugin-svelte';
 
 // Dev-only Storybook for @salt/ui-components. Renders components from unbuilt
 // TS/Svelte source (workspace resolution → packages/ui-components/src) through
 // the Tailwind v3 PostCSS + autoprefixer pipeline (postcss.config.js +
 // tailwind.config.ts in this app root). Layer map: storybook → ui-components.
-//
-// The @storybook/svelte-vite framework auto-injects @sveltejs/vite-plugin-svelte
-// (reading svelte.config.js), so no viteFinal / vite.config.ts is needed here.
 //
 // Stories are authored as standard CSF3 (.stories.ts), NOT Svelte CSF
 // (.stories.svelte): @storybook/addon-svelte-csf@5.1.2 is not yet Vite-8/Rolldown
@@ -30,6 +28,32 @@ const config: StorybookConfig = {
       // Rolldown/docgen fix ships.
       docgen: false,
     },
+  },
+  async viteFinal(cfg) {
+    // Register @sveltejs/vite-plugin-svelte ourselves. Contrary to a common
+    // assumption, @storybook/svelte-vite@10.4.6 does NOT inject vite-plugin-svelte
+    // — its framework preset only adds the (disabled-above) docgen plugin and
+    // expects the Svelte compiler plugin to come from a project vite.config, which
+    // this app intentionally doesn't have. Without the plugin nothing compiles
+    // `.svelte`, so under Vite 8 the Rolldown/Oxc parser reads raw Svelte markup
+    // as JS and every `.svelte` (app-local wrappers AND resolved @salt/ui-components
+    // source) fails with `HTML comments are not allowed in modules` /
+    // `JSX syntax is disabled` — breaking both `storybook build` and `storybook dev`.
+    // Adding the plugin here fixes both. It auto-loads svelte.config.js
+    // (vitePreprocess) so `<script lang="ts">` wrappers transpile correctly.
+    const alreadyPresent = (cfg.plugins ?? [])
+      .flat(Infinity as number)
+      .some(
+        (p): p is { name: string } =>
+          !!p &&
+          typeof p === 'object' &&
+          'name' in p &&
+          String(p.name).startsWith('vite-plugin-svelte'),
+      );
+    if (!alreadyPresent) {
+      cfg.plugins = [...(cfg.plugins ?? []), svelte()];
+    }
+    return cfg;
   },
 };
 
