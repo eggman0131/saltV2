@@ -17,7 +17,7 @@
   "devDependencies": {
     "esbuild": "^0.28.1",
     "genkit-cli": "^1.39.0",
-    "tsx": "^4.22.4"
+    "tsx": "^4.23.0"
   },
   "dependencies": {
     "@genkit-ai/firebase": "^1.39.0",
