@@ -4,7 +4,6 @@ import type { MatchOrCreateInput } from '@salt/domain';
 import { CanonicaliseRecipeIngredientsInputSchema } from '@salt/domain/schemas';
 import {
   activeTraceparent,
-  flushServerObservability,
   startSpan,
   whenServerObservabilityReady,
 } from '@salt/observability/server';
@@ -61,7 +60,10 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
       );
     } finally {
       batchSpan.end();
-      await flushServerObservability();
+      // Span buffering is drained by the makeTracedCallable entrypoint's finally
+      // flush (index.ts, issue #415) — either this flow's own callable, or the
+      // authorRecipe / extractRecipeFromUrl callable when it runs as a nested
+      // batch. The single, uniform flush point.
     }
   },
 );

@@ -5,7 +5,6 @@ import type { MatchLoggingPort, MatchOrCreateInput, MatchOrCreatePorts } from '@
 import { MatchOrCreateCanonInputSchema } from '@salt/domain/schemas';
 import {
   createServerObservabilityMatchLoggingAdapter,
-  flushServerObservability,
   initServerObservability,
   isServerObservabilityInitialised,
   startSpan,
@@ -127,8 +126,8 @@ export const matchOrCreateCanonFlow = ai.defineFlow(
       return result;
     } finally {
       parentSpan.end();
-      // Spans are buffered — flush before the Node process is paused.
-      await flushServerObservability();
+      // Span buffering is drained by the makeTracedCallable entrypoint's finally
+      // flush (index.ts, issue #415) — the single, uniform flush point.
     }
   },
 );
