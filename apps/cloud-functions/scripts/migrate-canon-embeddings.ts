@@ -84,7 +84,10 @@ for (const doc of canonSnap.docs) {
       (alreadyRelocated ? '  [companion exists — clearing inline only]' : '  → canonEmbeddings'),
   );
 
+  // Count the intended action at decision time so the DRY RUN summary reflects
+  // what would happen; an apply failure below rolls the count back into `failed`.
   if (alreadyRelocated) skippedAlready += 1;
+  else migrated += 1;
 
   if (!apply) continue;
 
@@ -95,9 +98,9 @@ for (const doc of canonSnap.docs) {
     }
     batch.update(doc.ref, { embedding: FieldValue.delete() });
     await batch.commit();
-    if (!alreadyRelocated) migrated += 1;
   } catch (err) {
     failed += 1;
+    if (!alreadyRelocated) migrated -= 1;
     console.log(`    ERROR: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
