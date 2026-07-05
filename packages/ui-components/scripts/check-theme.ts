@@ -120,7 +120,6 @@ const ROUNDED_MAP: Record<string, string | null> = {
   full: null,
 };
 
-const SPACING_KEYS = ['xs', 'sm', 'md', 'lg', 'xl'];
 const TYPO_KEYS = ['display', 'h1', 'h2', 'body-lg', 'body-md', 'label-caps'];
 
 /** design.md controls.checkbox key → CSS var name */
@@ -240,25 +239,13 @@ for (const [key, varName] of Object.entries(ROUNDED_MAP)) {
 }
 
 // ── Spacing ───────────────────────────────────────────────────────────────────
-
-const designSpacing = design.spacing as YamlMap;
-const presetSpacing = preset.theme.extend.spacing as Record<string, string>;
-
-for (const key of SPACING_KEYS) {
-  const dmVal = designSpacing[key] as string | undefined;
-  const pVal = presetSpacing[key];
-  if (!dmVal) {
-    fail(`  spacing.${key}: not found in design.md`);
-    continue;
-  }
-  if (!pVal) {
-    fail(`  spacing.${key}: not found in preset`);
-    continue;
-  }
-  if (dmVal !== pVal) {
-    fail(`  spacing.${key}: design.md=${dmVal}  preset=${pVal}`);
-  }
-}
+// Phase 2 (Tailwind v4 migration): the preset's `theme.extend.spacing` scale
+// (xs/sm/md/lg/xl) was deleted because v4 unifies the spacing and sizing scales,
+// so those named keys hijacked `max-w-{sm,md,lg}` (28rem → 16px). They were never
+// used as spacing utilities. With no preset spacing to compare against, this
+// design.md↔preset drift check no longer applies. design.md still documents the
+// spacing scale as design intent; Phase 3 (CSS `@theme` re-authoring) decides its
+// v4-native home and can restore a check then.
 
 // ── Controls (Checkbox sizes) ─────────────────────────────────────────────────
 
