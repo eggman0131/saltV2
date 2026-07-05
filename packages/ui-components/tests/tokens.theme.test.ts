@@ -55,12 +55,6 @@ describe('salt.css design-system entry', () => {
       expect(css).toMatch(/--text-label-caps:\s*12px/);
     });
 
-    it('defines the named spacing scale (the v4-native home for the drift check)', () => {
-      expect(css).toMatch(/--spacing-xs:\s*4px/);
-      expect(css).toMatch(/--spacing-md:\s*16px/);
-      expect(css).toMatch(/--spacing-xl:\s*48px/);
-    });
-
     it('defines motion + elevation tokens', () => {
       expect(css).toMatch(/--duration-fast:\s*120ms/);
       expect(css).toMatch(/--ease-standard:\s*cubic-bezier\(0\.2, 0, 0, 1\)/);

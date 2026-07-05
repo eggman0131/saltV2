@@ -125,9 +125,6 @@ const ROUNDED_MAP: Record<string, string> = {
 
 const TYPO_KEYS = ['display', 'h1', 'h2', 'body-lg', 'body-md', 'label-caps'];
 
-/** design.md spacing scale keys → @theme --spacing-* token names */
-const SPACING_KEYS = ['xs', 'sm', 'md', 'lg', 'xl'];
-
 /** design.md controls.checkbox key → CSS var name */
 const CONTROLS_CHECKBOX_MAP: Record<string, string> = {
   sm: '--salt-control-checkbox-sm',
@@ -253,28 +250,14 @@ for (const [key, varName] of Object.entries(ROUNDED_MAP)) {
 }
 
 // ── Spacing ───────────────────────────────────────────────────────────────────
-// Restored in Phase 3 (Tailwind v4 CSS-first): the named spacing scale now lives
-// in salt.css @theme as `--spacing-*` (its v4-native home). It does not collide
-// with `max-w-{sm,md,lg}`, which resolve from the separate `--container-*`
-// namespace. This re-enables the design.md ↔ tokens drift check disabled in
-// Phase 2 (when the preset's spacing scale was deleted).
-
-const designSpacing = design.spacing as YamlMap | undefined;
-for (const key of SPACING_KEYS) {
-  const dmVal = designSpacing?.[key] as string | undefined;
-  const cssVal = cssVars[`--spacing-${key}`];
-  if (!dmVal) {
-    fail(`  spacing.${key}: not found in design.md`);
-    continue;
-  }
-  if (!cssVal) {
-    fail(`  --spacing-${key}: not found in salt.css @theme (expected for spacing.${key})`);
-    continue;
-  }
-  if (!dimEq(dmVal, cssVal)) {
-    fail(`  spacing.${key}: design.md=${dmVal}  salt.css --spacing-${key}=${cssVal}`);
-  }
-}
+// No spacing drift check. The design.md spacing scale (xs/sm/md/lg/xl) has no
+// collision-free home in v4's unified sizing model: `@theme --spacing-{sm,md,lg,
+// xl}` shares its keys with the `--container-*` scale and hijacks
+// `max-w-{sm,md,lg,xl}` (they collapse to 8/16/24/48px). Components use the
+// numeric scale off v4's default `--spacing: 0.25rem` base, so no named spacing
+// tokens are emitted. Re-homing the scale collision-free (e.g. `--salt-space-*`)
+// and restoring this check are deferred to Phase 4. (It was briefly restored in
+// Phase 3 against `@theme --spacing-*` — which caused exactly that max-w collapse.)
 
 // ── Controls (Checkbox sizes) ─────────────────────────────────────────────────
 

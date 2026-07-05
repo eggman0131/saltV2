@@ -10,8 +10,8 @@
  * Tooling PARSES this file — keep the shapes below intact:
  *   • scripts/check-theme.ts diffs docs/design/design.md against the `--salt-*`
  *     HSL triples (via their trailing `/* #rrggbb *\/` provenance comments), the
- *     raw `--salt-*` values, the `@theme` `--text-*` typography, `--radius-*`,
- *     and the `--spacing-*` scale.
+ *     raw `--salt-*` values, and the `@theme` `--text-*` typography + `--radius-*`
+ *     scale.
  *   • scripts/generate-tokens.ts derives src/tokens/*.ts from the `@theme`
  *     `--color-*` / `--radius-*` / `--shadow-*` / `--duration-*` / `--ease-*`
  *     values and the `@utility z-*` blocks.
@@ -108,16 +108,15 @@
   --ease-emphasized: cubic-bezier(0.3, 0, 0, 1);
   --ease-decel: cubic-bezier(0, 0, 0, 1);
 
-  /* Spacing scale (design.md §spacing). Named tokens feed the padding, gap,
-   * etc. utilities; they do NOT collide with `max-w-{sm,md,lg}`, which resolve
-   * from the separate `--container-*` namespace (v4). Restored here as the
-   * v4-native home for the theme:check spacing drift check (disabled in
-   * Phase 2). */
-  --spacing-xs: 4px;
-  --spacing-sm: 8px;
-  --spacing-md: 16px;
-  --spacing-lg: 24px;
-  --spacing-xl: 48px;
+  /* NO design-system `--spacing-*` scale here, on purpose. In v4's unified
+   * sizing model the `--spacing-*` namespace shares its `xs/sm/md/lg/xl` keys
+   * with the `--container-*` scale, so a `@theme --spacing-md` etc. HIJACKS
+   * `max-w-{sm,md,lg,xl}` — collapsing them from 24/28/32/36rem to 8/16/24/48px.
+   * That is the exact collision Phase 2 fixed by deleting the preset spacing
+   * scale. Components use the numeric scale (`p-4`, `gap-2`, …) off v4's default
+   * `--spacing: 0.25rem` base, which already matches v3. The design.md spacing
+   * scale is documentation only; a collision-free home (e.g. `--salt-space-*`)
+   * plus its drift check are deferred to Phase 4. */
 }
 
 /* ── Default-palette pins (Tailwind v4 migration, Phase 2 → consolidated here) ─
