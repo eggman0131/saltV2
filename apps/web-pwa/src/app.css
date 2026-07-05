@@ -1,3 +1,36 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+@config "../tailwind.config.ts";
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Tailwind v4 migration (Phase 2): pin the default-palette colors this app uses
+ * to their Tailwind v3 sRGB hex. v4 core redefines its default numeric palette in
+ * oklch, which shifts these by up to ~38/255 per channel vs the v3 Chromatic
+ * baselines. Only the (family,shade) pairs actually used in web-pwa + the shared
+ * ui-components (Toast/EditableRow) are pinned. `--salt-*` semantic tokens are raw
+ * HSL and unaffected. Overrides v4 core's default `@theme` (not the `@config`
+ * preset). Phase 3 consolidates this into the ui-components CSS entry. */
+@theme {
+  --color-amber-50: #fffbeb;
+  --color-amber-100: #fef3c7;
+  --color-amber-200: #fde68a;
+  --color-amber-300: #fcd34d;
+  --color-amber-400: #fbbf24;
+  --color-amber-500: #f59e0b;
+  --color-amber-600: #d97706;
+  --color-amber-700: #b45309;
+  --color-amber-800: #92400e;
+  --color-amber-900: #78350f;
+  --color-amber-950: #451a03;
+  --color-red-50: #fef2f2;
+  --color-red-300: #fca5a5;
+  --color-red-600: #dc2626;
+  --color-red-700: #b91c1c;
+  --color-red-900: #7f1d1d;
+  --color-sky-500: #0ea5e9;
+  --color-sky-600: #0284c7;
+  --color-green-500: #22c55e;
+  --color-green-700: #15803d;
+  --color-emerald-600: #059669;
+  --color-cyan-600: #0891b2;
+  --color-orange-500: #f97316;
+}

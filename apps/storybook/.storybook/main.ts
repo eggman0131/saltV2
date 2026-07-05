@@ -1,5 +1,6 @@
 import type { StorybookConfig } from '@storybook/svelte-vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
+import tailwindcss from '@tailwindcss/vite';
 
 // Dev-only Storybook for @salt/ui-components. Renders components from unbuilt
 // TS/Svelte source (workspace resolution → packages/ui-components/src) through
@@ -30,6 +31,13 @@ const config: StorybookConfig = {
     },
   },
   async viteFinal(cfg) {
+    // Register the Tailwind v4 plugin (@tailwindcss/vite) so the design-system
+    // preset — still authored in JS and loaded via the `@config` directive in
+    // .storybook/preview.css — compiles for the Storybook canvas. Prepended so it
+    // runs ahead of the Svelte transform; the svelte-injection guard below is
+    // unaffected (it only looks for vite-plugin-svelte).
+    cfg.plugins = [tailwindcss(), ...(cfg.plugins ?? [])];
+
     // Register @sveltejs/vite-plugin-svelte ourselves. Contrary to a common
     // assumption, @storybook/svelte-vite@10.4.6 does NOT inject vite-plugin-svelte
     // — its framework preset only adds the (disabled-above) docgen plugin and
