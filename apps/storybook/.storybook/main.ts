@@ -4,8 +4,9 @@ import tailwindcss from '@tailwindcss/vite';
 
 // Dev-only Storybook for @salt/ui-components. Renders components from unbuilt
 // TS/Svelte source (workspace resolution → packages/ui-components/src) through
-// the Tailwind v3 PostCSS + autoprefixer pipeline (postcss.config.js +
-// tailwind.config.ts in this app root). Layer map: storybook → ui-components.
+// the Tailwind v4 CSS-first pipeline (@tailwindcss/vite; configured entirely in
+// .storybook/preview.css — no postcss.config/tailwind.config). Layer map:
+// storybook → ui-components.
 //
 // Stories are authored as standard CSF3 (.stories.ts), NOT Svelte CSF
 // (.stories.svelte): @storybook/addon-svelte-csf@5.1.2 is not yet Vite-8/Rolldown
@@ -31,9 +32,9 @@ const config: StorybookConfig = {
     },
   },
   async viteFinal(cfg) {
-    // Register the Tailwind v4 plugin (@tailwindcss/vite) so the design-system
-    // preset — still authored in JS and loaded via the `@config` directive in
-    // .storybook/preview.css — compiles for the Storybook canvas. Prepended so it
+    // Register the Tailwind v4 plugin (@tailwindcss/vite) so the CSS-first
+    // design-system entry (@salt/ui-components/styles.css, imported by
+    // .storybook/preview.css) compiles for the Storybook canvas. Prepended so it
     // runs ahead of the Svelte transform; the svelte-injection guard below is
     // unaffected (it only looks for vite-plugin-svelte).
     cfg.plugins = [tailwindcss(), ...(cfg.plugins ?? [])];
