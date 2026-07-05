@@ -10,8 +10,9 @@
  * Tooling PARSES this file — keep the shapes below intact:
  *   • scripts/check-theme.ts diffs docs/design/design.md against the `--salt-*`
  *     HSL triples (via their trailing `/* #rrggbb *\/` provenance comments), the
- *     raw `--salt-*` values, and the `@theme` `--text-*` typography + `--radius-*`
- *     scale.
+ *     raw `--salt-*` values (incl. the `--salt-space-*` spacing scale and the
+ *     control-size primitives), and the `@theme` `--text-*` typography +
+ *     `--radius-*` scale.
  *   • scripts/generate-tokens.ts derives src/tokens/*.ts from the `@theme`
  *     `--color-*` / `--radius-*` / `--shadow-*` / `--duration-*` / `--ease-*`
  *     values and the `@utility z-*` blocks.
@@ -115,8 +116,9 @@
    * That is the exact collision Phase 2 fixed by deleting the preset spacing
    * scale. Components use the numeric scale (`p-4`, `gap-2`, …) off v4's default
    * `--spacing: 0.25rem` base, which already matches v3. The design.md spacing
-   * scale is documentation only; a collision-free home (e.g. `--salt-space-*`)
-   * plus its drift check are deferred to Phase 4. */
+   * scale is instead homed collision-free as the `--salt-space-*` primitives in
+   * :root below (plain custom properties → no utility generation, no max-w
+   * hijack), which scripts/check-theme.ts diffs against design.md. */
 }
 
 /* ── Default-palette pins (Tailwind v4 migration, Phase 2 → consolidated here) ─
@@ -204,6 +206,22 @@
   --salt-control-switch-thumb-sm: 12px;
   --salt-control-switch-thumb-md: 16px;
   --salt-control-switch-thumb-lg: 20px;
+  /* Spacing scale (design.md `spacing`). Deliberately plain `:root` custom
+   * properties, NOT a `@theme --spacing-*` block: in v4's unified sizing model
+   * those keys collide with the `--container-*` scale and hijack
+   * `max-w-{sm,md,lg,xl}` (see the @theme note above). Components use the numeric
+   * scale (`p-4`, `gap-2`, …) off v4's default `--spacing: 0.25rem` base; these
+   * named tokens exist only to give the design.md spacing scale a canonical home
+   * that scripts/check-theme.ts can diff against. Nothing consumes them, so they
+   * generate no utilities and have zero rendered effect. */
+  --salt-space-unit: 4px;
+  --salt-space-xs: 4px;
+  --salt-space-sm: 8px;
+  --salt-space-md: 16px;
+  --salt-space-lg: 24px;
+  --salt-space-xl: 48px;
+  --salt-space-container-margin: 24px;
+  --salt-space-gutter: 16px;
 }
 
 .dark {

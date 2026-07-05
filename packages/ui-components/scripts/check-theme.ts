@@ -125,6 +125,22 @@ const ROUNDED_MAP: Record<string, string> = {
 
 const TYPO_KEYS = ['display', 'h1', 'h2', 'body-lg', 'body-md', 'label-caps'];
 
+/** design.md spacing key → CSS var name.
+ * The scale is homed as plain `--salt-space-*` :root primitives (NOT `@theme
+ * --spacing-*`, which would hijack `max-w-*` in v4's unified sizing model — see
+ * the salt.css note). Nothing consumes them; they exist purely so this scale has
+ * a drift-checkable home. */
+const SPACING_MAP: Record<string, string> = {
+  unit: '--salt-space-unit',
+  xs: '--salt-space-xs',
+  sm: '--salt-space-sm',
+  md: '--salt-space-md',
+  lg: '--salt-space-lg',
+  xl: '--salt-space-xl',
+  'container-margin': '--salt-space-container-margin',
+  gutter: '--salt-space-gutter',
+};
+
 /** design.md controls.checkbox key → CSS var name */
 const CONTROLS_CHECKBOX_MAP: Record<string, string> = {
   sm: '--salt-control-checkbox-sm',
@@ -250,14 +266,27 @@ for (const [key, varName] of Object.entries(ROUNDED_MAP)) {
 }
 
 // ── Spacing ───────────────────────────────────────────────────────────────────
-// No spacing drift check. The design.md spacing scale (xs/sm/md/lg/xl) has no
-// collision-free home in v4's unified sizing model: `@theme --spacing-{sm,md,lg,
-// xl}` shares its keys with the `--container-*` scale and hijacks
-// `max-w-{sm,md,lg,xl}` (they collapse to 8/16/24/48px). Components use the
-// numeric scale off v4's default `--spacing: 0.25rem` base, so no named spacing
-// tokens are emitted. Re-homing the scale collision-free (e.g. `--salt-space-*`)
-// and restoring this check are deferred to Phase 4. (It was briefly restored in
-// Phase 3 against `@theme --spacing-*` — which caused exactly that max-w collapse.)
+// design.md spacing[key] ↔ the `--salt-space-*` :root primitives. These are plain
+// custom properties, NOT a `@theme --spacing-*` block (that would hijack
+// `max-w-{sm,md,lg,xl}` in v4's unified sizing model — Phase 3 fix). They are the
+// collision-free home for the design.md scale so drift stays detectable.
+
+const designSpacing = design.spacing as YamlMap | undefined;
+for (const [key, varName] of Object.entries(SPACING_MAP)) {
+  const dmVal = designSpacing?.[key] as string | undefined;
+  const cssVal = cssVars[varName];
+  if (!dmVal) {
+    fail(`  spacing.${key}: not found in design.md`);
+    continue;
+  }
+  if (!cssVal) {
+    fail(`  ${varName}: not found in salt.css (expected for spacing.${key})`);
+    continue;
+  }
+  if (!dimEq(dmVal, cssVal)) {
+    fail(`  spacing.${key}: design.md=${dmVal}  salt.css ${varName}=${cssVal}`);
+  }
+}
 
 // ── Controls (Checkbox sizes) ─────────────────────────────────────────────────
 

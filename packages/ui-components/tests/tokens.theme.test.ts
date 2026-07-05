@@ -88,6 +88,17 @@ describe('salt.css design-system entry', () => {
       expect(css).toMatch(/--salt-control-checkbox-md:\s*16px/);
       expect(css).toMatch(/--salt-control-switch-md-w:\s*36px/);
     });
+
+    it('homes the spacing scale as --salt-space-* primitives (not @theme --spacing-*)', () => {
+      // Collision-free home for the design.md spacing scale: plain :root custom
+      // properties, so they never hijack max-w-* the way @theme --spacing-* would.
+      expect(css).toMatch(/--salt-space-xs:\s*4px/);
+      expect(css).toMatch(/--salt-space-md:\s*16px/);
+      expect(css).toMatch(/--salt-space-xl:\s*48px/);
+      expect(css).toMatch(/--salt-space-gutter:\s*16px/);
+      // Guard the collision that Phase 3 fixed: no @theme --spacing-* key may exist.
+      expect(css).not.toMatch(/^\s*--spacing-(?:xs|sm|md|lg|xl):/m);
+    });
   });
 
   describe('component classes & custom utilities', () => {

@@ -1,8 +1,8 @@
 # @salt/storybook
 
 A **dev-only** Storybook for `@salt/ui-components`. It renders each component in
-isolation from **unbuilt TS/Svelte source** through the same Tailwind v3 PostCSS +
-autoprefixer pipeline and `--salt-*` design tokens the app ships with.
+isolation from **unbuilt TS/Svelte source** through the same Tailwind v4 CSS-first
+pipeline (`@tailwindcss/vite`) and `--salt-*` design tokens the app ships with.
 
 ```bash
 pnpm --filter @salt/storybook storybook   # → http://localhost:6006
@@ -16,11 +16,14 @@ pnpm --filter @salt/storybook storybook   # → http://localhost:6006
 - **Source, not build:** `@salt/ui-components` resolves via `workspace:*` to
   `packages/ui-components/src`, so stories compile the component source directly.
 - **Tokens + Tailwind:** `.storybook/preview.ts` imports `.storybook/preview.css`,
-  which pulls in `src/tokens.css` (the `--salt-*` custom properties) and the
-  Tailwind `base/components/utilities` layers. `tailwind.config.ts` loads
-  `@salt/ui-components/tailwind-preset` and scopes `content` to this app **and**
-  `packages/ui-components/src/**` so preset utilities used only inside components
-  are still generated.
+  which pulls in the shared v4 CSS-first design-system entry
+  `@salt/ui-components/styles.css` (`@import "tailwindcss"` + the `@theme` tokens,
+  `@layer base/components`, and `@utility` classes — Tailwind v4 migration, #323)
+  plus the storybook-local `src/tokens.css` demo aliases. There is no
+  `tailwind.config.ts` or `postcss.config.js`: v4 is configured entirely in CSS,
+  and `@source` directives in `preview.css` scope scanning to this app **and**
+  `packages/ui-components/src/**` so utilities used only inside components are
+  still generated.
 - **Story format:** standard CSF3 (`src/stories/*.stories.ts`) — `Meta`/`StoryObj`
   from `@storybook/svelte-vite`. Svelte CSF (`.stories.svelte` via
   `@storybook/addon-svelte-csf`) is intentionally **not** used yet: that addon

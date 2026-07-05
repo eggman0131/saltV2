@@ -1,23 +1,28 @@
 /*
- * tokens.css — Design token CSS custom properties for the Salt design system
+ * tokens.css — Storybook-local design-token CSS custom properties.
  *
- * Generated from (source of truth: @salt/ui-components/tailwind-preset):
- *   packages/ui-components/src/tailwind-preset.ts  (Salt design-system tokens)
+ * A convenience alias layer for the token-showcase stories (TokensColorsDemo /
+ * TokensScalesDemo): it exposes the Salt tokens under plain, non-Tailwind names
+ * (--color-*, --brand-*, --radius-*, --spacing-*) so demo markup and canvas CSS
+ * can reference them without a utility class. It is NOT the source of truth —
+ * that is the design-system entry packages/ui-components/src/salt.css (imported
+ * right after this file in .storybook/preview.css), whose values trace to
+ * docs/design/design.md. The --salt-* primitives these aliases resolve are
+ * defined there.
  *
- * All color values are in hsl(<h> <s%> <l%>) channel format so they compose
- * with the / <alpha-value> syntax used by Tailwind:
- *   e.g. hsl(var(--color-primary) / 0.5)
+ * Color values use hsl(<h> <s%> <l%>) channel format so they compose with an
+ * opacity slash, e.g. hsl(var(--color-primary) / 0.5).
  *
- * Semantic aliases (--color-*) resolve to the --salt-* primitives, which are
- * overridden per-theme in app.css.  Static brand tokens (--brand-*, --radius-*,
- * etc.) have fixed values and do not vary by theme.
+ * Semantic aliases (--color-*) resolve to the --salt-* primitives (which flip
+ * per-theme in salt.css). Static brand tokens (--brand-*, --radius-*, etc.) have
+ * fixed values and do not vary by theme.
  */
 
 /* ── 1. Semantic color aliases (light / dark via .dark class) ──────────── */
 /*
- * These mirror the Tailwind `colors` entries in tailwind-preset.ts so that
- * non-Tailwind CSS (plain CSS Modules, <style> blocks, canvas) can reference
- * the same semantic palette without using a utility class.
+ * These mirror the semantic `--color-*` tokens in salt.css so that non-Tailwind
+ * CSS (plain CSS Modules, <style> blocks, canvas) can reference the same
+ * semantic palette without using a utility class.
  */
 :root {
   --color-background: hsl(var(--salt-background));
@@ -51,8 +56,8 @@
 
 /* ── 2. Brand colors — Salt palette (static, no theme flip) ────────────── */
 /*
- * Source: tailwind.config.ts `theme.extend.colors`
- * These are stable identity colors; they do not invert in dark mode.
+ * The Salt brand palette (design.md colours: secondary/sage, tertiary/terracotta,
+ * midnight-navy). Stable identity colours; they do not invert in dark mode.
  */
 :root {
   /* Sage green */
@@ -71,13 +76,12 @@
 
 /* ── 3. Border-radius scale ────────────────────────────────────────────── */
 /*
- * Source: tailwind-preset.ts `theme.extend.borderRadius`
- * Actual values for the Salt theme come from @salt/ui-components/tailwind-preset.
- * These aliases expose them with a --radius-* naming convention.
+ * Aliases onto the --salt-radius-* primitives (defined in salt.css, traced to
+ * design.md `rounded`), exposed with a --radius-* naming convention.
  */
 :root {
   --radius-sm: var(--salt-radius-sm); /* 0.25rem / 4px  — small elements  */
-  --radius-md: var(--salt-radius-md); /* 0.5rem  / 8px  — buttons, inputs */
+  --radius-md: var(--salt-radius-md); /* 0.75rem / 12px — buttons, inputs */
   --radius-lg: var(--salt-radius-lg); /* 1rem    / 16px — cards           */
   --radius-xl: var(--salt-radius-xl); /* 1.5rem  / 24px — large surfaces  */
   --radius-full: 9999px;
@@ -85,7 +89,8 @@
 
 /* ── 4. Spacing scale ──────────────────────────────────────────────────── */
 /*
- * Source: tailwind.config.ts `theme.extend.spacing`
+ * Mirrors design.md `spacing` (homed as --salt-space-* in salt.css). Kept as
+ * literal px here so the token-showcase stories can label the scale directly.
  */
 :root {
   --spacing-xs: 4px;
@@ -97,8 +102,7 @@
 
 /* ── 5. Box-shadow scale ───────────────────────────────────────────────── */
 /*
- * Source: tailwind-preset.ts `theme.extend.boxShadow` merged with
- *         tailwind.config.ts `theme.extend.boxShadow`
+ * Mirrors the --shadow-* @theme tokens in salt.css.
  */
 :root {
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
@@ -112,7 +116,7 @@
 
 /* ── 6. Z-index scale ──────────────────────────────────────────────────── */
 /*
- * Source: tailwind-preset.ts `theme.extend.zIndex`
+ * Mirrors the @utility z-popover/z-dialog/z-tooltip scale in salt.css.
  */
 :root {
   --z-popover: 40;
@@ -122,8 +126,7 @@
 
 /* ── 7. Motion tokens ──────────────────────────────────────────────────── */
 /*
- * Source: tailwind-preset.ts `theme.extend.transitionDuration` /
- *         `transitionTimingFunction`
+ * Mirrors the --duration-* / --ease-* @theme tokens in salt.css.
  */
 :root {
   --duration-fast: 120ms;
@@ -137,7 +140,7 @@
 
 /* ── 8. Typography tokens ──────────────────────────────────────────────── */
 /*
- * Source: tailwind.config.ts `theme.extend.fontFamily`
+ * Mirrors the --font-display / --font-sans @theme tokens in salt.css.
  */
 :root {
   --font-display: 'Epilogue', sans-serif;
