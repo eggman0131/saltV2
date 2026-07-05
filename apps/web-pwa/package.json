@@ -18,7 +18,7 @@
     "e2e:ui": "playwright test --ui"
   },
   "dependencies": {
-    "@lucide/svelte": "^1.22.0",
+    "@lucide/svelte": "^1.23.0",
     "@salt/domain": "workspace:*",
     "@salt/firebase-sync": "workspace:*",
     "@salt/observability": "workspace:*",
@@ -42,7 +42,7 @@
     "istanbul-lib-report": "^3.0.1",
     "istanbul-reports": "^3.2.0",
     "jsdom": "^29.1.1",
-    "sharp": "^0.35.2",
+    "sharp": "^0.35.3",
     "svelte-check": "^4.7.1",
     "tailwindcss": "^4",
     "v8-to-istanbul": "^9.3.0",

@@ -14,7 +14,7 @@
     "svelte": "^5.56.4"
   },
   "devDependencies": {
-    "@lucide/svelte": "^1.22.0",
+    "@lucide/svelte": "^1.23.0",
     "@storybook/addon-a11y": "^10.4.6",
     "@storybook/svelte": "^10.4.6",
     "@storybook/svelte-vite": "^10.4.6",
