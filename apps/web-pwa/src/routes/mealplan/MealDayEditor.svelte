@@ -310,6 +310,7 @@
               <div class="ml-1 flex items-stretch gap-2">
                 <input
                   type="time"
+                  step="900"
                   class="h-8 shrink-0 rounded-md border bg-background px-2 text-sm"
                   value={a?.homeTime ?? ''}
                   onfocus={(e) => {
