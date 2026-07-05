@@ -1,0 +1,545 @@
+/* @salt/ui-components — Tailwind v4 CSS-first design-system entry.
+ *
+ * Single source of truth for the Salt design tokens, base layer, component
+ * classes, and custom utilities. Both apps consume it via
+ *   @import "@salt/ui-components/styles.css";
+ * This replaces the former v3 JS preset (tailwind-preset.ts) + per-app
+ * tailwind.config.ts + the `@config` directive (Tailwind v4 migration Phase 3,
+ * issue #323). See docs/salt-architecture.md and CLAUDE.md.
+ *
+ * Tooling PARSES this file — keep the shapes below intact:
+ *   • scripts/check-theme.ts diffs docs/design/design.md against the `--salt-*`
+ *     HSL triples (via their trailing `/* #rrggbb *\/` provenance comments), the
+ *     raw `--salt-*` values, the `@theme` `--text-*` typography, `--radius-*`,
+ *     and the `--spacing-*` scale.
+ *   • scripts/generate-tokens.ts derives src/tokens/*.ts from the `@theme`
+ *     `--color-*` / `--radius-*` / `--shadow-*` / `--duration-*` / `--ease-*`
+ *     values and the `@utility z-*` blocks.
+ */
+
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+/* Discover utility usage inside the ui-components source. Resolved relative to
+ * THIS file, so it always points at packages/ui-components/src no matter which
+ * app imports the entry. Each app declares its own @source for its own files. */
+@source "./**/*.{ts,svelte}";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ── Semantic color + radius tokens ──────────────────────────────────────────
+ * `@theme inline` because these reference the `--salt-*` primitives (defined in
+ * :root/.dark below), which flip in dark mode. Inlining keeps each utility
+ * resolving the primitive at use-time, so opacity modifiers (color-mix) and the
+ * dark override both keep working. The former `/ <alpha-value>` suffix is
+ * dropped: v4 derives opacity via color-mix from the base color (an omitted
+ * alpha is identical to `/ 1`). */
+@theme inline {
+  --color-background: hsl(var(--salt-background));
+  --color-foreground: hsl(var(--salt-foreground));
+  --color-primary: hsl(var(--salt-primary));
+  --color-primary-foreground: hsl(var(--salt-primary-foreground));
+  --color-secondary: hsl(var(--salt-secondary));
+  --color-secondary-foreground: hsl(var(--salt-secondary-foreground));
+  --color-secondary-container: hsl(var(--salt-secondary-container));
+  --color-secondary-container-foreground: hsl(var(--salt-on-secondary-container));
+  --color-tertiary: hsl(var(--salt-tertiary));
+  --color-tertiary-foreground: hsl(var(--salt-tertiary-foreground));
+  --color-muted: hsl(var(--salt-muted));
+  --color-muted-foreground: hsl(var(--salt-muted-foreground));
+  --color-accent: hsl(var(--salt-accent));
+  --color-accent-foreground: hsl(var(--salt-accent-foreground));
+  --color-destructive: hsl(var(--salt-destructive));
+  --color-destructive-foreground: hsl(var(--salt-destructive-foreground));
+  --color-card: hsl(var(--salt-card));
+  --color-card-foreground: hsl(var(--salt-card-foreground));
+  --color-popover: hsl(var(--salt-popover));
+  --color-popover-foreground: hsl(var(--salt-popover-foreground));
+  --color-border: hsl(var(--salt-border));
+  --color-input: hsl(var(--salt-input));
+  --color-ring: hsl(var(--salt-ring));
+  --color-icon-tile: hsl(var(--salt-icon-tile));
+
+  /* borderRadius: `rounded` (DEFAULT) → --radius; the rest map 1:1. */
+  --radius-sm: var(--salt-radius-sm);
+  --radius: var(--salt-radius-default);
+  --radius-md: var(--salt-radius-md);
+  --radius-lg: var(--salt-radius-lg);
+  --radius-xl: var(--salt-radius-xl);
+  --radius-full: 9999px;
+}
+
+/* ── Static scale tokens ─────────────────────────────────────────────────────
+ * Literal values (no `--salt-*` reference except --shadow-ambient), so a plain
+ * `@theme` block is used. */
+@theme {
+  --font-display: 'Epilogue', sans-serif;
+  --font-sans: 'Inter', sans-serif;
+
+  --text-display: 48px;
+  --text-display--line-height: 1.1;
+  --text-display--letter-spacing: -0.02em;
+  --text-h1: 32px;
+  --text-h1--line-height: 1.2;
+  --text-h1--letter-spacing: -0.01em;
+  --text-h2: 24px;
+  --text-h2--line-height: 1.3;
+  --text-h2--letter-spacing: 0;
+  --text-body-lg: 18px;
+  --text-body-lg--line-height: 1.6;
+  --text-body-md: 16px;
+  --text-body-md--line-height: 1.5;
+  --text-label-caps: 12px;
+  --text-label-caps--line-height: 1;
+  --text-label-caps--letter-spacing: 0.05em;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-ambient: 0 2px 12px 0 hsl(var(--salt-primary) / 0.05);
+  --shadow-popover: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-dialog: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --duration-slow: 260ms;
+
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasized: cubic-bezier(0.3, 0, 0, 1);
+  --ease-decel: cubic-bezier(0, 0, 0, 1);
+
+  /* Spacing scale (design.md §spacing). Named tokens feed the padding, gap,
+   * etc. utilities; they do NOT collide with `max-w-{sm,md,lg}`, which resolve
+   * from the separate `--container-*` namespace (v4). Restored here as the
+   * v4-native home for the theme:check spacing drift check (disabled in
+   * Phase 2). */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 48px;
+}
+
+/* ── Default-palette pins (Tailwind v4 migration, Phase 2 → consolidated here) ─
+ * Pin the default-palette colors the apps + shared components actually use
+ * (Toast/EditableRow: amber/red; misc: sky/green/emerald/cyan/orange) to their
+ * Tailwind v3 sRGB hex. v4 core redefines its default numeric palette in oklch,
+ * which would shift these vs the v3 Chromatic baselines. `--salt-*` semantic
+ * tokens are raw HSL and unaffected. Previously duplicated in web-pwa/app.css +
+ * storybook/preview.css; now single-sourced here. */
+@theme {
+  --color-amber-50: #fffbeb;
+  --color-amber-100: #fef3c7;
+  --color-amber-200: #fde68a;
+  --color-amber-300: #fcd34d;
+  --color-amber-400: #fbbf24;
+  --color-amber-500: #f59e0b;
+  --color-amber-600: #d97706;
+  --color-amber-700: #b45309;
+  --color-amber-800: #92400e;
+  --color-amber-900: #78350f;
+  --color-amber-950: #451a03;
+  --color-red-50: #fef2f2;
+  --color-red-300: #fca5a5;
+  --color-red-600: #dc2626;
+  --color-red-700: #b91c1c;
+  --color-red-900: #7f1d1d;
+  --color-sky-500: #0ea5e9;
+  --color-sky-600: #0284c7;
+  --color-green-500: #22c55e;
+  --color-green-700: #15803d;
+  --color-emerald-600: #059669;
+  --color-cyan-600: #0891b2;
+  --color-orange-500: #f97316;
+}
+
+/* ── Salt design-token primitives (`--salt-*`) ───────────────────────────────
+ * Raw HSL channel triples (used as `hsl(var(--salt-*))`). The trailing
+ * `/* #rrggbb *\/` provenance comments are load-bearing: scripts/check-theme.ts
+ * diffs them against docs/design/design.md — do not remove them. */
+:root {
+  /* ── Culinary Modernist — light ──────────────────────────────────── */
+  --salt-background: 180 11% 98%; /* #f8fafa  surface */
+  --salt-foreground: 195 7% 11%; /* #191c1d  on-surface */
+  --salt-primary: 195 35% 32%; /* #35606e  slate teal */
+  --salt-primary-foreground: 0 0% 100%; /* #ffffff */
+  --salt-secondary: 98 20% 33%; /* #4f6443  sage */
+  --salt-secondary-foreground: 0 0% 100%; /* #ffffff */
+  --salt-secondary-container: 94 47% 82%; /* #cfe7bd  sage container */
+  --salt-on-secondary-container: 99 19% 35%; /* #536947 */
+  --salt-tertiary: 6 100% 10%; /* #340500  terracotta */
+  --salt-tertiary-foreground: 0 0% 100%; /* #ffffff */
+  --salt-tertiary-container: 10 100% 17%; /* #580f00 */
+  --salt-on-tertiary-container: 12 76% 61%; /* #e76e50 */
+  --salt-muted: 180 6% 93%; /* #eceeee  surface-container */
+  --salt-muted-foreground: 195 6% 27%; /* #42484a  on-surface-variant */
+  --salt-accent: 94 47% 82%; /* secondary-container */
+  --salt-accent-foreground: 99 19% 35%; /* on-secondary-container */
+  --salt-destructive: 0 75% 42%; /* #ba1a1a  error */
+  --salt-destructive-foreground: 0 0% 100%; /* #ffffff */
+  --salt-card: 0 0% 100%; /* surface-container-lowest */
+  --salt-card-foreground: 195 7% 11%; /* on-surface */
+  --salt-popover: 0 0% 100%;
+  --salt-popover-foreground: 195 7% 11%;
+  --salt-border: 203 7% 78%; /* #c2c7ca  outline-variant */
+  --salt-input: 203 7% 78%;
+  --salt-ring: 195 35% 32%; /* #35606e  slate teal */
+  --salt-radius-sm: 0.25rem;
+  --salt-radius-default: 0.5rem;
+  --salt-radius-md: 0.75rem;
+  --salt-radius-lg: 1rem;
+  --salt-radius-xl: 1.5rem;
+  /* Canon-item icon tile (issue #148): pale cool-grey backdrop the Tier-1
+   * pictogram sits on. Not in design.md's colour set (a component surface,
+   * not a semantic role), so it carries no /* #rrggbb *\/ provenance comment. */
+  --salt-icon-tile: 180 8% 93%;
+  --salt-control-checkbox-sm: 14px;
+  --salt-control-checkbox-md: 16px;
+  --salt-control-checkbox-lg: 18px;
+  --salt-control-switch-sm-h: 16px;
+  --salt-control-switch-sm-w: 28px;
+  --salt-control-switch-md-h: 20px;
+  --salt-control-switch-md-w: 36px;
+  --salt-control-switch-lg-h: 24px;
+  --salt-control-switch-lg-w: 44px;
+  --salt-control-switch-thumb-sm: 12px;
+  --salt-control-switch-thumb-md: 16px;
+  --salt-control-switch-thumb-lg: 20px;
+}
+
+.dark {
+  /* ── Culinary Modernist — dark ───────────────────────────────────── */
+  --salt-background: 180 3% 19%; /* #2e3131  inverse-surface */
+  --salt-foreground: 180 7% 94%; /* #eff1f1 */
+  --salt-primary: 198 26% 77%; /* #b4cad3  inverse-primary */
+  --salt-primary-foreground: 195 77% 7%; /* #041920 */
+  --salt-secondary: 98 20% 33%; /* #4f6443  sage */
+  --salt-secondary-foreground: 0 0% 100%;
+  --salt-secondary-container: 94 47% 82%;
+  --salt-on-secondary-container: 99 19% 35%;
+  --salt-tertiary: 6 100% 10%;
+  --salt-tertiary-foreground: 0 0% 100%;
+  --salt-tertiary-container: 10 100% 17%;
+  --salt-on-tertiary-container: 12 76% 61%;
+  --salt-muted: 180 3% 24%;
+  --salt-muted-foreground: 195 5% 58%;
+  --salt-accent: 98 20% 33%;
+  --salt-accent-foreground: 0 0% 100%;
+  --salt-destructive: 0 75% 42%;
+  --salt-destructive-foreground: 0 0% 100%;
+  --salt-card: 180 3% 22%;
+  --salt-card-foreground: 180 7% 94%;
+  --salt-popover: 180 3% 22%;
+  --salt-popover-foreground: 180 7% 94%;
+  --salt-border: 197 3% 46%; /* #73787a  outline */
+  --salt-input: 197 3% 46%;
+  --salt-ring: 198 26% 77%; /* #b4cad3 */
+  /* Canon-item icon tile (issue #148) — dark variant: a subtle cool-grey
+   * surface, marginally lighter than the dark card so the tile reads. */
+  --salt-icon-tile: 180 4% 30%;
+}
+
+/* ── Default border-color reset (Tailwind v4 migration, consolidated here) ────
+ * v4 core changed the Preflight default border from gray-200 to `currentColor`,
+ * so every bare `border` utility inherited the element's text colour. Pin it
+ * back to v3 gray-200 (#e5e7eb); explicit `border-border`/`--salt-border`
+ * borders are unaffected. Previously duplicated in both apps' CSS. */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: #e5e7eb;
+  }
+}
+
+/* ── Element typography + global focus ring (from saltTypographyPlugin /
+ * saltFocusRingPlugin addBase) ─────────────────────────────────────────────── */
+@layer base {
+  html {
+    font-family: 'Inter', sans-serif;
+    font-size: 1rem;
+    font-weight: 400;
+    line-height: 1.5;
+  }
+  body {
+    background-color: hsl(var(--salt-background));
+    color: hsl(var(--salt-foreground));
+  }
+  h1 {
+    font-family: 'Epilogue', sans-serif;
+    font-size: 2rem;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+  }
+  h2 {
+    font-family: 'Epilogue', sans-serif;
+    font-size: 1.5rem;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: 'Epilogue', sans-serif;
+  }
+
+  /* Global default: every focusable element gets the same ring automatically. */
+  :focus-visible {
+    outline: 2px solid hsl(var(--salt-border));
+    outline-offset: 0px;
+  }
+}
+
+/* ── Component classes (from saltComponentPlugin / saltTypographyPlugin
+ * addComponents). `@apply` runs natively in v4 CSS. ────────────────────────── */
+@layer components {
+  /* ─ Button ───────────────────────────────────────────────────────────── */
+  .salt-button {
+    @apply inline-flex items-center justify-center gap-2 rounded font-medium transition-colors duration-fast ease-standard motion-reduce:transition-none disabled:pointer-events-none data-[disabled]:opacity-50;
+  }
+  .salt-button--solid {
+    @apply border border-transparent bg-primary text-primary-foreground hover:bg-primary/90;
+  }
+  .salt-button--outline {
+    @apply border border-secondary text-secondary bg-background hover:bg-secondary hover:text-secondary-foreground;
+  }
+  .salt-button--ghost {
+    @apply border border-transparent bg-transparent hover:bg-muted hover:text-foreground;
+  }
+  .salt-button--link {
+    @apply border border-transparent bg-transparent underline-offset-4 hover:underline text-primary;
+  }
+  .salt-button--destructive {
+    @apply border border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/90;
+  }
+  .salt-button--sm {
+    @apply h-8 px-3 text-sm;
+  }
+  .salt-button--md {
+    @apply h-9 px-4 text-sm;
+  }
+  .salt-button--lg {
+    @apply h-10 px-6 text-base;
+  }
+  .salt-button--icon {
+    @apply h-9 w-9 p-0;
+  }
+  .salt-button--full {
+    @apply w-full;
+  }
+
+  /* ─ Input (TextField frame + ComboboxInput) ──────────────────────────── */
+  .salt-input {
+    @apply flex items-center gap-2 rounded border border-input bg-background;
+  }
+  .salt-input--sm {
+    @apply h-8 px-3 text-sm;
+  }
+  .salt-input--md {
+    @apply h-9 px-4 text-sm;
+  }
+  .salt-input--lg {
+    @apply h-10 px-6 text-base;
+  }
+  .salt-input--error {
+    @apply border-destructive focus-within:ring-destructive;
+  }
+  .salt-input--disabled {
+    @apply opacity-50 pointer-events-none;
+  }
+  /* Combobox variant: direct <input>; focus ring lives on the ComboboxField
+   * wrapper so it surrounds input + trigger, not just the input. */
+  .salt-input--combobox {
+    @apply outline-none h-10 w-full px-3 py-2 text-sm placeholder:text-muted-foreground;
+  }
+
+  /* ─ Trigger (SelectTrigger) ──────────────────────────────────────────── */
+  .salt-trigger {
+    @apply flex h-9 w-full items-center justify-between gap-2 rounded border border-input bg-background px-3 text-sm;
+  }
+  .salt-trigger--disabled {
+    @apply cursor-not-allowed opacity-50 pointer-events-none;
+  }
+  .salt-trigger--enabled {
+    @apply cursor-pointer hover:bg-accent/50;
+  }
+
+  /* ─ Control (Checkbox / Radio / Switch) ──────────────────────────────── */
+  .salt-control {
+  }
+  /* Checkbox */
+  .salt-control--checkbox {
+    @apply shrink-0 min-h-0 rounded-sm border border-input bg-background aspect-square data-[state=checked]:bg-secondary data-[state=checked]:text-secondary-foreground;
+  }
+  .salt-control--checkbox-sm {
+    width: var(--salt-control-checkbox-sm);
+    height: var(--salt-control-checkbox-sm);
+  }
+  .salt-control--checkbox-md {
+    width: var(--salt-control-checkbox-md);
+    height: var(--salt-control-checkbox-md);
+  }
+  .salt-control--checkbox-lg {
+    width: var(--salt-control-checkbox-lg);
+    height: var(--salt-control-checkbox-lg);
+  }
+  /* Radio item (the focusable row: indicator + label) */
+  .salt-control--radio {
+    @apply flex items-center gap-2 cursor-pointer rounded-sm outline-none;
+  }
+  /* Radio indicator (the visual dot) */
+  .salt-control--radio-indicator {
+    @apply h-4 w-4 shrink-0 rounded-full border border-secondary flex items-center justify-center;
+  }
+  .salt-control--radio-indicator-checked {
+    @apply bg-secondary;
+  }
+  .salt-control--radio-indicator-unchecked {
+    @apply bg-background;
+  }
+  /* Switch root (the track) */
+  .salt-control--switch {
+    @apply inline-flex shrink-0 min-h-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-base ease-standard motion-reduce:transition-none data-[state=checked]:bg-secondary data-[state=unchecked]:bg-input;
+  }
+  .salt-control--switch-sm {
+    height: var(--salt-control-switch-sm-h);
+    width: var(--salt-control-switch-sm-w);
+  }
+  .salt-control--switch-md {
+    height: var(--salt-control-switch-md-h);
+    width: var(--salt-control-switch-md-w);
+  }
+  .salt-control--switch-lg {
+    height: var(--salt-control-switch-lg-h);
+    width: var(--salt-control-switch-lg-w);
+  }
+  /* Switch thumb */
+  .salt-control--switch-thumb {
+    @apply pointer-events-none block rounded-full bg-background shadow-sm transition-transform duration-base ease-standard motion-reduce:transition-none data-[state=unchecked]:translate-x-0;
+  }
+  .salt-control--switch-thumb-sm {
+    @apply data-[state=checked]:translate-x-3;
+    height: var(--salt-control-switch-thumb-sm);
+    width: var(--salt-control-switch-thumb-sm);
+  }
+  .salt-control--switch-thumb-md {
+    @apply data-[state=checked]:translate-x-4;
+    height: var(--salt-control-switch-thumb-md);
+    width: var(--salt-control-switch-thumb-md);
+  }
+  .salt-control--switch-thumb-lg {
+    @apply data-[state=checked]:translate-x-5;
+    height: var(--salt-control-switch-thumb-lg);
+    width: var(--salt-control-switch-thumb-lg);
+  }
+  /* Shared disabled state */
+  .salt-control--disabled {
+    @apply opacity-50 pointer-events-none cursor-not-allowed;
+  }
+
+  /* ─ Typography component classes ─────────────────────────────────────── */
+  .text-display {
+    font-family: 'Epilogue', sans-serif;
+    font-size: 3rem;
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+  }
+  .text-h1 {
+    font-family: 'Epilogue', sans-serif;
+    font-size: 2rem;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+  }
+  .text-h2 {
+    font-family: 'Epilogue', sans-serif;
+    font-size: 1.5rem;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+  .text-body-lg {
+    font-size: 1.125rem;
+    font-weight: 400;
+    line-height: 1.6;
+  }
+  .text-body-md {
+    font-size: 1rem;
+    font-weight: 400;
+    line-height: 1.5;
+  }
+  .text-label-caps {
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+}
+
+/* ── Custom utilities (from saltFocusRingPlugin addUtilities) ────────────────
+ * v4 custom utilities use `@utility`. */
+@utility salt-focus-ring {
+  @apply focus-visible:outline focus-visible:outline-2 focus-visible:outline-border focus-visible:outline-offset-0;
+}
+@utility salt-focus-ring-within {
+  @apply focus-within:outline focus-within:outline-2 focus-within:outline-border focus-within:outline-offset-0;
+}
+
+/* transition-duration is a NUMBER-only functional utility in v4 (`duration-<n>`),
+ * so the named scale (was theme.extend.transitionDuration) does not generate
+ * `duration-fast` etc. from a `--duration-*` theme var. Express it as static
+ * utilities that mirror v4's own duration utility: each drives the transition
+ * AND the animation duration (the latter is what the animate-in/out enter/exit
+ * motions consume). Values come from the `--duration-*` @theme tokens above
+ * (the single source generate-tokens reads). */
+@utility duration-fast {
+  --tw-duration: var(--duration-fast);
+  transition-duration: var(--duration-fast);
+  animation-duration: var(--duration-fast);
+}
+@utility duration-base {
+  --tw-duration: var(--duration-base);
+  transition-duration: var(--duration-base);
+  animation-duration: var(--duration-base);
+}
+@utility duration-slow {
+  --tw-duration: var(--duration-slow);
+  transition-duration: var(--duration-slow);
+  animation-duration: var(--duration-slow);
+}
+/* v4's built-in (functional) duration utility registers --tw-duration as a
+ * non-inherited @property; our static duration-* utilities don't trigger that
+ * registration, so declare it explicitly. Preserves the baseline semantics: a
+ * child's bare `transition` must not inherit a parent's --tw-duration. */
+@property --tw-duration {
+  syntax: '*';
+  inherits: false;
+}
+
+/* z-index utilities: v4 has no first-class z-index theme namespace, so the named
+ * scale (was theme.extend.zIndex) is expressed as static custom utilities. */
+@utility z-popover {
+  z-index: 40;
+}
+@utility z-dialog {
+  z-index: 50;
+}
+@utility z-tooltip {
+  z-index: 70;
+}
+
+/* ── Keyframes (from saltProgressPlugin addBase) ────────────────────────────
+ * Referenced by Progress via `animate-[salt-progress-indeterminate_1s_ease_infinite]`. */
+@keyframes salt-progress-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}

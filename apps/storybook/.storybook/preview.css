@@ -7,59 +7,18 @@
  * (.section-title etc.) are intentionally omitted — stories don't use them. */
 
 @import '../src/tokens.css';
+/* Salt design system (Tailwind v4 core, tokens, base, component classes,
+ * utilities, default-palette pins, border-color reset) ships from
+ * @salt/ui-components. Replaces the former `@import 'tailwindcss'` + `@config`
+ * + duplicated @theme palette pins + border reset (Tailwind v4 migration Phase 3,
+ * issue #323). The storybook-canvas-specific rules below (focus ring, element
+ * resets, popup positioning) stay — Phase 4 reconciles them. */
+@import '@salt/ui-components/styles.css';
 
-@import 'tailwindcss';
-@config '../tailwind.config.ts';
-@custom-variant dark (&:where(.dark, .dark *));
-
-/* Tailwind v4 migration (Phase 2): pin the default-palette colors used by the
- * ui-components rendered in the canvas (Toast/EditableRow use amber/red) to their
- * Tailwind v3 sRGB hex, matching web-pwa's app.css. v4 core's default palette is
- * oklch and would shift these vs the v3 Chromatic baselines. Duplicated with
- * app.css for now; Phase 3 consolidates into the ui-components CSS entry. */
-@theme {
-  --color-amber-50: #fffbeb;
-  --color-amber-100: #fef3c7;
-  --color-amber-200: #fde68a;
-  --color-amber-300: #fcd34d;
-  --color-amber-400: #fbbf24;
-  --color-amber-500: #f59e0b;
-  --color-amber-600: #d97706;
-  --color-amber-700: #b45309;
-  --color-amber-800: #92400e;
-  --color-amber-900: #78350f;
-  --color-amber-950: #451a03;
-  --color-red-50: #fef2f2;
-  --color-red-300: #fca5a5;
-  --color-red-600: #dc2626;
-  --color-red-700: #b91c1c;
-  --color-red-900: #7f1d1d;
-  --color-sky-500: #0ea5e9;
-  --color-sky-600: #0284c7;
-  --color-green-500: #22c55e;
-  --color-green-700: #15803d;
-  --color-emerald-600: #059669;
-  --color-cyan-600: #0891b2;
-  --color-orange-500: #f97316;
-}
-
-/* Tailwind v4 migration (Phase 2): restore v3's default border colour. v4 core
- * changed the Preflight default from gray-200 to `currentColor`, so every bare
- * `border` utility (no explicit colour) inherited the element's text colour —
- * turning grey/invisible borders green vs the v3 baselines. This universal reset
- * pins the default back to v3 gray-200 (#e5e7eb); explicit `border-border` /
- * `--salt-border` borders (and the element resets below) are unaffected.
- * Duplicated with app.css for now; Phase 3 consolidates into the ui-components
- * CSS entry. */
-@layer base {
-  *,
-  ::after,
-  ::before,
-  ::backdrop,
-  ::file-selector-button {
-    border-color: #e5e7eb;
-  }
-}
+/* Declare Storybook's own @source roots so v4 scans this app's stories +
+ * canvas files (the shared entry only scans the ui-components source tree). */
+@source "../src/**/*.{ts,svelte,html}";
+@source "./**/*.{ts,svelte,html}";
 
 @layer base {
   /* ── Focus ring ──────────────────────────────────────────────────────── */
