@@ -2,7 +2,7 @@
 import { clsx, type ClassValue } from 'clsx';
 import { extendTailwindMerge } from 'tailwind-merge';
 
-// Teach tailwind-merge the Salt typography scale (tailwind-preset.ts → theme.fontSize)
+// Teach tailwind-merge the Salt typography scale (salt.css @theme --text-*)
 // so size tokens are treated as font-size utilities and don't collapse against
 // the text-color group (e.g. `text-foreground`).
 const twMerge = extendTailwindMerge({
