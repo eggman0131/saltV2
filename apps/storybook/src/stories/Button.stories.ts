@@ -13,6 +13,15 @@ import { Button } from '@salt/ui-components';
 // lets us build that snippet from a plain .ts story.
 const label = (text: string) => createRawSnippet(() => ({ render: () => `<span>${text}</span>` }));
 
+// Icon-only content for the `size: 'icon'` story. createRawSnippet returns an
+// HTML string (same mechanism as label above), so a plain .ts story can render
+// an icon without mounting a Svelte icon component. A single <svg> root keeps it
+// a valid raw snippet.
+const plusIcon = createRawSnippet(() => ({
+  render: () =>
+    `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>`,
+}));
+
 const meta = {
   title: 'Primitives/Button',
   component: Button,
@@ -53,3 +62,14 @@ export const Destructive: Story = {
 
 export const Loading: Story = { args: { loading: true, children: label('Loading') } };
 export const Disabled: Story = { args: { disabled: true, children: label('Disabled') } };
+
+// Link variant (salt-button--link): renders as inline, underlined text.
+export const Link: Story = { args: { variant: 'link', children: label('Link') } };
+
+// Size scale beyond the default md. Large (salt-button--lg) and icon-only
+// (salt-button--icon, square 36px) were previously never snapshotted.
+export const Large: Story = { args: { size: 'lg', children: label('Large') } };
+export const Icon: Story = { args: { size: 'icon', children: plusIcon } };
+
+// Full-width (salt-button--full): stretches to the container width.
+export const FullWidth: Story = { args: { fullWidth: true, children: label('Full width') } };
