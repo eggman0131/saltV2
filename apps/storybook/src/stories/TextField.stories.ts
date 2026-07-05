@@ -55,3 +55,21 @@ export const WithDescription: Story = {
 
 // Disabled.
 export const Disabled: Story = { args: { disabled: true } };
+
+// Size scale: sm/lg were previously never snapshotted (salt-input--sm / --lg).
+export const Small: Story = { args: { size: 'sm', label: 'Small' } };
+export const Large: Story = { args: { size: 'lg', label: 'Large' } };
+
+// Focus ring: the field frame carries `.salt-focus-ring-within`, so focusing
+// the child <input> renders the outline via `:focus-within` — the only story
+// that snapshots the focus-ring surface. Uses CSF3's core `play` field
+// (supported by @storybook/svelte, no extra dep). `:focus-within` does not
+// require `:focus-visible`, so a plain programmatic .focus() reliably shows the
+// ring in Chromium.
+export const Focused: Story = {
+  args: { label: 'Focused', value: 'jane@example.com' },
+  play: async ({ canvasElement }) => {
+    const input = canvasElement.querySelector<HTMLInputElement>('input');
+    input?.focus();
+  },
+};
