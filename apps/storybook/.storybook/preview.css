@@ -43,6 +43,24 @@
   --color-orange-500: #f97316;
 }
 
+/* Tailwind v4 migration (Phase 2): restore v3's default border colour. v4 core
+ * changed the Preflight default from gray-200 to `currentColor`, so every bare
+ * `border` utility (no explicit colour) inherited the element's text colour —
+ * turning grey/invisible borders green vs the v3 baselines. This universal reset
+ * pins the default back to v3 gray-200 (#e5e7eb); explicit `border-border` /
+ * `--salt-border` borders (and the element resets below) are unaffected.
+ * Duplicated with app.css for now; Phase 3 consolidates into the ui-components
+ * CSS entry. */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: #e5e7eb;
+  }
+}
+
 @layer base {
   /* ── Focus ring ──────────────────────────────────────────────────────── */
   :focus-visible {
