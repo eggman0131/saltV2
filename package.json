@@ -69,7 +69,7 @@
     "@vitest/coverage-v8": "^4.1.10",
     "dependency-cruiser": "^18.0.0",
     "eslint": "^10.6.0",
-    "eslint-plugin-boundaries": "^6.0.2",
+    "eslint-plugin-boundaries": "^7.0.1",
     "eslint-plugin-playwright": "^2.10.5",
     "firebase-tools": "^15.22.4",
     "husky": "^9.1.7",
