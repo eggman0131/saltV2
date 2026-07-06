@@ -1,5 +1,12 @@
 <script lang="ts">
-  import { Checkbox, Button } from '@salt/ui-components';
+  import {
+    Checkbox,
+    Button,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+  } from '@salt/ui-components';
   import { ChevronDown, ChevronRight, ChefHat, StickyNote } from '@lucide/svelte';
   import { memberInitials, weatherIcon, type Day, type Member } from '@salt/domain';
   import type { WeatherDaySummary } from '@salt/domain/schemas';
@@ -59,10 +66,43 @@
   // absence identical to today's no-weather behaviour, no placeholder box.
   const icon = $derived(weather ? weatherIcon(weather) : null);
 
-  // Home time stays blank by default; opening the picker on a blank field starts
-  // from the usual dinner time rather than 00:00 (DOM-only — not persisted until
-  // the user actually picks a value).
-  const EDIT_START_TIME = '18:30';
+  // Home time is optional and picked as two short dropdowns — [HH]:[MM] — rather
+  // than a native <input type="time">, which renders a different control on every
+  // OS (spinner / wheel / free-text) and makes the minute field an unwanted scroll
+  // through all 60 values. This field answers "when are you home for dinner", so
+  // both lists are deliberately short: the hour spans the dinner window (17–22)
+  // and the minute is quarter-hours only (00/15/30/45) — no scrolling in either,
+  // and both seed to the usual dinner time. Empty value = no home time set (stays
+  // blank until an explicit pick); stored 24h "HH:MM" matches the summary chip. A
+  // legacy value outside the window still displays in the trigger (it just isn't
+  // re-selectable without moving into the window).
+  const HOUR_OPTIONS = Array.from({ length: 6 }, (_, i) => String(17 + i));
+  const MINUTE_OPTIONS = ['00', '15', '30', '45'];
+  const DINNER_HOUR = '18';
+  const DINNER_MINUTE = '30';
+
+  // Split a stored "HH:MM" (or null) into its parts; '' for each when unset so the
+  // triggers can show a placeholder while the dropdowns still seed to dinner time.
+  const timeParts = (t: string | null | undefined): { hh: string; mm: string } => {
+    const [hh = '', mm = ''] = (t ?? '').split(':');
+    return { hh, mm };
+  };
+  // Commit a change from either dropdown. Picking the hour's "No time" (value '')
+  // clears to null; otherwise the untouched half falls back to the dinner-time
+  // seed so a single pick still yields a whole, sensible time.
+  const commitHour = (memberId: string, h: string): void => {
+    if (h === '') return onAttendeeHomeTime(memberId, null);
+    onAttendeeHomeTime(
+      memberId,
+      `${h}:${timeParts(attendeeOf(memberId)?.homeTime).mm || DINNER_MINUTE}`,
+    );
+  };
+  const commitMinute = (memberId: string, m: string): void => {
+    onAttendeeHomeTime(
+      memberId,
+      `${timeParts(attendeeOf(memberId)?.homeTime).hh || DINNER_HOUR}:${m}`,
+    );
+  };
 
   // Initial-chips grow to use the available width when there are few members and
   // shrink as the roster grows (the household is small, ~5, with rare guests).
@@ -305,30 +345,55 @@
               </button>
             </div>
             {#if isAttending(m.id)}
+              {@const parts = timeParts(a?.homeTime)}
               <!-- Time entry sits to the left of the note; both share the same
                    height so the row reads as one control. -->
               <div class="ml-1 flex items-stretch gap-2">
-                <input
-                  type="time"
-                  step="900"
-                  class="h-8 shrink-0 rounded-md border bg-background px-2 text-sm"
-                  value={a?.homeTime ?? ''}
-                  onfocus={(e) => {
-                    // Seed the picker from the usual dinner time when blank (DOM
-                    // only — nothing is saved until the user actually picks one).
-                    if (e.currentTarget.value === '') e.currentTarget.value = EDIT_START_TIME;
-                  }}
-                  oninput={(e) => {
-                    const v = e.currentTarget.value;
-                    onAttendeeHomeTime(m.id, v === '' ? null : v);
-                  }}
-                  onblur={(e) => {
-                    // Re-sync to the committed value, discarding an unpicked seed.
-                    e.currentTarget.value = attendeeOf(m.id)?.homeTime ?? '';
-                  }}
-                  aria-label={`${m.name} home time`}
-                  data-testid={`${testid}-time-${m.id}`}
-                />
+                <!-- Home time as [HH]:[MM]. Each dropdown's `value` seeds to the
+                     dinner default so a blank field opens at ~18:30 (not midnight),
+                     while the trigger shows a placeholder until a real value is set. -->
+                <div class="flex shrink-0 items-center gap-0.5">
+                  <Select
+                    value={parts.hh || DINNER_HOUR}
+                    onValueChange={(v) => commitHour(m.id, v)}
+                  >
+                    <SelectTrigger
+                      class="h-8 w-12 justify-center px-1 tabular-nums {parts.hh
+                        ? ''
+                        : 'text-muted-foreground'}"
+                      aria-label={`${m.name} home time hour`}
+                      data-testid={`${testid}-time-${m.id}`}
+                    >
+                      {parts.hh || 'HH'}
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">No time</SelectItem>
+                      {#each HOUR_OPTIONS as h (h)}
+                        <SelectItem value={h}>{h}</SelectItem>
+                      {/each}
+                    </SelectContent>
+                  </Select>
+                  <span class="text-sm text-muted-foreground">:</span>
+                  <Select
+                    value={parts.mm || DINNER_MINUTE}
+                    onValueChange={(v) => commitMinute(m.id, v)}
+                  >
+                    <SelectTrigger
+                      class="h-8 w-12 justify-center px-1 tabular-nums {parts.mm
+                        ? ''
+                        : 'text-muted-foreground'}"
+                      aria-label={`${m.name} home time minute`}
+                      data-testid={`${testid}-time-min-${m.id}`}
+                    >
+                      {parts.mm || 'MM'}
+                    </SelectTrigger>
+                    <SelectContent>
+                      {#each MINUTE_OPTIONS as mo (mo)}
+                        <SelectItem value={mo}>{mo}</SelectItem>
+                      {/each}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <input
                   class="h-8 w-full flex-1 rounded-md border bg-background px-2 text-sm"
                   placeholder="Add a note (e.g. portion for tomorrow)"
