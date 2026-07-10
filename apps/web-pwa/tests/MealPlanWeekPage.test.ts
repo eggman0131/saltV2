@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, cleanup, waitFor, within, fireEvent } from '@testing-library/svelte';
+import { render, screen, cleanup, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { emptyWeek, setDayNote, type MealPlanWeek, type Member } from '@salt/domain';
 
@@ -151,10 +151,11 @@ describe('MealPlanWeekPage', () => {
         },
       },
     });
-    const timeInput = (await screen.findByTestId(
-      'day-2026-06-08-time-alice@e.org',
-    )) as HTMLInputElement;
-    await userEvent.clear(timeInput);
+    // The home-time picker is a Select; choosing "No time" clears it to null.
+    const timeTrigger = await screen.findByTestId('day-2026-06-08-time-alice@e.org');
+    await userEvent.click(timeTrigger);
+    await waitFor(() => screen.getByRole('option', { name: 'No time' }));
+    await userEvent.click(screen.getByRole('option', { name: 'No time' }));
     await waitFor(() =>
       expect(vi.mocked(setWeekAttendeeHomeTime)).toHaveBeenCalledWith(
         '2026-06-08',
@@ -248,7 +249,7 @@ describe('MealPlanWeekPage', () => {
     expect(screen.queryByTestId('day-2026-06-08-note-indicator')).not.toBeInTheDocument();
   });
 
-  it('seeds the time picker from 18:30 when blank, without persisting on cancel', async () => {
+  it('splits into hour + quarter-hour minute, seeded to the dinner default', async () => {
     mockWeek._set({
       ...emptyWeek('2026-06-08'),
       days: {
@@ -264,17 +265,27 @@ describe('MealPlanWeekPage', () => {
     });
     render(MealPlanWeekPage);
     await expandDay('2026-06-08');
-    const timeInput = screen.getByTestId('day-2026-06-08-time-alice@e.org') as HTMLInputElement;
-    expect(timeInput.value).toBe('');
-
-    await fireEvent.focus(timeInput);
-    expect(timeInput.value).toBe('18:30');
-    // Focus alone does not persist anything.
+    const hourTrigger = screen.getByTestId('day-2026-06-08-time-alice@e.org');
+    const minuteTrigger = screen.getByTestId('day-2026-06-08-time-min-alice@e.org');
+    // A blank home time reads as placeholders; nothing is persisted until a pick.
+    expect(hourTrigger).toHaveTextContent('HH');
+    expect(minuteTrigger).toHaveTextContent('MM');
     expect(vi.mocked(setWeekAttendeeHomeTime)).not.toHaveBeenCalled();
 
-    // Blurring without picking re-syncs back to the committed blank value.
-    await fireEvent.blur(timeInput);
-    expect(timeInput.value).toBe('');
+    // The minute list offers only quarter-hours — no scrolling through 60 values.
+    await userEvent.click(minuteTrigger);
+    await waitFor(() => screen.getByRole('option', { name: '15' }));
+    expect(screen.queryByRole('option', { name: '10' })).not.toBeInTheDocument();
+    // Picking a minute from blank persists HH:MM, defaulting the untouched hour to
+    // the dinner-time seed (18) — so a single pick still yields a whole time.
+    await userEvent.click(screen.getByRole('option', { name: '15' }));
+    await waitFor(() =>
+      expect(vi.mocked(setWeekAttendeeHomeTime)).toHaveBeenCalledWith(
+        '2026-06-08',
+        'alice@e.org',
+        '18:15',
+      ),
+    );
   });
 
   it('lets a non-attending member be set as chef', async () => {

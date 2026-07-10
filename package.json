@@ -64,13 +64,13 @@
   "devDependencies": {
     "@commitlint/cli": "^21.2.0",
     "@commitlint/config-conventional": "^21.2.0",
-    "@typescript-eslint/eslint-plugin": "^8.62.1",
-    "@typescript-eslint/parser": "^8.62.1",
-    "@vitest/coverage-v8": "^4.1.9",
+    "@typescript-eslint/eslint-plugin": "^8.63.0",
+    "@typescript-eslint/parser": "^8.63.0",
+    "@vitest/coverage-v8": "^4.1.10",
     "dependency-cruiser": "^18.0.0",
     "eslint": "^10.6.0",
-    "eslint-plugin-boundaries": "^6.0.2",
-    "eslint-plugin-playwright": "^2.10.4",
+    "eslint-plugin-boundaries": "^7.0.1",
+    "eslint-plugin-playwright": "^2.10.5",
     "firebase-tools": "^15.22.4",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.8",
@@ -78,6 +78,6 @@
     "prettier-plugin-svelte": "^4.1.1",
     "svelte-eslint-parser": "^1.8.0",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.10"
   }
 }
