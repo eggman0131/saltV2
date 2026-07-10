@@ -409,6 +409,21 @@ export interface RecipeAddRow {
   // Which producer to make when there's more than one candidate. Seeded to the
   // first producer's id; `null` when there are no producers.
   producerId: string | null;
+  // ─── Made sub-entries (buy-or-make, nested sheet — Phase 1) ──────────────────
+  // When the user selects Make, the chosen producer's own ingredients are built
+  // EAGERLY here as nested rows — each a full `RecipeAddRow` with its own
+  // `add`/`check` seeded by `recipeItemAddDefault`, rendered as an indented,
+  // individually-toggleable sub-entry beneath the (label-only) made header.
+  // `null` in the Buy state, where the row is a single ordinary addable line.
+  // Rebuilt when Make is toggled or the producer selection changes.
+  //
+  // ONE LEVEL DEEP: sub-rows carry no producers (`producers: []`, `make: false`,
+  // `subRows: null`), so a sub-entry can never itself be "made"/expanded — it is
+  // always a plain Add/Check row even if some recipe could also make it. This is
+  // a SHEET-ONLY hierarchy: on commit each included sub-entry is still written as
+  // a flat sibling shopping-list item stamped with the PRODUCER's `SourceRef`
+  // (recipeId/servings/label = the producer's), exactly as before.
+  subRows: RecipeAddRow[] | null;
 }
 
 // Compute the scaled amount/unit for an ingredient. quantity is always in metric
@@ -484,44 +499,93 @@ export function buildRecipeAddPlan(recipe: Recipe, servings: number): RecipeAddR
         producers,
         make: false, // default to buy — unchanged behaviour unless the user opts in
         producerId: producers[0]?.id ?? null,
+        subRows: null, // populated eagerly only when the user selects Make
       });
     }
   }
   return rows;
 }
 
+// Build the nested sub-entry rows for a made row: the chosen producer's OWN
+// ingredients as one full batch at the producer's base servings (1 batch — no
+// per-recipe scaling yet). Each is a full `RecipeAddRow` with its own default
+// Add/Check (via `recipeItemAddDefault`, inside `buildRecipeAddPlan`), but with
+// its buy-or-make affordance stripped (`producers: []`, `producerId: null`,
+// `make: false`, `subRows: null`) so a sub-entry is always a plain toggleable
+// row and can never be expanded again — ONE LEVEL DEEP (matching the old
+// commit-time rebuild, which seeded `make: false`). Returns `[]` when no
+// producer resolves, so the made header then contributes nothing (matching
+// commit + count). Pure read against the recipe + canon snapshots (via
+// `buildRecipeAddPlan`), so it's safe to call from the sheet on Make/producer
+// changes.
+export function buildMadeSubRows(row: RecipeAddRow): RecipeAddRow[] {
+  if (row.producers.length === 0) return [];
+  const producer = row.producers.find((r) => r.id === row.producerId) ?? row.producers[0]!;
+  const producerServings = producer.metadata.servings ?? 1;
+  return buildRecipeAddPlan(producer, producerServings).map((sub) => ({
+    ...sub,
+    producers: [],
+    producerId: null,
+    make: false,
+    subRows: null,
+  }));
+}
+
 // How many shopping-list items a confirmed plan will actually write — the number
 // the review sheet's "Add N to list" preview must show so it matches the commit
-// result (issue #185, Phase 2). Mirrors the write path in `commitRecipeAddPlan`:
-//   • an included Buy row (`add && !make`) writes its single item → 1;
-//   • an included Make row with a resolvable producer fans out to that producer's
-//     own `add:true` sub-rows → that sub-plan's size (one level deep, exactly what
-//     the commit writes);
-//   • a Make row whose producer can't be resolved falls back to 1 (defensive — it
-//     also matches commit, which writes the single item when `producers` is empty).
-// Pure synchronous read against the canon + recipe snapshots (via
-// `buildRecipeAddPlan`), so it's safe to recompute in a Svelte `$derived`.
+// result (issue #185). Walks the eagerly-built nested structure (Phase 1 of the
+// nested sheet), never re-expanding at count time:
+//   • a made row (`make`) is a LABEL-ONLY header that emits no item of its own —
+//     it contributes only its included (`add: true`) sub-entries;
+//   • any other included row (`add: true`, Buy) writes its single item → 1.
+// Pure synchronous walk over the in-memory rows — safe to recompute in a Svelte
+// `$derived`.
 export function recipeAddPlanItemCount(rows: readonly RecipeAddRow[]): number {
   let total = 0;
   for (const row of rows) {
-    if (!row.add) continue;
-    if (row.make && row.producers.length > 0) {
-      const producer = row.producers.find((r) => r.id === row.producerId) ?? row.producers[0];
-      if (producer) {
-        const subRows = buildRecipeAddPlan(producer, producer.metadata.servings ?? 1);
-        total += subRows.filter((r) => r.add).length;
-        continue;
-      }
+    if (row.make) {
+      // Label-only made header: count only its ticked sub-entries.
+      total += (row.subRows ?? []).filter((sub) => sub.add).length;
+      continue;
     }
-    total += 1;
+    if (row.add) total += 1;
   }
   return total;
+}
+
+// Build the single shopping-list item for one plan row against a `SourceRef`.
+// Extracted so the Buy path and the made-header sub-entry path share the exact
+// same mapping (clean name, notes, scaled amount/unit, canon match, needsCheck).
+// Returns the domain result; a domain `ValidationError` short-circuits commit.
+function buildAddedItem(row: RecipeAddRow, source: SourceRef, now: string) {
+  return addItem(
+    [],
+    {
+      rawText: row.itemText,
+      ...(row.notes ? { notes: row.notes } : {}),
+      source,
+      now,
+      needsCheck: row.check,
+      ...(row.matched ? { canonId: row.canonId, matchState: 'matched' as const } : {}),
+      ...(row.amount !== undefined ? { amount: row.amount } : {}),
+      ...(row.unit !== undefined ? { unit: row.unit } : {}),
+    },
+    _itemIds,
+  );
 }
 
 // Write the user-confirmed rows of a recipe-add plan to the shopping list. Only
 // rows left as `add: true` are written; `check: true` rows land flagged for
 // verification (needsCheck). Matched rows carry their canonId + matchState and
-// scaled amount/unit. One item per row — combining is display-time (Phase 3).
+// scaled amount/unit. One item per row — combining is display-time.
+//
+// Buy-or-make (nested sheet, Phase 1): a made row (`make`) is a LABEL-ONLY header
+// that emits NO item of its own. Instead its eagerly-built `subRows` are written
+// — walking the nested structure the sheet already prepared, rather than
+// re-expanding the producer here. Each included (`add: true`) sub-entry is a flat
+// sibling item stamped with the CHOSEN producer's `SourceRef` (recipeId/servings/
+// label = the producer's), so the same canon trigger picks it up exactly as
+// before. Sub-rows are one level deep (`make: false`), so there is no recursion.
 export async function commitRecipeAddPlan(
   recipe: Recipe,
   listId: string,
@@ -529,70 +593,53 @@ export async function commitRecipeAddPlan(
   rows: readonly RecipeAddRow[],
 ): Promise<ReadResult<void, DomainError>> {
   const now = new Date().toISOString();
-  const source: SourceRef = {
+  const parentSource: SourceRef = {
     kind: 'recipe',
     recipeId: recipe.id,
     servings,
     label: recipe.title,
   };
 
-  // Direct single-item writes (buy rows). Their failures are reported here.
+  // All writes are direct single-item `saveShoppingListItem` calls (Buy rows and
+  // made sub-entries alike). Failures are reported here.
   const saves: Promise<ReadResult<void, DomainError>>[] = [];
-  // "Make" fan-outs (Phase 2). Each is a recursive commit whose own failures were
-  // already reported inside it, so these are only propagated — never re-reported.
-  const subPlans: Promise<ReadResult<void, DomainError>>[] = [];
   for (const row of rows) {
-    if (!row.add) continue;
-
-    // "Make" fan-out (Phase 2): when the user chose to make an eligible row, add
-    // the CHOSEN producer's OWN ingredients as one full batch at that producer's
-    // base servings (multiplier 1) instead of the single canon item. This reuses
-    // the exact conversion (`buildRecipeAddPlan`) and per-row add path — a plain
-    // recursive `commitRecipeAddPlan` on the producer — so the sub-items ride the
-    // same `saveShoppingListItem` write (the canon trigger picks them up) and get
-    // a fresh `SourceRef` stamped with the producer's id/servings/name.
-    //
-    // ONE LEVEL DEEP: `buildRecipeAddPlan` seeds every sub-row with `make: false`,
-    // so the recursion never re-expands a sub-ingredient that itself has a
-    // producer — it's added as a plain item. That default also makes cycles
-    // impossible (the recursion can only branch on make, which is off below).
-    if (row.make && row.producers.length > 0) {
-      const producer = row.producers.find((r) => r.id === row.producerId) ?? row.producers[0]!;
+    if (row.make) {
+      // Label-only made header: emit nothing for the header; write each included
+      // sub-entry stamped with the chosen producer's SourceRef.
+      const subRows = row.subRows ?? [];
+      if (subRows.length === 0) continue;
+      const producer = row.producers.find((r) => r.id === row.producerId) ?? row.producers[0];
+      if (!producer) continue;
       const producerServings = producer.metadata.servings ?? 1;
-      const subRows = buildRecipeAddPlan(producer, producerServings);
-      subPlans.push(commitRecipeAddPlan(producer, listId, producerServings, subRows));
+      const subSource: SourceRef = {
+        kind: 'recipe',
+        recipeId: producer.id,
+        servings: producerServings,
+        label: producer.title,
+      };
+      for (const sub of subRows) {
+        if (!sub.add) continue;
+        const result = buildAddedItem(sub, subSource, now);
+        if (result.kind !== 'ok') return result;
+        saves.push(saveShoppingListItem(listId, result.value[0]!));
+      }
       continue;
     }
 
-    const result = addItem(
-      [],
-      {
-        rawText: row.itemText,
-        ...(row.notes ? { notes: row.notes } : {}),
-        source,
-        now,
-        needsCheck: row.check,
-        ...(row.matched ? { canonId: row.canonId, matchState: 'matched' as const } : {}),
-        ...(row.amount !== undefined ? { amount: row.amount } : {}),
-        ...(row.unit !== undefined ? { unit: row.unit } : {}),
-      },
-      _itemIds,
-    );
+    if (!row.add) continue;
+    const result = buildAddedItem(row, parentSource, now);
     if (result.kind !== 'ok') return result;
     saves.push(saveShoppingListItem(listId, result.value[0]!));
   }
 
-  if (saves.length === 0 && subPlans.length === 0) return success(undefined);
+  if (saves.length === 0) return success(undefined);
 
-  const [results, subResults] = await Promise.all([Promise.all(saves), Promise.all(subPlans)]);
+  const results = await Promise.all(saves);
+  // Report the first shopping-list write failure (StorageError/SyncError/etc.);
+  // the addItem domain ValidationError above short-circuits before any write and
+  // is a suppressed category regardless, so it is intentionally not reported.
   const firstFailure = results.find((r) => r.kind !== 'ok');
-  // Report the first direct shopping-list write failure (StorageError/SyncError/
-  // etc.); the addItem domain ValidationError above short-circuits before any
-  // write and is a suppressed category regardless, so it is intentionally not
-  // reported.
   if (firstFailure) return reportIfFailed(getErrorReporter(), firstFailure);
-  // A "make" fan-out failure was already reported inside its own recursive commit
-  // (Phase 2) — propagate it without re-reporting.
-  const subFailure = subResults.find((r) => r.kind !== 'ok');
-  return subFailure ?? success(undefined);
+  return success(undefined);
 }

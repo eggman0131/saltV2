@@ -17,6 +17,7 @@
   import type { Recipe } from '@salt/domain';
   import {
     buildRecipeAddPlan,
+    buildMadeSubRows,
     commitRecipeAddPlan,
     recipeAddPlanItemCount,
     type RecipeAddRow,
@@ -77,12 +78,26 @@
     if (value) row.add = true;
   }
 
-  // Buy-or-make (Phase 2). Choosing Make fans out the chosen producing recipe's
-  // ingredients on commit; Make implies Add so an eligible row can't be "made" yet
-  // left off the list.
+  // Buy-or-make. Choosing Make turns the row into a label-only header and builds
+  // the chosen producer's ingredients EAGERLY as nested, individually-toggleable
+  // sub-entries (each seeded exactly like a master-recipe row). Flipping back to
+  // Buy collapses to the single ordinary line. Make implies Add so an eligible
+  // row can't be "made" yet left off the list.
   function setMake(row: RecipeAddRow, value: boolean): void {
     row.make = value;
-    if (value) row.add = true;
+    if (value) {
+      row.add = true;
+      row.subRows = buildMadeSubRows(row);
+    } else {
+      row.subRows = null;
+    }
+  }
+
+  // When the chosen producer changes, rebuild the nested sub-entries so they
+  // reflect the newly-selected producer's ingredients.
+  function setProducer(row: RecipeAddRow, producerId: string): void {
+    row.producerId = producerId;
+    if (row.make) row.subRows = buildMadeSubRows(row);
   }
 
   function producerLabel(row: RecipeAddRow): string {
@@ -160,84 +175,139 @@
       </div>
       {#each rows as row (row.ingredientId)}
         <div
-          class="flex items-center gap-2 rounded border border-border px-3 py-2 text-sm"
+          class="rounded border border-border text-sm"
           data-testid="recipe-add-review-row"
           data-ingredient-id={row.ingredientId}
         >
-          <div class="flex-1 min-w-0">
-            <span class="block truncate">
-              {rowLabel(row)}
-              <!-- Suppress the parent's required amount in Make mode: Make ignores
-                   it (a full producer batch is fanned out), so showing it misleads. -->
-              {#if amountLabel(row) && !row.make}<span class="text-muted-foreground"
-                  >({amountLabel(row)})</span
-                >{/if}
-              {#if row.isOptional}<span class="text-xs text-muted-foreground">(optional)</span>{/if}
-            </span>
-            {#if row.producers.length > 0}
-              <!-- Buy-or-make (Phase 2): eligible rows only. Default Buy — Buy is
-                   identical to the pre-Phase-2 single-item add. Make fans out the
-                   chosen producing recipe's ingredients on commit. -->
-              <div class="mt-1 flex items-center gap-2" data-testid="recipe-add-review-buymake">
-                <div class="inline-flex gap-1">
-                  <Button
-                    size="sm"
-                    variant={row.make ? 'outline' : 'solid'}
-                    class="h-6 px-2 text-xs"
-                    onclick={() => setMake(row, false)}
-                    aria-pressed={!row.make}
-                    aria-label="Buy {rowLabel(row)}"
-                    data-testid="recipe-add-review-buy"
-                  >
-                    Buy
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={row.make ? 'solid' : 'outline'}
-                    class="h-6 px-2 text-xs"
-                    onclick={() => setMake(row, true)}
-                    aria-pressed={row.make}
-                    aria-label="Make {rowLabel(row)}"
-                    data-testid="recipe-add-review-make"
-                  >
-                    Make
-                  </Button>
-                </div>
-                {#if row.make && row.producers.length > 1}
-                  <!-- Mini-picker: which producing recipe to make (multiple candidates). -->
-                  <Select value={row.producerId ?? ''} onValueChange={(v) => (row.producerId = v)}>
-                    <SelectTrigger
-                      class="h-6 max-w-[10rem] shrink text-xs"
-                      data-testid="recipe-add-review-producer"
+          <!-- Top line: the ingredient. When Made it becomes a label-only header
+               and its Add/Check toggles move to the nested sub-entries below. -->
+          <div class="flex items-center gap-2 px-3 py-2">
+            <div class="flex-1 min-w-0">
+              <span class="block truncate">
+                {rowLabel(row)}
+                <!-- Suppress the required amount on a made header: it's label-only
+                     (the sub-entries carry their own amounts), so showing it here
+                     misleads. -->
+                {#if amountLabel(row) && !row.make}<span class="text-muted-foreground"
+                    >({amountLabel(row)})</span
+                  >{/if}
+                {#if row.isOptional}<span class="text-xs text-muted-foreground">(optional)</span
+                  >{/if}
+              </span>
+              {#if row.producers.length > 0}
+                <!-- Buy-or-make: eligible rows only. Default Buy — identical to the
+                     single-item add. Make expands the chosen producing recipe's
+                     ingredients as nested, individually-toggleable sub-entries. -->
+                <div class="mt-1 flex items-center gap-2" data-testid="recipe-add-review-buymake">
+                  <div class="inline-flex gap-1">
+                    <Button
+                      size="sm"
+                      variant={row.make ? 'outline' : 'solid'}
+                      class="h-6 px-2 text-xs"
+                      onclick={() => setMake(row, false)}
+                      aria-pressed={!row.make}
+                      aria-label="Buy {rowLabel(row)}"
+                      data-testid="recipe-add-review-buy"
                     >
-                      <span class="truncate">{producerLabel(row)}</span>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {#each row.producers as p (p.id)}
-                        <SelectItem value={p.id}>{p.title}</SelectItem>
-                      {/each}
-                    </SelectContent>
-                  </Select>
-                {/if}
+                      Buy
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={row.make ? 'solid' : 'outline'}
+                      class="h-6 px-2 text-xs"
+                      onclick={() => setMake(row, true)}
+                      aria-pressed={row.make}
+                      aria-label="Make {rowLabel(row)}"
+                      data-testid="recipe-add-review-make"
+                    >
+                      Make
+                    </Button>
+                  </div>
+                  {#if row.make && row.producers.length > 1}
+                    <!-- Mini-picker: which producing recipe to make (multiple candidates).
+                         Changing it rebuilds the nested sub-entries. -->
+                    <Select value={row.producerId ?? ''} onValueChange={(v) => setProducer(row, v)}>
+                      <SelectTrigger
+                        class="h-6 max-w-[10rem] shrink text-xs"
+                        data-testid="recipe-add-review-producer"
+                      >
+                        <span class="truncate">{producerLabel(row)}</span>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {#each row.producers as p (p.id)}
+                          <SelectItem value={p.id}>{p.title}</SelectItem>
+                        {/each}
+                      </SelectContent>
+                    </Select>
+                  {/if}
+                </div>
+              {/if}
+            </div>
+            <!-- A made header emits no item of its own → no Add/Check toggles. -->
+            {#if !row.make}
+              <div class="flex w-12 justify-center">
+                <Checkbox
+                  checked={row.add}
+                  onCheckedChange={(v) => setAdd(row, v === true)}
+                  aria-label="Add {rowLabel(row)}"
+                  data-testid="recipe-add-review-add"
+                />
+              </div>
+              <div class="flex w-12 justify-center">
+                <Checkbox
+                  checked={row.check}
+                  onCheckedChange={(v) => setCheck(row, v === true)}
+                  aria-label="Check {rowLabel(row)}"
+                  data-testid="recipe-add-review-check"
+                />
               </div>
             {/if}
           </div>
-          <div class="flex w-12 justify-center">
-            <Checkbox
-              checked={row.add}
-              onCheckedChange={(v) => setAdd(row, v === true)}
-              aria-label="Add {rowLabel(row)}"
-              data-testid="recipe-add-review-add"
-            />
-          </div>
-          <div class="flex w-12 justify-center">
-            <Checkbox
-              checked={row.check}
-              onCheckedChange={(v) => setCheck(row, v === true)}
-              aria-label="Check {rowLabel(row)}"
-              data-testid="recipe-add-review-check"
-            />
-          </div>
+
+          <!-- Nested sub-entries for a Made row: the producer's ingredients at its
+               base servings (1 batch), each independently add/check-able. -->
+          {#if row.make && row.subRows}
+            <div
+              class="flex flex-col gap-1 border-t border-border/60 py-2 pl-6 pr-3"
+              data-testid="recipe-add-review-subrows"
+            >
+              {#each row.subRows as sub (sub.ingredientId)}
+                <div
+                  class="flex items-center gap-2"
+                  data-testid="recipe-add-review-subrow"
+                  data-ingredient-id={sub.ingredientId}
+                >
+                  <div class="flex-1 min-w-0">
+                    <span class="block truncate">
+                      {rowLabel(sub)}
+                      {#if amountLabel(sub)}<span class="text-muted-foreground"
+                          >({amountLabel(sub)})</span
+                        >{/if}
+                      {#if sub.isOptional}<span class="text-xs text-muted-foreground"
+                          >(optional)</span
+                        >{/if}
+                    </span>
+                  </div>
+                  <div class="flex w-12 justify-center">
+                    <Checkbox
+                      checked={sub.add}
+                      onCheckedChange={(v) => setAdd(sub, v === true)}
+                      aria-label="Add {rowLabel(sub)}"
+                      data-testid="recipe-add-review-subrow-add"
+                    />
+                  </div>
+                  <div class="flex w-12 justify-center">
+                    <Checkbox
+                      checked={sub.check}
+                      onCheckedChange={(v) => setCheck(sub, v === true)}
+                      aria-label="Check {rowLabel(sub)}"
+                      data-testid="recipe-add-review-subrow-check"
+                    />
+                  </div>
+                </div>
+              {/each}
+            </div>
+          {/if}
         </div>
       {/each}
     </div>

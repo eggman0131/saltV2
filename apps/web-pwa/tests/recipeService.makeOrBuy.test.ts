@@ -34,12 +34,24 @@ vi.mock('../src/lib/canonService.js', () => ({
 import * as firebaseSync from '@salt/firebase-sync';
 import {
   buildRecipeAddPlan,
+  buildMadeSubRows,
   commitRecipeAddPlan,
   recipeAddPlanItemCount,
   initRecipeSync,
 } from '../src/lib/recipeService.js';
 
 const fs = firebaseSync as Mocked<typeof firebaseSync>;
+
+// Mirror the sheet's `setMake`: flip a row to Make and eagerly build its nested
+// sub-entries (the count/commit now WALK that structure rather than re-expanding
+// the producer themselves). Producer-dependent tests set `producerId` before
+// calling this so the sub-rows reflect the chosen producer.
+function selectMake(rows: ReturnType<typeof buildRecipeAddPlan>, ingredientId: string) {
+  const row = rows.find((r) => r.ingredientId === ingredientId)!;
+  row.make = true;
+  row.subRows = buildMadeSubRows(row);
+  return row;
+}
 
 // Per-test id namespace so the accumulating recipes store can't cross-contaminate.
 let ns = 0;
@@ -243,7 +255,7 @@ describe('commitRecipeAddPlan — make fan-out', () => {
       ingredients: [ingredient('i-mayo', 'mayonnaise', canonMayo)],
     });
     const rows = buildRecipeAddPlan(parent, 2);
-    rows[0].make = true; // user chose "Make"
+    selectMake(rows, 'i-mayo'); // user chose "Make"
 
     const result = await commitRecipeAddPlan(parent, 'list-1', 2, rows);
     expect(result).toEqual({ kind: 'ok', value: undefined });
@@ -277,7 +289,7 @@ describe('commitRecipeAddPlan — make fan-out', () => {
       ingredients: [ingredient('i-mayo', 'mayonnaise', canonMayo)],
     });
     const rows = buildRecipeAddPlan(parent, 2);
-    rows[0].make = true;
+    selectMake(rows, 'i-mayo');
 
     await commitRecipeAddPlan(parent, 'list-1', 2, rows);
     const items = savedItems();
@@ -304,8 +316,7 @@ describe('commitRecipeAddPlan — make fan-out', () => {
       ],
     });
     const rows = buildRecipeAddPlan(parent, 2);
-    const mayoRow = rows.find((r) => r.ingredientId === 'i-mayo')!;
-    mayoRow.make = true;
+    selectMake(rows, 'i-mayo');
 
     await commitRecipeAddPlan(parent, 'list-1', 2, rows);
     const items = savedItems();
@@ -354,7 +365,7 @@ describe('recipeAddPlanItemCount — footer preview count', () => {
       ingredients: [ingredient('i-mayo', 'mayonnaise', canonMayo)],
     });
     const rows = buildRecipeAddPlan(parent, 2);
-    rows[0].make = true; // user chose "Make"
+    selectMake(rows, 'i-mayo'); // user chose "Make"
 
     // Preview: the two producer ingredients, not the single mayo row.
     expect(recipeAddPlanItemCount(rows)).toBe(2);
@@ -384,7 +395,7 @@ describe('recipeAddPlanItemCount — footer preview count', () => {
       ],
     });
     const rows = buildRecipeAddPlan(parent, 2);
-    rows.find((r) => r.ingredientId === 'i-mayo')!.make = true; // 2 from fan-out
+    selectMake(rows, 'i-mayo'); // 2 from fan-out
     // + 1 for the salt Buy row = 3.
     expect(recipeAddPlanItemCount(rows)).toBe(3);
   });
@@ -414,8 +425,8 @@ describe('recipeAddPlanItemCount — footer preview count', () => {
       ingredients: [ingredient('i-mayo', 'mayonnaise', canonMayo)],
     });
     const rows = buildRecipeAddPlan(parent, 2);
-    rows[0].make = true;
     rows[0].producerId = 'does-not-exist'; // find() misses → falls back to producers[0]
+    selectMake(rows, 'i-mayo'); // builds sub-rows from the fallback producer
     // producers[0] (r-mayo) fans out one ingredient → 1, same as commit does.
     expect(recipeAddPlanItemCount(rows)).toBe(1);
     await commitRecipeAddPlan(parent, 'list-1', 2, rows);
@@ -431,7 +442,115 @@ describe('recipeAddPlanItemCount — footer preview count', () => {
       ingredients: [ingredient('i-mayo', 'mayonnaise', canonMayo)],
     });
     const rows = buildRecipeAddPlan(parent, 2);
-    rows[0].make = true;
+    selectMake(rows, 'i-mayo');
     expect(recipeAddPlanItemCount(rows)).toBe(0);
+  });
+});
+
+// ─── Nested made sub-entries (buy-or-make sheet, Phase 1) ─────────────────────
+// Make eagerly builds the linked recipe's ingredients as NESTED sub-rows on the
+// row itself, each individually add/check-able, at the producer's base servings.
+
+describe('buildMadeSubRows — nested sub-entries', () => {
+  it('builds the producer ingredients as nested rows at its base servings, seeded like master rows', () => {
+    const canonMayo = nsId('canon-mayo');
+    const canonOil = nsId('canon-oil');
+    // Oil is a matched, "needed" canon item → its sub-row defaults add:true.
+    mockGetCanonItemsSnapshot.mockReturnValue([canon(canonMayo), canon(canonOil, 'needed')]);
+    seedRecipes([
+      recipe(nsId('r-mayo'), {
+        servings: 4,
+        producesCanonId: canonMayo,
+        ingredients: [
+          ingredient('m-egg', 'egg yolk', nsId('canon-egg')),
+          ingredient('m-oil', 'oil', canonOil),
+        ],
+      }),
+    ]);
+    const parent = recipe(nsId('r-salad'), {
+      ingredients: [ingredient('i-mayo', 'mayonnaise', canonMayo)],
+    });
+    const rows = buildRecipeAddPlan(parent, 2);
+    const mayo = selectMake(rows, 'i-mayo');
+
+    expect(mayo.subRows).not.toBeNull();
+    expect(mayo.subRows!.map((s) => s.ingredientId)).toEqual(['m-egg', 'm-oil']);
+    // Amount scaled to the producer's OWN base servings (scale 1) — 100 as authored.
+    const oilSub = mayo.subRows!.find((s) => s.ingredientId === 'm-oil')!;
+    expect(oilSub.amount).toBe(100);
+    expect(oilSub.unit).toBe('g');
+    expect(oilSub.add).toBe(true); // matched 'needed' → default add
+  });
+
+  it('seeds sub-rows one level deep: no producers, make:false, subRows:null (cannot be re-made)', () => {
+    const canonMayo = nsId('canon-mayo');
+    const canonEgg = nsId('canon-egg');
+    mockGetCanonItemsSnapshot.mockReturnValue([canon(canonMayo)]);
+    // A recipe that could ALSO make the egg sub-ingredient — must NOT surface on the sub-row.
+    const eggProducer = recipe(nsId('r-egg'), { producesCanonId: canonEgg });
+    const mayo = recipe(nsId('r-mayo'), {
+      producesCanonId: canonMayo,
+      ingredients: [ingredient('m-egg', 'egg yolk', canonEgg)],
+    });
+    seedRecipes([mayo, eggProducer]);
+    const parent = recipe(nsId('r-salad'), {
+      ingredients: [ingredient('i-mayo', 'mayonnaise', canonMayo)],
+    });
+    const rows = buildRecipeAddPlan(parent, 2);
+    const mayoRow = selectMake(rows, 'i-mayo');
+
+    const eggSub = mayoRow.subRows!.find((s) => s.ingredientId === 'm-egg')!;
+    expect(eggSub.producers).toEqual([]);
+    expect(eggSub.make).toBe(false);
+    expect(eggSub.subRows).toBeNull();
+  });
+
+  it('flipping Make back to Buy clears the nested sub-rows', () => {
+    const canonMayo = nsId('canon-mayo');
+    mockGetCanonItemsSnapshot.mockReturnValue([canon(canonMayo)]);
+    seedRecipes([
+      recipe(nsId('r-mayo'), {
+        producesCanonId: canonMayo,
+        ingredients: [ingredient('m-egg', 'egg yolk', nsId('canon-egg'))],
+      }),
+    ]);
+    const parent = recipe(nsId('r-salad'), {
+      ingredients: [ingredient('i-mayo', 'mayonnaise', canonMayo)],
+    });
+    const rows = buildRecipeAddPlan(parent, 2);
+    const row = selectMake(rows, 'i-mayo');
+    expect(row.subRows).not.toBeNull();
+
+    // Mirror the sheet's setMake(row, false).
+    row.make = false;
+    row.subRows = null;
+    expect(recipeAddPlanItemCount(rows)).toBe(1); // collapses to the single Buy line
+  });
+
+  it('unticking a sub-entry drops it from both the count and the committed write', async () => {
+    const canonMayo = nsId('canon-mayo');
+    mockGetCanonItemsSnapshot.mockReturnValue([canon(canonMayo)]);
+    seedRecipes([
+      recipe(nsId('r-mayo'), {
+        producesCanonId: canonMayo,
+        ingredients: [
+          ingredient('m-egg', 'egg yolk', nsId('canon-egg')),
+          ingredient('m-oil', 'oil', nsId('canon-oil')),
+        ],
+      }),
+    ]);
+    const parent = recipe(nsId('r-salad'), {
+      ingredients: [ingredient('i-mayo', 'mayonnaise', canonMayo)],
+    });
+    const rows = buildRecipeAddPlan(parent, 2);
+    const mayo = selectMake(rows, 'i-mayo');
+    expect(recipeAddPlanItemCount(rows)).toBe(2);
+
+    // User unticks the oil sub-entry — only the ticked egg yolk should land.
+    mayo.subRows!.find((s) => s.ingredientId === 'm-oil')!.add = false;
+    expect(recipeAddPlanItemCount(rows)).toBe(1);
+
+    await commitRecipeAddPlan(parent, 'list-1', 2, rows);
+    expect(savedItems().map((i) => i.rawText)).toEqual(['egg yolk']);
   });
 });
