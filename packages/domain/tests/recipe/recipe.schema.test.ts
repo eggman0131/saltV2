@@ -233,4 +233,44 @@ describe('RecipeSchema', () => {
   it('type-level: RecipeImage source is "ai" | "upload"', () => {
     expectTypeOf<RecipeImage['source']>().toEqualTypeOf<'ai' | 'upload'>();
   });
+
+  // --- Tier-2 hero-image control fields (issue #148) ---
+
+  it('round-trips the imageHint / imageRequestedAt / imageHidden control fields', () => {
+    const recipe: Recipe = {
+      ...messyRecipe(),
+      image: null,
+      imageHint: 'brighter, on a wooden board',
+      imageRequestedAt: 1_700_000_000_000,
+      imageHidden: true,
+    };
+    const result = RecipeSchema.safeParse(recipe);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.imageHint).toBe('brighter, on a wooden board');
+      expect(result.data.imageRequestedAt).toBe(1_700_000_000_000);
+      expect(result.data.imageHidden).toBe(true);
+    }
+  });
+
+  // Back-compat: a recipe written before Tier-2 has none of the control fields;
+  // it MUST still parse, and the optional fields stay absent (no defaults added).
+  it('parses a recipe with no hero-image control fields (back-compat)', () => {
+    const recipe = messyRecipe();
+    expect('imageHint' in recipe).toBe(false);
+    const result = RecipeSchema.safeParse(recipe);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.imageHint).toBeUndefined();
+      expect(result.data.imageRequestedAt).toBeUndefined();
+      expect(result.data.imageHidden).toBeUndefined();
+    }
+  });
+
+  it('rejects a non-numeric imageRequestedAt and a non-boolean imageHidden', () => {
+    expect(RecipeSchema.safeParse({ ...messyRecipe(), imageRequestedAt: 'soon' }).success).toBe(
+      false,
+    );
+    expect(RecipeSchema.safeParse({ ...messyRecipe(), imageHidden: 'yes' }).success).toBe(false);
+  });
 });

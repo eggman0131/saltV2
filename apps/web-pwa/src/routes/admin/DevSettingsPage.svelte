@@ -4,8 +4,10 @@
   import AdminGuard from './AdminGuard.svelte';
   import {
     canonIconGenerationEnabled,
+    recipeImageGenerationEnabled,
     isLoadingDevSettings,
     setCanonIconGenerationEnabled,
+    setRecipeImageGenerationEnabled,
   } from '../../lib/devSettingsService.js';
   import { addToast } from '../../lib/toastStore.js';
 
@@ -16,6 +18,13 @@
     const result = await setCanonIconGenerationEnabled(enabled);
     if (result.kind !== 'ok') {
       addToast('Failed to save the icon-generation setting.', 'destructive');
+    }
+  }
+
+  async function onToggleRecipeImageGeneration(enabled: boolean): Promise<void> {
+    const result = await setRecipeImageGenerationEnabled(enabled);
+    if (result.kind !== 'ok') {
+      addToast('Failed to save the recipe-image setting.', 'destructive');
     }
   }
 </script>
@@ -40,6 +49,16 @@
         checked={$canonIconGenerationEnabled}
         disabled={$isLoadingDevSettings}
         onCheckedChange={(c) => void onToggleIconGeneration(c)}
+      />
+    </div>
+
+    <div class="rounded-lg border p-4" data-testid="recipe-image-generation-setting">
+      <Switch
+        label="Recipe image generation"
+        description="When off, no recipe hero images are generated in this environment — covering new recipes and the manual Regenerate button. Recipe photos use a costlier model path, so turn this off before bulk recipe imports to avoid AI spend, then back on to resume. Re-enabling does NOT backfill recipes created while off; they only get an image when regenerated."
+        checked={$recipeImageGenerationEnabled}
+        disabled={$isLoadingDevSettings}
+        onCheckedChange={(c) => void onToggleRecipeImageGeneration(c)}
       />
     </div>
   </div>

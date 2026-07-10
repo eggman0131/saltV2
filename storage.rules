@@ -16,6 +16,14 @@ service firebase.storage {
       allow read: if true;
       allow write: if false;
     }
+    // Recipe hero images (Tier-2, issue #148): same model as canon icons —
+    // non-sensitive photos generated server-side by the onRecipeWritten Cloud
+    // Function (Admin SDK, which bypasses these rules) and rendered client-side
+    // via <img src={publicUrl}>. Public read, no client write.
+    match /recipe-images/{file} {
+      allow read: if true;
+      allow write: if false;
+    }
     // Everything else: locked down.
     match /{allPaths=**} {
       allow read, write: if false;
