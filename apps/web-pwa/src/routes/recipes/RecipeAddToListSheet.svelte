@@ -3,6 +3,10 @@
     Button,
     Checkbox,
     Icon,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
     Sheet,
     SheetContent,
     SheetFooter,
@@ -14,6 +18,7 @@
   import {
     buildRecipeAddPlan,
     commitRecipeAddPlan,
+    recipeAddPlanItemCount,
     type RecipeAddRow,
   } from '../../lib/recipeService.js';
   import { canonItems } from '../../lib/canonService.js';
@@ -46,7 +51,10 @@
     wasOpen = open;
   });
 
-  const addCount = $derived(rows.filter((r) => r.add).length);
+  // What the confirm will actually write: a Make row counts its producer's
+  // fanned-out ingredients, not 1. Derived so it tracks Buy/Make + producer-picker
+  // toggles. See recipeAddPlanItemCount.
+  const addCount = $derived(recipeAddPlanItemCount(rows));
 
   function rowLabel(row: RecipeAddRow): string {
     return row.fromCanon ? titleCase(row.name) : row.name;
@@ -67,6 +75,18 @@
     row.check = value;
     // Check implies Add — selecting Check pulls the item onto the list.
     if (value) row.add = true;
+  }
+
+  // Buy-or-make (Phase 2). Choosing Make fans out the chosen producing recipe's
+  // ingredients on commit; Make implies Add so an eligible row can't be "made" yet
+  // left off the list.
+  function setMake(row: RecipeAddRow, value: boolean): void {
+    row.make = value;
+    if (value) row.add = true;
+  }
+
+  function producerLabel(row: RecipeAddRow): string {
+    return row.producers.find((r) => r.id === row.producerId)?.title ?? 'recipe';
   }
 
   async function handleConfirm(): Promise<void> {
@@ -147,10 +167,60 @@
           <div class="flex-1 min-w-0">
             <span class="block truncate">
               {rowLabel(row)}
-              {#if amountLabel(row)}<span class="text-muted-foreground">({amountLabel(row)})</span
+              <!-- Suppress the parent's required amount in Make mode: Make ignores
+                   it (a full producer batch is fanned out), so showing it misleads. -->
+              {#if amountLabel(row) && !row.make}<span class="text-muted-foreground"
+                  >({amountLabel(row)})</span
                 >{/if}
               {#if row.isOptional}<span class="text-xs text-muted-foreground">(optional)</span>{/if}
             </span>
+            {#if row.producers.length > 0}
+              <!-- Buy-or-make (Phase 2): eligible rows only. Default Buy — Buy is
+                   identical to the pre-Phase-2 single-item add. Make fans out the
+                   chosen producing recipe's ingredients on commit. -->
+              <div class="mt-1 flex items-center gap-2" data-testid="recipe-add-review-buymake">
+                <div class="inline-flex gap-1">
+                  <Button
+                    size="sm"
+                    variant={row.make ? 'outline' : 'solid'}
+                    class="h-6 px-2 text-xs"
+                    onclick={() => setMake(row, false)}
+                    aria-pressed={!row.make}
+                    aria-label="Buy {rowLabel(row)}"
+                    data-testid="recipe-add-review-buy"
+                  >
+                    Buy
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={row.make ? 'solid' : 'outline'}
+                    class="h-6 px-2 text-xs"
+                    onclick={() => setMake(row, true)}
+                    aria-pressed={row.make}
+                    aria-label="Make {rowLabel(row)}"
+                    data-testid="recipe-add-review-make"
+                  >
+                    Make
+                  </Button>
+                </div>
+                {#if row.make && row.producers.length > 1}
+                  <!-- Mini-picker: which producing recipe to make (multiple candidates). -->
+                  <Select value={row.producerId ?? ''} onValueChange={(v) => (row.producerId = v)}>
+                    <SelectTrigger
+                      class="h-6 max-w-[10rem] shrink text-xs"
+                      data-testid="recipe-add-review-producer"
+                    >
+                      <span class="truncate">{producerLabel(row)}</span>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {#each row.producers as p (p.id)}
+                        <SelectItem value={p.id}>{p.title}</SelectItem>
+                      {/each}
+                    </SelectContent>
+                  </Select>
+                {/if}
+              </div>
+            {/if}
           </div>
           <div class="flex w-12 justify-center">
             <Checkbox

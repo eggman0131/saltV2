@@ -231,6 +231,7 @@ export {
   newStep,
   clearIngredientMatch,
   flattenIngredients,
+  findProducingRecipes,
 } from './recipe/index.js';
 export type { ParsedImportUrl, IpClass } from './recipe/index.js';
 export {

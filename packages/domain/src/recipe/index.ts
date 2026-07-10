@@ -20,6 +20,7 @@ export type { Recipe, RecipeImage, RecipeMetadata, RecipeSource } from './entiti
 export { emptyRecipe, emptyIngredientGroup, newIngredient, newStep } from './commands/builders.js';
 export { clearIngredientMatch } from './commands/clearIngredientMatch.js';
 export { flattenIngredients } from './queries/ingredients.js';
+export { findProducingRecipes } from './queries/producers.js';
 
 // URL import — pure SSRF/URL classification helpers (no I/O). The live fetch +
 // DNS resolution lives in cloud-functions; this module only holds the policy.
