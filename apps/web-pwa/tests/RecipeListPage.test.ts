@@ -208,6 +208,30 @@ describe('RecipeListPage', () => {
     expect(screen.getAllByTestId('recipe-list-item')).toHaveLength(3);
   });
 
+  it('scopes the filter chips to tags on the currently displayed recipes', async () => {
+    const user = userEvent.setup();
+    seed([APPLE, BANANA, CARROT]);
+    render(RecipeListPage);
+
+    const filterTags = () =>
+      within(screen.getByTestId('recipe-tag-filters'))
+        .getAllByTestId('recipe-tag-filter')
+        .map((b) => b.getAttribute('data-tag'));
+
+    // All tags across the library are offered before any filtering.
+    expect(filterTags()).toEqual(['baking', 'dessert', 'quick', 'soup']);
+
+    // Selecting "dessert" leaves only Apple Pie, so the chips collapse to Apple's
+    // own tags (the selected one pinned) — "quick"/"soup" drop away.
+    await user.click(
+      within(screen.getByTestId('recipe-tag-filters')).getByRole('button', {
+        name: '#dessert',
+      }),
+    );
+    expect(cardTitles()).toEqual(['Apple Pie']);
+    expect(filterTags()).toEqual(['baking', 'dessert']);
+  });
+
   it('shows an empty-filter state when nothing matches', async () => {
     const user = userEvent.setup();
     seed([APPLE, BANANA, CARROT]);

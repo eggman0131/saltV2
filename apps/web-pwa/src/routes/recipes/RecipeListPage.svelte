@@ -45,11 +45,6 @@
 
   const query = $derived(searchText.trim().toLowerCase());
 
-  // Union of every tag in use, alphabetical — the source for the filter chips.
-  const allTags = $derived(
-    [...new Set($recipes.flatMap((r) => r.metadata.tags))].sort((a, b) => a.localeCompare(b)),
-  );
-
   function matchesSearch(r: Recipe): boolean {
     if (query === '') return true;
     return (
@@ -84,6 +79,16 @@
   );
 
   const hasFilters = $derived(query !== '' || activeTags.length > 0);
+
+  // Tags offered as filter chips: those present on the currently displayed
+  // recipes, so the choices narrow as you filter (a faceted drill-down) rather
+  // than always listing every tag in the library. Active tags are pinned in so
+  // they stay deselectable even if the result set momentarily empties.
+  const visibleTags = $derived(
+    [...new Set([...visible.flatMap((r) => r.metadata.tags), ...activeTags])].sort((a, b) =>
+      a.localeCompare(b),
+    ),
+  );
 
   function toggleTag(tag: string): void {
     activeTags = activeTags.includes(tag)
@@ -264,10 +269,10 @@
       </Select>
     </div>
 
-    <!-- Tag filter chips -->
-    {#if allTags.length > 0}
+    <!-- Tag filter chips — scoped to tags on the currently displayed recipes -->
+    {#if visibleTags.length > 0}
       <div class="mb-3 flex flex-wrap gap-1.5" data-testid="recipe-tag-filters">
-        {#each allTags as tag (tag)}
+        {#each visibleTags as tag (tag)}
           {@const active = activeTags.includes(tag)}
           <button
             type="button"
