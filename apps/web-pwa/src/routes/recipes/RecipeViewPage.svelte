@@ -16,6 +16,7 @@
     Icon,
     Markdown,
     Spinner,
+    TextField,
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
   import {
@@ -26,6 +27,8 @@
     matchIngredient,
     persistRecipe,
     authorRecipeTraced,
+    regenerateRecipeImage,
+    setRecipeImageHidden,
   } from '../../lib/recipeService.js';
   import RecipeAddToListSheet from './RecipeAddToListSheet.svelte';
   import { canonItems } from '../../lib/canonService.js';
@@ -281,6 +284,50 @@
     push('/recipes');
   }
 
+  // ─── Hero image (issue #148, Tier-2) ─────────────────────────────────────────
+  // The photoreal hero is generated automatically by the onRecipeWritten trigger
+  // on create; these controls are the manual escape hatches (regenerate with an
+  // optional steer, hide/show). While a (re)generation is in flight the new URL
+  // simply arrives via the recipe subscription — there is no in-flight flag on the
+  // doc, so `imageBusy` only guards the button between click and callable return.
+  const heroVisible = $derived(!!recipe?.image?.url && !recipe.imageHidden);
+  let imageBusy = $state(false);
+  let regenOpen = $state(false);
+  let regenHint = $state('');
+
+  async function runRegenerate(hint?: string): Promise<void> {
+    if (!recipe || imageBusy) return;
+    imageBusy = true;
+    const result = await regenerateRecipeImage(recipe.id, hint);
+    imageBusy = false;
+    if (result.kind !== 'ok') {
+      addToast('Failed to start image generation.', 'destructive');
+      return;
+    }
+    addToast('Generating a new image — it will appear shortly.', 'success');
+  }
+
+  function openRegenerate(): void {
+    regenHint = '';
+    regenOpen = true;
+  }
+
+  async function handleRegenerateConfirm(): Promise<void> {
+    const hint = regenHint.trim();
+    regenOpen = false;
+    await runRegenerate(hint || undefined);
+  }
+
+  async function handleToggleHidden(hidden: boolean): Promise<void> {
+    if (!recipe || imageBusy) return;
+    imageBusy = true;
+    const result = await setRecipeImageHidden(recipe, hidden);
+    imageBusy = false;
+    if (result.kind !== 'ok') {
+      addToast(hidden ? 'Failed to hide image.' : 'Failed to show image.', 'destructive');
+    }
+  }
+
   import type { QuantityDoc } from '@salt/domain/schemas';
   function formatMetricQty(q: QuantityDoc): string {
     if (q.type === 'range') return `${q.min}–${q.max}`;
@@ -350,6 +397,72 @@
     <div class="grid gap-4 lg:grid-cols-[2fr_1fr] lg:gap-6" data-testid="recipe-view">
       <!-- Left column: main recipe content -->
       <div class="flex flex-col gap-4">
+        <!-- Hero image (Tier-2, issue #148): photoreal "arty" photo generated
+             from the title + description by the onRecipeWritten trigger. -->
+        {#if heroVisible}
+          <div class="flex flex-col gap-2" data-testid="recipe-hero">
+            <div class="overflow-hidden rounded-lg border bg-muted">
+              <img
+                src={recipe.image!.url}
+                alt={recipe.title}
+                loading="lazy"
+                class="aspect-[3/2] w-full object-cover"
+                data-testid="recipe-hero-image"
+              />
+            </div>
+            <div class="flex items-center gap-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                onclick={openRegenerate}
+                loading={imageBusy}
+                disabled={imageBusy}
+                data-testid="recipe-image-regenerate"
+              >
+                {#snippet leading()}<Icon name="RefreshCw" size={14} />{/snippet}
+                Regenerate
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onclick={() => handleToggleHidden(true)}
+                disabled={imageBusy}
+                data-testid="recipe-image-hide"
+              >
+                {#snippet leading()}<Icon name="EyeOff" size={14} />{/snippet}
+                Hide
+              </Button>
+            </div>
+          </div>
+        {:else if recipe.image?.url && recipe.imageHidden}
+          <div data-testid="recipe-hero-controls">
+            <Button
+              size="sm"
+              variant="outline"
+              onclick={() => handleToggleHidden(false)}
+              disabled={imageBusy}
+              data-testid="recipe-image-show"
+            >
+              {#snippet leading()}<Icon name="Eye" size={14} />{/snippet}
+              Show image
+            </Button>
+          </div>
+        {:else}
+          <div data-testid="recipe-hero-controls">
+            <Button
+              size="sm"
+              variant="outline"
+              onclick={openRegenerate}
+              loading={imageBusy}
+              disabled={imageBusy}
+              data-testid="recipe-image-generate"
+            >
+              {#snippet leading()}<Icon name="ImagePlus" size={14} />{/snippet}
+              Generate image
+            </Button>
+          </div>
+        {/if}
+
         <!-- Description + meta chips -->
         {#if recipe.description || timeParts().length > 0 || recipe.metadata.tags.length > 0 || sourceUrl}
           <Card>
@@ -651,6 +764,41 @@
 {#if recipe && $defaultListId}
   <RecipeAddToListSheet {recipe} listId={$defaultListId} bind:open={addToListOpen} />
 {/if}
+
+<!-- Regenerate image dialog: optional one-shot steer (issue #148) -->
+<Dialog bind:open={regenOpen}>
+  <DialogContent>
+    <div class="flex flex-col gap-4" data-testid="recipe-image-regenerate-dialog">
+      <DialogHeader>
+        <DialogTitle>Regenerate image</DialogTitle>
+        <DialogDescription>
+          Generate a fresh photo of this dish. Optionally add a steer — e.g. "make it brighter" or
+          "show it in a rustic bowl".
+        </DialogDescription>
+      </DialogHeader>
+      <TextField
+        label="Steer (optional)"
+        placeholder="e.g. warmer light, on a wooden board"
+        value={regenHint}
+        onValueChange={(v) => (regenHint = v)}
+        data-testid="recipe-image-regenerate-hint"
+      />
+      <DialogFooter>
+        <Button variant="outline" onclick={() => (regenOpen = false)} disabled={imageBusy}>
+          Cancel
+        </Button>
+        <Button
+          onclick={handleRegenerateConfirm}
+          loading={imageBusy}
+          disabled={imageBusy}
+          data-testid="recipe-image-regenerate-confirm"
+        >
+          Regenerate
+        </Button>
+      </DialogFooter>
+    </div>
+  </DialogContent>
+</Dialog>
 
 <!-- Delete confirm dialog -->
 <Dialog

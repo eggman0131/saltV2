@@ -160,14 +160,25 @@
       {#each sorted as recipe (recipe.id)}
         <li>
           <button
-            class="w-full rounded px-2 py-2 text-left text-sm font-medium hover:bg-muted"
+            class="flex w-full items-center gap-3 rounded px-2 py-2 text-left text-sm font-medium hover:bg-muted"
             onclick={() => push(`/recipes/${recipe.id}`)}
             data-testid="recipe-list-item"
             data-recipe-id={recipe.id}
           >
-            {recipe.title}
-            <span class="ml-2 text-xs font-normal text-muted-foreground">
-              {ingredientCount(recipe)} ingredient{ingredientCount(recipe) === 1 ? '' : 's'}
+            {#if recipe.image?.url && !recipe.imageHidden}
+              <img
+                src={recipe.image.url}
+                alt=""
+                loading="lazy"
+                class="h-10 w-10 shrink-0 rounded object-cover"
+                data-testid="recipe-list-thumb"
+              />
+            {/if}
+            <span class="min-w-0 flex-1 truncate">
+              {recipe.title}
+              <span class="ml-2 text-xs font-normal text-muted-foreground">
+                {ingredientCount(recipe)} ingredient{ingredientCount(recipe) === 1 ? '' : 's'}
+              </span>
             </span>
           </button>
         </li>

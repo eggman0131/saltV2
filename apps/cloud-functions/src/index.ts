@@ -40,6 +40,7 @@ import {
 import { generateChatTitleFlow } from './flows/generateChatTitle.js';
 import { onShoppingListItemWrite } from './triggers/onShoppingListItemWrite.js';
 import { onCanonItemWritten } from './triggers/onCanonItemWritten.js';
+import { onRecipeWritten } from './triggers/onRecipeWritten.js';
 import { handleListAiModels } from './ai/listAiModels.js';
 import { handleTestModel } from './ai/testModel.js';
 
@@ -343,5 +344,7 @@ export const refreshWeatherForecast = makeTracedCallable({
 
 export { onShoppingListItemWrite };
 export { onCanonItemWritten };
+export { onRecipeWritten };
 export { regenerateCanonIcon } from './callables/regenerateCanonIcon.js';
+export { regenerateRecipeImage } from './callables/regenerateRecipeImage.js';
 export { beforeMemberCreated } from './auth/beforeMemberCreated.js';

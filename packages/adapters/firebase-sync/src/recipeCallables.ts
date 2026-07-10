@@ -60,6 +60,34 @@ function classifyUrlImportError(err: unknown): UrlImportFailureCode {
   }
 }
 
+// Clears a recipe's hero image server-side (issue #148, Tier-2), re-firing the
+// onRecipeWritten trigger so the image branch regenerates. Used for both the
+// "regenerate" and "generate for the first time" actions (both set image → null),
+// and it un-hides in the same write. An optional `hint` is a one-shot additive
+// steer for the next generation. Mirrors callRegenerateCanonIcon.
+export async function callRegenerateRecipeImage(
+  recipeId: string,
+  hint?: string,
+): Promise<ReadResult<void, DomainError>> {
+  try {
+    const fn = httpsCallable<{ recipeId: string; hint?: string }, { ok: true }>(
+      getFunctions(undefined, 'europe-west2'),
+      'regenerateRecipeImage',
+    );
+    await fn(hint && hint.trim() ? { recipeId, hint: hint.trim() } : { recipeId });
+    return success(undefined);
+  } catch (err) {
+    const code = (err as { code?: string }).code ?? '';
+    if (code === 'functions/unauthenticated') {
+      return failure({ kind: 'AuthError', reason: 'unauthenticated' });
+    }
+    if (code === 'functions/permission-denied') {
+      return failure({ kind: 'AuthError', reason: 'forbidden' });
+    }
+    return failure({ kind: 'NetworkError', reason: 'transient' });
+  }
+}
+
 // SSRF-hardened URL import. Sends a URL, receives a fully-assembled, metric +
 // British recipe draft (source.type='url'). On failure returns the specific
 // UrlImportFailureCode so the caller can show the right copy.

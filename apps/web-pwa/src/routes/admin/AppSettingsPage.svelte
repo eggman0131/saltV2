@@ -133,6 +133,7 @@
     embedText: 'Embed text (callable)',
     extractRecipeFromUrl: 'Recipe import from URL',
     generateCanonIcon: 'Canon icon generation',
+    generateRecipeImage: 'Recipe hero image generation',
     generateChatTitle: 'Chat title generation',
     identifyEquipment: 'Equipment identification',
     parseEntry: 'Entry parsing',

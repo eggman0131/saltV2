@@ -39,6 +39,7 @@ export const AI_FLOW_ROLES = {
   embedText: 'embedding',
   extractRecipeFromUrl: 'fast',
   generateCanonIcon: 'image',
+  generateRecipeImage: 'image',
   generateChatTitle: 'lite',
   identifyEquipment: 'fast',
   parseEntry: 'lite',

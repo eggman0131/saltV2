@@ -9,6 +9,7 @@ import { flushServerObservability } from '@salt/observability/server';
 import { embedTextFlow } from '../flows/embedText.js';
 import { generateCanonIconFlow } from '../flows/generateCanonIcon.js';
 import { removeFlatBackground } from '../imaging/removeFlatBackground.js';
+import { buildStorageDownloadUrl } from '../imaging/storageDownloadUrl.js';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { aiFakeEnabled } from '../ai/fakeModel.js';
 import { reportServerError } from '../observability/reportServerError.js';
@@ -209,20 +210,7 @@ async function uploadCanonIcon(id: string, webp: Buffer): Promise<string> {
     contentType: 'image/webp',
     metadata: { cacheControl: 'public, max-age=31536000, immutable' },
   });
-  return buildIconDownloadUrl(bucket.name, path);
-}
-
-/** Public Firebase Storage download URL (rules-governed, no token needed). */
-function buildIconDownloadUrl(bucketName: string, path: string): string {
-  const encoded = encodeURIComponent(path);
-  // The Firebase emulator suite sets STORAGE_EMULATOR_HOST for the Admin SDK;
-  // when present, point the URL at the emulator instead of production.
-  const emulatorHost = process.env['STORAGE_EMULATOR_HOST'];
-  if (emulatorHost) {
-    const host = emulatorHost.replace(/^https?:\/\//, '');
-    return `http://${host}/v0/b/${bucketName}/o/${encoded}?alt=media`;
-  }
-  return `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encoded}?alt=media`;
+  return buildStorageDownloadUrl(bucket.name, path);
 }
 
 export const onCanonItemWritten = onDocumentWritten(

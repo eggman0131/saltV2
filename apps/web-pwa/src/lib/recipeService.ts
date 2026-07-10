@@ -6,6 +6,7 @@ import {
   callCanonicaliseRecipeIngredients,
   callExtractRecipeFromUrl,
   callAuthorRecipe,
+  callRegenerateRecipeImage,
   saveShoppingListItem,
 } from '@salt/firebase-sync';
 import { createObservabilityErrorReportingAdapter, startUserActionSpan } from '@salt/observability';
@@ -120,6 +121,33 @@ export async function parseIngredients(
   rawText: string,
 ): Promise<ReadResult<IngredientGroup[], DomainError>> {
   return callParseRecipeIngredients(rawText);
+}
+
+// ─── Hero image (issue #148, Tier-2) ────────────────────────────────────────────
+// The photoreal hero is generated server-side by the onRecipeWritten trigger on
+// create. These two commands are the manual controls.
+
+// Regenerate (or first-time generate / un-hide) the hero via the auth-gated
+// callable. The callable clears `image` + un-hides + bumps the nonce, re-firing
+// the trigger; the new URL arrives via the recipe subscription. An optional
+// `hint` is a one-shot additive steer. Deliberately a callable, not an optimistic
+// store write — a client whole-document write would risk clobbering the trigger's
+// image write (whole-document LWW).
+export async function regenerateRecipeImage(
+  recipeId: string,
+  hint?: string,
+): Promise<ReadResult<void, DomainError>> {
+  return reportIfFailed(getErrorReporter(), await callRegenerateRecipeImage(recipeId, hint));
+}
+
+// Hide / show the hero. A plain optimistic recipe write (no server authority
+// needed) that flips `imageHidden`; the existing `image` is preserved, so "show"
+// brings the same photo straight back without regenerating.
+export async function setRecipeImageHidden(
+  recipe: Recipe,
+  hidden: boolean,
+): Promise<ReadResult<void, DomainError>> {
+  return persistRecipe({ ...recipe, imageHidden: hidden });
 }
 
 // ─── URL import ────────────────────────────────────────────────────────────────
