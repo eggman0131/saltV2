@@ -87,16 +87,40 @@
     row.make = value;
     if (value) {
       row.add = true;
+      // (Re)default the made-header servings to the selected producer's OWN base
+      // each time Make is entered — never carried from the master recipe or a
+      // prior producer/toggle. Independent of the master stepper.
+      row.madeServings = producerBase(row);
       row.subRows = buildMadeSubRows(row);
     } else {
       row.subRows = null;
     }
   }
 
-  // When the chosen producer changes, rebuild the nested sub-entries so they
-  // reflect the newly-selected producer's ingredients.
+  // The currently-selected producer's own base servings (`metadata.servings ?? 1`),
+  // used to (re)default the per-header stepper. 1 when nothing is resolvable.
+  function producerBase(row: RecipeAddRow): number {
+    return (
+      (row.producers.find((r) => r.id === row.producerId) ?? row.producers[0])?.metadata.servings ??
+      1
+    );
+  }
+
+  // When the chosen producer changes, reset the per-header servings to the NEW
+  // producer's base and rebuild the nested sub-entries so amounts + count reflect
+  // that producer at its own base batch.
   function setProducer(row: RecipeAddRow, producerId: string): void {
     row.producerId = producerId;
+    row.madeServings = producerBase(row);
+    if (row.make) row.subRows = buildMadeSubRows(row);
+  }
+
+  // Step a made header's servings (min 1) and live-rescale its sub-entries. Fully
+  // independent of the master `selectedServings` stepper: this only rebuilds the
+  // header's own `subRows` at the new batch size — the master row amounts and
+  // every other row are untouched.
+  function setMadeServings(row: RecipeAddRow, value: number): void {
+    row.madeServings = Math.max(1, value);
     if (row.make) row.subRows = buildMadeSubRows(row);
   }
 
@@ -241,6 +265,45 @@
                     </Select>
                   {/if}
                 </div>
+                {#if row.make}
+                  <!-- Per-header servings stepper (Phase 2). Mirrors the master
+                       stepper (recipe-servings-*) but is scoped to THIS made header
+                       (the parent row carries data-ingredient-id). Defaults to the
+                       producer's own base; stepping it live-rescales the sub-entry
+                       amounts below and the committed quantities. Independent of the
+                       master servings stepper. -->
+                  <div class="mt-1 flex items-center gap-2" data-testid="recipe-add-made-servings">
+                    <span class="text-xs text-muted-foreground">Makes</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      class="h-6 px-2"
+                      onclick={() => setMadeServings(row, row.madeServings - 1)}
+                      disabled={row.madeServings <= 1 || busy}
+                      aria-label="Decrease servings for {rowLabel(row)}"
+                      data-testid="recipe-add-made-servings-decrease"
+                    >
+                      <Icon name="Minus" size={12} />
+                    </Button>
+                    <span
+                      class="min-w-[3rem] text-center text-xs font-medium"
+                      data-testid="recipe-add-made-servings-value"
+                    >
+                      {row.madeServings} serving{row.madeServings === 1 ? '' : 's'}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      class="h-6 px-2"
+                      onclick={() => setMadeServings(row, row.madeServings + 1)}
+                      disabled={busy}
+                      aria-label="Increase servings for {rowLabel(row)}"
+                      data-testid="recipe-add-made-servings-increase"
+                    >
+                      <Icon name="Plus" size={12} />
+                    </Button>
+                  </div>
+                {/if}
               {/if}
             </div>
             <!-- A made header emits no item of its own → no Add/Check toggles. -->
@@ -264,8 +327,10 @@
             {/if}
           </div>
 
-          <!-- Nested sub-entries for a Made row: the producer's ingredients at its
-               base servings (1 batch), each independently add/check-able. -->
+          <!-- Nested sub-entries for a Made row: the producer's ingredients scaled
+               to the header's chosen servings (Phase 2), each independently
+               add/check-able. -->
+
           {#if row.make && row.subRows}
             <div
               class="flex flex-col gap-1 border-t border-border/60 py-2 pl-6 pr-3"

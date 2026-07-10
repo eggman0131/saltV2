@@ -409,6 +409,18 @@ export interface RecipeAddRow {
   // Which producer to make when there's more than one candidate. Seeded to the
   // first producer's id; `null` when there are no producers.
   producerId: string | null;
+  // ─── Made-header servings (buy-or-make, nested sheet — Phase 2) ──────────────
+  // The chosen batch size for the currently-selected producer when this row is
+  // Made. FULLY INDEPENDENT of the master recipe's chosen servings and of this
+  // row's own required ingredient quantity — it DEFAULTS to the selected
+  // producer's own base (`metadata.servings ?? 1`, or 1 when there are no
+  // producers) and is only ever moved by the per-header stepper. Stepping it
+  // live-rescales `subRows` (rebuilt via `buildMadeSubRows` → `buildRecipeAddPlan`
+  // with this value) and is mirrored into every committed sub-entry's
+  // `SourceRef.servings`, so the written amounts and the stamped servings agree.
+  // Min 1 (enforced by the stepper). Meaningless (and ignored) when `producers`
+  // is empty or the row is Buy.
+  madeServings: number;
   // ─── Made sub-entries (buy-or-make, nested sheet — Phase 1) ──────────────────
   // When the user selects Make, the chosen producer's own ingredients are built
   // EAGERLY here as nested rows — each a full `RecipeAddRow` with its own
@@ -499,6 +511,10 @@ export function buildRecipeAddPlan(recipe: Recipe, servings: number): RecipeAddR
         producers,
         make: false, // default to buy — unchanged behaviour unless the user opts in
         producerId: producers[0]?.id ?? null,
+        // Default to the first producer's OWN base servings — never the master
+        // recipe's chosen servings, never the required quantity. 1 when nothing
+        // produces this row.
+        madeServings: producers[0]?.metadata.servings ?? 1,
         subRows: null, // populated eagerly only when the user selects Make
       });
     }
@@ -507,8 +523,8 @@ export function buildRecipeAddPlan(recipe: Recipe, servings: number): RecipeAddR
 }
 
 // Build the nested sub-entry rows for a made row: the chosen producer's OWN
-// ingredients as one full batch at the producer's base servings (1 batch — no
-// per-recipe scaling yet). Each is a full `RecipeAddRow` with its own default
+// ingredients scaled to the header's chosen `madeServings` (Phase 2 — was fixed
+// at the producer's base). Each is a full `RecipeAddRow` with its own default
 // Add/Check (via `recipeItemAddDefault`, inside `buildRecipeAddPlan`), but with
 // its buy-or-make affordance stripped (`producers: []`, `producerId: null`,
 // `make: false`, `subRows: null`) so a sub-entry is always a plain toggleable
@@ -516,13 +532,13 @@ export function buildRecipeAddPlan(recipe: Recipe, servings: number): RecipeAddR
 // commit-time rebuild, which seeded `make: false`). Returns `[]` when no
 // producer resolves, so the made header then contributes nothing (matching
 // commit + count). Pure read against the recipe + canon snapshots (via
-// `buildRecipeAddPlan`), so it's safe to call from the sheet on Make/producer
-// changes.
+// `buildRecipeAddPlan`), so it's safe to call from the sheet on Make/producer/
+// servings changes. `buildRecipeAddPlan` scales by `madeServings / producerBase`,
+// so `madeServings` at the producer's base leaves amounts as authored.
 export function buildMadeSubRows(row: RecipeAddRow): RecipeAddRow[] {
   if (row.producers.length === 0) return [];
   const producer = row.producers.find((r) => r.id === row.producerId) ?? row.producers[0]!;
-  const producerServings = producer.metadata.servings ?? 1;
-  return buildRecipeAddPlan(producer, producerServings).map((sub) => ({
+  return buildRecipeAddPlan(producer, row.madeServings).map((sub) => ({
     ...sub,
     producers: [],
     producerId: null,
@@ -583,9 +599,11 @@ function buildAddedItem(row: RecipeAddRow, source: SourceRef, now: string) {
 // that emits NO item of its own. Instead its eagerly-built `subRows` are written
 // — walking the nested structure the sheet already prepared, rather than
 // re-expanding the producer here. Each included (`add: true`) sub-entry is a flat
-// sibling item stamped with the CHOSEN producer's `SourceRef` (recipeId/servings/
-// label = the producer's), so the same canon trigger picks it up exactly as
-// before. Sub-rows are one level deep (`make: false`), so there is no recursion.
+// sibling item stamped with the CHOSEN producer's `SourceRef` (recipeId/label =
+// the producer's; servings = the header's chosen `madeServings`, Phase 2), so the
+// stamped servings match the already-scaled sub-entry amounts and the same canon
+// trigger picks it up exactly as before. Sub-rows are one level deep
+// (`make: false`), so there is no recursion.
 export async function commitRecipeAddPlan(
   recipe: Recipe,
   listId: string,
@@ -611,11 +629,13 @@ export async function commitRecipeAddPlan(
       if (subRows.length === 0) continue;
       const producer = row.producers.find((r) => r.id === row.producerId) ?? row.producers[0];
       if (!producer) continue;
-      const producerServings = producer.metadata.servings ?? 1;
+      // The header's chosen batch size (Phase 2). The sub-entries in `subRows`
+      // were already scaled to this same value by `buildMadeSubRows`, so the
+      // written amounts and the stamped `SourceRef.servings` agree.
       const subSource: SourceRef = {
         kind: 'recipe',
         recipeId: producer.id,
-        servings: producerServings,
+        servings: row.madeServings,
         label: producer.title,
       };
       for (const sub of subRows) {

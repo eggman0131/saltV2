@@ -53,6 +53,18 @@ function selectMake(rows: ReturnType<typeof buildRecipeAddPlan>, ingredientId: s
   return row;
 }
 
+// Mirror the sheet's `setMadeServings`: bump a made header's per-header servings
+// and live-rescale its sub-entries (min-1 clamp is UI-side, so pass ≥ 1 here).
+function stepMadeServings(row: ReturnType<typeof buildRecipeAddPlan>[number], servings: number) {
+  row.madeServings = servings;
+  row.subRows = buildMadeSubRows(row);
+}
+
+const subAmount = (
+  row: ReturnType<typeof buildRecipeAddPlan>[number],
+  ingredientId: string,
+): number | undefined => row.subRows!.find((s) => s.ingredientId === ingredientId)!.amount;
+
 // Per-test id namespace so the accumulating recipes store can't cross-contaminate.
 let ns = 0;
 const nsId = (base: string) => `${base}#${ns}`;
@@ -552,5 +564,154 @@ describe('buildMadeSubRows — nested sub-entries', () => {
 
     await commitRecipeAddPlan(parent, 'list-1', 2, rows);
     expect(savedItems().map((i) => i.rawText)).toEqual(['egg yolk']);
+  });
+});
+
+// ─── Made-header servings stepper (buy-or-make sheet, Phase 2) ─────────────────
+// Each made header carries its OWN `madeServings`, defaulting to the linked
+// producer's base (`metadata.servings ?? 1`) — never seeded from the master
+// recipe's chosen servings or the required quantity. Stepping it live-rescales
+// the header's sub-entry amounts (via `buildMadeSubRows`) and flows through to the
+// committed amounts + stamped `SourceRef.servings`. Master servings and each made
+// header's servings are fully independent.
+
+describe('made-header servings — default, live rescale, independence', () => {
+  it('defaults madeServings to the producer base — not the master servings, not the required qty', () => {
+    const canonMayo = nsId('canon-mayo');
+    mockGetCanonItemsSnapshot.mockReturnValue([canon(canonMayo)]);
+    // Producer's OWN base is 3; the parent lists 100g of it and is added at
+    // master servings 10 — madeServings must ignore both and take the base (3).
+    seedRecipes([
+      recipe(nsId('r-mayo'), {
+        servings: 3,
+        producesCanonId: canonMayo,
+        ingredients: [ingredient('m-oil', 'oil', nsId('canon-oil'))],
+      }),
+    ]);
+    const parent = recipe(nsId('r-salad'), {
+      ingredients: [ingredient('i-mayo', 'mayonnaise', canonMayo)],
+    });
+    const rows = buildRecipeAddPlan(parent, 10); // master servings 10
+    expect(rows[0].madeServings).toBe(3); // producer base, not 10, not 100
+  });
+
+  it('stepping a made header live-rescales its sub-entry amounts', () => {
+    const canonMayo = nsId('canon-mayo');
+    const canonOil = nsId('canon-oil');
+    // Oil matched so it carries a scaled amount (unmatched rows have none).
+    mockGetCanonItemsSnapshot.mockReturnValue([canon(canonMayo), canon(canonOil)]);
+    seedRecipes([
+      recipe(nsId('r-mayo'), {
+        servings: 2, // base batch → default madeServings 2, scale 1
+        producesCanonId: canonMayo,
+        ingredients: [ingredient('m-oil', 'oil', canonOil)], // 100g authored
+      }),
+    ]);
+    const parent = recipe(nsId('r-salad'), {
+      ingredients: [ingredient('i-mayo', 'mayonnaise', canonMayo)],
+    });
+    const rows = buildRecipeAddPlan(parent, 2);
+    const mayo = selectMake(rows, 'i-mayo');
+    expect(mayo.madeServings).toBe(2);
+    expect(subAmount(mayo, 'm-oil')).toBe(100); // base batch, as authored
+
+    stepMadeServings(mayo, 6); // 3× the producer's base of 2
+    expect(mayo.madeServings).toBe(6);
+    expect(subAmount(mayo, 'm-oil')).toBe(300);
+
+    stepMadeServings(mayo, 1); // below base → scales down
+    expect(subAmount(mayo, 'm-oil')).toBe(50);
+  });
+
+  it('threads the chosen madeServings into the committed amounts and SourceRef.servings', async () => {
+    const canonMayo = nsId('canon-mayo');
+    const canonOil = nsId('canon-oil');
+    mockGetCanonItemsSnapshot.mockReturnValue([canon(canonMayo), canon(canonOil)]);
+    const mayo = recipe(nsId('r-mayo'), {
+      title: 'Homemade Mayo',
+      servings: 2,
+      producesCanonId: canonMayo,
+      ingredients: [ingredient('m-oil', 'oil', canonOil)], // 100g at base 2
+    });
+    seedRecipes([mayo]);
+    const parent = recipe(nsId('r-salad'), {
+      ingredients: [ingredient('i-mayo', 'mayonnaise', canonMayo)],
+    });
+    const rows = buildRecipeAddPlan(parent, 2);
+    const mayoRow = selectMake(rows, 'i-mayo');
+    stepMadeServings(mayoRow, 4); // 2× base → oil 200g
+
+    await commitRecipeAddPlan(parent, 'list-1', 2, rows);
+    const items = savedItems();
+    expect(items).toHaveLength(1);
+    // Committed amount is the SCALED quantity…
+    expect(items[0].amount).toBe(200);
+    // …and the stamped SourceRef.servings is the CHOSEN madeServings, not the base.
+    expect(items[0].sources).toEqual([
+      { kind: 'recipe', recipeId: nsId('r-mayo'), servings: 4, label: 'Homemade Mayo' },
+    ]);
+  });
+
+  it('master servings and made-header servings are independent (neither changes the other)', () => {
+    const canonMayo = nsId('canon-mayo');
+    const canonOil = nsId('canon-oil');
+    const canonSalt = nsId('canon-salt');
+    mockGetCanonItemsSnapshot.mockReturnValue([
+      canon(canonMayo),
+      canon(canonOil),
+      canon(canonSalt),
+    ]);
+    seedRecipes([
+      recipe(nsId('r-mayo'), {
+        servings: 2,
+        producesCanonId: canonMayo,
+        ingredients: [ingredient('m-oil', 'oil', canonOil)], // 100g at base 2
+      }),
+    ]);
+    const parent = recipe(nsId('r-salad'), {
+      // base servings 2 (fixture default); salt is a plain Buy row of 100g.
+      ingredients: [
+        ingredient('i-mayo', 'mayonnaise', canonMayo),
+        ingredient('i-salt', 'salt', canonSalt),
+      ],
+    });
+
+    // (a) Master servings does NOT touch a made header's sub-entry amounts:
+    //     build the SAME plan at master 2 vs master 10 → oil sub amount identical.
+    const rowsMaster2 = buildRecipeAddPlan(parent, 2);
+    const mayo2 = selectMake(rowsMaster2, 'i-mayo');
+    const rowsMaster10 = buildRecipeAddPlan(parent, 10);
+    const mayo10 = selectMake(rowsMaster10, 'i-mayo');
+    expect(subAmount(mayo2, 'm-oil')).toBe(100); // producer base, master-independent
+    expect(subAmount(mayo10, 'm-oil')).toBe(100);
+    expect(mayo10.madeServings).toBe(2);
+
+    // (b) Stepping a made header does NOT touch the master-scaled Buy rows:
+    //     salt (a sibling Buy row) keeps its master-2 amount while mayo is bumped.
+    const saltRow = rowsMaster2.find((r) => r.ingredientId === 'i-salt')!;
+    expect(saltRow.amount).toBe(100); // master 2 == parent base 2 → scale 1
+    stepMadeServings(mayo2, 8);
+    expect(subAmount(mayo2, 'm-oil')).toBe(400); // made bumped…
+    expect(saltRow.amount).toBe(100); // …salt untouched
+  });
+
+  it('changing the producer resets madeServings to the new producer base', () => {
+    const canonMayo = nsId('canon-mayo');
+    mockGetCanonItemsSnapshot.mockReturnValue([canon(canonMayo)]);
+    seedRecipes([
+      recipe(nsId('r-mayo-a'), { servings: 2, producesCanonId: canonMayo }),
+      recipe(nsId('r-mayo-b'), { servings: 6, producesCanonId: canonMayo }),
+    ]);
+    const parent = recipe(nsId('r-salad'), {
+      ingredients: [ingredient('i-mayo', 'mayonnaise', canonMayo)],
+    });
+    const rows = buildRecipeAddPlan(parent, 2);
+    expect(rows[0].madeServings).toBe(2); // seeded to first producer's base
+
+    // Mirror the sheet's setProducer: switch to producer B (base 6) and re-default.
+    const row = rows[0];
+    row.producerId = nsId('r-mayo-b');
+    row.madeServings = row.producers.find((r) => r.id === row.producerId)!.metadata.servings ?? 1;
+    expect(row.madeServings).toBe(6);
   });
 });
