@@ -157,6 +157,7 @@ describe('onRecipeWritten — Firestore emulator', () => {
     expect(mockGenerateImage).toHaveBeenCalledWith({
       title: 'Lemon drizzle cake',
       description: 'A moist sponge soaked in lemon syrup.',
+      tags: [],
     });
   });
 
@@ -171,6 +172,7 @@ describe('onRecipeWritten — Firestore emulator', () => {
       title: 'Roast chicken',
       description: 'A whole roast chicken with lemon and thyme.',
       hint: 'on a rustic board',
+      tags: [],
     });
 
     const snap = await db.collection('recipes').doc('r-hint').get();
