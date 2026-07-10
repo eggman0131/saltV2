@@ -223,6 +223,9 @@ async function assembleDraft(
     },
     source: { type: 'manual' },
     notes: raw.notes,
+    // Preserve the existing "makes" link on an edit-mode amend; null on create.
+    // The librarian never touches it, so carry the base value straight through.
+    producesCanonId: baseRecipe?.producesCanonId ?? null,
     image: null,
     createdAt: now,
     updatedAt: now,

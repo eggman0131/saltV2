@@ -25,6 +25,7 @@ export function emptyRecipe(id: string, now: string): Recipe {
     },
     source: null,
     notes: null,
+    producesCanonId: null,
     image: null,
     createdAt: now,
     updatedAt: '',

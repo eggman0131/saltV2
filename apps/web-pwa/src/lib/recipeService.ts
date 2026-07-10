@@ -12,7 +12,7 @@ import {
 import { createObservabilityErrorReportingAdapter, startUserActionSpan } from '@salt/observability';
 import type { AuthorRecipeInput, RecipeDoc } from '@salt/domain/schemas';
 import { reportIfFailed, reportSubscriptionError } from './errorReporting.js';
-import { addItem, recipeItemAddDefault } from '@salt/domain';
+import { addItem, recipeItemAddDefault, findProducingRecipes } from '@salt/domain';
 import type {
   Recipe,
   Ingredient,
@@ -394,6 +394,21 @@ export interface RecipeAddRow {
   readonly unit?: string;
   add: boolean;
   check: boolean;
+  // ─── Buy-or-make (Phase 2) ───────────────────────────────────────────────────
+  // Recipes that PRODUCE this row's ingredient (its `canonId` == their
+  // `producesCanonId`), resolved against the recipe snapshot. Empty when none —
+  // the review sheet then shows NO buy/make control for the row. The recipe being
+  // added is excluded (self-reference guard), so a recipe can't "make" its own
+  // ingredient from itself.
+  readonly producers: readonly Recipe[];
+  // The user's choice for an eligible row. `false` = buy the single item (default,
+  // identical to pre-Phase-2 behaviour); `true` = make it by fanning out the
+  // chosen producer's ingredients. Meaningless (and ignored) when `producers` is
+  // empty.
+  make: boolean;
+  // Which producer to make when there's more than one candidate. Seeded to the
+  // first producer's id; `null` when there are no producers.
+  producerId: string | null;
 }
 
 // Compute the scaled amount/unit for an ingredient. quantity is always in metric
@@ -414,6 +429,11 @@ export function buildRecipeAddPlan(recipe: Recipe, servings: number): RecipeAddR
   const scale = servings / baseServings;
   const canonById = new Map<string, CanonItem>(getCanonItemsSnapshot().map((c) => [c.id, c]));
   const liveCanonIds = new Set(canonById.keys());
+  // Snapshot the recipe list once so the buy-or-make resolver (Phase 2) is a pure
+  // per-row lookup. `findProducingRecipes` is the pure @salt/domain helper; the
+  // self-reference guard (a recipe can't make its own ingredient from itself) is
+  // applied here, at the call site.
+  const allRecipes = getRecipesSnapshot();
 
   const rows: RecipeAddRow[] = [];
   for (const group of recipe.ingredients) {
@@ -439,6 +459,14 @@ export function buildRecipeAddPlan(recipe: Recipe, servings: number): RecipeAddR
       const itemText = ing.parsed?.item.trim() || ing.rawText;
       const notes = ing.parsed?.notes ?? '';
 
+      // Buy-or-make (Phase 2): a row is eligible when its ingredient's canon link
+      // is produced by some OTHER recipe. Keyed off the ingredient's raw `canonId`
+      // (not `matched`) so a producer stays offerable even if the canon doc was
+      // deleted. Self-reference guard: exclude the recipe being added.
+      const producers = ing.canonId
+        ? findProducingRecipes(allRecipes, ing.canonId).filter((r) => r.id !== recipe.id)
+        : [];
+
       rows.push({
         ingredientId: ing.id,
         rawText: ing.rawText,
@@ -453,10 +481,41 @@ export function buildRecipeAddPlan(recipe: Recipe, servings: number): RecipeAddR
         ...(unit !== undefined ? { unit } : {}),
         add: dflt.add,
         check: dflt.check,
+        producers,
+        make: false, // default to buy — unchanged behaviour unless the user opts in
+        producerId: producers[0]?.id ?? null,
       });
     }
   }
   return rows;
+}
+
+// How many shopping-list items a confirmed plan will actually write — the number
+// the review sheet's "Add N to list" preview must show so it matches the commit
+// result (issue #185, Phase 2). Mirrors the write path in `commitRecipeAddPlan`:
+//   • an included Buy row (`add && !make`) writes its single item → 1;
+//   • an included Make row with a resolvable producer fans out to that producer's
+//     own `add:true` sub-rows → that sub-plan's size (one level deep, exactly what
+//     the commit writes);
+//   • a Make row whose producer can't be resolved falls back to 1 (defensive — it
+//     also matches commit, which writes the single item when `producers` is empty).
+// Pure synchronous read against the canon + recipe snapshots (via
+// `buildRecipeAddPlan`), so it's safe to recompute in a Svelte `$derived`.
+export function recipeAddPlanItemCount(rows: readonly RecipeAddRow[]): number {
+  let total = 0;
+  for (const row of rows) {
+    if (!row.add) continue;
+    if (row.make && row.producers.length > 0) {
+      const producer = row.producers.find((r) => r.id === row.producerId) ?? row.producers[0];
+      if (producer) {
+        const subRows = buildRecipeAddPlan(producer, producer.metadata.servings ?? 1);
+        total += subRows.filter((r) => r.add).length;
+        continue;
+      }
+    }
+    total += 1;
+  }
+  return total;
 }
 
 // Write the user-confirmed rows of a recipe-add plan to the shopping list. Only
@@ -477,9 +536,34 @@ export async function commitRecipeAddPlan(
     label: recipe.title,
   };
 
+  // Direct single-item writes (buy rows). Their failures are reported here.
   const saves: Promise<ReadResult<void, DomainError>>[] = [];
+  // "Make" fan-outs (Phase 2). Each is a recursive commit whose own failures were
+  // already reported inside it, so these are only propagated — never re-reported.
+  const subPlans: Promise<ReadResult<void, DomainError>>[] = [];
   for (const row of rows) {
     if (!row.add) continue;
+
+    // "Make" fan-out (Phase 2): when the user chose to make an eligible row, add
+    // the CHOSEN producer's OWN ingredients as one full batch at that producer's
+    // base servings (multiplier 1) instead of the single canon item. This reuses
+    // the exact conversion (`buildRecipeAddPlan`) and per-row add path — a plain
+    // recursive `commitRecipeAddPlan` on the producer — so the sub-items ride the
+    // same `saveShoppingListItem` write (the canon trigger picks them up) and get
+    // a fresh `SourceRef` stamped with the producer's id/servings/name.
+    //
+    // ONE LEVEL DEEP: `buildRecipeAddPlan` seeds every sub-row with `make: false`,
+    // so the recursion never re-expands a sub-ingredient that itself has a
+    // producer — it's added as a plain item. That default also makes cycles
+    // impossible (the recursion can only branch on make, which is off below).
+    if (row.make && row.producers.length > 0) {
+      const producer = row.producers.find((r) => r.id === row.producerId) ?? row.producers[0]!;
+      const producerServings = producer.metadata.servings ?? 1;
+      const subRows = buildRecipeAddPlan(producer, producerServings);
+      subPlans.push(commitRecipeAddPlan(producer, listId, producerServings, subRows));
+      continue;
+    }
+
     const result = addItem(
       [],
       {
@@ -498,12 +582,17 @@ export async function commitRecipeAddPlan(
     saves.push(saveShoppingListItem(listId, result.value[0]!));
   }
 
-  if (saves.length === 0) return success(undefined);
+  if (saves.length === 0 && subPlans.length === 0) return success(undefined);
 
-  const results = await Promise.all(saves);
+  const [results, subResults] = await Promise.all([Promise.all(saves), Promise.all(subPlans)]);
   const firstFailure = results.find((r) => r.kind !== 'ok');
-  // Report the first shopping-list write failure (StorageError/SyncError/etc.);
-  // the addItem domain ValidationError above short-circuits before any write and
-  // is a suppressed category regardless, so it is intentionally not reported.
-  return firstFailure ? reportIfFailed(getErrorReporter(), firstFailure) : success(undefined);
+  // Report the first direct shopping-list write failure (StorageError/SyncError/
+  // etc.); the addItem domain ValidationError above short-circuits before any
+  // write and is a suppressed category regardless, so it is intentionally not
+  // reported.
+  if (firstFailure) return reportIfFailed(getErrorReporter(), firstFailure);
+  // A "make" fan-out failure was already reported inside its own recursive commit
+  // (Phase 2) — propagate it without re-reporting.
+  const subFailure = subResults.find((r) => r.kind !== 'ok');
+  return subFailure ?? success(undefined);
 }

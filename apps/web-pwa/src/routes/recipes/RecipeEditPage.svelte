@@ -1,5 +1,20 @@
 <script lang="ts">
-  import { Button, DetailPage, Icon, Switch, TextArea, TextField } from '@salt/ui-components';
+  import {
+    Button,
+    Combobox,
+    ComboboxContent,
+    ComboboxEmpty,
+    ComboboxField,
+    ComboboxInput,
+    ComboboxItem,
+    ComboboxTrigger,
+    DetailPage,
+    Icon,
+    Switch,
+    TextArea,
+    TextField,
+    type ComboboxItemType,
+  } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
   import {
     emptyRecipe,
@@ -134,6 +149,34 @@
   function setSourceUrl(value: string): void {
     const trimmed = value.trim();
     draft = { ...draft, source: trimmed === '' ? null : { type: 'url', url: trimmed } };
+  }
+
+  // ─── "This recipe makes…" (produces canon link) ─────────────────────────────
+  // A searchable picker over the canon store: link this recipe to the grocery
+  // item it produces (e.g. a Mayonnaise recipe makes "Mayonnaise"), or clear it.
+  // Items are {value: canonId, label: name}; the filter also matches synonyms via
+  // a lowercased name+synonyms index. The picker is remounted via `{#key}` on the
+  // selection so an external change — the blank→hydrated draft on a cold deep
+  // link, or the Clear button — re-initialises the input label (the Combobox only
+  // syncs its input from `value` at mount).
+  const canonComboItems: ComboboxItemType[] = $derived(
+    $canonItems.map((c) => ({ value: c.id, label: c.name })),
+  );
+  const canonSearchIndex = $derived(
+    new Map($canonItems.map((c) => [c.id, [c.name, ...c.synonyms].join(' ').toLowerCase()])),
+  );
+  function canonFilter(input: string, item: ComboboxItemType): boolean {
+    const hay = canonSearchIndex.get(item.value) ?? item.label.toLowerCase();
+    return hay.includes(input.trim().toLowerCase());
+  }
+  const producesKey = $derived(
+    `${draft.producesCanonId ?? ''}|${canonComboItems.some((i) => i.value === draft.producesCanonId)}`,
+  );
+  function setProduces(canonId: string): void {
+    draft = { ...draft, producesCanonId: canonId };
+  }
+  function clearProduces(): void {
+    draft = { ...draft, producesCanonId: null };
   }
 
   // ─── Ingredient-group helpers ─────────────────────────────────────────────────
@@ -711,6 +754,53 @@
         onValueChange={setSourceUrl}
         data-testid="recipe-source-input"
       />
+      <!-- Produces: link this recipe to the grocery item it makes -->
+      <div class="flex flex-col gap-1.5" data-testid="recipe-produces">
+        <p class="text-sm font-medium">This recipe makes…</p>
+        <p class="text-xs text-muted-foreground">
+          Optionally link this recipe to the grocery item it produces (e.g. a Mayonnaise recipe
+          makes “Mayonnaise”).
+        </p>
+        <div class="flex items-center gap-2">
+          <div class="relative flex-1">
+            {#key producesKey}
+              <Combobox
+                items={canonComboItems}
+                value={draft.producesCanonId ?? ''}
+                filterFn={canonFilter}
+                restrict
+                placeholder="Search grocery items…"
+                onValueChange={setProduces}
+              >
+                <ComboboxField>
+                  <ComboboxInput />
+                  <ComboboxTrigger />
+                </ComboboxField>
+                <ComboboxContent>
+                  {#snippet children({ filteredItems })}
+                    {#each filteredItems as item, i (item.value)}
+                      <ComboboxItem {item} index={i} />
+                    {/each}
+                    {#if filteredItems.length === 0}
+                      <ComboboxEmpty>No grocery items found</ComboboxEmpty>
+                    {/if}
+                  {/snippet}
+                </ComboboxContent>
+              </Combobox>
+            {/key}
+          </div>
+          {#if draft.producesCanonId}
+            <Button
+              variant="ghost"
+              size="sm"
+              onclick={clearProduces}
+              data-testid="recipe-produces-clear"
+            >
+              Clear
+            </Button>
+          {/if}
+        </div>
+      </div>
       <!-- Tag picker -->
       <div class="flex flex-col gap-1.5">
         <p class="text-sm font-medium">Tags</p>

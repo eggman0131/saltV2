@@ -54,6 +54,14 @@
       : null,
   );
 
+  // "Makes: <name>" chip — resolve the produces canon link to its display name.
+  // null when the recipe isn't linked or the canon item has since been deleted.
+  const producesCanonName = $derived(
+    recipe?.producesCanonId
+      ? ($canonItems.find((c) => c.id === recipe.producesCanonId)?.name ?? null)
+      : null,
+  );
+
   function timeParts(): string[] {
     if (!recipe) return [];
     const m = recipe.metadata;
@@ -464,14 +472,20 @@
         {/if}
 
         <!-- Description + meta chips -->
-        {#if recipe.description || timeParts().length > 0 || recipe.metadata.tags.length > 0 || sourceUrl}
+        {#if recipe.description || timeParts().length > 0 || recipe.metadata.tags.length > 0 || sourceUrl || producesCanonName}
           <Card>
             <CardContent class="flex flex-col gap-3 p-4">
               {#if recipe.description}
                 <p class="text-sm text-muted-foreground">{recipe.description}</p>
               {/if}
-              {#if timeParts().length > 0 || recipe.metadata.tags.length > 0}
+              {#if timeParts().length > 0 || recipe.metadata.tags.length > 0 || producesCanonName}
                 <div class="flex flex-wrap items-center gap-2">
+                  {#if producesCanonName}
+                    <span
+                      class="rounded bg-muted px-2 py-1 text-xs text-muted-foreground"
+                      data-testid="recipe-produces-chip">Makes: {producesCanonName}</span
+                    >
+                  {/if}
                   {#each timeParts() as part (part)}
                     <span class="rounded bg-muted px-2 py-1 text-xs text-muted-foreground"
                       >{part}</span

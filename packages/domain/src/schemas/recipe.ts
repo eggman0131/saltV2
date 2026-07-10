@@ -115,6 +115,12 @@ export const RecipeSchema = z.object({
   metadata: RecipeMetadataSchema,
   source: RecipeSourceSchema.nullable(),
   notes: z.string().nullable(),
+  // The grocery item this recipe produces, if any ("buy or make", Phase 1). A
+  // canon item id, or null when the recipe isn't linked to a grocery item.
+  // `.default(null)` (NOT `.optional()`) so recipes written before this field
+  // parse cleanly to `null` on read — back-compat on production data (#240) —
+  // and every reader sees a concrete `string | null`, never `undefined`.
+  producesCanonId: z.string().nullable().default(null),
   // The photoreal "arty" hero image (Tier-2, issue #148). `null` = none yet: the
   // onRecipeWritten trigger generates one from the title + description on create.
   // A non-null `{ url, source }` is rendered; the trigger skips it (already

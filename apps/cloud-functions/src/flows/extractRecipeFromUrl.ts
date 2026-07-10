@@ -366,6 +366,8 @@ async function assembleDraft(raw: ExtractRecipeAIOutput, sourceUrl: string): Pro
     },
     source: { type: 'url', url: sourceUrl },
     notes: raw.notes,
+    // URL import always creates a fresh recipe — no "makes" link yet.
+    producesCanonId: null,
     image: null,
     createdAt: now,
     updatedAt: now,
