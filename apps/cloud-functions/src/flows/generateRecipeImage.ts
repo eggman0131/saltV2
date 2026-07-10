@@ -38,16 +38,36 @@ export const RECIPE_IMAGE_STYLE =
   'First read the dish itself — is it fresh and light or hearty and slow-cooked, what cuisine is it, and which season does it naturally belong to — then let that reading be the DOMINANT driver of the entire scene. Set the season, setting, surface, props, camera angle, colour palette and quality of light to suit THIS dish above all else: a fresh salad calls for high summer — bright, sunny, airy, cool clear light, a breezy outdoor or sun-lit table; a cottage pie or a slow-cooked stew calls for autumn or winter — cosy and warm, low golden or soft overcast light, deeper earthy tones, a hearty indoor table. Make this seasonal and situational shift clearly legible at a glance — a deliberate, confident step, never a faint tint — so each dish feels like it lives in its own moment. Vary the props, surface and angle to suit each dish; do NOT default to the same spoon, cloth, tabletop or camera position on every photo. Within that freedom, hold a recognisable house style: a photorealistic food photograph with the warm, unfussy, appetising feel of a modern British home-cookbook, shot with real affection. Always keep these anchors — soft natural window light; a shallow depth of field with the finished dish in crisp focus and the surroundings falling softly out of focus; the food lovingly plated on rustic ceramic or worn crockery. Absolutely no text, no captions, no watermark, no logos, no hands, no people. A single, mouth-watering hero shot of one finished dish that makes you want to eat it.';
 
 // Per-recipe generation prompt. The dish identity comes from the recipe title and
-// (when present) its description; an optional user `hint` is appended verbatim as
-// additive guidance and never alters the locked house-style wording.
-function buildRecipePrompt(title: string, description?: string | null, hint?: string): string {
+// (when present) its description; the recipe's own `tags` are fed in as a dish-type
+// SIGNAL the model may use to judge mood/season/cuisine (issue #148, Phase 2); and
+// an optional user `hint` is appended verbatim as additive guidance. Neither the
+// tags nor the hint alter the locked house-style wording, and the hint is always
+// appended last.
+function buildRecipePrompt(
+  title: string,
+  description?: string | null,
+  hint?: string,
+  tags?: string[],
+): string {
   const desc = description?.trim();
   const dish = desc
     ? `A beautiful, appetising photograph of the finished dish "${title}". ${desc}`
     : `A beautiful, appetising photograph of the finished dish "${title}".`;
-  const base = `${dish} ${RECIPE_IMAGE_STYLE}`;
+  let prompt = `${dish} ${RECIPE_IMAGE_STYLE}`;
+
+  // Recipe tags (e.g. #comfort-food, #slow-cooker, #salad, #summer) give the model
+  // an explicit dish-type cue beyond the title/description: a plainly-named dish
+  // tagged #comfort-food reads warmer/autumnal, one tagged #salad/#summer brighter.
+  // They are cues for READING the dish's character only — never text to render, so
+  // the clause explicitly forbids drawing or writing them (the style already bans
+  // captions/text). Drop empty/whitespace tags; with none usable, add no clause.
+  const cleanTags = tags?.map((t) => t.trim()).filter((t) => t.length > 0);
+  if (cleanTags && cleanTags.length > 0) {
+    prompt += ` This recipe is tagged: ${cleanTags.join(', ')}. Use these tags only as hints for reading the dish's mood, season and cuisine when you stage the scene — do NOT draw, write, label or otherwise show any of these words in the image.`;
+  }
+
   const trimmedHint = hint?.trim();
-  return trimmedHint ? `${base} Additional guidance for this photo: ${trimmedHint}` : base;
+  return trimmedHint ? `${prompt} Additional guidance for this photo: ${trimmedHint}` : prompt;
 }
 
 function parseDataUrl(url: string): { contentType: string; base64: string } {
@@ -65,6 +85,9 @@ export const GenerateRecipeImageInputSchema = z.object({
   description: z.string().nullable().optional(),
   // Optional additive steer (issue #148) appended to the locked prompt.
   hint: z.string().optional(),
+  // Optional dish-type signal (issue #148, Phase 2): the recipe's own tags, passed
+  // to the model as cues for judging mood/season/cuisine — never rendered as text.
+  tags: z.array(z.string()).optional(),
 });
 
 // Raw generated image bytes, base64-encoded (Genkit flow outputs must be
@@ -80,7 +103,7 @@ export const generateRecipeImageFlow = ai.defineFlow(
     inputSchema: GenerateRecipeImageInputSchema,
     outputSchema: GenerateRecipeImageOutputSchema,
   },
-  async ({ title, description, hint }) => {
+  async ({ title, description, hint, tags }) => {
     setActiveSpanName(`generateRecipeImage: ${title}`);
 
     const modelId = await resolveModel('image', 'generateRecipeImage');
@@ -90,7 +113,7 @@ export const generateRecipeImageFlow = ai.defineFlow(
       () =>
         ai.generate({
           model: imageModel,
-          prompt: buildRecipePrompt(title, description, hint),
+          prompt: buildRecipePrompt(title, description, hint, tags),
         }),
       { timeoutMs: IMAGE_GEN_TIMEOUT_MS, retries: 1 },
     );

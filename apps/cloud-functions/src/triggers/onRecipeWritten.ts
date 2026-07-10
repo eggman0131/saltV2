@@ -111,6 +111,11 @@ async function maybeGenerateImage(
         title,
         description: recipe.description,
         ...(hint ? { hint } : {}),
+        // Feed the recipe's own tags to the model as a dish-type cue for reading
+        // mood/season/cuisine (issue #148, Phase 2). Always present on a parsed
+        // RecipeDoc (string[], possibly empty); the flow drops empties and adds no
+        // clause when there are none. Nothing new is persisted.
+        tags: recipe.metadata.tags,
       }),
     );
     const raw = Buffer.from(imageBase64, 'base64');
