@@ -23,9 +23,9 @@
     "test:coverage": "vitest run --coverage",
     "format": "prettier --write \"**/*.{ts,js,svelte,css,html}\"",
     "format:check": "prettier --check \"**/*.{ts,js,svelte,css,html}\"",
-    "dev": "node scripts/free-ports.mjs 5173 && exec pnpm --filter @salt/web-pwa dev",
-    "dev:genkit": "node scripts/free-ports.mjs 4001 4033 3100 && exec pnpm --filter @salt/cloud-functions dev",
-    "dev:emulators": "node scripts/stop-emulators.mjs && pnpm --filter @salt/cloud-functions build && (cp apps/cloud-functions/.secret.local apps/cloud-functions/dist/.secret.local 2>/dev/null || true) && exec env NODE_OPTIONS='--disable-warning=DEP0040' GENKIT_ENV=dev GENKIT_TELEMETRY_SERVER=http://localhost:4033 firebase emulators:start --only firestore,auth,functions,storage --import=./.emulator-data --export-on-exit=./.emulator-data",
+    "dev": "node scripts/sync-worktree-env.mjs && node scripts/free-ports.mjs 5173 && exec pnpm --filter @salt/web-pwa dev",
+    "dev:genkit": "node scripts/sync-worktree-env.mjs && node scripts/free-ports.mjs 4001 4033 3100 && exec pnpm --filter @salt/cloud-functions dev",
+    "dev:emulators": "node scripts/sync-worktree-env.mjs && node scripts/stop-emulators.mjs && pnpm --filter @salt/cloud-functions build && (cp apps/cloud-functions/.secret.local apps/cloud-functions/dist/.secret.local 2>/dev/null || true) && (node scripts/seed-emulator-admin.mjs &) && exec env NODE_OPTIONS='--disable-warning=DEP0040' GENKIT_ENV=dev GENKIT_TELEMETRY_SERVER=http://localhost:4033 firebase emulators:start --only firestore,auth,functions,storage --import=./.emulator-data --export-on-exit=./.emulator-data",
     "stop:emulators": "node scripts/stop-emulators.mjs",
     "test:emulator": "node scripts/test-emulator.mjs"
   },
