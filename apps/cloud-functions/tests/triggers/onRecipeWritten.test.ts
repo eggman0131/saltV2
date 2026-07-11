@@ -104,10 +104,11 @@ describe('onRecipeWritten — hero-image branch', () => {
     await (onRecipeWritten as Function)(makeEvent('r1', makeRecipe('r1')));
 
     expect(mockGenerateImage).toHaveBeenCalledOnce();
-    // Title + description are fed to the flow; no hint present.
+    // Title + description + the recipe's tags are fed to the flow; no hint present.
     expect(mockGenerateImage).toHaveBeenCalledWith({
       title: 'Roast chicken',
       description: 'A whole roast chicken with lemon and thyme.',
+      tags: [],
     });
     expect(mockEncode).toHaveBeenCalledOnce();
     expect(mockSave).toHaveBeenCalledOnce();
@@ -127,7 +128,28 @@ describe('onRecipeWritten — hero-image branch', () => {
       title: 'Roast chicken',
       description: 'A whole roast chicken with lemon and thyme.',
       hint: 'on a rustic board',
+      tags: [],
     });
+  });
+
+  it("forwards the recipe's tags to the flow as a dish-type signal", async () => {
+    await (onRecipeWritten as Function)(
+      makeEvent(
+        'r1',
+        makeRecipe('r1', {
+          metadata: {
+            servings: null,
+            totalTimeMinutes: null,
+            prepTimeMinutes: null,
+            cookTimeMinutes: null,
+            tags: ['comfort-food', 'slow-cooker'],
+          },
+        }),
+      ),
+    );
+    expect(mockGenerateImage).toHaveBeenCalledWith(
+      expect.objectContaining({ tags: ['comfort-food', 'slow-cooker'] }),
+    );
   });
 
   it('skips when an image already exists (never clobbers a manual upload)', async () => {
