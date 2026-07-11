@@ -14,9 +14,11 @@
     DialogHeader,
     DialogTitle,
     Icon,
+    ImageCropper,
     Markdown,
     Spinner,
     TextField,
+    type ImageCropperHandle,
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
   import {
@@ -28,6 +30,7 @@
     persistRecipe,
     authorRecipeTraced,
     regenerateRecipeImage,
+    setRecipeImageUpload,
   } from '../../lib/recipeService.js';
   import RecipeAddToListSheet from './RecipeAddToListSheet.svelte';
   import { canonItems } from '../../lib/canonService.js';
@@ -332,6 +335,69 @@
     await runRegenerate(hint || undefined);
   }
 
+  // ─── Upload a local photo (issue #455, Phase 2) ──────────────────────────────
+  // Pick a file → crop to 3:2 (pan/zoom) in the ImageCropper primitive → Save
+  // sends the cropped bytes (base64) to the setRecipeImageUpload callable, which
+  // re-encodes and writes `recipe-images/{id}.webp` then stamps
+  // `image = { url, source: 'upload' }`. The new URL arrives via the subscription;
+  // a bumped `imageRequestedAt` nonce cache-busts the identical Storage URL so the
+  // photo appears immediately. Regenerate never clobbers an uploaded photo (the
+  // trigger skips `source: 'upload'`).
+  let uploadOpen = $state(false);
+  let uploadBusy = $state(false);
+  let uploadSrc = $state<string | null>(null);
+  let cropper = $state<ImageCropperHandle | undefined>(undefined);
+
+  function openUpload(): void {
+    clearUploadSrc();
+    uploadBusy = false;
+    uploadOpen = true;
+  }
+
+  // Object-URL lifecycle: revoke the previous blob URL before replacing/clearing
+  // so a re-pick or a close doesn't leak it.
+  function clearUploadSrc(): void {
+    if (uploadSrc) URL.revokeObjectURL(uploadSrc);
+    uploadSrc = null;
+  }
+
+  function handleUploadFileChange(e: Event): void {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    // Reset the input so re-picking the SAME file still fires a change event.
+    input.value = '';
+    if (!file) return;
+    clearUploadSrc();
+    uploadSrc = URL.createObjectURL(file);
+  }
+
+  function handleUploadOpenChange(open: boolean): void {
+    uploadOpen = open;
+    if (!open) {
+      clearUploadSrc();
+      uploadBusy = false;
+    }
+  }
+
+  async function handleUploadSave(): Promise<void> {
+    if (!recipe || !cropper || uploadBusy) return;
+    uploadBusy = true;
+    const base64 = await cropper.getCroppedBase64();
+    if (!base64) {
+      uploadBusy = false;
+      addToast('Could not read that image — try another.', 'destructive');
+      return;
+    }
+    const result = await setRecipeImageUpload(recipe.id, base64, 'image/webp');
+    uploadBusy = false;
+    if (result.kind !== 'ok') {
+      addToast('Failed to upload image.', 'destructive');
+      return;
+    }
+    handleUploadOpenChange(false);
+    addToast('Photo updated.', 'success');
+  }
+
   import type { QuantityDoc } from '@salt/domain/schemas';
   function formatMetricQty(q: QuantityDoc): string {
     if (q.type === 'range') return `${q.min}–${q.max}`;
@@ -416,25 +482,39 @@
                 class="aspect-[3/2] w-full object-cover"
                 data-testid="recipe-hero-image"
               />
-              <!-- Regenerate as a subtle overlay control: hover-revealed on
-                   desktop, faint-always-visible on touch (no hover). -->
-              <Button
-                size="icon"
-                variant="outline"
-                onclick={openRegenerate}
-                loading={imageBusy}
-                disabled={imageBusy}
-                ariaLabel="Regenerate image"
-                title="Regenerate image"
-                class="absolute right-2 top-2 bg-background/80 opacity-0 shadow-sm backdrop-blur-sm transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-60"
-                data-testid="recipe-image-regenerate"
-              >
-                {#snippet leading()}<Icon name="RefreshCw" size={16} />{/snippet}
-              </Button>
+              <!-- Regenerate + Upload as subtle overlay controls: hover-revealed
+                   on desktop, faint-always-visible on touch (no hover). -->
+              <div class="absolute right-2 top-2 flex gap-2">
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onclick={openUpload}
+                  disabled={imageBusy}
+                  ariaLabel="Upload a photo"
+                  title="Upload a photo"
+                  class="bg-background/80 opacity-0 shadow-sm backdrop-blur-sm transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-60"
+                  data-testid="recipe-image-upload"
+                >
+                  {#snippet leading()}<Icon name="Upload" size={16} />{/snippet}
+                </Button>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onclick={openRegenerate}
+                  loading={imageBusy}
+                  disabled={imageBusy}
+                  ariaLabel="Regenerate image"
+                  title="Regenerate image"
+                  class="bg-background/80 opacity-0 shadow-sm backdrop-blur-sm transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-60"
+                  data-testid="recipe-image-regenerate"
+                >
+                  {#snippet leading()}<Icon name="RefreshCw" size={16} />{/snippet}
+                </Button>
+              </div>
             </div>
           </div>
         {:else}
-          <div data-testid="recipe-hero-controls">
+          <div class="flex flex-wrap gap-2" data-testid="recipe-hero-controls">
             <Button
               size="sm"
               variant="outline"
@@ -445,6 +525,16 @@
             >
               {#snippet leading()}<Icon name="ImagePlus" size={14} />{/snippet}
               Generate image
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onclick={openUpload}
+              disabled={imageBusy}
+              data-testid="recipe-image-upload-empty"
+            >
+              {#snippet leading()}<Icon name="Upload" size={14} />{/snippet}
+              Upload a photo
             </Button>
           </div>
         {/if}
@@ -786,6 +876,66 @@
           data-testid="recipe-image-regenerate-confirm"
         >
           Regenerate
+        </Button>
+      </DialogFooter>
+    </div>
+  </DialogContent>
+</Dialog>
+
+<!-- Upload photo dialog: pick a local image → crop to 3:2 → Save (issue #455) -->
+<Dialog bind:open={uploadOpen} onOpenChange={handleUploadOpenChange}>
+  <DialogContent>
+    <div class="flex flex-col gap-4" data-testid="recipe-image-upload-dialog">
+      <DialogHeader>
+        <DialogTitle>Upload a photo</DialogTitle>
+        <DialogDescription>
+          Choose a photo from your device and position it in the 3:2 frame — drag to pan, scroll or
+          use the slider to zoom.
+        </DialogDescription>
+      </DialogHeader>
+
+      {#if uploadSrc}
+        <ImageCropper bind:this={cropper} src={uploadSrc} />
+        <button
+          type="button"
+          class="self-start text-xs text-primary hover:underline disabled:opacity-50"
+          onclick={clearUploadSrc}
+          disabled={uploadBusy}
+          data-testid="recipe-image-upload-choose-another"
+        >
+          Choose a different photo
+        </button>
+      {:else}
+        <label
+          class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-dashed border-input px-4 py-10 text-sm text-muted-foreground hover:bg-muted/50"
+        >
+          <Icon name="ImagePlus" size={24} />
+          <span>Tap to choose a photo</span>
+          <input
+            type="file"
+            accept="image/*"
+            class="sr-only"
+            onchange={handleUploadFileChange}
+            data-testid="recipe-image-upload-input"
+          />
+        </label>
+      {/if}
+
+      <DialogFooter>
+        <Button
+          variant="outline"
+          onclick={() => handleUploadOpenChange(false)}
+          disabled={uploadBusy}
+        >
+          Cancel
+        </Button>
+        <Button
+          onclick={handleUploadSave}
+          loading={uploadBusy}
+          disabled={uploadBusy || !uploadSrc}
+          data-testid="recipe-image-upload-save"
+        >
+          Save
         </Button>
       </DialogFooter>
     </div>
