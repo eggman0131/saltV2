@@ -13,6 +13,7 @@ import {
   instantiateWeek,
   setDayNote,
   setDayChefs,
+  setDayRecipes,
   setDayGuests,
   addAttendee,
   removeAttendee,
@@ -211,6 +212,9 @@ export function setWeekDayNote(dateKey: string, note: string) {
 }
 export function setWeekDayChefs(dateKey: string, chefs: readonly string[]) {
   return persistWeek(setDayChefs(currentWeekObject(), dateKey, chefs));
+}
+export function setWeekDayRecipes(dateKey: string, recipeIds: readonly string[]) {
+  return persistWeek(setDayRecipes(currentWeekObject(), dateKey, recipeIds));
 }
 export function setWeekDayGuests(dateKey: string, guests: number) {
   return persistWeek(setDayGuests(currentWeekObject(), dateKey, guests));

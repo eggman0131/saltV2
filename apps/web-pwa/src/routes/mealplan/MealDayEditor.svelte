@@ -2,13 +2,30 @@
   import {
     Checkbox,
     Button,
+    Icon,
     Select,
     SelectContent,
     SelectItem,
     SelectTrigger,
+    Combobox,
+    ComboboxContent,
+    ComboboxEmpty,
+    ComboboxField,
+    ComboboxInput,
+    ComboboxItem,
+    ComboboxTrigger,
+    type ComboboxItemType,
   } from '@salt/ui-components';
-  import { ChevronDown, ChevronRight, ChefHat, StickyNote } from '@lucide/svelte';
-  import { memberInitials, weatherIcon, type Day, type Member } from '@salt/domain';
+  import { ChevronDown, ChevronRight, ChefHat, StickyNote, X } from '@lucide/svelte';
+  import { push } from 'svelte-spa-router';
+  import {
+    appendCacheBuster,
+    memberInitials,
+    weatherIcon,
+    type Day,
+    type Member,
+    type Recipe,
+  } from '@salt/domain';
   import type { WeatherDaySummary } from '@salt/domain/schemas';
   import WeatherSummary from './WeatherSummary.svelte';
   import WeatherIcon from '$lib/weather-icons/WeatherIcon.svelte';
@@ -31,6 +48,10 @@
     sublabel?: string;
     day: Day;
     members: Member[];
+    // Full recipe list, resolved live so attached ids render their current title
+    // (never denormalised onto the plan doc). Missing/deleted ids are skipped.
+    // Optional: the weekday-keyed template editor omits it and stays recipe-free.
+    recipes?: readonly Recipe[];
     testid: string;
     // `| undefined` so the parent can pass `forecast?.days[date]` directly under
     // exactOptionalPropertyTypes (noUncheckedIndexedAccess makes it optional).
@@ -41,12 +62,16 @@
     onAttendeeHomeTime: (memberId: string, homeTime: string | null) => void;
     onAttendeeNote: (memberId: string, note: string) => void;
     onGuestsChange: (guests: number) => void;
+    // Optional: present only in the dated week editor. When absent (the template
+    // editor) the recipe picker and chips are not rendered — recipe-free.
+    onRecipesChange?: (recipeIds: string[]) => void;
   }
   let {
     label,
     sublabel,
     day,
     members,
+    recipes = [],
     testid,
     weather,
     onNoteChange,
@@ -55,9 +80,57 @@
     onAttendeeHomeTime,
     onAttendeeNote,
     onGuestsChange,
+    onRecipesChange,
   }: Props = $props();
 
   let open = $state(false);
+
+  // ─── Attached recipes (issue #17) ──────────────────────────────────────────
+  // The day stores recipe IDS only; titles resolve live from the `recipes` prop
+  // at render time (no denormalisation). Ids with no matching recipe — deleted
+  // since they were attached — are skipped so a broken row is never rendered,
+  // both in the chosen-list and the collapsed summary.
+  const attachedRecipes = $derived(
+    day.recipeIds
+      .map((id) => recipes.find((r) => r.id === id))
+      .filter((r): r is Recipe => r !== undefined),
+  );
+  // Picker options exclude already-attached recipes so the same dish can't be
+  // added twice. Items are {value: id, label: title}, matching the canon picker.
+  const recipePickerItems: ComboboxItemType[] = $derived(
+    recipes
+      .filter((r) => !day.recipeIds.includes(r.id))
+      .map((r) => ({ value: r.id, label: r.title })),
+  );
+  function recipeFilter(input: string, item: ComboboxItemType): boolean {
+    return item.label.toLowerCase().includes(input.trim().toLowerCase());
+  }
+  // Remount key: bumped after each add so the Combobox input clears (it only
+  // syncs its label from `value` at mount — same reason RecipeEditPage keys it).
+  let recipePickerKey = $state(0);
+  function addRecipe(id: string): void {
+    if (!id || day.recipeIds.includes(id)) return;
+    onRecipesChange?.([...day.recipeIds, id]);
+    recipePickerKey += 1;
+  }
+  function removeRecipe(id: string): void {
+    onRecipesChange?.(day.recipeIds.filter((r) => r !== id));
+  }
+  // Display-time cache-bust for the row thumbnail (mirrors RecipeListPage, issue
+  // #460): a regenerated hero reuses the same Storage URL, so bust it with the
+  // per-regeneration nonce (`imageRequestedAt`, falling back to `updatedAt`). Null
+  // when the image is hidden/absent — the row then shows the CookingPot fallback.
+  function heroUrl(recipe: Recipe): string | null {
+    return recipe.image?.url && !recipe.imageHidden
+      ? appendCacheBuster(recipe.image.url, recipe.imageRequestedAt ?? recipe.updatedAt)
+      : null;
+  }
+  // Tapping a row's thumbnail/title opens that recipe's full view page. Hash
+  // routing (svelte-spa-router), identical to RecipeListPage's card click; the
+  // Remove button stops propagation so it never triggers navigation.
+  function openRecipe(id: string): void {
+    push(`/recipes/${id}`);
+  }
 
   // The day's weather pictogram (issue #387), resolved from the forecast's
   // weatherCode/isDay. Null for absent/unknown codes — and, crucially, null for
@@ -206,7 +279,7 @@
       </span>
 
       <span class="flex min-w-0 flex-1 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-6">
-        <span class="flex items-center gap-1.5 sm:flex-1">
+        <span class="flex min-w-0 items-center gap-1.5 sm:flex-1">
           <span
             class="min-w-0 truncate text-sm {day.note
               ? 'text-foreground'
@@ -221,6 +294,21 @@
               aria-label="has notes"
               data-testid={`${testid}-note-indicator`}
             />
+          {/if}
+          <!-- Attached recipe titles, shown ALONGSIDE the note (never replacing
+               it). Absent for days with no recipes, so those rows are unchanged.
+               Resolved live from ids; deleted recipes are skipped above. The
+               template editor (no onRecipesChange) never renders these. -->
+          {#if onRecipesChange}
+            {#each attachedRecipes as r (r.id)}
+              <span
+                class="max-w-[10rem] shrink-0 truncate rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground"
+                title={r.title}
+                data-testid={`${testid}-recipe-chip-${r.id}`}
+              >
+                {r.title}
+              </span>
+            {/each}
           {/if}
         </span>
         <span class="flex items-start gap-3 sm:shrink-0">
@@ -313,6 +401,93 @@
           oninput={(e) => onNoteChange(e.currentTarget.value)}
           data-testid={`${testid}-note`}></textarea>
       </div>
+
+      <!-- Attached recipes (issue #17): an add-one-at-a-time picker over the
+           recipe library. Selecting a recipe APPENDS its id; the picker remounts
+           (keyed) so its input clears, ready for the next add. The chosen-list
+           below shows each attached recipe's live title with a Remove button.
+           Rendered only in the week editor (onRecipesChange present); the
+           weekday template editor omits the prop and stays recipe-free. -->
+      {#if onRecipesChange}
+        <div class="flex flex-col gap-1.5" data-testid={`${testid}-recipes`}>
+          <span class="text-xs font-medium text-muted-foreground">Recipes</span>
+          {#key recipePickerKey}
+            <Combobox
+              items={recipePickerItems}
+              value=""
+              filterFn={recipeFilter}
+              restrict
+              placeholder="Add a recipe…"
+              onValueChange={addRecipe}
+            >
+              <ComboboxField>
+                <ComboboxInput data-testid={`${testid}-recipe-picker`} />
+                <ComboboxTrigger />
+              </ComboboxField>
+              <ComboboxContent>
+                {#snippet children({ filteredItems })}
+                  {#each filteredItems as item, i (item.value)}
+                    <ComboboxItem {item} index={i} />
+                  {/each}
+                  {#if filteredItems.length === 0}
+                    <ComboboxEmpty>No recipes found</ComboboxEmpty>
+                  {/if}
+                {/snippet}
+              </ComboboxContent>
+            </Combobox>
+          {/key}
+          {#each attachedRecipes as r (r.id)}
+            {@const url = heroUrl(r)}
+            <div
+              class="flex items-center justify-between gap-2 rounded border px-2 py-1.5"
+              data-testid={`${testid}-recipe-row-${r.id}`}
+            >
+              <!-- Thumbnail + title open the recipe's full view. One button owns the
+                   leading thumbnail and the title so the whole area is the tap
+                   target; the Remove button (a sibling, not nested) keeps its own
+                   handler and never triggers navigation. -->
+              <button
+                type="button"
+                class="flex min-w-0 flex-1 items-center gap-2 text-left"
+                onclick={() => openRecipe(r.id)}
+                data-testid={`${testid}-recipe-open-${r.id}`}
+              >
+                <span class="h-10 w-10 shrink-0 overflow-hidden rounded bg-muted">
+                  {#if url}
+                    <img
+                      src={url}
+                      alt=""
+                      loading="lazy"
+                      class="h-full w-full object-cover"
+                      data-testid={`${testid}-recipe-thumb-${r.id}`}
+                    />
+                  {:else}
+                    <span
+                      class="flex h-full w-full items-center justify-center bg-gradient-to-br from-muted to-muted/40 text-muted-foreground/60"
+                      data-testid={`${testid}-recipe-thumb-fallback-${r.id}`}
+                    >
+                      <Icon name="CookingPot" size={18} />
+                    </span>
+                  {/if}
+                </span>
+                <span class="min-w-0 truncate text-sm">{r.title}</span>
+              </button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onclick={(e) => {
+                  e.stopPropagation();
+                  removeRecipe(r.id);
+                }}
+                aria-label={`Remove ${r.title}`}
+                data-testid={`${testid}-recipe-remove-${r.id}`}
+              >
+                <X class="h-4 w-4" />
+              </Button>
+            </div>
+          {/each}
+        </div>
+      {/if}
 
       <div class="flex flex-col gap-2.5">
         <span class="text-xs font-medium text-muted-foreground">Who's eating</span>
