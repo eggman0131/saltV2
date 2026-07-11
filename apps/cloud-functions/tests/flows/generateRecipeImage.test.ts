@@ -97,6 +97,62 @@ describe('generateRecipeImage flow', () => {
     expect(prompt).not.toContain('Additional guidance');
   });
 
+  it('weaves recipe tags in as a mood/season hint that must not be rendered', async () => {
+    mockGenerate.mockResolvedValue({
+      media: { url: 'data:image/png;base64,QUJD', contentType: 'image/png' },
+    });
+
+    await (generateRecipeImageFlow as Function)({
+      title: 'Roast chicken',
+      description: null,
+      tags: ['comfort-food', 'slow-cooker'],
+    });
+
+    const prompt = mockGenerate.mock.calls[0]![0].prompt as string;
+    expect(prompt).toContain('This recipe is tagged: comfort-food, slow-cooker');
+    // Tags are a cue, never text to render.
+    expect(prompt).toContain('do NOT draw, write, label');
+    expect(prompt).toContain(RECIPE_IMAGE_STYLE);
+  });
+
+  it('appends the hint after the tag clause, still verbatim', async () => {
+    mockGenerate.mockResolvedValue({
+      media: { url: 'data:image/png;base64,QUJD', contentType: 'image/png' },
+    });
+
+    await (generateRecipeImageFlow as Function)({
+      title: 'Roast chicken',
+      description: null,
+      hint: 'show it on a rustic board',
+      tags: ['comfort-food'],
+    });
+
+    const prompt = mockGenerate.mock.calls[0]![0].prompt as string;
+    expect(prompt).toContain('This recipe is tagged: comfort-food');
+    expect(prompt).toContain('Additional guidance for this photo: show it on a rustic board');
+    // The hint is the last clause, after the tag clause.
+    expect(prompt.indexOf('This recipe is tagged')).toBeLessThan(
+      prompt.indexOf('Additional guidance for this photo'),
+    );
+  });
+
+  it('adds no tag clause when tags are absent, empty, or whitespace-only', async () => {
+    mockGenerate.mockResolvedValue({
+      media: { url: 'data:image/png;base64,QUJD', contentType: 'image/png' },
+    });
+
+    for (const tags of [undefined, [], ['', '   ']]) {
+      mockGenerate.mockClear();
+      await (generateRecipeImageFlow as Function)({
+        title: 'Roast chicken',
+        description: null,
+        ...(tags ? { tags } : {}),
+      });
+      const prompt = mockGenerate.mock.calls[0]![0].prompt as string;
+      expect(prompt).not.toContain('This recipe is tagged');
+    }
+  });
+
   it('throws when the model returns no image', async () => {
     mockGenerate.mockResolvedValue({ media: null });
 
