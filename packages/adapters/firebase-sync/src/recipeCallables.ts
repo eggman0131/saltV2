@@ -88,6 +88,37 @@ export async function callRegenerateRecipeImage(
   }
 }
 
+// Uploads a user-supplied hero photo for a recipe (issue #455, Phase 2). The
+// cropped 3:2 bytes ride as a base64 string; the callable re-encodes them and
+// writes `recipe-images/{id}.webp`, then stamps `recipe.image = { url, source:
+// 'upload' }`. Mirrors callRegenerateRecipeImage: a callable (never a client
+// Storage write — storage.rules stay write:false), try → success(undefined), catch
+// maps unauthenticated/permission-denied → AuthError else NetworkError. NEVER
+// throws (Rule 10). The optional `contentType` is an informational hint only.
+export async function callSetRecipeImageUpload(
+  recipeId: string,
+  imageBase64: string,
+  contentType?: string,
+): Promise<ReadResult<void, DomainError>> {
+  try {
+    const fn = httpsCallable<
+      { recipeId: string; imageBase64: string; contentType?: string },
+      { ok: true }
+    >(getFunctions(undefined, 'europe-west2'), 'setRecipeImageUpload');
+    await fn(contentType ? { recipeId, imageBase64, contentType } : { recipeId, imageBase64 });
+    return success(undefined);
+  } catch (err) {
+    const code = (err as { code?: string }).code ?? '';
+    if (code === 'functions/unauthenticated') {
+      return failure({ kind: 'AuthError', reason: 'unauthenticated' });
+    }
+    if (code === 'functions/permission-denied') {
+      return failure({ kind: 'AuthError', reason: 'forbidden' });
+    }
+    return failure({ kind: 'NetworkError', reason: 'transient' });
+  }
+}
+
 // SSRF-hardened URL import. Sends a URL, receives a fully-assembled, metric +
 // British recipe draft (source.type='url'). On failure returns the specific
 // UrlImportFailureCode so the caller can show the right copy.

@@ -92,6 +92,9 @@ export type { RegenerateCanonIconInput } from './regenerateCanonIcon.js';
 export { RegenerateRecipeImageInputSchema } from './regenerateRecipeImage.js';
 export type { RegenerateRecipeImageInput } from './regenerateRecipeImage.js';
 
+export { SetRecipeImageUploadInputSchema } from './setRecipeImageUpload.js';
+export type { SetRecipeImageUploadInput } from './setRecipeImageUpload.js';
+
 export { CanonItemSchema } from './canonItem.js';
 export type { CanonItemDoc } from './canonItem.js';
 

@@ -27,9 +27,11 @@
   function heroUrl(recipe: Recipe): string | null {
     // Display-time cache-bust (issue #460): a regenerated hero reuses the same
     // byte-identical Storage URL, so bust it with the per-regeneration nonce
-    // (`imageRequestedAt`, falling back to `updatedAt`) only when a visible image
-    // is present — hidden/absent recipes still return null for the fallback tile.
-    return recipe.image?.url && !recipe.imageHidden
+    // (`imageRequestedAt`, falling back to `updatedAt`) only when an image is
+    // present — absent recipes still return null for the fallback tile.
+    // `imageHidden` is retired (inert, kept for back-compat) and no longer read,
+    // mirroring the detail page: a hero shows whenever an image URL exists.
+    return recipe.image?.url
       ? appendCacheBuster(recipe.image.url, recipe.imageRequestedAt ?? recipe.updatedAt)
       : null;
   }

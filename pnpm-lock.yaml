@@ -337,6 +337,9 @@ importers:
       svelte-dnd-action:
         specifier: ^0.9.70
         version: 0.9.70(svelte@5.56.4(@typescript-eslint/types@8.63.0))
+      svelte-easy-crop:
+        specifier: ^5.0.1
+        version: 5.0.1(svelte@5.56.4(@typescript-eslint/types@8.63.0))
       svelte-exmarkdown:
         specifier: ^5.0.2
         version: 5.0.2(svelte@5.56.4(@typescript-eslint/types@8.63.0))
@@ -7335,6 +7338,11 @@ packages:
     resolution: {integrity: sha512-iVqDAW1PtQArA96dHhM5Lwxj39iKNjIuYE+tqpq9DUaBWfv410SpGGFJ3NzPtvptx+YkXBzMYV3lpey8s07q+w==}
     peerDependencies:
       svelte: '>=3.23.0 || ^5.0.0-next.0'
+
+  svelte-easy-crop@5.0.1:
+    resolution: {integrity: sha512-Dq2rgmPsSEo+K8k49TFGXZAJwJa537AR6hW1RqKEdYj7QKlc4Ya7l4VlSYWlOV8/uAiQ10VyGRdSVAUcZiMwjg==}
+    peerDependencies:
+      svelte: ^5.0.0
 
   svelte-eslint-parser@1.8.0:
     resolution: {integrity: sha512-mikR1qwIVy3t5WthUoAXkMwxkXvabZP9FJgdx35Ei7EbGWmctva1Pih16Koeor/bdNNq8NXHlwKGS6NkYTawLg==}
@@ -16391,6 +16399,10 @@ snapshots:
       - picomatch
 
   svelte-dnd-action@0.9.70(svelte@5.56.4(@typescript-eslint/types@8.63.0)):
+    dependencies:
+      svelte: 5.56.4(@typescript-eslint/types@8.63.0)
+
+  svelte-easy-crop@5.0.1(svelte@5.56.4(@typescript-eslint/types@8.63.0)):
     dependencies:
       svelte: 5.56.4(@typescript-eslint/types@8.63.0)
 
