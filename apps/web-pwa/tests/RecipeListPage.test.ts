@@ -55,6 +55,7 @@ function makeRecipe(over: {
   ingredientCount: number;
   image: Recipe['image'];
   imageHidden?: boolean;
+  imageRequestedAt?: number;
   createdAt: string;
 }): Recipe {
   return {
@@ -89,6 +90,7 @@ function makeRecipe(over: {
     notes: null,
     image: over.image,
     ...(over.imageHidden !== undefined ? { imageHidden: over.imageHidden } : {}),
+    ...(over.imageRequestedAt !== undefined ? { imageRequestedAt: over.imageRequestedAt } : {}),
     createdAt: over.createdAt,
     updatedAt: over.createdAt,
   };
@@ -164,6 +166,42 @@ describe('RecipeListPage', () => {
     // Only Apple has a visible image; Banana (null) and Carrot (hidden) fall back.
     expect(screen.getAllByTestId('recipe-list-thumb')).toHaveLength(1);
     expect(screen.getAllByTestId('recipe-list-thumb-fallback')).toHaveLength(2);
+
+    // The visible thumb is cache-busted (issue #460): Apple has no
+    // `imageRequestedAt`, so the nonce falls back to `updatedAt`. The base URL
+    // carries no query, so the param is appended with `?v=`.
+    const src = screen.getByTestId('recipe-list-thumb').getAttribute('src');
+    expect(src).toBe(`http://img.test/apple.jpg?v=${APPLE.updatedAt}`);
+  });
+
+  it('cache-busts the thumb and re-fetches when imageRequestedAt changes even if the URL is unchanged', () => {
+    // A regenerated hero reuses the SAME byte-identical Storage URL, so only the
+    // per-regeneration nonce (`imageRequestedAt`) changes — the `?v=` param must
+    // follow it or the browser serves the stale image (issue #460).
+    const before = makeRecipe({
+      id: 'peach',
+      title: 'Peach Cobbler',
+      tags: ['dessert'],
+      totalTimeMinutes: 45,
+      servings: 6,
+      ingredientCount: 4,
+      image: { url: 'http://img.test/peach.jpg', source: 'ai' },
+      imageRequestedAt: 1000,
+      createdAt: '2026-04-01T00:00:00.000Z',
+    });
+    seed([before]);
+    const { unmount } = render(RecipeListPage);
+    const srcBefore = screen.getByTestId('recipe-list-thumb').getAttribute('src');
+    expect(srcBefore).toBe('http://img.test/peach.jpg?v=1000');
+    unmount();
+
+    // Same URL, new regeneration nonce → the rendered src must change.
+    const after = { ...before, imageRequestedAt: 2000 };
+    seed([after]);
+    render(RecipeListPage);
+    const srcAfter = screen.getByTestId('recipe-list-thumb').getAttribute('src');
+    expect(srcAfter).toBe('http://img.test/peach.jpg?v=2000');
+    expect(srcAfter).not.toBe(srcBefore);
   });
 
   it('surfaces time, servings and ingredient count on a card', () => {

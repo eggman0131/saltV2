@@ -252,5 +252,8 @@ export type { TemperatureBand, EatingMood } from './weather/index.js';
 export { weatherSeverity, mostSignificantWeatherCode, weatherIcon } from './weather/index.js';
 export type { WeatherIconId } from './weather/index.js';
 
+// URL module — pure display-time cache-buster for regenerated image URLs (#460).
+export { appendCacheBuster } from './url/index.js';
+
 // Cross-cutting ports.
 export type { ErrorReportingPort } from './ErrorReportingPort.js';

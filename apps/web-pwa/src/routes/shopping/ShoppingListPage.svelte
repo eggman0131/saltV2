@@ -78,7 +78,14 @@
     new Map(
       $canonItems.map((ci) => [
         ci.id,
-        { id: ci.id, name: ci.name, aisleId: ci.aisleId, thumbnail: ci.thumbnail },
+        {
+          id: ci.id,
+          name: ci.name,
+          aisleId: ci.aisleId,
+          thumbnail: ci.thumbnail,
+          iconRequestedAt: ci.iconRequestedAt,
+          updatedAt: ci.updatedAt,
+        },
       ]),
     ),
   );
@@ -88,6 +95,16 @@
   function thumbnailFor(canonId: string | null): string | null {
     if (!canonId) return null;
     return canonMap.get(canonId)?.thumbnail ?? null;
+  }
+
+  // Cache-bust nonce for the matched canon item's icon, resolved via the same
+  // canon lookup as `thumbnailFor`. Mirrors the canon pages' render sites
+  // (`iconRequestedAt ?? updatedAt`) so a regenerated icon re-fetches instead of
+  // serving stale. undefined for unmatched/pending rows (→ raw URL passthrough).
+  function iconVersionFor(canonId: string | null): string | number | undefined {
+    if (!canonId) return undefined;
+    const ci = canonMap.get(canonId);
+    return ci ? (ci.iconRequestedAt ?? ci.updatedAt) : undefined;
   }
 
   const aisleInfos = $derived($aisles.map((a) => ({ id: a.id, name: a.name, order: a.order })));
@@ -542,6 +559,7 @@
         name={displayLabel(item)}
         dimmed={item.checked}
         size={34}
+        version={iconVersionFor(item.canonId)}
       />
     {/if}
     <button
@@ -812,6 +830,7 @@
                         thumbnail={thumbnailFor(row.canonId)}
                         name={rowLabel(row)}
                         size={34}
+                        version={iconVersionFor(row.canonId)}
                       />
                       <button
                         type="button"
@@ -964,6 +983,7 @@
             thumbnail={thumbnailFor(editingItem.canonId)}
             name={displayLabel(editingItem)}
             size={64}
+            version={iconVersionFor(editingItem.canonId)}
           />
         {/if}
         <SheetTitle>Edit item</SheetTitle>
