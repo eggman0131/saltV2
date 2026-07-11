@@ -22,12 +22,14 @@
   // Display-time cache-bust. A regenerated icon reuses the same (byte-identical)
   // Storage download URL, so the browser serves the stale image; appending a
   // per-regeneration `?v=`/`&v=` nonce forces a re-fetch. Only applied when the
-  // icon is renderable (never to `null`/`"hidden"`) and a `version` is present;
-  // otherwise the raw URL passes through unchanged. The `?`/`&`-aware join is
-  // inlined here because ui-components is external-only and cannot import a
-  // @salt/domain helper (same reason `isCanonIconRenderable` is duplicated).
+  // icon is renderable (never to `null`/`"hidden"`) and a non-empty `version` is
+  // present (an empty version carries no cache-key info); otherwise the raw URL
+  // passes through unchanged. Behaviourally identical to @salt/domain's
+  // `appendCacheBuster`; the `?`/`&`-aware join is inlined here because
+  // ui-components is external-only and cannot import a @salt/domain helper (same
+  // reason `isCanonIconRenderable` is duplicated).
   const bustedSrc = $derived(
-    renderable && thumbnail !== null && version != null
+    renderable && thumbnail !== null && version != null && version !== ''
       ? `${thumbnail}${thumbnail.includes('?') ? '&' : '?'}v=${version}`
       : thumbnail,
   );

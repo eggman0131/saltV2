@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { appendCacheBuster } from '@salt/domain';
 
-// Pure display-time cache-buster (issue #460). A regenerated image reuses the
+// Pure display-time cache-buster (issue #456). A regenerated image reuses the
 // same byte-identical Storage download URL, so the browser serves stale bytes;
 // appending a `?v=`/`&v=` nonce forces a re-fetch. These tests pin the `?`/`&`
-// join, the null/undefined passthrough, and string+number versions so the recipe
-// pages and the (inlined, must-stay-identical) CanonIcon copy can't drift.
+// join, the null/undefined/empty passthrough, and string+number versions so the
+// recipe pages and the (inlined, must-stay-identical) CanonIcon copy can't drift.
 
 describe('appendCacheBuster', () => {
   it('appends ?v= to a URL with no existing query', () => {
@@ -18,9 +18,16 @@ describe('appendCacheBuster', () => {
     );
   });
 
-  it('returns the URL unchanged when version is null or undefined', () => {
+  it('returns the URL unchanged when version is null, undefined, or empty', () => {
     expect(appendCacheBuster('http://img.test/a.jpg', null)).toBe('http://img.test/a.jpg');
     expect(appendCacheBuster('http://img.test/a.jpg', undefined)).toBe('http://img.test/a.jpg');
+    // An empty version (e.g. a canon item with an empty `updatedAt` and no
+    // `iconRequestedAt`) carries no cache-key info — never append a bare `?v=`.
+    expect(appendCacheBuster('http://img.test/a.jpg', '')).toBe('http://img.test/a.jpg');
+  });
+
+  it('appends the number 0 as a valid version (not treated as empty)', () => {
+    expect(appendCacheBuster('http://img.test/a.jpg', 0)).toBe('http://img.test/a.jpg?v=0');
   });
 
   it('accepts string and number versions verbatim', () => {

@@ -46,6 +46,15 @@ describe('CanonIcon', () => {
       expect(getByTestId('canon-icon-img').getAttribute('src')).toBe(URL);
     });
 
+    it('leaves the src raw for an empty version (no bare ?v=)', () => {
+      // A canon item with an empty `updatedAt` and no `iconRequestedAt` resolves
+      // to an empty version; a bare `?v=` carries no cache-key info, so skip it.
+      const { getByTestId } = render(CanonIcon, {
+        props: { thumbnail: URL, name: 'Milk', version: '' },
+      });
+      expect(getByTestId('canon-icon-img').getAttribute('src')).toBe(URL);
+    });
+
     it('appends ?v=<version> when the base URL has no query', () => {
       const { getByTestId } = render(CanonIcon, {
         props: { thumbnail: URL, name: 'Milk', version: 123 },
