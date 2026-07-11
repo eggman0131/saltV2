@@ -1,0 +1,7 @@
+# Generated graphify output — tracked as deliverables (see graphify-out/.gitignore
+# and CLAUDE.md § graphify) but NOT prettier-owned. graph.html is emitted compact
+# by `graphify update`; letting prettier reformat it churns it 306 -> ~179k lines
+# and the salt-autofix bot (.github/workflows/autofix.yml) then force-pushes that
+# expansion onto every PR. Excluding the dir stops both the reformat and the
+# `pnpm format:check` (CI Format check) drift on these files.
+graphify-out/
