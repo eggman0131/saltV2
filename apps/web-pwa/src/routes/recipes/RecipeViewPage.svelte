@@ -45,6 +45,11 @@
   import { auth } from '../../lib/auth.svelte.js';
   import { createChatSession, sessions, sendMessage } from '../../lib/chatService.js';
   import { saveRecipe as saveRecipeDoc } from '@salt/firebase-sync';
+  import {
+    clipboardImageReadSupported,
+    readClipboardImage,
+    imageFromClipboardData,
+  } from '../../lib/clipboardImage.js';
 
   interface Props {
     params: { id: string };
@@ -367,9 +372,56 @@
     // Reset the input so re-picking the SAME file still fires a change event.
     input.value = '';
     if (!file) return;
-    clearUploadSrc();
-    uploadSrc = URL.createObjectURL(file);
+    routeImageBlob(file);
   }
+
+  // Shared sink for both file and clipboard sources: revoke any prior blob URL,
+  // then feed the new image into the cropper exactly as the file path does.
+  function routeImageBlob(blob: Blob): void {
+    clearUploadSrc();
+    uploadSrc = URL.createObjectURL(blob);
+  }
+
+  // ─── Paste from clipboard (issue #455, Phase 3) ──────────────────────────────
+  // Two entry points into the SAME 3:2 crop → setRecipeImageUpload pipeline: an
+  // explicit Paste button (async Clipboard `read()`) and ⌘/Ctrl-V while the
+  // dialog is open (the `paste` event's clipboardData). The button is gated on
+  // `clipboardImageReadSupported()` because some browsers expose no `read()`;
+  // the keyboard listener needs no such gate — it uses clipboardData — so it
+  // stays active regardless. Neither path throws: an unsupported/denied/empty
+  // clipboard just shows a hint (see clipboardImage.ts).
+  const canPasteFromClipboard = clipboardImageReadSupported();
+  const pasteShortcutLabel =
+    typeof navigator !== 'undefined' && /mac|iphone|ipad/i.test(navigator.userAgent)
+      ? '⌘V'
+      : 'Ctrl+V';
+
+  async function handlePasteButton(): Promise<void> {
+    if (uploadBusy) return;
+    const blob = await readClipboardImage();
+    if (!blob) {
+      addToast('No image found on the clipboard.', 'default');
+      return;
+    }
+    routeImageBlob(blob);
+  }
+
+  function handleDialogPaste(e: ClipboardEvent): void {
+    if (uploadBusy) return;
+    const blob = imageFromClipboardData(e.clipboardData);
+    if (!blob) return;
+    e.preventDefault();
+    routeImageBlob(blob);
+  }
+
+  // Listen for ⌘/Ctrl-V only while the dialog is open. The dialog renders in a
+  // portal, so bind at the document level and gate on `uploadOpen`.
+  $effect(() => {
+    if (!uploadOpen) return;
+    const listener = (e: ClipboardEvent): void => handleDialogPaste(e);
+    document.addEventListener('paste', listener);
+    return () => document.removeEventListener('paste', listener);
+  });
 
   function handleUploadOpenChange(open: boolean): void {
     uploadOpen = open;
@@ -889,22 +941,35 @@
       <DialogHeader>
         <DialogTitle>Upload a photo</DialogTitle>
         <DialogDescription>
-          Choose a photo from your device and position it in the 3:2 frame — drag to pan, scroll or
-          use the slider to zoom.
+          Choose a photo from your device — or paste one you've copied — and position it in the 3:2
+          frame — drag to pan, scroll or use the slider to zoom.
         </DialogDescription>
       </DialogHeader>
 
       {#if uploadSrc}
         <ImageCropper bind:this={cropper} src={uploadSrc} />
-        <button
-          type="button"
-          class="self-start text-xs text-primary hover:underline disabled:opacity-50"
-          onclick={clearUploadSrc}
-          disabled={uploadBusy}
-          data-testid="recipe-image-upload-choose-another"
-        >
-          Choose a different photo
-        </button>
+        <div class="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            class="text-xs text-primary hover:underline disabled:opacity-50"
+            onclick={clearUploadSrc}
+            disabled={uploadBusy}
+            data-testid="recipe-image-upload-choose-another"
+          >
+            Choose a different photo
+          </button>
+          {#if canPasteFromClipboard}
+            <button
+              type="button"
+              class="text-xs text-primary hover:underline disabled:opacity-50"
+              onclick={handlePasteButton}
+              disabled={uploadBusy}
+              data-testid="recipe-image-paste"
+            >
+              Paste from clipboard
+            </button>
+          {/if}
+        </div>
       {:else}
         <label
           class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-dashed border-input px-4 py-10 text-sm text-muted-foreground hover:bg-muted/50"
@@ -919,6 +984,27 @@
             data-testid="recipe-image-upload-input"
           />
         </label>
+        {#if canPasteFromClipboard}
+          <Button
+            variant="outline"
+            onclick={handlePasteButton}
+            disabled={uploadBusy}
+            data-testid="recipe-image-paste-empty"
+          >
+            {#snippet leading()}<Icon name="Clipboard" size={16} />{/snippet}
+            Paste from clipboard
+          </Button>
+          <p class="text-center text-xs text-muted-foreground">
+            or press {pasteShortcutLabel} to paste a copied image
+          </p>
+        {:else}
+          <p
+            class="text-center text-xs text-muted-foreground"
+            data-testid="recipe-image-paste-hint"
+          >
+            Pasting isn't supported in this browser — choose a photo above instead.
+          </p>
+        {/if}
       {/if}
 
       <DialogFooter>
