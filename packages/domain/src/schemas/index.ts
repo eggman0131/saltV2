@@ -244,3 +244,34 @@ export type {
   RecipeImageDoc,
   RecipeDoc,
 } from './recipe.js';
+
+export {
+  RecipeFieldChangeSchema,
+  NullableStringChangeSchema,
+  NullableNumberChangeSchema,
+  IngredientDiffEntrySchema,
+  IngredientChangeSchema,
+  IngredientsDiffSchema,
+  StepTimerChangeSchema,
+  StepDiffEntrySchema,
+  StepChangeSchema,
+  StepsDiffSchema,
+  RecipeMetadataDiffSchema,
+  TagsDiffSchema,
+  RecipeDiffSchema,
+} from './recipeDiff.js';
+export type {
+  RecipeFieldChange,
+  NullableStringChange,
+  NullableNumberChange,
+  IngredientDiffEntry,
+  IngredientChange,
+  IngredientsDiff,
+  StepTimerChange,
+  StepDiffEntry,
+  StepChange,
+  StepsDiff,
+  RecipeMetadataDiff,
+  TagsDiff,
+  RecipeDiff,
+} from './recipeDiff.js';

@@ -21,6 +21,7 @@ export { emptyRecipe, emptyIngredientGroup, newIngredient, newStep } from './com
 export { clearIngredientMatch } from './commands/clearIngredientMatch.js';
 export { flattenIngredients } from './queries/ingredients.js';
 export { findProducingRecipes } from './queries/producers.js';
+export { diffRecipe } from './queries/diffRecipe.js';
 
 // URL import — pure SSRF/URL classification helpers (no I/O). The live fetch +
 // DNS resolution lives in cloud-functions; this module only holds the policy.
