@@ -1,4 +1,4 @@
-// spec: issue #455 (recipe hero upload, Phase 2)
+// spec: SPEC.md §8.7 v0.3
 
 // A pan/zoom cropper LOCKED to a 3:2 hero frame. The consumer supplies an image
 // source (object URL / data URL) and, on Save, calls the exposed

@@ -1,4 +1,4 @@
-<!-- spec: issue #455 (recipe hero upload, Phase 2) -->
+<!-- spec: SPEC.md §8.7 v0.3 -->
 <script lang="ts">
   import Cropper from 'svelte-easy-crop';
   import type { CropArea, Point } from 'svelte-easy-crop';
