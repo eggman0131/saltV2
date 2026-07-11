@@ -109,6 +109,15 @@
   let recipePickerKey = $state(0);
   function addRecipe(id: string): void {
     if (!id || day.recipeIds.includes(id)) return;
+    // Auto-fill the empty meal field with the recipe's title (Phase 3, #469). The
+    // title is a live UI value (resolved from `recipes`, never denormalised onto
+    // the plan), so this stays purely in the app-layer handler using the existing
+    // `onNoteChange` — no title knowledge leaks into the domain or any mutator.
+    // Guard on `day.note` AT ATTACH TIME: `onNoteChange` is fire-and-forget and
+    // `day.note` only updates once the store re-emits, so a non-empty note is
+    // never overwritten and the first attached recipe wins.
+    const title = recipes.find((r) => r.id === id)?.title;
+    if (title && !day.note.trim()) onNoteChange?.(title);
     onRecipesChange?.([...day.recipeIds, id]);
     recipePickerKey += 1;
   }

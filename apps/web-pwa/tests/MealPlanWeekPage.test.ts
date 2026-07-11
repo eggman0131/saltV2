@@ -1,10 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import { emptyWeek, setDayNote, type MealPlanWeek, type Member } from '@salt/domain';
+import { emptyWeek, setDayNote, type MealPlanWeek, type Member, type Recipe } from '@salt/domain';
+
+// A minimal recipe: MealDayEditor's picker and auto-fill only read `id`/`title`.
+const RECIPE: Recipe = { id: 'r1', title: 'Spaghetti Bolognese' } as unknown as Recipe;
 
 // ─── Hoisted reactive stubs ────────────────────────────────────────────────
-const { mockMembers, mockWeek, mockStart, mockLoading } = vi.hoisted(() => {
+const { mockMembers, mockWeek, mockStart, mockLoading, mockRecipes } = vi.hoisted(() => {
   function makeStore<T>(initial: T) {
     let value = initial;
     const subs = new Set<(v: T) => void>();
@@ -33,11 +36,15 @@ const { mockMembers, mockWeek, mockStart, mockLoading } = vi.hoisted(() => {
     }),
     mockStart: makeStore<string>('2026-06-08'),
     mockLoading: makeStore<boolean>(false),
+    mockRecipes: makeStore<readonly Recipe[]>([
+      { id: 'r1', title: 'Spaghetti Bolognese' } as unknown as Recipe,
+    ]),
   };
 });
 
 vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
 vi.mock('../src/lib/membersService.js', () => ({ members: mockMembers }));
+vi.mock('../src/lib/recipeService.js', () => ({ recipes: mockRecipes }));
 vi.mock('../src/lib/mealPlanService.js', () => ({
   currentWeek: mockWeek,
   selectedStartDate: mockStart,
@@ -48,6 +55,7 @@ vi.mock('../src/lib/mealPlanService.js', () => ({
   loadTemplateIntoCurrentWeek: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   setWeekDayNote: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   setWeekDayChefs: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  setWeekDayRecipes: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   setWeekDayGuests: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   addWeekAttendee: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   removeWeekAttendee: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
@@ -63,6 +71,7 @@ import {
   setWeekDayNote,
   setWeekDayGuests,
   setWeekDayChefs,
+  setWeekDayRecipes,
   addWeekAttendee,
   setWeekAttendeeHomeTime,
 } from '../src/lib/mealPlanService.js';
@@ -98,7 +107,15 @@ beforeEach(() => {
   mockStart._set('2026-06-08');
   mockLoading._set(false);
   mockWeek._set(emptyWeek('2026-06-08'));
+  mockRecipes._set([RECIPE]);
 });
+
+// Attach a recipe through the day's real recipe-picker Combobox: click the input
+// to open the listbox, then click the option by its title.
+async function attachRecipe(date: string, title: string): Promise<void> {
+  await userEvent.click(screen.getByTestId(`day-${date}-recipe-picker`));
+  await userEvent.click(await screen.findByRole('option', { name: title }));
+}
 
 describe('MealPlanWeekPage', () => {
   it('renders seven collapsed day rows and the week range', () => {
@@ -320,6 +337,41 @@ describe('MealPlanWeekPage', () => {
     await expandDay('2026-06-08');
     await userEvent.click(screen.getByTestId('day-2026-06-08-guests-inc'));
     expect(vi.mocked(setWeekDayGuests)).toHaveBeenCalledWith('2026-06-08', 1);
+  });
+
+  it('auto-fills an empty meal with the attached recipe title (Phase 3, #469)', async () => {
+    render(MealPlanWeekPage);
+    await expandDay('2026-06-08');
+    await attachRecipe('2026-06-08', 'Spaghetti Bolognese');
+    // The recipe is stored…
+    expect(vi.mocked(setWeekDayRecipes)).toHaveBeenCalledWith('2026-06-08', ['r1']);
+    // …and the empty meal note is auto-filled with the recipe's title.
+    await waitFor(() =>
+      expect(vi.mocked(setWeekDayNote)).toHaveBeenCalledWith('2026-06-08', 'Spaghetti Bolognese'),
+    );
+  });
+
+  it('does not overwrite a non-empty meal when a recipe is attached (Phase 3, #469)', async () => {
+    mockWeek._set({
+      ...emptyWeek('2026-06-08'),
+      days: {
+        ...emptyWeek('2026-06-08').days,
+        '2026-06-08': {
+          note: 'My own dinner',
+          recipeIds: [],
+          chefs: [],
+          attendees: [],
+          guests: 0,
+        },
+      },
+    });
+    render(MealPlanWeekPage);
+    await expandDay('2026-06-08');
+    await attachRecipe('2026-06-08', 'Spaghetti Bolognese');
+    // The recipe still attaches…
+    expect(vi.mocked(setWeekDayRecipes)).toHaveBeenCalledWith('2026-06-08', ['r1']);
+    // …but the typed meal is left untouched — the note is never rewritten.
+    expect(vi.mocked(setWeekDayNote)).not.toHaveBeenCalled();
   });
 
   it('shows a spinner while the week is loading', () => {
