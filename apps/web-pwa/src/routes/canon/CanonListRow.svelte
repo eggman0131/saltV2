@@ -88,7 +88,12 @@
 <EditableRow {selected} shaded={item.needs_approval} {onToggleSelect}>
   {#snippet narrow()}
     <div class="flex min-w-0 items-center gap-2">
-      <CanonIcon thumbnail={item.thumbnail} name={item.name} size={34} />
+      <CanonIcon
+        thumbnail={item.thumbnail}
+        name={item.name}
+        size={34}
+        version={item.iconRequestedAt ?? item.updatedAt}
+      />
       <button
         class="flex min-w-0 flex-1 items-center justify-between text-left"
         onclick={() => push(`/admin/canon/${item.id}`)}
@@ -106,7 +111,12 @@
   {/snippet}
 
   {#snippet wide()}
-    <CanonIcon thumbnail={item.thumbnail} name={item.name} size={34} />
+    <CanonIcon
+      thumbnail={item.thumbnail}
+      name={item.name}
+      size={34}
+      version={item.iconRequestedAt ?? item.updatedAt}
+    />
     <button
       class="min-w-[120px] flex-1 truncate text-left text-sm font-medium"
       onclick={() => push(`/admin/canon/${item.id}`)}

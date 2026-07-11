@@ -8,6 +8,7 @@
     name = '',
     size = 30,
     dimmed = false,
+    version,
     class: className,
   }: CanonIconProps = $props();
 
@@ -17,6 +18,19 @@
   // single render boundary. Keep the two in sync if the `"hidden"` sentinel or
   // the rule changes.
   const renderable = $derived(thumbnail !== null && thumbnail !== 'hidden' && thumbnail.length > 0);
+
+  // Display-time cache-bust. A regenerated icon reuses the same (byte-identical)
+  // Storage download URL, so the browser serves the stale image; appending a
+  // per-regeneration `?v=`/`&v=` nonce forces a re-fetch. Only applied when the
+  // icon is renderable (never to `null`/`"hidden"`) and a `version` is present;
+  // otherwise the raw URL passes through unchanged. The `?`/`&`-aware join is
+  // inlined here because ui-components is external-only and cannot import a
+  // @salt/domain helper (same reason `isCanonIconRenderable` is duplicated).
+  const bustedSrc = $derived(
+    renderable && thumbnail !== null && version != null
+      ? `${thumbnail}${thumbnail.includes('?') ? '&' : '?'}v=${version}`
+      : thumbnail,
+  );
 </script>
 
 <span
@@ -30,7 +44,7 @@
 >
   {#if renderable}
     <img
-      src={thumbnail}
+      src={bustedSrc}
       alt={name}
       width={size}
       height={size}

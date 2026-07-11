@@ -13,5 +13,15 @@ export type CanonIconProps = {
   size?: number;
   /** Dim the icon — e.g. for checked shopping-list items. */
   dimmed?: boolean;
+  /**
+   * Per-regeneration cache-bust nonce, appended to the rendered `<img src>` as
+   * `?v=`/`&v=`. A regenerated icon reuses the same (byte-identical) Storage
+   * download URL, so the browser serves the stale image; bumping this forces a
+   * re-fetch. Typically the canon item's `iconRequestedAt ?? updatedAt`. Omit
+   * (or `null`/`undefined`) to render the raw URL unchanged. `undefined` is in
+   * the union (not just implied by `?`) so callers may pass a lookup result
+   * that widens to `undefined` under `exactOptionalPropertyTypes`.
+   */
+  version?: string | number | undefined;
   class?: string;
 };
