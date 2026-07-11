@@ -161,9 +161,11 @@ describe('onRecipeWritten — hero-image branch', () => {
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
-  it('skips when the recipe is opted out (imageHidden)', async () => {
+  it('generates regardless of the retired imageHidden field (now inert)', async () => {
+    // imageHidden was retired (Phase 1): the trigger no longer honors it, so a
+    // create with a null image still generates even when the field is set.
     await (onRecipeWritten as Function)(makeEvent('r1', makeRecipe('r1', { imageHidden: true })));
-    expect(mockGenerateImage).not.toHaveBeenCalled();
+    expect(mockGenerateImage).toHaveBeenCalledOnce();
   });
 
   it('skips a bare edit re-fire while a generation is in flight (image null both sides, no nonce bump)', async () => {

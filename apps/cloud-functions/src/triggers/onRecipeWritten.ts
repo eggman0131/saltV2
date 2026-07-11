@@ -48,9 +48,13 @@ const IMAGE_STORAGE_PREFIX = 'recipe-images';
  * Skip when:
  *   - `image` is already set (a real `{ url, source }` — ai OR upload: a manual
  *     upload is never clobbered) → already have one
- *   - `imageHidden` is true → the user opted out
  *   - image was already null before this write and stayed null with no nonce bump:
  *     the write that first set it null already owns the in-flight generation.
+ *
+ * `imageHidden` is retired (Phase 1): it is no longer honored here — the AI
+ * trigger auto-generates a hero regardless of that (now inert, back-compat-only)
+ * field. Hero visibility is a pure client concern (an image URL either exists or
+ * it doesn't).
  *
  * LWW note: a client `setDoc` that lands AFTER the trigger's `image` write and
  * still carries `image: null` will clobber the hero back to null (the documented
@@ -61,7 +65,6 @@ const IMAGE_STORAGE_PREFIX = 'recipe-images';
  */
 function imageNeedsGeneration(before: DocumentSnapshot | undefined, after: RecipeDoc): boolean {
   if (after.image !== null) return false; // already have an image (ai or upload)
-  if (after.imageHidden) return false; // opted out → never auto-generate
   if (!before?.exists) return true; // create → generate
   const prev = before.data();
   if ((prev?.['image'] ?? null) !== null) return true; // just cleared → generate

@@ -226,15 +226,16 @@ describe('onRecipeWritten — Firestore emulator', () => {
     expect(snap.data()!['image']).toEqual(uploaded);
   });
 
-  it('skips generation when the recipe is opted out (imageHidden)', async () => {
+  it('generates regardless of the retired imageHidden field (now inert)', async () => {
+    // imageHidden was retired (Phase 1): the trigger no longer honors it, so a
+    // null-image recipe still generates even when the field is set.
     const db = getFirestore(adminApp);
     const recipe = makeRecipe('r-hidden', { image: null, imageHidden: true });
     await db.collection('recipes').doc('r-hidden').set(recipe);
 
     await (onRecipeWritten as Function)(makeEvent('r-hidden', recipe));
 
-    expect(mockGenerateImage).not.toHaveBeenCalled();
-    expect(mockSave).not.toHaveBeenCalled();
+    expect(mockGenerateImage).toHaveBeenCalledOnce();
   });
 
   it('does not regenerate when an ai image already exists', async () => {

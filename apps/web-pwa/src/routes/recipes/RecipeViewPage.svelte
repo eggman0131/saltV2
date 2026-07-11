@@ -28,7 +28,6 @@
     persistRecipe,
     authorRecipeTraced,
     regenerateRecipeImage,
-    setRecipeImageHidden,
   } from '../../lib/recipeService.js';
   import RecipeAddToListSheet from './RecipeAddToListSheet.svelte';
   import { canonItems } from '../../lib/canonService.js';
@@ -299,11 +298,13 @@
 
   // ─── Hero image (issue #148, Tier-2) ─────────────────────────────────────────
   // The photoreal hero is generated automatically by the onRecipeWritten trigger
-  // on create; these controls are the manual escape hatches (regenerate with an
-  // optional steer, hide/show). While a (re)generation is in flight the new URL
-  // simply arrives via the recipe subscription — there is no in-flight flag on the
-  // doc, so `imageBusy` only guards the button between click and callable return.
-  const heroVisible = $derived(!!recipe?.image?.url && !recipe.imageHidden);
+  // on create; the manual escape hatch is Regenerate (with an optional steer),
+  // surfaced as a subtle overlay control on the image. While a (re)generation is
+  // in flight the new URL simply arrives via the recipe subscription — there is no
+  // in-flight flag on the doc, so `imageBusy` only guards the button between click
+  // and callable return. `imageHidden` is retired (inert, kept for back-compat) so
+  // hero visibility is purely "does an image URL exist".
+  const heroVisible = $derived(!!recipe?.image?.url);
   let imageBusy = $state(false);
   let regenOpen = $state(false);
   let regenHint = $state('');
@@ -329,16 +330,6 @@
     const hint = regenHint.trim();
     regenOpen = false;
     await runRegenerate(hint || undefined);
-  }
-
-  async function handleToggleHidden(hidden: boolean): Promise<void> {
-    if (!recipe || imageBusy) return;
-    imageBusy = true;
-    const result = await setRecipeImageHidden(recipe, hidden);
-    imageBusy = false;
-    if (result.kind !== 'ok') {
-      addToast(hidden ? 'Failed to hide image.' : 'Failed to show image.', 'destructive');
-    }
   }
 
   import type { QuantityDoc } from '@salt/domain/schemas';
@@ -414,7 +405,7 @@
              from the title + description by the onRecipeWritten trigger. -->
         {#if heroVisible}
           <div class="flex flex-col gap-2" data-testid="recipe-hero">
-            <div class="overflow-hidden rounded-lg border bg-muted">
+            <div class="group relative overflow-hidden rounded-lg border bg-muted">
               <img
                 src={appendCacheBuster(
                   recipe.image!.url,
@@ -425,43 +416,22 @@
                 class="aspect-[3/2] w-full object-cover"
                 data-testid="recipe-hero-image"
               />
-            </div>
-            <div class="flex items-center gap-1">
+              <!-- Regenerate as a subtle overlay control: hover-revealed on
+                   desktop, faint-always-visible on touch (no hover). -->
               <Button
-                size="sm"
-                variant="ghost"
+                size="icon"
+                variant="outline"
                 onclick={openRegenerate}
                 loading={imageBusy}
                 disabled={imageBusy}
+                ariaLabel="Regenerate image"
+                title="Regenerate image"
+                class="absolute right-2 top-2 bg-background/80 opacity-0 shadow-sm backdrop-blur-sm transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-60"
                 data-testid="recipe-image-regenerate"
               >
-                {#snippet leading()}<Icon name="RefreshCw" size={14} />{/snippet}
-                Regenerate
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onclick={() => handleToggleHidden(true)}
-                disabled={imageBusy}
-                data-testid="recipe-image-hide"
-              >
-                {#snippet leading()}<Icon name="EyeOff" size={14} />{/snippet}
-                Hide
+                {#snippet leading()}<Icon name="RefreshCw" size={16} />{/snippet}
               </Button>
             </div>
-          </div>
-        {:else if recipe.image?.url && recipe.imageHidden}
-          <div data-testid="recipe-hero-controls">
-            <Button
-              size="sm"
-              variant="outline"
-              onclick={() => handleToggleHidden(false)}
-              disabled={imageBusy}
-              data-testid="recipe-image-show"
-            >
-              {#snippet leading()}<Icon name="Eye" size={14} />{/snippet}
-              Show image
-            </Button>
           </div>
         {:else}
           <div data-testid="recipe-hero-controls">

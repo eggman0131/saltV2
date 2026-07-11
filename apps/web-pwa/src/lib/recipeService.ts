@@ -140,16 +140,6 @@ export async function regenerateRecipeImage(
   return reportIfFailed(getErrorReporter(), await callRegenerateRecipeImage(recipeId, hint));
 }
 
-// Hide / show the hero. A plain optimistic recipe write (no server authority
-// needed) that flips `imageHidden`; the existing `image` is preserved, so "show"
-// brings the same photo straight back without regenerating.
-export async function setRecipeImageHidden(
-  recipe: Recipe,
-  hidden: boolean,
-): Promise<ReadResult<void, DomainError>> {
-  return persistRecipe({ ...recipe, imageHidden: hidden });
-}
-
 // ─── URL import ────────────────────────────────────────────────────────────────
 // SSRF-hardened import: paste a recipe URL, get back a fully-converted (metric +
 // British) draft. The draft is NOT persisted here — the caller hydrates the
