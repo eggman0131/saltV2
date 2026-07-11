@@ -2,6 +2,7 @@
   import {
     Checkbox,
     Button,
+    Icon,
     Select,
     SelectContent,
     SelectItem,
@@ -16,7 +17,15 @@
     type ComboboxItemType,
   } from '@salt/ui-components';
   import { ChevronDown, ChevronRight, ChefHat, StickyNote, X } from '@lucide/svelte';
-  import { memberInitials, weatherIcon, type Day, type Member, type Recipe } from '@salt/domain';
+  import { push } from 'svelte-spa-router';
+  import {
+    appendCacheBuster,
+    memberInitials,
+    weatherIcon,
+    type Day,
+    type Member,
+    type Recipe,
+  } from '@salt/domain';
   import type { WeatherDaySummary } from '@salt/domain/schemas';
   import WeatherSummary from './WeatherSummary.svelte';
   import WeatherIcon from '$lib/weather-icons/WeatherIcon.svelte';
@@ -106,6 +115,21 @@
   }
   function removeRecipe(id: string): void {
     onRecipesChange?.(day.recipeIds.filter((r) => r !== id));
+  }
+  // Display-time cache-bust for the row thumbnail (mirrors RecipeListPage, issue
+  // #460): a regenerated hero reuses the same Storage URL, so bust it with the
+  // per-regeneration nonce (`imageRequestedAt`, falling back to `updatedAt`). Null
+  // when the image is hidden/absent — the row then shows the CookingPot fallback.
+  function heroUrl(recipe: Recipe): string | null {
+    return recipe.image?.url && !recipe.imageHidden
+      ? appendCacheBuster(recipe.image.url, recipe.imageRequestedAt ?? recipe.updatedAt)
+      : null;
+  }
+  // Tapping a row's thumbnail/title opens that recipe's full view page. Hash
+  // routing (svelte-spa-router), identical to RecipeListPage's card click; the
+  // Remove button stops propagation so it never triggers navigation.
+  function openRecipe(id: string): void {
+    push(`/recipes/${id}`);
   }
 
   // The day's weather pictogram (issue #387), resolved from the forecast's
@@ -413,15 +437,48 @@
             </Combobox>
           {/key}
           {#each attachedRecipes as r (r.id)}
+            {@const url = heroUrl(r)}
             <div
               class="flex items-center justify-between gap-2 rounded border px-2 py-1.5"
               data-testid={`${testid}-recipe-row-${r.id}`}
             >
-              <span class="truncate text-sm">{r.title}</span>
+              <!-- Thumbnail + title open the recipe's full view. One button owns the
+                   leading thumbnail and the title so the whole area is the tap
+                   target; the Remove button (a sibling, not nested) keeps its own
+                   handler and never triggers navigation. -->
+              <button
+                type="button"
+                class="flex min-w-0 flex-1 items-center gap-2 text-left"
+                onclick={() => openRecipe(r.id)}
+                data-testid={`${testid}-recipe-open-${r.id}`}
+              >
+                <span class="h-10 w-10 shrink-0 overflow-hidden rounded bg-muted">
+                  {#if url}
+                    <img
+                      src={url}
+                      alt=""
+                      loading="lazy"
+                      class="h-full w-full object-cover"
+                      data-testid={`${testid}-recipe-thumb-${r.id}`}
+                    />
+                  {:else}
+                    <span
+                      class="flex h-full w-full items-center justify-center bg-gradient-to-br from-muted to-muted/40 text-muted-foreground/60"
+                      data-testid={`${testid}-recipe-thumb-fallback-${r.id}`}
+                    >
+                      <Icon name="CookingPot" size={18} />
+                    </span>
+                  {/if}
+                </span>
+                <span class="min-w-0 truncate text-sm">{r.title}</span>
+              </button>
               <Button
                 variant="ghost"
                 size="sm"
-                onclick={() => removeRecipe(r.id)}
+                onclick={(e) => {
+                  e.stopPropagation();
+                  removeRecipe(r.id);
+                }}
                 aria-label={`Remove ${r.title}`}
                 data-testid={`${testid}-recipe-remove-${r.id}`}
               >
