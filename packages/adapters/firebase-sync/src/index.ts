@@ -53,6 +53,7 @@ export {
   callParseRecipeIngredients,
   callExtractRecipeFromUrl,
   callRegenerateRecipeImage,
+  callSetRecipeImageUpload,
 } from './recipeCallables.js';
 export {
   subscribeMealPlanConfig,

@@ -124,7 +124,7 @@ const CARROT = makeRecipe({
   servings: 4,
   ingredientCount: 4,
   image: { url: 'http://img.test/carrot.jpg', source: 'ai' },
-  imageHidden: true, // hidden → fallback tile even though a url exists
+  imageHidden: true, // retired/inert (Phase 1): still shows its hero despite this flag
   createdAt: '2026-03-01T00:00:00.000Z',
 });
 
@@ -159,18 +159,21 @@ describe('RecipeListPage', () => {
     expect(normalized(screen.getByTestId('recipe-result-count'))).toContain('3 recipes');
   });
 
-  it('shows the hero image when present and a fallback tile otherwise', () => {
+  it('shows the hero image whenever a url exists (imageHidden retired) and a fallback tile otherwise', () => {
     seed([APPLE, BANANA, CARROT]);
     render(RecipeListPage);
 
-    // Only Apple has a visible image; Banana (null) and Carrot (hidden) fall back.
-    expect(screen.getAllByTestId('recipe-list-thumb')).toHaveLength(1);
-    expect(screen.getAllByTestId('recipe-list-thumb-fallback')).toHaveLength(2);
+    // Apple and Carrot both have image urls, so both show a hero — Carrot's
+    // `imageHidden` is retired/inert (Phase 1) and no longer suppresses it. Only
+    // Banana (image null) falls back to the placeholder tile.
+    expect(screen.getAllByTestId('recipe-list-thumb')).toHaveLength(2);
+    expect(screen.getAllByTestId('recipe-list-thumb-fallback')).toHaveLength(1);
 
-    // The visible thumb is cache-busted (issue #460): Apple has no
-    // `imageRequestedAt`, so the nonce falls back to `updatedAt`. The base URL
-    // carries no query, so the param is appended with `?v=`.
-    const src = screen.getByTestId('recipe-list-thumb').getAttribute('src');
+    // Cards render A–Z, so Apple's thumb is first. It is cache-busted (issue
+    // #460): Apple has no `imageRequestedAt`, so the nonce falls back to
+    // `updatedAt`. The base URL carries no query, so the param is appended with
+    // `?v=`.
+    const src = screen.getAllByTestId('recipe-list-thumb')[0].getAttribute('src');
     expect(src).toBe(`http://img.test/apple.jpg?v=${APPLE.updatedAt}`);
   });
 

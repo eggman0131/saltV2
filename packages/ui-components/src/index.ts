@@ -36,6 +36,7 @@ export { default as ErrorState } from './primitives/ErrorState/ErrorState.svelte
 export { default as Grid } from './primitives/Grid/Grid.svelte';
 export { default as Heading } from './primitives/Heading/Heading.svelte';
 export { default as Icon } from './primitives/Icon/Icon.svelte';
+export { default as ImageCropper } from './primitives/ImageCropper/ImageCropper.svelte';
 export { default as Inline } from './primitives/Inline/Inline.svelte';
 export { default as Markdown } from './primitives/Markdown/Markdown.svelte';
 export { default as Popover } from './primitives/Popover/Popover.svelte';
@@ -127,6 +128,10 @@ export type { ErrorStateProps } from './primitives/ErrorState/ErrorState.types';
 export type { GridProps } from './primitives/Grid/Grid.types';
 export type { HeadingProps } from './primitives/Heading/Heading.types';
 export type { IconProps } from './primitives/Icon/Icon.types';
+export type {
+  ImageCropperProps,
+  ImageCropperHandle,
+} from './primitives/ImageCropper/ImageCropper.types';
 export type { InlineProps } from './primitives/Inline/Inline.types';
 export type {
   PopoverProps,

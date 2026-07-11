@@ -7,6 +7,7 @@ import {
   callExtractRecipeFromUrl,
   callAuthorRecipe,
   callRegenerateRecipeImage,
+  callSetRecipeImageUpload,
   saveShoppingListItem,
 } from '@salt/firebase-sync';
 import { createObservabilityErrorReportingAdapter, startUserActionSpan } from '@salt/observability';
@@ -140,14 +141,23 @@ export async function regenerateRecipeImage(
   return reportIfFailed(getErrorReporter(), await callRegenerateRecipeImage(recipeId, hint));
 }
 
-// Hide / show the hero. A plain optimistic recipe write (no server authority
-// needed) that flips `imageHidden`; the existing `image` is preserved, so "show"
-// brings the same photo straight back without regenerating.
-export async function setRecipeImageHidden(
-  recipe: Recipe,
-  hidden: boolean,
+// Upload a user-supplied hero photo (issue #455, Phase 2). The caller (the
+// RecipeViewPage upload dialog) crops a local image to 3:2 in the ImageCropper
+// primitive and passes the cropped bytes as base64. The auth-gated callable
+// re-encodes them, overwrites the recipe's Storage hero, and stamps
+// `image = { url, source: 'upload' }`; the new URL arrives via the recipe
+// subscription. Deliberately a callable, not an optimistic store write — a client
+// whole-document write would risk clobbering a concurrent trigger write, and
+// storage.rules forbid a direct client Storage write.
+export async function setRecipeImageUpload(
+  recipeId: string,
+  imageBase64: string,
+  contentType?: string,
 ): Promise<ReadResult<void, DomainError>> {
-  return persistRecipe({ ...recipe, imageHidden: hidden });
+  return reportIfFailed(
+    getErrorReporter(),
+    await callSetRecipeImageUpload(recipeId, imageBase64, contentType),
+  );
 }
 
 // ─── URL import ────────────────────────────────────────────────────────────────

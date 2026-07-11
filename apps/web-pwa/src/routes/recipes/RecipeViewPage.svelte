@@ -14,9 +14,11 @@
     DialogHeader,
     DialogTitle,
     Icon,
+    ImageCropper,
     Markdown,
     Spinner,
     TextField,
+    type ImageCropperHandle,
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
   import {
@@ -28,7 +30,7 @@
     persistRecipe,
     authorRecipeTraced,
     regenerateRecipeImage,
-    setRecipeImageHidden,
+    setRecipeImageUpload,
   } from '../../lib/recipeService.js';
   import RecipeAddToListSheet from './RecipeAddToListSheet.svelte';
   import { canonItems } from '../../lib/canonService.js';
@@ -43,6 +45,11 @@
   import { auth } from '../../lib/auth.svelte.js';
   import { createChatSession, sessions, sendMessage } from '../../lib/chatService.js';
   import { saveRecipe as saveRecipeDoc } from '@salt/firebase-sync';
+  import {
+    clipboardImageReadSupported,
+    readClipboardImage,
+    imageFromClipboardData,
+  } from '../../lib/clipboardImage.js';
 
   interface Props {
     params: { id: string };
@@ -299,11 +306,13 @@
 
   // ─── Hero image (issue #148, Tier-2) ─────────────────────────────────────────
   // The photoreal hero is generated automatically by the onRecipeWritten trigger
-  // on create; these controls are the manual escape hatches (regenerate with an
-  // optional steer, hide/show). While a (re)generation is in flight the new URL
-  // simply arrives via the recipe subscription — there is no in-flight flag on the
-  // doc, so `imageBusy` only guards the button between click and callable return.
-  const heroVisible = $derived(!!recipe?.image?.url && !recipe.imageHidden);
+  // on create; the manual escape hatch is Regenerate (with an optional steer),
+  // surfaced as a subtle overlay control on the image. While a (re)generation is
+  // in flight the new URL simply arrives via the recipe subscription — there is no
+  // in-flight flag on the doc, so `imageBusy` only guards the button between click
+  // and callable return. `imageHidden` is retired (inert, kept for back-compat) so
+  // hero visibility is purely "does an image URL exist".
+  const heroVisible = $derived(!!recipe?.image?.url);
   let imageBusy = $state(false);
   let regenOpen = $state(false);
   let regenHint = $state('');
@@ -331,14 +340,114 @@
     await runRegenerate(hint || undefined);
   }
 
-  async function handleToggleHidden(hidden: boolean): Promise<void> {
-    if (!recipe || imageBusy) return;
-    imageBusy = true;
-    const result = await setRecipeImageHidden(recipe, hidden);
-    imageBusy = false;
-    if (result.kind !== 'ok') {
-      addToast(hidden ? 'Failed to hide image.' : 'Failed to show image.', 'destructive');
+  // ─── Upload a local photo (issue #455, Phase 2) ──────────────────────────────
+  // Pick a file → crop to 3:2 (pan/zoom) in the ImageCropper primitive → Save
+  // sends the cropped bytes (base64) to the setRecipeImageUpload callable, which
+  // re-encodes and writes `recipe-images/{id}.webp` then stamps
+  // `image = { url, source: 'upload' }`. The new URL arrives via the subscription;
+  // a bumped `imageRequestedAt` nonce cache-busts the identical Storage URL so the
+  // photo appears immediately. Regenerate never clobbers an uploaded photo (the
+  // trigger skips `source: 'upload'`).
+  let uploadOpen = $state(false);
+  let uploadBusy = $state(false);
+  let uploadSrc = $state<string | null>(null);
+  let cropper = $state<ImageCropperHandle | undefined>(undefined);
+
+  function openUpload(): void {
+    clearUploadSrc();
+    uploadBusy = false;
+    uploadOpen = true;
+  }
+
+  // Object-URL lifecycle: revoke the previous blob URL before replacing/clearing
+  // so a re-pick or a close doesn't leak it.
+  function clearUploadSrc(): void {
+    if (uploadSrc) URL.revokeObjectURL(uploadSrc);
+    uploadSrc = null;
+  }
+
+  function handleUploadFileChange(e: Event): void {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    // Reset the input so re-picking the SAME file still fires a change event.
+    input.value = '';
+    if (!file) return;
+    routeImageBlob(file);
+  }
+
+  // Shared sink for both file and clipboard sources: revoke any prior blob URL,
+  // then feed the new image into the cropper exactly as the file path does.
+  function routeImageBlob(blob: Blob): void {
+    clearUploadSrc();
+    uploadSrc = URL.createObjectURL(blob);
+  }
+
+  // ─── Paste from clipboard (issue #455, Phase 3) ──────────────────────────────
+  // Two entry points into the SAME 3:2 crop → setRecipeImageUpload pipeline: an
+  // explicit Paste button (async Clipboard `read()`) and ⌘/Ctrl-V while the
+  // dialog is open (the `paste` event's clipboardData). The button is gated on
+  // `clipboardImageReadSupported()` because some browsers expose no `read()`;
+  // the keyboard listener needs no such gate — it uses clipboardData — so it
+  // stays active regardless. Neither path throws: an unsupported/denied/empty
+  // clipboard just shows a hint (see clipboardImage.ts).
+  const canPasteFromClipboard = clipboardImageReadSupported();
+  const pasteShortcutLabel =
+    typeof navigator !== 'undefined' && /mac|iphone|ipad/i.test(navigator.userAgent)
+      ? '⌘V'
+      : 'Ctrl+V';
+
+  async function handlePasteButton(): Promise<void> {
+    if (uploadBusy) return;
+    const blob = await readClipboardImage();
+    if (!blob) {
+      addToast('No image found on the clipboard.', 'default');
+      return;
     }
+    routeImageBlob(blob);
+  }
+
+  function handleDialogPaste(e: ClipboardEvent): void {
+    if (uploadBusy) return;
+    const blob = imageFromClipboardData(e.clipboardData);
+    if (!blob) return;
+    e.preventDefault();
+    routeImageBlob(blob);
+  }
+
+  // Listen for ⌘/Ctrl-V only while the dialog is open. The dialog renders in a
+  // portal, so bind at the document level and gate on `uploadOpen`.
+  $effect(() => {
+    if (!uploadOpen) return;
+    const listener = (e: ClipboardEvent): void => handleDialogPaste(e);
+    document.addEventListener('paste', listener);
+    return () => document.removeEventListener('paste', listener);
+  });
+
+  function handleUploadOpenChange(open: boolean): void {
+    uploadOpen = open;
+    if (!open) {
+      clearUploadSrc();
+      uploadBusy = false;
+    }
+  }
+
+  async function handleUploadSave(): Promise<void> {
+    if (!recipe || !cropper || uploadBusy) return;
+    uploadBusy = true;
+    const base64 = await cropper.getCroppedBase64();
+    if (!base64) {
+      uploadBusy = false;
+      addToast('Could not read that image — try another.', 'destructive');
+      return;
+    }
+    const result = await setRecipeImageUpload(recipe.id, base64, 'image/webp');
+    uploadBusy = false;
+    if (result.kind !== 'ok') {
+      addToast('Failed to upload image.', 'destructive');
+      return;
+    }
+    handleUploadOpenChange(false);
+    addToast('Photo updated.', 'success');
   }
 
   import type { QuantityDoc } from '@salt/domain/schemas';
@@ -414,7 +523,7 @@
              from the title + description by the onRecipeWritten trigger. -->
         {#if heroVisible}
           <div class="flex flex-col gap-2" data-testid="recipe-hero">
-            <div class="overflow-hidden rounded-lg border bg-muted">
+            <div class="group relative overflow-hidden rounded-lg border bg-muted">
               <img
                 src={appendCacheBuster(
                   recipe.image!.url,
@@ -425,46 +534,39 @@
                 class="aspect-[3/2] w-full object-cover"
                 data-testid="recipe-hero-image"
               />
+              <!-- Regenerate + Upload as subtle overlay controls: hover-revealed
+                   on desktop, faint-always-visible on touch (no hover). -->
+              <div class="absolute right-2 top-2 flex gap-2">
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onclick={openUpload}
+                  disabled={imageBusy}
+                  ariaLabel="Upload a photo"
+                  title="Upload a photo"
+                  class="bg-background/80 opacity-0 shadow-sm backdrop-blur-sm transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-60"
+                  data-testid="recipe-image-upload"
+                >
+                  {#snippet leading()}<Icon name="Upload" size={16} />{/snippet}
+                </Button>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onclick={openRegenerate}
+                  loading={imageBusy}
+                  disabled={imageBusy}
+                  ariaLabel="Regenerate image"
+                  title="Regenerate image"
+                  class="bg-background/80 opacity-0 shadow-sm backdrop-blur-sm transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-60"
+                  data-testid="recipe-image-regenerate"
+                >
+                  {#snippet leading()}<Icon name="RefreshCw" size={16} />{/snippet}
+                </Button>
+              </div>
             </div>
-            <div class="flex items-center gap-1">
-              <Button
-                size="sm"
-                variant="ghost"
-                onclick={openRegenerate}
-                loading={imageBusy}
-                disabled={imageBusy}
-                data-testid="recipe-image-regenerate"
-              >
-                {#snippet leading()}<Icon name="RefreshCw" size={14} />{/snippet}
-                Regenerate
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onclick={() => handleToggleHidden(true)}
-                disabled={imageBusy}
-                data-testid="recipe-image-hide"
-              >
-                {#snippet leading()}<Icon name="EyeOff" size={14} />{/snippet}
-                Hide
-              </Button>
-            </div>
-          </div>
-        {:else if recipe.image?.url && recipe.imageHidden}
-          <div data-testid="recipe-hero-controls">
-            <Button
-              size="sm"
-              variant="outline"
-              onclick={() => handleToggleHidden(false)}
-              disabled={imageBusy}
-              data-testid="recipe-image-show"
-            >
-              {#snippet leading()}<Icon name="Eye" size={14} />{/snippet}
-              Show image
-            </Button>
           </div>
         {:else}
-          <div data-testid="recipe-hero-controls">
+          <div class="flex flex-wrap gap-2" data-testid="recipe-hero-controls">
             <Button
               size="sm"
               variant="outline"
@@ -475,6 +577,16 @@
             >
               {#snippet leading()}<Icon name="ImagePlus" size={14} />{/snippet}
               Generate image
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onclick={openUpload}
+              disabled={imageBusy}
+              data-testid="recipe-image-upload-empty"
+            >
+              {#snippet leading()}<Icon name="Upload" size={14} />{/snippet}
+              Upload a photo
             </Button>
           </div>
         {/if}
@@ -816,6 +928,100 @@
           data-testid="recipe-image-regenerate-confirm"
         >
           Regenerate
+        </Button>
+      </DialogFooter>
+    </div>
+  </DialogContent>
+</Dialog>
+
+<!-- Upload photo dialog: pick a local image → crop to 3:2 → Save (issue #455) -->
+<Dialog bind:open={uploadOpen} onOpenChange={handleUploadOpenChange}>
+  <DialogContent>
+    <div class="flex flex-col gap-4" data-testid="recipe-image-upload-dialog">
+      <DialogHeader>
+        <DialogTitle>Upload a photo</DialogTitle>
+        <DialogDescription>
+          Choose a photo from your device — or paste one you've copied — and position it in the 3:2
+          frame — drag to pan, scroll or use the slider to zoom.
+        </DialogDescription>
+      </DialogHeader>
+
+      {#if uploadSrc}
+        <ImageCropper bind:this={cropper} src={uploadSrc} />
+        <div class="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            class="text-xs text-primary hover:underline disabled:opacity-50"
+            onclick={clearUploadSrc}
+            disabled={uploadBusy}
+            data-testid="recipe-image-upload-choose-another"
+          >
+            Choose a different photo
+          </button>
+          {#if canPasteFromClipboard}
+            <button
+              type="button"
+              class="text-xs text-primary hover:underline disabled:opacity-50"
+              onclick={handlePasteButton}
+              disabled={uploadBusy}
+              data-testid="recipe-image-paste"
+            >
+              Paste from clipboard
+            </button>
+          {/if}
+        </div>
+      {:else}
+        <label
+          class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-dashed border-input px-4 py-10 text-sm text-muted-foreground hover:bg-muted/50"
+        >
+          <Icon name="ImagePlus" size={24} />
+          <span>Tap to choose a photo</span>
+          <input
+            type="file"
+            accept="image/*"
+            class="sr-only"
+            onchange={handleUploadFileChange}
+            data-testid="recipe-image-upload-input"
+          />
+        </label>
+        {#if canPasteFromClipboard}
+          <Button
+            variant="outline"
+            onclick={handlePasteButton}
+            disabled={uploadBusy}
+            data-testid="recipe-image-paste-empty"
+          >
+            {#snippet leading()}<Icon name="Clipboard" size={16} />{/snippet}
+            Paste from clipboard
+          </Button>
+          <p class="text-center text-xs text-muted-foreground">
+            or press {pasteShortcutLabel} to paste a copied image
+          </p>
+        {:else}
+          <p
+            class="text-center text-xs text-muted-foreground"
+            data-testid="recipe-image-paste-hint"
+          >
+            Pasting isn't supported in this browser — choose a photo above instead.
+          </p>
+        {/if}
+      {/if}
+
+      <DialogFooter>
+        <Button
+          variant="outline"
+          onclick={() => handleUploadOpenChange(false)}
+          disabled={uploadBusy}
+        >
+          Cancel
+        </Button>
+        <Button
+          onclick={handleUploadSave}
+          loading={uploadBusy}
+          disabled={uploadBusy || !uploadSrc}
+          data-testid="recipe-image-upload-save"
+        >
+          Save
         </Button>
       </DialogFooter>
     </div>
