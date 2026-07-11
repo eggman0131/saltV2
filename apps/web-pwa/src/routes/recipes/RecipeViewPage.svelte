@@ -33,13 +33,17 @@
     setRecipeImageUpload,
   } from '../../lib/recipeService.js';
   import RecipeAddToListSheet from './RecipeAddToListSheet.svelte';
+  import RecipeChangeSummary from './RecipeChangeSummary.svelte';
   import { canonItems } from '../../lib/canonService.js';
   import {
     appendCacheBuster,
+    diffRecipe,
     hasLiveCanonMatch,
     type IngredientGroup,
     type Ingredient,
+    type Recipe,
   } from '@salt/domain';
+  import type { RecipeDiff } from '@salt/domain/schemas';
   import { defaultListId } from '../../lib/shoppingListService.svelte.js';
   import { addToast } from '../../lib/toastStore.js';
   import { auth } from '../../lib/auth.svelte.js';
@@ -239,11 +243,18 @@
     el.style.height = `${el.scrollHeight}px`;
   }
 
+  // Review-and-approve gate (Phase 2). "Update recipe" now generates a PENDING
+  // proposal and opens a diff summary; nothing is written until "Apply changes".
+  // `sidebarIsProposing` guards the AI call; `sidebarIsApplying` guards the save.
+  let sidebarIsProposing = $state(false);
   let sidebarIsApplying = $state(false);
+  let sidebarSummaryOpen = $state(false);
+  let sidebarPendingUpdate = $state<Recipe | null>(null);
+  let sidebarPendingDiff = $state<RecipeDiff | null>(null);
 
-  async function handleSidebarApplyChanges(): Promise<void> {
-    if (!activeSession || !recipe || sidebarIsApplying) return;
-    sidebarIsApplying = true;
+  async function handleSidebarReviewChanges(): Promise<void> {
+    if (!activeSession || !recipe || sidebarIsProposing) return;
+    sidebarIsProposing = true;
     const existingTags = [...new Set($recipes.flatMap((r) => r.metadata.tags))];
     const result = await authorRecipeTraced(
       {
@@ -254,7 +265,7 @@
       recipe.title,
     );
     if (result.kind !== 'ok') {
-      sidebarIsApplying = false;
+      sidebarIsProposing = false;
       addToast('Failed to generate recipe update.', 'destructive');
       return;
     }
@@ -276,13 +287,33 @@
         tags: ai.metadata.tags.length > 0 ? ai.metadata.tags : recipe.metadata.tags,
       },
     };
-    const saveResult = await saveRecipeDoc(updated);
+    // Diff the merged result against the existing recipe (post-merge, so the
+    // preserved-metadata fallbacks don't show as spurious "changed to null").
+    sidebarPendingDiff = diffRecipe(recipe, updated);
+    sidebarPendingUpdate = updated;
+    sidebarIsProposing = false;
+    sidebarSummaryOpen = true;
+  }
+
+  async function handleSidebarApplyChanges(): Promise<void> {
+    if (!sidebarPendingUpdate || sidebarIsApplying) return;
+    sidebarIsApplying = true;
+    const saveResult = await saveRecipeDoc(sidebarPendingUpdate);
     sidebarIsApplying = false;
     if (saveResult.kind !== 'ok') {
       addToast('Failed to save recipe update.', 'destructive');
       return;
     }
+    sidebarSummaryOpen = false;
+    sidebarPendingUpdate = null;
+    sidebarPendingDiff = null;
     addToast('Recipe updated!', 'success');
+  }
+
+  function handleSidebarDiscardChanges(): void {
+    sidebarSummaryOpen = false;
+    sidebarPendingUpdate = null;
+    sidebarPendingDiff = null;
   }
 
   // ─── Delete ─────────────────────────────────────────────────────────────────
@@ -846,13 +877,13 @@
                 <Button
                   variant="outline"
                   class="w-full"
-                  onclick={handleSidebarApplyChanges}
-                  loading={sidebarIsApplying}
-                  disabled={sidebarIsApplying || sidebarIsSending}
+                  onclick={handleSidebarReviewChanges}
+                  loading={sidebarIsProposing}
+                  disabled={sidebarIsProposing || sidebarIsSending}
                   data-testid="sidebar-apply-changes-btn"
                 >
                   {#snippet leading()}<Icon name="RefreshCw" size={14} />{/snippet}
-                  Update recipe
+                  Review changes
                 </Button>
               </div>
             {/if}
@@ -898,6 +929,15 @@
 {#if recipe && $defaultListId}
   <RecipeAddToListSheet {recipe} listId={$defaultListId} bind:open={addToListOpen} />
 {/if}
+
+<!-- Review-and-approve gate for the pending AI edit (Phase 2) -->
+<RecipeChangeSummary
+  diff={sidebarPendingDiff}
+  bind:open={sidebarSummaryOpen}
+  applying={sidebarIsApplying}
+  onApply={handleSidebarApplyChanges}
+  onDiscard={handleSidebarDiscardChanges}
+/>
 
 <!-- Regenerate image dialog: optional one-shot steer (issue #148) -->
 <Dialog bind:open={regenOpen}>
