@@ -1,8 +1,12 @@
 # Local / machine-specific / regenerable graphify state — do not commit.
-# Committed deliverables (graph.json, graph.html, GRAPH_REPORT.md) are force-added.
+# The repo-root .gitignore is the authoritative, cross-branch source of truth
+# for this policy; these entries mirror it so the rules also apply on branches
+# that predate the root block. Tracked deliverables (graph.json, graph.html,
+# GRAPH_REPORT.md, manifest.json, wiki/) are intentionally NOT listed here.
 .graphify_python
 .graphify_root
 .graphify_labels.json
-manifest.json
 cost.json
 cache/
+# Per-run dated snapshot archives (YYYY-MM-DD/) — regenerated, not tracked.
+[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/

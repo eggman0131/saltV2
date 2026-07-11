@@ -11,10 +11,12 @@
   } from '@salt/ui-components';
   import { onMount } from 'svelte';
   import { ChevronLeft, ChevronRight } from '@lucide/svelte';
-  import { weekDates, type Attendee } from '@salt/domain';
+  import { weekDates, type Attendee, type Recipe } from '@salt/domain';
   import MealDayEditor from './MealDayEditor.svelte';
+  import RecipeAddToListSheet from '../recipes/RecipeAddToListSheet.svelte';
   import { members } from '../../lib/membersService.js';
   import { recipes } from '../../lib/recipeService.js';
+  import { defaultListId } from '../../lib/shoppingListService.svelte.js';
   import {
     currentWeek,
     selectedStartDate,
@@ -63,6 +65,23 @@
         })}`
       : '',
   );
+
+  // ─── Add a day's recipe to the shopping list (Phase 4, #469) ──────────────
+  // The RecipeAddToListSheet is lifted to the page (kept OUT of the shared, recipe-
+  // free MealDayEditor). A row's "Add to shop" hands its full Recipe up here; we
+  // guard exactly as RecipeViewPage does — a missing default list shows the same
+  // friendly toast and never opens the sheet — then mount the familiar review sheet.
+  let addShopRecipe = $state<Recipe | null>(null);
+  let addShopOpen = $state(false);
+
+  function openRecipeAddToList(recipe: Recipe): void {
+    if (!$defaultListId) {
+      addToast('No shopping list found. Create one first.', 'destructive');
+      return;
+    }
+    addShopRecipe = recipe;
+    addShopOpen = true;
+  }
 
   // ─── Load-template confirmation ───────────────────────────────────────────
   let showLoadConfirm = $state(false);
@@ -144,6 +163,7 @@
             weather={$weatherForecast?.days[date]}
             onNoteChange={(note) => void setWeekDayNote(date, note)}
             onRecipesChange={(ids) => void setWeekDayRecipes(date, ids)}
+            onRecipeAddToList={openRecipeAddToList}
             onChefToggle={(id) => toggleChef(date, id)}
             onAttendeeToggle={(id) => toggleAttendee(date, id)}
             onAttendeeHomeTime={(id, t) => void setWeekAttendeeHomeTime(date, id, t)}
@@ -175,3 +195,10 @@
     </div>
   </DialogContent>
 </Dialog>
+
+<!-- Add a day's recipe to the shopping list: the same review sheet the recipe page
+     uses (issue #185), mounted once and driven by the selected recipe. Gated on a
+     default list existing — mirrors RecipeViewPage exactly. -->
+{#if addShopRecipe && $defaultListId}
+  <RecipeAddToListSheet recipe={addShopRecipe} listId={$defaultListId} bind:open={addShopOpen} />
+{/if}

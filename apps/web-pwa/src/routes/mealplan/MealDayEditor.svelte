@@ -1,6 +1,5 @@
 <script lang="ts">
   import {
-    Checkbox,
     Button,
     Icon,
     Select,
@@ -22,21 +21,28 @@
     appendCacheBuster,
     memberInitials,
     weatherIcon,
+    temperatureBand,
     type Day,
     type Member,
     type Recipe,
+    type TemperatureBand,
   } from '@salt/domain';
   import type { WeatherDaySummary } from '@salt/domain/schemas';
-  import WeatherSummary from './WeatherSummary.svelte';
   import WeatherIcon from '$lib/weather-icons/WeatherIcon.svelte';
+  import WeatherSummary from './WeatherSummary.svelte';
 
   // Collapsible editor for a single Day, shared by the weekly page (date-keyed)
-  // and the template editor (weekday-keyed). Collapsed it shows a one-line
-  // summary — meal + who's in (with home time) + chef + a note indicator + guest
-  // count — so the whole week scans fast; expand one day to edit detail in a
-  // roomy panel. It knows nothing about day keys: the parent supplies handlers
-  // already bound to the right date/weekday. Members resolve live; an unknown
-  // memberId renders as removable, never blocking. See docs/meal-planning.md.
+  // and the template editor (weekday-keyed). Collapsed it shows a compact,
+  // stacked summary — a taller header built for at-a-glance scanning: day +
+  // weather glyph & temperature on top, then the roster of member avatars
+  // (coloured for eating/not, home time beneath, the cook marked ONCE with a
+  // chef-hat badge overlapping their top-left and 15% larger, and a note badge
+  // on the top-right of anyone with an attendee note), then the meal's first
+  // line beneath the avatars (with a "No cook" flag when unassigned). Expand one
+  // day to edit detail in a roomy panel. It knows nothing about day keys: the
+  // parent supplies handlers already bound to the right date/weekday. Members
+  // resolve live; an unknown memberId renders as removable, never blocking. See
+  // docs/meal-planning.md.
   //
   // `weather` (issue #382, Phase 3) is the OPTIONAL per-day evening forecast. The
   // PARENT does the in-window gating: the dated weekly page passes
@@ -65,6 +71,12 @@
     // Optional: present only in the dated week editor. When absent (the template
     // editor) the recipe picker and chips are not rendered — recipe-free.
     onRecipesChange?: (recipeIds: string[]) => void;
+    // Optional: present only in the dated week editor. When provided, each attached
+    // recipe row gains an "Add to shop" action that hands the FULL recipe up to the
+    // page, which owns the RecipeAddToListSheet + default-list guard (Phase 4, #469).
+    // Absent in the recipe-free template editor, so it gains no shopping UI — all
+    // shopping imports stay out of this shared component.
+    onRecipeAddToList?: (recipe: Recipe) => void;
   }
   let {
     label,
@@ -81,6 +93,7 @@
     onAttendeeNote,
     onGuestsChange,
     onRecipesChange,
+    onRecipeAddToList,
   }: Props = $props();
 
   let open = $state(false);
@@ -110,6 +123,15 @@
   let recipePickerKey = $state(0);
   function addRecipe(id: string): void {
     if (!id || day.recipeIds.includes(id)) return;
+    // Auto-fill the empty meal field with the recipe's title (Phase 3, #469). The
+    // title is a live UI value (resolved from `recipes`, never denormalised onto
+    // the plan), so this stays purely in the app-layer handler using the existing
+    // `onNoteChange` — no title knowledge leaks into the domain or any mutator.
+    // Guard on `day.note` AT ATTACH TIME: `onNoteChange` is fire-and-forget and
+    // `day.note` only updates once the store re-emits, so a non-empty note is
+    // never overwritten and the first attached recipe wins.
+    const title = recipes.find((r) => r.id === id)?.title;
+    if (title && !day.note.trim()) onNoteChange?.(title);
     onRecipesChange?.([...day.recipeIds, id]);
     recipePickerKey += 1;
   }
@@ -179,12 +201,22 @@
 
   // Initial-chips grow to use the available width when there are few members and
   // shrink as the roster grows (the household is small, ~5, with rare guests).
+  // `cookBox` is the same avatar 15% larger — the cook's chip is bumped one nudge
+  // so it stands out in the roster without breaking the row's alignment.
   const chip = $derived(
     members.length <= 4
-      ? { box: 'h-9 w-9 text-xs', h: 'h-9', time: 'text-[11px]', badge: 'h-4 w-4', hat: 'h-3 w-3' }
+      ? {
+          box: 'h-9 w-9 text-xs',
+          cookBox: 'h-[41px] w-[41px] text-sm',
+          h: 'h-9',
+          time: 'text-[11px]',
+          badge: 'h-4 w-4',
+          hat: 'h-3 w-3',
+        }
       : members.length <= 6
         ? {
             box: 'h-8 w-8 text-[11px]',
+            cookBox: 'h-[37px] w-[37px] text-xs',
             h: 'h-8',
             time: 'text-[10px]',
             badge: 'h-3.5 w-3.5',
@@ -192,6 +224,7 @@
           }
         : {
             box: 'h-7 w-7 text-[10px]',
+            cookBox: 'h-[32px] w-[32px] text-[11px]',
             h: 'h-7',
             time: 'text-[9px]',
             badge: 'h-3 w-3',
@@ -209,7 +242,29 @@
     day.attendees.filter((a) => !members.some((m) => m.id === a.memberId)),
   );
   const attendingCount = $derived(day.attendees.length + day.guests);
-  const hasNotes = $derived(day.attendees.some((a) => a.note.trim() !== ''));
+  const hasNote = (id: string): boolean => (attendeeOf(id)?.note.trim() ?? '') !== '';
+
+  // The cook is now marked ONCE, inside the roster, via a chef-hat badge on the
+  // chef's own avatar (no separate cook column). When `day.chefs` is empty the
+  // summary shows a "No cook" flag beside the meal so unassigned days stand out.
+  const hasCook = $derived(day.chefs.length > 0);
+
+  // The meal's FIRST line only for the collapsed summary — the meal field is a
+  // multi-line textarea, but the header shows a single truncating line beneath
+  // the avatars. Empty → the muted "No meal set" placeholder.
+  const mealFirstLine = $derived(day.note.split('\n')[0]?.trim() ?? '');
+
+  // Evening-window temperature band (drives the header temp colour, cool→warm),
+  // mirroring WeatherSummary. Null whenever there's no forecast for this day.
+  const band = $derived<TemperatureBand | null>(weather ? temperatureBand(weather.tempHigh) : null);
+  const BAND_CLASS: Record<TemperatureBand, string> = {
+    freezing: 'text-sky-600',
+    cold: 'text-sky-500',
+    cool: 'text-cyan-600',
+    mild: 'text-emerald-600',
+    warm: 'text-orange-500',
+    hot: 'text-red-600',
+  };
 
   // Auto-grow the multiline meal field to fit its content. Re-runs whenever the
   // note changes (typing, or load-template swapping the value in).
@@ -224,173 +279,160 @@
 </script>
 
 <div class="overflow-hidden rounded-lg border" data-testid={testid}>
-  <!-- Collapsed header (issue #387): the summary row + the evening-forecast strip,
-       wrapped together (relative) so the weather pictogram can sit as a faint
-       watermark in the LEFT column, centred in the empty space UNDER the weekday/
-       date — not behind it. The watermark lane spans the full header height (top-0
-       bottom-0) and overlays the label column (left-3, w-16); inside it an INVISIBLE
-       clone of the weekday/date reserves the exact height the real label occupies
-       (same font + w-16 wrapping — on every breakpoint and for every day, whether the
-       weekday wraps or not), so the flex-1 region below it is PRECISELY the gap under
-       the date. The icon centres in that gap and scales to fill it (h-16 capped by
-       max-h/max-w-full + the component's object-contain): big where there's room (the
-       tall, stacked mobile summary), smaller where it's tight (the short, inline
-       desktop summary), always centred, never overlapping the text — no manual nudges
-       and no breakpoint-specific offsets. (NB: keep the clone's font classes in sync
-       with the real label spans below.) It's low in the stack (z-0) with the day text
-       bumped above it (relative z-10); the temps sit in a further-right column
-       (pl-[5.25rem]) so the icon never covers them. Renders ONLY when `icon` is
-       non-null, so past / out-of-horizon / template days show nothing (no box).
-       Opacity is lifted in dark mode, where the darker icons read fainter, to keep
-       the day text legible. -->
-  <!-- The whole collapsed header is ONE open/collapse unit: the hover tint lives
-       here on the wrapper (not the button), so hovering anywhere over it — the
-       summary row OR the forecast strip — lightens the entire header together. The
-       detail panel below is a sibling (outside this div), so it's never tinted. -->
-  <div class="relative transition-colors hover:bg-muted/40">
-    {#if icon}
-      <div
-        class="pointer-events-none absolute bottom-0 left-3 top-0 z-0 flex w-16 flex-col items-stretch pt-2.5 leading-tight"
-        aria-hidden="true"
-      >
-        <span class="invisible text-sm font-semibold">{label}</span>
-        {#if sublabel}<span class="invisible text-[11px]">{sublabel}</span>{/if}
-        <span class="flex min-h-0 flex-1 items-center justify-center pb-1">
-          <WeatherIcon
-            {icon}
-            class="h-16 max-h-full w-16 max-w-full opacity-[0.66] dark:opacity-[0.77]"
-          />
-        </span>
-      </div>
-    {/if}
-
-    <!-- Collapsed summary: tap anywhere to expand. (Hover tint is on the wrapper.) -->
+  <!-- Collapsed header (#469, restacked): a taller, at-a-glance summary in three
+       stacked bands instead of one squeezed row — (1) the day label with the
+       weather glyph + evening temperature on the right, (2) the member-avatar
+       roster (each coloured for eating/not, home time beneath, the cook marked
+       ONCE with a chef-hat badge on their top-left and their avatar 15% larger, a
+       note badge on the top-right of anyone with an attendee note, then a guest
+       chip), and (3) the meal's first line beneath the avatars with a "No cook"
+       flag when unassigned. Tapping anywhere expands the day's detail below. -->
+  <div class="transition-colors hover:bg-muted/40">
+    <!-- Collapsed summary: tap anywhere to expand. -->
     <button
       type="button"
-      class="flex w-full items-start gap-5 px-3 py-2.5 text-left"
+      class="flex w-full flex-col gap-2.5 px-3 py-3 text-left"
       onclick={() => (open = !open)}
       aria-expanded={open}
       data-testid={`${testid}-summary`}
     >
-      <span class="flex w-16 shrink-0 flex-col leading-tight">
-        <span class="relative z-10 text-sm font-semibold">{label}</span>
-        {#if sublabel}<span class="relative z-10 text-[11px] text-muted-foreground">{sublabel}</span
-          >{/if}
-      </span>
-
-      <span class="flex min-w-0 flex-1 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-6">
-        <span class="flex min-w-0 items-center gap-1.5 sm:flex-1">
-          <span
-            class="min-w-0 truncate text-sm {day.note
-              ? 'text-foreground'
-              : 'text-muted-foreground'}"
-          >
-            {day.note || 'No meal set'}
-          </span>
-          {#if hasNotes}
-            <StickyNote
-              class="h-4 w-4 shrink-0 text-primary"
-              strokeWidth={2.5}
-              aria-label="has notes"
-              data-testid={`${testid}-note-indicator`}
-            />
-          {/if}
-          <!-- Attached recipe titles, shown ALONGSIDE the note (never replacing
-               it). Absent for days with no recipes, so those rows are unchanged.
-               Resolved live from ids; deleted recipes are skipped above. The
-               template editor (no onRecipesChange) never renders these. -->
-          {#if onRecipesChange}
-            {#each attachedRecipes as r (r.id)}
-              <span
-                class="max-w-[10rem] shrink-0 truncate rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground"
-                title={r.title}
-                data-testid={`${testid}-recipe-chip-${r.id}`}
-              >
-                {r.title}
-              </span>
-            {/each}
-          {/if}
+      <!-- Band 1: day label (left) · weather glyph + evening temperature · chevron.
+           The weather block is gated on `weather` (not `icon`), so the temperature
+           still shows on days whose older cached forecast has no pictogram; the glyph
+           itself self-hides when the code is absent (WeatherIcon renders nothing). -->
+      <div class="flex items-start justify-between gap-3">
+        <span class="flex min-w-0 flex-col leading-tight">
+          <span class="text-base font-semibold">{label}</span>
+          {#if sublabel}<span class="text-xs text-muted-foreground">{sublabel}</span>{/if}
         </span>
-        <span class="flex items-start gap-3 sm:shrink-0">
-          <!-- Member chips: fixed roster → constant width, so they line up across
-             every row regardless of guests. Slightly more relaxed on wide screens. -->
-          <span class="flex items-start gap-2.5 lg:gap-4">
-            {#each members as m (m.id)}
-              {@const a = attendeeOf(m.id)}
-              <span class="flex flex-col items-center gap-0.5">
-                <span
-                  class="relative flex {chip.box} items-center justify-center rounded-full font-semibold
-                  {isAttending(m.id)
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted text-muted-foreground/50'}"
-                  title={m.name}
-                  data-testid={`${testid}-chip-${m.id}`}
-                >
-                  {memberInitials(m.name)}
-                  {#if isChef(m.id)}
-                    <span
-                      class="absolute -bottom-1 -right-1 flex {chip.badge} items-center justify-center rounded-full bg-amber-500 ring-2 ring-background"
-                      aria-label="chef"
-                    >
-                      <ChefHat class="{chip.hat} text-white" strokeWidth={2.5} />
-                    </span>
-                  {/if}
-                </span>
-                {#if isAttending(m.id) && a?.homeTime}
-                  <span class="{chip.time} tabular-nums text-muted-foreground">{a.homeTime}</span>
-                {/if}
-              </span>
-            {/each}
-          </span>
-          <!-- Guests: their own reserved column so the member chips never shift. -->
-          <span class="flex {chip.h} w-8 shrink-0 items-center justify-start">
-            {#if day.guests > 0}
+        <div class="flex shrink-0 items-center gap-2">
+          {#if weather}
+            <span class="flex items-center gap-1.5" data-testid={`${testid}-weather-header`}>
+              {#if icon}
+                <WeatherIcon {icon} class="h-8 w-8" />
+              {/if}
               <span
-                class="rounded-full bg-secondary px-2 py-0.5 text-xs font-semibold text-secondary-foreground"
-                data-testid={`${testid}-guest-badge`}>+{day.guests}</span
+                class="text-sm leading-tight tabular-nums {band ? BAND_CLASS[band] : ''}"
+                data-testid={`${testid}-header-temp`}
               >
+                <span class="font-semibold">{weather.tempHigh}°</span><span
+                  class="font-normal opacity-80"
+                >
+                  / {weather.tempLow}°</span
+                >
+              </span>
+            </span>
+          {/if}
+          <span class="text-muted-foreground" aria-hidden="true">
+            {#if open}<ChevronDown class="h-5 w-5" />{:else}<ChevronRight class="h-5 w-5" />{/if}
+          </span>
+        </div>
+      </div>
+
+      <!-- Band 2: the roster. Every member appears exactly once — attending members
+           are filled, the rest muted. The cook is the same avatar 15% larger with an
+           amber chef-hat badge overlapping the top-left; a sky note badge overlaps the
+           top-right of anyone with an attendee note. Home time sits beneath whoever
+           has one set. Guests are a trailing chip. Wraps on narrow widths. -->
+      <div class="flex flex-wrap items-start gap-x-3 gap-y-1.5">
+        {#each members as m (m.id)}
+          {@const a = attendeeOf(m.id)}
+          {@const attending = isAttending(m.id)}
+          {@const chef = isChef(m.id)}
+          <span class="flex flex-col items-center gap-0.5">
+            <span
+              class="relative flex {chef ? chip.cookBox : chip.box} items-center justify-center
+              rounded-full font-semibold
+              {attending
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted text-muted-foreground/50'}"
+              title={chef ? `${m.name} is cooking` : m.name}
+              data-testid={`${testid}-chip-${m.id}`}
+            >
+              {memberInitials(m.name)}
+              {#if chef}
+                <!-- Chef-hat badge: the cook, marked once, top-left overlap (amber). -->
+                <span
+                  class="absolute -left-1 -top-1 flex {chip.badge} items-center justify-center
+                  rounded-full bg-amber-500 ring-2 ring-background"
+                  aria-hidden="true"
+                  data-testid={`${testid}-cook-${m.id}`}
+                >
+                  <ChefHat class="{chip.hat} text-white" strokeWidth={2.5} />
+                </span>
+              {/if}
+              {#if hasNote(m.id)}
+                <!-- Note badge: attendee has a note, top-right overlap (sky) — same
+                     size/style as the chef hat, a different colour so it stands out. -->
+                <span
+                  class="absolute -right-1 -top-1 flex {chip.badge} items-center justify-center
+                  rounded-full bg-sky-500 ring-2 ring-background"
+                  aria-label="has a note"
+                  data-testid={`${testid}-note-badge-${m.id}`}
+                >
+                  <StickyNote class="{chip.hat} text-white" strokeWidth={2.5} />
+                </span>
+              {/if}
+            </span>
+            {#if attending && a?.homeTime}
+              <span class="{chip.time} tabular-nums text-muted-foreground">{a.homeTime}</span>
             {/if}
           </span>
-        </span>
-      </span>
-
-      <span class="shrink-0 pt-0.5 text-muted-foreground" aria-hidden="true">
-        {#if open}<ChevronDown class="h-4 w-4" />{:else}<ChevronRight class="h-4 w-4" />{/if}
-      </span>
-    </button>
-
-    <!-- Evening forecast (issue #382, Phase 3) — rendered ONLY for in-window dated
-       days (the parent passes `weather` then). Past/far-future days and the
-       template never receive it, so this whole block is absent (no placeholder).
-       Aligned under the day label so it reads as part of the day header. -->
-    <!-- The forecast strip toggles the same card as the summary above, so the header
-         reads as one unit: a click on its empty areas (left gutter, gaps, padding)
-         expands / collapses. EXCEPT the metric chips, which render as buttons and own
-         their tap-to-open tooltips — `closest('button')` lets those taps through
-         untouched. Pointer-only by design: the summary button is the keyboard/AT
-         disclosure control, so a second focusable control here would just be
-         redundant noise — and the strip can't itself be a button (it contains the
-         chip buttons). Hence the a11y ignores below: two SINGLE-code comments, not
-         one multi-code comment, because Svelte 5.56 only honours the first code in a
-         multi-code svelte-ignore. -->
-    {#if weather}
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <div
-        class="-mt-1 px-3 pb-2.5 pl-[5.25rem]"
-        onclick={(e) => {
-          if (!(e.target as HTMLElement).closest('button')) open = !open;
-        }}
-      >
-        <WeatherSummary {weather} testid={`${testid}-weather`} />
+        {/each}
+        {#if day.guests > 0}
+          <span class="flex {chip.h} items-center">
+            <span
+              class="rounded-full bg-secondary px-2 py-0.5 text-xs font-semibold text-secondary-foreground"
+              data-testid={`${testid}-guest-badge`}>+{day.guests}</span
+            >
+          </span>
+        {/if}
       </div>
-    {/if}
+
+      <!-- Band 3: the meal's first line beneath the avatars, truncating. The "No cook"
+           flag sits at the end when nobody's assigned, since the chef-hat badge is the
+           only other cook cue and it's absent on an unassigned day. -->
+      <div class="flex items-center gap-2">
+        <span
+          class="min-w-0 flex-1 truncate text-sm {mealFirstLine
+            ? 'text-foreground'
+            : 'text-muted-foreground'}"
+        >
+          {mealFirstLine || 'No meal set'}
+        </span>
+        {#if !hasCook}
+          <span
+            class="flex shrink-0 items-center gap-1 text-[11px] font-medium text-destructive"
+            data-testid={`${testid}-no-cook`}
+          >
+            <ChefHat class="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden="true" />
+            No cook
+          </span>
+        {/if}
+      </div>
+    </button>
   </div>
 
   {#if open}
-    <div class="flex flex-col gap-3 border-t px-3 py-3" data-testid={`${testid}-detail`}>
-      <div class="flex flex-col gap-1.5">
-        <label class="text-sm font-medium text-foreground" for={`${testid}-note`}>Meal</label>
+    <!-- Expanded detail (Phase 2, #469): three stacked blocks, top→bottom —
+         (1) forecast strip, (2) Dinner (meal + recipes), (3) At the table (roster).
+         Flatter and shorter than the old form: the forecast leads, and the roster
+         is one tidy row per member (avatar = eating toggle, chef-hat = cooking),
+         with shift/late times revealed only for people who are eating. -->
+    <div class="flex flex-col gap-4 border-t px-3 py-3" data-testid={`${testid}-detail`}>
+      <!-- 1. Forecast strip: the evening forecast leads the detail. Real-week only
+           — gated on `weather`, so the weekday template editor and out-of-horizon
+           days render nothing (parent passes no weather there). Keeps WeatherSummary's
+           tap-tooltip metric chips. -->
+      {#if weather}
+        <WeatherSummary {weather} testid={`${testid}-weather`} />
+      {/if}
+
+      <!-- 2. Dinner: the meal field and any attached recipes, grouped. -->
+      <div class="flex flex-col gap-2">
+        <label class="text-xs font-medium text-muted-foreground" for={`${testid}-note`}
+          >Dinner</label
+        >
         <textarea
           bind:this={noteEl}
           id={`${testid}-note`}
@@ -400,130 +442,171 @@
           value={day.note}
           oninput={(e) => onNoteChange(e.currentTarget.value)}
           data-testid={`${testid}-note`}></textarea>
+
+        <!-- Attached recipes (issue #17): the chosen recipes as thumbnail rows, then
+             a quiet "Add a recipe" picker at the foot. Selecting a recipe APPENDS its
+             id; the picker remounts (keyed) so its input clears, ready for the next
+             add. Rendered only in the week editor (onRecipesChange present); the
+             weekday template editor omits the prop and stays recipe-free. -->
+        {#if onRecipesChange}
+          <div class="flex flex-col gap-1.5" data-testid={`${testid}-recipes`}>
+            {#each attachedRecipes as r (r.id)}
+              {@const url = heroUrl(r)}
+              <div
+                class="flex items-center justify-between gap-2 rounded border px-2 py-1.5"
+                data-testid={`${testid}-recipe-row-${r.id}`}
+              >
+                <!-- Thumbnail + title open the recipe's full view. One button owns the
+                     leading thumbnail and the title so the whole area is the tap
+                     target; the Remove button (a sibling, not nested) keeps its own
+                     handler and never triggers navigation. -->
+                <button
+                  type="button"
+                  class="flex min-w-0 flex-1 items-center gap-2 text-left"
+                  onclick={() => openRecipe(r.id)}
+                  data-testid={`${testid}-recipe-open-${r.id}`}
+                >
+                  <span class="h-10 w-10 shrink-0 overflow-hidden rounded bg-muted">
+                    {#if url}
+                      <img
+                        src={url}
+                        alt=""
+                        loading="lazy"
+                        class="h-full w-full object-cover"
+                        data-testid={`${testid}-recipe-thumb-${r.id}`}
+                      />
+                    {:else}
+                      <span
+                        class="flex h-full w-full items-center justify-center bg-gradient-to-br from-muted to-muted/40 text-muted-foreground/60"
+                        data-testid={`${testid}-recipe-thumb-fallback-${r.id}`}
+                      >
+                        <Icon name="CookingPot" size={18} />
+                      </span>
+                    {/if}
+                  </span>
+                  <span class="min-w-0 truncate text-sm">{r.title}</span>
+                </button>
+                <!-- Add to shop (Phase 4, #469): hand the full recipe up to the page,
+                     which guards the default list then opens RecipeAddToListSheet.
+                     Rendered only when the parent supplies the callback — the template
+                     editor omits it and so stays shopping-free. -->
+                {#if onRecipeAddToList}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onclick={(e) => {
+                      e.stopPropagation();
+                      onRecipeAddToList?.(r);
+                    }}
+                    aria-label={`Add ${r.title} to shopping list`}
+                    data-testid={`${testid}-recipe-addshop-${r.id}`}
+                  >
+                    <Icon name="ShoppingCart" size={16} />
+                  </Button>
+                {/if}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    removeRecipe(r.id);
+                  }}
+                  aria-label={`Remove ${r.title}`}
+                  data-testid={`${testid}-recipe-remove-${r.id}`}
+                >
+                  <X class="h-4 w-4" />
+                </Button>
+              </div>
+            {/each}
+            {#key recipePickerKey}
+              <Combobox
+                items={recipePickerItems}
+                value=""
+                filterFn={recipeFilter}
+                restrict
+                placeholder="Add a recipe…"
+                onValueChange={addRecipe}
+              >
+                <ComboboxField>
+                  <ComboboxInput data-testid={`${testid}-recipe-picker`} />
+                  <ComboboxTrigger />
+                </ComboboxField>
+                <ComboboxContent>
+                  {#snippet children({ filteredItems })}
+                    {#each filteredItems as item, i (item.value)}
+                      <ComboboxItem {item} index={i} />
+                    {/each}
+                    {#if filteredItems.length === 0}
+                      <ComboboxEmpty>No recipes found</ComboboxEmpty>
+                    {/if}
+                  {/snippet}
+                </ComboboxContent>
+              </Combobox>
+            {/key}
+          </div>
+        {/if}
       </div>
 
-      <!-- Attached recipes (issue #17): an add-one-at-a-time picker over the
-           recipe library. Selecting a recipe APPENDS its id; the picker remounts
-           (keyed) so its input clears, ready for the next add. The chosen-list
-           below shows each attached recipe's live title with a Remove button.
-           Rendered only in the week editor (onRecipesChange present); the
-           weekday template editor omits the prop and stays recipe-free. -->
-      {#if onRecipesChange}
-        <div class="flex flex-col gap-1.5" data-testid={`${testid}-recipes`}>
-          <span class="text-xs font-medium text-muted-foreground">Recipes</span>
-          {#key recipePickerKey}
-            <Combobox
-              items={recipePickerItems}
-              value=""
-              filterFn={recipeFilter}
-              restrict
-              placeholder="Add a recipe…"
-              onValueChange={addRecipe}
-            >
-              <ComboboxField>
-                <ComboboxInput data-testid={`${testid}-recipe-picker`} />
-                <ComboboxTrigger />
-              </ComboboxField>
-              <ComboboxContent>
-                {#snippet children({ filteredItems })}
-                  {#each filteredItems as item, i (item.value)}
-                    <ComboboxItem {item} index={i} />
-                  {/each}
-                  {#if filteredItems.length === 0}
-                    <ComboboxEmpty>No recipes found</ComboboxEmpty>
-                  {/if}
-                {/snippet}
-              </ComboboxContent>
-            </Combobox>
-          {/key}
-          {#each attachedRecipes as r (r.id)}
-            {@const url = heroUrl(r)}
-            <div
-              class="flex items-center justify-between gap-2 rounded border px-2 py-1.5"
-              data-testid={`${testid}-recipe-row-${r.id}`}
-            >
-              <!-- Thumbnail + title open the recipe's full view. One button owns the
-                   leading thumbnail and the title so the whole area is the tap
-                   target; the Remove button (a sibling, not nested) keeps its own
-                   handler and never triggers navigation. -->
-              <button
-                type="button"
-                class="flex min-w-0 flex-1 items-center gap-2 text-left"
-                onclick={() => openRecipe(r.id)}
-                data-testid={`${testid}-recipe-open-${r.id}`}
-              >
-                <span class="h-10 w-10 shrink-0 overflow-hidden rounded bg-muted">
-                  {#if url}
-                    <img
-                      src={url}
-                      alt=""
-                      loading="lazy"
-                      class="h-full w-full object-cover"
-                      data-testid={`${testid}-recipe-thumb-${r.id}`}
-                    />
-                  {:else}
-                    <span
-                      class="flex h-full w-full items-center justify-center bg-gradient-to-br from-muted to-muted/40 text-muted-foreground/60"
-                      data-testid={`${testid}-recipe-thumb-fallback-${r.id}`}
-                    >
-                      <Icon name="CookingPot" size={18} />
-                    </span>
-                  {/if}
-                </span>
-                <span class="min-w-0 truncate text-sm">{r.title}</span>
-              </button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onclick={(e) => {
-                  e.stopPropagation();
-                  removeRecipe(r.id);
-                }}
-                aria-label={`Remove ${r.title}`}
-                data-testid={`${testid}-recipe-remove-${r.id}`}
-              >
-                <X class="h-4 w-4" />
-              </Button>
-            </div>
-          {/each}
-        </div>
-      {/if}
-
-      <div class="flex flex-col gap-2.5">
-        <span class="text-xs font-medium text-muted-foreground">Who's eating</span>
+      <!-- 3. At the table: one compact row per member. The avatar toggles EATING
+           (a checkbox — tap to opt in/out); the chef-hat toggles COOKING,
+           independent of eating (a chef need not eat). Home-time + note reveal only
+           for members who are eating. Unknown attendees stay removable; guests are a
+           small +/- stepper at the foot. -->
+      <div class="flex flex-col gap-2">
+        <span class="text-xs font-medium text-muted-foreground">At the table</span>
         {#each members as m (m.id)}
           {@const a = attendeeOf(m.id)}
           <div class="flex flex-col gap-1" data-testid={`${testid}-attendee-${m.id}`}>
-            <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-              <div class="w-28 shrink-0">
-                <Checkbox
-                  checked={isAttending(m.id)}
-                  label={m.name}
-                  onCheckedChange={() => onAttendeeToggle(m.id)}
-                  data-testid={`${testid}-attend-${m.id}`}
-                />
-              </div>
-              <!-- Chef is independent of attending: a chef need not eat. Plain
-                   button (not the salt Button) so both states are fully Tailwind:
-                   selected = filled amber, unselected = clear neutral. -->
+            <div class="flex items-center gap-2.5">
+              <!-- Avatar = eating toggle. `role="checkbox"` + aria-checked keep it an
+                   accessible toggle and satisfy the roster tests; filled when eating,
+                   muted when not. The testid wraps it so `within(attend).getByRole`
+                   resolves the avatar. -->
+              <span data-testid={`${testid}-attend-${m.id}`}>
+                <button
+                  type="button"
+                  role="checkbox"
+                  aria-checked={isAttending(m.id)}
+                  aria-label={m.name}
+                  class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold transition-colors
+                    {isAttending(m.id)
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted text-muted-foreground/60 hover:bg-muted/70'}"
+                  onclick={() => onAttendeeToggle(m.id)}
+                >
+                  {memberInitials(m.name)}
+                </button>
+              </span>
+              <span
+                class="min-w-0 flex-1 truncate text-sm {isAttending(m.id)
+                  ? 'font-medium text-foreground'
+                  : 'text-muted-foreground'}"
+              >
+                {m.name}
+              </span>
+              <!-- Chef-hat = cooking toggle, independent of eating. Plain button so both
+                   states are fully Tailwind: selected = filled amber, unselected = clear
+                   neutral. Keeps `bg-amber-500` when on (styling test). -->
               <button
                 type="button"
-                class="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm font-medium transition-colors
+                class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border transition-colors
                   {isChef(m.id)
                   ? 'border-amber-500 bg-amber-500 text-white hover:bg-amber-600'
                   : 'border-input bg-background text-muted-foreground hover:bg-muted'}"
                 onclick={() => onChefToggle(m.id)}
                 aria-pressed={isChef(m.id)}
+                aria-label={`${m.name} is cooking`}
                 data-testid={`${testid}-chef-${m.id}`}
               >
-                <ChefHat class="h-3.5 w-3.5" strokeWidth={2.5} /> Chef
+                <ChefHat class="h-4 w-4" strokeWidth={2.5} />
               </button>
             </div>
             {#if isAttending(m.id)}
               {@const parts = timeParts(a?.homeTime)}
-              <!-- Time entry sits to the left of the note; both share the same
-                   height so the row reads as one control. -->
-              <div class="ml-1 flex items-stretch gap-2">
+              <!-- Home time + note reveal only when this member is eating. Time entry
+                   sits to the left of the note; both share the same height so the row
+                   reads as one control. -->
+              <div class="ml-11 flex items-stretch gap-2">
                 <!-- Home time as [HH]:[MM]. Each dropdown's `value` seeds to the
                      dinner default so a blank field opens at ~18:30 (not midnight),
                      while the trigger shows a placeholder until a real value is set. -->
@@ -601,9 +684,9 @@
           </div>
         {/each}
 
-        <!-- Occasional unnamed guests: a simple count. -->
+        <!-- Occasional unnamed guests: a small +/- stepper at the foot. -->
         <div class="flex items-center gap-2 pt-1" data-testid={`${testid}-guests`}>
-          <span class="w-28 shrink-0 text-sm">Guests</span>
+          <span class="flex-1 text-sm text-muted-foreground">Guests</span>
           <Button
             variant="outline"
             size="sm"
@@ -627,12 +710,12 @@
             +
           </Button>
         </div>
-      </div>
 
-      <p class="text-[11px] text-muted-foreground">
-        {attendingCount}
-        {attendingCount === 1 ? 'person' : 'people'} eating
-      </p>
+        <p class="text-[11px] text-muted-foreground">
+          {attendingCount}
+          {attendingCount === 1 ? 'person' : 'people'} eating
+        </p>
+      </div>
     </div>
   {/if}
 </div>
