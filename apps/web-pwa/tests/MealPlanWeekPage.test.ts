@@ -3,11 +3,29 @@ import { render, screen, cleanup, waitFor, within } from '@testing-library/svelt
 import userEvent from '@testing-library/user-event';
 import { emptyWeek, setDayNote, type MealPlanWeek, type Member, type Recipe } from '@salt/domain';
 
-// A minimal recipe: MealDayEditor's picker and auto-fill only read `id`/`title`.
-const RECIPE: Recipe = { id: 'r1', title: 'Spaghetti Bolognese' } as unknown as Recipe;
+// A minimal recipe. MealDayEditor's picker/auto-fill read `id`/`title`; the add-to-
+// shop sheet also reads `metadata.servings` (seed) — the plan builder is mocked, so
+// the ingredient detail is irrelevant here.
+const RECIPE: Recipe = {
+  id: 'r1',
+  title: 'Spaghetti Bolognese',
+  metadata: { servings: 2 },
+  ingredients: [],
+} as unknown as Recipe;
 
 // ─── Hoisted reactive stubs ────────────────────────────────────────────────
-const { mockMembers, mockWeek, mockStart, mockLoading, mockRecipes } = vi.hoisted(() => {
+const {
+  mockMembers,
+  mockWeek,
+  mockStart,
+  mockLoading,
+  mockRecipes,
+  mockCanonItems,
+  mockDefaultListId,
+  mockBuildRecipeAddPlan,
+  mockCommitRecipeAddPlan,
+  mockRecipeAddPlanItemCount,
+} = vi.hoisted(() => {
   function makeStore<T>(initial: T) {
     let value = initial;
     const subs = new Set<(v: T) => void>();
@@ -39,12 +57,42 @@ const { mockMembers, mockWeek, mockStart, mockLoading, mockRecipes } = vi.hoiste
     mockRecipes: makeStore<readonly Recipe[]>([
       { id: 'r1', title: 'Spaghetti Bolognese' } as unknown as Recipe,
     ]),
+    mockCanonItems: makeStore<unknown[]>([]),
+    mockDefaultListId: makeStore<string | null>('list-1'),
+    // A one-row plan is enough for the sheet to render and confirm.
+    mockBuildRecipeAddPlan: vi.fn(() => [
+      {
+        ingredientId: 'i1',
+        name: 'Spaghetti',
+        fromCanon: false,
+        amount: undefined,
+        unit: undefined,
+        isOptional: false,
+        make: false,
+        producers: [],
+        producerId: null,
+        madeServings: 1,
+        add: true,
+        check: false,
+        subRows: null,
+      },
+    ]),
+    mockCommitRecipeAddPlan: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+    mockRecipeAddPlanItemCount: vi.fn(() => 1),
   };
 });
 
 vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
 vi.mock('../src/lib/membersService.js', () => ({ members: mockMembers }));
-vi.mock('../src/lib/recipeService.js', () => ({ recipes: mockRecipes }));
+vi.mock('../src/lib/recipeService.js', () => ({
+  recipes: mockRecipes,
+  buildRecipeAddPlan: mockBuildRecipeAddPlan,
+  buildMadeSubRows: vi.fn(() => []),
+  commitRecipeAddPlan: mockCommitRecipeAddPlan,
+  recipeAddPlanItemCount: mockRecipeAddPlanItemCount,
+}));
+vi.mock('../src/lib/canonService.js', () => ({ canonItems: mockCanonItems }));
+vi.mock('../src/lib/shoppingListService.svelte.js', () => ({ defaultListId: mockDefaultListId }));
 vi.mock('../src/lib/mealPlanService.js', () => ({
   currentWeek: mockWeek,
   selectedStartDate: mockStart,
@@ -75,6 +123,20 @@ import {
   addWeekAttendee,
   setWeekAttendeeHomeTime,
 } from '../src/lib/mealPlanService.js';
+import { addToast } from '../src/lib/toastStore.js';
+
+// A week whose single day already has recipe r1 attached, so its detail renders a
+// recipe row (with the per-row "Add to shop" action) without going through the
+// picker (setWeekDayRecipes is a no-op mock and never updates the store).
+function weekWithRecipe(date: string): MealPlanWeek {
+  return {
+    ...emptyWeek(date),
+    days: {
+      ...emptyWeek(date).days,
+      [date]: { note: '', recipeIds: ['r1'], chefs: [], attendees: [], guests: 0 },
+    },
+  };
+}
 
 async function expandDay(date: string): Promise<void> {
   await userEvent.click(screen.getByTestId(`day-${date}-summary`));
@@ -108,6 +170,8 @@ beforeEach(() => {
   mockLoading._set(false);
   mockWeek._set(emptyWeek('2026-06-08'));
   mockRecipes._set([RECIPE]);
+  mockCanonItems._set([]);
+  mockDefaultListId._set('list-1');
 });
 
 // Attach a recipe through the day's real recipe-picker Combobox: click the input
@@ -372,6 +436,43 @@ describe('MealPlanWeekPage', () => {
     expect(vi.mocked(setWeekDayRecipes)).toHaveBeenCalledWith('2026-06-08', ['r1']);
     // …but the typed meal is left untouched — the note is never rewritten.
     expect(vi.mocked(setWeekDayNote)).not.toHaveBeenCalled();
+  });
+
+  it('adds an attached recipe to the shopping list from the day detail (Phase 4, #469)', async () => {
+    mockWeek._set(weekWithRecipe('2026-06-08'));
+    render(MealPlanWeekPage);
+    await expandDay('2026-06-08');
+
+    // The attached recipe row carries a per-row "Add to shop" action.
+    await userEvent.click(screen.getByTestId('day-2026-06-08-recipe-addshop-r1'));
+
+    // The familiar review sheet opens for that recipe…
+    const confirm = await screen.findByTestId('recipe-add-to-list-confirm');
+    expect(screen.getByTestId('recipe-add-review-list')).toBeInTheDocument();
+
+    // …and confirming commits the plan to the default list via the shared writer.
+    await userEvent.click(confirm);
+    await waitFor(() => expect(vi.mocked(mockCommitRecipeAddPlan)).toHaveBeenCalled());
+    const [recipeArg, listIdArg] = vi.mocked(mockCommitRecipeAddPlan).mock.calls[0]!;
+    expect((recipeArg as Recipe).id).toBe('r1');
+    expect(listIdArg).toBe('list-1');
+  });
+
+  it('shows the friendly toast and does not open the sheet with no default list (Phase 4, #469)', async () => {
+    mockDefaultListId._set(null);
+    mockWeek._set(weekWithRecipe('2026-06-08'));
+    render(MealPlanWeekPage);
+    await expandDay('2026-06-08');
+
+    await userEvent.click(screen.getByTestId('day-2026-06-08-recipe-addshop-r1'));
+
+    expect(vi.mocked(addToast)).toHaveBeenCalledWith(
+      'No shopping list found. Create one first.',
+      'destructive',
+    );
+    // The guard blocks the sheet: no review list is mounted, nothing is committed.
+    expect(screen.queryByTestId('recipe-add-review-list')).not.toBeInTheDocument();
+    expect(vi.mocked(mockCommitRecipeAddPlan)).not.toHaveBeenCalled();
   });
 
   it('shows a spinner while the week is loading', () => {

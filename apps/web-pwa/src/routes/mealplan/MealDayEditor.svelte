@@ -64,6 +64,12 @@
     // Optional: present only in the dated week editor. When absent (the template
     // editor) the recipe picker and chips are not rendered — recipe-free.
     onRecipesChange?: (recipeIds: string[]) => void;
+    // Optional: present only in the dated week editor. When provided, each attached
+    // recipe row gains an "Add to shop" action that hands the FULL recipe up to the
+    // page, which owns the RecipeAddToListSheet + default-list guard (Phase 4, #469).
+    // Absent in the recipe-free template editor, so it gains no shopping UI — all
+    // shopping imports stay out of this shared component.
+    onRecipeAddToList?: (recipe: Recipe) => void;
   }
   let {
     label,
@@ -80,6 +86,7 @@
     onAttendeeNote,
     onGuestsChange,
     onRecipesChange,
+    onRecipeAddToList,
   }: Props = $props();
 
   let open = $state(false);
@@ -435,6 +442,24 @@
                   </span>
                   <span class="min-w-0 truncate text-sm">{r.title}</span>
                 </button>
+                <!-- Add to shop (Phase 4, #469): hand the full recipe up to the page,
+                     which guards the default list then opens RecipeAddToListSheet.
+                     Rendered only when the parent supplies the callback — the template
+                     editor omits it and so stays shopping-free. -->
+                {#if onRecipeAddToList}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onclick={(e) => {
+                      e.stopPropagation();
+                      onRecipeAddToList?.(r);
+                    }}
+                    aria-label={`Add ${r.title} to shopping list`}
+                    data-testid={`${testid}-recipe-addshop-${r.id}`}
+                  >
+                    <Icon name="ShoppingCart" size={16} />
+                  </Button>
+                {/if}
                 <Button
                   variant="ghost"
                   size="sm"
