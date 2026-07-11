@@ -1,6 +1,5 @@
 <script lang="ts">
   import {
-    Checkbox,
     Button,
     Icon,
     Select,
@@ -28,6 +27,7 @@
   } from '@salt/domain';
   import type { WeatherDaySummary } from '@salt/domain/schemas';
   import WeatherIcon from '$lib/weather-icons/WeatherIcon.svelte';
+  import WeatherSummary from './WeatherSummary.svelte';
 
   // Collapsible editor for a single Day, shared by the weekly page (date-keyed)
   // and the template editor (weekday-keyed). Collapsed it shows a one-line
@@ -354,9 +354,25 @@
   </div>
 
   {#if open}
-    <div class="flex flex-col gap-3 border-t px-3 py-3" data-testid={`${testid}-detail`}>
-      <div class="flex flex-col gap-1.5">
-        <label class="text-sm font-medium text-foreground" for={`${testid}-note`}>Meal</label>
+    <!-- Expanded detail (Phase 2, #469): three stacked blocks, top→bottom —
+         (1) forecast strip, (2) Dinner (meal + recipes), (3) At the table (roster).
+         Flatter and shorter than the old form: the forecast leads, and the roster
+         is one tidy row per member (avatar = eating toggle, chef-hat = cooking),
+         with shift/late times revealed only for people who are eating. -->
+    <div class="flex flex-col gap-4 border-t px-3 py-3" data-testid={`${testid}-detail`}>
+      <!-- 1. Forecast strip: the evening forecast leads the detail. Real-week only
+           — gated on `weather`, so the weekday template editor and out-of-horizon
+           days render nothing (parent passes no weather there). Keeps WeatherSummary's
+           tap-tooltip metric chips. -->
+      {#if weather}
+        <WeatherSummary {weather} testid={`${testid}-weather`} />
+      {/if}
+
+      <!-- 2. Dinner: the meal field and any attached recipes, grouped. -->
+      <div class="flex flex-col gap-2">
+        <label class="text-xs font-medium text-muted-foreground" for={`${testid}-note`}
+          >Dinner</label
+        >
         <textarea
           bind:this={noteEl}
           id={`${testid}-note`}
@@ -366,130 +382,153 @@
           value={day.note}
           oninput={(e) => onNoteChange(e.currentTarget.value)}
           data-testid={`${testid}-note`}></textarea>
+
+        <!-- Attached recipes (issue #17): the chosen recipes as thumbnail rows, then
+             a quiet "Add a recipe" picker at the foot. Selecting a recipe APPENDS its
+             id; the picker remounts (keyed) so its input clears, ready for the next
+             add. Rendered only in the week editor (onRecipesChange present); the
+             weekday template editor omits the prop and stays recipe-free. -->
+        {#if onRecipesChange}
+          <div class="flex flex-col gap-1.5" data-testid={`${testid}-recipes`}>
+            {#each attachedRecipes as r (r.id)}
+              {@const url = heroUrl(r)}
+              <div
+                class="flex items-center justify-between gap-2 rounded border px-2 py-1.5"
+                data-testid={`${testid}-recipe-row-${r.id}`}
+              >
+                <!-- Thumbnail + title open the recipe's full view. One button owns the
+                     leading thumbnail and the title so the whole area is the tap
+                     target; the Remove button (a sibling, not nested) keeps its own
+                     handler and never triggers navigation. -->
+                <button
+                  type="button"
+                  class="flex min-w-0 flex-1 items-center gap-2 text-left"
+                  onclick={() => openRecipe(r.id)}
+                  data-testid={`${testid}-recipe-open-${r.id}`}
+                >
+                  <span class="h-10 w-10 shrink-0 overflow-hidden rounded bg-muted">
+                    {#if url}
+                      <img
+                        src={url}
+                        alt=""
+                        loading="lazy"
+                        class="h-full w-full object-cover"
+                        data-testid={`${testid}-recipe-thumb-${r.id}`}
+                      />
+                    {:else}
+                      <span
+                        class="flex h-full w-full items-center justify-center bg-gradient-to-br from-muted to-muted/40 text-muted-foreground/60"
+                        data-testid={`${testid}-recipe-thumb-fallback-${r.id}`}
+                      >
+                        <Icon name="CookingPot" size={18} />
+                      </span>
+                    {/if}
+                  </span>
+                  <span class="min-w-0 truncate text-sm">{r.title}</span>
+                </button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    removeRecipe(r.id);
+                  }}
+                  aria-label={`Remove ${r.title}`}
+                  data-testid={`${testid}-recipe-remove-${r.id}`}
+                >
+                  <X class="h-4 w-4" />
+                </Button>
+              </div>
+            {/each}
+            {#key recipePickerKey}
+              <Combobox
+                items={recipePickerItems}
+                value=""
+                filterFn={recipeFilter}
+                restrict
+                placeholder="Add a recipe…"
+                onValueChange={addRecipe}
+              >
+                <ComboboxField>
+                  <ComboboxInput data-testid={`${testid}-recipe-picker`} />
+                  <ComboboxTrigger />
+                </ComboboxField>
+                <ComboboxContent>
+                  {#snippet children({ filteredItems })}
+                    {#each filteredItems as item, i (item.value)}
+                      <ComboboxItem {item} index={i} />
+                    {/each}
+                    {#if filteredItems.length === 0}
+                      <ComboboxEmpty>No recipes found</ComboboxEmpty>
+                    {/if}
+                  {/snippet}
+                </ComboboxContent>
+              </Combobox>
+            {/key}
+          </div>
+        {/if}
       </div>
 
-      <!-- Attached recipes (issue #17): an add-one-at-a-time picker over the
-           recipe library. Selecting a recipe APPENDS its id; the picker remounts
-           (keyed) so its input clears, ready for the next add. The chosen-list
-           below shows each attached recipe's live title with a Remove button.
-           Rendered only in the week editor (onRecipesChange present); the
-           weekday template editor omits the prop and stays recipe-free. -->
-      {#if onRecipesChange}
-        <div class="flex flex-col gap-1.5" data-testid={`${testid}-recipes`}>
-          <span class="text-xs font-medium text-muted-foreground">Recipes</span>
-          {#key recipePickerKey}
-            <Combobox
-              items={recipePickerItems}
-              value=""
-              filterFn={recipeFilter}
-              restrict
-              placeholder="Add a recipe…"
-              onValueChange={addRecipe}
-            >
-              <ComboboxField>
-                <ComboboxInput data-testid={`${testid}-recipe-picker`} />
-                <ComboboxTrigger />
-              </ComboboxField>
-              <ComboboxContent>
-                {#snippet children({ filteredItems })}
-                  {#each filteredItems as item, i (item.value)}
-                    <ComboboxItem {item} index={i} />
-                  {/each}
-                  {#if filteredItems.length === 0}
-                    <ComboboxEmpty>No recipes found</ComboboxEmpty>
-                  {/if}
-                {/snippet}
-              </ComboboxContent>
-            </Combobox>
-          {/key}
-          {#each attachedRecipes as r (r.id)}
-            {@const url = heroUrl(r)}
-            <div
-              class="flex items-center justify-between gap-2 rounded border px-2 py-1.5"
-              data-testid={`${testid}-recipe-row-${r.id}`}
-            >
-              <!-- Thumbnail + title open the recipe's full view. One button owns the
-                   leading thumbnail and the title so the whole area is the tap
-                   target; the Remove button (a sibling, not nested) keeps its own
-                   handler and never triggers navigation. -->
-              <button
-                type="button"
-                class="flex min-w-0 flex-1 items-center gap-2 text-left"
-                onclick={() => openRecipe(r.id)}
-                data-testid={`${testid}-recipe-open-${r.id}`}
-              >
-                <span class="h-10 w-10 shrink-0 overflow-hidden rounded bg-muted">
-                  {#if url}
-                    <img
-                      src={url}
-                      alt=""
-                      loading="lazy"
-                      class="h-full w-full object-cover"
-                      data-testid={`${testid}-recipe-thumb-${r.id}`}
-                    />
-                  {:else}
-                    <span
-                      class="flex h-full w-full items-center justify-center bg-gradient-to-br from-muted to-muted/40 text-muted-foreground/60"
-                      data-testid={`${testid}-recipe-thumb-fallback-${r.id}`}
-                    >
-                      <Icon name="CookingPot" size={18} />
-                    </span>
-                  {/if}
-                </span>
-                <span class="min-w-0 truncate text-sm">{r.title}</span>
-              </button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onclick={(e) => {
-                  e.stopPropagation();
-                  removeRecipe(r.id);
-                }}
-                aria-label={`Remove ${r.title}`}
-                data-testid={`${testid}-recipe-remove-${r.id}`}
-              >
-                <X class="h-4 w-4" />
-              </Button>
-            </div>
-          {/each}
-        </div>
-      {/if}
-
-      <div class="flex flex-col gap-2.5">
-        <span class="text-xs font-medium text-muted-foreground">Who's eating</span>
+      <!-- 3. At the table: one compact row per member. The avatar toggles EATING
+           (a checkbox — tap to opt in/out); the chef-hat toggles COOKING,
+           independent of eating (a chef need not eat). Home-time + note reveal only
+           for members who are eating. Unknown attendees stay removable; guests are a
+           small +/- stepper at the foot. -->
+      <div class="flex flex-col gap-2">
+        <span class="text-xs font-medium text-muted-foreground">At the table</span>
         {#each members as m (m.id)}
           {@const a = attendeeOf(m.id)}
           <div class="flex flex-col gap-1" data-testid={`${testid}-attendee-${m.id}`}>
-            <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-              <div class="w-28 shrink-0">
-                <Checkbox
-                  checked={isAttending(m.id)}
-                  label={m.name}
-                  onCheckedChange={() => onAttendeeToggle(m.id)}
-                  data-testid={`${testid}-attend-${m.id}`}
-                />
-              </div>
-              <!-- Chef is independent of attending: a chef need not eat. Plain
-                   button (not the salt Button) so both states are fully Tailwind:
-                   selected = filled amber, unselected = clear neutral. -->
+            <div class="flex items-center gap-2.5">
+              <!-- Avatar = eating toggle. `role="checkbox"` + aria-checked keep it an
+                   accessible toggle and satisfy the roster tests; filled when eating,
+                   muted when not. The testid wraps it so `within(attend).getByRole`
+                   resolves the avatar. -->
+              <span data-testid={`${testid}-attend-${m.id}`}>
+                <button
+                  type="button"
+                  role="checkbox"
+                  aria-checked={isAttending(m.id)}
+                  aria-label={m.name}
+                  class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold transition-colors
+                    {isAttending(m.id)
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted text-muted-foreground/60 hover:bg-muted/70'}"
+                  onclick={() => onAttendeeToggle(m.id)}
+                >
+                  {memberInitials(m.name)}
+                </button>
+              </span>
+              <span
+                class="min-w-0 flex-1 truncate text-sm {isAttending(m.id)
+                  ? 'font-medium text-foreground'
+                  : 'text-muted-foreground'}"
+              >
+                {m.name}
+              </span>
+              <!-- Chef-hat = cooking toggle, independent of eating. Plain button so both
+                   states are fully Tailwind: selected = filled amber, unselected = clear
+                   neutral. Keeps `bg-amber-500` when on (styling test). -->
               <button
                 type="button"
-                class="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm font-medium transition-colors
+                class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border transition-colors
                   {isChef(m.id)
                   ? 'border-amber-500 bg-amber-500 text-white hover:bg-amber-600'
                   : 'border-input bg-background text-muted-foreground hover:bg-muted'}"
                 onclick={() => onChefToggle(m.id)}
                 aria-pressed={isChef(m.id)}
+                aria-label={`${m.name} is cooking`}
                 data-testid={`${testid}-chef-${m.id}`}
               >
-                <ChefHat class="h-3.5 w-3.5" strokeWidth={2.5} /> Chef
+                <ChefHat class="h-4 w-4" strokeWidth={2.5} />
               </button>
             </div>
             {#if isAttending(m.id)}
               {@const parts = timeParts(a?.homeTime)}
-              <!-- Time entry sits to the left of the note; both share the same
-                   height so the row reads as one control. -->
-              <div class="ml-1 flex items-stretch gap-2">
+              <!-- Home time + note reveal only when this member is eating. Time entry
+                   sits to the left of the note; both share the same height so the row
+                   reads as one control. -->
+              <div class="ml-11 flex items-stretch gap-2">
                 <!-- Home time as [HH]:[MM]. Each dropdown's `value` seeds to the
                      dinner default so a blank field opens at ~18:30 (not midnight),
                      while the trigger shows a placeholder until a real value is set. -->
@@ -567,9 +606,9 @@
           </div>
         {/each}
 
-        <!-- Occasional unnamed guests: a simple count. -->
+        <!-- Occasional unnamed guests: a small +/- stepper at the foot. -->
         <div class="flex items-center gap-2 pt-1" data-testid={`${testid}-guests`}>
-          <span class="w-28 shrink-0 text-sm">Guests</span>
+          <span class="flex-1 text-sm text-muted-foreground">Guests</span>
           <Button
             variant="outline"
             size="sm"
@@ -593,12 +632,12 @@
             +
           </Button>
         </div>
-      </div>
 
-      <p class="text-[11px] text-muted-foreground">
-        {attendingCount}
-        {attendingCount === 1 ? 'person' : 'people'} eating
-      </p>
+        <p class="text-[11px] text-muted-foreground">
+          {attendingCount}
+          {attendingCount === 1 ? 'person' : 'people'} eating
+        </p>
+      </div>
     </div>
   {/if}
 </div>
