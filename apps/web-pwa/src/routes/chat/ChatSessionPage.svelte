@@ -5,7 +5,9 @@
   import { addToast } from '../../lib/toastStore.js';
   import { saveRecipe as saveRecipeDoc } from '@salt/firebase-sync';
   import { recipes, authorRecipeTraced } from '../../lib/recipeService.js';
-  import type { ChatSessionDoc } from '@salt/domain/schemas';
+  import { diffRecipe, type Recipe } from '@salt/domain';
+  import type { ChatSessionDoc, RecipeDiff } from '@salt/domain/schemas';
+  import RecipeChangeSummary from '../recipes/RecipeChangeSummary.svelte';
 
   interface Props {
     params: { id: string };
@@ -76,18 +78,25 @@
     push(`/recipes/${stamped.id}`);
   }
 
-  // Apply changes — re-runs the librarian against the conversation and updates
-  // the attached recipe in place (same id, original createdAt, new updatedAt).
+  // Review changes — re-runs the librarian against the conversation and shows a
+  // diff summary (Phase 2 review gate). The AI draft becomes a PENDING proposal;
+  // nothing is written until "Apply changes" in the summary sheet. `isProposing`
+  // guards the AI call; `isApplying` guards the eventual save.
+  let isProposing = $state(false);
   let isApplying = $state(false);
+  let summaryOpen = $state(false);
+  // The pending proposal: the merged recipe ready to save + its diff for display.
+  let pendingUpdate = $state<Recipe | null>(null);
+  let pendingDiff = $state<RecipeDiff | null>(null);
 
-  async function handleApplyChanges(): Promise<void> {
-    if (!session?.recipeId || isApplying) return;
+  async function handleReviewChanges(): Promise<void> {
+    if (!session?.recipeId || isProposing) return;
     const existing = $recipes.find((r) => r.id === session!.recipeId);
     if (!existing) {
       addToast('Recipe not found.', 'destructive');
       return;
     }
-    isApplying = true;
+    isProposing = true;
     const existingTags = [...new Set($recipes.flatMap((r) => r.metadata.tags))];
     const result = await authorRecipeTraced(
       {
@@ -98,7 +107,7 @@
       existing.title,
     );
     if (result.kind !== 'ok') {
-      isApplying = false;
+      isProposing = false;
       addToast('Failed to generate recipe update.', 'destructive');
       return;
     }
@@ -115,14 +124,36 @@
       image: existing.image,
       source: existing.source,
     };
-    const saveResult = await saveRecipeDoc(updated);
+    // Diff on human-signal fields (machine-derived fields ignored by diffRecipe).
+    pendingDiff = diffRecipe(existing, updated);
+    pendingUpdate = updated;
+    isProposing = false;
+    summaryOpen = true;
+  }
+
+  // Apply changes — commit the pending proposal (the review gate's confirm).
+  async function handleApplyChanges(): Promise<void> {
+    if (!pendingUpdate || isApplying) return;
+    isApplying = true;
+    const saveResult = await saveRecipeDoc(pendingUpdate);
     isApplying = false;
     if (saveResult.kind !== 'ok') {
       addToast('Failed to save recipe update.', 'destructive');
       return;
     }
+    const recipeId = pendingUpdate.id;
+    summaryOpen = false;
+    pendingUpdate = null;
+    pendingDiff = null;
     addToast('Recipe updated!', 'success');
-    push(`/recipes/${existing.id}`);
+    push(`/recipes/${recipeId}`);
+  }
+
+  // Discard / keep chatting — drop the proposal, write nothing.
+  function handleDiscardChanges(): void {
+    summaryOpen = false;
+    pendingUpdate = null;
+    pendingDiff = null;
   }
 
   function handleKeydown(e: KeyboardEvent): void {
@@ -187,13 +218,13 @@
         </Button>
         <Button
           size="sm"
-          onclick={handleApplyChanges}
-          loading={isApplying}
-          disabled={isApplying || isSending}
+          onclick={handleReviewChanges}
+          loading={isProposing}
+          disabled={isProposing || isSending}
           data-testid="chat-apply-changes-btn"
         >
           {#snippet leading()}<Icon name="Check" size={16} />{/snippet}
-          Apply changes
+          Review changes
         </Button>
       {/if}
     {/snippet}
@@ -274,4 +305,13 @@
       </Button>
     </div>
   </div>
+
+  <!-- Review-and-approve gate for the pending AI edit (Phase 2) -->
+  <RecipeChangeSummary
+    diff={pendingDiff}
+    bind:open={summaryOpen}
+    applying={isApplying}
+    onApply={handleApplyChanges}
+    onDiscard={handleDiscardChanges}
+  />
 {/if}
