@@ -32,7 +32,12 @@
   } from '../../lib/recipeService.js';
   import RecipeAddToListSheet from './RecipeAddToListSheet.svelte';
   import { canonItems } from '../../lib/canonService.js';
-  import { hasLiveCanonMatch, type IngredientGroup, type Ingredient } from '@salt/domain';
+  import {
+    appendCacheBuster,
+    hasLiveCanonMatch,
+    type IngredientGroup,
+    type Ingredient,
+  } from '@salt/domain';
   import { defaultListId } from '../../lib/shoppingListService.svelte.js';
   import { addToast } from '../../lib/toastStore.js';
   import { auth } from '../../lib/auth.svelte.js';
@@ -411,7 +416,10 @@
           <div class="flex flex-col gap-2" data-testid="recipe-hero">
             <div class="overflow-hidden rounded-lg border bg-muted">
               <img
-                src={recipe.image!.url}
+                src={appendCacheBuster(
+                  recipe.image!.url,
+                  recipe.imageRequestedAt ?? recipe.updatedAt,
+                )}
                 alt={recipe.title}
                 loading="lazy"
                 class="aspect-[3/2] w-full object-cover"

@@ -10,7 +10,7 @@
     SelectTrigger,
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
-  import type { Recipe } from '@salt/domain';
+  import { appendCacheBuster, type Recipe } from '@salt/domain';
   import {
     recipes,
     isLoadingRecipes,
@@ -25,7 +25,13 @@
   }
 
   function heroUrl(recipe: Recipe): string | null {
-    return recipe.image?.url && !recipe.imageHidden ? recipe.image.url : null;
+    // Display-time cache-bust (issue #460): a regenerated hero reuses the same
+    // byte-identical Storage URL, so bust it with the per-regeneration nonce
+    // (`imageRequestedAt`, falling back to `updatedAt`) only when a visible image
+    // is present — hidden/absent recipes still return null for the fallback tile.
+    return recipe.image?.url && !recipe.imageHidden
+      ? appendCacheBuster(recipe.image.url, recipe.imageRequestedAt ?? recipe.updatedAt)
+      : null;
   }
 
   // ─── Search / sort / filter ───────────────────────────────────────────────────
