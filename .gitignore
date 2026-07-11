@@ -25,3 +25,17 @@ tmp/
 # Marker written by e2e globalSetup recording the build inputs the running
 # test-emulator image was built from (drives the stale-image rebuild check).
 docker/test-emulators/.image-build-hash
+
+# graphify — authoritative, cross-branch tracking policy for graphify-out/.
+# TRACKED deliverables (NOT ignored): graph.json, graph.html, GRAPH_REPORT.md,
+# manifest.json, wiki/. Everything below is local/regenerable state that
+# `graphify update` rewrites each run — never commit it.
+graphify-out/cache/
+graphify-out/.graphify_python
+graphify-out/.graphify_root
+graphify-out/.graphify_labels.json
+graphify-out/cost.json
+graphify-out/**/.graphify_labels.json
+graphify-out/**/cost.json
+# Per-run dated snapshot archives (YYYY-MM-DD/) — regenerated, not tracked.
+graphify-out/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/

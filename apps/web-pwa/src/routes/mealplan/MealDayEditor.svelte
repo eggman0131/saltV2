@@ -21,21 +21,28 @@
     appendCacheBuster,
     memberInitials,
     weatherIcon,
+    temperatureBand,
     type Day,
     type Member,
     type Recipe,
+    type TemperatureBand,
   } from '@salt/domain';
   import type { WeatherDaySummary } from '@salt/domain/schemas';
   import WeatherIcon from '$lib/weather-icons/WeatherIcon.svelte';
   import WeatherSummary from './WeatherSummary.svelte';
 
   // Collapsible editor for a single Day, shared by the weekly page (date-keyed)
-  // and the template editor (weekday-keyed). Collapsed it shows a one-line
-  // summary — meal + who's in (with home time) + chef + a note indicator + guest
-  // count — so the whole week scans fast; expand one day to edit detail in a
-  // roomy panel. It knows nothing about day keys: the parent supplies handlers
-  // already bound to the right date/weekday. Members resolve live; an unknown
-  // memberId renders as removable, never blocking. See docs/meal-planning.md.
+  // and the template editor (weekday-keyed). Collapsed it shows a compact,
+  // stacked summary — a taller header built for at-a-glance scanning: day +
+  // weather glyph & temperature on top, then the roster of member avatars
+  // (coloured for eating/not, home time beneath, the cook marked ONCE with a
+  // chef-hat badge overlapping their top-left and 15% larger, and a note badge
+  // on the top-right of anyone with an attendee note), then the meal's first
+  // line beneath the avatars (with a "No cook" flag when unassigned). Expand one
+  // day to edit detail in a roomy panel. It knows nothing about day keys: the
+  // parent supplies handlers already bound to the right date/weekday. Members
+  // resolve live; an unknown memberId renders as removable, never blocking. See
+  // docs/meal-planning.md.
   //
   // `weather` (issue #382, Phase 3) is the OPTIONAL per-day evening forecast. The
   // PARENT does the in-window gating: the dated weekly page passes
@@ -194,12 +201,22 @@
 
   // Initial-chips grow to use the available width when there are few members and
   // shrink as the roster grows (the household is small, ~5, with rare guests).
+  // `cookBox` is the same avatar 15% larger — the cook's chip is bumped one nudge
+  // so it stands out in the roster without breaking the row's alignment.
   const chip = $derived(
     members.length <= 4
-      ? { box: 'h-9 w-9 text-xs', h: 'h-9', time: 'text-[11px]', badge: 'h-4 w-4', hat: 'h-3 w-3' }
+      ? {
+          box: 'h-9 w-9 text-xs',
+          cookBox: 'h-[41px] w-[41px] text-sm',
+          h: 'h-9',
+          time: 'text-[11px]',
+          badge: 'h-4 w-4',
+          hat: 'h-3 w-3',
+        }
       : members.length <= 6
         ? {
             box: 'h-8 w-8 text-[11px]',
+            cookBox: 'h-[37px] w-[37px] text-xs',
             h: 'h-8',
             time: 'text-[10px]',
             badge: 'h-3.5 w-3.5',
@@ -207,6 +224,7 @@
           }
         : {
             box: 'h-7 w-7 text-[10px]',
+            cookBox: 'h-[32px] w-[32px] text-[11px]',
             h: 'h-7',
             time: 'text-[9px]',
             badge: 'h-3 w-3',
@@ -224,13 +242,29 @@
     day.attendees.filter((a) => !members.some((m) => m.id === a.memberId)),
   );
   const attendingCount = $derived(day.attendees.length + day.guests);
-  const hasNotes = $derived(day.attendees.some((a) => a.note.trim() !== ''));
+  const hasNote = (id: string): boolean => (attendeeOf(id)?.note.trim() ?? '') !== '';
 
-  // Assigned cook(s) for the collapsed grid row (#469) — the chefs still in the
-  // roster, shown as amber avatars in their own column. When `day.chefs` is empty
-  // the row is flagged "no cook" so unassigned days stand out at a glance.
-  const chefMembers = $derived(members.filter((m) => day.chefs.includes(m.id)));
+  // The cook is now marked ONCE, inside the roster, via a chef-hat badge on the
+  // chef's own avatar (no separate cook column). When `day.chefs` is empty the
+  // summary shows a "No cook" flag beside the meal so unassigned days stand out.
   const hasCook = $derived(day.chefs.length > 0);
+
+  // The meal's FIRST line only for the collapsed summary — the meal field is a
+  // multi-line textarea, but the header shows a single truncating line beneath
+  // the avatars. Empty → the muted "No meal set" placeholder.
+  const mealFirstLine = $derived(day.note.split('\n')[0]?.trim() ?? '');
+
+  // Evening-window temperature band (drives the header temp colour, cool→warm),
+  // mirroring WeatherSummary. Null whenever there's no forecast for this day.
+  const band = $derived<TemperatureBand | null>(weather ? temperatureBand(weather.tempHigh) : null);
+  const BAND_CLASS: Record<TemperatureBand, string> = {
+    freezing: 'text-sky-600',
+    cold: 'text-sky-500',
+    cool: 'text-cyan-600',
+    mild: 'text-emerald-600',
+    warm: 'text-orange-500',
+    hot: 'text-red-600',
+  };
 
   // Auto-grow the multiline meal field to fit its content. Re-runs whenever the
   // note changes (typing, or load-template swapping the value in).
@@ -245,127 +279,137 @@
 </script>
 
 <div class="overflow-hidden rounded-lg border" data-testid={testid}>
-  <!-- Collapsed header (Phase 1, #469): ONE column-aligned grid row so the whole
-       week scans as a clean table — day · meal (+ note flag) · cook · who's eating
-       (with home times) · weather glyph. Tapping anywhere on the row expands the
-       day's detail below. Fixed-width columns (day, cook, guest slot, weather) keep
-       every row's columns aligned; only the meal note flexes, and it truncates
-       rather than wrapping, so nothing clips or overflows. Recipe pills and the
-       evening-forecast temps strip are gone from the collapsed state — weather is a
-       small glyph only here; the full forecast belongs to the expanded detail. -->
+  <!-- Collapsed header (#469, restacked): a taller, at-a-glance summary in three
+       stacked bands instead of one squeezed row — (1) the day label with the
+       weather glyph + evening temperature on the right, (2) the member-avatar
+       roster (each coloured for eating/not, home time beneath, the cook marked
+       ONCE with a chef-hat badge on their top-left and their avatar 15% larger, a
+       note badge on the top-right of anyone with an attendee note, then a guest
+       chip), and (3) the meal's first line beneath the avatars with a "No cook"
+       flag when unassigned. Tapping anywhere expands the day's detail below. -->
   <div class="transition-colors hover:bg-muted/40">
     <!-- Collapsed summary: tap anywhere to expand. -->
     <button
       type="button"
-      class="flex w-full items-center gap-3 px-3 py-2.5 text-left sm:gap-4"
+      class="flex w-full flex-col gap-2.5 px-3 py-3 text-left"
       onclick={() => (open = !open)}
       aria-expanded={open}
       data-testid={`${testid}-summary`}
     >
-      <!-- Day -->
-      <span class="flex w-14 shrink-0 flex-col leading-tight sm:w-16">
-        <span class="text-sm font-semibold">{label}</span>
-        {#if sublabel}<span class="text-[11px] text-muted-foreground">{sublabel}</span>{/if}
-      </span>
-
-      <!-- Meal (note): the only flexing column; truncates instead of wrapping. -->
-      <span class="flex min-w-0 flex-1 items-center gap-1.5">
-        <span
-          class="min-w-0 truncate text-sm {day.note ? 'text-foreground' : 'text-muted-foreground'}"
-        >
-          {day.note || 'No meal set'}
+      <!-- Band 1: day label (left) · weather glyph + evening temperature · chevron.
+           The weather block is gated on `weather` (not `icon`), so the temperature
+           still shows on days whose older cached forecast has no pictogram; the glyph
+           itself self-hides when the code is absent (WeatherIcon renders nothing). -->
+      <div class="flex items-start justify-between gap-3">
+        <span class="flex min-w-0 flex-col leading-tight">
+          <span class="text-base font-semibold">{label}</span>
+          {#if sublabel}<span class="text-xs text-muted-foreground">{sublabel}</span>{/if}
         </span>
-        {#if hasNotes}
-          <StickyNote
-            class="h-4 w-4 shrink-0 text-primary"
-            strokeWidth={2.5}
-            aria-label="has notes"
-            data-testid={`${testid}-note-indicator`}
-          />
-        {/if}
-      </span>
-
-      <!-- Cook: the assigned chef(s) as amber avatars, or a flag when nobody's on.
-           Its own fixed-width column so the roster chips beside it always line up. -->
-      <span
-        class="flex w-16 shrink-0 items-center justify-center gap-1"
-        data-testid={`${testid}-cook`}
-      >
-        {#if hasCook}
-          {#each chefMembers as c (c.id)}
-            <span
-              class="relative flex {chip.box} items-center justify-center rounded-full bg-amber-500 font-semibold text-white"
-              title={`${c.name} is cooking`}
-              data-testid={`${testid}-cook-${c.id}`}
-            >
-              {memberInitials(c.name)}
+        <div class="flex shrink-0 items-center gap-2">
+          {#if weather}
+            <span class="flex items-center gap-1.5" data-testid={`${testid}-weather-header`}>
+              {#if icon}
+                <WeatherIcon {icon} class="h-8 w-8" />
+              {/if}
               <span
-                class="absolute -bottom-1 -right-1 flex {chip.badge} items-center justify-center rounded-full bg-amber-600 ring-2 ring-background"
-                aria-hidden="true"
+                class="text-sm leading-tight tabular-nums {band ? BAND_CLASS[band] : ''}"
+                data-testid={`${testid}-header-temp`}
               >
-                <ChefHat class="{chip.hat} text-white" strokeWidth={2.5} />
+                <span class="font-semibold">{weather.tempHigh}°</span><span
+                  class="font-normal opacity-80"
+                >
+                  / {weather.tempLow}°</span
+                >
               </span>
             </span>
-          {/each}
-        {:else}
+          {/if}
+          <span class="text-muted-foreground" aria-hidden="true">
+            {#if open}<ChevronDown class="h-5 w-5" />{:else}<ChevronRight class="h-5 w-5" />{/if}
+          </span>
+        </div>
+      </div>
+
+      <!-- Band 2: the roster. Every member appears exactly once — attending members
+           are filled, the rest muted. The cook is the same avatar 15% larger with an
+           amber chef-hat badge overlapping the top-left; a sky note badge overlaps the
+           top-right of anyone with an attendee note. Home time sits beneath whoever
+           has one set. Guests are a trailing chip. Wraps on narrow widths. -->
+      <div class="flex flex-wrap items-start gap-x-3 gap-y-1.5">
+        {#each members as m (m.id)}
+          {@const a = attendeeOf(m.id)}
+          {@const attending = isAttending(m.id)}
+          {@const chef = isChef(m.id)}
+          <span class="flex flex-col items-center gap-0.5">
+            <span
+              class="relative flex {chef ? chip.cookBox : chip.box} items-center justify-center
+              rounded-full font-semibold
+              {attending
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted text-muted-foreground/50'}"
+              title={chef ? `${m.name} is cooking` : m.name}
+              data-testid={`${testid}-chip-${m.id}`}
+            >
+              {memberInitials(m.name)}
+              {#if chef}
+                <!-- Chef-hat badge: the cook, marked once, top-left overlap (amber). -->
+                <span
+                  class="absolute -left-1 -top-1 flex {chip.badge} items-center justify-center
+                  rounded-full bg-amber-500 ring-2 ring-background"
+                  aria-hidden="true"
+                  data-testid={`${testid}-cook-${m.id}`}
+                >
+                  <ChefHat class="{chip.hat} text-white" strokeWidth={2.5} />
+                </span>
+              {/if}
+              {#if hasNote(m.id)}
+                <!-- Note badge: attendee has a note, top-right overlap (sky) — same
+                     size/style as the chef hat, a different colour so it stands out. -->
+                <span
+                  class="absolute -right-1 -top-1 flex {chip.badge} items-center justify-center
+                  rounded-full bg-sky-500 ring-2 ring-background"
+                  aria-label="has a note"
+                  data-testid={`${testid}-note-badge-${m.id}`}
+                >
+                  <StickyNote class="{chip.hat} text-white" strokeWidth={2.5} />
+                </span>
+              {/if}
+            </span>
+            {#if attending && a?.homeTime}
+              <span class="{chip.time} tabular-nums text-muted-foreground">{a.homeTime}</span>
+            {/if}
+          </span>
+        {/each}
+        {#if day.guests > 0}
+          <span class="flex {chip.h} items-center">
+            <span
+              class="rounded-full bg-secondary px-2 py-0.5 text-xs font-semibold text-secondary-foreground"
+              data-testid={`${testid}-guest-badge`}>+{day.guests}</span
+            >
+          </span>
+        {/if}
+      </div>
+
+      <!-- Band 3: the meal's first line beneath the avatars, truncating. The "No cook"
+           flag sits at the end when nobody's assigned, since the chef-hat badge is the
+           only other cook cue and it's absent on an unassigned day. -->
+      <div class="flex items-center gap-2">
+        <span
+          class="min-w-0 flex-1 truncate text-sm {mealFirstLine
+            ? 'text-foreground'
+            : 'text-muted-foreground'}"
+        >
+          {mealFirstLine || 'No meal set'}
+        </span>
+        {#if !hasCook}
           <span
-            class="flex items-center gap-1 text-[11px] font-medium text-destructive"
+            class="flex shrink-0 items-center gap-1 text-[11px] font-medium text-destructive"
             data-testid={`${testid}-no-cook`}
           >
             <ChefHat class="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden="true" />
             No cook
           </span>
         {/if}
-      </span>
-
-      <!-- Who's eating: fixed roster → constant width, so chips line up across every
-           row. Attending members are filled with their home time below; the rest are
-           muted (not eating). Guests get their own reserved slot so chips never shift.
-           This is the row's "# eating" at a glance — the home times keep the existing
-           collapsed-summary contract. -->
-      <span class="flex shrink-0 items-start gap-2.5 lg:gap-3">
-        {#each members as m (m.id)}
-          {@const a = attendeeOf(m.id)}
-          <span class="flex flex-col items-center gap-0.5">
-            <span
-              class="flex {chip.box} items-center justify-center rounded-full font-semibold
-              {isAttending(m.id)
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted text-muted-foreground/50'}"
-              title={m.name}
-              data-testid={`${testid}-chip-${m.id}`}
-            >
-              {memberInitials(m.name)}
-            </span>
-            {#if isAttending(m.id) && a?.homeTime}
-              <span class="{chip.time} tabular-nums text-muted-foreground">{a.homeTime}</span>
-            {/if}
-          </span>
-        {/each}
-        <!-- Guests: their own reserved column so the member chips never shift. -->
-        <span class="flex {chip.h} w-8 shrink-0 items-center justify-start">
-          {#if day.guests > 0}
-            <span
-              class="rounded-full bg-secondary px-2 py-0.5 text-xs font-semibold text-secondary-foreground"
-              data-testid={`${testid}-guest-badge`}>+{day.guests}</span
-            >
-          {/if}
-        </span>
-      </span>
-
-      <!-- Weather glyph: a small pictogram only (the full evening forecast lives in
-           the expanded detail). The cell is always reserved so columns stay aligned;
-           it renders empty on days with no forecast and in the weather-free template
-           editor (icon is null there). -->
-      <span class="flex w-8 shrink-0 items-center justify-center">
-        {#if icon}
-          <WeatherIcon {icon} class="h-8 w-8" />
-        {/if}
-      </span>
-
-      <span class="shrink-0 text-muted-foreground" aria-hidden="true">
-        {#if open}<ChevronDown class="h-4 w-4" />{:else}<ChevronRight class="h-4 w-4" />{/if}
-      </span>
+      </div>
     </button>
   </div>
 

@@ -105,3 +105,7 @@ Rules:
 - If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+
+### Git tracking policy (do not get confused by graphify's git status)
+
+Only the **usable deliverables** are tracked in git: `graphify-out/graph.json`, `graph.html`, `GRAPH_REPORT.md`, `manifest.json`, and `wiki/`. Everything else under `graphify-out/` — the `cache/` tree, `.graphify_*` markers, `cost.json`, and the per-run `YYYY-MM-DD/` dated snapshot archives — is **local, regenerable state that `graphify update` rewrites each run** and is gitignored (rules live in the repo-root `.gitignore`, mirrored in `graphify-out/.gitignore`). So: when `graphify update` produces changes, commit the deliverable diffs and expect nothing else to appear in `git status`. Do **not** `git add -f` cache/snapshot files back in, and do not treat those regenerable paths as missing or as changes to stage.

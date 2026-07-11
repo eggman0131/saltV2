@@ -287,7 +287,7 @@ describe('MealPlanWeekPage', () => {
     expect(screen.getByTestId('day-2026-06-08-unknown-gone@e.org')).toBeInTheDocument();
   });
 
-  it('shows home time and a note indicator on the collapsed row', () => {
+  it('shows home time and a per-attendee note badge on the collapsed row', () => {
     mockWeek._set({
       ...emptyWeek('2026-06-08'),
       days: {
@@ -308,11 +308,12 @@ describe('MealPlanWeekPage', () => {
     const summary = screen.getByTestId('day-2026-06-08-summary');
     // Alice's time shows; Bob's blank time shows nothing.
     expect(summary.textContent).toContain('18:00');
-    // A note exists, so the indicator is present.
-    expect(screen.getByTestId('day-2026-06-08-note-indicator')).toBeInTheDocument();
+    // Alice has a note, so her avatar carries the note badge; Bob's does not.
+    expect(screen.getByTestId('day-2026-06-08-note-badge-alice@e.org')).toBeInTheDocument();
+    expect(screen.queryByTestId('day-2026-06-08-note-badge-bob@e.org')).not.toBeInTheDocument();
   });
 
-  it('omits the note indicator when no attendee has a note', () => {
+  it('omits the note badge when an attendee has no note', () => {
     mockWeek._set({
       ...emptyWeek('2026-06-08'),
       days: {
@@ -327,7 +328,7 @@ describe('MealPlanWeekPage', () => {
       },
     });
     render(MealPlanWeekPage);
-    expect(screen.queryByTestId('day-2026-06-08-note-indicator')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('day-2026-06-08-note-badge-alice@e.org')).not.toBeInTheDocument();
   });
 
   it('splits into hour + quarter-hour minute, seeded to the dinner default', async () => {
