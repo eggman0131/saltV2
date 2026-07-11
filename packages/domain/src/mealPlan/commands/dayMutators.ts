@@ -40,6 +40,17 @@ export function setDayChefs<K extends string, T extends DayContainer<K>>(
   return withDay(container, dayKey, (day) => ({ ...day, chefs: [...chefs] }));
 }
 
+// Replace the day's attached recipe ids with a fresh array. Order-preserving —
+// the caller decides ordering (append-on-add). Stores ids only; titles/images
+// resolve live from the recipes store at render time (no denormalisation).
+export function setDayRecipes<K extends string, T extends DayContainer<K>>(
+  container: T,
+  dayKey: K,
+  recipeIds: readonly string[],
+): T {
+  return withDay(container, dayKey, (day) => ({ ...day, recipeIds: [...recipeIds] }));
+}
+
 // Set the count of extra unnamed guests. Negative inputs are clamped to 0.
 export function setDayGuests<K extends string, T extends DayContainer<K>>(
   container: T,

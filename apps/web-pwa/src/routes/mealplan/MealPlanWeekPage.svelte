@@ -14,6 +14,7 @@
   import { weekDates, type Attendee } from '@salt/domain';
   import MealDayEditor from './MealDayEditor.svelte';
   import { members } from '../../lib/membersService.js';
+  import { recipes } from '../../lib/recipeService.js';
   import {
     currentWeek,
     selectedStartDate,
@@ -24,6 +25,7 @@
     loadTemplateIntoCurrentWeek,
     setWeekDayNote,
     setWeekDayChefs,
+    setWeekDayRecipes,
     setWeekDayGuests,
     addWeekAttendee,
     removeWeekAttendee,
@@ -137,9 +139,11 @@
             sublabel={fmt(date, { day: 'numeric', month: 'short' })}
             {day}
             members={$members}
+            recipes={$recipes}
             testid={`day-${date}`}
             weather={$weatherForecast?.days[date]}
             onNoteChange={(note) => void setWeekDayNote(date, note)}
+            onRecipesChange={(ids) => void setWeekDayRecipes(date, ids)}
             onChefToggle={(id) => toggleChef(date, id)}
             onAttendeeToggle={(id) => toggleAttendee(date, id)}
             onAttendeeHomeTime={(id, t) => void setWeekAttendeeHomeTime(date, id, t)}

@@ -10,6 +10,7 @@ import {
   instantiateWeek,
   setDayNote,
   setDayChefs,
+  setDayRecipes,
   setDayGuests,
   addAttendee,
   removeAttendee,
@@ -153,6 +154,16 @@ describe('day mutators (immutability + correctness)', () => {
     const next = setDayChefs(base, key, ['a@x.org', 'b@x.org']);
     expect(next.days[key]!.chefs).toEqual(['a@x.org', 'b@x.org']);
     expect(base.days[key]!.chefs).toEqual([]);
+  });
+
+  it('setDayRecipes replaces recipeIds with a fresh array and does not mutate the input', () => {
+    const next = setDayRecipes(base, key, ['r1', 'r2']);
+    expect(next.days[key]!.recipeIds).toEqual(['r1', 'r2']);
+    // fresh array, not the caller's reference
+    const src = ['r3'];
+    expect(setDayRecipes(base, key, src).days[key]!.recipeIds).not.toBe(src);
+    // input untouched
+    expect(base.days[key]!.recipeIds).toEqual([]);
   });
 
   it('setDayGuests sets a non-negative integer count and clamps junk to 0', () => {

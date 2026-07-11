@@ -6,9 +6,17 @@
     SelectContent,
     SelectItem,
     SelectTrigger,
+    Combobox,
+    ComboboxContent,
+    ComboboxEmpty,
+    ComboboxField,
+    ComboboxInput,
+    ComboboxItem,
+    ComboboxTrigger,
+    type ComboboxItemType,
   } from '@salt/ui-components';
-  import { ChevronDown, ChevronRight, ChefHat, StickyNote } from '@lucide/svelte';
-  import { memberInitials, weatherIcon, type Day, type Member } from '@salt/domain';
+  import { ChevronDown, ChevronRight, ChefHat, StickyNote, X } from '@lucide/svelte';
+  import { memberInitials, weatherIcon, type Day, type Member, type Recipe } from '@salt/domain';
   import type { WeatherDaySummary } from '@salt/domain/schemas';
   import WeatherSummary from './WeatherSummary.svelte';
   import WeatherIcon from '$lib/weather-icons/WeatherIcon.svelte';
@@ -31,6 +39,10 @@
     sublabel?: string;
     day: Day;
     members: Member[];
+    // Full recipe list, resolved live so attached ids render their current title
+    // (never denormalised onto the plan doc). Missing/deleted ids are skipped.
+    // Optional: the weekday-keyed template editor omits it and stays recipe-free.
+    recipes?: readonly Recipe[];
     testid: string;
     // `| undefined` so the parent can pass `forecast?.days[date]` directly under
     // exactOptionalPropertyTypes (noUncheckedIndexedAccess makes it optional).
@@ -41,12 +53,16 @@
     onAttendeeHomeTime: (memberId: string, homeTime: string | null) => void;
     onAttendeeNote: (memberId: string, note: string) => void;
     onGuestsChange: (guests: number) => void;
+    // Optional: present only in the dated week editor. When absent (the template
+    // editor) the recipe picker and chips are not rendered — recipe-free.
+    onRecipesChange?: (recipeIds: string[]) => void;
   }
   let {
     label,
     sublabel,
     day,
     members,
+    recipes = [],
     testid,
     weather,
     onNoteChange,
@@ -55,9 +71,42 @@
     onAttendeeHomeTime,
     onAttendeeNote,
     onGuestsChange,
+    onRecipesChange,
   }: Props = $props();
 
   let open = $state(false);
+
+  // ─── Attached recipes (issue #17) ──────────────────────────────────────────
+  // The day stores recipe IDS only; titles resolve live from the `recipes` prop
+  // at render time (no denormalisation). Ids with no matching recipe — deleted
+  // since they were attached — are skipped so a broken row is never rendered,
+  // both in the chosen-list and the collapsed summary.
+  const attachedRecipes = $derived(
+    day.recipeIds
+      .map((id) => recipes.find((r) => r.id === id))
+      .filter((r): r is Recipe => r !== undefined),
+  );
+  // Picker options exclude already-attached recipes so the same dish can't be
+  // added twice. Items are {value: id, label: title}, matching the canon picker.
+  const recipePickerItems: ComboboxItemType[] = $derived(
+    recipes
+      .filter((r) => !day.recipeIds.includes(r.id))
+      .map((r) => ({ value: r.id, label: r.title })),
+  );
+  function recipeFilter(input: string, item: ComboboxItemType): boolean {
+    return item.label.toLowerCase().includes(input.trim().toLowerCase());
+  }
+  // Remount key: bumped after each add so the Combobox input clears (it only
+  // syncs its label from `value` at mount — same reason RecipeEditPage keys it).
+  let recipePickerKey = $state(0);
+  function addRecipe(id: string): void {
+    if (!id || day.recipeIds.includes(id)) return;
+    onRecipesChange?.([...day.recipeIds, id]);
+    recipePickerKey += 1;
+  }
+  function removeRecipe(id: string): void {
+    onRecipesChange?.(day.recipeIds.filter((r) => r !== id));
+  }
 
   // The day's weather pictogram (issue #387), resolved from the forecast's
   // weatherCode/isDay. Null for absent/unknown codes — and, crucially, null for
@@ -206,7 +255,7 @@
       </span>
 
       <span class="flex min-w-0 flex-1 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-6">
-        <span class="flex items-center gap-1.5 sm:flex-1">
+        <span class="flex min-w-0 items-center gap-1.5 sm:flex-1">
           <span
             class="min-w-0 truncate text-sm {day.note
               ? 'text-foreground'
@@ -221,6 +270,21 @@
               aria-label="has notes"
               data-testid={`${testid}-note-indicator`}
             />
+          {/if}
+          <!-- Attached recipe titles, shown ALONGSIDE the note (never replacing
+               it). Absent for days with no recipes, so those rows are unchanged.
+               Resolved live from ids; deleted recipes are skipped above. The
+               template editor (no onRecipesChange) never renders these. -->
+          {#if onRecipesChange}
+            {#each attachedRecipes as r (r.id)}
+              <span
+                class="max-w-[10rem] shrink-0 truncate rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground"
+                title={r.title}
+                data-testid={`${testid}-recipe-chip-${r.id}`}
+              >
+                {r.title}
+              </span>
+            {/each}
           {/if}
         </span>
         <span class="flex items-start gap-3 sm:shrink-0">
@@ -313,6 +377,60 @@
           oninput={(e) => onNoteChange(e.currentTarget.value)}
           data-testid={`${testid}-note`}></textarea>
       </div>
+
+      <!-- Attached recipes (issue #17): an add-one-at-a-time picker over the
+           recipe library. Selecting a recipe APPENDS its id; the picker remounts
+           (keyed) so its input clears, ready for the next add. The chosen-list
+           below shows each attached recipe's live title with a Remove button.
+           Rendered only in the week editor (onRecipesChange present); the
+           weekday template editor omits the prop and stays recipe-free. -->
+      {#if onRecipesChange}
+        <div class="flex flex-col gap-1.5" data-testid={`${testid}-recipes`}>
+          <span class="text-xs font-medium text-muted-foreground">Recipes</span>
+          {#key recipePickerKey}
+            <Combobox
+              items={recipePickerItems}
+              value=""
+              filterFn={recipeFilter}
+              restrict
+              placeholder="Add a recipe…"
+              onValueChange={addRecipe}
+            >
+              <ComboboxField>
+                <ComboboxInput data-testid={`${testid}-recipe-picker`} />
+                <ComboboxTrigger />
+              </ComboboxField>
+              <ComboboxContent>
+                {#snippet children({ filteredItems })}
+                  {#each filteredItems as item, i (item.value)}
+                    <ComboboxItem {item} index={i} />
+                  {/each}
+                  {#if filteredItems.length === 0}
+                    <ComboboxEmpty>No recipes found</ComboboxEmpty>
+                  {/if}
+                {/snippet}
+              </ComboboxContent>
+            </Combobox>
+          {/key}
+          {#each attachedRecipes as r (r.id)}
+            <div
+              class="flex items-center justify-between gap-2 rounded border px-2 py-1.5"
+              data-testid={`${testid}-recipe-row-${r.id}`}
+            >
+              <span class="truncate text-sm">{r.title}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onclick={() => removeRecipe(r.id)}
+                aria-label={`Remove ${r.title}`}
+                data-testid={`${testid}-recipe-remove-${r.id}`}
+              >
+                <X class="h-4 w-4" />
+              </Button>
+            </div>
+          {/each}
+        </div>
+      {/if}
 
       <div class="flex flex-col gap-2.5">
         <span class="text-xs font-medium text-muted-foreground">Who's eating</span>
