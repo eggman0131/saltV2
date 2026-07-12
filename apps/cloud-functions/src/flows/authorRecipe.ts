@@ -11,7 +11,7 @@ import { ai } from '../genkit.js';
 import { canonicaliseRecipeIngredientsFlow } from './canonicaliseRecipeIngredients.js';
 import { parseRecipeIngredientsFlow } from './parseRecipeIngredients.js';
 import { resolveModel } from '../ai/resolveModel.js';
-import { CATEGORY_TAG_RULES } from './categoryTags.js';
+import { CATEGORY_TAG_RULES, normaliseTags } from './categoryTags.js';
 
 const OutputSchema = z.custom<RecipeDoc>();
 
@@ -217,9 +217,7 @@ async function assembleDraft(
       totalTimeMinutes: raw.totalTimeMinutes,
       prepTimeMinutes: raw.prepTimeMinutes,
       cookTimeMinutes: raw.cookTimeMinutes,
-      tags: raw.tags
-        .map((t) => t.toLowerCase().trim().replace(/\s+/g, '-'))
-        .filter((t) => t.length > 0),
+      tags: normaliseTags(raw.tags),
     },
     source: { type: 'manual' },
     notes: raw.notes,

@@ -3,7 +3,7 @@
 // `enableFirebaseTelemetry()` (index.ts) brings up the OTel pipeline —
 // the span provider, the global W3C trace-context propagator AND the async-hooks
 // context manager — ASYNCHRONOUSLY, fire-and-forget (`void enableFirebaseTelemetry()
-// .then(…)`; nothing awaits it, and `whenServerObservabilityReady()` is a no-op).
+// .then(…)`; nothing awaits it).
 // Until that init completes, `propagation.extract` has no real propagator, so
 // `runWith{Supplied,Extracted}TraceContext` silently drops the supplied browser
 // trace and the flow re-roots a fresh one (CLAUDE.md Rule 10 — a split trace, never

@@ -9,7 +9,6 @@
 export {
   initServerObservability,
   isServerObservabilityInitialised,
-  whenServerObservabilityReady,
   flushServerObservability,
   startSpan,
   setActiveSpanName,

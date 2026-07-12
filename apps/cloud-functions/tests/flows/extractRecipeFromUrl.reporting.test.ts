@@ -15,7 +15,6 @@ const mockFlush = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('@salt/observability/server', () => ({
   initServerObservability: vi.fn(),
-  whenServerObservabilityReady: vi.fn(async () => {}),
   runWithExtractedTraceContext: vi.fn((_h: unknown, fn: () => unknown) => fn()),
   runWithSuppliedTraceContext: vi.fn((_tp: unknown, fn: () => unknown) => fn()),
   attachAiOtlpSpanProcessor: vi.fn(),

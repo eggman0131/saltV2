@@ -4,6 +4,7 @@ import { setActiveSpanName } from '@salt/observability/server';
 import { ai } from '../genkit.js';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { resolveModel } from '../ai/resolveModel.js';
+import { parseDataUrl } from './dataUrl.js';
 
 // Tier-2 recipe hero-image generation (issue #148). The counterpart to the
 // Tier-1 canon pictogram (generateCanonIcon.ts): where that paints a flat cartoon
@@ -71,14 +72,6 @@ function buildRecipePrompt(
   return trimmedHint ? `${prompt} Additional guidance for this photo: ${trimmedHint}` : prompt;
 }
 
-function parseDataUrl(url: string): { contentType: string; base64: string } {
-  const match = /^data:([^;]+);base64,(.*)$/s.exec(url);
-  if (!match) {
-    throw new Error('generateRecipeImage: model media is not a base64 data URI');
-  }
-  return { contentType: match[1]!, base64: match[2]! };
-}
-
 export const GenerateRecipeImageInputSchema = z.object({
   title: z.string().min(1),
   // The recipe description steers the composition; nullable/optional because a
@@ -124,7 +117,7 @@ export const generateRecipeImageFlow = ai.defineFlow(
       throw new Error('generateRecipeImage: model returned no image');
     }
 
-    const { base64, contentType } = parseDataUrl(media.url);
+    const { base64, contentType } = parseDataUrl(media.url, 'generateRecipeImage');
     return { imageBase64: base64, contentType };
   },
 );

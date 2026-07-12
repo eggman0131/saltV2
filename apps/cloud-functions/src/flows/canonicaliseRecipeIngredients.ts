@@ -2,11 +2,7 @@ import { z } from 'genkit';
 import { matchOrCreateBatch } from '@salt/domain';
 import type { MatchOrCreateInput } from '@salt/domain';
 import { CanonicaliseRecipeIngredientsInputSchema } from '@salt/domain/schemas';
-import {
-  activeTraceparent,
-  startSpan,
-  whenServerObservabilityReady,
-} from '@salt/observability/server';
+import { activeTraceparent, startSpan } from '@salt/observability/server';
 import { ai } from '../genkit.js';
 import { buildMatchOrCreatePorts } from './matchOrCreateCanon.js';
 
@@ -33,7 +29,6 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
     outputSchema: OutputSchema,
   },
   async (input) => {
-    await whenServerObservabilityReady();
     const inputs: MatchOrCreateInput[] = input.items.map((item) => ({
       rawName: item.rawName,
       ...(item.rawText !== undefined ? { rawText: item.rawText } : {}),

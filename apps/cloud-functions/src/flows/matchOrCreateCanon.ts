@@ -1,14 +1,13 @@
 import { z } from 'genkit';
 import { getFirestore } from 'firebase-admin/firestore';
 import { matchOrCreate } from '@salt/domain';
-import type { MatchLoggingPort, MatchOrCreateInput, MatchOrCreatePorts } from '@salt/domain';
+import type { MatchOrCreateInput, MatchOrCreatePorts } from '@salt/domain';
 import { MatchOrCreateCanonInputSchema } from '@salt/domain/schemas';
 import {
   createServerObservabilityMatchLoggingAdapter,
   initServerObservability,
   isServerObservabilityInitialised,
   startSpan,
-  whenServerObservabilityReady,
   type ObservabilitySpan,
 } from '@salt/observability/server';
 import { ai } from '../genkit.js';
@@ -42,14 +41,6 @@ const OutputSchema = z.union([
   }),
 ]);
 
-function composeMatchLogging(...ports: MatchLoggingPort[]): MatchLoggingPort {
-  return {
-    async write(entry) {
-      await Promise.allSettled(ports.map((p) => p.write(entry)));
-    },
-  };
-}
-
 export function buildMatchOrCreatePorts(
   parentSpan?: ObservabilitySpan,
   // Distributed-trace correlation (issue #362, Phase 5). The shopping-list
@@ -60,6 +51,12 @@ export function buildMatchOrCreatePorts(
   traceContext?: string,
 ): MatchOrCreatePorts {
   const db = getFirestore();
+  // Both match-log sinks: firebase-functions/logger + PostHog. Built once here so
+  // the fan-out port below reuses them across entries.
+  const logSinks = [
+    createServerMatchLoggingAdapter(),
+    createServerObservabilityMatchLoggingAdapter(parentSpan),
+  ];
   return {
     // Thread the parent span so the canon-store Firestore spans (candidate
     // load, write-back) nest under canon.matchOrCreateCanon / the recipe batch
@@ -70,10 +67,13 @@ export function buildMatchOrCreatePorts(
     embedding: createServerEmbeddingAdapter(),
     arbitration: createServerArbitrationAdapter(),
     ids: { newCanonId: () => crypto.randomUUID(), newAisleId: () => crypto.randomUUID() },
-    logging: composeMatchLogging(
-      createServerMatchLoggingAdapter(),
-      createServerObservabilityMatchLoggingAdapter(parentSpan),
-    ),
+    // Fan each entry to both sinks; allSettled so one sink's failure never blocks
+    // the other.
+    logging: {
+      write: async (entry) => {
+        await Promise.allSettled(logSinks.map((p) => p.write(entry)));
+      },
+    },
   };
 }
 
@@ -97,11 +97,6 @@ export const matchOrCreateCanonFlow = ai.defineFlow(
   },
   async (input) => {
     ensureObservabilityInitialised();
-    // Retained for call-site parity with the previous LD adapter (which awaited
-    // an SDK readiness handshake before the first span). posthog-node has no
-    // such handshake, so this resolves immediately; kept so the flow body's
-    // structure is unchanged.
-    await whenServerObservabilityReady();
 
     const cleanInput: MatchOrCreateInput = {
       rawName: input.rawName,

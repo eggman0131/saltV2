@@ -36,7 +36,6 @@ const reportFlowError = vi.fn(async () => {});
 
 vi.mock('@salt/observability/server', () => ({
   initServerObservability: vi.fn(),
-  whenServerObservabilityReady: vi.fn(async () => {}),
   runWithExtractedTraceContext,
   runWithSuppliedTraceContext,
   attachAiOtlpSpanProcessor: vi.fn(),

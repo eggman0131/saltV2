@@ -6,7 +6,6 @@ import { matchOrCreate, parseShoppingListEntry } from '@salt/domain';
 import {
   flushServerObservability,
   startSpan,
-  whenServerObservabilityReady,
   type ObservabilitySpan,
 } from '@salt/observability/server';
 import { buildMatchOrCreatePorts } from '../flows/matchOrCreateCanon.js';
@@ -87,7 +86,6 @@ export const onShoppingListItemWrite = onDocumentWritten(
     const db = getFirestore();
     const docRef = db.collection('shoppingLists').doc(listId).collection('items').doc(itemId);
 
-    await whenServerObservabilityReady();
     // Wait for the OTel pipeline (propagator + context manager) to be live before
     // extracting the supplied browser trace, so a cold-started invocation does not
     // silently drop it and re-root (issue #370). Resolves immediately once warm.

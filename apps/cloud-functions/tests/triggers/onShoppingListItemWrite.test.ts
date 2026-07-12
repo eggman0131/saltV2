@@ -55,7 +55,6 @@ const mockRunWithSupplied = vi.fn(<T>(_traceparent: string | undefined, fn: () =
 vi.mock('@salt/observability/server', () => ({
   startSpan: vi.fn(() => mockSpan),
   flushServerObservability: mockFlush,
-  whenServerObservabilityReady: vi.fn().mockResolvedValue(undefined),
   initServerObservability: vi.fn(),
   isServerObservabilityInitialised: vi.fn(() => false),
   runWithSuppliedTraceContext: mockRunWithSupplied,

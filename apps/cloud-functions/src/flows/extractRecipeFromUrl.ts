@@ -12,7 +12,7 @@ import { extractRecipeJsonLd, type JsonLdRecipe } from '../adapters/jsonLdRecipe
 import { canonicaliseRecipeIngredientsFlow } from './canonicaliseRecipeIngredients.js';
 import { parseRecipeIngredientsFlow } from './parseRecipeIngredients.js';
 import { resolveModel } from '../ai/resolveModel.js';
-import { CATEGORY_TAG_RULES } from './categoryTags.js';
+import { CATEGORY_TAG_RULES, normaliseTags } from './categoryTags.js';
 
 // SSRF-hardened URL import (recipe URL import epic, Phases 1 & 3).
 //
@@ -353,16 +353,7 @@ async function assembleDraft(raw: ExtractRecipeAIOutput, sourceUrl: string): Pro
           : null),
       prepTimeMinutes: raw.prepTimeMinutes,
       cookTimeMinutes: raw.cookTimeMinutes,
-      // Split comma-joined tags ("vegetarian, quick" → two tags) before
-      // kebab-normalising, then dedupe.
-      tags: [
-        ...new Set(
-          raw.tags
-            .flatMap((t) => t.split(','))
-            .map((t) => t.toLowerCase().trim().replace(/\s+/g, '-'))
-            .filter((t) => t.length > 0),
-        ),
-      ],
+      tags: normaliseTags(raw.tags),
     },
     source: { type: 'url', url: sourceUrl },
     notes: raw.notes,
