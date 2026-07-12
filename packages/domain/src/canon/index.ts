@@ -8,11 +8,9 @@ export type { Aisle } from './entities/Aisle.js';
 export type { AislesDocument } from './entities/AislesDocument.js';
 export type { CanonLocalStorePort } from './ports/CanonLocalStorePort.js';
 export type { AisleLocalStorePort } from './ports/AisleLocalStorePort.js';
-export type { CanonLookupPort } from './ports/CanonLookupPort.js';
 export type { IdGenerator } from './ports/IdGenerator.js';
 export { createCanonItem } from './commands/createCanonItem.js';
 export type { CreateCanonItemInput } from './commands/createCanonItem.js';
-export { createCanonLookup } from './queries/createCanonLookup.js';
 export type { MatchCandidate, MatchStage } from './entities/MatchCandidate.js';
 export { MATCH_THRESHOLDS } from './queries/matchThresholds.js';
 export type {
@@ -71,6 +69,4 @@ export { normaliseName } from './queries/normaliseName.js';
 export { CANON_ICON_HIDDEN, isCanonIconRenderable } from './queries/canonIcon.js';
 export { summarizeMatchLog } from './queries/summarizeMatchLog.js';
 export type { MatchLogSummary } from './queries/summarizeMatchLog.js';
-export { listAisles } from './queries/listAisles.js';
-export { getAisleUsage } from './queries/getAisleUsage.js';
 export { hasLiveCanonMatch } from './queries/hasLiveCanonMatch.js';

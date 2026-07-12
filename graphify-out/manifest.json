@@ -30,8 +30,8 @@
     "semantic_hash": ""
   },
   ".claude/settings.json": {
-    "mtime": 1782545783.9192145,
-    "ast_hash": "6d7f205091cbd2d650957a169979f750",
+    "mtime": 1783851415.6706884,
+    "ast_hash": "0eb8931398094d36c2b0ad7a1553f908",
     "semantic_hash": ""
   },
   ".claude/settings.local.json": {
@@ -1525,8 +1525,8 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/chat/ChatSessionPage.svelte": {
-    "mtime": 1783106666.9318018,
-    "ast_hash": "12042ab5b3fcf7455051e2605aa0dbef",
+    "mtime": 1783844415.0664794,
+    "ast_hash": "9ef8b70ae9891c53b162923a335376ff",
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/equipment/EquipmentCapturePage.svelte": {
@@ -1555,12 +1555,12 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/mealplan/MealDayEditor.svelte": {
-    "mtime": 1783781014.7828052,
-    "ast_hash": "a5a988d60364f2cc7c040999b4d9ea4e",
+    "mtime": 1783782091.1884089,
+    "ast_hash": "d2a491c076c304df0cd4074d89ca5610",
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/mealplan/MealPlanWeekPage.svelte": {
-    "mtime": 1783775731.6710033,
+    "mtime": 1783782091.1886666,
     "ast_hash": "504eedb6b2e1b37d13219fa6fbb95946",
     "semantic_hash": ""
   },
@@ -1585,8 +1585,8 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/recipes/RecipeViewPage.svelte": {
-    "mtime": 1783761419.804186,
-    "ast_hash": "7ebdf797ac81e97a40d48eb8b776489a",
+    "mtime": 1783844415.066769,
+    "ast_hash": "ef906da775faa8c36fa0b3f6cd18084d",
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/settings/SettingsPage.svelte": {
@@ -1660,7 +1660,7 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/tests/MealPlanWeekPage.test.ts": {
-    "mtime": 1783780112.2121572,
+    "mtime": 1783782091.1890562,
     "ast_hash": "103e359c456bfd8a8d070cf3e1d9d03b",
     "semantic_hash": ""
   },
@@ -2450,8 +2450,8 @@
     "semantic_hash": ""
   },
   "packages/domain/src/canon/index.ts": {
-    "mtime": 1783082878.630416,
-    "ast_hash": "1b79771cff66c2056710b796e45b18c3",
+    "mtime": 1783851721.9065797,
+    "ast_hash": "c0ad69fdd981fc888f341bd66bc7a260",
     "semantic_hash": ""
   },
   "packages/domain/src/canon/ports/AisleLocalStorePort.ts": {
@@ -2467,11 +2467,6 @@
   "packages/domain/src/canon/ports/CanonLocalStorePort.ts": {
     "mtime": 1781453441.8493464,
     "ast_hash": "dab7542ee39d6403a50ef3222aff9c7d",
-    "semantic_hash": ""
-  },
-  "packages/domain/src/canon/ports/CanonLookupPort.ts": {
-    "mtime": 1781453441.8493886,
-    "ast_hash": "27cf703a32a83b9ffa42cb554713e736",
     "semantic_hash": ""
   },
   "packages/domain/src/canon/ports/EmbeddingPort.ts": {
@@ -2494,11 +2489,6 @@
     "ast_hash": "db2a6b47f58ab2e83319e88d82feb532",
     "semantic_hash": ""
   },
-  "packages/domain/src/canon/queries/createCanonLookup.ts": {
-    "mtime": 1781453441.84965,
-    "ast_hash": "0e5ddaf8a80251e5e01f0bf5eb2ef450",
-    "semantic_hash": ""
-  },
   "packages/domain/src/canon/queries/embedMatch.ts": {
     "mtime": 1781453441.8496919,
     "ast_hash": "00622a55a1a24e1419ef1b507caa7dde",
@@ -2509,19 +2499,9 @@
     "ast_hash": "ef091e63dfcbcb15b2bedb0f92c98729",
     "semantic_hash": ""
   },
-  "packages/domain/src/canon/queries/getAisleUsage.ts": {
-    "mtime": 1781453441.8497822,
-    "ast_hash": "1179c8e39d3bf04a3be6062f9122b8a7",
-    "semantic_hash": ""
-  },
   "packages/domain/src/canon/queries/hasLiveCanonMatch.ts": {
     "mtime": 1782486457.343469,
     "ast_hash": "2e267104c08c84d8f47a95ccb96848a4",
-    "semantic_hash": ""
-  },
-  "packages/domain/src/canon/queries/listAisles.ts": {
-    "mtime": 1781453441.849882,
-    "ast_hash": "a8efdb184a58bd7b372f40438875e176",
     "semantic_hash": ""
   },
   "packages/domain/src/canon/queries/matchThresholds.ts": {
@@ -2630,8 +2610,8 @@
     "semantic_hash": ""
   },
   "packages/domain/src/index.ts": {
-    "mtime": 1783771705.4953878,
-    "ast_hash": "630a4fb1c2144917bbc0d642e71f1801",
+    "mtime": 1783851932.5521915,
+    "ast_hash": "bad92f018b83629c87439c1b913bce77",
     "semantic_hash": ""
   },
   "packages/domain/src/mealPlan/commands/dayMutators.ts": {
@@ -2755,8 +2735,8 @@
     "semantic_hash": ""
   },
   "packages/domain/src/recipe/index.ts": {
-    "mtime": 1783699455.5760446,
-    "ast_hash": "80059ec206daeefcfd1c0a4d603be541",
+    "mtime": 1783844415.0674825,
+    "ast_hash": "4337a5ea7b810767bcad7887ed259612",
     "semantic_hash": ""
   },
   "packages/domain/src/recipe/queries/ingredients.ts": {
@@ -2855,8 +2835,8 @@
     "semantic_hash": ""
   },
   "packages/domain/src/schemas/index.ts": {
-    "mtime": 1783761419.8452888,
-    "ast_hash": "94a51de4cae99920a0b88769836319ba",
+    "mtime": 1783844415.0677414,
+    "ast_hash": "9ac1426b5f1ea6ba4907e717a59c7222",
     "semantic_hash": ""
   },
   "packages/domain/src/schemas/matchOrCreateCanonInput.ts": {
@@ -3194,11 +3174,6 @@
     "ast_hash": "326b05c706e463c8ac5cf7e4905f94f2",
     "semantic_hash": ""
   },
-  "packages/domain/tests/canon/createCanonLookup.test.ts": {
-    "mtime": 1781453441.8563898,
-    "ast_hash": "9d2d9b6eb7b388890466544e0ac6d619",
-    "semantic_hash": ""
-  },
   "packages/domain/tests/canon/deleteAisles.test.ts": {
     "mtime": 1781453441.8564575,
     "ast_hash": "332e8e1dfefbf8acc0d6b3d2f374f6d7",
@@ -3214,19 +3189,9 @@
     "ast_hash": "7866afef548cc24f81a91290ae644a0b",
     "semantic_hash": ""
   },
-  "packages/domain/tests/canon/getAisleUsage.test.ts": {
-    "mtime": 1781453441.8566694,
-    "ast_hash": "8e75844930ff89a0c9b346f92bc53f00",
-    "semantic_hash": ""
-  },
   "packages/domain/tests/canon/hasLiveCanonMatch.test.ts": {
     "mtime": 1781453441.8567271,
     "ast_hash": "debfbfcee29c206fa0b02cca31a648d7",
-    "semantic_hash": ""
-  },
-  "packages/domain/tests/canon/listAisles.test.ts": {
-    "mtime": 1781453441.85677,
-    "ast_hash": "d2f685a195c461e5fe6bf9712f0f8a42",
     "semantic_hash": ""
   },
   "packages/domain/tests/canon/matchOrCreate.test.ts": {
@@ -4905,7 +4870,7 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1783777100.477212,
+    "mtime": 1783782091.1880262,
     "ast_hash": "fe458609b4fa07bfabf436922eb0d74a",
     "semantic_hash": ""
   },
@@ -5025,8 +4990,8 @@
     "semantic_hash": ""
   },
   "docs/salt-architecture.md": {
-    "mtime": 1783750185.577592,
-    "ast_hash": "efdbdb5cab4ef85660d25e686bb723ec",
+    "mtime": 1783844415.0670903,
+    "ast_hash": "7aac2a3eb27d819b2e9d44a5da22a0dd",
     "semantic_hash": ""
   },
   "docs/visual-regression.md": {
@@ -5175,8 +5140,28 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/tests/MealDayEditor.summary.test.ts": {
-    "mtime": 1783780204.0275042,
+    "mtime": 1783782091.1888762,
     "ast_hash": "ec7285ba93bb21e357e03598c1ae0119",
+    "semantic_hash": ""
+  },
+  "apps/web-pwa/src/routes/recipes/RecipeChangeSummary.svelte": {
+    "mtime": 1783844415.0666113,
+    "ast_hash": "1f4938fc796a7880db9ebef29ea65e60",
+    "semantic_hash": ""
+  },
+  "packages/domain/src/recipe/queries/diffRecipe.ts": {
+    "mtime": 1783844415.067616,
+    "ast_hash": "64238a0fb552487648cc70f244bf4a2f",
+    "semantic_hash": ""
+  },
+  "packages/domain/src/schemas/recipeDiff.ts": {
+    "mtime": 1783844415.0678296,
+    "ast_hash": "8cc5b846989b065d1ea92fe7d9e468cf",
+    "semantic_hash": ""
+  },
+  "packages/domain/tests/recipe/diffRecipe.test.ts": {
+    "mtime": 1783844415.0679622,
+    "ast_hash": "7d8ef8d3450c6bea32f366223e2b9e37",
     "semantic_hash": ""
   }
 }
