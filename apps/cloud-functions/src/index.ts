@@ -144,8 +144,8 @@ export const arbitrateCanon = onCallGenkit(
 // These USER-INITIATED callables run their flow within a W3C trace context so the
 // flow span nests under one coherent invocation trace instead of re-rooting. The
 // whole entrypoint sequence — auth → wire safeParse → strip `traceparent` →
-// whenServerObservabilityReady → env-gated trace propagation (browser-supplied
-// field WINS over the inbound GCP header) → report-and-flush — lives in
+// env-gated trace propagation (browser-supplied field WINS over the inbound GCP
+// header) → report-and-flush — lives in
 // makeTracedCallable (./tracedCallable.ts, issue #415), so each callable below is
 // just a declaration and the happy-path span flush is guaranteed uniform.
 export const matchOrCreateCanon = makeTracedCallable({

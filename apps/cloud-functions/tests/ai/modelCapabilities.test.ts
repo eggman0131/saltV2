@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  modelSupportsRole,
-  probeMethodFor,
-  type CatalogModelLike,
-} from '../../src/ai/modelCapabilities.js';
+import { modelSupportsRole, type CatalogModelLike } from '../../src/ai/modelCapabilities.js';
 
 // Capability classifier (Phase 3). A minimum-capability gate: cheaper text
 // models (flash) intentionally qualify for both reasoning roles.
@@ -81,13 +77,5 @@ describe('modelSupportsRole', () => {
     expect(modelSupportsRole('pro', inert)).toBe(false);
     expect(modelSupportsRole('embedding', inert)).toBe(false);
     expect(modelSupportsRole('image', inert)).toBe(false);
-  });
-});
-
-describe('probeMethodFor', () => {
-  it('pings embedders with embedContent and everything else with generateContent', () => {
-    expect(probeMethodFor(embedder)).toBe('embedContent');
-    expect(probeMethodFor(textFlash)).toBe('generateContent');
-    expect(probeMethodFor(imageModel)).toBe('generateContent');
   });
 });

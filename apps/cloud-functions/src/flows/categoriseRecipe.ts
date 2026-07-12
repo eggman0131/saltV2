@@ -7,7 +7,7 @@ import {
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 import { resolveModel } from '../ai/resolveModel.js';
-import { CATEGORY_TAG_RULES } from './categoryTags.js';
+import { CATEGORY_TAG_RULES, normaliseTags } from './categoryTags.js';
 
 // categoriseRecipe (issue: tighten recipe categories). Given a recipe's content,
 // returns clean search/filter category tags under the SHARED category-tag rules
@@ -30,19 +30,6 @@ Base the tags on what the whole dish IS (its cuisine, course, form, dietary prof
 the title and method — not on a checklist of its ingredients. Prefer a handful of accurate, broadly-useful tags \
 over many narrow ones. Do not invent marketing-style or hyper-specific tags (e.g. no "mary-berry-favourites", \
 "rainy-day-food", "proper-pub-grub").`;
-
-// Lowercase, kebab-case, split comma-joined tags, drop empties, dedupe — the same
-// normalisation the URL-import flow applies, so stored tags stay uniform.
-function normaliseTags(tags: readonly string[]): string[] {
-  return [
-    ...new Set(
-      tags
-        .flatMap((t) => t.split(','))
-        .map((t) => t.toLowerCase().trim().replace(/\s+/g, '-'))
-        .filter((t) => t.length > 0),
-    ),
-  ];
-}
 
 export const categoriseRecipeFlow = ai.defineFlow(
   {

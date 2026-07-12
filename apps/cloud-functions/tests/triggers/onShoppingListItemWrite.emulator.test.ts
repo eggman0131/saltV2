@@ -36,7 +36,6 @@ vi.mock('firebase-functions', () => ({
 vi.mock('@salt/observability/server', () => ({
   startSpan: vi.fn(() => ({ setAttribute: vi.fn(), end: vi.fn() })),
   flushServerObservability: vi.fn().mockResolvedValue(undefined),
-  whenServerObservabilityReady: vi.fn().mockResolvedValue(undefined),
   initServerObservability: vi.fn(),
   isServerObservabilityInitialised: vi.fn(() => false),
   // reportServerError.ts creates this adapter at module load (issue #348), and

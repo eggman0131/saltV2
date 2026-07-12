@@ -98,14 +98,5 @@ export function modelSupportsRole(role: AiModelRole, model: CatalogModelLike): b
   return ROLE_CAPABILITY_PREDICATE[role](model);
 }
 
-/**
- * The cheapest correct probe method for a model: an embedder is pinged with
- * `embedContent`; everything else (text/reasoning/image-capable) is pinged with
- * `generateContent`. testModel uses this to pick the right ping.
- */
-export function probeMethodFor(model: CatalogModelLike): 'embedContent' | 'generateContent' {
-  return isEmbeddingModel(model) ? 'embedContent' : 'generateContent';
-}
-
 // Exposed for tests / reuse.
 export { isImageModel, isEmbeddingModel, isTextModel };

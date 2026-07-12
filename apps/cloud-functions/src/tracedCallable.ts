@@ -5,7 +5,6 @@ import {
   type CallableRequest,
 } from 'firebase-functions/https';
 import {
-  whenServerObservabilityReady,
   runWithExtractedTraceContext,
   runWithSuppliedTraceContext,
   flushServerObservability,
@@ -16,7 +15,7 @@ import { reportFlowError } from './observability/reportServerError.js';
 //
 // Every user-initiated AI/match callable shares ONE entrypoint sequence:
 //
-//   auth check → wire safeParse → strip `traceparent` → whenServerObservabilityReady
+//   auth check → wire safeParse → strip `traceparent`
 //     → runFlowWithTraceContext → catch (report/map) → finally flush
 //
 // It was copy-pasted 7× in index.ts, and the duplication had already produced a
@@ -159,8 +158,6 @@ export function makeTracedCallable<TWire extends { traceparent?: string | undefi
       throw new HttpsError('invalid-argument', invalidArgumentMessage);
     }
     const { traceparent, ...domainInput } = parsed.data;
-
-    await whenServerObservabilityReady();
 
     try {
       return await runFlowWithTraceContext(

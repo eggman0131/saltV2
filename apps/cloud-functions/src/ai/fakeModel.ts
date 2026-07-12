@@ -164,15 +164,3 @@ export async function flowModel(
   }
   return googleAI.model(await resolveModel(role, flowId));
 }
-
-/**
- * The model-id string for `$ai_generation` telemetry ($ai_model) at a flowModel
- * call site. Returns 'fake' under the e2e fake flag WITHOUT a Firestore read so
- * the offline e2e path is unperturbed; otherwise returns the resolved Gemini
- * model id (cached by resolveModel, so it does not double the read). Mirrors
- * flowModel's role/flowId so call sites pass the same args.
- */
-export async function aiModelLabel(role: AiModelRole, flowId: AiFlowId): Promise<string> {
-  if (aiFakeEnabled()) return 'fake';
-  return resolveModel(role, flowId);
-}

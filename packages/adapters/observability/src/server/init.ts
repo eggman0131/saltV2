@@ -45,14 +45,6 @@ export function isServerObservabilityInitialised(): boolean {
   return client !== null;
 }
 
-// Resolves immediately: posthog-node has no readiness handshake (capture is
-// synchronous-enqueue + background flush). Retained as a no-op so existing
-// `await whenServerObservabilityReady()` call sites keep compiling and reading
-// sensibly.
-export async function whenServerObservabilityReady(): Promise<void> {
-  return Promise.resolve();
-}
-
 // Wires the posthog-node client. No-ops entirely when `key` is empty (mirrors
 // the browser no-op-on-empty-key contract: an absent POSTHOG_API_KEY gates
 // server observability off), so no client is built and every adapter method

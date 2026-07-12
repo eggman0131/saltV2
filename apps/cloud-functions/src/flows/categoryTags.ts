@@ -17,3 +17,17 @@ export const CATEGORY_TAG_RULES = `- tags: categories for search and filtering O
   - dietary: e.g. vegetarian, vegan, gluten-free, dairy-free
   - character / occasion: e.g. comfort-food, quick, healthy, spicy, budget, batch-cook, freezer-friendly
   NEVER use an ingredient as a tag (no "chicken", "beef", "tomato", "pasta", "garlic", "chorizo", "chocolate") — the ingredient list is already searchable, so ingredient tags are redundant. If the source keywords include ingredient names, drop them and keep only genuine categories. Short, lowercase, 1–3 words each. Empty array if nothing clearly applies.`;
+
+// The single tag normalisation every recipe-authoring path applies to model
+// output, so stored tags stay uniform: split comma-joined tags ("vegetarian,
+// quick" → two), lowercase, trim, kebab-case, drop empties, dedupe.
+export function normaliseTags(tags: readonly string[]): string[] {
+  return [
+    ...new Set(
+      tags
+        .flatMap((t) => t.split(','))
+        .map((t) => t.toLowerCase().trim().replace(/\s+/g, '-'))
+        .filter((t) => t.length > 0),
+    ),
+  ];
+}

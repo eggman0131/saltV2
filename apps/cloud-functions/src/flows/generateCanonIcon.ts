@@ -5,6 +5,7 @@ import { ai } from '../genkit.js';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { loadCanonIconSeed } from './assets/canonIconSeed.js';
 import { resolveModel } from '../ai/resolveModel.js';
+import { parseDataUrl } from './dataUrl.js';
 
 // Tier-1 canon-item pictogram generation (issue #148).
 //
@@ -35,14 +36,6 @@ function buildIconPrompt(item: string, hint?: string): string {
   const base = `Generate a cute cartoon icon of ${item}. ${UK} Copy ONLY the rendering STYLE of the reference image — its line weight, outline, colouring technique, palette and plain background. Do NOT copy the apple, and do NOT add any leaf, stem, sprig, red colouring or face that came from the reference. Draw only ${item} and nothing else. ${STYLE}`;
   const trimmed = hint?.trim();
   return trimmed ? `${base} Additional guidance for this item: ${trimmed}` : base;
-}
-
-function parseDataUrl(url: string): { contentType: string; base64: string } {
-  const match = /^data:([^;]+);base64,(.*)$/s.exec(url);
-  if (!match) {
-    throw new Error('generateCanonIcon: model media is not a base64 data URI');
-  }
-  return { contentType: match[1]!, base64: match[2]! };
 }
 
 export const GenerateCanonIconInputSchema = z.object({
@@ -88,7 +81,7 @@ export const generateCanonIconFlow = ai.defineFlow(
       throw new Error('generateCanonIcon: model returned no image');
     }
 
-    const { base64, contentType } = parseDataUrl(media.url);
+    const { base64, contentType } = parseDataUrl(media.url, 'generateCanonIcon');
     return { imageBase64: base64, contentType };
   },
 );

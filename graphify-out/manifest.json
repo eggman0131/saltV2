@@ -40,82 +40,82 @@
     "semantic_hash": ""
   },
   ".husky/_/applypatch-msg": {
-    "mtime": 1783774533.5821006,
+    "mtime": 1783857374.0176196,
     "ast_hash": "0b71c2e7d39daa010985d529f1320b37",
     "semantic_hash": ""
   },
   ".husky/_/commit-msg": {
-    "mtime": 1783774533.581895,
+    "mtime": 1783857374.0175002,
     "ast_hash": "0b71c2e7d39daa010985d529f1320b37",
     "semantic_hash": ""
   },
   ".husky/_/h": {
-    "mtime": 1783774533.5815055,
+    "mtime": 1783857374.017189,
     "ast_hash": "15239a01c5554e56ff745570fb583a91",
     "semantic_hash": ""
   },
   ".husky/_/husky.sh": {
-    "mtime": 1783774533.5830011,
+    "mtime": 1783857374.0183325,
     "ast_hash": "13871d2ab13e8423790ecb2c01c78c18",
     "semantic_hash": ""
   },
   ".husky/_/post-applypatch": {
-    "mtime": 1783774533.5824506,
+    "mtime": 1783857374.0178556,
     "ast_hash": "0b71c2e7d39daa010985d529f1320b37",
     "semantic_hash": ""
   },
   ".husky/_/post-checkout": {
-    "mtime": 1783774533.5827346,
+    "mtime": 1783857374.0180514,
     "ast_hash": "0b71c2e7d39daa010985d529f1320b37",
     "semantic_hash": ""
   },
   ".husky/_/post-commit": {
-    "mtime": 1783774533.5820117,
+    "mtime": 1783857374.017553,
     "ast_hash": "0b71c2e7d39daa010985d529f1320b37",
     "semantic_hash": ""
   },
   ".husky/_/post-merge": {
-    "mtime": 1783774533.5827878,
+    "mtime": 1783857374.0181043,
     "ast_hash": "0b71c2e7d39daa010985d529f1320b37",
     "semantic_hash": ""
   },
   ".husky/_/post-rewrite": {
-    "mtime": 1783774533.5826585,
+    "mtime": 1783857374.017997,
     "ast_hash": "0b71c2e7d39daa010985d529f1320b37",
     "semantic_hash": ""
   },
   ".husky/_/pre-applypatch": {
-    "mtime": 1783774533.5823085,
+    "mtime": 1783857374.01774,
     "ast_hash": "0b71c2e7d39daa010985d529f1320b37",
     "semantic_hash": ""
   },
   ".husky/_/pre-auto-gc": {
-    "mtime": 1783774533.5829384,
+    "mtime": 1783857374.0182686,
     "ast_hash": "0b71c2e7d39daa010985d529f1320b37",
     "semantic_hash": ""
   },
   ".husky/_/pre-commit": {
-    "mtime": 1783774533.5815883,
+    "mtime": 1783857374.0172794,
     "ast_hash": "0b71c2e7d39daa010985d529f1320b37",
     "semantic_hash": ""
   },
   ".husky/_/pre-merge-commit": {
-    "mtime": 1783774533.5816407,
+    "mtime": 1783857374.01735,
     "ast_hash": "0b71c2e7d39daa010985d529f1320b37",
     "semantic_hash": ""
   },
   ".husky/_/pre-push": {
-    "mtime": 1783774533.5828376,
+    "mtime": 1783857374.0181603,
     "ast_hash": "0b71c2e7d39daa010985d529f1320b37",
     "semantic_hash": ""
   },
   ".husky/_/pre-rebase": {
-    "mtime": 1783774533.5825431,
+    "mtime": 1783857374.017914,
     "ast_hash": "0b71c2e7d39daa010985d529f1320b37",
     "semantic_hash": ""
   },
   ".husky/_/prepare-commit-msg": {
-    "mtime": 1783774533.581688,
+    "mtime": 1783857374.017403,
     "ast_hash": "0b71c2e7d39daa010985d529f1320b37",
     "semantic_hash": ""
   },
@@ -245,8 +245,8 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/ai/fakeModel.ts": {
-    "mtime": 1782545783.9209375,
-    "ast_hash": "a5b70a3db55d49bc24c6ff03aa9f78c6",
+    "mtime": 1783861348.4037838,
+    "ast_hash": "146fc068be0f62307d5d196134764cc5",
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/ai/listAiModels.ts": {
@@ -255,8 +255,8 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/ai/modelCapabilities.ts": {
-    "mtime": 1782072131.9885168,
-    "ast_hash": "7268e67d5c693443d03dae3db838b9b9",
+    "mtime": 1783861361.328256,
+    "ast_hash": "02e5b53363e0f98c0a0e9afbd9bdf3c2",
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/ai/requireAdmin.ts": {
@@ -310,23 +310,23 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/authorRecipe.ts": {
-    "mtime": 1783699455.5746028,
-    "ast_hash": "445c3a5805d656f943729667e033f010",
+    "mtime": 1783861408.810313,
+    "ast_hash": "c3a8bcd96b52e96538cbdc8df22626ce",
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/canonicaliseRecipeIngredients.ts": {
-    "mtime": 1783134993.6105976,
-    "ast_hash": "104f97765bdde4c7258bad76608a1d0b",
+    "mtime": 1783861243.1636374,
+    "ast_hash": "ddd470a25c19cab0b9d9101fa36eabfe",
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/categoriseRecipe.ts": {
-    "mtime": 1782944230.151952,
-    "ast_hash": "ab0e2c33d5d2e789c137d6b338968de8",
+    "mtime": 1783861390.5344322,
+    "ast_hash": "44d829ee763b8427f56a500c9a55adda",
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/categoryTags.ts": {
-    "mtime": 1782944230.152062,
-    "ast_hash": "8740a4b974f5c7bce52a838ae24de618",
+    "mtime": 1783861381.4125926,
+    "ast_hash": "bd4e14a58c79f6f4ccd4dc10f6d6ac5a",
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/chefChat.ts": {
@@ -340,13 +340,13 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/extractRecipeFromUrl.ts": {
-    "mtime": 1783699455.5747635,
-    "ast_hash": "f577625c2375e2a56e3767b8d2b23268",
+    "mtime": 1783861402.6681788,
+    "ast_hash": "d20e6fad8aa2c8b35e543c392f44bdf8",
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/generateCanonIcon.ts": {
-    "mtime": 1782842314.0561864,
-    "ast_hash": "eace5517171e205d8a89e65b88183333",
+    "mtime": 1783861437.2249105,
+    "ast_hash": "e029b70cbb076859ccf9603b36fbfe0e",
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/generateChatTitle.ts": {
@@ -355,8 +355,8 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/generateRecipeImage.ts": {
-    "mtime": 1783750185.574954,
-    "ast_hash": "1fe24cb50b0fc5b48d0ee257658b4b8a",
+    "mtime": 1783861444.7849333,
+    "ast_hash": "b2f9c75b6252c4b48da8d59ac1fad0c3",
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/identifyEquipment.ts": {
@@ -365,8 +365,8 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/matchOrCreateCanon.ts": {
-    "mtime": 1783134993.6108377,
-    "ast_hash": "467a90e02c515d27e2c39acfc131b651",
+    "mtime": 1783861339.7611907,
+    "ast_hash": "0b124318b59c1e923a0302cad742d68e",
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/parseEntry.ts": {
@@ -415,8 +415,8 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/index.ts": {
-    "mtime": 1783761419.8022437,
-    "ast_hash": "f5074e8264d93622bcab336e698e2041",
+    "mtime": 1783861270.110528,
+    "ast_hash": "b70a1359d726f2540af6200310df379b",
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/observability/environment.ts": {
@@ -430,13 +430,13 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/observability/telemetryReady.ts": {
-    "mtime": 1782734055.9438415,
-    "ast_hash": "8dc30ed31265dd54ae372d871e82202c",
+    "mtime": 1783861273.1277597,
+    "ast_hash": "531b7270fa3c2a79126ec5893fe71811",
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/tracedCallable.ts": {
-    "mtime": 1783134993.6112661,
-    "ast_hash": "d59d319785e9e0cc61ffac7f5ca1c294",
+    "mtime": 1783861252.4956717,
+    "ast_hash": "d2067bf7f64fb6567beced243b935664",
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/triggers/onCanonItemWritten.ts": {
@@ -450,8 +450,8 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/triggers/onShoppingListItemWrite.ts": {
-    "mtime": 1782734055.9442363,
-    "ast_hash": "d863165503be558961650dd9af875a40",
+    "mtime": 1783861263.268316,
+    "ast_hash": "446338d7cc0e497982e765512e17e460",
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/triggers/triggerTraceContext.ts": {
@@ -490,8 +490,8 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/tests/ai/modelCapabilities.test.ts": {
-    "mtime": 1782072131.990989,
-    "ast_hash": "87accf750b1b61e0016089c8efd19261",
+    "mtime": 1783861365.94266,
+    "ast_hash": "72b3c3afd7e1dd5b678f35688be5cdb5",
     "semantic_hash": ""
   },
   "apps/cloud-functions/tests/ai/resolveModel.test.ts": {
@@ -555,13 +555,13 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/tests/flows/equipment.tracePropagation.test.ts": {
-    "mtime": 1782751421.5888586,
-    "ast_hash": "d716eb3272f92c55a07e7e9312f515b8",
+    "mtime": 1783861289.7719328,
+    "ast_hash": "9517b806caa844d0a0a11e37640a332f",
     "semantic_hash": ""
   },
   "apps/cloud-functions/tests/flows/extractRecipeFromUrl.reporting.test.ts": {
-    "mtime": 1782689905.215768,
-    "ast_hash": "817a9e9c48181515e8ff3cd125f9d848",
+    "mtime": 1783861293.897711,
+    "ast_hash": "e280368c50ee59064c6350ffb884fcdd",
     "semantic_hash": ""
   },
   "apps/cloud-functions/tests/flows/generateCanonIcon.test.ts": {
@@ -590,8 +590,8 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/tests/flows/matchOrCreateCanon.tracePropagation.test.ts": {
-    "mtime": 1782744989.809196,
-    "ast_hash": "68533bea31fc050f82e668f734badc47",
+    "mtime": 1783861291.8190157,
+    "ast_hash": "e6a9d3df872b6f2eb1705cafecdb95e7",
     "semantic_hash": ""
   },
   "apps/cloud-functions/tests/flows/parseEntry.test.ts": {
@@ -655,13 +655,13 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/tests/triggers/onShoppingListItemWrite.emulator.test.ts": {
-    "mtime": 1782960189.9528244,
-    "ast_hash": "e4687a487ec7e192929bfb9eaf4ccc29",
+    "mtime": 1783861302.963998,
+    "ast_hash": "738f94fa86839bd60877e35ae2042d00",
     "semantic_hash": ""
   },
   "apps/cloud-functions/tests/triggers/onShoppingListItemWrite.test.ts": {
-    "mtime": 1782689905.2175477,
-    "ast_hash": "d389a7d8b9d7f38dc91530eb4a03c1e4",
+    "mtime": 1783861305.0613165,
+    "ast_hash": "8f519ca9b21683fc303ad5f4c78c961a",
     "semantic_hash": ""
   },
   "apps/cloud-functions/tsconfig.json": {
@@ -1220,8 +1220,8 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/package.json": {
-    "mtime": 1783259480.341757,
-    "ast_hash": "d6661821dceec1ea14b6aaf79fc64908",
+    "mtime": 1783859416.347638,
+    "ast_hash": "94b4ce24062a1df60b382cdac8354dd1",
     "semantic_hash": ""
   },
   "apps/web-pwa/playwright.config.ts": {
@@ -2130,13 +2130,13 @@
     "semantic_hash": ""
   },
   "packages/adapters/observability/src/server/index.ts": {
-    "mtime": 1782744989.8156679,
-    "ast_hash": "9fbe27467d4754253118fde99891b407",
+    "mtime": 1783861229.4685078,
+    "ast_hash": "1f86a9c1528b2b4f240d9bae713fd902",
     "semantic_hash": ""
   },
   "packages/adapters/observability/src/server/init.ts": {
-    "mtime": 1782759828.882374,
-    "ast_hash": "508aacc63757a88369b44cd3be94222f",
+    "mtime": 1783861227.891012,
+    "ast_hash": "2c791d674423bfd275cc2d415ad81b7d",
     "semantic_hash": ""
   },
   "packages/adapters/observability/src/server/otlpWire.ts": {
@@ -2450,7 +2450,7 @@
     "semantic_hash": ""
   },
   "packages/domain/src/canon/index.ts": {
-    "mtime": 1783851721.9065797,
+    "mtime": 1783855487.5504086,
     "ast_hash": "c0ad69fdd981fc888f341bd66bc7a260",
     "semantic_hash": ""
   },
@@ -2610,7 +2610,7 @@
     "semantic_hash": ""
   },
   "packages/domain/src/index.ts": {
-    "mtime": 1783851932.5521915,
+    "mtime": 1783855487.5505533,
     "ast_hash": "bad92f018b83629c87439c1b913bce77",
     "semantic_hash": ""
   },
@@ -3455,8 +3455,8 @@
     "semantic_hash": ""
   },
   "packages/ui-components/package.json": {
-    "mtime": 1783761419.845617,
-    "ast_hash": "c8d6eb67f88aff8456467c024cceabea",
+    "mtime": 1783859416.3483145,
+    "ast_hash": "228e3f8ecd44e1fab4f2b8eb914c9b82",
     "semantic_hash": ""
   },
   "packages/ui-components/scripts/check-provenance.ts": {
@@ -4945,8 +4945,8 @@
     "semantic_hash": ""
   },
   "docs/design/ui-spec-v04.md": {
-    "mtime": 1782912844.5087597,
-    "ast_hash": "74c13f56aa15db17f86e386adb74e1d4",
+    "mtime": 1783859416.348128,
+    "ast_hash": "fdbd6fbd719e776e04cf9294f6e5e1c2",
     "semantic_hash": ""
   },
   "docs/domain-implementation.md": {
@@ -5162,6 +5162,11 @@
   "packages/domain/tests/recipe/diffRecipe.test.ts": {
     "mtime": 1783844415.0679622,
     "ast_hash": "7d8ef8d3450c6bea32f366223e2b9e37",
+    "semantic_hash": ""
+  },
+  "apps/cloud-functions/src/flows/dataUrl.ts": {
+    "mtime": 1783861419.8030336,
+    "ast_hash": "1bfdbe4ab1f016112dd7e002dec3c563",
     "semantic_hash": ""
   }
 }
