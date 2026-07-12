@@ -8,6 +8,11 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: CI,
   retries: CI ? 1 : 0,
+  // Lazy admin-route chunks (#411 code-split; Leaflet-heavy) can take >5s to
+  // fetch+mount on a cold CI navigation, racing the default 5s expect timeout —
+  // the source of the intermittent "/#/admin/… heading not found" flakes. Give
+  // assertions headroom rather than patching each admin spec.
+  expect: { timeout: 10_000 },
   workers: 1,
   reporter: CI ? [['html'], ['github']] : [['html'], ['list']],
   globalSetup: './e2e/globalSetup.ts',
