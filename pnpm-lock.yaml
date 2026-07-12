@@ -214,9 +214,6 @@ importers:
       '@types/node':
         specifier: ^26.1.0
         version: 26.1.0
-      axe-core:
-        specifier: ^4.12.1
-        version: 4.12.1
       istanbul-lib-coverage:
         specifier: ^3.2.2
         version: 3.2.2
@@ -362,9 +359,6 @@ importers:
       '@testing-library/user-event':
         specifier: ^14.5.0
         version: 14.6.1(@testing-library/dom@10.4.1)
-      axe-core:
-        specifier: ^4.12.1
-        version: 4.12.1
       jsdom:
         specifier: ^29.1.1
         version: 29.1.1
