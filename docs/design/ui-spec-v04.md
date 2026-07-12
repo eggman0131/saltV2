@@ -1,7 +1,7 @@
 # Salt 2.0 — UI Primitives Specification (v0.4)
 
 **Status:** Planning  
-**Scope:** `@salt/ui-components` — Combobox (incl. `ComboboxField`); ListPage Selection Mode (incl. `titleSlot`); list selection (`createListSelection` + `SelectableList` / `SelectAllCheckbox` / `RowSelectCheckbox`); EditableRow  
+**Scope:** `@salt/ui-components` — Combobox (incl. `ComboboxField`); ListPage Selection Mode (incl. `titleSlot`); list selection (`createListSelection` + `SelectableList` / `SelectAllCheckbox` / `RowSelectCheckbox`); EditableRow; CanonIcon (incl. `version` cache-bust prop); ImageCropper  
 **Audience:** AI code-generation agents + human contributors
 
 > Rule: If anything is missing or ambiguous → STOP → extend this spec → regenerate.  
@@ -20,6 +20,8 @@ v0.4 introduces:
 - **ListPage Selection Mode** — app-wide hide-by-default multi-select with a **contextual bottom action bar** (`bulkActions`, incl. a move/target-picker sheet) that replaces the `BottomNav`, plus deferred-delete + Undo and the `titleSlot` header override (§9)
 - **List selection** — one shared `createListSelection` controller behind `SelectableList`, `SelectAllCheckbox`, and `RowSelectCheckbox`, so every list page shares the same selection logic instead of hand-rolling it (§10)
 - **EditableRow** — single-row primitive with an `onToggleSelect`-gated checkbox (§11)
+- **CanonIcon** — ratified as a spec'd primitive; adds `version` cache-bust prop for regenerated icons and documents the tri-state `thumbnail` contract (§14)
+- **ImageCropper** — new pan/zoom crop primitive locked to a 3:2 aspect ratio for recipe hero photos; exposes an imperative `getCroppedBase64()` method (§15)
 
 APG pattern: **Autocomplete (Listbox)**.
 
@@ -832,3 +834,164 @@ This section records deliberate interaction decisions for existing primitives th
 - `AppShell` root class must include `h-dvh` **and** `flex flex-col`. `min-h-screen`, `h-screen`, and `min-h-dvh` are forbidden here.
 - The `SideNav` + `<main>` row keeps `flex flex-1 overflow-hidden`; `<main>` keeps `flex-1 overflow-y-auto`. Scrolling lives in `<main>`, not the root.
 - `<main>` retains its BottomNav-safe bottom padding (`pb-[calc(3.5rem_+_env(safe-area-inset-bottom))] lg:pb-0`) so content clears the fixed mobile `BottomNav` (see §13.2).
+
+---
+
+# 14. CanonIcon (primitive)
+
+## 14.1 Overview
+
+`CanonIcon` renders a square icon tile for a canon item. The tile always occupies the declared `size`; what is painted inside depends on the tri-state `thumbnail` value. It is intentionally simple: a `<span>` container with an optional `<img>` inside.
+
+The primitive duplicates a small amount of logic from `@salt/domain` (`isCanonIconRenderable`, `appendCacheBuster`) because `@salt/ui-components` is **external-only** and cannot import `@salt/domain`. Both copies must be kept in sync if the `"hidden"` sentinel or cache-bust join changes.
+
+## 14.2 Props
+
+| Name        | Type                            | Default | Notes                                                                                         |
+| ----------- | ------------------------------- | ------- | --------------------------------------------------------------------------------------------- |
+| `thumbnail` | `string \| null`                | —       | Tri-state: a real download URL (renders `<img>`), `null` (pending — bare tile), or `"hidden"` (user opted out — bare tile). Required. |
+| `name`      | `string`                        | `''`    | `alt` text for the rendered `<img>`.                                                          |
+| `size`      | `number`                        | `30`    | Tile (and icon) edge length in px; applied via inline `width`/`height` style.                 |
+| `dimmed`    | `boolean`                       | `false` | Applies `opacity-40` — used for checked shopping-list items.                                  |
+| `version`   | `string \| number \| undefined` | —       | Per-regeneration cache-bust nonce. When non-empty, appended to the rendered `<img src>` as `?v=<version>` (or `&v=<version>` if the URL already contains `?`). Regenerated icons reuse the same byte-identical Storage URL, so the browser would otherwise serve a stale image without this nonce. Typically set to the canon item's `iconRequestedAt ?? updatedAt`. Omit or pass `null`/`undefined` to render the raw URL unchanged. `undefined` is explicit in the type (not just implied by `?`) so callers can safely pass a lookup result that widens to `undefined` under `exactOptionalPropertyTypes`. |
+| `class`     | `string \| undefined`           | —       | Merged onto the root `<span>`.                                                                |
+
+## 14.3 Tri-state `thumbnail` contract
+
+| Value           | Meaning                                    | Rendered output            |
+| --------------- | ------------------------------------------ | -------------------------- |
+| non-empty string (not `"hidden"`) | Real icon URL (Firebase Storage download URL) | `<img>` inside the tile |
+| `null`          | Icon has not been generated yet (pending)  | Bare tile (empty `<span>`) |
+| `"hidden"`      | User opted out of icon display             | Bare tile (empty `<span>`) |
+
+The `renderable` predicate: `thumbnail !== null && thumbnail !== "hidden" && thumbnail.length > 0`.
+
+## 14.4 Cache-bust behaviour
+
+When an icon is regenerated, the Cloud Function writes a new image to the **same** Storage path, producing the same byte-identical download URL. Browsers cache by URL, so without intervention the stale image is served indefinitely.
+
+The `version` prop solves this at the render layer:
+
+```
+bustedSrc = renderable && version != null && version !== ''
+  ? `${thumbnail}${thumbnail.includes('?') ? '&' : '?'}v=${version}`
+  : thumbnail
+```
+
+- `?` vs `&` join: uses `&` when the URL already has a query string, `?` otherwise — a raw Firebase Storage download URL typically has `?alt=media&token=…`, so the nonce always appends as `&v=`.
+- A `null`, `undefined`, or empty-string `version` passes the raw URL through unchanged (no `?v=` appended).
+
+## 14.5 Tile styling
+
+```
+'inline-flex shrink-0 items-center justify-center overflow-hidden rounded bg-icon-tile'
+```
+
+- `rounded` (4px) — the standard surface radius (ui-spec-v02 §2.3).
+- `bg-icon-tile` — a CSS custom property / Tailwind token providing the tile background colour.
+- `overflow-hidden` — clips any image that slightly overflows the tile boundary.
+- The `<img>` inside uses `object-contain` and fills the tile (`h-full w-full`).
+- `loading="lazy"` and `decoding="async"` defer off-screen images.
+
+## 14.6 Testing requirements
+
+- Renders an `<img>` (with `data-testid="canon-icon-img"`) when `thumbnail` is a non-empty string that is not `"hidden"`.
+- Renders **no** `<img>` when `thumbnail` is `null`.
+- Renders **no** `<img>` when `thumbnail` is `"hidden"`.
+- When `version` is a non-empty string/number, the rendered `<img src>` appends `?v=<version>` or `&v=<version>` correctly.
+- When `version` is `null`, `undefined`, or `''`, the rendered src is the raw `thumbnail` URL.
+- `dimmed` applies `opacity-40`; absence of `dimmed` does not.
+- The root `<span>` has `data-testid="canon-icon"`.
+
+---
+
+# 15. ImageCropper (primitive)
+
+## 15.1 Overview
+
+`ImageCropper` is a pan/zoom crop primitive for recipe hero photos. It wraps [`svelte-easy-crop`](https://www.npmjs.com/package/svelte-easy-crop) with a **locked 3:2 aspect ratio** (the recipe hero frame is always 3:2; this is not a prop) and exposes a single imperative method, `getCroppedBase64()`, via `bind:this`. The consumer calls this method from a "Save" button to obtain the cropped image as a bare base64 WebP string ready to hand to the upload callable.
+
+Primary use case: the recipe photo upload/paste flow, where the user picks or pastes an image, adjusts the crop, and confirms.
+
+## 15.2 Props
+
+| Name       | Type                  | Default | Notes                                                                                                                                                       |
+| ---------- | --------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src`      | `string`              | —       | Object URL or data URL of the image to crop. Required. Changing `src` resets pan and zoom to their initial values so a re-pick always starts centred.       |
+| `maxEdge`  | `number`              | `1600`  | Longest-edge cap (px) of the produced crop canvas. The server re-encodes to its own bound; this only limits the base64 payload sent over the wire.          |
+| `class`    | `string \| undefined` | —       | Merged onto the outer wrapper `<div>`.                                                                                                                      |
+
+> **Aspect ratio is not a prop.** The recipe hero is always 3:2. Exposing `aspect` as a prop would allow callers to silently violate the recipe photo contract. If a future feature requires a different aspect, add a new primitive rather than parameterising this one.
+
+## 15.3 Imperative handle (`getCroppedBase64`)
+
+The component exposes one method on its instance, accessed via `bind:this`:
+
+```ts
+type ImageCropperHandle = {
+  getCroppedBase64: () => Promise<string | null>;
+};
+```
+
+**Contract:**
+
+- Returns a **bare base64 string** (no `data:<mime>;base64,` prefix) of the cropped image, WebP-encoded at quality 0.92.
+- Returns `null` when no crop area is ready yet (image still loading or not yet interacted with).
+- The output canvas is forced to an exact 3:2 ratio (any sub-pixel rounding from the source selection is corrected at render time).
+- `maxEdge` caps the long side of the canvas; the short side is derived from the 3:2 ratio.
+- All Canvas/Blob work runs in the browser inside `ui-components` — never in `@salt/domain`.
+
+**Typical call-site pattern:**
+
+```svelte
+<script lang="ts">
+  import { ImageCropper } from '@salt/ui-components';
+  import type { ImageCropperHandle } from '@salt/ui-components';
+
+  let cropper = $state<ImageCropperHandle | undefined>(undefined);
+
+  async function handleSave() {
+    const base64 = await cropper?.getCroppedBase64();
+    if (base64) await uploadRecipePhoto(base64);
+  }
+</script>
+
+<ImageCropper bind:this={cropper} src={previewUrl} />
+<Button onclick={handleSave}>Save photo</Button>
+```
+
+## 15.4 Behaviour
+
+### Pan / zoom
+- The crop stage is a fixed-3:2 container (`aspect-[3/2]`) with `svelte-easy-crop` filling it absolutely.
+- The user pans by dragging the stage; zooms by mouse wheel, pinch (touch), or the zoom slider.
+- `crop` (pan offset) and `zoom` are bound to `svelte-easy-crop`'s bindable props so the overlay stays in sync with the slider.
+
+### Zoom slider
+- A `<input type="range">` below the stage controls zoom (`min=1`, `max=3`, `step=0.01`).
+- Labelled `aria-label="Zoom"` and carries `data-testid="image-cropper-zoom"`.
+
+### Reset on new image
+- A `$effect` keyed on `src` resets `crop`, `zoom`, and `croppedAreaPixels` to initial values whenever `src` changes, so re-picking an image always starts centred at 1×.
+
+### Crop area tracking
+- `svelte-easy-crop`'s `oncropcomplete` event fires on every pan/zoom change; the handler stores the pixel-space crop rectangle (`CropArea`) in `croppedAreaPixels`. `getCroppedBase64()` reads this rectangle.
+
+## 15.5 Rendering pipeline (`getCroppedBase64`)
+
+1. Read the stored `croppedAreaPixels` rectangle; return `null` if absent or zero-area.
+2. Load the source image (`src`) via `new Image()` (promise-based).
+3. Compute output dimensions: `outWidth = min(round(area.width), maxEdge)`, `outHeight = round(outWidth / (3/2))` — enforces exact 3:2 output.
+4. Draw the selected source region onto an offscreen `<canvas>` at output dimensions via `ctx.drawImage`.
+5. Encode as WebP at quality 0.92 via `canvas.toBlob('image/webp', 0.92)`.
+6. Read the blob as a data URL via `FileReader` and strip the `data:<mime>;base64,` prefix.
+7. Return the bare base64 string.
+
+## 15.6 Testing requirements
+
+- Renders a crop stage with the correct aspect ratio container (`aspect-[3/2]`).
+- Renders a zoom slider with `data-testid="image-cropper-zoom"` and accessible `aria-label="Zoom"`.
+- `getCroppedBase64()` returns `null` when no crop area is ready.
+- `getCroppedBase64()` returns a non-empty string (bare base64, no `data:` prefix) after a crop is confirmed.
+- Changing `src` resets pan, zoom, and crop area.
+- The `class` prop is merged onto the outer wrapper `<div>`.
