@@ -38,7 +38,6 @@ export {
   createCanonItem,
   MatchLogBuilder,
   MATCH_THRESHOLDS,
-  embedMatch,
   findClosestMatch,
   matchOrCreate,
   matchOrCreateBatch,
