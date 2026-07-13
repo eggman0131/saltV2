@@ -19,13 +19,13 @@
     "theme:check": "tsx scripts/check-theme.ts"
   },
   "dependencies": {
-    "@floating-ui/dom": "^1.7.0",
-    "@lucide/svelte": "^1.23.0",
+    "@floating-ui/dom": "^1.8.0",
+    "@lucide/svelte": "^1.24.0",
     "bits-ui": "^2.18.1",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "svelte": "^5.56.4",
-    "svelte-dnd-action": "^0.9.70",
+    "svelte-dnd-action": "^0.9.71",
     "svelte-easy-crop": "^5.0.1",
     "svelte-exmarkdown": "^5.0.2",
     "tailwind-merge": "^3.6.0",
