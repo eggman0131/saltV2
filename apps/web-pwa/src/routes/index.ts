@@ -1,7 +1,5 @@
 import type { Component } from 'svelte';
 import type { RouteDefinition, WrappedComponent } from 'svelte-spa-router';
-import { wrap } from 'svelte-spa-router/wrap';
-import type { AsyncSvelteComponent } from 'svelte-spa-router/wrap';
 import EquipmentListPage from './equipment/EquipmentListPage.svelte';
 import EquipmentCapturePage from './equipment/EquipmentCapturePage.svelte';
 import EquipmentEditPage from './equipment/EquipmentEditPage.svelte';
@@ -12,18 +10,20 @@ import ShoppingListPage from './shopping/ShoppingListPage.svelte';
 import MealPlanWeekPage from './mealplan/MealPlanWeekPage.svelte';
 import SettingsPage from './settings/SettingsPage.svelte';
 import NotFound from './NotFound.svelte';
-import RouteLoading from './RouteLoading.svelte';
+import { lazy } from './lazyRoute';
 
 // Lazily code-split routes (issue #411). Each `import()` becomes its own chunk,
 // kept out of the boot bundle: the admin area drags in Leaflet (the map picker
 // in AppSettings → HomeLocationField → LocationMapField), and chat + recipes are
 // large, module-specific screens ~most sessions never open. Deferring them
 // shrinks first load and lets a deploy that touches only one area re-download
-// just that chunk. `RouteLoading` is a dependency-free placeholder shown while
-// the chunk is fetched. The core daily-use views (shopping, equipment, meal
-// plan, settings) stay eagerly imported so the default route paints immediately.
-const lazy = (asyncComponent: AsyncSvelteComponent): WrappedComponent =>
-  wrap({ asyncComponent, loadingComponent: RouteLoading });
+// just that chunk. The core daily-use views (shopping, equipment, meal plan,
+// settings) stay eagerly imported so the default route paints immediately.
+//
+// `lazy` (./lazyRoute) shows a dependency-free RouteLoading placeholder while a
+// chunk fetches, and — when a chunk STILL fails after Phase 1's one silent
+// auto-reload — an inline "couldn't load this page — retry" fallback instead of
+// hanging on the loader (issue #472, Phase 2).
 
 // More-specific static routes must precede parameterised ones when using a Map.
 // The Map is typed with RouteDefinition's own value type: without it, `new Map`

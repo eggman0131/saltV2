@@ -63,7 +63,12 @@ export function registerServiceWorker(): void {
 // degrades quietly and never throws.
 const PRELOAD_RELOAD_GUARD_KEY = 'salt:pwa:preloadReloadGuard';
 
-function hasPreloadReloadGuard(): boolean {
+// Exported so the lazy() route wrapper (routes/index.ts, Phase 2) can READ
+// whether Phase 1 has already spent its one silent auto-reload this session — a
+// read-only guard check, NOT a change to the reload/guard logic. On a persistent
+// chunk-load failure it lets the wrapper distinguish "first failure, let Phase 1
+// reload" from "already reloaded and still failing, show the inline fallback".
+export function hasPreloadReloadGuard(): boolean {
   try {
     return window.sessionStorage.getItem(PRELOAD_RELOAD_GUARD_KEY) !== null;
   } catch {
