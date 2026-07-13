@@ -8,10 +8,8 @@
   ],
   "exports": {
     ".": "./src/index.ts",
-    "./headless": "./src/headless.ts",
     "./tokens": "./src/tokens.ts",
-    "./styles.css": "./src/salt.css",
-    "./test": "./src/test.ts"
+    "./styles.css": "./src/salt.css"
   },
   "scripts": {
     "test": "vitest run",
