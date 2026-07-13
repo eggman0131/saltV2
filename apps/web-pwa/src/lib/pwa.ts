@@ -45,6 +45,82 @@ export function registerServiceWorker(): void {
   });
 }
 
+// One-shot guard for the silent chunk-load auto-reload (Phase 1).
+//
+// A deploy replaces the hashed chunk files, so an open client that lazy-loads a
+// route AFTER a release 404s on the old (now-gone) chunk — Vite surfaces this as
+// a `vite:preloadError` window event. The fix is to reload onto the fresh build
+// once. We must NOT reload again if the reload itself still hits a preloadError
+// (e.g. a genuinely broken deploy), or we'd spin in a reload loop — a later
+// phase handles that stuck case. So we set a survives-the-reload flag before
+// reloading and refuse to reload again while it is set; it is cleared once the
+// app boots successfully (`clearPreloadReloadGuard`, wired from main.ts).
+//
+// sessionStorage is the right store: the flag must survive the reload within the
+// same tab (localStorage would over-persist across unrelated future sessions and
+// suppress a legitimate first reload), and it auto-clears when the tab closes.
+// Per CLAUDE.md Rule 10 every access is wrapped so storage being unavailable
+// degrades quietly and never throws.
+const PRELOAD_RELOAD_GUARD_KEY = 'salt:pwa:preloadReloadGuard';
+
+// Exported so the lazy() route wrapper (routes/index.ts, Phase 2) can READ
+// whether Phase 1 has already spent its one silent auto-reload this session — a
+// read-only guard check, NOT a change to the reload/guard logic. On a persistent
+// chunk-load failure it lets the wrapper distinguish "first failure, let Phase 1
+// reload" from "already reloaded and still failing, show the inline fallback".
+export function hasPreloadReloadGuard(): boolean {
+  try {
+    return window.sessionStorage.getItem(PRELOAD_RELOAD_GUARD_KEY) !== null;
+  } catch {
+    // sessionStorage unavailable — treat as "not tripped"; the in-memory latch
+    // in setupPreloadErrorReload still prevents a double reload this page load.
+    return false;
+  }
+}
+
+function setPreloadReloadGuard(): void {
+  try {
+    window.sessionStorage.setItem(PRELOAD_RELOAD_GUARD_KEY, '1');
+  } catch {
+    /* sessionStorage unavailable — proceed without the surviving-reload guard */
+  }
+}
+
+// Clear the one-shot guard after a successful boot so the NEXT stale-chunk event
+// (a later, separate deploy) is allowed its own single reload. Wired from
+// main.ts right after mount.
+export function clearPreloadReloadGuard(): void {
+  try {
+    window.sessionStorage.removeItem(PRELOAD_RELOAD_GUARD_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+// Silently reload onto the fresh build when a lazy chunk fails to load after a
+// deploy — at most once per session (see the guard notes above). No-op in dev
+// (Vite serves live modules; there are no hashed prod chunks to go stale),
+// mirroring registerServiceWorker's prod-only gating.
+export function setupPreloadErrorReload(): void {
+  if (import.meta.env.DEV) return;
+  if (typeof window === 'undefined') return;
+
+  // In-memory re-entrancy latch, mirroring setupUpdateFlow's `reloading`: once
+  // we've asked for a reload, ignore further preloadError events fired before
+  // the navigation actually happens.
+  let reloading = false;
+
+  window.addEventListener('vite:preloadError', () => {
+    if (reloading) return;
+    // Already reloaded once this session and STILL failing — stop here; a later
+    // phase surfaces the stuck state.
+    if (hasPreloadReloadGuard()) return;
+    setPreloadReloadGuard();
+    reloading = true;
+    window.location.reload();
+  });
+}
+
 function setupUpdateFlow(registration: ServiceWorkerRegistration): void {
   let updatePending = false;
   let reloading = false;
