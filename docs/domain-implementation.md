@@ -83,7 +83,7 @@ The boundary rule is precise:
 
 Allowed example:
   recipe/commands/parseRecipe.ts
-    imports `CanonLookupPort` from `domain/canon` (the index)
+    imports `findClosestMatch` from `domain/canon` (the index)
 
 Forbidden examples:
   recipe importing from `domain/canon/commands/...`
@@ -106,7 +106,7 @@ build catching it.
 
 Ports are interfaces a module owns and publishes. They describe either
 - what the module needs from infrastructure (e.g. `CanonStorePort`), or
-- what the module offers to other modules (e.g. `CanonLookupPort`).
+- what the module offers to other modules (e.g. `CanonLocalStorePort`).
 
 Canon example:
 
@@ -116,9 +116,9 @@ CanonStorePort
   list()
   delete(canonId)
 
-CanonLookupPort
-  findClosestMatch(ingredientName)
-  normaliseName(rawName)
+CanonLocalStorePort
+  save(canonItem)
+  list()
 
 Ports:
 - live inside the owning module's `ports/` folder
@@ -204,8 +204,8 @@ need cross‑module orchestration.
 **Do not write a coordinator preemptively.** A coordinator that wraps a
 single port call adds friction without value. Add a coordinator the first
 time a flow actually mutates two modules. If the flow is "look up X from
-canon, then do recipe stuff," recipe should call `CanonLookupPort`
-directly — that is exactly what published ports are for.
+canon, then do recipe stuff," recipe should call `findClosestMatch`
+directly — that is exactly what published functions are for.
 
 ============================================================
 6. Worked Example: Canon Module
@@ -234,8 +234,7 @@ Canon does not know:
 
 6.2 Ports
 ---------
-Canon exposes the following sync-related ports via its `index.ts` (in
-addition to CanonLookupPort):
+Canon exposes the following ports via its `index.ts`:
 
 CanonLocalStorePort
   in-memory cache for canon items — backs live Firestore subscriptions in
@@ -257,23 +256,22 @@ handled by Firestore's `persistentLocalCache`. There is no separate
 manifest document, no per-scope revision counter, and no app-managed
 cursor — the SDK owns durability.
 
-CanonLookupPort
-  canonicalisation logic used by other modules — implemented by canon's
-  own queries
+Canon also exports lookup functions directly — `findClosestMatch` and
+`normaliseName` — which other modules call without a wrapping port
+interface.
 
 6.3 How Other Modules Use Canon
 -------------------------------
 Recipe module:
-  imports `CanonLookupPort` from `domain/canon`
-  calls `findClosestMatch()` directly
+  imports `findClosestMatch` from `domain/canon`
+  calls it directly
 
 Shopping module:
-  imports `CanonLookupPort` from `domain/canon`
-  calls `normaliseName()` directly
+  imports `normaliseName` from `domain/canon`
+  calls it directly
 
-Neither module reaches into canon's internals. Both depend only on the
-published port interface, which is what makes canon's implementation
-swappable without touching them.
+Neither module reaches into canon's internals. Both import only from
+canon's published `index.ts` surface.
 
 6.4 Coordinator Example
 -----------------------
