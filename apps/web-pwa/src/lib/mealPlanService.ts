@@ -39,10 +39,7 @@ const DEFAULT_FIRST_DAY: Weekday = 'mon';
 // ─── Local date helpers (date-only YYYY-MM-DD, UTC arithmetic) ────────────────
 
 function todayIso(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
-    d.getDate(),
-  ).padStart(2, '0')}`;
+  return new Date().toLocaleDateString('en-CA'); // en-CA renders local-tz YYYY-MM-DD
 }
 
 function addDays(date: string, n: number): string {
@@ -62,15 +59,10 @@ const _anchorDate = writable<string>(todayIso());
 // Start date of the week currently subscribed/displayed.
 const _subscribedStart = writable<string>('');
 
-const _isLoadingConfig = writable(true);
-const _isLoadingTemplate = writable(true);
 const _isLoadingWeek = writable(true);
 
-export const mealPlanConfig: Readable<MealPlanConfig | null> = _config;
 export const mealPlanTemplate: Readable<MealPlanTemplate | null> = _template;
 export const selectedStartDate: Readable<string> = _subscribedStart;
-export const isLoadingMealPlanConfig: Readable<boolean> = _isLoadingConfig;
-export const isLoadingMealPlanTemplate: Readable<boolean> = _isLoadingTemplate;
 export const isLoadingMealPlanWeek: Readable<boolean> = _isLoadingWeek;
 
 // firstDayOfWeek with a 'mon' fallback until the config doc loads.
@@ -127,23 +119,24 @@ function syncWeekSubscription(): void {
 }
 
 export function initMealPlanSync(): () => void {
-  _isLoadingConfig.set(true);
-  _isLoadingTemplate.set(true);
   configUnsub = subscribeMealPlanConfig(
     (c) => {
       _config.set(c);
-      _isLoadingConfig.set(false);
       // firstDayOfWeek may have changed which date this week starts on.
       syncWeekSubscription();
     },
-    () => _isLoadingConfig.set(false),
+    () => {
+      // Config load errors leave the last-known config (or null) in place; the
+      // adapter reports per the observability gate, nothing to do here.
+    },
   );
   templateUnsub = subscribeMealPlanTemplate(
     (t) => {
       _template.set(t);
-      _isLoadingTemplate.set(false);
     },
-    () => _isLoadingTemplate.set(false),
+    () => {
+      // As above — template errors leave the last-known template in place.
+    },
   );
   syncWeekSubscription();
   return () => {
@@ -281,19 +274,15 @@ export function __resetMealPlanServiceForTest(): void {
   _week.set(null);
   _anchorDate.set(todayIso());
   _subscribedStart.set('');
-  _isLoadingConfig.set(true);
-  _isLoadingTemplate.set(true);
   _isLoadingWeek.set(true);
 }
 
 export function seedMealPlanConfig(config: MealPlanConfig | null): void {
   _config.set(config);
-  _isLoadingConfig.set(false);
 }
 
 export function seedMealPlanTemplate(template: MealPlanTemplate | null): void {
   _template.set(template);
-  _isLoadingTemplate.set(false);
 }
 
 // Seed a concrete week as the displayed one (used by tests / e2e).
