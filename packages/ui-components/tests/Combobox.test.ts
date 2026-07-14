@@ -88,6 +88,29 @@ describe('Combobox', () => {
       expect(getInput()).toHaveValue('Banana');
     });
 
+    it('fills the input when the value is set after mount (seeded/async value)', async () => {
+      // Regression: an edit form seeds its value in an $effect after mount; the
+      // once-only init sync missed it and the input stayed blank.
+      const { rerender } = setup({ value: undefined });
+      expect(getInput()).toHaveValue('');
+      await rerender({ value: 'cherry' });
+      await waitFor(() => expect(getInput()).toHaveValue('Cherry'));
+    });
+
+    it('fills the input once options load after the value is set', async () => {
+      const { rerender } = setup({ value: 'banana', items: [] });
+      expect(getInput()).toHaveValue('');
+      await rerender({ value: 'banana', items: [{ value: 'banana', label: 'Banana' }] });
+      await waitFor(() => expect(getInput()).toHaveValue('Banana'));
+    });
+
+    it('clears the input when the value is cleared externally', async () => {
+      const { rerender } = setup({ value: 'apple' });
+      expect(getInput()).toHaveValue('Apple');
+      await rerender({ value: undefined });
+      await waitFor(() => expect(getInput()).toHaveValue(''));
+    });
+
     it('renders hidden input when name is provided', () => {
       setup({ name: 'fruit' });
       expect(document.querySelector('input[type="hidden"][name="fruit"]')).toBeInTheDocument();

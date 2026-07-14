@@ -56,7 +56,9 @@
       {#snippet formRow(form: (typeof filtered)[number])}
         <li>
           <button
-            class="w-full rounded border border-border p-3 text-left transition-colors hover:bg-muted/50"
+            class="w-full rounded border p-3 text-left transition-colors {form.needs_approval
+              ? 'border-amber-300 bg-amber-50 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/30 dark:hover:bg-amber-950/50'
+              : 'border-border hover:bg-muted/50'}"
             data-testid="product-form-row"
             onclick={() => push(`/admin/product-forms/${form.id}`)}
           >
