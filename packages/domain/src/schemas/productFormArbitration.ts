@@ -33,7 +33,13 @@ export const ProductFormArbitrationAIOutputSchema = z.object({
   //                   ("flaky" sea salt, "fresh" thyme, "large" egg), or no
   //                   plausible parent. Not a form.
   modifier_kind: z.enum(['action', 'component', 'none']),
-  // Id of the chosen parent candidate; null unless modifier_kind is `component`.
+  // Name of the buyable parent product; null unless modifier_kind is `component`.
+  // The CF flow resolves this name to a canon id via matchOrCreateBatch (reuse an
+  // existing "Lime" or mint a new one) — so a parent absent from the catalog no
+  // longer blocks the proposal.
+  parent_name: z.string().nullable(),
+  // Hint only: id of a matching catalog candidate, if the model picked one. Not a
+  // gate — resolution goes through parent_name. May be null even for a component.
   parent_id: z.string().nullable(),
   // The matcher phrase to key the form on, e.g. "grated nutmeg".
   matcher: z.string().nullable(),
@@ -52,7 +58,10 @@ export type ProductFormArbitrationAIOutput = z.infer<typeof ProductFormArbitrati
 export const ProductFormProposalSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('form'),
-    parentCanonId: z.string(),
+    // The buyable parent's NAME — resolved to a canon id by the CF flow through
+    // matchOrCreateBatch (reuse-or-create). Transient/in-memory only; the STORED
+    // ProductForm keeps its resolved parentCanonId.
+    parentName: z.string(),
     matcher: z.string(),
     label: z.string(),
     formUnit: z.enum(['g', 'ml', 'count']),

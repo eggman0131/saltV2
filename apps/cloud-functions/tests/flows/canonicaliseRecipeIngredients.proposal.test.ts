@@ -92,6 +92,10 @@ function productFormDocs() {
   return [...getCollection('productForms').values()];
 }
 
+function canonDocsNamed(name: string) {
+  return [...getCollection('canonItems').values()].filter((d) => d.name === name);
+}
+
 beforeEach(() => {
   collections.clear();
   mockEmbed.mockClear();
@@ -106,10 +110,12 @@ afterEach(() => {
 });
 
 describe('canonicaliseRecipeIngredients — product-form proposals (Phase 3)', () => {
-  it('writes a PENDING form and binds the ingredient to the proposed parent', async () => {
+  it('writes a PENDING form and binds the ingredient to the named parent (reuse existing)', async () => {
+    // Parent "Nutmeg" already exists — the named parent resolves to it via
+    // matchOrCreateBatch (no duplicate canon), and the pending form binds to it.
     mockProposal.mockResolvedValue({
       kind: 'form',
-      parentCanonId: 'canon-nutmeg',
+      parentName: 'Nutmeg',
       matcher: 'grated nutmeg',
       label: 'Grated nutmeg',
       formUnit: 'g',
@@ -125,12 +131,88 @@ describe('canonicaliseRecipeIngredients — product-form proposals (Phase 3)', (
     expect(result[0]!.value!.decision).toBe('matched');
     expect(result[0]!.value!.item.id).toBe('canon-nutmeg');
 
-    // A pending form was persisted.
+    // A pending form was persisted, bound to the reused parent — no dup canon.
     const forms = productFormDocs();
     expect(forms).toHaveLength(1);
     expect(forms[0]!.needs_approval).toBe(true);
     expect(forms[0]!.parentCanonId).toBe('canon-nutmeg');
     expect(forms[0]!.matchers).toEqual(['grated nutmeg']);
+    expect(canonDocsNamed('Nutmeg')).toHaveLength(1);
+  });
+
+  it('MINTS a new parent canon when the named parent is not in the catalog', async () => {
+    // "Lime" is absent — the named parent is minted via matchOrCreateBatch as a
+    // fresh needs_approval canon (which the icon/embedding triggers then enrich),
+    // and the derivative "lime juice" binds to it. This is the whole Phase 1 point.
+    mockProposal.mockResolvedValue({
+      kind: 'form',
+      parentName: 'Lime',
+      matcher: 'lime juice',
+      label: 'Lime juice',
+      formUnit: 'ml',
+      amountPerParent: 30,
+    });
+
+    const result = (await (canonicaliseRecipeIngredientsFlow as Function)({
+      items: [{ rawName: 'freshly squeezed lime juice' }],
+    })) as Array<{ kind: string; value?: { item: { id: string; name: string } } }>;
+
+    // Exactly one new "Lime" canon, minted needs_approval.
+    const limes = canonDocsNamed('Lime');
+    expect(limes).toHaveLength(1);
+    expect(limes[0]!.needs_approval).toBe(true);
+    const limeId = limes[0]!.id as string;
+
+    // The derivative bound to the freshly minted parent.
+    expect(result[0]!.kind).toBe('ok');
+    expect(result[0]!.value!.item.id).toBe(limeId);
+
+    // A pending form points at the minted parent.
+    const forms = productFormDocs();
+    expect(forms).toHaveLength(1);
+    expect(forms[0]!.needs_approval).toBe(true);
+    expect(forms[0]!.parentCanonId).toBe(limeId);
+  });
+
+  it('mints ONE parent for two forms naming the same parent (in-batch dedupe)', async () => {
+    // "lime juice" + "lime zest" both name "Lime". The parent is minted once and
+    // the id reused, so only ONE Lime canon appears — with two pending forms.
+    mockProposal.mockImplementation((input: { ingredientName: string }) =>
+      Promise.resolve(
+        input.ingredientName.includes('zest')
+          ? {
+              kind: 'form',
+              parentName: 'Lime',
+              matcher: 'lime zest',
+              label: 'Lime zest',
+              formUnit: 'g',
+              amountPerParent: 5,
+            }
+          : {
+              kind: 'form',
+              parentName: 'Lime',
+              matcher: 'lime juice',
+              label: 'Lime juice',
+              formUnit: 'ml',
+              amountPerParent: 30,
+            },
+      ),
+    );
+
+    const result = (await (canonicaliseRecipeIngredientsFlow as Function)({
+      items: [{ rawName: 'lime juice' }, { rawName: 'lime zest' }],
+    })) as Array<{ kind: string; value?: { item: { id: string } } }>;
+
+    // Exactly one Lime canon, shared by both forms.
+    const limes = canonDocsNamed('Lime');
+    expect(limes).toHaveLength(1);
+    const limeId = limes[0]!.id as string;
+
+    const forms = productFormDocs();
+    expect(forms).toHaveLength(2);
+    expect(forms.every((f) => f.parentCanonId === limeId)).toBe(true);
+    expect(result[0]!.value!.item.id).toBe(limeId);
+    expect(result[1]!.value!.item.id).toBe(limeId);
   });
 
   it('is idempotent — no duplicate form when one already covers the matcher', async () => {

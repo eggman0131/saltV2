@@ -45,6 +45,12 @@
   // An AI-seeded proposal (issue #500, Phase 3) awaiting review. It already
   // resolves recipes live; Confirm records the review + persists any edits.
   const isPending = $derived(!!existing?.needs_approval);
+  // Phase 2: the parent canon may itself be a freshly-minted, unconfirmed item
+  // (no stored back-reference — derived from the subscribed canonItems). When it
+  // is, flag it so the reviewer knows the parent is new too.
+  const parentPending = $derived(
+    isPending && $canonItems.find((c) => c.id === existing?.parentCanonId)?.needs_approval === true,
+  );
 
   // Editable fields
   let matchersText = $state('');
@@ -183,6 +189,19 @@
                 This mapping was proposed automatically while importing a recipe and is already
                 being used. Check the parent item and yield below, then Confirm.
               </p>
+              {#if parentPending}
+                <p class="text-sm text-amber-900 dark:text-amber-200">
+                  The parent item was auto-created too and is still awaiting review.
+                  <button
+                    type="button"
+                    class="font-medium underline underline-offset-2"
+                    data-testid="product-form-parent-pending"
+                    onclick={() => push(`/admin/canon/${existing?.parentCanonId}`)}
+                  >
+                    Review the parent
+                  </button>
+                </p>
+              {/if}
             </div>
           {/if}
 
