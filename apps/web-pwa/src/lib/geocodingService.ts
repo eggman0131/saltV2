@@ -28,7 +28,7 @@ export type { GeocodingResult };
 
 // The browser's resolved IANA timezone (e.g. `Europe/London`), used as the
 // fallback zone for geocoded results since Nominatim does not return one.
-function browserTimezone(): string {
+export function browserTimezone(): string {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
   } catch {

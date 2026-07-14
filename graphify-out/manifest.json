@@ -35,8 +35,8 @@
     "semantic_hash": ""
   },
   ".claude/settings.local.json": {
-    "mtime": 1783754273.347432,
-    "ast_hash": "35c87b82482991273a5724edcb41d5fb",
+    "mtime": 1783987309.3633208,
+    "ast_hash": "bb2d6765ac5bb8ef22f989b3acdb4d00",
     "semantic_hash": ""
   },
   ".husky/_/applypatch-msg": {
@@ -145,8 +145,8 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/package.json": {
-    "mtime": 1783259480.3409941,
-    "ast_hash": "84b642edf505349194980e19a406f758",
+    "mtime": 1783986357.5708282,
+    "ast_hash": "03e2e62e80c2b64d7dd2091a45bfe29b",
     "semantic_hash": ""
   },
   "apps/cloud-functions/scripts/add-native-sharp.mjs": {
@@ -245,7 +245,7 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/ai/fakeModel.ts": {
-    "mtime": 1783861348.4037838,
+    "mtime": 1783864296.1415772,
     "ast_hash": "146fc068be0f62307d5d196134764cc5",
     "semantic_hash": ""
   },
@@ -255,7 +255,7 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/ai/modelCapabilities.ts": {
-    "mtime": 1783861361.328256,
+    "mtime": 1783864296.1417344,
     "ast_hash": "02e5b53363e0f98c0a0e9afbd9bdf3c2",
     "semantic_hash": ""
   },
@@ -310,22 +310,22 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/authorRecipe.ts": {
-    "mtime": 1783861408.810313,
+    "mtime": 1783864296.1419256,
     "ast_hash": "c3a8bcd96b52e96538cbdc8df22626ce",
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/canonicaliseRecipeIngredients.ts": {
-    "mtime": 1783861243.1636374,
+    "mtime": 1783864296.142058,
     "ast_hash": "ddd470a25c19cab0b9d9101fa36eabfe",
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/categoriseRecipe.ts": {
-    "mtime": 1783861390.5344322,
+    "mtime": 1783864296.1421797,
     "ast_hash": "44d829ee763b8427f56a500c9a55adda",
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/categoryTags.ts": {
-    "mtime": 1783861381.4125926,
+    "mtime": 1783864296.142349,
     "ast_hash": "bd4e14a58c79f6f4ccd4dc10f6d6ac5a",
     "semantic_hash": ""
   },
@@ -340,12 +340,12 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/extractRecipeFromUrl.ts": {
-    "mtime": 1783861402.6681788,
+    "mtime": 1783864296.1426227,
     "ast_hash": "d20e6fad8aa2c8b35e543c392f44bdf8",
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/generateCanonIcon.ts": {
-    "mtime": 1783861437.2249105,
+    "mtime": 1783864296.142831,
     "ast_hash": "e029b70cbb076859ccf9603b36fbfe0e",
     "semantic_hash": ""
   },
@@ -355,7 +355,7 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/generateRecipeImage.ts": {
-    "mtime": 1783861444.7849333,
+    "mtime": 1783864296.143028,
     "ast_hash": "b2f9c75b6252c4b48da8d59ac1fad0c3",
     "semantic_hash": ""
   },
@@ -365,7 +365,7 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/matchOrCreateCanon.ts": {
-    "mtime": 1783861339.7611907,
+    "mtime": 1783864296.1432035,
     "ast_hash": "0b124318b59c1e923a0302cad742d68e",
     "semantic_hash": ""
   },
@@ -415,7 +415,7 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/index.ts": {
-    "mtime": 1783861270.110528,
+    "mtime": 1783864296.1434147,
     "ast_hash": "b70a1359d726f2540af6200310df379b",
     "semantic_hash": ""
   },
@@ -430,12 +430,12 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/observability/telemetryReady.ts": {
-    "mtime": 1783861273.1277597,
+    "mtime": 1783864296.1436028,
     "ast_hash": "531b7270fa3c2a79126ec5893fe71811",
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/tracedCallable.ts": {
-    "mtime": 1783861252.4956717,
+    "mtime": 1783864296.1438084,
     "ast_hash": "d2067bf7f64fb6567beced243b935664",
     "semantic_hash": ""
   },
@@ -450,7 +450,7 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/triggers/onShoppingListItemWrite.ts": {
-    "mtime": 1783861263.268316,
+    "mtime": 1783864296.1440063,
     "ast_hash": "446338d7cc0e497982e765512e17e460",
     "semantic_hash": ""
   },
@@ -490,7 +490,7 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/tests/ai/modelCapabilities.test.ts": {
-    "mtime": 1783861365.94266,
+    "mtime": 1783864296.14413,
     "ast_hash": "72b3c3afd7e1dd5b678f35688be5cdb5",
     "semantic_hash": ""
   },
@@ -555,12 +555,12 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/tests/flows/equipment.tracePropagation.test.ts": {
-    "mtime": 1783861289.7719328,
+    "mtime": 1783864296.1443107,
     "ast_hash": "9517b806caa844d0a0a11e37640a332f",
     "semantic_hash": ""
   },
   "apps/cloud-functions/tests/flows/extractRecipeFromUrl.reporting.test.ts": {
-    "mtime": 1783861293.897711,
+    "mtime": 1783864296.1444817,
     "ast_hash": "e280368c50ee59064c6350ffb884fcdd",
     "semantic_hash": ""
   },
@@ -590,7 +590,7 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/tests/flows/matchOrCreateCanon.tracePropagation.test.ts": {
-    "mtime": 1783861291.8190157,
+    "mtime": 1783864296.1447053,
     "ast_hash": "e6a9d3df872b6f2eb1705cafecdb95e7",
     "semantic_hash": ""
   },
@@ -655,12 +655,12 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/tests/triggers/onShoppingListItemWrite.emulator.test.ts": {
-    "mtime": 1783861302.963998,
+    "mtime": 1783864296.1448805,
     "ast_hash": "738f94fa86839bd60877e35ae2042d00",
     "semantic_hash": ""
   },
   "apps/cloud-functions/tests/triggers/onShoppingListItemWrite.test.ts": {
-    "mtime": 1783861305.0613165,
+    "mtime": 1783864296.1450925,
     "ast_hash": "8f519ca9b21683fc303ad5f4c78c961a",
     "semantic_hash": ""
   },
@@ -690,8 +690,8 @@
     "semantic_hash": ""
   },
   "apps/storybook/package.json": {
-    "mtime": 1783259480.3414016,
-    "ast_hash": "d57b68c48c41384792d1ea71e9119e1c",
+    "mtime": 1783986357.571008,
+    "ast_hash": "25f49c57e03026b9d8614ffb043d327c",
     "semantic_hash": ""
   },
   "apps/storybook/src/env.d.ts": {
@@ -1220,13 +1220,13 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/package.json": {
-    "mtime": 1783859416.347638,
-    "ast_hash": "94b4ce24062a1df60b382cdac8354dd1",
+    "mtime": 1783986357.5713127,
+    "ast_hash": "db6450e0817974c14ada1cd8ab72b14b",
     "semantic_hash": ""
   },
   "apps/web-pwa/playwright.config.ts": {
-    "mtime": 1782453833.5953238,
-    "ast_hash": "4ada3076c7519f51e47b48fdccdc40a3",
+    "mtime": 1783867512.9752922,
+    "ast_hash": "986ada50bad213fcee862e61eb0c9023",
     "semantic_hash": ""
   },
   "apps/web-pwa/scripts/generate-icons.ts": {
@@ -1284,14 +1284,9 @@
     "ast_hash": "cfbb4fc5990c6d0635411dbb5c43f677",
     "semantic_hash": ""
   },
-  "apps/web-pwa/src/index.ts": {
-    "mtime": 1781453441.8360643,
-    "ast_hash": "e2ebd7ddedcadeeadbf819c35985c768",
-    "semantic_hash": ""
-  },
   "apps/web-pwa/src/lib/aiModelCatalogService.ts": {
-    "mtime": 1782061114.7653406,
-    "ast_hash": "c71134e70019e0b903bbb451c5a232f1",
+    "mtime": 1783991025.4921622,
+    "ast_hash": "781495fe9accd8f6de587b3278b2ca25",
     "semantic_hash": ""
   },
   "apps/web-pwa/src/lib/aisleService.ts": {
@@ -1360,13 +1355,13 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/src/lib/geocodingService.ts": {
-    "mtime": 1782821105.8728197,
-    "ast_hash": "0acda18f14188964413b78ac885b2dcb",
+    "mtime": 1783991134.1594567,
+    "ast_hash": "a8640cc844b2cdc8664e8737374d6ece",
     "semantic_hash": ""
   },
   "apps/web-pwa/src/lib/mealPlanService.ts": {
-    "mtime": 1783771705.491984,
-    "ast_hash": "94be71d8944099c037b1c2ddd4832152",
+    "mtime": 1783991108.8064234,
+    "ast_hash": "5bf375bb8e4e23bd2222992e1607688c",
     "semantic_hash": ""
   },
   "apps/web-pwa/src/lib/membersService.ts": {
@@ -1385,8 +1380,8 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/src/lib/pwa.ts": {
-    "mtime": 1781453441.8369834,
-    "ast_hash": "2d4eb990c7da70c963a8984ea2bdeb57",
+    "mtime": 1783947900.9855175,
+    "ast_hash": "b3525f0a38fb86938febe3f0ed177e9e",
     "semantic_hash": ""
   },
   "apps/web-pwa/src/lib/recipeService.ts": {
@@ -1395,8 +1390,8 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/src/lib/shoppingListService.svelte.ts": {
-    "mtime": 1782689905.2183833,
-    "ast_hash": "ceb6abbe77523feb088051ca20d6c27b",
+    "mtime": 1783991056.8479252,
+    "ast_hash": "0540336b014041ee83ffa32ad1b8c285",
     "semantic_hash": ""
   },
   "apps/web-pwa/src/lib/titleCase.ts": {
@@ -1425,13 +1420,13 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/src/lib/weatherService.ts": {
-    "mtime": 1782842314.0586216,
-    "ast_hash": "e83ce03b4b624981a4ee5580596236a3",
+    "mtime": 1783990994.9425611,
+    "ast_hash": "c5098f95b64809f0c569fdb76a4c52aa",
     "semantic_hash": ""
   },
   "apps/web-pwa/src/main.ts": {
-    "mtime": 1781453441.837422,
-    "ast_hash": "a5457ca8e92cd0d4408c0f3b284426fc",
+    "mtime": 1783947900.985673,
+    "ast_hash": "5592f54e7eded743829007b8e22c0067",
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/NotFound.svelte": {
@@ -1475,8 +1470,8 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/admin/HomeLocationField.svelte": {
-    "mtime": 1782912844.5066714,
-    "ast_hash": "ccb904e2a21d7b6950c3de038aaa8b50",
+    "mtime": 1783991159.3591647,
+    "ast_hash": "2d6cbe7c0b5b90ba66f76ba04ee4074c",
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/admin/LocationMapField.svelte": {
@@ -1550,8 +1545,8 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/index.ts": {
-    "mtime": 1783158331.0387464,
-    "ast_hash": "4f007b831c1f4c74130885475d4410c4",
+    "mtime": 1783947900.986088,
+    "ast_hash": "65fb42c54f33e7f5b28133ea995bc411",
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/mealplan/MealDayEditor.svelte": {
@@ -1830,13 +1825,13 @@
     "semantic_hash": ""
   },
   "package.json": {
-    "mtime": 1783759352.1224415,
-    "ast_hash": "29b630271736dea272b11e0dc1171435",
+    "mtime": 1783986357.5717475,
+    "ast_hash": "89a789d77df088e11180e2845319cde6",
     "semantic_hash": ""
   },
   "packages/adapters/firebase-sync/package.json": {
-    "mtime": 1782453833.596278,
-    "ast_hash": "de7dba638189e7b00f0a770c87148346",
+    "mtime": 1783986357.5721567,
+    "ast_hash": "acf6d08352b1fba4f116dc8203be640c",
     "semantic_hash": ""
   },
   "packages/adapters/firebase-sync/src/__boundary_tests__/no-indexeddb.ts": {
@@ -2070,8 +2065,8 @@
     "semantic_hash": ""
   },
   "packages/adapters/observability/package.json": {
-    "mtime": 1783676156.430532,
-    "ast_hash": "166c256c931d00ee9823777904df7efa",
+    "mtime": 1783986357.5726504,
+    "ast_hash": "e5a77f4d0d1c3d33ae158d23e552643f",
     "semantic_hash": ""
   },
   "packages/adapters/observability/src/browserTracer.ts": {
@@ -2130,12 +2125,12 @@
     "semantic_hash": ""
   },
   "packages/adapters/observability/src/server/index.ts": {
-    "mtime": 1783861229.4685078,
+    "mtime": 1783864296.1530564,
     "ast_hash": "1f86a9c1528b2b4f240d9bae713fd902",
     "semantic_hash": ""
   },
   "packages/adapters/observability/src/server/init.ts": {
-    "mtime": 1783861227.891012,
+    "mtime": 1783864296.1534214,
     "ast_hash": "2c791d674423bfd275cc2d415ad81b7d",
     "semantic_hash": ""
   },
@@ -3455,8 +3450,8 @@
     "semantic_hash": ""
   },
   "packages/ui-components/package.json": {
-    "mtime": 1783859416.3483145,
-    "ast_hash": "228e3f8ecd44e1fab4f2b8eb914c9b82",
+    "mtime": 1783986357.5728307,
+    "ast_hash": "8ee6af286a64c8b5797c4fdc95c0d9cf",
     "semantic_hash": ""
   },
   "packages/ui-components/scripts/check-provenance.ts": {
@@ -3472,11 +3467,6 @@
   "packages/ui-components/src/__boundary_tests__/imports-firebase.ts": {
     "mtime": 1781453441.8601189,
     "ast_hash": "2eb1a2d40e2c931129501978da72baad",
-    "semantic_hash": ""
-  },
-  "packages/ui-components/src/headless.ts": {
-    "mtime": 1781453441.8601663,
-    "ast_hash": "a90d00cd4e9b5eb50dbc1c7ad46494da",
     "semantic_hash": ""
   },
   "packages/ui-components/src/headless/Button.headless.svelte.ts": {
@@ -4509,11 +4499,6 @@
     "ast_hash": "60f068316033cd84de2e8eda0c8ff1fd",
     "semantic_hash": ""
   },
-  "packages/ui-components/src/test.ts": {
-    "mtime": 1781453441.87219,
-    "ast_hash": "05e06044cd3449208f2852e82a8c6808",
-    "semantic_hash": ""
-  },
   "packages/ui-components/src/tokens/colors.ts": {
     "mtime": 1783247337.2028162,
     "ast_hash": "590154ec54664ff882856c91ce5dc5b5",
@@ -4870,8 +4855,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1783782091.1880262,
-    "ast_hash": "fe458609b4fa07bfabf436922eb0d74a",
+    "mtime": 1783947900.9851422,
+    "ast_hash": "133c7da9062fa59b13be0ce4bf569d75",
     "semantic_hash": ""
   },
   "README.md": {
@@ -4950,8 +4935,8 @@
     "semantic_hash": ""
   },
   "docs/domain-implementation.md": {
-    "mtime": 1783158331.0391364,
-    "ast_hash": "4dd749c24055ec199bf64159e5e0a92d",
+    "mtime": 1783947900.9867082,
+    "ast_hash": "ef9d46d0eb55ce6cbc4555007cba7fd3",
     "semantic_hash": ""
   },
   "docs/e2e-test-spec.md": {
@@ -5165,8 +5150,28 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/dataUrl.ts": {
-    "mtime": 1783861419.8030336,
+    "mtime": 1783864296.1424346,
     "ast_hash": "1bfdbe4ab1f016112dd7e002dec3c563",
+    "semantic_hash": ""
+  },
+  "apps/web-pwa/src/routes/RouteLoadFailed.svelte": {
+    "mtime": 1783947900.9857702,
+    "ast_hash": "eb7bc8a51f7f49afae117a1a38029cb7",
+    "semantic_hash": ""
+  },
+  "apps/web-pwa/src/routes/lazyRoute.ts": {
+    "mtime": 1783947900.9862154,
+    "ast_hash": "6f9e20fd069ef12d6bf73104e9517547",
+    "semantic_hash": ""
+  },
+  "apps/web-pwa/tests/lazyRoute.fallback.test.ts": {
+    "mtime": 1783947900.9863443,
+    "ast_hash": "7b1af4b5e07cdd2a499626a6670b3e9f",
+    "semantic_hash": ""
+  },
+  "apps/web-pwa/tests/pwa.preloadErrorReload.test.ts": {
+    "mtime": 1783947900.9864361,
+    "ast_hash": "a3a2cdfecb0f0dd258dd9e6f41c3be9a",
     "semantic_hash": ""
   }
 }

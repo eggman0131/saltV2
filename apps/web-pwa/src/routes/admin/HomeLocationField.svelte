@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Button, TextField } from '@salt/ui-components';
   import type { HomeLocation, GeocodingResult } from '@salt/domain/schemas';
-  import { searchLocations, reverseGeocode } from '../../lib/geocodingService.js';
+  import { searchLocations, reverseGeocode, browserTimezone } from '../../lib/geocodingService.js';
   import LocationMapField from './LocationMapField.svelte';
   import {
     appSettings,
@@ -28,14 +28,6 @@
   const DEFAULT_CENTER = { latitude: 51.5074, longitude: -0.1278 }; // London
   const pinLat = $derived(draft?.latitude ?? saved?.latitude ?? DEFAULT_CENTER.latitude);
   const pinLng = $derived(draft?.longitude ?? saved?.longitude ?? DEFAULT_CENTER.longitude);
-
-  function resolveBrowserTimezone(): string {
-    try {
-      return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-    } catch {
-      return 'UTC';
-    }
-  }
 
   function sameLocation(a: HomeLocation, b: HomeLocation): boolean {
     return (
@@ -87,7 +79,7 @@
   // with a coordinate label, then upgrade the label if the lookup succeeds.
   async function onMapChange(latitude: number, longitude: number): Promise<void> {
     const base = draft ?? saved;
-    const timezone = base?.timezone || resolveBrowserTimezone();
+    const timezone = base?.timezone || browserTimezone();
     draft = {
       latitude,
       longitude,
@@ -122,7 +114,7 @@
       addToast('Longitude must be a number between -180 and 180.', 'destructive');
       return;
     }
-    const timezone = manualTimezone.trim() || resolveBrowserTimezone();
+    const timezone = manualTimezone.trim() || browserTimezone();
     const label = manualLabel.trim() || `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
     draft = { latitude: lat, longitude: lng, timezone, label };
   }
