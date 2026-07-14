@@ -29,6 +29,12 @@
     const canon = $canonItems.find((c) => c.id === parentCanonId);
     return canon ? titleCase(canon.name) : 'Unknown item';
   }
+
+  // Phase 2: the parent may itself be a freshly-minted, unconfirmed canon.
+  // No stored back-reference — derive it from the subscribed canonItems.
+  function parentNeedsApproval(parentCanonId: string): boolean {
+    return $canonItems.find((c) => c.id === parentCanonId)?.needs_approval === true;
+  }
 </script>
 
 <AdminGuard>
@@ -74,8 +80,16 @@
               {/if}
             </div>
             <div class="text-sm text-muted-foreground">
-              {form.matchers.join(', ')} → {parentName(form.parentCanonId)} ·
-              {form.yield.amountPerParent}
+              {form.matchers.join(', ')} → {parentName(form.parentCanonId)}
+              {#if form.needs_approval && parentNeedsApproval(form.parentCanonId)}
+                <span
+                  class="shrink-0 rounded-full bg-amber-200 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-800 dark:text-amber-200"
+                  data-testid="product-form-parent-new-badge"
+                >
+                  new parent
+                </span>
+              {/if}
+              · {form.yield.amountPerParent}
               {form.yield.formUnit} per item
             </div>
           </button>
