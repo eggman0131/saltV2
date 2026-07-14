@@ -505,6 +505,31 @@
     return subtotals.map((s) => (s.unit ? `${s.amount} ${s.unit}` : `${s.amount}`)).join(' + ');
   }
 
+  // The single merged product-form parent count for a combined row, or null when
+  // the row isn't a pure product-form-parent row (issue #501). Non-null → render
+  // "Canon ×N" (the domain-aggregated Σwhole + MAXforms count), mirroring the
+  // single product-form row's ×N treatment instead of a mixed-unit subtotal.
+  function countSubtotal(row: AisleRow): AmountSubtotal | null {
+    const [only] = row.subtotals;
+    return row.subtotals.length === 1 && only && only.unit === 'count' ? only : null;
+  }
+
+  // Distinct original form/produce wordings across a combined row's contributors
+  // (e.g. "Lime Juice, Zest, Limes"), surfaced under the "Canon ×N" headline so
+  // the form wording isn't buried in the expand-only breakdown.
+  function formWordings(row: AisleRow): string {
+    const seen = new Set<string>();
+    const names: string[] = [];
+    for (const c of row.contributors) {
+      const name = titleCase(resolveItemDisplayName(c));
+      if (name && !seen.has(name)) {
+        seen.add(name);
+        names.push(name);
+      }
+    }
+    return names.join(', ');
+  }
+
   function rowIds(row: AisleRow): string[] {
     return row.contributors.map((c) => c.id);
   }
@@ -848,6 +873,7 @@
                   {@const amountStr = formatSubtotals(row.subtotals)}
                   {#if row.combined}
                     {@const expanded = expandedRows.has(row.key)}
+                    {@const count = countSubtotal(row)}
                     <div
                       class="flex items-center gap-3 rounded border px-3 py-2 text-sm {row.needsCheck
                         ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/20'
@@ -869,15 +895,29 @@
                         aria-expanded={expanded}
                         data-testid="shopping-combined-toggle"
                       >
-                        <span class="block truncate">
-                          {rowLabel(row)}{#if amountStr}{' '}<span class="text-muted-foreground"
-                              >({amountStr})</span
-                            >{/if}
-                        </span>
-                        <span class="flex items-center gap-1 text-xs text-muted-foreground/70">
-                          <Icon name={expanded ? 'ChevronDown' : 'ChevronRight'} size={12} />
-                          {row.contributors.length} recipes
-                        </span>
+                        {#if count}
+                          <span class="block truncate">
+                            {rowLabel(row)}{' '}<span class="text-muted-foreground"
+                              >×{count.amount}</span
+                            >
+                          </span>
+                          <span
+                            class="flex items-center gap-1 text-xs text-muted-foreground/70 truncate"
+                          >
+                            <Icon name={expanded ? 'ChevronDown' : 'ChevronRight'} size={12} />
+                            {formWordings(row)}
+                          </span>
+                        {:else}
+                          <span class="block truncate">
+                            {rowLabel(row)}{#if amountStr}{' '}<span class="text-muted-foreground"
+                                >({amountStr})</span
+                              >{/if}
+                          </span>
+                          <span class="flex items-center gap-1 text-xs text-muted-foreground/70">
+                            <Icon name={expanded ? 'ChevronDown' : 'ChevronRight'} size={12} />
+                            {row.contributors.length} recipes
+                          </span>
+                        {/if}
                       </button>
                       {#if row.needsCheck}
                         {@render verifyControls(flaggedIds(row))}
