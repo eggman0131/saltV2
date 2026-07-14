@@ -53,9 +53,6 @@ export const lists: Readable<readonly ShoppingList[]> = _lists;
 const _defaultListId = writable<string | null | undefined>(undefined);
 export const defaultListId: Readable<string | null | undefined> = _defaultListId;
 
-const _activeListId = writable<string | null>(null);
-export const activeListId: Readable<string | null> = _activeListId;
-
 const _itemsForActiveList = writable<readonly ShoppingListItem[]>([]);
 export const itemsForActiveList: Readable<readonly ShoppingListItem[]> = _itemsForActiveList;
 
@@ -99,7 +96,6 @@ function markLoaded(scope: 'lists' | 'config' | 'items'): void {
 let _unsubItems: (() => void) | null = null;
 
 export function setActiveListId(listId: string): void {
-  _activeListId.set(listId);
   _unsubItems?.();
   _itemsForActiveList.set([]);
   const errors = getErrorReporter();
@@ -406,7 +402,6 @@ export function getItemsSnapshot(): readonly ShoppingListItem[] {
 export function __resetShoppingListServiceForTest(): void {
   _lists.set([]);
   _defaultListId.set(undefined);
-  _activeListId.set(null);
   _itemsForActiveList.set([]);
   _isLoadingShoppingList.set(true);
   _receivedLists = false;

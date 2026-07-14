@@ -29,13 +29,11 @@ const _isLoading = writable(false);
 // True when the last fetch failed (or never ran). Drives the "fell back to
 // free-text" UX without blocking the page.
 const _isUnavailable = writable(true);
-const _fetchedAt = writable<number | null>(null);
 
 // Per-role filtered model lists. Empty when the catalog is unavailable.
 export const catalogByRole: Readable<Record<AiModelRole, AiCatalogModel[]>> = _byRole;
 export const isCatalogLoading: Readable<boolean> = _isLoading;
 export const isCatalogUnavailable: Readable<boolean> = _isUnavailable;
-export const catalogFetchedAt: Readable<number | null> = _fetchedAt;
 
 // True once at least one role has models — i.e. the combobox can show
 // suggestions. When false, fields fall back to plain free-text.
@@ -50,7 +48,6 @@ function applyCatalog(catalog: AiModelCatalog): void {
     next[role] = catalog.byRole[role] ?? [];
   }
   _byRole.set(next);
-  _fetchedAt.set(catalog.fetchedAt);
   _isUnavailable.set(false);
 }
 
@@ -93,5 +90,4 @@ export function __resetAiModelCatalogServiceForTest(): void {
   _byRole.set(emptyByRole());
   _isLoading.set(false);
   _isUnavailable.set(true);
-  _fetchedAt.set(null);
 }

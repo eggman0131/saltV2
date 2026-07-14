@@ -19,33 +19,26 @@ import { appSettings } from './appSettingsService.js';
 // doc and invokes the refresh callable.
 
 const _forecast = writable<WeatherForecast | null>(null);
-const _isLoading = writable(true);
-const _isCorrupt = writable(false);
 
 // The current cached forecast (or null when none has loaded / none exists yet).
 // Day key absent ⇒ that date is out of the forecast window (Phase 2 contract).
+// A corrupt or errored cache doc leaves this null — the planner treats absent and
+// corrupt identically (renders no weather), so there's no separate corrupt flag.
 export const weatherForecast: Readable<WeatherForecast | null> = _forecast;
-export const isLoadingWeatherForecast: Readable<boolean> = _isLoading;
-// True when the cache doc exists but failed validation. The planner simply renders
-// no weather in that case (a corrupt forecast is treated as absent).
-export const isWeatherForecastCorrupt: Readable<boolean> = _isCorrupt;
 
 let unsub: (() => void) | null = null;
 
 // Starts the cache-doc subscription. Bootstrapped from App.svelte's post-auth
 // $effect alongside the other sync services; returns an unsubscribe for the effect
-// cleanup. A corrupt doc surfaces via onError → keep the store null and flag it.
+// cleanup. A corrupt doc surfaces via onError → the store keeps its current value.
 export function initWeatherSync(): () => void {
-  _isLoading.set(true);
   unsub = subscribeWeatherForecast(
     (f) => {
       _forecast.set(f);
-      _isCorrupt.set(false);
-      _isLoading.set(false);
     },
-    (err) => {
-      _isCorrupt.set(err.kind === 'StorageError' && err.reason === 'corruption');
-      _isLoading.set(false);
+    () => {
+      // A corrupt or errored cache doc leaves the last-known forecast in place
+      // (or null if none loaded); the planner renders no weather either way.
     },
   );
   return () => {
@@ -100,6 +93,4 @@ export function __resetWeatherServiceForTest(): void {
   unsub = null;
   refreshing = false;
   _forecast.set(null);
-  _isLoading.set(true);
-  _isCorrupt.set(false);
 }
