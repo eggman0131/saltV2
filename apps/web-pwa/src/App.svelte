@@ -74,9 +74,7 @@
   );
   const decoratedNavItems = $derived([
     ...navItems,
-    ...(isAdmin
-      ? [reviewCount > 0 ? { ...adminNavItem, badge: reviewCount } : adminNavItem]
-      : []),
+    ...(isAdmin ? [reviewCount > 0 ? { ...adminNavItem, badge: reviewCount } : adminNavItem] : []),
   ]);
 </script>
 

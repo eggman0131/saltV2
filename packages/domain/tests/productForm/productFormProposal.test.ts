@@ -61,27 +61,31 @@ describe('decideProductFormProposal', () => {
   });
 
   it('rejects when is_form is false', () => {
-    expect(decideProductFormProposal({ ...accepted, is_form: false }, candidates).kind).toBe('none');
+    expect(decideProductFormProposal({ ...accepted, is_form: false }, candidates).kind).toBe(
+      'none',
+    );
   });
 
   it('rejects a parent not among the offered candidates', () => {
-    expect(decideProductFormProposal({ ...accepted, parent_id: 'canon-ghost' }, candidates).kind).toBe(
-      'none',
-    );
+    expect(
+      decideProductFormProposal({ ...accepted, parent_id: 'canon-ghost' }, candidates).kind,
+    ).toBe('none');
   });
 
   it('rejects a non-positive or missing yield', () => {
     expect(decideProductFormProposal({ ...accepted, amount_per_parent: 0 }, candidates).kind).toBe(
       'none',
     );
-    expect(decideProductFormProposal({ ...accepted, amount_per_parent: null }, candidates).kind).toBe(
-      'none',
-    );
+    expect(
+      decideProductFormProposal({ ...accepted, amount_per_parent: null }, candidates).kind,
+    ).toBe('none');
   });
 
   it('rejects empty matcher / label / null unit', () => {
     expect(decideProductFormProposal({ ...accepted, matcher: '  ' }, candidates).kind).toBe('none');
     expect(decideProductFormProposal({ ...accepted, label: '' }, candidates).kind).toBe('none');
-    expect(decideProductFormProposal({ ...accepted, form_unit: null }, candidates).kind).toBe('none');
+    expect(decideProductFormProposal({ ...accepted, form_unit: null }, candidates).kind).toBe(
+      'none',
+    );
   });
 });

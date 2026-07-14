@@ -51,9 +51,7 @@ export function createFirestoreProductFormStore(db: Firestore): {
     // matching, so a proposal is purely additive.
     async upsert(form: ProductForm): Promise<ReadResult<ProductForm, DomainError>> {
       try {
-        const doc = Object.fromEntries(
-          Object.entries(form).filter(([, v]) => v !== undefined),
-        );
+        const doc = Object.fromEntries(Object.entries(form).filter(([, v]) => v !== undefined));
         await db.collection(COLLECTION).doc(form.id).set(doc);
         return success(form);
       } catch (err) {

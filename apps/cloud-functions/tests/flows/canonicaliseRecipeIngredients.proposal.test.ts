@@ -71,9 +71,8 @@ vi.mock('../../src/flows/arbitrateProductForm.js', () => ({
   arbitrateProductFormFlow: (input: unknown) => mockProposal(input),
 }));
 
-const { canonicaliseRecipeIngredientsFlow } = await import(
-  '../../src/flows/canonicaliseRecipeIngredients.js'
-);
+const { canonicaliseRecipeIngredientsFlow } =
+  await import('../../src/flows/canonicaliseRecipeIngredients.js');
 
 function canonDoc(id: string, name: string) {
   return {
