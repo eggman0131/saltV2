@@ -1,16 +1,16 @@
 # Graph Report - salt-vscode  (2026-07-14)
 
 ## Corpus Check
-- 1019 files · ~415,210 words
+- 1019 files · ~415,503 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 4990 nodes · 10002 edges · 493 communities (296 shown, 197 thin omitted)
+- 4990 nodes · 10002 edges · 492 communities (295 shown, 197 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 88 edges (avg confidence: 0.69)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `28fe0109`
+- Built from commit: `37d5202f`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -453,7 +453,6 @@
 - [[_COMMUNITY_TopBar.stories.ts|TopBar.stories.ts]]
 - [[_COMMUNITY_formQuantity.test.ts|formQuantity.test.ts]]
 - [[_COMMUNITY_SortableList.stories.ts|SortableList.stories.ts]]
-- [[_COMMUNITY_attachAiOtlpProcessor.ts|attachAiOtlpProcessor.ts]]
 - [[_COMMUNITY_ThrowingPropagator|ThrowingPropagator]]
 - [[_COMMUNITY_husky.sh|husky.sh]]
 - [[_COMMUNITY_no-observability-server.svelte|no-observability-server.svelte]]
@@ -498,24 +497,24 @@
 ## Import Cycles
 - 1-file cycle: `apps/cloud-functions/src/genkit.ts -> apps/cloud-functions/src/genkit.ts`
 - 1-file cycle: `apps/web-pwa/e2e/fixtures/test.ts -> apps/web-pwa/e2e/fixtures/test.ts`
-- 3-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/weatherService.ts -> packages/adapters/firebase-sync/src/index.ts -> apps/web-pwa/src/App.svelte`
-- 3-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/canonService.ts -> packages/adapters/firebase-sync/src/index.ts -> apps/web-pwa/src/App.svelte`
 - 3-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/membersService.ts -> packages/adapters/firebase-sync/src/index.ts -> apps/web-pwa/src/App.svelte`
-- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/weatherService.ts -> apps/web-pwa/src/lib/appSettingsService.ts -> packages/adapters/firebase-sync/src/index.ts -> apps/web-pwa/src/App.svelte`
-- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/weatherService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/aisleSubscription.ts -> apps/web-pwa/src/App.svelte`
-- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/weatherService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/appSettingsSync.ts -> apps/web-pwa/src/App.svelte`
-- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/weatherService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/auth.ts -> apps/web-pwa/src/App.svelte`
-- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/weatherService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/canonSubscription.ts -> apps/web-pwa/src/App.svelte`
-- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/weatherService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/chatSessionSubscription.ts -> apps/web-pwa/src/App.svelte`
-- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/weatherService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/devSettingsSync.ts -> apps/web-pwa/src/App.svelte`
-- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/weatherService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/e2eAiStubSync.ts -> apps/web-pwa/src/App.svelte`
-- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/weatherService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/equipmentManifestSubscription.ts -> apps/web-pwa/src/App.svelte`
-- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/weatherService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/init.ts -> apps/web-pwa/src/App.svelte`
-- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/weatherService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/mealPlanSync.ts -> apps/web-pwa/src/App.svelte`
-- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/weatherService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/membersSubscription.ts -> apps/web-pwa/src/App.svelte`
-- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/weatherService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/productFormSubscription.ts -> apps/web-pwa/src/App.svelte`
-- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/weatherService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/recipeSubscription.ts -> apps/web-pwa/src/App.svelte`
-- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/weatherService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/shoppingListItemSubscription.ts -> apps/web-pwa/src/App.svelte`
+- 3-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/devSettingsService.ts -> packages/adapters/firebase-sync/src/index.ts -> apps/web-pwa/src/App.svelte`
+- 3-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/shoppingListService.svelte.ts -> packages/adapters/firebase-sync/src/index.ts -> apps/web-pwa/src/App.svelte`
+- 3-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/appSettingsService.ts -> packages/adapters/firebase-sync/src/index.ts -> apps/web-pwa/src/App.svelte`
+- 3-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/canonService.ts -> packages/adapters/firebase-sync/src/index.ts -> apps/web-pwa/src/App.svelte`
+- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/shoppingListService.svelte.ts -> apps/web-pwa/src/lib/membersService.ts -> packages/adapters/firebase-sync/src/index.ts -> apps/web-pwa/src/App.svelte`
+- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/membersService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/aisleSubscription.ts -> apps/web-pwa/src/App.svelte`
+- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/membersService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/appSettingsSync.ts -> apps/web-pwa/src/App.svelte`
+- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/membersService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/auth.ts -> apps/web-pwa/src/App.svelte`
+- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/membersService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/canonSubscription.ts -> apps/web-pwa/src/App.svelte`
+- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/membersService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/chatSessionSubscription.ts -> apps/web-pwa/src/App.svelte`
+- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/membersService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/devSettingsSync.ts -> apps/web-pwa/src/App.svelte`
+- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/membersService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/e2eAiStubSync.ts -> apps/web-pwa/src/App.svelte`
+- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/membersService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/equipmentManifestSubscription.ts -> apps/web-pwa/src/App.svelte`
+- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/membersService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/init.ts -> apps/web-pwa/src/App.svelte`
+- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/membersService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/mealPlanSync.ts -> apps/web-pwa/src/App.svelte`
+- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/membersService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/membersSubscription.ts -> apps/web-pwa/src/App.svelte`
+- 4-file cycle: `apps/web-pwa/src/App.svelte -> apps/web-pwa/src/lib/membersService.ts -> packages/adapters/firebase-sync/src/index.ts -> packages/adapters/firebase-sync/src/productFormSubscription.ts -> apps/web-pwa/src/App.svelte`
 
 ## Hyperedges (group relationships)
 - **AI Kitchen Assistant flow composition** — docs_ai_kitchen_assistant_chat_session, docs_ai_kitchen_assistant_chef_flow, docs_ai_kitchen_assistant_librarian_flow, docs_matching_pipeline_canonicalise_recipe_ingredients [EXTRACTED 1.00]
@@ -525,7 +524,7 @@
 - **Canon Matching Entry Points & Shared Core** — docs_matching_pipeline_fast_path, docs_matching_pipeline_match_or_create_canon_callable, docs_matching_pipeline_on_shopping_list_item_write, docs_matching_pipeline_canonicalise_recipe_ingredients, docs_matching_pipeline_match_or_create_batch [EXTRACTED 1.00]
 - **Issue-Driven Agentic Workflow Commands** — commands_spec_feature_spec, commands_defect_defect_spec, commands_refactor_spec_refactor_spec, commands_run_run_issue [INFERRED 0.85]
 
-## Communities (493 total, 197 thin omitted)
+## Communities (492 total, 197 thin omitted)
 
 ### Community 0 - "index.ts"
 Cohesion: 0.04
@@ -604,8 +603,8 @@ Cohesion: 0.09
 Nodes (29): @floating-ui/dom, ../../src/primitives/Select/Select.svelte, ctx, listboxId, triggerId, typeaheadBuffer, SelectContentProps, SelectGroupProps (+21 more)
 
 ### Community 19 - "extractRecipeFromUrl.ts"
-Cohesion: 0.19
-Nodes (11): assembleDraft(), canonicaliseRecipeIngredientsFlow, normaliseTags(), assembleDraft(), buildHtmlPrompt(), extractRecipeFromUrlFlow, OutputSchema, stripHtmlNoise() (+3 more)
+Cohesion: 0.18
+Nodes (12): JsonLdRecipe, assembleDraft(), canonicaliseRecipeIngredientsFlow, normaliseTags(), assembleDraft(), buildHtmlPrompt(), extractRecipeFromUrlFlow, OutputSchema (+4 more)
 
 ### Community 20 - "index.ts"
 Cohesion: 0.07
@@ -684,12 +683,12 @@ Cohesion: 0.06
 Nodes (20): { mockCanonItems, mockAisles, mockLists, mockItems, mockDefaultListId, mockLoading }, { mockCanonItems, mockAisles, mockLists, mockItems, mockDefaultListId, mockLoading }, deleteAisles(), CanonItem, CanonLocalStorePort, EquipmentManifestPort, CanonItemSchema, ProductFormSchema (+12 more)
 
 ### Community 39 - "../../lib/auth.svelte.js"
-Cohesion: 0.29
-Nodes (6): AuthStore, clearPendingEmail(), devSignIn(), formatError(), writePendingEmail(), installE2EHooks()
+Cohesion: 0.22
+Nodes (9): ../../lib/auth.svelte.js, AuthStore, clearPendingEmail(), devSignIn(), formatError(), readPendingEmail(), writePendingEmail(), installE2EHooks() (+1 more)
 
 ### Community 40 - "generate-weather-icons.mjs"
-Cohesion: 0.16
-Nodes (16): generateOne(), main(), OUTPUT_DIR, parseDataUrl(), pkgRoot, selectIds(), normalizeIconFraming(), WEBP (+8 more)
+Cohesion: 0.12
+Nodes (19): generateOne(), main(), OUTPUT_DIR, parseDataUrl(), pkgRoot, selectIds(), normalizeIconFraming(), WEBP (+11 more)
 
 ### Community 41 - "index.ts"
 Cohesion: 0.18
@@ -736,8 +735,8 @@ Cohesion: 0.11
 Nodes (21): createFirestoreAisleStore(), createFirestoreCanonStore(), createFirestoreProductFormStore(), createServerArbitrationAdapter(), createServerEmbeddingAdapter(), createServerMatchLoggingAdapter(), arbitrateProductFormFlow, ItemResultSchema (+13 more)
 
 ### Community 52 - "8. Primitive Definitions (v0.2 Core)"
-Cohesion: 0.08
-Nodes (25): 8.10 Heading, 8.11 Text, 8.12 Icon, 8.14 Spinner, 8.3 Textarea, 8.4 Checkbox, 8. Primitive Definitions (v0.2 Core), Accessibility (+17 more)
+Cohesion: 0.09
+Nodes (23): 8.10 Heading, 8.11 Text, 8.12 Icon, 8.14 Spinner, 8.3 Textarea, 8.5 Switch, 8. Primitive Definitions (v0.2 Core), Accessibility (+15 more)
 
 ### Community 53 - "../../lib/canonService.js"
 Cohesion: 0.06
@@ -832,8 +831,8 @@ Cohesion: 0.12
 Nodes (17): devDependencies, @commitlint/cli, @commitlint/config-conventional, dependency-cruiser, eslint, eslint-plugin-boundaries, eslint-plugin-playwright, firebase-tools (+9 more)
 
 ### Community 77 - "genkit.ts"
-Cohesion: 0.08
-Nodes (29): AiTimeoutError, raceWithTimeout(), withAiTimeout(), WithAiTimeoutOptions, aiFakeEnabled(), fakeModels, flowModel(), CacheEntry (+21 more)
+Cohesion: 0.09
+Nodes (26): AiTimeoutError, raceWithTimeout(), withAiTimeout(), WithAiTimeoutOptions, aiFakeEnabled(), fakeModels, flowModel(), CacheEntry (+18 more)
 
 ### Community 79 - "onCanonItemWritten.trace.test.ts"
 Cohesion: 0.09
@@ -869,7 +868,7 @@ Nodes (63): reportIfFailed(), ../../lib/shoppingListService.svelte.js, addItemTo
 
 ### Community 89 - "beforeMemberCreated.emulator.test.ts"
 Cohesion: 0.20
-Nodes (7): AlignCenter, AlignEnd, JustifyBetween, Playground, Story, StackProps, StackVariants
+Nodes (7): AlignCenter, AlignEnd, JustifyBetween, Playground, Story, InlineProps, InlineVariants
 
 ### Community 90 - "onShoppingListItemWrite.emulator.test.ts"
 Cohesion: 0.05
@@ -920,8 +919,8 @@ Cohesion: 0.13
 Nodes (15): 10. Shared types requirements, 13. Deployment units, 14. Non-negotiables, 1.1 Schema evolution and production data, 1. Purpose, 2. Mono‑repo structure (logical modules), 4. Domain layer requirements, 5. Workspace and access model (+7 more)
 
 ### Community 104 - "package.json"
-Cohesion: 0.14
-Nodes (13): dependencies, @salt/domain, @salt/shared-types, devDependencies, @firebase/rules-unit-testing, exports, name, private (+5 more)
+Cohesion: 0.13
+Nodes (14): dependencies, firebase, @salt/domain, @salt/shared-types, devDependencies, @firebase/rules-unit-testing, exports, name (+6 more)
 
 ### Community 105 - "Canon item icons (Tier-1 pictograms)"
 Cohesion: 0.14
@@ -936,8 +935,8 @@ Cohesion: 0.14
 Nodes (12): accessoryBusy, accessoryRemoveBusy, deleteBusy, deleteOpen, editingName, editingNameActive, editingRuleDraft, nameBusy (+4 more)
 
 ### Community 108 - "ui-spec-v02.md"
-Cohesion: 0.14
-Nodes (13): 0. Roadmap Split, 5.1 Universal Requirements, 5.2 Keyboard Map, 5.3 Focus Management, 5. Accessibility System, 6.1 Required Test Suites, 6.2 Test File Template, 6. Testing System (+5 more)
+Cohesion: 0.10
+Nodes (19): 0. Roadmap Split, 1.1 Technology Stack, 1.2 Boundaries, 1.3 Package Surface, 1.4 Event Naming Rule, 1.5 Spec Versioning & Amendment Rule, 1. Foundations, 5.1 Universal Requirements (+11 more)
 
 ### Community 109 - "matchOrCreateCanon.test.ts"
 Cohesion: 0.21
@@ -948,8 +947,8 @@ Cohesion: 0.14
 Nodes (13): engines, node, pnpm, lint-staged, *.{css,html}, *.{ts,js,svelte}, name, packageManager (+5 more)
 
 ### Community 111 - "MatchLogEntry"
-Cohesion: 0.24
-Nodes (13): coerceDurationMinutes(), coerceServings(), coerceTags(), coerceText(), coerceTextList(), collectRecipeNodes(), extractJsonLdBlocks(), extractRecipeJsonLd() (+5 more)
+Cohesion: 0.27
+Nodes (12): coerceDurationMinutes(), coerceServings(), coerceTags(), coerceText(), coerceTextList(), collectRecipeNodes(), extractJsonLdBlocks(), extractRecipeJsonLd() (+4 more)
 
 ### Community 112 - "scripts"
 Cohesion: 0.15
@@ -1388,8 +1387,8 @@ Cohesion: 0.53
 Nodes (4): mostSignificantWeatherCode(), RANK_BY_CODE, SEVERITY_GROUPS, weatherSeverity()
 
 ### Community 265 - "isLoadingWeatherForecast"
-Cohesion: 0.19
-Nodes (8): ../../lib/auth.svelte.js, auth, readPendingEmail(), authProvider, __resetMembersServiceForTest(), seedMembers(), fs, firebase
+Cohesion: 0.29
+Nodes (4): auth, __resetMembersServiceForTest(), seedMembers(), fs
 
 ### Community 276 - "package.json"
 Cohesion: 0.40
@@ -1532,8 +1531,8 @@ Cohesion: 0.26
 Nodes (6): PopoverContentProps, PopoverPartProps, PopoverProps, ../../headless/Popover.headless.svelte, ./Popover.types, ./Popover.variants
 
 ### Community 465 - "8.5 Switch"
-Cohesion: 0.40
-Nodes (5): 8.5 Switch, Accessibility, Events, Props, Styling
+Cohesion: 0.29
+Nodes (7): 8.4 Checkbox, Accessibility, Events, Forbidden, Props, Snippets, Styling
 
 ### Community 466 - "ThrowingPropagator"
 Cohesion: 0.29
@@ -1554,10 +1553,6 @@ Nodes (3): Default, Story, WithActions
 ### Community 470 - "formQuantity.test.ts"
 Cohesion: 0.40
 Nodes (3): maxCountWinners(), juice, zest
-
-### Community 472 - "attachAiOtlpProcessor.ts"
-Cohesion: 0.33
-Nodes (6): 1.1 Technology Stack, 1.2 Boundaries, 1.3 Package Surface, 1.4 Event Naming Rule, 1.5 Spec Versioning & Amendment Rule, 1. Foundations
 
 ### Community 485 - "seed-emulator-admin.mjs"
 Cohesion: 0.40
