@@ -307,6 +307,110 @@ describe('groupItemsByAisle — combining recipe rows (#184)', () => {
   });
 });
 
+describe('groupItemsByAisle — product-form parent aggregation (#501)', () => {
+  const recipeSource = (recipeId: string) => ({
+    kind: 'recipe' as const,
+    recipeId,
+    servings: 2,
+    label: recipeId,
+  });
+  // A form contributor: amount is a parent count, unit is the 'count' sentinel.
+  const form = (id: string, recipeId: string, canonId: string, count: number, rawText: string) =>
+    makeItem(id, {
+      matchState: 'matched',
+      canonId,
+      sources: [recipeSource(recipeId)],
+      amount: count,
+      unit: 'count',
+      rawText,
+    });
+  // A whole/direct contributor: parent demanded as itself, no g/ml unit.
+  const whole = (id: string, recipeId: string, canonId: string, amount: number, rawText: string) =>
+    makeItem(id, {
+      matchState: 'matched',
+      canonId,
+      sources: [recipeSource(recipeId)],
+      amount,
+      rawText,
+    });
+  const canonMap = makeCanonMap([
+    { id: 'c-lime', name: 'Lime', aisleId: 'aisle-1' },
+    { id: 'c-chicken', name: 'Whole Chicken', aisleId: 'aisle-1' },
+  ]);
+
+  const onlyRow = (items: ShoppingListItem[]) =>
+    groupItemsByAisle(items, canonMap, AISLES).aisles[0].rows[0];
+
+  it('Lime headline: Σwhole(2) + MAX(juice 1, zest 1) = 3', () => {
+    const row = onlyRow([
+      whole('w', 'a', 'c-lime', 2, '2 limes'),
+      form('j', 'a', 'c-lime', 1, '30ml lime juice'),
+      form('z', 'b', 'c-lime', 1, 'zest of one lime'),
+    ]);
+    expect(row.combined).toBe(true);
+    expect(row.subtotals).toEqual([{ unit: 'count', amount: 3 }]);
+  });
+
+  it('cross-recipe parts do NOT double-count: MAX(thighs 2, drumsticks 1) = 2', () => {
+    const row = onlyRow([
+      form('t', 'a', 'c-chicken', 2, '4 chicken thighs'),
+      form('d', 'b', 'c-chicken', 1, '2 chicken drumsticks'),
+    ]);
+    expect(row.subtotals).toEqual([{ unit: 'count', amount: 2 }]);
+  });
+
+  it('whole + part mix: Σwhole(2) + MAX(thighs 2) = 4 in one ×N bucket', () => {
+    const row = onlyRow([
+      whole('w', 'a', 'c-chicken', 2, '2 whole chickens'),
+      form('t', 'b', 'c-chicken', 2, '4 chicken thighs'),
+    ]);
+    expect(row.subtotals).toEqual([{ unit: 'count', amount: 4 }]);
+  });
+
+  it('single-recipe multi-part (already MAX-collapsed at write) stays ×2, never ×3', () => {
+    // buildRecipeAddPlan collapses juice/zest of one recipe to one row before the
+    // list is written; the surviving contributor carries the MAX count (2). Pin
+    // that the display aggregation of that lone count contributor is 2, not 3.
+    const row = onlyRow([form('t', 'a', 'c-chicken', 2, '4 chicken thighs and 2 drumsticks')]);
+    expect(row.subtotals).toEqual([{ unit: 'count', amount: 2 }]);
+  });
+
+  it('pre-rounded parent count (3 thighs, yield 2/bird → 2) passes through as ×2', () => {
+    const row = onlyRow([
+      form('t', 'a', 'c-chicken', 2, '3 chicken thighs'),
+      form('d', 'b', 'c-chicken', 1, '1 drumstick'),
+    ]);
+    expect(row.subtotals).toEqual([{ unit: 'count', amount: 2 }]);
+  });
+
+  it('a row with no form contributor keeps plain per-unit behaviour (no count merge)', () => {
+    // Two whole unit-undefined amounts of the same canon that is NOT a product
+    // form here (no 'count' contributor) sum into the null bucket, unchanged.
+    const row = onlyRow([
+      whole('w1', 'a', 'c-lime', 2, 'limes'),
+      whole('w2', 'b', 'c-lime', 3, 'limes'),
+    ]);
+    expect(row.subtotals).toEqual([{ unit: null, amount: 5 }]);
+  });
+
+  it('form + g/ml contributor degrades to separate buckets (count first)', () => {
+    const row = onlyRow([
+      form('t', 'a', 'c-chicken', 2, '4 chicken thighs'),
+      makeItem('g', {
+        matchState: 'matched',
+        canonId: 'c-chicken',
+        sources: [recipeSource('b')],
+        amount: 300,
+        unit: 'g',
+      }),
+    ]);
+    expect(row.subtotals).toEqual([
+      { unit: 'count', amount: 2 },
+      { unit: 'g', amount: 300 },
+    ]);
+  });
+});
+
 describe('groupItemsByAisle — checked bucket', () => {
   it('routes checked items to the checked bucket regardless of match state', () => {
     const items = [
