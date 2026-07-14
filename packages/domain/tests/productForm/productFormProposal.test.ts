@@ -37,31 +37,46 @@ describe('a pending form resolves live (used-but-flagged)', () => {
 });
 
 describe('decideProductFormProposal', () => {
-  const candidates = new Set(['canon-nutmeg', 'canon-lime']);
+  const candidates = new Set(['canon-lime', 'canon-butter']);
   const accepted: ProductFormArbitrationAIOutput = {
-    is_form: true,
-    parent_id: 'canon-nutmeg',
-    matcher: '  grated nutmeg ',
-    label: ' Grated nutmeg ',
-    form_unit: 'g',
-    amount_per_parent: 12,
-    reasoning: 'a whole nutmeg grated',
+    modifier_kind: 'component',
+    parent_id: 'canon-lime',
+    matcher: '  lime juice ',
+    label: ' Lime juice ',
+    form_unit: 'ml',
+    amount_per_parent: 30,
+    reasoning: 'juice is a component extracted from the whole lime',
   };
 
-  it('maps a valid answer to a trimmed form proposal', () => {
+  it('maps a component answer to a trimmed form proposal', () => {
     const p = decideProductFormProposal(accepted, candidates);
     expect(p).toEqual({
       kind: 'form',
-      parentCanonId: 'canon-nutmeg',
-      matcher: 'grated nutmeg',
-      label: 'Grated nutmeg',
-      formUnit: 'g',
-      amountPerParent: 12,
+      parentCanonId: 'canon-lime',
+      matcher: 'lime juice',
+      label: 'Lime juice',
+      formUnit: 'ml',
+      amountPerParent: 30,
     });
   });
 
-  it('rejects when is_form is false', () => {
-    expect(decideProductFormProposal({ ...accepted, is_form: false }, candidates).kind).toBe(
+  it('rejects an action modifier — a prep state, not a form (e.g. melted butter)', () => {
+    // The core fix (issue #500): "melted butter" is a preparation of the buyable
+    // Butter, not a component. It must never become a product form.
+    const melted: ProductFormArbitrationAIOutput = {
+      ...accepted,
+      modifier_kind: 'action',
+      parent_id: 'canon-butter',
+      matcher: 'melted butter',
+      label: 'Melted butter',
+      form_unit: 'g',
+      amount_per_parent: 250,
+    };
+    expect(decideProductFormProposal(melted, candidates).kind).toBe('none');
+  });
+
+  it('rejects a descriptor / ordinary product (modifier_kind none, e.g. flaky sea salt)', () => {
+    expect(decideProductFormProposal({ ...accepted, modifier_kind: 'none' }, candidates).kind).toBe(
       'none',
     );
   });

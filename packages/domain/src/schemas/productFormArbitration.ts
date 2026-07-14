@@ -21,9 +21,19 @@ export type ProductFormArbitrationRequest = z.infer<typeof ProductFormArbitratio
 
 // Flat shape the model returns. Schema is the source of truth; TS type derived.
 export const ProductFormArbitrationAIOutputSchema = z.object({
-  // True only when the ingredient is a non-buyable derived form of one candidate.
-  is_form: z.boolean(),
-  // Id of the chosen parent candidate; null when is_form is false or unsure.
+  // How the ingredient's modifier relates to the buyable parent — the whole
+  // accept/reject pivot (issue #500). Only `component` is a product form:
+  //   • `action`    — a preparation state of a product you STILL buy whole
+  //                   (melted/chopped/toasted/grated butter, onion, garlic).
+  //                   You buy the parent; the modifier is something you DO to it.
+  //   • `component` — a physical part/derivative extracted from the parent that
+  //                   you can't normally buy on its own (lime juice, lemon zest,
+  //                   orange peel, egg yolk). A DIFFERENT substance from the parent.
+  //   • `none`      — an ordinary buyable product, or a mere descriptor
+  //                   ("flaky" sea salt, "fresh" thyme, "large" egg), or no
+  //                   plausible parent. Not a form.
+  modifier_kind: z.enum(['action', 'component', 'none']),
+  // Id of the chosen parent candidate; null unless modifier_kind is `component`.
   parent_id: z.string().nullable(),
   // The matcher phrase to key the form on, e.g. "grated nutmeg".
   matcher: z.string().nullable(),
