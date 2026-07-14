@@ -28,6 +28,7 @@
     productForms,
     addProductForm,
     editProductForm,
+    confirmProductForm,
     deleteProductForm,
   } from '../../lib/productFormService.js';
   import { canonItems } from '../../lib/canonService.js';
@@ -41,6 +42,9 @@
     params.id ? ($productForms.find((f) => f.id === params.id) ?? null) : null,
   );
   const isEdit = $derived(!!params.id);
+  // An AI-seeded proposal (issue #500, Phase 3) awaiting review. It already
+  // resolves recipes live; Confirm records the review + persists any edits.
+  const isPending = $derived(!!existing?.needs_approval);
 
   // Editable fields
   let matchersText = $state('');
@@ -70,14 +74,20 @@
     $canonItems.map((c) => ({ value: c.id, label: titleCase(c.name) })),
   );
 
-  async function handleSave(): Promise<void> {
-    errorMessage = '';
+  function buildInput() {
     const matchers = matchersText
       .split(',')
       .map((m) => m.trim())
       .filter(Boolean);
-    const amountPerParent = parseFloat(amount);
-    const input = { matchers, parentCanonId, label, formUnit: unit, amountPerParent };
+    return { matchers, parentCanonId, label, formUnit: unit, amountPerParent: parseFloat(amount) };
+  }
+
+  const invalidMessage =
+    'Please give a label, pick a parent item, add at least one matcher, and a yield amount above 0.';
+
+  async function handleSave(): Promise<void> {
+    errorMessage = '';
+    const input = buildInput();
 
     busy = true;
     const result =
@@ -85,11 +95,27 @@
     busy = false;
 
     if (result.kind !== 'ok') {
-      errorMessage =
-        'Please give a label, pick a parent item, add at least one matcher, and a yield amount above 0.';
+      errorMessage = invalidMessage;
       return;
     }
     addToast(isEdit ? 'Saved product form' : 'Added product form', 'success');
+    push('/admin/product-forms');
+  }
+
+  // Confirm a pending proposal: persist any reviewed edits AND clear the
+  // needs-review flag in one write, then return to the list.
+  let confirmBusy = $state(false);
+  async function handleConfirm(): Promise<void> {
+    if (!existing) return;
+    errorMessage = '';
+    confirmBusy = true;
+    const result = await confirmProductForm(existing, buildInput());
+    confirmBusy = false;
+    if (result.kind !== 'ok') {
+      errorMessage = invalidMessage;
+      return;
+    }
+    addToast('Confirmed product form', 'success');
     push('/admin/product-forms');
   }
 
@@ -145,6 +171,21 @@
         {/snippet}
 
         <div class="flex max-w-xl flex-col gap-4">
+          {#if isPending}
+            <div
+              class="flex flex-col gap-1 rounded border border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/30"
+              data-testid="product-form-review-banner"
+            >
+              <h2 class="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                Review before confirming
+              </h2>
+              <p class="text-sm text-amber-900 dark:text-amber-200">
+                This mapping was proposed automatically while importing a recipe and is already
+                being used. Check the parent item and yield below, then Confirm.
+              </p>
+            </div>
+          {/if}
+
           <TextField
             label="Label"
             description="How this form reads, e.g. “freshly squeezed lime juice”."
@@ -221,17 +262,32 @@
           {/if}
 
           <div class="flex justify-end gap-2 border-t border-border pt-4">
-            <Button variant="ghost" onclick={() => push('/admin/product-forms')} disabled={busy}>
+            <Button
+              variant="ghost"
+              onclick={() => push('/admin/product-forms')}
+              disabled={busy || confirmBusy}
+            >
               Cancel
             </Button>
             <Button
               data-testid="product-form-save-button"
+              variant={isPending ? 'outline' : 'solid'}
               onclick={handleSave}
               loading={busy}
-              disabled={busy}
+              disabled={busy || confirmBusy}
             >
               Save
             </Button>
+            {#if isPending}
+              <Button
+                data-testid="product-form-confirm-button"
+                onclick={handleConfirm}
+                loading={confirmBusy}
+                disabled={busy || confirmBusy}
+              >
+                Confirm
+              </Button>
+            {/if}
           </div>
         </div>
       </DetailPage>

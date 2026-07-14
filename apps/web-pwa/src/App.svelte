@@ -16,7 +16,7 @@
   import { routes } from './routes/index.js';
   import { toasts, dismissToast } from './lib/toastStore.js';
   import { canonItems, initCanonSync } from './lib/canonService.js';
-  import { initProductFormSync } from './lib/productFormService.js';
+  import { productForms, initProductFormSync } from './lib/productFormService.js';
   import { initEquipmentSync } from './lib/equipmentService.js';
   import { initShoppingListSync } from './lib/shoppingListService.svelte.js';
   import { members, initMembersSync } from './lib/membersService.js';
@@ -65,12 +65,17 @@
 
   // Canon management now lives behind the operator area (#157), so its
   // needs-approval backlog count rides on the Admin nav entry — visible only to
-  // admins, who are the ones who action the review queue.
-  const needsApprovalCount = $derived($canonItems.filter((i) => i.needs_approval).length);
+  // admins, who are the ones who action the review queue. Product-form proposals
+  // (issue #500, Phase 3) share the same review affordance, so their pending count
+  // sums into the one Admin badge alongside canon's.
+  const reviewCount = $derived(
+    $canonItems.filter((i) => i.needs_approval).length +
+      $productForms.filter((f) => f.needs_approval).length,
+  );
   const decoratedNavItems = $derived([
     ...navItems,
     ...(isAdmin
-      ? [needsApprovalCount > 0 ? { ...adminNavItem, badge: needsApprovalCount } : adminNavItem]
+      ? [reviewCount > 0 ? { ...adminNavItem, badge: reviewCount } : adminNavItem]
       : []),
   ]);
 </script>

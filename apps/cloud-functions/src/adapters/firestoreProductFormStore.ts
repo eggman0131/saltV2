@@ -20,6 +20,7 @@ function classify(_err: unknown): DomainError {
  */
 export function createFirestoreProductFormStore(db: Firestore): {
   list(): Promise<ReadResult<readonly ProductForm[], DomainError>>;
+  upsert(form: ProductForm): Promise<ReadResult<ProductForm, DomainError>>;
 } {
   return {
     async list(): Promise<ReadResult<readonly ProductForm[], DomainError>> {
@@ -38,6 +39,23 @@ export function createFirestoreProductFormStore(db: Firestore): {
           forms.push(result.data as ProductForm);
         }
         return success(forms);
+      } catch (err) {
+        return failure(classify(err));
+      }
+    },
+    // Write path for AI-seeded proposals (issue #500, Phase 3), mirroring
+    // firestoreCanonStore.upsert. Full-doc `.set()` (LWW). `undefined` fields are
+    // stripped so an absent optional (e.g. an unset needs_approval) never trips
+    // firebase-admin's undefined-value rejection. Never throws — a write failure
+    // crosses the boundary as Failure (Rule 10) and the caller degrades to plain
+    // matching, so a proposal is purely additive.
+    async upsert(form: ProductForm): Promise<ReadResult<ProductForm, DomainError>> {
+      try {
+        const doc = Object.fromEntries(
+          Object.entries(form).filter(([, v]) => v !== undefined),
+        );
+        await db.collection(COLLECTION).doc(form.id).set(doc);
+        return success(form);
       } catch (err) {
         return failure(classify(err));
       }

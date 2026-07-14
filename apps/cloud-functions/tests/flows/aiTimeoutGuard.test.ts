@@ -18,6 +18,7 @@ const flowsDir = join(dirname(fileURLToPath(import.meta.url)), '../../src/flows'
 const WRAPPED_BY_CALLER = new Set([
   'parseEntry.ts', // serverEntryParse.ts → withAiTimeout('parseEntry', …)
   'arbitrateCanon.ts', // serverArbitration.ts → withAiTimeout('arbitrateCanon', …)
+  'arbitrateProductForm.ts', // canonicaliseRecipeIngredients.ts → withAiTimeout('arbitrateProductForm', …)
   'embedText.ts', // serverEmbedding.ts / onCanonItemWritten.ts → withAiTimeout('embedText', …)
 ]);
 

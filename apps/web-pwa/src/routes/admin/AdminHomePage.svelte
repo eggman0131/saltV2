@@ -3,10 +3,17 @@
   import { push } from 'svelte-spa-router';
   import AdminGuard from './AdminGuard.svelte';
   import { canonItems } from '../../lib/canonService.js';
+  import { productForms } from '../../lib/productFormService.js';
 
-  // Needs-approval backlog count — mirrors the badge on the Admin nav entry
-  // (App.svelte) so the same number also surfaces on the Canon items tile.
+  // Needs-review backlog counts — mirror the badge on the Admin nav entry
+  // (App.svelte) so the same numbers surface per tool tile. Canon and product
+  // forms each track their own pending queue.
   const needsApprovalCount = $derived($canonItems.filter((i) => i.needs_approval).length);
+  const pendingFormCount = $derived($productForms.filter((f) => f.needs_approval).length);
+  const tileBadge = $derived<Record<string, number>>({
+    canon: needsApprovalCount,
+    'product-forms': pendingFormCount,
+  });
 
   // Operator home (issues #155, #157). Future cross-domain operator tools
   // (backup, one-off data migrations / repairs) are added here as additional
@@ -75,12 +82,12 @@
             <CardHeader>
               <CardTitle class="flex items-center gap-2">
                 <span>{tool.title}</span>
-                {#if tool.id === 'canon' && needsApprovalCount > 0}
+                {#if (tileBadge[tool.id] ?? 0) > 0}
                   <span
                     class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-xs leading-none text-primary-foreground"
-                    data-testid="admin-tool-canon-badge"
+                    data-testid="admin-tool-{tool.id}-badge"
                   >
-                    {needsApprovalCount}
+                    {tileBadge[tool.id]}
                   </span>
                 {/if}
               </CardTitle>

@@ -80,10 +80,12 @@ export type {
 export {
   createProductForm,
   updateProductForm,
+  confirmProductForm,
   resolveProductForm,
   convertYield,
   formParentCount,
   maxCountWinners,
+  decideProductFormProposal,
 } from './productForm/index.js';
 
 // Auth module — published surface.

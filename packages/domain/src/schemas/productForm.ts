@@ -21,6 +21,15 @@ export const ProductFormSchema = z.object({
   }),
   // Sync field — parity with canon; stamped on write (LWW, full-doc setDoc).
   updatedAt: z.string(),
+  // Needs-review flag, mirroring canon's `needs_approval` (issue #500, Phase 3).
+  // An AI-seeded proposal is written with this true; an admin confirms it (flips
+  // false) after reviewing the suggested parent + yield. OPTIONAL: absent/false =
+  // confirmed, so Phase-1/2-authored and admin-created forms stay valid on read
+  // (back-compat — productForms is Firestore-master production data). NOT a gate
+  // on resolution: a pending form resolves recipes live the moment it is written,
+  // exactly like a `needs_approval` canon item is matched live. The flag only
+  // drives the review badge + confirm affordance.
+  needs_approval: z.boolean().optional(),
 });
 
 export type ProductFormDoc = z.infer<typeof ProductFormSchema>;

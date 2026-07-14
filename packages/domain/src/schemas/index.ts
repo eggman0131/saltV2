@@ -9,6 +9,17 @@ export type {
   CanonArbitrationAIOutput,
 } from './canonArbitration.js';
 
+export {
+  ProductFormArbitrationRequestSchema,
+  ProductFormArbitrationAIOutputSchema,
+  ProductFormProposalSchema,
+} from './productFormArbitration.js';
+export type {
+  ProductFormArbitrationRequest,
+  ProductFormArbitrationAIOutput,
+  ProductFormProposal,
+} from './productFormArbitration.js';
+
 export { EmbedTextInputSchema } from './embedTextInput.js';
 export type { EmbedTextInput } from './embedTextInput.js';
 

@@ -4,7 +4,11 @@ import {
   deleteProductForm as deleteProductFormDoc,
 } from '@salt/firebase-sync';
 import { createObservabilityErrorReportingAdapter } from '@salt/observability';
-import { createProductForm, updateProductForm } from '@salt/domain';
+import {
+  createProductForm,
+  updateProductForm,
+  confirmProductForm as confirmProductFormCmd,
+} from '@salt/domain';
 import type { ProductForm, CreateProductFormInput, UpdateProductFormInput } from '@salt/domain';
 import { type DomainError, type Result } from '@salt/shared-types';
 import { writable, get } from 'svelte/store';
@@ -65,6 +69,22 @@ export async function editProductForm(
   const result = updateProductForm(form, input);
   if (result.kind === 'ok') await upsertProductForm(result.value);
   return result;
+}
+
+// Confirm an AI-seeded (pending) product form (issue #500, Phase 3). Applies the
+// admin's reviewed edits to the parent/yield AND clears the needs-review flag in
+// a single write — mirrors canonService.approveCanonItemWithOverrides. A pending
+// form already resolves recipes live; confirming records the review, it does not
+// unlock use.
+export async function confirmProductForm(
+  form: ProductForm,
+  input: UpdateProductFormInput,
+): Promise<Result<ProductForm, DomainError>> {
+  const updated = updateProductForm(form, input);
+  if (updated.kind !== 'ok') return updated;
+  const confirmed = confirmProductFormCmd(updated.value);
+  if (confirmed.kind === 'ok') await upsertProductForm(confirmed.value);
+  return confirmed;
 }
 
 export async function deleteProductForm(id: string): Promise<Result<void, DomainError>> {

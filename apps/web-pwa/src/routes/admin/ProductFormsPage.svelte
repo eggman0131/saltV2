@@ -19,6 +19,12 @@
       .sort((a, b) => a.label.localeCompare(b.label)),
   );
 
+  // AI-seeded proposals (issue #500, Phase 3) surface in their own "Needs review"
+  // section — these are already resolving recipes live; the section is the review
+  // queue, not a gate. Confirmed/admin-created forms list below as normal.
+  const pending = $derived(filtered.filter((f) => f.needs_approval));
+  const confirmed = $derived(filtered.filter((f) => !f.needs_approval));
+
   function parentName(parentCanonId: string): string {
     const canon = $canonItems.find((c) => c.id === parentCanonId);
     return canon ? titleCase(canon.name) : 'Unknown item';
@@ -47,25 +53,55 @@
         />
       </div>
 
+      {#snippet formRow(form: (typeof filtered)[number])}
+        <li>
+          <button
+            class="w-full rounded border border-border p-3 text-left transition-colors hover:bg-muted/50"
+            data-testid="product-form-row"
+            onclick={() => push(`/admin/product-forms/${form.id}`)}
+          >
+            <div class="flex items-center gap-2">
+              <span class="font-medium text-foreground">{form.label}</span>
+              {#if form.needs_approval}
+                <span
+                  class="shrink-0 rounded-full bg-amber-200 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-800 dark:text-amber-200"
+                  data-testid="product-form-review-badge"
+                >
+                  Review
+                </span>
+              {/if}
+            </div>
+            <div class="text-sm text-muted-foreground">
+              {form.matchers.join(', ')} → {parentName(form.parentCanonId)} ·
+              {form.yield.amountPerParent}
+              {form.yield.formUnit} per item
+            </div>
+          </button>
+        </li>
+      {/snippet}
+
       {#if filtered.length > 0}
-        <ul class="flex flex-col gap-1">
-          {#each filtered as form (form.id)}
-            <li>
-              <button
-                class="w-full rounded border border-border p-3 text-left transition-colors hover:bg-muted/50"
-                data-testid="product-form-row"
-                onclick={() => push(`/admin/product-forms/${form.id}`)}
-              >
-                <div class="font-medium text-foreground">{form.label}</div>
-                <div class="text-sm text-muted-foreground">
-                  {form.matchers.join(', ')} → {parentName(form.parentCanonId)} ·
-                  {form.yield.amountPerParent}
-                  {form.yield.formUnit} per item
-                </div>
-              </button>
-            </li>
-          {/each}
-        </ul>
+        {#if pending.length > 0}
+          <div class="mb-4" data-testid="product-forms-review-section">
+            <h3
+              class="mb-1 text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400"
+            >
+              Needs Review ({pending.length})
+            </h3>
+            <ul class="flex flex-col gap-1">
+              {#each pending as form (form.id)}
+                {@render formRow(form)}
+              {/each}
+            </ul>
+          </div>
+        {/if}
+        {#if confirmed.length > 0}
+          <ul class="flex flex-col gap-1">
+            {#each confirmed as form (form.id)}
+              {@render formRow(form)}
+            {/each}
+          </ul>
+        {/if}
       {:else if filterText !== ''}
         <p class="py-4 text-center text-sm text-muted-foreground">
           No forms match "{filterText}".

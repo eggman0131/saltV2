@@ -18,4 +18,8 @@ export interface ProductForm {
   readonly yield: ProductFormYield;
   // Sync field — parity with canon; empty string is the pre-sync sentinel.
   readonly updatedAt: string;
+  // Needs-review flag (issue #500, Phase 3), mirroring canon's `needs_approval`.
+  // Absent/false = confirmed; an AI-seeded proposal carries `true` until an admin
+  // confirms it. TRANSPORT for the review UI only — never a gate on resolution.
+  readonly needs_approval?: boolean;
 }
