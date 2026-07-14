@@ -69,6 +69,17 @@ describe('maxCountWinners', () => {
     expect(winners.get('canon-lime')).toBe(0);
   });
 
+  it('single-recipe chicken jointing: MAX(thighs 2, drumsticks 1) keeps the thigh row (#500/#501)', () => {
+    // Pins the per-recipe MAX buildRecipeAddPlan relies on: one recipe needing
+    // 4 thighs (→2) AND 2 drumsticks (→1) buys 2 birds, not 3. Must stay MAX.
+    const winners = maxCountWinners([
+      { parentCanonId: 'canon-chicken', count: 2 }, // thighs
+      { parentCanonId: 'canon-chicken', count: 1 }, // drumsticks
+    ]);
+    expect(winners.get('canon-chicken')).toBe(0); // the count-2 (thigh) row wins
+    expect(winners.size).toBe(1);
+  });
+
   it('keeps distinct parents independently', () => {
     const winners = maxCountWinners([
       { parentCanonId: 'canon-lime', count: 1 },
