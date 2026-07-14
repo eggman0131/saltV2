@@ -89,10 +89,10 @@ Entry points (exact):
 | Import path                           | Contents                                                            |
 | ------------------------------------- | ------------------------------------------------------------------- |
 | `@salt/ui-components`                 | Stable primitive components + re-exports of tokens + `cn` + `useId` |
-| `@salt/ui-components/headless`        | `create<Primitive>State()` factories + context keys                 |
 | `@salt/ui-components/tokens`          | TS token constants (generated from Tailwind preset)                 |
 | `@salt/ui-components/tailwind-preset` | Tailwind preset object (default export)                             |
-| `@salt/ui-components/test`            | Test helpers (internal only — not for app consumption)              |
+
+> **Headless factories:** `create<Primitive>State()` factories + context keys live in the per-primitive `src/headless/<Primitive>.headless.svelte.ts` files, imported directly by each primitive. The old aggregating `@salt/ui-components/headless` barrel (and the `@salt/ui-components/test` placeholder) were removed as dead surface in #491 — nothing consumed either subpath.
 
 **Barrel shape (`src/index.ts`):**
 
@@ -233,7 +233,7 @@ All interactive primitives must:
 
 - Compound primitives use explicit sub-components (`DialogTrigger`, `DialogContent`). No string-based `type` props.
 - No DOM traversal upward (`parentNode` walks). Communication is via context keys set by the root.
-- Context keys are defined in the headless file and exported from `@salt/ui-components/headless`.
+- Context keys are defined in the per-primitive `src/headless/<Primitive>.headless.svelte.ts` file and imported directly by that primitive.
 - Portals allowed only for: Dialog, Popover, Tooltip.
 - `portal: HTMLElement | string | false` (default `"body"`). String values are treated as CSS selectors.
 - Controlled/uncontrolled pattern (canonical wiring in §3.6):
