@@ -31,6 +31,12 @@
       href: '/admin/aisles',
     },
     {
+      id: 'product-forms',
+      title: 'Product forms',
+      description: 'Map alternate ingredient forms to a parent item and its yield.',
+      href: '/admin/product-forms',
+    },
+    {
       id: 'mealplan',
       title: 'Meal plan',
       description: 'Edit the standard weekly template and the big-shop day.',

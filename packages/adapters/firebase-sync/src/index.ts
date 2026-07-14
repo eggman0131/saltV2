@@ -8,6 +8,11 @@ export { createFirebaseAuth } from './auth.js';
 // flight, still reports).
 export { isAuthTransitioning } from './authTransition.js';
 export { subscribeCanonItems, upsertCanonItem, deleteCanonItem } from './canonSubscription.js';
+export {
+  subscribeProductForms,
+  upsertProductForm,
+  deleteProductForm,
+} from './productFormSubscription.js';
 export { subscribeAisles, saveAisles } from './aisleSubscription.js';
 export {
   subscribeEquipmentManifest,

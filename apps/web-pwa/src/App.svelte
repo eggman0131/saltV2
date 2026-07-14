@@ -16,6 +16,7 @@
   import { routes } from './routes/index.js';
   import { toasts, dismissToast } from './lib/toastStore.js';
   import { canonItems, initCanonSync } from './lib/canonService.js';
+  import { initProductFormSync } from './lib/productFormService.js';
   import { initEquipmentSync } from './lib/equipmentService.js';
   import { initShoppingListSync } from './lib/shoppingListService.svelte.js';
   import { members, initMembersSync } from './lib/membersService.js';
@@ -32,6 +33,7 @@
   $effect(() => {
     if (!auth.user) return;
     const unsubCanon = initCanonSync();
+    const unsubProductForms = initProductFormSync();
     const unsubEquipment = initEquipmentSync();
     const unsubShopping = initShoppingListSync();
     const unsubMembers = initMembersSync();
@@ -43,6 +45,7 @@
     const unsubWeather = initWeatherSync();
     return () => {
       unsubCanon();
+      unsubProductForms();
       unsubEquipment();
       unsubShopping();
       unsubMembers();

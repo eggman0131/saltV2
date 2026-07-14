@@ -34,6 +34,12 @@ service cloud.firestore {
     match /canonEmbeddings/{itemId} {
       allow read, write: if false;
     }
+    // Product forms — shared mapping of alternate ingredient forms to a parent
+    // canon item + yield; any authenticated user can read and write (mirrors
+    // canonItems; the AdminGuard on the management UI is cosmetic, #157).
+    match /productForms/{formId} {
+      allow read, write: if request.auth != null;
+    }
     // Aisle config — shared; any authenticated user can read and write.
     match /canonData/{document} {
       allow read, write: if request.auth != null;
