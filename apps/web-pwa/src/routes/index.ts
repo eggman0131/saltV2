@@ -69,5 +69,8 @@ export const routes: RouteDefinition = new Map<
   ['/admin/canon', lazy(() => import('./canon/CanonListPage.svelte'))],
   ['/admin/canon/new', lazy(() => import('./canon/CanonCreatePage.svelte'))],
   ['/admin/canon/:id', lazy(() => import('./canon/CanonDetailPage.svelte'))],
+  ['/admin/product-forms', lazy(() => import('./admin/ProductFormsPage.svelte'))],
+  ['/admin/product-forms/new', lazy(() => import('./admin/ProductFormEditPage.svelte'))],
+  ['/admin/product-forms/:id', lazy(() => import('./admin/ProductFormEditPage.svelte'))],
   ['*', NotFound],
 ]);

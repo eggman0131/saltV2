@@ -13,7 +13,14 @@ import {
 import { createObservabilityErrorReportingAdapter, startUserActionSpan } from '@salt/observability';
 import type { AuthorRecipeInput, RecipeDoc } from '@salt/domain/schemas';
 import { reportIfFailed, reportSubscriptionError } from './errorReporting.js';
-import { addItem, recipeItemAddDefault, findProducingRecipes } from '@salt/domain';
+import {
+  addItem,
+  recipeItemAddDefault,
+  findProducingRecipes,
+  resolveProductForm,
+  formParentCount,
+  maxCountWinners,
+} from '@salt/domain';
 import type {
   Recipe,
   Ingredient,
@@ -21,11 +28,14 @@ import type {
   Quantity,
   SourceRef,
   CanonItem,
+  ProductForm,
+  CanonItemUnit,
 } from '@salt/domain';
 import type { UrlImportFailureCode } from '@salt/domain/schemas';
 import { hasLiveCanonMatch } from '@salt/domain';
 import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
 import { getCanonItemsSnapshot } from './canonService.js';
+import { getProductFormsSnapshot } from './productFormService.js';
 import { writable, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 
@@ -456,6 +466,36 @@ function scaledAmountUnit(ing: Ingredient, scale: number): { amount?: number; un
   return ing.parsed.unit !== null ? { amount, unit: ing.parsed.unit } : { amount };
 }
 
+// Product-form quantity resolution (issue #500, Phase 2). When a recipe
+// ingredient resolves to a ProductForm whose parent is the ingredient's OWN canon
+// match, its scaled metric amount converts to a whole parent-product count (e.g.
+// 90 ml lime juice → 3 limes), written with the `'count'` unit sentinel that the
+// shopping row reads to render "Lime ×3". Re-derives the form from the snapshot
+// (no schema change, no CF→client plumbing); the parent-match guard keeps it
+// back-compatible — an ingredient matched before its form existed stays as-is.
+// Returns null (identity-only degrade) on no form, a unit mismatch, or a
+// degenerate yield, so the caller keeps the metric amount and today's behaviour.
+function formCountFor(
+  ing: Ingredient,
+  scale: number,
+  forms: readonly ProductForm[],
+): { form: ProductForm; count: number } | null {
+  if (forms.length === 0 || !ing.canonId || ing.parsed === null || ing.parsed.quantity === null) {
+    return null;
+  }
+  const form = resolveProductForm(ing.parsed.item, forms);
+  if (!form || form.parentCanonId !== ing.canonId) return null;
+  const metricAmount = quantityToNumber(ing.parsed.quantity) * scale;
+  const ingUnit: CanonItemUnit = ing.parsed.unit ?? 'count';
+  const count = formParentCount(metricAmount, ingUnit, form);
+  return count === null ? null : { form, count };
+}
+
+// The unit sentinel written on a product-form shopping row: marks `amount` as a
+// parent-product count (not g/ml), so the shopping page renders "×N" and the
+// display degrade path can tell a real count from a metric amount.
+export const PRODUCT_FORM_COUNT_UNIT = 'count';
+
 // Build the review plan for adding a recipe to a list at the given servings.
 // Every ingredient becomes a row with its scaled amount and a default Add/Check
 // state driven by the matched canon item's shoppingBehavior (issue #185). The
@@ -471,13 +511,34 @@ export function buildRecipeAddPlan(recipe: Recipe, servings: number): RecipeAddR
   // self-reference guard (a recipe can't make its own ingredient from itself) is
   // applied here, at the call site.
   const allRecipes = getRecipesSnapshot();
+  const forms = getProductFormsSnapshot();
+
+  // Form-count rows keyed by their parent canon, collected for MAX aggregation
+  // once every row is built (one lime supplies both juice and zest → buy the max,
+  // not the sum). Each entry points back at its row so the losers can be dropped.
+  const formEntries: { rowIndex: number; parentCanonId: string; count: number }[] = [];
 
   const rows: RecipeAddRow[] = [];
   for (const group of recipe.ingredients) {
     for (const ing of group.items) {
       const matched = hasLiveCanonMatch(ing, liveCanonIds);
       const canon = matched ? (canonById.get(ing.canonId!) ?? null) : null;
-      const { amount, unit } = matched ? scaledAmountUnit(ing, scale) : {};
+      // A product-form ingredient carries a parent-count (unit sentinel 'count');
+      // otherwise fall back to the scaled metric amount. formCountFor requires a
+      // live canon match (parentCanonId === ing.canonId), so it implies `matched`.
+      const fc = matched ? formCountFor(ing, scale, forms) : null;
+      if (fc) {
+        formEntries.push({
+          rowIndex: rows.length,
+          parentCanonId: fc.form.parentCanonId,
+          count: fc.count,
+        });
+      }
+      const { amount, unit } = fc
+        ? { amount: fc.count, unit: PRODUCT_FORM_COUNT_UNIT }
+        : matched
+          ? scaledAmountUnit(ing, scale)
+          : {};
 
       const dflt = recipeItemAddDefault(
         canon?.shoppingBehavior ?? null,
@@ -528,6 +589,20 @@ export function buildRecipeAddPlan(recipe: Recipe, servings: number): RecipeAddR
         subRows: null, // populated eagerly only when the user selects Make
       });
     }
+  }
+
+  // Same-parent aggregation (issue #500): collapse the form-count rows of one
+  // parent to the single MAX-count row, dropping the losers, so "juice AND zest of
+  // limes" becomes one lime line, not two. Only form-count rows are merged;
+  // ordinary same-canon rows are left alone (combining stays a display concern).
+  if (formEntries.length > 0) {
+    const winners = maxCountWinners(
+      formEntries.map((e) => ({ parentCanonId: e.parentCanonId, count: e.count })),
+    );
+    const formRowIndices = new Set(formEntries.map((e) => e.rowIndex));
+    const keepRowIndices = new Set<number>();
+    winners.forEach((entryIdx) => keepRowIndices.add(formEntries[entryIdx]!.rowIndex));
+    return rows.filter((_, i) => !formRowIndices.has(i) || keepRowIndices.has(i));
   }
   return rows;
 }

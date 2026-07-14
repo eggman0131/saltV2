@@ -9,6 +9,17 @@ export type {
   CanonArbitrationAIOutput,
 } from './canonArbitration.js';
 
+export {
+  ProductFormArbitrationRequestSchema,
+  ProductFormArbitrationAIOutputSchema,
+  ProductFormProposalSchema,
+} from './productFormArbitration.js';
+export type {
+  ProductFormArbitrationRequest,
+  ProductFormArbitrationAIOutput,
+  ProductFormProposal,
+} from './productFormArbitration.js';
+
 export { EmbedTextInputSchema } from './embedTextInput.js';
 export type { EmbedTextInput } from './embedTextInput.js';
 
@@ -97,6 +108,9 @@ export type { SetRecipeImageUploadInput } from './setRecipeImageUpload.js';
 
 export { CanonItemSchema } from './canonItem.js';
 export type { CanonItemDoc } from './canonItem.js';
+
+export { ProductFormSchema } from './productForm.js';
+export type { ProductFormDoc } from './productForm.js';
 
 export { CanonEmbeddingSchema } from './canonEmbedding.js';
 export type { CanonEmbeddingDoc } from './canonEmbedding.js';

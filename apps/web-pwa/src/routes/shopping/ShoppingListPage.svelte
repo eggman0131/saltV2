@@ -30,9 +30,15 @@
   import { titleCase } from '../../lib/titleCase.js';
   import { tick } from 'svelte';
   import { push } from 'svelte-spa-router';
-  import { groupItemsByAisle, groupItemsByRecipe, resolveItemDisplayName } from '@salt/domain';
-  import type { ShoppingListItem, AisleRow, AmountSubtotal } from '@salt/domain';
+  import {
+    groupItemsByAisle,
+    groupItemsByRecipe,
+    resolveItemDisplayName,
+    resolveProductForm,
+  } from '@salt/domain';
+  import type { ShoppingListItem, AisleRow, AmountSubtotal, ProductForm } from '@salt/domain';
   import { canonItems, aisles } from '../../lib/canonService.js';
+  import { productForms } from '../../lib/productFormService.js';
   import {
     lists,
     defaultListId,
@@ -427,6 +433,18 @@
     return titleCase(resolveItemDisplayName(item));
   }
 
+  // A resolved product-form row (issue #500): a recipe row bound to a buyable
+  // parent canon and carrying a whole parent-count (the recipeService 'count' unit
+  // sentinel), re-derived from the productForms snapshot rather than a stored id
+  // (additive / back-compat). null for manual rows, non-count rows, and any row
+  // whose form no longer resolves to its own canon — those keep today's label.
+  // When non-null the row reads "Lime ×3" with the original wording underneath.
+  function productFormFor(item: ShoppingListItem): ProductForm | null {
+    if (item.unit !== 'count' || !item.canonId || item.amount === undefined) return null;
+    const form = resolveProductForm(item.rawText, $productForms);
+    return form && form.parentCanonId === item.canonId ? form : null;
+  }
+
   function sourceLabel(item: ShoppingListItem): string {
     const src = item.sources[0];
     if (!src) return '';
@@ -539,6 +557,7 @@
 )}
   {@const isSelected = selection.isSelected(item.id)}
   {@const amountStr = formatAmount(item.amount, item.unit)}
+  {@const productForm = productFormFor(item)}
   <div
     class="flex items-center gap-3 rounded border px-3 py-2 text-sm {subordinate
       ? 'ml-[46px]'
@@ -569,11 +588,22 @@
       aria-label="Edit {item.rawText}"
       data-testid="shopping-item-edit-btn"
     >
-      <span class="block truncate {item.checked ? 'line-through text-muted-foreground' : ''}">
-        {displayLabel(item)}{#if amountStr}{' '}<span class="text-muted-foreground"
-            >({amountStr})</span
-          >{/if}
-      </span>
+      {#if productForm}
+        <span class="block truncate {item.checked ? 'line-through text-muted-foreground' : ''}">
+          {titleCase(canonMap.get(item.canonId ?? '')?.name ?? '')}{' '}<span
+            class="text-muted-foreground">×{item.amount}</span
+          >
+        </span>
+        <span class="block text-xs text-muted-foreground truncate"
+          >{resolveItemDisplayName(item)}</span
+        >
+      {:else}
+        <span class="block truncate {item.checked ? 'line-through text-muted-foreground' : ''}">
+          {displayLabel(item)}{#if amountStr}{' '}<span class="text-muted-foreground"
+              >({amountStr})</span
+            >{/if}
+        </span>
+      {/if}
       {#if item.notes}
         <span class="block text-xs text-muted-foreground truncate"
           >{toSentenceCase(item.notes)}</span

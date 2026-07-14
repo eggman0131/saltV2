@@ -69,6 +69,25 @@ export {
 } from './canon/index.js';
 export type { ApproveCanonItemOverrides } from './canon/index.js';
 
+// ProductForm module — published surface.
+export type {
+  ProductForm,
+  ProductFormYield,
+  ProductFormIdGenerator,
+  CreateProductFormInput,
+  UpdateProductFormInput,
+} from './productForm/index.js';
+export {
+  createProductForm,
+  updateProductForm,
+  confirmProductForm,
+  resolveProductForm,
+  convertYield,
+  formParentCount,
+  maxCountWinners,
+  decideProductFormProposal,
+} from './productForm/index.js';
+
 // Auth module — published surface.
 export type { User, AuthProvider } from './auth/index.js';
 

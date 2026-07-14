@@ -42,6 +42,23 @@
   const initialItem = untrack(() => items.find((i) => i.value === value));
   if (initialItem) inputValue = initialItem.label;
 
+  // Keep the displayed label in sync when the value — or the items list — changes
+  // from OUTSIDE the component (async-loaded options, a programmatically/seeded
+  // value). The init above fires once, so without this an edit form that seeds its
+  // value after mount, or whose options load async, shows a blank input. Guarded so
+  // it never runs while the popup is open (can't clobber what the user is typing),
+  // and it only fills from a matching item or clears on empty — an unmatched/custom
+  // value is left as-is so allowCustom free-text survives.
+  $effect(() => {
+    if (open) return;
+    const match = items.find((i) => i.value === value);
+    if (match) {
+      if (untrack(() => inputValue) !== match.label) inputValue = match.label;
+    } else if (value === undefined || value === '') {
+      if (untrack(() => inputValue) !== '') inputValue = '';
+    }
+  });
+
   const listboxId = useId('combobox-listbox');
   const inputId = useId('combobox-input');
 
