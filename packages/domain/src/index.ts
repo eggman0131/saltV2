@@ -82,6 +82,8 @@ export {
   updateProductForm,
   resolveProductForm,
   convertYield,
+  formParentCount,
+  maxCountWinners,
 } from './productForm/index.js';
 
 // Auth module — published surface.

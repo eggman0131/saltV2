@@ -9,3 +9,5 @@ export { updateProductForm } from './commands/updateProductForm.js';
 export type { UpdateProductFormInput } from './commands/updateProductForm.js';
 export { resolveProductForm } from './queries/resolveProductForm.js';
 export { convertYield } from './queries/convertYield.js';
+export { formParentCount } from './queries/formParentCount.js';
+export { maxCountWinners } from './queries/maxCountWinners.js';
