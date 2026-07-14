@@ -132,6 +132,27 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
           ? await Promise.all(unresolved.map((i) => proposeForm(i)))
           : unresolved.map(() => ({ kind: 'none' }) as ProductFormProposal);
 
+      // In-batch dedupe: mint each named parent through matchOrCreateBatch at most
+      // ONCE per recipe. Two forms naming the same parent (e.g. "lime juice" +
+      // "lime zest" → "Lime") reuse the id, so only one "Lime" canon is created.
+      // Keyed on the normalised (trim + lowercase) parent name. matchOrCreateBatch
+      // reuses an existing canon ("Lime" already present) or mints a needs_approval
+      // one (with aisle/icon/embedding) — never a hand-rolled canon write. A
+      // resolution failure returns null → the derivative degrades to normal
+      // matching (Rule 10).
+      const parentIdByName = new Map<string, string>();
+      const resolveParentCanonId = async (parentName: string): Promise<string | null> => {
+        const key = parentName.trim().toLowerCase();
+        const cached = parentIdByName.get(key);
+        if (cached !== undefined) return cached;
+        const [res] = await matchOrCreateBatch([{ rawName: parentName }], ports);
+        if (res && res.kind === 'ok') {
+          parentIdByName.set(key, res.value.item.id);
+          return res.value.item.id;
+        }
+        return null;
+      };
+
       // Apply proposals in input order so in-batch idempotency is deterministic.
       for (let u = 0; u < unresolved.length; u++) {
         const i = unresolved[u]!;
@@ -145,22 +166,27 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
         // Idempotency: skip if any existing/in-batch form (pending or confirmed)
         // already covers the proposed matcher — never create a duplicate.
         if (proposal.kind === 'form' && resolveProductForm(proposal.matcher, forms) === null) {
-          const created: ProductForm = {
-            id: crypto.randomUUID(),
-            schemaVersion: 1,
-            matchers: [proposal.matcher],
-            parentCanonId: proposal.parentCanonId,
-            label: proposal.label,
-            yield: { formUnit: proposal.formUnit, amountPerParent: proposal.amountPerParent },
-            // Written pending: used live immediately, but flagged for admin review.
-            needs_approval: true,
-            updatedAt: new Date().toISOString(),
-          };
-          // Best-effort write; on failure we simply fall through to matching.
-          const written = await productFormStore.upsert(created);
-          if (written.kind === 'ok') {
-            forms.push(created);
-            if (await bindToParent(i, created.parentCanonId)) continue;
+          // Resolve the named parent to a canon id (reuse existing / mint new). A
+          // null result (resolution failed) degrades to normal matching (Rule 10).
+          const parentCanonId = await resolveParentCanonId(proposal.parentName);
+          if (parentCanonId) {
+            const created: ProductForm = {
+              id: crypto.randomUUID(),
+              schemaVersion: 1,
+              matchers: [proposal.matcher],
+              parentCanonId,
+              label: proposal.label,
+              yield: { formUnit: proposal.formUnit, amountPerParent: proposal.amountPerParent },
+              // Written pending: used live immediately, but flagged for admin review.
+              needs_approval: true,
+              updatedAt: new Date().toISOString(),
+            };
+            // Best-effort write; on failure we simply fall through to matching.
+            const written = await productFormStore.upsert(created);
+            if (written.kind === 'ok') {
+              forms.push(created);
+              if (await bindToParent(i, parentCanonId)) continue;
+            }
           }
         }
 

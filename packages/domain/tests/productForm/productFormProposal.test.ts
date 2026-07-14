@@ -37,9 +37,9 @@ describe('a pending form resolves live (used-but-flagged)', () => {
 });
 
 describe('decideProductFormProposal', () => {
-  const candidates = new Set(['canon-lime', 'canon-butter']);
   const accepted: ProductFormArbitrationAIOutput = {
     modifier_kind: 'component',
+    parent_name: '  Lime ',
     parent_id: 'canon-lime',
     matcher: '  lime juice ',
     label: ' Lime juice ',
@@ -48,16 +48,25 @@ describe('decideProductFormProposal', () => {
     reasoning: 'juice is a component extracted from the whole lime',
   };
 
-  it('maps a component answer to a trimmed form proposal', () => {
-    const p = decideProductFormProposal(accepted, candidates);
+  it('maps a component answer to a trimmed form proposal carrying parentName', () => {
+    const p = decideProductFormProposal(accepted);
     expect(p).toEqual({
       kind: 'form',
-      parentCanonId: 'canon-lime',
+      parentName: 'Lime',
       matcher: 'lime juice',
       label: 'Lime juice',
       formUnit: 'ml',
       amountPerParent: 30,
     });
+  });
+
+  it('accepts a component whose parent is NOT in any catalog — candidates no longer gate', () => {
+    // The Phase 1 fix (issue #500): a parent absent from the catalog ("Lime" with
+    // no existing canon) must still yield a form proposal — the CF flow mints it
+    // via matchOrCreateBatch. parent_id being null (no catalog hint) is fine.
+    const p = decideProductFormProposal({ ...accepted, parent_id: null });
+    expect(p.kind).toBe('form');
+    if (p.kind === 'form') expect(p.parentName).toBe('Lime');
   });
 
   it('rejects an action modifier — a prep state, not a form (e.g. melted butter)', () => {
@@ -66,41 +75,32 @@ describe('decideProductFormProposal', () => {
     const melted: ProductFormArbitrationAIOutput = {
       ...accepted,
       modifier_kind: 'action',
-      parent_id: 'canon-butter',
+      parent_name: 'Butter',
       matcher: 'melted butter',
       label: 'Melted butter',
       form_unit: 'g',
       amount_per_parent: 250,
     };
-    expect(decideProductFormProposal(melted, candidates).kind).toBe('none');
+    expect(decideProductFormProposal(melted).kind).toBe('none');
   });
 
   it('rejects a descriptor / ordinary product (modifier_kind none, e.g. flaky sea salt)', () => {
-    expect(decideProductFormProposal({ ...accepted, modifier_kind: 'none' }, candidates).kind).toBe(
-      'none',
-    );
+    expect(decideProductFormProposal({ ...accepted, modifier_kind: 'none' }).kind).toBe('none');
   });
 
-  it('rejects a parent not among the offered candidates', () => {
-    expect(
-      decideProductFormProposal({ ...accepted, parent_id: 'canon-ghost' }, candidates).kind,
-    ).toBe('none');
+  it('rejects an empty / missing parent_name', () => {
+    expect(decideProductFormProposal({ ...accepted, parent_name: '  ' }).kind).toBe('none');
+    expect(decideProductFormProposal({ ...accepted, parent_name: null }).kind).toBe('none');
   });
 
   it('rejects a non-positive or missing yield', () => {
-    expect(decideProductFormProposal({ ...accepted, amount_per_parent: 0 }, candidates).kind).toBe(
-      'none',
-    );
-    expect(
-      decideProductFormProposal({ ...accepted, amount_per_parent: null }, candidates).kind,
-    ).toBe('none');
+    expect(decideProductFormProposal({ ...accepted, amount_per_parent: 0 }).kind).toBe('none');
+    expect(decideProductFormProposal({ ...accepted, amount_per_parent: null }).kind).toBe('none');
   });
 
   it('rejects empty matcher / label / null unit', () => {
-    expect(decideProductFormProposal({ ...accepted, matcher: '  ' }, candidates).kind).toBe('none');
-    expect(decideProductFormProposal({ ...accepted, label: '' }, candidates).kind).toBe('none');
-    expect(decideProductFormProposal({ ...accepted, form_unit: null }, candidates).kind).toBe(
-      'none',
-    );
+    expect(decideProductFormProposal({ ...accepted, matcher: '  ' }).kind).toBe('none');
+    expect(decideProductFormProposal({ ...accepted, label: '' }).kind).toBe('none');
+    expect(decideProductFormProposal({ ...accepted, form_unit: null }).kind).toBe('none');
   });
 });

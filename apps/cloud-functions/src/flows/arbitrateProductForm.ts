@@ -34,8 +34,7 @@ export const arbitrateProductFormFlow = ai.defineFlow(
     });
     const output = result.output;
     if (!output) return { kind: 'none' as const };
-    const validParentIds = new Set(req.candidates.map((c) => c.id));
-    return decideProductFormProposal(output, validParentIds);
+    return decideProductFormProposal(output);
   },
 );
 
@@ -54,7 +53,7 @@ function buildPrompt(req: ProductFormArbitrationRequest): string {
     `Ingredient: "${req.ingredientName}"`,
     ...(rawLine ? [rawLine] : []),
     ``,
-    `Buyable products already in the catalog (choose the parent from THIS list only, by id):`,
+    `Buyable products already in the catalog (PREFER one of these names when it fits, so an existing product is reused, not duplicated):`,
     candidateList,
     ``,
     `## The test — classify the modifier (set modifier_kind)`,
@@ -70,12 +69,13 @@ function buildPrompt(req: ProductFormArbitrationRequest): string {
     ``,
     `## Output`,
     `If modifier_kind is "component", set:`,
-    `- parent_id: the id of the parent from the list above (the whole product you buy — e.g. "Lime" for lime juice)`,
+    `- parent_name: the NAME of the whole product you buy — e.g. "Lime" for lime juice. PREFER an exact name from the catalog list above when one fits, so the existing product is reused; otherwise name the new parent product (it will be created).`,
+    `- parent_id: if the parent you named is one of the catalog candidates above, echo its id here (a hint only); otherwise null.`,
     `- matcher: the lowercase phrase identifying this form in an ingredient name, e.g. "lime juice"`,
     `- label: a short human label, e.g. "Lime juice"`,
     `- form_unit: "g", "ml", or "count" — the unit the component is measured in`,
     `- amount_per_parent: how much of form_unit ONE whole parent yields (e.g. one lime ≈ 30 ml juice; one lemon ≈ 5 g zest). A positive number.`,
-    `If modifier_kind is "action" or "none", set parent_id, matcher, label, form_unit and amount_per_parent to null.`,
+    `If modifier_kind is "action" or "none", set parent_name, parent_id, matcher, label, form_unit and amount_per_parent to null.`,
     `Always include a brief reasoning string naming which of the two questions decided it.`,
     ``,
   ].join('\n');
