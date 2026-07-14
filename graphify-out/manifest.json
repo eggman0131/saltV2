@@ -1240,8 +1240,8 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/src/App.svelte": {
-    "mtime": 1784039521.0393748,
-    "ast_hash": "26029fcd285ac9618eb7fc7d7ff74669",
+    "mtime": 1784040451.4256163,
+    "ast_hash": "5affca504910211f383d16b00c784ae2",
     "semantic_hash": ""
   },
   "apps/web-pwa/src/__boundary_tests__/no-firebase-sync-internal.ts": {
@@ -5175,8 +5175,8 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/adapters/firestoreProductFormStore.ts": {
-    "mtime": 1784039357.0713916,
-    "ast_hash": "01fcfa3efaa52d1f3af60755430dfe2d",
+    "mtime": 1784040451.4236555,
+    "ast_hash": "7dd52b2fab816a3c4c86ef233ae29043",
     "semantic_hash": ""
   },
   "apps/web-pwa/src/lib/productFormService.ts": {
@@ -5260,13 +5260,13 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/arbitrateProductForm.ts": {
-    "mtime": 1784039342.4565601,
-    "ast_hash": "c27a5d40897161708aa258cf8408ff8f",
+    "mtime": 1784041843.0984218,
+    "ast_hash": "5b6182a5ae44438fc42330cf4b84ac4a",
     "semantic_hash": ""
   },
   "apps/cloud-functions/tests/flows/canonicaliseRecipeIngredients.proposal.test.ts": {
-    "mtime": 1784039718.0297925,
-    "ast_hash": "e69cdafc259c4de18bf7c1caddfad4ad",
+    "mtime": 1784040451.424935,
+    "ast_hash": "78d53ba2952305ee6a0fd7ca6f45cdf5",
     "semantic_hash": ""
   },
   "packages/domain/src/productForm/commands/confirmProductForm.ts": {
@@ -5275,18 +5275,18 @@
     "semantic_hash": ""
   },
   "packages/domain/src/productForm/queries/decideProductFormProposal.ts": {
-    "mtime": 1784039289.575163,
-    "ast_hash": "c4c89677dd567fb6c174c101faeffa0d",
+    "mtime": 1784041816.8937917,
+    "ast_hash": "5197e5644a1d9bebb1613fc5454a815c",
     "semantic_hash": ""
   },
   "packages/domain/src/schemas/productFormArbitration.ts": {
-    "mtime": 1784039270.045649,
-    "ast_hash": "9abf6ec19f8cd53807db73975b8d5980",
+    "mtime": 1784041805.5137968,
+    "ast_hash": "a266c382743e64070a0ddd1f064cb48b",
     "semantic_hash": ""
   },
   "packages/domain/tests/productForm/productFormProposal.test.ts": {
-    "mtime": 1784039671.1742947,
-    "ast_hash": "d98c20101a66bca02db6197cc8b8bef3",
+    "mtime": 1784041858.3270924,
+    "ast_hash": "d987ebee06b6a3a9eab25d00d5900723",
     "semantic_hash": ""
   }
 }
