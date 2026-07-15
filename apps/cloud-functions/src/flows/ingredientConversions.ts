@@ -53,4 +53,6 @@ export const INGREDIENT_SUBSTITUTION_RULES = `- British ingredient names through
   - jelly → jam; jello → jelly
   - skillet → frying pan; broil → grill; can → tin
   - paper towel → kitchen paper; plastic wrap → cling film; parchment paper → baking paper
-  - Anything else American: ${UK_INGREDIENT_PRINCIPLE}`;
+  - Anything else American: ${UK_INGREDIENT_PRINCIPLE}
+- Commit to a single ingredient — never emit an either-or choice like "Persian or Lebanese cucumbers" or "flaky sea salt or kosher salt". Pick ONE and name it in UK terms (e.g. just "cucumber", "sea salt"). This targets a CHOICE between distinct ingredients — do NOT break up a legitimate compound name that merely contains "or".
+- One ingredient per line — never merge two distinct ingredients into a single line. "Salt and freshly ground black pepper" is TWO ingredients and must be emitted as two separate ingredients. This targets distinct ingredients joined by "and"; leave genuine compound names intact (e.g. "sweet and sour sauce", "half and half", "mac and cheese", "salt and vinegar").`;

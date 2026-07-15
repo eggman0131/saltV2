@@ -243,7 +243,11 @@ ${CATEGORY_TAG_RULES}
 ${INGREDIENT_SUBSTITUTION_RULES}
 - ingredientGroups: group ingredients by course/stage (null name = default group).
   Each ingredient: rawText (preserve the original wording and any tsp/tbsp/cup measures the chef
-  used, but always use the British ingredient NAMES above — e.g. "double cream" not "heavy cream"),
+  used, EXCEPT where the ingredient rules above take precedence — always use the British ingredient
+  NAMES (e.g. "double cream" not "heavy cream"), commit to a single ingredient rather than an
+  either-or choice, and split any line that combines two distinct ingredients into two separate
+  ingredients ("Salt and freshly ground black pepper" → two ingredients). These override "preserve
+  the original wording"),
   isOptional (true only if explicitly optional),
   firstUsedInStepOrdinal (0-based index into the steps array for the first step that uses this
   ingredient; null if the ingredient has no obvious first step).
