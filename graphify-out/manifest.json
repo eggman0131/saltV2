@@ -310,13 +310,13 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/authorRecipe.ts": {
-    "mtime": 1783864296.1419256,
-    "ast_hash": "c3a8bcd96b52e96538cbdc8df22626ce",
+    "mtime": 1784120145.1954188,
+    "ast_hash": "5379849aa06d600d632e0143153cb0bb",
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/canonicaliseRecipeIngredients.ts": {
-    "mtime": 1784039466.9840674,
-    "ast_hash": "942386001dad3c56843d222e3253c072",
+    "mtime": 1784116187.652411,
+    "ast_hash": "df0dd777a611eb0ce51d55c95d72bd68",
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/categoriseRecipe.ts": {
@@ -330,8 +330,8 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/chefChat.ts": {
-    "mtime": 1782689905.2109466,
-    "ast_hash": "a32b7cb99b83a5f371b733d317120b23",
+    "mtime": 1784120145.1956496,
+    "ast_hash": "07457f7cfd53f68b3c4c5083817f5d75",
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/embedText.ts": {
@@ -340,8 +340,8 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/extractRecipeFromUrl.ts": {
-    "mtime": 1783864296.1426227,
-    "ast_hash": "d20e6fad8aa2c8b35e543c392f44bdf8",
+    "mtime": 1784120145.1958647,
+    "ast_hash": "b4cafe30dab1a5aa6c70de2eb5e8d173",
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/generateCanonIcon.ts": {
@@ -525,7 +525,7 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/tests/flows/aiTimeoutGuard.test.ts": {
-    "mtime": 1784039759.824901,
+    "mtime": 1784046829.1610758,
     "ast_hash": "1ec674770691349243213c702b0b442f",
     "semantic_hash": ""
   },
@@ -1240,7 +1240,7 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/src/App.svelte": {
-    "mtime": 1784040451.4256163,
+    "mtime": 1784046829.1612887,
     "ast_hash": "5affca504910211f383d16b00c784ae2",
     "semantic_hash": ""
   },
@@ -1385,7 +1385,7 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/src/lib/recipeService.ts": {
-    "mtime": 1784038059.677522,
+    "mtime": 1784046829.1615596,
     "ast_hash": "f450789b2c80ff19f7d539b7a72c903e",
     "semantic_hash": ""
   },
@@ -1445,7 +1445,7 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/admin/AdminHomePage.svelte": {
-    "mtime": 1784039918.9072847,
+    "mtime": 1784046829.1617036,
     "ast_hash": "3ec021503114cef1aea608e9e3c1aee6",
     "semantic_hash": ""
   },
@@ -1545,7 +1545,7 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/index.ts": {
-    "mtime": 1784037104.468051,
+    "mtime": 1784046829.1621213,
     "ast_hash": "ef86edb658d48c94bd9126811eb0c3e2",
     "semantic_hash": ""
   },
@@ -1595,8 +1595,8 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/shopping/ShoppingListPage.svelte": {
-    "mtime": 1784038028.3161519,
-    "ast_hash": "0caea006620cd61798d69a1ec2f1c0ed",
+    "mtime": 1784116187.653814,
+    "ast_hash": "95adc3f085066baacf4f489c57515373",
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/shopping/ShoppingListRedirectPage.svelte": {
@@ -1915,7 +1915,7 @@
     "semantic_hash": ""
   },
   "packages/adapters/firebase-sync/src/index.ts": {
-    "mtime": 1784037104.468991,
+    "mtime": 1784046829.1739655,
     "ast_hash": "e5dd948226b1b650f16ab261ddf3658e",
     "semantic_hash": ""
   },
@@ -2125,13 +2125,13 @@
     "semantic_hash": ""
   },
   "packages/adapters/observability/src/server/index.ts": {
-    "mtime": 1783864296.1530564,
-    "ast_hash": "1f86a9c1528b2b4f240d9bae713fd902",
+    "mtime": 1784124175.7837005,
+    "ast_hash": "ddb1f394df527afe5d6d49776bb4348f",
     "semantic_hash": ""
   },
   "packages/adapters/observability/src/server/init.ts": {
-    "mtime": 1783864296.1534214,
-    "ast_hash": "2c791d674423bfd275cc2d415ad81b7d",
+    "mtime": 1784124170.1364584,
+    "ast_hash": "433e72aa7cf1186d239b4c64ceb7a45d",
     "semantic_hash": ""
   },
   "packages/adapters/observability/src/server/otlpWire.ts": {
@@ -2605,7 +2605,7 @@
     "semantic_hash": ""
   },
   "packages/domain/src/index.ts": {
-    "mtime": 1784039312.7507355,
+    "mtime": 1784046829.1741583,
     "ast_hash": "e9914aa682d43122f0d4c76d27bf0d8b",
     "semantic_hash": ""
   },
@@ -2830,7 +2830,7 @@
     "semantic_hash": ""
   },
   "packages/domain/src/schemas/index.ts": {
-    "mtime": 1784039320.494507,
+    "mtime": 1784046829.1754684,
     "ast_hash": "221d226f641b953f65f55f6cbe5957fd",
     "semantic_hash": ""
   },
@@ -3050,8 +3050,8 @@
     "semantic_hash": ""
   },
   "packages/domain/src/shoppingList/queries/groupItemsByAisle.ts": {
-    "mtime": 1781453441.8555236,
-    "ast_hash": "e57ab882c181abcd729121d858a35d0b",
+    "mtime": 1784116187.655308,
+    "ast_hash": "b3641763af0fe9fc4ac87a449f11d5c8",
     "semantic_hash": ""
   },
   "packages/domain/src/shoppingList/queries/groupItemsByRecipe.ts": {
@@ -3320,8 +3320,8 @@
     "semantic_hash": ""
   },
   "packages/domain/tests/shoppingList/groupItemsByAisle.test.ts": {
-    "mtime": 1781941198.088957,
-    "ast_hash": "c106ab1f1b967cc5283fa8e30fc4b20b",
+    "mtime": 1784116187.6561134,
+    "ast_hash": "6568a87c674915dcb8c81829ad84e214",
     "semantic_hash": ""
   },
   "packages/domain/tests/shoppingList/groupItemsByRecipe.test.ts": {
@@ -3405,7 +3405,7 @@
     "semantic_hash": ""
   },
   "packages/shared-types/src/index.ts": {
-    "mtime": 1784037104.4714553,
+    "mtime": 1784046829.1762216,
     "ast_hash": "0c5ac8b9fce2f3dade12fa39a4820fd1",
     "semantic_hash": ""
   },
@@ -3720,7 +3720,7 @@
     "semantic_hash": ""
   },
   "packages/ui-components/src/primitives/Combobox/Combobox.svelte": {
-    "mtime": 1784044286.092349,
+    "mtime": 1784046829.1764708,
     "ast_hash": "0608729fa1f0550814f624a5232d3d08",
     "semantic_hash": ""
   },
@@ -4555,7 +4555,7 @@
     "semantic_hash": ""
   },
   "packages/ui-components/tests/Combobox.test.ts": {
-    "mtime": 1784044337.4996479,
+    "mtime": 1784046829.1767337,
     "ast_hash": "0e3c22b93a439ec85abfe7f596e4bb0d",
     "semantic_hash": ""
   },
@@ -4935,8 +4935,8 @@
     "semantic_hash": ""
   },
   "docs/domain-implementation.md": {
-    "mtime": 1783947900.9867082,
-    "ast_hash": "ef9d46d0eb55ce6cbc4555007cba7fd3",
+    "mtime": 1784116187.6541517,
+    "ast_hash": "04f00325be2f767c0ae18b3a2dda5953",
     "semantic_hash": ""
   },
   "docs/e2e-test-spec.md": {
@@ -4975,8 +4975,8 @@
     "semantic_hash": ""
   },
   "docs/salt-architecture.md": {
-    "mtime": 1783844415.0670903,
-    "ast_hash": "7aac2a3eb27d819b2e9d44a5da22a0dd",
+    "mtime": 1784116187.654399,
+    "ast_hash": "fabdcfee74e0d81adc7e8b39a72e72aa",
     "semantic_hash": ""
   },
   "docs/visual-regression.md": {
@@ -5175,118 +5175,123 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/adapters/firestoreProductFormStore.ts": {
-    "mtime": 1784040451.4236555,
+    "mtime": 1784046829.1606092,
     "ast_hash": "7dd52b2fab816a3c4c86ef233ae29043",
     "semantic_hash": ""
   },
   "apps/web-pwa/src/lib/productFormService.ts": {
-    "mtime": 1784039484.2135038,
+    "mtime": 1784046829.1613703,
     "ast_hash": "2cf97ce4fae69c1da2754d8603068c6d",
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/admin/ProductFormEditPage.svelte": {
-    "mtime": 1784039648.113025,
-    "ast_hash": "4cc380560fdb510d8383ebd8a9ba9357",
+    "mtime": 1784116187.653057,
+    "ast_hash": "74d6336fc2f21c51f49740fe088b0d52",
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/admin/ProductFormsPage.svelte": {
-    "mtime": 1784044276.6654437,
-    "ast_hash": "f1be994f09a1318b5e8e862f963f3430",
+    "mtime": 1784116187.6533685,
+    "ast_hash": "d2e57a73dacab9491ef085645e5ed0b1",
     "semantic_hash": ""
   },
   "packages/adapters/firebase-sync/src/productFormSubscription.ts": {
-    "mtime": 1784037104.4691238,
+    "mtime": 1784046829.1740417,
     "ast_hash": "a8013aa1ee0fc60f7b9a8c41ac3896be",
     "semantic_hash": ""
   },
   "packages/domain/src/productForm/commands/createProductForm.ts": {
-    "mtime": 1784037104.4696536,
+    "mtime": 1784046829.1744194,
     "ast_hash": "08d78f407a26400d2cc319b8c65fe2c9",
     "semantic_hash": ""
   },
   "packages/domain/src/productForm/commands/updateProductForm.ts": {
-    "mtime": 1784037104.469762,
+    "mtime": 1784046829.1745076,
     "ast_hash": "337bac494889cd950b95ecf4d0fd0a6f",
     "semantic_hash": ""
   },
   "packages/domain/src/productForm/entities/ProductForm.ts": {
-    "mtime": 1784039230.388918,
+    "mtime": 1784046829.1746066,
     "ast_hash": "d8cdd437236dd6abaf7e34e57e124431",
     "semantic_hash": ""
   },
   "packages/domain/src/productForm/index.ts": {
-    "mtime": 1784039297.258997,
+    "mtime": 1784046829.1746914,
     "ast_hash": "4ca459bc3e5621ccc9e9262b50235a8f",
     "semantic_hash": ""
   },
   "packages/domain/src/productForm/ports/IdGenerator.ts": {
-    "mtime": 1784037104.4702456,
+    "mtime": 1784046829.1747875,
     "ast_hash": "90926ed4de6f299cc2029082f9af992d",
     "semantic_hash": ""
   },
   "packages/domain/src/productForm/queries/convertYield.ts": {
-    "mtime": 1784037104.4704096,
+    "mtime": 1784046829.174912,
     "ast_hash": "82b3c9616414af36e6b9047eaa8bfae7",
     "semantic_hash": ""
   },
   "packages/domain/src/productForm/queries/formParentCount.ts": {
-    "mtime": 1784037752.5393682,
+    "mtime": 1784046829.1750755,
     "ast_hash": "7202ba043da5361b3fa3b799e5f77259",
     "semantic_hash": ""
   },
   "packages/domain/src/productForm/queries/maxCountWinners.ts": {
-    "mtime": 1784037755.6758378,
+    "mtime": 1784046829.1751578,
     "ast_hash": "5458792e4fc60124d84ab9ea8a0da4f6",
     "semantic_hash": ""
   },
   "packages/domain/src/productForm/queries/resolveProductForm.ts": {
-    "mtime": 1784037104.470526,
+    "mtime": 1784046829.1752388,
     "ast_hash": "449a6f3fd427b5706d08fb27fe257571",
     "semantic_hash": ""
   },
   "packages/domain/src/schemas/productForm.ts": {
-    "mtime": 1784039227.4796178,
+    "mtime": 1784046829.1755831,
     "ast_hash": "8b9be4a9483305b1e58cdb0536b45b33",
     "semantic_hash": ""
   },
   "packages/domain/tests/productForm/formQuantity.test.ts": {
-    "mtime": 1784037794.7811065,
-    "ast_hash": "a4c7e4c7e474ea6717ab70a439ddef31",
+    "mtime": 1784116187.6555507,
+    "ast_hash": "99174e5cb7a487a76da265f04ab98db9",
     "semantic_hash": ""
   },
   "packages/domain/tests/productForm/productForm.schema.test.ts": {
-    "mtime": 1784037104.4711788,
+    "mtime": 1784046829.1759312,
     "ast_hash": "f6a535d98bc6b671e91c5c14feb20e45",
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/arbitrateProductForm.ts": {
-    "mtime": 1784041843.0984218,
-    "ast_hash": "5b6182a5ae44438fc42330cf4b84ac4a",
+    "mtime": 1784124199.6345062,
+    "ast_hash": "3c256a2a225c1041425dfca76d84e93c",
     "semantic_hash": ""
   },
   "apps/cloud-functions/tests/flows/canonicaliseRecipeIngredients.proposal.test.ts": {
-    "mtime": 1784040451.424935,
-    "ast_hash": "78d53ba2952305ee6a0fd7ca6f45cdf5",
+    "mtime": 1784116187.652714,
+    "ast_hash": "230ce9aeff49c3b76710d4f3b795abb6",
     "semantic_hash": ""
   },
   "packages/domain/src/productForm/commands/confirmProductForm.ts": {
-    "mtime": 1784039239.0717993,
+    "mtime": 1784046829.1743073,
     "ast_hash": "670945411cd770af74181a26256b35a3",
     "semantic_hash": ""
   },
   "packages/domain/src/productForm/queries/decideProductFormProposal.ts": {
-    "mtime": 1784041816.8937917,
-    "ast_hash": "5197e5644a1d9bebb1613fc5454a815c",
+    "mtime": 1784116187.6546783,
+    "ast_hash": "7b815d4cba91bfa85eb4a58dc86c2ccc",
     "semantic_hash": ""
   },
   "packages/domain/src/schemas/productFormArbitration.ts": {
-    "mtime": 1784041805.5137968,
-    "ast_hash": "a266c382743e64070a0ddd1f064cb48b",
+    "mtime": 1784116187.6548681,
+    "ast_hash": "55605bb9408cc54697b976d1e7a7f682",
     "semantic_hash": ""
   },
   "packages/domain/tests/productForm/productFormProposal.test.ts": {
-    "mtime": 1784041858.3270924,
-    "ast_hash": "d987ebee06b6a3a9eab25d00d5900723",
+    "mtime": 1784116187.6557434,
+    "ast_hash": "deee445b4bd67a954dfadbfe26037a1c",
+    "semantic_hash": ""
+  },
+  "apps/cloud-functions/src/flows/ingredientConversions.ts": {
+    "mtime": 1784120145.1961064,
+    "ast_hash": "d94eae65d742ec16fd186f057278761e",
     "semantic_hash": ""
   }
 }

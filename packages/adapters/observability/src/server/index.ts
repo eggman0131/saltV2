@@ -12,6 +12,7 @@ export {
   flushServerObservability,
   startSpan,
   setActiveSpanName,
+  setActiveSpanAttributes,
   runWithExtractedTraceContext,
   runWithSuppliedTraceContext,
   activeTraceparent,

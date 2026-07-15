@@ -213,6 +213,25 @@ export function setActiveSpanName(name: string): void {
   trace.getActiveSpan()?.updateName(trimmed);
 }
 
+// Attach attributes to the currently-active OTel span (the Genkit flow span
+// inside a flow body — same target as setActiveSpanName). Use to record a flow's
+// inputs and decision so the trace is self-explaining in the viewer rather than
+// just "it ran". Best-effort like the rest of these helpers: no-op when no span
+// is active (Firebase telemetry disabled in the emulator) and never throws
+// (Rule 10). `undefined` values are dropped so optional/nullable fields can be
+// passed straight through without a valid-AttributeValue cast at every call site.
+export function setActiveSpanAttributes(
+  attributes: Record<string, string | number | boolean | undefined>,
+): void {
+  const span = trace.getActiveSpan();
+  if (!span) return;
+  const clean: Record<string, string | number | boolean> = {};
+  for (const [key, value] of Object.entries(attributes)) {
+    if (value !== undefined) clean[key] = value;
+  }
+  span.setAttributes(clean);
+}
+
 // Start a span on the globally-registered tracer (Firebase's, when telemetry is
 // on). Inherits the active OTel context unless an explicit parent span is given,
 // in which case the new span is nested under that parent (the cf-path match

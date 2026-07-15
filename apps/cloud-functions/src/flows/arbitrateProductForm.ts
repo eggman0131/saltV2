@@ -6,7 +6,7 @@ import {
   ProductFormProposalSchema,
   type ProductFormArbitrationRequest,
 } from '@salt/domain/schemas';
-import { setActiveSpanName } from '@salt/observability/server';
+import { setActiveSpanName, setActiveSpanAttributes } from '@salt/observability/server';
 import { ai } from '../genkit.js';
 import { resolveModel } from '../ai/resolveModel.js';
 
@@ -33,8 +33,35 @@ export const arbitrateProductFormFlow = ai.defineFlow(
       config: { temperature: 0 },
     });
     const output = result.output;
-    if (!output) return { kind: 'none' as const };
-    return decideProductFormProposal(output);
+    if (!output) {
+      // No structured output at all — record it so a `none` here is
+      // distinguishable from a model that answered but wasn't a form.
+      setActiveSpanAttributes({
+        'productForm.ingredient': req.ingredientName,
+        'productForm.candidateCount': req.candidates.length,
+        'productForm.aiOutput': 'missing',
+        'productForm.decision': 'none',
+      });
+      return { kind: 'none' as const };
+    }
+    const proposal = decideProductFormProposal(output);
+    // Record BOTH the raw AI answer and the mapped decision, so a `none` reveals
+    // WHY: a genuine action/none, or a `component` the domain gate rejected for a
+    // missing/invalid field (the interesting bug case). All model-generated or
+    // catalog names — no free-form user input to scrub (Rule 10 / obs conventions).
+    setActiveSpanAttributes({
+      'productForm.ingredient': req.ingredientName,
+      'productForm.candidateCount': req.candidates.length,
+      'productForm.decision': proposal.kind,
+      'productForm.ai.modifierKind': output.modifier_kind,
+      'productForm.ai.parentName': output.parent_name ?? '(null)',
+      'productForm.ai.matcher': output.matcher ?? '(null)',
+      'productForm.ai.label': output.label ?? '(null)',
+      'productForm.ai.formUnit': output.form_unit ?? '(null)',
+      'productForm.ai.amountPerParent': output.amount_per_parent ?? undefined,
+      'productForm.ai.reasoning': output.reasoning,
+    });
+    return proposal;
   },
 );
 
