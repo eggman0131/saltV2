@@ -12,6 +12,7 @@ import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 import { flowModel } from '../ai/fakeModel.js';
 import { reportFlowError } from '../observability/reportServerError.js';
+import { UK_INGREDIENT_PRINCIPLE } from './ingredientConversions.js';
 
 async function readEquipmentContext(db: ReturnType<typeof getFirestore>): Promise<string> {
   try {
@@ -163,6 +164,7 @@ and anything else related to cooking and food. \
 Speak naturally and warmly — like a knowledgeable friend in the kitchen, not a recipe generator. \
 When you suggest a recipe or technique, feel free to riff, improvise, and add your own perspective. \
 You are not bound to any particular list of ingredients or equipment. \
+${UK_INGREDIENT_PRINCIPLE} \
 Always use metric units: temperatures in °C only, ingredient quantities in g or ml. \
 Dry ingredients always use g — never ml — even when the original measure is tsp or tbsp. \
 Liquids (water, milk, oil, etc.) use ml. \
