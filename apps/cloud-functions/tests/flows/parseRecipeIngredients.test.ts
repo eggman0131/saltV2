@@ -312,6 +312,100 @@ describe('parseRecipeIngredients — displayText threading', () => {
     expect(result[0].items[0].parsed.displayText).toBe('2 cloves');
   });
 
+  it('keeps the count with unit null for bought-whole discrete proteins (egg parts, poultry joints, whole fish)', async () => {
+    // Egg parts, poultry joints, and whole fish are bought and used as whole discrete pieces:
+    // the shopper's COUNT is kept as quantity, unit is null, and the gram estimate rides in
+    // displayText. The flow threads whatever the model returns for these.
+    mockGenerate.mockResolvedValue({
+      output: aiOutput([
+        {
+          name: null,
+          items: [
+            simpleIngredient({
+              rawText: '3 egg whites',
+              quantity: { type: 'single', value: 3 },
+              unit: null,
+              item: 'egg whites',
+              displayText: 'about 105g',
+            }),
+            simpleIngredient({
+              rawText: '6 chicken thighs',
+              quantity: { type: 'single', value: 6 },
+              unit: null,
+              item: 'chicken thighs',
+              displayText: 'about 720g',
+            }),
+            simpleIngredient({
+              rawText: '2 whole sea bass',
+              quantity: { type: 'single', value: 2 },
+              unit: null,
+              item: 'sea bass',
+              displayText: 'about 400g',
+            }),
+          ],
+        },
+      ]),
+    });
+
+    const result = await (parseRecipeIngredientsFlow as Function)({
+      rawText: '3 egg whites\n6 chicken thighs\n2 whole sea bass',
+    });
+
+    const [eggWhites, thighs, fish] = result[0].items;
+
+    expect(eggWhites.parsed.quantity).toEqual({ type: 'single', value: 3 });
+    expect(eggWhites.parsed.unit).toBeNull();
+    expect(eggWhites.parsed.displayText).toBe('about 105g');
+
+    expect(thighs.parsed.quantity).toEqual({ type: 'single', value: 6 });
+    expect(thighs.parsed.unit).toBeNull();
+    expect(thighs.parsed.displayText).toBe('about 720g');
+
+    expect(fish.parsed.quantity).toEqual({ type: 'single', value: 2 });
+    expect(fish.parsed.unit).toBeNull();
+    expect(fish.parsed.displayText).toBe('about 400g');
+  });
+
+  it('still flattens ordinary count/pack ingredients (onions, rashers) to metric grams', async () => {
+    // The keep-as-count exception is narrow: everything outside bought-whole discrete proteins
+    // continues to flatten to grams with the count in displayText.
+    mockGenerate.mockResolvedValue({
+      output: aiOutput([
+        {
+          name: null,
+          items: [
+            simpleIngredient({
+              rawText: '2 onions',
+              quantity: { type: 'single', value: 300 },
+              unit: 'g',
+              item: 'onions',
+              displayText: 'about 2 medium',
+            }),
+            simpleIngredient({
+              rawText: '4 rashers bacon',
+              quantity: { type: 'single', value: 100 },
+              unit: 'g',
+              item: 'bacon',
+              displayText: 'about 4 rashers',
+            }),
+          ],
+        },
+      ]),
+    });
+
+    const result = await (parseRecipeIngredientsFlow as Function)({
+      rawText: '2 onions\n4 rashers bacon',
+    });
+
+    const [onions, bacon] = result[0].items;
+
+    expect(onions.parsed.quantity).toEqual({ type: 'single', value: 300 });
+    expect(onions.parsed.unit).toBe('g');
+
+    expect(bacon.parsed.quantity).toEqual({ type: 'single', value: 100 });
+    expect(bacon.parsed.unit).toBe('g');
+  });
+
   it('keeps quantity and unit null for genuinely unquantifiable items', async () => {
     mockGenerate.mockResolvedValue({
       output: aiOutput([
@@ -419,16 +513,30 @@ describe('parseRecipeIngredients — prompt construction', () => {
     expect(system).toContain('verbatim');
   });
 
-  it('mandates converting count/pack ingredients to metric in the system prompt', async () => {
+  it('mandates converting ordinary count/pack ingredients to metric in the system prompt', async () => {
     mockGenerate.mockResolvedValue({ output: aiOutput([{ name: null, items: [] }]) });
 
     await (parseRecipeIngredientsFlow as Function)({ rawText: '2 cloves garlic' });
 
     const { system } = mockGenerate.mock.calls[0]![0];
-    // New always-metric mandate: count/pack ingredients are converted, not left unit:null.
-    expect(system).toContain('EVERY quantified ingredient must be converted to metric');
+    // Ordinary count/pack ingredients (cloves, rashers, tins, etc.) still flatten to metric.
+    expect(system).toContain('Convert count/item-based and pack-based ingredients to metric');
     expect(system).toContain('1 clove garlic ≈ 3g');
-    // unit:null is now reserved for genuinely unquantifiable items only.
+    // unquantifiable items stay quantity+unit null.
     expect(system).toContain('genuinely unquantifiable');
+  });
+
+  it('carves out bought-whole discrete proteins as count with unit null in the system prompt', async () => {
+    mockGenerate.mockResolvedValue({ output: aiOutput([{ name: null, items: [] }]) });
+
+    await (parseRecipeIngredientsFlow as Function)({ rawText: '3 egg whites' });
+
+    const { system } = mockGenerate.mock.calls[0]![0];
+    // The narrow keep-as-count exception must be present in the prompt.
+    expect(system).toContain('bought-whole discrete proteins');
+    expect(system).toContain('set unit to');
+    // Poultry joints and egg parts are named as in-scope for the exception.
+    expect(system).toContain('thighs');
+    expect(system).toContain('whites');
   });
 });
