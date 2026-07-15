@@ -13,6 +13,7 @@ import { canonicaliseRecipeIngredientsFlow } from './canonicaliseRecipeIngredien
 import { parseRecipeIngredientsFlow } from './parseRecipeIngredients.js';
 import { resolveModel } from '../ai/resolveModel.js';
 import { CATEGORY_TAG_RULES, normaliseTags } from './categoryTags.js';
+import { INGREDIENT_SUBSTITUTION_RULES } from './ingredientConversions.js';
 
 // SSRF-hardened URL import (recipe URL import epic, Phases 1 & 3).
 //
@@ -371,35 +372,7 @@ const CONVERSION_RULES = `## Conversion rules (apply to EVERYTHING)
 - Metric only: convert all quantities to metric. Volumes in millilitres/litres, weights in grams/kilograms. \
 Convert cups, sticks, ounces, pounds, fluid ounces, tablespoons and teaspoons. Temperatures in °C only — \
 never Fahrenheit; convert and round sensibly (e.g. 350°F → 180°C).
-- British spelling and terms throughout. Always translate American ingredient names and terms to British:
-  - cilantro (leaf) → coriander
-  - eggplant → aubergine
-  - zucchini → courgette
-  - scallion / green onion → spring onion
-  - arugula → rocket
-  - shrimp → prawns
-  - ground beef → beef mince (likewise ground pork/lamb → pork/lamb mince)
-  - all-purpose flour → plain flour
-  - self-rising flour → self-raising flour
-  - confectioners' / powdered sugar → icing sugar
-  - superfine sugar → caster sugar
-  - granulated sugar → caster sugar (unless it must stay granulated)
-  - light/dark brown sugar → light/dark soft brown sugar
-  - heavy cream → double cream; half-and-half / light cream → single cream
-  - whole milk stays whole milk; "milk" stays milk
-  - beets → beetroot
-  - rutabaga → swede
-  - snow peas → mangetout
-  - bell pepper → pepper (e.g. red pepper)
-  - chickpeas / garbanzo beans → chickpeas
-  - cornstarch → cornflour
-  - molasses → treacle (black treacle for blackstrap)
-  - golden raisins → sultanas
-  - baking soda → bicarbonate of soda
-  - shredded/desiccated coconut → desiccated coconut
-  - jelly → jam; jello → jelly
-  - skillet → frying pan; broil → grill; can → tin
-  - paper towel → kitchen paper; plastic wrap → cling film; parchment paper → baking paper
+${INGREDIENT_SUBSTITUTION_RULES}
 - Use British spelling everywhere (e.g. "flavour", "colour", "caramelise").`;
 
 const FIELD_RULES = `## Fields

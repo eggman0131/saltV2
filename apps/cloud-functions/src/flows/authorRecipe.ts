@@ -12,6 +12,7 @@ import { canonicaliseRecipeIngredientsFlow } from './canonicaliseRecipeIngredien
 import { parseRecipeIngredientsFlow } from './parseRecipeIngredients.js';
 import { resolveModel } from '../ai/resolveModel.js';
 import { CATEGORY_TAG_RULES, normaliseTags } from './categoryTags.js';
+import { INGREDIENT_SUBSTITUTION_RULES } from './ingredientConversions.js';
 
 const OutputSchema = z.custom<RecipeDoc>();
 
@@ -239,9 +240,11 @@ Given a cooking conversation between a user and a chef, extract and structure a 
 - servings: integer portions, or null if not stated.
 - totalTimeMinutes/prepTimeMinutes/cookTimeMinutes: integers in minutes, or null.
 ${CATEGORY_TAG_RULES}
+${INGREDIENT_SUBSTITUTION_RULES}
 - ingredientGroups: group ingredients by course/stage (null name = default group).
-  Each ingredient: rawText (verbatim as stated — preserve the original wording including any
-  tsp/tbsp/cup measures the chef used), isOptional (true only if explicitly optional),
+  Each ingredient: rawText (preserve the original wording and any tsp/tbsp/cup measures the chef
+  used, but always use the British ingredient NAMES above — e.g. "double cream" not "heavy cream"),
+  isOptional (true only if explicitly optional),
   firstUsedInStepOrdinal (0-based index into the steps array for the first step that uses this
   ingredient; null if the ingredient has no obvious first step).
 - steps: numbered method steps. Each step: text (clear instruction), timerMinutes (integer or null),
