@@ -337,7 +337,7 @@ This document defines the repeatable pattern for domain modules:
 - UI calling domain, not infrastructure
 
 Canon is the worked example. The same pattern applies to recipe, shopping,
-members, and mealPlan.
+members, mealPlan, and productForm.
 
 The `weather` module is a lightweight variant — pure classification utilities
 (`weatherIcon`, `classifyEatingMood`, `temperatureBand`, `weatherSeverity`,
