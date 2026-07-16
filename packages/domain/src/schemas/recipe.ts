@@ -145,6 +145,16 @@ export const RecipeSchema = z.object({
   // CanonItem "hidden" thumbnail sentinel, but as its own boolean so
   // RecipeImageSchema stays a real image (url + source), never a sentinel.
   imageHidden: z.boolean().optional(),
+  // Art-direction brief for the hero: a prose paragraph describing what the
+  // plated dish looks like and how it reads in mood/season/cuisine, authored by
+  // the describeRecipeScene flow from the WHOLE recipe (ingredients and steps
+  // included) and consumed by the onRecipeWritten image branch, which persists it
+  // alongside the image it produced. Present on the doc → used verbatim; absent →
+  // authored on the next generation. `.optional()` (NOT `.default(null)` — that
+  // idiom is for content fields like producesCanonId): this is a hero-image
+  // control field like its neighbours above, and recipes written before it
+  // existed simply lack it and must keep parsing (back-compat, #240).
+  imageBrief: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

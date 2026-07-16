@@ -200,6 +200,12 @@ export type {
   CategoriseRecipeOutput,
 } from './categoriseRecipe.js';
 
+export {
+  DescribeRecipeSceneInputSchema,
+  DescribeRecipeSceneOutputSchema,
+} from './describeRecipeScene.js';
+export type { DescribeRecipeSceneInput, DescribeRecipeSceneOutput } from './describeRecipeScene.js';
+
 export { AuthorRecipeInputSchema, LibrarianOutputSchema } from './authorRecipe.js';
 export type {
   AuthorRecipeInput,
