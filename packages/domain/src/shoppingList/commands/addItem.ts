@@ -3,6 +3,7 @@ import type { DomainError, ReadResult } from '@salt/shared-types';
 import type { MatchState, ShoppingListItem } from '../entities/ShoppingListItem.js';
 import type { SourceRef } from '../entities/SourceRef.js';
 import type { IdGenerator } from '../ports/IdGenerator.js';
+import type { FormDemand } from '../../productForm/index.js';
 
 export interface AddItemInput {
   readonly rawText: string;
@@ -15,6 +16,12 @@ export interface AddItemInput {
   readonly matchState?: MatchState;
   readonly amount?: number;
   readonly unit?: string;
+  /**
+   * Per-form demand for a product-form parent row (issue #501) — one entry per
+   * form of this parent the source recipe demanded, each with its own unrounded
+   * parent-count. Omitted for every non-product-form add.
+   */
+  readonly formDemand?: readonly FormDemand[];
   /** Flag this item for verification on the list (recipe-add "check" rows). Defaults false. */
   readonly needsCheck?: boolean;
 }
@@ -45,6 +52,7 @@ export function addItem(
     ...base,
     ...(input.amount !== undefined ? { amount: input.amount } : {}),
     ...(input.unit !== undefined ? { unit: input.unit } : {}),
+    ...(input.formDemand !== undefined ? { formDemand: input.formDemand } : {}),
   };
   return success([...items, newItem]);
 }
