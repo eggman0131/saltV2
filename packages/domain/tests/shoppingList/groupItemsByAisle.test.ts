@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { groupItemsByAisle } from '@salt/domain';
-import type { ShoppingListItem } from '@salt/domain';
+import type { ShoppingListItem, FormDemand } from '@salt/domain';
 import type { CanonInfo, AisleInfo } from '../../src/shoppingList/queries/groupItemsByAisle.js';
 
 const NOW = '2026-01-01T00:00:00.000Z';
@@ -307,15 +307,25 @@ describe('groupItemsByAisle — combining recipe rows (#184)', () => {
   });
 });
 
-describe('groupItemsByAisle — product-form parent aggregation (#501)', () => {
+describe('groupItemsByAisle — product-form parent aggregation (#501, #518)', () => {
   const recipeSource = (recipeId: string) => ({
     kind: 'recipe' as const,
     recipeId,
     servings: 2,
     label: recipeId,
   });
-  // A form contributor: amount is a parent count, unit is the 'count' sentinel.
-  const form = (id: string, recipeId: string, canonId: string, count: number, rawText: string) =>
+  // A LEGACY form contributor: written before `formDemand` existed (#501), so it
+  // carries only its collapsed, already-rounded per-recipe parent count and no
+  // per-form breakdown. Its raw demand is unrecoverable, so such a row can only
+  // take the old lossy MAX-across-recipes rule — the degrade path. Every test
+  // using this helper is pinning that back-compat behaviour, NOT the current rule.
+  const legacyForm = (
+    id: string,
+    recipeId: string,
+    canonId: string,
+    count: number,
+    rawText: string,
+  ) =>
     makeItem(id, {
       matchState: 'matched',
       canonId,
@@ -323,6 +333,27 @@ describe('groupItemsByAisle — product-form parent aggregation (#501)', () => {
       amount: count,
       unit: 'count',
       rawText,
+    });
+  // A CURRENT form contributor (#518): same shape, plus the per-form `formDemand`
+  // breakdown recipeService now writes. `amount` stays the within-recipe collapsed
+  // MAX (the row's own display value); `demand` carries each form's UNROUNDED
+  // parent-count, which is what the cross-recipe aggregation actually sums.
+  const form = (
+    id: string,
+    recipeId: string,
+    canonId: string,
+    count: number,
+    rawText: string,
+    demand: readonly FormDemand[],
+  ) =>
+    makeItem(id, {
+      matchState: 'matched',
+      canonId,
+      sources: [recipeSource(recipeId)],
+      amount: count,
+      unit: 'count',
+      rawText,
+      formDemand: demand,
     });
   // A whole/direct contributor: parent demanded as itself, no g/ml unit.
   const whole = (id: string, recipeId: string, canonId: string, amount: number, rawText: string) =>
@@ -336,51 +367,30 @@ describe('groupItemsByAisle — product-form parent aggregation (#501)', () => {
   const canonMap = makeCanonMap([
     { id: 'c-lime', name: 'Lime', aisleId: 'aisle-1' },
     { id: 'c-chicken', name: 'Whole Chicken', aisleId: 'aisle-1' },
+    { id: 'c-egg', name: 'Free Range Egg', aisleId: 'aisle-1' },
   ]);
 
   const onlyRow = (items: ShoppingListItem[]) =>
     groupItemsByAisle(items, canonMap, AISLES).aisles[0].rows[0];
 
   it('Lime headline: Σwhole(2) + MAX(juice 1, zest 1) = 3', () => {
+    // Two recipes, but DISTINCT forms (juice vs zest) → they max to 1, and the two
+    // whole limes sum on top. One lime supplies both its juice and its zest.
     const row = onlyRow([
       whole('w', 'a', 'c-lime', 2, '2 limes'),
-      form('j', 'a', 'c-lime', 1, '30ml lime juice'),
-      form('z', 'b', 'c-lime', 1, 'zest of one lime'),
+      form('j', 'a', 'c-lime', 1, '30ml lime juice', [{ formId: 'pf-juice', parentCount: 1 }]),
+      form('z', 'b', 'c-lime', 1, 'zest of one lime', [{ formId: 'pf-zest', parentCount: 1 }]),
     ]);
     expect(row.combined).toBe(true);
     expect(row.subtotals).toEqual([{ unit: 'count', amount: 3 }]);
   });
 
-  it('cross-recipe parts do NOT double-count: MAX(thighs 2, drumsticks 1) = 2', () => {
-    const row = onlyRow([
-      form('t', 'a', 'c-chicken', 2, '4 chicken thighs'),
-      form('d', 'b', 'c-chicken', 1, '2 chicken drumsticks'),
-    ]);
-    expect(row.subtotals).toEqual([{ unit: 'count', amount: 2 }]);
-  });
-
   it('whole + part mix: Σwhole(2) + MAX(thighs 2) = 4 in one ×N bucket', () => {
     const row = onlyRow([
       whole('w', 'a', 'c-chicken', 2, '2 whole chickens'),
-      form('t', 'b', 'c-chicken', 2, '4 chicken thighs'),
+      form('t', 'b', 'c-chicken', 2, '4 chicken thighs', [{ formId: 'pf-thigh', parentCount: 2 }]),
     ]);
     expect(row.subtotals).toEqual([{ unit: 'count', amount: 4 }]);
-  });
-
-  it('single-recipe multi-part (already MAX-collapsed at write) stays ×2, never ×3', () => {
-    // buildRecipeAddPlan collapses juice/zest of one recipe to one row before the
-    // list is written; the surviving contributor carries the MAX count (2). Pin
-    // that the display aggregation of that lone count contributor is 2, not 3.
-    const row = onlyRow([form('t', 'a', 'c-chicken', 2, '4 chicken thighs and 2 drumsticks')]);
-    expect(row.subtotals).toEqual([{ unit: 'count', amount: 2 }]);
-  });
-
-  it('pre-rounded parent count (3 thighs, yield 2/bird → 2) passes through as ×2', () => {
-    const row = onlyRow([
-      form('t', 'a', 'c-chicken', 2, '3 chicken thighs'),
-      form('d', 'b', 'c-chicken', 1, '1 drumstick'),
-    ]);
-    expect(row.subtotals).toEqual([{ unit: 'count', amount: 2 }]);
   });
 
   it('a row with no form contributor keeps plain per-unit behaviour (no count merge)', () => {
@@ -395,7 +405,7 @@ describe('groupItemsByAisle — product-form parent aggregation (#501)', () => {
 
   it('form + g/ml contributor degrades to separate buckets (count first)', () => {
     const row = onlyRow([
-      form('t', 'a', 'c-chicken', 2, '4 chicken thighs'),
+      form('t', 'a', 'c-chicken', 2, '4 chicken thighs', [{ formId: 'pf-thigh', parentCount: 2 }]),
       makeItem('g', {
         matchState: 'matched',
         canonId: 'c-chicken',
@@ -408,6 +418,263 @@ describe('groupItemsByAisle — product-form parent aggregation (#501)', () => {
       { unit: 'count', amount: 2 },
       { unit: 'g', amount: 300 },
     ]);
+  });
+});
+
+// The three headline staging cases (#518), driven end-to-end through the display
+// aggregation with the `formDemand` recipeService now writes. Each pins a distinct
+// half of the rule, and each was WRONG before #518.
+describe('groupItemsByAisle — #518 headline cases (same form sums, distinct forms max)', () => {
+  const recipeSource = (recipeId: string) => ({
+    kind: 'recipe' as const,
+    recipeId,
+    servings: 2,
+    label: recipeId,
+  });
+  const form = (
+    id: string,
+    recipeId: string,
+    canonId: string,
+    count: number,
+    rawText: string,
+    demand: readonly FormDemand[],
+  ) =>
+    makeItem(id, {
+      matchState: 'matched',
+      canonId,
+      sources: [recipeSource(recipeId)],
+      amount: count,
+      unit: 'count',
+      rawText,
+      formDemand: demand,
+    });
+  const whole = (id: string, recipeId: string, canonId: string, amount: number, rawText: string) =>
+    makeItem(id, {
+      matchState: 'matched',
+      canonId,
+      sources: [recipeSource(recipeId)],
+      amount,
+      rawText,
+    });
+  const canonMap = makeCanonMap([
+    { id: 'c-lime', name: 'Lime', aisleId: 'aisle-1' },
+    { id: 'c-chicken', name: 'Whole Chicken', aisleId: 'aisle-1' },
+    { id: 'c-egg', name: 'Free Range Egg', aisleId: 'aisle-1' },
+  ]);
+  const onlyRow = (items: ShoppingListItem[]) =>
+    groupItemsByAisle(items, canonMap, AISLES).aisles[0].rows[0];
+
+  it('Lime ×5 — zest 10 g + 15 g is the SAME form in two recipes, so it SUMS', () => {
+    // Recipe A wants 10 g of zest (2 limes at 5 g/lime), recipe B wants 15 g
+    // (3 limes). Same form → 25 g of zest → 5 limes. The old rule MAXed to 3 and
+    // sent the shopper home short.
+    const row = onlyRow([
+      form('a', 'a', 'c-lime', 2, '10 g lime zest', [{ formId: 'pf-lime-zest', parentCount: 2 }]),
+      form('b', 'b', 'c-lime', 3, '15 g lime zest', [{ formId: 'pf-lime-zest', parentCount: 3 }]),
+    ]);
+    expect(row.subtotals).toEqual([{ unit: 'count', amount: 5 }]);
+  });
+
+  it('Free Range Egg ×4 — yolks 2+2 SUM to 4, whites 3 MAX against them', () => {
+    // Both rules in one row. Recipe A: 2 yolks. Recipe B: 3 whites + 2 yolks,
+    // already collapsed at write to the MAX row (count 3) carrying BOTH forms'
+    // demand. Yolks sum across recipes to 4; whites are 3; MAX(4, 3) = 4 eggs.
+    // The old rule reported MAX(2, 3) = 3.
+    const row = onlyRow([
+      form('a', 'a', 'c-egg', 2, '2 egg yolks', [{ formId: 'pf-egg-yolk', parentCount: 2 }]),
+      form('b', 'b', 'c-egg', 3, '3 egg whites, 2 egg yolks', [
+        { formId: 'pf-egg-white', parentCount: 3 },
+        { formId: 'pf-egg-yolk', parentCount: 2 },
+      ]),
+    ]);
+    expect(row.subtotals).toEqual([{ unit: 'count', amount: 4 }]);
+  });
+
+  it('Whole Chicken ×5 — breasts 2 MAX against thighs 4+6 summed', () => {
+    // Recipe C: 2 breasts (1 bird at 2 breasts/bird) + 4 thighs (2 birds at
+    // 2 thighs/bird), collapsed at write to the MAX row (count 2) carrying both.
+    // Recipe D: 6 thighs (3 birds). Thighs are the SAME form across C and D →
+    // 2 + 3 = 5 birds; breasts stay 1; MAX(1, 5) = 5.
+    const row = onlyRow([
+      form('c', 'c', 'c-chicken', 2, '2 chicken breasts, 4 chicken thighs', [
+        { formId: 'pf-breast', parentCount: 1 },
+        { formId: 'pf-thigh', parentCount: 2 },
+      ]),
+      form('d', 'd', 'c-chicken', 3, '6 chicken thighs', [{ formId: 'pf-thigh', parentCount: 3 }]),
+    ]);
+    expect(row.subtotals).toEqual([{ unit: 'count', amount: 5 }]);
+  });
+
+  it('Whole Chicken ×6 — a whole bird on the same list SUMS on top of the ×5', () => {
+    // Guards the "bought for its parts can't also be the roast" half: adding
+    // recipe C's own `1 whole chicken` to the case above gives 1 + 5 = 6, in ONE
+    // ×N bucket. This is why the staging runbook's recipe C cannot show ×5.
+    const row = onlyRow([
+      form('c', 'c', 'c-chicken', 2, '2 chicken breasts, 4 chicken thighs', [
+        { formId: 'pf-breast', parentCount: 1 },
+        { formId: 'pf-thigh', parentCount: 2 },
+      ]),
+      whole('w', 'c', 'c-chicken', 1, '1 whole chicken'),
+      form('d', 'd', 'c-chicken', 3, '6 chicken thighs', [{ formId: 'pf-thigh', parentCount: 3 }]),
+    ]);
+    expect(row.subtotals).toEqual([{ unit: 'count', amount: 6 }]);
+  });
+
+  it('rounds ONCE on the summed demand: 6 g + 6 g of zest = 3 limes, not 2 + 2 = 4', () => {
+    // The round-once rule through the full display path, at a 4 g/lime yield.
+    // Each recipe's 6 g is 1.5 limes and shows ×2 on its own row (Math.round(1.5)),
+    // but the demand sums raw to 3.0 and rounds once to 3. Summing the rows'
+    // DISPLAYED amounts — which is what a naive reading of the list would do —
+    // buys 4. This is exactly why `formDemand` stores the unrounded value.
+    const row = onlyRow([
+      form('a', 'a', 'c-lime', 2, '6 g lime zest', [{ formId: 'pf-lime-zest', parentCount: 1.5 }]),
+      form('b', 'b', 'c-lime', 2, '6 g lime zest', [{ formId: 'pf-lime-zest', parentCount: 1.5 }]),
+    ]);
+    expect(row.subtotals).toEqual([{ unit: 'count', amount: 3 }]);
+  });
+});
+
+// Back-compat lock. `formDemand` is additive and optional, so a list written
+// before #518 has contributors that carry only a collapsed per-recipe count. Those
+// rows CANNOT be re-derived (the per-form breakdown is gone) and must keep their
+// old MAX number rather than change under the user. A list self-heals when its
+// recipes are re-added; there is no migration.
+describe('groupItemsByAisle — legacy degrade path (items written before #518)', () => {
+  const recipeSource = (recipeId: string) => ({
+    kind: 'recipe' as const,
+    recipeId,
+    servings: 2,
+    label: recipeId,
+  });
+  const legacyForm = (
+    id: string,
+    recipeId: string,
+    canonId: string,
+    count: number,
+    rawText: string,
+  ) =>
+    makeItem(id, {
+      matchState: 'matched',
+      canonId,
+      sources: [recipeSource(recipeId)],
+      amount: count,
+      unit: 'count',
+      rawText,
+    });
+  const form = (
+    id: string,
+    recipeId: string,
+    canonId: string,
+    count: number,
+    rawText: string,
+    demand: readonly FormDemand[],
+  ) =>
+    makeItem(id, {
+      matchState: 'matched',
+      canonId,
+      sources: [recipeSource(recipeId)],
+      amount: count,
+      unit: 'count',
+      rawText,
+      formDemand: demand,
+    });
+  const canonMap = makeCanonMap([
+    { id: 'c-lime', name: 'Lime', aisleId: 'aisle-1' },
+    { id: 'c-chicken', name: 'Whole Chicken', aisleId: 'aisle-1' },
+  ]);
+  const onlyRow = (items: ShoppingListItem[]) =>
+    groupItemsByAisle(items, canonMap, AISLES).aisles[0].rows[0];
+
+  it('legacy zest 10 g + 15 g keeps the OLD ×3, not the new ×5', () => {
+    // The exact #518 headline case, but written pre-#518. These two ARE the same
+    // form and would now sum to 5 — but without `formDemand` that is unknowable,
+    // so the row honestly keeps MAX(2, 3) = 3 rather than guess.
+    const row = onlyRow([
+      legacyForm('a', 'a', 'c-lime', 2, '10 g lime zest'),
+      legacyForm('b', 'b', 'c-lime', 3, '15 g lime zest'),
+    ]);
+    expect(row.subtotals).toEqual([{ unit: 'count', amount: 3 }]);
+  });
+
+  it('legacy distinct forms still MAX: MAX(thighs 2, drumsticks 1) = 2', () => {
+    // Thigh and drumstick are DISTINCT forms of one bird, so MAX is the right
+    // answer under BOTH rules — this row's number is unchanged by #518. It is on
+    // the legacy path only because it carries no `formDemand`; give it one and the
+    // answer is still 2 (see the sibling test below).
+    const row = onlyRow([
+      legacyForm('t', 'a', 'c-chicken', 2, '4 chicken thighs'),
+      legacyForm('d', 'b', 'c-chicken', 1, '2 chicken drumsticks'),
+    ]);
+    expect(row.subtotals).toEqual([{ unit: 'count', amount: 2 }]);
+  });
+
+  it('the same distinct-form case WITH formDemand agrees: still MAX = 2', () => {
+    // Proves the point above: the degrade path and the current rule only diverge
+    // when the SAME form repeats across recipes. Distinct forms max either way.
+    const row = onlyRow([
+      form('t', 'a', 'c-chicken', 2, '4 chicken thighs', [{ formId: 'pf-thigh', parentCount: 2 }]),
+      form('d', 'b', 'c-chicken', 1, '2 chicken drumsticks', [
+        { formId: 'pf-drumstick', parentCount: 1 },
+      ]),
+    ]);
+    expect(row.subtotals).toEqual([{ unit: 'count', amount: 2 }]);
+  });
+
+  it('legacy single-recipe multi-part (already MAX-collapsed at write) stays ×2, never ×3', () => {
+    // buildRecipeAddPlan collapses juice/zest of one recipe to one row before the
+    // list is written; the surviving contributor carries the MAX count (2). Pin
+    // that the display aggregation of that lone count contributor is 2, not 3.
+    const row = onlyRow([
+      legacyForm('t', 'a', 'c-chicken', 2, '4 chicken thighs and 2 drumsticks'),
+    ]);
+    expect(row.subtotals).toEqual([{ unit: 'count', amount: 2 }]);
+  });
+
+  it('legacy pre-rounded parent count (3 thighs, yield 2/bird → 2) passes through as ×2', () => {
+    const row = onlyRow([
+      legacyForm('t', 'a', 'c-chicken', 2, '3 chicken thighs'),
+      legacyForm('d', 'b', 'c-chicken', 1, '1 drumstick'),
+    ]);
+    expect(row.subtotals).toEqual([{ unit: 'count', amount: 2 }]);
+  });
+
+  it('an empty formDemand array is treated as legacy, not as zero demand', () => {
+    // Defensive: `formDemand: []` must not silently drop the contributor's count
+    // and under-buy. It falls back to the collapsed amount.
+    const row = onlyRow([
+      makeItem('t', {
+        matchState: 'matched',
+        canonId: 'c-chicken',
+        sources: [recipeSource('a')],
+        amount: 2,
+        unit: 'count',
+        formDemand: [],
+      }),
+    ]);
+    expect(row.subtotals).toEqual([{ unit: 'count', amount: 2 }]);
+  });
+
+  it('MIXED legacy + new on one row: the new form sums, then maxes with the legacy count', () => {
+    // A half-migrated list — recipe A re-added since #518, recipe B not. The new
+    // zest demand (2 + 1 = 3) maxes against B's opaque legacy 4 → 4. The legacy
+    // row neither disappears nor caps the new sum.
+    const row = onlyRow([
+      form('a1', 'a', 'c-lime', 2, '10 g lime zest', [{ formId: 'pf-lime-zest', parentCount: 2 }]),
+      form('a2', 'c', 'c-lime', 1, '5 g lime zest', [{ formId: 'pf-lime-zest', parentCount: 1 }]),
+      legacyForm('b', 'b', 'c-lime', 4, '20 g lime zest'),
+    ]);
+    expect(row.subtotals).toEqual([{ unit: 'count', amount: 4 }]);
+  });
+
+  it('MIXED legacy + new: a summed new form beats a smaller legacy count', () => {
+    // The self-heal direction: once the big recipes are re-added their summed
+    // demand (2 + 3 = 5) wins over the stale legacy 3, and the list corrects.
+    const row = onlyRow([
+      form('a1', 'a', 'c-lime', 2, '10 g lime zest', [{ formId: 'pf-lime-zest', parentCount: 2 }]),
+      form('a2', 'c', 'c-lime', 3, '15 g lime zest', [{ formId: 'pf-lime-zest', parentCount: 3 }]),
+      legacyForm('b', 'b', 'c-lime', 3, '15 g lime zest'),
+    ]);
+    expect(row.subtotals).toEqual([{ unit: 'count', amount: 5 }]);
   });
 });
 

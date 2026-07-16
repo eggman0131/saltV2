@@ -528,9 +528,12 @@ export function buildRecipeAddPlan(recipe: Recipe, servings: number): RecipeAddR
   const allRecipes = getRecipesSnapshot();
   const forms = getProductFormsSnapshot();
 
-  // Form-count rows keyed by their parent canon, collected for MAX aggregation
-  // once every row is built (one lime supplies both juice and zest → buy the max,
-  // not the sum). Each entry points back at its row so the losers can be dropped.
+  // Form-count rows keyed by their parent canon, collected for the WITHIN-RECIPE
+  // MAX collapse once every row is built (one lime supplies both juice and zest →
+  // buy the max of this recipe's forms, not their sum). Scope matters: this maxes
+  // the DISTINCT forms THIS recipe demands. Aggregating one parent across the whole
+  // list is a display concern (#518, aggregateParentCount), where the same form in
+  // two recipes SUMS. Each entry points back at its row so the losers can be dropped.
   // `formId`/`rawCount` carry the loser rows' demand onto the surviving row as
   // `formDemand` (issue #501) — collapsing to the MAX row alone would discard it,
   // and the display layer could then never recover the per-form sum across recipes.
