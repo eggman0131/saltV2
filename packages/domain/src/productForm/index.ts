@@ -1,7 +1,12 @@
 // ProductForm module — published surface. The ONLY thing other domain modules
 // and coordinators may import from productForm; anything not re-exported here is
 // private to the module by design (mirrors canon/index.ts).
-export type { ProductForm, ProductFormYield, CanonItemUnit } from './entities/ProductForm.js';
+export type {
+  ProductForm,
+  ProductFormYield,
+  CanonItemUnit,
+  FormDemand,
+} from './entities/ProductForm.js';
 export type { ProductFormIdGenerator } from './ports/IdGenerator.js';
 export { createProductForm } from './commands/createProductForm.js';
 export type { CreateProductFormInput } from './commands/createProductForm.js';
@@ -12,4 +17,6 @@ export { resolveProductForm } from './queries/resolveProductForm.js';
 export { convertYield } from './queries/convertYield.js';
 export { formParentCount } from './queries/formParentCount.js';
 export { maxCountWinners } from './queries/maxCountWinners.js';
+export { aggregateParentCount } from './queries/aggregateParentCount.js';
+export type { ParentCountInput } from './queries/aggregateParentCount.js';
 export { decideProductFormProposal } from './queries/decideProductFormProposal.js';

@@ -76,6 +76,8 @@ export type {
   ProductFormIdGenerator,
   CreateProductFormInput,
   UpdateProductFormInput,
+  FormDemand,
+  ParentCountInput,
 } from './productForm/index.js';
 export {
   createProductForm,
@@ -85,6 +87,7 @@ export {
   convertYield,
   formParentCount,
   maxCountWinners,
+  aggregateParentCount,
   decideProductFormProposal,
 } from './productForm/index.js';
 

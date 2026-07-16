@@ -19,6 +19,7 @@ import {
   findProducingRecipes,
   resolveProductForm,
   formParentCount,
+  convertYield,
   maxCountWinners,
 } from '@salt/domain';
 import type {
@@ -30,6 +31,7 @@ import type {
   CanonItem,
   ProductForm,
   CanonItemUnit,
+  FormDemand,
 } from '@salt/domain';
 import type { UrlImportFailureCode } from '@salt/domain/schemas';
 import { hasLiveCanonMatch } from '@salt/domain';
@@ -412,6 +414,12 @@ export interface RecipeAddRow {
   readonly matched: boolean;
   readonly amount?: number;
   readonly unit?: string;
+  // Per-form demand on this row's product-form parent (issue #501). Set only on a
+  // surviving form-count row, and carries the demand of EVERY form of that parent
+  // in this recipe (including the collapsed losers), each as an unrounded
+  // parent-count. Written straight through to the shopping item so the list can
+  // sum a form's demand across recipes. Absent on every ordinary row.
+  readonly formDemand?: readonly FormDemand[];
   add: boolean;
   check: boolean;
   // ─── Buy-or-make (Phase 2) ───────────────────────────────────────────────────
@@ -475,11 +483,16 @@ function scaledAmountUnit(ing: Ingredient, scale: number): { amount?: number; un
 // back-compatible — an ingredient matched before its form existed stays as-is.
 // Returns null (identity-only degrade) on no form, a unit mismatch, or a
 // degenerate yield, so the caller keeps the metric amount and today's behaviour.
+//
+// `rawCount` is the UNROUNDED parent-count (issue #501): `count` is rounded per
+// recipe and is only the row's own display amount, so summing it across recipes
+// double-rounds (6 g + 6 g of zest is 12 g = 3 limes, but 2 + 2 = 4). The raw
+// value is what gets persisted as `formDemand` and summed at display time.
 function formCountFor(
   ing: Ingredient,
   scale: number,
   forms: readonly ProductForm[],
-): { form: ProductForm; count: number } | null {
+): { form: ProductForm; count: number; rawCount: number } | null {
   if (forms.length === 0 || !ing.canonId || ing.parsed === null || ing.parsed.quantity === null) {
     return null;
   }
@@ -488,7 +501,9 @@ function formCountFor(
   const metricAmount = quantityToNumber(ing.parsed.quantity) * scale;
   const ingUnit: CanonItemUnit = ing.parsed.unit ?? 'count';
   const count = formParentCount(metricAmount, ingUnit, form);
-  return count === null ? null : { form, count };
+  // formParentCount already rejects a unit mismatch and a degenerate/zero yield,
+  // so a non-null count guarantees convertYield agrees on the same units.
+  return count === null ? null : { form, count, rawCount: convertYield(metricAmount, form.yield) };
 }
 
 // The unit sentinel written on a product-form shopping row: marks `amount` as a
@@ -513,10 +528,22 @@ export function buildRecipeAddPlan(recipe: Recipe, servings: number): RecipeAddR
   const allRecipes = getRecipesSnapshot();
   const forms = getProductFormsSnapshot();
 
-  // Form-count rows keyed by their parent canon, collected for MAX aggregation
-  // once every row is built (one lime supplies both juice and zest → buy the max,
-  // not the sum). Each entry points back at its row so the losers can be dropped.
-  const formEntries: { rowIndex: number; parentCanonId: string; count: number }[] = [];
+  // Form-count rows keyed by their parent canon, collected for the WITHIN-RECIPE
+  // MAX collapse once every row is built (one lime supplies both juice and zest →
+  // buy the max of this recipe's forms, not their sum). Scope matters: this maxes
+  // the DISTINCT forms THIS recipe demands. Aggregating one parent across the whole
+  // list is a display concern (#518, aggregateParentCount), where the same form in
+  // two recipes SUMS. Each entry points back at its row so the losers can be dropped.
+  // `formId`/`rawCount` carry the loser rows' demand onto the surviving row as
+  // `formDemand` (issue #501) — collapsing to the MAX row alone would discard it,
+  // and the display layer could then never recover the per-form sum across recipes.
+  const formEntries: {
+    rowIndex: number;
+    parentCanonId: string;
+    count: number;
+    formId: string;
+    rawCount: number;
+  }[] = [];
 
   const rows: RecipeAddRow[] = [];
   for (const group of recipe.ingredients) {
@@ -532,6 +559,8 @@ export function buildRecipeAddPlan(recipe: Recipe, servings: number): RecipeAddR
           rowIndex: rows.length,
           parentCanonId: fc.form.parentCanonId,
           count: fc.count,
+          formId: fc.form.id,
+          rawCount: fc.rawCount,
         });
       }
       const { amount, unit } = fc
@@ -595,14 +624,35 @@ export function buildRecipeAddPlan(recipe: Recipe, servings: number): RecipeAddR
   // parent to the single MAX-count row, dropping the losers, so "juice AND zest of
   // limes" becomes one lime line, not two. Only form-count rows are merged;
   // ordinary same-canon rows are left alone (combining stays a display concern).
+  //
+  // The surviving row now also carries EVERY form's demand for that parent as
+  // `formDemand` (issue #501). The collapse is still one row per parent per recipe
+  // — the sheet and the list look exactly as before — but the losers' demand rides
+  // along instead of being discarded, so the display layer can sum each form's
+  // demand ACROSS recipes and round once. Its `amount` stays the collapsed MAX as
+  // the within-recipe display value and the pre-#501 fallback.
   if (formEntries.length > 0) {
     const winners = maxCountWinners(
       formEntries.map((e) => ({ parentCanonId: e.parentCanonId, count: e.count })),
     );
     const formRowIndices = new Set(formEntries.map((e) => e.rowIndex));
-    const keepRowIndices = new Set<number>();
-    winners.forEach((entryIdx) => keepRowIndices.add(formEntries[entryIdx]!.rowIndex));
-    return rows.filter((_, i) => !formRowIndices.has(i) || keepRowIndices.has(i));
+    // Winning row index → the demand of every form of that same parent.
+    const demandByRowIndex = new Map<number, FormDemand[]>();
+    winners.forEach((entryIdx, parentCanonId) => {
+      demandByRowIndex.set(
+        formEntries[entryIdx]!.rowIndex,
+        formEntries
+          .filter((e) => e.parentCanonId === parentCanonId)
+          .map((e) => ({ formId: e.formId, parentCount: e.rawCount })),
+      );
+    });
+    // Attach demand against the ORIGINAL row indices, then drop the losers.
+    return rows
+      .map((row, i) => {
+        const demand = demandByRowIndex.get(i);
+        return demand ? { ...row, formDemand: demand } : row;
+      })
+      .filter((_, i) => !formRowIndices.has(i) || demandByRowIndex.has(i));
   }
   return rows;
 }
@@ -670,6 +720,7 @@ function buildAddedItem(row: RecipeAddRow, source: SourceRef, now: string) {
       ...(row.matched ? { canonId: row.canonId, matchState: 'matched' as const } : {}),
       ...(row.amount !== undefined ? { amount: row.amount } : {}),
       ...(row.unit !== undefined ? { unit: row.unit } : {}),
+      ...(row.formDemand !== undefined ? { formDemand: row.formDemand } : {}),
     },
     _itemIds,
   );
