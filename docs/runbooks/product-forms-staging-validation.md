@@ -6,7 +6,8 @@ capability (issues #500/#501/#504/#505) end-to-end against the **staging** proje
 UI and inspects Firestore directly, so it catches integration/AI/rollup behaviour
 that unit + e2e tests don't.
 
-Last run: 2026-07-15 (against the code merged to `main` on 2026-07-14).
+Last run: 2026-07-15 (against `main` incl. #515 — count-yield egg/protein rollup;
+re-validated by re-parsing recipes A & B, see gotcha #5 and finding #2).
 
 ---
 
@@ -73,6 +74,19 @@ per ingredient, in order:
    Seed manual forms with a **gram yield** to avoid this. See finding #2.
 4. **AI image generation hangs the recipe view briefly** after first save. If the
    Chrome tab times out, re-navigate to the recipe URL and continue.
+5. **Re-canonicalise ≠ re-parse — parser-layer fixes need a re-parse.** Canonicalise
+   only re-runs *matching* over the ingredient amounts **already stored** on the recipe
+   doc; it never re-parses. So a fix in `parseRecipeIngredients` (e.g. #515, which keeps
+   eggs / egg parts / poultry joints / whole fish as a COUNT — `quantity:<n>, unit:null`
+   — instead of flattening to grams) is **invisible** if you only wipe canon+forms and
+   re-canonicalise: the recipe still holds the pre-fix parse, so a count-yield form fed
+   those stale grams can't roll up and you still see `Free Range Egg (350 g)`. To validate
+   a parser change you must **re-parse each recipe**: recipe → **Edit** → **Parse from
+   text** → paste the ingredient block → **Parse** → **Save**, *then* Canonicalise. Verify
+   in Firestore that the eggs now read `quantity:<count>, unit:null` (grams demoted to
+   `displayText`, e.g. "about 36g") before trusting the list. This masked #515 on the
+   2026-07-15 re-run — the eggs read `350 g` until the recipes were re-parsed, after which
+   they correctly rolled up to `Free Range Egg ×3` = MAX(2,3,2).
 
 ---
 
@@ -192,7 +206,15 @@ Shopping-list checks (A+B): **Lime ×3** = MAX(2,3); **Caster Sugar 250 g** = su
   unblocks it. Blocks #505's parent-minting on a truly empty canon. (Never bites
   in prod; canon is never empty.)
 - **#2 — count-yield vs gram-amount mismatch** (GitHub #513). Forms whose yield
-  unit is `count` (eggs, vanilla pods) don't roll up when the parser stores the
-  recipe amount in grams; the list shows raw summed grams and MAX-not-sum is
-  bypassed. Gram-unit yields (lime zest 5 g/lime, passion fruit 20 g/fruit)
-  convert and roll up correctly.
+  unit is `count` don't roll up when the parser stores the recipe amount in grams;
+  the list shows raw summed grams and MAX-not-sum is bypassed. Gram-unit yields
+  (lime zest 5 g/lime, passion fruit 20 g/fruit) convert and roll up correctly.
+  - **Eggs / proteins: FIXED by #515** (merged 2026-07-15). The parser now keeps
+    whole eggs, egg parts, poultry joints, and whole fish as a COUNT
+    (`quantity:<n>, unit:null`, gram estimate in `displayText`), so the count-yield
+    form rolls up to a parent count and MAX-combines. Re-validated 2026-07-15:
+    `Free Range Egg ×3` = MAX(A yolks 2, B whites 3, B yolks 2), no longer `350 g`.
+    ⚠️ Only observable **after re-parsing** the recipes — see gotcha #5.
+  - **Still open:** count-yield forms for items *outside* the #515 protein scope —
+    e.g. **vanilla pods** (`vanilla seeds` still parses to `2 g`, so the Vanilla Pod
+    count-yield form can't roll up). Tracked under #513.
