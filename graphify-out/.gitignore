@@ -1,12 +1,15 @@
 # Local / machine-specific / regenerable graphify state — do not commit.
 # The repo-root .gitignore is the authoritative, cross-branch source of truth
 # for this policy; these entries mirror it so the rules also apply on branches
-# that predate the root block. Tracked deliverables (graph.json, graph.html,
-# GRAPH_REPORT.md, manifest.json, wiki/) are intentionally NOT listed here.
+# that predate the root block. Tracked deliverables (graph.json, GRAPH_REPORT.md,
+# manifest.json, wiki/) are intentionally NOT listed here.
 .graphify_python
 .graphify_root
 .graphify_labels.json
 cost.json
 cache/
+# Deterministic vis.js render of graph.json — free to rebuild via
+# `graphify export html`, and `graphify update` deletes it above 5000 nodes.
+graph.html
 # Per-run dated snapshot archives (YYYY-MM-DD/) — regenerated, not tracked.
 [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/

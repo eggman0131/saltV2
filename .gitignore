@@ -27,10 +27,19 @@ tmp/
 docker/test-emulators/.image-build-hash
 
 # graphify — authoritative, cross-branch tracking policy for graphify-out/.
-# TRACKED deliverables (NOT ignored): graph.json, graph.html, GRAPH_REPORT.md,
+# TRACKED deliverables (NOT ignored): graph.json, GRAPH_REPORT.md,
 # manifest.json, wiki/. Everything below is local/regenerable state that
 # `graphify update` rewrites each run — never commit it.
 graphify-out/cache/
+# graph.html is a ~5 MB deterministic vis.js render of graph.json — no API cost
+# and ~0.6 s to rebuild (`graphify export html`), so it is not worth carrying in
+# git. Untracking it also sidesteps a graphify bug: `graphify update` passes
+# node_limit=None (graphifyy 0.9.5 __main__.py:3679, still present at 0.9.17
+# cli.py:1423), so above 5000 nodes to_html raises instead of building the
+# documented community-aggregation view and the caller unlink()s graph.html.
+# Salt builds ~4995 nodes — a hair under the limit, so adding a few files tips it
+# over and silently deletes the file (hit twice while working #518).
+graphify-out/graph.html
 graphify-out/.graphify_python
 graphify-out/.graphify_root
 graphify-out/.graphify_labels.json
