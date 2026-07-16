@@ -17,7 +17,7 @@
     ImageCropper,
     Markdown,
     Spinner,
-    TextField,
+    TextArea,
     type ImageCropperHandle,
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
@@ -346,12 +346,17 @@
   const heroVisible = $derived(!!recipe?.image?.url);
   let imageBusy = $state(false);
   let regenOpen = $state(false);
-  let regenHint = $state('');
+  // The art direction for the next generation. Seeded on every open from the brief
+  // saved beside the current image, so the dialog opens filled in with no load —
+  // it is already on the recipe doc the page is subscribed to. Editing this text
+  // *is* the steer, which is why the old one-line "Steer (optional)" hint input is
+  // gone: it steered a brief the user could not see, and now they can just write it.
+  let regenBrief = $state('');
 
-  async function runRegenerate(hint?: string): Promise<void> {
+  async function runRegenerate(brief?: string): Promise<void> {
     if (!recipe || imageBusy) return;
     imageBusy = true;
-    const result = await regenerateRecipeImage(recipe.id, hint);
+    const result = await regenerateRecipeImage(recipe.id, brief);
     imageBusy = false;
     if (result.kind !== 'ok') {
       addToast('Failed to start image generation.', 'destructive');
@@ -360,15 +365,20 @@
     addToast('Generating a new image — it will appear shortly.', 'success');
   }
 
+  // Re-seed on every open (not once): the trigger re-saves imageBrief after each
+  // successful generation, so the next open shows the brief that produced the image
+  // now on screen — the user's own edited text, not the original. A recipe with no
+  // brief yet seeds '' and the dialog reads as it always did: an empty optional box,
+  // no error, no spinner — omitting it lets the trigger author one.
   function openRegenerate(): void {
-    regenHint = '';
+    regenBrief = recipe?.imageBrief ?? '';
     regenOpen = true;
   }
 
   async function handleRegenerateConfirm(): Promise<void> {
-    const hint = regenHint.trim();
+    const brief = regenBrief.trim();
     regenOpen = false;
-    await runRegenerate(hint || undefined);
+    await runRegenerate(brief || undefined);
   }
 
   // ─── Upload a local photo (issue #455, Phase 2) ──────────────────────────────
@@ -939,23 +949,32 @@
   onDiscard={handleSidebarDiscardChanges}
 />
 
-<!-- Regenerate image dialog: optional one-shot steer (issue #148) -->
+<!-- Regenerate image dialog: the editable scene brief (issue #148) -->
 <Dialog bind:open={regenOpen}>
   <DialogContent>
     <div class="flex flex-col gap-4" data-testid="recipe-image-regenerate-dialog">
       <DialogHeader>
         <DialogTitle>Regenerate image</DialogTitle>
         <DialogDescription>
-          Generate a fresh photo of this dish. Optionally add a steer — e.g. "make it brighter" or
-          "show it in a rustic bowl".
+          This is the art direction behind the current photo — edit it and generate. Leave it empty
+          to have a fresh one written for you.
         </DialogDescription>
       </DialogHeader>
-      <TextField
-        label="Steer (optional)"
-        placeholder="e.g. warmer light, on a wooden board"
-        value={regenHint}
-        onValueChange={(v) => (regenHint = v)}
-        data-testid="recipe-image-regenerate-hint"
+      <!--
+        maxLength mirrors the 2000-char cap on RegenerateRecipeImageInputSchema.brief
+        so the limit is felt at the keyboard rather than as an opaque failure after
+        Generate. autoresize + rows=6 so a one-paragraph brief is visible whole
+        without scrolling, which is the point — you cannot edit what you cannot read.
+      -->
+      <TextArea
+        label="Scene brief"
+        placeholder="e.g. Served in a deep bowl on a sunlit table, steam rising, shot from above."
+        rows={6}
+        autoresize
+        maxLength={2000}
+        value={regenBrief}
+        onValueChange={(v) => (regenBrief = v)}
+        data-testid="recipe-image-regenerate-brief"
       />
       <DialogFooter>
         <Button variant="outline" onclick={() => (regenOpen = false)} disabled={imageBusy}>

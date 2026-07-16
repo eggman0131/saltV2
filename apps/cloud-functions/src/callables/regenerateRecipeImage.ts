@@ -46,11 +46,23 @@ export const regenerateRecipeImage = onCall(
     if (!parsed.success) {
       throw new HttpsError('invalid-argument', 'Invalid request payload.');
     }
-    const { recipeId, hint } = parsed.data;
-    // Clear the image (→ trigger regenerates), un-hide, and carry the one-shot
-    // steer if any. No hint clears any stale hint so the regeneration is plain.
-    // imageRequestedAt forces the write to mutate the doc so the trigger fires
-    // even when the recipe had no image (image already null) — see the header.
+    const { recipeId, brief } = parsed.data;
+    // Clear the image (→ trigger regenerates), un-hide, and carry the caller's art
+    // direction. imageRequestedAt forces the write to mutate the doc so the trigger
+    // fires even when the recipe had no image (image already null) — see the header.
+    //
+    // `brief` is the user's edited art direction, written to imageBrief so the
+    // trigger reads it back and uses it verbatim. Absent (a recipe with no brief
+    // yet, or a box the user emptied) deletes the field, which is what routes the
+    // trigger back to authoring a fresh brief — the same "absent → author one" rule
+    // a never-generated recipe takes. That is why this is delete, not skip: leaving
+    // a stale brief in place would silently ignore a user who cleared the box.
+    //
+    // imageHint is never written any more — the dialog edits the brief directly
+    // rather than steering it — but it is still *cleared*, because a doc may carry
+    // one written by an in-flight client before this deploy; leaving it would leak a
+    // stale one-shot steer into a generation the user did not ask it for. The field
+    // and the trigger's read of it stay (retired-but-present, like imageHidden).
     try {
       await getFirestore()
         .collection('recipes')
@@ -58,7 +70,8 @@ export const regenerateRecipeImage = onCall(
         .update({
           image: null,
           imageHidden: FieldValue.delete(),
-          imageHint: hint ? hint : FieldValue.delete(),
+          imageHint: FieldValue.delete(),
+          imageBrief: brief ? brief : FieldValue.delete(),
           imageRequestedAt: Date.now(),
         });
     } catch (err) {

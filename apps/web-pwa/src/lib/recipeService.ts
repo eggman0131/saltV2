@@ -142,15 +142,21 @@ export async function parseIngredients(
 
 // Regenerate (or first-time generate / un-hide) the hero via the auth-gated
 // callable. The callable clears `image` + un-hides + bumps the nonce, re-firing
-// the trigger; the new URL arrives via the recipe subscription. An optional
-// `hint` is a one-shot additive steer. Deliberately a callable, not an optimistic
-// store write — a client whole-document write would risk clobbering the trigger's
-// image write (whole-document LWW).
+// the trigger; the new URL arrives via the recipe subscription. Deliberately a
+// callable, not an optimistic store write — a client whole-document write would
+// risk clobbering the trigger's image write (whole-document LWW).
+//
+// `brief` is the art direction the next image is generated from: the caller (the
+// RecipeViewPage regenerate dialog) pre-fills it from the recipe's saved
+// `imageBrief` and hands back whatever the user edited it to. The callable stamps
+// it onto `imageBrief`, the trigger uses it verbatim and re-saves it on success —
+// so each regenerate starts where the last one ended. Omitted means "no brief",
+// and the trigger authors one.
 export async function regenerateRecipeImage(
   recipeId: string,
-  hint?: string,
+  brief?: string,
 ): Promise<ReadResult<void, DomainError>> {
-  return reportIfFailed(getErrorReporter(), await callRegenerateRecipeImage(recipeId, hint));
+  return reportIfFailed(getErrorReporter(), await callRegenerateRecipeImage(recipeId, brief));
 }
 
 // Upload a user-supplied hero photo (issue #455, Phase 2). The caller (the

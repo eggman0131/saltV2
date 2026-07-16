@@ -63,18 +63,22 @@ function classifyUrlImportError(err: unknown): UrlImportFailureCode {
 // Clears a recipe's hero image server-side (issue #148, Tier-2), re-firing the
 // onRecipeWritten trigger so the image branch regenerates. Used for both the
 // "regenerate" and "generate for the first time" actions (both set image → null),
-// and it un-hides in the same write. An optional `hint` is a one-shot additive
-// steer for the next generation. Mirrors callRegenerateCanonIcon.
+// and it un-hides in the same write. Mirrors callRegenerateCanonIcon.
+//
+// `brief` is the art direction for the next generation — the user's (possibly
+// edited) scene paragraph. Omitted or blank means "no brief", which the callable
+// writes as a cleared `imageBrief` and the trigger reads as "author one" — the
+// path a recipe with no brief yet takes. Optional → back-compat.
 export async function callRegenerateRecipeImage(
   recipeId: string,
-  hint?: string,
+  brief?: string,
 ): Promise<ReadResult<void, DomainError>> {
   try {
-    const fn = httpsCallable<{ recipeId: string; hint?: string }, { ok: true }>(
+    const fn = httpsCallable<{ recipeId: string; brief?: string }, { ok: true }>(
       getFunctions(undefined, 'europe-west2'),
       'regenerateRecipeImage',
     );
-    await fn(hint && hint.trim() ? { recipeId, hint: hint.trim() } : { recipeId });
+    await fn(brief && brief.trim() ? { recipeId, brief: brief.trim() } : { recipeId });
     return success(undefined);
   } catch (err) {
     const code = (err as { code?: string }).code ?? '';
