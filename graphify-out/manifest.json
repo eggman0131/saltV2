@@ -415,8 +415,8 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/index.ts": {
-    "mtime": 1783864296.1434147,
-    "ast_hash": "b70a1359d726f2540af6200310df379b",
+    "mtime": 1784230277.5738993,
+    "ast_hash": "da616a7338e4b170cec631d70903e82c",
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/observability/environment.ts": {
@@ -520,8 +520,8 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/tests/callables/regenerateRecipeImage.test.ts": {
-    "mtime": 1784229823.1677506,
-    "ast_hash": "1bba5be6f07a69e6592a60df90e86adb",
+    "mtime": 1784229973.0436056,
+    "ast_hash": "9a3bc82344c789b73ad6c0937ed83d60",
     "semantic_hash": ""
   },
   "apps/cloud-functions/tests/flows/aiTimeoutGuard.test.ts": {
@@ -1385,8 +1385,8 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/src/lib/recipeService.ts": {
-    "mtime": 1784229823.168018,
-    "ast_hash": "591151e69c22ad55dd827c2a8a3356f4",
+    "mtime": 1784230330.4674556,
+    "ast_hash": "3036012a80d91fca0bd0aa873202b7db",
     "semantic_hash": ""
   },
   "apps/web-pwa/src/lib/shoppingListService.svelte.ts": {
@@ -1580,8 +1580,8 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/recipes/RecipeViewPage.svelte": {
-    "mtime": 1784229823.1686456,
-    "ast_hash": "79e0bc1555682b35cdfa4f9513e5278c",
+    "mtime": 1784230418.9409518,
+    "ast_hash": "a0df9ef86183f47bfa10be59b14965a7",
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/settings/SettingsPage.svelte": {
@@ -1745,8 +1745,8 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/tests/recipeService.errorReporting.test.ts": {
-    "mtime": 1782944230.153273,
-    "ast_hash": "80920236a623aec922c2bb2a45592d76",
+    "mtime": 1784230611.4770885,
+    "ast_hash": "488eb02e0fa32781f8692f2350de7b97",
     "semantic_hash": ""
   },
   "apps/web-pwa/tests/recipeService.makeOrBuy.test.ts": {
@@ -1915,8 +1915,8 @@
     "semantic_hash": ""
   },
   "packages/adapters/firebase-sync/src/index.ts": {
-    "mtime": 1784046829.1739655,
-    "ast_hash": "e5dd948226b1b650f16ab261ddf3658e",
+    "mtime": 1784230305.963237,
+    "ast_hash": "85de3027183989b8ba29d1e65b60abd9",
     "semantic_hash": ""
   },
   "packages/adapters/firebase-sync/src/init.ts": {
@@ -1935,8 +1935,8 @@
     "semantic_hash": ""
   },
   "packages/adapters/firebase-sync/src/recipeCallables.ts": {
-    "mtime": 1784229823.1691792,
-    "ast_hash": "26819a7c26fb00e4e27a49ed3327cee3",
+    "mtime": 1784230296.9780724,
+    "ast_hash": "0b8db76a8a1c9134d2280349d9fb1a94",
     "semantic_hash": ""
   },
   "packages/adapters/firebase-sync/src/recipeSubscription.ts": {
@@ -2830,8 +2830,8 @@
     "semantic_hash": ""
   },
   "packages/domain/src/schemas/index.ts": {
-    "mtime": 1784229276.1902194,
-    "ast_hash": "0f01d4298655d2a44e52392aafe558f3",
+    "mtime": 1784230215.7838035,
+    "ast_hash": "0d0dde7d6cfdf44f39733cefb76700aa",
     "semantic_hash": ""
   },
   "packages/domain/src/schemas/matchOrCreateCanonInput.ts": {
@@ -2915,8 +2915,8 @@
     "semantic_hash": ""
   },
   "packages/domain/src/schemas/traceContextWire.ts": {
-    "mtime": 1782821105.8843446,
-    "ast_hash": "6c743b63366330d7ce5bef4b5221bd69",
+    "mtime": 1784230203.3553014,
+    "ast_hash": "bb23659450b72d83ead5bbf93202ff78",
     "semantic_hash": ""
   },
   "packages/domain/src/schemas/weatherForecast.ts": {
@@ -5310,18 +5310,18 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/describeRecipeScene.ts": {
-    "mtime": 1784229276.1735883,
-    "ast_hash": "6ea04c359044b50ad4d7777d4d2e16bf",
+    "mtime": 1784230257.796279,
+    "ast_hash": "5c3c6e5ae10f0c79e5f7422eebbbfcf9",
     "semantic_hash": ""
   },
   "apps/cloud-functions/tests/flows/describeRecipeScene.test.ts": {
-    "mtime": 1784229276.175044,
-    "ast_hash": "839b0c1fd7e1d90d265a9a2c3554168f",
+    "mtime": 1784230888.9796877,
+    "ast_hash": "7d4f50e4d113e007f06605467b15b79f",
     "semantic_hash": ""
   },
   "packages/domain/src/schemas/describeRecipeScene.ts": {
-    "mtime": 1784229276.1897812,
-    "ast_hash": "0bba9e285e9ceb6c21cb5f4ad1c8a33a",
+    "mtime": 1784230191.3155544,
+    "ast_hash": "8272b9fd32f2e52390a131aa095b7f15",
     "semantic_hash": ""
   },
   ".husky/post-merge": {
@@ -5330,8 +5330,13 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/tests/RecipeViewPage.imageBrief.test.ts": {
-    "mtime": 1784229823.1819077,
-    "ast_hash": "a06ba3acc30bbcc6938b5788e550f9de",
+    "mtime": 1784230889.0109859,
+    "ast_hash": "961a77f9b0fbf21e4d20d5c1b47148d4",
+    "semantic_hash": ""
+  },
+  "apps/cloud-functions/tests/callables/describeRecipeScene.test.ts": {
+    "mtime": 1784230504.1854603,
+    "ast_hash": "c2277fd958c80fa7e0e9bd5ee3a1286e",
     "semantic_hash": ""
   }
 }

@@ -56,6 +56,7 @@ export { streamChefChat, callGenerateChatTitle } from './chatCallables.js';
 export { callAuthorRecipe } from './authorRecipeCallable.js';
 export {
   callParseRecipeIngredients,
+  callDescribeRecipeScene,
   callExtractRecipeFromUrl,
   callRegenerateRecipeImage,
   callSetRecipeImageUpload,

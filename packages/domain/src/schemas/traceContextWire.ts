@@ -6,6 +6,7 @@ import { ExtractRecipeFromUrlInputSchema } from './extractRecipeFromUrl.js';
 import { IdentifyEquipmentInputSchema } from './identifyEquipment.js';
 import { PopulateEquipmentEntryInputSchema } from './populateEquipmentEntry.js';
 import { RefreshWeatherForecastInputSchema } from './weatherForecast.js';
+import { DescribeRecipeSceneInputSchema } from './describeRecipeScene.js';
 
 // ─── Browser→CF trace-continuity wire envelopes (issue #362, Phase 3) ──────────
 //
@@ -66,6 +67,15 @@ export const RefreshWeatherForecastWireInputSchema = RefreshWeatherForecastInput
   traceparent: TraceparentSchema,
 });
 
+// The describeRecipeScene callable (issue #522, Phase 3). User-initiated from the
+// regenerate dialog's "Revise"/"Start over" actions, so the same
+// browser-supplied-trace pattern applies: the recipe (plus, on a revision, the
+// current brief and the steer) with an optional `traceparent` the entrypoint
+// strips before the flow runs.
+export const DescribeRecipeSceneWireInputSchema = DescribeRecipeSceneInputSchema.extend({
+  traceparent: TraceparentSchema,
+});
+
 export type MatchOrCreateCanonWireInput = z.infer<typeof MatchOrCreateCanonWireInputSchema>;
 export type CanonicaliseRecipeIngredientsWireInput = z.infer<
   typeof CanonicaliseRecipeIngredientsWireInputSchema
@@ -75,3 +85,4 @@ export type ExtractRecipeFromUrlWireInput = z.infer<typeof ExtractRecipeFromUrlW
 export type IdentifyEquipmentWireInput = z.infer<typeof IdentifyEquipmentWireInputSchema>;
 export type PopulateEquipmentEntryWireInput = z.infer<typeof PopulateEquipmentEntryWireInputSchema>;
 export type RefreshWeatherForecastWireInput = z.infer<typeof RefreshWeatherForecastWireInputSchema>;
+export type DescribeRecipeSceneWireInput = z.infer<typeof DescribeRecipeSceneWireInputSchema>;

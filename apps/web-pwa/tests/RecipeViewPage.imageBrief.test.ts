@@ -63,6 +63,8 @@ vi.mock('../src/lib/recipeService.js', () => ({
   persistRecipe: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   authorRecipeTraced: vi.fn(),
   regenerateRecipeImage: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  reviseRecipeSceneBrief: vi.fn(),
+  startOverRecipeSceneBrief: vi.fn(),
   setRecipeImageUpload: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   buildRecipeAddPlan: vi.fn().mockReturnValue([]),
   buildMadeSubRows: vi.fn().mockReturnValue([]),
@@ -71,7 +73,11 @@ vi.mock('../src/lib/recipeService.js', () => ({
 }));
 
 import RecipeViewPage from '../src/routes/recipes/RecipeViewPage.svelte';
-import { regenerateRecipeImage } from '../src/lib/recipeService.js';
+import {
+  regenerateRecipeImage,
+  reviseRecipeSceneBrief,
+  startOverRecipeSceneBrief,
+} from '../src/lib/recipeService.js';
 
 const RECIPE_ID = 'recipe-1';
 const BRIEF = 'Served on a rustic wooden board in warm afternoon light, shot from above.';
@@ -194,5 +200,158 @@ describe('RecipeViewPage — editable image brief', () => {
     await fireEvent.click(getByTestId('recipe-image-regenerate-confirm'));
 
     await waitFor(() => expect(regenerateRecipeImage).toHaveBeenCalledWith(RECIPE_ID, undefined));
+  });
+});
+
+// ─── Hint-driven revision and "start over" (issue #522, Phase 3) ───────────────
+// Read and fix the art direction BEFORE committing to an image. The brief costs a
+// fraction of a cent; the image costs orders of magnitude more.
+describe('RecipeViewPage — brief revision and start over', () => {
+  const REVISED = 'Served on pale linen in bright midday sun, herbs scattered, shot from above.';
+
+  async function openDialog(recipe = makeRecipe({ imageBrief: BRIEF })) {
+    mockRecipes._set([recipe]);
+    const utils = renderPage();
+    await fireEvent.click(utils.getByTestId('recipe-image-regenerate'));
+    await utils.findByTestId('recipe-image-regenerate-brief');
+    return utils;
+  }
+
+  it('revises: sends the recipe, the current brief and the hint, and swaps the result in', async () => {
+    vi.mocked(reviseRecipeSceneBrief).mockResolvedValue({ kind: 'ok', value: REVISED });
+    const { getByTestId, findByTestId } = await openDialog();
+
+    await fireEvent.input(getByTestId('recipe-image-regenerate-hint'), {
+      target: { value: 'make it summery' },
+    });
+    await fireEvent.click(getByTestId('recipe-image-regenerate-revise'));
+
+    // The recipe goes in alongside the brief and the steer — a revision stays
+    // anchored to the actual dish rather than drifting while editing prose about it.
+    await waitFor(() =>
+      expect(reviseRecipeSceneBrief).toHaveBeenCalledWith(
+        expect.objectContaining({ id: RECIPE_ID, title: 'Test Recipe' }),
+        BRIEF,
+        'make it summery',
+      ),
+    );
+    // The revised brief comes back in the box, still editable, before any image.
+    await waitFor(async () =>
+      expect(
+        ((await findByTestId('recipe-image-regenerate-brief')) as HTMLTextAreaElement).value,
+      ).toBe(REVISED),
+    );
+    expect(regenerateRecipeImage).not.toHaveBeenCalled();
+  });
+
+  it('generates from the revised brief once the user commits', async () => {
+    vi.mocked(reviseRecipeSceneBrief).mockResolvedValue({ kind: 'ok', value: REVISED });
+    const { getByTestId } = await openDialog();
+
+    await fireEvent.input(getByTestId('recipe-image-regenerate-hint'), {
+      target: { value: 'make it summery' },
+    });
+    await fireEvent.click(getByTestId('recipe-image-regenerate-revise'));
+    await waitFor(() => expect(reviseRecipeSceneBrief).toHaveBeenCalled());
+    await fireEvent.click(getByTestId('recipe-image-regenerate-confirm'));
+
+    await waitFor(() => expect(regenerateRecipeImage).toHaveBeenCalledWith(RECIPE_ID, REVISED));
+  });
+
+  it('start over sends NEITHER brief nor hint — a fresh reading of the current recipe', async () => {
+    vi.mocked(startOverRecipeSceneBrief).mockResolvedValue({ kind: 'ok', value: REVISED });
+    const { getByTestId, findByTestId } = await openDialog();
+
+    await fireEvent.input(getByTestId('recipe-image-regenerate-hint'), {
+      target: { value: 'make it summery' },
+    });
+    await fireEvent.click(getByTestId('recipe-image-regenerate-start-over'));
+
+    // Only the recipe. The accumulated edits are discarded on purpose: a recipe you
+    // have since rewritten must not keep art direction for the dish it used to be.
+    await waitFor(() =>
+      expect(startOverRecipeSceneBrief).toHaveBeenCalledWith(
+        expect.objectContaining({ id: RECIPE_ID }),
+      ),
+    );
+    expect(startOverRecipeSceneBrief).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(startOverRecipeSceneBrief).mock.calls[0]).toHaveLength(1);
+    await waitFor(async () =>
+      expect(
+        ((await findByTestId('recipe-image-regenerate-brief')) as HTMLTextAreaElement).value,
+      ).toBe(REVISED),
+    );
+  });
+
+  it('a failed revision leaves the existing brief intact and says so', async () => {
+    vi.mocked(reviseRecipeSceneBrief).mockResolvedValue({
+      kind: 'err',
+      error: { kind: 'NetworkError', reason: 'transient' },
+    });
+    const { getByTestId, findByTestId } = await openDialog();
+
+    await fireEvent.input(getByTestId('recipe-image-regenerate-hint'), {
+      target: { value: 'make it summery' },
+    });
+    await fireEvent.click(getByTestId('recipe-image-regenerate-revise'));
+
+    // The user's text may be several edits deep — a transient error is no reason to
+    // throw it away.
+    const error = await findByTestId('recipe-image-regenerate-brief-error');
+    expect(error.textContent).toMatch(/unchanged/i);
+    expect(
+      ((await findByTestId('recipe-image-regenerate-brief')) as HTMLTextAreaElement).value,
+    ).toBe(BRIEF);
+  });
+
+  it('shows a loading state and blocks Regenerate while a revision is in flight', async () => {
+    let resolve!: (v: { kind: 'ok'; value: string }) => void;
+    vi.mocked(reviseRecipeSceneBrief).mockReturnValue(
+      new Promise((r) => {
+        resolve = r as typeof resolve;
+      }) as ReturnType<typeof reviseRecipeSceneBrief>,
+    );
+    const { getByTestId, findByTestId } = await openDialog();
+
+    await fireEvent.input(getByTestId('recipe-image-regenerate-hint'), {
+      target: { value: 'make it summery' },
+    });
+    await fireEvent.click(getByTestId('recipe-image-regenerate-revise'));
+
+    // Generating mid-revision would pay for an image directed by the brief the user
+    // is part-way through replacing — the exact wasted render this prevents.
+    await waitFor(() => expect(getByTestId('recipe-image-regenerate-confirm')).toBeDisabled());
+
+    resolve({ kind: 'ok', value: REVISED });
+    await waitFor(async () =>
+      expect(
+        ((await findByTestId('recipe-image-regenerate-brief')) as HTMLTextAreaElement).value,
+      ).toBe(REVISED),
+    );
+    await waitFor(() => expect(getByTestId('recipe-image-regenerate-confirm')).toBeEnabled());
+  });
+
+  it('does not revise without a hint — there is nothing to fold through the brief', async () => {
+    const { getByTestId } = await openDialog();
+
+    expect(getByTestId('recipe-image-regenerate-revise')).toBeDisabled();
+    await fireEvent.click(getByTestId('recipe-image-regenerate-revise'));
+    expect(reviseRecipeSceneBrief).not.toHaveBeenCalled();
+  });
+
+  it('clears the spent hint after a successful revision', async () => {
+    vi.mocked(reviseRecipeSceneBrief).mockResolvedValue({ kind: 'ok', value: REVISED });
+    const { getByTestId } = await openDialog();
+
+    await fireEvent.input(getByTestId('recipe-image-regenerate-hint'), {
+      target: { value: 'make it summery' },
+    });
+    await fireEvent.click(getByTestId('recipe-image-regenerate-revise'));
+
+    // The steer has been folded in; leaving it would invite applying "make it
+    // summery" to an already-summery brief.
+    await waitFor(() =>
+      expect((getByTestId('recipe-image-regenerate-hint') as HTMLInputElement).value).toBe(''),
+    );
   });
 });

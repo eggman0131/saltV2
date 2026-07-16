@@ -18,6 +18,7 @@
     Markdown,
     Spinner,
     TextArea,
+    TextField,
     type ImageCropperHandle,
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
@@ -30,6 +31,8 @@
     persistRecipe,
     authorRecipeTraced,
     regenerateRecipeImage,
+    reviseRecipeSceneBrief,
+    startOverRecipeSceneBrief,
     setRecipeImageUpload,
   } from '../../lib/recipeService.js';
   import RecipeAddToListSheet from './RecipeAddToListSheet.svelte';
@@ -44,6 +47,7 @@
     type Recipe,
   } from '@salt/domain';
   import type { RecipeDiff } from '@salt/domain/schemas';
+  import type { DomainError, ReadResult } from '@salt/shared-types';
   import { defaultListId } from '../../lib/shoppingListService.svelte.js';
   import { addToast } from '../../lib/toastStore.js';
   import { auth } from '../../lib/auth.svelte.js';
@@ -372,6 +376,8 @@
   // no error, no spinner — omitting it lets the trigger author one.
   function openRegenerate(): void {
     regenBrief = recipe?.imageBrief ?? '';
+    regenHint = '';
+    briefError = null;
     regenOpen = true;
   }
 
@@ -379,6 +385,61 @@
     const brief = regenBrief.trim();
     regenOpen = false;
     await runRegenerate(brief || undefined);
+  }
+
+  // ─── Brief revision + start over (issue #522, Phase 3) ───────────────────────
+  // Both actions call the describeRecipeScene callable, which PERSISTS NOTHING —
+  // the new brief lands back in the box, still editable, and only becomes the
+  // recipe's art direction if the user then presses Regenerate. That is the point:
+  // the brief is cheap and the image is not, so you iterate the words for a
+  // fraction of a cent and buy exactly one render once they are right.
+  //
+  // The steer is deliberately NOT `imageHint` (retired, inert): it never touches
+  // the wire as a persisted field, it is a one-shot instruction to the text model
+  // that dies with the round trip. What persists is its RESULT, once, via the brief.
+  let regenHint = $state('');
+  let briefBusy = $state(false);
+  let briefError = $state<string | null>(null);
+
+  // Shared by both actions: run it, swap the brief in on success, and on failure
+  // leave the box EXACTLY as it was. A revision that failed must not cost the user
+  // the brief they already had — that text may be several edits deep, and a
+  // transient callable error is no reason to throw it away.
+  async function runBriefAction(
+    action: () => Promise<ReadResult<string, DomainError>>,
+  ): Promise<void> {
+    if (!recipe || briefBusy) return;
+    briefBusy = true;
+    briefError = null;
+    const result = await action();
+    briefBusy = false;
+    if (result.kind !== 'ok') {
+      briefError = "Couldn't rewrite the brief — your text is unchanged. Try again.";
+      return;
+    }
+    regenBrief = result.value;
+  }
+
+  async function handleReviseBrief(): Promise<void> {
+    const hint = regenHint.trim();
+    const brief = regenBrief.trim();
+    // Revision needs both halves. With no brief to revise, the honest action is
+    // "start over" — the button label already says so, so there is nothing to do.
+    if (!hint || !brief) return;
+    const target = recipe;
+    if (!target) return;
+    await runBriefAction(() => reviseRecipeSceneBrief(target, brief, hint));
+    // The steer is spent: it has been folded into the brief, and leaving it in the
+    // box invites a second Revise that applies "make it summery" to an already
+    // summery brief.
+    if (!briefError) regenHint = '';
+  }
+
+  async function handleStartOverBrief(): Promise<void> {
+    const target = recipe;
+    if (!target) return;
+    regenHint = '';
+    await runBriefAction(() => startOverRecipeSceneBrief(target));
   }
 
   // ─── Upload a local photo (issue #455, Phase 2) ──────────────────────────────
@@ -974,16 +1035,90 @@
         maxLength={2000}
         value={regenBrief}
         onValueChange={(v) => (regenBrief = v)}
+        disabled={briefBusy}
         data-testid="recipe-image-regenerate-brief"
       />
+
+      <!--
+        Ask for a revision (issue #522, Phase 3). Type a steer, press Revise, and the
+        text model rewrites the brief above with that steer folded THROUGH it — light,
+        props, surface and palette moving together — and hands it back here, still
+        editable, before any image is paid for. maxLength mirrors the 200-char cap on
+        DescribeRecipeSceneInputSchema.hint. Enter submits: this is a one-line steer
+        you will press repeatedly, and reaching for the mouse each time is friction the
+        iteration loop can't afford.
+      -->
+      <div class="flex flex-col gap-2">
+        <div class="flex items-end gap-2">
+          <TextField
+            class="flex-1"
+            label="Ask for a revision"
+            placeholder="e.g. make it summery"
+            maxlength={200}
+            value={regenHint}
+            onValueChange={(v) => (regenHint = v)}
+            disabled={briefBusy}
+            onkeydown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                void handleReviseBrief();
+              }
+            }}
+            data-testid="recipe-image-regenerate-hint"
+          />
+          <Button
+            variant="outline"
+            onclick={handleReviseBrief}
+            loading={briefBusy}
+            disabled={briefBusy || !regenHint.trim() || !regenBrief.trim()}
+            data-testid="recipe-image-regenerate-revise"
+          >
+            Revise
+          </Button>
+        </div>
+        <div class="flex items-center justify-between gap-2">
+          <!--
+            Start over is ALWAYS available: the brief is sticky, so a recipe you have
+            since rewritten would otherwise keep art direction for the dish it used to
+            be forever. This re-reads the current recipe and discards the accumulated
+            edits — hence the explicit warning in the copy.
+          -->
+          <button
+            type="button"
+            class="text-xs text-primary hover:underline disabled:opacity-50"
+            onclick={handleStartOverBrief}
+            disabled={briefBusy}
+            data-testid="recipe-image-regenerate-start-over"
+          >
+            Start over from the recipe
+          </button>
+          {#if briefBusy}
+            <span class="flex items-center gap-2 text-xs text-muted-foreground">
+              <Spinner size={12} />
+              Rewriting the brief…
+            </span>
+          {/if}
+        </div>
+        {#if briefError}
+          <p class="text-xs text-destructive" data-testid="recipe-image-regenerate-brief-error">
+            {briefError}
+          </p>
+        {/if}
+      </div>
+
       <DialogFooter>
         <Button variant="outline" onclick={() => (regenOpen = false)} disabled={imageBusy}>
           Cancel
         </Button>
+        <!--
+          Also disabled while a brief revision is in flight: generating right then
+          would pay for an image directed by the brief the user is mid-way through
+          replacing — the exact wasted render this feature exists to prevent.
+        -->
         <Button
           onclick={handleRegenerateConfirm}
           loading={imageBusy}
-          disabled={imageBusy}
+          disabled={imageBusy || briefBusy}
           data-testid="recipe-image-regenerate-confirm"
         >
           Regenerate

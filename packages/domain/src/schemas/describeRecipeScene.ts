@@ -19,6 +19,22 @@ export const DescribeRecipeSceneInputSchema = z.object({
   // Method text. Carries the finished-appearance cues ("grill until blistered
   // and golden", "scatter with torn basil") that decide how the dish looks.
   steps: z.array(z.string()).optional().default([]),
+  // ─── Revision mode (issue #522, Phase 3) ────────────────────────────────────
+  // Both OPTIONAL and ADDITIVE: omit both and the flow authors from scratch —
+  // the original behaviour, and also what "start over" deliberately sends (a
+  // fresh reading of the current recipe, discarding accumulated edits). Supply
+  // both and the flow REVISES `currentBrief` per `hint` instead.
+  //
+  // The recipe fields above stay REQUIRED in revision mode on purpose: revising
+  // a paragraph without knowing which dish it describes drifts away from the
+  // food, which is the exact failure this whole feature exists to fix. A
+  // revision is anchored to the actual recipe, not just to the prose about it.
+  //
+  // Caps mirror their neighbours: 2000 is the brief cap on
+  // RegenerateRecipeImageInputSchema.brief (the same paragraph round-trips
+  // through both), and 200 is the established steer cap.
+  currentBrief: z.string().trim().max(2000).optional(),
+  hint: z.string().trim().max(200).optional(),
 });
 
 export type DescribeRecipeSceneInput = z.infer<typeof DescribeRecipeSceneInputSchema>;

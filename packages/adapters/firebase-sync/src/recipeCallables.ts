@@ -2,6 +2,8 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
 import type { IngredientGroup } from '@salt/domain';
 import type {
+  DescribeRecipeSceneInput,
+  DescribeRecipeSceneOutput,
   ExtractRecipeFromUrlInput,
   RecipeDoc,
   UrlImportFailureCode,
@@ -111,6 +113,43 @@ export async function callSetRecipeImageUpload(
     >(getFunctions(undefined, 'europe-west2'), 'setRecipeImageUpload');
     await fn(contentType ? { recipeId, imageBase64, contentType } : { recipeId, imageBase64 });
     return success(undefined);
+  } catch (err) {
+    const code = (err as { code?: string }).code ?? '';
+    if (code === 'functions/unauthenticated') {
+      return failure({ kind: 'AuthError', reason: 'unauthenticated' });
+    }
+    if (code === 'functions/permission-denied') {
+      return failure({ kind: 'AuthError', reason: 'forbidden' });
+    }
+    return failure({ kind: 'NetworkError', reason: 'transient' });
+  }
+}
+
+// Scene brief on demand (issue #522, Phase 3). Sends the recipe — plus, on a
+// revision, the current brief and the user's steer — and receives the
+// art-direction paragraph back. Persists NOTHING: the brief returns to the dialog
+// for the user to read and edit, and only reaches Firestore if they then press
+// Regenerate (callRegenerateRecipeImage stamps it onto `imageBrief`).
+//
+// `traceparent` (issue #362) rides on the payload exactly as in
+// callExtractRecipeFromUrl — the Firebase callable SDK cannot carry a custom
+// `traceparent` HTTP header, so the browser-supplied W3C trace id goes as a named
+// field the CF entrypoint strips before the flow runs. firebase-sync only forwards
+// the string (Rule 4: no observability import). Optional → back-compat.
+//
+// NEVER throws (Rule 10): a failure crosses as a Failure so the caller can leave
+// the user's existing brief untouched and say so.
+export async function callDescribeRecipeScene(
+  input: DescribeRecipeSceneInput,
+  traceparent?: string,
+): Promise<ReadResult<DescribeRecipeSceneOutput, DomainError>> {
+  try {
+    const fn = httpsCallable<
+      DescribeRecipeSceneInput & { traceparent?: string },
+      DescribeRecipeSceneOutput
+    >(getFunctions(undefined, 'europe-west2'), 'describeRecipeScene');
+    const res = await fn(traceparent ? { ...input, traceparent } : input);
+    return success(res.data);
   } catch (err) {
     const code = (err as { code?: string }).code ?? '';
     if (code === 'functions/unauthenticated') {

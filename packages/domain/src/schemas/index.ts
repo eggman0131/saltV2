@@ -64,6 +64,7 @@ export {
   IdentifyEquipmentWireInputSchema,
   PopulateEquipmentEntryWireInputSchema,
   RefreshWeatherForecastWireInputSchema,
+  DescribeRecipeSceneWireInputSchema,
 } from './traceContextWire.js';
 export type {
   MatchOrCreateCanonWireInput,
@@ -73,6 +74,7 @@ export type {
   IdentifyEquipmentWireInput,
   PopulateEquipmentEntryWireInput,
   RefreshWeatherForecastWireInput,
+  DescribeRecipeSceneWireInput,
 } from './traceContextWire.js';
 
 export {

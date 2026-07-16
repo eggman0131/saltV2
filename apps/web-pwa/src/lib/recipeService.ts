@@ -6,12 +6,13 @@ import {
   callCanonicaliseRecipeIngredients,
   callExtractRecipeFromUrl,
   callAuthorRecipe,
+  callDescribeRecipeScene,
   callRegenerateRecipeImage,
   callSetRecipeImageUpload,
   saveShoppingListItem,
 } from '@salt/firebase-sync';
 import { createObservabilityErrorReportingAdapter, startUserActionSpan } from '@salt/observability';
-import type { AuthorRecipeInput, RecipeDoc } from '@salt/domain/schemas';
+import type { AuthorRecipeInput, DescribeRecipeSceneInput, RecipeDoc } from '@salt/domain/schemas';
 import { reportIfFailed, reportSubscriptionError } from './errorReporting.js';
 import {
   addItem,
@@ -157,6 +158,79 @@ export async function regenerateRecipeImage(
   brief?: string,
 ): Promise<ReadResult<void, DomainError>> {
   return reportIfFailed(getErrorReporter(), await callRegenerateRecipeImage(recipeId, brief));
+}
+
+// ─── Scene brief (issue #522, Phase 3) ─────────────────────────────────────────
+// Ask the text model for the art-direction brief WITHOUT committing to an image.
+// Nothing is persisted: the brief comes back to the dialog for the user to read
+// and edit, and only reaches Firestore if they then press Regenerate. That split
+// is the whole economics of the feature — a brief costs a fraction of a cent, an
+// image costs orders of magnitude more, so you fix the art direction first and pay
+// for one render instead of three.
+
+// Flatten a Recipe to the flow's input. Mirrors the trigger's own flattening
+// (onRecipeWritten.describeSceneOrNothing) so a brief authored from the dialog and
+// a brief authored by the trigger read the SAME recipe — the ingredient groups
+// collapse to their display lines because the flow wants the dish's content, not
+// its grouping.
+function sceneInputFor(recipe: Recipe): DescribeRecipeSceneInput {
+  return {
+    title: recipe.title.trim(),
+    description: recipe.description,
+    ingredients: recipe.ingredients.flatMap((g) => g.items.map((i) => i.rawText)),
+    steps: recipe.steps.map((s) => s.text),
+  };
+}
+
+// Shared span + call plumbing for both brief actions. Browser-ROOT span (issue
+// #362, Phase 4) exactly as importRecipeFromUrl/authorRecipeTraced: the trace
+// originates at the click and the CF + AI sub-tree nests under the same trace id.
+// Best-effort — an inert tracer yields a no-op span and an empty traceparent, so
+// the call behaves as a bare callable. Returns the brief itself: the wrapper
+// object exists only for Genkit's structured output, and no caller wants it.
+async function describeScene(
+  input: DescribeRecipeSceneInput,
+  spanName: string,
+): Promise<ReadResult<string, DomainError>> {
+  const span = startUserActionSpan(spanName);
+  const child = span.child('callDescribeRecipeScene');
+  try {
+    const result = await callDescribeRecipeScene(input, span.traceparent || undefined);
+    child.end();
+    if (result.kind !== 'ok') {
+      span.setAttribute('brief.outcome', result.error.kind);
+      span.setError();
+      return reportIfFailed(getErrorReporter(), result);
+    }
+    span.setAttribute('brief.outcome', 'ok');
+    return success(result.value.brief);
+  } finally {
+    span.end();
+  }
+}
+
+// Revise an existing brief by a one-line steer ("make it summery"). The recipe
+// goes along with the brief and the hint — a revision stays anchored to the actual
+// dish rather than drifting while the model edits prose about it.
+export async function reviseRecipeSceneBrief(
+  recipe: Recipe,
+  currentBrief: string,
+  hint: string,
+): Promise<ReadResult<string, DomainError>> {
+  return describeScene(
+    { ...sceneInputFor(recipe), currentBrief: currentBrief.trim(), hint: hint.trim() },
+    `Revise scene brief: ${recipe.title.trim()}`,
+  );
+}
+
+// Start over: author a brief from a fresh reading of the CURRENT recipe, sending
+// neither the accumulated brief nor any steer. This is the escape hatch for a
+// sticky brief — a recipe you have since substantially rewritten would otherwise
+// keep art direction describing the dish it used to be, forever.
+export async function startOverRecipeSceneBrief(
+  recipe: Recipe,
+): Promise<ReadResult<string, DomainError>> {
+  return describeScene(sceneInputFor(recipe), `Author scene brief: ${recipe.title.trim()}`);
 }
 
 // Upload a user-supplied hero photo (issue #455, Phase 2). The caller (the

@@ -10,6 +10,15 @@ vi.mock('@salt/observability', async () => {
   const actual = await vi.importActual<typeof import('@salt/observability')>('@salt/observability');
   return {
     isReportableCategory: actual.isReportableCategory,
+    // Inert no-op span: tracing is best-effort, so the traced service functions must
+    // behave exactly as a bare callable call when the tracer has nothing to say.
+    startUserActionSpan: vi.fn(() => ({
+      child: () => ({ end: () => {} }),
+      end: () => {},
+      setAttribute: () => {},
+      setError: () => {},
+      traceparent: '',
+    })),
     createObservabilityErrorReportingAdapter: vi.fn(() => ({
       report: (error: unknown, category: DomainError['kind']) => {
         if (!actual.isReportableCategory(category)) return;
@@ -26,6 +35,7 @@ vi.mock('@salt/firebase-sync', () => ({
   callParseRecipeIngredients: vi.fn(),
   callCanonicaliseRecipeIngredients: vi.fn(),
   callExtractRecipeFromUrl: vi.fn(),
+  callDescribeRecipeScene: vi.fn(),
   saveShoppingListItem: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   isAuthTransitioning: vi.fn(() => false),
 }));
@@ -44,6 +54,8 @@ import {
   matchIngredient,
   canonicaliseIngredients,
   commitRecipeAddPlan,
+  reviseRecipeSceneBrief,
+  startOverRecipeSceneBrief,
   type RecipeAddRow,
 } from '../src/lib/recipeService.js';
 
@@ -195,6 +207,63 @@ describe('recipeService — write/command failure reporting (Phase 2)', () => {
       fs.saveShoppingListItem.mockResolvedValue({ kind: 'ok', value: undefined });
       await commitRecipeAddPlan(makeRecipe(), 'list-1', 1, [row]);
       expect(reportSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  // Scene brief on demand (issue #522, Phase 3). Same category gate as every other
+  // AI callable: report the unexpected, suppress the expected.
+  describe('scene brief (describeRecipeScene callable)', () => {
+    it('reports a StorageError revision failure', async () => {
+      fs.callDescribeRecipeScene.mockResolvedValueOnce({ kind: 'err', error: STORAGE_ERR });
+      await reviseRecipeSceneBrief(makeRecipe(), 'An autumnal bake.', 'make it summery');
+      expect(reportSpy).toHaveBeenCalledWith(STORAGE_ERR, 'StorageError');
+    });
+
+    it('does NOT surface a NetworkError revision failure (gate suppresses)', async () => {
+      fs.callDescribeRecipeScene.mockResolvedValueOnce({ kind: 'err', error: NETWORK_ERR });
+      await reviseRecipeSceneBrief(makeRecipe(), 'An autumnal bake.', 'make it summery');
+      expect(reportSpy).not.toHaveBeenCalled();
+    });
+
+    it('reports a StorageError start-over failure', async () => {
+      fs.callDescribeRecipeScene.mockResolvedValueOnce({ kind: 'err', error: STORAGE_ERR });
+      await startOverRecipeSceneBrief(makeRecipe());
+      expect(reportSpy).toHaveBeenCalledWith(STORAGE_ERR, 'StorageError');
+    });
+
+    it('returns the brief and reports nothing on success', async () => {
+      fs.callDescribeRecipeScene.mockResolvedValueOnce({
+        kind: 'ok',
+        value: { brief: 'A summery bake.' },
+      });
+      const result = await startOverRecipeSceneBrief(makeRecipe());
+      // The brief itself, unwrapped — the object exists only for Genkit's structured
+      // output and no caller wants it.
+      expect(result).toEqual({ kind: 'ok', value: 'A summery bake.' });
+      expect(reportSpy).not.toHaveBeenCalled();
+    });
+
+    it('sends the recipe with the brief and the hint on a revision', async () => {
+      fs.callDescribeRecipeScene.mockResolvedValueOnce({ kind: 'ok', value: { brief: 'x' } });
+      await reviseRecipeSceneBrief(makeRecipe(), 'An autumnal bake.', 'make it summery');
+      expect(fs.callDescribeRecipeScene).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Test',
+          currentBrief: 'An autumnal bake.',
+          hint: 'make it summery',
+        }),
+        undefined,
+      );
+    });
+
+    it('start over sends the recipe and NOTHING else', async () => {
+      fs.callDescribeRecipeScene.mockResolvedValueOnce({ kind: 'ok', value: { brief: 'x' } });
+      await startOverRecipeSceneBrief(makeRecipe());
+      const input = fs.callDescribeRecipeScene.mock.calls[0]![0];
+      // Neither half of a revision — so the flow authors from a fresh reading and the
+      // accumulated edits are discarded, which is the whole point of "start over".
+      expect(input).not.toHaveProperty('currentBrief');
+      expect(input).not.toHaveProperty('hint');
     });
   });
 });
