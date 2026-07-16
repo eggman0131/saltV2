@@ -47,7 +47,7 @@ describe('regenerateRecipeImage callable', () => {
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
-  it('clears the image, un-hides, and drops any stale hint for a signed-in caller', async () => {
+  it('clears the image, un-hides, and clears the brief when none is supplied', async () => {
     const result = await (regenerateRecipeImage as Function)({
       auth: { uid: 'u1' },
       data: { recipeId: 'recipe-123' },
@@ -59,22 +59,54 @@ describe('regenerateRecipeImage callable', () => {
       image: null,
       imageHidden: DELETE_SENTINEL,
       imageHint: DELETE_SENTINEL,
+      imageBrief: DELETE_SENTINEL,
       imageRequestedAt: NOW,
     });
     expect(result).toEqual({ ok: true });
   });
 
-  it('carries an optional hint onto the doc', async () => {
+  it('writes the supplied brief to imageBrief for the trigger to use verbatim', async () => {
+    const brief = 'Served in a deep bowl on a sunlit table, steam rising, shot from above.';
     await (regenerateRecipeImage as Function)({
       auth: { uid: 'u1' },
-      data: { recipeId: 'recipe-123', hint: 'make it brighter' },
+      data: { recipeId: 'recipe-123', brief },
     });
 
     expect(mockUpdate).toHaveBeenCalledWith({
       image: null,
       imageHidden: DELETE_SENTINEL,
-      imageHint: 'make it brighter',
+      imageHint: DELETE_SENTINEL,
+      imageBrief: brief,
       imageRequestedAt: NOW,
     });
+  });
+
+  // A user who empties the box is asking for fresh art direction, not for the old
+  // brief to be quietly reused — so an absent brief must delete the field, which is
+  // what routes the trigger back to authoring one.
+  it('deletes a stale imageBrief when the caller clears the box', async () => {
+    await (regenerateRecipeImage as Function)({
+      auth: { uid: 'u1' },
+      data: { recipeId: 'recipe-123', brief: '   ' },
+    });
+
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ imageBrief: DELETE_SENTINEL }),
+    );
+  });
+
+  // imageHint is retired: never written, but still cleared, because a doc may carry
+  // one from an in-flight client. An older bundle's hint must not fail the call and
+  // must not leak into the generation.
+  it('accepts but ignores a hint from an older client, and never writes one', async () => {
+    const result = await (regenerateRecipeImage as Function)({
+      auth: { uid: 'u1' },
+      data: { recipeId: 'recipe-123', hint: 'make it brighter' },
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ imageHint: DELETE_SENTINEL }),
+    );
   });
 });

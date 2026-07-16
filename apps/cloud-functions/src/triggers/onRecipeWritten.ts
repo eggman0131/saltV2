@@ -6,6 +6,7 @@ import { logger } from 'firebase-functions';
 import { RecipeSchema, DevSettingsSchema, type RecipeDoc } from '@salt/domain/schemas';
 import { flushServerObservability } from '@salt/observability/server';
 import { generateRecipeImageFlow } from '../flows/generateRecipeImage.js';
+import { describeRecipeSceneFlow } from '../flows/describeRecipeScene.js';
 import { encodeHeroImage } from '../imaging/encodeHeroImage.js';
 import { buildStorageDownloadUrl } from '../imaging/storageDownloadUrl.js';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
@@ -108,12 +109,23 @@ async function maybeGenerateImage(
   // Optional one-shot user steer written by the regenerate callable.
   const hint = recipe.imageHint?.trim();
 
+  // Art direction for the hero. Deliberately the LAST thing before generation, so
+  // every cheap skip above (fake-AI e2e, blank draft, kill-switch) short-circuits
+  // before we pay for a text call.
+  //
+  // Brief present on the doc? Use it verbatim. Absent? Author one. The trigger does
+  // not know or care whether a human or the model wrote it — an authored brief and
+  // an edited one are the same field, and that is what makes a later "edit the
+  // brief" affordance free.
+  const brief = recipe.imageBrief?.trim() || (await describeSceneOrNothing(recipe));
+
   try {
     const { imageBase64 } = await withAiTimeout('generateRecipeImage', () =>
       generateRecipeImageFlow({
         title,
         description: recipe.description,
         ...(hint ? { hint } : {}),
+        ...(brief ? { sceneBrief: brief } : {}),
         // Feed the recipe's own tags to the model as a dish-type cue for reading
         // mood/season/cuisine (issue #148, Phase 2). Always present on a parsed
         // RecipeDoc (string[], possibly empty); the flow drops empties and adds no
@@ -124,13 +136,22 @@ async function maybeGenerateImage(
     const raw = Buffer.from(imageBase64, 'base64');
     const webp = await encodeHeroImage(raw);
     const url = await uploadRecipeImage(id, webp);
-    // Set the hero and clear the one-shot hint in the same write. `source: 'ai'`
-    // marks it generated so a later trigger pass skips it (and so the UI can tell
-    // it apart from a future user upload).
+    // Set the hero, persist the brief that produced it, and clear the one-shot hint
+    // — all in the same write (the update fires regardless, so the brief rides along
+    // for free). `source: 'ai'` marks it generated so a later trigger pass skips it
+    // (and so the UI can tell it apart from a future user upload). The brief is
+    // written whether we authored it or read it off the doc: re-writing an identical
+    // value costs nothing and keeps the field a plain "this is the art direction for
+    // the image you're looking at", with no in-flight window where a generated hero
+    // has no brief beside it.
     await getFirestore()
       .collection('recipes')
       .doc(id)
-      .update({ image: { url, source: 'ai' }, imageHint: FieldValue.delete() });
+      .update({
+        image: { url, source: 'ai' },
+        imageHint: FieldValue.delete(),
+        ...(brief ? { imageBrief: brief } : {}),
+      });
   } catch (err) {
     // Leave image null so a later regenerate retries; never block the trigger.
     logger.error('onRecipeWritten: image generation failed', { id, err });
@@ -138,6 +159,43 @@ async function maybeGenerateImage(
     // upload — a throw here is unexpected. Report it to PostHog alongside the
     // logger. Best-effort, never throws; the handler's finally flushes.
     reportServerError(err);
+  }
+}
+
+/**
+ * Authors a scene brief for the hero: art direction describing the plated dish,
+ * written by a cheap fast-model text call that reads the WHOLE recipe — every
+ * ingredient and every step — not just the title/description/tags the image prompt
+ * can see. That is how a hero comes to show the blistered top or the torn basil
+ * that exist only in the method.
+ *
+ * BEST-EFFORT (Rule 10): a brief is an improvement to the image prompt, never a
+ * precondition for it. Any failure degrades to `undefined`, and the image flow then
+ * falls back to its "read the dish yourself" clause — i.e. exactly the behaviour
+ * every recipe had before briefs existed. A brief failure must never cost the user
+ * their hero, so this never throws.
+ */
+async function describeSceneOrNothing(recipe: RecipeDoc): Promise<string | undefined> {
+  try {
+    const { brief } = await describeRecipeSceneFlow({
+      title: recipe.title.trim(),
+      description: recipe.description,
+      // Flatten the ingredient groups to their display lines — the flow wants the
+      // dish's content, not its grouping.
+      ingredients: recipe.ingredients.flatMap((g) => g.items.map((i) => i.rawText)),
+      steps: recipe.steps.map((s) => s.text),
+    });
+    const trimmed = brief.trim();
+    return trimmed || undefined;
+  } catch (err) {
+    // Non-fatal by construction (we fall back), but a text flow throwing is
+    // unexpected — report it additively alongside the logger, best-effort.
+    logger.warn('onRecipeWritten: scene brief failed, falling back to the dish-reading prompt', {
+      id: recipe.id,
+      err,
+    });
+    reportServerError(err);
+    return undefined;
   }
 }
 

@@ -64,6 +64,7 @@ export {
   IdentifyEquipmentWireInputSchema,
   PopulateEquipmentEntryWireInputSchema,
   RefreshWeatherForecastWireInputSchema,
+  DescribeRecipeSceneWireInputSchema,
 } from './traceContextWire.js';
 export type {
   MatchOrCreateCanonWireInput,
@@ -73,6 +74,7 @@ export type {
   IdentifyEquipmentWireInput,
   PopulateEquipmentEntryWireInput,
   RefreshWeatherForecastWireInput,
+  DescribeRecipeSceneWireInput,
 } from './traceContextWire.js';
 
 export {
@@ -199,6 +201,12 @@ export type {
   CategoriseRecipeAIOutput,
   CategoriseRecipeOutput,
 } from './categoriseRecipe.js';
+
+export {
+  DescribeRecipeSceneInputSchema,
+  DescribeRecipeSceneOutputSchema,
+} from './describeRecipeScene.js';
+export type { DescribeRecipeSceneInput, DescribeRecipeSceneOutput } from './describeRecipeScene.js';
 
 export { AuthorRecipeInputSchema, LibrarianOutputSchema } from './authorRecipe.js';
 export type {

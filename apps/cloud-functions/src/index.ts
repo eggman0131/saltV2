@@ -6,6 +6,7 @@ import {
   MatchOrCreateCanonWireInputSchema,
   CanonicaliseRecipeIngredientsWireInputSchema,
   AuthorRecipeWireInputSchema,
+  DescribeRecipeSceneWireInputSchema,
   ExtractRecipeFromUrlWireInputSchema,
   IdentifyEquipmentWireInputSchema,
   PopulateEquipmentEntryWireInputSchema,
@@ -32,6 +33,7 @@ import { populateEquipmentEntryFlow } from './flows/populateEquipmentEntry.js';
 import { parseRecipeIngredientsFlow } from './flows/parseRecipeIngredients.js';
 import { chefChatFlow } from './flows/chefChat.js';
 import { authorRecipeFlow } from './flows/authorRecipe.js';
+import { describeRecipeSceneFlow } from './flows/describeRecipeScene.js';
 import {
   extractRecipeFromUrlFlow,
   UrlImportError,
@@ -208,6 +210,31 @@ export const authorRecipe = makeTracedCallable({
   wireSchema: AuthorRecipeWireInputSchema,
   flow: authorRecipeFlow,
   options: { secrets: [geminiApiKey, posthogApiKey], timeoutSeconds: 120 },
+});
+
+// Scene brief on demand (issue #522, Phase 3): read the recipe → return the
+// art-direction paragraph that will direct its hero image. Two shapes, one flow:
+// with a `currentBrief` + `hint` it REVISES ("make it summery", folded through);
+// with neither it authors from scratch, which is what "start over" sends so a
+// substantially rewritten recipe can shed art direction describing the old dish.
+//
+// PERSISTS NOTHING — deliberately. The brief goes back to the dialog, still
+// editable, and only ever reaches Firestore when the user commits by pressing
+// Regenerate (regenerateRecipeImage stamps `imageBrief`). That is the economics of
+// the feature: revising is a fraction of a cent and touches no doc, so you can
+// iterate the art direction freely and only pay for an image once it is right —
+// three brief revisions and one good image, not three images and a shrug. A
+// revision that auto-saved would also silently overwrite the brief behind the
+// image currently on screen, which is not what "let me see it first" means.
+//
+// Auth posture mirrors the image callables: signed-in only, NO admin gate —
+// recipes are member-writable by design and the gate here is on AI cost, not on
+// authority. This is a plain text flow (no fetch, no image), so the house
+// text-flow timeout is plenty.
+export const describeRecipeScene = makeTracedCallable({
+  wireSchema: DescribeRecipeSceneWireInputSchema,
+  flow: describeRecipeSceneFlow,
+  options: { secrets: [geminiApiKey, posthogApiKey], timeoutSeconds: 90 },
 });
 
 // SSRF-hardened URL import (recipe URL import epic). A custom onError maps the

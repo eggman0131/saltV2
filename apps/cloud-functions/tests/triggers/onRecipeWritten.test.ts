@@ -23,6 +23,11 @@ vi.mock('../../src/flows/generateRecipeImage.js', () => ({
   generateRecipeImageFlow: mockGenerateImage,
 }));
 
+const mockDescribeScene = vi.fn(async () => ({ brief: 'A blistered, golden-topped bake.' }));
+vi.mock('../../src/flows/describeRecipeScene.js', () => ({
+  describeRecipeSceneFlow: mockDescribeScene,
+}));
+
 const mockEncode = vi.fn(async () => Buffer.from([1, 2, 3]));
 vi.mock('../../src/imaging/encodeHeroImage.js', () => ({ encodeHeroImage: mockEncode }));
 
@@ -95,6 +100,7 @@ beforeEach(() => {
   // call history but not implementations, so a persistent override from one test
   // would otherwise leak into the next).
   mockGenerateImage.mockResolvedValue({ imageBase64: 'QUJD', contentType: 'image/png' });
+  mockDescribeScene.mockResolvedValue({ brief: 'A blistered, golden-topped bake.' });
   mockEncode.mockResolvedValue(Buffer.from([1, 2, 3]));
   mockGet.mockResolvedValue({ exists: false });
 });
@@ -104,11 +110,13 @@ describe('onRecipeWritten — hero-image branch', () => {
     await (onRecipeWritten as Function)(makeEvent('r1', makeRecipe('r1')));
 
     expect(mockGenerateImage).toHaveBeenCalledOnce();
-    // Title + description + the recipe's tags are fed to the flow; no hint present.
+    // Title + description + the recipe's tags + the freshly-authored scene brief
+    // are fed to the flow; no hint present.
     expect(mockGenerateImage).toHaveBeenCalledWith({
       title: 'Roast chicken',
       description: 'A whole roast chicken with lemon and thyme.',
       tags: [],
+      sceneBrief: 'A blistered, golden-topped bake.',
     });
     expect(mockEncode).toHaveBeenCalledOnce();
     expect(mockSave).toHaveBeenCalledOnce();
@@ -117,6 +125,8 @@ describe('onRecipeWritten — hero-image branch', () => {
     expect(writeArg.image.source).toBe('ai');
     expect(writeArg.image.url).toContain('recipe-images%2Fr1.webp');
     expect(writeArg.imageHint).toBe(DELETE_SENTINEL);
+    // The brief is persisted in the SAME write as the image it produced.
+    expect(writeArg.imageBrief).toBe('A blistered, golden-topped bake.');
     expect(mockFlush).toHaveBeenCalled();
   });
 
@@ -129,6 +139,7 @@ describe('onRecipeWritten — hero-image branch', () => {
       description: 'A whole roast chicken with lemon and thyme.',
       hint: 'on a rustic board',
       tags: [],
+      sceneBrief: 'A blistered, golden-topped bake.',
     });
   });
 
@@ -216,5 +227,119 @@ describe('onRecipeWritten — hero-image branch', () => {
   it('skips a blank-title draft', async () => {
     await (onRecipeWritten as Function)(makeEvent('r1', makeRecipe('r1', { title: '   ' })));
     expect(mockGenerateImage).not.toHaveBeenCalled();
+  });
+});
+
+describe('onRecipeWritten — scene brief', () => {
+  it('authors a brief from the WHOLE recipe — ingredients and steps, not just the title', async () => {
+    await (onRecipeWritten as Function)(
+      makeEvent(
+        'r1',
+        makeRecipe('r1', {
+          ingredients: [
+            {
+              id: 'g1',
+              name: null,
+              items: [
+                {
+                  id: 'i1',
+                  rawText: 'a handful of basil',
+                  parsed: null,
+                  canonId: null,
+                  matchState: 'pending',
+                  isOptional: false,
+                  firstUsedInStepId: null,
+                },
+              ],
+            },
+          ],
+          steps: [
+            {
+              id: 's1',
+              text: 'Grill until the top is blistered and golden.',
+              timer: null,
+              note: null,
+            },
+          ],
+        }),
+      ),
+    );
+
+    // The ingredient groups are flattened to their display lines and the steps to
+    // their text — this is the only path by which a garnish or a finishing cue that
+    // appears nowhere in the title/description reaches the hero.
+    expect(mockDescribeScene).toHaveBeenCalledWith({
+      title: 'Roast chicken',
+      description: 'A whole roast chicken with lemon and thyme.',
+      ingredients: ['a handful of basil'],
+      steps: ['Grill until the top is blistered and golden.'],
+    });
+  });
+
+  it('uses a brief already on the doc verbatim, without authoring a new one', async () => {
+    await (onRecipeWritten as Function)(
+      makeEvent('r1', makeRecipe('r1', { imageBrief: 'A human wrote this brief.' })),
+    );
+
+    // Present on the doc → used as-is. The trigger neither knows nor cares whether a
+    // human or the model wrote it.
+    expect(mockDescribeScene).not.toHaveBeenCalled();
+    expect(mockGenerateImage).toHaveBeenCalledWith(
+      expect.objectContaining({ sceneBrief: 'A human wrote this brief.' }),
+    );
+    expect(mockUpdate.mock.calls[0]![0].imageBrief).toBe('A human wrote this brief.');
+  });
+
+  it('authors one when the doc brief is blank', async () => {
+    await (onRecipeWritten as Function)(makeEvent('r1', makeRecipe('r1', { imageBrief: '   ' })));
+    expect(mockDescribeScene).toHaveBeenCalledOnce();
+  });
+
+  it('still generates the image when the brief step fails (degrades, never throws)', async () => {
+    mockDescribeScene.mockRejectedValue(new Error('brief model exploded'));
+
+    await expect(
+      (onRecipeWritten as Function)(makeEvent('r1', makeRecipe('r1'))),
+    ).resolves.toBeUndefined();
+
+    // Rule 10: a brief is an improvement to the prompt, never a precondition. The
+    // hero is generated anyway, with NO sceneBrief — so the flow uses its
+    // dish-reading fallback, i.e. exactly the pre-brief behaviour.
+    expect(mockGenerateImage).toHaveBeenCalledOnce();
+    expect(mockGenerateImage.mock.calls[0]![0]).not.toHaveProperty('sceneBrief');
+    const writeArg = mockUpdate.mock.calls[0]![0];
+    expect(writeArg.image.source).toBe('ai');
+    expect(writeArg).not.toHaveProperty('imageBrief');
+  });
+
+  it('falls back when the brief flow returns an empty brief', async () => {
+    mockDescribeScene.mockResolvedValue({ brief: '   ' });
+    await (onRecipeWritten as Function)(makeEvent('r1', makeRecipe('r1')));
+    expect(mockGenerateImage).toHaveBeenCalledOnce();
+    expect(mockGenerateImage.mock.calls[0]![0]).not.toHaveProperty('sceneBrief');
+  });
+
+  it('never pays for a brief when a guard skips generation', async () => {
+    // The brief call sits AFTER every cheap guard, so a disabled environment, an
+    // existing image, or a blank draft costs nothing.
+    mockGet.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        canonIconGenerationEnabled: true,
+        recipeImageGenerationEnabled: false,
+        schemaVersion: 1,
+      }),
+    });
+    await (onRecipeWritten as Function)(makeEvent('r1', makeRecipe('r1')));
+    expect(mockDescribeScene).not.toHaveBeenCalled();
+
+    mockGet.mockResolvedValue({ exists: false });
+    await (onRecipeWritten as Function)(makeEvent('r1', makeRecipe('r1', { title: '  ' })));
+    expect(mockDescribeScene).not.toHaveBeenCalled();
+
+    await (onRecipeWritten as Function)(
+      makeEvent('r1', makeRecipe('r1', { image: { url: 'https://x/u.webp', source: 'upload' } })),
+    );
+    expect(mockDescribeScene).not.toHaveBeenCalled();
   });
 });

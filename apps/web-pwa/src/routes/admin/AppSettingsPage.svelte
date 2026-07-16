@@ -130,6 +130,7 @@
     arbitrateCanon: 'Canon arbitration',
     authorRecipe: 'Recipe author (librarian)',
     chefChat: 'Chef Chat',
+    describeRecipeScene: 'Recipe scene brief (hero art direction)',
     embedText: 'Embed text (callable)',
     extractRecipeFromUrl: 'Recipe import from URL',
     generateCanonIcon: 'Canon icon generation',

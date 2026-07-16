@@ -36,6 +36,7 @@ export const AI_FLOW_ROLES = {
   arbitrateCanon: 'lite',
   authorRecipe: 'fast',
   chefChat: 'pro',
+  describeRecipeScene: 'fast',
   embedText: 'embedding',
   extractRecipeFromUrl: 'fast',
   generateCanonIcon: 'image',
