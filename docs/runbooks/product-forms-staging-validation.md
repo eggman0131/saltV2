@@ -6,16 +6,34 @@ capability (issues #500/#501/#504/#505) end-to-end against the **staging** proje
 UI and inspects Firestore directly, so it catches integration/AI/rollup behaviour
 that unit + e2e tests don't.
 
-Last run: 2026-07-15 (against `main` incl. #515 — count-yield egg/protein rollup;
-re-validated by re-parsing recipes A & B, see gotcha #5 and finding #2).
+Last run: 2026-07-17 (against `main` incl. #518 — sum-per-form then MAX. **#518
+CONFIRMED on staging**: Lime ×5 and Free Range Egg ×4 both observed, and each
+verified against `formDemand` in Firestore rather than the rendered number alone).
 
-> ⚠️ **The expected numbers below were re-derived for #518 (sum-per-form, then MAX)
-> but have NOT yet been observed on staging.** They are computed from the rule and
-> from this runbook's own documented recipes/yields — the arithmetic is shown inline
-> so a runner can check it. The next staging run should confirm them and update this
-> line. Where the #518 issue's headline numbers do NOT match what these recipes can
-> actually produce, that is called out explicitly rather than reconciled away — see
-> **Recipe C/D** and finding #3.
+> ✅ **All expected numbers below were observed on staging 2026-07-17**, superseding the
+> "derived but not yet observed" warning that stood here. Every row was verified against
+> `formDemand` in Firestore, not just the rendered number. **All three clauses of the
+> rule are now covered**: same-form-sums (Lime ×5), sum-then-max-across-forms
+> (Free Range Egg ×4), and whole/direct-sums-on-top (Whole Chicken ×6).
+>
+> Getting there surfaced two places where this file described **inputs that did not
+> exist**. Both are corrected; neither was a product bug:
+>
+> - **Lemon is ×2, not ×3.** The seeded yield is **45 ml/lemon**; this file said 30.
+>   Nobody had checked the form doc. The runbook was wrong, so the *number* changed.
+> - **Recipe C had lost its `1 whole chicken` line.** Staging's recipe held only
+>   breasts/thighs/salt, so C+D observed **×5** — matching the #518 issue's headline and
+>   contradicting this file's ×6. Here the *recipe* was wrong, not the number: the line
+>   carries the only test of `Σwhole`, so it was **restored** on 2026-07-17 rather than
+>   deleted from the docs to make ×5 fit. C+D now observe **×6**, as always documented.
+>
+> See **finding #4**. The lesson generalises: *read the seeded `productForms` yield and
+> the recipe doc's `parsed.quantity`/`unit` before trusting any expected number in this
+> file.* Gotchas #5 and #6 make every wrong number look like a known-stale artefact, so
+> a runner who reaches for them first will "fix" a discrepancy that is really a doc bug —
+> or worse, will re-run until the number matches and report a clean pass. Note the two
+> errors resolved in *opposite* directions: one by fixing the doc, one by fixing staging.
+> Deciding which requires knowing what the row is *for*.
 
 ---
 
@@ -199,12 +217,20 @@ Then re-run from step 0.
 
 ---
 
-## Reference test recipes (used 2026-07-15; expected numbers re-derived for #518)
+## Reference test recipes (expected numbers observed on staging 2026-07-17)
 
 Quantities are chosen so parent counts differ, making the aggregation observable.
-A+B cover both halves of the rule: **Lime** = same form across two recipes (SUMS),
-**Free Range Egg** = distinct forms of one parent (MAX, after each form's own sum).
-C+D cover the whole/direct-sums-on-top half.
+A+B cover both halves of the #518 rule and both were confirmed: **Lime** = same form
+across two recipes (SUMS), **Free Range Egg** = distinct forms of one parent (MAX,
+after each form's own sum).
+
+C+D cover the whole/direct-sums-on-top half: **Whole Chicken ×6** = Σwhole(1) +
+MAX(breast 1, thigh 2+3=5), confirmed 2026-07-17. (Recipe C had lost its
+`1 whole chicken` line at some point before this run — it was restored, which is what
+brought this clause back under test. See Recipe C.)
+
+These recipes do **not** cover the round-once rule; see the warning under the A+B table.
+That is the one clause of the rule this runbook still cannot observe.
 
 ### Recipe A — "Lemon & Lime Posset"
 ```
@@ -215,9 +241,10 @@ C+D cover the whole/direct-sums-on-top half.
 150 g caster sugar
 300 ml double cream
 ```
-Expected forms: `lemon juice→Lemon` (30 ml/lemon), `lime zest→Lime` (5 g/lime),
-`egg yolks→Free Range Egg` (count), `vanilla seeds→Vanilla Pod` (count). Plain:
-caster sugar, double cream.
+Expected forms: `lemon juice→Lemon` (**45 ml/lemon** — the yield the AI actually
+seeded, confirmed on the form doc 2026-07-17; this file said 30 ml until then),
+`lime zest→Lime` (5 g/lime), `egg yolks→Free Range Egg` (count),
+`vanilla seeds→Vanilla Pod` (count). Plain: caster sugar, double cream.
 
 ### Recipe B — "Passionfruit Orange Meringue"
 ```
@@ -233,20 +260,32 @@ Expected: `egg whites` → new form, **reuses** Free Range Egg parent;
 pulp` → new form + minted Passion Fruit; `orange segments` **declined** → own
 buyable canon; caster sugar resolves.
 
-Shopping-list checks (A+B), derived from the yields above under the #518 rule:
+Shopping-list checks (A+B) — all six observed on staging 2026-07-17:
 
 | Row | Expected | Arithmetic |
 |---|---|---|
 | **Lime ×5** | ×5 | Zest is ONE form used by both recipes → its demand SUMS: A 10 g + B 15 g = 25 g @ 5 g/lime = **5**. No whole limes. *(Was ×3 pre-#518 — MAX(2,3). This row is the headline regression #518 fixes.)* |
 | **Free Range Egg ×4** | ×4 | Two forms of one parent. Yolks are the same form in both recipes → SUM: A 2 + B 2 = 4. Whites: B 3. MAX(4, 3) = **4**. *(Was ×3 pre-#518 — MAX(2,3,2). Not 7: one egg yields both parts.)* |
 | **Caster Sugar 250 g** | 250 g | Plain non-form sum: 150 + 100. Unchanged. |
-| **Lemon ×3** | ×3 | Only recipe A: 90 ml @ 30 ml/lemon = 3. Single recipe → #518 is a no-op here. |
+| **Lemon ×2** | ×2 | Only recipe A: 90 ml @ **45 ml/lemon** = 2. Single recipe → #518 is a no-op here. *(Documented as ×3 until 2026-07-17, from a 30 ml/lemon yield that was never what the AI seeded — finding #4.)* |
 | **Passion Fruit ×4** | ×4 | Only recipe B: 80 g @ 20 g/fruit = 4. Single recipe → unchanged. |
 | ⚠️ **Vanilla Pod** | *no rollup* | `1 tsp vanilla seeds` still parses to grams against a `count` yield → gotcha #3, still open under #513. |
 
 A+B are the cleanest #518 check: **Lime** proves same-form-sums and **Free Range Egg**
 proves sum-within-form-then-max-across-forms, in one pair of recipes. Both require the
-recipes to be re-parsed (gotcha #5) **and** re-added to the list (gotcha #6).
+recipes to be re-parsed (gotcha #5) **and** re-added to the list (gotcha #6). Both were
+observed as documented on 2026-07-17.
+
+> ⚠️ **These recipes do NOT exercise the round-once rule** (the "rounding happens ONCE,
+> on the summed demand" bullet up top). Every quantity here divides evenly by its yield:
+> 10 g and 15 g of zest @ 5 g/lime are exactly 2 and 3; the egg forms are counts. So
+> every `parentCount` written to `formDemand` is a whole number, and a run against these
+> recipes **cannot distinguish** "stored unrounded, rounded once at display" from
+> "rounded at write time" — both produce identical numbers. The round-once contract is
+> covered in CI (`aggregateParentCount.test.ts`) but is **unobservable through this
+> runbook**. To exercise it on staging you would need a yield that divides unevenly —
+> e.g. the rule's own worked example, 6 g + 6 g of zest @ **4 g/lime**: round-once gives
+> 12 g = 3 limes, round-per-recipe gives 2 + 2 = 4. No reference recipe does this today.
 
 ### Recipe C — "Roast Chicken Two Ways" (manual-seed test)
 ```
@@ -255,6 +294,23 @@ recipes to be re-parsed (gotcha #5) **and** re-added to the list (gotcha #6).
 1 whole chicken
 1 tsp sea salt
 ```
+
+> ⚠️ **Recipe C in staging had LOST its `1 whole chicken` line — restored 2026-07-17.**
+> As found, `recipes/e2d721b4-…` held only three ingredients (`2 chicken breasts`,
+> `4 chicken thighs`, `1 tsp sea salt`), so C+D observed **×5** instead of ×6 and the
+> whole/direct-sums-on-top clause was silently **untested**. (The `Whole Chicken` canon
+> still existed because an earlier C1 pass minted it at 19:59 on 2026-07-15, an hour
+> *before* the then-current recipe doc was created at 21:22 — the parent outlived the
+> line that created it, which is exactly why the gap was invisible.)
+>
+> Fixed by re-parsing C from the 4-line block above and re-adding it; C+D now observe
+> **×6**. If you ever see ×5 here again, **check the recipe doc for the whole-chicken
+> line before blaming the rule** — that is what this failure looks like.
+>
+> Do **not** resolve a future ×5 by deleting the line from the text above. It would make
+> the number match at the cost of silently dropping the only test of `Σwhole` — which is
+> precisely the state this runbook was in until 2026-07-17.
+
 - **C1** — canonicalise as-is: the AI **declines** `chicken breast`/`thighs` as
   forms (they're buyable) → they become own canons; `whole chicken` mints a
   `Whole Chicken` parent. (Confirms buyable parts are never auto-formed.)
@@ -274,9 +330,13 @@ recipes to be re-parsed (gotcha #5) **and** re-added to the list (gotcha #6).
   > through 2026-07-15.** Those were a workaround for the pre-#515 parser, which
   > flattened `2 chicken breasts` to grams. #515 now keeps poultry joints as a COUNT
   > (`quantity:2, unit:null`), so a gram yield **no longer reconciles and silently
-  > stops rolling up** — gotcha #3's inverse. This edit is derived from #515's parser
-  > scope, **not** yet re-observed on staging; verify the seeded unit against what the
-  > re-parsed recipe doc actually holds.
+  > stops rolling up** — gotcha #3's inverse.
+  >
+  > ✅ **Confirmed on staging 2026-07-17.** Both forms are seeded `count`/2 and both
+  > recipe docs hold `unit:null` counts (`about 350g`/`about 480g`/`about 720g` demoted
+  > to `displayText`), and the rollup works. The count yields above are now observed,
+  > not derived. This was the one edit the 2026-07-15 author flagged as unverified, and
+  > it held up.
 
   Re-canonicalise → tier-1 binds both cuts to Whole Chicken (no AI). Add to list →
   **Whole Chicken ×3** = Σwhole(1) + MAX(breast 1, thigh 2).
@@ -285,6 +345,19 @@ recipes to be re-parsed (gotcha #5) **and** re-added to the list (gotcha #6).
   forms → MAX(1, 2) = 2. The `1 whole chicken` is the parent as itself → SUMS on top.
   Total **×3**, in ONE `×N` bucket.
 
+  > **How the direct line is stored** (observed 2026-07-17, worth knowing because it
+  > reads oddly): `1 whole chicken` parses to `quantity:1, unit:null` with the gram
+  > estimate demoted to `displayText:"about 1500g"` (#515), matches **no** form matcher
+  > — "whole chicken" isn't a substring of "chicken breast"/"chicken thigh" — and so is
+  > written as a list item with **no `unit` and no `formDemand`**. That absence is the
+  > signature of a whole/direct row, and it is what makes it sum rather than max. The
+  > add-to-list sheet shows it as a SEPARATE row (`Whole Chicken (2 count)` and
+  > `Whole Chicken (1)`); they merge into one `×N` bucket at display.
+  >
+  > Note this means a `unit:null` row combines with `unit:"count"` rows, so step 4's
+  > "combining is keyed on `canonId` + unit" is imprecise for the parent-count path.
+  > The behaviour is correct; the description isn't.
+
   > **Recipe C alone does not exercise #518.** It is a SINGLE recipe, so no form
   > repeats and the sum-per-form step is a no-op — MAX(1,2) is what the old rule gave
   > too. C's number moved from the previously documented `×2` + `"2 count + 1500 g"`
@@ -292,28 +365,39 @@ recipes to be re-parsed (gotcha #5) **and** re-added to the list (gotcha #6).
   > count bucket instead of sitting in a separate `1500 g` bucket), **not** because of
   > #518. To actually test #518 on chicken you need Recipe D.
 
-### Recipe D — "Chicken Thigh Traybake" (add alongside C, for #518)
+### Recipe D — "Chicken Thigh Curry" (add alongside C, for #518)
 ```
 6 chicken thighs
-1 tsp smoked paprika
 ```
 Reuses C2's thigh form (tier-1, no AI). 6 thighs @ 2/bird = **3 birds**.
 
-Shopping-list check (C+D): **Whole Chicken ×6**.
+> **Naming/content drift, corrected 2026-07-17.** This runbook called D "Chicken Thigh
+> Traybake" with a `1 tsp smoked paprika` line. The recipe actually in staging
+> (`recipes/0f0194f5-…`) is titled **Chicken Thigh Curry** and holds only the 6 thighs.
+> The paprika was decorative — it never affected the chicken arithmetic — so the text
+> above now matches what exists rather than inventing a second divergence.
+
+Shopping-list check (C+D): **Whole Chicken ×6** — observed 2026-07-17.
 Arithmetic: thigh is the SAME form in C and D → its demand SUMS: 2 + 3 = **5**.
 Breasts stay **1**. MAX(1, 5) = 5. C's `1 whole chicken` SUMS on top → **6**.
-*(Pre-#518 this row would read MAX(1, 2, 3) = 3, +1 whole = 4 — the under-buy.)*
+*(Pre-#518 this row read MAX(1, 2, 3) = 3, +1 whole = 4 — the under-buy.)*
 
-> **Honest note on the #518 issue's headline `Whole Chicken ×5`.** The issue's
-> Intended-Experience table describes the staging data as it stood when the issue was
-> written, which is **not** identical to these reference recipes. `×5` is
-> MAX(breasts 1, thighs 2+3=5) — i.e. the FORM part only, with **no whole-chicken
-> line** on the list. Recipe C as documented *does* include `1 whole chicken`, which
-> correctly sums on top and makes the honest expected value **×6**. Drop C's
-> whole-chicken line and you get exactly ×5. Either way the issue's `thighs 4+6`
-> cannot come from recipe C alone (it has 4 thighs, one recipe) — it needs the second
-> thigh recipe, which this runbook did not previously document. That gap is why
-> Recipe D now exists. See finding #3.
+Verified at the mechanism, three rows on one `canonId`:
+`[{thigh,3}]` (D) + `[{breast,1},{thigh,2}]` (C forms) + a bare `amount:1` row with no
+`unit` and no `formDemand` (C's direct bird). This is the only place the whole/direct
+clause is exercised anywhere outside CI.
+
+> **On the #518 issue's headline `Whole Chicken ×5`.** Through 2026-07-16 this runbook
+> argued the honest number was ×6 and instructed "do not 'fix' C+D to ×5". The
+> 2026-07-17 run found staging showing exactly ×5 — because recipe C had lost its
+> whole-chicken line, which is precisely the condition the old note flagged would "give
+> you exactly ×5". So the issue was describing the real (degraded) data and the runbook
+> was describing the intended recipe. **Both were right about different things.**
+>
+> Resolved in the runbook's favour: the line was restored, because ×6 is the
+> configuration that actually tests `Σwhole`, and ×5 — while a true reading of the data —
+> tested one clause less. The old note's other point stands unchanged: `thighs 4+6`
+> cannot come from C alone, which is why Recipe D exists. See findings #3 and #4.
 
 ---
 
@@ -359,8 +443,53 @@ Breasts stay **1**. MAX(1, 5) = 5. C's `1 whole chicken` SUMS on top → **6**.
     demonstrate #518 on **Lime** and **Free Range Egg** (A+B). Recipe C is a single
     recipe, so its forms never repeat and its number is unchanged by #518 — the
     issue's `Whole Chicken ×5 / thighs 4+6` headline cannot come from C alone.
-    **Recipe D** was added to supply the second thigh recipe; C+D expect **×6**
-    (×5 of forms + C's 1 whole chicken). Do not "fix" C+D to ×5 — see Recipe D's note.
+    **Recipe D** was added to supply the second thigh recipe; C+D observe **×6**
+    (×5 of forms + C's 1 whole chicken), confirmed 2026-07-17 once C's whole-chicken
+    line was restored. See Recipe C's note and finding #4.
+  - **CONFIRMED on staging 2026-07-17 — all three clauses.** `Lime ×5`,
+    `Free Range Egg ×4` and `Whole Chicken ×6` all observed, and each verified at the
+    mechanism rather than the rendered number: recipe B's egg row stores `amount:3`
+    with `formDemand:[{whites,3},{yolks,2}]`, i.e. the collapsed-away yolk demand rides
+    along exactly as designed; recipe C's chicken row stores `[{breast,1},{thigh,2}]`
+    against D's `[{thigh,3}]`; and C's direct bird is a bare `amount:1` row with no
+    `unit` and no `formDemand`, which is what makes it sum rather than max.
+    Aggregation over those arrays is what produces 5, 4 and 6. The pre-#518 rows this
+    run replaced carried no `formDemand` at all, confirming the degrade-path signature.
   - The contract (both halves, the round-once rule, the degrade path, and schema
     back-compat) is locked in CI: `packages/domain/tests/productForm/aggregateParentCount.test.ts`,
     `tests/shoppingList/groupItemsByAisle.test.ts`, `tests/shoppingList/shoppingListItem.schema.test.ts`.
+    **Note the round-once rule is CI-only** — no reference recipe can observe it on
+    staging, because every documented quantity divides evenly by its yield. See the
+    warning under the A+B table.
+- **#4 — two expected numbers here were derived from inputs that didn't exist**
+  (found 2026-07-17, both now resolved). Neither was a product bug; #518 itself was
+  correct throughout. The two resolved in **opposite directions**, which is the point.
+  - **Lemon yield → fixed the DOC.** This file documented `30 ml/lemon` and expected ×3.
+    The seeded form (`productForms/6ae4853b-…`) has always held `amountPerParent: 45`.
+    90 ml ÷ 45 = **×2**, which is what staging renders and what the pre-existing stale
+    row also held. The 30 was never checked against the form doc. Nothing of value was
+    being tested by the 30, so the doc was corrected to ×2.
+  - **Recipe C's whole-chicken line → fixed STAGING.** This file's recipe text lists
+    `1 whole chicken` and built a ×6 expectation on it, including an explicit "do not
+    fix C+D to ×5" instruction. The recipe doc held only breasts, thighs and salt, so
+    the observed number really was ×5 and the #518 issue's headline was right about the
+    data. But that line is the **only** test of the `Σwhole` clause anywhere outside CI,
+    so the fix was to restore it, not to write ×5 into the docs. C+D now observe ×6.
+  - **The general shape:** when observation and documentation disagree, the question is
+    not "which number is right" but "what was this row *for*". A doc number with nothing
+    behind it should yield to the data (Lemon). A doc number that encodes coverage the
+    data has quietly lost should pull the data back (Recipe C). Reconciling both toward
+    "whatever staging currently says" would have produced a green run with one clause of
+    the rule silently untested — which is exactly the state this file was in on arrival.
+  - **Why this matters more than the two numbers.** Gotchas #5 (needs re-parse) and #6
+    (needs re-add) give a runner a ready-made, *plausible* explanation for any number
+    that comes out low — and finding #3 explicitly nominates stale items as "the most
+    likely reason a staging run 'fails'". Both wrong numbers here would have been
+    absorbed by that story: see ×2 instead of ×3, blame staleness, re-add, still see
+    ×2, eventually stop looking. The discriminators are cheap and must be checked
+    *before* reaching for a gotcha: **no `formDemand` on a count row** = genuinely
+    stale (gotcha #6); **`quantity` in grams where a count was expected** = missing
+    re-parse (gotcha #5). If neither holds, the number is real and the doc is wrong.
+  - **Standing rule for future runs:** derive expectations from `productForms/*.yield`
+    and `recipes/*.parsed.quantity|unit` **read at run time**, not from the tables in
+    this file. Treat this file's numbers as a claim to be checked, not a target to hit.
