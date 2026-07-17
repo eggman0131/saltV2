@@ -6,7 +6,7 @@ import type { Recipe, CanonItem, IngredientGroup, ProductForm } from '@salt/doma
 // labelled with the PARENT product ("Lime (3 count)") — deliberately far from the
 // recipe's own wording — and a collapsed row mentions neither of the lines that
 // justified its count. This pins that the original wording is rendered ALONGSIDE
-// the label (issue #519), and that ordinary rows are untouched.
+// the label (issue #528), and that ordinary rows are untouched.
 
 const { mockCanonItems, mockGetCanonItemsSnapshot, mockGetProductFormsSnapshot } = vi.hoisted(
   () => {

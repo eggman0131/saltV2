@@ -121,3 +121,76 @@ describe('ShoppingListItemSchema formDemand field (back-compat)', () => {
     ).toBe(false);
   });
 });
+
+// A product-form row is labelled with the PARENT product ("Lime ×3"), which by
+// design reads nothing like the recipe's own line ("juice of 2 limes"), so #528
+// carries that wording onto the doc as `originalText`. OPTIONAL + additive, and
+// the back-compat here is the highest-stakes kind: the realtime subscription
+// SKIPS docs that fail validation, so a required field would silently delete
+// every pre-#528 row from the shopper's live list. Old docs must stay valid.
+describe('ShoppingListItemSchema originalText field (back-compat)', () => {
+  const baseDoc = {
+    id: 'item-1',
+    rawText: 'lime juice',
+    notes: '',
+    sources: [{ kind: 'recipe' as const, recipeId: 'r1', servings: 2 }],
+    canonId: 'canon-lime',
+    matchState: 'matched' as const,
+    amount: 3,
+    unit: 'count',
+    checked: false,
+    needsCheck: false,
+    schemaVersion: 1 as const,
+    createdAt: '2026-07-17T00:00:00.000Z',
+    updatedAt: '2026-07-17T00:00:00.000Z',
+  };
+
+  it('parses a product-form doc WITHOUT originalText (old docs stay valid)', () => {
+    // The degrade path's precondition: a pre-#528 count row still reads back, with
+    // originalText absent — not a validation failure, and not defaulted to [].
+    const result = ShoppingListItemSchema.safeParse(baseDoc);
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.originalText).toBeUndefined();
+  });
+
+  it('parses an ordinary non-form doc without originalText', () => {
+    const result = ShoppingListItemSchema.safeParse({
+      ...baseDoc,
+      rawText: 'milk',
+      canonId: 'canon-milk',
+      amount: undefined,
+      unit: undefined,
+    });
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.originalText).toBeUndefined();
+  });
+
+  it('parses a doc WITH originalText and carries every line through in order', () => {
+    // Winner's line first, then source order — the order is the display order.
+    const originalText = ['juice of 2 limes', 'zest of 1 lime'];
+    const result = ShoppingListItemSchema.safeParse({ ...baseDoc, originalText });
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.originalText).toEqual(originalText);
+  });
+
+  it('preserves the line VERBATIM (the unparsed recipe wording must survive)', () => {
+    const line = 'juice of 2 limes (about 60 ml), plus wedges to serve';
+    const result = ShoppingListItemSchema.safeParse({ ...baseDoc, originalText: [line] });
+    expect(result.success && result.data.originalText?.[0]).toBe(line);
+  });
+
+  it('parses an empty originalText array (degrades to the cleaned-name display)', () => {
+    const result = ShoppingListItemSchema.safeParse({ ...baseDoc, originalText: [] });
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.originalText).toEqual([]);
+  });
+
+  it('rejects a malformed originalText entry', () => {
+    expect(ShoppingListItemSchema.safeParse({ ...baseDoc, originalText: [42] }).success).toBe(
+      false,
+    );
+    expect(
+      ShoppingListItemSchema.safeParse({ ...baseDoc, originalText: 'juice of 2 limes' }).success,
+    ).toBe(false);
+  });
+});

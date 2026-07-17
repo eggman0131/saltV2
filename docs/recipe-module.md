@@ -152,6 +152,27 @@ Decisions:
   ("mature cheddar cheese") rather than collapsing to the leaner canon name
   ("Cheddar Cheese"). The combined aggregate row is the one place a canon name is shown
   (the page's `rowLabel`, unchanged).
+- **A product-form row carries the recipe's own wording** (`originalText`, #528).
+  When an ingredient resolves to a *product form* the app buys the **parent**:
+  "juice of 2 limes" becomes a "Lime ×3" row, and the collapse to one row per
+  parent drops every line that justified the count — the parent name is
+  deliberately far from the recipe's wording, so the shopper in the aisle can't
+  tell what three limes are for. `buildRecipeAddPlan` carries each contributing
+  line's unparsed `rawText` onto the surviving row (winner's line first, then
+  source order, de-duplicated **on wording only** — two identically-worded lines
+  still contribute two `FormDemand` entries), the commit writes it to
+  `ShoppingListItemSchema.originalText`, and the list renders it beneath the
+  "Lime ×3" headline on both the single and combined rows — **as well as**, never
+  instead of, the parent name and count. On a combined row it replaces the old
+  cleaned-name wording ("Lime Juice, Zest, Limes"), falling back **per
+  contributor** to that cleaned name. Present only on a product-form row;
+  **display only** — no logic branches on it, and counts/`formDemand` are
+  untouched. Optional and additive: pre-#528 items lack it and degrade to the
+  cleaned name (no migration). It must stay `.optional()` — the realtime
+  subscription skips docs that fail validation, so a required field would make
+  every existing row silently vanish from the list. Not `rawText` (load-bearing:
+  it derives the row label *and* decides the row is a form row) and not `notes`
+  (user-editable, single-valued).
 - **Combining is display-time and recipe-only.** `groupItemsByAisle` merges
   recipe-sourced items resolving to the same canon into one row (per-unit
   subtotals, a contributor breakdown, row-level check/delete). Manual items

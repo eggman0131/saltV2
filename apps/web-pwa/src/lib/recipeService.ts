@@ -502,11 +502,12 @@ export interface RecipeAddRow {
   // sum a form's demand across recipes. Absent on every ordinary row.
   readonly formDemand?: readonly FormDemand[];
   // The recipe's OWN wording for every ingredient line that contributed to this
-  // row (issue #519). Set only on a surviving form-count row, where the label is
+  // row (issue #528). Set only on a surviving form-count row, where the label is
   // the PARENT product ("Lime (3 count)") and the lines that justified the count
   // ("juice of 2 limes", "zest of 1 lime") would otherwise be discarded by the
-  // collapse. Winner first, then source order, de-duplicated. SHEET-ONLY and
-  // in-memory: never persisted, never read by the commit path. Absent on every
+  // collapse. Winner first, then source order, de-duplicated. Written straight
+  // through to the shopping item so the list can show the same wording under its
+  // "Lime ×3" headline. DISPLAY ONLY — nothing branches on it. Absent on every
   // ordinary row.
   readonly originalText?: readonly string[];
   add: boolean;
@@ -627,7 +628,7 @@ export function buildRecipeAddPlan(recipe: Recipe, servings: number): RecipeAddR
   // `formDemand` (issue #501) — collapsing to the MAX row alone would discard it,
   // and the display layer could then never recover the per-form sum across recipes.
   // `rawText` carries each contributing line's ORIGINAL recipe wording onto the
-  // survivor as `originalText` (issue #519) — the collapsed row is labelled with
+  // survivor as `originalText` (issue #528) — the collapsed row is labelled with
   // the parent product, which by design reads nothing like the recipe's own line.
   const formEntries: {
     rowIndex: number;
@@ -739,7 +740,7 @@ export function buildRecipeAddPlan(recipe: Recipe, servings: number): RecipeAddR
     // Winning row index → the demand of every form of that same parent.
     const demandByRowIndex = new Map<number, FormDemand[]>();
     // Winning row index → the original recipe wording of every contributing line
-    // (issue #519). Winner first so the row's own line leads, then source order;
+    // (issue #528). Winner first so the row's own line leads, then source order;
     // a Set de-duplicates identical lines while preserving insertion order.
     const originalTextByRowIndex = new Map<number, string[]>();
     winners.forEach((entryIdx, parentCanonId) => {
@@ -852,6 +853,7 @@ function buildAddedItem(row: RecipeAddRow, source: SourceRef, now: string) {
       ...(row.amount !== undefined ? { amount: row.amount } : {}),
       ...(row.unit !== undefined ? { unit: row.unit } : {}),
       ...(row.formDemand !== undefined ? { formDemand: row.formDemand } : {}),
+      ...(row.originalText !== undefined ? { originalText: row.originalText } : {}),
     },
     _itemIds,
   );

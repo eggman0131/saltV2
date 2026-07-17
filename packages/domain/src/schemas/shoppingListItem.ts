@@ -60,6 +60,18 @@ export const ShoppingListItemSchema = z.object({
   // item) lack it and stay valid on read — they degrade to the old MAX-across-
   // recipes rule and keep their existing number (back-compat; no migration).
   formDemand: z.array(FormDemandSchema).optional(),
+  // The recipe's OWN wording for the ingredient line(s) behind a product-form row
+  // (issue #528). Present only on a product-form parent row, alongside
+  // `formDemand`: the row is labelled with the PARENT product ("Lime ×3"), which
+  // by design reads nothing like the recipe's line ("juice of 2 limes"), so
+  // without this the shopper in the aisle can't tell what the three limes are
+  // for. One entry per contributing line (winner first, then source order,
+  // de-duplicated). DISPLAY ONLY — no logic may branch on it.
+  //
+  // Optional and additive: items written before this field (and every non-form
+  // item) lack it and stay valid on read — they degrade to today's display, which
+  // labels the sub-line with the cleaned item name (back-compat; no migration).
+  originalText: z.array(z.string()).optional(),
 });
 
 export type SourceRefDoc = z.infer<typeof SourceRefSchema>;

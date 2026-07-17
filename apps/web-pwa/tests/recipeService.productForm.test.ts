@@ -44,7 +44,8 @@ vi.mock('../src/lib/productFormService.js', () => ({
   getProductFormsSnapshot: mockGetProductFormsSnapshot,
 }));
 
-import { buildRecipeAddPlan } from '../src/lib/recipeService.js';
+import { buildRecipeAddPlan, commitRecipeAddPlan } from '../src/lib/recipeService.js';
+import * as fs from '@salt/firebase-sync';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -223,12 +224,13 @@ describe('buildRecipeAddPlan — distinct forms of one parent', () => {
   });
 });
 
-// ─── The original recipe wording rides onto the survivor (issue #519) ────────
+// ─── The original recipe wording rides onto the survivor (issue #528) ────────
 //
 // The collapsed row is labelled with the PARENT product ("Lime (3 count)"), which
 // is deliberately far from the recipe's own wording, and mentions neither of the
 // lines that justified the count. `originalText` carries that wording alongside
-// the label — as well as, never instead of. Sheet-only and never persisted.
+// the label — as well as, never instead of. Persisted onto the shopping item at
+// commit (#528 Phase 2) so the list shows the same wording under its "Lime ×3".
 
 describe('buildRecipeAddPlan — originalText', () => {
   it("carries the losers' wording onto the survivor, winner first", () => {
@@ -382,5 +384,50 @@ describe('buildRecipeAddPlan — non-form rows', () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]!.formDemand).toBeUndefined();
     expect(rows[1]!.formDemand).toBeUndefined();
+  });
+});
+
+// Phase 2: the wording only survives to the aisle if the COMMIT writes it. The
+// review sheet already showed it in-memory; without this the shopper standing in
+// front of the limes still can't tell what the three are for.
+describe('commitRecipeAddPlan — originalText', () => {
+  beforeEach(() => {
+    (fs.saveShoppingListItem as ReturnType<typeof vi.fn>).mockClear();
+  });
+
+  it('writes the recipe wording onto the product-form item', async () => {
+    mockGetCanonItemsSnapshot.mockReturnValue([makeCanonItem('canon-lime')]);
+    mockGetProductFormsSnapshot.mockReturnValue([
+      makeForm('form-juice', 'lime juice', 'canon-lime', 'ml', 30),
+      makeForm('form-zest', 'lime zest', 'canon-lime', 'g', 5),
+    ]);
+    const recipe = makeRecipe([
+      formIngredient('i1', 'canon-lime', 'lime juice', 60, 'ml'),
+      formIngredient('i2', 'canon-lime', 'lime zest', 15, 'g'),
+    ]);
+    const rows = buildRecipeAddPlan(recipe, 2);
+
+    await commitRecipeAddPlan(recipe, 'list-1', 2, rows);
+
+    const saved = (fs.saveShoppingListItem as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(saved.originalText).toEqual(['15 g lime zest', '60 ml lime juice']);
+    // Display context only — the count and demand it rides with are unchanged.
+    expect(saved.amount).toBe(3);
+    expect(saved.unit).toBe('count');
+  });
+
+  it('writes NO originalText field for an ordinary non-form item', async () => {
+    // The field must stay absent (not [], not null) on every ordinary row, so
+    // those docs read back exactly as they do today.
+    mockGetCanonItemsSnapshot.mockReturnValue([makeCanonItem('canon-lime')]);
+    mockGetProductFormsSnapshot.mockReturnValue([]);
+    const recipe = makeRecipe([formIngredient('i1', 'canon-lime', 'limes', 2, null)]);
+    const rows = buildRecipeAddPlan(recipe, 2);
+
+    await commitRecipeAddPlan(recipe, 'list-1', 2, rows);
+
+    const saved = (fs.saveShoppingListItem as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(saved.originalText).toBeUndefined();
+    expect('originalText' in saved).toBe(false);
   });
 });
