@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, waitFor } from '@testing-library/svelte';
+import userEvent from '@testing-library/user-event';
 import type { Member, ProductForm } from '@salt/domain';
 
 const { mockProductForms, mockCanonItems, mockMembers, mockIsLoadingMembers, mockAuth } =
@@ -47,6 +48,8 @@ vi.mock('../src/lib/productFormService.js', () => ({
 }));
 
 import ProductFormEditPage from '../src/routes/admin/ProductFormEditPage.svelte';
+import { push } from 'svelte-spa-router';
+import { deleteProductForm } from '../src/lib/productFormService.js';
 
 const ADMIN: Member = {
   schemaVersion: 1,
@@ -75,6 +78,7 @@ afterEach(() => {
   document.body.innerHTML = '';
   mockProductForms._set([]);
   mockCanonItems._set([]);
+  vi.clearAllMocks();
 });
 
 describe('ProductFormEditPage', () => {
@@ -113,6 +117,31 @@ describe('ProductFormEditPage', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Form not found.')).toBeTruthy();
+    });
+  });
+
+  it('returns to the list after delete, even though the form leaves the store first', async () => {
+    // The live subscription drops the deleted doc as the delete resolves, so
+    // `existing` derives to null mid-flight. Reading `existing.label` after the
+    // await then threw and skipped the push(), stranding the user on this page's
+    // own "Form not found." branch. Mimic that store update here.
+    mockMembers._set([ADMIN]);
+    mockCanonItems._set([{ id: 'canon-lime', name: 'Lime' }]);
+    mockProductForms._set([LIME_ZEST]);
+
+    vi.mocked(deleteProductForm).mockImplementation(async () => {
+      mockProductForms._set([]);
+      return { kind: 'ok', value: undefined };
+    });
+
+    render(ProductFormEditPage, { props: { params: { id: 'form-1' } } });
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId('product-form-delete-button'));
+    await user.click(await screen.findByTestId('product-form-delete-confirm'));
+
+    await waitFor(() => {
+      expect(vi.mocked(push)).toHaveBeenCalledWith('/admin/product-forms');
     });
   });
 });

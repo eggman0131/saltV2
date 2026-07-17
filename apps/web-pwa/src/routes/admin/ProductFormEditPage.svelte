@@ -135,13 +135,19 @@
   let deleteBusy = $state(false);
 
   async function handleDelete(): Promise<void> {
-    if (!existing) return;
+    // Capture the form BEFORE the await. `existing` is derived from the live
+    // productForms subscription, so the moment the delete lands the doc leaves the
+    // store and `existing` becomes null — reading `existing.label` afterwards threw,
+    // which skipped the push() below and stranded the user on this page's
+    // "Form not found." branch. CanonDetailPage captures its name for the same reason.
+    const target = existing;
+    if (!target) return;
     deleteBusy = true;
-    const result = await deleteProductForm(existing.id);
+    const result = await deleteProductForm(target.id);
     deleteBusy = false;
     if (result.kind === 'ok') {
       deleteOpen = false;
-      addToast(`Deleted ${existing.label}`, 'success');
+      addToast(`Deleted ${target.label}`, 'success');
       push('/admin/product-forms');
     }
   }
