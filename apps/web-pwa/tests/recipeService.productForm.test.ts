@@ -223,6 +223,114 @@ describe('buildRecipeAddPlan — distinct forms of one parent', () => {
   });
 });
 
+// ─── The original recipe wording rides onto the survivor (issue #519) ────────
+//
+// The collapsed row is labelled with the PARENT product ("Lime (3 count)"), which
+// is deliberately far from the recipe's own wording, and mentions neither of the
+// lines that justified the count. `originalText` carries that wording alongside
+// the label — as well as, never instead of. Sheet-only and never persisted.
+
+describe('buildRecipeAddPlan — originalText', () => {
+  it("carries the losers' wording onto the survivor, winner first", () => {
+    mockGetCanonItemsSnapshot.mockReturnValue([makeCanonItem('canon-lime')]);
+    mockGetProductFormsSnapshot.mockReturnValue([
+      makeForm('form-juice', 'lime juice', 'canon-lime', 'ml', 30),
+      makeForm('form-zest', 'lime zest', 'canon-lime', 'g', 5),
+    ]);
+
+    // 60 ml juice = 2 limes; 15 g zest = 3 limes → zest WINS, though juice is
+    // first in source order. The winner's own line leads; the loser follows.
+    const rows = buildRecipeAddPlan(
+      makeRecipe([
+        formIngredient('i1', 'canon-lime', 'lime juice', 60, 'ml'),
+        formIngredient('i2', 'canon-lime', 'lime zest', 15, 'g'),
+      ]),
+      2,
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.originalText).toEqual(['15 g lime zest', '60 ml lime juice']);
+  });
+
+  it('keeps source order behind the winner across three lines', () => {
+    mockGetCanonItemsSnapshot.mockReturnValue([makeCanonItem('canon-lime')]);
+    mockGetProductFormsSnapshot.mockReturnValue([
+      makeForm('form-juice', 'lime juice', 'canon-lime', 'ml', 30),
+      makeForm('form-zest', 'lime zest', 'canon-lime', 'g', 5),
+    ]);
+
+    // juice 30 ml = 1; zest 15 g = 3 (winner); juice 60 ml = 2. The two losing
+    // juice lines keep their source order behind the winning zest line.
+    const rows = buildRecipeAddPlan(
+      makeRecipe([
+        formIngredient('i1', 'canon-lime', 'lime juice', 30, 'ml'),
+        formIngredient('i2', 'canon-lime', 'lime zest', 15, 'g'),
+        formIngredient('i3', 'canon-lime', 'lime juice', 60, 'ml'),
+      ]),
+      2,
+    );
+
+    expect(rows[0]!.originalText).toEqual([
+      '15 g lime zest',
+      '30 ml lime juice',
+      '60 ml lime juice',
+    ]);
+  });
+
+  it('de-duplicates identical wording', () => {
+    mockGetCanonItemsSnapshot.mockReturnValue([makeCanonItem('canon-cube')]);
+    mockGetProductFormsSnapshot.mockReturnValue([
+      makeForm('form-stock', 'beef stock', 'canon-cube', 'ml', 500),
+    ]);
+
+    // Two lines worded identically ("400 ml beef stock") — both count toward the
+    // amount, but listing the same line twice tells the reviewer nothing.
+    const rows = buildRecipeAddPlan(
+      makeRecipe([
+        formIngredient('i1', 'canon-cube', 'beef stock', 400, 'ml'),
+        formIngredient('i2', 'canon-cube', 'beef stock', 400, 'ml'),
+      ]),
+      2,
+    );
+
+    expect(rows[0]!.originalText).toEqual(['400 ml beef stock']);
+    // De-duplicating the WORDING must not touch the demand behind the count.
+    expect(rows[0]!.formDemand).toHaveLength(2);
+    expect(rows[0]!.amount).toBe(2);
+  });
+
+  it('leaves ordinary rows without originalText', () => {
+    mockGetCanonItemsSnapshot.mockReturnValue([
+      makeCanonItem('canon-lime'),
+      makeCanonItem('canon-salt'),
+    ]);
+    mockGetProductFormsSnapshot.mockReturnValue([
+      makeForm('form-juice', 'lime juice', 'canon-lime', 'ml', 30),
+    ]);
+
+    const rows = buildRecipeAddPlan(
+      makeRecipe([
+        formIngredient('i1', 'canon-lime', 'lime juice', 60, 'ml'),
+        formIngredient('i2', 'canon-salt', 'salt', 5, 'g'),
+      ]),
+      2,
+    );
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.originalText).toEqual(['60 ml lime juice']);
+    expect(rows[1]!.originalText).toBeUndefined();
+  });
+
+  it('carries no originalText when the recipe has no form rows at all', () => {
+    mockGetCanonItemsSnapshot.mockReturnValue([makeCanonItem('canon-salt')]);
+    const rows = buildRecipeAddPlan(
+      makeRecipe([formIngredient('i1', 'canon-salt', 'salt', 5, 'g')]),
+      2,
+    );
+    expect(rows[0]!.originalText).toBeUndefined();
+  });
+});
+
 // ─── The corrected count drives the stocked threshold ────────────────────────
 
 describe('buildRecipeAddPlan — stocked parent threshold', () => {
