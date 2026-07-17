@@ -623,7 +623,19 @@
       aria-label="Edit {item.rawText}"
       data-testid="shopping-item-edit-btn"
     >
-      {#if productForm}
+      {#if productForm && subordinate}
+        <!-- Under a combined parent the headline is inverted (issue #530): the
+             parent row already carries "Whole Chicken ×1", so repeating it here
+             adds nothing and reads as one chicken PER CHILD — the parent count is
+             an aggregate (Σwhole + MAXforms, see countSubtotal) that must never be
+             summed down the column. Lead with this contributor's own wording
+             instead; the recipe name follows from the showSource block below. -->
+        {#each item.originalText?.length ? item.originalText : [titleCase(resolveItemDisplayName(item))] as line (line)}
+          <span class="block truncate {item.checked ? 'line-through text-muted-foreground' : ''}"
+            >{line}</span
+          >
+        {/each}
+      {:else if productForm}
         <span class="block truncate {item.checked ? 'line-through text-muted-foreground' : ''}">
           {titleCase(canonMap.get(item.canonId ?? '')?.name ?? '')}{' '}<span
             class="text-muted-foreground">×{item.amount}</span

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, cleanup } from '@testing-library/svelte';
+import { render, cleanup, fireEvent, within } from '@testing-library/svelte';
 import type { CanonItem, ProductForm, ShoppingList, ShoppingListItem } from '@salt/domain';
 
 // The shopping row for a product form is labelled with the PARENT product
@@ -264,5 +264,76 @@ describe('ShoppingListPage — original recipe wording on a combined product-for
     const toggle = await findByTestId('shopping-combined-toggle');
     const occurrences = toggle.textContent!.split('juice of 2 limes').length - 1;
     expect(occurrences).toBe(1);
+  });
+});
+
+// The parent row's count is an AGGREGATE (Σwhole + MAXforms) — one lime covers
+// both the juice and the zest. Children re-stating "Lime ×3" therefore read as
+// 3 + 3 limes down the column, which is the wrong number. Under a parent the
+// child leads with its OWN wording and drops the count entirely (issue #530).
+describe('ShoppingListPage — expanded breakdown under a combined product-form row', () => {
+  async function expand() {
+    const view = render(ShoppingListPage, props);
+    fireEvent.click(await view.findByTestId('shopping-combined-toggle'));
+    return within(await view.findByTestId('shopping-combined-breakdown'));
+  }
+
+  it('leads each child with its own recipe wording, not the parent name', async () => {
+    mockItems._set([
+      formItem('i1', 'lime juice', {
+        originalText: ['juice of 2 limes'],
+        sources: [{ kind: 'recipe', recipeId: 'r1', servings: 2, label: 'Ceviche' }],
+      }),
+      formItem('i2', 'lime zest', {
+        originalText: ['zest of 1 lime'],
+        sources: [{ kind: 'recipe', recipeId: 'r2', servings: 2, label: 'Tart' }],
+      }),
+    ]);
+
+    const breakdown = await expand();
+    const rows = breakdown.getAllByTestId('shopping-item-row');
+
+    // LEADS with it — `toContain` would also pass on the old render, where the
+    // wording sat beneath a "Lime ×3" headline. The order is the whole point.
+    expect(rows[0]!.textContent!.trim()).toMatch(/^juice of 2 limes/);
+    expect(rows[0]!.textContent).toContain('Ceviche');
+    expect(rows[1]!.textContent!.trim()).toMatch(/^zest of 1 lime/);
+    expect(rows[1]!.textContent).toContain('Tart');
+  });
+
+  it('never repeats the parent count on a child', async () => {
+    mockItems._set([
+      formItem('i1', 'lime juice', { originalText: ['juice of 2 limes'] }),
+      formItem('i2', 'lime zest', { originalText: ['zest of 1 lime'] }),
+    ]);
+
+    const breakdown = await expand();
+
+    // The misleading arithmetic: ×3 per child summing to six limes.
+    expect(breakdown.queryByText('×3')).toBeNull();
+  });
+
+  it('falls back to the cleaned name for a child written before the field', async () => {
+    mockItems._set([
+      formItem('i1', 'lime juice', { originalText: ['juice of 2 limes'] }),
+      formItem('i2', 'lime zest'),
+    ]);
+
+    const breakdown = await expand();
+    const rows = breakdown.getAllByTestId('shopping-item-row');
+
+    expect(rows[1]!.textContent).toContain('Lime Zest');
+  });
+
+  it('still headlines the parent name and count on a STANDALONE form row', async () => {
+    // The inversion is scoped to children: alone, the row must still name the
+    // thing you actually buy.
+    mockItems._set([formItem('i1', 'lime juice', { originalText: ['juice of 2 limes'] })]);
+
+    const { container, queryByTestId } = render(ShoppingListPage, props);
+
+    expect(queryByTestId('shopping-combined-toggle')).toBeNull();
+    expect(container.textContent).toContain('Lime');
+    expect(container.textContent).toContain('×3');
   });
 });
