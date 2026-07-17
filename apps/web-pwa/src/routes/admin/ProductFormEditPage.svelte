@@ -36,12 +36,17 @@
   import { addToast } from '../../lib/toastStore.js';
   import AdminGuard from './AdminGuard.svelte';
 
-  let { params }: { params: Record<string, string> } = $props();
+  // `params` is OPTIONAL: this page serves both `/admin/product-forms/new` (static,
+  // no route params) and `/admin/product-forms/:id`. svelte-spa-router only passes a
+  // `params` prop for parameterised routes, so on the /new route it is undefined —
+  // typing it as required made `params.id` throw on mount and hang the add page on
+  // its route-loading spinner. RecipeEditPage serves /recipes/new the same way.
+  let { params }: { params?: { id?: string } } = $props();
 
   const existing = $derived(
-    params.id ? ($productForms.find((f) => f.id === params.id) ?? null) : null,
+    params?.id ? ($productForms.find((f) => f.id === params?.id) ?? null) : null,
   );
-  const isEdit = $derived(!!params.id);
+  const isEdit = $derived(!!params?.id);
   // An AI-seeded proposal (issue #500, Phase 3) awaiting review. It already
   // resolves recipes live; Confirm records the review + persists any edits.
   const isPending = $derived(!!existing?.needs_approval);
