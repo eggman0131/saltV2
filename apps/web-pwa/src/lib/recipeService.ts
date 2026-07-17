@@ -22,6 +22,7 @@ import {
   formParentCount,
   convertYield,
   maxCountWinners,
+  aggregateParentCount,
 } from '@salt/domain';
 import type {
   Recipe,
@@ -705,12 +706,18 @@ export function buildRecipeAddPlan(recipe: Recipe, servings: number): RecipeAddR
   // limes" becomes one lime line, not two. Only form-count rows are merged;
   // ordinary same-canon rows are left alone (combining stays a display concern).
   //
-  // The surviving row now also carries EVERY form's demand for that parent as
+  // The surviving row also carries EVERY form's demand for that parent as
   // `formDemand` (issue #501). The collapse is still one row per parent per recipe
   // — the sheet and the list look exactly as before — but the losers' demand rides
   // along instead of being discarded, so the display layer can sum each form's
-  // demand ACROSS recipes and round once. Its `amount` stays the collapsed MAX as
-  // the within-recipe display value and the pre-#501 fallback.
+  // demand ACROSS recipes and round once.
+  //
+  // The survivor's `amount` is the parent count THIS recipe needs, from the same
+  // `aggregateParentCount` the list uses — not the winning row's own count (issue
+  // #521). The two differ only when one form appears on two lines: stock in a
+  // braise (400 ml) and a gravy (400 ml) against a 500 ml cube is 2 cubes, but the
+  // winner's own count is 1, so the sheet used to under-state what the list showed.
+  // Across DISTINCT forms the aggregate IS the max, so juice-and-zest is unchanged.
   if (formEntries.length > 0) {
     const winners = maxCountWinners(
       formEntries.map((e) => ({ parentCanonId: e.parentCanonId, count: e.count })),
@@ -730,7 +737,24 @@ export function buildRecipeAddPlan(recipe: Recipe, servings: number): RecipeAddR
     return rows
       .map((row, i) => {
         const demand = demandByRowIndex.get(i);
-        return demand ? { ...row, formDemand: demand } : row;
+        if (!demand) return row;
+        // Whole/direct produce is a separate row and aggregates at display time;
+        // within one recipe there is only this parent's form demand to fold.
+        const amount = aggregateParentCount({
+          demands: demand,
+          legacyFormCounts: [],
+          wholeCounts: [],
+        });
+        // Re-decide the Add/Check default against the corrected amount: a
+        // `stocked` parent's largeQuantityThreshold must see what the recipe
+        // really needs, not the under-stated per-row count.
+        const canon = row.canonId ? (canonById.get(row.canonId) ?? null) : null;
+        const dflt = recipeItemAddDefault(
+          canon?.shoppingBehavior ?? null,
+          amount,
+          canon?.largeQuantityThreshold,
+        );
+        return { ...row, amount, formDemand: demand, add: dflt.add, check: dflt.check };
       })
       .filter((_, i) => !formRowIndices.has(i) || demandByRowIndex.has(i));
   }

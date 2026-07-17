@@ -1385,8 +1385,8 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/src/lib/recipeService.ts": {
-    "mtime": 1784230330.4674556,
-    "ast_hash": "3036012a80d91fca0bd0aa873202b7db",
+    "mtime": 1784265576.191057,
+    "ast_hash": "250576a1a59eb98c956f69a9aa77a962",
     "semantic_hash": ""
   },
   "apps/web-pwa/src/lib/shoppingListService.svelte.ts": {
@@ -4975,8 +4975,8 @@
     "semantic_hash": ""
   },
   "docs/salt-architecture.md": {
-    "mtime": 1784202838.990652,
-    "ast_hash": "52b7044c32ea1c9f3a7e5305edcd98c4",
+    "mtime": 1784265576.152862,
+    "ast_hash": "d2ba0757c178ed7fde05b54724cbc2c3",
     "semantic_hash": ""
   },
   "docs/visual-regression.md": {
@@ -5230,8 +5230,8 @@
     "semantic_hash": ""
   },
   "packages/domain/src/productForm/queries/maxCountWinners.ts": {
-    "mtime": 1784046829.1751578,
-    "ast_hash": "5458792e4fc60124d84ab9ea8a0da4f6",
+    "mtime": 1784265576.1913347,
+    "ast_hash": "7472b08aba546fa75412730d96238ec7",
     "semantic_hash": ""
   },
   "packages/domain/src/productForm/queries/resolveProductForm.ts": {
@@ -5337,6 +5337,11 @@
   "apps/cloud-functions/tests/callables/describeRecipeScene.test.ts": {
     "mtime": 1784230504.1854603,
     "ast_hash": "c2277fd958c80fa7e0e9bd5ee3a1286e",
+    "semantic_hash": ""
+  },
+  "apps/web-pwa/tests/recipeService.productForm.test.ts": {
+    "mtime": 1784265576.202985,
+    "ast_hash": "50a27f557b3ea42eccf489072f7fff5e",
     "semantic_hash": ""
   }
 }
