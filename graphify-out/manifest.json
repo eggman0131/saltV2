@@ -5180,13 +5180,13 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/admin/ProductFormEditPage.svelte": {
-    "mtime": 1784269584.0762815,
-    "ast_hash": "2222a10bd33270875a224ae48e236197",
+    "mtime": 1784270655.3877935,
+    "ast_hash": "f78321822a0b9da892325883c28f9ca9",
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/admin/ProductFormsPage.svelte": {
-    "mtime": 1784116187.6533685,
-    "ast_hash": "d2e57a73dacab9491ef085645e5ed0b1",
+    "mtime": 1784270765.1812756,
+    "ast_hash": "f4807da8d90867305b46ca6f170e2fad",
     "semantic_hash": ""
   },
   "packages/adapters/firebase-sync/src/productFormSubscription.ts": {
@@ -5345,8 +5345,13 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/tests/ProductFormEditPage.test.ts": {
-    "mtime": 1784269641.2399123,
-    "ast_hash": "8c7c7f7cdea9dae1e1871700601a701f",
+    "mtime": 1784270613.5292778,
+    "ast_hash": "d20f67572c7ee6c41d184d44598d5471",
+    "semantic_hash": ""
+  },
+  "apps/web-pwa/tests/ProductFormsPage.test.ts": {
+    "mtime": 1784270811.5554037,
+    "ast_hash": "904cc7c15d607458df1fb12c73b6f5bb",
     "semantic_hash": ""
   }
 }
