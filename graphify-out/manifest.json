@@ -35,8 +35,8 @@
     "semantic_hash": ""
   },
   ".claude/settings.local.json": {
-    "mtime": 1783987309.3633208,
-    "ast_hash": "bb2d6765ac5bb8ef22f989b3acdb4d00",
+    "mtime": 1784267796.618898,
+    "ast_hash": "d784847e29eb75dac0d9544ab42e4b3a",
     "semantic_hash": ""
   },
   ".husky/_/applypatch-msg": {
@@ -285,7 +285,7 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/callables/regenerateRecipeImage.ts": {
-    "mtime": 1784229823.1674995,
+    "mtime": 1784266720.6823885,
     "ast_hash": "0c1d93f195399e4db1fe502c23e103d9",
     "semantic_hash": ""
   },
@@ -355,7 +355,7 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/generateRecipeImage.ts": {
-    "mtime": 1784229276.1742404,
+    "mtime": 1784266720.682848,
     "ast_hash": "aa8c1291c1655db7115fe8e29e9b0a39",
     "semantic_hash": ""
   },
@@ -415,7 +415,7 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/index.ts": {
-    "mtime": 1784230277.5738993,
+    "mtime": 1784266720.683006,
     "ast_hash": "da616a7338e4b170cec631d70903e82c",
     "semantic_hash": ""
   },
@@ -445,7 +445,7 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/triggers/onRecipeWritten.ts": {
-    "mtime": 1784229276.1748314,
+    "mtime": 1784266720.6832314,
     "ast_hash": "46448006c7c0460305166c3792b29d54",
     "semantic_hash": ""
   },
@@ -520,7 +520,7 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/tests/callables/regenerateRecipeImage.test.ts": {
-    "mtime": 1784229973.0436056,
+    "mtime": 1784266720.6835227,
     "ast_hash": "9a3bc82344c789b73ad6c0937ed83d60",
     "semantic_hash": ""
   },
@@ -575,7 +575,7 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/tests/flows/generateRecipeImage.test.ts": {
-    "mtime": 1784229276.1756377,
+    "mtime": 1784266720.6838517,
     "ast_hash": "efe9261af003727a1994275d532fac01",
     "semantic_hash": ""
   },
@@ -650,7 +650,7 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/tests/triggers/onRecipeWritten.test.ts": {
-    "mtime": 1784229276.1782339,
+    "mtime": 1784266720.6840487,
     "ast_hash": "12a4b177ae7a0c20c241837c5637e7cd",
     "semantic_hash": ""
   },
@@ -1385,7 +1385,7 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/src/lib/recipeService.ts": {
-    "mtime": 1784265576.191057,
+    "mtime": 1784266720.6842496,
     "ast_hash": "250576a1a59eb98c956f69a9aa77a962",
     "semantic_hash": ""
   },
@@ -1460,7 +1460,7 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/admin/AppSettingsPage.svelte": {
-    "mtime": 1784229837.327944,
+    "mtime": 1784266720.684445,
     "ast_hash": "2ae88eb09be342aff11ca3870d66e6aa",
     "semantic_hash": ""
   },
@@ -1580,7 +1580,7 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/recipes/RecipeViewPage.svelte": {
-    "mtime": 1784230418.9409518,
+    "mtime": 1784266720.68465,
     "ast_hash": "a0df9ef86183f47bfa10be59b14965a7",
     "semantic_hash": ""
   },
@@ -1745,7 +1745,7 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/tests/recipeService.errorReporting.test.ts": {
-    "mtime": 1784230611.4770885,
+    "mtime": 1784266720.6850133,
     "ast_hash": "488eb02e0fa32781f8692f2350de7b97",
     "semantic_hash": ""
   },
@@ -1915,7 +1915,7 @@
     "semantic_hash": ""
   },
   "packages/adapters/firebase-sync/src/index.ts": {
-    "mtime": 1784230305.963237,
+    "mtime": 1784266720.6908252,
     "ast_hash": "85de3027183989b8ba29d1e65b60abd9",
     "semantic_hash": ""
   },
@@ -1935,7 +1935,7 @@
     "semantic_hash": ""
   },
   "packages/adapters/firebase-sync/src/recipeCallables.ts": {
-    "mtime": 1784230296.9780724,
+    "mtime": 1784266720.6909704,
     "ast_hash": "0b8db76a8a1c9134d2280349d9fb1a94",
     "semantic_hash": ""
   },
@@ -2760,7 +2760,7 @@
     "semantic_hash": ""
   },
   "packages/domain/src/schemas/appSettings.ts": {
-    "mtime": 1784229276.1894166,
+    "mtime": 1784266720.6912096,
     "ast_hash": "2733ac0224cd48e8b58576468b859d22",
     "semantic_hash": ""
   },
@@ -2830,7 +2830,7 @@
     "semantic_hash": ""
   },
   "packages/domain/src/schemas/index.ts": {
-    "mtime": 1784230215.7838035,
+    "mtime": 1784266720.691444,
     "ast_hash": "0d0dde7d6cfdf44f39733cefb76700aa",
     "semantic_hash": ""
   },
@@ -2880,7 +2880,7 @@
     "semantic_hash": ""
   },
   "packages/domain/src/schemas/recipe.ts": {
-    "mtime": 1784229276.1906183,
+    "mtime": 1784266720.6915915,
     "ast_hash": "337f10ac4183245b8268c562d81f4060",
     "semantic_hash": ""
   },
@@ -2890,7 +2890,7 @@
     "semantic_hash": ""
   },
   "packages/domain/src/schemas/regenerateRecipeImage.ts": {
-    "mtime": 1784229823.1693428,
+    "mtime": 1784266720.6917267,
     "ast_hash": "3889cf0709f01c767ec2489b92252436",
     "semantic_hash": ""
   },
@@ -2915,7 +2915,7 @@
     "semantic_hash": ""
   },
   "packages/domain/src/schemas/traceContextWire.ts": {
-    "mtime": 1784230203.3553014,
+    "mtime": 1784266720.691899,
     "ast_hash": "bb23659450b72d83ead5bbf93202ff78",
     "semantic_hash": ""
   },
@@ -3305,7 +3305,7 @@
     "semantic_hash": ""
   },
   "packages/domain/tests/recipe/regenerateRecipeImage.schema.test.ts": {
-    "mtime": 1784229823.1694849,
+    "mtime": 1784266720.6920836,
     "ast_hash": "9c9e52e9b51533f236a299bb195d08a1",
     "semantic_hash": ""
   },
@@ -4975,7 +4975,7 @@
     "semantic_hash": ""
   },
   "docs/salt-architecture.md": {
-    "mtime": 1784265576.152862,
+    "mtime": 1784266720.6853616,
     "ast_hash": "d2ba0757c178ed7fde05b54724cbc2c3",
     "semantic_hash": ""
   },
@@ -5180,13 +5180,13 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/admin/ProductFormEditPage.svelte": {
-    "mtime": 1784116187.653057,
-    "ast_hash": "74d6336fc2f21c51f49740fe088b0d52",
+    "mtime": 1784270655.3877935,
+    "ast_hash": "f78321822a0b9da892325883c28f9ca9",
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/admin/ProductFormsPage.svelte": {
-    "mtime": 1784116187.6533685,
-    "ast_hash": "d2e57a73dacab9491ef085645e5ed0b1",
+    "mtime": 1784270765.1812756,
+    "ast_hash": "f4807da8d90867305b46ca6f170e2fad",
     "semantic_hash": ""
   },
   "packages/adapters/firebase-sync/src/productFormSubscription.ts": {
@@ -5230,7 +5230,7 @@
     "semantic_hash": ""
   },
   "packages/domain/src/productForm/queries/maxCountWinners.ts": {
-    "mtime": 1784265576.1913347,
+    "mtime": 1784266720.691087,
     "ast_hash": "7472b08aba546fa75412730d96238ec7",
     "semantic_hash": ""
   },
@@ -5300,8 +5300,8 @@
     "semantic_hash": ""
   },
   "docs/runbooks/product-forms-staging-validation.md": {
-    "mtime": 1784228399.611771,
-    "ast_hash": "a4cc5276d5be24a9df8a4d0b26175267",
+    "mtime": 1784268574.869093,
+    "ast_hash": "135ada0112cf2a55a068dd023d74fc53",
     "semantic_hash": ""
   },
   "packages/domain/tests/productForm/aggregateParentCount.test.ts": {
@@ -5310,17 +5310,17 @@
     "semantic_hash": ""
   },
   "apps/cloud-functions/src/flows/describeRecipeScene.ts": {
-    "mtime": 1784230257.796279,
+    "mtime": 1784266720.6825483,
     "ast_hash": "5c3c6e5ae10f0c79e5f7422eebbbfcf9",
     "semantic_hash": ""
   },
   "apps/cloud-functions/tests/flows/describeRecipeScene.test.ts": {
-    "mtime": 1784230888.9796877,
+    "mtime": 1784266720.6836486,
     "ast_hash": "7d4f50e4d113e007f06605467b15b79f",
     "semantic_hash": ""
   },
   "packages/domain/src/schemas/describeRecipeScene.ts": {
-    "mtime": 1784230191.3155544,
+    "mtime": 1784266720.6913033,
     "ast_hash": "8272b9fd32f2e52390a131aa095b7f15",
     "semantic_hash": ""
   },
@@ -5330,18 +5330,28 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/tests/RecipeViewPage.imageBrief.test.ts": {
-    "mtime": 1784230889.0109859,
+    "mtime": 1784266720.6848156,
     "ast_hash": "961a77f9b0fbf21e4d20d5c1b47148d4",
     "semantic_hash": ""
   },
   "apps/cloud-functions/tests/callables/describeRecipeScene.test.ts": {
-    "mtime": 1784230504.1854603,
+    "mtime": 1784266720.683383,
     "ast_hash": "c2277fd958c80fa7e0e9bd5ee3a1286e",
     "semantic_hash": ""
   },
   "apps/web-pwa/tests/recipeService.productForm.test.ts": {
-    "mtime": 1784265576.202985,
+    "mtime": 1784266720.6851385,
     "ast_hash": "50a27f557b3ea42eccf489072f7fff5e",
+    "semantic_hash": ""
+  },
+  "apps/web-pwa/tests/ProductFormEditPage.test.ts": {
+    "mtime": 1784270613.5292778,
+    "ast_hash": "d20f67572c7ee6c41d184d44598d5471",
+    "semantic_hash": ""
+  },
+  "apps/web-pwa/tests/ProductFormsPage.test.ts": {
+    "mtime": 1784270811.5554037,
+    "ast_hash": "904cc7c15d607458df1fb12c73b6f5bb",
     "semantic_hash": ""
   }
 }
