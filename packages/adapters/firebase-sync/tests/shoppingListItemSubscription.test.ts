@@ -212,6 +212,72 @@ describe('subscribeShoppingListItems', () => {
     }
   });
 
+  it('maps a product-form item with optional originalText', () => {
+    const onItems = vi.fn();
+    subscribeShoppingListItems('list-1', onItems, () => {});
+
+    const snapCb = mockOnSnapshot.mock.calls[0][1] as SnapCallback;
+    snapCb({
+      docs: [
+        {
+          data: () => ({
+            id: 'item-lime',
+            rawText: 'lime juice',
+            notes: '',
+            sources: [{ kind: 'recipe', recipeId: 'recipe-1', servings: 2, label: 'Ceviche' }],
+            canonId: 'canon-lime',
+            matchState: 'matched',
+            amount: 3,
+            unit: 'count',
+            checked: false,
+            schemaVersion: 1,
+            createdAt: '2026-07-17T10:00:00.000Z',
+            updatedAt: '2026-07-17T10:00:00.000Z',
+            originalText: ['juice of 2 limes', 'zest of 1 lime'],
+          }),
+        },
+      ],
+    });
+
+    const items = onItems.mock.calls[0][0] as ShoppingListItem[];
+    expect(items[0]!.originalText).toEqual(['juice of 2 limes', 'zest of 1 lime']);
+  });
+
+  it('maps a product-form item WITHOUT originalText (pre-#528 docs must not be skipped)', () => {
+    // The field is optional precisely so this doc still parses: the subscription
+    // SKIPS invalid docs, so a required field would make every pre-#528 row
+    // silently vanish from the live list rather than merely lose its wording.
+    const onItems = vi.fn();
+    subscribeShoppingListItems('list-1', onItems, () => {});
+
+    const snapCb = mockOnSnapshot.mock.calls[0][1] as SnapCallback;
+    snapCb({
+      docs: [
+        {
+          data: () => ({
+            id: 'item-lime-old',
+            rawText: 'lime juice',
+            notes: '',
+            sources: [{ kind: 'recipe', recipeId: 'recipe-1', servings: 2 }],
+            canonId: 'canon-lime',
+            matchState: 'matched',
+            amount: 3,
+            unit: 'count',
+            checked: false,
+            schemaVersion: 1,
+            createdAt: '2026-07-01T10:00:00.000Z',
+            updatedAt: '2026-07-01T10:00:00.000Z',
+          }),
+        },
+      ],
+    });
+
+    const items = onItems.mock.calls[0][0] as ShoppingListItem[];
+    expect(items).toHaveLength(1);
+    expect(items[0]!.id).toBe('item-lime-old');
+    expect(items[0]!.originalText).toBeUndefined();
+  });
+
   it('defaults unknown matchState to pending', () => {
     const onItems = vi.fn();
     subscribeShoppingListItems('list-1', onItems, () => {});

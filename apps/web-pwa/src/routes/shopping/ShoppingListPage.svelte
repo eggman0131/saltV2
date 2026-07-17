@@ -514,17 +514,27 @@
     return row.subtotals.length === 1 && only && only.unit === 'count' ? only : null;
   }
 
-  // Distinct original form/produce wordings across a combined row's contributors
-  // (e.g. "Lime Juice, Zest, Limes"), surfaced under the "Canon ×N" headline so
-  // the form wording isn't buried in the expand-only breakdown.
+  // Distinct original wordings across a combined row's contributors, surfaced
+  // under the "Canon ×N" headline so what the count is for isn't buried in the
+  // expand-only breakdown. Prefers each contributor's OWN recipe wording (issue
+  // #528) — "juice of 2 limes, zest of 1 lime" rather than the cleaned-name
+  // "Lime Juice, Zest, Limes", which named the forms but not the amounts behind
+  // them. Rendered verbatim, exactly as the review sheet shows the same lines.
+  // Falls back PER CONTRIBUTOR to today's title-cased cleaned name, so items
+  // written before the field keep their existing wording and a row mixing old and
+  // new contributors still reads sensibly.
   function formWordings(row: AisleRow): string {
     const seen = new Set<string>();
     const names: string[] = [];
     for (const c of row.contributors) {
-      const name = titleCase(resolveItemDisplayName(c));
-      if (name && !seen.has(name)) {
-        seen.add(name);
-        names.push(name);
+      const wordings = c.originalText?.length
+        ? c.originalText
+        : [titleCase(resolveItemDisplayName(c))];
+      for (const name of wordings) {
+        if (name && !seen.has(name)) {
+          seen.add(name);
+          names.push(name);
+        }
       }
     }
     return names.join(', ');
@@ -619,9 +629,23 @@
             class="text-muted-foreground">×{item.amount}</span
           >
         </span>
-        <span class="block text-xs text-muted-foreground truncate"
-          >{resolveItemDisplayName(item)}</span
-        >
+        <!-- The headline is the PARENT product ("Lime ×3"), which by design reads
+             nothing like the recipe's own line, so show the wording that justified
+             the count beneath it (issue #528). Sibling of the truncating label
+             span, and unclipped itself — a long line wraps rather than clips.
+             Items written before the field fall back to today's cleaned name. -->
+        {#if item.originalText?.length}
+          {#each item.originalText as line (line)}
+            <span
+              class="block text-xs text-muted-foreground"
+              data-testid="shopping-item-original-text">{line}</span
+            >
+          {/each}
+        {:else}
+          <span class="block text-xs text-muted-foreground truncate"
+            >{resolveItemDisplayName(item)}</span
+          >
+        {/if}
       {:else}
         <span class="block truncate {item.checked ? 'line-through text-muted-foreground' : ''}">
           {displayLabel(item)}{#if amountStr}{' '}<span class="text-muted-foreground"

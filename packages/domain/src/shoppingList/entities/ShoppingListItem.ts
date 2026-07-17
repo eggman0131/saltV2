@@ -21,6 +21,16 @@ export interface ShoppingListItem {
   // ShoppingListItemSchema (the read boundary casts the parsed doc to this type,
   // so the two must stay structurally compatible).
   readonly formDemand?: readonly FormDemand[];
+  // The recipe's OWN wording for the ingredient line(s) behind a product-form row
+  // (issue #528). Present only on a product-form parent row (alongside
+  // `formDemand`): the row is labelled with the parent product ("Lime ×3"), so
+  // these carry the lines that justified the count ("juice of 2 limes") through to
+  // the list. Winner first, then source order, de-duplicated. DISPLAY ONLY — no
+  // logic may branch on it. Absent on every other item and on items written before
+  // the field existed; those degrade to today's cleaned-name sub-line. Mirrors
+  // ShoppingListItemSchema (the read boundary casts the parsed doc to this type,
+  // so the two must stay structurally compatible).
+  readonly originalText?: readonly string[];
   readonly checked: boolean;
   // Flagged for verification at extraction time (issue #185): a recipe-add put
   // this on the list as a "check you need it" item (e.g. a near-threshold staple).

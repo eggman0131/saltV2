@@ -22,6 +22,12 @@ export interface AddItemInput {
    * parent-count. Omitted for every non-product-form add.
    */
   readonly formDemand?: readonly FormDemand[];
+  /**
+   * The recipe's own wording for the ingredient line(s) behind a product-form row
+   * (issue #528) — carried through so the list can show what the parent-count is
+   * for. Display only; nothing branches on it. Omitted for every non-form add.
+   */
+  readonly originalText?: readonly string[];
   /** Flag this item for verification on the list (recipe-add "check" rows). Defaults false. */
   readonly needsCheck?: boolean;
 }
@@ -53,6 +59,7 @@ export function addItem(
     ...(input.amount !== undefined ? { amount: input.amount } : {}),
     ...(input.unit !== undefined ? { unit: input.unit } : {}),
     ...(input.formDemand !== undefined ? { formDemand: input.formDemand } : {}),
+    ...(input.originalText !== undefined ? { originalText: input.originalText } : {}),
   };
   return success([...items, newItem]);
 }

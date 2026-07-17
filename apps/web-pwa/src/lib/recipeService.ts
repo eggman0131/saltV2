@@ -501,6 +501,15 @@ export interface RecipeAddRow {
   // parent-count. Written straight through to the shopping item so the list can
   // sum a form's demand across recipes. Absent on every ordinary row.
   readonly formDemand?: readonly FormDemand[];
+  // The recipe's OWN wording for every ingredient line that contributed to this
+  // row (issue #528). Set only on a surviving form-count row, where the label is
+  // the PARENT product ("Lime (3 count)") and the lines that justified the count
+  // ("juice of 2 limes", "zest of 1 lime") would otherwise be discarded by the
+  // collapse. Winner first, then source order, de-duplicated. Written straight
+  // through to the shopping item so the list can show the same wording under its
+  // "Lime ×3" headline. DISPLAY ONLY — nothing branches on it. Absent on every
+  // ordinary row.
+  readonly originalText?: readonly string[];
   add: boolean;
   check: boolean;
   // ─── Buy-or-make (Phase 2) ───────────────────────────────────────────────────
@@ -618,12 +627,16 @@ export function buildRecipeAddPlan(recipe: Recipe, servings: number): RecipeAddR
   // `formId`/`rawCount` carry the loser rows' demand onto the surviving row as
   // `formDemand` (issue #501) — collapsing to the MAX row alone would discard it,
   // and the display layer could then never recover the per-form sum across recipes.
+  // `rawText` carries each contributing line's ORIGINAL recipe wording onto the
+  // survivor as `originalText` (issue #528) — the collapsed row is labelled with
+  // the parent product, which by design reads nothing like the recipe's own line.
   const formEntries: {
     rowIndex: number;
     parentCanonId: string;
     count: number;
     formId: string;
     rawCount: number;
+    rawText: string;
   }[] = [];
 
   const rows: RecipeAddRow[] = [];
@@ -642,6 +655,7 @@ export function buildRecipeAddPlan(recipe: Recipe, servings: number): RecipeAddR
           count: fc.count,
           formId: fc.form.id,
           rawCount: fc.rawCount,
+          rawText: ing.rawText,
         });
       }
       const { amount, unit } = fc
@@ -725,13 +739,20 @@ export function buildRecipeAddPlan(recipe: Recipe, servings: number): RecipeAddR
     const formRowIndices = new Set(formEntries.map((e) => e.rowIndex));
     // Winning row index → the demand of every form of that same parent.
     const demandByRowIndex = new Map<number, FormDemand[]>();
+    // Winning row index → the original recipe wording of every contributing line
+    // (issue #528). Winner first so the row's own line leads, then source order;
+    // a Set de-duplicates identical lines while preserving insertion order.
+    const originalTextByRowIndex = new Map<number, string[]>();
     winners.forEach((entryIdx, parentCanonId) => {
+      const winner = formEntries[entryIdx]!;
+      const contributing = formEntries.filter((e) => e.parentCanonId === parentCanonId);
       demandByRowIndex.set(
-        formEntries[entryIdx]!.rowIndex,
-        formEntries
-          .filter((e) => e.parentCanonId === parentCanonId)
-          .map((e) => ({ formId: e.formId, parentCount: e.rawCount })),
+        winner.rowIndex,
+        contributing.map((e) => ({ formId: e.formId, parentCount: e.rawCount })),
       );
+      originalTextByRowIndex.set(winner.rowIndex, [
+        ...new Set([winner.rawText, ...contributing.map((e) => e.rawText)]),
+      ]);
     });
     // Attach demand against the ORIGINAL row indices, then drop the losers.
     return rows
@@ -754,7 +775,14 @@ export function buildRecipeAddPlan(recipe: Recipe, servings: number): RecipeAddR
           amount,
           canon?.largeQuantityThreshold,
         );
-        return { ...row, amount, formDemand: demand, add: dflt.add, check: dflt.check };
+        return {
+          ...row,
+          amount,
+          formDemand: demand,
+          originalText: originalTextByRowIndex.get(i)!,
+          add: dflt.add,
+          check: dflt.check,
+        };
       })
       .filter((_, i) => !formRowIndices.has(i) || demandByRowIndex.has(i));
   }
@@ -825,6 +853,7 @@ function buildAddedItem(row: RecipeAddRow, source: SourceRef, now: string) {
       ...(row.amount !== undefined ? { amount: row.amount } : {}),
       ...(row.unit !== undefined ? { unit: row.unit } : {}),
       ...(row.formDemand !== undefined ? { formDemand: row.formDemand } : {}),
+      ...(row.originalText !== undefined ? { originalText: row.originalText } : {}),
     },
     _itemIds,
   );

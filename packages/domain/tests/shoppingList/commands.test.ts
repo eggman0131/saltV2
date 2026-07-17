@@ -440,3 +440,56 @@ describe('moveItems', () => {
     expect(result.value.targetItems).toHaveLength(2);
   });
 });
+
+// ── originalText (issue #528) ─────────────────────────────────────────────────
+//
+// The recipe's own wording for a product-form row ("juice of 2 limes") behind the
+// parent-product label ("Lime ×3"). Display data only — nothing branches on it —
+// but it must survive addItem and the edit commands, or the shopper loses the one
+// clue that says what the three limes are for.
+
+describe('addItem — originalText', () => {
+  it('passes originalText through onto the new item', () => {
+    const originalText = ['juice of 2 limes', 'zest of 1 lime'];
+    const result = addItem(
+      [],
+      { rawText: 'lime juice', source: { kind: 'manual' }, now: NOW, originalText },
+      makeIds(),
+    );
+    expect(result.kind).toBe('ok');
+    if (result.kind !== 'ok') return;
+    expect(result.value[0].originalText).toEqual(originalText);
+  });
+
+  it('omits the field entirely when not supplied', () => {
+    // Absent, not [] or null — an ordinary item's doc must be unchanged.
+    const result = addItem(
+      [],
+      { rawText: 'milk', source: { kind: 'manual' }, now: NOW },
+      makeIds(),
+    );
+    expect(result.kind).toBe('ok');
+    if (result.kind !== 'ok') return;
+    expect('originalText' in result.value[0]).toBe(false);
+  });
+});
+
+describe('edit commands — originalText survives', () => {
+  const originalText = ['juice of 2 limes'];
+
+  it('editItemRawText keeps the wording', () => {
+    const items = [makeItem('item-1', { rawText: 'lime juice', originalText })];
+    const result = editItemRawText(items, { id: 'item-1', rawText: 'limes', now: NOW2 });
+    expect(result.kind).toBe('ok');
+    if (result.kind !== 'ok') return;
+    expect(result.value[0].originalText).toEqual(originalText);
+  });
+
+  it('editItemNotes keeps the wording', () => {
+    const items = [makeItem('item-1', { rawText: 'lime juice', originalText })];
+    const result = editItemNotes(items, { id: 'item-1', notes: 'ripe ones', now: NOW2 });
+    expect(result.kind).toBe('ok');
+    if (result.kind !== 'ok') return;
+    expect(result.value[0].originalText).toEqual(originalText);
+  });
+});

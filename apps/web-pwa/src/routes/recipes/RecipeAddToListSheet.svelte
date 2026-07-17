@@ -218,6 +218,20 @@
                 {#if row.isOptional}<span class="text-xs text-muted-foreground">(optional)</span
                   >{/if}
               </span>
+              <!-- A product-form row is labelled with the PARENT product ("Lime"),
+                   which deliberately reads nothing like the recipe's own line, and
+                   a collapsed row mentions neither of the lines that justified its
+                   count. Show the original wording alongside the label so the
+                   reviewer can see what the count is for. Sibling of the truncating
+                   label span — inside it these would be clipped. -->
+              {#if row.originalText}
+                {#each row.originalText as line (line)}
+                  <span
+                    class="block text-xs text-muted-foreground"
+                    data-testid="recipe-add-review-original-text">{line}</span
+                  >
+                {/each}
+              {/if}
               {#if row.producers.length > 0}
                 <!-- Buy-or-make: eligible rows only. Default Buy — identical to the
                      single-item add. Make expands the chosen producing recipe's
@@ -352,6 +366,17 @@
                           >(optional)</span
                         >{/if}
                     </span>
+                    <!-- Same terms as a top-level row: a made producer's own
+                         ingredients collapse identically (buildMadeSubRows spreads
+                         the plan's rows), so a sub-entry needs the same wording. -->
+                    {#if sub.originalText}
+                      {#each sub.originalText as line (line)}
+                        <span
+                          class="block text-xs text-muted-foreground"
+                          data-testid="recipe-add-review-original-text">{line}</span
+                        >
+                      {/each}
+                    {/if}
                   </div>
                   <div class="flex w-12 justify-center">
                     <Checkbox
