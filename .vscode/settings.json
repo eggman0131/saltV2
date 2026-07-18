@@ -7,7 +7,9 @@
         "Vite Dev Server",
         "Genkit Admin UI",
         "Export Prod Firestore",
-        "Restore Staging from Prod"
+        "Restore Staging from Prod",
+        "Export Staging Firestore",
+        "Restore Dev from Staging"
     ],
     "terminal.integrated.enablePersistentSessions": true,
     "terminal.integrated.persistentSessionReviveProcess": "onExitAndWindowClose",
