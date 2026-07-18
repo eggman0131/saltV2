@@ -18,6 +18,7 @@
     IngredientDoc,
     ParsedIngredientDoc,
     QuantityDoc,
+    StepDoc,
   } from '@salt/domain/schemas';
 
   // Cook mode (cooking mode, Phase 1). The first FULL-VIEWPORT page in the app: it
@@ -251,6 +252,65 @@
     stage = 'mise';
   }
 
+  // ─── Step timers (Phase 3) ──────────────────────────────────────────────────────
+  // Press-to-start countdowns backed entirely by the Firestore session doc. Starting
+  // a timer writes an `activeTimers` entry with an ABSOLUTE `endsAt` (now +
+  // durationMinutes); every countdown is `endsAt - now`, so a reload or a device
+  // switch reconstructs the correct remaining time with no extra client state (the
+  // resumability mechanism). One live timer per step. `notify` is captured here for a
+  // future push follow-up but is consumed by NO code in this feature.
+  //
+  // A single in-memory 1s interval drives `now`. It only runs while at least one
+  // timer is live (the $effect re-runs when `activeTimers` gains/loses entries) and
+  // is torn down on cleanup — no per-timer intervals, and nothing ticks at rest.
+  const activeTimers = $derived($cookSession?.activeTimers ?? []);
+  const timerByStep = $derived(new Map(activeTimers.map((t) => [t.stepId, t] as const)));
+
+  let now = $state(Date.now());
+  $effect(() => {
+    if (activeTimers.length === 0) return;
+    if (typeof setInterval !== 'function') return; // SSR / no timers guard
+    const handle = setInterval(() => {
+      now = Date.now();
+    }, 1000);
+    return () => clearInterval(handle);
+  });
+
+  // Default `notify` ON for longer timers (>= 5 min) where a chef is likely to walk
+  // away; short timers default off. Captured only — wired to nothing in this phase.
+  const NOTIFY_MIN_MINUTES = 5;
+
+  function startTimer(step: StepDoc): void {
+    const timer = step.timer;
+    if (!timer) return;
+    const s = getCookSessionSnapshot();
+    if (!s) return;
+    const endsAt = new Date(Date.now() + timer.durationMinutes * 60_000).toISOString();
+    const notify = timer.durationMinutes >= NOTIFY_MIN_MINUTES;
+    // Replace any existing entry for this step — one live timer per step.
+    const next = [
+      ...s.activeTimers.filter((t) => t.stepId !== step.id),
+      { stepId: step.id, endsAt, notify },
+    ];
+    void persistCookSession({ ...s, activeTimers: next });
+  }
+
+  function dismissTimer(stepId: string): void {
+    const s = getCookSessionSnapshot();
+    if (!s) return;
+    const next = s.activeTimers.filter((t) => t.stepId !== stepId);
+    void persistCookSession({ ...s, activeTimers: next });
+  }
+
+  // mm:ss for a millisecond span, clamped at 0:00. Ceil so a fresh 5:00 timer reads
+  // "5:00" for its first second rather than flicking to "4:59" immediately.
+  function formatClock(ms: number): string {
+    const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${String(seconds).padStart(2, '0')}`;
+  }
+
   // ─── Recipe-changed banner ─────────────────────────────────────────────────────
   // The live recipe drifted from the snapshot taken when the session started.
   const recipeChanged = $derived(
@@ -386,6 +446,61 @@
           {#snippet leading()}<Icon name="RefreshCw" size={14} />{/snippet}
           Restart
         </Button>
+      </div>
+    {/if}
+
+    <!-- Persistent timers bar. Every live/fired timer stays here regardless of stage,
+       scroll position, or which step is in focus — so a timer that fires while the
+       chef is on another step (or on a now-collapsed done step) is always visible and
+       dismissable, and can never be hidden into an un-dismissable state. The per-step
+       control below is the start affordance; this bar is the durable surface. -->
+    {#if activeTimers.length > 0}
+      <div
+        class="flex shrink-0 flex-col gap-2 border-b bg-muted/40 px-4 py-3"
+        data-testid="cook-timers-bar"
+      >
+        <div class="mx-auto flex w-full max-w-2xl flex-col gap-2">
+          {#each activeTimers as t (t.stepId)}
+            {@const remaining = new Date(t.endsAt).getTime() - now}
+            {@const fired = remaining <= 0}
+            {@const stepIndex = recipe.steps.findIndex((s) => s.id === t.stepId)}
+            <div
+              class="flex items-center gap-3 rounded-lg border px-3 py-2 {fired
+                ? 'border-primary bg-primary/10'
+                : 'bg-card'}"
+              data-testid="cook-timer-chip"
+              data-step-id={t.stepId}
+              data-fired={fired}
+            >
+              <Icon
+                name={fired ? 'BellRing' : 'Timer'}
+                size={18}
+                class={fired ? 'shrink-0 text-primary' : 'shrink-0 text-muted-foreground'}
+              />
+              <span
+                class="shrink-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+              >
+                {stepIndex >= 0 ? `Step ${stepIndex + 1}` : 'Timer'}
+              </span>
+              <span
+                class="flex-1 font-mono text-base tabular-nums {fired
+                  ? 'font-semibold text-primary'
+                  : ''}"
+                data-testid="cook-timer-chip-time"
+              >
+                {fired ? 'Finished' : formatClock(remaining)}
+              </span>
+              <Button
+                size="sm"
+                variant={fired ? 'solid' : 'ghost'}
+                onclick={() => dismissTimer(t.stepId)}
+                data-testid="cook-timer-chip-dismiss"
+              >
+                {fired ? 'Dismiss' : 'Cancel'}
+              </Button>
+            </div>
+          {/each}
+        </div>
       </div>
     {/if}
 
@@ -539,8 +654,68 @@
                   <p class="text-lg text-muted-foreground">{step.note}</p>
                 {/if}
 
-                <!-- Phase 3 note: the per-step timer control slots in here (step.timer is
-                   intentionally NOT rendered in Phase 2). -->
+                <!-- Phase 3: per-step timer. Press-to-start when idle; live countdown
+                   or a fired/dismiss state once running. State is derived purely from
+                   the persisted `endsAt`, so it survives reloads/device switches. The
+                   persistent bar above keeps this visible even when the step scrolls
+                   off or collapses. -->
+                {#if step.timer}
+                  {@const timerEntry = timerByStep.get(step.id)}
+                  <div class="flex flex-col gap-2" data-testid="cook-step-timer">
+                    {#if timerEntry}
+                      {@const remaining = new Date(timerEntry.endsAt).getTime() - now}
+                      {#if remaining > 0}
+                        <div class="flex items-center gap-3 rounded-lg border bg-card px-4 py-3">
+                          <Icon name="Timer" size={22} class="shrink-0 text-muted-foreground" />
+                          <span
+                            class="flex-1 font-mono text-2xl tabular-nums"
+                            data-testid="cook-step-timer-countdown"
+                          >
+                            {formatClock(remaining)}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            onclick={() => dismissTimer(step.id)}
+                            data-testid="cook-step-timer-dismiss"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      {:else}
+                        <div
+                          class="flex items-center gap-3 rounded-lg border border-primary bg-primary/10 px-4 py-3"
+                        >
+                          <Icon name="BellRing" size={22} class="shrink-0 text-primary" />
+                          <span
+                            class="flex-1 text-lg font-semibold text-primary"
+                            data-testid="cook-step-timer-countdown"
+                          >
+                            Timer finished
+                          </span>
+                          <Button
+                            onclick={() => dismissTimer(step.id)}
+                            data-testid="cook-step-timer-dismiss"
+                          >
+                            Dismiss
+                          </Button>
+                        </div>
+                      {/if}
+                    {:else}
+                      <Button
+                        variant="outline"
+                        size="lg"
+                        onclick={() => startTimer(step)}
+                        data-testid="cook-step-timer-start"
+                      >
+                        {#snippet leading()}<Icon name="Timer" size={18} />{/snippet}
+                        Start timer · {step.timer.durationMinutes} min
+                      </Button>
+                    {/if}
+                    {#if step.timer.description}
+                      <span class="text-sm text-muted-foreground">{step.timer.description}</span>
+                    {/if}
+                  </div>
+                {/if}
 
                 <div>
                   <Button
