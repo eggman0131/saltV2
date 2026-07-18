@@ -119,6 +119,22 @@ service cloud.firestore {
         && resource.data.ownerUid == request.auth.uid
         && request.resource.data.ownerUid == resource.data.ownerUid;
     }
+    // Cook sessions (cooking mode) — per-user-scoped, mirroring chatSessions.
+    // A session may only be read or written by the user who owns it. On create the
+    // client must set ownerUid to their own uid; on update the ownerUid is pinned
+    // to its existing value so an owner cannot reassign a session to another user.
+    // The deterministic id (`${recipeId}_${uid}`) means each user has exactly one
+    // session per recipe; the read/delete rule checks the authenticated user
+    // against the existing doc's ownerUid.
+    match /cookSessions/{sessionId} {
+      allow read, delete: if request.auth != null
+        && resource.data.ownerUid == request.auth.uid;
+      allow create: if request.auth != null
+        && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if request.auth != null
+        && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerUid == resource.data.ownerUid;
+    }
     // E2E AI fake-model stubs (test-infra Phase 1). The browser e2e bridge
     // writes canned AI answers here; the CF fake model reads them (Admin SDK,
     // bypasses rules). Underscore-prefixed: test-only scaffolding that never
