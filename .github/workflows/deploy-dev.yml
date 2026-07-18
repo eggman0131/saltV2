@@ -1,0 +1,89 @@
+name: Deploy Dev
+
+# On-demand deploy of ANY branch to the dev-cloud project (s2-dev-eggman) — the
+# ungated, agent-reachable environment between the local emulators and CI-gated
+# staging. Unlike staging (auto post-merge to main), dev is deliberately
+# workflow_dispatch ONLY: you pick the branch in the Actions UI and it deploys
+# that ref. There is one dev project, so this is a "claim dev" action — the last
+# dispatch wins. See docs/data-refresh.md / the dev-cloud notes.
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: 'Firebase targets to deploy'
+        type: choice
+        default: hosting,functions,firestore,storage
+        options:
+          - hosting,functions,firestore,storage
+          - hosting
+          - functions
+          - firestore,storage
+
+# id-token: write is REQUIRED for Workload Identity Federation — it lets the job
+# mint the short-lived OIDC token that google-github-actions/auth exchanges for
+# GCP credentials. No long-lived key is stored anywhere.
+permissions:
+  contents: read
+  id-token: write
+
+# Never run two dev deploys at once; queue rather than cancel so a deploy is not
+# interrupted half-way. (There is a single dev project.)
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to dev
+    runs-on: ubuntu-latest
+    # Scopes WIF_PROVIDER / WIF_SERVICE_ACCOUNT to the dev GitHub Environment.
+    environment: dev
+
+    steps:
+      # workflow_dispatch checks out the branch/ref selected in the Actions UI,
+      # so "deploy any branch to dev" is just picking it from the Run workflow menu.
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: '10.33.0'
+
+      # Node 20, NOT 22, for the deploy CLI: firebase-tools' bundled
+      # google-auth-library (gaxios/undici) throws "Premature close" on the
+      # sts.googleapis.com WIF token exchange under Node 22.23.0. The deployed
+      # Functions runtime stays node22 (an esbuild --target in the CF build,
+      # independent of the CLI's Node). Mirrors deploy-staging.yml.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Builds the PWA with --mode dev so Vite loads apps/web-pwa/.env.dev (dev
+      # Firebase config + PostHog browser key). Output -> apps/web-pwa/dist, which
+      # firebase.json hosting serves. Cheap, so we always build even for a
+      # functions-only deploy.
+      - name: Build web-pwa (dev)
+        run: pnpm --filter @salt/web-pwa build:dev
+
+      - name: Authenticate to Google Cloud (WIF)
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: s2-dev-eggman
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      # Deploys the selected targets. The functions predeploy hook builds the CF
+      # bundle; GEMINI_API_KEY / POSTHOG_API_KEY are already in this project's
+      # Secret Manager. Storage rules need the default bucket provisioned (done).
+      - name: Deploy to Firebase (dev)
+        run: pnpm exec firebase deploy --only ${{ inputs.only }} -P dev --non-interactive --force
+
+      # `firebase deploy --non-interactive` skips the "allow unauthenticated
+      # invocations?" prompt, so newly created/updated 2nd-gen callables come up
+      # PRIVATE and reject browser calls with a 403/no-CORS error (#234). Re-apply
+      # the allUsers invoker binding. Idempotent, so safe to run every time.
+      - name: Grant public invoker on client callables
+        run: ./scripts/grant-callable-invokers.sh s2-dev-eggman
