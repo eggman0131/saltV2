@@ -52,6 +52,12 @@ export {
   saveChatSession,
   deleteChatSession,
 } from './chatSessionSubscription.js';
+export {
+  subscribeCookSession,
+  loadCookSession,
+  saveCookSession,
+  deleteCookSession,
+} from './cookSessionSubscription.js';
 export { streamChefChat, callGenerateChatTitle } from './chatCallables.js';
 export { callAuthorRecipe } from './authorRecipeCallable.js';
 export {

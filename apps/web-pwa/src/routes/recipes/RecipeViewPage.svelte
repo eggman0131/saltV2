@@ -593,6 +593,15 @@
       <Button
         size="sm"
         variant="outline"
+        onclick={() => push(`/recipes/${recipe.id}/cook`)}
+        data-testid="recipe-cook-button"
+      >
+        {#snippet leading()}<Icon name="CookingPot" size={16} />{/snippet}
+        Cook
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
         onclick={openAddToList}
         data-testid="recipe-add-to-list-button"
       >
