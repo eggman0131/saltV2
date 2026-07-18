@@ -1,6 +1,7 @@
 {
   "projects": {
     "default": "demo-salt",
+    "dev": "s2-dev-eggman",
     "staging": "s2-stage-ccb22",
     "production": "s2-prod-e46bd"
   }
