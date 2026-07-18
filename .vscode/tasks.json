@@ -137,6 +137,40 @@
         "showReuseMessage": true,
         "clear": true
       }
+    },
+    {
+      "label": "Export Staging Firestore",
+      "detail": "Read-only: export the STAGING Firestore database to GCS. Safe half of the staging -> dev refresh; pair with 'Restore Dev from Staging'. No triggers fire; blocks until done.",
+      "type": "shell",
+      "command": "node",
+      "args": ["scripts/export-staging-firestore.mjs"],
+      "isBackground": false,
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "showReuseMessage": true,
+        "clear": true
+      }
+    },
+    {
+      "label": "Restore Dev from Staging",
+      "detail": "DESTRUCTIVE: wipes dev-cloud Firestore and restores it from the newest staging export. Requires typing DEV to confirm; refuses to target prod or staging. Run 'Export Staging Firestore' first.",
+      "type": "shell",
+      "command": "node",
+      "args": ["scripts/restore-dev-from-staging.mjs"],
+      "isBackground": false,
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "showReuseMessage": true,
+        "clear": true
+      }
     }
   ]
 }
