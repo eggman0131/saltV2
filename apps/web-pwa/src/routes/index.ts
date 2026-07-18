@@ -52,6 +52,7 @@ export const routes: RouteDefinition = new Map<
   ['/recipes', lazy(() => import('./recipes/RecipeListPage.svelte'))],
   ['/recipes/new', lazy(() => import('./recipes/RecipeEditPage.svelte'))],
   ['/recipes/:id/edit', lazy(() => import('./recipes/RecipeEditPage.svelte'))],
+  ['/recipes/:id/cook', lazy(() => import('./recipes/CookModePage.svelte'))],
   ['/recipes/:id', lazy(() => import('./recipes/RecipeViewPage.svelte'))],
   ['/settings', SettingsPage],
   // Operator area (issues #155, #157). All routes are guarded client-side by
