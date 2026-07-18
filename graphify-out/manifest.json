@@ -1545,8 +1545,8 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/index.ts": {
-    "mtime": 1784046829.1621213,
-    "ast_hash": "ef86edb658d48c94bd9126811eb0c3e2",
+    "mtime": 1784339693.1654334,
+    "ast_hash": "b4737f02a8eb8131d9ca727ab9f4ef5c",
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/mealplan/MealDayEditor.svelte": {
@@ -1580,8 +1580,8 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/recipes/RecipeViewPage.svelte": {
-    "mtime": 1784266720.68465,
-    "ast_hash": "a0df9ef86183f47bfa10be59b14965a7",
+    "mtime": 1784339693.1657233,
+    "ast_hash": "0e4e953f23ba2a3b4fd8ef14d10bdb76",
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/settings/SettingsPage.svelte": {
@@ -1595,7 +1595,7 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/shopping/ShoppingListPage.svelte": {
-    "mtime": 1784288715.1077387,
+    "mtime": 1784297991.8082337,
     "ast_hash": "5ea2306a58314aa612be1e4eae157c8e",
     "semantic_hash": ""
   },
@@ -1915,8 +1915,8 @@
     "semantic_hash": ""
   },
   "packages/adapters/firebase-sync/src/index.ts": {
-    "mtime": 1784266720.6908252,
-    "ast_hash": "85de3027183989b8ba29d1e65b60abd9",
+    "mtime": 1784339693.1660957,
+    "ast_hash": "c28e17bf91c8a5dbcaf3d376498c862b",
     "semantic_hash": ""
   },
   "packages/adapters/firebase-sync/src/init.ts": {
@@ -2830,8 +2830,8 @@
     "semantic_hash": ""
   },
   "packages/domain/src/schemas/index.ts": {
-    "mtime": 1784266720.691444,
-    "ast_hash": "0d0dde7d6cfdf44f39733cefb76700aa",
+    "mtime": 1784339693.166299,
+    "ast_hash": "182ac4b368ceb399a782d05fc084af56",
     "semantic_hash": ""
   },
   "packages/domain/src/schemas/matchOrCreateCanonInput.ts": {
@@ -4855,8 +4855,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1784214280.640577,
-    "ast_hash": "bbe7016d2e4538680dacc5614facc5cb",
+    "mtime": 1784339693.165216,
+    "ast_hash": "62eafeb3abc820879c7655b6a4f29782",
     "semantic_hash": ""
   },
   "README.md": {
@@ -4975,8 +4975,8 @@
     "semantic_hash": ""
   },
   "docs/salt-architecture.md": {
-    "mtime": 1784266720.6853616,
-    "ast_hash": "d2ba0757c178ed7fde05b54724cbc2c3",
+    "mtime": 1784339693.1658232,
+    "ast_hash": "aca21a3409859a3de423171ea2245033",
     "semantic_hash": ""
   },
   "docs/visual-regression.md": {
@@ -5355,13 +5355,38 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/tests/ShoppingListPage.originalText.test.ts": {
-    "mtime": 1784288699.1966317,
+    "mtime": 1784297991.8084304,
     "ast_hash": "7d6af19325235c4eadd7baae8058595f",
     "semantic_hash": ""
   },
   ".husky/post-merge": {
     "mtime": 1783749464.9607875,
     "ast_hash": "85516f40a5c1cf737de2202af34282d6",
+    "semantic_hash": ""
+  },
+  "apps/web-pwa/src/lib/cookSessionService.ts": {
+    "mtime": 1784339693.1653104,
+    "ast_hash": "38c7a8aabdaf30b780e2943c09822f3e",
+    "semantic_hash": ""
+  },
+  "apps/web-pwa/src/lib/wakeLock.ts": {
+    "mtime": 1784339693.1653674,
+    "ast_hash": "a79f795a7181a32045f54a1c291e9a42",
+    "semantic_hash": ""
+  },
+  "apps/web-pwa/src/routes/recipes/CookModePage.svelte": {
+    "mtime": 1784340977.484459,
+    "ast_hash": "9f88ab3910aca2f7b1d64cd9675870af",
+    "semantic_hash": ""
+  },
+  "packages/adapters/firebase-sync/src/cookSessionSubscription.ts": {
+    "mtime": 1784339693.1660037,
+    "ast_hash": "4ebbc512791156664ddcd654762ace60",
+    "semantic_hash": ""
+  },
+  "packages/domain/src/schemas/cookSession.ts": {
+    "mtime": 1784339693.1661813,
+    "ast_hash": "de739f185646680997554e6ff5ba6f69",
     "semantic_hash": ""
   }
 }
