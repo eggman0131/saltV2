@@ -85,8 +85,42 @@ attention:
   Firebase **Auth** accounts are separate, so you just re-authenticate and the
   `beforeMemberCreated` blocking function admits you.
 
+## Refreshing dev-cloud with staging data
+
+The same two-step flow refreshes the **dev-cloud** project (`s2-dev-eggman`) — the
+ungated, deploy-from-any-branch, agent-reachable environment — from **staging**:
+
+1. **Export Staging Firestore** — read-only managed export of staging to a GCS
+   bucket ([scripts/export-staging-firestore.mjs](../scripts/export-staging-firestore.mjs)).
+2. **Restore Dev from Staging** — wipes dev, then imports the newest export
+   ([scripts/restore-dev-from-staging.mjs](../scripts/restore-dev-from-staging.mjs));
+   asks you to type `DEV` and hard-refuses any target matching `/prod/i` or
+   `/stag/i` (it only ever hits a `/dev/i` project).
+
+One-time setup mirrors the prod→staging case, sourced from staging (both staging
+and dev are `nam5` → GCS `US`):
+
+```bash
+# Export bucket in the staging project.
+gcloud storage buckets create gs://s2-stage-ccb22-firestore-exports \
+  --project=s2-stage-ccb22 --location=US
+
+# Let DEV's Firestore service agent read it (needed by the import step).
+NUM=$(gcloud projects describe s2-dev-eggman --format='value(projectNumber)')
+for ROLE in roles/storage.objectViewer roles/storage.legacyBucketReader; do
+  gcloud storage buckets add-iam-policy-binding gs://s2-stage-ccb22-firestore-exports \
+    --member="serviceAccount:service-$NUM@gcp-sa-firestore.iam.gserviceaccount.com" \
+    --role="$ROLE"
+done
+```
+
+After a restore, dev's `appSettings`/`devSettings`/`chatSessions`/`members` hold
+**staging's** values — same caveats as the prod→staging section above.
+
 ## Scope
 
-This refreshes **prod → staging** only. Local **dev** uses the Firestore
-emulator with its own export-on-exit data ([pnpm dev:emulators](../package.json));
-it is intentionally not a target of this flow.
+Two independent chains: **prod → staging** and **staging → dev-cloud**. Local
+**dev** (the Firestore emulator with its own export-on-exit data,
+[pnpm dev:emulators](../package.json)) is intentionally not a target of either
+flow — "dev-cloud" above means the online `s2-dev-eggman` project, not the
+emulator.
