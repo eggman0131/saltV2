@@ -14,7 +14,7 @@ export const CATEGORY_TAG_RULES = `- tags: categories for search and filtering O
   - cuisine / origin: e.g. italian, thai, mexican, middle-eastern, british
   - course / meal: e.g. breakfast, brunch, lunch, main, side-dish, dessert, snack
   - dish form: e.g. salad, soup, stew, curry, bake, traybake, stir-fry, roast
-  - dietary: e.g. vegetarian, vegan, gluten-free, dairy-free
+  - dietary: ONLY "vegetarian". Never emit any other dietary/free-from tag — no "vegan", "gluten-free", "dairy-free", "nut-free", "low-carb", "keto" etc. (we don't filter on those)
   - character / occasion: e.g. comfort-food, quick, healthy, spicy, budget, batch-cook, freezer-friendly
   NEVER use an ingredient as a tag (no "chicken", "beef", "tomato", "pasta", "garlic", "chorizo", "chocolate") — the ingredient list is already searchable, so ingredient tags are redundant. If the source keywords include ingredient names, drop them and keep only genuine categories. Short, lowercase, 1–3 words each. Empty array if nothing clearly applies.`;
 
