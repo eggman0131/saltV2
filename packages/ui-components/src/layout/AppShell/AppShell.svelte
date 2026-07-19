@@ -10,6 +10,8 @@
     currentPath,
     title = 'Salt',
     actions,
+    envLabel,
+    envClass,
     sideNavFooter,
     class: className,
     children,
@@ -17,7 +19,7 @@
 </script>
 
 <div class={cn('flex h-dvh flex-col bg-background text-foreground', className)}>
-  <TopBar {title} {actions} />
+  <TopBar {title} {actions} {envLabel} {envClass} />
 
   <div class="flex flex-1 overflow-hidden">
     <SideNav items={navItems} {currentPath} footer={sideNavFooter} />

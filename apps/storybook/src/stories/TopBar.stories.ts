@@ -15,6 +15,8 @@ const meta = {
   argTypes: {
     title: { control: 'text' },
     withActions: { control: 'boolean' },
+    envLabel: { control: 'text' },
+    envClass: { control: 'text' },
   },
 } satisfies Meta<typeof TopBarDemo>;
 
@@ -26,3 +28,22 @@ export const Default: Story = {};
 
 // Trailing action buttons via the `actions` snippet.
 export const WithActions: Story = { args: { withActions: true } };
+
+// Non-prod environment banner: a bold coloured surface plus a centred label so
+// staging/dev can never be mistaken for production. The colour classes mirror
+// apps/web-pwa/src/lib/environment.ts.
+export const StagingEnvironment: Story = {
+  args: {
+    withActions: true,
+    envLabel: 'Staging',
+    envClass: 'bg-amber-500 text-amber-950 border-amber-600',
+  },
+};
+
+export const DevEnvironment: Story = {
+  args: {
+    withActions: true,
+    envLabel: 'Development',
+    envClass: 'bg-violet-600 text-white border-violet-700',
+  },
+};

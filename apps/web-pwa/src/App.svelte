@@ -27,6 +27,7 @@
   import { initAppSettingsSync } from './lib/appSettingsService.js';
   import { initWeatherSync } from './lib/weatherService.js';
   import { normaliseMemberEmail } from '@salt/domain';
+  import { envBanner } from './lib/environment.js';
   import SessionOverlay from './lib/dev/SessionOverlay.svelte';
 
   // Start Firestore subscriptions when authenticated; clean up on sign-out.
@@ -80,7 +81,13 @@
 
 <AuthGate>
   <ToastProvider>
-    <AppShell navItems={decoratedNavItems} currentPath={router.location} title="Salt">
+    <AppShell
+      navItems={decoratedNavItems}
+      currentPath={router.location}
+      title="Salt"
+      envLabel={envBanner?.label}
+      envClass={envBanner?.barClass}
+    >
       {#snippet actions()}
         <span class="hidden text-sm text-muted-foreground sm:inline">{auth.user?.email ?? ''}</span>
         <Button variant="outline" size="sm" onclick={() => void auth.signOut()}>Sign out</Button>
