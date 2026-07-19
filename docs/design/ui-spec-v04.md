@@ -210,6 +210,19 @@ When input is focused:
 - `open` + `onOpenChange` → controlled
 - `defaultOpen` → uncontrolled
 
+### 4.7 Label sync (seeded / async values)
+
+The input's displayed label is kept in sync with the bound `value`, so a value seeded **after** mount — or a selection that resolves only once async `items` load — shows its label instead of a blank field.
+
+- **On init**, `inputValue` is seeded from the `items` entry whose `value` equals the current `value`.
+- **Thereafter**, whenever `value` — or the `items` list — changes from **outside** the component, the displayed label re-syncs:
+  - Item now matches `value` → set `inputValue` to that item's `label`.
+  - `value` is `undefined` or `''` → clear `inputValue`.
+  - `value` has no matching item (a custom / `allowCustom` free-text value) → leave `inputValue` as-is, so free-text survives.
+- The re-sync is **suppressed while the popup is `open`**, so it can never clobber what the user is currently typing.
+
+**Rationale:** a one-shot init runs before an edit form seeds its `value` (or before async options load), leaving the field blank. The guarded re-sync corrects every seeded/async combobox rather than any single call site. (Bug fix — #501, commit `dc6de28`; spec note tracked by #506.)
+
 ---
 
 ## 5. Accessibility (APG requirements)
