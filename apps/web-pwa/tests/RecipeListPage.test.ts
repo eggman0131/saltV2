@@ -259,8 +259,10 @@ describe('RecipeListPage', () => {
         .getAllByTestId('recipe-tag-filter')
         .map((b) => b.getAttribute('data-tag'));
 
-    // All tags across the library are offered before any filtering.
-    expect(filterTags()).toEqual(['baking', 'dessert', 'quick', 'soup']);
+    // All tags across the library are offered before any filtering, now ranked
+    // by usage (most-used first, alpha tie-break): baking & quick appear on two
+    // recipes each, dessert & soup on one.
+    expect(filterTags()).toEqual(['baking', 'quick', 'dessert', 'soup']);
 
     // Selecting "dessert" leaves only Apple Pie, so the chips collapse to Apple's
     // own tags (the selected one pinned) — "quick"/"soup" drop away.
@@ -271,6 +273,35 @@ describe('RecipeListPage', () => {
     );
     expect(cardTitles()).toEqual(['Apple Pie']);
     expect(filterTags()).toEqual(['baking', 'dessert']);
+  });
+
+  it('caps the tag chips at 10 by default and expands on demand', async () => {
+    const user = userEvent.setup();
+    const many = makeRecipe({
+      id: 'many',
+      title: 'Kitchen Sink',
+      tags: Array.from({ length: 12 }, (_, i) => `tag${String(i).padStart(2, '0')}`),
+      totalTimeMinutes: 20,
+      servings: 2,
+      ingredientCount: 2,
+      image: null,
+      createdAt: '2026-05-01T00:00:00.000Z',
+    });
+    seed([many]);
+    render(RecipeListPage);
+
+    const chips = () =>
+      within(screen.getByTestId('recipe-tag-filters')).getAllByTestId('recipe-tag-filter');
+
+    // Collapsed: only the first 10 chips plus a "+2 more" expander.
+    expect(chips()).toHaveLength(10);
+    expect(screen.getByTestId('recipe-tag-show-all')).toHaveTextContent('+2 more');
+
+    // Expanding reveals all 12 chips and swaps in a "Show less" control.
+    await user.click(screen.getByTestId('recipe-tag-show-all'));
+    expect(chips()).toHaveLength(12);
+    expect(screen.queryByTestId('recipe-tag-show-all')).toBeNull();
+    expect(screen.getByTestId('recipe-tag-show-less')).toBeInTheDocument();
   });
 
   it('shows an empty-filter state when nothing matches', async () => {

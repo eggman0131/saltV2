@@ -16,6 +16,9 @@
     Icon,
     ImageCropper,
     Markdown,
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
     Spinner,
     TextArea,
     TextField,
@@ -37,6 +40,7 @@
   } from '../../lib/recipeService.js';
   import RecipeAddToListSheet from './RecipeAddToListSheet.svelte';
   import RecipeChangeSummary from './RecipeChangeSummary.svelte';
+  import IngredientText from './IngredientText.svelte';
   import { canonItems } from '../../lib/canonService.js';
   import {
     appendCacheBuster,
@@ -155,6 +159,11 @@
   // The review sheet (issue #185) owns servings + per-ingredient Add/Check
   // toggles + the commit; this page only guards that a default list exists.
   let addToListOpen = $state(false);
+
+  // Mobile-only overflow menu (⋮) that holds the secondary header actions
+  // (Ask/amend, Edit, Delete) below the `sm` breakpoint; Cook + Add to list
+  // stay visible at every width. Desktop keeps all five as inline buttons.
+  let overflowMenuOpen = $state(false);
 
   function openAddToList(): void {
     if (!$defaultListId) {
@@ -551,13 +560,6 @@
     handleUploadOpenChange(false);
     addToast('Photo updated.', 'success');
   }
-
-  import type { QuantityDoc } from '@salt/domain/schemas';
-  function formatMetricQty(q: QuantityDoc): string {
-    if (q.type === 'range') return `${q.min}–${q.max}`;
-    if (q.type === 'single') return String(q.value);
-    return String(q.whole + q.numerator / q.denominator);
-  }
 </script>
 
 {#if recipe === null}
@@ -579,12 +581,17 @@
     class="p-4 sm:p-6"
   >
     {#snippet actions()}
+      <!-- Cook + Add to list are the two primary actions and stay visible at
+           every width. Ask/amend, Edit and Delete are hidden below `sm` and
+           collapse into the ⋮ overflow menu at the end so the header fits a
+           phone; from `sm:` up all five render inline as before. -->
       <Button
         size="sm"
         variant="outline"
         onclick={handleAskAmend}
         loading={amendBusy}
         disabled={amendBusy}
+        class="hidden sm:inline-flex"
         data-testid="recipe-ask-amend-button"
       >
         {#snippet leading()}<Icon name="ChefHat" size={16} />{/snippet}
@@ -611,6 +618,7 @@
       <Button
         size="sm"
         onclick={() => push(`/recipes/${recipe.id}/edit`)}
+        class="hidden sm:inline-flex"
         data-testid="recipe-edit-button"
       >
         {#snippet leading()}<Icon name="Pencil" size={16} />{/snippet}
@@ -620,11 +628,71 @@
         variant="destructive"
         size="sm"
         onclick={() => (deleteOpen = true)}
+        class="hidden sm:inline-flex"
         data-testid="recipe-delete-button"
       >
         {#snippet leading()}<Icon name="Trash2" size={16} />{/snippet}
         Delete
       </Button>
+
+      <!-- Mobile overflow (⋮): the three secondary actions above, hidden from
+           `sm:` up. Menu items carry their own testids so the desktop button
+           testids stay unique. -->
+      <div class="sm:hidden">
+        <Popover bind:open={overflowMenuOpen}>
+          <PopoverTrigger>
+            {#snippet children()}
+              <button
+                type="button"
+                class="inline-flex h-8 w-8 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                aria-label="More actions"
+                data-testid="recipe-actions-overflow"
+              >
+                <Icon name="EllipsisVertical" size={20} />
+              </button>
+            {/snippet}
+          </PopoverTrigger>
+          <PopoverContent align="end" class="min-w-44 p-1">
+            <button
+              type="button"
+              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
+              onclick={() => {
+                overflowMenuOpen = false;
+                void handleAskAmend();
+              }}
+              disabled={amendBusy}
+              data-testid="recipe-ask-amend-menu-item"
+            >
+              <Icon name="ChefHat" size={14} />
+              Ask / amend
+            </button>
+            <button
+              type="button"
+              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+              onclick={() => {
+                overflowMenuOpen = false;
+                push(`/recipes/${recipe.id}/edit`);
+              }}
+              data-testid="recipe-edit-menu-item"
+            >
+              <Icon name="Pencil" size={14} />
+              Edit
+            </button>
+            <button
+              type="button"
+              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-destructive/10"
+              onclick={() => {
+                overflowMenuOpen = false;
+                deleteOpen = true;
+              }}
+              data-testid="recipe-delete-menu-item"
+            >
+              <Icon name="Trash2" size={14} />
+              Delete
+            </button>
+          </PopoverContent>
+        </Popover>
+      </div>
     {/snippet}
 
     <div class="grid gap-4 lg:grid-cols-[2fr_1fr] lg:gap-6" data-testid="recipe-view">
@@ -782,17 +850,9 @@
                 <ul class="flex flex-col gap-1">
                   {#each group.items as ingredient (ingredient.id)}
                     <li class="text-sm" data-testid="recipe-view-ingredient">
-                      {#if ingredient.parsed?.quantity && ingredient.parsed?.unit}{formatMetricQty(
-                          ingredient.parsed.quantity,
-                        )}{ingredient.parsed.unit}
-                        {ingredient.parsed.item}{#if ingredient.parsed.preparation.length > 0}, {ingredient.parsed.preparation.join(
-                            ', ',
-                          )}{/if}{#if ingredient.parsed.displayText}<span
-                            class="ml-1 text-xs text-muted-foreground"
-                            >({ingredient.parsed.displayText})</span
-                          >{/if}{:else}{ingredient.rawText}{/if}{#if ingredient.isOptional}<span
-                          class="ml-1 text-xs text-muted-foreground">(optional)</span
-                        >{/if}{#if !hasLiveCanonMatch(ingredient, liveCanonIds)}<button
+                      <IngredientText
+                        {ingredient}
+                      />{#if !hasLiveCanonMatch(ingredient, liveCanonIds)}<button
                           type="button"
                           class="ml-1 text-xs text-destructive hover:underline disabled:opacity-50"
                           title="Not matched — tap to match"

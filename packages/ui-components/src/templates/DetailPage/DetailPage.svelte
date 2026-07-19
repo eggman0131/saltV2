@@ -30,7 +30,7 @@
         </Button>
       </div>
     {/if}
-    <div class="flex flex-wrap items-start justify-between gap-3">
+    <div class="flex flex-wrap items-start gap-3">
       <div class="flex flex-col gap-1 min-w-0">
         {#if titleSlot}
           {@render titleSlot()}
@@ -42,7 +42,10 @@
         {/if}
       </div>
       {#if actions}
-        <div class="flex items-center gap-2 shrink-0">
+        <!-- `ml-auto` keeps the actions right-aligned both inline with the title
+             and when they wrap onto their own line; `justify-between` only did the
+             former, letting a wrapped row fall back to flex-start (left). -->
+        <div class="flex items-center gap-2 shrink-0 ml-auto">
           {@render actions()}
         </div>
       {/if}

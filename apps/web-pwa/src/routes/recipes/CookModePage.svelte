@@ -13,13 +13,8 @@
   import { auth } from '../../lib/auth.svelte.js';
   import { addToast } from '../../lib/toastStore.js';
   import { isWakeLockSupported, createWakeLock } from '../../lib/wakeLock.js';
-  import type {
-    CookSessionDoc,
-    IngredientDoc,
-    ParsedIngredientDoc,
-    QuantityDoc,
-    StepDoc,
-  } from '@salt/domain/schemas';
+  import IngredientText from './IngredientText.svelte';
+  import type { CookSessionDoc, IngredientDoc, StepDoc } from '@salt/domain/schemas';
 
   // Cook mode (cooking mode, Phase 1). The first FULL-VIEWPORT page in the app: it
   // owns its own `fixed inset-0` container rather than living inside the app shell,
@@ -129,34 +124,6 @@
       ? s.checkedIngredientIds.filter((x) => x !== id)
       : [...s.checkedIngredientIds, id];
     void persistCookSession({ ...s, checkedIngredientIds: next });
-  }
-
-  // Reconstruct a human amount from a metric quantity. Mirrors the recipe view's
-  // formatter, plus the mixed-fraction case for count amounts.
-  function reconstructQty(q: QuantityDoc): string {
-    if (q.type === 'range') return `${q.min}–${q.max}`;
-    if (q.type === 'single') return String(q.value);
-    // mixed: whole + numerator/denominator
-    const frac = q.numerator > 0 ? `${q.numerator}/${q.denominator}` : '';
-    if (q.whole > 0 && frac) return `${q.whole} ${frac}`;
-    return frac || String(q.whole);
-  }
-
-  // Amount fallback ladder (never render "null g"): displayText → reconstruct from
-  // quantity+unit → '' (no amount, e.g. "salt to taste"). `parsed` is nullable and
-  // handled by the caller (unparsed rows show rawText as their whole label).
-  function amountLabel(p: ParsedIngredientDoc): string {
-    if (p.displayText) return p.displayText;
-    if (p.quantity) {
-      const qty = reconstructQty(p.quantity);
-      return p.unit ? `${qty}${p.unit}` : qty;
-    }
-    return '';
-  }
-
-  // Primary label for a row: the clean item name when parsed, else the raw line.
-  function nameLabel(rawText: string, p: ParsedIngredientDoc | null): string {
-    return p?.item.trim() || rawText;
   }
 
   // ─── Guided steps (Phase 2) ─────────────────────────────────────────────────────
@@ -524,9 +491,6 @@
               <ul class="flex flex-col gap-2">
                 {#each group.items as ingredient (ingredient.id)}
                   {@const checked = checkedIds.has(ingredient.id)}
-                  {@const amount = ingredient.parsed ? amountLabel(ingredient.parsed) : ''}
-                  {@const name = nameLabel(ingredient.rawText, ingredient.parsed)}
-                  {@const prep = (ingredient.parsed?.preparation ?? []).join(', ')}
                   <li>
                     <button
                       type="button"
@@ -544,22 +508,12 @@
                       >
                         {#if checked}<Icon name="Check" size={18} />{/if}
                       </span>
-                      <span class="flex min-w-0 flex-1 flex-col">
-                        <span
-                          class="text-base {checked ? 'text-muted-foreground line-through' : ''}"
-                        >
-                          {#if amount}<span class="font-semibold">{amount}</span>
-                          {/if}{name}{#if ingredient.isOptional}<span
-                              class="ml-1 text-xs text-muted-foreground">(optional)</span
-                            >{/if}
-                        </span>
-                        {#if prep}
-                          <span
-                            class="text-sm text-muted-foreground {checked ? 'line-through' : ''}"
-                          >
-                            {prep}
-                          </span>
-                        {/if}
+                      <span
+                        class="min-w-0 flex-1 text-base {checked
+                          ? 'text-muted-foreground line-through'
+                          : ''}"
+                      >
+                        <IngredientText {ingredient} />
                       </span>
                     </button>
                   </li>
@@ -636,15 +590,7 @@
                     data-testid="cook-step-firstuse"
                   >
                     {#each firstUse as ing (ing.id)}
-                      {@const amount = ing.parsed ? amountLabel(ing.parsed) : ''}
-                      {@const name = nameLabel(ing.rawText, ing.parsed)}
-                      {@const prep = (ing.parsed?.preparation ?? []).join(', ')}
-                      <li class="text-base">
-                        {#if amount}<span class="font-semibold">{amount}</span>
-                        {/if}{name}{#if ing.isOptional}<span
-                            class="ml-1 text-xs text-muted-foreground">(optional)</span
-                          >{/if}{#if prep}<span class="text-muted-foreground">, {prep}</span>{/if}
-                      </li>
+                      <li class="text-base"><IngredientText ingredient={ing} /></li>
                     {/each}
                   </ul>
                 {/if}
