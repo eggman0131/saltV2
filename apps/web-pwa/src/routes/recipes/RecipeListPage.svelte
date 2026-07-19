@@ -4,10 +4,9 @@
     ListPage,
     Icon,
     TextField,
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
   import { appendCacheBuster, type Recipe } from '@salt/domain';
@@ -51,6 +50,11 @@
   let sortBy = $state<SortBy>('title');
   let activeTags = $state<string[]>([]);
 
+  // Popover open state for the "New" and sort menus, plus the tag-list expander.
+  let newMenuOpen = $state(false);
+  let sortMenuOpen = $state(false);
+  let showAllTags = $state(false);
+
   const query = $derived(searchText.trim().toLowerCase());
 
   function matchesSearch(r: Recipe): boolean {
@@ -90,13 +94,34 @@
 
   // Tags offered as filter chips: those present on the currently displayed
   // recipes, so the choices narrow as you filter (a faceted drill-down) rather
-  // than always listing every tag in the library. Active tags are pinned in so
-  // they stay deselectable even if the result set momentarily empties.
-  const visibleTags = $derived(
-    [...new Set([...visible.flatMap((r) => r.metadata.tags), ...activeTags])].sort((a, b) =>
-      a.localeCompare(b),
-    ),
-  );
+  // than always listing every tag in the library. Ranked by how often each tag
+  // occurs in the current view (most-used first, alpha tie-break) so the most
+  // relevant chips lead — the count drives ordering only and is never shown.
+  // Active tags are pinned in so they stay deselectable even if the result set
+  // momentarily empties.
+  const TAG_LIMIT = 10;
+
+  const rankedTags = $derived.by(() => {
+    const counts = new Map<string, number>();
+    for (const r of visible) {
+      for (const t of r.metadata.tags) counts.set(t, (counts.get(t) ?? 0) + 1);
+    }
+    for (const t of activeTags) if (!counts.has(t)) counts.set(t, 0);
+    return [...counts.keys()].sort((a, b) => {
+      const byCount = (counts.get(b) ?? 0) - (counts.get(a) ?? 0);
+      return byCount !== 0 ? byCount : a.localeCompare(b);
+    });
+  });
+
+  // Collapsed by default to the top TAG_LIMIT, expandable via a "+N" chip. Any
+  // active tag past the cut is kept visible so it stays deselectable.
+  const shownTags = $derived.by(() => {
+    if (showAllTags || rankedTags.length <= TAG_LIMIT) return rankedTags;
+    const top = rankedTags.slice(0, TAG_LIMIT);
+    return [...top, ...activeTags.filter((t) => !top.includes(t))];
+  });
+
+  const hiddenTagCount = $derived(rankedTags.length - shownTags.length);
 
   function toggleTag(tag: string): void {
     activeTags = activeTags.includes(tag)
@@ -142,24 +167,65 @@
 
 <ListPage
   title="Recipes"
-  description="Your recipe collection."
   isLoading={$isLoadingRecipes}
   isEmpty={$recipes.length === 0}
   class="p-4 sm:p-6"
 >
   {#snippet actions()}
-    <Button
-      variant="outline"
-      size="sm"
-      onclick={() => (showImport = !showImport)}
-      data-testid="recipe-import-url-toggle"
-    >
-      {#snippet leading()}<Icon name="Link" size={16} />{/snippet}
-      Import from URL
-    </Button>
-    <Button size="sm" onclick={() => push('/recipes/new')} data-testid="recipe-new-btn">
-      New recipe
-    </Button>
+    <Popover bind:open={newMenuOpen}>
+      <PopoverTrigger>
+        {#snippet children()}
+          <button
+            type="button"
+            class="inline-flex h-9 items-center gap-1 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            data-testid="recipe-new-btn"
+            aria-label="New recipe"
+          >
+            <Icon name="Plus" size={16} />
+            New
+            <Icon name="ChevronDown" size={14} class="opacity-80" />
+          </button>
+        {/snippet}
+      </PopoverTrigger>
+      <PopoverContent align="end" class="min-w-48 p-1">
+        <button
+          type="button"
+          class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+          onclick={() => {
+            newMenuOpen = false;
+            showImport = true;
+          }}
+          data-testid="recipe-new-import"
+        >
+          <Icon name="Link" size={14} />
+          Import URL
+        </button>
+        <button
+          type="button"
+          class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+          onclick={() => {
+            newMenuOpen = false;
+            push('/chat');
+          }}
+          data-testid="recipe-new-chat"
+        >
+          <Icon name="Sparkles" size={14} />
+          Chat with AI
+        </button>
+        <button
+          type="button"
+          class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+          onclick={() => {
+            newMenuOpen = false;
+            push('/recipes/new');
+          }}
+          data-testid="recipe-new-manual"
+        >
+          <Icon name="Pencil" size={14} />
+          Manual
+        </button>
+      </PopoverContent>
+    </Popover>
   {/snippet}
 
   {#snippet empty()}
@@ -249,9 +315,9 @@
       </div>
     {/if}
 
-    <!-- Search + sort toolbar -->
-    <div class="mb-3 flex flex-wrap items-center gap-2">
-      <div class="relative min-w-48 flex-1">
+    <!-- Search + sort toolbar: search fills the row, sort collapses to an icon -->
+    <div class="mb-3 flex items-center gap-2">
+      <div class="relative min-w-0 flex-1">
         <Icon
           name="Search"
           size={16}
@@ -265,22 +331,48 @@
           data-testid="recipe-search-input"
         />
       </div>
-      <Select value={sortBy} onValueChange={(v) => (sortBy = v as SortBy)}>
-        <SelectTrigger class="w-44" data-testid="recipe-sort-trigger">
-          {SORT_LABELS[sortBy]}
-        </SelectTrigger>
-        <SelectContent>
+      <Popover bind:open={sortMenuOpen}>
+        <PopoverTrigger>
+          {#snippet children()}
+            <button
+              type="button"
+              class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-input bg-background text-foreground transition-colors hover:bg-accent"
+              data-testid="recipe-sort-trigger"
+              aria-label="Sort recipes"
+              title={`Sort: ${SORT_LABELS[sortBy]}`}
+            >
+              <Icon name="ArrowUpDown" size={16} />
+            </button>
+          {/snippet}
+        </PopoverTrigger>
+        <PopoverContent align="end" class="min-w-52 p-1">
+          <p class="px-2 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Sort by
+          </p>
           {#each Object.entries(SORT_LABELS) as [value, label] (value)}
-            <SelectItem {value}>{label}</SelectItem>
+            <button
+              type="button"
+              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+              onclick={() => {
+                sortBy = value as SortBy;
+                sortMenuOpen = false;
+              }}
+              data-testid="recipe-sort-option"
+              data-sort={value}
+            >
+              <Icon name="Check" size={14} class={sortBy === value ? '' : 'invisible'} />
+              {label}
+            </button>
           {/each}
-        </SelectContent>
-      </Select>
+        </PopoverContent>
+      </Popover>
     </div>
 
-    <!-- Tag filter chips — scoped to tags on the currently displayed recipes -->
-    {#if visibleTags.length > 0}
+    <!-- Tag filter chips — the current view's tags, ranked by usage: top 10 by
+         default, expandable via a "+N more" chip. -->
+    {#if rankedTags.length > 0}
       <div class="mb-3 flex flex-wrap gap-1.5" data-testid="recipe-tag-filters">
-        {#each visibleTags as tag (tag)}
+        {#each shownTags as tag (tag)}
           {@const active = activeTags.includes(tag)}
           <button
             type="button"
@@ -295,6 +387,25 @@
             #{tag}
           </button>
         {/each}
+        {#if hiddenTagCount > 0}
+          <button
+            type="button"
+            class="rounded-full border border-dashed border-border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted"
+            onclick={() => (showAllTags = true)}
+            data-testid="recipe-tag-show-all"
+          >
+            +{hiddenTagCount} more
+          </button>
+        {:else if showAllTags && rankedTags.length > TAG_LIMIT}
+          <button
+            type="button"
+            class="rounded-full border border-dashed border-border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted"
+            onclick={() => (showAllTags = false)}
+            data-testid="recipe-tag-show-less"
+          >
+            Show less
+          </button>
+        {/if}
       </div>
     {/if}
 
