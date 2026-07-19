@@ -34,5 +34,8 @@
         "**/.vexp/parent_workspace.json": true,
         "**/.vexp/.gitignore": true,
         "**/.vexp/.gitattributes": true
-    }
+    },
+    "github-actions.workflows.pinned.workflows": [
+        ".github/workflows/deploy-dev.yml"
+    ]
 }

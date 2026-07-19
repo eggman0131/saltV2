@@ -9,21 +9,25 @@
   let {
     title = 'Salt',
     withActions = false,
+    envLabel = undefined,
+    envClass = undefined,
   }: {
     title?: string;
     withActions?: boolean;
+    envLabel?: string;
+    envClass?: string;
   } = $props();
 </script>
 
 <div class="w-full max-w-2xl overflow-hidden rounded-lg border border-border">
   {#if withActions}
-    <TopBar {title}>
+    <TopBar {title} {envLabel} {envClass}>
       {#snippet actions()}
         <Button variant="ghost" size="sm">Help</Button>
         <Button variant="solid" size="sm">New</Button>
       {/snippet}
     </TopBar>
   {:else}
-    <TopBar {title} />
+    <TopBar {title} {envLabel} {envClass} />
   {/if}
 </div>
