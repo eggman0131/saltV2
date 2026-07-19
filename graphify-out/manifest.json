@@ -35,8 +35,8 @@
     "semantic_hash": ""
   },
   ".claude/settings.local.json": {
-    "mtime": 1784267796.618898,
-    "ast_hash": "d784847e29eb75dac0d9544ab42e4b3a",
+    "mtime": 1784457744.2041643,
+    "ast_hash": "ad011f876c93583a434a29efc0d12bfb",
     "semantic_hash": ""
   },
   ".husky/_/applypatch-msg": {
@@ -135,13 +135,13 @@
     "semantic_hash": ""
   },
   ".vscode/settings.json": {
-    "mtime": 1782563259.4124107,
-    "ast_hash": "721f6a453096059d3f65e631aa71209d",
+    "mtime": 1784458792.1676693,
+    "ast_hash": "428b0c7ddc9c268cf486fa942acaa48d",
     "semantic_hash": ""
   },
   ".vscode/tasks.json": {
-    "mtime": 1782563259.4125578,
-    "ast_hash": "97be3eec7a88308499aa935feaba2af9",
+    "mtime": 1784365639.064132,
+    "ast_hash": "d4914feb052b22c991af790d24dc0fd2",
     "semantic_hash": ""
   },
   "apps/cloud-functions/package.json": {
@@ -895,8 +895,8 @@
     "semantic_hash": ""
   },
   "apps/storybook/src/stories/TopBar.stories.ts": {
-    "mtime": 1783224057.9054155,
-    "ast_hash": "f5cd38c51272d235eb948eec37f9523c",
+    "mtime": 1784458084.0153432,
+    "ast_hash": "82303321a37708f05ab769829d7e0647",
     "semantic_hash": ""
   },
   "apps/storybook/src/stories/Typography.stories.ts": {
@@ -1055,8 +1055,8 @@
     "semantic_hash": ""
   },
   "apps/storybook/src/stories/_wrappers/TopBarDemo.svelte": {
-    "mtime": 1783224057.9080973,
-    "ast_hash": "7393f0688be158a273c4540d6ff66166",
+    "mtime": 1784457400.698639,
+    "ast_hash": "411f2aa3d08ead478bfba33ae6172eb8",
     "semantic_hash": ""
   },
   "apps/storybook/src/stories/_wrappers/navItems.ts": {
@@ -1220,8 +1220,8 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/package.json": {
-    "mtime": 1783986357.5713127,
-    "ast_hash": "db6450e0817974c14ada1cd8ab72b14b",
+    "mtime": 1784365639.0643806,
+    "ast_hash": "8cda8a7c544f36fc4a11e3e91bae5bbd",
     "semantic_hash": ""
   },
   "apps/web-pwa/playwright.config.ts": {
@@ -1240,8 +1240,8 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/src/App.svelte": {
-    "mtime": 1784046829.1612887,
-    "ast_hash": "5affca504910211f383d16b00c784ae2",
+    "mtime": 1784457390.3500538,
+    "ast_hash": "c52efe46ab7a2bcbe8f2205fa6de3cba",
     "semantic_hash": ""
   },
   "apps/web-pwa/src/__boundary_tests__/no-firebase-sync-internal.ts": {
@@ -1545,7 +1545,7 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/index.ts": {
-    "mtime": 1784339693.1654334,
+    "mtime": 1784358759.0499613,
     "ast_hash": "b4737f02a8eb8131d9ca727ab9f4ef5c",
     "semantic_hash": ""
   },
@@ -1580,7 +1580,7 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/recipes/RecipeViewPage.svelte": {
-    "mtime": 1784339693.1657233,
+    "mtime": 1784358759.0503197,
     "ast_hash": "0e4e953f23ba2a3b4fd8ef14d10bdb76",
     "semantic_hash": ""
   },
@@ -1825,8 +1825,8 @@
     "semantic_hash": ""
   },
   "package.json": {
-    "mtime": 1783986357.5717475,
-    "ast_hash": "89a789d77df088e11180e2845319cde6",
+    "mtime": 1784460836.9018323,
+    "ast_hash": "299cde9b7c8e3fd8e695bf6c2635683b",
     "semantic_hash": ""
   },
   "packages/adapters/firebase-sync/package.json": {
@@ -1915,7 +1915,7 @@
     "semantic_hash": ""
   },
   "packages/adapters/firebase-sync/src/index.ts": {
-    "mtime": 1784339693.1660957,
+    "mtime": 1784358759.0553875,
     "ast_hash": "c28e17bf91c8a5dbcaf3d376498c862b",
     "semantic_hash": ""
   },
@@ -2830,7 +2830,7 @@
     "semantic_hash": ""
   },
   "packages/domain/src/schemas/index.ts": {
-    "mtime": 1784339693.166299,
+    "mtime": 1784358759.0556366,
     "ast_hash": "182ac4b368ceb399a782d05fc084af56",
     "semantic_hash": ""
   },
@@ -3545,13 +3545,13 @@
     "semantic_hash": ""
   },
   "packages/ui-components/src/layout/AppShell/AppShell.svelte": {
-    "mtime": 1782049119.4701238,
-    "ast_hash": "b5c89c444470d3f625f7208891781ce6",
+    "mtime": 1784457369.359932,
+    "ast_hash": "86069abda970ae0691d03632b900765b",
     "semantic_hash": ""
   },
   "packages/ui-components/src/layout/AppShell/AppShell.types.ts": {
-    "mtime": 1781453441.8612723,
-    "ast_hash": "fb13f126ef2ddd7a7dec2e3dc93c1f67",
+    "mtime": 1784457849.7228093,
+    "ast_hash": "d78ad4d276a2249a549e0eec649b8832",
     "semantic_hash": ""
   },
   "packages/ui-components/src/layout/AppShell/index.ts": {
@@ -3595,13 +3595,13 @@
     "semantic_hash": ""
   },
   "packages/ui-components/src/layout/TopBar/TopBar.svelte": {
-    "mtime": 1781453441.8618968,
-    "ast_hash": "f0d5e13eaa944e7b0e6553e967a4173e",
+    "mtime": 1784457355.8399882,
+    "ast_hash": "e185984aa535935dc9a17be7d6a44c7b",
     "semantic_hash": ""
   },
   "packages/ui-components/src/layout/TopBar/TopBar.types.ts": {
-    "mtime": 1781453441.8619568,
-    "ast_hash": "91293e8ed00b15b4affadb1e3d8654a8",
+    "mtime": 1784457844.4332333,
+    "ast_hash": "708d15dfb9d76cd7bf4b264ee217f5d5",
     "semantic_hash": ""
   },
   "packages/ui-components/src/layout/TopBar/index.ts": {
@@ -4855,7 +4855,7 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1784339693.165216,
+    "mtime": 1784358759.049581,
     "ast_hash": "62eafeb3abc820879c7655b6a4f29782",
     "semantic_hash": ""
   },
@@ -4910,8 +4910,8 @@
     "semantic_hash": ""
   },
   "docs/data-refresh.md": {
-    "mtime": 1782563259.4170496,
-    "ast_hash": "a9fab5bec3a533e519d1170daf5859a4",
+    "mtime": 1784365639.0645356,
+    "ast_hash": "892b374dab56381a4d5624dea9f6cab1",
     "semantic_hash": ""
   },
   "docs/design/design.md": {
@@ -4975,8 +4975,8 @@
     "semantic_hash": ""
   },
   "docs/salt-architecture.md": {
-    "mtime": 1784339693.1658232,
-    "ast_hash": "aca21a3409859a3de423171ea2245033",
+    "mtime": 1784454821.211324,
+    "ast_hash": "a3d042d0ced7569c497f779419683ded",
     "semantic_hash": ""
   },
   "docs/visual-regression.md": {
@@ -5365,28 +5365,53 @@
     "semantic_hash": ""
   },
   "apps/web-pwa/src/lib/cookSessionService.ts": {
-    "mtime": 1784339693.1653104,
+    "mtime": 1784358759.0497308,
     "ast_hash": "38c7a8aabdaf30b780e2943c09822f3e",
     "semantic_hash": ""
   },
   "apps/web-pwa/src/lib/wakeLock.ts": {
-    "mtime": 1784339693.1653674,
+    "mtime": 1784358759.0498226,
     "ast_hash": "a79f795a7181a32045f54a1c291e9a42",
     "semantic_hash": ""
   },
   "apps/web-pwa/src/routes/recipes/CookModePage.svelte": {
-    "mtime": 1784340977.484459,
+    "mtime": 1784358759.0501056,
     "ast_hash": "9f88ab3910aca2f7b1d64cd9675870af",
     "semantic_hash": ""
   },
   "packages/adapters/firebase-sync/src/cookSessionSubscription.ts": {
-    "mtime": 1784339693.1660037,
+    "mtime": 1784358759.0552683,
     "ast_hash": "4ebbc512791156664ddcd654762ace60",
     "semantic_hash": ""
   },
   "packages/domain/src/schemas/cookSession.ts": {
-    "mtime": 1784339693.1661813,
+    "mtime": 1784358759.0554814,
     "ast_hash": "de739f185646680997554e6ff5ba6f69",
+    "semantic_hash": ""
+  },
+  "apps/web-pwa/src/lib/environment.ts": {
+    "mtime": 1784458078.7582324,
+    "ast_hash": "1f7393c61c249e68ef43b9eb62fbbe80",
+    "semantic_hash": ""
+  },
+  "scripts/export-staging-firestore.mjs": {
+    "mtime": 1784365639.0646284,
+    "ast_hash": "619c4c625e88ddb4832e38de2aadf947",
+    "semantic_hash": ""
+  },
+  "scripts/restore-dev-from-staging.mjs": {
+    "mtime": 1784365639.0647767,
+    "ast_hash": "c51c5563c3416715e4f7e72ccc8d9436",
+    "semantic_hash": ""
+  },
+  ".github/workflows/deploy-dev.yml": {
+    "mtime": 1784454821.2107806,
+    "ast_hash": "82768bd334988f19aac673319cbfdac3",
+    "semantic_hash": ""
+  },
+  "scripts/deploy-dev.sh": {
+    "mtime": 1784460832.0309432,
+    "ast_hash": "e09844d0a20741921f636de2986d38f5",
     "semantic_hash": ""
   }
 }
