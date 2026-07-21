@@ -1008,3 +1008,67 @@ type ImageCropperHandle = {
 - `getCroppedBase64()` returns a non-empty string (bare base64, no `data:` prefix) after a crop is confirmed.
 - Changing `src` resets pan, zoom, and crop area.
 - The `class` prop is merged onto the outer wrapper `<div>`.
+
+---
+
+# 16. TopBar / AppShell — non-production environment banner
+
+## 16.1 Overview
+
+`TopBar` and `AppShell` accept two optional props, `envLabel` and `envClass`, that together render a centred environment banner on the top bar for non-production environments. The primitives themselves are **environment-agnostic** — they render whatever label and classes are passed in without branching on environment names or mapping environment strings to colours. The colour vocabulary lives entirely in `apps/web-pwa`, which supplies literal Tailwind classes so the PWA's Tailwind scanner can detect them via its own `@source` glob.
+
+In production, both props are omitted and the bar renders with its default `bg-card` surface and no label.
+
+## 16.2 `TopBar` props
+
+| Name       | Type                  | Default     | Notes                                                                                                                                                                             |
+| ---------- | --------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `envLabel` | `string \| undefined` | `undefined` | Centred environment label (e.g. `"Staging"`). Rendered dead-centre on the bar, independent of the `title` (left-aligned) and `actions` (right-aligned). Omit in production.     |
+| `envClass` | `string \| undefined` | `undefined` | Tailwind classes overriding the bar surface — typically background, text, and border-colour tokens (e.g. `"bg-sky-100 text-sky-900 border-sky-200"`). Omit to keep `bg-card`. |
+
+`envLabel` and `envClass` are independent: either can be supplied without the other, though in practice both are supplied together (a label with no colour override, or a colour override with no label, is unusual).
+
+## 16.3 `AppShell` passthrough
+
+`AppShell` forwards `envLabel` and `envClass` directly to the `TopBar` it renders. The props are identical in name and type on both components; `AppShell` adds no additional logic.
+
+| Name       | Type                  | Notes                                     |
+| ---------- | --------------------- | ----------------------------------------- |
+| `envLabel` | `string \| undefined` | Passed through to `TopBar` unchanged.     |
+| `envClass` | `string \| undefined` | Passed through to `TopBar` unchanged.     |
+
+## 16.4 Design contract
+
+- **Environment-agnostic primitives.** `TopBar` and `AppShell` must not import or branch on any environment detection (e.g. `import.meta.env.MODE`, `PUBLIC_ENV`). They render whatever is passed in.
+- **Colour vocabulary stays in the consuming app.** Tailwind only scans classes it can see as literals; environment-specific colour classes that exist only in runtime strings would be purged from the build. `apps/web-pwa` supplies the literal classes so they appear in source and are retained by Tailwind's `@source` scanner.
+- **Omit in production.** When neither prop is passed, no banner is rendered and the bar keeps its default surface. Guard the props at the call site, not inside the primitive.
+
+## 16.5 Typical call-site (web-pwa)
+
+```svelte
+<AppShell
+  {navItems}
+  {currentPath}
+  envLabel={ENV_LABEL}
+  envClass={ENV_CLASS}
+>
+  …
+</AppShell>
+```
+
+Where `ENV_LABEL` and `ENV_CLASS` are derived from `$env/static/public` in `web-pwa`. Illustrative mapping (colour classes are Tailwind literals in the app source, not in the primitive):
+
+| Environment | `envLabel`      | `envClass`                                           |
+| ----------- | --------------- | ---------------------------------------------------- |
+| Local       | `"Local"`       | `"bg-sky-100 text-sky-900 border-sky-200"`           |
+| Development | `"Development"` | `"bg-violet-100 text-violet-900 border-violet-200"`  |
+| Staging     | `"Staging"`     | `"bg-amber-100 text-amber-900 border-amber-200"`     |
+| Production  | *(omit)*        | *(omit)*                                             |
+
+## 16.6 Testing requirements
+
+- When `envLabel` is provided, the label text is rendered centred on the bar.
+- When `envLabel` is omitted, no label element is rendered.
+- When `envClass` is provided, its classes are applied to the bar surface (replacing or extending the default surface class).
+- When `envClass` is omitted, the bar uses its default `bg-card` surface.
+- `AppShell` forwards both props to `TopBar` unchanged.
