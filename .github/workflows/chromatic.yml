@@ -77,7 +77,7 @@ jobs:
         with:
           version: '10.33.0'
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         if: steps.token.outputs.present == 'true'
         with:
           node-version: '22'
