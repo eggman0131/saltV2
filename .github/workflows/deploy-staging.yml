@@ -101,7 +101,7 @@ jobs:
       # exchange succeeds, proving WIF/IAM are fine; only the Node 22 HTTP
       # client is affected. The deployed Functions runtime stays node22 (an
       # esbuild --target, set in the CF build, independent of the CLI's Node).
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         if: ${{ steps.guard.outputs.should_deploy == 'true' }}
         with:
           node-version: '20'
