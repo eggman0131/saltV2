@@ -96,21 +96,11 @@ storybook                  →  ui-components                 # dev-only Storybo
 | `apps/cloud-functions`            | `@salt/cloud-functions` |
 | `apps/storybook`                  | `@salt/storybook`       |
 
-## graphify
+## Code search (Serena MCP)
 
-This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+Serena (`oraios/serena`) provides LSP-backed semantic code search. It is configured **TypeScript-only** (`languages: [typescript]` in `.serena/project.yml`), and that is deliberate.
 
-Rules:
-
-- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
-- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
-- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
-- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
-
-### Git tracking policy (do not get confused by graphify's git status)
-
-Only the **usable deliverables** are tracked in git: `graphify-out/graph.json`, `GRAPH_REPORT.md`, `manifest.json`, and `wiki/`. Everything else under `graphify-out/` — the `cache/` tree, `.graphify_*` markers, `cost.json`, `graph.html`, and the per-run `YYYY-MM-DD/` dated snapshot archives — is **local, regenerable state that `graphify update` rewrites each run** and is gitignored (rules live in the repo-root `.gitignore`, mirrored in `graphify-out/.gitignore`). So: when `graphify update` produces changes, commit the deliverable diffs and expect nothing else to appear in `git status`. Do **not** `git add -f` cache/snapshot files back in, and do not treat those regenerable paths as missing or as changes to stage.
-
-`graph.html` is **not tracked** (untracked 2026-07-16). It is a ~5 MB deterministic vis.js render of `graph.json` that costs no API tokens and rebuilds in ~0.6 s, so run **`graphify export html`** locally if you want the interactive view. Do not re-add it to git, and do not treat its absence — or its deletion by `graphify update` — as a problem.
-
-**Why it kept vanishing:** above 5000 nodes `graphify update` raises instead of building the documented community-aggregation view, then `unlink()`s `graph.html`. Salt builds **~4995 nodes — five under the limit**, so adding a handful of files tips it over and the file silently disappears mid-run (this happened twice while working #518). That is a graphify bug, not a repo problem: the update path passes `node_limit=None` (graphifyy 0.9.5 `__main__.py:3679`, still present at 0.9.17 `cli.py:1423`), and the aggregation branch is skipped unless the limit is passed explicitly. Its fallback is wired to the graph.json **byte-size** cap, which never trips here. `graphify export html` is unaffected — it passes an explicit limit and aggregates correctly.
+- **Use it for the pure-TS layers** — `domain`, `shared-types`, `firebase-sync`, `observability`, `cloud-functions`, and `apps/web-pwa/src/lib/*Service.ts`. There `find_referencing_symbols` is exact.
+- **Never use it to answer "what in the UI uses this?"** Serena's semantic tools cannot see `.svelte` files. A reference query for a symbol consumed only by components returns **zero results** — a confident, wrong answer. Use `grep`/`search_for_pattern` over `**/*.svelte` instead; imports are literal text and always accurate.
+- **Serena is not the impact gate.** `pnpm depcruise`, `pnpm lint` (eslint-plugin-boundaries), and `pnpm typecheck` are authoritative for whether a change is legal — they encode what is *allowed*, not merely what is *connected*.
+- `.serena/` is gitignored. If it is ever regenerated, re-apply `languages: [typescript]` and `ignored_paths: [".claude/**"]` — the auto-generated defaults are wrong for this repo (see `.gitignore`).

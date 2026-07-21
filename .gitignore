@@ -1,3 +1,6 @@
+# macOS Finder metadata
+.DS_Store
+
 node_modules/
 dist/
 storybook-static/
@@ -26,25 +29,15 @@ tmp/
 # test-emulator image was built from (drives the stale-image rebuild check).
 docker/test-emulators/.image-build-hash
 
-# graphify — authoritative, cross-branch tracking policy for graphify-out/.
-# TRACKED deliverables (NOT ignored): graph.json, GRAPH_REPORT.md,
-# manifest.json, wiki/. Everything below is local/regenerable state that
-# `graphify update` rewrites each run — never commit it.
-graphify-out/cache/
-# graph.html is a ~5 MB deterministic vis.js render of graph.json — no API cost
-# and ~0.6 s to rebuild (`graphify export html`), so it is not worth carrying in
-# git. Untracking it also sidesteps a graphify bug: `graphify update` passes
-# node_limit=None (graphifyy 0.9.5 __main__.py:3679, still present at 0.9.17
-# cli.py:1423), so above 5000 nodes to_html raises instead of building the
-# documented community-aggregation view and the caller unlink()s graph.html.
-# Salt builds ~4995 nodes — a hair under the limit, so adding a few files tips it
-# over and silently deletes the file (hit twice while working #518).
-graphify-out/graph.html
-graphify-out/.graphify_python
-graphify-out/.graphify_root
-graphify-out/.graphify_labels.json
-graphify-out/cost.json
-graphify-out/**/.graphify_labels.json
-graphify-out/**/cost.json
-# Per-run dated snapshot archives (YYYY-MM-DD/) — regenerated, not tracked.
-graphify-out/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/
+# Serena MCP (oraios/serena) — local semantic-code-search state, entirely
+# machine-specific and regenerable via `serena project index`. Nothing under
+# .serena/ belongs in git: cache/ is the LSP symbol index, logs/ is noise, and
+# project.yml is regenerated on activation.
+#
+# NOTE: project.yml's defaults are WRONG for this repo and must be re-applied
+# after any regeneration — `languages: [typescript]` (Serena's Svelte LSP gives
+# unreliable references, so semantic tools are TS-only here) and
+# `ignored_paths: [".claude/**"]` (otherwise it indexes the 18 duplicate
+# checkouts under .claude/worktrees/ despite them being gitignored: 17,734 files
+# and ~59 min, versus ~790 files in ~3 min when scoped correctly).
+.serena/
