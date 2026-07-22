@@ -15,6 +15,18 @@
   import { canonItems } from '../../lib/canonService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { isWakeLockSupported, createWakeLock } from '../../lib/wakeLock.js';
+  // Pure deck geometry (issue #556) — the viewport arithmetic behind the pager. This
+  // component keeps what only it can do: measuring elements and running the spring.
+  import {
+    deriveStops,
+    nearestStopIndex,
+    rubberBand,
+    chooseLandingStop,
+    sectionMinHeight,
+    fadeHeightFor,
+    PEEK_MAX_PX,
+    RUBBER_BAND,
+  } from '../../lib/cookDeck.js';
   import IngredientText from './IngredientText.svelte';
   // Pure cook-session logic lives in `@salt/domain` (issue #556) — every producer
   // is immutable, none of them stamp `updatedAt` (the service owns that), and
@@ -297,13 +309,8 @@
       if (rect.top <= probeY && rect.bottom > probeY) {
         visibleStepId = step.id;
         // Everything below this step's last line IS the next step, so that gap is the
-        // fade. Floored so a step that fills the screen (bottom below the viewport, a
-        // negative gap) keeps the bottom-edge fade that says "more below"; capped at
-        // the most next-step the deck can ever show.
-        fadeHeight = Math.min(
-          PEEK_MAX_PX,
-          Math.max(FADE_MIN_PX, Math.round(rootRect.bottom - rect.bottom)),
-        );
+        // fade — `fadeHeightFor` owns the floor and the cap.
+        fadeHeight = fadeHeightFor(rootRect.bottom - rect.bottom);
         return;
       }
     }
@@ -334,27 +341,11 @@
   // dominates while stopping a big jump from being fired across the screen.
   const DECK_MAX_SPEED = 2600; // px/s
   const DRAG_START_PX = 6; // slop before a touch counts as a drag rather than a tap
-  const COMMIT_RATIO = 0.22; // of a screen — how far a slow drag must go to turn a page
-  const FLING_PX_PER_MS = 0.45; // above this, direction alone turns the page
-  const PROJECTION_MS = 220; // how far ahead a fling is projected when choosing a stop
-  const RUBBER_BAND = 0.35; // resistance past the ends
-  // How much of the next step stays on screen. It replaces both the old "Next" strip
-  // and the scrollbar we gave up by owning the gesture — it is the ONLY thing telling
-  // the cook there is more below. Sized to clear a step's label plus the first line or
-  // two of its instruction, which is why the instruction leads the layout: peeking the
-  // top of a step is only worth doing if the top of a step says something.
-  const PEEK_PX = 112;
-  // The peek has only ever been a CEILING, not a reservation: a section is floored at
-  // `viewportHeight - <peek>` and then grows with its own content, so a long step eats
-  // into the peek and a screen-filling one leaves none. Which means raising the floor's
-  // slack is all it takes to spend leftover room on the peek — a step whose content
-  // doesn't fill the screen shows up to DOUBLE, one that nearly fills it tapers back
-  // toward 112 and then to nothing, and no step ever gives up a pixel it needs.
-  const PEEK_MAX_PX = PEEK_PX * 2;
-  // The floor for the bottom fade, and what every step used to get. It only applies to
-  // a step with no peek to cover — the fade is the one remaining cue that there is
-  // more below, so it can't go to nothing just because a step fills the screen.
-  const FADE_MIN_PX = 64;
+  // The thresholds that decide WHERE a released gesture lands (commit ratio, fling
+  // speed, projection) live in `$lib/cookDeck`, alongside the arithmetic that uses
+  // them. The peek — how much of the next step stays on screen — lives there too: it
+  // replaces both the old "Next" strip and the scrollbar we gave up by owning the
+  // gesture, and it is the ONLY thing telling the cook there is more below.
 
   let deckEl = $state<HTMLElement | null>(null);
   let deckOffset = $state(0);
@@ -387,44 +378,25 @@
     return Math.max(0, deckEl.offsetHeight - vp.clientHeight);
   }
 
-  // Every place the deck is allowed to come to rest. Each step contributes its own top,
-  // and a step TALLER than the screen contributes extra stops a screen apart — so
-  // paging through a long instruction works exactly like paging between short ones, and
-  // no content is ever stranded where the deck can't stop to show it.
+  // Measures each step section into deck coordinates and hands the numbers to
+  // `deriveStops`, which owns the rule about where the deck may come to rest.
   function computeStops(): number[] {
     const vp = deckViewport;
     if (!vp) return [0];
     const vpTop = vp.getBoundingClientRect().top;
-    const screen = vp.clientHeight;
-    const limit = maxOffset();
-    const stops: number[] = [];
+    const sections = [];
     for (const step of recipe?.steps ?? []) {
       const el = stepEls.get(step.id);
       if (!el) continue;
-      const top = deckOffset + (el.getBoundingClientRect().top - vpTop);
-      stops.push(top);
-      for (let extra = top + screen; extra < top + el.offsetHeight - 8; extra += screen) {
-        stops.push(extra);
-      }
+      sections.push({
+        top: deckOffset + (el.getBoundingClientRect().top - vpTop),
+        height: el.offsetHeight,
+      });
     }
-    const clamped = stops.map((s) => Math.round(Math.max(0, Math.min(s, limit))));
-    return [...new Set(clamped)].sort((a, b) => a - b);
+    return deriveStops({ sections, screen: vp.clientHeight, limit: maxOffset() });
   }
 
   let stops: number[] = [0];
-
-  function nearestStopIndex(offset: number): number {
-    let best = 0;
-    let bestDistance = Math.abs((stops[0] ?? 0) - offset);
-    for (let i = 1; i < stops.length; i += 1) {
-      const distance = Math.abs((stops[i] ?? 0) - offset);
-      if (distance < bestDistance) {
-        best = i;
-        bestDistance = distance;
-      }
-    }
-    return best;
-  }
 
   function stepStop(id: string): number | null {
     const vp = deckViewport;
@@ -485,13 +457,6 @@
   let lastMoveTime = 0;
   let dragVelocity = 0; // px/ms, positive = content travelling up (offset increasing)
 
-  function rubberBand(raw: number): number {
-    const limit = maxOffset();
-    if (raw < 0) return raw * RUBBER_BAND;
-    if (raw > limit) return limit + (raw - limit) * RUBBER_BAND;
-    return raw;
-  }
-
   function handlePointerDown(event: PointerEvent): void {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
     stopDeckAnimation();
@@ -500,7 +465,7 @@
     dragging = false; // not until it clears DRAG_START_PX — taps must still reach buttons
     dragStartY = event.clientY;
     dragStartOffset = deckOffset;
-    dragStartIndex = nearestStopIndex(deckOffset);
+    dragStartIndex = nearestStopIndex(deckOffset, stops);
     lastMoveY = event.clientY;
     lastMoveTime = event.timeStamp;
     dragVelocity = 0;
@@ -514,7 +479,7 @@
       dragging = true;
       deckViewport?.setPointerCapture?.(event.pointerId);
     }
-    deckOffset = rubberBand(dragStartOffset + travelled);
+    deckOffset = rubberBand(dragStartOffset + travelled, maxOffset(), RUBBER_BAND);
     const elapsed = event.timeStamp - lastMoveTime;
     if (elapsed > 0) {
       // Smoothed, so one erratic sample at the moment of release can't fling the deck.
@@ -533,29 +498,22 @@
     settleAfterGesture();
   }
 
-  // Where a released gesture lands. A flick past either threshold always turns at least
-  // one page — landing back where you started would feel like the swipe was ignored —
-  // and a harder fling is projected forward so it can cross several stops at once,
-  // which is what stops a run of collapsed done-steps needing a swipe each.
+  // Carries the released gesture to wherever `chooseLandingStop` says it belongs. The
+  // decision is pure arithmetic and lives in `$lib/cookDeck`; what's left here is the
+  // animation, seeded with the velocity the thumb left behind so the travel reads as a
+  // continuation of the swipe rather than a new movement.
   function settleAfterGesture(): void {
     const vp = deckViewport;
     if (!vp) return;
-    const dragged = deckOffset - dragStartOffset;
-    const committed =
-      Math.abs(dragVelocity) > FLING_PX_PER_MS ||
-      Math.abs(dragged) > vp.clientHeight * COMMIT_RATIO;
-    const velocity = dragVelocity * 1000; // px/ms → px/s
-    if (!committed) {
-      animateDeckTo(stops[dragStartIndex] ?? 0, velocity);
-      return;
-    }
-    const direction =
-      Math.abs(dragVelocity) > FLING_PX_PER_MS ? Math.sign(dragVelocity) : Math.sign(dragged);
-    let index = nearestStopIndex(deckOffset + dragVelocity * PROJECTION_MS);
-    if (direction > 0 && index <= dragStartIndex) index = dragStartIndex + 1;
-    if (direction < 0 && index >= dragStartIndex) index = dragStartIndex - 1;
-    index = Math.max(0, Math.min(index, stops.length - 1));
-    animateDeckTo(stops[index] ?? 0, velocity);
+    const index = chooseLandingStop({
+      stops,
+      startIndex: dragStartIndex,
+      offset: deckOffset,
+      dragged: deckOffset - dragStartOffset,
+      velocity: dragVelocity,
+      screen: vp.clientHeight,
+    });
+    animateDeckTo(stops[index] ?? 0, dragVelocity * 1000); // px/ms → px/s
   }
 
   // Trackpad and mouse wheel. No fling to inherit, so it moves the deck directly and
@@ -581,7 +539,7 @@
     deckOffset = Math.max(0, Math.min(deckOffset + delta, maxOffset()));
     wheelIdle = setTimeout(() => {
       wheelIdle = null;
-      animateDeckTo(stops[nearestStopIndex(deckOffset)] ?? 0);
+      animateDeckTo(stops[nearestStopIndex(deckOffset, stops)] ?? 0);
     }, 110);
   }
 
@@ -592,7 +550,7 @@
     if (!keys.includes(event.key)) return;
     event.preventDefault();
     stops = computeStops();
-    const here = nearestStopIndex(deckOffset);
+    const here = nearestStopIndex(deckOffset, stops);
     const to =
       event.key === 'Home'
         ? 0
@@ -1235,7 +1193,7 @@
               data-complete={done}
               data-testid="cook-step"
               class="flex flex-col px-4 {collapsed ? 'py-2' : 'border-t py-6'}"
-              style="min-height: {collapsed ? 0 : Math.max(0, viewportHeight - PEEK_MAX_PX)}px"
+              style="min-height: {collapsed ? 0 : sectionMinHeight(viewportHeight)}px"
             >
               {#if collapsed}
                 <!-- Collapsed / done: compact row, tap to re-read it. Peeking is
