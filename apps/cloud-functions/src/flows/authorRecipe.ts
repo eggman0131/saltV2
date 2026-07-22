@@ -13,6 +13,7 @@ import { parseRecipeIngredientsFlow } from './parseRecipeIngredients.js';
 import { resolveModel } from '../ai/resolveModel.js';
 import { CATEGORY_TAG_RULES, normaliseTags } from './categoryTags.js';
 import { INGREDIENT_SUBSTITUTION_RULES } from './ingredientConversions.js';
+import { readEquipmentContext, equipmentSectionForLibrarian } from './equipmentContext.js';
 
 const OutputSchema = z.custom<RecipeDoc>();
 
@@ -37,11 +38,23 @@ export const authorRecipeFlow = ai.defineFlow(
     // a near-empty recipe from an incremental edit chat (e.g. "add some cheese").
     // We keep the structured doc (not just the prompt text) so assembleDraft can
     // diff against it and skip re-parsing/re-embedding unchanged ingredients.
-    const baseRecipe = input.recipeId ? await readBaseRecipe(getFirestore(), input.recipeId) : null;
+    // The equipment manifest rides along in BOTH create and edit mode, purely so
+    // the librarian RECOGNISES appliance names in the transcript and preserves
+    // them (see equipmentContext.ts — it must never pick equipment itself).
+    // Without it, "sear it in the Pizzaiolo at 400 °C" gets flattened back to
+    // "bake in the oven" on the way into the saved recipe.
+    const db = getFirestore();
+    const [baseRecipe, equipmentContext] = await Promise.all([
+      input.recipeId ? readBaseRecipe(db, input.recipeId) : Promise.resolve(null),
+      readEquipmentContext(db, 'authorRecipe'),
+    ]);
     const closing = baseRecipe
       ? editModeSection(formatRecipeForPrompt(baseRecipe))
       : CREATE_MODE_CLOSING;
-    const systemPrompt = `${LIBRARIAN_SYSTEM}\n\n${closing}${tagVocab}`;
+    const equipmentSection = equipmentSectionForLibrarian(equipmentContext);
+    const systemPrompt = `${LIBRARIAN_SYSTEM}\n\n${closing}${tagVocab}${
+      equipmentSection ? `\n\n${equipmentSection}` : ''
+    }`;
 
     // Flash + temperature:0 for the librarian — accuracy over creativity (issue #206).
     const modelId = await resolveModel('fast', 'authorRecipe');

@@ -2,49 +2,13 @@ import { z } from 'genkit';
 import { getFirestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
 import { ChefChatInputSchema } from '@salt/domain/schemas';
-import {
-  EquipmentManifestSchema,
-  RecipeSchema,
-  EQUIPMENT_MANIFEST_COLLECTION,
-  EQUIPMENT_MANIFEST_DOC_ID,
-} from '@salt/domain/schemas';
+import { RecipeSchema } from '@salt/domain/schemas';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 import { flowModel } from '../ai/fakeModel.js';
 import { reportFlowError } from '../observability/reportServerError.js';
 import { UK_INGREDIENT_PRINCIPLE } from './ingredientConversions.js';
-
-async function readEquipmentContext(db: ReturnType<typeof getFirestore>): Promise<string> {
-  try {
-    const snap = await db
-      .collection(EQUIPMENT_MANIFEST_COLLECTION)
-      .doc(EQUIPMENT_MANIFEST_DOC_ID)
-      .get();
-    if (!snap.exists) return '';
-    const result = EquipmentManifestSchema.safeParse(snap.data());
-    if (!result.success) {
-      logger.warn('chefChat: equipmentManifest failed validation, proceeding without kit context');
-      return '';
-    }
-    const { items } = result.data;
-    if (items.length === 0) return '';
-    const lines = items.map((item) => {
-      const parts = [`- ${item.name}`];
-      const ownedAccessories = item.accessories.filter((a) => a.owned);
-      if (ownedAccessories.length > 0) {
-        parts.push(`  accessories: ${ownedAccessories.map((a) => a.name).join(', ')}`);
-      }
-      if (item.rules.length > 0) {
-        parts.push(`  notes: ${item.rules.join('; ')}`);
-      }
-      return parts.join('\n');
-    });
-    return lines.join('\n');
-  } catch (err) {
-    logger.warn('chefChat: failed to read equipmentManifest', { err });
-    return '';
-  }
-}
+import { readEquipmentContext, equipmentSectionForChef } from './equipmentContext.js';
 
 async function readRecipeContext(
   db: ReturnType<typeof getFirestore>,
@@ -81,11 +45,8 @@ async function readRecipeContext(
 function buildSystemPrompt(equipmentContext: string, recipeContext: string): string {
   const sections: string[] = [CHEF_SYSTEM_BASE];
 
-  if (equipmentContext) {
-    sections.push(
-      `## Your equipment\nThe following kitchen equipment is available. Draw on it when it genuinely helps the conversation, but never feel obliged to mention or use it.\n\n${equipmentContext}`,
-    );
-  }
+  const equipmentSection = equipmentSectionForChef(equipmentContext);
+  if (equipmentSection) sections.push(equipmentSection);
 
   if (recipeContext) {
     sections.push(
@@ -107,7 +68,7 @@ export const chefChatFlow = ai.defineFlow(
     try {
       const db = getFirestore();
       const [equipmentContext, recipeContext] = await Promise.all([
-        readEquipmentContext(db),
+        readEquipmentContext(db, 'chefChat'),
         input.recipeId ? readRecipeContext(db, input.recipeId) : Promise.resolve(''),
       ]);
 
@@ -163,7 +124,7 @@ You can discuss recipes, techniques, flavour pairings, substitutions, dietary ad
 and anything else related to cooking and food. \
 Speak naturally and warmly — like a knowledgeable friend in the kitchen, not a recipe generator. \
 When you suggest a recipe or technique, feel free to riff, improvise, and add your own perspective. \
-You are not bound to any particular list of ingredients or equipment. \
+You are not bound to any particular list of ingredients. \
 ${UK_INGREDIENT_PRINCIPLE} \
 Always use metric units: temperatures in °C only, ingredient quantities in g or ml. \
 Dry ingredients always use g — never ml — even when the original measure is tsp or tbsp. \
