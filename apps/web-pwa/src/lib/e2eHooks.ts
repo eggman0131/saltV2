@@ -1,11 +1,11 @@
 import { get } from 'svelte/store';
 import { upsertCanonItem, setFirestoreNetwork, setAiStub } from '@salt/firebase-sync';
-import type { CanonItem } from '@salt/domain';
+import type { CanonItem, Recipe } from '@salt/domain';
 import { devSignIn } from './auth.svelte.js';
 import { addAislesBulk, aisles } from './aisleService.js';
 import { canonItems, isLoadingAisles } from './canonService.js';
 import { seedEquipmentManifest, getEquipmentSnapshot } from './equipmentService.js';
-import { getRecipesSnapshot } from './recipeService.js';
+import { getRecipesSnapshot, persistRecipe } from './recipeService.js';
 import { getMealPlanWeekSnapshot } from './mealPlanService.js';
 import { getChatSessionsSnapshot } from './chatService.js';
 import {
@@ -102,6 +102,20 @@ export function installE2EHooks(): void {
 
     getRecipes() {
       return getRecipesSnapshot();
+    },
+
+    async seedRecipe(recipe: Recipe) {
+      // Goes through the real `persistRecipe` → `@salt/firebase-sync` write path
+      // (NF-C4), exactly as the editor does — the only difference is that the
+      // fixture is handed over whole instead of typed in. Cook mode needs recipes
+      // the editor cannot author: `firstUsedInStepId` is stamped by the AI author
+      // flow, and a UI-built recipe leaves it null, so every step renders zero
+      // first-use chips. `persistRecipe` stamps `updatedAt` and updates the store
+      // before it resolves, so an `ok` result means the doc is live.
+      const result = await persistRecipe(recipe);
+      if (result.kind !== 'ok') {
+        throw new Error(`seedRecipe failed: ${JSON.stringify(result.error)}`);
+      }
     },
 
     getMealPlanSnapshot() {

@@ -1,6 +1,6 @@
 /// <reference path="../../src/lib/types/e2e.d.ts" />
 import type { Page } from '@playwright/test';
-import type { Aisle, CanonItem, ShoppingListItem } from '@salt/domain';
+import type { Aisle, CanonItem, Recipe, ShoppingListItem } from '@salt/domain';
 
 export interface SeedCanonItemInput {
   readonly id?: string;
@@ -18,6 +18,15 @@ export async function seedAisles(page: Page, names: readonly string[]): Promise<
 
 export async function seedCanonItem(page: Page, input: SeedCanonItemInput): Promise<CanonItem> {
   return page.evaluate((i) => window.__e2e!.seedCanonItem(i), input);
+}
+
+// Writes a whole recipe document through the real `persistRecipe` path (NF-C4).
+// The recipe editor is the right seam for specs about authoring; this one is for
+// specs that need a recipe shaped in ways the editor cannot produce — notably
+// `firstUsedInStepId`, stamped by the AI author flow and left null by the UI, so
+// a UI-authored recipe shows no per-step first-use ingredients at all.
+export async function seedRecipe(page: Page, recipe: Recipe): Promise<void> {
+  await page.evaluate((r) => window.__e2e!.seedRecipe(r), recipe);
 }
 
 export async function getAisles(page: Page): Promise<readonly Aisle[]> {
