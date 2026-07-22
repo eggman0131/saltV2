@@ -15,8 +15,42 @@
   import { canonItems } from '../../lib/canonService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { isWakeLockSupported, createWakeLock } from '../../lib/wakeLock.js';
+  // Pure deck geometry (issue #556) — the viewport arithmetic behind the pager. This
+  // component keeps what only it can do: measuring elements and running the spring.
+  import {
+    deriveStops,
+    nearestStopIndex,
+    rubberBand,
+    chooseLandingStop,
+    sectionMinHeight,
+    fadeHeightFor,
+    PEEK_MAX_PX,
+    RUBBER_BAND,
+  } from '../../lib/cookDeck.js';
   import IngredientText from './IngredientText.svelte';
-  import type { CookSessionDoc, IngredientDoc, StepDoc } from '@salt/domain/schemas';
+  // Pure cook-session logic lives in `@salt/domain` (issue #556) — every producer
+  // is immutable, none of them stamp `updatedAt` (the service owns that), and
+  // every timestamp they need is passed in from here rather than read there.
+  import {
+    makeFreshSession as buildFreshSession,
+    withStepDone,
+    withIngredientChecked,
+    withAllIngredientsChecked,
+    withTimerStarted,
+    withTimerDismissed,
+    firstUseByStep as groupIngredientsByFirstUse,
+    firstIncompleteStepId,
+    miseProgress,
+    hasRecipeChanged,
+    formatClock,
+    timerProgress,
+  } from '@salt/domain';
+  import type {
+    CookActiveTimerDoc,
+    CookSessionDoc,
+    IngredientDoc,
+    StepDoc,
+  } from '@salt/domain/schemas';
 
   // Cook mode (cooking mode, Phase 1). The first FULL-VIEWPORT page in the app: it
   // owns its own `fixed inset-0` container rather than living inside the app shell,
@@ -57,19 +91,13 @@
   let bootstrapping = $state(false);
 
   function makeFreshSession(): CookSessionDoc {
-    const now = new Date().toISOString();
-    return {
+    return buildFreshSession({
       id: sessionId!,
-      schemaVersion: 1,
       ownerUid: uid!,
       recipeId: params.id,
       recipeUpdatedAtAtStart: recipe!.updatedAt,
-      checkedIngredientIds: [],
-      completedStepIds: [],
-      activeTimers: [],
-      createdAt: now,
-      updatedAt: now,
-    };
+      nowIso: new Date().toISOString(),
+    });
   }
 
   async function createFreshSession(): Promise<void> {
@@ -106,28 +134,18 @@
 
   // ─── Mise-en-place ticking ─────────────────────────────────────────────────────
   const checkedIds = $derived(new Set($cookSession?.checkedIngredientIds ?? []));
-  const totalIngredients = $derived(
-    recipe ? recipe.ingredients.reduce((n, g) => n + g.items.length, 0) : 0,
-  );
-  const checkedCount = $derived(
-    recipe
-      ? recipe.ingredients.reduce(
-          (n, g) => n + g.items.filter((i) => checkedIds.has(i.id)).length,
-          0,
-        )
-      : 0,
-  );
-
-  const allIngredientsChecked = $derived(totalIngredients > 0 && checkedCount === totalIngredients);
+  // Counted over the RECIPE rather than over the session's id list, so ticks left
+  // behind by an ingredient that has since been edited out can't inflate the
+  // count — see `miseProgress`.
+  const mise = $derived(miseProgress(recipe?.ingredients ?? [], checkedIds));
+  const totalIngredients = $derived(mise.total);
+  const checkedCount = $derived(mise.checked);
+  const allIngredientsChecked = $derived(mise.allChecked);
 
   function toggleIngredient(id: string): void {
     const s = getCookSessionSnapshot();
     if (!s) return;
-    const has = s.checkedIngredientIds.includes(id);
-    const next = has
-      ? s.checkedIngredientIds.filter((x) => x !== id)
-      : [...s.checkedIngredientIds, id];
-    void persistCookSession({ ...s, checkedIngredientIds: next });
+    void persistCookSession(withIngredientChecked(s, id));
   }
 
   // Bulk tick, for when everything is already out on the bench and ticking fourteen
@@ -135,10 +153,8 @@
   function toggleAllIngredients(): void {
     const s = getCookSessionSnapshot();
     if (!s || !recipe) return;
-    const next = allIngredientsChecked
-      ? []
-      : recipe.ingredients.flatMap((g) => g.items.map((i) => i.id));
-    void persistCookSession({ ...s, checkedIngredientIds: next });
+    const allIds = recipe.ingredients.flatMap((g) => g.items.map((i) => i.id));
+    void persistCookSession(withAllIngredientsChecked(s, allIds, allIngredientsChecked));
   }
 
   // ─── Guided steps (Phase 2) ─────────────────────────────────────────────────────
@@ -171,20 +187,7 @@
   // First-use ingredients per step. The recipe stamps `firstUsedInStepId` on each
   // ingredient at the step it's first needed, so a step can surface exactly the
   // items it introduces (amount + prep) inline — no scrolling back to mise mid-cook.
-  const firstUseByStep = $derived.by(() => {
-    const map = new Map<string, IngredientDoc[]>();
-    if (!recipe) return map;
-    for (const group of recipe.ingredients) {
-      for (const item of group.items) {
-        const sid = item.firstUsedInStepId;
-        if (!sid) continue;
-        const list = map.get(sid);
-        if (list) list.push(item);
-        else map.set(sid, [item]);
-      }
-    }
-    return map;
-  });
+  const firstUseByStep = $derived(groupIngredientsByFirstUse(recipe?.ingredients ?? []));
 
   // First-use chips are capped at half the step's width (gap included, so two capped
   // chips always pair up on one line), which stops one long line ("400g tinned plum
@@ -256,9 +259,10 @@
   function setStepDone(id: string, done: boolean): void {
     const s = getCookSessionSnapshot();
     if (!s) return;
-    if (s.completedStepIds.includes(id) === done) return;
-    const next = done ? [...s.completedStepIds, id] : s.completedStepIds.filter((x) => x !== id);
-    void persistCookSession({ ...s, completedStepIds: next });
+    const next = withStepDone(s, id, done);
+    // Identity means the step was already in that state — skip the write.
+    if (next === s) return;
+    void persistCookSession(next);
   }
 
   // Land-on-first-incomplete. Fires only when the stage flips to `steps`; it reads
@@ -305,13 +309,8 @@
       if (rect.top <= probeY && rect.bottom > probeY) {
         visibleStepId = step.id;
         // Everything below this step's last line IS the next step, so that gap is the
-        // fade. Floored so a step that fills the screen (bottom below the viewport, a
-        // negative gap) keeps the bottom-edge fade that says "more below"; capped at
-        // the most next-step the deck can ever show.
-        fadeHeight = Math.min(
-          PEEK_MAX_PX,
-          Math.max(FADE_MIN_PX, Math.round(rootRect.bottom - rect.bottom)),
-        );
+        // fade — `fadeHeightFor` owns the floor and the cap.
+        fadeHeight = fadeHeightFor(rootRect.bottom - rect.bottom);
         return;
       }
     }
@@ -342,27 +341,11 @@
   // dominates while stopping a big jump from being fired across the screen.
   const DECK_MAX_SPEED = 2600; // px/s
   const DRAG_START_PX = 6; // slop before a touch counts as a drag rather than a tap
-  const COMMIT_RATIO = 0.22; // of a screen — how far a slow drag must go to turn a page
-  const FLING_PX_PER_MS = 0.45; // above this, direction alone turns the page
-  const PROJECTION_MS = 220; // how far ahead a fling is projected when choosing a stop
-  const RUBBER_BAND = 0.35; // resistance past the ends
-  // How much of the next step stays on screen. It replaces both the old "Next" strip
-  // and the scrollbar we gave up by owning the gesture — it is the ONLY thing telling
-  // the cook there is more below. Sized to clear a step's label plus the first line or
-  // two of its instruction, which is why the instruction leads the layout: peeking the
-  // top of a step is only worth doing if the top of a step says something.
-  const PEEK_PX = 112;
-  // The peek has only ever been a CEILING, not a reservation: a section is floored at
-  // `viewportHeight - <peek>` and then grows with its own content, so a long step eats
-  // into the peek and a screen-filling one leaves none. Which means raising the floor's
-  // slack is all it takes to spend leftover room on the peek — a step whose content
-  // doesn't fill the screen shows up to DOUBLE, one that nearly fills it tapers back
-  // toward 112 and then to nothing, and no step ever gives up a pixel it needs.
-  const PEEK_MAX_PX = PEEK_PX * 2;
-  // The floor for the bottom fade, and what every step used to get. It only applies to
-  // a step with no peek to cover — the fade is the one remaining cue that there is
-  // more below, so it can't go to nothing just because a step fills the screen.
-  const FADE_MIN_PX = 64;
+  // The thresholds that decide WHERE a released gesture lands (commit ratio, fling
+  // speed, projection) live in `$lib/cookDeck`, alongside the arithmetic that uses
+  // them. The peek — how much of the next step stays on screen — lives there too: it
+  // replaces both the old "Next" strip and the scrollbar we gave up by owning the
+  // gesture, and it is the ONLY thing telling the cook there is more below.
 
   let deckEl = $state<HTMLElement | null>(null);
   let deckOffset = $state(0);
@@ -395,44 +378,25 @@
     return Math.max(0, deckEl.offsetHeight - vp.clientHeight);
   }
 
-  // Every place the deck is allowed to come to rest. Each step contributes its own top,
-  // and a step TALLER than the screen contributes extra stops a screen apart — so
-  // paging through a long instruction works exactly like paging between short ones, and
-  // no content is ever stranded where the deck can't stop to show it.
+  // Measures each step section into deck coordinates and hands the numbers to
+  // `deriveStops`, which owns the rule about where the deck may come to rest.
   function computeStops(): number[] {
     const vp = deckViewport;
     if (!vp) return [0];
     const vpTop = vp.getBoundingClientRect().top;
-    const screen = vp.clientHeight;
-    const limit = maxOffset();
-    const stops: number[] = [];
+    const sections = [];
     for (const step of recipe?.steps ?? []) {
       const el = stepEls.get(step.id);
       if (!el) continue;
-      const top = deckOffset + (el.getBoundingClientRect().top - vpTop);
-      stops.push(top);
-      for (let extra = top + screen; extra < top + el.offsetHeight - 8; extra += screen) {
-        stops.push(extra);
-      }
+      sections.push({
+        top: deckOffset + (el.getBoundingClientRect().top - vpTop),
+        height: el.offsetHeight,
+      });
     }
-    const clamped = stops.map((s) => Math.round(Math.max(0, Math.min(s, limit))));
-    return [...new Set(clamped)].sort((a, b) => a - b);
+    return deriveStops({ sections, screen: vp.clientHeight, limit: maxOffset() });
   }
 
   let stops: number[] = [0];
-
-  function nearestStopIndex(offset: number): number {
-    let best = 0;
-    let bestDistance = Math.abs((stops[0] ?? 0) - offset);
-    for (let i = 1; i < stops.length; i += 1) {
-      const distance = Math.abs((stops[i] ?? 0) - offset);
-      if (distance < bestDistance) {
-        best = i;
-        bestDistance = distance;
-      }
-    }
-    return best;
-  }
 
   function stepStop(id: string): number | null {
     const vp = deckViewport;
@@ -493,13 +457,6 @@
   let lastMoveTime = 0;
   let dragVelocity = 0; // px/ms, positive = content travelling up (offset increasing)
 
-  function rubberBand(raw: number): number {
-    const limit = maxOffset();
-    if (raw < 0) return raw * RUBBER_BAND;
-    if (raw > limit) return limit + (raw - limit) * RUBBER_BAND;
-    return raw;
-  }
-
   function handlePointerDown(event: PointerEvent): void {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
     stopDeckAnimation();
@@ -508,7 +465,7 @@
     dragging = false; // not until it clears DRAG_START_PX — taps must still reach buttons
     dragStartY = event.clientY;
     dragStartOffset = deckOffset;
-    dragStartIndex = nearestStopIndex(deckOffset);
+    dragStartIndex = nearestStopIndex(deckOffset, stops);
     lastMoveY = event.clientY;
     lastMoveTime = event.timeStamp;
     dragVelocity = 0;
@@ -522,7 +479,7 @@
       dragging = true;
       deckViewport?.setPointerCapture?.(event.pointerId);
     }
-    deckOffset = rubberBand(dragStartOffset + travelled);
+    deckOffset = rubberBand(dragStartOffset + travelled, maxOffset(), RUBBER_BAND);
     const elapsed = event.timeStamp - lastMoveTime;
     if (elapsed > 0) {
       // Smoothed, so one erratic sample at the moment of release can't fling the deck.
@@ -541,29 +498,22 @@
     settleAfterGesture();
   }
 
-  // Where a released gesture lands. A flick past either threshold always turns at least
-  // one page — landing back where you started would feel like the swipe was ignored —
-  // and a harder fling is projected forward so it can cross several stops at once,
-  // which is what stops a run of collapsed done-steps needing a swipe each.
+  // Carries the released gesture to wherever `chooseLandingStop` says it belongs. The
+  // decision is pure arithmetic and lives in `$lib/cookDeck`; what's left here is the
+  // animation, seeded with the velocity the thumb left behind so the travel reads as a
+  // continuation of the swipe rather than a new movement.
   function settleAfterGesture(): void {
     const vp = deckViewport;
     if (!vp) return;
-    const dragged = deckOffset - dragStartOffset;
-    const committed =
-      Math.abs(dragVelocity) > FLING_PX_PER_MS ||
-      Math.abs(dragged) > vp.clientHeight * COMMIT_RATIO;
-    const velocity = dragVelocity * 1000; // px/ms → px/s
-    if (!committed) {
-      animateDeckTo(stops[dragStartIndex] ?? 0, velocity);
-      return;
-    }
-    const direction =
-      Math.abs(dragVelocity) > FLING_PX_PER_MS ? Math.sign(dragVelocity) : Math.sign(dragged);
-    let index = nearestStopIndex(deckOffset + dragVelocity * PROJECTION_MS);
-    if (direction > 0 && index <= dragStartIndex) index = dragStartIndex + 1;
-    if (direction < 0 && index >= dragStartIndex) index = dragStartIndex - 1;
-    index = Math.max(0, Math.min(index, stops.length - 1));
-    animateDeckTo(stops[index] ?? 0, velocity);
+    const index = chooseLandingStop({
+      stops,
+      startIndex: dragStartIndex,
+      offset: deckOffset,
+      dragged: deckOffset - dragStartOffset,
+      velocity: dragVelocity,
+      screen: vp.clientHeight,
+    });
+    animateDeckTo(stops[index] ?? 0, dragVelocity * 1000); // px/ms → px/s
   }
 
   // Trackpad and mouse wheel. No fling to inherit, so it moves the deck directly and
@@ -589,7 +539,7 @@
     deckOffset = Math.max(0, Math.min(deckOffset + delta, maxOffset()));
     wheelIdle = setTimeout(() => {
       wheelIdle = null;
-      animateDeckTo(stops[nearestStopIndex(deckOffset)] ?? 0);
+      animateDeckTo(stops[nearestStopIndex(deckOffset, stops)] ?? 0);
     }, 110);
   }
 
@@ -600,7 +550,7 @@
     if (!keys.includes(event.key)) return;
     event.preventDefault();
     stops = computeStops();
-    const here = nearestStopIndex(deckOffset);
+    const here = nearestStopIndex(deckOffset, stops);
     const to =
       event.key === 'Home'
         ? 0
@@ -646,17 +596,22 @@
   const currentStep = $derived.by(() => {
     const steps = recipe?.steps ?? [];
     if (steps.length === 0) return null;
+    const firstIncompleteId = firstIncompleteStepId(steps, completedStepIds);
     return (
       steps.find((s) => s.id === visibleStepId) ??
-      steps.find((s) => !completedStepIds.has(s.id)) ??
+      steps.find((s) => s.id === firstIncompleteId) ??
       steps[steps.length - 1]
     );
   });
   const currentStepDone = $derived(!!currentStep && completedStepIds.has(currentStep.id));
+  // "The next outstanding step AFTER this one" — the query has no notion of a
+  // cursor, so the slice is what expresses "after".
   const nextIncompleteStep = $derived.by(() => {
     const steps = recipe?.steps ?? [];
     const idx = currentStep ? steps.findIndex((s) => s.id === currentStep.id) : -1;
-    return steps.slice(idx + 1).find((s) => !completedStepIds.has(s.id)) ?? null;
+    const rest = steps.slice(idx + 1);
+    const nextId = firstIncompleteStepId(rest, completedStepIds);
+    return rest.find((s) => s.id === nextId) ?? null;
   });
   const nextIncompleteNumber = $derived(
     nextIncompleteStep && recipe
@@ -733,7 +688,8 @@
     const snap = getCookSessionSnapshot();
     const done = new Set(snap?.completedStepIds ?? []);
     const steps = recipe?.steps ?? [];
-    const target = steps.find((s) => !done.has(s.id)) ?? steps[steps.length - 1];
+    const targetId = firstIncompleteStepId(steps, done);
+    const target = steps.find((s) => s.id === targetId) ?? steps[steps.length - 1];
     if (!target) return;
     // Placed, not animated — this is where the deck STARTS, not somewhere it travels to.
     const landOn = (): void => {
@@ -784,56 +740,33 @@
     if (!timer) return;
     const s = getCookSessionSnapshot();
     if (!s) return;
+    // `endsAt` is computed HERE, not in the domain producer, which never reads a
+    // clock. Replacing any existing entry for the step is the producer's job.
     const endsAt = new Date(Date.now() + timer.durationMinutes * 60_000).toISOString();
     const notify = timer.durationMinutes >= NOTIFY_MIN_MINUTES;
-    // Replace any existing entry for this step — one live timer per step.
-    const next = [
-      ...s.activeTimers.filter((t) => t.stepId !== step.id),
-      { stepId: step.id, endsAt, notify },
-    ];
-    void persistCookSession({ ...s, activeTimers: next });
+    void persistCookSession(withTimerStarted(s, step.id, endsAt, notify));
   }
 
   function dismissTimer(stepId: string): void {
     const s = getCookSessionSnapshot();
     if (!s) return;
-    const next = s.activeTimers.filter((t) => t.stepId !== stepId);
-    void persistCookSession({ ...s, activeTimers: next });
+    void persistCookSession(withTimerDismissed(s, stepId));
   }
 
-  // mm:ss for a millisecond span, clamped at 0:00. Ceil so a fresh 5:00 timer reads
-  // "5:00" for its first second rather than flicking to "4:59" immediately.
-  function formatClock(ms: number): string {
-    const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${minutes}:${String(seconds).padStart(2, '0')}`;
-  }
-
-  // Fraction (0..1) of a timer's run that has elapsed, for the progress fill. A
-  // countdown alone tells you what's LEFT but not how far through you are — "4:00"
-  // reads very differently on a 5-minute rest than on a 40-minute braise. The fill
-  // makes that proportion glanceable from across the kitchen.
-  //
-  // Derived from the recipe's `durationMinutes` rather than a stored start-time:
-  // `startTimer` writes `endsAt = now + durationMinutes`, so `total - remaining` is
-  // exact, and no field has to be added to the session doc (nothing to migrate).
-  // The trade: if the recipe's duration is edited mid-run the ratio is clamped
-  // rather than wrong — and the "recipe was updated" banner is already up in that
-  // case. Returns null when the step (or its timer) has since been deleted from the
-  // recipe, so the caller renders the chip with no fill instead of a bogus one.
-  function timerProgress(stepId: string, remainingMs: number): number | null {
-    const durationMinutes = recipe?.steps.find((s) => s.id === stepId)?.timer?.durationMinutes;
-    if (!durationMinutes) return null;
-    const totalMs = durationMinutes * 60_000;
-    return Math.min(1, Math.max(0, (totalMs - remainingMs) / totalMs));
+  // Looks the timer's step up in the LIVE recipe and hands its duration to the
+  // domain clamp, which turns it into the elapsed fraction the progress fill
+  // draws. A step (or its timer) edited away since the countdown started has no
+  // duration to scale against, so `timerProgress` returns null and the chip
+  // renders with no fill rather than a bogus one.
+  function timerProgressFor(timer: CookActiveTimerDoc): number | null {
+    const durationMinutes = recipe?.steps.find((s) => s.id === timer.stepId)?.timer
+      ?.durationMinutes;
+    return timerProgress(timer, durationMinutes ? durationMinutes * 60_000 : null, now);
   }
 
   // ─── Recipe-changed banner ─────────────────────────────────────────────────────
   // The live recipe drifted from the snapshot taken when the session started.
-  const recipeChanged = $derived(
-    !!recipe && !!$cookSession && recipe.updatedAt !== $cookSession.recipeUpdatedAtAtStart,
-  );
+  const recipeChanged = $derived(hasRecipeChanged($cookSession, recipe?.updatedAt ?? null));
 
   // Restart: discard the current session and start a fresh one against the CURRENT
   // recipe (new baseline, cleared ticks), staying on the cook page so the user
@@ -1080,7 +1013,7 @@
             {@const remaining = new Date(t.endsAt).getTime() - now}
             {@const fired = remaining <= 0}
             {@const stepIndex = recipe.steps.findIndex((s) => s.id === t.stepId)}
-            {@const progress = timerProgress(t.stepId, remaining)}
+            {@const progress = timerProgressFor(t)}
             <div
               class="overflow-hidden rounded-lg border {fired
                 ? 'border-primary bg-primary/10'
@@ -1260,7 +1193,7 @@
               data-complete={done}
               data-testid="cook-step"
               class="flex flex-col px-4 {collapsed ? 'py-2' : 'border-t py-6'}"
-              style="min-height: {collapsed ? 0 : Math.max(0, viewportHeight - PEEK_MAX_PX)}px"
+              style="min-height: {collapsed ? 0 : sectionMinHeight(viewportHeight)}px"
             >
               {#if collapsed}
                 <!-- Collapsed / done: compact row, tap to re-read it. Peeking is
@@ -1380,7 +1313,7 @@
                     <div class="flex flex-col gap-2" data-testid="cook-step-timer">
                       {#if timerEntry}
                         {@const remaining = new Date(timerEntry.endsAt).getTime() - now}
-                        {@const progress = timerProgress(step.id, remaining)}
+                        {@const progress = timerProgressFor(timerEntry)}
                         {#if remaining > 0}
                           <div class="overflow-hidden rounded-lg border bg-card">
                             <div class="flex items-center gap-3 px-4 py-3">
