@@ -5,8 +5,9 @@
 //
 // Everything here degrades gracefully and NEVER throws: an unsupported browser, a
 // rejected acquire (e.g. the tab isn't visible, or the OS denies it), or a release
-// on an already-released sentinel all resolve quietly. The caller flips a UI toggle
-// optimistically and this module makes it real where it can.
+// on an already-released sentinel all resolve quietly. Failure is REPORTED, not
+// thrown — `enable()` resolves to whether the lock is actually held, so the caller
+// can confirm or correct its UI instead of assuming.
 //
 // The OS releases a wake lock automatically whenever the page is hidden (tab
 // switch, screen off). `createWakeLock().enable()` re-acquires on `visibilitychange`
@@ -37,7 +38,13 @@ export function isWakeLockSupported(): boolean {
 export interface WakeLockController {
   // Acquire the lock and keep it (re-acquiring across visibility changes). Safe to
   // call when already enabled or when unsupported.
-  enable(): Promise<void>;
+  //
+  // Resolves TRUE when the lock is held and will be maintained, FALSE when the
+  // browser or OS refused it — in which case nothing is held and nothing is pending,
+  // so a false result needs no `disable()` to clean up. A bare boolean rather than a
+  // `ReadResult<…, DomainError>` (as the Firestore-backed services use) because there
+  // is exactly one failure mode with no payload worth carrying: the platform said no.
+  enable(): Promise<boolean>;
   // Release the lock and stop re-acquiring. Safe to call when already disabled.
   disable(): Promise<void>;
 }
@@ -51,16 +58,19 @@ export function createWakeLock(): WakeLockController {
   let wanted = false;
   let visibilityListener: (() => void) | null = null;
 
-  async function acquire(): Promise<void> {
+  // Resolves whether the lock is held once this settles. Already-held counts as
+  // success; unsupported, denied, or raced-with-disable all count as failure.
+  async function acquire(): Promise<boolean> {
     const api = wakeLockApi();
-    if (!api || sentinel !== null) return;
+    if (!api) return false;
+    if (sentinel !== null) return true;
     try {
       const s = await api.request('screen');
       // The OS may have flipped `wanted` off (disable() raced) or hidden the page
       // while awaiting — drop the freshly-acquired lock in that case.
       if (!wanted) {
         void s.release().catch(() => {});
-        return;
+        return false;
       }
       sentinel = s;
       // The sentinel auto-releases when the page is hidden; clear our handle so the
@@ -68,12 +78,14 @@ export function createWakeLock(): WakeLockController {
       s.addEventListener('release', () => {
         if (sentinel === s) sentinel = null;
       });
+      return true;
     } catch {
-      // Denied / not visible / unsupported — degrade silently.
+      // Denied / not visible / unsupported — degrade silently, report the failure.
+      return false;
     }
   }
 
-  async function enable(): Promise<void> {
+  async function enable(): Promise<boolean> {
     wanted = true;
     if (typeof document !== 'undefined' && visibilityListener === null) {
       visibilityListener = () => {
@@ -81,7 +93,15 @@ export function createWakeLock(): WakeLockController {
       };
       document.addEventListener('visibilitychange', visibilityListener);
     }
-    await acquire();
+    const acquired = await acquire();
+    // Roll back on refusal so the controller's state matches what we just reported:
+    // leaving `wanted` true would keep the visibility handler armed and silently
+    // acquire a lock later, behind a UI that says the toggle is off. `enable()` is
+    // only ever called from a user gesture (so the page IS visible) — a failure here
+    // is a real platform refusal, not the transient hidden-page case the handler exists
+    // to recover from.
+    if (!acquired) await disable();
+    return acquired;
   }
 
   async function disable(): Promise<void> {
