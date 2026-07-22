@@ -25,6 +25,15 @@ apps/cloud-functions/.genkit/
 coverage/
 tmp/
 
+# Claude Code local runtime state. `.claude/commands/` and `.claude/settings.json`
+# are the checked-in, shared parts; everything below is per-machine (pids, session
+# ids, scratch checkouts) and was previously only covered by .git/info/exclude,
+# which is local-only and so let scheduled_tasks.lock get committed once already.
+.claude/scheduled_tasks.lock
+.claude/scheduled_tasks.json
+.claude/settings.local.json
+.claude/worktrees/
+
 # Marker written by e2e globalSetup recording the build inputs the running
 # test-emulator image was built from (drives the stale-image rebuild check).
 docker/test-emulators/.image-build-hash
