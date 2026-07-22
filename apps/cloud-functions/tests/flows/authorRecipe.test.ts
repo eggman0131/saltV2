@@ -31,11 +31,19 @@ vi.mock('../../src/flows/canonicaliseRecipeIngredients.js', () => ({
   canonicaliseRecipeIngredientsFlow: mockCanonFlow,
 }));
 
-// Edit mode reads the base recipe from Firestore via getFirestore(); mock the
-// thin chain it uses (collection → doc → get). mockGet controls the snapshot.
-const mockGet = vi.fn();
+// The flow makes TWO independent Firestore reads through getFirestore():
+//   recipes/<id>              → the base recipe (edit mode only)
+//   equipmentManifest/current → the kitchen kit (always)
+// so the stub must be collection-aware; a single shared get() would serve the
+// equipment doc a RecipeDoc (and vice versa) and silently cross the two reads.
+const mockGet = vi.fn(); // recipes/<id>
+const mockEquipmentGet = vi.fn(); // equipmentManifest/current
 vi.mock('firebase-admin/firestore', () => ({
-  getFirestore: () => ({ collection: () => ({ doc: () => ({ get: mockGet }) }) }),
+  getFirestore: () => ({
+    collection: (name: string) => ({
+      doc: () => ({ get: name === 'recipes' ? mockGet : mockEquipmentGet }),
+    }),
+  }),
 }));
 
 vi.mock('firebase-functions', () => ({
@@ -52,6 +60,8 @@ beforeEach(() => {
   mockUUID.mockImplementation(() => `id-${++counter}`);
   // Default: canon returns nothing, so ingredients land as pending.
   mockCanonFlow.mockResolvedValue([]);
+  // Default: no equipment manifest, so the prompt degrades without a kit section.
+  mockEquipmentGet.mockResolvedValue({ exists: false });
 });
 
 // ─── Fixture helpers ──────────────────────────────────────────────────────────
@@ -240,7 +250,7 @@ describe('authorRecipe — edit-mode grounding', () => {
     expect(system).not.toContain('Extract only what is present in the conversation');
   });
 
-  it('uses create mode and never reads Firestore when recipeId is absent', async () => {
+  it('uses create mode and never reads the base recipe when recipeId is absent', async () => {
     await (authorRecipeFlow as Function)({ messages: [], existingTags: [] });
 
     const system = systemPromptFrom();
@@ -328,6 +338,89 @@ describe('authorRecipe — edit-mode diff', () => {
     const feta = doc.ingredients[0]!.items.find((i) => i['rawText'] === '100g feta, crumbled')!;
     expect(feta['canonId']).toBe('canon-feta');
     expect(feta['matchState']).toBe('matched');
+  });
+});
+
+// ─── equipment context ─────────────────────────────────────────────────────────
+
+describe('authorRecipe — equipment context', () => {
+  beforeEach(() => {
+    mockGenerate.mockResolvedValue({ output: librarianOutput() });
+    mockParseFlow.mockResolvedValue([]);
+    mockEquipmentGet.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        schemaVersion: 1,
+        updatedAt: '2026-07-01T00:00:00.000Z',
+        items: [
+          {
+            id: 'eq1',
+            schemaVersion: 1,
+            name: 'Sage the Smart Oven Pizzaiolo SPZ820',
+            accessories: [],
+            rules: [],
+            updatedAt: '2026-07-01T00:00:00.000Z',
+          },
+        ],
+      }),
+    });
+  });
+
+  function systemPromptFrom(): string {
+    return (mockGenerate.mock.calls[0]![0] as { system: string }).system;
+  }
+
+  it('includes the equipment section in create mode', async () => {
+    await (authorRecipeFlow as Function)({ messages: [], existingTags: [] });
+
+    const system = systemPromptFrom();
+    expect(system).toContain('Sage the Smart Oven Pizzaiolo SPZ820');
+    expect(system).toContain('RECOGNITION ONLY');
+    // Create-mode guardrail survives alongside it.
+    expect(system).toContain('Extract only what is present in the conversation');
+  });
+
+  it('includes the equipment section in edit mode', async () => {
+    mockGet.mockResolvedValue({ exists: true, data: () => baseRecipeDoc() });
+
+    await (authorRecipeFlow as Function)({
+      messages: [
+        { id: 'm1', role: 'user', text: 'add some cheese', createdAt: '2026-06-27T00:00:00.000Z' },
+      ],
+      existingTags: [],
+      recipeId: 'r1',
+    });
+
+    const system = systemPromptFrom();
+    expect(system).toContain('Sage the Smart Oven Pizzaiolo SPZ820');
+    expect(system).toContain('RECOGNITION ONLY');
+    // Edit-mode grounding survives alongside it.
+    expect(system).toContain('Editing an existing recipe');
+  });
+
+  it('frames the manifest as preservation-only, never as a menu to pick from', async () => {
+    await (authorRecipeFlow as Function)({ messages: [], existingTags: [] });
+
+    const system = systemPromptFrom();
+    expect(system).toContain('NEVER generalise a named appliance');
+    expect(system).toContain('NEVER introduce, substitute, or upgrade equipment');
+  });
+
+  it('omits the equipment section entirely when there is no manifest', async () => {
+    mockEquipmentGet.mockResolvedValue({ exists: false });
+
+    await (authorRecipeFlow as Function)({ messages: [], existingTags: [] });
+
+    expect(systemPromptFrom()).not.toContain('RECOGNITION ONLY');
+  });
+
+  it('still authors the recipe when the equipment read throws', async () => {
+    mockEquipmentGet.mockRejectedValue(new Error('firestore down'));
+
+    const doc = await (authorRecipeFlow as Function)({ messages: [], existingTags: [] });
+
+    expect(doc.title).toBe('Garlic Pasta');
+    expect(systemPromptFrom()).not.toContain('RECOGNITION ONLY');
   });
 });
 
