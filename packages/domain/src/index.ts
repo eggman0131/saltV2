@@ -271,6 +271,25 @@ export type { TemperatureBand, EatingMood } from './weather/index.js';
 export { weatherSeverity, mostSignificantWeatherCode, weatherIcon } from './weather/index.js';
 export type { WeatherIconId } from './weather/index.js';
 
+// Cook-session module — pure cook-mode session state: mise ticking, step
+// completion, timers, recipe-drift comparison, clock formatting (issue #556).
+// Immutable producers, and every timestamp is injected (never read from a clock).
+export {
+  makeFreshSession,
+  withStepDone,
+  withIngredientChecked,
+  withAllIngredientsChecked,
+  withTimerStarted,
+  withTimerDismissed,
+  firstUseByStep,
+  firstIncompleteStepId,
+  miseProgress,
+  hasRecipeChanged,
+  formatClock,
+  timerProgress,
+} from './cookSession/index.js';
+export type { MakeFreshSessionArgs, MiseProgress } from './cookSession/index.js';
+
 // URL module — pure display-time cache-buster for regenerated image URLs (#460).
 export { appendCacheBuster } from './url/index.js';
 

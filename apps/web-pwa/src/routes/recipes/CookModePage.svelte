@@ -16,7 +16,29 @@
   import { addToast } from '../../lib/toastStore.js';
   import { isWakeLockSupported, createWakeLock } from '../../lib/wakeLock.js';
   import IngredientText from './IngredientText.svelte';
-  import type { CookSessionDoc, IngredientDoc, StepDoc } from '@salt/domain/schemas';
+  // Pure cook-session logic lives in `@salt/domain` (issue #556) — every producer
+  // is immutable, none of them stamp `updatedAt` (the service owns that), and
+  // every timestamp they need is passed in from here rather than read there.
+  import {
+    makeFreshSession as buildFreshSession,
+    withStepDone,
+    withIngredientChecked,
+    withAllIngredientsChecked,
+    withTimerStarted,
+    withTimerDismissed,
+    firstUseByStep as groupIngredientsByFirstUse,
+    firstIncompleteStepId,
+    miseProgress,
+    hasRecipeChanged,
+    formatClock,
+    timerProgress,
+  } from '@salt/domain';
+  import type {
+    CookActiveTimerDoc,
+    CookSessionDoc,
+    IngredientDoc,
+    StepDoc,
+  } from '@salt/domain/schemas';
 
   // Cook mode (cooking mode, Phase 1). The first FULL-VIEWPORT page in the app: it
   // owns its own `fixed inset-0` container rather than living inside the app shell,
@@ -57,19 +79,13 @@
   let bootstrapping = $state(false);
 
   function makeFreshSession(): CookSessionDoc {
-    const now = new Date().toISOString();
-    return {
+    return buildFreshSession({
       id: sessionId!,
-      schemaVersion: 1,
       ownerUid: uid!,
       recipeId: params.id,
       recipeUpdatedAtAtStart: recipe!.updatedAt,
-      checkedIngredientIds: [],
-      completedStepIds: [],
-      activeTimers: [],
-      createdAt: now,
-      updatedAt: now,
-    };
+      nowIso: new Date().toISOString(),
+    });
   }
 
   async function createFreshSession(): Promise<void> {
@@ -106,28 +122,18 @@
 
   // ─── Mise-en-place ticking ─────────────────────────────────────────────────────
   const checkedIds = $derived(new Set($cookSession?.checkedIngredientIds ?? []));
-  const totalIngredients = $derived(
-    recipe ? recipe.ingredients.reduce((n, g) => n + g.items.length, 0) : 0,
-  );
-  const checkedCount = $derived(
-    recipe
-      ? recipe.ingredients.reduce(
-          (n, g) => n + g.items.filter((i) => checkedIds.has(i.id)).length,
-          0,
-        )
-      : 0,
-  );
-
-  const allIngredientsChecked = $derived(totalIngredients > 0 && checkedCount === totalIngredients);
+  // Counted over the RECIPE rather than over the session's id list, so ticks left
+  // behind by an ingredient that has since been edited out can't inflate the
+  // count — see `miseProgress`.
+  const mise = $derived(miseProgress(recipe?.ingredients ?? [], checkedIds));
+  const totalIngredients = $derived(mise.total);
+  const checkedCount = $derived(mise.checked);
+  const allIngredientsChecked = $derived(mise.allChecked);
 
   function toggleIngredient(id: string): void {
     const s = getCookSessionSnapshot();
     if (!s) return;
-    const has = s.checkedIngredientIds.includes(id);
-    const next = has
-      ? s.checkedIngredientIds.filter((x) => x !== id)
-      : [...s.checkedIngredientIds, id];
-    void persistCookSession({ ...s, checkedIngredientIds: next });
+    void persistCookSession(withIngredientChecked(s, id));
   }
 
   // Bulk tick, for when everything is already out on the bench and ticking fourteen
@@ -135,10 +141,8 @@
   function toggleAllIngredients(): void {
     const s = getCookSessionSnapshot();
     if (!s || !recipe) return;
-    const next = allIngredientsChecked
-      ? []
-      : recipe.ingredients.flatMap((g) => g.items.map((i) => i.id));
-    void persistCookSession({ ...s, checkedIngredientIds: next });
+    const allIds = recipe.ingredients.flatMap((g) => g.items.map((i) => i.id));
+    void persistCookSession(withAllIngredientsChecked(s, allIds, allIngredientsChecked));
   }
 
   // ─── Guided steps (Phase 2) ─────────────────────────────────────────────────────
@@ -171,20 +175,7 @@
   // First-use ingredients per step. The recipe stamps `firstUsedInStepId` on each
   // ingredient at the step it's first needed, so a step can surface exactly the
   // items it introduces (amount + prep) inline — no scrolling back to mise mid-cook.
-  const firstUseByStep = $derived.by(() => {
-    const map = new Map<string, IngredientDoc[]>();
-    if (!recipe) return map;
-    for (const group of recipe.ingredients) {
-      for (const item of group.items) {
-        const sid = item.firstUsedInStepId;
-        if (!sid) continue;
-        const list = map.get(sid);
-        if (list) list.push(item);
-        else map.set(sid, [item]);
-      }
-    }
-    return map;
-  });
+  const firstUseByStep = $derived(groupIngredientsByFirstUse(recipe?.ingredients ?? []));
 
   // First-use chips are capped at half the step's width (gap included, so two capped
   // chips always pair up on one line), which stops one long line ("400g tinned plum
@@ -256,9 +247,10 @@
   function setStepDone(id: string, done: boolean): void {
     const s = getCookSessionSnapshot();
     if (!s) return;
-    if (s.completedStepIds.includes(id) === done) return;
-    const next = done ? [...s.completedStepIds, id] : s.completedStepIds.filter((x) => x !== id);
-    void persistCookSession({ ...s, completedStepIds: next });
+    const next = withStepDone(s, id, done);
+    // Identity means the step was already in that state — skip the write.
+    if (next === s) return;
+    void persistCookSession(next);
   }
 
   // Land-on-first-incomplete. Fires only when the stage flips to `steps`; it reads
@@ -646,17 +638,22 @@
   const currentStep = $derived.by(() => {
     const steps = recipe?.steps ?? [];
     if (steps.length === 0) return null;
+    const firstIncompleteId = firstIncompleteStepId(steps, completedStepIds);
     return (
       steps.find((s) => s.id === visibleStepId) ??
-      steps.find((s) => !completedStepIds.has(s.id)) ??
+      steps.find((s) => s.id === firstIncompleteId) ??
       steps[steps.length - 1]
     );
   });
   const currentStepDone = $derived(!!currentStep && completedStepIds.has(currentStep.id));
+  // "The next outstanding step AFTER this one" — the query has no notion of a
+  // cursor, so the slice is what expresses "after".
   const nextIncompleteStep = $derived.by(() => {
     const steps = recipe?.steps ?? [];
     const idx = currentStep ? steps.findIndex((s) => s.id === currentStep.id) : -1;
-    return steps.slice(idx + 1).find((s) => !completedStepIds.has(s.id)) ?? null;
+    const rest = steps.slice(idx + 1);
+    const nextId = firstIncompleteStepId(rest, completedStepIds);
+    return rest.find((s) => s.id === nextId) ?? null;
   });
   const nextIncompleteNumber = $derived(
     nextIncompleteStep && recipe
@@ -733,7 +730,8 @@
     const snap = getCookSessionSnapshot();
     const done = new Set(snap?.completedStepIds ?? []);
     const steps = recipe?.steps ?? [];
-    const target = steps.find((s) => !done.has(s.id)) ?? steps[steps.length - 1];
+    const targetId = firstIncompleteStepId(steps, done);
+    const target = steps.find((s) => s.id === targetId) ?? steps[steps.length - 1];
     if (!target) return;
     // Placed, not animated — this is where the deck STARTS, not somewhere it travels to.
     const landOn = (): void => {
@@ -784,56 +782,33 @@
     if (!timer) return;
     const s = getCookSessionSnapshot();
     if (!s) return;
+    // `endsAt` is computed HERE, not in the domain producer, which never reads a
+    // clock. Replacing any existing entry for the step is the producer's job.
     const endsAt = new Date(Date.now() + timer.durationMinutes * 60_000).toISOString();
     const notify = timer.durationMinutes >= NOTIFY_MIN_MINUTES;
-    // Replace any existing entry for this step — one live timer per step.
-    const next = [
-      ...s.activeTimers.filter((t) => t.stepId !== step.id),
-      { stepId: step.id, endsAt, notify },
-    ];
-    void persistCookSession({ ...s, activeTimers: next });
+    void persistCookSession(withTimerStarted(s, step.id, endsAt, notify));
   }
 
   function dismissTimer(stepId: string): void {
     const s = getCookSessionSnapshot();
     if (!s) return;
-    const next = s.activeTimers.filter((t) => t.stepId !== stepId);
-    void persistCookSession({ ...s, activeTimers: next });
+    void persistCookSession(withTimerDismissed(s, stepId));
   }
 
-  // mm:ss for a millisecond span, clamped at 0:00. Ceil so a fresh 5:00 timer reads
-  // "5:00" for its first second rather than flicking to "4:59" immediately.
-  function formatClock(ms: number): string {
-    const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${minutes}:${String(seconds).padStart(2, '0')}`;
-  }
-
-  // Fraction (0..1) of a timer's run that has elapsed, for the progress fill. A
-  // countdown alone tells you what's LEFT but not how far through you are — "4:00"
-  // reads very differently on a 5-minute rest than on a 40-minute braise. The fill
-  // makes that proportion glanceable from across the kitchen.
-  //
-  // Derived from the recipe's `durationMinutes` rather than a stored start-time:
-  // `startTimer` writes `endsAt = now + durationMinutes`, so `total - remaining` is
-  // exact, and no field has to be added to the session doc (nothing to migrate).
-  // The trade: if the recipe's duration is edited mid-run the ratio is clamped
-  // rather than wrong — and the "recipe was updated" banner is already up in that
-  // case. Returns null when the step (or its timer) has since been deleted from the
-  // recipe, so the caller renders the chip with no fill instead of a bogus one.
-  function timerProgress(stepId: string, remainingMs: number): number | null {
-    const durationMinutes = recipe?.steps.find((s) => s.id === stepId)?.timer?.durationMinutes;
-    if (!durationMinutes) return null;
-    const totalMs = durationMinutes * 60_000;
-    return Math.min(1, Math.max(0, (totalMs - remainingMs) / totalMs));
+  // Looks the timer's step up in the LIVE recipe and hands its duration to the
+  // domain clamp, which turns it into the elapsed fraction the progress fill
+  // draws. A step (or its timer) edited away since the countdown started has no
+  // duration to scale against, so `timerProgress` returns null and the chip
+  // renders with no fill rather than a bogus one.
+  function timerProgressFor(timer: CookActiveTimerDoc): number | null {
+    const durationMinutes = recipe?.steps.find((s) => s.id === timer.stepId)?.timer
+      ?.durationMinutes;
+    return timerProgress(timer, durationMinutes ? durationMinutes * 60_000 : null, now);
   }
 
   // ─── Recipe-changed banner ─────────────────────────────────────────────────────
   // The live recipe drifted from the snapshot taken when the session started.
-  const recipeChanged = $derived(
-    !!recipe && !!$cookSession && recipe.updatedAt !== $cookSession.recipeUpdatedAtAtStart,
-  );
+  const recipeChanged = $derived(hasRecipeChanged($cookSession, recipe?.updatedAt ?? null));
 
   // Restart: discard the current session and start a fresh one against the CURRENT
   // recipe (new baseline, cleared ticks), staying on the cook page so the user
@@ -1080,7 +1055,7 @@
             {@const remaining = new Date(t.endsAt).getTime() - now}
             {@const fired = remaining <= 0}
             {@const stepIndex = recipe.steps.findIndex((s) => s.id === t.stepId)}
-            {@const progress = timerProgress(t.stepId, remaining)}
+            {@const progress = timerProgressFor(t)}
             <div
               class="overflow-hidden rounded-lg border {fired
                 ? 'border-primary bg-primary/10'
@@ -1380,7 +1355,7 @@
                     <div class="flex flex-col gap-2" data-testid="cook-step-timer">
                       {#if timerEntry}
                         {@const remaining = new Date(timerEntry.endsAt).getTime() - now}
-                        {@const progress = timerProgress(step.id, remaining)}
+                        {@const progress = timerProgressFor(timerEntry)}
                         {#if remaining > 0}
                           <div class="overflow-hidden rounded-lg border bg-card">
                             <div class="flex items-center gap-3 px-4 py-3">
