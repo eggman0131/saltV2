@@ -628,6 +628,29 @@
   }
 }
 
+/* ── Match reveal (lively shopping list, Phase 3) ─────────────────────────────
+ * A freshly-matched shopping row flies out of "Other" into its resolved aisle
+ * (Svelte `crossfade`, wired on the row in the page — no CSS here) and its
+ * CanonIcon tile lights up grey→sage with ONE shimmer sweep. This utility is
+ * that sweep: a single translucent band crossing the tile once
+ * (animation-iteration-count 1), then gone — deliberately NOT the infinite
+ * `salt-progress-indeterminate` loop. It is an absolutely-positioned overlay
+ * inside the tile's `overflow-hidden` box; the band is a `currentColor`-neutral
+ * translucent-white gradient (no new colour token), so it reads the same over the
+ * grey, sage, or icon tile beneath it. Driven by CanonIcon's `shimmer` prop,
+ * which the page holds true only for the reveal window (createMatchReveal). The
+ * whole reveal is skipped under reduced motion (the prop never goes true), and
+ * `motion-reduce:hidden` at the call site is the second line of defence. */
+@utility salt-icon-shimmer {
+  background-image: linear-gradient(
+    100deg,
+    transparent 40%,
+    hsl(0 0% 100% / 0.55) 50%,
+    transparent 60%
+  );
+  animation: salt-icon-shimmer var(--duration-slow) var(--ease-standard) 1;
+}
+
 /* z-index utilities: v4 has no first-class z-index theme namespace, so the named
  * scale (was theme.extend.zIndex) is expressed as static custom utilities. */
 @utility z-popover {
@@ -662,5 +685,18 @@
   to {
     transform: scale(1);
     opacity: 1;
+  }
+}
+
+/* Referenced by the `salt-icon-shimmer` utility. The tile-sized overlay carries a
+ * centred diagonal light band and slides once from fully left to fully right, so
+ * the band sweeps across the tile a single time. One interpolation, no midpoint
+ * keyframe — the sweep IS the translate. */
+@keyframes salt-icon-shimmer {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
   }
 }

@@ -18,6 +18,7 @@
   import { resolveItemDisplayName, resolveProductForm } from '@salt/domain';
   import type { ProductForm, ShoppingListItem } from '@salt/domain';
   import type { Snippet } from 'svelte';
+  import type { TransitionConfig } from 'svelte/transition';
   import { titleCase } from '../../lib/titleCase.js';
   import { productForms } from '../../lib/productFormService.js';
   import CheckOffButton from './CheckOffButton.svelte';
@@ -27,6 +28,14 @@
   interface CanonNameInfo {
     readonly name: string;
   }
+
+  // A crossfade half (send/receive) from the page's single `crossfade()` instance,
+  // or the instant no-op used where this row plays no reveal part. Typed loosely so
+  // both the deferred crossfade return and the eager no-op assign cleanly.
+  type RevealTransition = (
+    node: Element,
+    params: { key: string },
+  ) => TransitionConfig | (() => TransitionConfig);
 
   interface Props {
     item: ShoppingListItem;
@@ -38,6 +47,20 @@
     showSource?: boolean;
     /** Held open mid-celebration: tinted, disc popped, collapsing out. */
     exiting?: boolean;
+    /**
+     * The row's match just landed — play the one-shot CanonIcon shimmer (lively
+     * list, Phase 3). Held true only for the reveal window by the page.
+     */
+    revealing?: boolean;
+    /**
+     * Which half of the Other→aisle match-reveal crossfade this row plays:
+     * `'send'` in the Other bucket, `'receive'` in a resolved aisle, `'none'`
+     * everywhere else (breakdown / checked / recipe / manual). The two functions
+     * come from the page's single `crossfade()` so send and receive can pair.
+     */
+    revealRole?: 'send' | 'receive' | 'none';
+    revealSend?: RevealTransition;
+    revealReceive?: RevealTransition;
     selectionMode: boolean;
     selection: ListSelection;
     canonMap: ReadonlyMap<string, CanonNameInfo>;
@@ -55,6 +78,10 @@
     subordinate = false,
     showSource = false,
     exiting = false,
+    revealing = false,
+    revealRole = 'none',
+    revealSend,
+    revealReceive,
     selectionMode,
     selection,
     canonMap,
@@ -64,6 +91,21 @@
     onEdit,
     onToggleChecked,
   }: Props = $props();
+
+  // Instant no-op transition for rows that play no reveal part, so `out:`/`in:`
+  // can stay declared unconditionally on the root (Svelte has no way to omit a
+  // directive by condition) without ever animating a delete / check-off / stream.
+  const noReveal: RevealTransition = () => ({ duration: 0 });
+  // Only the Other row *sends* and only an aisle row *receives*; a matching
+  // send+receive pair for the same id in one flush is exactly the Other→aisle move
+  // (crossfade flies it). Any unpaired half falls back to the page's zero-duration
+  // fallback, so everything that is NOT a match reveal stays an instant snap.
+  const outReveal = $derived(revealRole === 'send' ? (revealSend ?? noReveal) : noReveal);
+  const inReveal = $derived(revealRole === 'receive' ? (revealReceive ?? noReveal) : noReveal);
+
+  // The item is matched to a canon — its bare tile reads sage, not grey. Real
+  // reactive state; observed, never written (Phase 3).
+  const matched = $derived(item.matchState === 'matched');
 
   const isSelected = $derived(selection.isSelected(item.id));
   const amountStr = $derived(formatAmount(item.amount, item.unit));
@@ -127,6 +169,8 @@
 
 <div
   class="salt-row-collapse motion-reduce:transition-none {exiting ? 'salt-row-collapse-out' : ''}"
+  out:outReveal={{ key: item.id }}
+  in:inReveal={{ key: item.id }}
 >
   <div class="min-h-0 overflow-hidden">
     <div
@@ -152,6 +196,8 @@
           dimmed={done}
           size={34}
           version={iconVersionFor(item.canonId)}
+          {matched}
+          shimmer={revealing}
         />
       {/if}
       <button
