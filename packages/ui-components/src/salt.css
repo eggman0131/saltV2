@@ -28,6 +28,88 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ── Brand webfonts (issue #568) ──────────────────────────────────────────────
+ * Epilogue (display) + Inter (body) — the dual-font strategy design.md is built
+ * on. Declared HERE, in the shared entry, so all three consumers (web-pwa,
+ * storybook, and anything else importing @salt/ui-components/styles.css) get
+ * them from one place. Before this block every one of the nine 'Epilogue' /
+ * 'Inter' declarations below silently fell back to the platform sans.
+ *
+ * Self-hosted, not a Google Fonts <link>: a cross-origin render-blocking request
+ * would break offline (the whole point of the PWA) and is a privacy wrinkle for a
+ * family app. The woff2 files come from the @fontsource-variable/* dependencies
+ * and are emitted to the app's own origin by Vite, which fingerprints them and —
+ * because vite.config.ts's Workbox globPatterns already covers woff2 — precaches
+ * them into the service worker, so type is correct on a cold offline start.
+ *
+ * Why hand-written @font-face instead of `@import '@fontsource-variable/inter'`:
+ *   • the family is declared as 'Inter' / 'Epilogue', not fontsource's
+ *     'Inter Variable' / 'Epilogue Variable', so the nine existing declarations
+ *     and docs/design/design.md stay verbatim-correct.
+ *   • fontsource's index.css pulls all 7 Inter + 3 Epilogue subsets (~298 KB).
+ *     Browsers would only ever fetch latin, but Workbox precaches by glob, so
+ *     every user would download cyrillic/greek/vietnamese up front. Naming the
+ *     latin + latin-ext files explicitly keeps the precache at ~202 KB.
+ * A glyph outside these ranges falls back per-glyph to the platform sans — the
+ * normal unicode-range behaviour, not a failure.
+ *
+ * The urls are RELATIVE (`../node_modules/…`), not bare specifiers: Vite resolves
+ * bare package names in `@import` but NOT inside `url()` — it emits
+ * "didn't resolve at build time, it will remain unchanged" and ships a dead 404
+ * reference. `../` is packages/ui-components/, where pnpm's isolated node_modules
+ * links a dependency declared in THIS package's package.json.
+ *
+ * ONE variable file per family covers the whole 400/500/600/700 range the scale
+ * uses (`font-weight: 100 900`). No italic file is shipped: the codebase has two
+ * incidental italic uses, and synthesized oblique is fine for both.
+ * `font-display: swap` — text is never invisible while a font loads. */
+@font-face {
+  font-family: 'Epilogue';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('../node_modules/@fontsource-variable/epilogue/files/epilogue-latin-wght-normal.woff2')
+    format('woff2-variations');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Epilogue';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('../node_modules/@fontsource-variable/epilogue/files/epilogue-latin-ext-wght-normal.woff2')
+    format('woff2-variations');
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2')
+    format('woff2-variations');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('../node_modules/@fontsource-variable/inter/files/inter-latin-ext-wght-normal.woff2')
+    format('woff2-variations');
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
+}
+
 /* ── Semantic color + radius tokens ──────────────────────────────────────────
  * `@theme inline` because these reference the `--salt-*` primitives (defined in
  * :root/.dark below), which flip in dark mode. Inlining keeps each utility
