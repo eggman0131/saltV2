@@ -13,7 +13,7 @@
   own. `data-testid="shopping-item-row"` stays on the row proper.
 -->
 <script lang="ts">
-  import { CanonIcon, RowSelectCheckbox, Spinner } from '@salt/ui-components';
+  import { CanonIcon, Icon, RowSelectCheckbox, Spinner } from '@salt/ui-components';
   import type { ListSelection } from '@salt/ui-components';
   import { resolveItemDisplayName, resolveProductForm } from '@salt/domain';
   import type { ProductForm, ShoppingListItem } from '@salt/domain';
@@ -21,6 +21,8 @@
   import type { TransitionConfig } from 'svelte/transition';
   import { titleCase } from '../../lib/titleCase.js';
   import { productForms } from '../../lib/productFormService.js';
+  import { swipe } from '../../lib/swipe.svelte.js';
+  import { revealProgress } from '../../lib/swipe.js';
   import CheckOffButton from './CheckOffButton.svelte';
 
   // Only the canon name is read here (for a product-form row's parent headline);
@@ -70,6 +72,8 @@
     verifyControls: Snippet<[string[]]>;
     onEdit: (item: ShoppingListItem) => void;
     onToggleChecked: (item: ShoppingListItem) => void;
+    /** Delete this single row through the shared deferred-delete + undo snackbar. */
+    onDelete: (item: ShoppingListItem) => void;
   }
 
   let {
@@ -90,6 +94,7 @@
     verifyControls,
     onEdit,
     onToggleChecked,
+    onDelete,
   }: Props = $props();
 
   // Instant no-op transition for rows that play no reveal part, so `out:`/`in:`
@@ -120,6 +125,41 @@
   // Verify controls replace the check button, so a flagged row can never be
   // checked off — but if one ever is mid-flight, the celebration wins the slot.
   const flagged = $derived(needsVerify(item) && !exiting);
+
+  // ─── Swipe (lively list, Phase 4) ────────────────────────────────────────────
+  // Touch-only horizontal drag: swipe right past +78px to check off, left past
+  // -78px to delete. The gesture is EXCLUDED from the breakdown-under-combined row,
+  // the product-form row and the "Need it?" verify row (each is a different shape
+  // with its own affordance), and from selection mode / a row mid-celebration.
+  // Coarse-pointer + reduced-motion gating lives in the action itself, so on a
+  // desktop the row simply is not draggable and the buttons stay primary.
+  const swipeEnabled = $derived(
+    !subordinate && productForm === null && !flagged && !selectionMode && !exiting,
+  );
+  // Live drag offset, fed by the action, driving the reveal-behind layers. The
+  // action owns the row's `translateX`; this only fades the layer beneath it.
+  let swipeDx = $state(0);
+  const revealFraction = $derived(revealProgress(swipeDx)); // -1 (delete) … +1 (check)
+  const checkRevealOpacity = $derived(Math.max(0, revealFraction));
+  const deleteRevealOpacity = $derived(Math.max(0, -revealFraction));
+
+  // The row proper's classes, lifted to a binding so the swipeable and plain
+  // branches below share exactly one source of truth. A swipeable row always
+  // lands on the opaque `bg-card` arm (selection / verify / exiting are excluded),
+  // which is what hides the reveal layer beneath it at rest.
+  const rowClass = $derived(
+    `flex items-center gap-3 rounded border px-3 py-2 text-sm transition-colors duration-base ease-standard motion-reduce:transition-none ${
+      subordinate ? 'ml-[46px]' : ''
+    } ${
+      exiting
+        ? 'border-secondary/40 bg-secondary-container/50'
+        : isSelected
+          ? 'border-ring ring-2 ring-ring bg-card'
+          : needsVerify(item)
+            ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/20'
+            : 'border-border bg-card'
+    }`,
+  );
 
   function toSentenceCase(text: string): string {
     if (!text) return text;
@@ -167,105 +207,139 @@
   }
 </script>
 
+<!--
+  The row's own content, lifted to a snippet so the swipeable and plain branches
+  below render exactly one copy of it. Only the wrapping row-proper `<div>` (its
+  class, `use:swipe`, `touch-pan-y`) differs between the two.
+-->
+{#snippet rowContents()}
+  {#if selectionMode}
+    <RowSelectCheckbox {selection} id={item.id} label="" aria-label="Select {item.rawText}" />
+  {/if}
+  {#if !subordinate}
+    <CanonIcon
+      thumbnail={thumbnailFor(item.canonId)}
+      name={displayLabel(item)}
+      dimmed={done}
+      size={34}
+      version={iconVersionFor(item.canonId)}
+      {matched}
+      shimmer={revealing}
+    />
+  {/if}
+  <button
+    type="button"
+    class="flex-1 min-w-0 text-left"
+    onclick={() => onEdit(item)}
+    aria-label="Edit {item.rawText}"
+    data-testid="shopping-item-edit-btn"
+  >
+    {#if productForm && subordinate}
+      <!-- Under a combined parent the headline is inverted (issue #530): the
+           parent row already carries "Whole Chicken ×1", so repeating it here
+           adds nothing and reads as one chicken PER CHILD — the parent count is
+           an aggregate (Σwhole + MAXforms, see countSubtotal) that must never be
+           summed down the column. Lead with this contributor's own wording
+           instead; the recipe name follows from the showSource block below. -->
+      {#each item.originalText?.length ? item.originalText : [titleCase(resolveItemDisplayName(item))] as line (line)}
+        <span class="block truncate {done ? 'line-through text-muted-foreground' : ''}">{line}</span
+        >
+      {/each}
+    {:else if productForm}
+      <span class="block truncate {done ? 'line-through text-muted-foreground' : ''}">
+        {titleCase(canonMap.get(item.canonId ?? '')?.name ?? '')}{' '}<span
+          class="text-muted-foreground">×{item.amount}</span
+        >
+      </span>
+      <!-- The headline is the PARENT product ("Lime ×3"), which by design reads
+           nothing like the recipe's own line, so show the wording that justified
+           the count beneath it (issue #528). Sibling of the truncating label
+           span, and unclipped itself — a long line wraps rather than clips.
+           Items written before the field fall back to today's cleaned name. -->
+      {#if item.originalText?.length}
+        {#each item.originalText as line (line)}
+          <span
+            class="block text-xs text-muted-foreground"
+            data-testid="shopping-item-original-text">{line}</span
+          >
+        {/each}
+      {:else}
+        <span class="block text-xs text-muted-foreground truncate"
+          >{resolveItemDisplayName(item)}</span
+        >
+      {/if}
+    {:else}
+      <span class="block truncate {done ? 'line-through text-muted-foreground' : ''}">
+        {displayLabel(item)}{#if amountStr}{' '}<span class="text-muted-foreground"
+            >({amountStr})</span
+          >{/if}
+      </span>
+    {/if}
+    {#if item.notes}
+      <span class="block text-xs text-muted-foreground truncate">{toSentenceCase(item.notes)}</span>
+    {/if}
+    {#if showSource && sourceLabel(item)}
+      <span class="block text-xs text-muted-foreground/70">{sourceLabel(item)}</span>
+    {/if}
+  </button>
+  {#if pending}
+    <Spinner size={14} />
+  {/if}
+  {#if flagged}
+    {@render verifyControls([item.id])}
+  {:else}
+    <CheckOffButton checked={item.checked} {exiting} onSelect={() => onToggleChecked(item)} />
+  {/if}
+{/snippet}
+
 <div
   class="salt-row-collapse motion-reduce:transition-none {exiting ? 'salt-row-collapse-out' : ''}"
   out:outReveal={{ key: item.id }}
   in:inReveal={{ key: item.id }}
 >
   <div class="min-h-0 overflow-hidden">
-    <div
-      class="flex items-center gap-3 rounded border px-3 py-2 text-sm transition-colors duration-base ease-standard motion-reduce:transition-none {subordinate
-        ? 'ml-[46px]'
-        : ''} {exiting
-        ? 'border-secondary/40 bg-secondary-container/50'
-        : isSelected
-          ? 'border-ring ring-2 ring-ring bg-card'
-          : needsVerify(item)
-            ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/20'
-            : 'border-border bg-card'}"
-      data-testid="shopping-item-row"
-      data-item-id={item.id}
-    >
-      {#if selectionMode}
-        <RowSelectCheckbox {selection} id={item.id} label="" aria-label="Select {item.rawText}" />
-      {/if}
-      {#if !subordinate}
-        <CanonIcon
-          thumbnail={thumbnailFor(item.canonId)}
-          name={displayLabel(item)}
-          dimmed={done}
-          size={34}
-          version={iconVersionFor(item.canonId)}
-          {matched}
-          shimmer={revealing}
-        />
-      {/if}
-      <button
-        type="button"
-        class="flex-1 min-w-0 text-left"
-        onclick={() => onEdit(item)}
-        aria-label="Edit {item.rawText}"
-        data-testid="shopping-item-edit-btn"
-      >
-        {#if productForm && subordinate}
-          <!-- Under a combined parent the headline is inverted (issue #530): the
-               parent row already carries "Whole Chicken ×1", so repeating it here
-               adds nothing and reads as one chicken PER CHILD — the parent count is
-               an aggregate (Σwhole + MAXforms, see countSubtotal) that must never be
-               summed down the column. Lead with this contributor's own wording
-               instead; the recipe name follows from the showSource block below. -->
-          {#each item.originalText?.length ? item.originalText : [titleCase(resolveItemDisplayName(item))] as line (line)}
-            <span class="block truncate {done ? 'line-through text-muted-foreground' : ''}"
-              >{line}</span
-            >
-          {/each}
-        {:else if productForm}
-          <span class="block truncate {done ? 'line-through text-muted-foreground' : ''}">
-            {titleCase(canonMap.get(item.canonId ?? '')?.name ?? '')}{' '}<span
-              class="text-muted-foreground">×{item.amount}</span
-            >
-          </span>
-          <!-- The headline is the PARENT product ("Lime ×3"), which by design reads
-               nothing like the recipe's own line, so show the wording that justified
-               the count beneath it (issue #528). Sibling of the truncating label
-               span, and unclipped itself — a long line wraps rather than clips.
-               Items written before the field fall back to today's cleaned name. -->
-          {#if item.originalText?.length}
-            {#each item.originalText as line (line)}
-              <span
-                class="block text-xs text-muted-foreground"
-                data-testid="shopping-item-original-text">{line}</span
-              >
-            {/each}
-          {:else}
-            <span class="block text-xs text-muted-foreground truncate"
-              >{resolveItemDisplayName(item)}</span
-            >
-          {/if}
-        {:else}
-          <span class="block truncate {done ? 'line-through text-muted-foreground' : ''}">
-            {displayLabel(item)}{#if amountStr}{' '}<span class="text-muted-foreground"
-                >({amountStr})</span
-              >{/if}
-          </span>
-        {/if}
-        {#if item.notes}
-          <span class="block text-xs text-muted-foreground truncate"
-            >{toSentenceCase(item.notes)}</span
-          >
-        {/if}
-        {#if showSource && sourceLabel(item)}
-          <span class="block text-xs text-muted-foreground/70">{sourceLabel(item)}</span>
-        {/if}
-      </button>
-      {#if pending}
-        <Spinner size={14} />
-      {/if}
-      {#if flagged}
-        {@render verifyControls([item.id])}
-      {:else}
-        <CheckOffButton checked={item.checked} {exiting} onSelect={() => onToggleChecked(item)} />
-      {/if}
-    </div>
+    {#if swipeEnabled}
+      <!-- Swipe surface (lively list, Phase 4). The reveal-behind layers and the
+           `translateX` drag live HERE, on an inner wrapper — NEVER on the
+           `salt-row-collapse` root above, whose Phase 1 collapse and Phase 3
+           crossfade assume it is the untransformed direct `{#each}` child. The
+           layers are `pointer-events-none` so they never swallow a button tap, and
+           the opaque `bg-card` row proper hides them until it slides. -->
+      <div class="relative overflow-hidden rounded">
+        <!-- Swipe RIGHT past +78px → check: sage layer on the revealed left edge. -->
+        <div
+          class="pointer-events-none absolute inset-0 flex items-center justify-start px-4 bg-secondary-container text-accent-foreground"
+          style:opacity={checkRevealOpacity}
+          aria-hidden="true"
+        >
+          <Icon name="Check" size={20} />
+        </div>
+        <!-- Swipe LEFT past -78px → delete: destructive layer on the revealed right edge. -->
+        <div
+          class="pointer-events-none absolute inset-0 flex items-center justify-end px-4 bg-destructive text-destructive-foreground"
+          style:opacity={deleteRevealOpacity}
+          aria-hidden="true"
+        >
+          <Icon name="Trash2" size={20} />
+        </div>
+        <div
+          use:swipe={{
+            enabled: swipeEnabled,
+            onCheck: () => onToggleChecked(item),
+            onDelete: () => onDelete(item),
+            onProgress: (d) => (swipeDx = d),
+          }}
+          class="relative touch-pan-y {rowClass}"
+          data-testid="shopping-item-row"
+          data-item-id={item.id}
+        >
+          {@render rowContents()}
+        </div>
+      </div>
+    {:else}
+      <div class={rowClass} data-testid="shopping-item-row" data-item-id={item.id}>
+        {@render rowContents()}
+      </div>
+    {/if}
   </div>
 </div>

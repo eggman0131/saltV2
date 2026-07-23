@@ -380,6 +380,22 @@
     );
   }
 
+  // Swipe-left delete on a single row (lively list, Phase 4). Deliberately the SAME
+  // path as handleEditDelete — the shared `deferredDelete` instance, the same undo
+  // message and window — so swipe adds a trigger, not a second delete mechanism. The
+  // commit is the existing `removeItem`; Undo cancels it and nothing is ever deleted.
+  function handleSwipeDelete(item: ShoppingListItem): void {
+    const name = displayLabel(item);
+    deferredDelete.request(
+      [item.id],
+      async () => {
+        const result = await removeItem(params.listId, item.id);
+        if (result.kind !== 'ok') addToast('Failed to delete item.', 'destructive');
+      },
+      { message: `"${name}" removed`, duration: SINGLE_ITEM_DELETE_MS },
+    );
+  }
+
   // ─── Bulk actions ─────────────────────────────────────────────────────────────
 
   let bulkBusy = $state(false);
@@ -685,6 +701,7 @@
     {verifyControls}
     onEdit={openEditSheet}
     onToggleChecked={handleToggleChecked}
+    onDelete={handleSwipeDelete}
   />
 {/snippet}
 
