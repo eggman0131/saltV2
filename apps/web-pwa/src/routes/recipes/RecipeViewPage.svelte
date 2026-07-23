@@ -50,18 +50,43 @@
     type Ingredient,
     type Recipe,
   } from '@salt/domain';
-  import type { RecipeDiff } from '@salt/domain/schemas';
+  import type { ChatSessionDoc, RecipeDiff } from '@salt/domain/schemas';
   import type { DomainError, ReadResult } from '@salt/shared-types';
   import { defaultListId } from '../../lib/shoppingListService.svelte.js';
   import { addToast } from '../../lib/toastStore.js';
   import { auth } from '../../lib/auth.svelte.js';
   import { createChatSession, sessions, sendMessage } from '../../lib/chatService.js';
+  import { equipment } from '../../lib/equipmentService.js';
   import { saveRecipe as saveRecipeDoc } from '@salt/firebase-sync';
   import {
     clipboardImageReadSupported,
     readClipboardImage,
     imageFromClipboardData,
   } from '../../lib/clipboardImage.js';
+
+  // ─── "Optimise for my kitchen" canned prompt ─────────────────────────────────
+  // A shortcut for a prompt you could type by hand, not a new capability: this
+  // lands in the transcript as an ordinary USER turn, which is why it lives here
+  // beside the sidebar and not in any flow prompt file. chefChat already has both
+  // the household equipment manifest and the current recipe server-side, so the
+  // text deliberately names no appliance — the manifest is injected for us, and
+  // hardcoding kit here would go stale the moment the household buys something.
+  //
+  // The wording carries four loads: method-only (an ingredient rewrite would put
+  // every ingredient back through canon matching for nothing), timings and
+  // temperatures MOVING with the method (a pressure-cooker step that keeps the
+  // two-hour simmer is worse than no change), proportionality (leaving a step
+  // alone is a valid and common outcome), and a short account of what changed so
+  // the chat turn reads on its own before you open the diff.
+  const OPTIMISE_FOR_KITCHEN_PROMPT = `Go through this recipe's method and re-work it around the equipment I actually own.
+
+Where a piece of my kit genuinely does a step better, rewrite that step to use it, and be specific: name the appliance, the mode, the accessory and the setting. Move the timings and temperatures with it — a step that changes equipment has to carry the times and temperatures that equipment actually needs, not the ones inherited from the original method. A step handed to different kit but left on the old timings is worse than no change at all.
+
+Change the method only. Leave the ingredients, the quantities and the servings exactly as they are — this is about how it is cooked, not what goes into it.
+
+Be proportionate. Only move a step where the result or the effort is genuinely better for it, counting set-up and washing-up as part of the cost. Leaving a step exactly as written is a good outcome, and if nothing in this recipe is better off on my kit, say so plainly rather than finding something to change.
+
+Finish with a short note on what you changed and why, so I can read the gist here before I look at the recipe itself.`;
 
   interface Props {
     params: { id: string };
@@ -202,6 +227,11 @@
   let sidebarInputText = $state('');
   let sidebarInputEl = $state<HTMLTextAreaElement | undefined>(undefined);
   let sidebarMessagesEnd = $state<HTMLDivElement | undefined>(undefined);
+  // The chat column is desktop-only by default (`hidden lg:flex`). An action that
+  // streams its answer INTO that column has to reveal it below `lg`, or the reply
+  // arrives somewhere the user cannot see. Set once, never unset: having asked for
+  // a turn, you keep the transcript.
+  let sidebarRevealed = $state(false);
 
   $effect(() => {
     // Read these reactive values so the effect re-runs and scrolls to the bottom
@@ -221,15 +251,17 @@
     if (result.kind !== 'ok') addToast('Failed to open chat.', 'destructive');
   }
 
-  async function handleSidebarSend(): Promise<void> {
-    if (!activeSession || !sidebarInputText.trim() || sidebarIsSending) return;
-    const text = sidebarInputText.trim();
-    sidebarInputText = '';
-    if (sidebarInputEl) sidebarInputEl.style.height = '';
+  // Shared core: append `text` as a user turn on `session` and stream the reply
+  // into the sidebar. Takes the session explicitly because `activeSession` is
+  // $derived off the sessions store — a turn sent immediately after creating a
+  // session must use the object `createChatSession` handed back rather than wait
+  // for the derived value. The composer is deliberately NOT touched here; the
+  // caller owns it, so a canned prompt never lands in the user's input box.
+  async function streamSidebarTurn(session: ChatSessionDoc, text: string): Promise<boolean> {
     sidebarIsSending = true;
     sidebarStreamingText = '';
 
-    const result = await sendMessage(activeSession, text, (chunk) => {
+    const result = await sendMessage(session, text, (chunk) => {
       sidebarStreamingText += chunk;
     });
 
@@ -238,14 +270,25 @@
 
     if (result.kind !== 'ok') {
       addToast('Failed to send message.', 'destructive');
-      sidebarInputText = text;
+      return false;
     }
+    return true;
+  }
+
+  async function handleSidebarSend(text: string): Promise<void> {
+    const trimmed = text.trim();
+    if (!activeSession || !trimmed || sidebarIsSending) return;
+    sidebarInputText = '';
+    if (sidebarInputEl) sidebarInputEl.style.height = '';
+
+    const ok = await streamSidebarTurn(activeSession, trimmed);
+    if (!ok) sidebarInputText = trimmed;
   }
 
   function handleSidebarKeydown(e: KeyboardEvent): void {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      void handleSidebarSend();
+      void handleSidebarSend(sidebarInputText);
     }
   }
 
@@ -254,6 +297,40 @@
     sidebarInputText = el.value;
     el.style.height = 'auto';
     el.style.height = `${el.scrollHeight}px`;
+  }
+
+  // ─── Optimise for my kitchen ────────────────────────────────────────────────
+  // Sends OPTIMISE_FOR_KITCHEN_PROMPT as an ordinary user turn, creating the
+  // session first when the recipe has no chat yet. Nothing downstream is special:
+  // the reply is a normal assistant turn, and "Review changes" runs authorRecipe
+  // over the transcript exactly as it does for a hand-typed request.
+  //
+  // Hidden when the household owns no equipment — with an empty manifest the
+  // server injects no kit section at all and the prompt asks the chef to reason
+  // about nothing.
+  const hasEquipment = $derived(($equipment?.items ?? []).length > 0);
+  let optimiseBusy = $state(false);
+
+  async function handleOptimiseForKitchen(): Promise<void> {
+    if (!recipe || optimiseBusy || sidebarIsSending) return;
+    const uid = auth.user?.uid;
+    if (!uid) return;
+    sidebarRevealed = true;
+    optimiseBusy = true;
+
+    let session = activeSession;
+    if (!session) {
+      const created = await createChatSession(uid, recipe.id);
+      if (created.kind !== 'ok') {
+        optimiseBusy = false;
+        addToast('Failed to open chat.', 'destructive');
+        return;
+      }
+      session = created.value;
+    }
+
+    await streamSidebarTurn(session, OPTIMISE_FOR_KITCHEN_PROMPT);
+    optimiseBusy = false;
   }
 
   // Review-and-approve gate (Phase 2). "Update recipe" now generates a PENDING
@@ -597,6 +674,20 @@
         {#snippet leading()}<Icon name="ChefHat" size={16} />{/snippet}
         Ask / amend
       </Button>
+      {#if hasEquipment}
+        <Button
+          size="sm"
+          variant="outline"
+          onclick={handleOptimiseForKitchen}
+          loading={optimiseBusy}
+          disabled={optimiseBusy || sidebarIsSending}
+          class="hidden sm:inline-flex"
+          data-testid="recipe-optimise-kitchen-button"
+        >
+          {#snippet leading()}<Icon name="Blender" size={16} />{/snippet}
+          Optimise for my kitchen
+        </Button>
+      {/if}
       <Button
         size="sm"
         variant="outline"
@@ -666,6 +757,21 @@
               <Icon name="ChefHat" size={14} />
               Ask / amend
             </button>
+            {#if hasEquipment}
+              <button
+                type="button"
+                class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
+                onclick={() => {
+                  overflowMenuOpen = false;
+                  void handleOptimiseForKitchen();
+                }}
+                disabled={optimiseBusy || sidebarIsSending}
+                data-testid="recipe-optimise-kitchen-menu-item"
+              >
+                <Icon name="Blender" size={14} />
+                Optimise for my kitchen
+              </button>
+            {/if}
             <button
               type="button"
               class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
@@ -925,8 +1031,13 @@
         {/if}
       </div>
 
-      <!-- Right column: embedded chat sidebar (desktop only) -->
-      <div class="hidden lg:flex lg:flex-col">
+      <!-- Right column: embedded chat sidebar. Desktop-only by default; below `lg`
+           it is revealed on demand by an action that streams a turn into it
+           ("Optimise for my kitchen"), where it stacks under the recipe content. -->
+      <div
+        class="{sidebarRevealed ? 'flex' : 'hidden'} flex-col lg:flex"
+        data-testid="recipe-chat-sidebar"
+      >
         <Card
           class="flex flex-col overflow-hidden lg:sticky lg:top-4 lg:min-h-0 lg:max-h-[calc(100dvh_-_5.5rem)] lg:flex-1"
         >
@@ -1048,7 +1159,7 @@
                 </div>
                 <Button
                   size="sm"
-                  onclick={handleSidebarSend}
+                  onclick={() => handleSidebarSend(sidebarInputText)}
                   disabled={sidebarIsSending || !sidebarInputText.trim()}
                   loading={sidebarIsSending}
                   aria-label="Send"
