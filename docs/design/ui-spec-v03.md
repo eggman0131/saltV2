@@ -1,4 +1,4 @@
-# Salt 2.0 — UI Primitives Specification (v0.3, Draft for Planning)
+# Salt 2.0 — UI Primitives Specification (v0.3.1, Draft for Planning)
 
 **Status:** Planning  
 **Scope:** `@salt/ui-components` — new primitives only  
@@ -343,6 +343,7 @@ APG pattern: **Alert / Status / Live Region**.
 - `duration: number = 5000` — ms before auto-dismiss
 - `variant: 'default' | 'destructive' = 'default'`
 - `class?: string`
+- `showCountdown: boolean = false` — opt-in countdown ring (see §6.7)
 
 ### 6.4 Provider Behavior
 
@@ -372,16 +373,27 @@ APG pattern: **Alert / Status / Live Region**.
 The `Toast` / `ToastAction` parts above are the primitives. The **undo-able toast** is an app-level composition over them, driven by the web-pwa `toastStore` (`addToast(message, variant, options)`), used by the deferred-delete pattern (ui-spec-v04 §9.3.3). Two options matter:
 
 - **`action: { label, onClick }`** — renders a `ToastAction` button (e.g. "Undo"). Pressing it runs `onClick` and dismisses the toast.
-- **`onDismiss()`** — called when the toast closes via **timeout or the close button**, but **not** when the action button is pressed. This is what lets a caller defer work (commit a delete) only if the user *let the toast lapse* rather than undoing.
+- **`onDismiss()`** — called when the toast closes via **timeout or the close button**, but **not** when the action button is pressed. This is what lets a caller defer work (commit a delete) only if the user _let the toast lapse_ rather than undoing.
 
 ```ts
 addToast('3 items deleted', 'default', {
   action: { label: 'Undo', onClick: () => unhide(ids) }, // pressed → no commit
-  onDismiss: () => commit(ids),                           // lapsed → commit
+  onDismiss: () => commit(ids), // lapsed → commit
 });
 ```
 
 The store lives in the app (`apps/web-pwa/src/lib/toastStore.ts`) and is wired into `ToastViewport` in `App.svelte`; `@salt/ui-components` owns only the `Toast`/`ToastAction` primitives. Relocating the store into the design system remains possible but is intentionally deferred.
+
+### 6.7 Countdown ring (`showCountdown`)
+
+`Toast` accepts an optional **`showCountdown: boolean = false`** prop. When `true` **and** `duration > 0`, the toast renders a small **circular ring that drains from full to empty over `duration`**, making the auto-dismiss window visible. It is the affordance the deferred-delete "Undo" snackbar uses: the ring drains, then the delete commits (see the deferred-delete pattern, ui-spec-v04 §9.3.3). Default off, so every existing toast is visually unchanged; `App.svelte` turns it on for exactly the toasts that carry an `action` (i.e. the undo snackbars).
+
+Behaviour:
+
+- **Drain is CSS-driven** — a linear animation over `duration` on an SVG stroke (`pathLength="1"`), coloured by `currentColor` (no new tokens). It is kept **out of flex flow** (absolute, leading) so the message/action `justify-between` layout is byte-identical to a ring-less toast; the root opens a left gutter (`pl-12`) only when the ring shows.
+- **Pauses in lock-step with the dismiss timer** on hover. The same `pause`/`resume` that hold the auto-dismiss timer flip the ring's `animation-play-state`, so a paused timer shows a frozen ring — the visible drain always matches the real remaining time.
+- **Reduced motion:** under `prefers-reduced-motion: reduce` the ring is hidden (`motion-reduce:hidden`) — no visible drain. The auto-dismiss timer and the Undo action still work; only the animation is suppressed.
+- **Decorative:** the ring is `aria-hidden` and adds nothing to the live region.
 
 ---
 
@@ -423,5 +435,15 @@ When generating v0.3 primitives:
 4. **If a behavior is not specified here or in v0.2**:
    - STOP and request a spec extension.
 5. **Do not implement Combobox** in v0.3.
+
+---
+
+## 9. Changelog
+
+Amendments follow the v0.2 procedure (ui-spec-v02 §1.5): bump the version in this doc's header, add a line here, and re-stamp the affected primitive's provenance line.
+
+| Date       | Version | Summary                                                                                                                                                                                                                                                                                                                                                               |
+| ---------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-07-23 | v0.3.1  | §6.3/§6.7 Toast: added opt-in `showCountdown` prop — a circular ring that drains over `duration`, pauses with the dismiss timer on hover, hidden under reduced motion. Drives the deferred-delete "Undo" snackbar's visible window. No colour/anchoring change. Re-stamped `Toast.svelte` + `Toast.types.ts` provenance to v0.3.1 (the parts whose contract changed). |
 
 ---

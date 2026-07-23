@@ -118,6 +118,11 @@
   // nothing is ever deleted — no soft-delete / restore plumbing required.
   const deferredDelete = createDeferredDelete();
 
+  // The undo window for single-item shopping deletes (edit-sheet delete, "Need it?"
+  // drop, and — a later phase — swipe). Bulk delete and the other list pages keep
+  // the Toast component default (5000ms); only these single-item deletes shorten it.
+  const SINGLE_ITEM_DELETE_MS = 4200;
+
   const visibleItems = $derived(deferredDelete.visible($itemsForActiveList));
 
   // ─── Check-off celebration hold ─────────────────────────────────────────────
@@ -325,16 +330,21 @@
     editSheetOpen = false;
   }
 
-  async function handleEditDelete(): Promise<void> {
+  function handleEditDelete(): void {
     if (!editingItem) return;
-    editDeleteBusy = true;
-    const result = await removeItem(params.listId, editingItem.id);
-    editDeleteBusy = false;
-    if (result.kind !== 'ok') {
-      addToast('Failed to delete item.', 'destructive');
-    } else {
-      editSheetOpen = false;
-    }
+    // Route through the shared deferred-delete: hide the row now, close the sheet,
+    // and only commit the real `removeItem` if the "…removed" undo toast lapses.
+    const item = editingItem;
+    const name = displayLabel(item);
+    editSheetOpen = false;
+    deferredDelete.request(
+      [item.id],
+      async () => {
+        const result = await removeItem(params.listId, item.id);
+        if (result.kind !== 'ok') addToast('Failed to delete item.', 'destructive');
+      },
+      { message: `"${name}" removed`, duration: SINGLE_ITEM_DELETE_MS },
+    );
   }
 
   // ─── Bulk actions ─────────────────────────────────────────────────────────────
@@ -473,9 +483,33 @@
     await confirmItemsNeeded(params.listId, ids);
   }
 
-  async function handleDropNeeded(ids: readonly string[]): Promise<void> {
-    const result = await removeItems(params.listId, ids);
-    if (result.kind !== 'ok') addToast('Failed to remove item.', 'destructive');
+  // The row's displayed label for a given id (title-cased resolved name), resolved
+  // from the live list BEFORE the id is hidden so the toast reads the same name the
+  // row showed. Falls back to a neutral label if the id has already gone.
+  function itemDisplayName(id: string): string {
+    const item = $itemsForActiveList.find((i) => i.id === id);
+    return item ? displayLabel(item) : 'Item';
+  }
+
+  function handleDropNeeded(ids: readonly string[]): void {
+    if (ids.length === 0) return;
+    const list = [...ids];
+    // Single drop reads as the named item; a combined row's multiple flagged
+    // contributors drop as one "N items removed" (same "removed" verb as the single
+    // case), commit + undo as a unit.
+    const [first] = list;
+    const message =
+      list.length === 1 && first !== undefined
+        ? `"${itemDisplayName(first)}" removed`
+        : `${list.length} items removed`;
+    deferredDelete.request(
+      list,
+      async (delIds) => {
+        const result = await removeItems(params.listId, delIds);
+        if (result.kind !== 'ok') addToast('Failed to remove item.', 'destructive');
+      },
+      { message, duration: SINGLE_ITEM_DELETE_MS },
+    );
   }
 
   // ─── Aisle rows (combining, #184) ───────────────────────────────────────────

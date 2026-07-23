@@ -12,10 +12,14 @@ const meta = {
   args: {
     variant: 'default',
     withAction: false,
+    showCountdown: false,
+    duration: 0,
   },
   argTypes: {
     variant: { control: 'radio', options: ['default', 'destructive', 'success'] },
     withAction: { control: 'boolean' },
+    showCountdown: { control: 'boolean' },
+    duration: { control: 'number' },
   },
 } satisfies Meta<typeof ToastDemo>;
 
@@ -33,3 +37,11 @@ export const Success: Story = { args: { variant: 'success' } };
 
 // With an inline action (e.g. Undo).
 export const WithAction: Story = { args: { withAction: true } };
+
+// Undo snackbar with the countdown ring: a small circular ring drains over the
+// auto-dismiss `duration` (paused on hover, hidden under reduced motion). A long
+// finite duration keeps the ring near-full for the static snapshot. This is the
+// treatment every deferred-delete undo toast uses.
+export const WithCountdown: Story = {
+  args: { withAction: true, showCountdown: true, duration: 12000 },
+};
