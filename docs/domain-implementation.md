@@ -345,6 +345,17 @@ The `weather` module is a lightweight variant — pure classification utilities
 (`WeatherForecastSchema`, `WeatherDaySummarySchema`) follow the standard
 `@salt/domain/schemas` convention.
 
+The `cookSession` module is a similar lightweight variant — pure session-state
+producers (`makeFreshSession`, `withStepDone`, `withIngredientChecked`,
+`withAllIngredientsChecked`, `withTimerStarted`, `withTimerDismissed`) and
+read-only queries (`firstIncompleteStepId`, `firstUseByStep`, `miseProgress`,
+`timerProgress`, `hasRecipeChanged`, `formatClock`) extracted from
+`CookModePage.svelte` so the cook-session logic is testable without a browser.
+Flat structure — no `entities/`, `ports/`, `commands/`, or `queries/`
+subfolders, matching the `weather` pattern. Every timestamp is an injected
+parameter (never read from the clock), which keeps the module pure and makes
+the timer tests deterministic.
+
 The goal is not architectural purity. The goal is hard, enforceable
 boundaries so that drift — by humans or AI agents — is caught by the
 build instead of accumulating into spaghetti.
