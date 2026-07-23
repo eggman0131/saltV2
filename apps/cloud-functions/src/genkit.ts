@@ -1,6 +1,27 @@
-import { genkit } from 'genkit';
+import { genkit, setGenkitRuntimeConfig } from 'genkit';
 import { disableOTelRootSpanDetection } from 'genkit/tracing';
 import { googleAI } from '@genkit-ai/google-genai';
+
+// Disable Genkit's reflection server when running under the Firebase Functions
+// emulator. GENKIT_ENV=dev (set by `pnpm dev:emulators`) makes the genkit()
+// constructor start a reflection server on the FIXED port 3100. The functions
+// emulator spawns a fresh runtime PROCESS per function, so every worker races to
+// bind 3100 — and Genkit's `server.listen(port)` has no 'error' handler, so the
+// loser's EADDRINUSE surfaces as an unhandled `uncaughtException` that kills the
+// worker (the request then dies with `socket hang up` — e.g. authorRecipe behind
+// the recipe "Review changes" sheet). The emulator doesn't need the reflection
+// server at all: it's the Dev UI's introspection channel, owned by `pnpm
+// dev:genkit`'s own reflection server, and emulator→Dev UI trace export rides the
+// telemetry server (GENKIT_TELEMETRY_SERVER → registerGenkitDevTracing), not this.
+// `sandboxedRuntime` is Genkit's documented switch for exactly this — it makes the
+// reflection server's start() bail before binding. Gated on FUNCTIONS_EMULATOR so
+// `dev:genkit` (which needs the reflection server) is untouched, and so the two
+// can finally run side-by-side (Task Pilot "Start All"); prod/staging never hit
+// this branch (not FUNCTIONS_EMULATOR, and not GENKIT_ENV=dev). Must run before
+// the genkit() call below, which is where the reflection server is started.
+if (process.env['FUNCTIONS_EMULATOR']) {
+  setGenkitRuntimeConfig({ sandboxedRuntime: true });
+}
 
 // Genkit's own OpenTelemetry initialisation is intentionally left ENABLED, but
 // its ROOT-SPAN DETECTION is disabled in prod so flow spans join the propagated
