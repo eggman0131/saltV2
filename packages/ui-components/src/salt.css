@@ -105,9 +105,25 @@
   --duration-base: 180ms;
   --duration-slow: 260ms;
 
+  /* Check-off celebration (shopping list). None of the three durations above
+   * fits a multi-beat choreography, so it gets its own: `celebrate` is the
+   * spring-pop of the check disc, `linger` the beat the tinted row holds before
+   * it leaves, `collapse` the collapse-out itself. linger + collapse is the
+   * TOTAL time a checked row is held in place — kept in step with
+   * CHECK_OFF_HOLD_MS in apps/web-pwa/src/lib/checkOffHold.svelte.ts, which owns
+   * the JS half of the same beat. Single-word names on purpose: generate-tokens
+   * emits `--duration-<word>` as `duration<Word>`, so a hyphenated name would
+   * produce an invalid identifier. */
+  --duration-celebrate: 320ms;
+  --duration-linger: 440ms;
+  --duration-collapse: 320ms;
+
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
   --ease-emphasized: cubic-bezier(0.3, 0, 0, 1);
   --ease-decel: cubic-bezier(0, 0, 0, 1);
+  /* Overshoots past 1 and settles back — the "springs into place" of the check
+   * disc. The only ease here that is not monotonic. */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 
   /* NO design-system `--spacing-*` scale here, on purpose. In v4's unified
    * sizing model the `--spacing-*` namespace shares its `xs/sm/md/lg/xl` keys
@@ -315,8 +331,25 @@
  * addComponents). `@apply` runs natively in v4 CSS. ────────────────────────── */
 @layer components {
   /* ─ Button ───────────────────────────────────────────────────────────── */
+  /* `transition-colors` expanded to an explicit list so `transform` rides the
+   * same timing — that is what makes the press-in below a scale rather than a
+   * snap. (The dropped members of `transition-colors` — text-decoration-color,
+   * fill, stroke — are never animated on a button.) */
   .salt-button {
-    @apply inline-flex items-center justify-center gap-2 rounded font-medium transition-colors duration-fast ease-standard motion-reduce:transition-none disabled:pointer-events-none data-[disabled]:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded font-medium transition-[color,background-color,border-color,transform] duration-fast ease-standard motion-reduce:transition-none disabled:pointer-events-none data-[disabled]:opacity-50;
+  }
+  /* Press-in acknowledgement: a tap on any button answers with a brief scale.
+   * Written out here rather than pulled from the `salt-press-pulse` utility
+   * because `.salt-button` already owns its own `transition-*` — see that
+   * utility's note on why the reduced-motion reset cannot live at the call
+   * site. Disabled buttons are excluded: they have nothing to acknowledge. */
+  .salt-button:active:not(:disabled):not([data-disabled]) {
+    transform: scale(0.97);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .salt-button:active {
+      transform: none;
+    }
   }
   .salt-button--solid {
     @apply border border-transparent bg-primary text-primary-foreground hover:bg-primary/90;
@@ -538,6 +571,63 @@
   inherits: false;
 }
 
+/* ── Check-off celebration (lively shopping list, Phase 1) ───────────────────
+ * A row checked off is held in its group for `--duration-linger` +
+ * `--duration-collapse` while its disc pops and the row tints, then collapses
+ * out. The HOLD is owned by the page (`createCheckOffHold`, web-pwa) and is
+ * skipped outright under reduced motion, so these classes are simply never
+ * applied then — the `motion-reduce:` pairings at the call sites are the second
+ * line of defence, not the only one. */
+
+/* The disc + check springing into place. Applied to the disc wrapper, so the
+ * check inside scales with it. Pair with `motion-reduce:animate-none`. */
+@utility salt-check-pop {
+  animation: salt-check-pop var(--duration-celebrate) var(--ease-spring) both;
+}
+
+/* Collapse shell for a list row: a 1fr→0fr grid, which (unlike max-height) walks
+ * the row's REAL height down, so the rows beneath it close the gap smoothly
+ * whatever the row's content height. The row itself goes inside a
+ * `min-h-0 overflow-hidden` child. `-collapse-out` is the end state; the beat
+ * before it starts is the transition-delay, so one class toggle plays the whole
+ * outro. Pair with `motion-reduce:transition-none`. */
+@utility salt-row-collapse {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition:
+    grid-template-rows var(--duration-collapse) var(--ease-standard) var(--duration-linger),
+    opacity var(--duration-collapse) var(--ease-standard) var(--duration-linger),
+    margin-bottom var(--duration-collapse) var(--ease-standard) var(--duration-linger);
+}
+@utility salt-row-collapse-out {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  /* A collapsed row still contributes its parent's `gap-1`; swallow it so the
+   * group closes up completely instead of leaving a 4px ghost. */
+  margin-bottom: calc(var(--spacing) * -1);
+}
+
+/* Press-in acknowledgement for controls that are not `.salt-button` (the
+ * shopping check-off circle, the "Need it?" confirm/drop pair). Deliberately
+ * declares NO transition: the call site owns that, and must include `transform`
+ * in its `transition-[…]` list for the scale to ease rather than snap.
+ *
+ * The reduced-motion reset lives INSIDE the utility, against the repo's usual
+ * "pair `motion-reduce:` inline at the call site" convention, because it has to:
+ * the rule it must beat is `:active`-scoped (class + pseudo-class), and a
+ * call-site `motion-reduce:` variant is a single class — it would lose the
+ * cascade silently. Nothing else here needs the exception. */
+@utility salt-press-pulse {
+  &:active {
+    transform: scale(0.96);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    &:active {
+      transform: none;
+    }
+  }
+}
+
 /* z-index utilities: v4 has no first-class z-index theme namespace, so the named
  * scale (was theme.extend.zIndex) is expressed as static custom utilities. */
 @utility z-popover {
@@ -558,5 +648,19 @@
   }
   100% {
     transform: translateX(300%);
+  }
+}
+
+/* Referenced by the `salt-check-pop` utility. The overshoot lives in
+ * `--ease-spring`, not in a middle keyframe, so the pop stays one interpolation
+ * and the ease stays swappable. */
+@keyframes salt-check-pop {
+  from {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
   }
 }

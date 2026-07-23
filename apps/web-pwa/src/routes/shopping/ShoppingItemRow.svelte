@@ -1,0 +1,225 @@
+<!--
+  One shopping list item row. Lifted out of `ShoppingListPage`'s `plainItemRow`
+  snippet unchanged, then given the check-off celebration (lively list, Phase 1).
+
+  It renders every plain row on the page: singles in an aisle, the Other bucket,
+  the recipe-sorted view, the Checked section, and the per-contributor breakdown
+  under a combined row (`subordinate`). The combined row itself stays in the page
+  — it is a different shape — but shares this row's `CheckOffButton` and the same
+  `salt-row-collapse` shell, so both celebrate identically.
+
+  The outermost element is the collapse shell, not the row: `salt-row-collapse`
+  walks the row's real height to zero on the way out, which needs a wrapper it can
+  own. `data-testid="shopping-item-row"` stays on the row proper.
+-->
+<script lang="ts">
+  import { CanonIcon, RowSelectCheckbox, Spinner } from '@salt/ui-components';
+  import type { ListSelection } from '@salt/ui-components';
+  import { resolveItemDisplayName, resolveProductForm } from '@salt/domain';
+  import type { ProductForm, ShoppingListItem } from '@salt/domain';
+  import type { Snippet } from 'svelte';
+  import { titleCase } from '../../lib/titleCase.js';
+  import { productForms } from '../../lib/productFormService.js';
+  import CheckOffButton from './CheckOffButton.svelte';
+
+  // Only the canon name is read here (for a product-form row's parent headline);
+  // the page's richer map satisfies this.
+  interface CanonNameInfo {
+    readonly name: string;
+  }
+
+  interface Props {
+    item: ShoppingListItem;
+    /** Show a spinner: the row is still waiting on its canon match. */
+    pending: boolean;
+    /** Rendered inside a combined row's breakdown — indented, no icon. */
+    subordinate?: boolean;
+    /** Show the source recipe / "Added by" line. */
+    showSource?: boolean;
+    /** Held open mid-celebration: tinted, disc popped, collapsing out. */
+    exiting?: boolean;
+    selectionMode: boolean;
+    selection: ListSelection;
+    canonMap: ReadonlyMap<string, CanonNameInfo>;
+    thumbnailFor: (canonId: string | null) => string | null;
+    iconVersionFor: (canonId: string | null) => string | number | undefined;
+    /** The page's "Need it?" confirm/drop pair, so both row shapes share one copy. */
+    verifyControls: Snippet<[string[]]>;
+    onEdit: (item: ShoppingListItem) => void;
+    onToggleChecked: (item: ShoppingListItem) => void;
+  }
+
+  let {
+    item,
+    pending,
+    subordinate = false,
+    showSource = false,
+    exiting = false,
+    selectionMode,
+    selection,
+    canonMap,
+    thumbnailFor,
+    iconVersionFor,
+    verifyControls,
+    onEdit,
+    onToggleChecked,
+  }: Props = $props();
+
+  const isSelected = $derived(selection.isSelected(item.id));
+  const amountStr = $derived(formatAmount(item.amount, item.unit));
+  const productForm = $derived(productFormFor(item));
+
+  // A row mid-celebration reads as done even though the copy it was handed still
+  // says `checked: false` (that inversion is what keeps it rendering here at all —
+  // see `holdInPlace`). Struck through and dimmed from the moment of the tap, so
+  // it looks the way it will look in the Checked section it is on its way to.
+  const done = $derived(item.checked || exiting);
+
+  // Verify controls replace the check button, so a flagged row can never be
+  // checked off — but if one ever is mid-flight, the celebration wins the slot.
+  const flagged = $derived(needsVerify(item) && !exiting);
+
+  function toSentenceCase(text: string): string {
+    if (!text) return text;
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  }
+
+  // Label a single row, title-cased: the user's / recipe's wording with the
+  // amount, unit and context the parser lifts out removed ("1 whole chicken" →
+  // "Whole Chicken"), so it reads as the item without the quantity that's shown
+  // separately, and without collapsing to the leaner canon name ("Chicken").
+  // Combined aggregate rows label by canon name instead — see the page's rowLabel.
+  function displayLabel(value: ShoppingListItem): string {
+    return titleCase(resolveItemDisplayName(value));
+  }
+
+  // A resolved product-form row (issue #500): a recipe row bound to a buyable
+  // parent canon and carrying a whole parent-count (the recipeService 'count' unit
+  // sentinel), re-derived from the productForms snapshot rather than a stored id
+  // (additive / back-compat). null for manual rows, non-count rows, and any row
+  // whose form no longer resolves to its own canon — those keep today's label.
+  // When non-null the row reads "Lime ×3" with the original wording underneath.
+  function productFormFor(value: ShoppingListItem): ProductForm | null {
+    if (value.unit !== 'count' || !value.canonId || value.amount === undefined) return null;
+    const form = resolveProductForm(value.rawText, $productForms);
+    return form && form.parentCanonId === value.canonId ? form : null;
+  }
+
+  function sourceLabel(value: ShoppingListItem): string {
+    const src = value.sources[0];
+    if (!src) return '';
+    if (src.kind === 'manual') return src.addedBy ? `Added by ${src.addedBy}` : '';
+    if (src.kind === 'recipe') return src.label ?? 'Recipe';
+    return '';
+  }
+
+  function formatAmount(amount: number | undefined, unit: string | undefined): string | null {
+    if (amount === undefined) return null;
+    return unit ? `${amount} ${unit}` : `${amount}`;
+  }
+
+  // A flagged item (recipe-add "check" item, #185) gets a quick confirm/drop
+  // affordance instead of the check circle.
+  function needsVerify(value: ShoppingListItem): boolean {
+    return value.needsCheck && !value.checked;
+  }
+</script>
+
+<div
+  class="salt-row-collapse motion-reduce:transition-none {exiting ? 'salt-row-collapse-out' : ''}"
+>
+  <div class="min-h-0 overflow-hidden">
+    <div
+      class="flex items-center gap-3 rounded border px-3 py-2 text-sm transition-colors duration-base ease-standard motion-reduce:transition-none {subordinate
+        ? 'ml-[46px]'
+        : ''} {exiting
+        ? 'border-secondary/40 bg-secondary-container/50'
+        : isSelected
+          ? 'border-ring ring-2 ring-ring bg-card'
+          : needsVerify(item)
+            ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/20'
+            : 'border-border bg-card'}"
+      data-testid="shopping-item-row"
+      data-item-id={item.id}
+    >
+      {#if selectionMode}
+        <RowSelectCheckbox {selection} id={item.id} label="" aria-label="Select {item.rawText}" />
+      {/if}
+      {#if !subordinate}
+        <CanonIcon
+          thumbnail={thumbnailFor(item.canonId)}
+          name={displayLabel(item)}
+          dimmed={done}
+          size={34}
+          version={iconVersionFor(item.canonId)}
+        />
+      {/if}
+      <button
+        type="button"
+        class="flex-1 min-w-0 text-left"
+        onclick={() => onEdit(item)}
+        aria-label="Edit {item.rawText}"
+        data-testid="shopping-item-edit-btn"
+      >
+        {#if productForm && subordinate}
+          <!-- Under a combined parent the headline is inverted (issue #530): the
+               parent row already carries "Whole Chicken ×1", so repeating it here
+               adds nothing and reads as one chicken PER CHILD — the parent count is
+               an aggregate (Σwhole + MAXforms, see countSubtotal) that must never be
+               summed down the column. Lead with this contributor's own wording
+               instead; the recipe name follows from the showSource block below. -->
+          {#each item.originalText?.length ? item.originalText : [titleCase(resolveItemDisplayName(item))] as line (line)}
+            <span class="block truncate {done ? 'line-through text-muted-foreground' : ''}"
+              >{line}</span
+            >
+          {/each}
+        {:else if productForm}
+          <span class="block truncate {done ? 'line-through text-muted-foreground' : ''}">
+            {titleCase(canonMap.get(item.canonId ?? '')?.name ?? '')}{' '}<span
+              class="text-muted-foreground">×{item.amount}</span
+            >
+          </span>
+          <!-- The headline is the PARENT product ("Lime ×3"), which by design reads
+               nothing like the recipe's own line, so show the wording that justified
+               the count beneath it (issue #528). Sibling of the truncating label
+               span, and unclipped itself — a long line wraps rather than clips.
+               Items written before the field fall back to today's cleaned name. -->
+          {#if item.originalText?.length}
+            {#each item.originalText as line (line)}
+              <span
+                class="block text-xs text-muted-foreground"
+                data-testid="shopping-item-original-text">{line}</span
+              >
+            {/each}
+          {:else}
+            <span class="block text-xs text-muted-foreground truncate"
+              >{resolveItemDisplayName(item)}</span
+            >
+          {/if}
+        {:else}
+          <span class="block truncate {done ? 'line-through text-muted-foreground' : ''}">
+            {displayLabel(item)}{#if amountStr}{' '}<span class="text-muted-foreground"
+                >({amountStr})</span
+              >{/if}
+          </span>
+        {/if}
+        {#if item.notes}
+          <span class="block text-xs text-muted-foreground truncate"
+            >{toSentenceCase(item.notes)}</span
+          >
+        {/if}
+        {#if showSource && sourceLabel(item)}
+          <span class="block text-xs text-muted-foreground/70">{sourceLabel(item)}</span>
+        {/if}
+      </button>
+      {#if pending}
+        <Spinner size={14} />
+      {/if}
+      {#if flagged}
+        {@render verifyControls([item.id])}
+      {:else}
+        <CheckOffButton checked={item.checked} {exiting} onSelect={() => onToggleChecked(item)} />
+      {/if}
+    </div>
+  </div>
+</div>

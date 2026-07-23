@@ -3,6 +3,10 @@
 export const durationFast = '120ms';
 export const durationBase = '180ms';
 export const durationSlow = '260ms';
+export const durationCelebrate = '320ms';
+export const durationLinger = '440ms';
+export const durationCollapse = '320ms';
 export const easeStandard = 'cubic-bezier(0.2, 0, 0, 1)';
 export const easeEmphasized = 'cubic-bezier(0.3, 0, 0, 1)';
 export const easeDecel = 'cubic-bezier(0, 0, 0, 1)';
+export const easeSpring = 'cubic-bezier(0.34, 1.56, 0.64, 1)';
