@@ -105,6 +105,7 @@
           defaultOpen={true}
           variant={toast.variant}
           duration={toast.duration}
+          showCountdown={!!toast.action}
           onOpenChange={(open) => {
             if (!open) {
               toast.onDismiss?.();

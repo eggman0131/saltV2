@@ -38,12 +38,20 @@ export function createDeferredDelete() {
     /**
      * Hide `ids` and schedule `commit` behind an Undo toast. `commit` runs only
      * if the user lets the toast lapse, and is responsible for surfacing its own
-     * failure toast. `noun`/`nounPlural` shape the message ("3 items deleted").
+     * failure toast.
+     *
+     * - `noun`/`nounPlural` shape the DEFAULT message ("3 items deleted").
+     * - `message` REPLACES that computed string outright when present (used by the
+     *   single-item shopping deletes: `"Tinned Tomatoes" removed`). When absent the
+     *   wording is byte-identical to before.
+     * - `duration` overrides the Undo window (ms). When absent the toast falls back
+     *   to the `Toast` component default (5000ms) — unchanged for every existing
+     *   caller; shopping passes a shorter single-item window.
      */
     request(
       ids: readonly string[],
       commit: (ids: readonly string[]) => Promise<void> | void,
-      opts: { noun?: string; nounPlural?: string } = {},
+      opts: { noun?: string; nounPlural?: string; message?: string; duration?: number } = {},
     ): void {
       if (ids.length === 0) return;
       const list = [...ids];
@@ -52,9 +60,14 @@ export function createDeferredDelete() {
       const noun = opts.noun ?? 'item';
       const nounPlural = opts.nounPlural ?? `${noun}s`;
       const label = list.length === 1 ? noun : nounPlural;
+      const message = opts.message ?? `${list.length} ${label} deleted`;
 
       let undone = false;
-      addToast(`${list.length} ${label} deleted`, 'default', {
+      addToast(message, 'default', {
+        // Only pass `duration` when set — under exactOptionalPropertyTypes an
+        // explicit `undefined` is not assignable, and omitting it keeps the
+        // component's own 5000ms default for the existing callers.
+        ...(opts.duration !== undefined ? { duration: opts.duration } : {}),
         action: {
           label: 'Undo',
           onClick: () => {

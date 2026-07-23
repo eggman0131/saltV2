@@ -33,7 +33,23 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
+      // The default desktop project runs every spec EXCEPT the touch-emulated ones
+      // (`*.touch.spec.ts`), which need a coarse pointer the swipe gesture gates on
+      // (see the mobile-touch project). The ignore list is a superset of the global
+      // testIgnore so the fixtures/helpers/reporter exclusions hold regardless of
+      // whether Playwright merges or replaces the global value per-project.
+      testIgnore: ['**/fixtures/**', '**/helpers/**', '**/reporter/**', '**/*.touch.spec.ts'],
       use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      // A single coarse-pointer touch project for the touch-only shopping-row swipe
+      // (lively list, Phase 4). Scoped by testMatch to ONLY the `*.touch.spec.ts`
+      // files so it never re-runs the whole (desktop-shaped) suite under mobile
+      // emulation. `reducedMotion: 'no-preference'` is explicit so the swipe action
+      // — which no-ops under reduced motion — is actually exercised.
+      name: 'mobile-touch',
+      testMatch: '**/*.touch.spec.ts',
+      use: { ...devices['Pixel 5'], reducedMotion: 'no-preference' },
     },
   ],
 

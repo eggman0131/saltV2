@@ -1,4 +1,4 @@
-// spec: SPEC.md §6 + §7 v0.3
+// spec: SPEC.md §6 + §7 v0.3.1
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/svelte';
 import { axe } from 'vitest-axe';
@@ -246,6 +246,49 @@ describe('Toast', () => {
         props: { open: true, variant: 'destructive' },
       });
       expect(screen.getByRole('alert')).toHaveAttribute('aria-live', 'assertive');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // countdown ring (§6.3 showCountdown)
+  // -------------------------------------------------------------------------
+  describe('countdown ring', () => {
+    it('renders the drain ring when showCountdown=true and duration>0', () => {
+      render(ToastFixture, {
+        target: document.body,
+        props: { open: true, showCountdown: true, duration: 4200 },
+      });
+      expect(screen.getByTestId('toast-countdown')).toBeInTheDocument();
+    });
+
+    it('does not render the ring by default (showCountdown omitted)', () => {
+      render(ToastFixture, { target: document.body, props: { open: true, duration: 4200 } });
+      expect(screen.queryByTestId('toast-countdown')).not.toBeInTheDocument();
+    });
+
+    it('does not render the ring when duration=0 (no auto-dismiss to count down)', () => {
+      render(ToastFixture, {
+        target: document.body,
+        props: { open: true, showCountdown: true, duration: 0 },
+      });
+      expect(screen.queryByTestId('toast-countdown')).not.toBeInTheDocument();
+    });
+
+    it('ring is decorative (aria-hidden) so it adds nothing to the live region', () => {
+      render(ToastFixture, {
+        target: document.body,
+        props: { open: true, showCountdown: true, duration: 4200 },
+      });
+      expect(screen.getByTestId('toast-countdown')).toHaveAttribute('aria-hidden', 'true');
+    });
+
+    it('drain runs for the toast duration (inline animation-duration)', () => {
+      render(ToastFixture, {
+        target: document.body,
+        props: { open: true, showCountdown: true, duration: 4200 },
+      });
+      const progress = screen.getByTestId('toast-countdown').querySelector('.toast-ring-progress');
+      expect(progress?.getAttribute('style')).toContain('4200ms');
     });
   });
 
