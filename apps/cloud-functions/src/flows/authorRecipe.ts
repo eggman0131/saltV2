@@ -97,7 +97,10 @@ async function assembleDraft(
   const steps = raw.steps.map((s) => ({
     id: crypto.randomUUID(),
     text: s.text,
-    timer: s.timerMinutes !== null ? { durationMinutes: s.timerMinutes, description: null } : null,
+    timer:
+      s.timerMinutes !== null
+        ? { durationMinutes: s.timerMinutes, description: s.timerLabel }
+        : null,
     note: s.note,
   }));
 
@@ -265,6 +268,9 @@ ${INGREDIENT_SUBSTITUTION_RULES}
   firstUsedInStepOrdinal (0-based index into the steps array for the first step that uses this
   ingredient; null if the ingredient has no obvious first step).
 - steps: numbered method steps. Each step: text (clear instruction), timerMinutes (integer or null),
+  timerLabel: when timerMinutes is set, a SHORT imperative label for that timer (2–4 words, e.g.
+  "Simmer the sauce", "Rest the dough", "Boil pasta"). Do NOT repeat the duration in it (the minutes
+  are shown separately). null whenever timerMinutes is null.
   note: a genuine warning or non-obvious caveat only — something that would ruin the dish if missed
   (e.g. "don't let the heat exceed 80°C or the custard will scramble"). Leave null for routine
   instructions; most steps should have no note. All temperatures must be in °C only — never Fahrenheit.
@@ -342,7 +348,14 @@ function formatRecipeForPrompt(r: RecipeDoc): string {
   if (ingredientLines.length > 0) parts.push(`Ingredients:\n${ingredientLines.join('\n')}`);
 
   const stepLines = r.steps.map((s, i) => {
-    const timer = s.timer ? ` [timer: ${s.timer.durationMinutes} min]` : '';
+    // Include the timer label so a revise round-trip preserves it: without the
+    // label here the librarian never sees it and returns it null, silently
+    // wiping a hand-typed or previously-authored label (issue #554).
+    const timer = s.timer
+      ? ` [timer: ${s.timer.durationMinutes} min${
+          s.timer.description ? ` — ${s.timer.description}` : ''
+        }]`
+      : '';
     const note = s.note ? ` (note: ${s.note})` : '';
     return `  ${i + 1}. ${s.text}${timer}${note}`;
   });
