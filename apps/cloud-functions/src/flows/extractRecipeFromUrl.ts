@@ -258,7 +258,10 @@ async function assembleDraft(raw: ExtractRecipeAIOutput, sourceUrl: string): Pro
   const steps = raw.steps.map((s) => ({
     id: crypto.randomUUID(),
     text: s.text,
-    timer: s.timerMinutes !== null ? { durationMinutes: s.timerMinutes, description: null } : null,
+    timer:
+      s.timerMinutes !== null
+        ? { durationMinutes: s.timerMinutes, description: s.timerLabel }
+        : null,
     note: s.note,
   }));
 
@@ -387,7 +390,9 @@ this is what the rest of the pipeline parses, so write a clean natural line e.g.
 "2 cloves garlic, crushed"), isOptional (true only if explicitly optional), firstUsedInStepOrdinal \
 (0-based index into the steps array for the first step that uses this ingredient; null if none obvious).
 - steps: numbered method steps. Each step: text (clear instruction, British terms, °C only), \
-timerMinutes (integer or null), note (a genuine warning/non-obvious caveat only; null for routine steps).
+timerMinutes (integer or null), timerLabel (when timerMinutes is set, a SHORT imperative label for that \
+timer — 2–4 words, e.g. "Simmer the sauce", "Rest the dough", "Boil pasta"; do NOT repeat the duration; \
+null whenever timerMinutes is null), note (a genuine warning/non-obvious caveat only; null for routine steps).
 - notes: the author's overall notes/tips, or null.`;
 
 const EXTRACT_SYSTEM = `You are a precise recipe extraction assistant. You are given the raw HTML \

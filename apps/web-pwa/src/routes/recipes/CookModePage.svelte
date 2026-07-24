@@ -1013,6 +1013,9 @@
             {@const remaining = new Date(t.endsAt).getTime() - now}
             {@const fired = remaining <= 0}
             {@const stepIndex = recipe.steps.findIndex((s) => s.id === t.stepId)}
+            {@const stepLabel =
+              stepIndex >= 0 ? (recipe.steps[stepIndex]?.timer?.description ?? null) : null}
+            {@const stepName = stepIndex >= 0 ? `Step ${stepIndex + 1}` : 'Timer'}
             {@const progress = timerProgressFor(t)}
             <div
               class="overflow-hidden rounded-lg border {fired
@@ -1028,13 +1031,21 @@
                   size={18}
                   class={fired ? 'shrink-0 text-primary' : 'shrink-0 text-muted-foreground'}
                 />
+                <!-- Lead with the human timer label ("Simmer the sauce") when the
+                   step has one; fall back to "Step N" so an unlabelled timer is
+                   still locatable. When a label leads, the step number stays
+                   available as a tooltip so you can still find the step (#554). -->
                 <span
-                  class="shrink-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                  class="min-w-0 flex-1 truncate text-sm font-medium {fired
+                    ? 'text-primary'
+                    : 'text-foreground'}"
+                  title={stepLabel ? stepName : undefined}
+                  data-testid="cook-timer-chip-label"
                 >
-                  {stepIndex >= 0 ? `Step ${stepIndex + 1}` : 'Timer'}
+                  {stepLabel ?? stepName}
                 </span>
                 <span
-                  class="flex-1 font-mono text-base tabular-nums {fired
+                  class="shrink-0 font-mono text-base tabular-nums {fired
                     ? 'font-semibold text-primary'
                     : ''}"
                   data-testid="cook-timer-chip-time"
