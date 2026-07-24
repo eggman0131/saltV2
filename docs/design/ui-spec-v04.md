@@ -20,7 +20,7 @@ v0.4 introduces:
 - **ListPage Selection Mode** — app-wide hide-by-default multi-select with a **contextual bottom action bar** (`bulkActions`, incl. a move/target-picker sheet) that replaces the `BottomNav`, plus deferred-delete + Undo and the `titleSlot` header override (§9)
 - **List selection** — one shared `createListSelection` controller behind `SelectableList`, `SelectAllCheckbox`, and `RowSelectCheckbox`, so every list page shares the same selection logic instead of hand-rolling it (§10)
 - **EditableRow** — single-row primitive with an `onToggleSelect`-gated checkbox (§11)
-- **CanonIcon** — ratified as a spec'd primitive; adds `version` cache-bust prop for regenerated icons and documents the tri-state `thumbnail` contract (§14)
+- **CanonIcon** — ratified as a spec'd primitive; adds `version` cache-bust prop for regenerated icons, the `matched`/`shimmer` match-reveal states, and documents the tri-state `thumbnail` contract (§14)
 - **ImageCropper** — new pan/zoom crop primitive locked to a 3:2 aspect ratio for recipe hero photos; exposes an imperative `getCroppedBase64()` method (§15)
 
 APG pattern: **Autocomplete (Listbox)**.
@@ -871,7 +871,7 @@ This section records deliberate interaction decisions for existing primitives th
 
 ## 14.1 Overview
 
-`CanonIcon` renders a square icon tile for a canon item. The tile always occupies the declared `size`; what is painted inside depends on the tri-state `thumbnail` value. It is intentionally simple: a `<span>` container with an optional `<img>` inside.
+`CanonIcon` renders a square icon tile for a canon item. The tile always occupies the declared `size`; what is painted inside depends on the tri-state `thumbnail` value. It is intentionally simple: a `<span>` container with an optional `<img>` inside, plus two optional overlays (an initial letter, a reveal sweep) driven by the match-reveal props (§14.5).
 
 The primitive duplicates a small amount of logic from `@salt/domain` (`isCanonIconRenderable`, `appendCacheBuster`) because `@salt/ui-components` is **external-only** and cannot import `@salt/domain`. Both copies must be kept in sync if the `"hidden"` sentinel or cache-bust join changes.
 
@@ -884,6 +884,8 @@ The primitive duplicates a small amount of logic from `@salt/domain` (`isCanonIc
 | `size`      | `number`                        | `30`    | Tile (and icon) edge length in px; applied via inline `width`/`height` style.                 |
 | `dimmed`    | `boolean`                       | `false` | Applies `opacity-40` — used for checked shopping-list items.                                  |
 | `version`   | `string \| number \| undefined` | —       | Per-regeneration cache-bust nonce. When non-empty, appended to the rendered `<img src>` as `?v=<version>` (or `&v=<version>` if the URL already contains `?`). Regenerated icons reuse the same byte-identical Storage URL, so the browser would otherwise serve a stale image without this nonce. Typically set to the canon item's `iconRequestedAt ?? updatedAt`. Omit or pass `null`/`undefined` to render the raw URL unchanged. `undefined` is explicit in the type (not just implied by `?`) so callers can safely pass a lookup result that widens to `undefined` under `exactOptionalPropertyTypes`. |
+| `matched`   | `boolean`                       | `false` | The item this tile stands for is matched to a canon. At rest this changes only a **bare** tile (sage backdrop + initial letter); a tile that renders an `<img>` is unchanged at rest. Combined with `shimmer` it also lifts an icon tile for the reveal window. See §14.5. |
+| `shimmer`   | `boolean`                       | `false` | Play the one-shot match reveal on the tile: a translucent band sweeps across once, and — when `matched` is also true — the backdrop lifts to sage for the duration, then fades back. The **caller owns the window** (holds it `true` only for the reveal, and only when motion is allowed). See §14.5. |
 | `class`     | `string \| undefined`           | —       | Merged onto the root `<span>`.                                                                |
 
 ## 14.3 Tri-state `thumbnail` contract
@@ -911,19 +913,76 @@ bustedSrc = renderable && version != null && version !== ''
 - `?` vs `&` join: uses `&` when the URL already has a query string, `?` otherwise — a raw Firebase Storage download URL typically has `?alt=media&token=…`, so the nonce always appends as `&v=`.
 - A `null`, `undefined`, or empty-string `version` passes the raw URL through unchanged (no `?v=` appended).
 
-## 14.5 Tile styling
+## 14.5 Matched & reveal states
+
+`matched` and `shimmer` serve the shopping list's "it found its home" moment (#571 Treatment 2), but the primitive keeps them general — it knows nothing about shopping lists, and the caller owns the reveal window.
+
+### 14.5.1 The `lit` predicate
+
+The sage backdrop is driven by one derived value:
 
 ```
-'inline-flex shrink-0 items-center justify-center overflow-hidden rounded bg-icon-tile'
+sageBare = matched && !renderable
+lit      = sageBare || (matched && shimmer)
+```
+
+| `matched` | `shimmer` | `renderable` | Backdrop            | Initial letter | Sweep overlay |
+| --------- | --------- | ------------ | ------------------- | -------------- | ------------- |
+| `false`   | `false`   | any          | `bg-icon-tile`      | no             | no            |
+| `false`   | `true`    | any          | `bg-icon-tile`      | no             | yes           |
+| `true`    | `false`   | `false`      | `bg-secondary-container` | yes (if `name`) | no       |
+| `true`    | `false`   | `true`       | `bg-icon-tile`      | no             | no            |
+| `true`    | `true`    | `false`      | `bg-secondary-container` | yes (if `name`) | yes      |
+| `true`    | `true`    | `true`       | `bg-secondary-container` | no        | yes           |
+
+Two rules fall out of this table and both are load-bearing:
+
+- **`shimmer` alone never lights the tile.** An unmatched tile that sweeps stays grey.
+- **A matched tile with an icon lifts only during a reveal.** Gating the sage on `!renderable` alone made the moment invisible in its most common form — an item matching an established canon, which by now nearly always has a generated icon — leaving a sweep over an unchanged tile. The lift is transient (tied to `shimmer`) so the **resting** appearance of matched icons across the app is untouched.
+
+### 14.5.2 At rest (`matched`, no `shimmer`)
+
+Only a bare tile changes: it tints sage (`bg-secondary-container`) and shows the item's first initial, uppercased, in `text-accent-foreground` at `round(size * 0.5)` px, `aria-hidden`. This is the "found its home" resting state while the real icon generates. Empty `name` → no letter.
+
+### 14.5.3 During a reveal (`matched` **and** `shimmer`)
+
+Two things run at once, both starting on the same frame:
+
+1. **The sage lift** — the grey↔sage change is a colour crossfade at `--duration-reveal` (400ms), carried by the tile's own `transition-colors duration-reveal`; when the caller closes the window it fades back the same way. The backdrop reads behind an icon because the pictograms leave margin and transparency around the artwork.
+2. **The sweep** — `salt-icon-shimmer` slides one translucent band across the tile once over `--duration-shimmer` (700ms), **undelayed**. An absolutely-positioned overlay `<span>`, so it works over a bare, sage, or icon tile alike.
+
+The caller's window must outlast the sweep for the one-shot to finish, and should not extend far past it: the sage lift drops when the window closes and that drop is the last thing the eye sees, so surplus reads as a separate trailing event.
+
+### 14.5.4 Reduced motion
+
+Fully suppressed under `prefers-reduced-motion: reduce`, belt and braces:
+
+- The caller never sets `shimmer` when motion is reduced.
+- `motion-reduce:` overrides are the second line of defence regardless: the tile keeps `bg-icon-tile` (`motion-reduce:bg-icon-tile` on the lit branch), `transition-colors` is `motion-reduce:transition-none`, and both the initial letter and the sweep overlay are `motion-reduce:hidden`.
+
+Net effect under reduced motion: exactly today's grey bare tile, no letter, no sweep.
+
+## 14.6 Tile styling
+
+```
+'relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded transition-colors duration-reveal ease-standard motion-reduce:transition-none'
+```
+
+plus the conditional backdrop:
+
+```
+lit ? 'bg-secondary-container motion-reduce:bg-icon-tile' : 'bg-icon-tile'
 ```
 
 - `rounded` (4px) — the standard surface radius (ui-spec-v02 §2.3).
-- `bg-icon-tile` — a CSS custom property / Tailwind token providing the tile background colour.
-- `overflow-hidden` — clips any image that slightly overflows the tile boundary.
+- `bg-icon-tile` — a CSS custom property / Tailwind token providing the tile background colour; `bg-secondary-container` (sage) is the lit backdrop (§14.5).
+- `relative` — the positioning context for the absolutely-positioned sweep overlay.
+- `transition-colors duration-reveal ease-standard` — the grey↔sage crossfade, at the spec value rather than Tailwind's 150ms default; the static utility carries it so every consumer inherits the same pace.
+- `overflow-hidden` — clips any image that slightly overflows the tile boundary, and confines the sweep band to the tile.
 - The `<img>` inside uses `object-contain` and fills the tile (`h-full w-full`).
 - `loading="lazy"` and `decoding="async"` defer off-screen images.
 
-## 14.6 Testing requirements
+## 14.7 Testing requirements
 
 - Renders an `<img>` (with `data-testid="canon-icon-img"`) when `thumbnail` is a non-empty string that is not `"hidden"`.
 - Renders **no** `<img>` when `thumbnail` is `null`.
@@ -932,6 +991,18 @@ bustedSrc = renderable && version != null && version !== ''
 - When `version` is `null`, `undefined`, or `''`, the rendered src is the raw `thumbnail` URL.
 - `dimmed` applies `opacity-40`; absence of `dimmed` does not.
 - The root `<span>` has `data-testid="canon-icon"`.
+
+Matched & reveal states (§14.5):
+
+- A bare `matched` tile has `bg-secondary-container`, not `bg-icon-tile`, and renders the uppercased name initial as `data-testid="canon-icon-initial"`, `aria-hidden`.
+- No initial is rendered when `matched` but `name` is empty.
+- A `matched` tile **with** an icon keeps `bg-icon-tile` **at rest** and renders no initial.
+- A `matched` tile with an icon **is** lit (`bg-secondary-container`) while `shimmer` is true, the `<img>` still renders, and no initial appears.
+- An **unmatched** tile stays `bg-icon-tile` even while `shimmer` is true.
+- The tile carries `transition-colors` and `duration-reveal` (not Tailwind's 150ms default).
+- Not matched and no `shimmer` → the grey bare tile, unchanged, for every consumer that omits both props.
+- `shimmer` renders the overlay as `data-testid="canon-icon-shimmer"` with the `salt-icon-shimmer` class; absent by default; present over a rendered icon too.
+- axe: no violations for a rendered icon, nor for a matched + shimmering bare tile.
 
 ---
 

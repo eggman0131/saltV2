@@ -1,4 +1,4 @@
-// spec: canon-icons.md §Rendering v1.0
+// spec: ui-spec-v04.md §14 v0.4
 
 export type CanonIconProps = {
   /**

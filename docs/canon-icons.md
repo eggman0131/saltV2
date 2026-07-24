@@ -124,49 +124,36 @@ A reusable **`<CanonIcon>`** in `@salt/ui-components`:
 
 ### `CanonIcon` props
 
-| Name        | Type                            | Default | Notes                                                                                                                            |
-| ----------- | ------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `thumbnail` | `string \| null`                | —       | The canon item's `thumbnail` field, tri-state: a real URL renders an `<img>`; `null` (no icon yet) or `"hidden"` show a bare tile |
-| `name`      | `string \| undefined`           | —       | Item name, used for the image `alt` text                                                                                         |
-| `size`      | `number`                        | `30`    | Tile (and icon) edge length in px                                                                                                |
-| `dimmed`    | `boolean`                       | `false` | Dim the icon — e.g. for checked shopping-list items                                                                              |
-| `version`   | `string \| number \| undefined` | —       | Per-regeneration cache-bust nonce appended to the `<img src>` as `?v=`/`&v=`; a regenerated icon reuses the same Storage URL     |
-| `matched`   | `boolean`                       | `false` | The tile's item is matched to a canon — see **Matched & reveal states** below                                                    |
-| `shimmer`   | `boolean`                       | `false` | Play the one-shot reveal sweep across the tile; the caller owns the window                                                        |
-| `class`     | `string \| undefined`           | —       | Merged onto the tile                                                                                                              |
+**The ratified spec is [`docs/design/ui-spec-v04.md` §14](design/ui-spec-v04.md)** — props table
+(§14.2), tri-state `thumbnail` contract (§14.3), cache-bust (§14.4), matched/reveal states
+(§14.5), tile styling (§14.6), testing requirements (§14.7). That is the single source of
+truth and the target of the component's provenance comment; do not restate the props here.
+This document covers the icon *pipeline* (generation, storage, house style) and the design
+rationale below.
 
-#### Matched & reveal states
+### Why the reveal is shaped the way it is
 
 `matched` and `shimmer` serve the shopping list's "it found its home" moment (issue
-#571, Treatment 2), but the component keeps them general.
+#571, Treatment 2), but the component keeps them general. Two findings are worth keeping
+because they cost a rebuild each:
 
-- **At rest** (`matched`, no `shimmer`) only a **bare** tile changes: matched-but-iconless
-  tints sage (`--salt-secondary-container`) with the item's initial in
-  `--salt-accent-foreground`. A tile that already renders an `<img>` keeps its neutral
-  `bg-icon-tile` backdrop, so matched icons across the app look untouched.
-- **During a reveal** (`matched` **and** `shimmer`) the tile does two things at once:
-  1. the sage lift applies to an icon tile too — the grey↔sage change is a 400 ms
-     colour crossfade (`--duration-reveal`, the #571 tile value); when the window closes
-     it fades back the same way. The backdrop reads behind an icon because the pictograms
-     leave margin and transparency around the artwork;
-  2. `salt-icon-shimmer` sweeps one translucent band across over `--duration-shimmer`
-     (700 ms, the #571 value), undelayed — it starts on the same frame as the move.
-- **The tile is one voice in a three-part choreography** owned by the shopping list
-  (#571 Treatment 2): the row's Other copy collapses out (300 ms) while its aisle copy
-  rises in (380 ms), and the sweep runs over both, `0–700`. All parts start on the same
-  frame, and the caller's reveal window closes just after the sweep. An earlier build
-  moved the row with a single Svelte `crossfade` and scaled the sweep down to 420 ms to
-  fit it — measured, that crossfade never animated (its receive half always fell back to
-  a snap), so the scaling tracked a move that did not exist. The spec's own two-part
-  move is what ships, and the spec's 700 ms sweep is sized for it.
+- **The tile is one voice in a three-part choreography** owned by the shopping list: the
+  row's Other copy collapses out (300 ms) while its aisle copy rises in (380 ms), and the
+  sweep runs over both, `0–700`. All parts start on the same frame, and the caller's reveal
+  window closes just after the sweep. An earlier build moved the row with a single Svelte
+  `crossfade` and scaled the sweep down to 420 ms to fit it — measured, that crossfade never
+  animated (its receive half always fell back to a snap), so the scaling tracked a move that
+  did not exist. The spec's own two-part move is what ships, and the spec's 700 ms sweep is
+  sized for it.
 - **Any surplus in the reveal window is dead air.** The sage lift drops when the window
   closes, and that drop is the last thing the eye sees, so a window much longer than the
   sweep reads as a separate trailing event. Two rounds of "there's still a gap" were both
   this. Keep the window just past the sweep — enough margin for timer jitter, no more.
-- Only the backdrop persists past the window (and only for a bare tile); a matched tile
-  at rest carries no animation.
-- Both are fully suppressed under `prefers-reduced-motion: reduce` — the caller never
-  sets `shimmer`, and `motion-reduce:` overrides are the second line of defence.
+
+The sage lift applying to an **icon** tile (not just a bare one) for the duration of a reveal
+is what makes the moment visible in its most common form — an item matching an established
+canon, which by now nearly always has a generated icon. The backdrop reads behind an icon
+because the pictograms leave margin and transparency around the artwork.
 
 Consumers: `ShoppingListPage` rows (icon at row start, dimmed when checked; include
 `thumbnail` in the page's `canonMap`, which currently drops it); later, recipe
