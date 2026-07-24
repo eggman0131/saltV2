@@ -10,6 +10,20 @@ permissions:
   contents: read
   actions: read
 
+# Cancel a PR's in-flight run when a new commit supersedes it. Nothing is
+# learned from finishing a run against code that has already been replaced, and
+# the freed runners go to the run that matters. This — not gating the heavy
+# suites behind the cheap ones — is the right way to stop wasting capacity: it
+# reclaims work that has become POINTLESS, without delaying work that is still
+# useful (see the comment on vitest-integration).
+#
+# NEVER cancels a push to main: each main commit's run is the staging-deploy gate
+# (deploy-staging.yml fires on this workflow's completion), so cancelling one
+# would silently skip a deploy.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # Decide whether a PR touches app code. The heavy emulator + Playwright
   # suites are skipped for non-app PRs (docs / CI / tooling — see the allowlist
@@ -100,48 +114,34 @@ jobs:
           fi
           echo "uptodate=$uptodate" >> "$GITHUB_OUTPUT"
 
-  ci:
-    name: Lint, typecheck, test, boundary
+  # The cheap checks are split across three PARALLEL jobs (static / types /
+  # unit) rather than run as one serial job, because they are independent and
+  # the serial job had become the critical path: ~4m15s, of which the unit
+  # suite alone was ~2m26s while the runner sat mostly idle for the rest. Split,
+  # the wall clock is the slowest job instead of the sum.
+  #
+  # `ci` below is a no-op AGGREGATOR that gates on all three. It exists purely to
+  # keep the job name "Lint, typecheck, test, boundary" in the graph: that exact
+  # string is a REQUIRED status check in the "Main branch" ruleset, so renaming
+  # or removing it would leave every PR waiting forever on a context that never
+  # reports. Splitting further (or renaming these jobs) needs no ruleset change
+  # as long as the aggregator keeps that name and keeps gating on everything.
+  #
+  # NOTHING depends on `ci` any more — it reports, it does not gate. The heavy
+  # suites deliberately run concurrently with these checks rather than behind
+  # them; see the comment on vitest-integration for why.
+  static:
+    name: Static checks
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v7
-
-      - uses: pnpm/action-setup@v6
-        with:
-          version: '10.33.0'
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/workspace
 
       - name: Format check
         run: pnpm format:check
 
       - name: Lint
         run: pnpm lint
-
-      - name: Typecheck
-        run: pnpm typecheck
-
-      # svelte-check covers what lint + typecheck structurally cannot: type/prop
-      # errors inside .svelte template markup (e.g. a renamed/removed prop on a
-      # bits-ui component). `pnpm lint` globs *.{ts,js} only and `tsc --build`
-      # does not parse .svelte, so a breaking UI-primitive API change can
-      # otherwise pass fully green (see #390, follow-up to the bits-ui v1→v2 bump
-      # in #380). Ungated like the rest of this job — it's cheap type-checking.
-      # `pnpm check` fans out (`pnpm -r --if-present check`) to every package
-      # with a `check` script — @salt/ui-components (#395) and apps/web-pwa
-      # (#396) today. Add a `check` script to a new package to enrol it.
-      - name: Svelte check
-        run: pnpm check
-
-      - name: Test
-        run: pnpm test
 
       - name: Boundary tests
         run: pnpm boundary:test
@@ -161,6 +161,63 @@ jobs:
       - name: Theme check
         run: pnpm theme:check
 
+  types:
+    name: Types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/workspace
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      # svelte-check covers what lint + typecheck structurally cannot: type/prop
+      # errors inside .svelte template markup (e.g. a renamed/removed prop on a
+      # bits-ui component). `pnpm lint` globs *.{ts,js} only and `tsc --build`
+      # does not parse .svelte, so a breaking UI-primitive API change can
+      # otherwise pass fully green (see #390, follow-up to the bits-ui v1→v2 bump
+      # in #380). Ungated like the rest of these jobs — it's cheap type-checking.
+      # `pnpm check` fans out (`pnpm -r --if-present check`) to every package
+      # with a `check` script — @salt/ui-components (#395) and apps/web-pwa
+      # (#396) today. Add a `check` script to a new package to enrol it.
+      - name: Svelte check
+        run: pnpm check
+
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/workspace
+
+      - name: Test
+        run: pnpm test
+
+  # Aggregator — see the comment on `static`. MUST stay named
+  # "Lint, typecheck, test, boundary" to satisfy the branch ruleset.
+  ci:
+    name: Lint, typecheck, test, boundary
+    runs-on: ubuntu-latest
+    needs: [static, types, unit]
+    # `always()` because a plain `needs` would SKIP this job when a dependency
+    # fails — and GitHub counts a skipped required check as PASSING, which would
+    # turn the ruleset into a rubber stamp. It runs unconditionally and asserts
+    # the results itself.
+    if: always()
+    steps:
+      - name: Verify every check passed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          echo "$RESULTS" | jq -r 'to_entries[] | "  \(.key): \(.value.result)"'
+          bad=$(echo "$RESULTS" | jq -r 'to_entries[] | select(.value.result != "success") | .key')
+          if [ -n "$bad" ]; then
+            echo "::error::Did not succeed: $(echo "$bad" | tr '\n' ' ')"
+            exit 1
+          fi
+          echo "All checks passed."
+
   # Isolated Vitest emulator integration stack (issue #84, Phase 3/4).
   # Firestore+Auth-only composed stack on its own project/ports
   # (docker-compose.vitest.yml, project salt-vitest-emulators, 8082/9101).
@@ -168,13 +225,22 @@ jobs:
   # (healthcheck-gated) -> run suites -> always down -v in a finally. No Java,
   # no CF prebuild, no Playwright.
   #
-  # Gated behind `ci` (lint/typecheck/unit/boundary) so the heavy emulator
-  # suites only start once the cheap checks pass. Runs CONCURRENTLY with e2e:
-  # the #84 "never concurrent" rule is a SINGLE-HOST constraint (local dev runs
-  # both stacks on one machine). In CI each job gets its own ubuntu-latest
-  # runner, so the two composed stacks never share ports/volumes/Docker state —
-  # the structural isolation (distinct project + ports 8082/9101 vs 8081/9100)
-  # is belt-and-suspenders here. They stay non-concurrent for LOCAL runs only.
+  # NOT gated behind `ci`, deliberately. It used to be, "so the heavy emulator
+  # suites only start once the cheap checks pass" — but that gate never made a
+  # failure arrive sooner. A lint error already turns `Static checks` red at ~41s
+  # whether or not the heavy suites are held back; all the gate did was add the
+  # full length of the cheap checks (~2m30) to every GREEN run, which is the
+  # common case. What it bought in exchange was unused runner-minutes, and this
+  # repo is public, so those are free. The `concurrency` block at the top of this
+  # file reclaims the genuinely wasted capacity — superseded PR runs are now
+  # cancelled — which is what the gate was really reaching for.
+  #
+  # Runs CONCURRENTLY with e2e: the #84 "never concurrent" rule is a SINGLE-HOST
+  # constraint (local dev runs both stacks on one machine). In CI each job gets
+  # its own ubuntu-latest runner, so the two composed stacks never share
+  # ports/volumes/Docker state — the structural isolation (distinct project +
+  # ports 8082/9101 vs 8081/9100) is belt-and-suspenders here. They stay
+  # non-concurrent for LOCAL runs only.
   #
   # Skipped (→ passes as a required check) for non-app PRs (docs / CI / tooling)
   # and for branches behind origin/main (strict ruleset forces a rebase that
@@ -182,7 +248,7 @@ jobs:
   vitest-integration:
     name: Vitest integration (emulator)
     runs-on: ubuntu-latest
-    needs: [changes, ci]
+    needs: [changes]
     if: ${{ needs.changes.outputs.code == 'true' && needs.changes.outputs.uptodate == 'true' }}
     # A healthy run is ~8 min. Without a bound a wedged `up --wait` or a stalled
     # registry fetch sits on GitHub's 6-hour default (issue #580).
@@ -198,17 +264,7 @@ jobs:
 
       - uses: ./.github/actions/emulator-image
 
-      - uses: pnpm/action-setup@v6
-        with:
-          version: '10.33.0'
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/workspace
 
       # `pnpm test:emulator` = node scripts/test-emulator.mjs: brings up the
       # composed Vitest stack healthcheck-gated and always tears it down with
@@ -218,27 +274,46 @@ jobs:
       - name: Run Vitest emulator integration suites
         run: pnpm test:emulator
 
-  e2e:
-    name: E2E (Playwright)
+  # ── E2E ─────────────────────────────────────────────────────────────────────
+  # Split across 3 parallel shards, and — like vitest-integration — NOT gated
+  # behind `ci`. Same reasoning: the gate never made a red build arrive sooner,
+  # it only delayed green ones. See the comment on vitest-integration.
+  #
+  # ONE job covers both events. The `changes` job short-circuits to
+  # code=true / uptodate=true for anything that is not a pull_request, so this
+  # condition means "app-impacting PR that is up to date with main" pre-merge and
+  # simply "always" post-merge — no second job, and no event branching here.
+  #
+  # SHARDING IS SAFE HERE, and the reason is specific: `workers: 1` in
+  # playwright.config.ts is NOT a performance choice — all Salt data is
+  # family-shared (no per-user scoping on any collection), so two tests hitting
+  # one emulator would collide on the same shopping list / canon. That constraint
+  # is per EMULATOR STACK, and every shard is a separate runner with its own
+  # composed stack on its own ports. Shards therefore never share Firestore
+  # state, exactly as this job and vitest-integration already don't. Do NOT
+  # "optimise" this by raising `workers` within a shard — that breaks the
+  # invariant. `--shard` splits at FILE granularity, so a spec file always runs
+  # whole, on one runner, against one emulator.
+  e2e-shard:
+    name: E2E shard ${{ matrix.shard }}/3
     runs-on: ubuntu-latest
-    # Gated behind `ci`; runs CONCURRENTLY with vitest-integration. Separate
-    # runners mean the e2e composed stack (docker-compose.test.yml, project
-    # test-emulators, 8081/9100/5002) never collides with the Vitest stack
-    # (8082/9101) — the #84 non-concurrency rule is a single-host constraint
-    # that does not apply across GitHub Actions jobs (see vitest-integration).
-    # Skipped (→ passes as a required check) for non-app PRs (docs / CI / tooling)
-    # and for branches behind origin/main (see the `changes` job's uptodate gate).
-    needs: [changes, ci]
+    needs: [changes]
     if: ${{ needs.changes.outputs.code == 'true' && needs.changes.outputs.uptodate == 'true' }}
-    # A healthy run is ~6 min. Without a bound a stalled registry fetch or a
+    # A healthy shard is ~3.5 min. Without a bound a stalled registry fetch or a
     # wedged `up --wait` sits on GitHub's 6-hour default — run 30087640130 ran
     # 22+ minutes without reaching a single test (issue #580).
-    timeout-minutes: 30
+    timeout-minutes: 20
     # Job-level permissions REPLACE the workflow-level block, so contents must be
     # restated. packages:read is for pulling the prebuilt emulator image.
     permissions:
       contents: read
       packages: read
+    strategy:
+      # One shard failing must not cancel the others: a red build should report
+      # every failure it has, not just the first shard to trip.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     env:
       # globalSetup builds the Cloud Functions deploy bundle, whose
       # `npm install --prefix dist` fetches 259 packages on every run. With the
@@ -254,17 +329,7 @@ jobs:
 
       - uses: ./.github/actions/emulator-image
 
-      - uses: pnpm/action-setup@v6
-        with:
-          version: '10.33.0'
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/workspace
 
       # setup-node's `cache: pnpm` covers the pnpm store, NOT ~/.npm — and the
       # Cloud Functions deploy bundle is installed with npm (it must be: the
@@ -279,12 +344,26 @@ jobs:
           restore-keys: |
             npm-cf-bundle-${{ runner.os }}-
 
+      # The browser binaries are a function of the RESOLVED Playwright version and
+      # nothing else, so that is the cache key. It used to be
+      # `hashFiles('pnpm-lock.yaml')`, which evicted the browsers on ANY dependency
+      # change anywhere in the workspace — every Dependabot bump included. A miss
+      # falls into the `install --with-deps` branch below, which cost 10m22s on run
+      # 30092606787 (vs 15s warm) and was the whole reason that run took 18 minutes.
+      - name: Resolve Playwright version
+        id: pw
+        run: |
+          set -euo pipefail
+          version=$(pnpm --filter @salt/web-pwa exec node -p "require('@playwright/test/package.json').version")
+          echo "Playwright $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Cache Playwright browsers
         id: playwright-cache
         uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
 
       - name: Install Playwright browsers
         run: |
@@ -301,14 +380,14 @@ jobs:
       # No host Java / firebase-emulator cache / manual Vite — emulators are
       # containerized (jars baked into the image). CI=true makes globalTeardown
       # run `docker compose ... down -v`, reaping the whole process tree.
-      - name: Run E2E tests
-        run: pnpm --filter @salt/web-pwa e2e
+      - name: Run E2E tests (shard ${{ matrix.shard }}/3)
+        run: pnpm --filter @salt/web-pwa exec playwright test --shard=${{ matrix.shard }}/3
 
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report
+          name: playwright-report-shard-${{ matrix.shard }}
           path: apps/web-pwa/playwright-report/
           retention-days: 14
 
@@ -316,6 +395,54 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-test-results
+          name: playwright-test-results-shard-${{ matrix.shard }}
           path: apps/web-pwa/test-results/
+          retention-days: 14
+
+  # Aggregator. MUST stay named "E2E (Playwright)" — that exact string is a
+  # required status check in the "Main branch" ruleset, and sharding renamed the
+  # real jobs ("E2E shard 1/3", …), so without this the required context would
+  # never report and every PR would block forever.
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    needs: [e2e-shard]
+    # `always()` because a plain `needs` SKIPS on dependency failure, and GitHub
+    # counts a skipped required check as PASSING — the gate would silently stop
+    # gating. Asserts the result itself instead.
+    if: always()
+    steps:
+      - name: Verify the e2e shards passed
+        env:
+          # For a matrix job this is the AGGREGATE result across all shards:
+          # success only if every shard succeeded.
+          RESULT: ${{ needs.e2e-shard.result }}
+        run: |
+          set -euo pipefail
+          echo "e2e-shard: $RESULT"
+          # `skipped` is how a non-app PR / behind-main branch passes this
+          # required check, matching the pre-shard behaviour — so the assertion is
+          # "did not fail", not "succeeded".
+          if [ "$RESULT" = "failure" ] || [ "$RESULT" = "cancelled" ]; then
+            echo "::error::E2E did not pass (shards: $RESULT)"
+            exit 1
+          fi
+          echo "E2E OK."
+
+  coverage:
+    name: Coverage (post-merge)
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/workspace
+
+      - name: Unit test coverage
+        run: pnpm test:coverage
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-unit
+          path: coverage/unit/
           retention-days: 14
