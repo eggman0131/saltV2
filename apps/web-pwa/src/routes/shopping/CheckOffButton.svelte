@@ -37,7 +37,7 @@
 
 <button
   type="button"
-  class="salt-press-pulse flex items-center justify-center rounded p-1 transition-[color,transform] duration-fast ease-standard motion-reduce:transition-none {checked ||
+  class="salt-press-pulse flex items-center justify-center rounded p-1 transition-[color,transform] [transition-duration:var(--duration-fast),var(--duration-base)] ease-standard motion-reduce:transition-none {checked ||
   exiting
     ? 'text-secondary'
     : 'text-muted-foreground hover:text-foreground'}"

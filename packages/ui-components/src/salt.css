@@ -428,24 +428,54 @@
  * addComponents). `@apply` runs natively in v4 CSS. ────────────────────────── */
 @layer components {
   /* ─ Button ───────────────────────────────────────────────────────────── */
-  /* `transition-colors` expanded to an explicit list so `transform` rides the
-   * same timing — that is what makes the press-in below a scale rather than a
-   * snap. (The dropped members of `transition-colors` — text-decoration-color,
-   * fill, stroke — are never animated on a button.) */
+  /* `transition-colors` expanded to an explicit list so `transform` rides along
+   * — that is what makes the press below a scale rather than a snap. (The
+   * dropped members of `transition-colors` — text-decoration-color, fill,
+   * stroke — are never animated on a button.) Written longhand rather than as
+   * `transition-[…] duration-*` utilities because the timing is PER PROPERTY:
+   * colour keeps the 120ms hover beat, while `transform` — the press — gets
+   * `--duration-base`. That is the release half of an asymmetric press; the
+   * press-in half is the `transition-duration: 0s` on the pressed rule below,
+   * so the button goes down the instant it is touched and eases back out. */
   .salt-button {
-    @apply inline-flex items-center justify-center gap-2 rounded font-medium transition-[color,background-color,border-color,transform] duration-fast ease-standard motion-reduce:transition-none disabled:pointer-events-none data-[disabled]:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded font-medium ease-standard disabled:pointer-events-none data-[disabled]:opacity-50;
+    transition-property: color, background-color, border-color, transform;
+    transition-duration:
+      var(--duration-fast), var(--duration-fast), var(--duration-fast), var(--duration-base);
   }
-  /* Press-in acknowledgement: a tap on any button answers with a brief scale.
-   * Written out here rather than pulled from the `salt-press-pulse` utility
-   * because `.salt-button` already owns its own `transition-*` — see that
-   * utility's note on why the reduced-motion reset cannot live at the call
-   * site. Disabled buttons are excluded: they have nothing to acknowledge. */
-  .salt-button:active:not(:disabled):not([data-disabled]) {
-    transform: scale(0.97);
+  /* Press acknowledgement: a tap on any button answers with a scale. Written
+   * out here rather than pulled from the `salt-press-pulse` utility because
+   * `.salt-button` already owns its own `transition-*`.
+   *
+   * Two selectors, one treatment: `:active` is the browser's own press, and
+   * `[data-pressed]` is Button.svelte holding that press on for a minimum beat
+   * (PRESS_FLOOR_MS) so a click too quick to see still reads as one.
+   *
+   * Excluded: disabled and loading buttons — neither has anything to
+   * acknowledge (§4.3). `[data-loading]` is NOT `[data-disabled]`; a loading
+   * button carries only the former, so it needs its own exclusion.
+   *
+   * The whole rule is gated on `no-preference` rather than reset afterwards by
+   * a `reduce` block: `:not()` carries the specificity of its argument, so a
+   * plain `.salt-button:active { transform: none }` reset would lose to this
+   * selector and the button would still move. A rule that never applies is the
+   * only reliable "does not move". Any pressed treatment that SHOULD survive
+   * reduced motion (a shade, say — colour is not movement) belongs outside
+   * this block. */
+  @media (prefers-reduced-motion: no-preference) {
+    .salt-button:active:not(:disabled):not([data-disabled]):not([data-loading]),
+    .salt-button[data-pressed]:not(:disabled):not([data-disabled]):not([data-loading]) {
+      transform: scale(0.94);
+      transition-duration: 0s;
+    }
   }
+  /* What `motion-reduce:transition-none` used to do from the @apply above. It
+   * has to be written out here instead: the utility expands to a nested media
+   * block INSIDE `.salt-button`, which would sit before the longhand
+   * `transition-property` above and lose to it. */
   @media (prefers-reduced-motion: reduce) {
-    .salt-button:active {
-      transform: none;
+    .salt-button {
+      transition-property: none;
     }
   }
   .salt-button--solid {
@@ -462,6 +492,80 @@
   }
   .salt-button--destructive {
     @apply border border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/90;
+  }
+  /* ─ Pressed fill (the shade half of the press, §8.1) ───────────────────── */
+  /* DELIBERATELY OUTSIDE the `prefers-reduced-motion: no-preference` block
+   * above. Colour is not movement: under `reduce` the button must not travel,
+   * but it must still visibly deepen — otherwise a reduced-motion user gets no
+   * press acknowledgement at all. The `reduce` block above drops the
+   * transition, so the shade lands instantly there rather than over 120ms.
+   *
+   * Same two selectors and same three exclusions as the transform rule: the
+   * browser's `:active` and the JS floor's `[data-pressed]`, one treatment,
+   * never on a disabled or loading button. Specificity is (0,5,0) — `:not()`
+   * carries its argument's — so it beats each variant's (0,2,0) `:hover`. A
+   * pressed button under the cursor is both; pressed wins.
+   *
+   * `color-mix()` is new to this file. `@apply bg-primary/90` and friends give
+   * only alpha-toward-the-page, which on a light page LIGHTENS (solid's hover
+   * is measurably lighter than its rest fill), so it cannot express "deeper".
+   * Mixing toward `black` in oklab is the darkening the spec asks for, and
+   * oklab is the space Tailwind v4 already mixes in.
+   *
+   * The percentages are NOT uniform, on purpose: `80%` scales oklab L by 0.8,
+   * so the absolute step is proportional to how light the fill already is. A
+   * flat 80% on the near-white `--color-muted` would be a ~2x deeper step than
+   * on `--color-primary`. Values are picked to keep the PERCEPTUAL step
+   * comparable (ΔL from each variant's own hover fill) — see §8.1. */
+  .salt-button--solid:active:not(:disabled):not([data-disabled]):not([data-loading]),
+  .salt-button--solid[data-pressed]:not(:disabled):not([data-disabled]):not([data-loading]) {
+    /* #254550 on white text — 10.26:1. ΔL 0.148 from hover. */
+    background-color: color-mix(in oklab, var(--color-primary) 80%, black);
+  }
+  .salt-button--destructive:active:not(:disabled):not([data-disabled]):not([data-loading]),
+  .salt-button--destructive[data-pressed]:not(:disabled):not([data-disabled]):not([data-loading]) {
+    /* #8a1111 on white text — 9.66:1. ΔL 0.132 from hover. */
+    background-color: color-mix(in oklab, var(--color-destructive) 80%, black);
+  }
+  /* outline + ghost also pin the FOREGROUND their hover sets. Pressed is not
+   * reliably hovered — touch has no hover, and the floor holds `[data-pressed]`
+   * past pointerup — so relying on the hover rule to have recoloured the text
+   * would leave dark-on-dark (outline's rest `text-secondary` on its pressed
+   * fill is ~1.4:1). Restating it makes the pressed state self-contained.
+   *
+   * Which is also why these two, alone of the five, carry a plain fallback
+   * declaration first: an engine without `color-mix()` drops the mix but KEEPS
+   * the `color`, and white text on outline's unhovered near-white rest fill is
+   * invisible. The fallback is each variant's own hover fill — no press
+   * deepening, but the readable hover pairing. (Tailwind emits the same
+   * fallback-then-mix pair for the `/90` hovers already in this file, so this
+   * matches the posture the rest of the sheet already has. The other three
+   * variants need none: dropping their declaration leaves correct colours.) */
+  .salt-button--outline:active:not(:disabled):not([data-disabled]):not([data-loading]),
+  .salt-button--outline[data-pressed]:not(:disabled):not([data-disabled]):not([data-loading]) {
+    background-color: var(--color-secondary);
+    /* #394930 on white text — 9.69:1. ΔL 0.096 from hover. */
+    background-color: color-mix(in oklab, var(--color-secondary) 80%, black);
+    color: var(--color-secondary-foreground);
+  }
+  .salt-button--ghost:active:not(:disabled):not([data-disabled]):not([data-loading]),
+  .salt-button--ghost[data-pressed]:not(:disabled):not([data-disabled]):not([data-loading]) {
+    background-color: var(--color-muted);
+    /* 90%, not 80%: `--color-muted` is near-white, so 90% here is ΔL 0.095 —
+     * the same perceptual step as outline's 80%. #cdcfcf on `--color-foreground`
+     * — 10.85:1. */
+    background-color: color-mix(in oklab, var(--color-muted) 90%, black);
+    color: var(--color-foreground);
+  }
+  /* link has no hover fill to deepen, so its press introduces one from nothing.
+   * Mixing toward `transparent` (not `black`) — i.e. a 12% tint of the link's
+   * own colour — keeps it a text button rather than turning it into a ghost.
+   * ΔL 0.059 from the page: fainter than the other four, and still ~1.6x the
+   * step ghost's own rest→hover fill makes, so it registers. */
+  .salt-button--link:active:not(:disabled):not([data-disabled]):not([data-loading]),
+  .salt-button--link[data-pressed]:not(:disabled):not([data-disabled]):not([data-loading]) {
+    /* #e2e8ea under `--color-primary` text — 5.56:1. */
+    background-color: color-mix(in oklab, var(--color-primary) 12%, transparent);
   }
   .salt-button--sm {
     @apply h-8 px-3 text-sm;
@@ -710,22 +814,48 @@
 }
 
 /* Press-in acknowledgement for controls that are not `.salt-button` (the
- * shopping check-off circle, the "Need it?" confirm/drop pair). Deliberately
- * declares NO transition: the call site owns that, and must include `transform`
- * in its `transition-[…]` list for the scale to ease rather than snap.
+ * shopping check-off circle, the "Need it?" confirm/drop pair). Same depth and
+ * the same asymmetric beat as the button's own press (§8.1) — straight down on
+ * touch, eased back out — so a tap here and a tap on a `.salt-button` read as
+ * the same control.
  *
- * The reduced-motion reset lives INSIDE the utility, against the repo's usual
- * "pair `motion-reduce:` inline at the call site" convention, because it has to:
- * the rule it must beat is `:active`-scoped (class + pseudo-class), and a
- * call-site `motion-reduce:` variant is a single class — it would lose the
- * cascade silently. Nothing else here needs the exception. */
+ * OWNERSHIP IS SPLIT. The UTILITY owns the depth and the press-IN half:
+ * `scale(0.94)` at `transition-duration: 0s`. That `0s` deliberately reaches
+ * EVERY property the call site transitions, which is correct — nothing should
+ * lag on the way down — and is exactly what `.salt-button`'s own pressed rule
+ * does.
+ *
+ * The CALL SITE owns the RELEASE, and has to. A release is PER PROPERTY:
+ * `transform` eases back over `--duration-base` while colour keeps its 120ms
+ * hover beat, the same split `.salt-button` writes as a positional
+ * `transition-duration` longhand. A positional list only lines up against the
+ * `transition-property` list it was written for, and only the call site knows
+ * that list — these three sites do not even agree on it (`color,transform` vs
+ * `color,background-color,transform`). Anything blanket here would retime every
+ * member of a list this utility did not author, and CSS gives no way to retime
+ * just one member of it. So each site writes its own durations beside its own
+ * `transition-[…]`. What the call site must not drop is `transform` from that
+ * list — without it there is nothing for the scale to ride on.
+ *
+ * The pressed rule is scoped to `:active` so it wins on SPECIFICITY ((0,2,0)
+ * against a call site's (0,1,0)) rather than on source order: Tailwind emits
+ * this utility well BEFORE the call sites' own timing classes, so an unscoped
+ * declaration here would silently lose. Scoped, the `0s` holds for the duration
+ * of the press and the call site's durations take over the moment it ends.
+ *
+ * Reduced motion: the press rule is GATED on `no-preference` rather than reset
+ * afterwards by a `reduce` block, matching `.salt-button`. The old reset did
+ * work — equal specificity, later in the sheet — but it worked only by source
+ * order, and a rule that never applies is the sturdier "does not move". Nothing
+ * here needs a `reduce` reset of its own: this utility declares nothing at all
+ * in the released state, so a call site's `motion-reduce:transition-none` takes
+ * the whole transition away untouched. */
 @utility salt-press-pulse {
-  &:active {
-    transform: scale(0.96);
-  }
-  @media (prefers-reduced-motion: reduce) {
+  @media (prefers-reduced-motion: no-preference) {
     &:active {
-      transform: none;
+      transform: scale(0.94);
+      /* Press-in: instant, no easing — down on the frame the finger lands. */
+      transition-duration: 0s;
     }
   }
 }

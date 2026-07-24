@@ -1,4 +1,4 @@
-# Salt 2.0 — UI Primitives Specification (v0.2.6)
+# Salt 2.0 — UI Primitives Specification (v0.2.7)
 
 **Status:** Authoritative
 **Audience:** AI code generators + human contributors
@@ -146,11 +146,13 @@ No deep imports. No side-effect imports in any barrel.
 
 ## 1.5 Spec Versioning & Amendment Rule
 
-The spec is versioned `vMAJOR.MINOR.PATCH` (currently v0.2.6).
+The spec is versioned `vMAJOR.MINOR.PATCH` (currently v0.2.7).
 
 - **PATCH** (v0.2.1 → v0.2.2): clarifications, typo fixes, tightened class matrices. No breaking change to generated code.
 - **MINOR** (v0.2.x → v0.3.0): new primitives, new props, new tokens.
 - **MAJOR** (v0.x → v1.0): breaking changes to existing primitives.
+
+**Why the v0.2.x line keeps absorbing amendments.** `v0.3.0` is not available as a version number: `ui-spec-v03.md` is a separate, already-published document (the v0.3 Advanced roadmap in §0), so bumping this file to v0.3.0 would name two different documents the same thing. Amendments to the v0.2 Core primitives therefore land on the v0.2.x PATCH line even where the table above would read them as MINOR. A behavioural amendment on this line is still a contract change — re-stamp the affected files' provenance headers (§3.8).
 
 When you amend this spec:
 
@@ -1012,9 +1014,64 @@ Trigger an action.
 - Label (`children`) remains visible during loading.
 - Trailing snippet is hidden during loading.
 
+#### Press feedback
+
+Every Button answers a press. This is a **system default, not a per-call-site choice** — a button that does not move under the finger reads as broken, and the whole point is that it is the same everywhere. The approved values:
+
+| Facet          | Value                                                                          |
+| -------------- | ------------------------------------------------------------------------------ |
+| Treatment      | scale + shade                                                                  |
+| Depth          | `scale(0.94)`                                                                  |
+| Shade          | one step deeper than hover, per variant — see **Pressed fill** below           |
+| Press-in       | 0ms — instant, no easing                                                       |
+| Release        | `--duration-base` (180ms), `--ease-standard`                                   |
+| Minimum hold   | `--duration-fast` (120ms), enforced in JS (`PRESS_FLOOR_MS`), always           |
+| Excluded       | `disabled` **and** `loading`                                                   |
+| Reduced motion | shade only — nothing moves; the floor still runs                               |
+| Haptics        | none                                                                           |
+
+**The two halves.** CSS `:active` alone is not enough: a real tap can start and end inside 30ms, and a treatment that lives and dies with `:active` flashes for exactly that long — which reads as nothing happening. So the press is held by JS for a minimum beat and CSS renders it:
+
+- `press()` on pointerdown (primary button only — secondary/middle open menus, they do not activate a button) and on Space/Enter keydown. Key auto-repeat cannot restart the floor.
+- `release()` on pointerup, pointercancel, pointerleave, keyup, and blur — so a press that ends off the button, or is stolen by a scroll, still lets go. The release waits out the floor if the press has not been held that long yet; past the floor it is immediate, so a long hold stays pressed for the whole hold.
+- While pressed the button carries `data-pressed=""`. `salt.css` keys the treatment off `:active` **or** `[data-pressed]` — the browser's own press and the floor's extension of it, one treatment.
+- Losing interactivity mid-press (a click that flips the button to `loading`) drops the press: `disabled` also removes pointer-events, so the matching release would never arrive.
+
+**Exclusions.** `[data-loading]` needs its own exclusion in the selector — per §4.3 a loading button carries `data-loading` but **not** `data-disabled`, so excluding only disabled would still press a loading button.
+
+**Pressed fill.** Each variant deepens one step past its own hover fill. Percentages are `color-mix(in oklab, …)` against `black`; they are **not uniform**, because an 80% mix scales oklab lightness by 0.8 and so takes a proportionally bigger absolute step on a fill that is already light. They are chosen to keep the *perceptual* step (ΔL from that variant's hover fill) comparable, not to keep the number the same. Light-theme values, computed not eyeballed:
+
+| Variant       | Pressed fill                                                | Resolved   | Text                        | Contrast    | ΔL from hover |
+| ------------- | ----------------------------------------------------------- | ---------- | --------------------------- | ----------- | ------------- |
+| `solid`       | `color-mix(in oklab, var(--color-primary) 80%, black)`      | `#254550`  | `--color-primary-foreground`| **10.26:1** | 0.148         |
+| `destructive` | `color-mix(in oklab, var(--color-destructive) 80%, black)`  | `#8a1111`  | `--color-destructive-foreground` | **9.66:1** | 0.132     |
+| `outline`     | `color-mix(in oklab, var(--color-secondary) 80%, black)`    | `#394930`  | `--color-secondary-foreground` | **9.69:1** | 0.096      |
+| `ghost`       | `color-mix(in oklab, var(--color-muted) 90%, black)`        | `#cdcfcf`  | `--color-foreground`        | **10.85:1** | 0.095         |
+| `link`        | `color-mix(in oklab, var(--color-primary) 12%, transparent)`| `#e2e8ea`  | `--color-primary`           | **5.56:1**  | 0.059         |
+
+All five clear WCAG AA for body text (4.5:1); the four filled variants clear AAA (7:1). The build emits three tiers per rule — Lightning CSS down-levels each `oklab` mix to an `in srgb` one behind `@supports (color: color-mix(in lab, red, red))`, and `outline`/`ghost` add a plain fill ahead of both. All three tiers were checked: the srgb path lands 8.61:1 – 11.66:1, the plain path 6.4:1 / 14.58:1. No tier drops below AA. Notes on the ones that are not simply "80%":
+
+- **`ghost` is 90%, not 80%.** `--color-muted` (`#eceeee`) is near-white, so a flat 80% would be a ΔL of 0.190 — roughly twice solid's step, and it reads as a grey slab rather than a press. 90% puts it at 0.095, matching `outline`.
+- **`link` mixes toward `transparent`, not `black`.** It has no hover fill to deepen, so its press introduces one from nothing; a 12% tint of the link's own colour keeps it a text button instead of promoting it to a ghost. Fainter than the other four by design, but still ~1.6× the step `ghost`'s own rest→hover fill makes.
+- **`outline` and `ghost` also restate the foreground** their hover sets. A pressed button is not reliably hovered — touch has no hover at all, and the floor holds `data-pressed` past pointerup — so leaning on the hover rule to have recoloured the text would leave `outline` at dark-on-dark (~1.4:1). Those two, alone of the five, therefore also carry a plain fallback `background-color` ahead of the mix: an engine without `color-mix()` drops the mix but keeps the `color`, and white text on `outline`'s unhovered near-white rest fill is invisible. The fallback is the variant's own hover fill — no press deepening, but a readable pairing.
+
+Worth knowing when reading those numbers: on a light page the existing `/90` hovers **lighten**. `bg-primary/90` composites toward the near-white background, so solid's hover fill (`#496f7c`) is measurably *lighter* than its rest fill (`#35606e`). "One step deeper than hover" is therefore also comfortably deeper than rest — the press cannot be confused with the hover state in either direction.
+
+Specificity: the pressed rules are `(0,5,0)` (`:not()` carries its argument's specificity) against each variant's `(0,2,0)` `:hover`. A pressed button under the cursor is both; pressed wins.
+
+**Reduced motion.** The transform rule is gated on `@media (prefers-reduced-motion: no-preference)` rather than reset by a following `reduce` block. `:not()` carries the specificity of its argument, so the obvious `.salt-button:active { transform: none }` reset loses to the press selector and the button moves anyway; a rule that never applies is the only reliable "does not move". The **pressed-fill rules sit outside that gate** — colour is not movement, and a reduced-motion user who gets no acknowledgement at all is worse served than one who gets a shade. The `reduce` block drops `.salt-button`'s transition entirely, so under the preference the shade lands instantly rather than over 120ms.
+
+The JS floor **runs regardless of the preference**. It is a timer, not an animation, and what it holds on is `data-pressed` — which under `reduce` still renders the shade. (An earlier revision skipped it under the preference, correctly, back when the press was scale-only and a held-but-invisible press was a pointless delay. With a shade in play, skipping it means a quick tap flashes colour for the true pointer-down time — often under a frame — which is the exact "reads as nothing happened" the floor exists to prevent.) Suppressing the *movement* is CSS's job alone; `Button.headless.svelte.ts` does not read `prefers-reduced-motion`.
+
+**No haptics.** `navigator.vibrate` is deliberately not called. Press feedback is visual only.
+
+Consumer-supplied `onpointerdown` / `onpointerup` / `onpointercancel` / `onpointerleave` / `onkeydown` / `onkeyup` / `onblur` props still fire — Button takes them as props and forwards them rather than letting the spread replace its own listeners.
+
+> §3.6's canonical Button listing predates the press wiring and does not show it; it remains the copy-source for structure, not for the press.
+
 ### Styling
 
-Visual styles are defined as `.salt-button--*` CSS component classes in `packages/ui-components/src/tailwind-preset.ts`. `Button.variants.ts` maps CVA axes to these class names (see §3.6).
+Visual styles are defined as `.salt-button--*` CSS component classes in `packages/ui-components/src/salt.css`. `Button.variants.ts` maps CVA axes to these class names (see §3.6).
 
 **Box-model contract:** All button variants carry `border` so that mixed-variant rows (e.g. a `solid` next to an `outline`) share the same computed height. Non-outline variants use `border-transparent` to keep the border invisible while holding the box space; `outline` overrides with `border-secondary`.
 
@@ -1026,7 +1083,9 @@ Visual styles are defined as `.salt-button--*` CSS component classes in `package
 | `link`        | `border border-transparent bg-transparent underline-offset-4 hover:underline text-primary`   |
 | `destructive` | `border border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/90` |
 
-The base `.salt-button` class (applied to every variant) carries layout, typography, and motion tokens; see `tailwind-preset.ts` for the authoritative list.
+Those classes carry rest + hover only. The **pressed** fill for each variant is a separate rule keyed off `:active` / `[data-pressed]`, written as longhand `color-mix()` rather than `@apply` — an alpha modifier like `/90` can only fade toward the page, which on a light theme lightens. Values and contrast ratios are in **Press feedback → Pressed fill** above; sizes (`sm`/`md`/`lg`/`icon`) carry no colour and so do not vary the press.
+
+The base `.salt-button` class (applied to every variant) carries layout, typography, and motion tokens; see `salt.css` for the authoritative list. Its transition is written longhand rather than as `transition-[…] duration-*` utilities because the timing is **per property**: colour, background-color and border-color keep the 120ms hover beat (`--duration-fast`), while `transform` — the press — releases over `--duration-base`. The press-in half of that asymmetry is a `transition-duration: 0s` on the pressed rule itself.
 
 ### Forbidden
 
@@ -1594,6 +1653,7 @@ Numeric transform (allowed by §2.3): determinate indicator uses `style="transfo
 
 | Date       | Version | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ---------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-07-24 | v0.2.7  | §8.1 Button: recorded the system-wide **press feedback** contract — `scale(0.94)`, instant press-in / 180ms (`--duration-base`, `--ease-standard`) release, a 120ms (`--duration-fast`) JS minimum-hold floor so a too-quick click is still visible, `disabled` **and** `loading` excluded, reduced motion = shade only (no movement), no haptics. Adds the `data-pressed` attribute and the pointer/keyboard wiring behind it. **Both halves are now implemented:** the scale, and the per-variant **pressed fill** — each variant one perceptual step deeper than its own hover, as longhand `color-mix(in oklab, …)` (solid/destructive/outline 80% toward black, ghost 90% because `--color-muted` is near-white, link a 12% tint since it has no hover fill to deepen). Values, resolved hexes, and computed light-theme contrast ratios (5.56:1 – 10.85:1, all AA) recorded in §8.1. The fill rules sit **outside** the `prefers-reduced-motion: no-preference` gate that holds the transform, so a shade survives the preference; correspondingly the JS floor (`PRESS_FLOOR_MS`) **no longer skips under reduced motion** — it holds `data-pressed`, which now renders something, so skipping it would let a sub-frame tap flash colour invisibly. `Button.headless.svelte.ts` no longer reads `prefers-reduced-motion` at all. Ratifies the press-in that shipped unrecorded in #573 (retuned from `scale(0.97)`, symmetric 120ms) and fixes the loading-button exclusion it missed. §1.5 gains the rationale for amending on the v0.2.x line (v0.3.0 collides with `ui-spec-v03.md`); §8.1 Styling's two stale `tailwind-preset.ts` references corrected to `salt.css`. Issue #579; approved mock: _Button press (system-wide mock)_ in `Salt.dc.html`, Claude Design project "Salt — Culinary Modernist" (mock not in-repo). |
 | 2026-07-01 | v0.2.6  | §8.8 Tooltip: added touch-readability props `disableCloseOnTriggerClick` and `ignoreNonKeyboardFocus` (both pass-through to bits-ui `Tooltip.Root`) and documented the touch tap-to-toggle pattern; noted `TooltipTrigger` now forwards `class` + native attributes to the trigger `<button>`. Ratifies shipped code from #382/#386, now on bits-ui 2.x (bump #380). Resolves doc/code drift issue #393.                                                                        |
 | 2026-06-08 | v0.2.5  | Icon library migrated `lucide-svelte` → `@lucide/svelte` (commit `4822a19`). §1.1 design-system table, §1.2 allowed-imports + consumer restriction, and §8.12 Icon `name` prop updated. Icon `name` surface is now `keyof typeof import('@lucide/svelte').icons` (the named `icons` namespace export, not `import *`); `NavItem.icon` is typed as the `LucideIcon` component from `@lucide/svelte`. Ratifies the migration in issue #167.                                                                                                                            |
 | 2026-05-30 | v0.2.4  | §8.2 TextField: `label` relaxed from required to `string \| undefined`. Callers omitting `label` must supply `aria-label` or `aria-labelledby`. Ratifies code change from PR #71.                                                                                                                                                                                                                                                                        |
