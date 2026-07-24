@@ -109,8 +109,8 @@ beforeEach(() => {
   mockLedgerSnap = { exists: false };
   mockSubsDocs = [];
   mockSendWebPush.mockResolvedValue('sent' as const);
-  process.env['VAPID_PUBLIC_KEY'] = 'test-vapid-public';
-  process.env['VAPID_SUBJECT'] = 'mailto:test@salt.app';
+  // VAPID keys are provided via the mocked defineSecret (.value() → a test
+  // string), so the handler treats the feature as provisioned.
 });
 
 describe('onCookTimerDispatch', () => {

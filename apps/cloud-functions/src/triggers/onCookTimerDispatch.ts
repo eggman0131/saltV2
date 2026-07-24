@@ -16,15 +16,19 @@ import type { CookTimerTaskPayload } from './cookTimerTypes.js';
 //
 // Defined locally (not imported from index.ts) to avoid a circular import; the
 // Firebase CLI aggregates same-named defineSecret calls across files at deploy.
-// VAPID private key signs the push; PostHog key powers server error reporting.
+// VAPID keypair signs the push (the public key is not sensitive, but this repo
+// has no non-secret function-env mechanism — deployed functions read config only
+// from Secret Manager — so it rides as a secret alongside the private key rather
+// than a would-be-empty process.env var). PostHog key powers error reporting.
 const vapidPrivateKey = defineSecret('VAPID_PRIVATE_KEY');
+const vapidPublicKey = defineSecret('VAPID_PUBLIC_KEY');
 const posthogApiKey = defineSecret('POSTHOG_API_KEY');
 
 export const onCookTimerDispatch = onTaskDispatched<CookTimerTaskPayload>(
   {
     region: 'europe-west2',
     memory: '512MiB',
-    secrets: [vapidPrivateKey, posthogApiKey],
+    secrets: [vapidPrivateKey, vapidPublicKey, posthogApiKey],
     // A push endpoint can be transiently unavailable; retry a handful of times
     // with backoff. A PERMANENT failure never throws (see below), so it never
     // burns retries.
@@ -85,12 +89,13 @@ export const onCookTimerDispatch = onTaskDispatched<CookTimerTaskPayload>(
         .map((doc) => ({ ref: doc.ref, parsed: PushSubscriptionSchema.safeParse(doc.data()) }))
         .filter((s) => s.parsed.success);
 
-      // (e) VAPID material. publicKey + subject come from plain env (non-secret);
-      // the private key is the bound secret. If either key is missing the feature
-      // is not provisioned — log and return rather than throw (no retry helps).
-      const publicKey = process.env['VAPID_PUBLIC_KEY'] ?? '';
+      // (e) VAPID material. Both keys come from bound secrets; the subject is a
+      // fixed contact (a valid mailto is all web-push needs). If either key is
+      // empty the feature is not provisioned — log and return rather than throw
+      // (a retry wouldn't help).
+      const publicKey = vapidPublicKey.value();
       const privateKey = vapidPrivateKey.value();
-      const subject = process.env['VAPID_SUBJECT'] ?? 'mailto:admin@salt.app';
+      const subject = 'mailto:admin@salt.app';
       if (!publicKey || !privateKey) {
         logger.error('onCookTimerDispatch: VAPID not provisioned', { sessionId });
         return;
