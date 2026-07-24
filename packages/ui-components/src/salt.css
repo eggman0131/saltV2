@@ -493,6 +493,80 @@
   .salt-button--destructive {
     @apply border border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/90;
   }
+  /* ─ Pressed fill (the shade half of the press, §8.1) ───────────────────── */
+  /* DELIBERATELY OUTSIDE the `prefers-reduced-motion: no-preference` block
+   * above. Colour is not movement: under `reduce` the button must not travel,
+   * but it must still visibly deepen — otherwise a reduced-motion user gets no
+   * press acknowledgement at all. The `reduce` block above drops the
+   * transition, so the shade lands instantly there rather than over 120ms.
+   *
+   * Same two selectors and same three exclusions as the transform rule: the
+   * browser's `:active` and the JS floor's `[data-pressed]`, one treatment,
+   * never on a disabled or loading button. Specificity is (0,5,0) — `:not()`
+   * carries its argument's — so it beats each variant's (0,2,0) `:hover`. A
+   * pressed button under the cursor is both; pressed wins.
+   *
+   * `color-mix()` is new to this file. `@apply bg-primary/90` and friends give
+   * only alpha-toward-the-page, which on a light page LIGHTENS (solid's hover
+   * is measurably lighter than its rest fill), so it cannot express "deeper".
+   * Mixing toward `black` in oklab is the darkening the spec asks for, and
+   * oklab is the space Tailwind v4 already mixes in.
+   *
+   * The percentages are NOT uniform, on purpose: `80%` scales oklab L by 0.8,
+   * so the absolute step is proportional to how light the fill already is. A
+   * flat 80% on the near-white `--color-muted` would be a ~2x deeper step than
+   * on `--color-primary`. Values are picked to keep the PERCEPTUAL step
+   * comparable (ΔL from each variant's own hover fill) — see §8.1. */
+  .salt-button--solid:active:not(:disabled):not([data-disabled]):not([data-loading]),
+  .salt-button--solid[data-pressed]:not(:disabled):not([data-disabled]):not([data-loading]) {
+    /* #254550 on white text — 10.26:1. ΔL 0.148 from hover. */
+    background-color: color-mix(in oklab, var(--color-primary) 80%, black);
+  }
+  .salt-button--destructive:active:not(:disabled):not([data-disabled]):not([data-loading]),
+  .salt-button--destructive[data-pressed]:not(:disabled):not([data-disabled]):not([data-loading]) {
+    /* #8a1111 on white text — 9.66:1. ΔL 0.132 from hover. */
+    background-color: color-mix(in oklab, var(--color-destructive) 80%, black);
+  }
+  /* outline + ghost also pin the FOREGROUND their hover sets. Pressed is not
+   * reliably hovered — touch has no hover, and the floor holds `[data-pressed]`
+   * past pointerup — so relying on the hover rule to have recoloured the text
+   * would leave dark-on-dark (outline's rest `text-secondary` on its pressed
+   * fill is ~1.4:1). Restating it makes the pressed state self-contained.
+   *
+   * Which is also why these two, alone of the five, carry a plain fallback
+   * declaration first: an engine without `color-mix()` drops the mix but KEEPS
+   * the `color`, and white text on outline's unhovered near-white rest fill is
+   * invisible. The fallback is each variant's own hover fill — no press
+   * deepening, but the readable hover pairing. (Tailwind emits the same
+   * fallback-then-mix pair for the `/90` hovers already in this file, so this
+   * matches the posture the rest of the sheet already has. The other three
+   * variants need none: dropping their declaration leaves correct colours.) */
+  .salt-button--outline:active:not(:disabled):not([data-disabled]):not([data-loading]),
+  .salt-button--outline[data-pressed]:not(:disabled):not([data-disabled]):not([data-loading]) {
+    background-color: var(--color-secondary);
+    /* #394930 on white text — 9.69:1. ΔL 0.096 from hover. */
+    background-color: color-mix(in oklab, var(--color-secondary) 80%, black);
+    color: var(--color-secondary-foreground);
+  }
+  .salt-button--ghost:active:not(:disabled):not([data-disabled]):not([data-loading]),
+  .salt-button--ghost[data-pressed]:not(:disabled):not([data-disabled]):not([data-loading]) {
+    background-color: var(--color-muted);
+    /* 90%, not 80%: `--color-muted` is near-white, so 90% here is ΔL 0.095 —
+     * the same perceptual step as outline's 80%. #cdcfcf on `--color-foreground`
+     * — 10.85:1. */
+    background-color: color-mix(in oklab, var(--color-muted) 90%, black);
+    color: var(--color-foreground);
+  }
+  /* link has no hover fill to deepen, so its press introduces one from nothing.
+   * Mixing toward `transparent` (not `black`) — i.e. a 12% tint of the link's
+   * own colour — keeps it a text button rather than turning it into a ghost.
+   * ΔL 0.059 from the page: fainter than the other four, and still ~1.6x the
+   * step ghost's own rest→hover fill makes, so it registers. */
+  .salt-button--link:active:not(:disabled):not([data-disabled]):not([data-loading]),
+  .salt-button--link[data-pressed]:not(:disabled):not([data-disabled]):not([data-loading]) {
+    /* #e2e8ea under `--color-primary` text — 5.56:1. */
+    background-color: color-mix(in oklab, var(--color-primary) 12%, transparent);
+  }
   .salt-button--sm {
     @apply h-8 px-3 text-sm;
   }

@@ -29,19 +29,16 @@ export type ButtonState = {
   cancel: () => void;
 };
 
-// Reduced motion, read live at the moment of a press: the preference can change
-// mid-session and there is nothing to subscribe to here. SSR/test-safe and never
-// throws — no `window`, no `matchMedia`, or a `matchMedia` that rejects the query
-// all read as "no preference". (Inlined rather than imported: ui-components is a
-// leaf package and must not reach into the app's `reducedMotion.ts`.)
-function prefersReducedMotion(): boolean {
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
-  try {
-    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  } catch {
-    return false;
-  }
-}
+// NOTE: this module deliberately does NOT read `prefers-reduced-motion`. The
+// floor is a timer, not an animation, and what it holds on is `data-pressed` —
+// which under `reduce` still renders the pressed SHADE (salt.css keeps the fill
+// rules outside the `no-preference` block; only the transform is gated). An
+// earlier revision skipped the floor under the preference, back when the press
+// was scale-only and a held-but-invisible press really was a pointless delay.
+// With a shade in play that would mean a quick tap flashes colour for the true
+// pointer-down time — often under a frame — which is the exact "reads as
+// nothing happened" the floor exists to prevent. So the floor runs for
+// everyone; suppressing the MOVEMENT is CSS's job alone.
 
 export function createButtonState(opts: {
   disabled: () => boolean;
@@ -72,11 +69,6 @@ export function createButtonState(opts: {
       // Disabled and loading buttons have nothing to acknowledge (§4.3).
       if (opts.disabled() || opts.loading()) return;
       pressed = true;
-      // Reduced motion: the press tracks the pointer exactly and nothing is
-      // held artificially. Nothing MOVES either way — that reset lives in CSS,
-      // which also covers plain `:active` — but a timed hold is motion the CSS
-      // cannot opt out of, so it is skipped rather than played invisibly.
-      if (prefersReducedMotion()) return;
       releasePending = false;
       floorTimer = setTimeout(() => {
         floorTimer = undefined;

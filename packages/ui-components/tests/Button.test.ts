@@ -261,19 +261,37 @@ describe('Button', () => {
       vi.useRealTimers();
     });
 
-    it('tracks the pointer exactly — no hold to play invisibly', async () => {
+    it('still honours the floor — the shade is what it is holding on', async () => {
       render(Button, { props: { children: snippet('x') } });
       const btn = screen.getByRole('button');
 
       await fireEvent.pointerDown(btn);
-      // Still marked pressed: the "no movement" half is the CSS's job (salt.css
-      // gates the transform on `prefers-reduced-motion: no-preference`), and a
-      // shade-only pressed treatment must still have something to hang on.
+      // The "no movement" half is entirely the CSS's job (salt.css gates only
+      // the transform on `prefers-reduced-motion: no-preference`). The pressed
+      // SHADE lives outside that gate, so under the preference `data-pressed`
+      // still renders something — and therefore still needs the floor, or a tap
+      // shorter than a frame would flash colour too briefly to register.
       expect(btn).toHaveAttribute('data-pressed', '');
-      expect(vi.getTimerCount()).toBe(0);
 
       await fireEvent.pointerUp(btn);
+      expect(btn).toHaveAttribute('data-pressed', '');
+
+      vi.advanceTimersByTime(PRESS_FLOOR_MS - 1);
+      await tick();
+      expect(btn).toHaveAttribute('data-pressed', '');
+
+      vi.advanceTimersByTime(1);
+      await tick();
       expect(btn).not.toHaveAttribute('data-pressed');
+    });
+
+    it('leaves no timer behind on unmount', async () => {
+      render(Button, { props: { children: snippet('x') } });
+
+      await fireEvent.pointerDown(screen.getByRole('button'));
+      cleanup();
+
+      expect(vi.getTimerCount()).toBe(0);
     });
   });
 
