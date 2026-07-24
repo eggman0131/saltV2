@@ -643,7 +643,7 @@
     <span class="text-xs font-medium text-amber-600 dark:text-amber-500">Need it?</span>
     <button
       type="button"
-      class="salt-press-pulse flex h-10 w-10 items-center justify-center rounded-md text-amber-600 transition-[color,background-color,transform] duration-fast ease-standard motion-reduce:transition-none hover:bg-amber-100 dark:text-amber-500 dark:hover:bg-amber-950"
+      class="salt-press-pulse flex h-10 w-10 items-center justify-center rounded-md text-amber-600 transition-[color,background-color,transform] [transition-duration:var(--duration-fast),var(--duration-fast),var(--duration-base)] ease-standard motion-reduce:transition-none hover:bg-amber-100 dark:text-amber-500 dark:hover:bg-amber-950"
       onclick={() => {
         // Confirming is the other tap that means "yes, this" — same tick as a check.
         hapticTick();
@@ -656,7 +656,7 @@
     </button>
     <button
       type="button"
-      class="salt-press-pulse flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground transition-[color,background-color,transform] duration-fast ease-standard motion-reduce:transition-none hover:bg-accent hover:text-foreground"
+      class="salt-press-pulse flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground transition-[color,background-color,transform] [transition-duration:var(--duration-fast),var(--duration-fast),var(--duration-base)] ease-standard motion-reduce:transition-none hover:bg-accent hover:text-foreground"
       onclick={() => void handleDropNeeded(ids)}
       aria-label="Not needed, remove"
       data-testid="shopping-verify-drop"
