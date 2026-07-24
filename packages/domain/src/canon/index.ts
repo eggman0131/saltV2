@@ -69,4 +69,4 @@ export { normaliseName } from './queries/normaliseName.js';
 export { CANON_ICON_HIDDEN, isCanonIconRenderable } from './queries/canonIcon.js';
 export { summarizeMatchLog } from './queries/summarizeMatchLog.js';
 export type { MatchLogSummary } from './queries/summarizeMatchLog.js';
-export { hasLiveCanonMatch } from './queries/hasLiveCanonMatch.js';
+export { hasLiveCanonMatch, isResolvedMatchState } from './queries/hasLiveCanonMatch.js';

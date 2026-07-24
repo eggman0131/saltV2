@@ -862,7 +862,7 @@ This section records deliberate interaction decisions for existing primitives th
 - **Thresholds are fixed:** `CHECK_THRESHOLD_PX = 78` (right) and `DELETE_THRESHOLD_PX = 78` (left); below threshold springs back. The release decision is pure arithmetic in `swipe.ts` (`resolveSwipe`) and is unit-tested without a DOM.
 - **`touch-action: pan-y`** on the draggable element so a vertical scroll survives a drag attempt; the drag is claimed only past a `DRAG_START_PX` slop once horizontal travel dominates vertical.
 - **Excluded row types.** Swipe is disabled on the breakdown-under-combined (`subordinate`) row, the product-form row, the "Need it?"/verify (`flagged`) row, in selection mode, and on a row mid check-off celebration (`exiting`). The combined row lives in `ShoppingListPage.svelte`, not `ShoppingItemRow.svelte`, so it is inherently excluded.
-- **Composes with, never replaces, Phases 1 & 3.** The `translateX` drag and the reveal-behind layers live on an **inner** element; the `salt-row-collapse` root of `ShoppingItemRow.svelte` (its collapse + crossfade directives) is never wrapped or transformed.
+- **Composes with, never replaces, Phases 1 & 3.** The `translateX` drag and the reveal-behind layers live on an **inner** element; the `salt-row-collapse` root of `ShoppingItemRow.svelte` (its collapse + match-reveal transition directives) is never wrapped or transformed.
 - **Reveal-behind layers reuse existing tokens only:** the check (right) layer is `bg-secondary-container` (sage); the delete (left) layer is `bg-destructive`. No new `--salt-*` token — `pnpm theme:check` stays green. The layers are `pointer-events-none` so they never swallow a button tap.
 
 ---

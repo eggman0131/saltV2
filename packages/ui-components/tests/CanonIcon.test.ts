@@ -168,7 +168,7 @@ describe('CanonIcon', () => {
       expect(queryByTestId('canon-icon-initial')).toBeNull();
     });
 
-    it('leaves a matched tile WITH an icon on the neutral backdrop (no sage, no letter)', () => {
+    it('leaves a matched tile WITH an icon on the neutral backdrop AT REST (no sage, no letter)', () => {
       const { getByTestId, queryByTestId } = render(CanonIcon, {
         props: { thumbnail: URL, name: 'Milk', matched: true },
       });
@@ -177,6 +177,41 @@ describe('CanonIcon', () => {
       expect(tile).not.toHaveClass('bg-secondary-container');
       expect(queryByTestId('canon-icon-img')).toBeInTheDocument();
       expect(queryByTestId('canon-icon-initial')).toBeNull();
+    });
+
+    it('lifts a matched tile WITH an icon to sage DURING a reveal, but shows no letter', () => {
+      // The "it found its home" moment has to be visible for the common case — an
+      // item matching an established canon, which nearly always has an icon. The
+      // lift is transient (tied to `shimmer`) so the resting look above is intact.
+      const { getByTestId, queryByTestId } = render(CanonIcon, {
+        props: { thumbnail: URL, name: 'Milk', matched: true, shimmer: true },
+      });
+      const tile = getByTestId('canon-icon');
+      expect(tile).toHaveClass('bg-secondary-container');
+      expect(tile).not.toHaveClass('bg-icon-tile');
+      // The icon still renders — the sage is a backdrop behind it, not a swap.
+      expect(queryByTestId('canon-icon-img')).toBeInTheDocument();
+      expect(queryByTestId('canon-icon-initial')).toBeNull();
+    });
+
+    it('does not light an UNMATCHED tile even while shimmering', () => {
+      const { getByTestId } = render(CanonIcon, {
+        props: { thumbnail: URL, name: 'Milk', matched: false, shimmer: true },
+      });
+      const tile = getByTestId('canon-icon');
+      expect(tile).toHaveClass('bg-icon-tile');
+    });
+
+    it('crossfades the tile colour at the reveal duration (#571: 400ms, not the 150ms default)', () => {
+      // The grey↔sage change is the tile half of the match reveal; its pace is a
+      // spec value (`--duration-reveal`), carried by the static utility so every
+      // consumer inherits it.
+      const { getByTestId } = render(CanonIcon, {
+        props: { thumbnail: null, name: 'Milk', matched: true },
+      });
+      const tile = getByTestId('canon-icon');
+      expect(tile).toHaveClass('transition-colors');
+      expect(tile).toHaveClass('duration-reveal');
     });
 
     it('keeps the grey bare tile when not matched (default — unchanged for every other consumer)', () => {

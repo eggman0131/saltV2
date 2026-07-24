@@ -28,7 +28,6 @@
   } from '@salt/ui-components';
   import { titleCase } from '../../lib/titleCase.js';
   import { onDestroy, tick } from 'svelte';
-  import { crossfade } from 'svelte/transition';
   import { push } from 'svelte-spa-router';
   import { groupItemsByAisle, groupItemsByRecipe, resolveItemDisplayName } from '@salt/domain';
   import type { ShoppingListItem, AisleRow, AmountSubtotal } from '@salt/domain';
@@ -57,7 +56,6 @@
   import { createDeferredDelete } from '../../lib/deferredDelete.svelte.js';
   import { createCheckOffHold } from '../../lib/checkOffHold.svelte.js';
   import { createMatchReveal } from '../../lib/matchReveal.svelte.js';
-  import { prefersReducedMotion } from '../../lib/reducedMotion.js';
   import { tick as hapticTick } from '../../lib/haptics.js';
   import ShoppingItemRow from './ShoppingItemRow.svelte';
   import CheckOffButton from './CheckOffButton.svelte';
@@ -135,33 +133,28 @@
   const checkOffHold = createCheckOffHold();
   onDestroy(() => checkOffHold.dispose());
 
-  // ─── Match reveal (lively list, Phase 3) ─────────────────────────────────────
+  // ─── Match reveal (lively list, Phase 3 / #571 Treatment 2) ──────────────────
   // The single most-legible moment: a row's canon match lands, so it leaves the
   // "Other" bucket and arrives in its resolved aisle, tile lighting grey→sage.
   //
-  // The MOVE is a Svelte `crossfade`: the Other row *sends* and the arriving aisle
-  // row *receives*, and because they carry the same key in the same flush the row
-  // visibly flies across (and the grey Other tile cross-fades into the sage aisle
-  // tile en route). The `fallback` is a ZERO-duration no-op, so any half without a
-  // partner — a plain add, a delete, a check-off, a stream-in on load — stays an
-  // instant snap; only the genuine Other→aisle pairing animates. Reduced motion
-  // collapses the move to `duration: 0` (read live, so an OS toggle mid-session is
-  // honoured), i.e. today's snap. NOTE: the two aisle/Other `{#each}` blocks live
-  // in different containers, which `animate:flip` cannot cross — crossfade is the
-  // built-in that does, with no wrapper element (a wrapper would break Phase 1's
-  // `salt-row-collapse` gap-swallowing), so this stays additive to the check-off.
-  const REVEAL_MOVE_MS = 320;
-  const [sendReveal, receiveReveal] = crossfade({
-    duration: () => (prefersReducedMotion() ? 0 : REVEAL_MOVE_MS),
-    fallback: () => ({ duration: 0 }),
-  });
-
-  // The tile flourish (one-shot shimmer) is timed separately: this detector watches
-  // the real `matchState` for a pending→matched landing and parks the id as
-  // "revealing" for the sweep's length. Observed, never written — no schema field.
+  // This detector watches the real `matchState` for an unresolved→resolved
+  // landing and parks the id as "revealing" for the reveal window. Observed,
+  // never written — no schema field. The set drives BOTH halves of the
+  // treatment: the tile flourish (CanonIcon's shimmer prop, via `revealing`) and
+  // the row's move (`ShoppingItemRow`'s collapse-out / rise-in transitions, via
+  // the `isRevealing` gate). The move transitions live in the row; the earlier
+  // page-level `crossfade` send/receive pair is gone — measured, its halves never
+  // both paired (the receive half always fell back to an instant snap), and #571
+  // asks for collapse-out + enter, not a fly.
+  //
+  // `$effect.pre`, NOT `$effect`, and it matters: the same items update that adds
+  // an id to the revealing set is the one that unmounts the Other row and mounts
+  // the aisle row. A post-DOM `$effect` would run after those transitions have
+  // already read the gate (still closed) — `.pre` commits the set first, so the
+  // transitions see it open.
   const matchReveal = createMatchReveal();
   onDestroy(() => matchReveal.dispose());
-  $effect(() => {
+  $effect.pre(() => {
     matchReveal.observe(visibleItems);
   });
 
@@ -691,8 +684,7 @@
     exiting={checkOffHold.isExiting(item.id)}
     revealing={matchReveal.isRevealing(item.id)}
     {revealRole}
-    revealSend={sendReveal}
-    revealReceive={receiveReveal}
+    isRevealing={(id) => matchReveal.isRevealing(id)}
     {selectionMode}
     {selection}
     {canonMap}
@@ -1012,9 +1004,10 @@
                   {:else}
                     {@const single = row.contributors[0]}
                     {#if single}
-                      <!-- A resolved aisle row *receives* the match-reveal crossfade:
-                           when this id was just sent from "Other" in the same flush,
-                           the row visibly flies in to land here. -->
+                      <!-- A resolved aisle row is the *receive* half of the match
+                           reveal: when its id's match just landed (the reveal gate is
+                           open), the row rises in here — otherwise it mounts as an
+                           instant snap like any other row. -->
                       {@render itemRow(single, false, false, true, 'receive')}
                     {/if}
                   {/if}
@@ -1034,10 +1027,10 @@
                   <Spinner size={12} />
                 {/if}
               </div>
-              <!-- An "Other" row *sends* the match-reveal crossfade: the instant its
-                   match lands it leaves this bucket and flies to the aisle row that
-                   receives the same id. Unpaired (a plain add or delete) → the
-                   zero-duration fallback, i.e. an instant snap. -->
+              <!-- An "Other" row is the *send* half of the match reveal: the instant
+                   its match lands it collapses out of this bucket while its aisle
+                   copy rises in. Any other unmount (a delete, a check-off) sees the
+                   reveal gate closed → an instant snap. -->
               {#each grouped.other.contributors as { item, isPending } (item.id)}
                 {@render itemRow(item, isPending, false, false, 'send')}
               {/each}

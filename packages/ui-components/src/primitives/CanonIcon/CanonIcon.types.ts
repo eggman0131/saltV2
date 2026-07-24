@@ -24,24 +24,31 @@ export type CanonIconProps = {
    */
   version?: string | number | undefined;
   /**
-   * The item this tile stands for is matched to a canon. Only changes the BARE
-   * tile (no renderable thumbnail): a matched-but-iconless tile tints sage
-   * (`--salt-secondary-container`) with the item's initial in
+   * The item this tile stands for is matched to a canon. At REST this only
+   * changes the BARE tile (no renderable thumbnail): a matched-but-iconless tile
+   * tints sage (`--salt-secondary-container`) with the item's initial in
    * `--salt-accent-foreground`, instead of the unmatched grey (`bg-icon-tile`) —
    * the "found its home" resting state while the real icon generates. A tile that
-   * already renders an `<img>` is unaffected (its backdrop stays `bg-icon-tile`).
+   * already renders an `<img>` keeps its `bg-icon-tile` backdrop at rest.
+   *
+   * DURING a reveal (`shimmer` also true) the sage lift applies to an icon tile
+   * too, then fades back — otherwise the "found its home" moment is invisible for
+   * the common case of matching an established canon that already has an icon.
    * The grey→sage change carries a `transition-colors` cross-fade, suppressed
    * under reduced motion. Default `false` → today's grey bare tile, so every
    * existing consumer that omits it is unchanged.
    */
   matched?: boolean;
   /**
-   * Play the one-shot shimmer sweep across the tile — the "match just landed"
-   * flourish (lively shopping list). A single translucent band crosses once, then
-   * settles; it is an overlay, so it works over the bare, sage, or icon tile. The
-   * caller is responsible for holding this `true` only for the reveal window and
-   * only when motion is allowed; `motion-reduce:hidden` guards it regardless.
-   * Default `false`.
+   * Play the one-shot reveal on the tile — the "match just landed" flourish
+   * (lively shopping list). Despite the name this is the whole reveal, not only
+   * the sweep: a translucent band crosses once (an overlay, so it works over the
+   * bare, sage or icon tile), AND — when `matched` is also true — the tile lifts
+   * its backdrop to sage for the window, then fades back. The lift reads even on a
+   * tile whose icon covers the square, because the pictograms leave margin and
+   * transparency around the artwork. The caller is responsible for holding this
+   * `true` only for the reveal window and only when motion is allowed;
+   * `motion-reduce:` guards every part regardless. Default `false`.
    */
   shimmer?: boolean;
   class?: string;

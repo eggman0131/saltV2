@@ -47,12 +47,25 @@
   // animates then either, `transition-colors` being `motion-reduce:transition-none`).
   const sageBare = $derived(matched && !renderable);
   const initial = $derived(name.trim().charAt(0).toUpperCase());
+
+  // ...but a tile that DOES render an icon still lights up for the duration of a
+  // reveal. Gating the sage on `!renderable` meant the "it found its home" moment
+  // was invisible in its most common form — an item matching an established canon,
+  // which by now nearly always has a generated icon — leaving only a sweep over an
+  // unchanged tile. `shimmer` is true solely for the reveal window, so this is a
+  // transient lift that fades back to `bg-icon-tile` via the tile's
+  // `transition-colors` (at `duration-reveal`, the #571 400ms tile crossfade —
+  // the pictograms leave their backdrop visible around and through the artwork,
+  // so the lift reads behind an icon too); the resting appearance of matched
+  // icons across the app is still untouched, which is what the note above is
+  // protecting.
+  const lit = $derived(sageBare || (matched && shimmer));
 </script>
 
 <span
   class={cn(
-    'relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded transition-colors motion-reduce:transition-none',
-    sageBare ? 'bg-secondary-container motion-reduce:bg-icon-tile' : 'bg-icon-tile',
+    'relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded transition-colors duration-reveal ease-standard motion-reduce:transition-none',
+    lit ? 'bg-secondary-container motion-reduce:bg-icon-tile' : 'bg-icon-tile',
     dimmed && 'opacity-40',
     className,
   )}
