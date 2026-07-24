@@ -428,24 +428,54 @@
  * addComponents). `@apply` runs natively in v4 CSS. ────────────────────────── */
 @layer components {
   /* ─ Button ───────────────────────────────────────────────────────────── */
-  /* `transition-colors` expanded to an explicit list so `transform` rides the
-   * same timing — that is what makes the press-in below a scale rather than a
-   * snap. (The dropped members of `transition-colors` — text-decoration-color,
-   * fill, stroke — are never animated on a button.) */
+  /* `transition-colors` expanded to an explicit list so `transform` rides along
+   * — that is what makes the press below a scale rather than a snap. (The
+   * dropped members of `transition-colors` — text-decoration-color, fill,
+   * stroke — are never animated on a button.) Written longhand rather than as
+   * `transition-[…] duration-*` utilities because the timing is PER PROPERTY:
+   * colour keeps the 120ms hover beat, while `transform` — the press — gets
+   * `--duration-base`. That is the release half of an asymmetric press; the
+   * press-in half is the `transition-duration: 0s` on the pressed rule below,
+   * so the button goes down the instant it is touched and eases back out. */
   .salt-button {
-    @apply inline-flex items-center justify-center gap-2 rounded font-medium transition-[color,background-color,border-color,transform] duration-fast ease-standard motion-reduce:transition-none disabled:pointer-events-none data-[disabled]:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded font-medium ease-standard disabled:pointer-events-none data-[disabled]:opacity-50;
+    transition-property: color, background-color, border-color, transform;
+    transition-duration:
+      var(--duration-fast), var(--duration-fast), var(--duration-fast), var(--duration-base);
   }
-  /* Press-in acknowledgement: a tap on any button answers with a brief scale.
-   * Written out here rather than pulled from the `salt-press-pulse` utility
-   * because `.salt-button` already owns its own `transition-*` — see that
-   * utility's note on why the reduced-motion reset cannot live at the call
-   * site. Disabled buttons are excluded: they have nothing to acknowledge. */
-  .salt-button:active:not(:disabled):not([data-disabled]) {
-    transform: scale(0.97);
+  /* Press acknowledgement: a tap on any button answers with a scale. Written
+   * out here rather than pulled from the `salt-press-pulse` utility because
+   * `.salt-button` already owns its own `transition-*`.
+   *
+   * Two selectors, one treatment: `:active` is the browser's own press, and
+   * `[data-pressed]` is Button.svelte holding that press on for a minimum beat
+   * (PRESS_FLOOR_MS) so a click too quick to see still reads as one.
+   *
+   * Excluded: disabled and loading buttons — neither has anything to
+   * acknowledge (§4.3). `[data-loading]` is NOT `[data-disabled]`; a loading
+   * button carries only the former, so it needs its own exclusion.
+   *
+   * The whole rule is gated on `no-preference` rather than reset afterwards by
+   * a `reduce` block: `:not()` carries the specificity of its argument, so a
+   * plain `.salt-button:active { transform: none }` reset would lose to this
+   * selector and the button would still move. A rule that never applies is the
+   * only reliable "does not move". Any pressed treatment that SHOULD survive
+   * reduced motion (a shade, say — colour is not movement) belongs outside
+   * this block. */
+  @media (prefers-reduced-motion: no-preference) {
+    .salt-button:active:not(:disabled):not([data-disabled]):not([data-loading]),
+    .salt-button[data-pressed]:not(:disabled):not([data-disabled]):not([data-loading]) {
+      transform: scale(0.94);
+      transition-duration: 0s;
+    }
   }
+  /* What `motion-reduce:transition-none` used to do from the @apply above. It
+   * has to be written out here instead: the utility expands to a nested media
+   * block INSIDE `.salt-button`, which would sit before the longhand
+   * `transition-property` above and lose to it. */
   @media (prefers-reduced-motion: reduce) {
-    .salt-button:active {
-      transform: none;
+    .salt-button {
+      transition-property: none;
     }
   }
   .salt-button--solid {
