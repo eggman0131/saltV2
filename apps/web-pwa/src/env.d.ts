@@ -20,6 +20,9 @@ interface ImportMetaEnv {
   // env / CI secret) — never committed or shipped in a deployed bundle.
   readonly VITE_FIREBASE_APPCHECK_SITE_KEY?: string;
   readonly VITE_FIREBASE_APPCHECK_DEBUG_TOKEN?: string;
+  // VAPID public key for web-push cook-timer notifications (issue #544). Public;
+  // per-environment distinct. Empty/absent disables the notifications toggle.
+  readonly VITE_VAPID_PUBLIC_KEY?: string;
 }
 
 interface ImportMeta {

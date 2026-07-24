@@ -99,6 +99,14 @@ export default defineConfig(({ mode }) => {
           clientsClaim: true,
           // Do not let the SW intercept cross-origin Firebase/Firestore traffic.
           navigateFallbackDenylist: [/^\/__\//],
+          // Cook-timer push handling (issue #544). Rather than migrate off
+          // generateSW to a hand-authored injectManifest SW — which would mean
+          // re-implementing the #141 deferred-reload / skipWaiting / clientsClaim
+          // flow by hand and risking that contract — we overlay the push +
+          // notificationclick listeners via importScripts. The generated SW still
+          // owns precaching + the entire #141 update flow, byte-for-byte; this
+          // classic script (served from public/) only adds the two listeners.
+          importScripts: ['push-sw.js'],
         },
         // No SW in dev — it interferes with HMR and the e2e Vite dev server.
         devOptions: {

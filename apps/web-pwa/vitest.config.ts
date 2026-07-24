@@ -10,6 +10,10 @@ const TEST_ENV = {
   VITE_FIREBASE_MESSAGING_SENDER_ID: '0',
   VITE_FIREBASE_APP_ID: 'test',
   VITE_USE_EMULATORS: 'false',
+  // A syntactically-valid VAPID public key so the push store reads as
+  // "configured" under test (issue #544). Not a real key — tests mock the send.
+  VITE_VAPID_PUBLIC_KEY:
+    'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8',
 };
 
 export default defineConfig({
