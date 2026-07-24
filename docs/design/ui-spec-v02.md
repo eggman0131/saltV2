@@ -704,6 +704,17 @@ Salt adopts the shadcn token scheme, emitted as CSS variables on `:root` and `.d
 - `ease-emphasized` (`cubic-bezier(0.3, 0, 0, 1)`)
 - `ease-decel` (`cubic-bezier(0, 0, 0, 1)`)
 
+**Choreography tokens.** The three durations above are single-beat; a multi-beat sequence gets its own named token rather than an arbitrary literal. Names are single words on purpose — `generate-tokens` emits `--duration-<word>` as `duration<Word>`, so a hyphenated name would produce an invalid identifier.
+
+- `duration-celebrate` (320ms) — the spring-pop of the check disc (check-off celebration)
+- `duration-linger` (440ms) — the beat a tinted checked row holds before it leaves
+- `duration-collapse` (320ms) — the checked row's collapse-out. `linger + collapse` is the total hold, kept in step with `CHECK_OFF_HOLD_MS` in `apps/web-pwa/src/lib/checkOffHold.svelte.ts`
+- `duration-shimmer` (700ms) — the one-shot sweep across a `CanonIcon` tile (match reveal, ui-spec-v04 §14.5). The JS reveal window that holds `shimmer` true — `REVEAL_SHIMMER_MS` (760ms) in `apps/web-pwa/src/lib/matchReveal.svelte.ts` — must **outlast** this so the one-shot finishes, and not by much (see ui-spec-v04 §14.5.3)
+- `duration-reveal` (400ms) — the tile's grey↔sage colour crossfade (match reveal, ui-spec-v04 §14.5)
+- `ease-spring` (`cubic-bezier(0.34, 1.56, 0.64, 1)`) — overshoots past 1 and settles back; the only non-monotonic ease here, used for the check disc
+
+Only `duration-fast`/`base`/`slow`/`reveal` are exposed as Tailwind `duration-*` utilities (v4's `duration-<n>` is number-only, so each named one is a static `@utility`); the rest are consumed as `var(--duration-*)` from `salt.css` animations.
+
 ### Elevation
 
 - `shadow-sm`, `shadow-md`, `shadow-lg`

@@ -51,6 +51,7 @@ export {
   CANON_ICON_HIDDEN,
   isCanonIconRenderable,
   hasLiveCanonMatch,
+  isResolvedMatchState,
 } from './canon/index.js';
 export type {
   FindClosestMatchResult,

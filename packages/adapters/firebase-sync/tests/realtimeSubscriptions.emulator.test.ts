@@ -10,7 +10,7 @@
  * Run via: pnpm test:emulator
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { initializeApp, deleteApp, getApps, type FirebaseApp } from 'firebase/app';
+import { initializeApp, deleteApp, getApp, getApps, type FirebaseApp } from 'firebase/app';
 import {
   initializeFirestore,
   connectFirestoreEmulator,
@@ -35,6 +35,11 @@ import {
   subscribeShoppingListsConfig,
   saveShoppingListsConfig,
 } from '../src/shoppingListsConfigSubscription.js';
+import {
+  subscribeCookSession,
+  saveCookSession,
+  deleteCookSession,
+} from '../src/cookSessionSubscription.js';
 import { clearFirestoreEmulator, resetDefaultApp, PROJECT_ID } from './emulatorHelpers.js';
 import type {
   CanonItem,
@@ -45,6 +50,7 @@ import type {
   ShoppingListItem,
   ShoppingListsConfig,
 } from '@salt/domain';
+import type { CookSessionDoc } from '@salt/domain/schemas';
 
 // Cross-client onSnapshot propagation tolerance. Generous to absorb cold-start
 // latency on CI's Dockerized emulator (the first subscription in each block and
@@ -489,6 +495,208 @@ describe('realtimeSubscriptions — Firestore emulator', () => {
 
       unsubscribe();
       expect(received.some((cfg) => cfg !== null && cfg.defaultListId === 'weekly')).toBe(true);
+    });
+  });
+
+  // Cook sessions (issue #558). The odd one out among these subscriptions in two
+  // ways, and both shape the tests:
+  //   * It is a SINGLE-DOCUMENT subscription (`onSnapshot(doc(...))`) on a
+  //     deterministic id, not a collection query, so the payload is one
+  //     `CookSessionDoc | null` rather than an array.
+  //   * It is owner-scoped. The cross-client "writer" app is a DIFFERENT
+  //     anonymous user, and firestore.rules pins `ownerUid` on create, so the
+  //     writer literally cannot author a session the default app is allowed to
+  //     read — the deny side of that is proven in firestoreRules.emulator.test.ts.
+  //     Here the round-trip is therefore same-client (subscribe + saveCookSession),
+  //     matching subscribeEquipmentManifest / subscribeShoppingListsConfig.
+  describe('subscribeCookSession', () => {
+    const RECIPE_ID = 'cook-recipe-1';
+
+    // The anonymous uid of the default app for THIS test — resetDefaultApp mints
+    // a fresh one per test, so it must be read inside the test, never hoisted.
+    function currentUid(): string {
+      const uid = getAuth(getApp()).currentUser?.uid;
+      if (!uid) throw new Error('default app is not signed in');
+      return uid;
+    }
+
+    // Newest non-null delivery. The subscription emits null when the doc goes
+    // away, so scan newest → oldest for the last real session rather than
+    // trusting any single index.
+    function latestSession(received: (CookSessionDoc | null)[]): CookSessionDoc | undefined {
+      for (let i = received.length - 1; i >= 0; i--) {
+        const s = received[i];
+        if (s) return s;
+      }
+      return undefined;
+    }
+
+    function makeSession(uid: string, overrides: Partial<CookSessionDoc> = {}): CookSessionDoc {
+      const now = new Date().toISOString();
+      return {
+        id: `${RECIPE_ID}_${uid}`,
+        schemaVersion: 1,
+        ownerUid: uid,
+        recipeId: RECIPE_ID,
+        recipeUpdatedAtAtStart: now,
+        checkedIngredientIds: [],
+        completedStepIds: [],
+        activeTimers: [],
+        createdAt: now,
+        updatedAt: now,
+        ...overrides,
+      };
+    }
+
+    async function seedSession(uid: string): Promise<CookSessionDoc> {
+      const session = makeSession(uid);
+      const result = await saveCookSession(session);
+      expect(result.kind).toBe('ok');
+      return session;
+    }
+
+    it('delivers an existing session to a fresh subscriber', async () => {
+      const uid = currentUid();
+      await seedSession(uid);
+
+      const received: (CookSessionDoc | null)[] = [];
+      const unsubscribe = subscribeCookSession(
+        `${RECIPE_ID}_${uid}`,
+        (s) => received.push(s),
+        () => {},
+      );
+
+      await waitFor(() => received.some((s) => s?.recipeId === RECIPE_ID), CONVERGENCE_MS);
+
+      unsubscribe();
+      const delivered = latestSession(received)!;
+      expect(delivered.id).toBe(`${RECIPE_ID}_${uid}`);
+      expect(delivered.ownerUid).toBe(uid);
+    });
+
+    it('delivers mise ticks saved onto the session', async () => {
+      const uid = currentUid();
+      const session = await seedSession(uid);
+
+      const received: (CookSessionDoc | null)[] = [];
+      const unsubscribe = subscribeCookSession(
+        `${RECIPE_ID}_${uid}`,
+        (s) => received.push(s),
+        () => {},
+      );
+      await waitFor(() => received.some((s) => s !== null), CONVERGENCE_MS);
+
+      // Whole-document write, exactly as the cook page persists a tick.
+      await saveCookSession({
+        ...session,
+        checkedIngredientIds: ['ing-1'],
+        updatedAt: new Date().toISOString(),
+      });
+
+      await waitFor(
+        () => received.some((s) => s?.checkedIngredientIds.includes('ing-1')),
+        CONVERGENCE_MS,
+      );
+
+      unsubscribe();
+      expect(latestSession(received)!.checkedIngredientIds).toEqual(['ing-1']);
+    });
+
+    it('stops callbacks after unsubscribe', async () => {
+      const uid = currentUid();
+      const session = await seedSession(uid);
+
+      const received: (CookSessionDoc | null)[] = [];
+      const unsubscribe = subscribeCookSession(
+        `${RECIPE_ID}_${uid}`,
+        (s) => received.push(s),
+        () => {},
+      );
+
+      await waitFor(() => received.length > 0, CONVERGENCE_MS);
+      const countBeforeUnsub = received.length;
+      unsubscribe();
+
+      await saveCookSession({ ...session, updatedAt: new Date().toISOString() });
+      await delay(500);
+
+      expect(received.length).toBe(countBeforeUnsub);
+    });
+
+    // ── Absence, on both sides of the bootstrap ───────────────────────────────
+    // The three cases below cover the path the cook page actually takes and the
+    // one that #558 found broken: it subscribes to the deterministic id BEFORE
+    // the session exists, then bootstraps it. That only works because the read
+    // rule tolerates `resource == null` — a rule that dereferences
+    // `resource.data` cannot be evaluated against an absent document, so
+    // Firestore denied the read and tore the listener down permanently, leaving
+    // the first cook of a recipe without a live subscription (and reporting a
+    // spurious permission-denied). These are the regression guard for that
+    // clause: if it is ever dropped from firestore.rules, all three fail with an
+    // onError instead of a snapshot.
+    it('delivers null when the session does not exist', async () => {
+      const received: (CookSessionDoc | null)[] = [];
+      const errors: unknown[] = [];
+      const unsubscribe = subscribeCookSession(
+        `${RECIPE_ID}_${currentUid()}`,
+        (s) => received.push(s),
+        (_err, raw) => errors.push(raw),
+      );
+
+      await waitFor(() => received.length > 0, CONVERGENCE_MS);
+
+      unsubscribe();
+      expect(received.some((r) => r === null)).toBe(true);
+      expect(errors).toEqual([]);
+    });
+
+    it('delivers a session created after the subscription attaches', async () => {
+      const uid = currentUid();
+      const received: (CookSessionDoc | null)[] = [];
+      const errors: unknown[] = [];
+      const unsubscribe = subscribeCookSession(
+        `${RECIPE_ID}_${uid}`,
+        (s) => received.push(s),
+        (_err, raw) => errors.push(raw),
+      );
+
+      // Subscribe first, THEN bootstrap — the cook page's order, and the one the
+      // owner-scoped rule used to make unserviceable.
+      await waitFor(() => received.length > 0, CONVERGENCE_MS);
+      await seedSession(uid);
+
+      await waitFor(() => received.some((s) => s?.recipeId === RECIPE_ID), CONVERGENCE_MS);
+
+      unsubscribe();
+      expect(latestSession(received)!.ownerUid).toBe(uid);
+      expect(errors).toEqual([]);
+    });
+
+    it('delivers null again after deleteCookSession', async () => {
+      const uid = currentUid();
+      await seedSession(uid);
+
+      const received: (CookSessionDoc | null)[] = [];
+      const errors: unknown[] = [];
+      const unsubscribe = subscribeCookSession(
+        `${RECIPE_ID}_${uid}`,
+        (s) => received.push(s),
+        (_err, raw) => errors.push(raw),
+      );
+      await waitFor(() => received.some((s) => s !== null), CONVERGENCE_MS);
+
+      const result = await deleteCookSession(`${RECIPE_ID}_${uid}`);
+      expect(result.kind).toBe('ok');
+
+      // Complete / Restart delete the doc; the subscription reports the absence
+      // as null and stays alive, so a Restart's fresh session lands on the same
+      // listener rather than needing a re-subscribe.
+      await waitFor(() => received[received.length - 1] === null, CONVERGENCE_MS);
+      await delay(1_000); // give a would-be teardown error time to arrive
+
+      unsubscribe();
+      expect(received[received.length - 1]).toBeNull();
+      expect(errors).toEqual([]);
     });
   });
 

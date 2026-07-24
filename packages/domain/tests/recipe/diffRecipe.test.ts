@@ -136,13 +136,61 @@ describe('diffRecipe', () => {
     expect(editDiff.ingredients.added).toEqual([]);
     expect(editDiff.ingredients.removed).toEqual([]);
 
-    // New id, new text → a genuinely new item (added), old one removed.
+    // New id, new text, and too dissimilar for the fuzzy pass (Jaccard 0) → a
+    // genuinely new item (added), old one removed — never a false "changed".
     const newBefore = withIngredients(recipe(), [newIngredient('i-1', 'salt')]);
     const newAfter = withIngredients(recipe(), [newIngredient('i-2', 'pepper')]);
     const newDiff = diffRecipe(newBefore, newAfter);
     expect(newDiff.ingredients.added).toEqual([{ id: 'i-2', rawText: 'pepper' }]);
     expect(newDiff.ingredients.removed).toEqual([{ id: 'i-1', rawText: 'salt' }]);
     expect(newDiff.ingredients.changed).toEqual([]);
+  });
+
+  it('pairs a reworded ingredient AND step with fresh ids (AI-flow style) as single changes', () => {
+    // The AI author flow mints a fresh crypto.randomUUID() for every step and for
+    // reworded ingredients, so a genuine reword changes BOTH id and content and
+    // matches on neither the id nor the exact-content pass. The fuzzy pass reunites
+    // them so each reads as one `old → new` edit, not a separate add + remove.
+    const before = withSteps(
+      withIngredients(recipe(), [newIngredient('i-old', '120ml hot water')]),
+      [newStep('s-old', 'Simmer the sauce for 10 minutes')],
+    );
+    const after = withSteps(withIngredients(recipe(), [newIngredient('i-new', '120ml water')]), [
+      newStep('s-new', 'Simmer the sauce for 15 minutes'),
+    ]);
+    const diff = diffRecipe(before, after);
+
+    expect(diff.ingredients.changed).toEqual([
+      { id: 'i-new', from: '120ml hot water', to: '120ml water' },
+    ]);
+    expect(diff.ingredients.added).toEqual([]);
+    expect(diff.ingredients.removed).toEqual([]);
+
+    expect(diff.steps.changed).toEqual([
+      {
+        id: 's-new',
+        position: 1,
+        text: {
+          from: 'Simmer the sauce for 10 minutes',
+          to: 'Simmer the sauce for 15 minutes',
+        },
+      },
+    ]);
+    expect(diff.steps.added).toEqual([]);
+    expect(diff.steps.removed).toEqual([]);
+  });
+
+  it('leaves a dissimilar fresh-id pair as add + remove (conservative threshold)', () => {
+    // Fresh ids on both sides, but the content is too dissimilar to be "the same
+    // item reworded": sharing a couple of words ("hot smoked", Jaccard 0.4) is not
+    // enough. A false "changed" here would tell the reviewer paprika became salmon,
+    // which is worse than an honest add + remove — so the pair is left unpaired.
+    const before = withIngredients(recipe(), [newIngredient('i-old', 'hot smoked paprika')]);
+    const after = withIngredients(recipe(), [newIngredient('i-new', 'hot smoked salmon fillet')]);
+    const diff = diffRecipe(before, after);
+    expect(diff.ingredients.added).toEqual([{ id: 'i-new', rawText: 'hot smoked salmon fillet' }]);
+    expect(diff.ingredients.removed).toEqual([{ id: 'i-old', rawText: 'hot smoked paprika' }]);
+    expect(diff.ingredients.changed).toEqual([]);
   });
 
   it('treats a new id with unchanged content as no change (rawText fallback)', () => {

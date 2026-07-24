@@ -32,6 +32,40 @@ describe('createMatchReveal — detecting the match landing', () => {
     expect(reveal.isRevealing('a')).toBe(true);
   });
 
+  it('reveals a pending → needs_approval landing (used-but-flagged is still a match)', () => {
+    // Regression: this was gated on `=== 'matched'` while `hasLiveCanonMatch` —
+    // which decides the row leaves the "Other" bucket — accepts needs_approval too.
+    // The row relocated to its aisle with no reveal at all, which on a real list is
+    // the majority of arrivals (9 of 48 items in a live emulator snapshot).
+    const reveal = createMatchReveal();
+
+    reveal.observe([item('a', 'pending')]);
+    expect(reveal.isRevealing('a')).toBe(false);
+
+    reveal.observe([item('a', 'needs_approval')]);
+    expect(reveal.isRevealing('a')).toBe(true);
+  });
+
+  it('does NOT re-reveal on needs_approval → matched (approval is not a new arrival)', () => {
+    // Both states are "resolved", so clearing the review flag later must not fire a
+    // second reveal on a row that has been sitting in its aisle for days.
+    const reveal = createMatchReveal();
+
+    reveal.observe([item('a', 'pending')]);
+    reveal.observe([item('a', 'needs_approval')]);
+    vi.advanceTimersByTime(REVEAL_SHIMMER_MS);
+    expect(reveal.isRevealing('a')).toBe(false);
+
+    reveal.observe([item('a', 'matched')]);
+    expect(reveal.isRevealing('a')).toBe(false);
+  });
+
+  it('does NOT reveal a first sighting that is already needs_approval', () => {
+    const reveal = createMatchReveal();
+    reveal.observe([item('a', 'needs_approval')]);
+    expect(reveal.isRevealing('a')).toBe(false);
+  });
+
   it('does NOT reveal a first sighting that is already matched (stream-in / load)', () => {
     const reveal = createMatchReveal();
 
@@ -45,13 +79,18 @@ describe('createMatchReveal — detecting the match landing', () => {
     expect(reveal.isRevealing('a')).toBe(false);
   });
 
-  it('reveals from any non-matched state (needs_approval → matched, failed → matched)', () => {
+  it('reveals from any UNRESOLVED state (failed → matched), but not from an already-resolved one', () => {
+    // `failed` is unresolved, so a late match landing on it is a genuine arrival.
+    // `needs_approval` is already resolved (the row is sitting in its aisle), so
+    // clearing the review flag is an approval, not an arrival — see the dedicated
+    // test above. This previously asserted the opposite, which is the assumption
+    // that hid the needs_approval reveal bug.
     const reveal = createMatchReveal();
 
     reveal.observe([item('a', 'needs_approval'), item('b', 'failed')]);
     reveal.observe([item('a', 'matched'), item('b', 'matched')]);
 
-    expect(reveal.isRevealing('a')).toBe(true);
+    expect(reveal.isRevealing('a')).toBe(false);
     expect(reveal.isRevealing('b')).toBe(true);
   });
 

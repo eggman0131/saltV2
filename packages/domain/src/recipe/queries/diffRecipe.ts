@@ -20,10 +20,12 @@ import type {
 //
 // Item identity (ingredients + steps): match by stable `id` first (the recipe
 // flow preserves ids for unedited items), then fall back to content equality
-// (`rawText`/`text`) for a still-unmatched pair. That fallback keeps a genuinely
-// unchanged item — whose id happened to change — from showing as a spurious
-// remove+add, while a REUSED id with different content reads as an edit. A pure
-// reorder with no content change matches on both passes and is therefore omitted.
+// (`rawText`/`text`) for a still-unmatched pair, then to a fuzzy content match
+// for the survivors. The exact-content fallback keeps a genuinely unchanged item
+// — whose id happened to change — from showing as a spurious remove+add, while a
+// REUSED id with different content reads as an edit. A pure reorder with no
+// content change matches on the id/content passes and is therefore omitted. The
+// fuzzy pass (below) reconciles a reworded item that changed BOTH id and content.
 
 interface Match<T> {
   existing: T;
@@ -34,6 +36,45 @@ interface MatchResult<T> {
   matched: Array<Match<T>>;
   added: T[];
   removed: T[];
+}
+
+// ── Fuzzy content matching (Pass 3) ──────────────────────────────────────────
+// A pure, deterministic word-set Jaccard similarity used to pair a reworded item
+// (fresh id AND changed content) with its predecessor. The AI author flow mints a
+// new `crypto.randomUUID()` for every step and for reworded ingredients, so a
+// genuine reword ("120ml hot water" → "120ml water") matches on neither id nor
+// exact content and would otherwise surface as remove+add. Jaccard over word sets
+// is chosen over edit distance because recipe rewording is word-level (words
+// inserted/removed/swapped), not character typos; word-set overlap is order-
+// independent, cheap, and needs no tuning knobs beyond the threshold.
+//
+// FUZZY_MATCH_THRESHOLD is deliberately high — this is an approval gate, so a
+// FALSE pairing (labelling a genuinely-new item and a genuinely-deleted item as
+// one edit) actively misleads the reviewer and is worse than leaving a reword as
+// add+remove. 0.5 means the pair shares at least as many words as it differs by:
+// "salt" vs "pepper" scores 0 (stays add+remove); "120ml hot water" vs "120ml
+// water" scores 0.67 (pairs as a change). Pinned by tests in diffRecipe.test.ts.
+const FUZZY_MATCH_THRESHOLD = 0.5;
+
+function tokenize(text: string): string[] {
+  return text
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean);
+}
+
+// Word-set Jaccard: |A ∩ B| / |A ∪ B|, in [0, 1]. An empty side scores 0 (never a
+// match — an all-punctuation or empty item can't be "clearly the same" as another).
+function jaccardSimilarity(a: string, b: string): number {
+  const aTokens = new Set(tokenize(a));
+  const bTokens = new Set(tokenize(b));
+  if (aTokens.size === 0 || bTokens.size === 0) return 0;
+  let intersection = 0;
+  for (const token of aTokens) {
+    if (bTokens.has(token)) intersection++;
+  }
+  const union = aTokens.size + bTokens.size - intersection;
+  return intersection / union;
 }
 
 // Match two lists by `id`, then reconcile the leftovers by a content key. Stable
@@ -59,7 +100,7 @@ function matchByIdThenContent<T extends { id: string }>(
     }
   }
 
-  // Fallback: pair remaining draft items with remaining existing items by content.
+  // Pass 2: pair remaining draft items with remaining existing items by exact content.
   const remainingByContent = new Map<string, T[]>();
   const unmatchedExisting = existing.filter((item) => !consumedExistingIds.has(item.id));
   for (const item of unmatchedExisting) {
@@ -69,7 +110,7 @@ function matchByIdThenContent<T extends { id: string }>(
     else remainingByContent.set(key, [item]);
   }
 
-  const added: T[] = [];
+  const leftoverDraft: T[] = [];
   const consumedExisting = new Set<T>();
   for (const draftItem of unmatchedDraft) {
     const bucket = remainingByContent.get(contentKey(draftItem));
@@ -78,11 +119,40 @@ function matchByIdThenContent<T extends { id: string }>(
       matched.push({ existing: existingItem, draft: draftItem });
       consumedExisting.add(existingItem);
     } else {
+      leftoverDraft.push(draftItem);
+    }
+  }
+
+  // Pass 3: fuzzy content match. A survivor here matched neither id (Pass 1) nor
+  // exact content (Pass 2) — the reworded-with-fresh-id case. Greedy and
+  // deterministic: each still-unpaired draft (in document order) takes the
+  // highest-Jaccard still-unpaired existing item, first index winning ties, but
+  // only if it clears FUZZY_MATCH_THRESHOLD. A pure reorder never reaches here
+  // (Pass 2 consumes it), so it cannot be resurrected as a spurious change.
+  const leftoverExisting = unmatchedExisting.filter((item) => !consumedExisting.has(item));
+  const added: T[] = [];
+  const fuzzyConsumed = new Set<T>();
+  for (const draftItem of leftoverDraft) {
+    const draftKey = contentKey(draftItem);
+    let bestCandidate: T | undefined;
+    let bestScore = -1;
+    for (const candidate of leftoverExisting) {
+      if (fuzzyConsumed.has(candidate)) continue;
+      const score = jaccardSimilarity(contentKey(candidate), draftKey);
+      if (score > bestScore) {
+        bestScore = score;
+        bestCandidate = candidate;
+      }
+    }
+    if (bestCandidate && bestScore >= FUZZY_MATCH_THRESHOLD) {
+      matched.push({ existing: bestCandidate, draft: draftItem });
+      fuzzyConsumed.add(bestCandidate);
+    } else {
       added.push(draftItem);
     }
   }
 
-  const removed = unmatchedExisting.filter((item) => !consumedExisting.has(item));
+  const removed = leftoverExisting.filter((item) => !fuzzyConsumed.has(item));
   return { matched, added, removed };
 }
 

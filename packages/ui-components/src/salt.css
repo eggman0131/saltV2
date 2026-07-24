@@ -200,6 +200,21 @@
   --duration-linger: 440ms;
   --duration-collapse: 320ms;
 
+  /* Match reveal (shopping list). `shimmer` is the one-shot sweep across the
+   * CanonIcon tile; `reveal` is the tile's grey→sage colour crossfade. Both are
+   * the #571 Treatment 2 values (700ms / 400ms), sized to the treatment's full
+   * choreography: a 300ms collapse out of "Other" plus a 380ms enter into the
+   * aisle (`ShoppingItemRow`'s collapse-out / rise-in transitions), ~680ms of
+   * travel for the sweep to sit under. An earlier build moved the row with a
+   * single 380ms crossfade and scaled the sweep down to 420ms to match; the
+   * crossfade never animated (its send/receive halves failed to pair), so that
+   * scaling was tuned against a move that did not exist — with the spec's real
+   * two-part move restored, the spec's 700ms is right again. Kept in step with
+   * REVEAL_SHIMMER_MS in apps/web-pwa/src/lib/matchReveal.svelte.ts, which must
+   * outlast the sweep for the one-shot to finish. */
+  --duration-shimmer: 700ms;
+  --duration-reveal: 400ms;
+
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
   --ease-emphasized: cubic-bezier(0.3, 0, 0, 1);
   --ease-decel: cubic-bezier(0, 0, 0, 1);
@@ -644,6 +659,11 @@
   transition-duration: var(--duration-slow);
   animation-duration: var(--duration-slow);
 }
+@utility duration-reveal {
+  --tw-duration: var(--duration-reveal);
+  transition-duration: var(--duration-reveal);
+  animation-duration: var(--duration-reveal);
+}
 /* v4's built-in (functional) duration utility registers --tw-duration as a
  * non-inherited @property; our static duration-* utilities don't trigger that
  * registration, so declare it explicitly. Preserves the baseline semantics: a
@@ -711,9 +731,10 @@
 }
 
 /* ── Match reveal (lively shopping list, Phase 3) ─────────────────────────────
- * A freshly-matched shopping row flies out of "Other" into its resolved aisle
- * (Svelte `crossfade`, wired on the row in the page — no CSS here) and its
- * CanonIcon tile lights up grey→sage with ONE shimmer sweep. This utility is
+ * A freshly-matched shopping row collapses out of "Other" and enters its
+ * resolved aisle (the collapse-out / rise-in transitions in ShoppingItemRow —
+ * no CSS here) and its CanonIcon tile lights up grey→sage
+ * (`--duration-reveal`) with ONE shimmer sweep. This utility is
  * that sweep: a single translucent band crossing the tile once
  * (animation-iteration-count 1), then gone — deliberately NOT the infinite
  * `salt-progress-indeterminate` loop. It is an absolutely-positioned overlay
@@ -726,11 +747,20 @@
 @utility salt-icon-shimmer {
   background-image: linear-gradient(
     100deg,
-    transparent 40%,
-    hsl(0 0% 100% / 0.55) 50%,
-    transparent 60%
+    transparent 30%,
+    hsl(0 0% 100% / 0.8) 50%,
+    transparent 70%
   );
-  animation: salt-icon-shimmer var(--duration-slow) var(--ease-standard) 1;
+  /* NO delay: the sweep starts with the pop and the move, so all three parts of the
+   * reveal begin on the same frame. Every delay tried here — `--duration-base`,
+   * then `--duration-fast` — bought a "follows the row" reading at the cost of a
+   * perceptible gap before the sweep, and the gap always won. Starting together is
+   * what makes it land as one movement.
+   *
+   * NB: if a delay is ever reintroduced, it MUST come with `backwards` fill —
+   * without it the band sits un-translated across the middle of the tile for the
+   * whole delay, which reads as a static white smear. No delay, no fill needed. */
+  animation: salt-icon-shimmer var(--duration-shimmer) var(--ease-standard) 1;
 }
 
 /* z-index utilities: v4 has no first-class z-index theme namespace, so the named

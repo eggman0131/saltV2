@@ -85,8 +85,8 @@ function librarianOutput() {
       },
     ],
     steps: [
-      { text: 'Boil the pasta.', timerMinutes: null, note: null },
-      { text: 'Crush the garlic.', timerMinutes: null, note: null },
+      { text: 'Boil the pasta.', timerMinutes: null, timerLabel: null, note: null },
+      { text: 'Crush the garlic.', timerMinutes: null, timerLabel: null, note: null },
     ],
     notes: null,
   };
@@ -338,6 +338,68 @@ describe('authorRecipe — edit-mode diff', () => {
     const feta = doc.ingredients[0]!.items.find((i) => i['rawText'] === '100g feta, crumbled')!;
     expect(feta['canonId']).toBe('canon-feta');
     expect(feta['matchState']).toBe('matched');
+  });
+});
+
+// ─── timer labels (#554) ─────────────────────────────────────────────────────────
+
+describe('authorRecipe — timer labels', () => {
+  beforeEach(() => {
+    mockParseFlow.mockResolvedValue([]);
+  });
+
+  it('maps timerLabel onto the assembled step timer description', async () => {
+    mockGenerate.mockResolvedValue({
+      output: {
+        ...librarianOutput(),
+        steps: [
+          { text: 'Simmer gently.', timerMinutes: 15, timerLabel: 'Simmer the sauce', note: null },
+          { text: 'Season to taste.', timerMinutes: null, timerLabel: null, note: null },
+        ],
+      },
+    });
+
+    const doc = (await (authorRecipeFlow as Function)({
+      messages: [],
+      existingTags: [],
+    })) as { steps: { timer: { durationMinutes: number; description: string | null } | null }[] };
+
+    expect(doc.steps[0]!.timer).toEqual({ durationMinutes: 15, description: 'Simmer the sauce' });
+    // No timer ⇒ no timer object at all (label is irrelevant without one).
+    expect(doc.steps[1]!.timer).toBeNull();
+  });
+
+  it('round-trips an existing timer label into the edit-mode prompt (revise no longer wipes it)', async () => {
+    mockGenerate.mockResolvedValue({ output: librarianOutput() });
+    mockParseFlow.mockResolvedValue([]);
+    // Label deliberately distinct from the step text, so finding it in the prompt
+    // proves the timer serialisation carried it — not the step text.
+    mockGet.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        ...baseRecipeDoc(),
+        steps: [
+          {
+            id: 's1',
+            text: 'Cook it right down.',
+            timer: { durationMinutes: 20, description: 'Reduce the sauce' },
+            note: null,
+          },
+        ],
+      }),
+    });
+
+    await (authorRecipeFlow as Function)({
+      messages: [
+        { id: 'm1', role: 'user', text: 'make it spicier', createdAt: '2026-06-27T00:00:00.000Z' },
+      ],
+      existingTags: [],
+      recipeId: 'r1',
+    });
+
+    const system = (mockGenerate.mock.calls[0]![0] as { system: string }).system;
+    expect(system).toContain('Reduce the sauce');
+    expect(system).toContain('20 min');
   });
 });
 

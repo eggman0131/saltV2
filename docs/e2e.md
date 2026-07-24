@@ -30,7 +30,8 @@ ports, and distinct named volumes, and **by design never run concurrently**:
 
 Both reuse the single settled image (`docker/test-emulators/Dockerfile` — `node:22` + Temurin 21
 JRE + pinned `firebase-tools`, with the Firestore/UI emulator jars baked in so a cold `up` never
-races a jar download) and the **single** test emulator config, `firebase.test.docker.json` at the
+races a jar download), now under one shared name (`salt-test-emulators:local` locally — see
+[Prebuilt image in CI](#prebuilt-image-in-ci)), and the **single** test emulator config, `firebase.test.docker.json` at the
 repo root. There is no `firebase.test.json` anymore — it was deleted once nothing host-runs the
 emulators (issue #84, Phase 2); `firebase.test.docker.json` is the single source of truth for the
 test port set, with `host: 0.0.0.0` on each emulator so the mapped container ports are reachable
@@ -168,17 +169,66 @@ Changing the ports means changing all three in lockstep.
 
 ## CI
 
-CI runs the two stacks as **separate, sequenced jobs** in
-[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) — never concurrently (issue #84):
+CI runs the two stacks as **separate jobs** in
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml), both gated behind the cheap `ci` job:
 
 1. **`vitest-integration`** — runs `pnpm test:emulator` (the isolated Vitest stack). No host Java,
    no Cloud Functions prebuild, no Playwright (Firestore+Auth-only stack; `scripts/test-emulator.mjs`
-   owns bring-up/teardown). It is the cheaper suite and runs first so it fails fast.
-2. **`e2e`** — `needs: vitest-integration`, so it only starts once the Vitest stack job has
-   finished (the two composed stacks are therefore never concurrent). `globalSetup` builds the CF
-   bundle, brings up the healthcheck-gated e2e stack, and spawns the `:5174` Vite server; `CI=true`
-   makes `globalTeardown` run `docker compose … down -v`. No host Java / firebase-emulator cache /
-   manual Vite step — the emulators are containerized (jars baked into the image).
+   owns bring-up/teardown).
+2. **`e2e`** — `globalSetup` builds the CF bundle, brings up the healthcheck-gated e2e stack, and
+   spawns the `:5174` Vite server; `CI=true` makes `globalTeardown` run `docker compose … down -v`.
+   No host Java / firebase-emulator cache / manual Vite step — the emulators are containerized
+   (jars baked into the image).
+
+The two run **concurrently in CI**, which is safe and not a violation of the issue #84
+non-concurrency rule: that rule is a SINGLE-HOST constraint (local dev runs both stacks on one
+machine). Each GitHub Actions job gets its own runner, so the stacks never share ports, volumes or
+Docker state — and they are structurally isolated anyway (distinct compose project + ports
+8082/9101 vs 8081/9100).
+
+Both jobs carry a `timeout-minutes` bound. Without one a wedged `up --wait` or a stalled package
+fetch sits on GitHub's 6-hour default: run 30087640130 burned 22+ minutes without reaching a single
+test before anyone noticed (issue #580).
+
+### Prebuilt image in CI
+
+The Dockerfile fetches a Temurin JRE from `packages.adoptium.net` and `firebase-tools` + the
+emulator jars from npm. Rebuilding it on every run put two third-party registries on the critical
+path of every CI run — and on 2026-07-24 `apt-get install temurin-21-jre` failed outright (exit
+100) and took the e2e job with it.
+
+So the image is built **once per Dockerfile change** by
+[`.github/workflows/emulator-image.yml`](../.github/workflows/emulator-image.yml) and published to
+`ghcr.io/<owner>/salt-test-emulators`. The tag is a content hash of the build inputs:
+
+```bash
+cat docker/test-emulators/Dockerfile docker/test-emulators/healthcheck.sh | sha256sum | cut -c1-16
+```
+
+Both heavy jobs pull that exact tag via the [`emulator-image`](../.github/actions/emulator-image/action.yml)
+composite action, which exports `SALT_EMULATOR_IMAGE`; the compose files resolve
+`image: ${SALT_EMULATOR_IMAGE:-salt-test-emulators:local}` to it.
+
+Two properties make this safe to trust:
+
+- **Content-addressed** — a changed Dockerfile asks for a tag that does not exist yet, so CI can
+  never silently run a stale published image against new build inputs.
+- **Best-effort** — every miss (unpublished tag, fork PR that cannot read the package, GHCR down)
+  falls through to `docker compose up` building the image locally, exactly as before. The pull is
+  an optimisation, never a dependency.
+
+A PR that edits the Dockerfile therefore builds locally (slower, correct); merging it republishes
+the image and the next run pulls again.
+
+Locally nothing changes: `SALT_EMULATOR_IMAGE` is unset, so both stacks share the
+`salt-test-emulators:local` tag and `globalSetup`'s `.image-build-hash` marker still drives
+rebuild-on-Dockerfile-change.
+
+The e2e job additionally caches `~/.npm` and sets `npm_config_prefer_offline`, because
+`globalSetup` builds the Cloud Functions deploy bundle with `npm install --prefix dist` (259
+packages) on every run — an install that took 8 minutes instead of 11 seconds on the same bad
+runner. The flag is scoped to that job on purpose: the deploy workflows must keep resolving version
+ranges against the live registry.
 
 There are no flaky `sleep`s anywhere in the gate — readiness is the container healthcheck
 (`up --wait`), and teardown is the deterministic `down -v` (in `globalTeardown` for e2e, in a

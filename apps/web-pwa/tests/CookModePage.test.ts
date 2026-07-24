@@ -502,6 +502,53 @@ describe('CookModePage — step timers', () => {
     expect(screen.getByTestId('cook-timer-chip-dismiss')).toHaveTextContent('Dismiss');
   });
 
+  it('leads the timer chip with the step timer label when present (#554)', async () => {
+    mockRecipes._set([
+      makeRecipe({
+        steps: [
+          { id: 'step-1', text: 'Soften the onions.', timer: null, note: null },
+          {
+            id: 'step-2',
+            text: 'Rest the sauce.',
+            timer: { durationMinutes: 5, description: 'Simmer the sauce' },
+            note: null,
+          },
+        ],
+      }),
+    ]);
+    mockCookSession._set(
+      makeCookSession({
+        activeTimers: [
+          { stepId: 'step-2', endsAt: new Date(Date.now() + 300_000).toISOString(), notify: true },
+        ],
+      }),
+    );
+    renderCookMode();
+
+    // The chip leads with the human label, not "Step 2"; the step number stays
+    // reachable as a tooltip so the step is still locatable.
+    const label = screen.getByTestId('cook-timer-chip-label');
+    expect(label).toHaveTextContent('Simmer the sauce');
+    expect(label).toHaveAttribute('title', 'Step 2');
+  });
+
+  it('falls back to Step N on the chip when the timer has no label (#554)', async () => {
+    mockCookSession._set(
+      makeCookSession({
+        activeTimers: [
+          { stepId: 'step-2', endsAt: new Date(Date.now() + 300_000).toISOString(), notify: true },
+        ],
+      }),
+    );
+    renderCookMode();
+
+    // Default recipe's step-2 timer has description: null → the fallback label,
+    // and no tooltip (nothing is being hidden behind the lead).
+    const label = screen.getByTestId('cook-timer-chip-label');
+    expect(label).toHaveTextContent('Step 2');
+    expect(label).not.toHaveAttribute('title');
+  });
+
   it('cancelling from the persistent bar takes the timer off the session', async () => {
     mockCookSession._set(
       makeCookSession({

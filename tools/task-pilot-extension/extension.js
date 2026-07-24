@@ -42,8 +42,10 @@ const SERVICE_META = {
 const FALLBACK_META = { icon: 'gear', color: 'charts.blue', url: null };
 
 // Every port the Salt dev stack can hold open, for the nuclear stop. Firebase
-// emulator suite + hub/logging/extensions, Genkit UI + telemetry, Vite.
-const NUKE_PORTS = [9099, 5001, 8080, 9199, 5002, 4000, 4400, 4500, 9150, 4001, 4033, 5173];
+// emulator suite + hub/logging/extensions, Genkit reflection + UI + telemetry, Vite.
+// 3100 is the Genkit reflection server (dev:genkit's Dev UI introspection channel);
+// include it so a full nuke leaves no Genkit process behind.
+const NUKE_PORTS = [9099, 5001, 8080, 9199, 5002, 4000, 4400, 4500, 9150, 3100, 4001, 4033, 5173];
 
 function getTaskLabel(task) {
   return task?.name || task?.definition?.label || 'Unnamed Task';

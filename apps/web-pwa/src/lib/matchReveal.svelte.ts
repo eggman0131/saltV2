@@ -1,3 +1,4 @@
+import { isResolvedMatchState } from '@salt/domain';
 import { prefersReducedMotion } from './reducedMotion.js';
 
 /**
@@ -41,12 +42,27 @@ export interface RevealableItem {
 
 /**
  * How long a freshly-matched id stays "revealing" (the shimmer prop true), in ms.
- * Must comfortably exceed the CSS sweep in salt.css (`salt-icon-shimmer`, driven
- * by `--duration-slow` = 260ms) so the one-shot animation completes before the
- * overlay unmounts; the surplus also covers the brief lag between the match
- * landing and the row arriving in its aisle (canon-into-local-map sync).
+ *
+ * This is the envelope for the WHOLE reveal, so it is the value that decides
+ * whether it reads as one gesture or two. It must clear the CSS sweep in salt.css
+ * (`salt-icon-shimmer`, undelayed = `--duration-shimmer` = 700ms, the #571 value)
+ * so the one-shot finishes before the overlay unmounts — but only just, because
+ * this prop ALSO holds the tile's sage lift (CanonIcon's `lit`), and the lift
+ * dropping is the last thing the eye sees. Any surplus here is DEAD AIR between
+ * the sweep ending and the colour falling away, and it reads as a separate
+ * trailing event — measured envelopes of 1200/700ms over a 420ms sweep left
+ * 660/160ms of it. Sweep + the margin below keeps the fade contiguous.
+ *
+ * The 60ms margin over the sweep is deliberate and is the floor — it absorbs timer
+ * jitter so the overlay never unmounts mid-animation. Do not trim it further, and
+ * if `--duration-shimmer` changes, move this with it.
+ *
+ * This window also gates the row's move transitions (`ShoppingItemRow`'s
+ * collapse-out / rise-in): an id in the revealing set is what marks an
+ * unmount/mount pair as a genuine Other→aisle match-move rather than a delete,
+ * check-off, or stream-in.
  */
-export const REVEAL_SHIMMER_MS = 900;
+export const REVEAL_SHIMMER_MS = 760;
 
 export function createMatchReveal(shimmerMs: number = REVEAL_SHIMMER_MS) {
   // Reassigned, never mutated — the Svelte 5 rune convention used elsewhere on
@@ -94,13 +110,20 @@ export function createMatchReveal(shimmerMs: number = REVEAL_SHIMMER_MS) {
         seen.add(item.id);
         const before = prev.get(item.id);
         prev.set(item.id, item.matchState);
-        // A genuine "match landed": watched as non-matched, now matched. A first
+        // A genuine "match landed": watched as unresolved, now RESOLVED. A first
         // sighting (before === undefined) is never a reveal.
+        //
+        // "Resolved" is the domain's own predicate, not `=== 'matched'`. It has to
+        // be: the row leaves the "Other" bucket the moment `hasLiveCanonMatch` says
+        // so, and that counts `needs_approval` too (used-but-flagged — the flag is a
+        // review queue, never a gate on use). Gating the reveal on the narrower
+        // `'matched'` meant every needs_approval item relocated to its aisle in total
+        // silence, which is the bulk of what a real list actually does.
         if (
           !reduce &&
           before !== undefined &&
-          before !== 'matched' &&
-          item.matchState === 'matched'
+          !isResolvedMatchState(before) &&
+          isResolvedMatchState(item.matchState)
         ) {
           fresh.push(item.id);
         }

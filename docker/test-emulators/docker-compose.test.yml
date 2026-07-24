@@ -26,6 +26,22 @@
 services:
   test-emulators:
     container_name: salt-test-emulators
+    # Explicit image name, shared with docker-compose.vitest.yml — both stacks
+    # build the SAME Dockerfile, so naming it once means one image instead of
+    # two compose-derived ones (test-emulators-test-emulators and
+    # salt-vitest-emulators-vitest-emulators).
+    #
+    # CI overrides SALT_EMULATOR_IMAGE with a GHCR reference tagged by a content
+    # hash of the build inputs (Dockerfile + healthcheck.sh) and pre-pulls it, so
+    # a run never re-fetches the Temurin JRE from packages.adoptium.net or
+    # firebase-tools from npm — the two network dependencies that took down the
+    # e2e job in issue #580. `image:` alongside `build:` keeps that a pure
+    # optimisation: compose uses the named image if it is present locally and
+    # BUILDS it (tagging the result with this name) if it is not, so a cache miss
+    # — a PR editing the Dockerfile before the merge publishes it — degrades to
+    # exactly today's behaviour. Because the CI tag is content-addressed, a
+    # changed Dockerfile can never silently run a stale published image.
+    image: ${SALT_EMULATOR_IMAGE:-salt-test-emulators:local}
     build:
       context: .
       dockerfile: Dockerfile
