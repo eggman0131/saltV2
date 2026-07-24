@@ -32,6 +32,12 @@ name: salt-vitest-emulators
 services:
   vitest-emulators:
     container_name: salt-vitest-emulators
+    # Same image as the e2e stack (same Dockerfile) — see the fuller note in
+    # docker-compose.test.yml. Sharing the name means one build, not two, and
+    # lets this job consume the same GHCR-published image via
+    # SALT_EMULATOR_IMAGE (issue #580). The stacks stay isolated by compose
+    # project / ports / volume, not by image.
+    image: ${SALT_EMULATOR_IMAGE:-salt-test-emulators:local}
     build:
       context: .
       dockerfile: Dockerfile
