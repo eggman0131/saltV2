@@ -194,6 +194,9 @@ export type { CookActiveTimerDoc, CookSessionDoc } from './cookSession.js';
 export { EmailOtpRequestSchema, EmailOtpVerifySchema } from './emailOtp.js';
 export type { EmailOtpRequest, EmailOtpVerify } from './emailOtp.js';
 
+export { PushSubscriptionSchema } from './pushSubscription.js';
+export type { PushSubscriptionDoc } from './pushSubscription.js';
+
 export { ChefChatInputSchema } from './chefChat.js';
 export type { ChefChatInput } from './chefChat.js';
 
