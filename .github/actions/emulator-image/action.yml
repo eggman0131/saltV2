@@ -1,0 +1,50 @@
+# Pulls the prebuilt test-emulator image published by
+# .github/workflows/emulator-image.yml, and exports SALT_EMULATOR_IMAGE so the
+# compose stacks (docker-compose.test.yml / docker-compose.vitest.yml) resolve
+# to it (issue #580).
+#
+# A composite action rather than copy-pasted shell because BOTH heavy jobs (e2e
+# and vitest-integration) need it, and the tag formula here must match the
+# publish workflow's byte for byte — one copy is one place to keep in sync.
+#
+# BEST-EFFORT BY CONSTRUCTION: every failure path (no such package yet, a fork
+# PR whose token cannot read it, GHCR down) exports the reference anyway and
+# lets `docker compose up` build the image locally, which is exactly the
+# pre-#580 behaviour. This action must never fail a job.
+name: Prebuilt emulator image
+description: Pull the content-addressed test-emulator image from GHCR, falling back to a local build.
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve and pull emulator image
+      shell: bash
+      env:
+        # Passed in from the caller's secrets — a composite action cannot read
+        # `secrets` itself, but GITHUB_TOKEN is exposed to the step env by the
+        # runner for same-repo workflows.
+        GITHUB_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+
+        # Must match .github/workflows/emulator-image.yml exactly.
+        tag=$(cat docker/test-emulators/Dockerfile docker/test-emulators/healthcheck.sh \
+          | sha256sum | cut -c1-16)
+        # GHCR rejects uppercase in the image path; the GitHub owner may contain it.
+        owner=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
+        ref="ghcr.io/${owner}/salt-test-emulators:${tag}"
+
+        # Exported unconditionally: on a miss compose builds the image and tags
+        # it with this name, so the reference is correct either way.
+        echo "SALT_EMULATOR_IMAGE=$ref" >> "$GITHUB_ENV"
+
+        if ! echo "$GITHUB_TOKEN" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin 2>/dev/null; then
+          echo "::notice::GHCR login unavailable — compose will build the emulator image locally."
+          exit 0
+        fi
+
+        if docker pull -q "$ref"; then
+          echo "::notice::Pulled prebuilt emulator image $ref"
+        else
+          echo "::notice::No published image for $ref (Dockerfile changed, or not published yet) — compose will build it locally."
+        fi

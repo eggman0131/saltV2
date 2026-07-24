@@ -184,9 +184,19 @@ jobs:
     runs-on: ubuntu-latest
     needs: [changes, ci]
     if: ${{ needs.changes.outputs.code == 'true' && needs.changes.outputs.uptodate == 'true' }}
+    # A healthy run is ~8 min. Without a bound a wedged `up --wait` or a stalled
+    # registry fetch sits on GitHub's 6-hour default (issue #580).
+    timeout-minutes: 25
+    # Job-level permissions REPLACE the workflow-level block, so contents must be
+    # restated. packages:read is for pulling the prebuilt emulator image.
+    permissions:
+      contents: read
+      packages: read
 
     steps:
       - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/emulator-image
 
       - uses: pnpm/action-setup@v6
         with:
@@ -220,9 +230,29 @@ jobs:
     # and for branches behind origin/main (see the `changes` job's uptodate gate).
     needs: [changes, ci]
     if: ${{ needs.changes.outputs.code == 'true' && needs.changes.outputs.uptodate == 'true' }}
+    # A healthy run is ~6 min. Without a bound a stalled registry fetch or a
+    # wedged `up --wait` sits on GitHub's 6-hour default — run 30087640130 ran
+    # 22+ minutes without reaching a single test (issue #580).
+    timeout-minutes: 30
+    # Job-level permissions REPLACE the workflow-level block, so contents must be
+    # restated. packages:read is for pulling the prebuilt emulator image.
+    permissions:
+      contents: read
+      packages: read
+    env:
+      # globalSetup builds the Cloud Functions deploy bundle, whose
+      # `npm install --prefix dist` fetches 259 packages on every run. With the
+      # ~/.npm cache restored below, prefer-offline serves them from disk instead
+      # of round-tripping the registry — that install took 8 MINUTES (vs 11s
+      # healthy) on run 30087640130. Set as a job env var rather than a flag in
+      # the shared `build` script on purpose: the deploy workflows must keep
+      # resolving version ranges against the live registry.
+      npm_config_prefer_offline: 'true'
 
     steps:
       - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/emulator-image
 
       - uses: pnpm/action-setup@v6
         with:
@@ -235,6 +265,19 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # setup-node's `cache: pnpm` covers the pnpm store, NOT ~/.npm — and the
+      # Cloud Functions deploy bundle is installed with npm (it must be: the
+      # generated dist/package.json is a plain manifest that Cloud Build installs
+      # the same way). Keyed on the source manifest because dist/package.json is
+      # derived from it by scripts/write-deploy-package.mjs.
+      - name: Cache npm registry cache (Cloud Functions deploy bundle)
+        uses: actions/cache@v6
+        with:
+          path: ~/.npm
+          key: npm-cf-bundle-${{ runner.os }}-${{ hashFiles('apps/cloud-functions/package.json') }}
+          restore-keys: |
+            npm-cf-bundle-${{ runner.os }}-
 
       - name: Cache Playwright browsers
         id: playwright-cache
