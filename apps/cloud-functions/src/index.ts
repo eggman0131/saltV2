@@ -376,3 +376,5 @@ export { regenerateCanonIcon } from './callables/regenerateCanonIcon.js';
 export { regenerateRecipeImage } from './callables/regenerateRecipeImage.js';
 export { setRecipeImageUpload } from './callables/setRecipeImageUpload.js';
 export { beforeMemberCreated } from './auth/beforeMemberCreated.js';
+export { requestEmailOtp } from './callables/requestEmailOtp.js';
+export { verifyEmailOtp } from './callables/verifyEmailOtp.js';

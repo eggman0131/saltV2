@@ -4,6 +4,7 @@ import {
   sendSignInLinkToEmail,
   isSignInWithEmailLink,
   signInWithEmailLink,
+  signInWithCustomToken,
   signOut as fbSignOut,
   onAuthStateChanged,
   type Auth,
@@ -13,6 +14,7 @@ import { getApp } from 'firebase/app';
 import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
 import type { AuthProvider, User, ErrorReportingPort } from '@salt/domain';
 import { setAuthTransitioning, isAuthTransitioning } from './authTransition.js';
+import { callRequestEmailOtp, callVerifyEmailOtp } from './emailOtpCallables.js';
 
 // Keyed to the Auth instance (not a module-global boolean) so a re-created
 // default app — as the emulator integration suite does per test, #319 — gets
@@ -61,6 +63,22 @@ function reportAuthFailure(
   errors?.report(rawError, domainError.kind);
 }
 
+// Map the OTP callable error codes to DomainError. A wrong/expired/absent code
+// (failed-precondition) or malformed input (invalid-argument) surfaces as
+// AuthError.expired so the login UI shows a "code incorrect or expired" message
+// rather than a network one; an off-allowlist email surfaces as forbidden.
+// Unexpected server failures already report themselves server-side, so these are
+// NOT re-reported here (they are expected user outcomes or plain network faults).
+function toOtpError(err: unknown): DomainError {
+  const code = (err as { code?: string } | null)?.code ?? '';
+  if (code === 'functions/permission-denied') return { kind: 'AuthError', reason: 'forbidden' };
+  if (code === 'functions/failed-precondition' || code === 'functions/invalid-argument') {
+    return { kind: 'AuthError', reason: 'expired' };
+  }
+  if (code === 'functions/unauthenticated') return { kind: 'AuthError', reason: 'unauthenticated' };
+  return { kind: 'NetworkError', reason: 'transient' };
+}
+
 export function createFirebaseAuth(errors: ErrorReportingPort | null = null): AuthProvider {
   const auth = getAuth(getApp());
 
@@ -94,6 +112,30 @@ export function createFirebaseAuth(errors: ErrorReportingPort | null = null): Au
         const domainError = toAuthError(err);
         reportAuthFailure(errors, err, domainError);
         return failure(domainError);
+      }
+    },
+
+    async requestEmailCode(email: string): Promise<ReadResult<void, DomainError>> {
+      try {
+        await callRequestEmailOtp(email);
+        return success(undefined);
+      } catch (err) {
+        // Only transport failures reject here; wrong-code lives on the verify
+        // call. Expected/network outcomes are not reported (see toOtpError).
+        return failure(toOtpError(err));
+      }
+    },
+
+    async signInWithEmailCode(email: string, code: string): Promise<ReadResult<User, DomainError>> {
+      try {
+        const token = await callVerifyEmailOtp(email, code);
+        // Custom-token sign-in writes auth state into the CURRENT container, so
+        // it completes inside a standalone iOS PWA (unlike the magic-link Safari
+        // hand-off).
+        const cred = await signInWithCustomToken(auth, token);
+        return success(toUser(cred.user));
+      } catch (err) {
+        return failure(toOtpError(err));
       }
     },
 

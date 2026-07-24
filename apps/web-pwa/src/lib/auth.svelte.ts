@@ -1,4 +1,5 @@
 import type { User } from '@salt/domain';
+import type { DomainError } from '@salt/shared-types';
 import { normaliseMemberEmail } from '@salt/domain';
 import { authProvider } from './firebase.js';
 import { identifyUser, identifyAnonymous } from './observability.js';
@@ -45,6 +46,11 @@ class AuthStore {
   // complete it (link opened on a different device/browser, or storage was
   // cleared). The login UI prompts for the email and calls completeWithEmail.
   needsEmail = $state(false);
+  // Email-OTP flow (issue #546): true once a 6-digit code has been emailed, so
+  // the login UI switches to the code-entry step. Held in-memory only — OTP
+  // completes in the same tab, so it needs no storage carve-out (unlike magic
+  // link's cross-tab pending email).
+  codeSent = $state(false);
   // The magic-link URL we're waiting to complete, captured before any history
   // rewrite so completeWithEmail can finish sign-in after the user re-enters.
   private pendingUrl: string | null = null;
@@ -123,6 +129,37 @@ class AuthStore {
     }
   }
 
+  // ── Email-OTP sign-in (issue #546) — an in-app alternative to magic link ──
+
+  // Ask the server to email a 6-digit code. Enumeration-safe on the server, so a
+  // success just means "if this email is a member, a code is on its way".
+  async requestCode(email: string): Promise<void> {
+    this.error = null;
+    const normalised = normaliseMemberEmail(email);
+    const result = await authProvider.requestEmailCode(normalised);
+    if (result.kind === 'ok') {
+      this.codeSent = true;
+    } else {
+      this.error = formatError(result.error);
+    }
+  }
+
+  // Verify the entered code. On success the auth-state observer updates `user`;
+  // on failure we surface a code-specific message (not the generic one).
+  async submitCode(email: string, code: string): Promise<void> {
+    this.error = null;
+    const result = await authProvider.signInWithEmailCode(normaliseMemberEmail(email), code);
+    if (result.kind !== 'ok') {
+      this.error = formatOtpError(result.error);
+    }
+  }
+
+  // Return to the "enter your email" step (change email / start over).
+  resetCode(): void {
+    this.codeSent = false;
+    this.error = null;
+  }
+
   async signOut(): Promise<void> {
     this.error = null;
     const result = await authProvider.signOut();
@@ -130,6 +167,19 @@ class AuthStore {
       this.error = formatError(result.error);
     }
   }
+}
+
+// OTP verify failures map to a code-specific message: a wrong/expired code
+// arrives as AuthError.expired, an off-allowlist email as AuthError.forbidden.
+function formatOtpError(err: DomainError): string {
+  if (err.kind === 'NetworkError') return 'Network error — please check your connection.';
+  if (err.kind === 'AuthError' && err.reason === 'forbidden') {
+    return 'This email address is not on the Salt member list. Ask an admin to add you.';
+  }
+  if (err.kind === 'AuthError' && err.reason === 'expired') {
+    return 'That code is incorrect or has expired. Request a new one.';
+  }
+  return 'Sign-in failed. Please try again.';
 }
 
 function formatError(err: { kind: string }): string {
