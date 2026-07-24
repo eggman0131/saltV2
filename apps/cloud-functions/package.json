@@ -15,6 +15,7 @@
     "test:emulator": "vitest run --config vitest.emulator.config.ts"
   },
   "devDependencies": {
+    "@types/web-push": "^3.6.4",
     "esbuild": "^0.28.1",
     "genkit-cli": "^1.40.0",
     "tsx": "^4.23.1"
@@ -30,6 +31,7 @@
     "firebase-functions": "^7.3.0",
     "genkit": "^1.40.0",
     "resend": "^4.0.0",
-    "sharp": "^0.35.3"
+    "sharp": "^0.35.3",
+    "web-push": "^3.6.7"
   }
 }

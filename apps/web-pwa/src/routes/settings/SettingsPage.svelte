@@ -10,10 +10,23 @@
     CardFooter,
     TextArea,
     Button,
+    Switch,
   } from '@salt/ui-components';
   import { auth } from '../../lib/auth.svelte.js';
   import { submitFeedback } from '../../lib/observability.js';
+  import { push } from '../../lib/push.svelte.js';
+  import { install } from '../../lib/install.svelte.js';
   import AddToHomeScreen from '../../components/AddToHomeScreen.svelte';
+
+  // Cook-timer notifications (issue #544). The toggle must run its permission
+  // request from this click (iOS requires a user gesture); the push store handles
+  // subscribe/unsubscribe + persistence and reflects the outcome back here.
+  async function onToggleNotifications(next: boolean): Promise<void> {
+    const uid = auth.user?.uid;
+    if (!uid) return;
+    if (next) await push.enable(uid);
+    else await push.disable(uid);
+  }
 
   // Build stamp injected at build time (vite.config.ts). The timestamp makes
   // every build distinct, so it doubles as the "did the PWA auto-update?" signal.
@@ -60,6 +73,46 @@
   </FormPage>
 
   <AddToHomeScreen />
+
+  <Card>
+    <CardHeader>
+      <CardTitle>Cook notifications</CardTitle>
+      <CardDescription>
+        Get a sound and a notification when a cook timer finishes — even when Salt is in the
+        background or closed.
+      </CardDescription>
+    </CardHeader>
+    <CardContent class="space-y-3">
+      {#if !push.supported}
+        <Text muted>This browser doesn't support notifications.</Text>
+      {:else if install.isIosSafari && !install.isStandalone}
+        <Text muted>
+          On iPhone or iPad, add Salt to your Home Screen first (see above) — notifications only
+          work in the installed app.
+        </Text>
+      {:else if !push.configured}
+        <Text muted>Notifications aren't configured for this environment yet.</Text>
+      {:else}
+        <div data-testid="settings-cook-notifications">
+          <Switch
+            checked={push.enabled}
+            disabled={push.busy}
+            onCheckedChange={onToggleNotifications}
+            label="Enable cook notifications"
+            description="Turning this on asks for notification permission on this device."
+          />
+        </div>
+        {#if push.permissionDenied}
+          <Text class="text-sm text-destructive">
+            Notifications are blocked for Salt in your browser or system settings — allow them
+            there, then try again.
+          </Text>
+        {:else if push.error}
+          <Text class="text-sm text-destructive">{push.error}</Text>
+        {/if}
+      {/if}
+    </CardContent>
+  </Card>
 
   <Card>
     <CardHeader>

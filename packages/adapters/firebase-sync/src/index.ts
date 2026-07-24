@@ -58,6 +58,7 @@ export {
   saveCookSession,
   deleteCookSession,
 } from './cookSessionSubscription.js';
+export { savePushSubscription, deletePushSubscription } from './pushSubscriptionSync.js';
 export { streamChefChat, callGenerateChatTitle } from './chatCallables.js';
 export { callAuthorRecipe } from './authorRecipeCallable.js';
 export {
