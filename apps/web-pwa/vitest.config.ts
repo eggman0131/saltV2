@@ -31,6 +31,21 @@ export default defineConfig({
   },
   test: {
     name: '@salt/web-pwa',
+    // Worker threads, not child processes (Vitest's default `forks`). Isolation
+    // is UNCHANGED — every test file still gets a fresh module registry; only the
+    // worker container differs. This suite's cost is almost entirely per-file
+    // worker spin-up, not test execution: a trivial test file costs ~1 CPU-second
+    // here while `tests` totals ~18s of a ~190 CPU-second full run. Paying a
+    // process fork per file was the dominant expense. Measured across all 8
+    // projects: ~193 → ~147 CPU-seconds, with `sys` alone halving (48s → 24s) —
+    // that delta IS the fork overhead. CI's runner is 4-core and this job is
+    // CPU-bound, so the saving lands as real wall-clock time.
+    //
+    // Set `pool: 'forks'` on a project that ever needs process-level isolation
+    // (`process.chdir`, a native addon that is not thread-safe) — per project,
+    // not globally, and never by reaching for `isolate: false`, which DOES leak
+    // module state between files and fails 3 files in this suite today.
+    pool: 'threads',
     environment: 'jsdom',
     include: ['tests/**/*.test.ts'],
     setupFiles: ['./tests/setup.ts'],

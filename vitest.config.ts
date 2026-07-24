@@ -2,6 +2,10 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
+    // Every project sets `pool: 'threads'` (see any project config for why).
+    // It is a PROJECT-level option — setting it in this root `test` block is
+    // silently ignored when `projects` is used, and `extends` here would re-root
+    // each project and break its `include` globs. So it lives in the 8 configs.
     projects: [
       'packages/shared-types/vitest.config.ts',
       'packages/domain/vitest.config.ts',
