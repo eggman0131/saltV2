@@ -126,9 +126,27 @@ service cloud.firestore {
     // The deterministic id (`${recipeId}_${uid}`) means each user has exactly one
     // session per recipe; the read/delete rule checks the authenticated user
     // against the existing doc's ownerUid.
+    //
+    // `resource == null` on read/delete is load-bearing, and the one place this
+    // diverges from chatSessions (issue #558). Because the id is deterministic,
+    // the cook page subscribes to `${recipeId}_${uid}` BEFORE the session exists
+    // and only then bootstraps it — and a rule that dereferences `resource.data`
+    // cannot be evaluated against an absent document (Null value error), so
+    // Firestore denied that read outright and tore the listener down for good:
+    // the first cook of a recipe ran with a dead subscription and reported a
+    // spurious permission-denied. The same applies to deleting an already-absent
+    // session (the deleted-recipe orphan cleanup). chatSessions needs no such
+    // clause because it is only ever read through a collection query filtered on
+    // ownerUid, never by a single id that may not exist yet.
+    //
+    // This grants nothing but absence: an absent doc has no data to leak, and the
+    // permit/deny split still tells a caller only whether an id is in use — which
+    // requires already knowing another member's uid (uids appear nowhere in the
+    // family-shared data model; members are keyed by email). Every session that
+    // actually exists stays owner-only on read, update and delete.
     match /cookSessions/{sessionId} {
       allow read, delete: if request.auth != null
-        && resource.data.ownerUid == request.auth.uid;
+        && (resource == null || resource.data.ownerUid == request.auth.uid);
       allow create: if request.auth != null
         && request.resource.data.ownerUid == request.auth.uid;
       allow update: if request.auth != null

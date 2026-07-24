@@ -475,3 +475,138 @@ describe.skipIf(!reachable)('firestore.rules — chatSessions ownerUid (issue #2
     await assertFails(getDoc(doc(db, 'chatSessions', 's1')));
   });
 });
+
+// cookSessions is the second (and only other) owner-scoped collection in an
+// otherwise entirely family-shared data model, and its rule is the ONLY thing
+// stopping one household member from reading another's in-progress cook. The
+// cook-mode e2e only ever runs as a single user, so it exercises the permit side
+// and never the deny side — that is the gap these cover (issue #558).
+//
+// The deterministic id (`${recipeId}_${uid}`) is a convention, not an
+// enforcement: the rules never parse the id, so every assertion here is about
+// the `ownerUid` FIELD. A doc id that embeds another user's uid buys no access,
+// and one that embeds your own buys none either if the field disagrees.
+describe.skipIf(!reachable)('firestore.rules — cookSessions ownerUid (issue #558)', () => {
+  let testEnv: RulesTestEnvironment;
+
+  beforeAll(async () => {
+    testEnv = await initializeTestEnvironment({
+      projectId: PROJECT_ID,
+      firestore: {
+        host: HOST,
+        port: PORT,
+        rules: readFileSync(RULES_PATH, 'utf8'),
+      },
+    });
+  });
+
+  afterAll(async () => {
+    await testEnv?.cleanup();
+  });
+
+  const session = (ownerUid: string, recipeId = 'recipe-1') => ({
+    id: `${recipeId}_${ownerUid}`,
+    schemaVersion: 1,
+    ownerUid,
+    recipeId,
+    recipeUpdatedAtAtStart: '2026-07-24T00:00:00.000Z',
+    checkedIngredientIds: [],
+    completedStepIds: [],
+    activeTimers: [],
+    createdAt: '2026-07-24T00:00:00.000Z',
+    updatedAt: '2026-07-24T00:00:00.000Z',
+  });
+
+  // uid-a's in-progress cook of recipe-1, seeded with rules disabled.
+  const A_SESSION = 'recipe-1_uid-a';
+
+  beforeEach(async () => {
+    await testEnv.clearFirestore();
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'cookSessions', A_SESSION), session('uid-a'));
+    });
+  });
+
+  function ownerDb() {
+    return testEnv.authenticatedContext('uid-a', { email: 'a@e.org' }).firestore();
+  }
+  function otherDb() {
+    return testEnv.authenticatedContext('uid-b', { email: 'b@e.org' }).firestore();
+  }
+
+  it('lets the owner create a session with their own uid', async () => {
+    const db = ownerDb();
+    await assertSucceeds(
+      setDoc(doc(db, 'cookSessions', 'recipe-2_uid-a'), session('uid-a', 'recipe-2')),
+    );
+  });
+
+  it('denies creating a session owned by someone else', async () => {
+    const db = ownerDb();
+    await assertFails(
+      setDoc(doc(db, 'cookSessions', 'recipe-2_uid-b'), session('uid-b', 'recipe-2')),
+    );
+  });
+
+  it('lets the owner read, update (keeping ownerUid), and delete their session', async () => {
+    const db = ownerDb();
+    await assertSucceeds(getDoc(doc(db, 'cookSessions', A_SESSION)));
+    await assertSucceeds(
+      updateDoc(doc(db, 'cookSessions', A_SESSION), { checkedIngredientIds: ['ing-1'] }),
+    );
+    await assertSucceeds(deleteDoc(doc(db, 'cookSessions', A_SESSION)));
+  });
+
+  // The owner must not be able to reassign ownerUid, which would plant a cook
+  // session in another user's list (the chatSessions #408 fix, mirrored here).
+  it('denies the owner reassigning ownerUid to another user', async () => {
+    const db = ownerDb();
+    await assertFails(updateDoc(doc(db, 'cookSessions', A_SESSION), { ownerUid: 'uid-b' }));
+  });
+
+  // The load-bearing assertion: a signed-in household member is NOT entitled to
+  // another member's cook session just by being signed in, unlike every
+  // family-shared collection in the app.
+  it("denies a non-owner from reading, updating or deleting another user's session", async () => {
+    const db = otherDb();
+    await assertFails(getDoc(doc(db, 'cookSessions', A_SESSION)));
+    await assertFails(updateDoc(doc(db, 'cookSessions', A_SESSION), { checkedIngredientIds: [] }));
+    await assertFails(deleteDoc(doc(db, 'cookSessions', A_SESSION)));
+  });
+
+  // A non-owner cannot take the doc over by overwriting it either: setDoc on an
+  // existing doc is an update, so the pinned-ownerUid clause rejects it whether
+  // the payload claims uid-a (fails the existing-owner check) or uid-b (fails
+  // the pin). Without this, "read is denied" would still leave a clobber open.
+  it("denies a non-owner from overwriting another user's session wholesale", async () => {
+    const db = otherDb();
+    await assertFails(setDoc(doc(db, 'cookSessions', A_SESSION), session('uid-b')));
+    await assertFails(setDoc(doc(db, 'cookSessions', A_SESSION), session('uid-a')));
+  });
+
+  // The `resource == null` clause (#558). The cook page subscribes to the
+  // deterministic id BEFORE bootstrapping the session, so a signed-in user must
+  // be able to read an id that holds nothing yet — without this the listener is
+  // denied and torn down permanently on every first cook. Absence carries no
+  // data, so this grants no access to anyone's session.
+  it('lets a signed-in user read a session id that does not exist yet', async () => {
+    await assertSucceeds(getDoc(doc(ownerDb(), 'cookSessions', 'recipe-9_uid-a')));
+    // Including one keyed to another user — there is nothing there to read, and
+    // the moment uid-b creates it the deny assertions above take over.
+    await assertSucceeds(getDoc(doc(otherDb(), 'cookSessions', 'recipe-9_uid-a')));
+  });
+
+  // Same clause on delete: the deleted-recipe orphan cleanup fires
+  // removeCookSession for an id that may never have been created.
+  it('lets a signed-in user delete a session id that does not exist yet', async () => {
+    await assertSucceeds(deleteDoc(doc(ownerDb(), 'cookSessions', 'recipe-9_uid-a')));
+  });
+
+  it('denies an unauthenticated caller on cookSessions', async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, 'cookSessions', A_SESSION)));
+    await assertFails(setDoc(doc(db, 'cookSessions', 'recipe-3_anon'), session('uid-a')));
+    // The absent-doc allowance is scoped to signed-in callers, not everyone.
+    await assertFails(getDoc(doc(db, 'cookSessions', 'recipe-9_uid-a')));
+  });
+});
