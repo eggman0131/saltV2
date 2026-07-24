@@ -13,6 +13,7 @@
   } from '@salt/ui-components';
   import { auth } from '../../lib/auth.svelte.js';
   import { submitFeedback } from '../../lib/observability.js';
+  import AddToHomeScreen from '../../components/AddToHomeScreen.svelte';
 
   // Build stamp injected at build time (vite.config.ts). The timestamp makes
   // every build distinct, so it doubles as the "did the PWA auto-update?" signal.
@@ -57,6 +58,8 @@
       <Text muted>Built: {builtAtLabel}</Text>
     </div>
   </FormPage>
+
+  <AddToHomeScreen />
 
   <Card>
     <CardHeader>
