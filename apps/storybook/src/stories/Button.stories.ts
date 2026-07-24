@@ -73,3 +73,37 @@ export const Icon: Story = { args: { size: 'icon', children: plusIcon } };
 
 // Full-width (salt-button--full): stretches to the container width.
 export const FullWidth: Story = { args: { fullWidth: true, children: label('Full width') } };
+
+// ── Pressed state (§8.1) ────────────────────────────────────────────────────
+// The press is two treatments at once: a `scale(0.94)` and a deepened fill,
+// both keyed off `.salt-button:active, .salt-button[data-pressed]` in salt.css.
+//
+// `:active` is not reachable from a story — no static render and no Chromatic
+// snapshot can hold a pointer down — so these stories force the OTHER half of
+// that selector pair. `data-pressed` is the attribute Button.svelte sets while
+// its JS press floor (PRESS_FLOOR_MS) holds a too-quick tap on; the component
+// spreads `{...rest}` onto the <button> AFTER its own `data-pressed`, so an arg
+// wins and the button renders permanently pressed. That makes this the only
+// documentation surface for the pressed look — and the only one Chromatic can
+// diff, since the real press cannot be captured.
+//
+// One per variant: the transform is shared, but each variant deepens its own
+// fill differently (see the pressed-fill block in salt.css), so a single story
+// would document one fifth of the treatment.
+const pressed = { 'data-pressed': '' } as const;
+
+export const Pressed: Story = {
+  args: { ...pressed, variant: 'solid', children: label('Pressed solid') },
+};
+export const PressedOutline: Story = {
+  args: { ...pressed, variant: 'outline', children: label('Pressed outline') },
+};
+export const PressedGhost: Story = {
+  args: { ...pressed, variant: 'ghost', children: label('Pressed ghost') },
+};
+export const PressedDestructive: Story = {
+  args: { ...pressed, variant: 'destructive', children: label('Pressed destructive') },
+};
+export const PressedLink: Story = {
+  args: { ...pressed, variant: 'link', children: label('Pressed link') },
+};

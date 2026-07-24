@@ -814,23 +814,54 @@
 }
 
 /* Press-in acknowledgement for controls that are not `.salt-button` (the
- * shopping check-off circle, the "Need it?" confirm/drop pair). Deliberately
- * declares NO transition: the call site owns that, and must include `transform`
- * in its `transition-[…]` list for the scale to ease rather than snap.
+ * shopping check-off circle, the "Need it?" confirm/drop pair). Same depth and
+ * same asymmetric beat as the button's own press (§8.1): straight down on
+ * touch, eased back out over `--duration-base`, so a tap here and a tap on a
+ * `.salt-button` read as the same control.
  *
- * The reduced-motion reset lives INSIDE the utility, against the repo's usual
- * "pair `motion-reduce:` inline at the call site" convention, because it has to:
- * the rule it must beat is `:active`-scoped (class + pseudo-class), and a
- * call-site `motion-reduce:` variant is a single class — it would lose the
- * cascade silently. Nothing else here needs the exception. */
+ * OWNERSHIP IS SPLIT, and the two pseudo-class scopes below are what makes the
+ * split work. The CALL SITE still says WHICH properties transition — it must
+ * keep `transform` in its `transition-[…]` list, or there is nothing for the
+ * scale to ride on — and it still owns its own colour beat. The UTILITY owns
+ * the press timing: `0s` in, `--duration-base` / `--ease-standard` out. It has
+ * to, because that timing is asymmetric and no call site can express it: they
+ * all say a flat `duration-fast`, which can only snap down and snap back the
+ * same way. Handing them a positional `transition-duration` is not available
+ * either — they list their properties in different orders (`color,transform`
+ * vs `color,background-color,transform`), so no one list of durations lines up
+ * with all of them.
+ *
+ * Both rules are scoped to a pseudo-class so they win on SPECIFICITY ((0,2,0)
+ * against `duration-fast` / `ease-standard`'s (0,1,0)) rather than on source
+ * order: Tailwind emits this utility well BEFORE those two, so an unscoped
+ * declaration here would silently lose. `:not(:active)` is the released state,
+ * and a transition is read off the state being ENTERED — so the release half
+ * has to live there rather than on the pressed rule.
+ *
+ * That release duration reaches every property the call site transitions, not
+ * `transform` alone; CSS gives no way to retime one member of a list you did
+ * not author. On these controls the others are colours, where 180ms in place of
+ * 120ms is not a difference anyone can see.
+ *
+ * Reduced motion: the press rule is GATED on `no-preference` rather than reset
+ * afterwards by a `reduce` block, matching `.salt-button`. The old reset did
+ * work — equal specificity, later in the sheet — but it worked only by source
+ * order, and a rule that never applies is the sturdier "does not move". The
+ * transitions need no `reduce` reset of their own: the release rule sets
+ * durations only and never resurrects a `transition-property`, so a call site's
+ * `motion-reduce:transition-none` still takes the whole transition away. */
 @utility salt-press-pulse {
-  &:active {
-    transform: scale(0.96);
-  }
-  @media (prefers-reduced-motion: reduce) {
+  @media (prefers-reduced-motion: no-preference) {
     &:active {
-      transform: none;
+      transform: scale(0.94);
+      /* Press-in: instant, no easing — down on the frame the finger lands. */
+      transition-duration: 0s;
     }
+  }
+  /* Release: the spring-back, and the only half of the press with timing. */
+  &:not(:active) {
+    transition-duration: var(--duration-base);
+    transition-timing-function: var(--ease-standard);
   }
 }
 
