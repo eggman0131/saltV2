@@ -15,10 +15,12 @@
 <script lang="ts">
   import { CanonIcon, Icon, RowSelectCheckbox, Spinner } from '@salt/ui-components';
   import type { ListSelection } from '@salt/ui-components';
-  import { resolveItemDisplayName, resolveProductForm } from '@salt/domain';
+  import { isResolvedMatchState, resolveItemDisplayName, resolveProductForm } from '@salt/domain';
   import type { ProductForm, ShoppingListItem } from '@salt/domain';
   import type { Snippet } from 'svelte';
   import type { TransitionConfig } from 'svelte/transition';
+  import { cubicOut } from 'svelte/easing';
+  import { prefersReducedMotion } from '../../lib/reducedMotion.js';
   import { titleCase } from '../../lib/titleCase.js';
   import { productForms } from '../../lib/productFormService.js';
   import { swipe } from '../../lib/swipe.svelte.js';
@@ -30,14 +32,6 @@
   interface CanonNameInfo {
     readonly name: string;
   }
-
-  // A crossfade half (send/receive) from the page's single `crossfade()` instance,
-  // or the instant no-op used where this row plays no reveal part. Typed loosely so
-  // both the deferred crossfade return and the eager no-op assign cleanly.
-  type RevealTransition = (
-    node: Element,
-    params: { key: string },
-  ) => TransitionConfig | (() => TransitionConfig);
 
   interface Props {
     item: ShoppingListItem;
@@ -55,14 +49,20 @@
      */
     revealing?: boolean;
     /**
-     * Which half of the Other→aisle match-reveal crossfade this row plays:
-     * `'send'` in the Other bucket, `'receive'` in a resolved aisle, `'none'`
-     * everywhere else (breakdown / checked / recipe / manual). The two functions
-     * come from the page's single `crossfade()` so send and receive can pair.
+     * Which half of the Other→aisle match-reveal move this row can play:
+     * `'send'` in the Other bucket (collapse-out on unmount), `'receive'` in a
+     * resolved aisle (rise-in on mount), `'none'` everywhere else (breakdown /
+     * checked / recipe / manual). The role only ARMS the transition — it fires
+     * solely when `isRevealing` says the id's match just landed.
      */
     revealRole?: 'send' | 'receive' | 'none';
-    revealSend?: RevealTransition;
-    revealReceive?: RevealTransition;
+    /**
+     * Live gate for the reveal transitions, read at transition start (a closure
+     * over the page's `createMatchReveal`, NOT the `revealing` prop: the
+     * collapsing "Other" copy is being destroyed, so its props are frozen at
+     * their pre-reveal values — only a function call can see the fresh set).
+     */
+    isRevealing?: (id: string) => boolean;
     selectionMode: boolean;
     selection: ListSelection;
     canonMap: ReadonlyMap<string, CanonNameInfo>;
@@ -84,8 +84,7 @@
     exiting = false,
     revealing = false,
     revealRole = 'none',
-    revealSend,
-    revealReceive,
+    isRevealing = () => false,
     selectionMode,
     selection,
     canonMap,
@@ -97,20 +96,72 @@
     onDelete,
   }: Props = $props();
 
-  // Instant no-op transition for rows that play no reveal part, so `out:`/`in:`
-  // can stay declared unconditionally on the root (Svelte has no way to omit a
-  // directive by condition) without ever animating a delete / check-off / stream.
-  const noReveal: RevealTransition = () => ({ duration: 0 });
-  // Only the Other row *sends* and only an aisle row *receives*; a matching
-  // send+receive pair for the same id in one flush is exactly the Other→aisle move
-  // (crossfade flies it). Any unpaired half falls back to the page's zero-duration
-  // fallback, so everything that is NOT a match reveal stays an instant snap.
-  const outReveal = $derived(revealRole === 'send' ? (revealSend ?? noReveal) : noReveal);
-  const inReveal = $derived(revealRole === 'receive' ? (revealReceive ?? noReveal) : noReveal);
+  // ─── Match-reveal move (#571 Treatment 2, lively list Phase 3) ───────────────
+  // When a row's canon match lands it leaves "Other" and arrives in its aisle —
+  // two different keyed `{#each}` blocks, so Svelte destroys one element and
+  // creates another. The treatment's move is exactly the spec's two halves: the
+  // Other copy COLLAPSES OUT (height/opacity, 300ms) while the aisle copy RISES
+  // IN (opacity 0→1, translateY -8→0, 380ms). No crossfade/FLIP pairing — the
+  // halves are independent, which is what the spec describes and what survives
+  // the two copies living in different containers.
+  //
+  // Both are gated at start-time by `isRevealing(item.id)`: the page marks the id
+  // (in `$effect.pre`, BEFORE this flush's DOM changes) only for a genuine
+  // unresolved→resolved landing. Every other unmount/mount of a row — delete,
+  // check-off, stream-in, aisle collapse, filter/sort switches, route change —
+  // sees the gate closed and stays today's instant snap (`duration: 0`).
+  //
+  // `|global` on both directives is required, not decorative: resolving the LAST
+  // "Other" item unmounts the whole Other section (its `{#if}` empties), and the
+  // first item matched into an aisle mounts a whole NEW aisle section — local
+  // transitions skip elements whose ancestor block is the thing being created or
+  // destroyed, which are precisely those two cases.
+  const REVEAL_OUT_MS = 300; // #571: Other row collapses out (height/opacity)
+  const REVEAL_IN_MS = 380; // #571: aisle row enters (fade + translateY(-8 → 0))
+
+  function collapseOut(node: Element): TransitionConfig {
+    if (revealRole !== 'send' || !isRevealing(item.id) || prefersReducedMotion()) {
+      return { duration: 0 };
+    }
+    const height = (node as HTMLElement).offsetHeight;
+    return {
+      duration: REVEAL_OUT_MS,
+      easing: cubicOut,
+      // The rows beneath close the gap smoothly: real height walks to 0 and the
+      // negative margin swallows the parent's `gap-1`, mirroring what
+      // `salt-row-collapse-out` does for the check-off outro.
+      css: (t, u) =>
+        `overflow: hidden; height: ${t * height}px; opacity: ${t}; ` +
+        `margin-bottom: calc(var(--spacing) * -${u});`,
+    };
+  }
+
+  function riseIn(node: Element): TransitionConfig {
+    void node;
+    if (revealRole !== 'receive' || !isRevealing(item.id) || prefersReducedMotion()) {
+      return { duration: 0 };
+    }
+    return {
+      // SEQUENCED after the collapse, not concurrent with it: #571's steps are
+      // "collapses out (300ms)" THEN "appears in its aisle (380ms)" — ~680ms of
+      // travel, which is what its 700ms shimmer is sized to sit under. Run
+      // together, the whole move was over in 380ms and read as too quick to see:
+      // the eye is on the Other row when the match lands, and by the time the
+      // fold registers the arrival has already finished. The delay gives the eye
+      // a path — fold away, space opens, drop in.
+      delay: REVEAL_OUT_MS,
+      duration: REVEAL_IN_MS,
+      easing: cubicOut,
+      css: (t, u) => `opacity: ${t}; transform: translateY(${-8 * u}px);`,
+    };
+  }
 
   // The item is matched to a canon — its bare tile reads sage, not grey. Real
-  // reactive state; observed, never written (Phase 3).
-  const matched = $derived(item.matchState === 'matched');
+  // reactive state; observed, never written (Phase 3). Uses the domain predicate
+  // so it agrees with `hasLiveCanonMatch`, which is what decides the row has left
+  // the "Other" bucket: `needs_approval` is resolved-and-flagged, so it must light
+  // up like any other match rather than relocate silently.
+  const matched = $derived(isResolvedMatchState(item.matchState));
 
   const isSelected = $derived(selection.isSelected(item.id));
   const amountStr = $derived(formatAmount(item.amount, item.unit));
@@ -294,8 +345,8 @@
 
 <div
   class="salt-row-collapse motion-reduce:transition-none {exiting ? 'salt-row-collapse-out' : ''}"
-  out:outReveal={{ key: item.id }}
-  in:inReveal={{ key: item.id }}
+  out:collapseOut|global
+  in:riseIn|global
 >
   <div class="min-h-0 overflow-hidden">
     {#if swipeEnabled}

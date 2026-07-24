@@ -124,13 +124,36 @@ A reusable **`<CanonIcon>`** in `@salt/ui-components`:
 
 ### `CanonIcon` props
 
-| Name        | Type                       | Default | Notes                                                                                                                            |
-| ----------- | -------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `thumbnail` | `string \| null`           | —       | The canon item's `thumbnail` field, tri-state: a real URL renders an `<img>`; `null` (no icon yet) or `"hidden"` show a bare tile |
-| `name`      | `string \| undefined`      | —       | Item name, used for the image `alt` text                                                                                         |
-| `size`      | `number`                   | `30`    | Tile (and icon) edge length in px                                                                                                |
-| `dimmed`    | `boolean`                  | `false` | Dim the icon — e.g. for checked shopping-list items                                                                              |
-| `class`     | `string \| undefined`      | —       | Merged onto the tile                                                                                                              |
+**The ratified spec is [`docs/design/ui-spec-v04.md` §14](design/ui-spec-v04.md)** — props table
+(§14.2), tri-state `thumbnail` contract (§14.3), cache-bust (§14.4), matched/reveal states
+(§14.5), tile styling (§14.6), testing requirements (§14.7). That is the single source of
+truth and the target of the component's provenance comment; do not restate the props here.
+This document covers the icon *pipeline* (generation, storage, house style) and the design
+rationale below.
+
+### Why the reveal is shaped the way it is
+
+`matched` and `shimmer` serve the shopping list's "it found its home" moment (issue
+#571, Treatment 2), but the component keeps them general. Two findings are worth keeping
+because they cost a rebuild each:
+
+- **The tile is one voice in a three-part choreography** owned by the shopping list: the
+  row's Other copy collapses out (300 ms) while its aisle copy rises in (380 ms), and the
+  sweep runs over both, `0–700`. All parts start on the same frame, and the caller's reveal
+  window closes just after the sweep. An earlier build moved the row with a single Svelte
+  `crossfade` and scaled the sweep down to 420 ms to fit it — measured, that crossfade never
+  animated (its receive half always fell back to a snap), so the scaling tracked a move that
+  did not exist. The spec's own two-part move is what ships, and the spec's 700 ms sweep is
+  sized for it.
+- **Any surplus in the reveal window is dead air.** The sage lift drops when the window
+  closes, and that drop is the last thing the eye sees, so a window much longer than the
+  sweep reads as a separate trailing event. Two rounds of "there's still a gap" were both
+  this. Keep the window just past the sweep — enough margin for timer jitter, no more.
+
+The sage lift applying to an **icon** tile (not just a bare one) for the duration of a reveal
+is what makes the moment visible in its most common form — an item matching an established
+canon, which by now nearly always has a generated icon. The backdrop reads behind an icon
+because the pictograms leave margin and transparency around the artwork.
 
 Consumers: `ShoppingListPage` rows (icon at row start, dimmed when checked; include
 `thumbnail` in the page's `canonMap`, which currently drops it); later, recipe
