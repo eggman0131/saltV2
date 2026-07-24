@@ -20,6 +20,8 @@ const meta = {
     name: 'Tinned tomatoes',
     size: 48,
     dimmed: false,
+    matched: false,
+    shimmer: false,
     showSizes: false,
   },
   argTypes: {
@@ -27,6 +29,8 @@ const meta = {
     name: { control: 'text' },
     size: { control: { type: 'number', min: 16, max: 96, step: 2 } },
     dimmed: { control: 'boolean' },
+    matched: { control: 'boolean' },
+    shimmer: { control: 'boolean' },
     showSizes: { control: 'boolean' },
   },
 } satisfies Meta<typeof CanonIconDemo>;
@@ -42,6 +46,11 @@ export const NoIcon: Story = { args: { thumbnail: null } };
 
 // User opted out (`"hidden"` sentinel) → bare tile.
 export const Hidden: Story = { args: { thumbnail: 'hidden' } };
+
+// Matched but no icon yet (the CF generates it asynchronously): the bare tile
+// reads sage with the item's initial — the "found its home" resting state. A
+// static, deterministic snapshot (the one-shot shimmer is not shown here).
+export const Matched: Story = { args: { thumbnail: null, matched: true } };
 
 // Dimmed — e.g. a checked-off shopping-list item.
 export const Dimmed: Story = { args: { thumbnail: TOMATO, dimmed: true } };

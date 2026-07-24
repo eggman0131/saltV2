@@ -70,6 +70,16 @@ if (typeof Element.prototype.setPointerCapture !== 'function') {
   };
 }
 
+// jsdom lays nothing out and so ships no `scrollIntoView`. Any component that keeps a
+// message list pinned to the bottom calls it unguarded from an $effect (the recipe
+// page's chat sidebar does), and an undefined method there throws inside the effect and
+// fails the render — an environment gap reported as a component bug. The stub is inert
+// by necessity: there is no scroll position in jsdom to move. Whether the list actually
+// scrolls is Playwright's job.
+if (typeof Element.prototype.scrollIntoView !== 'function') {
+  Element.prototype.scrollIntoView = function (): void {};
+}
+
 // `requestAnimationFrame`/`cancelAnimationFrame` are deliberately NOT stubbed here:
 // Vitest runs its jsdom environment with `pretendToBeVisual: true`, which already
 // provides both on a ~16ms real-time clock. The deck's spring integrator therefore

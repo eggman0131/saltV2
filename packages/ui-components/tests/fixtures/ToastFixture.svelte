@@ -17,6 +17,7 @@
     description = undefined as string | undefined,
     showAction = false,
     showClose = false,
+    showCountdown = false,
     onOpenChange,
   }: {
     open?: boolean;
@@ -27,13 +28,14 @@
     description?: string;
     showAction?: boolean;
     showClose?: boolean;
+    showCountdown?: boolean;
     onOpenChange?: (open: boolean) => void;
   } = $props();
 </script>
 
 <ToastProvider>
   <ToastViewport>
-    <Toast bind:open {defaultOpen} {duration} {variant} {onOpenChange}>
+    <Toast bind:open {defaultOpen} {duration} {variant} {showCountdown} {onOpenChange}>
       <ToastTitle>{title}</ToastTitle>
       {#if description}
         <ToastDescription>{description}</ToastDescription>

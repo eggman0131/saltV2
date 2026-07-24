@@ -10,12 +10,16 @@
     name = 'Tinned tomatoes',
     size = 48,
     dimmed = false,
+    matched = false,
+    shimmer = false,
     showSizes = false,
   }: {
     thumbnail?: string | null;
     name?: string;
     size?: number;
     dimmed?: boolean;
+    matched?: boolean;
+    shimmer?: boolean;
     showSizes?: boolean;
   } = $props();
 
@@ -26,11 +30,11 @@
   <div class="flex items-end gap-4">
     {#each sizes as s (s)}
       <div class="flex flex-col items-center gap-1.5">
-        <CanonIcon {thumbnail} {name} size={s} {dimmed} />
+        <CanonIcon {thumbnail} {name} size={s} {dimmed} {matched} {shimmer} />
         <span class="text-xs text-muted-foreground">{s}px</span>
       </div>
     {/each}
   </div>
 {:else}
-  <CanonIcon {thumbnail} {name} {size} {dimmed} />
+  <CanonIcon {thumbnail} {name} {size} {dimmed} {matched} {shimmer} />
 {/if}

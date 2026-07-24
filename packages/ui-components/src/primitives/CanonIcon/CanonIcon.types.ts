@@ -23,5 +23,26 @@ export type CanonIconProps = {
    * that widens to `undefined` under `exactOptionalPropertyTypes`.
    */
   version?: string | number | undefined;
+  /**
+   * The item this tile stands for is matched to a canon. Only changes the BARE
+   * tile (no renderable thumbnail): a matched-but-iconless tile tints sage
+   * (`--salt-secondary-container`) with the item's initial in
+   * `--salt-accent-foreground`, instead of the unmatched grey (`bg-icon-tile`) —
+   * the "found its home" resting state while the real icon generates. A tile that
+   * already renders an `<img>` is unaffected (its backdrop stays `bg-icon-tile`).
+   * The grey→sage change carries a `transition-colors` cross-fade, suppressed
+   * under reduced motion. Default `false` → today's grey bare tile, so every
+   * existing consumer that omits it is unchanged.
+   */
+  matched?: boolean;
+  /**
+   * Play the one-shot shimmer sweep across the tile — the "match just landed"
+   * flourish (lively shopping list). A single translucent band crosses once, then
+   * settles; it is an overlay, so it works over the bare, sage, or icon tile. The
+   * caller is responsible for holding this `true` only for the reveal window and
+   * only when motion is allowed; `motion-reduce:hidden` guards it regardless.
+   * Default `false`.
+   */
+  shimmer?: boolean;
   class?: string;
 };

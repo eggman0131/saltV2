@@ -7,34 +7,40 @@ import type { Recipe } from '@salt/domain';
 // — nothing to load — and whatever the user edits it to is what generates the next
 // image, and is what seeds the dialog the time after that.
 
-const { mockRecipes, mockCanonItems, mockIsLoading, mockDefaultListId, mockSessions } = vi.hoisted(
-  () => {
-    function makeStore<T>(initial: T) {
-      let value = initial;
-      const subs = new Set<(v: T) => void>();
-      return {
-        subscribe(fn: (v: T) => void) {
-          subs.add(fn);
-          fn(value);
-          return () => {
-            subs.delete(fn);
-          };
-        },
-        _set(v: T) {
-          value = v;
-          subs.forEach((fn) => fn(v));
-        },
-      };
-    }
+const {
+  mockRecipes,
+  mockCanonItems,
+  mockIsLoading,
+  mockDefaultListId,
+  mockSessions,
+  mockEquipment,
+} = vi.hoisted(() => {
+  function makeStore<T>(initial: T) {
+    let value = initial;
+    const subs = new Set<(v: T) => void>();
     return {
-      mockRecipes: makeStore<readonly Recipe[]>([]),
-      mockCanonItems: makeStore<readonly { id: string }[]>([]),
-      mockIsLoading: makeStore<boolean>(false),
-      mockDefaultListId: makeStore<string | null>('list-1'),
-      mockSessions: makeStore<readonly unknown[]>([]),
+      subscribe(fn: (v: T) => void) {
+        subs.add(fn);
+        fn(value);
+        return () => {
+          subs.delete(fn);
+        };
+      },
+      _set(v: T) {
+        value = v;
+        subs.forEach((fn) => fn(v));
+      },
     };
-  },
-);
+  }
+  return {
+    mockRecipes: makeStore<readonly Recipe[]>([]),
+    mockCanonItems: makeStore<readonly { id: string }[]>([]),
+    mockIsLoading: makeStore<boolean>(false),
+    mockDefaultListId: makeStore<string | null>('list-1'),
+    mockSessions: makeStore<readonly unknown[]>([]),
+    mockEquipment: makeStore<unknown>(null),
+  };
+});
 
 vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
 vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
@@ -49,6 +55,7 @@ vi.mock('../src/lib/chatService.js', () => ({
   createChatSession: vi.fn(),
   sendMessage: vi.fn(),
 }));
+vi.mock('../src/lib/equipmentService.js', () => ({ equipment: mockEquipment }));
 vi.mock('../src/lib/clipboardImage.js', () => ({
   clipboardImageReadSupported: () => false,
   readClipboardImage: vi.fn(),

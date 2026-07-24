@@ -1,4 +1,4 @@
-<!-- spec: SPEC.md §6 v0.3 -->
+<!-- spec: SPEC.md §6 v0.3.1 -->
 <script lang="ts">
   import { untrack } from 'svelte';
   import { cn } from '../../lib/cn';
@@ -14,6 +14,7 @@
     class: className,
     children,
     onOpenChange,
+    showCountdown = false,
   }: ToastProps = $props();
 
   if (open === undefined) open = untrack(() => defaultOpen);
@@ -35,6 +36,12 @@
   let remaining = untrack(() => duration);
   let timerStartTime: number | undefined;
 
+  // Countdown-ring drain state. The ring is a pure-CSS animation over `duration`;
+  // `paused` is the only reactive bit, flipped in lock-step with the dismiss timer
+  // so the visible drain freezes exactly when the timer does on hover. (Reactive
+  // because it drives an inline `animation-play-state`.)
+  let paused = $state(false);
+
   function clearTimer() {
     if (timerId !== undefined) {
       clearTimeout(timerId);
@@ -54,10 +61,12 @@
         remaining = Math.max(0, remaining - (Date.now() - timerStartTime));
       }
       timerStartTime = undefined;
+      paused = true;
     }
   }
 
   function resumeTimer() {
+    paused = false;
     if (remaining > 0) startTimer();
   }
 
@@ -103,11 +112,12 @@
 </script>
 
 {#if open}
+  {@const showRing = showCountdown && (duration ?? 0) > 0}
   <div
     role={variant === 'destructive' ? 'alert' : 'status'}
     aria-live={variant === 'destructive' ? 'assertive' : 'polite'}
     aria-atomic="true"
-    class={cn(toastVariants({ variant }), className)}
+    class={cn(toastVariants({ variant }), showRing && 'pl-12', className)}
     style={translateX > 0 ? `transform: translateX(${translateX}px)` : undefined}
     onmouseenter={pauseTimer}
     onmouseleave={resumeTimer}
@@ -115,6 +125,66 @@
     {onpointermove}
     {onpointerup}
   >
+    {#if showRing}
+      <!--
+        Leading drain ring. Kept OUT of flow (absolute) so the message/action
+        justify-between layout is byte-identical to a ring-less toast; the root's
+        `pl-12` opens the gutter it sits in. `currentColor` inherits the variant's
+        text colour — no new tokens (theme:check stays green). `motion-reduce:hidden`
+        drops the visible drain under reduced motion; the timer + Undo still work.
+      -->
+      <span
+        class="pointer-events-none absolute left-4 top-1/2 flex -translate-y-1/2 items-center justify-center motion-reduce:hidden"
+        data-testid="toast-countdown"
+        aria-hidden="true"
+      >
+        <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+          <circle
+            cx="10"
+            cy="10"
+            r="8"
+            stroke="currentColor"
+            stroke-opacity="0.2"
+            stroke-width="2"
+          />
+          <circle
+            class="toast-ring-progress"
+            cx="10"
+            cy="10"
+            r="8"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            pathLength="1"
+            transform="rotate(-90 10 10)"
+            style="animation-duration: {duration}ms; animation-play-state: {paused
+              ? 'paused'
+              : 'running'};"
+          />
+        </svg>
+      </span>
+    {/if}
     {@render children?.()}
   </div>
 {/if}
+
+<style>
+  /* Drain the ring from full to empty over `animation-duration` (set inline per
+     toast). `pathLength="1"` normalises the arc so dasharray/offset are unitless.
+     Svelte scopes both the keyframes and the animation-name reference below. */
+  @keyframes toast-ring-drain {
+    from {
+      stroke-dashoffset: 0;
+    }
+    to {
+      stroke-dashoffset: 1;
+    }
+  }
+
+  .toast-ring-progress {
+    stroke-dasharray: 1;
+    animation-name: toast-ring-drain;
+    animation-timing-function: linear;
+    animation-fill-mode: forwards;
+  }
+</style>
