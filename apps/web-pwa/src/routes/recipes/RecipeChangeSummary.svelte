@@ -165,14 +165,14 @@
             </h3>
             <ul class="flex flex-col gap-1">
               {#each diff.steps.added as step (step.id)}
-                <li>Added step {step.position}</li>
+                <li>Added: {step.text}</li>
               {/each}
               {#each diff.steps.removed as step (step.id)}
-                <li>Removed step {step.position}</li>
+                <li>Removed: {step.text}</li>
               {/each}
               {#each diff.steps.changed as step (step.id)}
                 {#if step.text}
-                  <li>Rewrote step {step.position}</li>
+                  <li>Step {step.position}: {step.text.from} → {step.text.to}</li>
                 {/if}
                 {#if step.timer}
                   <li>
