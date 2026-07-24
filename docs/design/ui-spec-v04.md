@@ -848,6 +848,23 @@ This section records deliberate interaction decisions for existing primitives th
 - The `SideNav` + `<main>` row keeps `flex flex-1 overflow-hidden`; `<main>` keeps `flex-1 overflow-y-auto`. Scrolling lives in `<main>`, not the root.
 - `<main>` retains its BottomNav-safe bottom padding (`pb-[calc(3.5rem_+_env(safe-area-inset-bottom))] lg:pb-0`) so content clears the fixed mobile `BottomNav` (see §13.2).
 
+## 13.4 Shopping row swipe — touch-only, page-local (no `SwipeableRow` primitive)
+
+**Constraint:** The horizontal swipe on a single shopping row (swipe right past **+78px** → check off; swipe left past **-78px** → delete via the undo snackbar; a short swipe springs back) is **touch-only** and lives **page-local** in `apps/web-pwa/src/routes/shopping/` (the Svelte action `apps/web-pwa/src/lib/swipe.svelte.ts` + the pure geometry `apps/web-pwa/src/lib/swipe.ts`). It is **not** a `@salt/ui-components` primitive.
+
+**Rationale:** No spec in the v0.2–v0.4 family defines a `SwipeableRow`, and ui-spec-v02 forbids implementing a primitive no spec defines (§1: "No invention beyond what is written here"). Shopping is the only surface that swipes, so promoting the gesture into `@salt/ui-components` would mean authoring a whole new primitive spec (a `ui-spec-v05.md`) to serve a single consumer. Until a **second** surface needs swipe, the page-local implementation in shopping is the canonical one for the repo; that second surface — not now — is the trigger to promote it (with the spec that entails). Touch-only because a mouse-drag competes with the row's buttons, which stay the primary action on desktop — every action a swipe performs (check, delete) also has an always-present button, so no functionality is lost where the gesture is absent.
+
+**Trade-off (explicit):** the gesture is unavailable to a mouse and under `prefers-reduced-motion: reduce`. This is deliberate — the buttons are the complete path; swipe is an enhancement layered only where a finger and full motion are both present.
+
+**Contract:**
+- **Coarse-pointer + touch gated.** The action no-ops unless `matchMedia('(pointer: coarse)')` matches **and** the pointer event's `pointerType === 'touch'`. On a desktop / fine pointer, rows are not draggable at all.
+- **Reduced motion → not draggable.** Under `prefers-reduced-motion: reduce` the action no-ops (falling back to today's instant, button-only behaviour — no transform, no haptic), mirroring the other four lively-list treatments' reduced-motion fallback.
+- **Thresholds are fixed:** `CHECK_THRESHOLD_PX = 78` (right) and `DELETE_THRESHOLD_PX = 78` (left); below threshold springs back. The release decision is pure arithmetic in `swipe.ts` (`resolveSwipe`) and is unit-tested without a DOM.
+- **`touch-action: pan-y`** on the draggable element so a vertical scroll survives a drag attempt; the drag is claimed only past a `DRAG_START_PX` slop once horizontal travel dominates vertical.
+- **Excluded row types.** Swipe is disabled on the breakdown-under-combined (`subordinate`) row, the product-form row, the "Need it?"/verify (`flagged`) row, in selection mode, and on a row mid check-off celebration (`exiting`). The combined row lives in `ShoppingListPage.svelte`, not `ShoppingItemRow.svelte`, so it is inherently excluded.
+- **Composes with, never replaces, Phases 1 & 3.** The `translateX` drag and the reveal-behind layers live on an **inner** element; the `salt-row-collapse` root of `ShoppingItemRow.svelte` (its collapse + crossfade directives) is never wrapped or transformed.
+- **Reveal-behind layers reuse existing tokens only:** the check (right) layer is `bg-secondary-container` (sage); the delete (left) layer is `bg-destructive`. No new `--salt-*` token — `pnpm theme:check` stays green. The layers are `pointer-events-none` so they never swallow a button tap.
+
 ---
 
 # 14. CanonIcon (primitive)

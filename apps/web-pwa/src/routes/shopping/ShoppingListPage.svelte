@@ -11,7 +11,6 @@
     ComboboxItem,
     Icon,
     ListPage,
-    RowSelectCheckbox,
     SelectAllCheckbox,
     Popover,
     PopoverContent,
@@ -28,17 +27,12 @@
     createListSelection,
   } from '@salt/ui-components';
   import { titleCase } from '../../lib/titleCase.js';
-  import { tick } from 'svelte';
+  import { onDestroy, tick } from 'svelte';
+  import { crossfade } from 'svelte/transition';
   import { push } from 'svelte-spa-router';
-  import {
-    groupItemsByAisle,
-    groupItemsByRecipe,
-    resolveItemDisplayName,
-    resolveProductForm,
-  } from '@salt/domain';
-  import type { ShoppingListItem, AisleRow, AmountSubtotal, ProductForm } from '@salt/domain';
+  import { groupItemsByAisle, groupItemsByRecipe, resolveItemDisplayName } from '@salt/domain';
+  import type { ShoppingListItem, AisleRow, AmountSubtotal } from '@salt/domain';
   import { canonItems, aisles } from '../../lib/canonService.js';
-  import { productForms } from '../../lib/productFormService.js';
   import {
     lists,
     defaultListId,
@@ -61,6 +55,12 @@
   } from '../../lib/shoppingListService.svelte.js';
   import { addToast } from '../../lib/toastStore.js';
   import { createDeferredDelete } from '../../lib/deferredDelete.svelte.js';
+  import { createCheckOffHold } from '../../lib/checkOffHold.svelte.js';
+  import { createMatchReveal } from '../../lib/matchReveal.svelte.js';
+  import { prefersReducedMotion } from '../../lib/reducedMotion.js';
+  import { tick as hapticTick } from '../../lib/haptics.js';
+  import ShoppingItemRow from './ShoppingItemRow.svelte';
+  import CheckOffButton from './CheckOffButton.svelte';
   import type { BulkAction } from '@salt/ui-components';
 
   interface Props {
@@ -121,7 +121,49 @@
   // nothing is ever deleted — no soft-delete / restore plumbing required.
   const deferredDelete = createDeferredDelete();
 
+  // The undo window for single-item shopping deletes (edit-sheet delete, "Need it?"
+  // drop, and — a later phase — swipe). Bulk delete and the other list pages keep
+  // the Toast component default (5000ms); only these single-item deletes shorten it.
+  const SINGLE_ITEM_DELETE_MS = 4200;
+
   const visibleItems = $derived(deferredDelete.visible($itemsForActiveList));
+
+  // ─── Check-off celebration hold ─────────────────────────────────────────────
+  // Checking an item off writes IMMEDIATELY; this only keeps the row's place
+  // while its outro plays (~760ms), then lets it fall into Checked. Purely
+  // component-local presentation state — nothing reaches Firestore or a schema.
+  const checkOffHold = createCheckOffHold();
+  onDestroy(() => checkOffHold.dispose());
+
+  // ─── Match reveal (lively list, Phase 3) ─────────────────────────────────────
+  // The single most-legible moment: a row's canon match lands, so it leaves the
+  // "Other" bucket and arrives in its resolved aisle, tile lighting grey→sage.
+  //
+  // The MOVE is a Svelte `crossfade`: the Other row *sends* and the arriving aisle
+  // row *receives*, and because they carry the same key in the same flush the row
+  // visibly flies across (and the grey Other tile cross-fades into the sage aisle
+  // tile en route). The `fallback` is a ZERO-duration no-op, so any half without a
+  // partner — a plain add, a delete, a check-off, a stream-in on load — stays an
+  // instant snap; only the genuine Other→aisle pairing animates. Reduced motion
+  // collapses the move to `duration: 0` (read live, so an OS toggle mid-session is
+  // honoured), i.e. today's snap. NOTE: the two aisle/Other `{#each}` blocks live
+  // in different containers, which `animate:flip` cannot cross — crossfade is the
+  // built-in that does, with no wrapper element (a wrapper would break Phase 1's
+  // `salt-row-collapse` gap-swallowing), so this stays additive to the check-off.
+  const REVEAL_MOVE_MS = 320;
+  const [sendReveal, receiveReveal] = crossfade({
+    duration: () => (prefersReducedMotion() ? 0 : REVEAL_MOVE_MS),
+    fallback: () => ({ duration: 0 }),
+  });
+
+  // The tile flourish (one-shot shimmer) is timed separately: this detector watches
+  // the real `matchState` for a pending→matched landing and parks the id as
+  // "revealing" for the sweep's length. Observed, never written — no schema field.
+  const matchReveal = createMatchReveal();
+  onDestroy(() => matchReveal.dispose());
+  $effect(() => {
+    matchReveal.observe(visibleItems);
+  });
 
   // ─── Sort mode ──────────────────────────────────────────────────────────────
   // Toggle between grouping by aisle (default) and by source recipe. Ephemeral —
@@ -146,6 +188,13 @@
   // items", never "filtered to none".
   const displayItems = $derived(verifyFilterActive ? verifyItems : visibleItems);
 
+  // Items as the GROUPING should see them: a row mid-celebration is handed on
+  // still reading `checked: false`, so it keeps rendering where it is instead of
+  // jumping to the Checked bucket the instant the optimistic write lands. Only
+  // the two grouping deriveds read this — `allItemIds`, the verify filter and
+  // `isEmpty` all stay on the real state, so selection and counts never lie.
+  const groupableItems = $derived(checkOffHold.holdInPlace(displayItems));
+
   // Declared here (ahead of the selection block below) because the `grouped`
   // derived reads it — a `$derived` is lazy at runtime, but the `let` must still
   // be declared before its first textual use.
@@ -154,11 +203,11 @@
   // Combine recipe-sourced rows in the normal view; in selection mode show every
   // item individually so bulk check/delete/move act per-item (issue #184).
   const grouped = $derived(
-    groupItemsByAisle(displayItems, canonMap, aisleInfos, { combine: !selectionMode }),
+    groupItemsByAisle(groupableItems, canonMap, aisleInfos, { combine: !selectionMode }),
   );
 
   // Recipe-sorted view: recipe groups, then a Manual section, then checked.
-  const recipeGrouped = $derived(groupItemsByRecipe(displayItems));
+  const recipeGrouped = $derived(groupItemsByRecipe(groupableItems));
 
   const allItemIds = $derived(displayItems.map((i) => i.id));
 
@@ -314,16 +363,37 @@
     editSheetOpen = false;
   }
 
-  async function handleEditDelete(): Promise<void> {
+  function handleEditDelete(): void {
     if (!editingItem) return;
-    editDeleteBusy = true;
-    const result = await removeItem(params.listId, editingItem.id);
-    editDeleteBusy = false;
-    if (result.kind !== 'ok') {
-      addToast('Failed to delete item.', 'destructive');
-    } else {
-      editSheetOpen = false;
-    }
+    // Route through the shared deferred-delete: hide the row now, close the sheet,
+    // and only commit the real `removeItem` if the "…removed" undo toast lapses.
+    const item = editingItem;
+    const name = displayLabel(item);
+    editSheetOpen = false;
+    deferredDelete.request(
+      [item.id],
+      async () => {
+        const result = await removeItem(params.listId, item.id);
+        if (result.kind !== 'ok') addToast('Failed to delete item.', 'destructive');
+      },
+      { message: `"${name}" removed`, duration: SINGLE_ITEM_DELETE_MS },
+    );
+  }
+
+  // Swipe-left delete on a single row (lively list, Phase 4). Deliberately the SAME
+  // path as handleEditDelete — the shared `deferredDelete` instance, the same undo
+  // message and window — so swipe adds a trigger, not a second delete mechanism. The
+  // commit is the existing `removeItem`; Undo cancels it and nothing is ever deleted.
+  function handleSwipeDelete(item: ShoppingListItem): void {
+    const name = displayLabel(item);
+    deferredDelete.request(
+      [item.id],
+      async () => {
+        const result = await removeItem(params.listId, item.id);
+        if (result.kind !== 'ok') addToast('Failed to delete item.', 'destructive');
+      },
+      { message: `"${name}" removed`, duration: SINGLE_ITEM_DELETE_MS },
+    );
   }
 
   // ─── Bulk actions ─────────────────────────────────────────────────────────────
@@ -418,11 +488,8 @@
   ]);
 
   // ─── Item row helper ──────────────────────────────────────────────────────────
-
-  function toSentenceCase(text: string): string {
-    if (!text) return text;
-    return text.charAt(0).toUpperCase() + text.slice(1);
-  }
+  // The row itself lives in `ShoppingItemRow.svelte`; what stays here is what the
+  // COMBINED row and the edit sheet also read.
 
   // Label a single row, title-cased: the user's / recipe's wording with the
   // amount, unit and context the parser lifts out removed ("1 whole chicken" →
@@ -433,29 +500,18 @@
     return titleCase(resolveItemDisplayName(item));
   }
 
-  // A resolved product-form row (issue #500): a recipe row bound to a buyable
-  // parent canon and carrying a whole parent-count (the recipeService 'count' unit
-  // sentinel), re-derived from the productForms snapshot rather than a stored id
-  // (additive / back-compat). null for manual rows, non-count rows, and any row
-  // whose form no longer resolves to its own canon — those keep today's label.
-  // When non-null the row reads "Lime ×3" with the original wording underneath.
-  function productFormFor(item: ShoppingListItem): ProductForm | null {
-    if (item.unit !== 'count' || !item.canonId || item.amount === undefined) return null;
-    const form = resolveProductForm(item.rawText, $productForms);
-    return form && form.parentCanonId === item.canonId ? form : null;
-  }
+  // ─── Check off ────────────────────────────────────────────────────────────────
+  // The write goes first, every time. `begin` only holds the row's PLACE while the
+  // outro plays — it never gates, delays or batches the write, so a tab close or
+  // an offline drop mid-animation still records the check.
 
-  function sourceLabel(item: ShoppingListItem): string {
-    const src = item.sources[0];
-    if (!src) return '';
-    if (src.kind === 'manual') return src.addedBy ? `Added by ${src.addedBy}` : '';
-    if (src.kind === 'recipe') return src.label ?? 'Recipe';
-    return '';
-  }
-
-  function formatAmount(amount: number | undefined, unit: string | undefined): string | null {
-    if (amount === undefined) return null;
-    return unit ? `${amount} ${unit}` : `${amount}`;
+  function handleToggleChecked(item: ShoppingListItem): void {
+    // Already leaving: a second tap on a row mid-outro would toggle it back on a
+    // stale `checked` (the held copy reads false by design), so ignore it.
+    if (checkOffHold.isExiting(item.id)) return;
+    // Unchecking stays instant — undoing a mistake shouldn't be ceremonial.
+    if (!item.checked) checkOffHold.begin([item.id]);
+    void toggleItemChecked(params.listId, item);
   }
 
   // ─── Verify flag (recipe-add "check" items, #185) ───────────────────────────
@@ -476,9 +532,33 @@
     await confirmItemsNeeded(params.listId, ids);
   }
 
-  async function handleDropNeeded(ids: readonly string[]): Promise<void> {
-    const result = await removeItems(params.listId, ids);
-    if (result.kind !== 'ok') addToast('Failed to remove item.', 'destructive');
+  // The row's displayed label for a given id (title-cased resolved name), resolved
+  // from the live list BEFORE the id is hidden so the toast reads the same name the
+  // row showed. Falls back to a neutral label if the id has already gone.
+  function itemDisplayName(id: string): string {
+    const item = $itemsForActiveList.find((i) => i.id === id);
+    return item ? displayLabel(item) : 'Item';
+  }
+
+  function handleDropNeeded(ids: readonly string[]): void {
+    if (ids.length === 0) return;
+    const list = [...ids];
+    // Single drop reads as the named item; a combined row's multiple flagged
+    // contributors drop as one "N items removed" (same "removed" verb as the single
+    // case), commit + undo as a unit.
+    const [first] = list;
+    const message =
+      list.length === 1 && first !== undefined
+        ? `"${itemDisplayName(first)}" removed`
+        : `${list.length} items removed`;
+    deferredDelete.request(
+      list,
+      async (delIds) => {
+        const result = await removeItems(params.listId, delIds);
+        if (result.kind !== 'ok') addToast('Failed to remove item.', 'destructive');
+      },
+      { message, duration: SINGLE_ITEM_DELETE_MS },
+    );
   }
 
   // ─── Aisle rows (combining, #184) ───────────────────────────────────────────
@@ -548,8 +628,13 @@
     return row.contributors.filter((c) => c.needsCheck).map((c) => c.id);
   }
 
-  async function markRowDone(row: AisleRow): Promise<void> {
-    await checkItems(params.listId, rowIds(row));
+  // A combined row checks off as the single unit it already renders as: every
+  // contributor is written at once and held at once, so the row celebrates once.
+  function markRowDone(row: AisleRow): void {
+    const ids = rowIds(row);
+    if (ids.some((id) => checkOffHold.isExiting(id))) return;
+    checkOffHold.begin(ids);
+    void checkItems(params.listId, ids);
   }
 
   function describeSource(src: ShoppingListItem['sources'][number]): string {
@@ -565,8 +650,12 @@
     <span class="text-xs font-medium text-amber-600 dark:text-amber-500">Need it?</span>
     <button
       type="button"
-      class="flex h-10 w-10 items-center justify-center rounded-md text-amber-600 hover:bg-amber-100 dark:text-amber-500 dark:hover:bg-amber-950"
-      onclick={() => void handleConfirmNeeded(ids)}
+      class="salt-press-pulse flex h-10 w-10 items-center justify-center rounded-md text-amber-600 transition-[color,background-color,transform] duration-fast ease-standard motion-reduce:transition-none hover:bg-amber-100 dark:text-amber-500 dark:hover:bg-amber-950"
+      onclick={() => {
+        // Confirming is the other tap that means "yes, this" — same tick as a check.
+        hapticTick();
+        void handleConfirmNeeded(ids);
+      }}
       aria-label="Confirm needed"
       data-testid="shopping-verify-confirm"
     >
@@ -574,7 +663,7 @@
     </button>
     <button
       type="button"
-      class="flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+      class="salt-press-pulse flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground transition-[color,background-color,transform] duration-fast ease-standard motion-reduce:transition-none hover:bg-accent hover:text-foreground"
       onclick={() => void handleDropNeeded(ids)}
       aria-label="Not needed, remove"
       data-testid="shopping-verify-drop"
@@ -584,115 +673,36 @@
   </div>
 {/snippet}
 
-{#snippet plainItemRow(
+<!-- Every plain row on the page renders through here, so the row component's
+     prop wiring lives in exactly one place. `exiting` is the only new argument:
+     the hold that keeps a just-checked row in this group while it celebrates. -->
+{#snippet itemRow(
   item: ShoppingListItem,
   pending: boolean,
   subordinate = false,
   showSource = false,
+  revealRole: 'send' | 'receive' | 'none' = 'none',
 )}
-  {@const isSelected = selection.isSelected(item.id)}
-  {@const amountStr = formatAmount(item.amount, item.unit)}
-  {@const productForm = productFormFor(item)}
-  <div
-    class="flex items-center gap-3 rounded border px-3 py-2 text-sm {subordinate
-      ? 'ml-[46px]'
-      : ''} {isSelected
-      ? 'border-ring ring-2 ring-ring bg-card'
-      : needsVerify(item)
-        ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/20'
-        : 'border-border bg-card'}"
-    data-testid="shopping-item-row"
-    data-item-id={item.id}
-  >
-    {#if selectionMode}
-      <RowSelectCheckbox {selection} id={item.id} label="" aria-label="Select {item.rawText}" />
-    {/if}
-    {#if !subordinate}
-      <CanonIcon
-        thumbnail={thumbnailFor(item.canonId)}
-        name={displayLabel(item)}
-        dimmed={item.checked}
-        size={34}
-        version={iconVersionFor(item.canonId)}
-      />
-    {/if}
-    <button
-      type="button"
-      class="flex-1 min-w-0 text-left"
-      onclick={() => openEditSheet(item)}
-      aria-label="Edit {item.rawText}"
-      data-testid="shopping-item-edit-btn"
-    >
-      {#if productForm && subordinate}
-        <!-- Under a combined parent the headline is inverted (issue #530): the
-             parent row already carries "Whole Chicken ×1", so repeating it here
-             adds nothing and reads as one chicken PER CHILD — the parent count is
-             an aggregate (Σwhole + MAXforms, see countSubtotal) that must never be
-             summed down the column. Lead with this contributor's own wording
-             instead; the recipe name follows from the showSource block below. -->
-        {#each item.originalText?.length ? item.originalText : [titleCase(resolveItemDisplayName(item))] as line (line)}
-          <span class="block truncate {item.checked ? 'line-through text-muted-foreground' : ''}"
-            >{line}</span
-          >
-        {/each}
-      {:else if productForm}
-        <span class="block truncate {item.checked ? 'line-through text-muted-foreground' : ''}">
-          {titleCase(canonMap.get(item.canonId ?? '')?.name ?? '')}{' '}<span
-            class="text-muted-foreground">×{item.amount}</span
-          >
-        </span>
-        <!-- The headline is the PARENT product ("Lime ×3"), which by design reads
-             nothing like the recipe's own line, so show the wording that justified
-             the count beneath it (issue #528). Sibling of the truncating label
-             span, and unclipped itself — a long line wraps rather than clips.
-             Items written before the field fall back to today's cleaned name. -->
-        {#if item.originalText?.length}
-          {#each item.originalText as line (line)}
-            <span
-              class="block text-xs text-muted-foreground"
-              data-testid="shopping-item-original-text">{line}</span
-            >
-          {/each}
-        {:else}
-          <span class="block text-xs text-muted-foreground truncate"
-            >{resolveItemDisplayName(item)}</span
-          >
-        {/if}
-      {:else}
-        <span class="block truncate {item.checked ? 'line-through text-muted-foreground' : ''}">
-          {displayLabel(item)}{#if amountStr}{' '}<span class="text-muted-foreground"
-              >({amountStr})</span
-            >{/if}
-        </span>
-      {/if}
-      {#if item.notes}
-        <span class="block text-xs text-muted-foreground truncate"
-          >{toSentenceCase(item.notes)}</span
-        >
-      {/if}
-      {#if showSource && sourceLabel(item)}
-        <span class="block text-xs text-muted-foreground/70">{sourceLabel(item)}</span>
-      {/if}
-    </button>
-    {#if pending}
-      <Spinner size={14} />
-    {/if}
-    {#if needsVerify(item)}
-      {@render verifyControls([item.id])}
-    {:else}
-      <button
-        type="button"
-        class="flex items-center justify-center p-1 rounded transition-colors {item.checked
-          ? 'text-green-500'
-          : 'text-muted-foreground hover:text-foreground'}"
-        onclick={() => void toggleItemChecked(params.listId, item)}
-        aria-label={item.checked ? 'Uncheck' : 'Mark as done'}
-        data-testid="shopping-item-check"
-      >
-        <Icon name={item.checked ? 'CircleCheck' : 'Circle'} size={18} />
-      </button>
-    {/if}
-  </div>
+  <ShoppingItemRow
+    {item}
+    {pending}
+    {subordinate}
+    {showSource}
+    exiting={checkOffHold.isExiting(item.id)}
+    revealing={matchReveal.isRevealing(item.id)}
+    {revealRole}
+    revealSend={sendReveal}
+    revealReceive={receiveReveal}
+    {selectionMode}
+    {selection}
+    {canonMap}
+    {thumbnailFor}
+    {iconVersionFor}
+    {verifyControls}
+    onEdit={openEditSheet}
+    onToggleChecked={handleToggleChecked}
+    onDelete={handleSwipeDelete}
+  />
 {/snippet}
 
 {#if !$isLoadingShoppingList && currentList === null}
@@ -910,64 +920,84 @@
                   {#if row.combined}
                     {@const expanded = expandedRows.has(row.key)}
                     {@const count = countSubtotal(row)}
+                    <!-- A combined row celebrates as ONE unit — which is how it
+                         already behaves — so the whole aggregate is exiting once
+                         any contributor is held. Same shell and same button as
+                         ShoppingItemRow; only the row's own content differs. -->
+                    {@const rowExiting = row.contributors.some((c) => checkOffHold.isExiting(c.id))}
                     <div
-                      class="flex items-center gap-3 rounded border px-3 py-2 text-sm {row.needsCheck
-                        ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/20'
-                        : 'border-border bg-card'}"
-                      data-testid="shopping-item-row"
-                      data-combined="true"
-                      data-canon-id={row.canonId}
+                      class="salt-row-collapse motion-reduce:transition-none {rowExiting
+                        ? 'salt-row-collapse-out'
+                        : ''}"
                     >
-                      <CanonIcon
-                        thumbnail={thumbnailFor(row.canonId)}
-                        name={rowLabel(row)}
-                        size={34}
-                        version={iconVersionFor(row.canonId)}
-                      />
-                      <button
-                        type="button"
-                        class="flex-1 min-w-0 text-left"
-                        onclick={() => toggleRow(row.key)}
-                        aria-expanded={expanded}
-                        data-testid="shopping-combined-toggle"
-                      >
-                        {#if count}
-                          <span class="block truncate">
-                            {rowLabel(row)}{' '}<span class="text-muted-foreground"
-                              >×{count.amount}</span
-                            >
-                          </span>
-                          <span
-                            class="flex items-center gap-1 text-xs text-muted-foreground/70 truncate"
-                          >
-                            <Icon name={expanded ? 'ChevronDown' : 'ChevronRight'} size={12} />
-                            {formWordings(row)}
-                          </span>
-                        {:else}
-                          <span class="block truncate">
-                            {rowLabel(row)}{#if amountStr}{' '}<span class="text-muted-foreground"
-                                >({amountStr})</span
-                              >{/if}
-                          </span>
-                          <span class="flex items-center gap-1 text-xs text-muted-foreground/70">
-                            <Icon name={expanded ? 'ChevronDown' : 'ChevronRight'} size={12} />
-                            {row.contributors.length} recipes
-                          </span>
-                        {/if}
-                      </button>
-                      {#if row.needsCheck}
-                        {@render verifyControls(flaggedIds(row))}
-                      {:else}
-                        <button
-                          type="button"
-                          class="flex items-center justify-center p-1 rounded text-muted-foreground transition-colors hover:text-foreground"
-                          onclick={() => void markRowDone(row)}
-                          aria-label="Mark as done"
-                          data-testid="shopping-item-check"
+                      <div class="min-h-0 overflow-hidden">
+                        <div
+                          class="flex items-center gap-3 rounded border px-3 py-2 text-sm transition-colors duration-base ease-standard motion-reduce:transition-none {rowExiting
+                            ? 'border-secondary/40 bg-secondary-container/50'
+                            : row.needsCheck
+                              ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/20'
+                              : 'border-border bg-card'}"
+                          data-testid="shopping-item-row"
+                          data-combined="true"
+                          data-canon-id={row.canonId}
                         >
-                          <Icon name="Circle" size={18} />
-                        </button>
-                      {/if}
+                          <!-- A combined row always stands for a matched canon, so its
+                               bare tile reads sage too (matched); it is never itself a
+                               reveal target, so no shimmer. -->
+                          <CanonIcon
+                            thumbnail={thumbnailFor(row.canonId)}
+                            name={rowLabel(row)}
+                            size={34}
+                            version={iconVersionFor(row.canonId)}
+                            matched={true}
+                          />
+                          <button
+                            type="button"
+                            class="flex-1 min-w-0 text-left"
+                            onclick={() => toggleRow(row.key)}
+                            aria-expanded={expanded}
+                            data-testid="shopping-combined-toggle"
+                          >
+                            {#if count}
+                              <span class="block truncate">
+                                {rowLabel(row)}{' '}<span class="text-muted-foreground"
+                                  >×{count.amount}</span
+                                >
+                              </span>
+                              <span
+                                class="flex items-center gap-1 text-xs text-muted-foreground/70 truncate"
+                              >
+                                <Icon name={expanded ? 'ChevronDown' : 'ChevronRight'} size={12} />
+                                {formWordings(row)}
+                              </span>
+                            {:else}
+                              <span class="block truncate">
+                                {rowLabel(row)}{#if amountStr}{' '}<span
+                                    class="text-muted-foreground">({amountStr})</span
+                                  >{/if}
+                              </span>
+                              <span
+                                class="flex items-center gap-1 text-xs text-muted-foreground/70"
+                              >
+                                <Icon name={expanded ? 'ChevronDown' : 'ChevronRight'} size={12} />
+                                {row.contributors.length} recipes
+                              </span>
+                            {/if}
+                          </button>
+                          {#if row.needsCheck && !rowExiting}
+                            {@render verifyControls(flaggedIds(row))}
+                          {:else}
+                            <!-- Always `checked={false}`: a combined row exists only
+                             while its contributors are unchecked — checking it
+                             dissolves it into the Checked section. -->
+                            <CheckOffButton
+                              checked={false}
+                              exiting={rowExiting}
+                              onSelect={() => markRowDone(row)}
+                            />
+                          {/if}
+                        </div>
+                      </div>
                     </div>
                     {#if expanded}
                       <div
@@ -975,14 +1005,17 @@
                         data-testid="shopping-combined-breakdown"
                       >
                         {#each row.contributors as c (c.id)}
-                          {@render plainItemRow(c, false, true, true)}
+                          {@render itemRow(c, false, true, true)}
                         {/each}
                       </div>
                     {/if}
                   {:else}
                     {@const single = row.contributors[0]}
                     {#if single}
-                      {@render plainItemRow(single, false, false, true)}
+                      <!-- A resolved aisle row *receives* the match-reveal crossfade:
+                           when this id was just sent from "Other" in the same flush,
+                           the row visibly flies in to land here. -->
+                      {@render itemRow(single, false, false, true, 'receive')}
                     {/if}
                   {/if}
                 {/each}
@@ -1001,8 +1034,12 @@
                   <Spinner size={12} />
                 {/if}
               </div>
+              <!-- An "Other" row *sends* the match-reveal crossfade: the instant its
+                   match lands it leaves this bucket and flies to the aisle row that
+                   receives the same id. Unpaired (a plain add or delete) → the
+                   zero-duration fallback, i.e. an instant snap. -->
               {#each grouped.other.contributors as { item, isPending } (item.id)}
-                {@render plainItemRow(item, isPending)}
+                {@render itemRow(item, isPending, false, false, 'send')}
               {/each}
             </section>
           {/if}
@@ -1018,7 +1055,7 @@
                 {recipeGroup.recipeName}
               </p>
               {#each recipeGroup.items as item (item.id)}
-                {@render plainItemRow(item, item.matchState === 'pending')}
+                {@render itemRow(item, item.matchState === 'pending')}
               {/each}
             </section>
           {/each}
@@ -1030,7 +1067,7 @@
                 Manual
               </p>
               {#each recipeGrouped.manual.items as item (item.id)}
-                {@render plainItemRow(item, item.matchState === 'pending')}
+                {@render itemRow(item, item.matchState === 'pending')}
               {/each}
             </section>
           {/if}
@@ -1061,7 +1098,7 @@
             </div>
             {#if !checkedCollapsed}
               {#each grouped.checked.contributors as item (item.id)}
-                {@render plainItemRow(item, false)}
+                {@render itemRow(item, false)}
               {/each}
             {/if}
           </section>

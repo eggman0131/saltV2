@@ -28,6 +28,88 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ── Brand webfonts (issue #568) ──────────────────────────────────────────────
+ * Epilogue (display) + Inter (body) — the dual-font strategy design.md is built
+ * on. Declared HERE, in the shared entry, so all three consumers (web-pwa,
+ * storybook, and anything else importing @salt/ui-components/styles.css) get
+ * them from one place. Before this block every one of the nine 'Epilogue' /
+ * 'Inter' declarations below silently fell back to the platform sans.
+ *
+ * Self-hosted, not a Google Fonts <link>: a cross-origin render-blocking request
+ * would break offline (the whole point of the PWA) and is a privacy wrinkle for a
+ * family app. The woff2 files come from the @fontsource-variable/* dependencies
+ * and are emitted to the app's own origin by Vite, which fingerprints them and —
+ * because vite.config.ts's Workbox globPatterns already covers woff2 — precaches
+ * them into the service worker, so type is correct on a cold offline start.
+ *
+ * Why hand-written @font-face instead of `@import '@fontsource-variable/inter'`:
+ *   • the family is declared as 'Inter' / 'Epilogue', not fontsource's
+ *     'Inter Variable' / 'Epilogue Variable', so the nine existing declarations
+ *     and docs/design/design.md stay verbatim-correct.
+ *   • fontsource's index.css pulls all 7 Inter + 3 Epilogue subsets (~298 KB).
+ *     Browsers would only ever fetch latin, but Workbox precaches by glob, so
+ *     every user would download cyrillic/greek/vietnamese up front. Naming the
+ *     latin + latin-ext files explicitly keeps the precache at ~202 KB.
+ * A glyph outside these ranges falls back per-glyph to the platform sans — the
+ * normal unicode-range behaviour, not a failure.
+ *
+ * The urls are RELATIVE (`../node_modules/…`), not bare specifiers: Vite resolves
+ * bare package names in `@import` but NOT inside `url()` — it emits
+ * "didn't resolve at build time, it will remain unchanged" and ships a dead 404
+ * reference. `../` is packages/ui-components/, where pnpm's isolated node_modules
+ * links a dependency declared in THIS package's package.json.
+ *
+ * ONE variable file per family covers the whole 400/500/600/700 range the scale
+ * uses (`font-weight: 100 900`). No italic file is shipped: the codebase has two
+ * incidental italic uses, and synthesized oblique is fine for both.
+ * `font-display: swap` — text is never invisible while a font loads. */
+@font-face {
+  font-family: 'Epilogue';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('../node_modules/@fontsource-variable/epilogue/files/epilogue-latin-wght-normal.woff2')
+    format('woff2-variations');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Epilogue';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('../node_modules/@fontsource-variable/epilogue/files/epilogue-latin-ext-wght-normal.woff2')
+    format('woff2-variations');
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2')
+    format('woff2-variations');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('../node_modules/@fontsource-variable/inter/files/inter-latin-ext-wght-normal.woff2')
+    format('woff2-variations');
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
+}
+
 /* ── Semantic color + radius tokens ──────────────────────────────────────────
  * `@theme inline` because these reference the `--salt-*` primitives (defined in
  * :root/.dark below), which flip in dark mode. Inlining keeps each utility
@@ -105,9 +187,25 @@
   --duration-base: 180ms;
   --duration-slow: 260ms;
 
+  /* Check-off celebration (shopping list). None of the three durations above
+   * fits a multi-beat choreography, so it gets its own: `celebrate` is the
+   * spring-pop of the check disc, `linger` the beat the tinted row holds before
+   * it leaves, `collapse` the collapse-out itself. linger + collapse is the
+   * TOTAL time a checked row is held in place — kept in step with
+   * CHECK_OFF_HOLD_MS in apps/web-pwa/src/lib/checkOffHold.svelte.ts, which owns
+   * the JS half of the same beat. Single-word names on purpose: generate-tokens
+   * emits `--duration-<word>` as `duration<Word>`, so a hyphenated name would
+   * produce an invalid identifier. */
+  --duration-celebrate: 320ms;
+  --duration-linger: 440ms;
+  --duration-collapse: 320ms;
+
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
   --ease-emphasized: cubic-bezier(0.3, 0, 0, 1);
   --ease-decel: cubic-bezier(0, 0, 0, 1);
+  /* Overshoots past 1 and settles back — the "springs into place" of the check
+   * disc. The only ease here that is not monotonic. */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 
   /* NO design-system `--spacing-*` scale here, on purpose. In v4's unified
    * sizing model the `--spacing-*` namespace shares its `xs/sm/md/lg/xl` keys
@@ -315,8 +413,25 @@
  * addComponents). `@apply` runs natively in v4 CSS. ────────────────────────── */
 @layer components {
   /* ─ Button ───────────────────────────────────────────────────────────── */
+  /* `transition-colors` expanded to an explicit list so `transform` rides the
+   * same timing — that is what makes the press-in below a scale rather than a
+   * snap. (The dropped members of `transition-colors` — text-decoration-color,
+   * fill, stroke — are never animated on a button.) */
   .salt-button {
-    @apply inline-flex items-center justify-center gap-2 rounded font-medium transition-colors duration-fast ease-standard motion-reduce:transition-none disabled:pointer-events-none data-[disabled]:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded font-medium transition-[color,background-color,border-color,transform] duration-fast ease-standard motion-reduce:transition-none disabled:pointer-events-none data-[disabled]:opacity-50;
+  }
+  /* Press-in acknowledgement: a tap on any button answers with a brief scale.
+   * Written out here rather than pulled from the `salt-press-pulse` utility
+   * because `.salt-button` already owns its own `transition-*` — see that
+   * utility's note on why the reduced-motion reset cannot live at the call
+   * site. Disabled buttons are excluded: they have nothing to acknowledge. */
+  .salt-button:active:not(:disabled):not([data-disabled]) {
+    transform: scale(0.97);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .salt-button:active {
+      transform: none;
+    }
   }
   .salt-button--solid {
     @apply border border-transparent bg-primary text-primary-foreground hover:bg-primary/90;
@@ -538,6 +653,86 @@
   inherits: false;
 }
 
+/* ── Check-off celebration (lively shopping list, Phase 1) ───────────────────
+ * A row checked off is held in its group for `--duration-linger` +
+ * `--duration-collapse` while its disc pops and the row tints, then collapses
+ * out. The HOLD is owned by the page (`createCheckOffHold`, web-pwa) and is
+ * skipped outright under reduced motion, so these classes are simply never
+ * applied then — the `motion-reduce:` pairings at the call sites are the second
+ * line of defence, not the only one. */
+
+/* The disc + check springing into place. Applied to the disc wrapper, so the
+ * check inside scales with it. Pair with `motion-reduce:animate-none`. */
+@utility salt-check-pop {
+  animation: salt-check-pop var(--duration-celebrate) var(--ease-spring) both;
+}
+
+/* Collapse shell for a list row: a 1fr→0fr grid, which (unlike max-height) walks
+ * the row's REAL height down, so the rows beneath it close the gap smoothly
+ * whatever the row's content height. The row itself goes inside a
+ * `min-h-0 overflow-hidden` child. `-collapse-out` is the end state; the beat
+ * before it starts is the transition-delay, so one class toggle plays the whole
+ * outro. Pair with `motion-reduce:transition-none`. */
+@utility salt-row-collapse {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition:
+    grid-template-rows var(--duration-collapse) var(--ease-standard) var(--duration-linger),
+    opacity var(--duration-collapse) var(--ease-standard) var(--duration-linger),
+    margin-bottom var(--duration-collapse) var(--ease-standard) var(--duration-linger);
+}
+@utility salt-row-collapse-out {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  /* A collapsed row still contributes its parent's `gap-1`; swallow it so the
+   * group closes up completely instead of leaving a 4px ghost. */
+  margin-bottom: calc(var(--spacing) * -1);
+}
+
+/* Press-in acknowledgement for controls that are not `.salt-button` (the
+ * shopping check-off circle, the "Need it?" confirm/drop pair). Deliberately
+ * declares NO transition: the call site owns that, and must include `transform`
+ * in its `transition-[…]` list for the scale to ease rather than snap.
+ *
+ * The reduced-motion reset lives INSIDE the utility, against the repo's usual
+ * "pair `motion-reduce:` inline at the call site" convention, because it has to:
+ * the rule it must beat is `:active`-scoped (class + pseudo-class), and a
+ * call-site `motion-reduce:` variant is a single class — it would lose the
+ * cascade silently. Nothing else here needs the exception. */
+@utility salt-press-pulse {
+  &:active {
+    transform: scale(0.96);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    &:active {
+      transform: none;
+    }
+  }
+}
+
+/* ── Match reveal (lively shopping list, Phase 3) ─────────────────────────────
+ * A freshly-matched shopping row flies out of "Other" into its resolved aisle
+ * (Svelte `crossfade`, wired on the row in the page — no CSS here) and its
+ * CanonIcon tile lights up grey→sage with ONE shimmer sweep. This utility is
+ * that sweep: a single translucent band crossing the tile once
+ * (animation-iteration-count 1), then gone — deliberately NOT the infinite
+ * `salt-progress-indeterminate` loop. It is an absolutely-positioned overlay
+ * inside the tile's `overflow-hidden` box; the band is a `currentColor`-neutral
+ * translucent-white gradient (no new colour token), so it reads the same over the
+ * grey, sage, or icon tile beneath it. Driven by CanonIcon's `shimmer` prop,
+ * which the page holds true only for the reveal window (createMatchReveal). The
+ * whole reveal is skipped under reduced motion (the prop never goes true), and
+ * `motion-reduce:hidden` at the call site is the second line of defence. */
+@utility salt-icon-shimmer {
+  background-image: linear-gradient(
+    100deg,
+    transparent 40%,
+    hsl(0 0% 100% / 0.55) 50%,
+    transparent 60%
+  );
+  animation: salt-icon-shimmer var(--duration-slow) var(--ease-standard) 1;
+}
+
 /* z-index utilities: v4 has no first-class z-index theme namespace, so the named
  * scale (was theme.extend.zIndex) is expressed as static custom utilities. */
 @utility z-popover {
@@ -558,5 +753,32 @@
   }
   100% {
     transform: translateX(300%);
+  }
+}
+
+/* Referenced by the `salt-check-pop` utility. The overshoot lives in
+ * `--ease-spring`, not in a middle keyframe, so the pop stays one interpolation
+ * and the ease stays swappable. */
+@keyframes salt-check-pop {
+  from {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Referenced by the `salt-icon-shimmer` utility. The tile-sized overlay carries a
+ * centred diagonal light band and slides once from fully left to fully right, so
+ * the band sweeps across the tile a single time. One interpolation, no midpoint
+ * keyframe — the sweep IS the translate. */
+@keyframes salt-icon-shimmer {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
   }
 }

@@ -19,15 +19,21 @@
   let {
     variant = 'default',
     withAction = false,
+    showCountdown = false,
+    // `0` keeps a toast statically open for the snapshot; the countdown story
+    // passes a finite duration so the drain ring has a window to animate over.
+    duration = 0,
   }: {
     variant?: 'default' | 'destructive' | 'success';
     withAction?: boolean;
+    showCountdown?: boolean;
+    duration?: number;
   } = $props();
 </script>
 
 <ToastProvider>
   <ToastViewport>
-    <Toast open duration={0} {variant}>
+    <Toast open {duration} {variant} {showCountdown}>
       <div class="grid gap-1">
         <ToastTitle>Item added</ToastTitle>
         <ToastDescription>Tinned tomatoes are on the shopping list.</ToastDescription>

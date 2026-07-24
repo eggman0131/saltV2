@@ -9,6 +9,8 @@
     size = 30,
     dimmed = false,
     version,
+    matched = false,
+    shimmer = false,
     class: className,
   }: CanonIconProps = $props();
 
@@ -33,11 +35,24 @@
       ? `${thumbnail}${thumbnail.includes('?') ? '&' : '?'}v=${version}`
       : thumbnail,
   );
+
+  // The sage "found its home" tint applies only to a BARE matched tile — a tile
+  // that already renders an icon keeps its neutral `bg-icon-tile` backdrop, so
+  // matched icons across the app are visually untouched. The first letter fills
+  // the otherwise-empty sage square; empty when there is no name.
+  //
+  // Sage is the "lit up" state the reveal produces, so it is gated with the reveal:
+  // under reduced motion the bare matched tile stays grey with no letter — exactly
+  // today's appearance — via `motion-reduce:` overrides (the sage colour never
+  // animates then either, `transition-colors` being `motion-reduce:transition-none`).
+  const sageBare = $derived(matched && !renderable);
+  const initial = $derived(name.trim().charAt(0).toUpperCase());
 </script>
 
 <span
   class={cn(
-    'inline-flex shrink-0 items-center justify-center overflow-hidden rounded bg-icon-tile',
+    'relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded transition-colors motion-reduce:transition-none',
+    sageBare ? 'bg-secondary-container motion-reduce:bg-icon-tile' : 'bg-icon-tile',
     dimmed && 'opacity-40',
     className,
   )}
@@ -55,5 +70,19 @@
       class="h-full w-full object-contain"
       data-testid="canon-icon-img"
     />
+  {:else if sageBare && initial}
+    <span
+      class="pointer-events-none select-none font-semibold leading-none text-accent-foreground motion-reduce:hidden"
+      style="font-size: {Math.round(size * 0.5)}px;"
+      aria-hidden="true"
+      data-testid="canon-icon-initial">{initial}</span
+    >
+  {/if}
+  {#if shimmer}
+    <span
+      class="salt-icon-shimmer pointer-events-none absolute inset-0 motion-reduce:hidden"
+      aria-hidden="true"
+      data-testid="canon-icon-shimmer"
+    ></span>
   {/if}
 </span>
