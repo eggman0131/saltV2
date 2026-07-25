@@ -165,6 +165,14 @@ service cloud.firestore {
     match /_e2e_ai_stubs/{flowName} {
       allow read, write: if request.auth != null;
     }
+    // Email-OTP sign-in codes (issue #546). Server-only: written and read
+    // exclusively by the requestEmailOtp / verifyEmailOtp callables via the Admin
+    // SDK (which bypasses these rules). Holds only hashed codes keyed by a hashed
+    // email — never a raw address — and no client ever touches it, so all client
+    // access is denied.
+    match /emailOtps/{emailHash} {
+      allow read, write: if false;
+    }
     match /{document=**} {
       allow read, write: if false;
     }
