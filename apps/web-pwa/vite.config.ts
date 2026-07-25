@@ -39,6 +39,11 @@ export default defineConfig(({ mode }) => {
   const pwaName = env.VITE_PWA_NAME ?? 'Salt';
   const pwaShortName = env.VITE_PWA_SHORT_NAME ?? 'Salt';
   const pwaThemeColor = env.VITE_PWA_THEME_COLOR ?? '#EA580C';
+  // Icon set for this environment: non-prod builds point at a re-coloured variant
+  // under public/icons/<env>/ so the installed icon matches the app's TopBar colour
+  // (see scripts/generate-icons.ts). Production falls back to the master palette in
+  // public/icons/. index.html reads the SAME var for the iOS apple-touch-icon.
+  const pwaIconPath = env.VITE_PWA_ICON_PATH ?? '/icons';
 
   return {
     plugins: [
@@ -52,6 +57,13 @@ export default defineConfig(({ mode }) => {
         injectRegister: false,
         registerType: 'autoUpdate',
         manifest: {
+          // Explicit app identity. Chromium otherwise derives it from `start_url`,
+          // and `id` is the one manifest field that cannot be changed later without
+          // the OS treating it as a DIFFERENT app (losing the install, its
+          // permissions, and its push subscription). Pinning it now decouples the
+          // identity from any future start_url change. Each environment is its own
+          // origin, so a single relative id cannot collide across them.
+          id: '/',
           name: pwaName,
           short_name: pwaShortName,
           description: 'Salt — your kitchen, organized.',
@@ -64,16 +76,26 @@ export default defineConfig(({ mode }) => {
           // The master is full-bleed with its glyph inside the central safe zone,
           // so the same rasters serve both `any` and `maskable` purposes.
           icons: [
-            { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-            { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
             {
-              src: '/icons/icon-192.png',
+              src: `${pwaIconPath}/icon-192.png`,
+              sizes: '192x192',
+              type: 'image/png',
+              purpose: 'any',
+            },
+            {
+              src: `${pwaIconPath}/icon-512.png`,
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'any',
+            },
+            {
+              src: `${pwaIconPath}/icon-192.png`,
               sizes: '192x192',
               type: 'image/png',
               purpose: 'maskable',
             },
             {
-              src: '/icons/icon-512.png',
+              src: `${pwaIconPath}/icon-512.png`,
               sizes: '512x512',
               type: 'image/png',
               purpose: 'maskable',
