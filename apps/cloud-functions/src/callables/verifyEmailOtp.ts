@@ -90,7 +90,14 @@ export const verifyEmailOtp = onCall(
     } catch (err) {
       if (err instanceof HttpsError) throw err;
       // Unexpected Firestore/admin-auth failure — report scrubbed (no email/code
-      // attached), then surface a generic internal error.
+      // attached), then surface a generic internal error. Also log it: PostHog
+      // reporting can be unconfigured or drop the payload, and without a CF-side
+      // line these 500s leave NO trace in Cloud Logging at all (which is exactly
+      // how the missing iam.serviceAccounts.signBlob grant stayed invisible).
+      logger.error('verifyEmailOtp: unexpected failure', {
+        emailHash,
+        reason: err instanceof Error ? err.message : String(err),
+      });
       await reportFlowError(err);
       throw new HttpsError('internal', 'Sign-in failed. Please try again.');
     }

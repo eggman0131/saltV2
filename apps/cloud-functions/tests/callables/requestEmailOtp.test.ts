@@ -80,7 +80,10 @@ describe('requestEmailOtp callable', () => {
     expect(result).toEqual({ ok: true });
 
     expect(mockSendOtpEmail).toHaveBeenCalledTimes(1);
-    const [, toEmail, code] = mockSendOtpEmail.mock.calls[0]!;
+    // (apiKey, from, to, code) — `from` rides as a secret, so it is 'test-secret'
+    // under the defineSecret mock above.
+    const [, from, toEmail, code] = mockSendOtpEmail.mock.calls[0]!;
+    expect(from).toBe('test-secret');
     expect(toEmail).toBe(EMAIL);
     expect(code).toMatch(/^\d{6}$/);
 

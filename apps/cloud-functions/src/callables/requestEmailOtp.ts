@@ -20,6 +20,12 @@ import {
 // bound per-function; reporting no-ops when POSTHOG_API_KEY is unset.
 const resendApiKey = defineSecret('RESEND_API_KEY');
 const posthogApiKey = defineSecret('POSTHOG_API_KEY');
+// The OTP sender address, e.g. `Salt <no-reply@salt.pendery.org>`. Not sensitive,
+// but Secret Manager is the ONLY runtime-config channel a deployed function here
+// has (the `dist` deploy source is wiped by every build, so a `.env` cannot
+// survive) — so it rides as a secret, exactly like VAPID_PUBLIC_KEY. Must be on a
+// Resend-verified domain, and set per environment.
+const otpEmailFrom = defineSecret('OTP_EMAIL_FROM');
 
 // Email-OTP request (issue #546). PUBLIC — the caller is signing in, not signed
 // in yet, so there is deliberately no request.auth guard (App Check monitor-first
@@ -35,7 +41,7 @@ export const requestEmailOtp = onCall(
   {
     region: 'europe-west2',
     enforceAppCheck: false,
-    secrets: [resendApiKey, posthogApiKey],
+    secrets: [resendApiKey, posthogApiKey, otpEmailFrom],
     memory: '512MiB',
   },
   async (request) => {
@@ -69,10 +75,16 @@ export const requestEmailOtp = onCall(
       // Generate + send FIRST; only persist the code once the email is away, so a
       // send failure never leaves a dangling code or clobbers a still-valid one.
       const code = generateCode();
-      const sent = await sendOtpEmail(resendApiKey.value(), email, code);
+      const sent = await sendOtpEmail(resendApiKey.value(), otpEmailFrom.value(), email, code);
       if (!sent.ok) {
-        // Unexpected delivery failure (Resend down) — report scrubbed (no email/
-        // code attached) and surface a retryable error.
+        // Unexpected delivery failure (Resend down, unverified sender, bad key) —
+        // report scrubbed (no email/code attached) and surface a retryable error.
+        // Also log it: PostHog reporting can be unconfigured or drop the payload,
+        // and without a CF-side line a send failure is undiagnosable.
+        logger.error('requestEmailOtp: send failed', {
+          emailHash,
+          reason: sent.error instanceof Error ? sent.error.message : String(sent.error),
+        });
         await reportFlowError(sent.error);
         throw new HttpsError('internal', 'Could not send the code. Please try again.');
       }

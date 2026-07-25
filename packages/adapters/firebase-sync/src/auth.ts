@@ -69,14 +69,47 @@ function reportAuthFailure(
 // rather than a network one; an off-allowlist email surfaces as forbidden.
 // Unexpected server failures already report themselves server-side, so these are
 // NOT re-reported here (they are expected user outcomes or plain network faults).
+// Callable failures split two ways. EXPECTED: the ordinary OTP outcomes that each
+// have their own user-facing copy (wrong/expired code, off-allowlist email) — these
+// stay AuthError and are deliberately not reported. UNEXPECTED: a server fault,
+// which must NOT be dressed up as a connectivity problem. A CF 500 arrives as
+// `functions/internal`, and the old catch-all mapped it to NetworkError — which
+// both told the user to "check your connection" and SUPPRESSED the report
+// (NetworkError is a suppressed category). It now falls to the StorageError
+// catch-all, mirroring classifyFirestoreError: reportable, and rendered by
+// formatOtpError as the honest "Sign-in failed. Please try again."
+//
+// The offline check comes FIRST, exactly as in classifyFirestoreError, because the
+// callable SDK surfaces a failed fetch as `functions/internal` TOO — the error code
+// alone cannot separate "server 500" from "no connection".
 function toOtpError(err: unknown): DomainError {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return { kind: 'NetworkError', reason: 'offline' };
+  }
   const code = (err as { code?: string } | null)?.code ?? '';
   if (code === 'functions/permission-denied') return { kind: 'AuthError', reason: 'forbidden' };
   if (code === 'functions/failed-precondition' || code === 'functions/invalid-argument') {
     return { kind: 'AuthError', reason: 'expired' };
   }
   if (code === 'functions/unauthenticated') return { kind: 'AuthError', reason: 'unauthenticated' };
-  return { kind: 'NetworkError', reason: 'transient' };
+  if (code === 'functions/unavailable' || code === 'functions/deadline-exceeded') {
+    return { kind: 'NetworkError', reason: 'transient' };
+  }
+  return { kind: 'StorageError', reason: 'unavailable' };
+}
+
+// Report only the UNEXPECTED bucket from toOtpError. The AuthError outcomes it
+// produces are the ordinary OTP failure modes — a mistyped code, an off-list email
+// — and filing each one in error tracking would be pure noise, so this narrows the
+// general "AuthError is reportable" policy for this flow specifically. StorageError
+// is the only category toOtpError uses for "something broke server-side".
+function reportOtpFailure(
+  errors: ErrorReportingPort | null,
+  rawError: unknown,
+  domainError: DomainError,
+): void {
+  if (domainError.kind !== 'StorageError') return;
+  errors?.report(rawError, domainError.kind);
 }
 
 export function createFirebaseAuth(errors: ErrorReportingPort | null = null): AuthProvider {
@@ -120,9 +153,11 @@ export function createFirebaseAuth(errors: ErrorReportingPort | null = null): Au
         await callRequestEmailOtp(email);
         return success(undefined);
       } catch (err) {
-        // Only transport failures reject here; wrong-code lives on the verify
-        // call. Expected/network outcomes are not reported (see toOtpError).
-        return failure(toOtpError(err));
+        // Only transport/server failures reject here; wrong-code lives on the
+        // verify call. Expected outcomes are not reported (see reportOtpFailure).
+        const domainError = toOtpError(err);
+        reportOtpFailure(errors, err, domainError);
+        return failure(domainError);
       }
     },
 
@@ -135,7 +170,9 @@ export function createFirebaseAuth(errors: ErrorReportingPort | null = null): Au
         const cred = await signInWithCustomToken(auth, token);
         return success(toUser(cred.user));
       } catch (err) {
-        return failure(toOtpError(err));
+        const domainError = toOtpError(err);
+        reportOtpFailure(errors, err, domainError);
+        return failure(domainError);
       }
     },
 
