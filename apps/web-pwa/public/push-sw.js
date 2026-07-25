@@ -40,7 +40,13 @@ self.addEventListener('push', function (event) {
         // Non-silent → uses the OS notification sound (issue #544).
         silent: false,
         icon: '/icons/icon-192.png',
-        badge: '/icons/icon-192.png',
+        // The badge is the small status-bar mark, and Android renders it from the
+        // ALPHA CHANNEL ONLY — the opaque app icon came out as a solid grey blob, so
+        // this is a transparent monochrome glyph (generate-icons.ts). It is shared by
+        // every environment: this file is copied verbatim out of public/, so it gets
+        // no %VITE_*% substitution, which is also why `icon` above stays the master
+        // orange rather than the per-env variant.
+        badge: '/icons/badge-96.png',
         data: { sessionId: sessionId },
       });
     })(),

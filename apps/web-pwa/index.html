@@ -11,9 +11,20 @@
          prod), matching the manifest identity. -->
     <meta name="theme-color" content="%VITE_PWA_THEME_COLOR%" />
 
+    <!-- Browser tab / bookmark / history icon. Distinct from the manifest icons:
+         Chrome uses the manifest set for the INSTALLED app and the favicon for the
+         TAB, so both have to be declared. SVG first (crisp at any size), 32 px PNG as
+         the fallback for engines that don't take an SVG favicon. Per-env, like the
+         app icon — a dev tab is violet, a staging tab amber. -->
+    <link rel="icon" type="image/svg+xml" href="%VITE_PWA_ICON_PATH%/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="%VITE_PWA_ICON_PATH%/favicon-32.png" />
+
     <!-- iOS "Add to Home Screen": launch standalone with the correct icon,
-         title, and a light status bar to match the app's light background. -->
-    <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png" />
+         title, and a light status bar to match the app's light background.
+         iOS prefers apple-touch-icon over the manifest icons, so the per-env icon
+         variant (public/icons/<env>/) has to be selected HERE too, not only in the
+         manifest — VITE_PWA_ICON_PATH is defined in every .env.<mode>. -->
+    <link rel="apple-touch-icon" href="%VITE_PWA_ICON_PATH%/apple-touch-icon-180.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="%VITE_PWA_SHORT_NAME%" />
