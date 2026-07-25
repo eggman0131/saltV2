@@ -51,6 +51,12 @@ CALLABLES=(
   chefChat
   generateChatTitle
   regenerateCanonIcon
+  # Public, pre-sign-in email-OTP callables (issue #546). These have NO auth
+  # policy (they run before any user exists), so the allUsers invoker binding is
+  # what lets the login page reach them at all — without it the browser gets a
+  # header-less 403 that surfaces as a misleading "Network error".
+  requestEmailOtp
+  verifyEmailOtp
 )
 
 echo "Granting allUsers invoker on ${#CALLABLES[@]} callables in ${PROJECT} (${REGION})"
