@@ -15,6 +15,7 @@
   import { canonItems } from '../../lib/canonService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { isWakeLockSupported, createWakeLock } from '../../lib/wakeLock.js';
+  import { primeChime, playChime } from '../../lib/chime.js';
   // Pure deck geometry (issue #556) — the viewport arithmetic behind the pager. This
   // component keeps what only it can do: measuring elements and running the spring.
   import {
@@ -731,6 +732,28 @@
     return () => clearInterval(handle);
   });
 
+  // Foreground chime (issue #544, Phase 4): when a timer we've watched running
+  // crosses its end-time with the app open, play the in-app "Poop-poop!" once —
+  // the audible half of the alert (the fired chip is the visual half). Only
+  // timers observed RUNNING first chime, so a session resumed with an
+  // already-fired timer (it finished while we were away) doesn't retro-honk; the
+  // background system notification covers the closed-app case instead.
+  const observedRunning = new Set<string>();
+  const chimedKeys = new Set<string>();
+  $effect(() => {
+    const t = now;
+    for (const timer of activeTimers) {
+      const key = `${timer.stepId}@${timer.endsAt}`;
+      const fired = new Date(timer.endsAt).getTime() <= t;
+      if (!fired) {
+        observedRunning.add(key);
+      } else if (observedRunning.has(key) && !chimedKeys.has(key)) {
+        chimedKeys.add(key);
+        playChime();
+      }
+    }
+  });
+
   // Default `notify` ON for longer timers (>= 5 min) where a chef is likely to walk
   // away; short timers default off. Captured only — wired to nothing in this phase.
   const NOTIFY_MIN_MINUTES = 5;
@@ -740,6 +763,9 @@
     if (!timer) return;
     const s = getCookSessionSnapshot();
     if (!s) return;
+    // Unlock the chime on this user gesture so it can play when the timer ends,
+    // even on iOS Safari (which blocks audio not tied to a gesture).
+    primeChime();
     // `endsAt` is computed HERE, not in the domain producer, which never reads a
     // clock. Replacing any existing entry for the step is the producer's job.
     const endsAt = new Date(Date.now() + timer.durationMinutes * 60_000).toISOString();

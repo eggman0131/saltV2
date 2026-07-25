@@ -173,6 +173,32 @@ service cloud.firestore {
     match /emailOtps/{emailHash} {
       allow read, write: if false;
     }
+    // Web-push subscriptions for cook-timer notifications (issue #544). The THIRD
+    // owner-scoped collection (see the "Per-user exceptions" note in CLAUDE.md /
+    // docs/salt-architecture.md) — one doc per device, id `${uid}_${deviceHash}`,
+    // ownerUid pinned on update so a device can't be reassigned to another user.
+    // Mirrors cookSessions, including the `resource == null` clause: the id is
+    // deterministic so the client may read/delete its own doc before it exists (or
+    // after the server pruned a dead subscription) — a rule that dereferenced
+    // resource.data on an absent doc would be denied and throw. CFs read every
+    // subscription via the Admin SDK (bypasses rules) to send.
+    match /pushSubscriptions/{subId} {
+      allow read, delete: if request.auth != null
+        && (resource == null || resource.data.ownerUid == request.auth.uid);
+      allow create: if request.auth != null
+        && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if request.auth != null
+        && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerUid == resource.data.ownerUid;
+    }
+    // Server-owned exactly-once delivery ledger (issue #544). Written and read
+    // only by the onCookTimerDispatch sender (Admin SDK) to dedupe Cloud Tasks
+    // retries + duplicate enqueues. Deliberately a SEPARATE doc from cookSessions
+    // (never a write-back onto the client-owned session — full-doc setDoc LWW
+    // would clobber it). No client ever touches it.
+    match /timerDeliveries/{deliveryId} {
+      allow read, write: if false;
+    }
     match /{document=**} {
       allow read, write: if false;
     }
