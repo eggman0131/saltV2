@@ -66,6 +66,10 @@ export const ExtractedIngredientGroupSchema = z.object({
 export const ExtractedStepSchema = z.object({
   text: z.string(),
   timerMinutes: z.number().int().nullable(),
+  // Short human label for the step's timer (e.g. "Simmer the sauce"), or null
+  // when the step has no timer / no sensible label. Maps to StepTimer.description
+  // on the assembled recipe (issue #554). Null when timerMinutes is null.
+  timerLabel: z.string().nullable(),
   note: z.string().nullable(),
 });
 
