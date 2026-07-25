@@ -1,4 +1,3 @@
-/* eslint-disable */
 // Cook-timer push overlay (issue #544). importScripts'd INTO the Workbox-generated
 // service worker (see vite.config.ts workbox.importScripts) — a classic worker
 // script, not a module. The generated SW still owns precaching + the #141
