@@ -813,6 +813,32 @@
   margin-bottom: calc(var(--spacing) * -1);
 }
 
+/* ── Mise tick (cook mode) ───────────────────────────────────────────────────
+ * Cook mode's answer to the check-off celebration above, for a list whose rows
+ * stay put. A ticked mise row does not LEAVE its section the way a checked
+ * shopping row leaves its aisle, so there is no outro to play and nothing to
+ * hold a place for — which left the tile's pop carrying the whole beat on its
+ * own, at 28px, off in the left margin. Too small to read as anything.
+ *
+ * So the tick lands on the ROW: sage floods it and drains back into the settled
+ * tint while the row springs up through its own size. Sage because "done" is
+ * sage everywhere else in Salt — it is the shopping list's celebration colour,
+ * and it hands back to the row's own settled colours rather than replacing them.
+ *
+ * Each keyframe list declares ONLY a `from`, and the animation is deliberately
+ * not `both`-filled: every property eases out of the celebration and into
+ * whatever the row's own classes compute to, so this knows nothing about the
+ * checked-state colours it hands back to and pins nothing when it ends.
+ *
+ * Held on for one beat after the tap by the page (`justTicked`, CookModePage) —
+ * the same mechanism that keeps it OFF rows that were already ticked when the
+ * list mounted. Pair with `motion-reduce:animate-none`. */
+@utility salt-tick-row {
+  animation:
+    salt-tick-wash var(--duration-linger) var(--ease-standard),
+    salt-tick-settle var(--duration-celebrate) var(--ease-spring);
+}
+
 /* Press-in acknowledgement for controls that are not `.salt-button` (the
  * shopping check-off circle, the "Need it?" confirm/drop pair). Same depth and
  * the same asymmetric beat as the button's own press (§8.1) — straight down on
@@ -927,6 +953,26 @@
   to {
     transform: scale(1);
     opacity: 1;
+  }
+}
+
+/* Referenced by the `salt-tick-row` utility. `from` ONLY, on purpose: with no
+ * `to` and no fill, the row eases out of sage and into whatever its own classes
+ * compute to, so the wash needs no knowledge of the settled checked colours it
+ * is handing back to — and stops declaring anything the moment it ends. */
+@keyframes salt-tick-wash {
+  from {
+    background-color: var(--color-secondary-container);
+    border-color: var(--color-secondary);
+  }
+}
+
+/* Referenced by the `salt-tick-row` utility. Also `from` only — the row springs
+ * up out of a press and through its own size, the overshoot living in
+ * `--ease-spring` exactly as it does for the check pop. */
+@keyframes salt-tick-settle {
+  from {
+    transform: scale(0.96);
   }
 }
 

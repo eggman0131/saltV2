@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Button, CanonIcon, Icon, Spinner } from '@salt/ui-components';
+  import { onDestroy } from 'svelte';
   import { prefersReducedMotion } from 'svelte/motion';
   import { push } from 'svelte-spa-router';
   import { recipes, isLoadingRecipes } from '../../lib/recipeService.js';
@@ -17,6 +18,8 @@
   import { addToast } from '../../lib/toastStore.js';
   import { isWakeLockSupported, createWakeLock } from '../../lib/wakeLock.js';
   import { primeChime } from '../../lib/chime.js';
+  import { createCheckOffHold } from '../../lib/checkOffHold.svelte.js';
+  import { tick as hapticTick } from '../../lib/haptics.js';
   // Pure deck geometry (issue #556) — the viewport arithmetic behind the pager. This
   // component keeps what only it can do: measuring elements and running the spring.
   import {
@@ -164,9 +167,58 @@
   const checkedCount = $derived(mise.checked);
   const allIngredientsChecked = $derived(mise.allChecked);
 
+  // ─── The tick itself ───────────────────────────────────────────────────────────
+  // Ticking an ingredient off celebrates the way ticking a shopping item off does —
+  // a haptic tick on the way in, and the same sage "that's done" beat — because it
+  // is the same gesture meaning the same thing: one item, accounted for. What it
+  // deliberately does NOT borrow is the outro: a checked shopping row LEAVES its
+  // aisle, so it has to be held in place while it collapses; a mise row stays
+  // exactly where it is, so there is nothing to hold and nothing to collapse.
+  //
+  // Which is why the beat lands on the WHOLE ROW (`salt-tick-row`: a sage wash
+  // draining back to the settled tint, and the row springing up through its own
+  // size) and not on the tile alone. The tile keeps the shopping list's own
+  // `salt-check-pop`, but 28px of spring in the left margin is not a celebration
+  // on its own — nothing about the row it belongs to changed.
+  //
+  // `createCheckOffHold` is reused for the half that IS shared — a transient,
+  // per-id "just ticked" set that expires on its own, no-ops under reduced motion
+  // and disposes its timers on teardown. That set is what keeps the beat honest:
+  // it must fire on the TAP, never on a render, or every already-ticked row would
+  // celebrate again on the way back from the steps stage and on every session
+  // update.
+  //
+  // The hold deliberately OUTLASTS the animation (the wash is `--duration-linger`,
+  // 440ms). It has to: the classes only land once the tick is back through the
+  // session store, so a hold cut to the animation's own length would have the
+  // slower half of that round trip eat into the beat. Overrunning costs nothing —
+  // a CSS animation plays once and the class simply lingers, spent.
+  const TICK_BEAT_MS = 600;
+  const justTicked = createCheckOffHold(TICK_BEAT_MS);
+  onDestroy(() => justTicked.dispose());
+
+  // One tick and one pop per action, however many rows it moves. Only the rows the
+  // action actually CHANGES pop — bulk-ticking a section that is half done shouldn't
+  // re-pop the half already on the bench. Clearing is a correction, not an
+  // accomplishment: no haptic, no pop (and any pop still in flight is dropped, so a
+  // quick untick → retick pops afresh rather than being swallowed as a duplicate).
+  function celebrateTicks(ids: readonly string[], checking: boolean): void {
+    if (!checking) {
+      justTicked.release(ids);
+      return;
+    }
+    const fresh = ids.filter((id) => !checkedIds.has(id));
+    if (fresh.length === 0) return;
+    hapticTick();
+    justTicked.begin(fresh);
+  }
+
   function toggleIngredient(id: string): void {
     const s = getCookSessionSnapshot();
     if (!s) return;
+    // The write is never gated on the celebration — same contract as the shopping
+    // list: leave the page mid-pop and the tick is still recorded.
+    celebrateTicks([id], !checkedIds.has(id));
     void persistCookSession(withIngredientChecked(s, id));
   }
 
@@ -176,6 +228,7 @@
     const s = getCookSessionSnapshot();
     if (!s || !recipe) return;
     const allIds = recipe.ingredients.flatMap((g) => g.items.map((i) => i.id));
+    celebrateTicks(allIds, !allIngredientsChecked);
     void persistCookSession(withAllIngredientsChecked(s, allIds, allIngredientsChecked));
   }
 
@@ -205,12 +258,89 @@
     collapsedGroupIds = next;
   }
 
+  // ─── A gathered section folds itself away ──────────────────────────────────────
+  // Every ingredient in a section ticked means that section is on the bench and done
+  // with: it folds, and what's left on screen is what you still have to find. The
+  // heading stays (with its count), so nothing is hidden that can't be brought back
+  // in a tap.
+  //
+  // It waits out the tick beat first. Folding a row away from under its own
+  // celebration would throw away the acknowledgement the tap just earned — the sage
+  // wash IS the "that's the lot", and it has to land before the section goes.
+  //
+  // Only ever on the TRANSITION into gathered, never for merely BEING gathered:
+  // otherwise unfolding a finished section to double-check it would snap shut in
+  // your face. `gatheredGroupIds` is that latch — a plain Set, not `$state`, because
+  // nothing renders it and making it reactive would only feed the effect its own
+  // writes. Unticking anything clears a section's latch, so genuinely completing it
+  // again folds it again.
+  let gatheredGroupIds = new Set<string>();
+  let gatheredLatchSeeded = false;
+  const foldTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  onDestroy(() => {
+    for (const timer of foldTimers.values()) clearTimeout(timer);
+    foldTimers.clear();
+  });
+
+  $effect(() => {
+    if (!recipe) return;
+    const gathered = new Set<string>();
+    const newly: IngredientGroupDoc[] = [];
+    for (const group of recipe.ingredients) {
+      const progress = miseProgress([group], checkedIds);
+      if (progress.total === 0 || !progress.allChecked) continue;
+      gathered.add(group.id);
+      if (!gatheredGroupIds.has(group.id)) newly.push(group);
+    }
+    gatheredGroupIds = gathered;
+    // A first look at the list shows the list. Opening a half-done cook seeds the
+    // latch and folds nothing — same reason `collapsedGroupIds` isn't persisted:
+    // what's folded is a view of the list you're standing in front of, and you
+    // haven't stood in front of this one yet.
+    if (!gatheredLatchSeeded) {
+      gatheredLatchSeeded = true;
+      return;
+    }
+    for (const group of newly) scheduleFold(group);
+  });
+
+  function scheduleFold(group: IngredientGroupDoc): void {
+    const existing = foldTimers.get(group.id);
+    if (existing !== undefined) clearTimeout(existing);
+    // Ask the hold whether a celebration is actually in flight rather than assuming
+    // one: under reduced motion `begin()` never took, so there is no beat to wait
+    // out. Always through a timer even then, never straight through: the fold writes
+    // `collapsedGroupIds`, which the fold itself reads, and doing that inside the
+    // effect's own synchronous run is how an effect ends up chasing its own tail.
+    const beat = group.items.some((i) => justTicked.isExiting(i.id)) ? TICK_BEAT_MS : 0;
+    foldTimers.set(
+      group.id,
+      setTimeout(() => foldGathered(group), beat),
+    );
+  }
+
+  function foldGathered(group: IngredientGroupDoc): void {
+    foldTimers.delete(group.id);
+    // An unsectioned list has no header to unfold it with — folding it would leave
+    // an empty screen and no way back. Same guard the header itself is behind.
+    if (!hasMiseSections) return;
+    // Unticked something while the beat played: it isn't gathered any more, and
+    // folding it now would be telling the chef it is.
+    if (!miseProgress([group], checkedIds).allChecked) return;
+    if (collapsedGroupIds.has(group.id)) return;
+    collapsedGroupIds = new Set(collapsedGroupIds).add(group.id);
+  }
+
   // Section-scoped bulk tick. `withGroupChecked` leaves the other sections' ticks
   // alone — the whole point of having one per section — and takes the target state
   // rather than toggling, off the same `allChecked` the button label reads.
   function toggleGroupIngredients(group: IngredientGroupDoc, groupAllChecked: boolean): void {
     const s = getCookSessionSnapshot();
     if (!s) return;
+    celebrateTicks(
+      group.items.map((i) => i.id),
+      !groupAllChecked,
+    );
     void persistCookSession(withGroupChecked(s, group, !groupAllChecked));
   }
 
@@ -1186,27 +1316,45 @@
                    separate controls, not one row with two jobs — the collapse is the
                    heading itself (kept as an h2 so the list is still navigable by
                    heading), and the bulk tick sits outside it because a button inside
-                   a button is not a thing. The n/m rides in the heading so a folded
-                   section still says how much of it is done. -->
-                <div class="flex items-center gap-2">
+                   a button is not a thing. The n of m rides in the heading so a folded
+                   section still says how much of it is done.
+
+                   It is a HEADING at this page's own scale, not the app's `text-xs`
+                   uppercase section label. That label is right in the app shell, where
+                   rows are `text-sm py-2` and it sits proportionate to them; here rows
+                   are `text-base py-4` with 34px icons, and next to them a 12px muted
+                   micro-label was the faintest thing on a page meant to be read from
+                   across the bench — it read as a stray caption rather than as the
+                   title of what follows.
+
+                   STICKY, with the rule as its edge: on a long sectioned recipe the
+                   heading you are gathering under scrolls away long before its rows do.
+                   Pinned, the answer to "what am I looking for" is always on screen.
+                   `bg-background` matches the page container exactly, so rows pass
+                   under it and vanish rather than showing through. -->
+                <div class="sticky top-0 z-10 flex items-center gap-2 border-b bg-background py-2">
                   <h2 class="min-w-0 flex-1">
                     <button
                       type="button"
-                      class="flex w-full items-center gap-1.5 py-1 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground"
+                      class="flex w-full items-center gap-2 text-left text-base font-semibold text-foreground"
                       onclick={() => toggleGroupCollapsed(group.id)}
                       aria-expanded={!groupCollapsed}
                       data-testid="cook-mise-group-toggle"
                     >
                       <Icon
                         name={groupCollapsed ? 'ChevronRight' : 'ChevronDown'}
-                        size={14}
-                        class="shrink-0"
+                        size={18}
+                        class="shrink-0 text-muted-foreground"
                       />
                       <span class="truncate" data-testid="cook-mise-group-name">
                         {group.name ?? 'Ingredients'}
                       </span>
-                      <span class="shrink-0 tabular-nums text-muted-foreground/70">
-                        {groupMise.checked}/{groupMise.total}
+                      <!-- Demoted to a quiet run-on, in words: the title is the thing
+                         being read here, and the count is what it happens to say about
+                         itself. Not `n/m` — that is the register of the page header's
+                         status line, which this is not. -->
+                      <span class="shrink-0 text-sm font-normal tabular-nums text-muted-foreground">
+                        · {groupMise.checked} of {groupMise.total}
                       </span>
                     </button>
                   </h2>
@@ -1234,20 +1382,38 @@
                 <ul class="flex flex-col gap-2">
                   {#each group.items as ingredient (ingredient.id)}
                     {@const checked = checkedIds.has(ingredient.id)}
+                    {@const popping = checked && justTicked.isExiting(ingredient.id)}
                     <li>
+                      <!-- `salt-tick-row` is the beat itself — a sage wash and a
+                         spring, for as long as `popping` says the tap just
+                         happened. It overrides the settled colours below for its
+                         own duration and then hands straight back to them, which
+                         is why both can sit in one class list without fighting. -->
                       <button
                         type="button"
                         class="flex w-full items-center gap-3 rounded-lg border px-4 py-4 text-left transition-colors active:bg-muted {checked
                           ? 'border-primary/40 bg-primary/5'
-                          : 'bg-card hover:bg-muted/50'}"
+                          : 'bg-card hover:bg-muted/50'} {popping
+                          ? 'salt-tick-row motion-reduce:animate-none'
+                          : ''}"
                         onclick={() => toggleIngredient(ingredient.id)}
                         aria-pressed={checked}
                         data-testid="cook-mise-row"
                       >
+                        <!-- The shopping list's check-off pop, on this list's own
+                           square tile: the filled tile and its check spring in
+                           together (the animation is on the wrapper, so the icon
+                           scales with it) for one beat after the tap, then the class
+                           lapses and the tile is simply the settled checked state.
+                           `popping` is only ever true for a tick that just happened —
+                           see `justTicked`. -->
                         <span
                           class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border {checked
                             ? 'border-primary bg-primary text-primary-foreground'
-                            : 'border-input'}"
+                            : 'border-input'} {popping
+                            ? 'salt-check-pop motion-reduce:animate-none'
+                            : ''}"
+                          data-testid="cook-mise-check"
                         >
                           {#if checked}<Icon name="Check" size={18} />{/if}
                         </span>
@@ -1459,10 +1625,28 @@
                         {@const progress = timerProgressFor(timerEntry)}
                         {#if remaining > 0}
                           <div class="overflow-hidden rounded-lg border bg-card">
+                            <!-- Label INSIDE the bar, leading, exactly as the persistent
+                               chip above does it — "Cook tomato purée · 0:24" is one
+                               object, and hanging the label underneath read as a caption
+                               belonging to the step rather than to the timer. No "Step N"
+                               fallback here (unlike the chip, which can be miles from its
+                               step): an unlabelled timer sitting in its own step needs no
+                               telling which step it is, so the countdown just keeps the
+                               room to itself. -->
                             <div class="flex items-center gap-3 px-4 py-3">
                               <Icon name="Timer" size={22} class="shrink-0 text-muted-foreground" />
+                              {#if step.timer.description}
+                                <span
+                                  class="min-w-0 flex-1 truncate text-base"
+                                  data-testid="cook-step-timer-label"
+                                >
+                                  {step.timer.description}
+                                </span>
+                              {/if}
                               <span
-                                class="flex-1 font-mono text-2xl tabular-nums"
+                                class="{step.timer.description
+                                  ? 'shrink-0'
+                                  : 'flex-1'} font-mono text-2xl tabular-nums"
                                 data-testid="cook-step-timer-countdown"
                               >
                                 {formatClock(remaining)}
@@ -1488,15 +1672,29 @@
                             {/if}
                           </div>
                         {:else}
+                          <!-- Fired: same row, same order. With a label leading, the
+                             status shortens to "Finished" (as on the chip) so the two
+                             strings aren't fighting over one line; alone, it carries the
+                             whole message and stays "Timer finished". -->
                           <div
                             class="flex items-center gap-3 rounded-lg border border-primary bg-primary/10 px-4 py-3"
                           >
                             <Icon name="BellRing" size={22} class="shrink-0 text-primary" />
+                            {#if step.timer.description}
+                              <span
+                                class="min-w-0 flex-1 truncate text-base font-medium text-primary"
+                                data-testid="cook-step-timer-label"
+                              >
+                                {step.timer.description}
+                              </span>
+                            {/if}
                             <span
-                              class="flex-1 text-lg font-semibold text-primary"
+                              class="{step.timer.description
+                                ? 'shrink-0'
+                                : 'flex-1'} text-lg font-semibold text-primary"
                               data-testid="cook-step-timer-countdown"
                             >
-                              Timer finished
+                              {step.timer.description ? 'Finished' : 'Timer finished'}
                             </span>
                             <Button
                               onclick={() => dismissTimer(step.id)}
@@ -1507,6 +1705,11 @@
                           </div>
                         {/if}
                       {:else}
+                        <!-- Unstarted: the label goes IN the button, never under it — one
+                           ordinary centred button line, in the button's own type. The
+                           whole string truncates as one, and since the label is last it
+                           is the part that gives way; "Start 20 minute timer" always
+                           survives, which is the part you have to be able to read. -->
                         <Button
                           variant="outline"
                           size="lg"
@@ -1514,11 +1717,12 @@
                           data-testid="cook-step-timer-start"
                         >
                           {#snippet leading()}<Icon name="Timer" size={18} />{/snippet}
-                          Start timer · {step.timer.durationMinutes} min
+                          <span class="min-w-0 truncate">
+                            Start {step.timer.durationMinutes} minute timer{step.timer.description
+                              ? ` (${step.timer.description})`
+                              : ''}
+                          </span>
                         </Button>
-                      {/if}
-                      {#if step.timer.description}
-                        <span class="text-sm text-muted-foreground">{step.timer.description}</span>
                       {/if}
                     </div>
                   {/if}

@@ -26,6 +26,12 @@ import { prefersReducedMotion } from './reducedMotion.js';
  * Under reduced motion `begin()` is a no-op, so no row is ever held and the list
  * behaves exactly as it did before this existed. That is the whole fallback: the
  * CSS classes keyed off `isExiting` simply never get applied.
+ *
+ * SECOND CONSUMER: cook mode's mise-en-place list uses the transient set on its
+ * own (a shorter hold, and no `holdInPlace` — a ticked mise row doesn't move, so
+ * there is no place to hold). What it wants is the same thing the shopping list
+ * wants underneath: a per-id "this one was JUST ticked" flag that expires by
+ * itself, so the pop fires on the tap and never on a re-render.
  */
 
 /**
