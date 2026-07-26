@@ -62,6 +62,23 @@ initializeApp();
 // the same reason they already pin region inline.
 setGlobalOptions({ region: 'europe-west2', memory: '512MiB' });
 
+// Drop W3CBaggagePropagator from the globally-registered propagator composite.
+//
+// enableFirebaseTelemetry() → Genkit's NodeSDK passes `propagator: undefined`, so
+// BasicTracerProvider.register() builds the composite from OTEL_PROPAGATORS, whose
+// default is 'tracecontext,baggage'. That puts W3CBaggagePropagator.extract() on the
+// inbound path of every callable via runWithExtractedTraceContext(request.rawRequest
+// .headers, …) — and @opentelemetry/core < 2.8.0 allocates unboundedly there when fed
+// an oversized `baggage` header (CVE-2026-54285 / GHSA-8988-4f7v-96qf, dependabot #79).
+// The fix ships in the OTel 2.x suite, which is blocked upstream on Genkit adopting it
+// (#300), so we remove the REACHABILITY instead of the vulnerable code: nothing in this
+// repo reads or writes baggage, and every trace-propagation path we rely on — the two
+// runWith*TraceContext helpers, activeTraceparent(), Genkit's HTTP auto-instrumentation
+// — is W3C tracecontext only. Set before enableFirebaseTelemetry() below, which is where
+// the composite is built. `||=` (not `??=`) so an empty-string env is also replaced;
+// a deliberate deploy-time OTEL_PROPAGATORS still wins. Revisit when #300 lands.
+process.env['OTEL_PROPAGATORS'] ||= 'tracecontext';
+
 // Telemetry, owned at module load so it's in place before any flow runs:
 //
 //  1. enableFirebaseTelemetry() owns the single process-wide OTel
