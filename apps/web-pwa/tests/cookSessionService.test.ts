@@ -38,6 +38,7 @@ vi.mock('@salt/firebase-sync', () => ({
 import * as firebaseSync from '@salt/firebase-sync';
 import {
   cookSession,
+  cookSessionEnded,
   isLoadingCookSession,
   getCookSessionSnapshot,
   initCookSessionSync,
@@ -89,6 +90,23 @@ function wireSubscription() {
     emit: (s: CookSessionDoc | null) => sessionCb!(s),
     emitError: (err: DomainError, rawError?: unknown) => errorCb!(err, rawError),
     unsub,
+  };
+}
+
+// Hold saveCookSession open so a test can emit snapshots while a write is still
+// unacknowledged — the only window in which an "absent" snapshot is ambiguous.
+function deferSave() {
+  let settle: (r: ReadResult<void, DomainError>) => void = () => {};
+  fs.saveCookSession.mockReturnValue(
+    new Promise<ReadResult<void, DomainError>>((resolve) => {
+      settle = resolve;
+    }),
+  );
+  return {
+    settle: async (pending: Promise<unknown>) => {
+      settle({ kind: 'ok', value: undefined });
+      await pending;
+    },
   };
 }
 
@@ -230,11 +248,32 @@ describe('cookSessionService — last-write-wins guard', () => {
     initCookSessionSync(SESSION_ID);
     emit(null); // no session yet
 
-    await persistCookSession(makeSession({ checkedIngredientIds: ['ing-1'] }));
+    const save = deferSave();
+    const pending = persistCookSession(makeSession({ checkedIngredientIds: ['ing-1'] }));
 
-    // The create has not echoed back yet: the doc still reads as absent.
+    // The create is still unacknowledged, so an "absent" snapshot queued before it
+    // proves nothing — it must not blank the session we just created.
     emit(null);
     expect(getCookSessionSnapshot()?.checkedIngredientIds).toEqual(['ing-1']);
+    expect(get(cookSessionEnded)).toBe(false);
+
+    await save.settle(pending);
+  });
+
+  it('drops the absence it swallowed rather than replaying it once the write lands', async () => {
+    const { emit } = wireSubscription();
+    initCookSessionSync(SESSION_ID);
+    emit(null);
+
+    const save = deferSave();
+    const pending = persistCookSession(makeSession({ checkedIngredientIds: ['ing-1'] }));
+    emit(null);
+    await save.settle(pending);
+
+    // The write won: the document exists again, so the absence it overtook is stale
+    // and must not be applied retroactively.
+    expect(getCookSessionSnapshot()?.checkedIngredientIds).toEqual(['ing-1']);
+    expect(get(cookSessionEnded)).toBe(false);
   });
 
   it('cannot have a deleted session resurrected by a late snapshot', async () => {
@@ -249,20 +288,40 @@ describe('cookSessionService — last-write-wins guard', () => {
     expect(getCookSessionSnapshot()).toBeNull();
   });
 
-  // The guard that protects an un-echoed create also holds a session the cook is
-  // already in against a later "document absent" snapshot: once ANY snapshot has
-  // been accepted for this id, the id is watermarked. Only the local Complete /
-  // Restart path (removeCookSession) clears it — a delete from another device
-  // lands on the next initCookSessionSync. Pinned deliberately: an in-progress
-  // cook must never blank out mid-recipe.
-  it('holds on to the session in progress when a later snapshot says the document is gone', () => {
+  // Issue #559. With no write of ours outstanding, an "absent" snapshot is the
+  // truth: the cook was finished or restarted on another device. Clearing the store
+  // is only half of it — `cookSessionEnded` is what stops the page reading the same
+  // null as "no session yet" and writing the deleted session straight back.
+  it('lets go of the session when another device finishes the cook', () => {
     const { emit } = wireSubscription();
     initCookSessionSync(SESSION_ID);
-    const doc = makeSession({ checkedIngredientIds: ['ing-1'] });
-    emit(doc);
+    emit(makeSession({ checkedIngredientIds: ['ing-1'] }));
 
     emit(null);
-    expect(getCookSessionSnapshot()).toEqual(doc);
+
+    expect(getCookSessionSnapshot()).toBeNull();
+    expect(get(cookSessionEnded)).toBe(true);
+  });
+
+  it('does not call it an ending elsewhere when there was no session to end', () => {
+    const { emit } = wireSubscription();
+    initCookSessionSync(SESSION_ID);
+
+    emit(null); // first snapshot: this cook has never been started
+
+    expect(get(cookSessionEnded)).toBe(false);
+  });
+
+  it('does not call a local Complete an ending elsewhere', async () => {
+    const { emit } = wireSubscription();
+    initCookSessionSync(SESSION_ID);
+    emit(makeSession({ checkedIngredientIds: ['ing-1'] }));
+
+    await removeCookSession(SESSION_ID);
+    emit(null); // the delete echoing back
+
+    expect(getCookSessionSnapshot()).toBeNull();
+    expect(get(cookSessionEnded)).toBe(false);
   });
 });
 
@@ -281,6 +340,18 @@ describe('cookSessionService — re-subscribing', () => {
     const other = makeSession({ id: OTHER_SESSION_ID, recipeId: 'recipe-2' });
     emit(other);
     expect(getCookSessionSnapshot()).toEqual(other);
+  });
+
+  it('forgets that the last cook ended elsewhere, so the page can start a new one', () => {
+    const { emit } = wireSubscription();
+    initCookSessionSync(SESSION_ID);
+    emit(makeSession());
+    emit(null);
+    expect(get(cookSessionEnded)).toBe(true);
+
+    initCookSessionSync(SESSION_ID);
+
+    expect(get(cookSessionEnded)).toBe(false);
   });
 
   it('forgets the previous local-edit watermark when it re-subscribes', async () => {

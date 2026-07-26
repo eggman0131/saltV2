@@ -32,6 +32,17 @@ export function getCookSessionSnapshot(): CookSessionDoc | null {
 const _isLoadingCookSession = writable(true);
 export const isLoadingCookSession: Readable<boolean> = _isLoadingCookSession;
 
+// True once a session we were holding has been cleared by a snapshot saying the
+// document is gone — i.e. it was completed or restarted on ANOTHER device. The
+// distinction matters because the page bootstraps a fresh session whenever the
+// store reads null: without this signal it would answer a remote delete by
+// writing the session straight back, resurrecting a cook the user just finished.
+// A LOCAL Complete / Restart (removeCookSession) does not set it — those paths
+// clear the store themselves and already know where they are going next.
+// Reset by initCookSessionSync.
+const _cookSessionEnded = writable(false);
+export const cookSessionEnded: Readable<boolean> = _cookSessionEnded;
+
 // ─── Error reporting ────────────────────────────────────────────────────────────
 
 let _errorReporter: ReturnType<typeof createObservabilityErrorReportingAdapter> | null = null;
@@ -48,16 +59,27 @@ function getErrorReporter() {
 // local delete records `now` so a stale echo can't resurrect the deleted doc.
 let latestLocalEdit: { id: string; updatedAt: string } | null = null;
 
+// Count of our own writes that Firestore has not yet acknowledged. An absence
+// cannot be trusted while one is outstanding: it may have been queued before the
+// write reached the local cache, and applying it would blank a session that
+// exists. The write supersedes the absence either way — on success Firestore
+// re-emits the document, and on failure the optimistic copy is deliberately kept
+// (a failed write must not disrupt the cook) — so a swallowed absence is dropped
+// rather than replayed. Deletes are NOT counted: during a delete an absence is
+// exactly the truth we want. Never reset on re-subscribe — the decrement runs in
+// a `finally` that would drive a reset counter negative, and the store reset in
+// initCookSessionSync already makes the guard inert.
+let pendingWrites = 0;
+
 function applySnapshot(sessionId: string, incoming: CookSessionDoc | null): void {
   const local = latestLocalEdit;
   if (incoming === null) {
-    // Doc absent or deleted. If we hold a newer local copy for this id (an
-    // optimistic create the snapshot hasn't echoed yet), keep it; otherwise
-    // reflect the absence.
-    if (local && local.id === sessionId) {
-      const current = get(_session);
-      if (current && current.id === sessionId) return; // keep optimistic copy
-    }
+    if (pendingWrites > 0) return; // keep the optimistic copy; see above
+    // The document really is gone. If we were cooking this session, it ended on
+    // another device — flag that so the page reports the end rather than treating
+    // the absence as "no session yet" and creating one over the top of the delete.
+    const current = get(_session);
+    if (current && current.id === sessionId) _cookSessionEnded.set(true);
     _session.set(null);
     return;
   }
@@ -76,6 +98,7 @@ function applySnapshot(sessionId: string, incoming: CookSessionDoc | null): void
 export function initCookSessionSync(sessionId: string): () => void {
   _isLoadingCookSession.set(true);
   _session.set(null);
+  _cookSessionEnded.set(false);
   latestLocalEdit = null;
   const errors = getErrorReporter();
   const unsub = subscribeCookSession(
@@ -101,7 +124,12 @@ export async function persistCookSession(
   const stamped: CookSessionDoc = { ...session, updatedAt: new Date().toISOString() };
   latestLocalEdit = { id: stamped.id, updatedAt: stamped.updatedAt };
   _session.set(stamped);
-  return reportIfFailed(getErrorReporter(), await saveCookSessionDoc(stamped));
+  pendingWrites += 1;
+  try {
+    return reportIfFailed(getErrorReporter(), await saveCookSessionDoc(stamped));
+  } finally {
+    pendingWrites -= 1;
+  }
 }
 
 // Delete the session (Complete / Restart / orphan cleanup). Records the delete as
