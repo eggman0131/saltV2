@@ -71,7 +71,14 @@ describe('onCookTimerWrite', () => {
 
     await (onCookTimerWrite as unknown as Function)(event(before, after));
 
-    expect(mockTaskQueue).toHaveBeenCalledWith('onCookTimerDispatch');
+    // REGION-QUALIFIED, not the bare name: firebase-admin falls back to
+    // us-central1 for an unqualified name rather than inheriting the calling
+    // function's region, which made every real enqueue 404 on a queue that only
+    // exists in europe-west2. Asserting the qualified form keeps that from
+    // silently regressing (the mock can't tell us the queue was wrong).
+    expect(mockTaskQueue).toHaveBeenCalledWith(
+      'locations/europe-west2/functions/onCookTimerDispatch',
+    );
     expect(mockEnqueue).toHaveBeenCalledTimes(1);
     expect(mockEnqueue).toHaveBeenCalledWith(
       { sessionId: 'recipe-1_uid-1', stepId: 'step-1', endsAt: T1 },
