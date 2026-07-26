@@ -16,7 +16,7 @@
   import { canonItems } from '../../lib/canonService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { isWakeLockSupported, createWakeLock } from '../../lib/wakeLock.js';
-  import { primeChime, playChime } from '../../lib/chime.js';
+  import { primeChime } from '../../lib/chime.js';
   // Pure deck geometry (issue #556) — the viewport arithmetic behind the pager. This
   // component keeps what only it can do: measuring elements and running the spring.
   import {
@@ -732,8 +732,9 @@
   // a timer writes an `activeTimers` entry with an ABSOLUTE `endsAt` (now +
   // durationMinutes); every countdown is `endsAt - now`, so a reload or a device
   // switch reconstructs the correct remaining time with no extra client state (the
-  // resumability mechanism). One live timer per step. `notify` is captured here for a
-  // future push follow-up but is consumed by NO code in this feature.
+  // resumability mechanism). One live timer per step. `notify` arms the server-side
+  // push path: onCookTimerWrite enqueues a Cloud Task per newly-armed timer and
+  // onCookTimerDispatch sends the notification at endsAt.
   //
   // A single in-memory 1s interval drives `now`. It only runs while at least one
   // timer is live (the $effect re-runs when `activeTimers` gains/loses entries) and
@@ -751,39 +752,36 @@
     return () => clearInterval(handle);
   });
 
-  // Foreground chime (issue #544, Phase 4): when a timer we've watched running
-  // crosses its end-time with the app open, play the in-app "Poop-poop!" once —
-  // the audible half of the alert (the fired chip is the visual half). Only
-  // timers observed RUNNING first chime, so a session resumed with an
-  // already-fired timer (it finished while we were away) doesn't retro-honk; the
-  // background system notification covers the closed-app case instead.
-  const observedRunning = new Set<string>();
-  const chimedKeys = new Set<string>();
-  $effect(() => {
-    const t = now;
-    for (const timer of activeTimers) {
-      const key = `${timer.stepId}@${timer.endsAt}`;
-      const fired = new Date(timer.endsAt).getTime() <= t;
-      if (!fired) {
-        observedRunning.add(key);
-      } else if (observedRunning.has(key) && !chimedKeys.has(key)) {
-        chimedKeys.add(key);
-        playChime();
-      }
-    }
-  });
+  // The audible alert is NOT here. It lives in the app-level watcher
+  // (lib/cookTimerAlerts.ts), which keeps ticking once the chef navigates off this
+  // page — where this component, and any chime it owned, would be unmounted. This
+  // page owns the VISUAL half only: the chips below, which flip to "Finished" off
+  // the same `now`. Do not re-add a chime here; two owners means two honks.
 
-  // Default `notify` ON for longer timers (>= 5 min) where a chef is likely to walk
-  // away; short timers default off. Captured only — wired to nothing in this phase.
-  const NOTIFY_MIN_MINUTES = 5;
+  // Which timers get the server-side push backstop. This is a DELIVERY-PRECISION
+  // floor, not a "will the chef walk away" heuristic: a queued Cloud Task fires on
+  // best-effort scheduling, then pays a dispatch cold start and push-service
+  // delivery on top, so a notification can land some seconds late. On a 20-minute
+  // braise that is invisible; on a 45-second blanch a late "Timer finished" is
+  // actively wrong, and may arrive after the chef has already seen the chip fire.
+  // Below the floor the chef is standing at the hob and the chime has it covered.
+  //
+  // Keeping the floor low also matters the other way: every timer that fires with
+  // the app focused is a push that push-sw.js receives and deliberately shows
+  // nothing for, and `userVisibleOnly` subscriptions only tolerate so many of those
+  // before Chrome starts showing its own "updated in the background" notice. A
+  // floor at 90s keeps the swallowed ones to the genuinely-away minority.
+  const NOTIFY_MIN_MINUTES = 1.5;
 
   function startTimer(step: StepDoc): void {
     const timer = step.timer;
     if (!timer) return;
     const s = getCookSessionSnapshot();
     if (!s) return;
-    // Unlock the chime on this user gesture so it can play when the timer ends,
-    // even on iOS Safari (which blocks audio not tied to a gesture).
+    // Unlock the audio context on this user gesture so the app-level watcher can
+    // play the chime when the timer ends, even on iOS Safari (which blocks audio
+    // not tied to a gesture). Starting a timer is the ONLY gesture guaranteed to
+    // precede a chime, so this stays here even though the chime itself does not.
     primeChime();
     // `endsAt` is computed HERE, not in the domain producer, which never reads a
     // clock. Replacing any existing entry for the step is the producer's job.

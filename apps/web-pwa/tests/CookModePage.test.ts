@@ -50,7 +50,7 @@ const {
   };
 });
 
-const { mockCanonItems, mockWakeLock } = vi.hoisted(() => ({
+const { mockCanonItems, mockWakeLock, mockChime } = vi.hoisted(() => ({
   mockCanonItems: {
     subscribe(fn: (v: never[]) => void) {
       fn([]);
@@ -58,7 +58,16 @@ const { mockCanonItems, mockWakeLock } = vi.hoisted(() => ({
     },
   },
   mockWakeLock: { enable: vi.fn(async () => true), disable: vi.fn(async () => {}) },
+  // jsdom has no AudioContext, so the real chime is already a silent no-op — but
+  // it is a no-op we cannot observe. Mocked so the gating around WHEN it fires is
+  // testable at all.
+  mockChime: { primeChime: vi.fn(), playChime: vi.fn() },
 }));
+
+// The audible alert lives in the app-level watcher (cookTimerAlerts), not here —
+// this page only unlocks the audio context on the start gesture. `playChime` is
+// mocked alongside it purely so a re-added chime on this page would show up as a
+// failure rather than passing unnoticed.
 
 vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
 vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
@@ -72,6 +81,7 @@ vi.mock('../src/lib/wakeLock.js', () => ({
   isWakeLockSupported: vi.fn(() => true),
   createWakeLock: vi.fn(() => mockWakeLock),
 }));
+vi.mock('../src/lib/chime.js', () => mockChime);
 // `persistCookSession` echoes into the session store exactly as the real service does
 // (it sets the store optimistically before the write lands), because several flows here
 // depend on the round-trip: a step only collapses once its completion is back in the
@@ -470,7 +480,7 @@ describe('CookModePage — step timers', () => {
     expect(runsFor).toBeLessThanOrEqual(20 * 60_000 + 10_000);
   });
 
-  it('defaults a timer long enough to walk away from to notifying', async () => {
+  it('arms the push backstop on a timer long enough to deliver on time', async () => {
     renderCookMode();
     await enterSteps();
     await userEvent.click(screen.getByTestId('cook-step-timer-start'));
@@ -478,7 +488,21 @@ describe('CookModePage — step timers', () => {
     await waitFor(() => expect(lastPersisted().activeTimers[0]?.notify).toBe(true));
   });
 
-  it('leaves a timer short enough to stand over as silent', async () => {
+  // Starting a timer is the only gesture guaranteed to precede a chime, and iOS
+  // Safari only permits audio unlocked from one — so the unlock has to happen
+  // here even though the chime itself fires from the app-level watcher.
+  it('unlocks the audio context on the start gesture, and never chimes itself', async () => {
+    renderCookMode();
+    await enterSteps();
+    await userEvent.click(screen.getByTestId('cook-step-timer-start'));
+
+    await waitFor(() => expect(mockChime.primeChime).toHaveBeenCalled());
+    expect(mockChime.playChime).not.toHaveBeenCalled();
+  });
+
+  // A few minutes is well inside the floor now — this is the case the old
+  // five-minute threshold left with no alert at all once the screen locked.
+  it('arms the push backstop on a middling timer too', async () => {
     mockRecipes._set([
       makeRecipe({
         steps: [
@@ -487,6 +511,29 @@ describe('CookModePage — step timers', () => {
             id: 'step-2',
             text: 'Rest the sauce.',
             timer: { durationMinutes: 3, description: null },
+            note: null,
+          },
+        ],
+      }),
+    ]);
+    renderCookMode();
+    await enterSteps();
+    await userEvent.click(screen.getByTestId('cook-step-timer-start'));
+
+    await waitFor(() => expect(lastPersisted().activeTimers[0]?.notify).toBe(true));
+  });
+
+  // Below the floor a queued push could land later than the chime, so the chef
+  // standing at the hob gets the chime alone.
+  it('leaves a timer too short to deliver a punctual push as silent', async () => {
+    mockRecipes._set([
+      makeRecipe({
+        steps: [
+          { id: 'step-1', text: 'Soften the onions.', timer: null, note: null },
+          {
+            id: 'step-2',
+            text: 'Blanch the beans.',
+            timer: { durationMinutes: 1, description: null },
             note: null,
           },
         ],

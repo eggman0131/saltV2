@@ -26,6 +26,7 @@
   import { initDevSettingsSync } from './lib/devSettingsService.js';
   import { initAppSettingsSync } from './lib/appSettingsService.js';
   import { initWeatherSync } from './lib/weatherService.js';
+  import { initCookTimerAlerts } from './lib/cookTimerAlerts.js';
   import { normaliseMemberEmail } from '@salt/domain';
   import { envBanner } from './lib/environment.js';
   import SessionOverlay from './lib/dev/SessionOverlay.svelte';
@@ -44,6 +45,10 @@
     const unsubDevSettings = initDevSettingsSync();
     const unsubAppSettings = initAppSettingsSync();
     const unsubWeather = initWeatherSync();
+    // Not a Firestore subscription — a clock over the cook-session store the cook
+    // page already fills. It lives here rather than on the cook page so a timer
+    // still alerts once the chef has navigated away (see cookTimerAlerts.ts).
+    const unsubCookTimers = initCookTimerAlerts();
     return () => {
       unsubCanon();
       unsubProductForms();
@@ -56,6 +61,7 @@
       unsubDevSettings();
       unsubAppSettings();
       unsubWeather();
+      unsubCookTimers();
     };
   });
 
