@@ -12,36 +12,43 @@ import type { CookSessionDoc, IngredientDoc, RecipeDoc } from '@salt/domain/sche
 // always `[0]` — so the tests are written to work WITH that, never around it. Chip
 // clipping, peek height and fade height belong to the Playwright pass.
 
-const { mockAuth, mockRecipes, mockIsLoadingRecipes, mockCookSession, mockIsLoadingCookSession } =
-  vi.hoisted(() => {
-    function makeStore<T>(initial: T) {
-      let value = initial;
-      const subs = new Set<(v: T) => void>();
-      return {
-        subscribe(fn: (v: T) => void) {
-          subs.add(fn);
-          fn(value);
-          return () => {
-            subs.delete(fn);
-          };
-        },
-        _set(v: T) {
-          value = v;
-          subs.forEach((sub) => sub(v));
-        },
-        _get() {
-          return value;
-        },
-      };
-    }
+const {
+  mockAuth,
+  mockRecipes,
+  mockIsLoadingRecipes,
+  mockCookSession,
+  mockCookSessionEnded,
+  mockIsLoadingCookSession,
+} = vi.hoisted(() => {
+  function makeStore<T>(initial: T) {
+    let value = initial;
+    const subs = new Set<(v: T) => void>();
     return {
-      mockAuth: { user: { uid: 'user-1' } as { uid: string } | null },
-      mockRecipes: makeStore<RecipeDoc[]>([]),
-      mockIsLoadingRecipes: makeStore<boolean>(false),
-      mockCookSession: makeStore<CookSessionDoc | null>(null),
-      mockIsLoadingCookSession: makeStore<boolean>(false),
+      subscribe(fn: (v: T) => void) {
+        subs.add(fn);
+        fn(value);
+        return () => {
+          subs.delete(fn);
+        };
+      },
+      _set(v: T) {
+        value = v;
+        subs.forEach((sub) => sub(v));
+      },
+      _get() {
+        return value;
+      },
     };
-  });
+  }
+  return {
+    mockAuth: { user: { uid: 'user-1' } as { uid: string } | null },
+    mockRecipes: makeStore<RecipeDoc[]>([]),
+    mockIsLoadingRecipes: makeStore<boolean>(false),
+    mockCookSession: makeStore<CookSessionDoc | null>(null),
+    mockCookSessionEnded: makeStore<boolean>(false),
+    mockIsLoadingCookSession: makeStore<boolean>(false),
+  };
+});
 
 const { mockCanonItems, mockWakeLock } = vi.hoisted(() => ({
   mockCanonItems: {
@@ -71,8 +78,14 @@ vi.mock('../src/lib/wakeLock.js', () => ({
 // store, and the bootstrap effect only stops re-firing once the store is non-null. The
 // echo is deferred by a microtask so it never lands inside the synchronous body of the
 // effect that triggered it.
+//
+// `removeCookSession` likewise clears the store SYNCHRONOUSLY, as the real one does
+// before it awaits the delete. That gap is load-bearing (issue #559): it is the window
+// in which the bootstrap effect can see a null store and write a replacement session
+// over the top of a Complete or Restart. A mock that left the store alone hid it.
 vi.mock('../src/lib/cookSessionService.js', () => ({
   cookSession: mockCookSession,
+  cookSessionEnded: mockCookSessionEnded,
   isLoadingCookSession: mockIsLoadingCookSession,
   initCookSessionSync: vi.fn(() => () => {}),
   getCookSessionSnapshot: vi.fn(() => mockCookSession._get()),
@@ -81,7 +94,11 @@ vi.mock('../src/lib/cookSessionService.js', () => ({
     mockCookSession._set(session);
     return { kind: 'ok' as const, value: undefined };
   }),
-  removeCookSession: vi.fn(async () => ({ kind: 'ok' as const, value: undefined })),
+  removeCookSession: vi.fn(async () => {
+    mockCookSession._set(null);
+    await Promise.resolve();
+    return { kind: 'ok' as const, value: undefined };
+  }),
 }));
 
 import CookModePage from '../src/routes/recipes/CookModePage.svelte';
@@ -199,6 +216,7 @@ beforeEach(() => {
   mockRecipes._set([makeRecipe()]);
   mockIsLoadingRecipes._set(false);
   mockCookSession._set(makeCookSession());
+  mockCookSessionEnded._set(false);
   mockIsLoadingCookSession._set(false);
 });
 
@@ -410,6 +428,19 @@ describe('CookModePage — working through the steps', () => {
 
     await waitFor(() => expect(vi.mocked(removeCookSession)).toHaveBeenCalledWith(SESSION_ID));
     expect(vi.mocked(push)).toHaveBeenCalledWith(`/recipes/${RECIPE_ID}`);
+  });
+
+  // Issue #559. removeCookSession empties the store before the navigation lands, and
+  // an empty store is also what "this cook has never been started" looks like — so the
+  // bootstrap effect has to be held off, or finishing writes the session back.
+  it('finishing does not open a replacement session on its way out', async () => {
+    mockCookSession._set(makeCookSession({ completedStepIds: ['step-1', 'step-2'] }));
+    renderCookMode();
+
+    await userEvent.click(await screen.findByTestId('cook-mode-complete'));
+    await waitFor(() => expect(vi.mocked(push)).toHaveBeenCalled());
+
+    expect(vi.mocked(persistCookSession)).not.toHaveBeenCalled();
   });
 
   it('shows each step the ingredients it is the first to call for', async () => {
@@ -638,6 +669,48 @@ describe('CookModePage — the recipe changing under an in-progress cook', () =>
       'Started fresh with the updated recipe.',
       'success',
     );
+  });
+
+  // Issue #559, the restart half: the discard empties the store before the fresh
+  // session is written, so the bootstrap effect must not race in and write its own.
+  it('restarting opens exactly one fresh session, not two', async () => {
+    renderCookMode();
+    mockRecipes._set([makeRecipe({ updatedAt: RECIPE_EDITED_AT })]);
+
+    await userEvent.click(await screen.findByTestId('cook-mode-restart'));
+
+    await waitFor(() => expect(vi.mocked(persistCookSession)).toHaveBeenCalled());
+    expect(vi.mocked(persistCookSession)).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Issue #559. Finishing a cook on the phone used to leave it on screen on the tablet
+// until the page was re-entered. Now the service says the session ENDED rather than
+// merely reading empty, which is the distinction the bootstrap effect needs: without
+// it, clearing the store would just make the tablet write the session back.
+describe('CookModePage — the cook ending on another device', () => {
+  it('tells the cook and returns to the recipe', async () => {
+    renderCookMode();
+    await screen.findByTestId('cook-mode-page');
+
+    mockCookSession._set(null);
+    mockCookSessionEnded._set(true);
+
+    await waitFor(() =>
+      expect(vi.mocked(addToast)).toHaveBeenCalledWith('This cook was finished on another device.'),
+    );
+    expect(vi.mocked(push)).toHaveBeenCalledWith(`/recipes/${RECIPE_ID}`);
+  });
+
+  it('does not answer the deletion by starting the cook over', async () => {
+    renderCookMode();
+    await screen.findByTestId('cook-mode-page');
+
+    mockCookSession._set(null);
+    mockCookSessionEnded._set(true);
+
+    await waitFor(() => expect(vi.mocked(push)).toHaveBeenCalled());
+    expect(vi.mocked(persistCookSession)).not.toHaveBeenCalled();
   });
 });
 
