@@ -13,9 +13,11 @@
   let {
     currentPath = '/',
     withBadge = false,
+    withOverflow = false,
   }: {
     currentPath?: string;
     withBadge?: boolean;
+    withOverflow?: boolean;
   } = $props();
 
   // Trim to four items (a realistic mobile bottom bar) and optionally badge one.
@@ -24,8 +26,16 @@
       .slice(0, 4)
       .map((item) => (withBadge && item.id === 'shopping' ? { ...item, badge: 3 } : item)),
   );
+
+  // The fifth demo item stands in for the folded-away destinations; its badge
+  // exercises the count rolling up onto the More tab.
+  const overflowItems = $derived<NavItem[]>(
+    withOverflow
+      ? demoNavItems.slice(4).map((item) => (withBadge ? { ...item, badge: 2 } : item))
+      : [],
+  );
 </script>
 
 <div class="w-full max-w-lg overflow-hidden rounded-lg border border-border">
-  <BottomNav {items} {currentPath} class="relative lg:block" />
+  <BottomNav {items} {overflowItems} {currentPath} class="relative lg:block" />
 </div>

@@ -12,7 +12,7 @@
   } from '@salt/ui-components';
   import AuthGate from './components/AuthGate.svelte';
   import { auth } from './lib/auth.svelte.js';
-  import { navItems, adminNavItem } from './lib/nav.js';
+  import { navItems, overflowNavItems, adminNavItem } from './lib/nav.js';
   import { routes } from './routes/index.js';
   import { toasts, dismissToast } from './lib/toastStore.js';
   import { canonItems, initCanonSync } from './lib/canonService.js';
@@ -79,8 +79,11 @@
     $canonItems.filter((i) => i.needs_approval).length +
       $productForms.filter((f) => f.needs_approval).length,
   );
-  const decoratedNavItems = $derived([
-    ...navItems,
+  // Admin joins the overflow rather than the four primary tabs. The BottomNav sums
+  // the overflow badges onto its "More" tab, so the review count still surfaces
+  // even while Admin itself is folded away.
+  const decoratedOverflowNavItems = $derived([
+    ...overflowNavItems,
     ...(isAdmin ? [reviewCount > 0 ? { ...adminNavItem, badge: reviewCount } : adminNavItem] : []),
   ]);
 </script>
@@ -88,7 +91,8 @@
 <AuthGate>
   <ToastProvider>
     <AppShell
-      navItems={decoratedNavItems}
+      {navItems}
+      overflowNavItems={decoratedOverflowNavItems}
       currentPath={router.location}
       title="Salt"
       envLabel={envBanner?.label}

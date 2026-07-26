@@ -1,11 +1,11 @@
 <!-- spec: SPEC.md §5 v0.3 -->
 <script lang="ts">
   import { Dialog } from 'bits-ui';
-  import type { Snippet } from 'svelte';
+  import type { SheetPartProps } from './Sheet.types';
 
-  let { children }: { children?: Snippet } = $props();
+  let { class: className, children }: SheetPartProps = $props();
 </script>
 
-<Dialog.Trigger>
+<Dialog.Trigger class={className}>
   {@render children?.()}
 </Dialog.Trigger>

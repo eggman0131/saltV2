@@ -3,6 +3,11 @@ import type { NavItem } from '../NavItem.types';
 
 export interface AppShellProps {
   navItems: NavItem[];
+  /**
+   * Secondary destinations. The desktop SideNav has room, so it lists them inline
+   * after `navItems`; the mobile BottomNav folds them behind its "More" tab.
+   */
+  overflowNavItems?: NavItem[];
   currentPath: string;
   title?: string;
   actions?: Snippet;

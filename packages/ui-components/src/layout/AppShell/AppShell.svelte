@@ -7,6 +7,7 @@
 
   let {
     navItems,
+    overflowNavItems = [],
     currentPath,
     title = 'Salt',
     actions,
@@ -22,7 +23,8 @@
   <TopBar {title} {actions} {envLabel} {envClass} />
 
   <div class="flex flex-1 overflow-hidden">
-    <SideNav items={navItems} {currentPath} footer={sideNavFooter} />
+    <!-- Desktop has the vertical room for the full list; only the BottomNav overflows. -->
+    <SideNav items={[...navItems, ...overflowNavItems]} {currentPath} footer={sideNavFooter} />
 
     <!--
       On mobile, reserve the BottomNav height (h-14 = 3.5rem) plus the device
@@ -34,5 +36,5 @@
     </main>
   </div>
 
-  <BottomNav items={navItems} {currentPath} />
+  <BottomNav items={navItems} overflowItems={overflowNavItems} {currentPath} />
 </div>
