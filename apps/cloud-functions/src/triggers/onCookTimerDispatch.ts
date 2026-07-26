@@ -6,7 +6,7 @@ import { CookSessionSchema, PushSubscriptionSchema } from '@salt/domain/schemas'
 import { flushServerObservability } from '@salt/observability/server';
 import { sendWebPush } from '../adapters/sendWebPush.js';
 import { reportServerError } from '../observability/reportServerError.js';
-import type { CookTimerTaskPayload } from './cookTimerTypes.js';
+import { COOK_TIMER_REGION, type CookTimerTaskPayload } from './cookTimerTypes.js';
 
 // Cloud Task handler that actually sends the cook-timer push (issue #544). Fires
 // at the scheduled endsAt of a timer enqueued by onCookTimerWrite. The whole body
@@ -26,7 +26,7 @@ const posthogApiKey = defineSecret('POSTHOG_API_KEY');
 
 export const onCookTimerDispatch = onTaskDispatched<CookTimerTaskPayload>(
   {
-    region: 'europe-west2',
+    region: COOK_TIMER_REGION,
     memory: '512MiB',
     secrets: [vapidPrivateKey, vapidPublicKey, posthogApiKey],
     // A push endpoint can be transiently unavailable; retry a handful of times
