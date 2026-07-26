@@ -38,6 +38,7 @@
     withStepDone,
     withIngredientChecked,
     withAllIngredientsChecked,
+    withGroupChecked,
     withTimerStarted,
     withTimerDismissed,
     firstUseByStep as groupIngredientsByFirstUse,
@@ -51,6 +52,7 @@
     CookActiveTimerDoc,
     CookSessionDoc,
     IngredientDoc,
+    IngredientGroupDoc,
     StepDoc,
   } from '@salt/domain/schemas';
 
@@ -175,6 +177,41 @@
     if (!s || !recipe) return;
     const allIds = recipe.ingredients.flatMap((g) => g.items.map((i) => i.id));
     void persistCookSession(withAllIngredientsChecked(s, allIds, allIngredientsChecked));
+  }
+
+  // ─── Mise sections ─────────────────────────────────────────────────────────────
+  // A sectioned recipe ("For the sauce" / "For the pasta") is gathered a section at
+  // a time, so each one gets the two controls that suit that: fold it away once it's
+  // on the bench, and tick the whole section in one tap.
+  //
+  // Only recipes that actually HAVE sections get the header. A single unnamed group
+  // is not a section, it's the ingredient list — folding it away would leave an empty
+  // screen, and the footer's Check all already ticks exactly the same set. That
+  // mirrors what the heading already did: it only ever rendered for a named group.
+  const hasMiseSections = $derived(
+    recipe !== null &&
+      (recipe.ingredients.length > 1 || recipe.ingredients.some((g) => g.name !== null)),
+  );
+
+  // Local, not persisted: which sections you've folded away is a view of the list
+  // you're standing in front of, not cook progress — nothing another device wants,
+  // and a fresh open should show the whole list. Survives the mise ↔ steps switch
+  // (same component), which is the only place it has to.
+  let collapsedGroupIds = $state(new Set<string>());
+
+  function toggleGroupCollapsed(id: string): void {
+    const next = new Set(collapsedGroupIds);
+    if (!next.delete(id)) next.add(id);
+    collapsedGroupIds = next;
+  }
+
+  // Section-scoped bulk tick. `withGroupChecked` leaves the other sections' ticks
+  // alone — the whole point of having one per section — and takes the target state
+  // rather than toggling, off the same `allChecked` the button label reads.
+  function toggleGroupIngredients(group: IngredientGroupDoc, groupAllChecked: boolean): void {
+    const s = getCookSessionSnapshot();
+    if (!s) return;
+    void persistCookSession(withGroupChecked(s, group, !groupAllChecked));
   }
 
   // ─── Guided steps (Phase 2) ─────────────────────────────────────────────────────
@@ -1136,58 +1173,108 @@
             <p class="text-sm text-muted-foreground">This recipe has no ingredients.</p>
           {/if}
           {#each recipe.ingredients as group (group.id)}
-            <section class="flex flex-col gap-2" data-testid="cook-mise-group">
-              {#if group.name}
-                <h2
-                  class="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-                  data-testid="cook-mise-group-name"
-                >
-                  {group.name}
-                </h2>
-              {/if}
-              <ul class="flex flex-col gap-2">
-                {#each group.items as ingredient (ingredient.id)}
-                  {@const checked = checkedIds.has(ingredient.id)}
-                  <li>
+            {@const groupMise = miseProgress([group], checkedIds)}
+            {@const groupCollapsed = collapsedGroupIds.has(group.id)}
+            <section
+              class="flex flex-col gap-2"
+              data-testid="cook-mise-group"
+              data-group-id={group.id}
+              data-collapsed={groupCollapsed}
+            >
+              {#if hasMiseSections}
+                <!-- Section header: fold on the left, tick-the-lot on the right. Two
+                   separate controls, not one row with two jobs — the collapse is the
+                   heading itself (kept as an h2 so the list is still navigable by
+                   heading), and the bulk tick sits outside it because a button inside
+                   a button is not a thing. The n/m rides in the heading so a folded
+                   section still says how much of it is done. -->
+                <div class="flex items-center gap-2">
+                  <h2 class="min-w-0 flex-1">
                     <button
                       type="button"
-                      class="flex w-full items-center gap-3 rounded-lg border px-4 py-4 text-left transition-colors active:bg-muted {checked
-                        ? 'border-primary/40 bg-primary/5'
-                        : 'bg-card hover:bg-muted/50'}"
-                      onclick={() => toggleIngredient(ingredient.id)}
-                      aria-pressed={checked}
-                      data-testid="cook-mise-row"
+                      class="flex w-full items-center gap-1.5 py-1 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground"
+                      onclick={() => toggleGroupCollapsed(group.id)}
+                      aria-expanded={!groupCollapsed}
+                      data-testid="cook-mise-group-toggle"
                     >
-                      <span
-                        class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border {checked
-                          ? 'border-primary bg-primary text-primary-foreground'
-                          : 'border-input'}"
-                      >
-                        {#if checked}<Icon name="Check" size={18} />{/if}
-                      </span>
-                      <!-- Rendered for every row, matched or not: an unmatched
-                         ingredient shows the bare tile (same as an unmatched shopping
-                         row), which keeps the text column aligned down the whole list
-                         instead of ragging in and out. Dims with the tick, as on the
-                         shopping list. -->
-                      <CanonIcon
-                        thumbnail={thumbnailFor(ingredient.canonId)}
-                        name={ingredientLabel(ingredient)}
-                        version={iconVersionFor(ingredient.canonId)}
-                        dimmed={checked}
-                        size={34}
+                      <Icon
+                        name={groupCollapsed ? 'ChevronRight' : 'ChevronDown'}
+                        size={14}
+                        class="shrink-0"
                       />
-                      <span
-                        class="min-w-0 flex-1 text-base {checked
-                          ? 'text-muted-foreground line-through'
-                          : ''}"
-                      >
-                        <IngredientText {ingredient} />
+                      <span class="truncate" data-testid="cook-mise-group-name">
+                        {group.name ?? 'Ingredients'}
+                      </span>
+                      <span class="shrink-0 tabular-nums text-muted-foreground/70">
+                        {groupMise.checked}/{groupMise.total}
                       </span>
                     </button>
-                  </li>
-                {/each}
-              </ul>
+                  </h2>
+                  <!-- Same words as the footer's whole-recipe control, deliberately —
+                     it does the same thing at a smaller scope. What tells them apart
+                     visually is placement (this one is attached to its heading); for a
+                     screen reader, where placement carries nothing, `ariaLabel` names
+                     the section so the two are never the same button. -->
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onclick={() => toggleGroupIngredients(group, groupMise.allChecked)}
+                    disabled={groupMise.total === 0}
+                    ariaLabel="{groupMise.allChecked
+                      ? 'Uncheck all'
+                      : 'Check all'} in {group.name ?? 'ingredients'}"
+                    data-testid="cook-mise-group-check-all"
+                  >
+                    {#snippet leading()}<Icon name="CheckCheck" size={14} />{/snippet}
+                    {groupMise.allChecked ? 'Uncheck all' : 'Check all'}
+                  </Button>
+                </div>
+              {/if}
+              {#if !groupCollapsed}
+                <ul class="flex flex-col gap-2">
+                  {#each group.items as ingredient (ingredient.id)}
+                    {@const checked = checkedIds.has(ingredient.id)}
+                    <li>
+                      <button
+                        type="button"
+                        class="flex w-full items-center gap-3 rounded-lg border px-4 py-4 text-left transition-colors active:bg-muted {checked
+                          ? 'border-primary/40 bg-primary/5'
+                          : 'bg-card hover:bg-muted/50'}"
+                        onclick={() => toggleIngredient(ingredient.id)}
+                        aria-pressed={checked}
+                        data-testid="cook-mise-row"
+                      >
+                        <span
+                          class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border {checked
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : 'border-input'}"
+                        >
+                          {#if checked}<Icon name="Check" size={18} />{/if}
+                        </span>
+                        <!-- Rendered for every row, matched or not: an unmatched
+                           ingredient shows the bare tile (same as an unmatched shopping
+                           row), which keeps the text column aligned down the whole list
+                           instead of ragging in and out. Dims with the tick, as on the
+                           shopping list. -->
+                        <CanonIcon
+                          thumbnail={thumbnailFor(ingredient.canonId)}
+                          name={ingredientLabel(ingredient)}
+                          version={iconVersionFor(ingredient.canonId)}
+                          dimmed={checked}
+                          size={34}
+                        />
+                        <span
+                          class="min-w-0 flex-1 text-base {checked
+                            ? 'text-muted-foreground line-through'
+                            : ''}"
+                        >
+                          <IngredientText {ingredient} />
+                        </span>
+                      </button>
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
             </section>
           {/each}
         </div>
@@ -1485,10 +1572,17 @@
        "Finish cooking" state below, reachable once every step is ticked. -->
     <footer class="flex shrink-0 items-center justify-between gap-3 border-t px-4 py-3">
       {#if stage === 'mise'}
+        <!-- The whole-recipe bulk tick. Once a sectioned recipe puts a "Check all" on
+           every heading too, this one's scope has to be said out loud for anyone who
+           can't see that it sits in the footer rather than in a section. The visible
+           text is kept INSIDE the label so voice control still matches it. -->
         <Button
           variant="ghost"
           onclick={toggleAllIngredients}
           disabled={totalIngredients === 0}
+          ariaLabel="{allIngredientsChecked
+            ? 'Uncheck all'
+            : 'Check all'} ingredients in the recipe"
           data-testid="cook-mise-check-all"
         >
           {#snippet leading()}<Icon name="CheckCheck" size={16} />{/snippet}

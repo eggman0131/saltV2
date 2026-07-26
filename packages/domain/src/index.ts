@@ -280,6 +280,7 @@ export {
   withStepDone,
   withIngredientChecked,
   withAllIngredientsChecked,
+  withGroupChecked,
   withTimerStarted,
   withTimerDismissed,
   firstUseByStep,

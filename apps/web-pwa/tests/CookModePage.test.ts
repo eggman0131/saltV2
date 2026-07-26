@@ -357,6 +357,102 @@ describe('CookModePage — mise en place', () => {
   });
 });
 
+describe('CookModePage — mise sections', () => {
+  // A recipe with real sections: the two controls only exist for these.
+  const SECTIONED = makeRecipe({
+    ingredients: [
+      {
+        id: 'group-1',
+        name: 'For the sauce',
+        items: [makeIngredient({ id: 'ing-1' }), makeIngredient({ id: 'ing-2' })],
+      },
+      {
+        id: 'group-2',
+        name: 'To serve',
+        items: [makeIngredient({ id: 'ing-3' })],
+      },
+    ],
+  });
+
+  it('folds a section away, and brings it back', async () => {
+    mockRecipes._set([SECTIONED]);
+    renderCookMode();
+    expect(screen.getAllByTestId('cook-mise-row')).toHaveLength(3);
+
+    const [sauce] = screen.getAllByTestId('cook-mise-group-toggle');
+    await userEvent.click(sauce!);
+
+    // Only the folded section's rows go; the other section is untouched.
+    expect(screen.getAllByTestId('cook-mise-row')).toHaveLength(1);
+    expect(sauce!).toHaveAttribute('aria-expanded', 'false');
+
+    await userEvent.click(sauce!);
+    expect(screen.getAllByTestId('cook-mise-row')).toHaveLength(3);
+    expect(sauce!).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('keeps the section header — and its bulk tick — reachable while folded', async () => {
+    mockRecipes._set([SECTIONED]);
+    renderCookMode();
+
+    await userEvent.click(screen.getAllByTestId('cook-mise-group-toggle')[0]!);
+    await userEvent.click(screen.getAllByTestId('cook-mise-group-check-all')[0]!);
+
+    await waitFor(() => expect(lastPersisted().checkedIngredientIds).toEqual(['ing-1', 'ing-2']));
+  });
+
+  it('ticks one section without touching the ticks in another', async () => {
+    mockRecipes._set([SECTIONED]);
+    mockCookSession._set(makeCookSession({ checkedIngredientIds: ['ing-3'] }));
+    renderCookMode();
+
+    await userEvent.click(screen.getAllByTestId('cook-mise-group-check-all')[0]!);
+
+    await waitFor(() =>
+      expect(lastPersisted().checkedIngredientIds).toEqual(['ing-3', 'ing-1', 'ing-2']),
+    );
+  });
+
+  it('clears just that section when the whole section is already ticked', async () => {
+    mockRecipes._set([SECTIONED]);
+    mockCookSession._set(makeCookSession({ checkedIngredientIds: ['ing-1', 'ing-2', 'ing-3'] }));
+    renderCookMode();
+
+    const [sauceCheckAll] = screen.getAllByTestId('cook-mise-group-check-all');
+    expect(sauceCheckAll!).toHaveTextContent('Uncheck');
+    await userEvent.click(sauceCheckAll!);
+
+    await waitFor(() => expect(lastPersisted().checkedIngredientIds).toEqual(['ing-3']));
+  });
+
+  it('shows each section its own progress, not the recipe’s', async () => {
+    mockRecipes._set([SECTIONED]);
+    mockCookSession._set(makeCookSession({ checkedIngredientIds: ['ing-1'] }));
+    renderCookMode();
+
+    const headers = screen.getAllByTestId('cook-mise-group-toggle');
+    expect(headers[0]!).toHaveTextContent('1/2');
+    expect(headers[1]!).toHaveTextContent('0/1');
+  });
+
+  // An unnamed single group is not a section, it's the ingredient list: folding it
+  // would leave an empty screen and the footer's Check all already ticks that exact
+  // set, so the header stays off.
+  it('leaves a recipe with one unnamed group as a plain list', () => {
+    mockRecipes._set([
+      makeRecipe({
+        ingredients: [{ id: 'group-1', name: null, items: [makeIngredient({ id: 'ing-1' })] }],
+      }),
+    ]);
+    renderCookMode();
+
+    expect(screen.getByTestId('cook-mise-row')).toBeInTheDocument();
+    expect(screen.queryByTestId('cook-mise-group-toggle')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('cook-mise-group-check-all')).not.toBeInTheDocument();
+    expect(screen.getByTestId('cook-mise-check-all')).toBeInTheDocument();
+  });
+});
+
 describe('CookModePage — working through the steps', () => {
   it('ticks the step being cooked and moves the footer on to the next one outstanding', async () => {
     renderCookMode();
