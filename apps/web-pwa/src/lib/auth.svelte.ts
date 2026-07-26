@@ -1,10 +1,19 @@
 import type { User } from '@salt/domain';
 import type { DomainError } from '@salt/shared-types';
+import type { PendingEmailOtp } from '@salt/domain/schemas';
 import { normaliseMemberEmail } from '@salt/domain';
+import { PendingEmailOtpSchema } from '@salt/domain/schemas';
 import { authProvider } from './firebase.js';
 import { identifyUser, identifyAnonymous } from './observability.js';
 
 const PENDING_EMAIL_KEY = 'salt:auth:pendingEmail';
+const PENDING_OTP_KEY = 'salt:auth:pendingOtp';
+
+// Mirrors CODE_TTL_MS in apps/cloud-functions/src/auth/otpStore.ts — apps can't
+// import each other, so the value is duplicated. Only used to decide whether a
+// persisted code-entry step is still worth restoring; the server remains the
+// authority on whether a code is actually live.
+const OTP_TTL_MS = 10 * 60 * 1000;
 
 // Web-pwa is the composition layer for auth — it holds the pending email so
 // the firebase-sync adapter can stay stateless. We use localStorage (not
@@ -37,6 +46,42 @@ function clearPendingEmail(): void {
   }
 }
 
+// The in-flight OTP step gets the same treatment as the magic-link pending
+// email, and for a sharper version of the same reason: the user MUST leave the
+// app to fetch the code. An installed iOS PWA is routinely killed while it sits
+// in the background, so an in-memory `codeSent` came back false and dumped the
+// user on the request step with a freshly-read code and nowhere to type it
+// (#585 follow-up). localStorage, not sessionStorage — a relaunched standalone
+// app starts a new session, which is precisely the case being rescued.
+function readPendingOtp(): PendingEmailOtp | null {
+  try {
+    const raw = window.localStorage.getItem(PENDING_OTP_KEY);
+    if (!raw) return null;
+    const parsed = PendingEmailOtpSchema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    // Storage unavailable or the value isn't JSON — treat as "no pending code"
+    // and fall back to the request step, exactly as before this existed.
+    return null;
+  }
+}
+
+function writePendingOtp(pending: PendingEmailOtp): void {
+  try {
+    window.localStorage.setItem(PENDING_OTP_KEY, JSON.stringify(pending));
+  } catch {
+    /* localStorage unavailable — the code step just won't survive a relaunch */
+  }
+}
+
+function clearPendingOtp(): void {
+  try {
+    window.localStorage.removeItem(PENDING_OTP_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 class AuthStore {
   user = $state<User | null>(null);
   loading = $state(true);
@@ -47,15 +92,20 @@ class AuthStore {
   // cleared). The login UI prompts for the email and calls completeWithEmail.
   needsEmail = $state(false);
   // Email-OTP flow (issue #546): true once a 6-digit code has been emailed, so
-  // the login UI switches to the code-entry step. Held in-memory only — OTP
-  // completes in the same tab, so it needs no storage carve-out (unlike magic
-  // link's cross-tab pending email).
+  // the login UI switches to the code-entry step. Backed by localStorage so the
+  // step survives the app being killed while the user is off reading the email
+  // (see readPendingOtp) — it is restored in the constructor.
   codeSent = $state(false);
+  // The address the pending code was sent to. Restored alongside `codeSent`:
+  // the code step names it, and submitCode has to verify against it, neither of
+  // which the login form can supply after a relaunch has emptied its input.
+  codeEmail = $state('');
   // The magic-link URL we're waiting to complete, captured before any history
   // rewrite so completeWithEmail can finish sign-in after the user re-enters.
   private pendingUrl: string | null = null;
 
   constructor() {
+    this.restorePendingOtp();
     this.user = authProvider.getCurrentUser();
     authProvider.observe((u) => {
       this.user = u;
@@ -64,6 +114,20 @@ class AuthStore {
       else identifyAnonymous();
     });
     void this.maybeCompleteFromUrl();
+  }
+
+  // Put the UI back on the code-entry step after a relaunch, provided the code
+  // could still be live. An expired one is dropped rather than restored — the
+  // server would reject it, so the request step is the honest place to land.
+  private restorePendingOtp(): void {
+    const pending = readPendingOtp();
+    if (!pending) return;
+    if (Date.now() - pending.sentAt >= OTP_TTL_MS) {
+      clearPendingOtp();
+      return;
+    }
+    this.codeEmail = pending.email;
+    this.codeSent = true;
   }
 
   private async maybeCompleteFromUrl(): Promise<void> {
@@ -138,7 +202,11 @@ class AuthStore {
     const normalised = normaliseMemberEmail(email);
     const result = await authProvider.requestEmailCode(normalised);
     if (result.kind === 'ok') {
+      this.codeEmail = normalised;
       this.codeSent = true;
+      // Persist before the user leaves for their email client — that departure
+      // is what can kill the app, and it happens the moment this resolves.
+      writePendingOtp({ email: normalised, sentAt: Date.now() });
     } else {
       this.error = formatError(result.error);
     }
@@ -149,7 +217,10 @@ class AuthStore {
   async submitCode(email: string, code: string): Promise<void> {
     this.error = null;
     const result = await authProvider.signInWithEmailCode(normaliseMemberEmail(email), code);
-    if (result.kind !== 'ok') {
+    if (result.kind === 'ok') {
+      // Spent — don't leave a step behind that a later sign-out would restore.
+      this.resetCode();
+    } else {
       this.error = formatOtpError(result.error);
     }
   }
@@ -157,7 +228,9 @@ class AuthStore {
   // Return to the "enter your email" step (change email / start over).
   resetCode(): void {
     this.codeSent = false;
+    this.codeEmail = '';
     this.error = null;
+    clearPendingOtp();
   }
 
   async signOut(): Promise<void> {
