@@ -13,6 +13,7 @@ import { parseRecipeIngredientsFlow } from './parseRecipeIngredients.js';
 import { resolveModel } from '../ai/resolveModel.js';
 import { CATEGORY_TAG_RULES, normaliseTags } from './categoryTags.js';
 import { INGREDIENT_SUBSTITUTION_RULES } from './ingredientConversions.js';
+import { STEP_RULES, FIRST_USE_ORDINAL_RULE } from './stepRules.js';
 import { readEquipmentContext, equipmentSectionForLibrarian } from './equipmentContext.js';
 
 const OutputSchema = z.custom<RecipeDoc>();
@@ -265,20 +266,14 @@ ${INGREDIENT_SUBSTITUTION_RULES}
   ingredients ("Salt and freshly ground black pepper" → two ingredients). These override "preserve
   the original wording"),
   isOptional (true only if explicitly optional),
-  firstUsedInStepOrdinal (0-based index into the steps array for the first step that uses this
-  ingredient; null if the ingredient has no obvious first step).
-- steps: numbered method steps. Each step: text (clear instruction), timerMinutes (integer or null),
-  timerLabel: when timerMinutes is set, a SHORT imperative label for that timer (2–4 words, e.g.
-  "Simmer the sauce", "Rest the dough", "Boil pasta"). Do NOT repeat the duration in it (the minutes
-  are shown separately). null whenever timerMinutes is null.
-  note: a genuine warning or non-obvious caveat only — something that would ruin the dish if missed
-  (e.g. "don't let the heat exceed 80°C or the custard will scramble"). Leave null for routine
-  instructions; most steps should have no note. All temperatures must be in °C only — never Fahrenheit.
+  ${FIRST_USE_ORDINAL_RULE}
+${STEP_RULES}
 - notes: chef's overall notes or tips, or null.`;
 
 // Create mode: the conversation is the only source of truth.
 const CREATE_MODE_CLOSING = `Extract only what is present in the conversation. \
-Do not invent ingredients or steps not discussed.`;
+Do not invent ingredients or steps not discussed — though splitting an operation the chef DID \
+describe across consecutive steps, per the one-operation rule above, invents nothing.`;
 
 // Edit mode: the existing recipe is the source of truth and the conversation
 // describes a delta to apply. Without this, the librarian (told to "extract only

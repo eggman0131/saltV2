@@ -53,6 +53,7 @@ vi.mock('firebase-functions', () => ({
 vi.stubGlobal('crypto', { randomUUID: mockUUID });
 
 const { authorRecipeFlow } = await import('../../src/flows/authorRecipe.js');
+const { STEP_RULES, FIRST_USE_ORDINAL_RULE } = await import('../../src/flows/stepRules.js');
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -277,6 +278,51 @@ describe('authorRecipe — edit-mode grounding', () => {
     const system = systemPromptFrom();
     expect(system).toContain('Extract only what is present in the conversation');
     expect(system).not.toContain('Editing an existing recipe');
+  });
+});
+
+// ─── step rules ─────────────────────────────────────────────────────────────────
+
+// The one-operation + no-quantities rules are shared with the URL-import prompt, so
+// they are asserted as WHOLE constants: a paraphrase-level substring check would
+// still pass if the two prompts drifted apart. Both modes are covered because edit
+// mode is the retro-fix path for recipes authored under the old rules — it re-authors
+// the complete recipe, so the rules have to survive its prompt assembly too.
+describe('authorRecipe — step rules', () => {
+  beforeEach(() => {
+    mockGenerate.mockResolvedValue({ output: librarianOutput() });
+    mockParseFlow.mockResolvedValue([]);
+  });
+
+  function systemPromptFrom(): string {
+    return (mockGenerate.mock.calls[0]![0] as { system: string }).system;
+  }
+
+  it('carries the shared step and first-use rules in create mode', async () => {
+    await (authorRecipeFlow as Function)({ messages: [], existingTags: [] });
+
+    const system = systemPromptFrom();
+    expect(system).toContain(STEP_RULES);
+    expect(system).toContain(FIRST_USE_ORDINAL_RULE);
+  });
+
+  it('carries the shared step and first-use rules in edit mode', async () => {
+    mockGet.mockResolvedValue({ exists: true, data: () => baseRecipeDoc() });
+
+    await (authorRecipeFlow as Function)({ messages: [], existingTags: [], recipeId: 'r1' });
+
+    const system = systemPromptFrom();
+    expect(system).toContain(STEP_RULES);
+    expect(system).toContain(FIRST_USE_ORDINAL_RULE);
+  });
+
+  it('no longer licenses a null ordinal for an ingredient a step uses', async () => {
+    await (authorRecipeFlow as Function)({ messages: [], existingTags: [] });
+
+    // The superseded wording. Amounts no longer appear in step text, so an
+    // ingredient with no ordinal loses its quantity everywhere but mise en place —
+    // "null if no obvious first step" is exactly the licence that must not return.
+    expect(systemPromptFrom()).not.toContain('null if the ingredient has no obvious first step');
   });
 });
 

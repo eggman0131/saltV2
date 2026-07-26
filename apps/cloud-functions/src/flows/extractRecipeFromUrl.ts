@@ -14,6 +14,7 @@ import { parseRecipeIngredientsFlow } from './parseRecipeIngredients.js';
 import { resolveModel } from '../ai/resolveModel.js';
 import { CATEGORY_TAG_RULES, normaliseTags } from './categoryTags.js';
 import { INGREDIENT_SUBSTITUTION_RULES } from './ingredientConversions.js';
+import { STEP_RULES, FIRST_USE_ORDINAL_RULE } from './stepRules.js';
 
 // SSRF-hardened URL import (recipe URL import epic, Phases 1 & 3).
 //
@@ -387,12 +388,9 @@ ${CATEGORY_TAG_RULES}
 - ingredientGroups: group ingredients by course/stage (null name = default group).
   Each ingredient: rawText (the ingredient line, already converted to metric + British spelling/terms — \
 this is what the rest of the pipeline parses, so write a clean natural line e.g. "240ml whole milk" or \
-"2 cloves garlic, crushed"), isOptional (true only if explicitly optional), firstUsedInStepOrdinal \
-(0-based index into the steps array for the first step that uses this ingredient; null if none obvious).
-- steps: numbered method steps. Each step: text (clear instruction, British terms, °C only), \
-timerMinutes (integer or null), timerLabel (when timerMinutes is set, a SHORT imperative label for that \
-timer — 2–4 words, e.g. "Simmer the sauce", "Rest the dough", "Boil pasta"; do NOT repeat the duration; \
-null whenever timerMinutes is null), note (a genuine warning/non-obvious caveat only; null for routine steps).
+"2 cloves garlic, crushed"), isOptional (true only if explicitly optional), \
+${FIRST_USE_ORDINAL_RULE}
+${STEP_RULES}
 - notes: the author's overall notes/tips, or null.`;
 
 const EXTRACT_SYSTEM = `You are a precise recipe extraction assistant. You are given the raw HTML \
@@ -408,8 +406,9 @@ ${CONVERSION_RULES}
 
 ${FIELD_RULES}
 
-Extract only what is present on the page. Do not invent ingredients or steps. Ignore page navigation, \
-ads, comments, and unrelated content.`;
+Extract only what is present on the page. Do not invent ingredients or steps — though splitting one \
+of the page's own instructions across consecutive steps, per the one-operation rule above, invents \
+nothing. Ignore page navigation, ads, comments, and unrelated content.`;
 
 // JSON-LD path: the recipe has already been located and structured for us by the
 // page's schema.org/Recipe data, so the model's job is conversion + tidy-up, not
@@ -421,8 +420,11 @@ is genuine recipe data, so set isRecipe=true.
 
 ## Faithfulness
 - Use ONLY the ingredients, steps, times and servings given. Do not invent, add, drop or reorder \
-content. Keep every ingredient and every method step. Preserve any ingredient groupings/headings if \
+content. Keep every ingredient and every instruction. Preserve any ingredient groupings/headings if \
 present in the data.
+- You MAY, and should, SPLIT a source step that bundles several operations into consecutive steps, per \
+the one-operation rule below. That re-divides the given instructions; it does not add, drop or reorder \
+content, so it is not a breach of the rule above. Never MERGE two source steps into one.
 
 ${CONVERSION_RULES}
 
