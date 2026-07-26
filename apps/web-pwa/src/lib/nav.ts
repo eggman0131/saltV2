@@ -9,12 +9,20 @@ import {
 } from '@lucide/svelte';
 import type { NavItem } from '@salt/ui-components';
 
+// The four daily-driver destinations. Kept to four so the mobile BottomNav has room
+// for its active-indicator pill; everything else goes in `overflowNavItems`. The
+// desktop SideNav shows both lists inline (see AppShell).
 export const navItems: NavItem[] = [
   { id: 'shopping', label: 'Shop', icon: ShoppingCart, href: '#/shopping' },
   { id: 'mealplan', label: 'Planner', icon: CalendarDays, href: '#/mealplan' },
   { id: 'recipes', label: 'Recipes', icon: BookOpen, href: '#/recipes' },
   // AI Kitchen Assistant (issue #206) — available to all members.
   { id: 'chat', label: 'Chef', icon: ChefHat, href: '#/chat' },
+];
+
+// Set-up-and-forget destinations: folded behind the BottomNav's "More" tab on
+// mobile. `adminNavItem` is appended here (admins only) in App.svelte.
+export const overflowNavItems: NavItem[] = [
   { id: 'equipment', label: 'Equipment', icon: Blender, href: '#/equipment' },
   { id: 'settings', label: 'Settings', icon: Settings, href: '#/settings' },
 ];
