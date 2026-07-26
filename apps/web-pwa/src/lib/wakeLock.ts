@@ -5,9 +5,11 @@
 //
 // Everything here degrades gracefully and NEVER throws: an unsupported browser, a
 // rejected acquire (e.g. the tab isn't visible, or the OS denies it), or a release
-// on an already-released sentinel all resolve quietly. Failure is REPORTED, not
-// thrown — `enable()` resolves to whether the lock is actually held, so the caller
-// can confirm or correct its UI instead of assuming.
+// on an already-released sentinel all resolve quietly. Failure is RETURNED, not
+// thrown and not reported — `enable()` resolves to whether the lock is actually
+// held, so the caller can confirm or correct its UI instead of assuming. Nothing
+// here reaches ErrorReportingPort by design: a platform declining a wake lock is an
+// expected outcome, not the kind of unexpected failure reporting exists to surface.
 //
 // The OS releases a wake lock automatically whenever the page is hidden (tab
 // switch, screen off). `createWakeLock().enable()` re-acquires on `visibilitychange`
@@ -80,7 +82,7 @@ export function createWakeLock(): WakeLockController {
       });
       return true;
     } catch {
-      // Denied / not visible / unsupported — degrade silently, report the failure.
+      // Denied / not visible / unsupported — degrade silently, return the failure.
       return false;
     }
   }

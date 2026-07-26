@@ -5,6 +5,7 @@
   import { recipes, isLoadingRecipes } from '../../lib/recipeService.js';
   import {
     cookSession,
+    cookSessionEnded,
     isLoadingCookSession,
     initCookSessionSync,
     persistCookSession,
@@ -113,7 +114,25 @@
     if (!uid || !recipe || !sessionId) return;
     if ($isLoadingCookSession || bootstrapping) return;
     if ($cookSession) return; // already have one
+    // A null store means "no session yet" ONLY when nothing has ended one. A cook
+    // finished on another device, and the gap between a local Complete / Restart
+    // clearing the store and its navigation, both read as null here — bootstrapping
+    // into either would write the session straight back and resurrect the delete.
+    // (`completing` / `restarting` are declared with their handlers further down.)
+    if ($cookSessionEnded || completing || restarting) return;
     void createFreshSession();
+  });
+
+  // ─── Ended on another device ───────────────────────────────────────────────────
+  // The document vanished while we were cooking it: someone hit Finish or Restart on
+  // another device. Tell the cook and return to the recipe, rather than leaving a
+  // session on screen that no longer exists anywhere. Runs once.
+  let endedElsewhere = $state(false);
+  $effect(() => {
+    if (!$cookSessionEnded || endedElsewhere) return;
+    endedElsewhere = true;
+    addToast('This cook was finished on another device.');
+    push(`/recipes/${params.id}`);
   });
 
   // ─── Deleted-recipe orphan handling ────────────────────────────────────────────
@@ -818,7 +837,9 @@
     if (!sessionId || completing) return;
     completing = true;
     await removeCookSession(sessionId);
-    completing = false;
+    // Deliberately left true: removeCookSession clears the store synchronously, and
+    // this flag is what stops the bootstrap effect from creating a replacement
+    // session in the gap before the navigation tears the page down.
     push(`/recipes/${params.id}`);
   }
 

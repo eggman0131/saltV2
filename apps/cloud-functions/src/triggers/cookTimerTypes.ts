@@ -8,6 +8,12 @@
 // session and derives generic copy at send time, so no user content rides on the
 // task queue (which is server-owned, but keeping it id-only avoids stale text and
 // respects the "no free-form user content in transport" posture).
+// The region BOTH cook-timer functions are pinned to. Shared because the enqueue
+// side has to name it explicitly (firebase-admin's taskQueue() defaults to
+// us-central1 rather than inheriting the caller's region), so the queue's region
+// and the dispatch handler's region must never drift apart.
+export const COOK_TIMER_REGION = 'europe-west2';
+
 export interface CookTimerTaskPayload {
   readonly sessionId: string;
   readonly stepId: string;

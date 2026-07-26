@@ -4,7 +4,7 @@ import { logger } from 'firebase-functions';
 import { CookSessionSchema, type CookActiveTimerDoc } from '@salt/domain/schemas';
 import { flushServerObservability } from '@salt/observability/server';
 import { reportServerError } from '../observability/reportServerError.js';
-import type { CookTimerTaskPayload } from './cookTimerTypes.js';
+import { COOK_TIMER_REGION, type CookTimerTaskPayload } from './cookTimerTypes.js';
 
 export type { CookTimerTaskPayload } from './cookTimerTypes.js';
 
@@ -27,7 +27,7 @@ function timerKey(t: CookActiveTimerDoc): string {
 export const onCookTimerWrite = onDocumentWritten(
   {
     document: 'cookSessions/{sessionId}',
-    region: 'europe-west2',
+    region: COOK_TIMER_REGION,
     memory: '512MiB',
   },
   async (event) => {
@@ -66,13 +66,18 @@ export const onCookTimerWrite = onDocumentWritten(
     if (newTimers.length === 0) return;
 
     try {
-      // The task queue is keyed by the DEPLOYED function name (onCookTimerDispatch).
-      // Region gotcha: the queue resolves against the function's region — both this
-      // trigger and the dispatch handler are pinned to europe-west2. If the queue
-      // ever fails to resolve at deploy, the enqueue may need to be region-qualified
-      // (e.g. the fully-qualified resource name); today the plain function-name form
-      // resolves because both live in the same project + region.
-      const queue = getFunctions().taskQueue<CookTimerTaskPayload>('onCookTimerDispatch');
+      // The task queue is keyed by the DEPLOYED function name (onCookTimerDispatch),
+      // and it MUST be region-qualified. firebase-admin's `taskQueue()` parses a bare
+      // name as `{ resourceId }` with NO location and then falls back to its
+      // DEFAULT_LOCATION of `us-central1` — it does NOT inherit the calling function's
+      // region. Since both this trigger and the dispatch handler are pinned to
+      // europe-west2, the bare form built a us-central1 queue URL and every enqueue
+      // failed with `functions/not-found: Queue does not exist`, silently killing all
+      // cook-timer pushes in every environment. The `locations/{region}/functions/
+      // {name}` form is what firebase-admin's parseResourceName accepts.
+      const queue = getFunctions().taskQueue<CookTimerTaskPayload>(
+        `locations/${COOK_TIMER_REGION}/functions/onCookTimerDispatch`,
+      );
       const sessionId = event.params.sessionId;
 
       for (const t of newTimers) {
