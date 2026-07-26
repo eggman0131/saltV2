@@ -176,7 +176,34 @@ A brand-new Firebase project needs one-time setup that the CI deployer SA
    the `gcf-admin-robot` and Eventarc service agents provision asynchronously on
    first use, so the first one or two attempts can fail with `404 … Not found`
    or "Eventarc permissions still propagating" — wait a few minutes and retry.
-3. After that, **CI/SA deploys work** without any standing IAM-admin grant.
+3. **Grant the runtime service account `roles/iam.serviceAccountTokenCreator`
+   on itself.** Required by `verifyEmailOtp` (email-OTP sign-in, #585): it mints
+   a Firebase custom token via `getAuth().createCustomToken()`, which signs a JWT
+   through the IAM Credentials API, so the gen2 runtime SA
+   (`<project-number>-compute@developer.gserviceaccount.com`) needs
+   `iam.serviceAccounts.signBlob` on **itself**.
+
+   ```
+   gcloud iam service-accounts add-iam-policy-binding <project-number>-compute@developer.gserviceaccount.com \
+     --member="serviceAccount:<project-number>-compute@developer.gserviceaccount.com" \
+     --role="roles/iam.serviceAccountTokenCreator" \
+     --project=<project-id>
+   ```
+
+   This is a project-level IAM grant, **not** part of `firebase deploy`, so every
+   environment needs it separately — it bit dev, then staging (2026-07-26), and
+   would bite production the first time a member signs in with a code. No
+   redeploy is needed; it propagates in under a minute. Verify with
+   `gcloud iam service-accounts get-iam-policy <sa> --project=<id>` — a bare
+   `{"etag":"ACAB"}` means **no** bindings and OTP sign-in will fail.
+
+   The failure is quiet and misleading: the code, TTL, attempt and allowlist
+   checks all pass and it dies on the very last step, so the user just sees
+   "Sign-in failed. Please try again." The `logger.error` line in
+   `verifyEmailOtp` exists precisely so this leaves a trace in Cloud Logging;
+   grep it for `signBlob`.
+
+4. After that, **CI/SA deploys work** without any standing IAM-admin grant.
 
 > Note: `firebase deploy` will not change a function's trigger type in place. If
 > an interrupted first deploy leaves a Firestore-trigger function as an `https`
@@ -195,6 +222,7 @@ A brand-new Firebase project needs one-time setup that the CI deployer SA
 - [x] Staging first-deploy bootstrap (APIs + service agents) done
 - [x] **First end-to-end staging deploy verified** (CI/SA → https://s2-stage-ccb22.web.app)
 - [x] Production first-deploy bootstrap (owner deploy done — functions + firestore + hosting live at https://s2-prod-e46bd.web.app)
+- [ ] `roles/iam.serviceAccountTokenCreator` self-binding on the runtime SA (needed by email-OTP sign-in — see bootstrap step 3) — dev `277945741930-compute@` **done**; staging `946977631175-compute@` and production `140613398002-compute@` **outstanding** (both policies empty as of 2026-07-26)
 - [x] Production deploy workflow (`deploy-production.yml` — on GitHub Release, gated) — Phase 4
 - [x] ~~PR preview channels~~ — **dropped** (#126 reverted). The whole app sits behind an auth gate and magic-link sign-in can't run on a preview's unauthorized, per-PR origin, so a preview only ever shows the login page. Verify on the staging domain after merge instead.
 - [x] End-of-greenfield doc note (`salt-architecture.md` §1.1 + `CLAUDE.md`) — Phase 6
