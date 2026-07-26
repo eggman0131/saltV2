@@ -8,6 +8,7 @@ const { mockAuth, mockInstall } = vi.hoisted(() => ({
     linkSent: false,
     needsEmail: false,
     codeSent: false,
+    codeEmail: '',
     error: null as string | null,
     sendLink: vi.fn(async () => {}),
     completeWithEmail: vi.fn(async () => {}),
@@ -28,6 +29,7 @@ beforeEach(() => {
   mockAuth.linkSent = false;
   mockAuth.needsEmail = false;
   mockAuth.codeSent = false;
+  mockAuth.codeEmail = '';
   mockAuth.error = null;
   mockInstall.isStandalone = false;
   vi.clearAllMocks();
@@ -70,6 +72,18 @@ describe('LoginPage — email OTP (#546)', () => {
     await userEvent.type(input, '123456');
     await userEvent.click(screen.getByTestId('login-verify-code'));
     expect(mockAuth.submitCode).toHaveBeenCalledWith('', '123456');
+  });
+
+  it('verifies against the restored email when the app relaunched on the code step', async () => {
+    // The iOS case: the app was killed while the user fetched the code, so the
+    // form's own email state is empty and the address comes from the store.
+    mockAuth.codeSent = true;
+    mockAuth.codeEmail = 'cook@example.com';
+    render(LoginPage);
+    expect(screen.getByText('cook@example.com')).toBeInTheDocument();
+    await userEvent.type(screen.getByTestId('login-code-input'), '123456');
+    await userEvent.click(screen.getByTestId('login-verify-code'));
+    expect(mockAuth.submitCode).toHaveBeenCalledWith('cook@example.com', '123456');
   });
 
   it('lets the user go back to change email from the code step', async () => {

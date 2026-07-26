@@ -79,7 +79,10 @@ These rules must be enforced via ESLint, tsconfig project references, and commit
 
 Two narrow exceptions permit browser storage in `apps/web-pwa` only. All other browser storage is forbidden (CLAUDE.md Rule 3).
 
-**Exception 1 — `window.localStorage` for pre-authentication ephemeral state.** The only sanctioned use is the magic-link **pending email** in `apps/web-pwa/src/lib/auth.svelte.ts`: it must persist before any user is signed in (so `persistentLocalCache` cannot apply — there is no authenticated session to write to Firestore), and email clients open the magic link in a fresh tab/window, so `sessionStorage` would be lost.
+**Exception 1 — `window.localStorage` for pre-authentication ephemeral state.** The sanctioned uses are the two sign-in keys in `apps/web-pwa/src/lib/auth.svelte.ts`. Both must persist before any user is signed in (so `persistentLocalCache` cannot apply — there is no authenticated session to write to Firestore), and both must survive the user leaving the app to read their email, which is what rules out `sessionStorage`:
+
+- `salt:auth:pendingEmail` — the magic-link **pending email**. Email clients open the link in a fresh tab/window, which gets a fresh `sessionStorage`.
+- `salt:auth:pendingOtp` — the in-flight **6-digit-code step** (`{ email, sentAt }`), so returning to the app lands back on code entry rather than the request page. An installed iOS PWA is routinely killed while backgrounded and a relaunch starts a new session, so an in-memory flag stranded the user holding a code they had nowhere to type. Read back through `PendingEmailOtpSchema` and discarded once `sentAt` is older than the server's 10-minute code TTL (`CODE_TTL_MS`); the server stays the authority on whether a code is actually live.
 
 **Exception 2 — `window.sessionStorage` for the stale-deploy reload guard.** The `salt:pwa:preloadReloadGuard` key in `apps/web-pwa/src/lib/pwa.ts` is a one-shot flag that survives a single page reload within the same tab to prevent a chunk-load reload loop after a deploy, then auto-clears when the tab closes. `sessionStorage` is the right scope: the flag must outlast the reload but must not suppress a legitimate first reload in a future session (as `localStorage` would).
 

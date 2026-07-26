@@ -191,8 +191,8 @@ export type { MessageDoc, ChatSessionDoc } from './chatSession.js';
 export { CookActiveTimerSchema, CookSessionSchema } from './cookSession.js';
 export type { CookActiveTimerDoc, CookSessionDoc } from './cookSession.js';
 
-export { EmailOtpRequestSchema, EmailOtpVerifySchema } from './emailOtp.js';
-export type { EmailOtpRequest, EmailOtpVerify } from './emailOtp.js';
+export { EmailOtpRequestSchema, EmailOtpVerifySchema, PendingEmailOtpSchema } from './emailOtp.js';
+export type { EmailOtpRequest, EmailOtpVerify, PendingEmailOtp } from './emailOtp.js';
 
 export { PushSubscriptionSchema } from './pushSubscription.js';
 export type { PushSubscriptionDoc } from './pushSubscription.js';

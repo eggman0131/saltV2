@@ -5,7 +5,10 @@
   import { install } from '../lib/install.svelte.js';
   import AddToHomeScreen from './AddToHomeScreen.svelte';
 
-  let email = $state('');
+  // Seeded from the store so a restored code-entry step (the app was killed
+  // while the user fetched the code — see auth.svelte.ts) knows which address
+  // the code went to. Empty for a normal cold start.
+  let email = $state(auth.codeEmail);
   let code = $state('');
   let busy = $state(false);
 
