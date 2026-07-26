@@ -357,6 +357,320 @@ describe('CookModePage — mise en place', () => {
   });
 });
 
+describe('CookModePage — mise sections', () => {
+  // A recipe with real sections: the two controls only exist for these.
+  const SECTIONED = makeRecipe({
+    ingredients: [
+      {
+        id: 'group-1',
+        name: 'For the sauce',
+        items: [makeIngredient({ id: 'ing-1' }), makeIngredient({ id: 'ing-2' })],
+      },
+      {
+        id: 'group-2',
+        name: 'To serve',
+        items: [makeIngredient({ id: 'ing-3' })],
+      },
+    ],
+  });
+
+  it('folds a section away, and brings it back', async () => {
+    mockRecipes._set([SECTIONED]);
+    renderCookMode();
+    expect(screen.getAllByTestId('cook-mise-row')).toHaveLength(3);
+
+    const [sauce] = screen.getAllByTestId('cook-mise-group-toggle');
+    await userEvent.click(sauce!);
+
+    // Only the folded section's rows go; the other section is untouched.
+    expect(screen.getAllByTestId('cook-mise-row')).toHaveLength(1);
+    expect(sauce!).toHaveAttribute('aria-expanded', 'false');
+
+    await userEvent.click(sauce!);
+    expect(screen.getAllByTestId('cook-mise-row')).toHaveLength(3);
+    expect(sauce!).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('keeps the section header — and its bulk tick — reachable while folded', async () => {
+    mockRecipes._set([SECTIONED]);
+    renderCookMode();
+
+    await userEvent.click(screen.getAllByTestId('cook-mise-group-toggle')[0]!);
+    await userEvent.click(screen.getAllByTestId('cook-mise-group-check-all')[0]!);
+
+    await waitFor(() => expect(lastPersisted().checkedIngredientIds).toEqual(['ing-1', 'ing-2']));
+  });
+
+  it('ticks one section without touching the ticks in another', async () => {
+    mockRecipes._set([SECTIONED]);
+    mockCookSession._set(makeCookSession({ checkedIngredientIds: ['ing-3'] }));
+    renderCookMode();
+
+    await userEvent.click(screen.getAllByTestId('cook-mise-group-check-all')[0]!);
+
+    await waitFor(() =>
+      expect(lastPersisted().checkedIngredientIds).toEqual(['ing-3', 'ing-1', 'ing-2']),
+    );
+  });
+
+  it('clears just that section when the whole section is already ticked', async () => {
+    mockRecipes._set([SECTIONED]);
+    mockCookSession._set(makeCookSession({ checkedIngredientIds: ['ing-1', 'ing-2', 'ing-3'] }));
+    renderCookMode();
+
+    const [sauceCheckAll] = screen.getAllByTestId('cook-mise-group-check-all');
+    expect(sauceCheckAll!).toHaveTextContent('Uncheck');
+    await userEvent.click(sauceCheckAll!);
+
+    await waitFor(() => expect(lastPersisted().checkedIngredientIds).toEqual(['ing-3']));
+  });
+
+  it('shows each section its own progress, not the recipe’s', async () => {
+    mockRecipes._set([SECTIONED]);
+    mockCookSession._set(makeCookSession({ checkedIngredientIds: ['ing-1'] }));
+    renderCookMode();
+
+    // Spelled out, not `n/m`: this is a heading, not the page header's status line.
+    const headers = screen.getAllByTestId('cook-mise-group-toggle');
+    expect(headers[0]!).toHaveTextContent('1 of 2');
+    expect(headers[1]!).toHaveTextContent('0 of 1');
+  });
+
+  // An unnamed single group is not a section, it's the ingredient list: folding it
+  // would leave an empty screen and the footer's Check all already ticks that exact
+  // set, so the header stays off.
+  it('leaves a recipe with one unnamed group as a plain list', () => {
+    mockRecipes._set([
+      makeRecipe({
+        ingredients: [{ id: 'group-1', name: null, items: [makeIngredient({ id: 'ing-1' })] }],
+      }),
+    ]);
+    renderCookMode();
+
+    expect(screen.getByTestId('cook-mise-row')).toBeInTheDocument();
+    expect(screen.queryByTestId('cook-mise-group-toggle')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('cook-mise-group-check-all')).not.toBeInTheDocument();
+    expect(screen.getByTestId('cook-mise-check-all')).toBeInTheDocument();
+  });
+});
+
+// A section that is entirely on the bench folds itself away, so what is left on
+// screen is what is left to find. Real timers throughout: the fold waits out the
+// tick beat, and the point of every one of these is WHEN it fires (or doesn't),
+// which a mocked clock would only let us assert against itself.
+describe('CookModePage — a gathered section folding itself away', () => {
+  const SECTIONED = makeRecipe({
+    ingredients: [
+      {
+        id: 'group-1',
+        name: 'For the sauce',
+        items: [makeIngredient({ id: 'ing-1' }), makeIngredient({ id: 'ing-2' })],
+      },
+      { id: 'group-2', name: 'To serve', items: [makeIngredient({ id: 'ing-3' })] },
+    ],
+  });
+
+  /** Well past the tick beat the fold waits out, so "still open" means still open. */
+  function afterTheBeat(): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, 800));
+  }
+
+  function sauceIsOpen(): boolean {
+    return (
+      screen.getAllByTestId('cook-mise-group-toggle')[0]!.getAttribute('aria-expanded') === 'true'
+    );
+  }
+
+  it('folds a section once its last ingredient is ticked', async () => {
+    mockRecipes._set([SECTIONED]);
+    mockCookSession._set(makeCookSession({ checkedIngredientIds: ['ing-1'] }));
+    renderCookMode();
+
+    await userEvent.click(screen.getAllByTestId('cook-mise-row')[1]!);
+
+    // Only that section's rows go — "To serve" is still there to be found.
+    await waitFor(() => expect(screen.getAllByTestId('cook-mise-row')).toHaveLength(1), {
+      timeout: 2000,
+    });
+    expect(sauceIsOpen()).toBe(false);
+    // The heading stays, and keeps saying how much of it is done.
+    expect(screen.getAllByTestId('cook-mise-group-toggle')[0]!).toHaveTextContent('2 of 2');
+  });
+
+  it('folds a section its own bulk tick finished off', async () => {
+    mockRecipes._set([SECTIONED]);
+    renderCookMode();
+
+    await userEvent.click(screen.getAllByTestId('cook-mise-group-check-all')[0]!);
+
+    await waitFor(() => expect(sauceIsOpen()).toBe(false), { timeout: 2000 });
+    expect(screen.getAllByTestId('cook-mise-row')).toHaveLength(1);
+  });
+
+  // A first look at the list shows the list. Opening a cook that was already
+  // half-gathered elsewhere folds nothing — you haven't stood in front of it yet.
+  it('opens an already-gathered section unfolded', async () => {
+    mockRecipes._set([SECTIONED]);
+    mockCookSession._set(makeCookSession({ checkedIngredientIds: ['ing-1', 'ing-2'] }));
+    renderCookMode();
+
+    await afterTheBeat();
+    expect(sauceIsOpen()).toBe(true);
+    expect(screen.getAllByTestId('cook-mise-row')).toHaveLength(3);
+  });
+
+  // Being gathered is not the trigger — BECOMING gathered is. Otherwise opening a
+  // finished section to double-check it would snap shut in the chef's face.
+  it('leaves a gathered section open once the chef has opened it back up', async () => {
+    mockRecipes._set([SECTIONED]);
+    renderCookMode();
+
+    await userEvent.click(screen.getAllByTestId('cook-mise-group-check-all')[0]!);
+    await waitFor(() => expect(sauceIsOpen()).toBe(false), { timeout: 2000 });
+
+    await userEvent.click(screen.getAllByTestId('cook-mise-group-toggle')[0]!);
+    await afterTheBeat();
+    expect(sauceIsOpen()).toBe(true);
+  });
+
+  it('calls the fold off when something is unticked while the beat is still playing', async () => {
+    mockRecipes._set([SECTIONED]);
+    mockCookSession._set(makeCookSession({ checkedIngredientIds: ['ing-1'] }));
+    renderCookMode();
+
+    await userEvent.click(screen.getAllByTestId('cook-mise-row')[1]!);
+    // Straight back off again, inside the beat the fold is waiting out.
+    await userEvent.click(screen.getAllByTestId('cook-mise-row')[1]!);
+    await waitFor(() => expect(lastPersisted().checkedIngredientIds).toEqual(['ing-1']));
+
+    await afterTheBeat();
+    expect(sauceIsOpen()).toBe(true);
+    expect(screen.getAllByTestId('cook-mise-row')).toHaveLength(3);
+  });
+
+  // An unnamed single group has no heading, so a fold would leave an empty screen
+  // and nothing to tap to get the list back.
+  it('never folds an unsectioned list', async () => {
+    mockRecipes._set([
+      makeRecipe({
+        ingredients: [{ id: 'group-1', name: null, items: [makeIngredient({ id: 'ing-1' })] }],
+      }),
+    ]);
+    renderCookMode();
+
+    await userEvent.click(screen.getByTestId('cook-mise-row'));
+    await waitFor(() => expect(lastPersisted().checkedIngredientIds).toEqual(['ing-1']));
+
+    await afterTheBeat();
+    expect(screen.getByTestId('cook-mise-row')).toBeInTheDocument();
+  });
+});
+
+// Ticking a mise row celebrates the way ticking a shopping item does — a haptic
+// tick, the sage wash over the row, the tile springing in. These pin the two
+// things that make it read as the tap's own acknowledgement rather than as
+// decoration: it fires ONLY for the rows a tap actually changes, and ONLY on the
+// way in. How long the beat lasts is `createCheckOffHold`'s own timer, covered in
+// checkOffHold.test.ts.
+describe('CookModePage — ticking an ingredient off', () => {
+  // jsdom ships no `navigator.vibrate` (nor does iOS Safari — the absent case is
+  // real for one in five of this app's users, and `tick()` is a silent no-op there).
+  // Installed here so the gating around WHEN it fires is observable at all.
+  function installVibrate(): ReturnType<typeof vi.fn> {
+    const vibrate = vi.fn(() => true);
+    Object.defineProperty(navigator, 'vibrate', { value: vibrate, configurable: true });
+    return vibrate;
+  }
+
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, 'vibrate');
+  });
+
+  function tiles(): HTMLElement[] {
+    return screen.getAllByTestId('cook-mise-check');
+  }
+
+  function rows(): HTMLElement[] {
+    return screen.getAllByTestId('cook-mise-row');
+  }
+
+  it('washes the ticked row and springs its tile in, leaving the rest of the list still', async () => {
+    renderCookMode();
+    await userEvent.click(rows()[0]!);
+
+    // The beat is on the ROW, not only on the 28px tile — that is what makes it
+    // visible as anything at all.
+    await waitFor(() => expect(rows()[0]!).toHaveClass('salt-tick-row'));
+    expect(tiles()[0]!).toHaveClass('salt-check-pop');
+    expect(rows()[1]!).not.toHaveClass('salt-tick-row');
+    expect(tiles()[1]!).not.toHaveClass('salt-check-pop');
+  });
+
+  // The beat belongs to the tap. A session that arrives already carrying ticks — a
+  // cook resumed, a device switched, a return from the steps stage — renders them
+  // settled, or the list would celebrate its way down the screen every time it
+  // mounted.
+  it('opens a half-ticked list settled, with nothing celebrating', () => {
+    mockCookSession._set(makeCookSession({ checkedIngredientIds: ['ing-1'] }));
+    renderCookMode();
+
+    expect(rows()[0]!).not.toHaveClass('salt-tick-row');
+    expect(tiles()[0]!).not.toHaveClass('salt-check-pop');
+    expect(rows()[1]!).not.toHaveClass('salt-tick-row');
+  });
+
+  it('ticks the phone once on the way in, and stays quiet on the way out', async () => {
+    const vibrate = installVibrate();
+    renderCookMode();
+
+    await userEvent.click(screen.getAllByTestId('cook-mise-row')[0]!);
+    await waitFor(() => expect(lastPersisted().checkedIngredientIds).toEqual(['ing-1']));
+    expect(vibrate).toHaveBeenCalledTimes(1);
+
+    // Unticking is undoing a mistake, not an accomplishment.
+    await userEvent.click(rows()[0]!);
+    await waitFor(() => expect(lastPersisted().checkedIngredientIds).toEqual([]));
+    expect(vibrate).toHaveBeenCalledTimes(1);
+    expect(rows()[0]!).not.toHaveClass('salt-tick-row');
+  });
+
+  it('celebrates what a bulk tick actually changes, and nothing already on the bench', async () => {
+    const vibrate = installVibrate();
+    mockCookSession._set(makeCookSession({ checkedIngredientIds: ['ing-1'] }));
+    renderCookMode();
+
+    await userEvent.click(screen.getByTestId('cook-mise-check-all'));
+
+    await waitFor(() => expect(rows()[1]!).toHaveClass('salt-tick-row'));
+    expect(rows()[0]!).not.toHaveClass('salt-tick-row');
+    // One tick for the action, not one per row it moved.
+    expect(vibrate).toHaveBeenCalledTimes(1);
+  });
+
+  it('celebrates a section the same way its own bulk tick does the writing', async () => {
+    const vibrate = installVibrate();
+    renderCookMode();
+
+    await userEvent.click(screen.getAllByTestId('cook-mise-group-check-all')[0]!);
+
+    await waitFor(() => expect(rows()[0]!).toHaveClass('salt-tick-row'));
+    expect(rows()[1]!).toHaveClass('salt-tick-row');
+    expect(vibrate).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears the lot without a tick or a wash', async () => {
+    const vibrate = installVibrate();
+    mockCookSession._set(makeCookSession({ checkedIngredientIds: ['ing-1', 'ing-2'] }));
+    renderCookMode();
+
+    await userEvent.click(screen.getByTestId('cook-mise-check-all'));
+
+    await waitFor(() => expect(lastPersisted().checkedIngredientIds).toEqual([]));
+    expect(vibrate).not.toHaveBeenCalled();
+    expect(rows()[0]!).not.toHaveClass('salt-tick-row');
+  });
+});
+
 describe('CookModePage — working through the steps', () => {
   it('ticks the step being cooked and moves the footer on to the next one outstanding', async () => {
     renderCookMode();
@@ -625,6 +939,120 @@ describe('CookModePage — step timers', () => {
     const label = screen.getByTestId('cook-timer-chip-label');
     expect(label).toHaveTextContent('Step 2');
     expect(label).not.toHaveAttribute('title');
+  });
+
+  // The label belongs to the timer, not to the step — so it rides inside the bar,
+  // leading, as it does on the persistent chip. Underneath, it read as a caption on
+  // the step itself.
+  it('carries the timer label inside the step timer bar, beside the countdown', async () => {
+    mockRecipes._set([
+      makeRecipe({
+        steps: [
+          { id: 'step-1', text: 'Soften the onions.', timer: null, note: null },
+          {
+            id: 'step-2',
+            text: 'Rest the sauce.',
+            timer: { durationMinutes: 5, description: 'Simmer the sauce' },
+            note: null,
+          },
+        ],
+      }),
+    ]);
+    mockCookSession._set(
+      makeCookSession({
+        activeTimers: [
+          { stepId: 'step-2', endsAt: new Date(Date.now() + 300_000).toISOString(), notify: true },
+        ],
+      }),
+    );
+    renderCookMode();
+    await enterSteps();
+
+    const bar = screen.getByTestId('cook-step-timer');
+    const label = screen.getByTestId('cook-step-timer-label');
+    expect(label).toHaveTextContent('Simmer the sauce');
+    // Inside the bordered row that also holds the countdown, not a sibling of it.
+    expect(label.closest('div')).toContainElement(screen.getByTestId('cook-step-timer-countdown'));
+    expect(bar).toHaveTextContent(/Simmer the sauce\s*(4:5\d|5:00)/);
+  });
+
+  it('shortens the fired status to Finished once a label leads the bar', async () => {
+    mockRecipes._set([
+      makeRecipe({
+        steps: [
+          { id: 'step-1', text: 'Soften the onions.', timer: null, note: null },
+          {
+            id: 'step-2',
+            text: 'Rest the sauce.',
+            timer: { durationMinutes: 5, description: 'Simmer the sauce' },
+            note: null,
+          },
+        ],
+      }),
+    ]);
+    mockCookSession._set(
+      makeCookSession({
+        activeTimers: [
+          { stepId: 'step-2', endsAt: new Date(Date.now() - 30_000).toISOString(), notify: true },
+        ],
+      }),
+    );
+    renderCookMode();
+    await enterSteps();
+
+    expect(screen.getByTestId('cook-step-timer-label')).toHaveTextContent('Simmer the sauce');
+    expect(screen.getByTestId('cook-step-timer-countdown')).toHaveTextContent('Finished');
+  });
+
+  // No label, nothing to lead with: the countdown keeps the bar to itself and the
+  // "Step N" fallback the chip needs would only state the obvious here.
+  it('leaves an unlabelled step timer as the countdown alone', async () => {
+    mockCookSession._set(
+      makeCookSession({
+        activeTimers: [
+          { stepId: 'step-2', endsAt: new Date(Date.now() + 300_000).toISOString(), notify: true },
+        ],
+      }),
+    );
+    renderCookMode();
+    await enterSteps();
+
+    expect(screen.queryByTestId('cook-step-timer-label')).not.toBeInTheDocument();
+    expect(screen.getByTestId('cook-step-timer-countdown')).toHaveTextContent(/^(4:5\d|5:00)$/);
+  });
+
+  // The label is never a caption hanging underneath, in any state — unstarted, it is
+  // part of the start button's own line, in brackets after the duration.
+  it('carries the label inside the start button while the timer is unstarted', async () => {
+    mockRecipes._set([
+      makeRecipe({
+        steps: [
+          { id: 'step-1', text: 'Soften the onions.', timer: null, note: null },
+          {
+            id: 'step-2',
+            text: 'Rest the sauce.',
+            timer: { durationMinutes: 5, description: 'Simmer the sauce' },
+            note: null,
+          },
+        ],
+      }),
+    ]);
+    renderCookMode();
+    await enterSteps();
+
+    expect(screen.getByTestId('cook-step-timer-start')).toHaveTextContent(
+      'Start 5 minute timer (Simmer the sauce)',
+    );
+  });
+
+  it('leaves the brackets off the start button when the timer has no label', async () => {
+    renderCookMode();
+    await enterSteps();
+
+    // The default recipe's step-2 timer is 20 minutes, description: null.
+    expect(screen.getByTestId('cook-step-timer-start')).toHaveTextContent(
+      /^Start 20 minute timer$/,
+    );
   });
 
   it('cancelling from the persistent bar takes the timer off the session', async () => {

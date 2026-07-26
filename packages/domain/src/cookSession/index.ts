@@ -15,6 +15,7 @@ export type { MakeFreshSessionArgs } from './makeFreshSession.js';
 export { withStepDone } from './withStepDone.js';
 export { withIngredientChecked } from './withIngredientChecked.js';
 export { withAllIngredientsChecked } from './withAllIngredientsChecked.js';
+export { withGroupChecked } from './withGroupChecked.js';
 export { withTimerStarted } from './withTimerStarted.js';
 export { withTimerDismissed } from './withTimerDismissed.js';
 export { firstUseByStep } from './firstUseByStep.js';

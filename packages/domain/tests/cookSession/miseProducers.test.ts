@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { withIngredientChecked, withAllIngredientsChecked } from '@salt/domain';
-import type { CookSessionDoc } from '@salt/domain/schemas';
+import { withIngredientChecked, withAllIngredientsChecked, withGroupChecked } from '@salt/domain';
+import type { CookSessionDoc, IngredientGroupDoc } from '@salt/domain/schemas';
 
-// Mise-en-place tick state (issue #556): the single toggle and the symmetric
-// bulk tick. Both immutable, neither stamps `updatedAt`.
+// Mise-en-place tick state (issue #556): the single toggle, the symmetric
+// whole-recipe bulk tick, and the section-scoped one. All immutable, none of them
+// stamp `updatedAt`.
 
 function session(checkedIngredientIds: string[]): CookSessionDoc {
   return {
@@ -98,5 +99,81 @@ describe('withAllIngredientsChecked', () => {
   it('does not stamp updatedAt', () => {
     const s = session([]);
     expect(withAllIngredientsChecked(s, ALL, false).updatedAt).toBe(s.updatedAt);
+  });
+});
+
+describe('withGroupChecked', () => {
+  function group(id: string, itemIds: string[]): IngredientGroupDoc {
+    return {
+      id,
+      name: id,
+      items: itemIds.map((itemId) => ({
+        id: itemId,
+        rawText: itemId,
+        parsed: null,
+        canonId: null,
+        matchState: 'matched' as const,
+        isOptional: false,
+        firstUsedInStepId: null,
+      })),
+    };
+  }
+
+  const SAUCE = group('sauce', ['s1', 's2']);
+
+  it('ticks every ingredient in the group', () => {
+    expect(withGroupChecked(session([]), SAUCE, true).checkedIngredientIds).toEqual(['s1', 's2']);
+  });
+
+  it('clears every ingredient in the group', () => {
+    expect(withGroupChecked(session(['s1', 's2']), SAUCE, false).checkedIngredientIds).toEqual([]);
+  });
+
+  // The whole point of a per-section control: the sections you are not touching keep
+  // their ticks, in both directions. `withAllIngredientsChecked` cannot do this — it
+  // rewrites the entire set.
+  it('leaves the other sections’ ticks alone when ticking', () => {
+    const next = withGroupChecked(session(['p1']), SAUCE, true);
+    expect(next.checkedIngredientIds).toEqual(['p1', 's1', 's2']);
+  });
+
+  it('leaves the other sections’ ticks alone when clearing', () => {
+    const next = withGroupChecked(session(['p1', 's1', 's2']), SAUCE, false);
+    expect(next.checkedIngredientIds).toEqual(['p1']);
+  });
+
+  it('cannot duplicate an id when a partly-ticked group is ticked', () => {
+    const next = withGroupChecked(session(['s2']), SAUCE, true);
+    expect(next.checkedIngredientIds).toEqual(['s1', 's2']);
+  });
+
+  it('keeps a stale id for an ingredient edited out of the recipe', () => {
+    // Unlike the whole-recipe rewrite, this is a targeted set operation: an id the
+    // group no longer contains is none of its business either way.
+    expect(withGroupChecked(session(['gone']), SAUCE, false).checkedIngredientIds).toEqual([
+      'gone',
+    ]);
+  });
+
+  it('is a no-op set-wise for an empty group', () => {
+    expect(
+      withGroupChecked(session(['s1']), group('empty', []), true).checkedIngredientIds,
+    ).toEqual(['s1']);
+  });
+
+  it('is pure — never mutates the input session', () => {
+    const s = session(['i1']);
+    withGroupChecked(s, SAUCE, true);
+    withGroupChecked(s, SAUCE, false);
+    expect(s.checkedIngredientIds).toEqual(['i1']);
+  });
+
+  it('returns a new session and does not stamp updatedAt', () => {
+    const s = session([]);
+    const next = withGroupChecked(s, SAUCE, true);
+    expect(next).not.toBe(s);
+    expect(next.updatedAt).toBe(s.updatedAt);
+    expect(next.completedStepIds).toEqual(s.completedStepIds);
+    expect(next.activeTimers).toEqual(s.activeTimers);
   });
 });
