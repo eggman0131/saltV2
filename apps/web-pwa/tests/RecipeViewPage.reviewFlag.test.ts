@@ -1,0 +1,181 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { render, cleanup, fireEvent, waitFor } from '@testing-library/svelte';
+import type { Recipe } from '@salt/domain';
+
+// Unreviewed-import banner (issue #616). A URL-imported recipe is persisted by
+// the callable with needs_approval set — raw AI output nobody has read. The
+// recipe is fully live regardless; the banner only says so, and "Mark reviewed"
+// clears it in place for an import that needs no edits.
+
+const {
+  mockRecipes,
+  mockCanonItems,
+  mockIsLoading,
+  mockDefaultListId,
+  mockSessions,
+  mockEquipment,
+} = vi.hoisted(() => {
+  function makeStore<T>(initial: T) {
+    let value = initial;
+    const subs = new Set<(v: T) => void>();
+    return {
+      subscribe(fn: (v: T) => void) {
+        subs.add(fn);
+        fn(value);
+        return () => {
+          subs.delete(fn);
+        };
+      },
+      _set(v: T) {
+        value = v;
+        subs.forEach((fn) => fn(v));
+      },
+    };
+  }
+  return {
+    mockRecipes: makeStore<readonly Recipe[]>([]),
+    mockCanonItems: makeStore<readonly { id: string }[]>([]),
+    mockIsLoading: makeStore<boolean>(false),
+    mockDefaultListId: makeStore<string | null>('list-1'),
+    mockSessions: makeStore<readonly unknown[]>([]),
+    mockEquipment: makeStore<unknown>(null),
+  };
+});
+
+vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
+vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
+vi.mock('../src/lib/auth.svelte.js', () => ({ auth: { user: { email: 'cook@test' } } }));
+vi.mock('../src/lib/canonService.js', () => ({ canonItems: mockCanonItems }));
+vi.mock('../src/lib/shoppingListService.svelte.js', () => ({ defaultListId: mockDefaultListId }));
+vi.mock('@salt/firebase-sync', () => ({
+  saveRecipe: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+}));
+vi.mock('../src/lib/chatService.js', () => ({
+  sessions: mockSessions,
+  createChatSession: vi.fn(),
+  sendMessage: vi.fn(),
+}));
+vi.mock('../src/lib/equipmentService.js', () => ({ equipment: mockEquipment }));
+vi.mock('../src/lib/clipboardImage.js', () => ({
+  clipboardImageReadSupported: () => false,
+  readClipboardImage: vi.fn(),
+  imageFromClipboardData: vi.fn(),
+}));
+vi.mock('../src/lib/recipeService.js', () => ({
+  recipes: mockRecipes,
+  isLoadingRecipes: mockIsLoading,
+  removeRecipe: vi.fn(),
+  canonicaliseIngredients: vi.fn(),
+  matchIngredient: vi.fn(),
+  persistRecipe: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  authorRecipeTraced: vi.fn(),
+  regenerateRecipeImage: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  reviseRecipeSceneBrief: vi.fn(),
+  startOverRecipeSceneBrief: vi.fn(),
+  setRecipeImageUpload: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  buildRecipeAddPlan: vi.fn().mockReturnValue([]),
+  buildMadeSubRows: vi.fn().mockReturnValue([]),
+  commitRecipeAddPlan: vi.fn(),
+  recipeAddPlanItemCount: vi.fn().mockReturnValue(0),
+}));
+
+import RecipeViewPage from '../src/routes/recipes/RecipeViewPage.svelte';
+import { persistRecipe } from '../src/lib/recipeService.js';
+import { addToast } from '../src/lib/toastStore.js';
+
+const RECIPE_ID = 'recipe-1';
+
+function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
+  return {
+    id: RECIPE_ID,
+    schemaVersion: 1,
+    title: 'Imported Carbonara',
+    description: null,
+    ingredients: [],
+    steps: [],
+    metadata: {
+      servings: null,
+      prepTimeMinutes: null,
+      cookTimeMinutes: null,
+      totalTimeMinutes: null,
+      tags: [],
+    },
+    source: { type: 'url', url: 'https://example.com/carbonara' },
+    notes: null,
+    image: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  } as Recipe;
+}
+
+afterEach(() => {
+  cleanup();
+  document.body.style.pointerEvents = '';
+  document.body.style.overflow = '';
+  document.body.innerHTML = '';
+});
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockCanonItems._set([]);
+  mockIsLoading._set(false);
+  mockRecipes._set([]);
+});
+
+function renderPage() {
+  return render(RecipeViewPage, { props: { params: { id: RECIPE_ID } } });
+}
+
+describe('RecipeViewPage — unreviewed import', () => {
+  it('shows the banner on a recipe flagged needs_approval', () => {
+    mockRecipes._set([makeRecipe({ needs_approval: true })]);
+    const { getByTestId } = renderPage();
+
+    expect(getByTestId('recipe-unreviewed-banner')).toBeTruthy();
+  });
+
+  it('shows nothing on a reviewed recipe', () => {
+    mockRecipes._set([makeRecipe()]);
+    const { queryByTestId } = renderPage();
+
+    expect(queryByTestId('recipe-unreviewed-banner')).toBeNull();
+  });
+
+  it('renders the recipe normally — the flag never gates use', () => {
+    mockRecipes._set([makeRecipe({ needs_approval: true })]);
+    const { getByTestId } = renderPage();
+
+    // Cook is the proof: an unreviewed recipe is fully usable, not a draft.
+    expect(getByTestId('recipe-view')).toBeTruthy();
+    expect(getByTestId('recipe-cook-button')).toBeTruthy();
+  });
+
+  it('drops the flag entirely when marked reviewed (absent, not false)', async () => {
+    mockRecipes._set([makeRecipe({ needs_approval: true })]);
+    const { getByTestId } = renderPage();
+
+    await fireEvent.click(getByTestId('recipe-mark-reviewed-button'));
+
+    await waitFor(() => expect(persistRecipe).toHaveBeenCalledTimes(1));
+    const saved = vi.mocked(persistRecipe).mock.calls[0]![0];
+    expect('needs_approval' in saved).toBe(false);
+    // The rest of the recipe rides along untouched — persistRecipe writes the
+    // whole document.
+    expect(saved.id).toBe(RECIPE_ID);
+    expect(saved.title).toBe('Imported Carbonara');
+  });
+
+  it('surfaces a failed write instead of silently leaving it flagged', async () => {
+    vi.mocked(persistRecipe).mockResolvedValueOnce({
+      kind: 'err',
+      error: { kind: 'StorageError', reason: 'unavailable' },
+    } as never);
+    mockRecipes._set([makeRecipe({ needs_approval: true })]);
+    const { getByTestId } = renderPage();
+
+    await fireEvent.click(getByTestId('recipe-mark-reviewed-button'));
+
+    await waitFor(() => expect(addToast).toHaveBeenCalledWith(expect.any(String), 'destructive'));
+  });
+});

@@ -59,10 +59,19 @@
   let loaded = $state(false);
 
   function buildInitialDraft(): Recipe {
-    // On /recipes/new, consume a one-shot imported draft if the URL-import flow
-    // stashed one (single-use: takeImportedDraft clears it). Clone so editing
-    // doesn't mutate the stashed object. Otherwise start from a blank recipe.
-    if ((params?.id ?? null) === null) {
+    // Consume a one-shot imported draft if the URL-import flow stashed one
+    // (single-use: takeImportedDraft clears it). Clone so editing doesn't mutate
+    // the stashed object.
+    //
+    // Since #616 the import callable PERSISTS the recipe, so an import arrives
+    // here as /recipes/{id}/edit rather than /recipes/new — the stash is then
+    // just a way to paint the editor immediately instead of waiting for the
+    // Firestore listener to deliver a doc the server wrote moments ago. The id
+    // must match: a stale stash must never bleed into a different recipe's
+    // editor. /recipes/new still consumes an unmatched stash for back-compat
+    // with any older stash-then-navigate path.
+    const id = params?.id ?? null;
+    if (id === null) {
       const imported = takeImportedDraft();
       if (imported) return cloneRecipe(imported);
     }
@@ -82,6 +91,17 @@
     if (existing) {
       // Deep-clone into mutable structures so editing doesn't touch the store copy.
       draft = cloneRecipe(existing);
+      loaded = true;
+      return;
+    }
+    // Not in the store yet. A URL import (#616) is persisted server-side and
+    // routed straight here, so the listener may not have delivered it — the
+    // stashed copy of the very same recipe paints the editor now instead of
+    // showing a blank form until the round-trip lands. Id-matched, so an
+    // unrelated recipe's editor leaves the stash untouched.
+    const imported = takeImportedDraft(editingId);
+    if (imported) {
+      draft = cloneRecipe(imported);
       loaded = true;
     }
   });
@@ -371,7 +391,11 @@
       .map((g) => ({ ...g, items: g.items.filter((i) => i.rawText.trim() !== '') }))
       .filter((g) => g.items.length > 0);
     const steps = r.steps.filter((s) => s.text.trim() !== '' || s.note !== null);
-    return { ...r, title: r.title.trim(), ingredients, steps };
+    // Saving from the editor IS the human review (issue #616): a person read the
+    // AI's output and committed it, so the unreviewed flag comes off. Dropped
+    // rather than set false — absent means reviewed, matching the schema.
+    const { needs_approval: _wasUnreviewed, ...reviewed } = r;
+    return { ...reviewed, title: r.title.trim(), ingredients, steps };
   }
 
   async function handleSave(): Promise<void> {

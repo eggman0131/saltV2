@@ -180,6 +180,29 @@ Finish with a short note on what you changed and why, so I can read the gist her
     }
   }
 
+  // ─── Review state (issue #616) ────────────────────────────────────────────
+  // A URL-imported recipe is persisted by the callable flagged `needs_approval`
+  // — raw AI output nobody has read. It is fully live regardless (cookable,
+  // plannable, searchable); the flag only marks it unread. An editor save clears
+  // it, and so does this: for an import that came through clean, forcing an
+  // edit-and-save just to mark it read is busywork.
+  let markingReviewed = $state(false);
+
+  async function handleMarkReviewed(): Promise<void> {
+    if (!recipe || markingReviewed) return;
+    const current = $recipes.find((r) => r.id === recipe.id);
+    if (!current) return;
+    markingReviewed = true;
+    // Dropped, not set false — absent means reviewed (matches the schema and the
+    // full-document setDoc persistRecipe performs).
+    const { needs_approval: _wasUnreviewed, ...reviewed } = current;
+    const persisted = await persistRecipe(reviewed);
+    markingReviewed = false;
+    if (persisted.kind !== 'ok') {
+      addToast('Failed to mark as reviewed.', 'destructive');
+    }
+  }
+
   // ─── Add to shopping list ─────────────────────────────────────────────────
   // The review sheet (issue #185) owns servings + per-ingredient Add/Check
   // toggles + the commit; this page only guards that a default list exists.
@@ -804,6 +827,28 @@ Finish with a short note on what you changed and why, so I can read the gist her
     <div class="grid gap-4 lg:grid-cols-[2fr_1fr] lg:gap-6" data-testid="recipe-view">
       <!-- Left column: main recipe content -->
       <div class="flex flex-col gap-4">
+        <!-- Unreviewed AI import (issue #616). Informational, never a gate: the
+             recipe below is fully usable. Amber matches the canon review idiom. -->
+        {#if recipe.needs_approval}
+          <div
+            class="flex flex-wrap items-center gap-3 rounded border border-amber-300 bg-amber-50 px-3 py-2"
+            data-testid="recipe-unreviewed-banner"
+          >
+            <p class="flex-1 text-sm text-amber-900">
+              Imported automatically — nobody has checked this recipe yet.
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              onclick={handleMarkReviewed}
+              loading={markingReviewed}
+              disabled={markingReviewed}
+              data-testid="recipe-mark-reviewed-button"
+            >
+              Mark reviewed
+            </Button>
+          </div>
+        {/if}
         <!-- Hero image (Tier-2, issue #148): photoreal "arty" photo generated
              from the title + description by the onRecipeWritten trigger. -->
         {#if heroVisible}

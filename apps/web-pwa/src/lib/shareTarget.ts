@@ -176,11 +176,12 @@ export async function runPendingShareImport(signedIn: boolean): Promise<void> {
     return;
   }
 
-  // Hand the converted draft to the editor and route into it pre-filled — the
-  // exact path the "Import from URL" button walks, so there is only one import
-  // flow to maintain.
+  // Already persisted server-side and flagged unreviewed (issue #616), so this
+  // opens the existing recipe's editor. The stash just saves the editor a
+  // listener round-trip. A navigation failure is now cosmetic — the recipe is
+  // safely in the collection — so the toast points at where it landed.
   stashImportedDraft(result.value);
-  if (!(await goTo('/recipes/new'))) {
-    addToast('Could not open the editor — please try again.', 'destructive');
+  if (!(await goTo(`/recipes/${result.value.id}/edit`))) {
+    addToast(`Imported "${result.value.title}" — find it in Recipes.`, 'default');
   }
 }
