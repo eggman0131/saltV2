@@ -104,9 +104,34 @@ describe('CanonIcon', () => {
   });
 
   describe('props contract', () => {
-    it('applies the icon-tile background class', () => {
+    it('applies the icon-tile background class to a BARE tile', () => {
       const { getByTestId } = render(CanonIcon, { props: { thumbnail: null } });
       expect(getByTestId('canon-icon')).toHaveClass('bg-icon-tile');
+    });
+
+    it('drops the grey backdrop once an icon renders (the pictogram is the object)', () => {
+      const { getByTestId } = render(CanonIcon, { props: { thumbnail: URL, name: 'Milk' } });
+      const tile = getByTestId('canon-icon');
+      expect(tile).toHaveClass('bg-transparent');
+      expect(tile).not.toHaveClass('bg-icon-tile');
+    });
+
+    it('carries the tile footprint shadow in every state', () => {
+      // The lift defines the tile's square against the card even when the
+      // backdrop behind an icon is transparent.
+      for (const thumbnail of [URL, null, 'hidden']) {
+        cleanup();
+        const { getByTestId } = render(CanonIcon, { props: { thumbnail } });
+        expect(getByTestId('canon-icon')).toHaveClass('salt-icon-lift');
+      }
+    });
+
+    it('applies the art treatment to the image, not the tile', () => {
+      // Saturation/contrast/outline lift belong to the pictogram; a bare or sage
+      // tile must not be filtered.
+      const { getByTestId } = render(CanonIcon, { props: { thumbnail: URL, name: 'Milk' } });
+      expect(getByTestId('canon-icon-img')).toHaveClass('salt-icon-art');
+      expect(getByTestId('canon-icon')).not.toHaveClass('salt-icon-art');
     });
 
     it('dims the tile when dimmed', () => {
@@ -168,12 +193,13 @@ describe('CanonIcon', () => {
       expect(queryByTestId('canon-icon-initial')).toBeNull();
     });
 
-    it('leaves a matched tile WITH an icon on the neutral backdrop AT REST (no sage, no letter)', () => {
+    it('leaves a matched tile WITH an icon unlit AT REST (no sage, no letter)', () => {
       const { getByTestId, queryByTestId } = render(CanonIcon, {
         props: { thumbnail: URL, name: 'Milk', matched: true },
       });
       const tile = getByTestId('canon-icon');
-      expect(tile).toHaveClass('bg-icon-tile');
+      // An icon tile's resting backdrop is transparent, not the grey placeholder.
+      expect(tile).toHaveClass('bg-transparent');
       expect(tile).not.toHaveClass('bg-secondary-container');
       expect(queryByTestId('canon-icon-img')).toBeInTheDocument();
       expect(queryByTestId('canon-icon-initial')).toBeNull();
@@ -199,7 +225,25 @@ describe('CanonIcon', () => {
         props: { thumbnail: URL, name: 'Milk', matched: false, shimmer: true },
       });
       const tile = getByTestId('canon-icon');
-      expect(tile).toHaveClass('bg-icon-tile');
+      expect(tile).not.toHaveClass('bg-secondary-container');
+    });
+
+    it('lights a bare matched tile under reduced motion back to grey, not transparent', () => {
+      // §14.5.4: the reduced-motion fallback is each state's own RESTING backdrop.
+      // A bare tile rests grey; an icon tile rests transparent.
+      const { getByTestId } = render(CanonIcon, {
+        props: { thumbnail: null, name: 'Milk', matched: true },
+      });
+      expect(getByTestId('canon-icon')).toHaveClass('motion-reduce:bg-icon-tile');
+    });
+
+    it('lights an icon tile under reduced motion back to transparent, not grey', () => {
+      const { getByTestId } = render(CanonIcon, {
+        props: { thumbnail: URL, name: 'Milk', matched: true, shimmer: true },
+      });
+      const tile = getByTestId('canon-icon');
+      expect(tile).toHaveClass('motion-reduce:bg-transparent');
+      expect(tile).not.toHaveClass('motion-reduce:bg-icon-tile');
     });
 
     it('crossfades the tile colour at the reveal duration (#571: 400ms, not the 150ms default)', () => {

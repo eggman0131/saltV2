@@ -1,35 +1,48 @@
-// Icon FRAMING normaliser (issue #387 follow-up). OFFLINE tooling — not a
-// runtime path.
+// Icon FRAMING normaliser (issue #387 follow-up; promoted to a runtime step for
+// the canon-icon pipeline).
 //
 // The canon/weather AI pipeline only loosely centres its subject: each
 // background-removed icon ends up at its own scale and offset inside the 128px
-// square (measured: subject fills anywhere from ~48% to ~75% of the frame, with
-// 16–33px asymmetric margins). A set rendered at one fixed box therefore looks
-// mismatched — different apparent sizes, different padding.
+// square. Measured across six production canon icons, the subject's longer side
+// fills anywhere from 55% to 72% of the frame, with 18–41px asymmetric margins.
+// Two consequences, both visible in the app: the art is far smaller than its
+// tile (at a 40px row tile, a 55%-fill icon draws only ~22px), and a column of
+// them rags between apparent sizes.
 //
 // This trims an icon to its alpha bounding box, scales that box so its LONGER
 // side is `contentMax`, and re-pads it dead-centre in a `frame`×`frame`
 // transparent square. Every icon then shares the same bounding size and uniform
 // margins, so the set reads as one family. It does NOT touch stroke weight or
-// palette — those are intrinsic to the generated art.
+// palette — those are intrinsic to the generated art, and re-framing never
+// regenerates anything.
 //
 // Pure over a buffer: encoded (WebP/PNG/…) bytes in, `frame`px WebP-with-alpha
 // out. Mirrors removeFlatBackground's output (128px, alphaQuality 100).
-
-import sharp from 'sharp';
 
 const FRAME = 128; // output square edge, matches removeFlatBackground's TARGET_SIZE
 const CONTENT_MAX = 92; // subject's longer side after normalising (~72% of FRAME → ~18px margins)
 const ALPHA_THRESHOLD = 16; // alpha <= this counts as transparent when finding the bbox
 
-const WEBP = { quality: 90, alphaQuality: 100, effort: 6 };
+const WEBP = { quality: 90, alphaQuality: 100, effort: 6 } as const;
 
-/**
- * @param {Buffer} input encoded image bytes (any sharp-readable format).
- * @param {{ frame?: number, contentMax?: number }} [opts]
- * @returns {Promise<Buffer>} normalised `frame`px square WebP with alpha.
- */
-export async function normalizeIconFraming(input, { frame = FRAME, contentMax = CONTENT_MAX } = {}) {
+export interface NormalizeIconFramingOptions {
+  /** Output square edge length in px (default 128). */
+  readonly frame?: number;
+  /** The subject's longer side after normalising, in px (default 92). */
+  readonly contentMax?: number;
+}
+
+export async function normalizeIconFraming(
+  input: Buffer,
+  { frame = FRAME, contentMax = CONTENT_MAX }: NormalizeIconFramingOptions = {},
+): Promise<Buffer> {
+  // `sharp` is a heavy native binary, lazily loaded for the same reason
+  // removeFlatBackground does it (issue #412): index.ts statically imports this
+  // module via onCanonItemWritten, so a module-scope `import sharp` would
+  // resident-load it on the cold start of every function that never touches
+  // imaging.
+  const sharp = (await import('sharp')).default;
+
   const { data, info } = await sharp(input)
     .ensureAlpha()
     .raw()
@@ -43,7 +56,7 @@ export async function normalizeIconFraming(input, { frame = FRAME, contentMax = 
   let maxY = -1;
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
-      if (data[(y * W + x) * channels + 3] > ALPHA_THRESHOLD) {
+      if (data[(y * W + x) * channels + 3]! > ALPHA_THRESHOLD) {
         if (x < minX) minX = x;
         if (x > maxX) maxX = x;
         if (y < minY) minY = y;

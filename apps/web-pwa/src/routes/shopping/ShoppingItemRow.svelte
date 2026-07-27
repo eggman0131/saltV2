@@ -272,7 +272,7 @@
       thumbnail={thumbnailFor(item.canonId)}
       name={displayLabel(item)}
       dimmed={done}
-      size={34}
+      size={40}
       version={iconVersionFor(item.canonId)}
       {matched}
       shimmer={revealing}

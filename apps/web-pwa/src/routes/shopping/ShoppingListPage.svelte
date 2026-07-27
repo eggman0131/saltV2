@@ -939,7 +939,7 @@
                           <CanonIcon
                             thumbnail={thumbnailFor(row.canonId)}
                             name={rowLabel(row)}
-                            size={34}
+                            size={40}
                             version={iconVersionFor(row.canonId)}
                             matched={true}
                           />

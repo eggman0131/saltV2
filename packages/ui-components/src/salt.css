@@ -919,6 +919,35 @@
   animation: salt-icon-shimmer var(--duration-shimmer) var(--ease-standard) 1;
 }
 
+/* ── Canon-icon presence ──────────────────────────────────────────────────────
+ * Two paired utilities that make the Tier-1 pictograms read as objects sitting on
+ * the surface rather than washed-out art inside a grey square. Both are display
+ * treatments only: no stored byte changes, and the locked house style (flat
+ * pastel, thick dark outline — docs/canon-icons.md) is untouched.
+ *
+ * Literal values rather than `--salt-*` tokens on purpose: these are
+ * component-surface tuning for ONE primitive, like `--salt-icon-tile` itself, so
+ * they carry no design.md provenance and `pnpm theme:check` stays green. */
+
+/* The tile's footprint. `--shadow-sm` (black at 0.05) is too faint to define a
+ * 40px square against `bg-card` white now that the tile itself is transparent
+ * behind an icon; this is the same geometry, tinted with the palette's slate
+ * rather than neutral black so the edge belongs to Salt's cool greys. Currently
+ * dialled to 0.00 — no footprint at all, the icon floats on the surface — while
+ * we look at it in dev; the geometry stays so the knob is one number. */
+@utility salt-icon-lift {
+  box-shadow: 0 1px 2px hsl(195 20% 15% / 0);
+}
+
+/* The artwork itself. Measured across production icons, mean saturation is
+ * 0.11–0.50 against mean value 0.60–0.85 — pale by design, but it reads flat at
+ * row scale. The saturate/contrast pair warms the existing palette without
+ * recolouring it; the drop-shadow separates the pictogram's dark outline from the
+ * surface. Applied to the `<img>`, so a bare or sage tile is unaffected. */
+@utility salt-icon-art {
+  filter: saturate(1.4) contrast(1.16) drop-shadow(0 1px 1px hsl(195 20% 15% / 0.28));
+}
+
 /* z-index utilities: v4 has no first-class z-index theme namespace, so the named
  * scale (was theme.extend.zIndex) is expressed as static custom utilities. */
 @utility z-popover {

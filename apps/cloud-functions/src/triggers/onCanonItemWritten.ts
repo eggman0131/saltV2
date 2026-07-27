@@ -9,6 +9,7 @@ import { flushServerObservability } from '@salt/observability/server';
 import { embedTextFlow } from '../flows/embedText.js';
 import { generateCanonIconFlow } from '../flows/generateCanonIcon.js';
 import { removeFlatBackground } from '../imaging/removeFlatBackground.js';
+import { normalizeIconFraming } from '../imaging/normalizeIconFraming.js';
 import { buildStorageDownloadUrl } from '../imaging/storageDownloadUrl.js';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { aiFakeEnabled } from '../ai/fakeModel.js';
@@ -144,7 +145,15 @@ async function maybeGenerateIcon(
       generateCanonIconFlow({ name, ...(hint ? { hint } : {}) }),
     );
     const raw = Buffer.from(imageBase64, 'base64');
-    const webp = await removeFlatBackground(raw);
+    // Background removal, then framing. The model centres its subject only
+    // loosely — measured 55–72% of the frame across production icons — so
+    // without the second step every icon lands at its own apparent size and all
+    // of them read small inside their tile. `contentMax: 108` (84% of the 128px
+    // frame) is tuned for a ~40px row tile, deliberately larger than the weather
+    // set's 92px default: those are watermarks, these are scanned in a list. Not
+    // pushed higher because the match-reveal sage lift reads through the margin
+    // that remains (ui-spec-v04 §14.5.3).
+    const webp = await normalizeIconFraming(await removeFlatBackground(raw), { contentMax: 108 });
     const url = await uploadCanonIcon(id, webp);
     // Set the icon and clear the one-shot hint in the same write.
     await getFirestore()
