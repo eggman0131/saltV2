@@ -347,7 +347,7 @@ The `weather` module is a lightweight variant — pure classification utilities
 
 The `cookSession` module is a similar lightweight variant — pure session-state
 producers (`makeFreshSession`, `withStepDone`, `withIngredientChecked`,
-`withAllIngredientsChecked`, `withTimerStarted`, `withTimerDismissed`) and
+`withAllIngredientsChecked`, `withGroupChecked`, `withTimerStarted`, `withTimerDismissed`) and
 read-only queries (`firstIncompleteStepId`, `firstUseByStep`, `miseProgress`,
 `timerProgress`, `hasRecipeChanged`, `formatClock`) extracted from
 `CookModePage.svelte` so the cook-session logic is testable without a browser.
