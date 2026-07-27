@@ -60,12 +60,39 @@
   // icons across the app is still untouched, which is what the note above is
   // protecting.
   const lit = $derived(sageBare || (matched && shimmer));
+
+  // The tile's backdrop, in one place because four states share it.
+  //
+  // A tile that RENDERS AN ICON has no backdrop: the pictogram is the object, and
+  // the pale grey square behind it (`--salt-icon-tile`, 93% lightness on a 100%
+  // white card) only ever diluted it. The tile keeps its box — `size`,
+  // `salt-icon-lift`, and the layout slot are unchanged — so nothing about column
+  // alignment moves.
+  //
+  // A BARE tile keeps the grey square. It is a placeholder standing in for art
+  // that hasn't generated yet (or that the user hid), and it is what holds the
+  // text column straight down a list of part-matched rows; dropping it there
+  // would leave the shadow of an empty box and a ragged column.
+  //
+  // The sage lift is unchanged in both cases (§14.5) — it still reads around and
+  // through the artwork. Every arm is a literal string: Tailwind scans source
+  // text, so a composed `motion-reduce:${…}` would never be generated. The
+  // reduced-motion fallback is each state's own resting backdrop.
+  const backdrop = $derived(
+    lit
+      ? renderable
+        ? 'bg-secondary-container motion-reduce:bg-transparent'
+        : 'bg-secondary-container motion-reduce:bg-icon-tile'
+      : renderable
+        ? 'bg-transparent'
+        : 'bg-icon-tile',
+  );
 </script>
 
 <span
   class={cn(
-    'relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded transition-colors duration-reveal ease-standard motion-reduce:transition-none',
-    lit ? 'bg-secondary-container motion-reduce:bg-icon-tile' : 'bg-icon-tile',
+    'salt-icon-lift relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded transition-colors duration-reveal ease-standard motion-reduce:transition-none',
+    backdrop,
     dimmed && 'opacity-40',
     className,
   )}
@@ -80,7 +107,7 @@
       height={size}
       loading="lazy"
       decoding="async"
-      class="h-full w-full object-contain"
+      class="salt-icon-art h-full w-full object-contain"
       data-testid="canon-icon-img"
     />
   {:else if sageBare && initial}

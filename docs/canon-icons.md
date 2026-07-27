@@ -72,8 +72,27 @@ Icon branch steps:
    `sharp`: flood-fill from the frame edges keyed on the flat fill colour (safe
    because the style keeps the subject centred, never touching the edge), then resize
    and encode.
-3. Upload to Storage `canon-icons/{canonId}.webp`; make public; write the public
+3. **Framing normalisation** (`normalizeIconFraming`, `contentMax: 108`). The model
+   centres its subject only loosely: measured across six production icons, the
+   subject's longer side filled 55–72% of the 128px frame, with 18–41px asymmetric
+   margins. Untreated, that means the art reads far smaller than its tile (a 55%-fill
+   icon draws ~22px inside a 40px tile) and a column of icons rags between apparent
+   sizes. This trims to the alpha bounding box, scales the longer side to
+   `contentMax`, and re-pads dead-centre — **no regeneration, no restyling**; stroke
+   weight and palette are intrinsic to the generated art and untouched.
+   `contentMax: 108` (84% of the frame) is tuned for the ~40px row tile and is
+   deliberately larger than the weather set's 92px default; it is not pushed higher
+   because the match-reveal sage lift reads through the margin that remains
+   (ui-spec-v04 §14.5.3). Shared, single implementation:
+   `src/imaging/normalizeIconFraming.ts`, also used by the weather-icon tooling.
+4. Upload to Storage `canon-icons/{canonId}.webp`; make public; write the public
    https URL to `thumbnail`.
+
+**Icons generated before framing normalisation** keep their original loose framing —
+re-framing is a display improvement, not a schema change, so nothing breaks. Bring
+them up to date without regenerating via
+`scripts/reframe-canon-icons.ts` (dry-run by default; bumps `iconRequestedAt` so
+`CanonIcon`'s `version` cache-bust defeats the browser cache on the reused URL).
 
 **Output format:** WebP with alpha, ~128px square (covers a 30px tile up to ~4× DPR;
 tiny file). **Seed + prompt:** committed in the `cloud-functions` package (versioned;
@@ -117,9 +136,18 @@ Done for both: `s2-stage-ccb22.firebasestorage.app` and `s2-prod-e46bd.firebases
 
 A reusable **`<CanonIcon>`** in `@salt/ui-components`:
 
-- transparent icon centred on a 30px pale cool-grey tile (`hsl(180 8% 93%)`-family,
-  a theme token so it follows dark mode);
-- bare tile placeholder when `thumbnail` is `null` or `"hidden"`;
+- transparent icon centred in a 40px tile, on no backdrop — the pictogram is the
+  object, and the pale cool-grey square behind it only diluted it. The tile keeps a
+  hairline footprint shadow (`salt-icon-lift`) so its square still reads against
+  `bg-card`;
+- bare tile placeholder — the pale cool-grey `hsl(180 8% 93%)`-family theme token, so
+  it follows dark mode — when `thumbnail` is `null` or `"hidden"`. It stands in for
+  art that hasn't generated yet and holds the text column straight down a
+  part-matched list;
+- a display treatment on the artwork (`salt-icon-art`): the generated palette is pale
+  by design (measured mean saturation 0.11–0.50 against mean value 0.60–0.85), so
+  `saturate`/`contrast` warm it without recolouring, and a drop-shadow separates the
+  pictogram's dark outline from the surface. Display-only — no stored byte changes;
 - lazy-loaded.
 
 ### `CanonIcon` props

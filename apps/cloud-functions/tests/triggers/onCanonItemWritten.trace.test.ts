@@ -34,6 +34,13 @@ vi.mock('../../src/imaging/removeFlatBackground.js', () => ({
   removeFlatBackground: mockRemoveBg,
 }));
 
+// The icon pipeline re-frames after background removal. Mocked alongside it:
+// the real normaliser runs sharp, which would reject this fake buffer.
+const mockReframe = vi.fn(async (buf: Buffer) => buf);
+vi.mock('../../src/imaging/normalizeIconFraming.js', () => ({
+  normalizeIconFraming: mockReframe,
+}));
+
 // Firestore admin: capture the write-backs without a real DB. `set` covers the
 // relocated embedding write to canonEmbeddings (#410); `update` the icon
 // thumbnail; `get` both the devSettings kill-switch read and the canonEmbeddings

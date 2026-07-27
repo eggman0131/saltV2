@@ -928,16 +928,18 @@ lit      = sageBare || (matched && shimmer)
 
 | `matched` | `shimmer` | `renderable` | Backdrop            | Initial letter | Sweep overlay |
 | --------- | --------- | ------------ | ------------------- | -------------- | ------------- |
-| `false`   | `false`   | any          | `bg-icon-tile`      | no             | no            |
-| `false`   | `true`    | any          | `bg-icon-tile`      | no             | yes           |
+| `false`   | `false`   | `false`      | `bg-icon-tile`      | no             | no            |
+| `false`   | `false`   | `true`       | none (transparent)  | no             | no            |
+| `false`   | `true`    | `false`      | `bg-icon-tile`      | no             | yes           |
+| `false`   | `true`    | `true`       | none (transparent)  | no             | yes           |
 | `true`    | `false`   | `false`      | `bg-secondary-container` | yes (if `name`) | no       |
-| `true`    | `false`   | `true`       | `bg-icon-tile`      | no             | no            |
+| `true`    | `false`   | `true`       | none (transparent)  | no             | no            |
 | `true`    | `true`    | `false`      | `bg-secondary-container` | yes (if `name`) | yes      |
 | `true`    | `true`    | `true`       | `bg-secondary-container` | no        | yes           |
 
 Two rules fall out of this table and both are load-bearing:
 
-- **`shimmer` alone never lights the tile.** An unmatched tile that sweeps stays grey.
+- **`shimmer` alone never lights the tile.** An unmatched tile that sweeps keeps its resting backdrop — grey when bare, transparent when it renders an icon.
 - **A matched tile with an icon lifts only during a reveal.** Gating the sage on `!renderable` alone made the moment invisible in its most common form — an item matching an established canon, which by now nearly always has a generated icon — leaving a sweep over an unchanged tile. The lift is transient (tied to `shimmer`) so the **resting** appearance of matched icons across the app is untouched.
 
 ### 14.5.2 At rest (`matched`, no `shimmer`)
@@ -965,22 +967,35 @@ Net effect under reduced motion: exactly today's grey bare tile, no letter, no s
 ## 14.6 Tile styling
 
 ```
-'relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded transition-colors duration-reveal ease-standard motion-reduce:transition-none'
+'salt-icon-lift relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded transition-colors duration-reveal ease-standard motion-reduce:transition-none'
 ```
 
-plus the conditional backdrop:
+plus the backdrop, which depends on **both** `lit` and `renderable`:
 
 ```
-lit ? 'bg-secondary-container motion-reduce:bg-icon-tile' : 'bg-icon-tile'
+lit
+  ? renderable ? 'bg-secondary-container motion-reduce:bg-transparent'
+               : 'bg-secondary-container motion-reduce:bg-icon-tile'
+  : renderable ? 'bg-transparent'
+               : 'bg-icon-tile'
 ```
 
-- `rounded` (4px) — the standard surface radius (ui-spec-v02 §2.3).
-- `bg-icon-tile` — a CSS custom property / Tailwind token providing the tile background colour; `bg-secondary-container` (sage) is the lit backdrop (§14.5).
+- `rounded` — the standard surface radius (ui-spec-v02 §2.3).
+- **A tile that renders an icon has no backdrop.** The pictogram is the object; the pale grey square behind it (`--salt-icon-tile`, 93% lightness against a 100% white card) only diluted it. The tile keeps its box — `size`, `salt-icon-lift`, and the layout slot are unchanged — so nothing about column alignment moves.
+- **A bare tile keeps `bg-icon-tile`.** It is a placeholder standing in for art that has not generated yet (or that the user hid), and it holds the text column straight down a list of part-matched rows. `bg-secondary-container` (sage) is the lit backdrop in both cases (§14.5).
+- Every arm is a **literal** class string. Tailwind scans source text, so a composed `motion-reduce:${…}` would never generate a utility; the reduced-motion fallback is each state's own resting backdrop (§14.5.4).
+- `salt-icon-lift` — a hairline footprint shadow (`0 1px 2px hsl(195 20% 15% / 0.12)`), so the tile's square still reads against `bg-card` now that an icon tile is transparent behind its art. Deliberately not `shadow-sm`: at black/0.05 that token is too faint to define a 40px square. Defined in `salt.css` as a component-surface utility with literal values — no `--salt-*` token, so `pnpm theme:check` is unaffected.
 - `relative` — the positioning context for the absolutely-positioned sweep overlay.
 - `transition-colors duration-reveal ease-standard` — the grey↔sage crossfade, at the spec value rather than Tailwind's 150ms default; the static utility carries it so every consumer inherits the same pace.
 - `overflow-hidden` — clips any image that slightly overflows the tile boundary, and confines the sweep band to the tile.
-- The `<img>` inside uses `object-contain` and fills the tile (`h-full w-full`).
+- The `<img>` inside uses `object-contain`, fills the tile (`h-full w-full`), and carries `salt-icon-art` — `saturate(1.4) contrast(1.16) drop-shadow(0 1px 1px hsl(195 20% 15% / 0.28))`. The generated palette is pale by design (measured mean saturation 0.11–0.50 against mean value 0.60–0.85), so this warms it without recolouring, and the shadow separates the pictogram's thick dark outline from the surface. It sits on the **image**, so a bare or sage tile is never filtered. Display-only: no stored asset changes, and the locked house style (docs/canon-icons.md) is untouched.
 - `loading="lazy"` and `decoding="async"` defer off-screen images.
+
+### 14.6.1 Sizing
+
+Every in-list and in-chip consumer renders at **40px**: the shopping list row and its combined-parent row, the cook-mode mise row, the cook-step first-use chip, and both `CanonListRow` layouts. Two single-icon display spots are deliberately larger and not part of that set — the shopping edit sheet's header (64px) and the canon detail page (96px).
+
+40px is paired with the framing normalisation in `docs/canon-icons.md`: the asset's `contentMax: 108` is chosen for this tile size, and prominence comes from the art filling its frame rather than from growing the tile further.
 
 ## 14.7 Testing requirements
 
@@ -991,12 +1006,16 @@ lit ? 'bg-secondary-container motion-reduce:bg-icon-tile' : 'bg-icon-tile'
 - When `version` is `null`, `undefined`, or `''`, the rendered src is the raw `thumbnail` URL.
 - `dimmed` applies `opacity-40`; absence of `dimmed` does not.
 - The root `<span>` has `data-testid="canon-icon"`.
+- A **bare** tile has `bg-icon-tile`; a tile that renders an icon has `bg-transparent` and **not** `bg-icon-tile` (§14.6).
+- The tile carries `salt-icon-lift` in every `thumbnail` state (real URL, `null`, `"hidden"`).
+- `salt-icon-art` is on the `<img>`, never on the tile.
 
 Matched & reveal states (§14.5):
 
 - A bare `matched` tile has `bg-secondary-container`, not `bg-icon-tile`, and renders the uppercased name initial as `data-testid="canon-icon-initial"`, `aria-hidden`.
 - No initial is rendered when `matched` but `name` is empty.
-- A `matched` tile **with** an icon keeps `bg-icon-tile` **at rest** and renders no initial.
+- A `matched` tile **with** an icon is unlit **at rest** (`bg-transparent`, no `bg-secondary-container`) and renders no initial.
+- The reduced-motion fallback is per-state: a lit **bare** tile carries `motion-reduce:bg-icon-tile`, a lit **icon** tile carries `motion-reduce:bg-transparent` (§14.5.4).
 - A `matched` tile with an icon **is** lit (`bg-secondary-container`) while `shimmer` is true, the `<img>` still renders, and no initial appears.
 - An **unmatched** tile stays `bg-icon-tile` even while `shimmer` is true.
 - The tile carries `transition-colors` and `duration-reveal` (not Tailwind's 150ms default).

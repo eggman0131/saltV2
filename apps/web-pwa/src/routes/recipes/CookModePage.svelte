@@ -1427,7 +1427,7 @@
                           name={ingredientLabel(ingredient)}
                           version={iconVersionFor(ingredient.canonId)}
                           dimmed={checked}
-                          size={34}
+                          size={40}
                         />
                         <span
                           class="min-w-0 flex-1 text-base {checked
@@ -1594,7 +1594,7 @@
                               thumbnail={thumbnailFor(ing.canonId)}
                               name={ingredientLabel(ing)}
                               version={iconVersionFor(ing.canonId)}
-                              size={30}
+                              size={40}
                               class="rounded-full"
                             />
                             <!-- `min-w-0` is what lets the span shrink below its text

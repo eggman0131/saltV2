@@ -23,7 +23,9 @@
     showSizes?: boolean;
   } = $props();
 
-  const sizes = [20, 30, 48, 64];
+  // The sizes the app actually renders (ui-spec-v04 §14.6.1): 40 everywhere a
+  // tile sits in a row or a chip, then the two single-icon display spots.
+  const sizes = [40, 64, 96];
 </script>
 
 {#if showSizes}
