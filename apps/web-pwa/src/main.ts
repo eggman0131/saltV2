@@ -4,6 +4,7 @@ import './app.css';
 import { mount } from 'svelte';
 import App from './App.svelte';
 import { installE2EHooks } from './lib/e2eHooks.js';
+import { captureShareTarget } from './lib/shareTarget.js';
 import {
   registerServiceWorker,
   setupPreloadErrorReload,
@@ -11,6 +12,11 @@ import {
 } from './lib/pwa.js';
 
 installE2EHooks();
+
+// Stash any Web Share Target payload (issue #589) and strip it from the URL before
+// the app boots, so a reload can't re-import. The import itself runs from App once
+// auth has resolved — it calls an authenticated callable.
+captureShareTarget();
 
 mount(App, { target: document.getElementById('app')! });
 
