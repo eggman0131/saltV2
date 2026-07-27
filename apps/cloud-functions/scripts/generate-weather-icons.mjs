@@ -59,8 +59,9 @@ import {
   buildWeatherIconPrompt,
   WEATHER_ICON_IDS,
 } from '../src/flows/weatherIconPrompt.js';
-// Weather-only framing normaliser (offline tooling, see its header).
-import { normalizeIconFraming } from './lib/normalizeIconFraming.mjs';
+// Framing normaliser — shared with the canon-icon pipeline, which applies it at
+// runtime (see its header). Weather keeps the module's 92px default.
+import { normalizeIconFraming } from '../src/imaging/normalizeIconFraming.js';
 
 // Match the canon flow's image-generation deadline (its function timeout is
 // raised to suit; here there is no function, but reuse the same budget/retry).

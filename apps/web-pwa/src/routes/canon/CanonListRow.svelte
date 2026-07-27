@@ -91,7 +91,7 @@
       <CanonIcon
         thumbnail={item.thumbnail}
         name={item.name}
-        size={34}
+        size={40}
         version={item.iconRequestedAt ?? item.updatedAt}
       />
       <button
@@ -114,7 +114,7 @@
     <CanonIcon
       thumbnail={item.thumbnail}
       name={item.name}
-      size={34}
+      size={40}
       version={item.iconRequestedAt ?? item.updatedAt}
     />
     <button

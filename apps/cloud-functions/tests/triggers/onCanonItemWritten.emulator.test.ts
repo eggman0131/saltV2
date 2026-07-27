@@ -46,6 +46,13 @@ vi.mock('../../src/imaging/removeFlatBackground.js', () => ({
   removeFlatBackground: mockRemoveBg,
 }));
 
+// The icon pipeline re-frames after background removal. Mocked alongside it:
+// the real normaliser runs sharp, which would reject this fake buffer.
+const mockReframe = vi.fn(async (buf: Buffer) => buf);
+vi.mock('../../src/imaging/normalizeIconFraming.js', () => ({
+  normalizeIconFraming: mockReframe,
+}));
+
 const mockSave = vi.fn(async () => undefined);
 vi.mock('firebase-admin/storage', () => ({
   getStorage: () => ({
@@ -129,6 +136,10 @@ describe('onCanonItemWritten — Firestore emulator', () => {
 
     expect(mockGenerateIcon).toHaveBeenCalledOnce();
     expect(mockRemoveBg).toHaveBeenCalledOnce();
+    // Framing runs after background removal, at the canon tile's contentMax —
+    // not the module's 92px weather default.
+    expect(mockReframe).toHaveBeenCalledOnce();
+    expect(mockReframe).toHaveBeenCalledWith(expect.anything(), { contentMax: 108 });
     expect(mockSave).toHaveBeenCalledOnce();
 
     const snap = await db.collection('canonItems').doc('canon-1').get();
