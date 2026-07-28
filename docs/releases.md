@@ -235,7 +235,27 @@ A brand-new Firebase project needs one-time setup that the CI deployer SA
    create the queue by hand to match dev
    (`--max-concurrent-dispatches=6 --max-attempts=5`).
 
-5. After that, **CI/SA deploys work** without any standing IAM-admin grant.
+5. **Grant the deployer SA `roles/cloudscheduler.admin`** — required by the one
+   scheduled function, `sweepOrphanedStorage` (`onSchedule`, #621). Deploying it
+   creates/updates a Cloud Scheduler job, which `roles/firebase.admin` does
+   **not** cover:
+
+   ```
+   gcloud projects add-iam-policy-binding <project-id> \
+     --member="serviceAccount:gha-deployer@<project-id>.iam.gserviceaccount.com" \
+     --role="roles/cloudscheduler.admin"
+   ```
+
+   Without it the deploy fails with `403 … lacks IAM permission
+   "cloudscheduler.jobs.update"`. A **local owner deploy hides this** — an owner
+   has the permission — so the gap only surfaces on the first CI/SA deploy after
+   a scheduled function is added. Unlike the Cloud Tasks trap above this one does
+   self-heal: the job creation is retried on every deploy, so granting the role
+   and re-running is enough. Verify with
+   `gcloud scheduler jobs list --project=<project-id> --location=europe-west2` —
+   zero jobs means the function is deployed but **never fires**.
+
+6. After that, **CI/SA deploys work** without any standing IAM-admin grant.
 
 > Note: `firebase deploy` will not change a function's trigger type in place. If
 > an interrupted first deploy leaves a Firestore-trigger function as an `https`
@@ -258,7 +278,8 @@ A brand-new Firebase project needs one-time setup that the CI deployer SA
 - [x] Email-OTP secrets (`RESEND_API_KEY`, `OTP_EMAIL_FROM`) — dev + staging
 - [ ] Email-OTP secrets — production: `OTP_EMAIL_FROM` set 2026-07-28; **`RESEND_API_KEY` outstanding** (needs a prod-scoped key from the Resend dashboard)
 - [x] Web-push VAPID keypair (`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` secrets + `VITE_VAPID_PUBLIC_KEY` in `.env.<mode>`) — dev, staging, and production (prod pair generated 2026-07-28)
-- [ ] Cloud Tasks provisioning (bootstrap step 4) — dev + staging **done** (queues RUNNING in `europe-west2`); production has the API enabled (2026-07-28) but **both IAM grants outstanding**, so the first release carrying `onCookTimerDispatch` will fail that function unless they land first
+- [x] Cloud Tasks provisioning (bootstrap step 4) — dev, staging and production all **done**; prod's `onCookTimerDispatch` queue is RUNNING in `europe-west2` (2026-07-28)
+- [ ] `roles/cloudscheduler.admin` on the deployer SA (bootstrap step 5) — **outstanding on staging and production**. `sweepOrphanedStorage` is ACTIVE in both, but neither project has a Cloud Scheduler job in any region, so the weekly sweep has never actually run. Prod's 2026-07-28 release surfaced it as a `cloudscheduler.jobs.update` 403.
 - [x] Production deploy workflow (`deploy-production.yml` — on GitHub Release, gated) — Phase 4
 - [x] ~~PR preview channels~~ — **dropped** (#126 reverted). The whole app sits behind an auth gate and magic-link sign-in can't run on a preview's unauthorized, per-PR origin, so a preview only ever shows the login page. Verify on the staging domain after merge instead.
 - [x] End-of-greenfield doc note (`salt-architecture.md` §1.1 + `CLAUDE.md`) — Phase 6
