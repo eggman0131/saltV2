@@ -17,7 +17,7 @@
   "devDependencies": {
     "@types/web-push": "^3.6.4",
     "esbuild": "^0.28.1",
-    "genkit-cli": "^1.40.0",
+    "genkit-cli": "^1.40.1",
     "tsx": "^4.23.1"
   },
   "dependencies": {
