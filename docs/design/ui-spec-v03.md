@@ -1,4 +1,4 @@
-# Salt 2.0 — UI Primitives Specification (v0.3.1, Draft for Planning)
+# Salt 2.0 — UI Primitives Specification (v0.3.2, Draft for Planning)
 
 **Status:** Planning  
 **Scope:** `@salt/ui-components` — new primitives only  
@@ -291,6 +291,15 @@ APG pattern: **Dialog** (non-modal variant is out of scope; Sheet is modal).
 - `portal: HTMLElement | string | false = "body"`
 - `class?: string`
 
+### 5.3.1 Part props (`SheetPartProps`)
+
+Every non-root part (`SheetTrigger`, `SheetContent`, `SheetHeader`, `SheetTitle`, `SheetDescription`, `SheetFooter`, `SheetClose`) takes the same shape:
+
+- `class?: string` — forwarded to that part's own root element
+- `children?: Snippet`
+
+`SheetTrigger`'s `class` in particular is load-bearing, not cosmetic: the trigger is the element the layout constrains, so a caller that needs it sized or stretched has no other handle. `BottomNav`'s overflow ("More") tab is a `SheetTrigger` rather than an `<a>`, and ui-spec-v04 §13.2 requires **every** tab column's interactive element to be `flex flex-1` — a trigger that swallowed `class` could not satisfy that.
+
 ### 5.4 Events
 
 - `onOpenChange: (open: boolean) => void`
@@ -444,6 +453,7 @@ Amendments follow the v0.2 procedure (ui-spec-v02 §1.5): bump the version in th
 
 | Date       | Version | Summary                                                                                                                                                                                                                                                                                                                                                               |
 | ---------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-07-28 | v0.3.2  | §5.3.1 Sheet: recorded the shared `SheetPartProps` shape (`class?`, `children?`) carried by every non-root part, and why `SheetTrigger`'s `class` is load-bearing rather than cosmetic — `BottomNav`'s overflow ("More") tab is a `SheetTrigger`, and ui-spec-v04 §13.2 requires every tab column's interactive element to be `flex flex-1`. Ratifies the `class` prop shipped in #605. Re-stamped `SheetTrigger.svelte` provenance (the only part whose contract changed; `SheetPartProps` itself is unchanged). Resolves part of doc/code drift issue #608. |
 | 2026-07-23 | v0.3.1  | §6.3/§6.7 Toast: added opt-in `showCountdown` prop — a circular ring that drains over `duration`, pauses with the dismiss timer on hover, hidden under reduced motion. Drives the deferred-delete "Undo" snackbar's visible window. No colour/anchoring change. Re-stamped `Toast.svelte` + `Toast.types.ts` provenance to v0.3.1 (the parts whose contract changed). |
 
 ---

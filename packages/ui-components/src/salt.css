@@ -929,12 +929,13 @@
  * component-surface tuning for ONE primitive, like `--salt-icon-tile` itself, so
  * they carry no design.md provenance and `pnpm theme:check` stays green. */
 
-/* The tile's footprint. `--shadow-sm` (black at 0.05) is too faint to define a
- * 40px square against `bg-card` white now that the tile itself is transparent
- * behind an icon; this is the same geometry, tinted with the palette's slate
- * rather than neutral black so the edge belongs to Salt's cool greys. Currently
- * dialled to 0.00 — no footprint at all, the icon floats on the surface — while
- * we look at it in dev; the geometry stays so the knob is one number. */
+/* The tile's footprint, held at ZERO opacity: the ratified look is the icon
+ * sitting directly on the surface with no edge under it at all (ui-spec-v04
+ * §14.6). The geometry stays declared rather than deleted so the footprint is
+ * one number away if a future surface needs the tile's square to read — tinted
+ * with the palette's slate rather than neutral black, so that edge would belong
+ * to Salt's cool greys. (`--shadow-sm`, black at 0.05, was never the fallback:
+ * it is too faint to define a 40px square against `bg-card` white.) */
 @utility salt-icon-lift {
   box-shadow: 0 1px 2px hsl(195 20% 15% / 0);
 }

@@ -25,6 +25,8 @@ v0.4 introduces:
 
 APG pattern: **Autocomplete (Listbox)**.
 
+Beyond those primitives, this document is also where **layout** components (`AppShell`, `TopBar`, `BottomNav`, `SideNav`) are spec'd — v0.2 and v0.3 cover primitives only. See §13 (pinned interaction constraints), §16 (non-production environment banner), and §17 (BottomNav overflow / `overflowNavItems`).
+
 ---
 
 ## 1. Combobox overview
@@ -826,14 +828,14 @@ This section records deliberate interaction decisions for existing primitives th
 
 ## 13.2 `BottomNav` — full-height tap targets (`items-stretch`)
 
-**Constraint:** The `BottomNav` `<ul>` must use `items-stretch` (not `items-center`). Each `<li>` must be `flex flex-1`; each `<a>` must be `flex flex-1`.
+**Constraint:** The `BottomNav` `<ul>` must use `items-stretch` (not `items-center`). Each `<li>` must be `flex flex-1`; each tab's own interactive element must be `flex flex-1`.
 
-**Rationale:** Without `items-stretch`, each `<a>` is only as tall as its content (icon + label), leaving dead strips above and below the tappable area within the `h-14` nav bar. `items-stretch` makes the `<a>` fill the full column height so the entire strip is tappable regardless of where the finger lands.
+**Rationale:** Without `items-stretch`, each tab's interactive element is only as tall as its content (icon + label), leaving dead strips above and below the tappable area within the `h-14` nav bar. `items-stretch` makes it fill the full column height so the entire strip is tappable regardless of where the finger lands.
 
 **Contract:**
 - `<ul class="... items-stretch ...">` — `items-center` is forbidden here.
 - `<li class="flex flex-1">` — each tab column must fill the row height.
-- `<a class="... flex flex-1 ...">` — the anchor inherits the full height via flex stretch.
+- The tab's interactive element carries `flex flex-1` and inherits the full height via flex stretch. For a destination tab that element is the `<a>`; for the trailing overflow ("More") tab it is a `SheetTrigger` (§17), which is why `SheetTrigger` forwards `class` (ui-spec-v03 §5.3.1) — the constraint is on **every** tab column, so a tab that is not an anchor must still be able to receive these classes.
 
 ## 13.3 `AppShell` — viewport-bounded shell (`h-dvh`), inner scroll
 
@@ -984,7 +986,7 @@ lit
 - **A tile that renders an icon has no backdrop.** The pictogram is the object; the pale grey square behind it (`--salt-icon-tile`, 93% lightness against a 100% white card) only diluted it. The tile keeps its box — `size`, `salt-icon-lift`, and the layout slot are unchanged — so nothing about column alignment moves.
 - **A bare tile keeps `bg-icon-tile`.** It is a placeholder standing in for art that has not generated yet (or that the user hid), and it holds the text column straight down a list of part-matched rows. `bg-secondary-container` (sage) is the lit backdrop in both cases (§14.5).
 - Every arm is a **literal** class string. Tailwind scans source text, so a composed `motion-reduce:${…}` would never generate a utility; the reduced-motion fallback is each state's own resting backdrop (§14.5.4).
-- `salt-icon-lift` — a hairline footprint shadow (`0 1px 2px hsl(195 20% 15% / 0.12)`), so the tile's square still reads against `bg-card` now that an icon tile is transparent behind its art. Deliberately not `shadow-sm`: at black/0.05 that token is too faint to define a 40px square. Defined in `salt.css` as a component-surface utility with literal values — no `--salt-*` token, so `pnpm theme:check` is unaffected.
+- `salt-icon-lift` — footprint-shadow **geometry held at zero opacity** (`0 1px 2px hsl(195 20% 15% / 0)`). The ratified look is the icon sitting directly on the surface: with the tile transparent behind its art, no edge under it at all reads better than a hairline one, so the utility ships with nothing painted. The geometry stays declared rather than deleted so a footprint is one number away if a future surface needs the tile's square to read — and the tint is the palette's slate rather than neutral black so that edge would belong to Salt's cool greys. Deliberately not `shadow-sm`, which was never the fallback: at black/0.05 that token is too faint to define a 40px square. Defined in `salt.css` as a component-surface utility with literal values — no `--salt-*` token, so `pnpm theme:check` is unaffected.
 - `relative` — the positioning context for the absolutely-positioned sweep overlay.
 - `transition-colors duration-reveal ease-standard` — the grey↔sage crossfade, at the spec value rather than Tailwind's 150ms default; the static utility carries it so every consumer inherits the same pace.
 - `overflow-hidden` — clips any image that slightly overflows the tile boundary, and confines the sweep band to the tile.
@@ -1179,3 +1181,61 @@ Where `ENV_LABEL` and `ENV_CLASS` are derived from `$env/static/public` in `web-
 - When `envClass` is provided, its classes are applied to the bar surface (replacing or extending the default surface class).
 - When `envClass` is omitted, the bar uses its default `bg-card` surface.
 - `AppShell` forwards both props to `TopBar` unchanged.
+
+---
+
+# 17. BottomNav overflow ("More") + `AppShell` `overflowNavItems`
+
+## 17.1 Overview
+
+Navigation is split into two tiers. **Primary** destinations (`navItems`) are the ones you cook with and stay on the mobile tab bar; **secondary** destinations (`overflowNavItems`) are folded behind a trailing "More" tab that opens them in a bottom `Sheet`. The split is expressed once, at the `AppShell` call site, and each viewport spends it differently:
+
+- **Desktop (`SideNav`)** — no fold. `SideNav` receives `[...navItems, ...overflowNavItems]` and lists every destination inline; a vertical rail has the room.
+- **Mobile (`BottomNav`)** — `BottomNav` receives `navItems` as its tabs and `overflowNavItems` separately, and renders the "More" tab itself.
+
+**Rationale:** the bar is `h-14` and full-width; past four tabs each column is too narrow for the active-indicator pill (§17.5) and its label to sit legibly side by side. Four primary tabs plus More is the ceiling. The primitives are **destination-agnostic** — they do not know which routes are primary; the app supplies both lists.
+
+## 17.2 `AppShell` props
+
+- `navItems: NavItem[]` — primary destinations.
+- `overflowNavItems?: NavItem[] = []` — secondary destinations. Forwarded to `BottomNav` as `overflowItems`; concatenated after `navItems` for `SideNav`.
+
+`AppShell` adds no logic beyond that split — no reordering, no truncation, no promotion of an active overflow route into the primary tabs.
+
+## 17.3 `BottomNav` props
+
+- `items: NavItem[]` — the tabs rendered inline.
+- `overflowItems?: NavItem[] = []` — destinations behind the More tab. **Empty (or omitted) renders no More tab at all** — a nav with nothing to fold looks exactly as it did before this section existed.
+- `overflowLabel?: string = 'More'` — the tab's label **and** the title of the sheet it opens; one string, so the two can never disagree.
+- `currentPath: string`, `class?: string` — unchanged.
+
+## 17.4 Behaviour
+
+- **The More tab is a `SheetTrigger`, not an anchor.** It has no `href`; it opens a `side="bottom"` `Sheet` listing the overflow destinations. It still occupies a full `<li class="flex flex-1">` tab column and the trigger itself carries `flex flex-1` (§13.2).
+- **Selected state stands in for the fold.** The More tab renders as active whenever the current route matches **any** overflow item — otherwise a user sitting on a folded route sees nothing in the bar selected. Active matching uses the same prefix rule as the inline tabs.
+- **Badges aggregate.** The More tab's badge is the **sum** of its overflow items' badges, and is omitted when that sum is zero. A count (the Admin needs-approval queue) must never be silently hidden by being folded away. Inside the sheet each row still shows its own badge.
+- **Rows close the sheet on click.** Hash navigation does not unmount the sheet, so each destination row sets `open = false` on click.
+- **Sheet content is scroll-bounded and gesture-safe** — `max-h-[70dvh] overflow-y-auto`, with bottom padding of `calc(1.5rem + env(safe-area-inset-bottom))` so the last row clears the home indicator.
+
+## 17.5 Active indicator — filled capsule
+
+**Constraint:** the selected tab is marked by a **filled capsule behind its icon** (`bg-accent text-accent-foreground`), not by colour alone.
+
+**Rationale:** a shape cue stays legible under kitchen glare, at a glance, and for colour-blind users (WCAG 1.4.1 — not by colour alone). `accent`/`accent-foreground` are Material 3's secondary-container / on-secondary-container pair, and `SideNav` already uses them for its active row, so mobile and desktop read the same.
+
+**Contract:**
+- Active tab: capsule `bg-accent text-accent-foreground`; label `font-semibold text-foreground`.
+- Inactive tab: icon and label both `muted-foreground`. `foreground/40` is **forbidden** here — at ~2.5:1 on the card it is under the WCAG text minimum for a 10px label, and now that the capsule does the differentiating work the inactive state does not need to be washed out. `muted-foreground` is ~9.7:1.
+- The badge anchors to the capsule's **top edge**, not above it: the row is only `h-14`, so a badge hung off the top pokes through the nav's `border-t` and floats over the page behind it.
+
+## 17.6 Testing requirements
+
+- With `overflowItems` empty or omitted, no More tab is rendered and the bar is exactly `items.length` columns.
+- With `overflowItems` non-empty, a trailing More tab is rendered, labelled `overflowLabel`, and its column is `flex flex-1` (§13.2).
+- Activating the More tab opens a bottom sheet titled `overflowLabel` listing every overflow item.
+- The More tab is active when `currentPath` matches an overflow item, and inactive when it matches an inline item.
+- The More tab's badge equals the sum of the overflow items' badges, and is absent when that sum is zero.
+- Clicking an overflow row closes the sheet.
+- `AppShell` passes `[...navItems, ...overflowNavItems]` to `SideNav`, and `navItems` / `overflowNavItems` separately to `BottomNav`.
+- The active tab carries `bg-accent`; inactive tabs carry `muted-foreground` and never `foreground/40`.
+- axe: no violations for the bar with an overflow tab, both closed and open.
