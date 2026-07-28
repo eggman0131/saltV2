@@ -7,8 +7,8 @@
   },
   "include": ["src/**/*"],
   "references": [
-    { "path": "../shared-types" },
-    { "path": "../domain" },
-    { "path": "../adapters/firebase-sync" }
+    { "path": "../shared-types/tsconfig.json" },
+    { "path": "../domain/tsconfig.json" },
+    { "path": "../adapters/firebase-sync/tsconfig.json" }
   ]
 }
