@@ -369,8 +369,15 @@ export function stashImportedDraft(draft: Recipe): void {
   _pendingImportDraft = draft;
 }
 
-export function takeImportedDraft(): Recipe | null {
+// Single-use read. Since #616 an import is persisted server-side and opens as
+// /recipes/{id}/edit, so the editor asks for a SPECIFIC id: passing `expectedId`
+// leaves a non-matching stash in place, so opening some other recipe's editor
+// can't silently swallow a pending import. Called with no argument (from
+// /recipes/new) it takes whatever is stashed, as before.
+export function takeImportedDraft(expectedId?: string): Recipe | null {
   const d = _pendingImportDraft;
+  if (d === null) return null;
+  if (expectedId !== undefined && d.id !== expectedId) return null;
   _pendingImportDraft = null;
   return d;
 }

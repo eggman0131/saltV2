@@ -137,7 +137,9 @@ describe('runPendingShareImport', () => {
     expect(push).not.toHaveBeenCalled();
   });
 
-  it('imports the shared URL and routes into the pre-filled editor', async () => {
+  it('routes into the editor for the recipe the callable already persisted', async () => {
+    // Since #616 the CF writes the recipe, so the client edits an EXISTING id
+    // rather than creating one at /recipes/new.
     const draft = { id: 'r1', title: 'Carbonara' };
     importRecipeFromUrl.mockResolvedValue({ kind: 'ok', value: draft });
     const { runPendingShareImport } = await loadWithShare('?url=https%3A%2F%2Fexample.com%2Fr');
@@ -146,7 +148,7 @@ describe('runPendingShareImport', () => {
 
     expect(importRecipeFromUrl).toHaveBeenCalledWith('https://example.com/r', 'share');
     expect(stashImportedDraft).toHaveBeenCalledWith(draft);
-    expect(push).toHaveBeenCalledWith('/recipes/new');
+    expect(push).toHaveBeenCalledWith('/recipes/r1/edit');
   });
 
   it('says an import is running for the whole extraction, then takes it down', async () => {
@@ -218,7 +220,9 @@ describe('runPendingShareImport', () => {
     expect(get(toasts).at(-1)?.message).toMatch(/sign in/i);
   });
 
-  it('surfaces a navigation failure rather than stranding the user', async () => {
+  it('says where the recipe landed if navigation fails', async () => {
+    // The recipe is safely persisted by then, so a failed navigation is cosmetic
+    // — the toast points at it rather than implying the import was lost.
     importRecipeFromUrl.mockResolvedValue({ kind: 'ok', value: { id: 'r1', title: 'Carbonara' } });
     push.mockRejectedValue(new Error('no route'));
     const { runPendingShareImport, toasts } = await loadWithShare(
@@ -227,6 +231,6 @@ describe('runPendingShareImport', () => {
 
     await runPendingShareImport(true);
 
-    expect(get(toasts).at(-1)?.message).toMatch(/could not open the editor/i);
+    expect(get(toasts).at(-1)?.message).toMatch(/imported "Carbonara" — find it in Recipes/i);
   });
 });

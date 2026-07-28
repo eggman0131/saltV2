@@ -1,5 +1,7 @@
 import { z } from 'genkit';
 import { googleAI } from '@genkit-ai/google-genai';
+import { getFirestore } from 'firebase-admin/firestore';
+import { logger } from 'firebase-functions';
 import { isHttpsScheme, parseImportUrl } from '@salt/domain';
 import { ExtractRecipeFromUrlInputSchema, ExtractRecipeAIOutputSchema } from '@salt/domain/schemas';
 import type { ExtractRecipeAIOutput, UrlImportFailureCode } from '@salt/domain/schemas';
@@ -151,9 +153,40 @@ export const extractRecipeFromUrlFlow = ai.defineFlow(
     }
 
     // 6. Assemble the draft (reuses parse + canonicalise flows).
-    return assembleDraft(extracted, parsed.href);
+    const recipe = await assembleDraft(extracted, parsed.href);
+
+    // 7. Persist it here, server-side, flagged as not yet human-reviewed
+    //    (issue #616). The client used to hold the only copy in memory until the
+    //    user saved from the editor — so an import shared in from the Android
+    //    share sheet (#589) was lost outright whenever Android killed the
+    //    backgrounded PWA mid-extraction, along with the AI call that produced
+    //    it. Writing it here means the recipe exists the moment the extraction
+    //    finishes, whatever the client does next.
+    await persistImportedRecipe(recipe);
+    return recipe;
   },
 );
+
+// Write the freshly-extracted recipe to `recipes/{id}` with needs_approval set.
+// A full `.set()` on a server-generated id: the doc cannot already exist, so
+// there is nothing to merge with and no LWW hazard.
+//
+// A write failure does NOT fail the import. The callable still returns the
+// recipe, and the client stashes it for the editor, which degrades to exactly
+// the pre-#616 behaviour (the user saves it themselves) rather than throwing
+// away a successful, already-paid-for extraction. Logged so the failure is
+// visible; not reported as an unexpected error, since the user still gets a
+// working import.
+async function persistImportedRecipe(recipe: RecipeDoc): Promise<void> {
+  try {
+    await getFirestore().collection('recipes').doc(recipe.id).set(recipe);
+  } catch (err) {
+    logger.error('extractRecipeFromUrl: failed to persist imported recipe', {
+      recipeId: recipe.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
 
 // Tighten the not-a-recipe decision now that JSON-LD gives a stronger signal.
 // - hadJsonLd: a validated schema.org/Recipe was present on the page. That alone
@@ -364,6 +397,10 @@ async function assembleDraft(raw: ExtractRecipeAIOutput, sourceUrl: string): Pro
     notes: raw.notes,
     // URL import always creates a fresh recipe — no "makes" link yet.
     producesCanonId: null,
+    // Raw AI output nobody has read yet (issue #616). Carried on the returned
+    // doc as well as the persisted one, so the editor the client opens shows the
+    // same review state as the recipe list.
+    needs_approval: true,
     image: null,
     createdAt: now,
     updatedAt: now,

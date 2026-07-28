@@ -267,6 +267,26 @@ describe('RecipeSchema', () => {
     }
   });
 
+  // Review state for AI imports (issue #616). Back-compat is the whole point of
+  // it being optional: every recipe already in the production collection lacks
+  // the field and must keep parsing, reading as reviewed (absent).
+  it('parses a recipe with needs_approval set, and one without it (back-compat)', () => {
+    const unreviewed = RecipeSchema.safeParse({ ...messyRecipe(), needs_approval: true });
+    expect(unreviewed.success).toBe(true);
+    if (unreviewed.success) expect(unreviewed.data.needs_approval).toBe(true);
+
+    const existing = messyRecipe();
+    expect('needs_approval' in existing).toBe(false);
+    const result = RecipeSchema.safeParse(existing);
+    expect(result.success).toBe(true);
+    // Absent, NOT defaulted to false — absent means reviewed.
+    if (result.success) expect(result.data.needs_approval).toBeUndefined();
+  });
+
+  it('rejects a non-boolean needs_approval', () => {
+    expect(RecipeSchema.safeParse({ ...messyRecipe(), needs_approval: 'yes' }).success).toBe(false);
+  });
+
   it('rejects a non-numeric imageRequestedAt and a non-boolean imageHidden', () => {
     expect(RecipeSchema.safeParse({ ...messyRecipe(), imageRequestedAt: 'soon' }).success).toBe(
       false,
