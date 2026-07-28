@@ -49,6 +49,7 @@ storybook                  →  ui-components                 # dev-only Storybo
 ## Workflow
 
 - **Issue-first for substantial changes.** New packages, new dependencies, layer-map edits, and cross-package refactors require a GitHub issue and explicit go-ahead before implementation. Design Q&A in chat is not a greenlight.
+- **New dependencies pin to the current latest.** Never write a version range from memory — model training data lags the registry by a long way. Check what is actually published (`npm view <pkg> version`, or `pnpm add <pkg>` which resolves latest for you) and use that major. An older major is allowed only for a stated reason (a peer-dep ceiling, a known-broken release, an upstream pin — e.g. the OTel 1.x pin held by `@genkit-ai/google-cloud`), and that reason goes in the PR description. Precedent: `resend` was added as `^4.0.0` in #585 (2026-07-24) when 6.x had been out for a year, and Dependabot flagged it within days.
 - **Production data back-compat.** Canon, Aisles, Equipment, Shopping List, Meal Planner, and Recipes collections hold real production data — schema changes must be backward-compatible on read, or require a one-off migration. (Recipes lost their greenfield status when the module shipped to all members in #240, 2026-06-17; treat recipe schema changes like any other production collection from here on.) See also: Zod schema conventions below.
 
 ## Zod schema conventions
