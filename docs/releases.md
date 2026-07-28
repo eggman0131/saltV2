@@ -275,8 +275,7 @@ A brand-new Firebase project needs one-time setup that the CI deployer SA
 - [x] **First end-to-end staging deploy verified** (CI/SA → https://s2-stage-ccb22.web.app)
 - [x] Production first-deploy bootstrap (owner deploy done — functions + firestore + hosting live at https://s2-prod-e46bd.web.app)
 - [x] `roles/iam.serviceAccountTokenCreator` self-binding on the runtime SA (needed by email-OTP sign-in — see bootstrap step 3) — dev `277945741930-compute@`, staging `946977631175-compute@` and production `140613398002-compute@` all **done** (verified 2026-07-28)
-- [x] Email-OTP secrets (`RESEND_API_KEY`, `OTP_EMAIL_FROM`) — dev + staging
-- [ ] Email-OTP secrets — production: `OTP_EMAIL_FROM` set 2026-07-28; **`RESEND_API_KEY` outstanding** (needs a prod-scoped key from the Resend dashboard)
+- [x] Email-OTP secrets (`RESEND_API_KEY`, `OTP_EMAIL_FROM`) — dev, staging and production (prod set 2026-07-28)
 - [x] Web-push VAPID keypair (`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` secrets + `VITE_VAPID_PUBLIC_KEY` in `.env.<mode>`) — dev, staging, and production (prod pair generated 2026-07-28)
 - [x] Cloud Tasks provisioning (bootstrap step 4) — dev, staging and production all **done**; prod's `onCookTimerDispatch` queue is RUNNING in `europe-west2` (2026-07-28)
 - [ ] `roles/cloudscheduler.admin` on the deployer SA (bootstrap step 5) — **outstanding on staging and production**. `sweepOrphanedStorage` is ACTIVE in both, but neither project has a Cloud Scheduler job in any region, so the weekly sweep has never actually run. Prod's 2026-07-28 release surfaced it as a `cloudscheduler.jobs.update` 403.
