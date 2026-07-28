@@ -151,12 +151,15 @@
       addToast(urlImportMessage(result.error), 'destructive');
       return;
     }
-    // Hand the converted draft to the editor and route into it pre-filled. If
-    // navigation itself fails, surface it rather than silently closing the form
-    // and stranding the user with no editor and no error.
+    // The callable already persisted the recipe (issue #616), flagged as not yet
+    // reviewed — so this routes into the EXISTING recipe's editor, not
+    // /recipes/new. The draft is still stashed so the editor paints immediately
+    // instead of waiting for the Firestore listener to deliver a doc the server
+    // just wrote. If navigation itself fails, surface it rather than silently
+    // closing the form: the recipe exists either way, so the user isn't stranded.
     stashImportedDraft(result.value);
     try {
-      push('/recipes/new');
+      push(`/recipes/${result.value.id}/edit`);
       showImport = false;
       importUrl = '';
     } catch {
@@ -450,7 +453,20 @@
               data-testid="recipe-list-item"
               data-recipe-id={recipe.id}
             >
-              <div class="aspect-[3/2] w-full overflow-hidden bg-muted">
+              <div class="relative aspect-[3/2] w-full overflow-hidden bg-muted">
+                <!--
+                  Not-yet-read AI import (issue #616). Marker only — the whole card
+                  is already a button, so clearing it happens on the recipe itself.
+                  Amber chip matches the canon/product-form review idiom.
+                -->
+                {#if recipe.needs_approval}
+                  <span
+                    class="absolute left-2 top-2 z-10 rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-medium text-amber-800"
+                    data-testid="recipe-unreviewed-badge"
+                  >
+                    Unreviewed
+                  </span>
+                {/if}
                 {#if url}
                   <img
                     src={url}

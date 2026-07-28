@@ -297,11 +297,17 @@ function hostForSpan(url: string): string {
 // never imports observability). Tracing is best-effort: when it's inert the span
 // is a no-op and the traceparent is '' (omitted by the wrapper), so import works
 // exactly as before.
+//
+// `source` distinguishes the Web Share Target hand-off (issue #589) from the
+// "Import from URL" button on the recipe list — the only way to tell whether
+// share-to-Salt is actually used, and free to carry as a span attribute.
 export async function importRecipeFromUrl(
   url: string,
+  source: 'button' | 'share' = 'button',
 ): Promise<ReadResult<Recipe, UrlImportFailureCode>> {
   const trimmed = url.trim();
   const span = startUserActionSpan(`Import recipe from ${hostForSpan(trimmed)}`);
+  span.setAttribute('import.source', source);
   const child = span.child('callExtractRecipeFromUrl');
   try {
     const result = await callExtractRecipeFromUrl({ url: trimmed }, span.traceparent || undefined);
@@ -363,8 +369,15 @@ export function stashImportedDraft(draft: Recipe): void {
   _pendingImportDraft = draft;
 }
 
-export function takeImportedDraft(): Recipe | null {
+// Single-use read. Since #616 an import is persisted server-side and opens as
+// /recipes/{id}/edit, so the editor asks for a SPECIFIC id: passing `expectedId`
+// leaves a non-matching stash in place, so opening some other recipe's editor
+// can't silently swallow a pending import. Called with no argument (from
+// /recipes/new) it takes whatever is stashed, as before.
+export function takeImportedDraft(expectedId?: string): Recipe | null {
   const d = _pendingImportDraft;
+  if (d === null) return null;
+  if (expectedId !== undefined && d.id !== expectedId) return null;
   _pendingImportDraft = null;
   return d;
 }

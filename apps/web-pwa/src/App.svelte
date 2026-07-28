@@ -28,6 +28,7 @@
   import { initWeatherSync } from './lib/weatherService.js';
   import { initCookTimerAlerts } from './lib/cookTimerAlerts.js';
   import { normaliseMemberEmail } from '@salt/domain';
+  import { runPendingShareImport } from './lib/shareTarget.js';
   import { envBanner } from './lib/environment.js';
   import SessionOverlay from './lib/dev/SessionOverlay.svelte';
 
@@ -63,6 +64,16 @@
       unsubWeather();
       unsubCookTimers();
     };
+  });
+
+  // Web Share Target hand-off (issue #589). main.ts captured the shared link before
+  // mount; this runs it once auth has resolved, because the import goes through an
+  // authenticated callable. Signed out, it drops the share with a toast rather than
+  // resuming after sign-in (Rule 3 — no third browser-storage carve-out). The
+  // pending share is single-use, so re-runs of this effect are no-ops.
+  $effect(() => {
+    if (auth.loading) return;
+    void runPendingShareImport(!!auth.user);
   });
 
   // Admin-ness drives whether the operator-area nav entry is shown. Cosmetic

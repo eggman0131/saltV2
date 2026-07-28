@@ -72,6 +72,21 @@ export default defineConfig(({ mode }) => {
           display: 'standalone',
           start_url: '/',
           scope: '/',
+          // Web Share Target (issue #589) — puts Salt in the Android share sheet so
+          // a recipe link found in Chrome/Instagram/WhatsApp imports in two taps.
+          // GET (not POST) because a POST target must be intercepted in the service
+          // worker, and ours is Workbox-GENERATED, never hand-authored (#141, #544);
+          // a GET target needs no SW involvement. action '/' because firebase.json
+          // declares no hosting rewrites and the app is hash-routed, so any other
+          // path would 404 — sharing to '/' lets Hosting serve index.html as usual
+          // and the payload arrives as a query string the app reads at boot
+          // (src/lib/shareTarget.ts). Chromium-only; iOS/Safari has no support and
+          // the "Import from URL" button remains the path for it.
+          share_target: {
+            action: '/',
+            method: 'GET',
+            params: { title: 'title', text: 'text', url: 'url' },
+          },
           // Generated from branding/icon-master.svg via `pnpm icons:generate`.
           // The master is full-bleed with its glyph inside the central safe zone,
           // so the same rasters serve both `any` and `maskable` purposes.

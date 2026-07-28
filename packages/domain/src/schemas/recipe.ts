@@ -121,6 +121,16 @@ export const RecipeSchema = z.object({
   // parse cleanly to `null` on read — back-compat on production data (#240) —
   // and every reader sees a concrete `string | null`, never `undefined`.
   producesCanonId: z.string().nullable().default(null),
+  // Review state for AI-authored recipes (issue #616). Set by the URL-import
+  // callable, which persists the extracted recipe itself so a share-sheet import
+  // (#589) survives the PWA being killed mid-extraction. Same used-but-flagged
+  // semantics as CanonItem/ProductForm `needs_approval`: the recipe is fully live
+  // — cookable, plannable, searchable — the flag ONLY records that no human has
+  // read it yet. It is never a gate on use, and it is never filtered out.
+  // Cleared by an editor save (that save IS the review) or by tapping the chip on
+  // the recipe. `.optional()` (mirroring ProductFormSchema) so the production
+  // recipes collection parses unchanged on read — absent means reviewed (#240).
+  needs_approval: z.boolean().optional(),
   // The photoreal "arty" hero image (Tier-2, issue #148). `null` = none yet: the
   // onRecipeWritten trigger generates one from the title + description on create.
   // A non-null `{ url, source }` is rendered; the trigger skips it (already
