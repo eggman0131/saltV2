@@ -259,13 +259,28 @@ A brand-new Firebase project needs one-time setup that the CI deployer SA
    re-running is **not** enough. Recovery is the same shape:
 
    ```
-   firebase functions:delete sweepOrphanedStorage --region europe-west2 -P <alias>
-   # then redeploy (push to main for staging, or re-run the release for production)
+   gcloud functions delete sweepOrphanedStorage \
+     --region=europe-west2 --project=<project-id> --gen2
+   # then redeploy: `gh workflow run deploy-staging.yml` for staging, or re-run
+   # deploy-production.yml via workflow_dispatch (through the approval gate) for prod
    ```
+
+   **Use `gcloud`, not `firebase functions:delete`** — the Firebase CLI tears the
+   scheduler job down *before* the function, so on a job that was never created it
+   dies with `HTTP Error: 404, Job not found` and aborts without deleting anything.
+   Chicken-and-egg: it can't clean up a resource its own failed deploy never made.
+   `gcloud` removes the service (and its Artifact Registry artifacts) without
+   touching Cloud Scheduler. Firebase derives deploy state from the live resources,
+   so the next deploy creates function *and* job from scratch.
+
+   For staging, redeploy via `workflow_dispatch` rather than a push — a docs-only
+   commit won't clear `deploy-staging.yml`'s deploy-relevant-path guard, and manual
+   runs always deploy.
 
    Verify with
    `gcloud scheduler jobs list --project=<project-id> --location=europe-west2` —
-   zero jobs means the function is deployed but **never fires**.
+   zero jobs means the function is deployed but **never fires**. A healthy job reads
+   `firebase-schedule-sweepOrphanedStorage-europe-west2  0 3 * * 0  Europe/London  ENABLED`.
 
 6. After that, **CI/SA deploys work** without any standing IAM-admin grant.
 
@@ -290,7 +305,7 @@ A brand-new Firebase project needs one-time setup that the CI deployer SA
 - [x] Email-OTP secrets (`RESEND_API_KEY`, `OTP_EMAIL_FROM`) — dev, staging and production (prod set 2026-07-28)
 - [x] Web-push VAPID keypair (`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` secrets + `VITE_VAPID_PUBLIC_KEY` in `.env.<mode>`) — dev, staging, and production (prod pair generated 2026-07-28)
 - [x] Cloud Tasks provisioning (bootstrap step 4) — dev, staging and production all **done**; prod's `onCookTimerDispatch` queue is RUNNING in `europe-west2` (2026-07-28)
-- [ ] `roles/cloudscheduler.admin` on the deployer SA (bootstrap step 5) — **outstanding on staging and production**. `sweepOrphanedStorage` is ACTIVE in both, but neither project has a Cloud Scheduler job in any region, so the weekly sweep has never actually run. Prod's 2026-07-28 release surfaced it as a `cloudscheduler.jobs.update` 403.
+- [x] `roles/cloudscheduler.admin` on the deployer SA (bootstrap step 5) — staging and production both **done** (2026-07-28). `sweepOrphanedStorage` had been ACTIVE in both since #621 with no Cloud Scheduler job in any region, so the weekly sweep had never once run; release `202607.9` surfaced it as a `cloudscheduler.jobs.update` 403 and `202607.10` then masked it as "Skipped (No changes detected)". Recovered per step 5 — both environments now hold an ENABLED `0 3 * * 0` Europe/London job.
 - [x] Production deploy workflow (`deploy-production.yml` — on GitHub Release, gated) — Phase 4
 - [x] ~~PR preview channels~~ — **dropped** (#126 reverted). The whole app sits behind an auth gate and magic-link sign-in can't run on a preview's unauthorized, per-PR origin, so a preview only ever shows the login page. Verify on the staging domain after merge instead.
 - [x] End-of-greenfield doc note (`salt-architecture.md` §1.1 + `CLAUDE.md`) — Phase 6
