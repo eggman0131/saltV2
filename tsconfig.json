@@ -1,14 +1,14 @@
 {
   "files": [],
   "references": [
-    { "path": "packages/shared-types" },
-    { "path": "packages/domain" },
-    { "path": "packages/adapters/firebase-sync" },
-    { "path": "packages/adapters/observability" },
-    { "path": "packages/ui-components" },
-    { "path": "packages/testing-utils" },
-    { "path": "apps/web-pwa" },
-    { "path": "apps/cloud-functions" },
-    { "path": "apps/storybook" }
+    { "path": "packages/shared-types/tsconfig.json" },
+    { "path": "packages/domain/tsconfig.json" },
+    { "path": "packages/adapters/firebase-sync/tsconfig.json" },
+    { "path": "packages/adapters/observability/tsconfig.json" },
+    { "path": "packages/ui-components/tsconfig.json" },
+    { "path": "packages/testing-utils/tsconfig.json" },
+    { "path": "apps/web-pwa/tsconfig.json" },
+    { "path": "apps/cloud-functions/tsconfig.json" },
+    { "path": "apps/storybook/tsconfig.json" }
   ]
 }

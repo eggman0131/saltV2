@@ -7,5 +7,5 @@
     "lib": ["ES2022", "DOM"]
   },
   "include": ["src/**/*"],
-  "references": [{ "path": "../../packages/ui-components" }]
+  "references": [{ "path": "../../packages/ui-components/tsconfig.json" }]
 }
