@@ -1,4 +1,4 @@
-# Salt 2.0 — UI Primitives Specification (v0.2.7)
+# Salt 2.0 — UI Primitives Specification (v0.2.8)
 
 **Status:** Authoritative
 **Audience:** AI code generators + human contributors
@@ -146,7 +146,7 @@ No deep imports. No side-effect imports in any barrel.
 
 ## 1.5 Spec Versioning & Amendment Rule
 
-The spec is versioned `vMAJOR.MINOR.PATCH` (currently v0.2.7).
+The spec is versioned `vMAJOR.MINOR.PATCH` (currently v0.2.8).
 
 - **PATCH** (v0.2.1 → v0.2.2): clarifications, typo fixes, tightened class matrices. No breaking change to generated code.
 - **MINOR** (v0.2.x → v0.3.0): new primitives, new props, new tokens.
@@ -815,6 +815,41 @@ Numeric `number` prop, mapping directly to SVG `width`/`height` in pixels. Defau
 - Apps toggle by adding/removing the `dark` class on `<html>`. Salt does not provide a toggle component in v0.2.
 - All tokens have `:root` (light) and `.dark` values declared by the preset plugin.
 - Primitives never reference dark-mode variants directly — they use semantic tokens that re-resolve under `.dark`.
+
+---
+
+## 4.6 Press Pulse
+
+Utility class: `salt-press-pulse` (a `@utility` in `salt.css`, like `salt-focus-ring` at §4.2).
+
+Expands to:
+
+```css
+@media (prefers-reduced-motion: no-preference) {
+  &:active {
+    transform: scale(0.94);
+    transition-duration: 0s;
+  }
+}
+```
+
+**Purpose.** It carries the §8.1 Button press feel — `scale(0.94)`, instant press-in, eased release — to pressables that are **not** the `Button` primitive. `.salt-button` writes the same treatment out longhand rather than pulling this utility in, because it already owns its own `transition-*` block; the two are deliberately duplicated so neither can retime the other. Any change to the press scale must be made in both places.
+
+**What the utility supplies.** Depth only, and only for the duration of the press: the scale, and the `0s` press-in that puts the element down on the frame the finger lands.
+
+**What the call site must supply.** The release. This utility declares nothing in the released state, so the call site owns:
+
+- its own `transition-property` list, which **must include `transform`** — without it there is nothing for the scale to ride on;
+- its own per-property durations (the press is `--duration-base`; colour keeps the `--duration-fast` hover beat), written as `transition-[…]` + `[transition-duration:…]` because CSS gives no way to retime one member of a list this utility did not author;
+- `ease-standard`, and `motion-reduce:transition-none` if it wants the whole transition gone under reduced motion.
+
+**Specificity, not source order.** The pressed rule is scoped to `:active` so it lands at `(0,2,0)` against a call site's `(0,1,0)`. Tailwind emits this utility *before* the call sites' timing classes, so an unscoped declaration here would silently lose.
+
+**Reduced motion.** The rule is gated on `no-preference` rather than reset afterwards by a `reduce` block — a rule that never applies is the sturdier "does not move" (same reasoning as `.salt-button`, §8.1). The utility needs no `reduce` reset of its own.
+
+**Consumers** (`apps/web-pwa`): the shopping check-off circle (`shopping/CheckOffButton.svelte`) and the "Need it?" verify/dismiss pair (`shopping/ShoppingListPage.svelte`). This is a public, consumer-facing utility — a non-Button pressable that wants the house press feel uses it rather than re-deriving a scale.
+
+**Forbidden.** Do not add a shade, a colour, or any released-state declaration to this utility. A pressed treatment that should survive reduced motion (colour is not movement) belongs at the call site, outside the gate.
 
 ---
 
@@ -1653,6 +1688,7 @@ Numeric transform (allowed by §2.3): determinate indicator uses `style="transfo
 
 | Date       | Version | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ---------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-07-28 | v0.2.8  | §4.6 **Press Pulse**: specs the `salt-press-pulse` CSS utility as a public, consumer-facing extension point alongside `salt-focus-ring` (§4.2) — what it supplies (depth only: `scale(0.94)` + the `0s` press-in), what the call site retains (its own `transition-property` list including `transform`, its own per-property durations, `ease-standard`, `motion-reduce:transition-none`), why the pressed rule is `:active`-scoped (specificity, not source order), and the `no-preference` gate. Records that `.salt-button` writes the same treatment longhand rather than pulling the utility in — the duplication is deliberate (the Button owns its own `transition-*`) and any change to the press scale must land in both places. Shipped unrecorded in #583 alongside the v0.2.7 Button press system; no code change. Resolves doc/code drift issue #588. |
 | 2026-07-24 | v0.2.7  | §8.1 Button: recorded the system-wide **press feedback** contract — `scale(0.94)`, instant press-in / 180ms (`--duration-base`, `--ease-standard`) release, a 120ms (`--duration-fast`) JS minimum-hold floor so a too-quick click is still visible, `disabled` **and** `loading` excluded, reduced motion = shade only (no movement), no haptics. Adds the `data-pressed` attribute and the pointer/keyboard wiring behind it. **Both halves are now implemented:** the scale, and the per-variant **pressed fill** — each variant one perceptual step deeper than its own hover, as longhand `color-mix(in oklab, …)` (solid/destructive/outline 80% toward black, ghost 90% because `--color-muted` is near-white, link a 12% tint since it has no hover fill to deepen). Values, resolved hexes, and computed light-theme contrast ratios (5.56:1 – 10.85:1, all AA) recorded in §8.1. The fill rules sit **outside** the `prefers-reduced-motion: no-preference` gate that holds the transform, so a shade survives the preference; correspondingly the JS floor (`PRESS_FLOOR_MS`) **no longer skips under reduced motion** — it holds `data-pressed`, which now renders something, so skipping it would let a sub-frame tap flash colour invisibly. `Button.headless.svelte.ts` no longer reads `prefers-reduced-motion` at all. Ratifies the press-in that shipped unrecorded in #573 (retuned from `scale(0.97)`, symmetric 120ms) and fixes the loading-button exclusion it missed. §1.5 gains the rationale for amending on the v0.2.x line (v0.3.0 collides with `ui-spec-v03.md`); §8.1 Styling's two stale `tailwind-preset.ts` references corrected to `salt.css`. Issue #579; approved mock: _Button press (system-wide mock)_ in `Salt.dc.html`, Claude Design project "Salt — Culinary Modernist" (mock not in-repo). |
 | 2026-07-01 | v0.2.6  | §8.8 Tooltip: added touch-readability props `disableCloseOnTriggerClick` and `ignoreNonKeyboardFocus` (both pass-through to bits-ui `Tooltip.Root`) and documented the touch tap-to-toggle pattern; noted `TooltipTrigger` now forwards `class` + native attributes to the trigger `<button>`. Ratifies shipped code from #382/#386, now on bits-ui 2.x (bump #380). Resolves doc/code drift issue #393.                                                                        |
 | 2026-06-08 | v0.2.5  | Icon library migrated `lucide-svelte` → `@lucide/svelte` (commit `4822a19`). §1.1 design-system table, §1.2 allowed-imports + consumer restriction, and §8.12 Icon `name` prop updated. Icon `name` surface is now `keyof typeof import('@lucide/svelte').icons` (the named `icons` namespace export, not `import *`); `NavItem.icon` is typed as the `LucideIcon` component from `@lucide/svelte`. Ratifies the migration in issue #167.                                                                                                                            |
