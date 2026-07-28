@@ -249,9 +249,21 @@ A brand-new Firebase project needs one-time setup that the CI deployer SA
    Without it the deploy fails with `403 … lacks IAM permission
    "cloudscheduler.jobs.update"`. A **local owner deploy hides this** — an owner
    has the permission — so the gap only surfaces on the first CI/SA deploy after
-   a scheduled function is added. Unlike the Cloud Tasks trap above this one does
-   self-heal: the job creation is retried on every deploy, so granting the role
-   and re-running is enough. Verify with
+   a scheduled function is added.
+
+   **It then hides itself, exactly like the Cloud Tasks trap.** The function is
+   created *before* the scheduler job is written, so the failed deploy still
+   leaves it registered; every later deploy reports
+   `sweepOrphanedStorage(europe-west2) — Skipped (No changes detected)`, never
+   re-attempts the job, and the workflow goes green. Granting the role and
+   re-running is **not** enough. Recovery is the same shape:
+
+   ```
+   firebase functions:delete sweepOrphanedStorage --region europe-west2 -P <alias>
+   # then redeploy (push to main for staging, or re-run the release for production)
+   ```
+
+   Verify with
    `gcloud scheduler jobs list --project=<project-id> --location=europe-west2` —
    zero jobs means the function is deployed but **never fires**.
 
