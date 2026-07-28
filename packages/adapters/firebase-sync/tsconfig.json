@@ -7,5 +7,5 @@
     "lib": ["ES2022", "DOM"]
   },
   "include": ["src/**/*"],
-  "references": [{ "path": "../../domain" }, { "path": "../../shared-types" }]
+  "references": [{ "path": "../../domain/tsconfig.json" }, { "path": "../../shared-types/tsconfig.json" }]
 }
