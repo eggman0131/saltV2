@@ -68,6 +68,9 @@ project**, and are bound to the functions via `defineSecret()` in
 | --------------- | ------------------------------------------------------- | ------------------------------------------------- |
 | `GEMINI_API_KEY` | Gemini/Genkit API key for the AI flows                 | `firebase functions:secrets:set GEMINI_API_KEY -P <alias>` |
 | `POSTHOG_API_KEY` | PostHog **server project** key (`posthog-node`) for CF event capture; absent ⇒ server observability no-ops | `firebase functions:secrets:set POSTHOG_API_KEY -P <alias>` |
+| `RESEND_API_KEY` | Resend API key used by `requestEmailOtp` to deliver the sign-in code (#546). Use a **separate key per environment** so staging sends can't be confused with prod ones in the Resend dashboard. | `firebase functions:secrets:set RESEND_API_KEY -P <alias>` |
+| `OTP_EMAIL_FROM` | The OTP sender address, e.g. `Salt <no-reply@salt.pendery.org>`. Not sensitive, but Secret Manager is the only runtime-config channel a deployed function has here (the `dist` deploy source is wiped by every build, so a `.env` can't survive). Must be on a Resend-**verified** domain — `onboarding@resend.dev` only delivers to the Resend account owner and is not a usable default. | `firebase functions:secrets:set OTP_EMAIL_FROM -P <alias>` |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web-push signing keypair for cook-timer notifications (#544). **Distinct per environment** — a subscription minted under one project's public key is undeliverable by another's private key. Generate with `npx web-push generate-vapid-keys`; the public half also goes in `apps/web-pwa/.env.<mode>` as `VITE_VAPID_PUBLIC_KEY` (empty ⇒ the notifications toggle is hidden). | `firebase functions:secrets:set VAPID_PUBLIC_KEY -P <alias>` (and `VAPID_PRIVATE_KEY`) |
 
 There is **no** OTLP secret or endpoint var: server-side spans export to GCP /
 Firebase Monitoring via `enableFirebaseTelemetry()` (Genkit-native), and PostHog
@@ -203,7 +206,36 @@ A brand-new Firebase project needs one-time setup that the CI deployer SA
    `verifyEmailOtp` exists precisely so this leaves a trace in Cloud Logging;
    grep it for `signBlob`.
 
-4. After that, **CI/SA deploys work** without any standing IAM-admin grant.
+4. **Provision Cloud Tasks** — required by the cook-timer push chain
+   (`onCookTimerWrite` enqueues, `onCookTimerDispatch` is the `onTaskDispatched`
+   handler, #544). **Two different principals** need a grant, and getting it
+   wrong fails in a way that then hides itself:
+
+   ```
+   gcloud services enable cloudtasks.googleapis.com --project=<project-id>
+   # runtime SA — enqueues
+   gcloud projects add-iam-policy-binding <project-id> \
+     --member="serviceAccount:<project-number>-compute@developer.gserviceaccount.com" \
+     --role="roles/cloudtasks.enqueuer"
+   # deployer SA — the Firebase CLI calls cloudtasks.queues.get/create at deploy time
+   gcloud projects add-iam-policy-binding <project-id> \
+     --member="serviceAccount:gha-deployer@<project-id>.iam.gserviceaccount.com" \
+     --role="roles/cloudtasks.admin"
+   ```
+
+   Granting only the runtime role (the obvious one) still fails the deploy with
+   `403 … lacks IAM permission "cloudtasks.queues.get"`. **The trap on recovery:**
+   after that failed deploy the function is still *registered*, so every later
+   deploy reports `onCookTimerDispatch — Skipped (No changes detected)` and never
+   retries the queue creation. The workflow goes green while
+   `gcloud tasks queues list` shows zero queues, and timer pushes fail at enqueue
+   (logged + reported, never user-visible). It does not self-heal: after granting
+   the role, either `firebase functions:delete onCookTimerDispatch -P <alias>` and
+   redeploy (keeps the CLI as source of truth for `rateLimits`/`retryConfig`), or
+   create the queue by hand to match dev
+   (`--max-concurrent-dispatches=6 --max-attempts=5`).
+
+5. After that, **CI/SA deploys work** without any standing IAM-admin grant.
 
 > Note: `firebase deploy` will not change a function's trigger type in place. If
 > an interrupted first deploy leaves a Firestore-trigger function as an `https`
@@ -222,7 +254,11 @@ A brand-new Firebase project needs one-time setup that the CI deployer SA
 - [x] Staging first-deploy bootstrap (APIs + service agents) done
 - [x] **First end-to-end staging deploy verified** (CI/SA → https://s2-stage-ccb22.web.app)
 - [x] Production first-deploy bootstrap (owner deploy done — functions + firestore + hosting live at https://s2-prod-e46bd.web.app)
-- [ ] `roles/iam.serviceAccountTokenCreator` self-binding on the runtime SA (needed by email-OTP sign-in — see bootstrap step 3) — dev `277945741930-compute@` **done**; staging `946977631175-compute@` and production `140613398002-compute@` **outstanding** (both policies empty as of 2026-07-26)
+- [x] `roles/iam.serviceAccountTokenCreator` self-binding on the runtime SA (needed by email-OTP sign-in — see bootstrap step 3) — dev `277945741930-compute@`, staging `946977631175-compute@` and production `140613398002-compute@` all **done** (verified 2026-07-28)
+- [x] Email-OTP secrets (`RESEND_API_KEY`, `OTP_EMAIL_FROM`) — dev + staging
+- [ ] Email-OTP secrets — production: `OTP_EMAIL_FROM` set 2026-07-28; **`RESEND_API_KEY` outstanding** (needs a prod-scoped key from the Resend dashboard)
+- [x] Web-push VAPID keypair (`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` secrets + `VITE_VAPID_PUBLIC_KEY` in `.env.<mode>`) — dev, staging, and production (prod pair generated 2026-07-28)
+- [ ] Cloud Tasks provisioning (bootstrap step 4) — dev + staging **done** (queues RUNNING in `europe-west2`); production has the API enabled (2026-07-28) but **both IAM grants outstanding**, so the first release carrying `onCookTimerDispatch` will fail that function unless they land first
 - [x] Production deploy workflow (`deploy-production.yml` — on GitHub Release, gated) — Phase 4
 - [x] ~~PR preview channels~~ — **dropped** (#126 reverted). The whole app sits behind an auth gate and magic-link sign-in can't run on a preview's unauthorized, per-PR origin, so a preview only ever shows the login page. Verify on the staging domain after merge instead.
 - [x] End-of-greenfield doc note (`salt-architecture.md` §1.1 + `CLAUDE.md`) — Phase 6
