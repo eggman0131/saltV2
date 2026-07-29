@@ -59,6 +59,15 @@ service cloud.firestore {
     match /shoppingListsConfig/{document} {
       allow read, write: if request.auth != null;
     }
+    // Shop days (issue #629) — one tiny doc per shop trip, keyed by the local
+    // calendar date. FAMILY-SHARED like the planner it belongs to: when the
+    // household shops is not personal information, and anyone may move it.
+    // `setBy` is an audit field only and is deliberately NOT pinned — the point
+    // is that either of them can reschedule the other's shop. The daily reminder
+    // reads it via the Admin SDK (bypasses rules).
+    match /shoppingDays/{date} {
+      allow read, write: if request.auth != null;
+    }
     // Meal planning (issue #169) — all shared, family-wide; any authenticated
     // user can read and write. The template/first-day AdminGuard is cosmetic UI
     // only and is deliberately NOT enforced here (docs/meal-planning.md).

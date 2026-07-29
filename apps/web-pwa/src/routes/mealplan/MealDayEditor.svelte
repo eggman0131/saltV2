@@ -15,7 +15,7 @@
     ComboboxTrigger,
     type ComboboxItemType,
   } from '@salt/ui-components';
-  import { ChevronDown, ChevronRight, ChefHat, StickyNote, X } from '@lucide/svelte';
+  import { ChevronDown, ChevronRight, ChefHat, ShoppingCart, StickyNote, X } from '@lucide/svelte';
   import { push } from 'svelte-spa-router';
   import {
     appendCacheBuster,
@@ -27,7 +27,7 @@
     type Recipe,
     type TemperatureBand,
   } from '@salt/domain';
-  import type { WeatherDaySummary } from '@salt/domain/schemas';
+  import type { WeatherDaySummary, ShoppingSlot } from '@salt/domain/schemas';
   import WeatherIcon from '$lib/weather-icons/WeatherIcon.svelte';
   import WeatherSummary from './WeatherSummary.svelte';
 
@@ -77,6 +77,15 @@
     // Absent in the recipe-free template editor, so it gains no shopping UI — all
     // shopping imports stay out of this shared component.
     onRecipeAddToList?: (recipe: Recipe) => void;
+    // ─── Shop day (issue #629) ──────────────────────────────────────────────
+    // All three are date-only concepts, so the weekday-keyed template editor
+    // omits them and stays shop-free. The parent owns which date is the shop and
+    // the one-shop-per-week rule; this component only renders and reports.
+    // `shopSlot` non-null ⇒ THIS day is the shop; `preShop` ⇒ this day falls
+    // before it, so it can only be cooked from food already in the house.
+    shopSlot?: ShoppingSlot | null;
+    preShop?: boolean;
+    onShopSlotChange?: (slot: ShoppingSlot | null) => void;
   }
   let {
     label,
@@ -94,7 +103,16 @@
     onGuestsChange,
     onRecipesChange,
     onRecipeAddToList,
+    shopSlot = null,
+    preShop = false,
+    onShopSlotChange,
   }: Props = $props();
+
+  // Tapping the slot that is already set clears the shop day — one control, three
+  // states (none / AM / PM), no separate "clear" affordance to find.
+  function pickSlot(slot: ShoppingSlot): void {
+    onShopSlotChange?.(shopSlot === slot ? null : slot);
+  }
 
   let open = $state(false);
 
@@ -278,7 +296,16 @@
   });
 </script>
 
-<div class="overflow-hidden rounded-lg border" data-testid={testid}>
+<!-- Pre-shop shading (#629): days BEFORE the week's shop are visibly "using
+     what's in", so filling in a Friday shows at a glance that no shop precedes
+     it. Painted on the OUTER card (the header's hover tint only applies on
+     hover, so it doesn't fight this) and paired with a plain-language note in
+     the expanded detail — a shade alone doesn't say what it means. -->
+<div
+  class="overflow-hidden rounded-lg border {preShop ? 'bg-muted/50' : ''}"
+  data-testid={testid}
+  data-pre-shop={preShop ? 'true' : undefined}
+>
   <!-- Collapsed header (#469, restacked): a taller, at-a-glance summary in three
        stacked bands instead of one squeezed row — (1) the day label with the
        weather glyph + evening temperature on the right, (2) the member-avatar
@@ -306,6 +333,18 @@
           {#if sublabel}<span class="text-xs text-muted-foreground">{sublabel}</span>{/if}
         </span>
         <div class="flex shrink-0 items-center gap-2">
+          <!-- Shop marker (#629): the one day of the week that is the shop, so
+               the week reads at a glance. Slot is copy only — both slots nudge
+               at the same hour the evening before. -->
+          {#if shopSlot}
+            <span
+              class="flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[11px] font-semibold uppercase text-primary-foreground"
+              data-testid={`${testid}-shop-marker`}
+            >
+              <ShoppingCart class="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />
+              {shopSlot}
+            </span>
+          {/if}
           {#if weather}
             <span class="flex items-center gap-1.5" data-testid={`${testid}-weather-header`}>
               {#if icon}
@@ -426,6 +465,43 @@
            tap-tooltip metric chips. -->
       {#if weather}
         <WeatherSummary {weather} testid={`${testid}-weather`} />
+      {/if}
+
+      <!-- 1b. Shop day (#629): mark this day as the week's shop, AM or PM.
+           Rendered only in the dated week editor (onShopSlotChange present); the
+           weekday template editor omits the prop and stays shop-free. Tapping the
+           active slot clears it — one control, three states. The parent clears any
+           other shop day in the week, so there is exactly one. -->
+      {#if onShopSlotChange}
+        <div class="flex flex-col gap-1.5" data-testid={`${testid}-shop`}>
+          <div class="flex items-center gap-2">
+            <span class="flex-1 text-xs font-medium text-muted-foreground">Shopping day</span>
+            <Button
+              variant={shopSlot === 'am' ? 'solid' : 'outline'}
+              size="sm"
+              onclick={() => pickSlot('am')}
+              aria-pressed={shopSlot === 'am'}
+              data-testid={`${testid}-shop-am`}
+            >
+              AM
+            </Button>
+            <Button
+              variant={shopSlot === 'pm' ? 'solid' : 'outline'}
+              size="sm"
+              onclick={() => pickSlot('pm')}
+              aria-pressed={shopSlot === 'pm'}
+              data-testid={`${testid}-shop-pm`}
+            >
+              PM
+            </Button>
+          </div>
+          {#if preShop}
+            <!-- Says what the shading means, in the one place there is room for it. -->
+            <p class="text-[11px] text-muted-foreground" data-testid={`${testid}-pre-shop-note`}>
+              Using what's in — no shop before this day.
+            </p>
+          {/if}
+        </div>
       {/if}
 
       <!-- 2. Dinner: the meal field and any attached recipes, grouped. -->

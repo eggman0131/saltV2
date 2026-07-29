@@ -44,6 +44,9 @@ export const routes: RouteDefinition = new Map<
   ['/shopping/lists', ShoppingListsManagePage],
   ['/shopping/:listId', ShoppingListPage],
   ['/mealplan', MealPlanWeekPage],
+  // Same page, opened on the week containing a given date (issue #629): the
+  // shopping list's shop-day chip deep-links here. Must follow the static route.
+  ['/mealplan/:date', MealPlanWeekPage],
   // Chat / AI Kitchen Assistant (issue #206). Lazy-loaded (#411).
   ['/chat', lazy(() => import('./chat/ChatListPage.svelte'))],
   ['/chat/:id', lazy(() => import('./chat/ChatSessionPage.svelte'))],

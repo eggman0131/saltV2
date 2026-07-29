@@ -235,8 +235,9 @@ A brand-new Firebase project needs one-time setup that the CI deployer SA
    create the queue by hand to match dev
    (`--max-concurrent-dispatches=6 --max-attempts=5`).
 
-5. **Grant the deployer SA `roles/cloudscheduler.admin`** — required by the one
-   scheduled function, `sweepOrphanedStorage` (`onSchedule`, #621). Deploying it
+5. **Grant the deployer SA `roles/cloudscheduler.admin`** — required by the
+   scheduled functions `sweepOrphanedStorage` (`onSchedule`, #621) and
+   `remindShoppingDay` (`onSchedule`, #629). Deploying one
    creates/updates a Cloud Scheduler job, which `roles/firebase.admin` does
    **not** cover:
 
@@ -279,8 +280,16 @@ A brand-new Firebase project needs one-time setup that the CI deployer SA
 
    Verify with
    `gcloud scheduler jobs list --project=<project-id> --location=europe-west2` —
-   zero jobs means the function is deployed but **never fires**. A healthy job reads
-   `firebase-schedule-sweepOrphanedStorage-europe-west2  0 3 * * 0  Europe/London  ENABLED`.
+   zero jobs means the function is deployed but **never fires**. A healthy stack reads
+   `firebase-schedule-sweepOrphanedStorage-europe-west2  0 3 * * 0  Europe/London  ENABLED`
+   and `firebase-schedule-remindShoppingDay-europe-west2  0 17 * * *  Europe/London  ENABLED`.
+
+   **Check this list after every release that adds a scheduled function.** The
+   grant is per-project, not per-function, so all three environments already hold
+   `roles/cloudscheduler.admin`; but a *new* `onSchedule` function still creates a
+   *new* job, and any failure to write that job hides itself the same way. One
+   `gcloud scheduler jobs list` per environment is the whole check — a job count
+   short of the number of `onSchedule` exports means something never fires.
 
 6. After that, **CI/SA deploys work** without any standing IAM-admin grant.
 
@@ -306,6 +315,7 @@ A brand-new Firebase project needs one-time setup that the CI deployer SA
 - [x] Web-push VAPID keypair (`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` secrets + `VITE_VAPID_PUBLIC_KEY` in `.env.<mode>`) — dev, staging, and production (prod pair generated 2026-07-28)
 - [x] Cloud Tasks provisioning (bootstrap step 4) — dev, staging and production all **done**; prod's `onCookTimerDispatch` queue is RUNNING in `europe-west2` (2026-07-28)
 - [x] `roles/cloudscheduler.admin` on the deployer SA (bootstrap step 5) — staging and production both **done** (2026-07-28); dev needs no grant, as its CI deploys as `gha-deployer@s2-stage-ccb22`, which holds `roles/owner` on `s2-dev-eggman`. `sweepOrphanedStorage` had been ACTIVE in both since #621 with no Cloud Scheduler job in any region, so the weekly sweep had never once run; release `202607.9` surfaced it as a `cloudscheduler.jobs.update` 403 and `202607.10` then masked it as "Skipped (No changes detected)". Recovered per step 5 — both environments now hold an ENABLED `0 3 * * 0` Europe/London job. Dev never hit the trap (its last deploy predated #621, so the function was never registered); enabling `cloudscheduler.googleapis.com` and redeploying was enough. **All three environments now hold the job.**
+- [ ] `remindShoppingDay` Cloud Scheduler job (#629) — a **second** `onSchedule` function (`0 17 * * *`, Europe/London, `europe-west2`). The `roles/cloudscheduler.admin` grant above already covers it in all three environments, so no new IAM work is expected; still verify with `gcloud scheduler jobs list` after the first deploy to each, per bootstrap step 5. Zero-shop days cost one Firestore document read, so an unfired job is silent — the list is the only signal.
 - [x] Production deploy workflow (`deploy-production.yml` — on GitHub Release, gated) — Phase 4
 - [x] ~~PR preview channels~~ — **dropped** (#126 reverted). The whole app sits behind an auth gate and magic-link sign-in can't run on a preview's unauthorized, per-PR origin, so a preview only ever shows the login page. Verify on the staging domain after merge instead.
 - [x] End-of-greenfield doc note (`salt-architecture.md` §1.1 + `CLAUDE.md`) — Phase 6

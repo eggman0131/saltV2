@@ -21,6 +21,7 @@
   import { initShoppingListSync } from './lib/shoppingListService.svelte.js';
   import { members, initMembersSync } from './lib/membersService.js';
   import { initMealPlanSync } from './lib/mealPlanService.js';
+  import { initShoppingDaySync } from './lib/shoppingDayService.js';
   import { initRecipeSync } from './lib/recipeService.js';
   import { initChatSync } from './lib/chatService.js';
   import { initDevSettingsSync } from './lib/devSettingsService.js';
@@ -41,6 +42,9 @@
     const unsubShopping = initShoppingListSync();
     const unsubMembers = initMembersSync();
     const unsubMealPlan = initMealPlanSync();
+    // Follows the planner's selected week (initMealPlanSync above sets it), so it
+    // must start after it.
+    const unsubShoppingDay = initShoppingDaySync();
     const unsubRecipes = initRecipeSync();
     const unsubChat = initChatSync(auth.user.uid);
     const unsubDevSettings = initDevSettingsSync();
@@ -57,6 +61,7 @@
       unsubShopping();
       unsubMembers();
       unsubMealPlan();
+      unsubShoppingDay();
       unsubRecipes();
       unsubChat();
       unsubDevSettings();
