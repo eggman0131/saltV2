@@ -299,6 +299,7 @@ export {
   isBeforeShop,
   dateInZone,
   addCalendarDays,
+  daysBetween,
   tomorrowInZone,
   shopDayForWeek,
 } from './shoppingDay/index.js';

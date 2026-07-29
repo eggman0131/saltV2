@@ -29,7 +29,12 @@
   import { titleCase } from '../../lib/titleCase.js';
   import { onDestroy, tick } from 'svelte';
   import { push } from 'svelte-spa-router';
-  import { groupItemsByAisle, groupItemsByRecipe, resolveItemDisplayName } from '@salt/domain';
+  import {
+    daysBetween,
+    groupItemsByAisle,
+    groupItemsByRecipe,
+    resolveItemDisplayName,
+  } from '@salt/domain';
   import type { ShoppingListItem, AisleRow, AmountSubtotal } from '@salt/domain';
   import { canonItems, aisles } from '../../lib/canonService.js';
   import {
@@ -79,19 +84,44 @@
   const otherLists = $derived($lists.filter((l) => l.id !== params.listId));
   const isDefault = $derived($defaultListId === params.listId);
 
-  // ─── Shop-day chip (issue #629) ─────────────────────────────────────────────
-  // Read-only: it says what you are stocking for, and tapping it opens that week
-  // in the planner, where the shop day is actually set. Shown ONLY on the default
-  // list — the other lists are background collectors for specialist stores,
-  // shopped whenever, and the weekly shop says nothing about them (the same
-  // reason the reminder only opens the default list).
-  const shopChipLabel = $derived(
-    $upcomingShopDay
-      ? `Shopping ${new Intl.DateTimeFormat('en-GB', { weekday: 'short', timeZone: 'UTC' }).format(
-          new Date(`${$upcomingShopDay.date}T00:00:00.000Z`),
-        )} ${$upcomingShopDay.slot.toUpperCase()}`
-      : null,
+  // ─── Shop-day line (issue #629) ─────────────────────────────────────────────
+  // Read-only context beneath the list name: what you are stocking for. Tapping
+  // it opens that week in the planner, where the shop day is actually set.
+  //
+  // DEFAULT LIST ONLY — the other lists are background collectors for specialist
+  // stores, shopped whenever, and the weekly shop says nothing about them (the
+  // same reason the reminder only ever opens the default list).
+  //
+  // It reads relative only where relative beats a weekday: "today" and
+  // "tomorrow" are unambiguous and match the push copy, while "in 4 days" is
+  // arithmetic the reader has to undo to know whether to plan around it.
+  // en-CA renders a local-timezone YYYY-MM-DD, the same trick the planner uses.
+  const todayIso = () => new Date().toLocaleDateString('en-CA');
+  const shopDays = $derived(
+    $upcomingShopDay ? daysBetween(todayIso(), $upcomingShopDay.date) : null,
   );
+  const shopHeadline = $derived.by(() => {
+    // undefined = the subscription has not resolved yet. Saying nothing is the
+    // only honest option; "No shop day set" here would flash on every load.
+    if ($upcomingShopDay === undefined) return null;
+    if ($upcomingShopDay === null) return 'No shop day set';
+    // A window left open across midnight for days can surface a shop that has
+    // already happened. Say nothing rather than something wrong.
+    if (shopDays === null || shopDays < 0) return null;
+    const slot = $upcomingShopDay.slot.toUpperCase();
+    if (shopDays === 0) return `Shopping today ${slot}`;
+    if (shopDays === 1) return `Shopping tomorrow ${slot}`;
+    const weekday = new Intl.DateTimeFormat('en-GB', {
+      weekday: 'short',
+      timeZone: 'UTC',
+    }).format(new Date(`${$upcomingShopDay.date}T00:00:00.000Z`));
+    return `Shopping ${weekday} ${slot}`;
+  });
+  // The one day that actually changes what you do must not read like the five
+  // that don't.
+  const shopUrgent = $derived(shopDays !== null && shopDays >= 0 && shopDays <= 1);
+  // With no shop set there is no week to deep-link to; land on the planner.
+  const shopHref = $derived($upcomingShopDay ? `/mealplan/${$upcomingShopDay.date}` : '/mealplan');
 
   const canonMap = $derived(
     new Map(
@@ -729,18 +759,6 @@
     data-testid="shopping-list-page"
   >
     {#snippet actions()}
-      {#if isDefault && shopChipLabel && $upcomingShopDay}
-        <button
-          type="button"
-          class="inline-flex items-center gap-1 rounded-full h-7 px-2.5 text-xs font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80"
-          onclick={() => push(`/mealplan/${$upcomingShopDay.date}`)}
-          aria-label={`${shopChipLabel} — open that week in the meal plan`}
-          data-testid="shopping-shop-day-chip"
-        >
-          <Icon name="ShoppingCart" size={12} />
-          {shopChipLabel}
-        </button>
-      {/if}
       {#if hasVerifyItems}
         <button
           type="button"
@@ -847,6 +865,28 @@
         <h1 class="text-xl font-semibold tracking-tight text-foreground">
           {currentList?.name ?? 'Shopping list'}
         </h1>
+      {/if}
+
+      <!-- Shop day (issue #629). It rides in `titleSlot` rather than ListPage's
+           `description` prop because `description` is a plain string: it cannot
+           carry the cart mark or the tap target that opens the planner week.
+           ListPage wraps this slot in a `flex-col gap-1`, so it simply stacks
+           under the list name. Kept OUT of the `actions()` row deliberately —
+           that row's width budget swings with the verify filter, so a mark there
+           fits or wraps depending on list state rather than on design. -->
+      {#if isDefault && shopHeadline}
+        <button
+          type="button"
+          class="flex items-center gap-1.5 text-left text-sm text-muted-foreground hover:opacity-75"
+          onclick={() => push(shopHref)}
+          aria-label={`${shopHeadline} — open the meal plan`}
+          data-testid="shopping-shop-day"
+        >
+          <Icon name="ShoppingCart" size={13} class="shrink-0" />
+          <span class="font-semibold {shopUrgent ? 'text-destructive' : 'text-foreground'}">
+            {shopHeadline}
+          </span>
+        </button>
       {/if}
     {/snippet}
 

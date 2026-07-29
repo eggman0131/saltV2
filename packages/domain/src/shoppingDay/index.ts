@@ -4,5 +4,5 @@
 // per-week reducer. No I/O, no clock (CLAUDE.md Rule 1); the doc shape itself
 // lives in `@salt/domain/schemas`.
 export { isBeforeShop } from './isBeforeShop.js';
-export { dateInZone, addCalendarDays, tomorrowInZone } from './calendarDates.js';
+export { dateInZone, addCalendarDays, daysBetween, tomorrowInZone } from './calendarDates.js';
 export { shopDayForWeek } from './shopDayForWeek.js';
