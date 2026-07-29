@@ -9,20 +9,28 @@ import {
 } from '@lucide/svelte';
 import type { NavItem } from '@salt/ui-components';
 
-// The four daily-driver destinations. Kept to four so the mobile BottomNav has room
-// for its active-indicator pill; everything else goes in `overflowNavItems`. The
+// The daily-driver destinations. Kept to FOUR so the mobile BottomNav has room for
+// its active-indicator pill; everything else goes in `overflowNavItems`. The
 // desktop SideNav shows both lists inline (see AppShell).
+//
+// The fourth slot is currently vacant: Chef moved to the overflow to make room for
+// the personal view ("Mine", issue #634), which takes this slot when it lands.
+// Until then this list is three long — the cap is four, not a quota.
 export const navItems: NavItem[] = [
   { id: 'shopping', label: 'Shop', icon: ShoppingCart, href: '#/shopping' },
   { id: 'mealplan', label: 'Planner', icon: CalendarDays, href: '#/mealplan' },
   { id: 'recipes', label: 'Recipes', icon: BookOpen, href: '#/recipes' },
-  // AI Kitchen Assistant (issue #206) — available to all members.
-  { id: 'chat', label: 'Chef', icon: ChefHat, href: '#/chat' },
 ];
 
 // Set-up-and-forget destinations: folded behind the BottomNav's "More" tab on
 // mobile. `adminNavItem` is appended here (admins only) in App.svelte.
+//
+// Chef (the AI Kitchen Assistant, issue #206) sits here rather than in the primary
+// four despite not being set-up-and-forget: it is the least-reached-for of the
+// daily destinations, and the primary slot it held is wanted by "Mine" (#634).
+// Still available to all members — the overflow is a demotion, not a gate.
 export const overflowNavItems: NavItem[] = [
+  { id: 'chat', label: 'Chef', icon: ChefHat, href: '#/chat' },
   { id: 'equipment', label: 'Equipment', icon: Blender, href: '#/equipment' },
   { id: 'settings', label: 'Settings', icon: Settings, href: '#/settings' },
 ];
