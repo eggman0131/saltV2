@@ -12,22 +12,24 @@ const {
   mockSaveShoppingDay,
   mockDeleteShoppingDay,
   mockSelectedStartDate,
+  mockExtensionStartDate,
+  mockFirstDayOfWeek,
   mockUnsub,
 } = vi.hoisted(() => {
   // A minimal readable store, hand-rolled: vi.hoisted runs before imports, so
   // svelte/store's writable is not available here yet.
-  function makeStore(initial: string) {
+  function makeStore<T>(initial: T) {
     let value = initial;
-    const subs = new Set<(v: string) => void>();
+    const subs = new Set<(v: T) => void>();
     return {
-      subscribe(fn: (v: string) => void) {
+      subscribe(fn: (v: T) => void) {
         subs.add(fn);
         fn(value);
         return () => {
           subs.delete(fn);
         };
       },
-      set(v: string) {
+      set(v: T) {
         value = v;
         subs.forEach((fn) => fn(v));
       },
@@ -38,6 +40,8 @@ const {
     mockSaveShoppingDay: vi.fn(),
     mockDeleteShoppingDay: vi.fn(),
     mockSelectedStartDate: makeStore(''),
+    mockExtensionStartDate: makeStore(''),
+    mockFirstDayOfWeek: makeStore('mon'),
     mockUnsub: vi.fn(),
   };
 });
@@ -47,16 +51,22 @@ vi.mock('@salt/firebase-sync', () => ({
   saveShoppingDay: mockSaveShoppingDay,
   deleteShoppingDay: mockDeleteShoppingDay,
 }));
-vi.mock('../src/lib/mealPlanService.js', () => ({ selectedStartDate: mockSelectedStartDate }));
+vi.mock('../src/lib/mealPlanService.js', () => ({
+  selectedStartDate: mockSelectedStartDate,
+  extensionStartDate: mockExtensionStartDate,
+  firstDayOfWeek: mockFirstDayOfWeek,
+}));
 vi.mock('../src/lib/auth.svelte.js', () => ({ auth: { user: { uid: 'uid-a' } } }));
 
 import {
   weekShopDay,
+  extensionWeekShopDay,
   upcomingShopDay,
   initShoppingDaySync,
   setShopDay,
   clearShopDay,
   seedWeekShopDay,
+  seedShopDayForWeek,
   __resetShoppingDayServiceForTest,
 } from '../src/lib/shoppingDayService.js';
 
@@ -81,6 +91,8 @@ beforeEach(() => {
   mockSaveShoppingDay.mockResolvedValue({ kind: 'ok', value: undefined });
   mockDeleteShoppingDay.mockResolvedValue({ kind: 'ok', value: undefined });
   mockSelectedStartDate.set('');
+  mockExtensionStartDate.set('');
+  mockFirstDayOfWeek.set('mon');
 });
 
 afterEach(() => {
@@ -227,6 +239,100 @@ describe('setShopDay', () => {
     await setShopDay('2026-08-13', 'am');
     expect(mockDeleteShoppingDay).not.toHaveBeenCalled();
     expect(mockSaveShoppingDay).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Two weeks on screen (issue #639) is exactly where "the shop day" stops being a
+// single answer. These prove the marker is keyed by WEEK, both on the way in
+// (subscriptions) and on the way out (the one-shop-per-week clear).
+describe('two weeks at once', () => {
+  const THIS_WEEK = '2026-08-10';
+  const NEXT_WEEK = '2026-08-17';
+  const NEXT_WEEK_SHOP: ShoppingDayDoc = {
+    date: '2026-08-19',
+    slot: 'pm',
+    schemaVersion: 1,
+    setBy: 'uid-a',
+    setAt: '2026-08-10T09:00:00.000Z',
+  };
+
+  function rangeCallFor(start: string): RangeCall | undefined {
+    return mockSubscribeInRange.mock.calls.find((c) => (c as RangeCall)[0] === start) as
+      RangeCall | undefined;
+  }
+
+  it('follows the planner’s second week as its own subscription', () => {
+    mockSelectedStartDate.set(THIS_WEEK);
+    initShoppingDaySync();
+    mockExtensionStartDate.set(NEXT_WEEK);
+
+    // A second seven-day range read, not a widened one — a widened window would
+    // collapse two weeks into one "current shop day".
+    expect(rangeCallFor(NEXT_WEEK)?.[1]).toBe('2026-08-23');
+    expect(rangeCallFor(THIS_WEEK)?.[1]).toBe('2026-08-16');
+  });
+
+  it('keeps each week’s marker to itself', () => {
+    mockSelectedStartDate.set(THIS_WEEK);
+    initShoppingDaySync();
+    mockExtensionStartDate.set(NEXT_WEEK);
+
+    rangeCallFor(THIS_WEEK)![2]([SATURDAY]);
+    rangeCallFor(NEXT_WEEK)![2]([NEXT_WEEK_SHOP]);
+
+    expect(get(weekShopDay)).toEqual(SATURDAY);
+    expect(get(extensionWeekShopDay)).toEqual(NEXT_WEEK_SHOP);
+  });
+
+  it('drops the second week when the planner lets it go', () => {
+    mockSelectedStartDate.set(THIS_WEEK);
+    initShoppingDaySync();
+    mockExtensionStartDate.set(NEXT_WEEK);
+    rangeCallFor(NEXT_WEEK)![2]([NEXT_WEEK_SHOP]);
+    mockUnsub.mockClear();
+
+    mockExtensionStartDate.set('');
+
+    expect(mockUnsub).toHaveBeenCalledTimes(1);
+    expect(get(extensionWeekShopDay)).toBeNull();
+  });
+
+  it('marking a shop in one week leaves the other week’s shop untouched', async () => {
+    // The bug this exists to prevent: clearing "the current shop day" from a
+    // window covering two weeks deletes a shop the user never touched — and the
+    // daily reminder that hangs off it.
+    seedShopDayForWeek(THIS_WEEK, SATURDAY); // 2026-08-15
+    seedShopDayForWeek(NEXT_WEEK, NEXT_WEEK_SHOP); // 2026-08-19
+
+    const result = await setShopDay('2026-08-18', 'am'); // move NEXT week's shop
+
+    expect(mockDeleteShoppingDay).toHaveBeenCalledTimes(1);
+    expect(mockDeleteShoppingDay).toHaveBeenCalledWith('2026-08-19');
+    expect(mockDeleteShoppingDay).not.toHaveBeenCalledWith(SATURDAY.date);
+    expect(mockSaveShoppingDay).toHaveBeenCalledWith(
+      expect.objectContaining({ date: '2026-08-18', slot: 'am' }),
+    );
+    expect(result.kind).toBe('ok');
+  });
+
+  it('marks a week that has no shop without clearing another week’s', async () => {
+    seedShopDayForWeek(THIS_WEEK, SATURDAY);
+
+    await setShopDay('2026-08-18', 'am');
+
+    expect(mockDeleteShoppingDay).not.toHaveBeenCalled();
+    expect(mockSaveShoppingDay).toHaveBeenCalledTimes(1);
+  });
+
+  it('decides which week a date belongs to with firstDayOfWeek, not a fixed Monday', async () => {
+    // Production runs fri-first weeks. Under fri, 2026-08-15 (Sat) and
+    // 2026-08-17 (Mon) share the week starting 2026-08-14; under mon they do not.
+    mockFirstDayOfWeek.set('fri');
+    seedShopDayForWeek('2026-08-14', SATURDAY);
+
+    await setShopDay('2026-08-17', 'am');
+
+    expect(mockDeleteShoppingDay).toHaveBeenCalledWith('2026-08-15');
   });
 });
 

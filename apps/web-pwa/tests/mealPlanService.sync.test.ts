@@ -22,16 +22,22 @@ vi.mock('@salt/firebase-sync', () => ({
 import * as firebaseSync from '@salt/firebase-sync';
 import {
   currentWeek,
+  extensionWeek,
   selectedStartDate,
+  extensionStartDate,
   firstDayOfWeek,
   mealPlanTemplate,
   initMealPlanSync,
   goToWeek,
   nextWeek,
   prevWeek,
+  setExtensionWeek,
   loadTemplateIntoCurrentWeek,
+  loadTemplateIntoWeek,
   setWeekDayNote,
   setWeekDayChefs,
+  setWeekDayGuests,
+  addWeekAttendee,
   saveFirstDayOfWeek,
   setTemplateDayNote,
   seedMealPlanConfig,
@@ -53,6 +59,9 @@ function wireSubscriptions() {
   let weekCb: WeekCb | null = null;
   let configCb: ConfigCb | null = null;
   let templateCb: TemplateCb | null = null;
+  // Every week subscription's callback, keyed by the start date it was opened
+  // for — with two weeks held at once, "the week callback" is not one thing.
+  const weekCbs = new Map<string, WeekCb>();
   const weekUnsub = vi.fn();
   fs.subscribeMealPlanConfig.mockImplementation((on) => {
     configCb = on as ConfigCb;
@@ -62,16 +71,23 @@ function wireSubscriptions() {
     templateCb = on as TemplateCb;
     return vi.fn();
   });
-  fs.subscribeMealPlanWeek.mockImplementation((_start, on) => {
+  fs.subscribeMealPlanWeek.mockImplementation((start, on) => {
     weekCb = on as WeekCb;
+    weekCbs.set(start, on as WeekCb);
     return weekUnsub;
   });
   return {
     emitConfig: (c: MealPlanConfig | null) => configCb!(c),
     emitTemplate: (t: MealPlanTemplate | null) => templateCb!(t),
     emitWeek: (w: MealPlanWeek | null) => weekCb!(w),
+    emitWeekFor: (start: string, w: MealPlanWeek | null) => weekCbs.get(start)!(w),
     weekUnsub,
   };
+}
+
+// A week whose Monday carries `note`, stamped at `updatedAt`.
+function weekWithNote(start: string, note: string, updatedAt: string): MealPlanWeek {
+  return { ...setDayNote(emptyWeek(start), start, note), updatedAt };
 }
 
 beforeEach(() => {
@@ -209,6 +225,127 @@ describe('mealPlanService — mutations', () => {
     const saved = fs.saveMealPlanTemplate.mock.calls[0]![0]!;
     expect(saved.days.fri.note).toBe('pizza');
     expect(get(mealPlanTemplate)!.days.fri.note).toBe('pizza');
+  });
+});
+
+// Issue #639 phase 5: the service can hold two weeks. The target document of an
+// edit must come from its DATE KEY, not from whichever week is displayed —
+// MealPlanWeek.days is a Record<string, Day>, so a foreign date key written into
+// the wrong week's document is silent corruption, not an error.
+describe('mealPlanService — two weeks at once', () => {
+  const PRIMARY = '2026-06-08'; // Monday
+  const EXTENSION = '2026-06-15'; // the Monday after
+
+  function initTwoWeeks() {
+    const wired = wireSubscriptions();
+    initMealPlanSync();
+    seedMealPlanConfig(CONFIG);
+    goToWeek(PRIMARY);
+    setExtensionWeek(EXTENSION);
+    return wired;
+  }
+
+  it('opens a second subscription for the extension week without moving the primary one', () => {
+    initTwoWeeks();
+    const starts = fs.subscribeMealPlanWeek.mock.calls.map((c) => c[0]);
+    expect(starts).toContain(PRIMARY);
+    expect(starts).toContain(EXTENSION);
+    // selectedStartDate/currentWeek keep meaning the primary week.
+    expect(get(selectedStartDate)).toBe(PRIMARY);
+    expect(get(extensionStartDate)).toBe(EXTENSION);
+  });
+
+  it('lands an edit to a date outside the primary week in the CORRECT document', async () => {
+    const { emitWeekFor } = initTwoWeeks();
+    emitWeekFor(PRIMARY, weekWithNote(PRIMARY, 'roast', '2026-06-08T10:00:00.000Z'));
+    emitWeekFor(EXTENSION, weekWithNote(EXTENSION, 'pie', '2026-06-15T10:00:00.000Z'));
+
+    // A Wednesday in the SECOND week.
+    await setWeekDayNote('2026-06-17', 'pasta');
+
+    const saved = fs.saveMealPlanWeek.mock.calls.at(-1)![0]!;
+    expect(saved.startDate).toBe(EXTENSION);
+    expect(saved.id).toBe(EXTENSION);
+    expect(saved.days['2026-06-17']!.note).toBe('pasta');
+    // The extension week's own content survived — it was read, not fabricated.
+    expect(saved.days[EXTENSION]!.note).toBe('pie');
+    // And the primary week neither moved nor grew a foreign date key.
+    expect(Object.keys(get(currentWeek).days)).not.toContain('2026-06-17');
+    expect(get(currentWeek).days[PRIMARY]!.note).toBe('roast');
+    expect(get(selectedStartDate)).toBe(PRIMARY);
+  });
+
+  it('routes every day mutator by date, not just the note one', async () => {
+    const { emitWeekFor } = initTwoWeeks();
+    emitWeekFor(PRIMARY, weekWithNote(PRIMARY, 'roast', '2026-06-08T10:00:00.000Z'));
+    emitWeekFor(EXTENSION, weekWithNote(EXTENSION, 'pie', '2026-06-15T10:00:00.000Z'));
+
+    await setWeekDayChefs('2026-06-17', ['alice@e.org']);
+    await setWeekDayGuests('2026-06-18', 2);
+    await addWeekAttendee('2026-06-19', { memberId: 'm1', homeTime: null, note: '' });
+
+    for (const call of fs.saveMealPlanWeek.mock.calls) {
+      expect(call[0]!.startDate).toBe(EXTENSION);
+    }
+  });
+
+  it('keeps the stale-snapshot guard per week, so one week’s edit cannot drop the other’s snapshot', () => {
+    const { emitWeekFor } = initTwoWeeks();
+    emitWeekFor(PRIMARY, weekWithNote(PRIMARY, 'roast', '2026-06-08T10:00:00.000Z'));
+
+    // A local edit in the EXTENSION week stamps a far newer updatedAt than
+    // anything the primary week has seen. A shared watermark would now discard
+    // the primary week's next snapshot as "stale".
+    void setWeekDayNote('2026-06-17', 'pasta');
+
+    emitWeekFor(PRIMARY, weekWithNote(PRIMARY, 'stew', '2026-06-08T11:00:00.000Z'));
+    expect(get(currentWeek).days[PRIMARY]!.note).toBe('stew');
+  });
+
+  it('still drops a stale snapshot within the week it belongs to', () => {
+    const { emitWeekFor } = initTwoWeeks();
+    emitWeekFor(EXTENSION, weekWithNote(EXTENSION, 'pie', '2026-06-15T10:00:00.000Z'));
+
+    void setWeekDayNote(EXTENSION, 'pasta');
+    expect(get(extensionWeek)!.days[EXTENSION]!.note).toBe('pasta');
+
+    // An in-flight echo of the pre-edit document must not revert it.
+    emitWeekFor(EXTENSION, weekWithNote(EXTENSION, 'pie', '2026-06-15T10:00:00.000Z'));
+    expect(get(extensionWeek)!.days[EXTENSION]!.note).toBe('pasta');
+  });
+
+  it('refuses to write a week it has never read rather than clobbering it', async () => {
+    initTwoWeeks();
+    // A date three weeks out: no subscription, no snapshot. Persisting would be
+    // a full-document replace built from an empty week, destroying whatever is
+    // actually stored there.
+    const result = await setWeekDayNote('2026-07-01', 'pasta');
+
+    expect(result.kind).toBe('err');
+    expect(fs.saveMealPlanWeek).not.toHaveBeenCalled();
+  });
+
+  it('drops the extension subscription when the planner lets the week go', () => {
+    const { weekUnsub } = initTwoWeeks();
+    weekUnsub.mockClear();
+
+    setExtensionWeek(null);
+
+    expect(weekUnsub).toHaveBeenCalledTimes(1);
+    expect(get(extensionWeek)).toBeNull();
+    expect(get(selectedStartDate)).toBe(PRIMARY);
+  });
+
+  it('loads the template into the week the given date belongs to', async () => {
+    const { emitWeekFor } = initTwoWeeks();
+    emitWeekFor(EXTENSION, weekWithNote(EXTENSION, 'pie', '2026-06-15T10:00:00.000Z'));
+    seedMealPlanTemplate(setDayNote(emptyTemplate(), 'wed', 'curry'));
+
+    await loadTemplateIntoWeek('2026-06-17'); // a Wednesday in the second week
+
+    const saved = fs.saveMealPlanWeek.mock.calls.at(-1)![0]!;
+    expect(saved.startDate).toBe(EXTENSION);
+    expect(saved.days['2026-06-17']!.note).toBe('curry');
   });
 });
 
