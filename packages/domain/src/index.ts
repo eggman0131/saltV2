@@ -292,6 +292,17 @@ export {
 } from './cookSession/index.js';
 export type { MakeFreshSessionArgs, MiseProgress } from './cookSession/index.js';
 
+// Shopping-day module (issue #629) — pure helpers over `shoppingDays/{date}`:
+// the planner's pre-shop shading predicate, the reminder's "tomorrow in zone"
+// projection, and the one-shop-per-week reducer. No I/O, no clock.
+export {
+  isBeforeShop,
+  dateInZone,
+  addCalendarDays,
+  tomorrowInZone,
+  shopDayForWeek,
+} from './shoppingDay/index.js';
+
 // URL module — pure display-time cache-buster for regenerated image URLs (#460).
 export { appendCacheBuster } from './url/index.js';
 

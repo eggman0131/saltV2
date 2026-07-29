@@ -11,7 +11,8 @@
   } from '@salt/ui-components';
   import { onMount } from 'svelte';
   import { ChevronLeft, ChevronRight } from '@lucide/svelte';
-  import { weekDates, type Attendee, type Recipe } from '@salt/domain';
+  import { weekDates, isBeforeShop, type Attendee, type Recipe } from '@salt/domain';
+  import type { ShoppingSlot } from '@salt/domain/schemas';
   import MealDayEditor from './MealDayEditor.svelte';
   import RecipeAddToListSheet from '../recipes/RecipeAddToListSheet.svelte';
   import { members } from '../../lib/membersService.js';
@@ -24,6 +25,7 @@
     nextWeek,
     prevWeek,
     thisWeek,
+    goToWeek,
     loadTemplateIntoCurrentWeek,
     setWeekDayNote,
     setWeekDayChefs,
@@ -36,11 +38,23 @@
   } from '../../lib/mealPlanService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { weatherForecast, ensureFreshForecast } from '../../lib/weatherService.js';
+  import { weekShopDay, setShopDay, clearShopDay } from '../../lib/shoppingDayService.js';
+
+  // Optional `/mealplan/:date` — the week containing this date is opened instead
+  // of the current one (issue #629): the shopping list's shop-day chip deep-links
+  // to the week it is stocking for, which may be next week's.
+  interface Props {
+    params?: { date?: string } | undefined;
+  }
+  let { params }: Props = $props();
 
   // The week store is a module-level singleton, so it retains whatever week was
-  // last viewed. Reset to the current week each time the planner is opened.
+  // last viewed. Reset to the current week each time the planner is opened —
+  // unless the route named a date to land on.
   onMount(() => {
-    thisWeek();
+    const routeDate = params?.date;
+    if (routeDate) goToWeek(routeDate);
+    else thisWeek();
     // On-access weather refresh (issue #382, Phase 3): silently refetch the
     // forecast when the cache is stale (>1h or the home location moved) and a home
     // location is set. No-ops otherwise; never blocks — the cache subscription
@@ -81,6 +95,18 @@
     }
     addShopRecipe = recipe;
     addShopOpen = true;
+  }
+
+  // ─── Shop day (issue #629) ────────────────────────────────────────────────
+  // The shop marker sits INSIDE the week wherever it falls — `firstDayOfWeek` and
+  // the layout above are completely untouched, so the shop can move freely week to
+  // week without disturbing anything. The service owns the one-shop-per-week rule
+  // (marking a day clears any other in the same week).
+  const shopDate = $derived($weekShopDay?.date ?? null);
+
+  async function changeShopSlot(date: string, slot: ShoppingSlot | null): Promise<void> {
+    const result = slot === null ? await clearShopDay(date) : await setShopDay(date, slot);
+    if (result.kind !== 'ok') addToast('Failed to save the shopping day.', 'destructive');
   }
 
   // ─── Load-template confirmation ───────────────────────────────────────────
@@ -161,6 +187,9 @@
             recipes={$recipes}
             testid={`day-${date}`}
             weather={$weatherForecast?.days[date]}
+            shopSlot={shopDate === date ? ($weekShopDay?.slot ?? null) : null}
+            preShop={isBeforeShop(date, shopDate)}
+            onShopSlotChange={(slot) => void changeShopSlot(date, slot)}
             onNoteChange={(note) => void setWeekDayNote(date, note)}
             onRecipesChange={(ids) => void setWeekDayRecipes(date, ids)}
             onRecipeAddToList={openRecipeAddToList}

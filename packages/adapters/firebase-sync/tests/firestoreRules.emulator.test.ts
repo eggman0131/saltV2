@@ -25,7 +25,7 @@ import {
   assertFails,
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 
 const PROJECT_ID = 'demo-salt';
 const HOST = '127.0.0.1';
@@ -608,5 +608,75 @@ describe.skipIf(!reachable)('firestore.rules — cookSessions ownerUid (issue #5
     await assertFails(setDoc(doc(db, 'cookSessions', 'recipe-3_anon'), session('uid-a')));
     // The absent-doc allowance is scoped to signed-in callers, not everyone.
     await assertFails(getDoc(doc(db, 'cookSessions', 'recipe-9_uid-a')));
+  });
+});
+
+describe.skipIf(!reachable)('firestore.rules — shoppingDays (issue #629)', () => {
+  let testEnv: RulesTestEnvironment;
+
+  beforeAll(async () => {
+    testEnv = await initializeTestEnvironment({
+      projectId: PROJECT_ID,
+      firestore: {
+        host: HOST,
+        port: PORT,
+        rules: readFileSync(RULES_PATH, 'utf8'),
+      },
+    });
+  });
+
+  afterAll(async () => {
+    await testEnv?.cleanup();
+  });
+
+  beforeEach(async () => {
+    await testEnv.clearFirestore();
+  });
+
+  const SHOP_DATE = '2026-08-15';
+  const shopDay = (setBy: string) => ({
+    date: SHOP_DATE,
+    slot: 'am',
+    schemaVersion: 1,
+    setBy,
+    setAt: '2026-08-10T09:00:00.000Z',
+  });
+
+  function userCtx(uid: string) {
+    return testEnv.authenticatedContext(uid, { email: `${uid}@e.org` }).firestore();
+  }
+
+  it('lets any signed-in user mark, read and clear a shop day', async () => {
+    const db = userCtx('uid-a');
+    await assertSucceeds(setDoc(doc(db, 'shoppingDays', SHOP_DATE), shopDay('uid-a')));
+    await assertSucceeds(getDoc(doc(db, 'shoppingDays', SHOP_DATE)));
+    await assertSucceeds(deleteDoc(doc(db, 'shoppingDays', SHOP_DATE)));
+  });
+
+  // The load-bearing difference from the three owner-scoped collections: when the
+  // household shops is FAMILY-SHARED, and `setBy` is an audit field that is
+  // deliberately NOT pinned — either of them may reschedule the other's shop.
+  it('lets another member move a shop day someone else set', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'shoppingDays', SHOP_DATE), shopDay('uid-a'));
+    });
+    const db = userCtx('uid-b');
+    await assertSucceeds(setDoc(doc(db, 'shoppingDays', SHOP_DATE), shopDay('uid-b')));
+    await assertSucceeds(deleteDoc(doc(db, 'shoppingDays', SHOP_DATE)));
+  });
+
+  // The planner reads a week as a range over doc ids, so the collection itself
+  // must be listable by a signed-in member.
+  it('lets a signed-in user read the collection', async () => {
+    const db = userCtx('uid-a');
+    await assertSucceeds(getDocs(collection(db, 'shoppingDays')));
+  });
+
+  it('denies an unauthenticated caller entirely', async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, 'shoppingDays', SHOP_DATE)));
+    await assertFails(getDocs(collection(db, 'shoppingDays')));
+    await assertFails(setDoc(doc(db, 'shoppingDays', SHOP_DATE), shopDay('anon')));
+    await assertFails(deleteDoc(doc(db, 'shoppingDays', SHOP_DATE)));
   });
 });

@@ -76,6 +76,13 @@ export {
   saveMealPlanTemplate,
   saveMealPlanWeek,
 } from './mealPlanSync.js';
+// Shop day (issue #629): the planner week's range read over doc ids, plus the
+// mark/clear writes. See shoppingDaySync.ts for why the id is the date.
+export {
+  subscribeShoppingDaysInRange,
+  saveShoppingDay,
+  deleteShoppingDay,
+} from './shoppingDaySync.js';
 export { subscribeDevSettings, saveDevSettings } from './devSettingsSync.js';
 export { subscribeAppSettings, saveAppSettings } from './appSettingsSync.js';
 export { callListAiModels, callTestModel } from './aiModelCallables.js';

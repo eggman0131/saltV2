@@ -52,6 +52,7 @@
     confirmItemNeeded,
     confirmItemsNeeded,
   } from '../../lib/shoppingListService.svelte.js';
+  import { upcomingShopDay } from '../../lib/shoppingDayService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { createDeferredDelete } from '../../lib/deferredDelete.svelte.js';
   import { createCheckOffHold } from '../../lib/checkOffHold.svelte.js';
@@ -77,6 +78,20 @@
   const currentList = $derived($lists.find((l) => l.id === params.listId) ?? null);
   const otherLists = $derived($lists.filter((l) => l.id !== params.listId));
   const isDefault = $derived($defaultListId === params.listId);
+
+  // ─── Shop-day chip (issue #629) ─────────────────────────────────────────────
+  // Read-only: it says what you are stocking for, and tapping it opens that week
+  // in the planner, where the shop day is actually set. Shown ONLY on the default
+  // list — the other lists are background collectors for specialist stores,
+  // shopped whenever, and the weekly shop says nothing about them (the same
+  // reason the reminder only opens the default list).
+  const shopChipLabel = $derived(
+    $upcomingShopDay
+      ? `Shopping ${new Intl.DateTimeFormat('en-GB', { weekday: 'short', timeZone: 'UTC' }).format(
+          new Date(`${$upcomingShopDay.date}T00:00:00.000Z`),
+        )} ${$upcomingShopDay.slot.toUpperCase()}`
+      : null,
+  );
 
   const canonMap = $derived(
     new Map(
@@ -714,6 +729,18 @@
     data-testid="shopping-list-page"
   >
     {#snippet actions()}
+      {#if isDefault && shopChipLabel && $upcomingShopDay}
+        <button
+          type="button"
+          class="inline-flex items-center gap-1 rounded-full h-7 px-2.5 text-xs font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80"
+          onclick={() => push(`/mealplan/${$upcomingShopDay.date}`)}
+          aria-label={`${shopChipLabel} — open that week in the meal plan`}
+          data-testid="shopping-shop-day-chip"
+        >
+          <Icon name="ShoppingCart" size={12} />
+          {shopChipLabel}
+        </button>
+      {/if}
       {#if hasVerifyItems}
         <button
           type="button"

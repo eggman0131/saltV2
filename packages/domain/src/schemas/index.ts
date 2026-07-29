@@ -138,6 +138,9 @@ export type { SourceRefDoc, ShoppingListItemDoc } from './shoppingListItem.js';
 export { ShoppingListsConfigSchema } from './shoppingListsConfig.js';
 export type { ShoppingListsConfigDoc } from './shoppingListsConfig.js';
 
+export { ShoppingSlotSchema, ShoppingDaySchema } from './shoppingDay.js';
+export type { ShoppingSlot, ShoppingDayDoc } from './shoppingDay.js';
+
 export { DevSettingsSchema } from './devSettings.js';
 export type { DevSettingsDoc } from './devSettings.js';
 

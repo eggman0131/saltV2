@@ -55,6 +55,31 @@ A week's document key is the ISO date (`YYYY-MM-DD`) of its start day. A pure
 domain function `weekStartFor(date, config)` computes the start date of the week
 containing any given date.
 
+## Shop day (issue #629)
+
+The shop is **ad hoc** — it moves week to week with whoever can actually get to
+the shops — so it is recorded per week as its own tiny document,
+`shoppingDays/{YYYY-MM-DD}` (`date`, `slot: 'am' | 'pm'`, `setBy`, `setAt`). See
+[salt-architecture.md §5](salt-architecture.md) for why it is standalone rather
+than a field on a list or on the week doc.
+
+It **does not move the week.** `firstDayOfWeek` and the layout above are
+completely untouched: the shop marker sits *inside* the week wherever it falls.
+On the planner a day shows an AM/PM control when expanded and a shop marker in
+its collapsed header; marking a day clears any other in that week (there is one
+shop per week), and tapping the slot already set clears it.
+
+Days **before** the shop are shaded — they can only be cooked from food already
+in the house, which is meal-planning information and the reason to record the
+date at all beyond the reminder. The predicate is the pure
+`isBeforeShop(day, shopDate)` in `packages/domain/src/shoppingDay/`; the shop day
+itself is not shaded, and an unmarked week shades nothing (it makes no claim).
+
+The evening before a shop, `remindShoppingDay` (a Cloud Scheduler job, 17:00
+Europe/London) pushes *"Shopping tomorrow AM/PM"* to every subscribed device.
+`slot` drives copy only — both slots nudge at the same hour, because mornings are
+unreliable in a working household and extra notice costs nothing.
+
 ## The core mechanic: load template
 
 `instantiateWeek(startDate, config, template)` is a pure function: for each of
@@ -90,12 +115,20 @@ enforced in rules. The weekly plan editor is open to all members.
 ## Architecture placement
 
 New modules sit inside existing packages — **no new package, no new dependency,
-no layer-map change, no Cloud Function, no AI** (recipes/AI arrive later via #17):
+no layer-map change, no AI** (recipes/AI arrive later via #17):
 
 - `packages/domain/src/mealPlan/` — entities, pure commands/queries
 - `packages/domain/src/schemas/mealPlan*.ts` — zod schemas (validated on read in firebase-sync)
 - `packages/adapters/firebase-sync/src/mealPlan*.ts` — subscriptions + writes for the three docs
 - `apps/web-pwa/src/lib/mealPlanService.ts` + routes — store, navigation, editors
+
+The shop day (#629) follows the same shape, in its own files:
+
+- `packages/domain/src/shoppingDay/` — `isBeforeShop`, the "tomorrow in zone" date helpers, `shopDayForWeek`
+- `packages/domain/src/schemas/shoppingDay.ts` — the `shoppingDays/{date}` doc schema
+- `packages/adapters/firebase-sync/src/shoppingDaySync.ts` — week range read + mark/clear writes
+- `apps/web-pwa/src/lib/shoppingDayService.ts` — stores, the one-shop-per-week rule
+- `apps/cloud-functions/src/maintenance/remindShoppingDay.ts` — the daily 17:00 nudge (the module's first Cloud Function)
 
 ## Future seam: recipes (#17)
 
