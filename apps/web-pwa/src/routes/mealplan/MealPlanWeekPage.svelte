@@ -10,8 +10,8 @@
     ListPage,
   } from '@salt/ui-components';
   import { onMount } from 'svelte';
-  import { ChevronLeft, ChevronRight } from '@lucide/svelte';
-  import { weekDates, isBeforeShop, type Attendee, type Recipe } from '@salt/domain';
+  import { ChevronLeft, ChevronRight, ShoppingCart } from '@lucide/svelte';
+  import { weekDates, type Attendee, type Recipe } from '@salt/domain';
   import type { ShoppingSlot } from '@salt/domain/schemas';
   import MealDayEditor from './MealDayEditor.svelte';
   import RecipeAddToListSheet from '../recipes/RecipeAddToListSheet.svelte';
@@ -63,6 +63,12 @@
   });
 
   const dates = $derived(weekDates($selectedStartDate));
+
+  // Today, as the same local `YYYY-MM-DD` the week is keyed by (en-CA renders
+  // local-tz ISO order — the trick mealPlanService already uses). Read once per
+  // mount: the planner is remounted on every visit, and a week view that ticks
+  // over at midnight while open is not worth a timer.
+  const todayDate = new Date().toLocaleDateString('en-CA');
 
   // Friendly labels for the week range and each day, formatted from the UTC date.
   function fmt(date: string, opts: Intl.DateTimeFormatOptions): string {
@@ -175,20 +181,40 @@
       </Button>
     </div>
 
-    <div class="mt-4 flex flex-col gap-3">
+    <!-- The week as one list of dated days, 24px apart (#639): each row is its own
+         object, held together by its rail and the air around it. -->
+    <div class="mt-4 flex flex-col gap-6">
       {#each dates as date (date)}
         {@const day = $currentWeek.days[date]}
         {#if day}
+          {#if shopDate === date}
+            <!-- The shop day is a RULE ACROSS THE LIST, not a badge on a row: a
+                 cart and the slot, then a hairline running to the edge, so the
+                 week visibly divides into "before the shop" and "after" wherever
+                 the shop happens to fall. Sibling of the rows, immediately above
+                 the day it marks. The slot is copy only — both nudge at the same
+                 hour the evening before — and stays lower-case in the DOM, with
+                 the caps done in CSS. -->
+            <div class="-mb-2 flex items-center gap-2" data-testid={`day-${date}-shop-marker`}>
+              <span
+                class="flex shrink-0 items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+              >
+                <ShoppingCart class="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden="true" />
+                Shop · {$weekShopDay?.slot}
+              </span>
+              <span class="h-px flex-1 bg-border"></span>
+            </div>
+          {/if}
           <MealDayEditor
-            label={fmt(date, { weekday: 'long' })}
-            sublabel={fmt(date, { day: 'numeric', month: 'short' })}
+            label={fmt(date, { weekday: 'short' })}
+            sublabel={fmt(date, { day: 'numeric' })}
             {day}
             members={$members}
             recipes={$recipes}
             testid={`day-${date}`}
+            isToday={date === todayDate}
             weather={$weatherForecast?.days[date]}
             shopSlot={shopDate === date ? ($weekShopDay?.slot ?? null) : null}
-            preShop={isBeforeShop(date, shopDate)}
             onShopSlotChange={(slot) => void changeShopSlot(date, slot)}
             onNoteChange={(note) => void setWeekDayNote(date, note)}
             onRecipesChange={(ids) => void setWeekDayRecipes(date, ids)}

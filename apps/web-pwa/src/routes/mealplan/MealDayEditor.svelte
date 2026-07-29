@@ -15,7 +15,7 @@
     ComboboxTrigger,
     type ComboboxItemType,
   } from '@salt/ui-components';
-  import { ChevronDown, ChevronRight, ChefHat, ShoppingCart, StickyNote, X } from '@lucide/svelte';
+  import { ChefHat, X } from '@lucide/svelte';
   import { push } from 'svelte-spa-router';
   import {
     appendCacheBuster,
@@ -32,17 +32,20 @@
   import WeatherSummary from './WeatherSummary.svelte';
 
   // Collapsible editor for a single Day, shared by the weekly page (date-keyed)
-  // and the template editor (weekday-keyed). Collapsed it shows a compact,
-  // stacked summary — a taller header built for at-a-glance scanning: day +
-  // weather glyph & temperature on top, then the roster of member avatars
-  // (coloured for eating/not, home time beneath, the cook marked ONCE with a
-  // chef-hat badge overlapping their top-left and 15% larger, and a note badge
-  // on the top-right of anyone with an attendee note), then the meal's first
-  // line beneath the avatars (with a "No cook" flag when unassigned). Expand one
-  // day to edit detail in a roomy panel. It knows nothing about day keys: the
-  // parent supplies handlers already bound to the right date/weekday. Members
-  // resolve live; an unknown memberId renders as removable, never blocking. See
-  // docs/meal-planning.md.
+  // and the template editor (weekday-keyed).
+  //
+  // Collapsed it is a LEDGER ROW (#639, Phase 1): a dated rail down the left
+  // (weekday over date, today's date in a filled teal disc) and, to its right,
+  // the day's card — the recipe photograph as a clean, undamaged rectangle, the
+  // meal title beneath it in Epilogue, then one quiet grey meta line (who is
+  // cooking · who is eating, by name · any home time actually set). No text over
+  // the photo, no scrim, no border, no wash. A day with no photo is not
+  // second-class: the card is a text block with the meal one step larger.
+  //
+  // Expand one day to edit detail in a roomy panel. It knows nothing about day
+  // keys: the parent supplies handlers already bound to the right date/weekday.
+  // Members resolve live; an unknown memberId renders as removable, never
+  // blocking. See docs/meal-planning.md.
   //
   // `weather` (issue #382, Phase 3) is the OPTIONAL per-day evening forecast. The
   // PARENT does the in-window gating: the dated weekly page passes
@@ -59,6 +62,9 @@
     // Optional: the weekday-keyed template editor omits it and stays recipe-free.
     recipes?: readonly Recipe[];
     testid: string;
+    // Today's row wears its date in a filled teal disc, so the eye lands on it
+    // without reading. Date-only, so the weekday-keyed template editor omits it.
+    isToday?: boolean;
     // `| undefined` so the parent can pass `forecast?.days[date]` directly under
     // exactOptionalPropertyTypes (noUncheckedIndexedAccess makes it optional).
     weather?: WeatherDaySummary | undefined;
@@ -78,13 +84,12 @@
     // shopping imports stay out of this shared component.
     onRecipeAddToList?: (recipe: Recipe) => void;
     // ─── Shop day (issue #629) ──────────────────────────────────────────────
-    // All three are date-only concepts, so the weekday-keyed template editor
-    // omits them and stays shop-free. The parent owns which date is the shop and
-    // the one-shop-per-week rule; this component only renders and reports.
-    // `shopSlot` non-null ⇒ THIS day is the shop; `preShop` ⇒ this day falls
-    // before it, so it can only be cooked from food already in the house.
+    // Both are date-only concepts, so the weekday-keyed template editor omits
+    // them and stays shop-free. The parent owns which date is the shop and the
+    // one-shop-per-week rule; this component only reports the picked slot.
+    // `shopSlot` non-null ⇒ THIS day is the shop. The shop is DISPLAYED by the
+    // page as a labelled rule across the list (#639), not by this row.
     shopSlot?: ShoppingSlot | null;
-    preShop?: boolean;
     onShopSlotChange?: (slot: ShoppingSlot | null) => void;
   }
   let {
@@ -94,6 +99,7 @@
     members,
     recipes = [],
     testid,
+    isToday = false,
     weather,
     onNoteChange,
     onChefToggle,
@@ -104,7 +110,6 @@
     onRecipesChange,
     onRecipeAddToList,
     shopSlot = null,
-    preShop = false,
     onShopSlotChange,
   }: Props = $props();
 
@@ -217,39 +222,6 @@
     );
   };
 
-  // Initial-chips grow to use the available width when there are few members and
-  // shrink as the roster grows (the household is small, ~5, with rare guests).
-  // `cookBox` is the same avatar 15% larger — the cook's chip is bumped one nudge
-  // so it stands out in the roster without breaking the row's alignment.
-  const chip = $derived(
-    members.length <= 4
-      ? {
-          box: 'h-9 w-9 text-xs',
-          cookBox: 'h-[41px] w-[41px] text-sm',
-          h: 'h-9',
-          time: 'text-[11px]',
-          badge: 'h-4 w-4',
-          hat: 'h-3 w-3',
-        }
-      : members.length <= 6
-        ? {
-            box: 'h-8 w-8 text-[11px]',
-            cookBox: 'h-[37px] w-[37px] text-xs',
-            h: 'h-8',
-            time: 'text-[10px]',
-            badge: 'h-3.5 w-3.5',
-            hat: 'h-2.5 w-2.5',
-          }
-        : {
-            box: 'h-7 w-7 text-[10px]',
-            cookBox: 'h-[32px] w-[32px] text-[11px]',
-            h: 'h-7',
-            time: 'text-[9px]',
-            badge: 'h-3 w-3',
-            hat: 'h-2 w-2',
-          },
-  );
-
   const isAttending = (id: string): boolean => day.attendees.some((a) => a.memberId === id);
   const isChef = (id: string): boolean => day.chefs.includes(id);
   const attendeeOf = (id: string) => day.attendees.find((a) => a.memberId === id);
@@ -260,17 +232,58 @@
     day.attendees.filter((a) => !members.some((m) => m.id === a.memberId)),
   );
   const attendingCount = $derived(day.attendees.length + day.guests);
-  const hasNote = (id: string): boolean => (attendeeOf(id)?.note.trim() ?? '') !== '';
 
-  // The cook is now marked ONCE, inside the roster, via a chef-hat badge on the
-  // chef's own avatar (no separate cook column). When `day.chefs` is empty the
-  // summary shows a "No cook" flag beside the meal so unassigned days stand out.
+  // `day.chefs` empty ⇒ the row's meta line opens with a "No cook" flag so an
+  // unassigned day still stands out in an otherwise uniformly grey line.
   const hasCook = $derived(day.chefs.length > 0);
 
-  // The meal's FIRST line only for the collapsed summary — the meal field is a
-  // multi-line textarea, but the header shows a single truncating line beneath
-  // the avatars. Empty → the muted "No meal set" placeholder.
+  // The meal's FIRST line only for the collapsed row — the meal field is a
+  // multi-line textarea, but the row shows a single truncating title. Empty →
+  // the muted "No meal set" placeholder.
   const mealFirstLine = $derived(day.note.split('\n')[0]?.trim() ?? '');
+
+  // ─── The row's photograph (#639) ───────────────────────────────────────────
+  // The first attached recipe that actually has a visible hero. Null on a day
+  // with no recipe (or none with a photo) — the card then becomes a text block
+  // with the meal one step larger, deliberately NOT a placeholder tile.
+  const photoUrl = $derived(
+    attachedRecipes.map((r) => heroUrl(r)).find((u): u is string => u !== null) ?? null,
+  );
+
+  // ─── The row's one grey meta line (#639) ───────────────────────────────────
+  // "who is cooking · who is eating (by name) · any home time that has actually
+  // been set" — names, not avatars, so the line reads as a sentence and truncates
+  // gracefully. "Everyone" replaces the full roster; guests append as "+2".
+  const cookNames = $derived(members.filter((m) => isChef(m.id)).map((m) => m.name));
+  const attendingNames = $derived(members.filter((m) => isAttending(m.id)).map((m) => m.name));
+  const everyoneEating = $derived(
+    members.length > 0 && attendingNames.length === members.length && unknownAttendees.length === 0,
+  );
+  const eatingSegment = $derived(
+    attendingNames.length === 0
+      ? day.guests > 0
+        ? `${day.guests} guest${day.guests === 1 ? '' : 's'}`
+        : ''
+      : `${everyoneEating ? 'Everyone' : attendingNames.join(', ')}${
+          day.guests > 0 ? ` +${day.guests}` : ''
+        }`,
+  );
+  const homeTimes = $derived(
+    members
+      .filter((m) => isAttending(m.id))
+      .map((m) => ({ name: m.name, at: attendeeOf(m.id)?.homeTime ?? null }))
+      .filter((x): x is { name: string; at: string } => x.at !== null && x.at !== '')
+      .map((x) => `${x.name} ${x.at}`),
+  );
+  // Everything after the cook. Rendered as one string so the whole line is a
+  // single truncating block rather than a row of competing flex children.
+  const metaSegments = $derived(
+    [
+      ...(cookNames.length > 0 ? [`${cookNames.join(' & ')} cooking`] : []),
+      ...(eatingSegment ? [eatingSegment] : []),
+      ...(homeTimes.length > 0 ? [homeTimes.join(', ')] : []),
+    ].join(' · '),
+  );
 
   // Evening-window temperature band (drives the header temp colour, cool→warm),
   // mirroring WeatherSummary. Null whenever there's no forecast for this day.
@@ -296,161 +309,97 @@
   });
 </script>
 
-<!-- Pre-shop shading (#629): days BEFORE the week's shop are visibly "using
-     what's in", so filling in a Friday shows at a glance that no shop precedes
-     it. Painted on the OUTER card (the header's hover tint only applies on
-     hover, so it doesn't fight this) and paired with a plain-language note in
-     the expanded detail — a shade alone doesn't say what it means. -->
-<div
-  class="overflow-hidden rounded-lg border {preShop ? 'bg-muted/50' : ''}"
-  data-testid={testid}
-  data-pre-shop={preShop ? 'true' : undefined}
->
-  <!-- Collapsed header (#469, restacked): a taller, at-a-glance summary in three
-       stacked bands instead of one squeezed row — (1) the day label with the
-       weather glyph + evening temperature on the right, (2) the member-avatar
-       roster (each coloured for eating/not, home time beneath, the cook marked
-       ONCE with a chef-hat badge on their top-left and their avatar 15% larger, a
-       note badge on the top-right of anyone with an attendee note, then a guest
-       chip), and (3) the meal's first line beneath the avatars with a "No cook"
-       flag when unassigned. Tapping anywhere expands the day's detail below. -->
-  <div class="transition-colors hover:bg-muted/40">
-    <!-- Collapsed summary: tap anywhere to expand. -->
-    <button
-      type="button"
-      class="flex w-full flex-col gap-2.5 px-3 py-3 text-left"
-      onclick={() => (open = !open)}
-      aria-expanded={open}
-      data-testid={`${testid}-summary`}
-    >
-      <!-- Band 1: day label (left) · weather glyph + evening temperature · chevron.
-           The weather block is gated on `weather` (not `icon`), so the temperature
-           still shows on days whose older cached forecast has no pictogram; the glyph
-           itself self-hides when the code is absent (WeatherIcon renders nothing). -->
-      <div class="flex items-start justify-between gap-3">
-        <span class="flex min-w-0 flex-col leading-tight">
-          <span class="text-base font-semibold">{label}</span>
-          {#if sublabel}<span class="text-xs text-muted-foreground">{sublabel}</span>{/if}
-        </span>
-        <div class="flex shrink-0 items-center gap-2">
-          <!-- Shop marker (#629): the one day of the week that is the shop, so
-               the week reads at a glance. Slot is copy only — both slots nudge
-               at the same hour the evening before. -->
-          {#if shopSlot}
-            <span
-              class="flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[11px] font-semibold uppercase text-primary-foreground"
-              data-testid={`${testid}-shop-marker`}
-            >
-              <ShoppingCart class="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />
-              {shopSlot}
-            </span>
-          {/if}
-          {#if weather}
-            <span class="flex items-center gap-1.5" data-testid={`${testid}-weather-header`}>
-              {#if icon}
-                <WeatherIcon {icon} class="h-8 w-8" />
-              {/if}
-              <span
-                class="text-sm leading-tight tabular-nums {band ? BAND_CLASS[band] : ''}"
-                data-testid={`${testid}-header-temp`}
-              >
-                <span class="font-semibold">{weather.tempHigh}°</span><span
-                  class="font-normal opacity-80"
-                >
-                  / {weather.tempLow}°</span
-                >
-              </span>
-            </span>
-          {/if}
-          <span class="text-muted-foreground" aria-hidden="true">
-            {#if open}<ChevronDown class="h-5 w-5" />{:else}<ChevronRight class="h-5 w-5" />{/if}
-          </span>
-        </div>
-      </div>
-
-      <!-- Band 2: the roster. Every member appears exactly once — attending members
-           are filled, the rest muted. The cook is the same avatar 15% larger with an
-           amber chef-hat badge overlapping the top-left; a sky note badge overlaps the
-           top-right of anyone with an attendee note. Home time sits beneath whoever
-           has one set. Guests are a trailing chip. Wraps on narrow widths. -->
-      <div class="flex flex-wrap items-start gap-x-3 gap-y-1.5">
-        {#each members as m (m.id)}
-          {@const a = attendeeOf(m.id)}
-          {@const attending = isAttending(m.id)}
-          {@const chef = isChef(m.id)}
-          <span class="flex flex-col items-center gap-0.5">
-            <span
-              class="relative flex {chef ? chip.cookBox : chip.box} items-center justify-center
-              rounded-full font-semibold
-              {attending
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted text-muted-foreground/50'}"
-              title={chef ? `${m.name} is cooking` : m.name}
-              data-testid={`${testid}-chip-${m.id}`}
-            >
-              {memberInitials(m.name)}
-              {#if chef}
-                <!-- Chef-hat badge: the cook, marked once, top-left overlap (amber). -->
-                <span
-                  class="absolute -left-1 -top-1 flex {chip.badge} items-center justify-center
-                  rounded-full bg-amber-500 ring-2 ring-background"
-                  aria-hidden="true"
-                  data-testid={`${testid}-cook-${m.id}`}
-                >
-                  <ChefHat class="{chip.hat} text-white" strokeWidth={2.5} />
-                </span>
-              {/if}
-              {#if hasNote(m.id)}
-                <!-- Note badge: attendee has a note, top-right overlap (sky) — same
-                     size/style as the chef hat, a different colour so it stands out. -->
-                <span
-                  class="absolute -right-1 -top-1 flex {chip.badge} items-center justify-center
-                  rounded-full bg-sky-500 ring-2 ring-background"
-                  aria-label="has a note"
-                  data-testid={`${testid}-note-badge-${m.id}`}
-                >
-                  <StickyNote class="{chip.hat} text-white" strokeWidth={2.5} />
-                </span>
-              {/if}
-            </span>
-            {#if attending && a?.homeTime}
-              <span class="{chip.time} tabular-nums text-muted-foreground">{a.homeTime}</span>
-            {/if}
-          </span>
-        {/each}
-        {#if day.guests > 0}
-          <span class="flex {chip.h} items-center">
-            <span
-              class="rounded-full bg-secondary px-2 py-0.5 text-xs font-semibold text-secondary-foreground"
-              data-testid={`${testid}-guest-badge`}>+{day.guests}</span
-            >
-          </span>
-        {/if}
-      </div>
-
-      <!-- Band 3: the meal's first line beneath the avatars, truncating. The "No cook"
-           flag sits at the end when nobody's assigned, since the chef-hat badge is the
-           only other cook cue and it's absent on an unassigned day. -->
-      <div class="flex items-center gap-2">
+<!-- One day = one object in the list (#639). No card border and no wash: the day
+     is held together by the dated rail on its left and the air around it (the
+     page spaces the rows 24px apart), not by a box. -->
+<div data-testid={testid}>
+  <!-- The collapsed row (#639, Phase 1): dated rail | photograph → title → meta.
+       The whole row is the tap target; tapping opens the day's detail below,
+       unchanged. -->
+  <button
+    type="button"
+    class="flex w-full gap-3 text-left"
+    onclick={() => (open = !open)}
+    aria-expanded={open}
+    data-testid={`${testid}-summary`}
+  >
+    <!-- The dated rail: weekday over date, an edge to run the eye down. Today's
+         date sits in a filled teal disc (the primary token), so "where am I in
+         the week" is answered without reading. The evening forecast rides at the
+         foot of the rail — gated on `weather` (not `icon`), so an older cached
+         doc with no pictogram still shows its temperature; the glyph self-hides
+         when the code is absent. -->
+    <!-- The rail is narrow when it carries a date disc (the planner, where a tight
+         column is the point). The template editor has no dates, so its rail holds a
+         bare weekday word — "Wednesday" wraps at w-14, hence the wider track. -->
+    <div class="flex {sublabel ? 'w-14' : 'w-20'} shrink-0 flex-col items-center gap-1">
+      <span
+        class="text-center text-[11px] font-semibold uppercase leading-tight tracking-wider text-muted-foreground"
+      >
+        {label}
+      </span>
+      {#if sublabel}
         <span
-          class="min-w-0 flex-1 truncate text-sm {mealFirstLine
-            ? 'text-foreground'
-            : 'text-muted-foreground'}"
+          class="flex h-8 min-w-8 items-center justify-center rounded-full px-1 text-base font-semibold leading-none tabular-nums {isToday
+            ? 'bg-primary text-primary-foreground'
+            : 'text-foreground'}"
+          data-testid={`${testid}-date`}
         >
-          {mealFirstLine || 'No meal set'}
+          {sublabel}
         </span>
-        {#if !hasCook}
+      {/if}
+      {#if weather}
+        <span class="flex flex-col items-center" data-testid={`${testid}-weather-header`}>
+          {#if icon}
+            <WeatherIcon {icon} class="h-8 w-8" />
+          {/if}
           <span
-            class="flex shrink-0 items-center gap-1 text-[11px] font-medium text-destructive"
-            data-testid={`${testid}-no-cook`}
+            class="text-[10px] leading-none tabular-nums {band ? BAND_CLASS[band] : ''}"
+            data-testid={`${testid}-header-temp`}
           >
-            <ChefHat class="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden="true" />
-            No cook
+            <span class="font-semibold">{weather.tempHigh}°</span><span
+              class="font-normal opacity-80">/{weather.tempLow}°</span
+            >
           </span>
-        {/if}
-      </div>
-    </button>
-  </div>
+        </span>
+      {/if}
+    </div>
+
+    <!-- The day's card. The photograph is a clean, undamaged rectangle — no text
+         over it, no gradient scrim — with the meal title beneath it in Epilogue
+         (the `font-display` family token). A day with no photo is not
+         second-class: the card is the same text block with the meal one step
+         larger, and no placeholder tile stands in for the missing picture. -->
+    <div class="flex min-w-0 flex-1 flex-col gap-2">
+      {#if photoUrl}
+        <img
+          src={photoUrl}
+          alt=""
+          loading="lazy"
+          class="aspect-[3/2] w-full rounded-lg object-cover"
+          data-testid={`${testid}-photo`}
+        />
+      {/if}
+      <span
+        class="truncate font-display font-semibold leading-snug {photoUrl
+          ? 'text-base'
+          : 'text-lg'} {mealFirstLine ? 'text-foreground' : 'text-muted-foreground'}"
+        data-testid={`${testid}-meal`}
+      >
+        {mealFirstLine || 'No meal set'}
+      </span>
+
+      <!-- One quiet grey line: cook · who is eating (by name) · home times that
+           have actually been set. Rendered as a single truncating block so the
+           name list gives way gracefully on a narrow screen. "No cook" keeps its
+           own colour — it is the one thing in the line that wants answering. -->
+      <span class="truncate text-xs text-muted-foreground" data-testid={`${testid}-meta`}>
+        {#if !hasCook}<span class="font-medium text-destructive" data-testid={`${testid}-no-cook`}
+            >No cook</span
+          >{/if}{#if metaSegments}{hasCook ? '' : ' · '}{metaSegments}{/if}
+      </span>
+    </div>
+  </button>
 
   {#if open}
     <!-- Expanded detail (Phase 2, #469): three stacked blocks, top→bottom —
@@ -458,7 +407,10 @@
          Flatter and shorter than the old form: the forecast leads, and the roster
          is one tidy row per member (avatar = eating toggle, chef-hat = cooking),
          with shift/late times revealed only for people who are eating. -->
-    <div class="flex flex-col gap-4 border-t px-3 py-3" data-testid={`${testid}-detail`}>
+    <div
+      class="mt-3 flex flex-col gap-4 rounded-lg border bg-card px-3 py-3"
+      data-testid={`${testid}-detail`}
+    >
       <!-- 1. Forecast strip: the evening forecast leads the detail. Real-week only
            — gated on `weather`, so the weekday template editor and out-of-horizon
            days render nothing (parent passes no weather there). Keeps WeatherSummary's
@@ -495,12 +447,6 @@
               PM
             </Button>
           </div>
-          {#if preShop}
-            <!-- Says what the shading means, in the one place there is room for it. -->
-            <p class="text-[11px] text-muted-foreground" data-testid={`${testid}-pre-shop-note`}>
-              Using what's in — no shop before this day.
-            </p>
-          {/if}
         </div>
       {/if}
 

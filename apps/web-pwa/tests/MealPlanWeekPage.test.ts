@@ -22,6 +22,7 @@ const {
   mockRecipes,
   mockCanonItems,
   mockDefaultListId,
+  mockShopDay,
   mockBuildRecipeAddPlan,
   mockCommitRecipeAddPlan,
   mockRecipeAddPlanItemCount,
@@ -59,6 +60,8 @@ const {
     ]),
     mockCanonItems: makeStore<unknown[]>([]),
     mockDefaultListId: makeStore<string | null>('list-1'),
+    // The week's shop day (issue #629) — null unless a test marks one.
+    mockShopDay: makeStore<{ date: string; slot: 'am' | 'pm' } | null>(null),
     // A one-row plan is enough for the sheet to render and confirm.
     mockBuildRecipeAddPlan: vi.fn(() => [
       {
@@ -93,6 +96,11 @@ vi.mock('../src/lib/recipeService.js', () => ({
 }));
 vi.mock('../src/lib/canonService.js', () => ({ canonItems: mockCanonItems }));
 vi.mock('../src/lib/shoppingListService.svelte.js', () => ({ defaultListId: mockDefaultListId }));
+vi.mock('../src/lib/shoppingDayService.js', () => ({
+  weekShopDay: mockShopDay,
+  setShopDay: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  clearShopDay: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+}));
 vi.mock('../src/lib/mealPlanService.js', () => ({
   currentWeek: mockWeek,
   selectedStartDate: mockStart,
@@ -172,6 +180,7 @@ beforeEach(() => {
   mockRecipes._set([RECIPE]);
   mockCanonItems._set([]);
   mockDefaultListId._set('list-1');
+  mockShopDay._set(null);
 });
 
 // Attach a recipe through the day's real recipe-picker Combobox: click the input
@@ -287,7 +296,7 @@ describe('MealPlanWeekPage', () => {
     expect(screen.getByTestId('day-2026-06-08-unknown-gone@e.org')).toBeInTheDocument();
   });
 
-  it('shows home time and a per-attendee note badge on the collapsed row', () => {
+  it('reads the cook, who is eating and any home time off the collapsed row (#639)', () => {
     mockWeek._set({
       ...emptyWeek('2026-06-08'),
       days: {
@@ -295,7 +304,7 @@ describe('MealPlanWeekPage', () => {
         '2026-06-08': {
           note: 'Roast',
           recipeIds: [],
-          chefs: [],
+          chefs: ['bob@e.org'],
           attendees: [
             { memberId: 'alice@e.org', homeTime: '18:00', note: 'late' },
             { memberId: 'bob@e.org', homeTime: null, note: '' },
@@ -305,30 +314,30 @@ describe('MealPlanWeekPage', () => {
       },
     });
     render(MealPlanWeekPage);
-    const summary = screen.getByTestId('day-2026-06-08-summary');
-    // Alice's time shows; Bob's blank time shows nothing.
-    expect(summary.textContent).toContain('18:00');
-    // Alice has a note, so her avatar carries the note badge; Bob's does not.
-    expect(screen.getByTestId('day-2026-06-08-note-badge-alice@e.org')).toBeInTheDocument();
-    expect(screen.queryByTestId('day-2026-06-08-note-badge-bob@e.org')).not.toBeInTheDocument();
+    const meta = screen.getByTestId('day-2026-06-08-meta');
+    expect(meta.textContent).toContain('Bob cooking');
+    // Both members are eating, so the roster collapses to one word…
+    expect(meta.textContent).toContain('Everyone');
+    // …and only Alice's time is set, so only Alice's shows.
+    expect(meta.textContent).toContain('Alice 18:00');
+    expect(meta.textContent).not.toContain('Bob 1');
   });
 
-  it('omits the note badge when an attendee has no note', () => {
-    mockWeek._set({
-      ...emptyWeek('2026-06-08'),
-      days: {
-        ...emptyWeek('2026-06-08').days,
-        '2026-06-08': {
-          note: 'Roast',
-          recipeIds: [],
-          chefs: [],
-          attendees: [{ memberId: 'alice@e.org', homeTime: '18:00', note: '' }],
-          guests: 0,
-        },
-      },
-    });
+  it('marks the shop day with a labelled rule across the list (#639)', () => {
+    mockShopDay._set({ date: '2026-06-10', slot: 'am' });
     render(MealPlanWeekPage);
-    expect(screen.queryByTestId('day-2026-06-08-note-badge-alice@e.org')).not.toBeInTheDocument();
+    const rule = screen.getByTestId('day-2026-06-10-shop-marker');
+    expect(rule).toHaveTextContent('Shop');
+    expect(rule).toHaveTextContent('am');
+    // Exactly one rule, on the shop day only.
+    expect(screen.queryByTestId('day-2026-06-08-shop-marker')).not.toBeInTheDocument();
+    // …and the rule is a sibling of the rows, not a badge inside one.
+    expect(screen.getByTestId('day-2026-06-10').contains(rule)).toBe(false);
+  });
+
+  it('draws no rule when the week has no shop day', () => {
+    render(MealPlanWeekPage);
+    expect(screen.queryByTestId('day-2026-06-10-shop-marker')).not.toBeInTheDocument();
   });
 
   it('splits into hour + quarter-hour minute, seeded to the dinner default', async () => {
