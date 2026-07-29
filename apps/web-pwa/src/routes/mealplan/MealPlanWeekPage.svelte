@@ -262,11 +262,19 @@
          moving column: `sticky` means nothing inside a transformed element, and an
          overlay that travelled with the days would defeat the point of pinning it. -->
     <div class="relative mt-4 flex min-h-0 flex-1 flex-col">
+      <!-- A native scroller is focusable and arrow-key operable for free, and this
+           element replaces one, so the tabindex and the key handler are how that
+           behaviour is KEPT rather than dropped — the same trade cook mode makes.
+           Cook mode can use a bare <main> for its viewport because it is a
+           full-viewport page; here the shell already owns the <main>, so the role
+           is stated explicitly rather than nesting a second landmark. Named after
+           the week it holds, so the region announces what it contains. -->
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <div
         bind:this={deck.viewportEl}
         class="relative min-h-0 flex-1 touch-pinch-zoom overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        role="region"
         tabindex="0"
         aria-label="Week of {rangeLabel}"
         data-testid="week-deck"
