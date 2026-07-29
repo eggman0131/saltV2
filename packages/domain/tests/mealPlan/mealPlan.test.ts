@@ -4,6 +4,7 @@ import {
   weekStartFor,
   weekDates,
   weekdayOf,
+  dayIndexInWeek,
   emptyDay,
   emptyWeek,
   emptyTemplate,
@@ -80,6 +81,38 @@ describe('weekDates', () => {
       '2026-06-13',
       '2026-06-14',
     ]);
+  });
+});
+
+describe('dayIndexInWeek', () => {
+  it('gives the 0-based position of a date inside the week', () => {
+    expect(dayIndexInWeek('2026-06-08', '2026-06-08')).toBe(0);
+    expect(dayIndexInWeek('2026-06-08', '2026-06-11')).toBe(3);
+    expect(dayIndexInWeek('2026-06-08', '2026-06-14')).toBe(6);
+  });
+
+  it('returns -1 for a date outside the week on either side', () => {
+    expect(dayIndexInWeek('2026-06-08', '2026-06-07')).toBe(-1);
+    expect(dayIndexInWeek('2026-06-08', '2026-06-15')).toBe(-1);
+    expect(dayIndexInWeek('2026-06-08', '2025-06-11')).toBe(-1);
+  });
+
+  it('returns -1 rather than NaN for an unparseable date', () => {
+    expect(dayIndexInWeek('2026-06-08', 'not-a-date')).toBe(-1);
+    expect(dayIndexInWeek('', '2026-06-08')).toBe(-1);
+  });
+
+  it('agrees with weekDates on every day of the week', () => {
+    const start = '2026-06-08';
+    weekDates(start).forEach((date, i) => {
+      expect(dayIndexInWeek(start, date)).toBe(i);
+    });
+  });
+
+  it('is unaffected by the DST boundary inside the week (all week maths is UTC)', () => {
+    // BST ends on 2026-10-25; the week straddling it must still be seven days.
+    expect(dayIndexInWeek('2026-10-19', '2026-10-25')).toBe(6);
+    expect(dayIndexInWeek('2026-10-19', '2026-10-26')).toBe(-1);
   });
 });
 

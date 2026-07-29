@@ -9,7 +9,13 @@ export type { MealPlanConfig } from './entities/MealPlanConfig.js';
 export type { MealPlanTemplate } from './entities/MealPlanTemplate.js';
 export type { MealPlanWeek } from './entities/MealPlanWeek.js';
 
-export { weekStartFor, weekDates, weekdayOf, WEEKDAY_INDEX } from './queries/weekdays.js';
+export {
+  weekStartFor,
+  weekDates,
+  weekdayOf,
+  dayIndexInWeek,
+  WEEKDAY_INDEX,
+} from './queries/weekdays.js';
 
 export { emptyDay, emptyWeek, emptyTemplate } from './commands/emptyDay.js';
 export { instantiateWeek } from './commands/instantiateWeek.js';

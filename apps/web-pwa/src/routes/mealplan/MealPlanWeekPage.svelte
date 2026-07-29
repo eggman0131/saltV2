@@ -10,8 +10,8 @@
     ListPage,
   } from '@salt/ui-components';
   import { onMount } from 'svelte';
-  import { ChevronLeft, ChevronRight, ShoppingCart } from '@lucide/svelte';
-  import { weekDates, type Attendee, type Recipe } from '@salt/domain';
+  import { ChevronLeft, ChevronRight, ChevronUp, ShoppingCart } from '@lucide/svelte';
+  import { weekDates, dayIndexInWeek, type Attendee, type Recipe } from '@salt/domain';
   import type { ShoppingSlot } from '@salt/domain/schemas';
   import MealDayEditor from './MealDayEditor.svelte';
   import RecipeAddToListSheet from '../recipes/RecipeAddToListSheet.svelte';
@@ -69,6 +69,83 @@
   // mount: the planner is remounted on every visit, and a week view that ticks
   // over at midnight while open is not worth a timer.
   const todayDate = new Date().toLocaleDateString('en-CA');
+
+  // ─── Land on today (#639, Phase 2) ────────────────────────────────────────
+  // The week OPENS ON TODAY: today's row is put directly under the sticky app
+  // header on load, rather than the week starting on Friday and today landing
+  // wherever it falls. The earlier days of the week are still there, full size,
+  // immediately above — nothing is folded away or hidden behind a control, you
+  // simply scroll up. They render a step quieter, so scrolling up reads as
+  // looking backwards.
+  //
+  // `todayIndex` is the whole state machine: -1 means the displayed week does
+  // not contain today (so we land at the top and show no cue), and otherwise it
+  // is both today's row and the number of earlier days above it.
+  const todayIndex = $derived(dayIndexInWeek($selectedStartDate, todayDate));
+
+  // The scroll container is NOT the window: AppShell renders the page inside
+  // `<main class="overflow-y-auto">` within an `h-dvh` column, and the sticky
+  // TopBar sits outside it — so the top of that scrollport IS "directly under
+  // the header". Rather than reach for `main` by name, walk up from the list to
+  // the nearest scrollable ancestor; the page then works wherever it is mounted
+  // and simply does nothing when there is no scroller (no browser storage is
+  // involved — scroll position is never persisted; Rule 3).
+  let listEl = $state<HTMLElement | null>(null);
+  let rowEls = $state<Record<string, HTMLElement | null>>({});
+  let scroller: HTMLElement | null = null;
+  let scrolled = $state(false);
+  // Plain (untracked) on purpose: the anchor is a one-shot per displayed week,
+  // and reading it must not make the effect below depend on it.
+  let anchoredWeek: string | null = null;
+
+  function nearestScroller(from: HTMLElement | null): HTMLElement | null {
+    for (let el = from?.parentElement ?? null; el; el = el.parentElement) {
+      const { overflowY } = getComputedStyle(el);
+      if (overflowY === 'auto' || overflowY === 'scroll') return el;
+    }
+    return null;
+  }
+
+  $effect(() => {
+    const list = listEl;
+    if (!list) return;
+    const target = nearestScroller(list);
+    scroller = target;
+    if (!target) return;
+    const onScroll = (): void => {
+      scrolled = target.scrollTop > 8;
+    };
+    target.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => {
+      target.removeEventListener('scroll', onScroll);
+    };
+  });
+
+  // Anchor once per displayed week. The rows only exist once the week's data has
+  // arrived, so this re-runs until today's row is actually in the DOM.
+  $effect(() => {
+    const week = $selectedStartDate;
+    const todayRow = todayIndex >= 0 ? rowEls[todayDate] : null;
+    if (anchoredWeek === week) return;
+    if (todayIndex < 0) {
+      // Some other week: land at the top, not wherever the last week was left.
+      if (scroller) scroller.scrollTop = 0;
+      scrolled = false;
+      anchoredWeek = week;
+      return;
+    }
+    if (!todayRow) return;
+    todayRow.scrollIntoView({ block: 'start' });
+    if (scroller) scrolled = scroller.scrollTop > 8;
+    anchoredWeek = week;
+  });
+
+  function scrollToEarliest(): void {
+    if (!scroller) return;
+    scroller.scrollTop = 0;
+    scrolled = false;
+  }
 
   // Friendly labels for the week range and each day, formatted from the UTC date.
   function fmt(date: string, opts: Intl.DateTimeFormatOptions): string {
@@ -181,11 +258,43 @@
       </Button>
     </div>
 
+    <!-- The scroll-up cue (#639, Phase 2). Landing mid-list gives no clue there is
+         anything above, so once the list has been scrolled a shadow appears under
+         the sticky app header and — when the week is today's — a pill names the
+         earlier days and takes you back to them.
+
+         The cue is a zero-height overlay pinned to the top of the scrollport, so
+         it costs the list no space and today's row still sits flush under the
+         header. `-mx-4 sm:-mx-6` cancels this page's own ListPage padding so the
+         shadow runs edge to edge, exactly as a header shadow would. -->
+    {#if scrolled}
+      <div class="pointer-events-none sticky top-0 z-10 -mx-4 h-0 sm:-mx-6">
+        <div
+          class="h-3 w-full bg-gradient-to-b from-foreground/10 to-transparent"
+          data-testid="scroll-shadow"
+        ></div>
+        {#if todayIndex > 0}
+          <div class="flex justify-center">
+            <button
+              type="button"
+              class="pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm"
+              onclick={scrollToEarliest}
+              data-testid="earlier-days"
+            >
+              <ChevronUp class="h-3.5 w-3.5" aria-hidden="true" />
+              {todayIndex} earlier {todayIndex === 1 ? 'day' : 'days'}
+            </button>
+          </div>
+        {/if}
+      </div>
+    {/if}
+
     <!-- The week as one list of dated days, 24px apart (#639): each row is its own
          object, held together by its rail and the air around it. -->
-    <div class="mt-4 flex flex-col gap-6">
-      {#each dates as date (date)}
+    <div class="mt-4 flex flex-col gap-6" bind:this={listEl}>
+      {#each dates as date, i (date)}
         {@const day = $currentWeek.days[date]}
+        {@const isEarlier = todayIndex > 0 && i < todayIndex}
         {#if day}
           {#if shopDate === date}
             <!-- The shop day is a RULE ACROSS THE LIST, not a badge on a row: a
@@ -205,26 +314,32 @@
               <span class="h-px flex-1 bg-border"></span>
             </div>
           {/if}
-          <MealDayEditor
-            label={fmt(date, { weekday: 'short' })}
-            sublabel={fmt(date, { day: 'numeric' })}
-            {day}
-            members={$members}
-            recipes={$recipes}
-            testid={`day-${date}`}
-            isToday={date === todayDate}
-            weather={$weatherForecast?.days[date]}
-            shopSlot={shopDate === date ? ($weekShopDay?.slot ?? null) : null}
-            onShopSlotChange={(slot) => void changeShopSlot(date, slot)}
-            onNoteChange={(note) => void setWeekDayNote(date, note)}
-            onRecipesChange={(ids) => void setWeekDayRecipes(date, ids)}
-            onRecipeAddToList={openRecipeAddToList}
-            onChefToggle={(id) => toggleChef(date, id)}
-            onAttendeeToggle={(id) => toggleAttendee(date, id)}
-            onAttendeeHomeTime={(id, t) => void setWeekAttendeeHomeTime(date, id, t)}
-            onAttendeeNote={(id, n) => void setWeekAttendeeNote(date, id, n)}
-            onGuestsChange={(g) => void setWeekDayGuests(date, g)}
-          />
+          <!-- The wrapper is the page's grip on the row: it is what we anchor the
+               scroll to, and what carries the quieter treatment for days already
+               behind us. MealDayEditor itself is untouched (it is shared with the
+               template editor, which has no notion of "today"). -->
+          <div bind:this={rowEls[date]} class={isEarlier ? 'opacity-60' : ''}>
+            <MealDayEditor
+              label={fmt(date, { weekday: 'short' })}
+              sublabel={fmt(date, { day: 'numeric' })}
+              {day}
+              members={$members}
+              recipes={$recipes}
+              testid={`day-${date}`}
+              isToday={date === todayDate}
+              weather={$weatherForecast?.days[date]}
+              shopSlot={shopDate === date ? ($weekShopDay?.slot ?? null) : null}
+              onShopSlotChange={(slot) => void changeShopSlot(date, slot)}
+              onNoteChange={(note) => void setWeekDayNote(date, note)}
+              onRecipesChange={(ids) => void setWeekDayRecipes(date, ids)}
+              onRecipeAddToList={openRecipeAddToList}
+              onChefToggle={(id) => toggleChef(date, id)}
+              onAttendeeToggle={(id) => toggleAttendee(date, id)}
+              onAttendeeHomeTime={(id, t) => void setWeekAttendeeHomeTime(date, id, t)}
+              onAttendeeNote={(id, n) => void setWeekAttendeeNote(date, id, n)}
+              onGuestsChange={(g) => void setWeekDayGuests(date, g)}
+            />
+          </div>
         {/if}
       {/each}
     </div>

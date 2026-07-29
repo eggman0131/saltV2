@@ -213,6 +213,7 @@ export {
   weekStartFor,
   weekDates,
   weekdayOf,
+  dayIndexInWeek,
   emptyDay,
   emptyWeek,
   emptyTemplate,

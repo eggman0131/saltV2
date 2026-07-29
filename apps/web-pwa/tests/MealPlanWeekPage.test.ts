@@ -1,7 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import { emptyWeek, setDayNote, type MealPlanWeek, type Member, type Recipe } from '@salt/domain';
+import {
+  emptyWeek,
+  setDayNote,
+  weekDates,
+  type MealPlanWeek,
+  type Member,
+  type Recipe,
+} from '@salt/domain';
 
 // A minimal recipe. MealDayEditor's picker/auto-fill read `id`/`title`; the add-to-
 // shop sheet also reads `metadata.servings` (seed) — the plan builder is mocked, so
@@ -165,6 +172,54 @@ function member(id: string, name: string): Member {
 
 const ALICE = member('alice@e.org', 'Alice');
 const BOB = member('bob@e.org', 'Bob');
+
+// ─── Landing on today (#639, Phase 2) ──────────────────────────────────────
+// "Today" comes from the real clock inside the component, so instead of freezing
+// time these helpers build a week AROUND today at a known offset — deterministic
+// on any day the suite happens to run.
+const TODAY = new Date().toLocaleDateString('en-CA');
+
+function addDays(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+// Make a week start `offset` days before today, so today is the (offset+1)th row
+// and there are exactly `offset` earlier days above it.
+function weekAroundToday(offset: number): string {
+  const start = addDays(TODAY, -offset);
+  mockStart._set(start);
+  mockWeek._set(emptyWeek(start));
+  return start;
+}
+
+// jsdom lays nothing out: `scrollIntoView` is a no-op stub (tests/setup.ts) and
+// `scrollTop` has no real scroll position behind it. So the scroll container is
+// a plain div with a working `scrollTop` of our own, and the assertions are about
+// INTENT — did the page try to anchor on today, does the cue appear once the
+// container reports a scroll — never about pixels.
+function renderInScroller(): { scroller: HTMLElement; scrollTo: (top: number) => void } {
+  const scroller = document.createElement('div');
+  scroller.style.overflowY = 'auto';
+  let top = 0;
+  Object.defineProperty(scroller, 'scrollTop', {
+    configurable: true,
+    get: () => top,
+    set: (v: number) => {
+      top = v;
+    },
+  });
+  document.body.appendChild(scroller);
+  render(MealPlanWeekPage, {}, { baseElement: scroller });
+  return {
+    scroller,
+    scrollTo(next: number) {
+      scroller.scrollTop = next;
+      scroller.dispatchEvent(new Event('scroll'));
+    },
+  };
+}
 
 afterEach(() => {
   cleanup();
@@ -490,5 +545,109 @@ describe('MealPlanWeekPage', () => {
     render(MealPlanWeekPage);
     // ListPage renders its loading state; the day rows are absent.
     expect(screen.queryByTestId('day-2026-06-08')).not.toBeInTheDocument();
+  });
+});
+
+describe('MealPlanWeekPage — landing on today (#639, Phase 2)', () => {
+  it("opens on today's row when the displayed week contains today", async () => {
+    const anchor = vi.spyOn(Element.prototype, 'scrollIntoView');
+    weekAroundToday(3);
+    renderInScroller();
+
+    await waitFor(() => expect(anchor).toHaveBeenCalled());
+    // Anchored on today, aligned to the top of the scrollport — which is exactly
+    // where the sticky header ends.
+    expect(anchor.mock.calls[0]![0]).toEqual({ block: 'start' });
+    expect(anchor.mock.contexts[0]).toBe(screen.getByTestId(`day-${TODAY}`).parentElement);
+    anchor.mockRestore();
+  });
+
+  it('lands another week at the top instead, and never shows the pill there', async () => {
+    const anchor = vi.spyOn(Element.prototype, 'scrollIntoView');
+    const start = addDays(TODAY, -30);
+    mockStart._set(start);
+    mockWeek._set(emptyWeek(start));
+    const { scroller, scrollTo } = renderInScroller();
+
+    expect(screen.getByTestId(`day-${start}`)).toBeInTheDocument();
+    expect(anchor).not.toHaveBeenCalled();
+    expect(scroller.scrollTop).toBe(0);
+
+    // Even scrolled, a week without today has no earlier-days pill — only the
+    // header shadow, which is about scroll position, not about today.
+    scrollTo(400);
+    await waitFor(() => expect(screen.getByTestId('scroll-shadow')).toBeInTheDocument());
+    expect(screen.queryByTestId('earlier-days')).not.toBeInTheDocument();
+    anchor.mockRestore();
+  });
+
+  it('reveals the earlier-days pill and the header shadow only once scrolled', async () => {
+    weekAroundToday(3);
+    const { scrollTo } = renderInScroller();
+
+    // Nothing at rest: no cue, no shadow.
+    expect(screen.queryByTestId('earlier-days')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('scroll-shadow')).not.toBeInTheDocument();
+
+    scrollTo(240);
+    const pill = await screen.findByTestId('earlier-days');
+    expect(pill).toHaveTextContent('3 earlier days');
+    expect(screen.getByTestId('scroll-shadow')).toBeInTheDocument();
+  });
+
+  it('takes you back up to the earlier days when the pill is tapped', async () => {
+    weekAroundToday(2);
+    const { scroller, scrollTo } = renderInScroller();
+    scrollTo(240);
+
+    await userEvent.click(await screen.findByTestId('earlier-days'));
+
+    expect(scroller.scrollTop).toBe(0);
+    // Back at the top, the cue has done its job and withdraws.
+    await waitFor(() => expect(screen.queryByTestId('earlier-days')).not.toBeInTheDocument());
+    expect(screen.queryByTestId('scroll-shadow')).not.toBeInTheDocument();
+  });
+
+  it('counts one earlier day in the singular', async () => {
+    weekAroundToday(1);
+    const { scrollTo } = renderInScroller();
+    scrollTo(240);
+    expect(await screen.findByTestId('earlier-days')).toHaveTextContent('1 earlier day');
+  });
+
+  it('shows no pill when today is the first day of the week', async () => {
+    weekAroundToday(0);
+    const { scrollTo } = renderInScroller();
+    scrollTo(240);
+    await waitFor(() => expect(screen.getByTestId('scroll-shadow')).toBeInTheDocument());
+    expect(screen.queryByTestId('earlier-days')).not.toBeInTheDocument();
+  });
+
+  it('renders the days already behind us a step quieter', () => {
+    const start = weekAroundToday(3);
+    renderInScroller();
+
+    const quietness = (date: string): string =>
+      screen.getByTestId(`day-${date}`).parentElement?.className ?? '';
+    const dates = weekDates(start);
+    // The three days before today read as looking backwards…
+    expect(quietness(dates[0]!)).toContain('opacity-60');
+    expect(quietness(dates[2]!)).toContain('opacity-60');
+    // …today and everything ahead of it stay at full strength.
+    expect(quietness(TODAY)).not.toContain('opacity-60');
+    expect(quietness(dates[6]!)).not.toContain('opacity-60');
+  });
+
+  it('leaves every day at full strength in a week that is not this one', () => {
+    const start = addDays(TODAY, -30);
+    mockStart._set(start);
+    mockWeek._set(emptyWeek(start));
+    renderInScroller();
+
+    for (const date of weekDates(start)) {
+      expect(screen.getByTestId(`day-${date}`).parentElement?.className ?? '').not.toContain(
+        'opacity-60',
+      );
+    }
   });
 });

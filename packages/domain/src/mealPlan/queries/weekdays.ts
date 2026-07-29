@@ -47,6 +47,20 @@ export function weekStartFor(date: Date | string, firstDayOfWeek: Weekday): stri
   return formatUtc(d);
 }
 
+// The 0–6 position of `date` within the week starting at `startDate`, or -1 when
+// it falls outside that week (or either string is not a date).
+//
+// This is the "does this week contain today?" test — `>= 0` — and, in the same
+// number, the count of days that sit above `date` in the week (issue #639: the
+// planner opens on today, with that many earlier days scrollable above it).
+// Pure by contract: there is no clock in domain, so the caller supplies today.
+export function dayIndexInWeek(startDate: string, date: string): number {
+  const diff = Math.round(
+    (toUtcDate(date).getTime() - toUtcDate(startDate).getTime()) / 86_400_000,
+  );
+  return Number.isFinite(diff) && diff >= 0 && diff < 7 ? diff : -1;
+}
+
 // The seven consecutive "YYYY-MM-DD" date keys of a week starting at `startDate`.
 export function weekDates(startDate: string): string[] {
   const start = toUtcDate(startDate);
