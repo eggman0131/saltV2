@@ -26,19 +26,27 @@ import { selectedStartDate } from './mealPlanService.js';
 
 // How far ahead the shopping list looks for "the next shop". Two weeks covers
 // this week's shop and next week's once this week's has passed; beyond that the
-// chip has nothing useful to say.
+// line has nothing useful to say.
 const UPCOMING_WINDOW_DAYS = 13;
 
 // ─── Reactive stores ─────────────────────────────────────────────────────────
 
 const _weekShopDay = writable<ShoppingDayDoc | null>(null);
-const _upcomingShopDay = writable<ShoppingDayDoc | null>(null);
+const _upcomingShopDay = writable<ShoppingDayDoc | null | undefined>(undefined);
 
 /** The shop day inside the planner week currently displayed, or null. */
 export const weekShopDay: Readable<ShoppingDayDoc | null> = _weekShopDay;
 
-/** The next shop from today onward (within the lookahead window), or null. */
-export const upcomingShopDay: Readable<ShoppingDayDoc | null> = _upcomingShopDay;
+/**
+ * The next shop from today onward (within the lookahead window).
+ *
+ * Three states, mirroring `defaultListId`: `undefined` = not loaded yet, `null`
+ * = loaded and no shop is set, a doc = the next shop. The split is load-bearing
+ * — the shopping list shows a "No shop day set" prompt on `null`, and without a
+ * distinct not-loaded state that prompt would flash on every page load before
+ * the subscription resolves.
+ */
+export const upcomingShopDay: Readable<ShoppingDayDoc | null | undefined> = _upcomingShopDay;
 
 // ─── Subscriptions ───────────────────────────────────────────────────────────
 
@@ -85,9 +93,14 @@ export function initShoppingDaySync(): () => void {
   upcomingUnsub = subscribeShoppingDaysInRange(
     today,
     addCalendarDays(today, UPCOMING_WINDOW_DAYS),
-    (days) => _upcomingShopDay.set(shopDayForWeek(days)),
+    // Re-filter against a FRESH today on every snapshot. The range above is
+    // computed once at sign-in, so an app left open for days would otherwise
+    // keep offering a shop that has already happened as "upcoming".
+    (days) => _upcomingShopDay.set(shopDayForWeek(days.filter((d) => d.date >= todayIso()))),
     () => {
-      // As above — the chip keeps its last-known value (or stays hidden).
+      // As above — the line keeps its last-known value. Note this leaves the
+      // store `undefined` if the very first read fails, which renders nothing:
+      // the right call, since "no shop set" would be a claim we cannot make.
     },
   );
 
@@ -98,7 +111,8 @@ export function initShoppingDaySync(): () => void {
     startDateUnsub = weekUnsub = upcomingUnsub = null;
     subscribedStart = '';
     _weekShopDay.set(null);
-    _upcomingShopDay.set(null);
+    // Back to not-loaded, not to "no shop set" — a signed-out app knows nothing.
+    _upcomingShopDay.set(undefined);
   };
 }
 
@@ -147,13 +161,13 @@ export function __resetShoppingDayServiceForTest(): void {
   startDateUnsub = weekUnsub = upcomingUnsub = null;
   subscribedStart = '';
   _weekShopDay.set(null);
-  _upcomingShopDay.set(null);
+  _upcomingShopDay.set(undefined);
 }
 
 export function seedWeekShopDay(day: ShoppingDayDoc | null): void {
   _weekShopDay.set(day);
 }
 
-export function seedUpcomingShopDay(day: ShoppingDayDoc | null): void {
+export function seedUpcomingShopDay(day: ShoppingDayDoc | null | undefined): void {
   _upcomingShopDay.set(day);
 }

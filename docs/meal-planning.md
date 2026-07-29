@@ -75,6 +75,23 @@ date at all beyond the reminder. The predicate is the pure
 `isBeforeShop(day, shopDate)` in `packages/domain/src/shoppingDay/`; the shop day
 itself is not shaded, and an unmarked week shades nothing (it makes no claim).
 
+The **default shopping list** carries the same fact as a read-only line under the
+list name — *Shopping Sat AM* — tapping through to that week in the planner via
+`/mealplan/:date`. It reads relative only where relative beats a weekday: "today"
+and "tomorrow" are unambiguous and match the push copy, while "in 4 days" is
+arithmetic the reader has to undo. Those two near states are also the only ones
+emphasised, because they are the only ones where the list still being wrong costs
+anything. The other lists show nothing: they are background collectors for
+specialist stores, shopped whenever, and the weekly shop says nothing about them.
+
+**An unmarked week says so.** With no shop day set the same line reads *"No shop
+day set"* and opens the planner. Without it the feature would fail silently in
+exactly the situation it exists for — a week passes, nobody marks a day, and no
+reminder ever fires. (This closes the open question #629 shipped with.) The
+`upcomingShopDay` store is therefore three-state — `undefined` not loaded, `null`
+loaded-and-none, a doc — so the prompt cannot flash before the subscription
+resolves.
+
 The evening before a shop, `remindShoppingDay` (a Cloud Scheduler job, 17:00
 Europe/London) pushes *"Shopping tomorrow AM/PM"* to every subscribed device.
 `slot` drives copy only — both slots nudge at the same hour, because mornings are

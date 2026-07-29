@@ -129,15 +129,47 @@ describe('initShoppingDaySync', () => {
     expect(get(weekShopDay)).toBeNull();
   });
 
-  it('also watches ahead for the shopping list chip', () => {
+  it('also watches ahead for the shopping list line', () => {
     mockSelectedStartDate.set('2026-08-10');
     initShoppingDaySync();
-    // Second subscription: today → +13 days, so the chip still has something to
+    // Second subscription: today → +13 days, so the line still has something to
     // say once this week's shop has been and gone.
     expect(mockSubscribeInRange).toHaveBeenCalledTimes(2);
     const upcomingCall = mockSubscribeInRange.mock.calls.at(-1) as RangeCall;
     upcomingCall[2]([SATURDAY]);
     expect(get(upcomingShopDay)).toEqual(SATURDAY);
+  });
+
+  it('distinguishes "not loaded" from "no shop set"', () => {
+    // The shopping list shows a prompt on null; without a distinct undefined it
+    // would flash that prompt on every page load. undefined until a snapshot
+    // lands, null once one lands empty.
+    expect(get(upcomingShopDay)).toBeUndefined();
+    initShoppingDaySync();
+    expect(get(upcomingShopDay)).toBeUndefined();
+    const upcomingCall = mockSubscribeInRange.mock.calls.at(-1) as RangeCall;
+    upcomingCall[2]([]);
+    expect(get(upcomingShopDay)).toBeNull();
+  });
+
+  it('leaves the store not-loaded when the very first read fails', () => {
+    // "No shop set" would be a claim we cannot make on a failed read.
+    initShoppingDaySync();
+    const upcomingCall = mockSubscribeInRange.mock.calls.at(-1) as RangeCall;
+    upcomingCall[3]({ kind: 'NetworkError', reason: 'offline' });
+    expect(get(upcomingShopDay)).toBeUndefined();
+  });
+
+  it('drops a shop day that has already happened from the lookahead', () => {
+    // The range is computed once at sign-in, so an app left open for days would
+    // otherwise keep offering a past shop as "upcoming".
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-20T09:00:00.000Z'));
+    initShoppingDaySync();
+    const upcomingCall = mockSubscribeInRange.mock.calls.at(-1) as RangeCall;
+    upcomingCall[2]([SATURDAY]); // 2026-08-15, five days gone
+    expect(get(upcomingShopDay)).toBeNull();
+    vi.useRealTimers();
   });
 
   it('tears both subscriptions down on sign-out', () => {
@@ -147,7 +179,8 @@ describe('initShoppingDaySync', () => {
     stop();
     expect(mockUnsub).toHaveBeenCalledTimes(2);
     expect(get(weekShopDay)).toBeNull();
-    expect(get(upcomingShopDay)).toBeNull();
+    // Back to not-loaded, not to "no shop set" — a signed-out app knows nothing.
+    expect(get(upcomingShopDay)).toBeUndefined();
   });
 });
 

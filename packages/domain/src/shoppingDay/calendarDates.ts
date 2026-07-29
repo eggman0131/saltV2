@@ -22,6 +22,20 @@ export function dateInZone(now: Date, timeZone: string): string {
 }
 
 /**
+ * Whole calendar days from `from` to `to`, both `YYYY-MM-DD`. Negative when `to`
+ * is the earlier date, `0` when they are the same day.
+ *
+ * Drives the shopping list's "today / tomorrow / Sat" phrasing. Same UTC,
+ * date-only arithmetic as `addCalendarDays`, so a 23- or 25-hour local day
+ * cannot round the answer off by one.
+ */
+export function daysBetween(from: string, to: string): number {
+  return Math.round(
+    (Date.parse(`${to}T00:00:00.000Z`) - Date.parse(`${from}T00:00:00.000Z`)) / 86_400_000,
+  );
+}
+
+/**
  * Shift a `YYYY-MM-DD` calendar date by `n` whole days.
  *
  * Arithmetic runs in UTC on a date-only value, so it is immune to DST: a zone

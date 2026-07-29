@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dateInZone, addCalendarDays, tomorrowInZone } from '../../src/index.js';
+import { dateInZone, addCalendarDays, daysBetween, tomorrowInZone } from '../../src/index.js';
 
 const LONDON = 'Europe/London';
 
@@ -38,6 +38,35 @@ describe('addCalendarDays', () => {
 
   it('goes backwards too', () => {
     expect(addCalendarDays('2027-01-01', -1)).toBe('2026-12-31');
+  });
+});
+
+describe('daysBetween', () => {
+  it('counts today, tomorrow and the rest of the week', () => {
+    // The three cases the shopping-list phrasing branches on.
+    expect(daysBetween('2026-08-12', '2026-08-12')).toBe(0);
+    expect(daysBetween('2026-08-12', '2026-08-13')).toBe(1);
+    expect(daysBetween('2026-08-12', '2026-08-15')).toBe(3);
+  });
+
+  it('goes negative for a date that has passed', () => {
+    // A window left open across midnight can surface a shop that already
+    // happened; the caller needs to be able to tell.
+    expect(daysBetween('2026-08-16', '2026-08-15')).toBe(-1);
+  });
+
+  it('crosses month, year and leap boundaries', () => {
+    expect(daysBetween('2026-07-31', '2026-08-01')).toBe(1);
+    expect(daysBetween('2026-12-31', '2027-01-01')).toBe(1);
+    expect(daysBetween('2028-02-28', '2028-03-01')).toBe(2); // 2028 is a leap year
+    expect(daysBetween('2026-08-01', '2026-09-01')).toBe(31);
+  });
+
+  it('is not thrown off by a DST transition in the middle', () => {
+    // Clocks go forward 2026-03-29 in Europe/London. UTC date-only arithmetic
+    // means the 23-hour local day still counts as exactly one.
+    expect(daysBetween('2026-03-28', '2026-03-30')).toBe(2);
+    expect(daysBetween('2026-10-24', '2026-10-26')).toBe(2);
   });
 });
 
