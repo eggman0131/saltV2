@@ -8,9 +8,15 @@ vi.mock('@salt/firebase-sync', () => ({
   deleteMember: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
 }));
 
+// The service resolves the signed-in member itself now (issue #634), so it reads
+// the auth store. Mock it rather than booting Firebase.
+const mockAuth = vi.hoisted(() => ({ user: null as { email: string } | null }));
+vi.mock('../src/lib/auth.svelte.js', () => ({ auth: mockAuth }));
+
 import * as firebaseSync from '@salt/firebase-sync';
 import {
   members,
+  currentMember,
   isLoadingMembers,
   initMembersSync,
   createMemberEntry,
@@ -101,6 +107,33 @@ describe('membersService — admin resolution', () => {
     expect(isEmailAdmin('plain@e.org')).toBe(false);
     expect(isEmailAdmin('ghost@e.org')).toBe(false);
     expect(isEmailAdmin(null)).toBe(false);
+  });
+});
+
+// uid → normalised email → member id is the WHOLE of personalisation in Salt
+// (issue #634): every collection is family-shared, so "mine" is a filter over
+// shared documents, never a per-user store.
+describe('membersService — currentMember', () => {
+  beforeEach(() => {
+    seedMembers([
+      member({ id: 'admin@e.org', name: 'Admin', admin: true }),
+      member({ id: 'plain@e.org', name: 'Plain' }),
+    ]);
+  });
+
+  // One test, walked forwards: the email side of `currentMember` is bridged out
+  // of the RUNE-based auth store, and the mock here is a plain object, so the
+  // bridge only notices a value it has not seen before. In the app `auth.user` is
+  // `$state` and every transition propagates — including back to signed out.
+  it('resolves the signed-in user to their member record, and to null otherwise', () => {
+    mockAuth.user = null;
+    expect(get(currentMember)).toBeNull();
+
+    mockAuth.user = { email: '  Plain@E.ORG ' };
+    expect(get(currentMember)?.id).toBe('plain@e.org'); // normalised before matching
+
+    mockAuth.user = { email: 'ghost@e.org' };
+    expect(get(currentMember)).toBeNull(); // signed in, but not on the roster
   });
 });
 

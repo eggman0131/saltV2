@@ -8,6 +8,7 @@ import ShoppingListCreatePage from './shopping/ShoppingListCreatePage.svelte';
 import ShoppingListsManagePage from './shopping/ShoppingListsManagePage.svelte';
 import ShoppingListPage from './shopping/ShoppingListPage.svelte';
 import MealPlanWeekPage from './mealplan/MealPlanWeekPage.svelte';
+import MinePage from './mine/MinePage.svelte';
 import SettingsPage from './settings/SettingsPage.svelte';
 import NotFound from './NotFound.svelte';
 import { lazy } from './lazyRoute';
@@ -35,7 +36,10 @@ export const routes: RouteDefinition = new Map<
   Component<any, any> | WrappedComponent
 >([
   // Shopping is the default view; '/' redirects to the user's shopping list.
+  // "Mine" is deliberately NOT the default (issue #634) — a personal view has to
+  // earn its visit. Eagerly imported: it is small and it is a daily-driver.
   ['/', ShoppingListRedirectPage],
+  ['/mine', MinePage],
   ['/equipment', EquipmentListPage],
   ['/equipment/new', EquipmentCapturePage],
   ['/equipment/:id', EquipmentEditPage],

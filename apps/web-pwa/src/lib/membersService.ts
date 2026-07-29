@@ -8,8 +8,9 @@ import {
   type UpdateMemberPatch,
 } from '@salt/domain';
 import { failure, type DomainError, type ReadResult } from '@salt/shared-types';
-import { writable, get } from 'svelte/store';
+import { writable, derived, get, toStore } from 'svelte/store';
 import type { Readable } from 'svelte/store';
+import { auth } from './auth.svelte.js';
 
 // ─── Reactive stores ─────────────────────────────────────────────────────────
 
@@ -42,6 +43,28 @@ export function initMembersSync(): () => void {
 }
 
 // ─── Admin / current-member resolution ─────────────────────────────────────────
+
+// The signed-in user's member record, or null when nobody is signed in / the
+// roster hasn't loaded / their email isn't on it.
+//
+// `uid → normalised email → member id` is the WHOLE of personalisation in Salt
+// (issue #634): every collection is family-shared, so a personal view is a filter
+// over shared documents, never a per-user store. This derivation used to sit
+// inline in App.svelte for the admin check; it lives here now because the personal
+// view needs the same answer.
+//
+// `toStore` bridges the rune-based auth store into store-land so this can be a
+// plain derived store usable from `.ts` services as well as components.
+const currentEmail: Readable<string> = toStore(() => auth.user?.email ?? '');
+
+export const currentMember: Readable<Member | null> = derived(
+  [members, currentEmail],
+  ([$members, $email]) => {
+    if (!$email) return null;
+    const normalised = normaliseMemberEmail($email);
+    return $members.find((m) => m.email === normalised) ?? null;
+  },
+);
 
 // Non-reactive snapshot: find the member matching an email (normalised). Used
 // by the route guard. Components compute admin reactively from the `members`

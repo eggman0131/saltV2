@@ -356,6 +356,15 @@ subfolders, matching the `weather` pattern. Every timestamp is an injected
 parameter (never read from the clock), which keeps the module pure and makes
 the timer tests deterministic.
 
+The `personalView` module (issue #634) is the same lightweight shape, and is
+purely read-only: `chefDaysForMember`, `unshoppedPlannedRecipes`,
+`isUnopenedImport`, and `rankPersonalCards` project family-shared documents
+through *who am I* for the "Mine" view. No producers, no ports, no schemas of
+its own — it reads `mealPlan`, `recipe` and `shoppingList` types through their
+module indexes. Every clock value ("today", "now", "is the shop imminent") is an
+injected parameter, which is what keeps the ranking and the 24-hour import
+window testable without faking time.
+
 The goal is not architectural purity. The goal is hard, enforceable
 boundaries so that drift — by humans or AI agents — is caught by the
 build instead of accumulating into spaghetti.

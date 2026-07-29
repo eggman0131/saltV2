@@ -1,5 +1,6 @@
 import {
   subscribeCookSession,
+  subscribeMyCookSessions,
   saveCookSession as saveCookSessionDoc,
   deleteCookSession as deleteCookSessionDoc,
 } from '@salt/firebase-sync';
@@ -113,6 +114,33 @@ export function initCookSessionSync(sessionId: string): () => void {
     },
   );
   return unsub;
+}
+
+// ─── My open sessions (issue #634) ──────────────────────────────────────────────
+
+// Every cook I have on the go, newest first. Distinct from `cookSession` above:
+// that one is the session the cook page is driving (looked up by deterministic
+// id), this is "am I mid-cook right now" asked without naming a recipe — the
+// question the personal view opens with. Subscribed app-wide from App.svelte, so
+// the answer is available on every page for the nav badge.
+const _myCookSessions = writable<readonly CookSessionDoc[]>([]);
+export const myCookSessions: Readable<readonly CookSessionDoc[]> = _myCookSessions;
+
+export function initMyCookSessionsSync(uid: string): () => void {
+  const errors = getErrorReporter();
+  const unsub = subscribeMyCookSessions(
+    uid,
+    (sessions) => _myCookSessions.set(sessions),
+    (err, rawError) => {
+      // A stream-level failure leaves the list empty: the resume card and its
+      // badge simply don't appear. The adapter reports per the observability gate.
+      reportSubscriptionError(errors, err, rawError);
+    },
+  );
+  return () => {
+    unsub();
+    _myCookSessions.set([]);
+  };
 }
 
 // ─── Commands ─────────────────────────────────────────────────────────────────

@@ -6,6 +6,7 @@ import {
   Settings,
   Shield,
   ShoppingCart,
+  UserRound,
 } from '@lucide/svelte';
 import type { NavItem } from '@salt/ui-components';
 
@@ -13,13 +14,14 @@ import type { NavItem } from '@salt/ui-components';
 // its active-indicator pill; everything else goes in `overflowNavItems`. The
 // desktop SideNav shows both lists inline (see AppShell).
 //
-// The fourth slot is currently vacant: Chef moved to the overflow to make room for
-// the personal view ("Mine", issue #634), which takes this slot when it lands.
-// Until then this list is three long — the cap is four, not a quota.
+// The fourth slot is the personal view ("Mine", issue #634), which took the slot
+// Chef vacated to the overflow. Its live "what's open now" badge is attached in
+// App.svelte, where the stores it counts are subscribed.
 export const navItems: NavItem[] = [
   { id: 'shopping', label: 'Shop', icon: ShoppingCart, href: '#/shopping' },
   { id: 'mealplan', label: 'Planner', icon: CalendarDays, href: '#/mealplan' },
   { id: 'recipes', label: 'Recipes', icon: BookOpen, href: '#/recipes' },
+  { id: 'mine', label: 'Mine', icon: UserRound, href: '#/mine' },
 ];
 
 // Set-up-and-forget destinations: folded behind the BottomNav's "More" tab on
