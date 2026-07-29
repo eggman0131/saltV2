@@ -19,7 +19,7 @@
   import { productForms, initProductFormSync } from './lib/productFormService.js';
   import { initEquipmentSync } from './lib/equipmentService.js';
   import { initShoppingListSync } from './lib/shoppingListService.svelte.js';
-  import { members, initMembersSync } from './lib/membersService.js';
+  import { currentMember, initMembersSync } from './lib/membersService.js';
   import { initMealPlanSync } from './lib/mealPlanService.js';
   import { initShoppingDaySync } from './lib/shoppingDayService.js';
   import { initRecipeSync } from './lib/recipeService.js';
@@ -28,7 +28,8 @@
   import { initAppSettingsSync } from './lib/appSettingsService.js';
   import { initWeatherSync } from './lib/weatherService.js';
   import { initCookTimerAlerts } from './lib/cookTimerAlerts.js';
-  import { normaliseMemberEmail } from '@salt/domain';
+  import { initMyCookSessionsSync } from './lib/cookSessionService.js';
+  import { mineOpenCount } from './lib/personalViewService.js';
   import { runPendingShareImport } from './lib/shareTarget.js';
   import { envBanner } from './lib/environment.js';
   import SessionOverlay from './lib/dev/SessionOverlay.svelte';
@@ -47,6 +48,9 @@
     const unsubShoppingDay = initShoppingDaySync();
     const unsubRecipes = initRecipeSync();
     const unsubChat = initChatSync(auth.user.uid);
+    // My open cook sessions (issue #634). App-wide rather than page-local: the
+    // "resume a cook" card and its nav badge have to be answerable from any page.
+    const unsubMyCooks = initMyCookSessionsSync(auth.user.uid);
     const unsubDevSettings = initDevSettingsSync();
     const unsubAppSettings = initAppSettingsSync();
     const unsubWeather = initWeatherSync();
@@ -64,6 +68,7 @@
       unsubShoppingDay();
       unsubRecipes();
       unsubChat();
+      unsubMyCooks();
       unsubDevSettings();
       unsubAppSettings();
       unsubWeather();
@@ -83,8 +88,22 @@
 
   // Admin-ness drives whether the operator-area nav entry is shown. Cosmetic
   // only — real enforcement is server-side (rules + CF admin re-checks, #155).
-  const currentEmail = $derived(normaliseMemberEmail(auth.user?.email ?? ''));
-  const isAdmin = $derived($members.some((m) => m.email === currentEmail && m.admin));
+  // `currentMember` (membersService) is the same uid → email → member resolution
+  // this used to do inline; the personal view needs it too, so it lives there now.
+  const isAdmin = $derived($currentMember?.admin === true);
+
+  // "Mine" carries a count of what is OPEN right now — the live cook plus the
+  // "Needs you" queue (issue #634). Deliberately not "changed since you last
+  // looked": that needs a per-user lastSeenAt, which means browser storage
+  // (Rule 3) or a fourth per-user collection, and it lies across devices. A live
+  // count needs no memory, self-clears when you fix the thing, and is honest on a
+  // cold launch. "Just happened" is excluded — it is time-windowed and needs no
+  // action, so it must not nag for 24 hours.
+  const decoratedNavItems = $derived(
+    navItems.map((item) =>
+      item.id === 'mine' && $mineOpenCount > 0 ? { ...item, badge: $mineOpenCount } : item,
+    ),
+  );
 
   // Canon management now lives behind the operator area (#157), so its
   // needs-approval backlog count rides on the Admin nav entry — visible only to
@@ -107,7 +126,7 @@
 <AuthGate>
   <ToastProvider>
     <AppShell
-      {navItems}
+      navItems={decoratedNavItems}
       overflowNavItems={decoratedOverflowNavItems}
       currentPath={router.location}
       title="Salt"

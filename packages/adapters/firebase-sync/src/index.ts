@@ -54,6 +54,7 @@ export {
 } from './chatSessionSubscription.js';
 export {
   subscribeCookSession,
+  subscribeMyCookSessions,
   loadCookSession,
   saveCookSession,
   deleteCookSession,

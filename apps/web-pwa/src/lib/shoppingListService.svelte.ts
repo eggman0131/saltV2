@@ -56,6 +56,11 @@ export const defaultListId: Readable<string | null | undefined> = _defaultListId
 const _itemsForActiveList = writable<readonly ShoppingListItem[]>([]);
 export const itemsForActiveList: Readable<readonly ShoppingListItem[]> = _itemsForActiveList;
 
+// Which list `itemsForActiveList` currently holds, or null before anything is
+// subscribed. Exposed so callers can tell "no items" from "no list yet".
+const _activeListId = writable<string | null>(null);
+export const activeListId: Readable<string | null> = _activeListId;
+
 const _isLoadingShoppingList = writable(true);
 export const isLoadingShoppingList: Readable<boolean> = _isLoadingShoppingList;
 
@@ -96,7 +101,13 @@ function markLoaded(scope: 'lists' | 'config' | 'items'): void {
 let _unsubItems: (() => void) | null = null;
 
 export function setActiveListId(listId: string): void {
+  // Re-selecting the list we are already on is a no-op: tearing the subscription
+  // down and back up would blank the items for a frame and re-read them for
+  // nothing. It also lets a page ask for the default list without caring whether
+  // someone got there first (see the config subscription in initShoppingListSync).
+  if (get(_activeListId) === listId && _unsubItems) return;
   _unsubItems?.();
+  _activeListId.set(listId);
   _itemsForActiveList.set([]);
   const errors = getErrorReporter();
   _unsubItems = subscribeShoppingListItems(
@@ -119,6 +130,7 @@ export function initShoppingListSync(): () => void {
   _lists.set([]);
   _defaultListId.set(undefined);
   _itemsForActiveList.set([]);
+  _activeListId.set(null);
 
   const errors = getErrorReporter();
 
@@ -133,6 +145,13 @@ export function initShoppingListSync(): () => void {
   const unsubConfig = subscribeShoppingListsConfig(
     (config) => {
       _defaultListId.set(config?.defaultListId ?? null);
+      // Subscribe the DEFAULT list's items at boot unless a page has already
+      // chosen a list (issue #634). The personal view and its nav badge read the
+      // list from any page — "2 items need a check" has to be answerable before
+      // the shopping page has ever been opened. It also means the shopping page
+      // paints its items immediately instead of subscribing on mount.
+      const defaultId = config?.defaultListId;
+      if (defaultId && get(_activeListId) === null) setActiveListId(defaultId);
       markLoaded('config');
     },
     (err, rawError) => reportSubscriptionError(errors, err, rawError),
@@ -143,6 +162,7 @@ export function initShoppingListSync(): () => void {
     unsubConfig();
     _unsubItems?.();
     _unsubItems = null;
+    _activeListId.set(null);
   };
 }
 
@@ -403,6 +423,7 @@ export function __resetShoppingListServiceForTest(): void {
   _lists.set([]);
   _defaultListId.set(undefined);
   _itemsForActiveList.set([]);
+  _activeListId.set(null);
   _isLoadingShoppingList.set(true);
   _receivedLists = false;
   _receivedConfig = false;

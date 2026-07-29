@@ -1,4 +1,16 @@
-import { getFirestore, doc, setDoc, deleteDoc, getDoc, onSnapshot } from 'firebase/firestore';
+import {
+  getFirestore,
+  collection,
+  doc,
+  setDoc,
+  deleteDoc,
+  getDoc,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+  where,
+} from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success, failure } from '@salt/shared-types';
@@ -45,6 +57,53 @@ export function subscribeCookSession(
         return;
       }
       onSession(result.data);
+    },
+    (err) => onError(classifyFirestoreError(err), err),
+  );
+}
+
+// How many of a member's open sessions to carry. The personal view shows ONE (the
+// most recent); a few spare keeps the "most recent" honest if one is deleted on
+// another device, without turning this into an unbounded read.
+const MY_SESSIONS_LIMIT = 5;
+
+// Subscribe to MY open cook sessions, newest first (issue #634). Unlike the
+// single-doc subscription above, the caller here knows only who they are — the
+// point is "am I mid-cook right now", asked without knowing which recipe.
+//
+// The `ownerUid` filter is what makes this readable: the existing rule allows a
+// read when `resource.data.ownerUid == request.auth.uid`, and every document a
+// constrained query returns satisfies it, so no firestore.rules change is needed.
+// The where + orderBy pair does need the composite index in firestore.indexes.json.
+//
+// LIST read (Zod conventions): an invalid document is skipped and logged, and the
+// valid subset is returned — one corrupt session must not blank the card. Stream
+// errors surface via onError.
+export function subscribeMyCookSessions(
+  ownerUid: string,
+  onSessions: (sessions: CookSessionDoc[]) => void,
+  onError: (err: DomainError, rawError?: unknown) => void,
+): () => void {
+  const db = getFirestore(getApp());
+  const q = query(
+    collection(db, COLLECTION),
+    where('ownerUid', '==', ownerUid),
+    orderBy('updatedAt', 'desc'),
+    limit(MY_SESSIONS_LIMIT),
+  );
+  return onSnapshot(
+    q,
+    (snap) => {
+      const valid: CookSessionDoc[] = [];
+      for (const d of snap.docs) {
+        const result = CookSessionSchema.safeParse(d.data());
+        if (result.success) {
+          valid.push(result.data);
+        } else {
+          console.error(`[CookSessionSchema] Document ${d.id} failed validation`, result.error);
+        }
+      }
+      onSessions(valid);
     },
     (err) => onError(classifyFirestoreError(err), err),
   );
