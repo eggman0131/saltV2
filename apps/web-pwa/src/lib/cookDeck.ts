@@ -31,18 +31,43 @@ export const FADE_MIN_PX = 64;
 /** Resistance past the ends of the deck. */
 export const RUBBER_BAND = 0.35;
 
+// ─── The feel thresholds ────────────────────────────────────────────────────────────
+// These four are the deck's TUNING, and every one of them is stated relative to a
+// section that fills the screen — which is true of a cook step and of nothing else. A
+// deck of ~200px cards would almost never clear `screen * COMMIT_RATIO`, so a second
+// caller has to be able to say what "far enough" means for its own sections. Hence:
+// exported as the defaults, and overridable per call. Cook mode passes none of them and
+// therefore gets exactly the numbers below — that is what makes the extract a refactor.
+
 /** Of a screen — how far a slow drag must go to turn a page. */
-const COMMIT_RATIO = 0.22;
+export const COMMIT_RATIO = 0.22;
 /** Above this (px/ms), direction alone turns the page. */
-const FLING_PX_PER_MS = 0.45;
+export const FLING_PX_PER_MS = 0.45;
 /** How far ahead a fling is projected when choosing a stop. */
-const PROJECTION_MS = 220;
+export const PROJECTION_MS = 220;
 /**
  * Slack before a section that merely brushes past the bottom of the screen earns an
  * intermediate stop — without it, sub-pixel layout noise mints a stop a hair below the
  * one already there.
  */
-const OVERHANG_SLACK_PX = 8;
+export const OVERHANG_SLACK_PX = 8;
+
+/**
+ * The tunable set, as one bag a caller can hold and forward. Every field is optional and
+ * falls back to the constant of the same name, so `{}` is cook mode's behaviour exactly.
+ */
+export interface DeckThresholds {
+  // `| undefined` on every field is `exactOptionalPropertyTypes` — a caller holding an
+  // optional bag of overrides has to be able to forward a field it doesn't have.
+  /** Of a screen — how far a slow drag must go to turn a page. */
+  commitRatio?: number | undefined;
+  /** Above this (px/ms), direction alone turns the page. */
+  flingPxPerMs?: number | undefined;
+  /** How far ahead a fling is projected when choosing a stop. */
+  projectionMs?: number | undefined;
+  /** Slack before a barely-overhanging section earns an intermediate stop. */
+  overhangSlackPx?: number | undefined;
+}
 
 /** One measured step section, in deck coordinates. */
 export interface DeckSection {
@@ -66,18 +91,19 @@ export function deriveStops({
   sections,
   screen,
   limit,
+  overhangSlackPx = OVERHANG_SLACK_PX,
 }: {
   sections: readonly DeckSection[];
   screen: number;
   limit: number;
-}): number[] {
+} & Pick<DeckThresholds, 'overhangSlackPx'>): number[] {
   if (screen <= 0) return [0];
   const stops: number[] = [];
   for (const section of sections) {
     stops.push(section.top);
     for (
       let extra = section.top + screen;
-      extra < section.top + section.height - OVERHANG_SLACK_PX;
+      extra < section.top + section.height - overhangSlackPx;
       extra += screen
     ) {
       stops.push(extra);
@@ -125,6 +151,11 @@ export function rubberBand(raw: number, limit: number, resistance: number): numb
  *
  * `velocity` is in px/ms (positive = content travelling up, offset increasing), matching
  * what the pointer handler measures.
+ *
+ * The three thresholds default to the cook-mode values. Pass them when the sections are
+ * not screen-sized: `commitRatio` is a fraction OF A SCREEN, not of a section, so a deck
+ * of short cards needs a SMALLER one — otherwise a drag that crossed a whole card still
+ * falls short of the commit distance and springs back.
  */
 export function chooseLandingStop({
   stops,
@@ -133,6 +164,9 @@ export function chooseLandingStop({
   dragged,
   velocity,
   screen,
+  commitRatio = COMMIT_RATIO,
+  flingPxPerMs = FLING_PX_PER_MS,
+  projectionMs = PROJECTION_MS,
 }: {
   stops: readonly number[];
   startIndex: number;
@@ -140,13 +174,13 @@ export function chooseLandingStop({
   dragged: number;
   velocity: number;
   screen: number;
-}): number {
-  const flung = Math.abs(velocity) > FLING_PX_PER_MS;
-  const committed = flung || Math.abs(dragged) > screen * COMMIT_RATIO;
+} & Omit<DeckThresholds, 'overhangSlackPx'>): number {
+  const flung = Math.abs(velocity) > flingPxPerMs;
+  const committed = flung || Math.abs(dragged) > screen * commitRatio;
   if (!committed) return startIndex;
 
   const direction = flung ? Math.sign(velocity) : Math.sign(dragged);
-  let index = nearestStopIndex(offset + velocity * PROJECTION_MS, stops);
+  let index = nearestStopIndex(offset + velocity * projectionMs, stops);
   if (direction > 0 && index <= startIndex) index = startIndex + 1;
   if (direction < 0 && index >= startIndex) index = startIndex - 1;
   return Math.max(0, Math.min(index, stops.length - 1));
