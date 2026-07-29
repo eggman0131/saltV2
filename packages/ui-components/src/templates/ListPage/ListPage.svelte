@@ -1,4 +1,4 @@
-<!-- spec: ui-spec-v04.md §9 v0.4 -->
+<!-- spec: ui-spec-v04.md §9 v0.4; ui-spec-v05.md §1 v0.5 (fill) -->
 <script lang="ts">
   import { cn } from '../../lib/cn';
   import Spinner from '../../primitives/Spinner/Spinner.svelte';
@@ -29,6 +29,7 @@
     loading,
     error,
     empty,
+    fill = false,
     children,
     class: className,
     ...restProps
@@ -57,8 +58,18 @@
   pb-24 while the action bar is shown reserves space so the last rows aren't
   hidden behind the fixed bar. cn (tailwind-merge) lets it override a caller's
   pb-* / p-* on the bottom edge only.
+
+  `fill` (ui-spec-v05 §1) makes the page occupy the shell's content area rather
+  than grow with its content, so a child can own the scrolling. `h-full` resolves
+  against AppShell's <main>, which has a definite height; `min-h-0` is what lets
+  the content div actually shrink inside the flex column instead of being floored
+  at its intrinsic height. Since <main> is overflow-y-auto it then has nothing to
+  scroll — no change to AppShell, and no pixel arithmetic anywhere.
 -->
-<section class={cn('flex flex-col gap-4', className, showActionBar && 'pb-24')} {...restProps}>
+<section
+  class={cn('flex flex-col gap-4', className, showActionBar && 'pb-24', fill && 'h-full min-h-0')}
+  {...restProps}
+>
   <header class="flex flex-wrap items-start justify-between gap-3">
     <div class="flex flex-col gap-1 min-w-0">
       {#if titleSlot}
@@ -95,7 +106,7 @@
     </div>
   {/if}
 
-  <div class="min-h-0">
+  <div class={cn('min-h-0', fill && 'flex flex-1 flex-col')}>
     {#if isLoading}
       {#if loading}
         {@render loading()}

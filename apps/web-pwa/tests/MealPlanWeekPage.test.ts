@@ -194,35 +194,106 @@ function weekAroundToday(offset: number): string {
   return start;
 }
 
-// jsdom lays nothing out: `scrollIntoView` is a no-op stub (tests/setup.ts) and
-// `scrollTop` has no real scroll position behind it. So the scroll container is
-// a plain div with a working `scrollTop` of our own, and the assertions are about
-// INTENT — did the page try to anchor on today, does the cue appear once the
-// container reports a scroll — never about pixels.
-function renderInScroller(): { scroller: HTMLElement; scrollTo: (top: number) => void } {
-  const scroller = document.createElement('div');
-  scroller.style.overflowY = 'auto';
-  let top = 0;
-  Object.defineProperty(scroller, 'scrollTop', {
+// ─── A fake layout for the deck (#639, Phase 4) ────────────────────────────
+// The planner is no longer a scroller: it is a deck that moves a column by a
+// transform. jsdom lays nothing out, so left alone the deck measures zeros —
+// every stop collapses to 0 and it can never move, which would make the anchor,
+// the cue and the stops all untestable (and, worse, make them look tested).
+//
+// So these tests install a plausible layout: a 700px viewport over seven 200px
+// day cards 24px apart. Row positions are derived from the transform ACTUALLY
+// applied to the column, exactly as a browser would compute them, so the real
+// arithmetic in `cookDeck` runs for real against believable numbers.
+const ROW_H = 200;
+const ROW_GAP = 24;
+const ROW_PITCH = ROW_H + ROW_GAP;
+const VIEWPORT_H = 700;
+const CONTENT_H = 7 * ROW_H + 6 * ROW_GAP;
+
+function fakeRect(top: number, height: number): DOMRect {
+  return {
+    top,
+    bottom: top + height,
+    height,
+    y: top,
+    left: 0,
+    right: 0,
+    width: 0,
+    x: 0,
+    toJSON: () => ({}),
+  } as DOMRect;
+}
+
+/** How far the column is currently pushed up, read back off its transform. */
+function deckOffset(): number {
+  const column = document.querySelector<HTMLElement>('[style*="translate3d"]');
+  const match = column && /translate3d\(0(?:px)?,\s*(-?[\d.]+)px/.exec(column.style.transform);
+  // `|| 0` normalises the -0 that negating "0" produces, which `toBe(0)` rejects.
+  return match ? -Number(match[1]) || 0 : 0;
+}
+
+function installDeckLayout(startDate: string): void {
+  const dates = weekDates(startDate);
+  const realRect = Element.prototype.getBoundingClientRect;
+  const realOffsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight')!;
+  const realClientHeight = Object.getOwnPropertyDescriptor(Element.prototype, 'clientHeight')!;
+
+  // A row wrapper is identified by the day editor it wraps.
+  const rowIndex = (el: Element): number => {
+    const id = el.firstElementChild?.getAttribute('data-testid') ?? '';
+    return id.startsWith('day-') ? dates.indexOf(id.slice(4)) : -1;
+  };
+  const isViewport = (el: Element): boolean => el.getAttribute?.('data-testid') === 'week-deck';
+  const isColumn = (el: Element): boolean =>
+    el instanceof HTMLElement && el.style.transform.includes('translate3d');
+
+  Element.prototype.getBoundingClientRect = function (this: Element): DOMRect {
+    if (isViewport(this)) return fakeRect(0, VIEWPORT_H);
+    const i = rowIndex(this);
+    if (i >= 0) return fakeRect(i * ROW_PITCH - deckOffset(), ROW_H);
+    return realRect.call(this);
+  };
+  Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
     configurable: true,
-    get: () => top,
-    set: (v: number) => {
-      top = v;
+    get(this: HTMLElement) {
+      if (rowIndex(this) >= 0) return ROW_H;
+      return isColumn(this) ? CONTENT_H : 0;
     },
   });
-  document.body.appendChild(scroller);
-  render(MealPlanWeekPage, {}, { baseElement: scroller });
-  return {
-    scroller,
-    scrollTo(next: number) {
-      scroller.scrollTop = next;
-      scroller.dispatchEvent(new Event('scroll'));
+  Object.defineProperty(Element.prototype, 'clientHeight', {
+    configurable: true,
+    get(this: Element) {
+      return isViewport(this) ? VIEWPORT_H : 0;
     },
+  });
+
+  restoreLayout = () => {
+    Element.prototype.getBoundingClientRect = realRect;
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', realOffsetHeight);
+    Object.defineProperty(Element.prototype, 'clientHeight', realClientHeight);
+    restoreLayout = null;
   };
+}
+
+let restoreLayout: (() => void) | null = null;
+
+/** Render with a believable layout already in place, so the mount-time anchor measures. */
+function renderLaidOut(startDate: string): void {
+  installDeckLayout(startDate);
+  render(MealPlanWeekPage);
+}
+
+/** Move the deck the way a keyboard user would, and wait for the spring to settle. */
+async function pressDeck(key: string): Promise<void> {
+  const deck = screen.getByTestId('week-deck');
+  deck.focus();
+  await userEvent.keyboard(`{${key}}`);
+  await waitFor(() => expect(deckOffset()).toBeGreaterThan(8));
 }
 
 afterEach(() => {
   cleanup();
+  restoreLayout?.();
   document.body.innerHTML = '';
 });
 
@@ -548,84 +619,85 @@ describe('MealPlanWeekPage', () => {
   });
 });
 
-describe('MealPlanWeekPage — landing on today (#639, Phase 2)', () => {
-  it("opens on today's row when the displayed week contains today", async () => {
-    const anchor = vi.spyOn(Element.prototype, 'scrollIntoView');
-    weekAroundToday(3);
-    renderInScroller();
+describe('MealPlanWeekPage — landing on today (#639, Phases 2 & 4)', () => {
+  it("opens with today's row at the top of the deck", async () => {
+    const start = weekAroundToday(3);
+    renderLaidOut(start);
 
-    await waitFor(() => expect(anchor).toHaveBeenCalled());
-    // Anchored on today, aligned to the top of the scrollport — which is exactly
-    // where the sticky header ends.
-    expect(anchor.mock.calls[0]![0]).toEqual({ block: 'start' });
-    expect(anchor.mock.contexts[0]).toBe(screen.getByTestId(`day-${TODAY}`).parentElement);
-    anchor.mockRestore();
+    // Today is the fourth row, so the deck starts three pitches down — today sits
+    // flush under the header rather than wherever the Friday-start week left it.
+    await waitFor(() => expect(deckOffset()).toBe(3 * ROW_PITCH));
   });
 
   it('lands another week at the top instead, and never shows the pill there', async () => {
-    const anchor = vi.spyOn(Element.prototype, 'scrollIntoView');
     const start = addDays(TODAY, -30);
     mockStart._set(start);
     mockWeek._set(emptyWeek(start));
-    const { scroller, scrollTo } = renderInScroller();
+    renderLaidOut(start);
 
     expect(screen.getByTestId(`day-${start}`)).toBeInTheDocument();
-    expect(anchor).not.toHaveBeenCalled();
-    expect(scroller.scrollTop).toBe(0);
-
-    // Even scrolled, a week without today has no earlier-days pill — only the
-    // header shadow, which is about scroll position, not about today.
-    scrollTo(400);
-    await waitFor(() => expect(screen.getByTestId('scroll-shadow')).toBeInTheDocument());
-    expect(screen.queryByTestId('earlier-days')).not.toBeInTheDocument();
-    anchor.mockRestore();
-  });
-
-  it('reveals the earlier-days pill and the header shadow only once scrolled', async () => {
-    weekAroundToday(3);
-    const { scrollTo } = renderInScroller();
-
-    // Nothing at rest: no cue, no shadow.
+    expect(deckOffset()).toBe(0);
     expect(screen.queryByTestId('earlier-days')).not.toBeInTheDocument();
     expect(screen.queryByTestId('scroll-shadow')).not.toBeInTheDocument();
 
-    scrollTo(240);
+    // Even moved, a week without today has no earlier-days pill — only the header
+    // shadow, which is about position in the list, not about today.
+    await pressDeck('ArrowDown');
+    await waitFor(() => expect(screen.getByTestId('scroll-shadow')).toBeInTheDocument());
+    expect(screen.queryByTestId('earlier-days')).not.toBeInTheDocument();
+  });
+
+  it('names the earlier days once the deck has left the top', async () => {
+    const start = weekAroundToday(3);
+    renderLaidOut(start);
+
+    // Landing mid-list IS the reason the cue exists, so it is there on arrival.
     const pill = await screen.findByTestId('earlier-days');
     expect(pill).toHaveTextContent('3 earlier days');
     expect(screen.getByTestId('scroll-shadow')).toBeInTheDocument();
   });
 
   it('takes you back up to the earlier days when the pill is tapped', async () => {
-    weekAroundToday(2);
-    const { scroller, scrollTo } = renderInScroller();
-    scrollTo(240);
+    const start = weekAroundToday(2);
+    renderLaidOut(start);
 
     await userEvent.click(await screen.findByTestId('earlier-days'));
 
-    expect(scroller.scrollTop).toBe(0);
-    // Back at the top, the cue has done its job and withdraws.
+    // The spring carries it home, and the cue withdraws once it arrives.
+    await waitFor(() => expect(deckOffset()).toBe(0));
     await waitFor(() => expect(screen.queryByTestId('earlier-days')).not.toBeInTheDocument());
     expect(screen.queryByTestId('scroll-shadow')).not.toBeInTheDocument();
   });
 
   it('counts one earlier day in the singular', async () => {
-    weekAroundToday(1);
-    const { scrollTo } = renderInScroller();
-    scrollTo(240);
+    const start = weekAroundToday(1);
+    renderLaidOut(start);
     expect(await screen.findByTestId('earlier-days')).toHaveTextContent('1 earlier day');
   });
 
   it('shows no pill when today is the first day of the week', async () => {
-    weekAroundToday(0);
-    const { scrollTo } = renderInScroller();
-    scrollTo(240);
-    await waitFor(() => expect(screen.getByTestId('scroll-shadow')).toBeInTheDocument());
+    const start = weekAroundToday(0);
+    renderLaidOut(start);
+
+    expect(deckOffset()).toBe(0);
     expect(screen.queryByTestId('earlier-days')).not.toBeInTheDocument();
+    // Moving off the top earns the shadow, but there is still nothing above today.
+    await pressDeck('ArrowDown');
+    expect(screen.queryByTestId('earlier-days')).not.toBeInTheDocument();
+  });
+
+  it('moves day to day under the arrow keys', async () => {
+    const start = weekAroundToday(0);
+    renderLaidOut(start);
+
+    await pressDeck('ArrowDown');
+    // One press, one day — the stops are the day headers, not arbitrary pixels.
+    await waitFor(() => expect(deckOffset()).toBe(ROW_PITCH));
   });
 
   it('renders the days already behind us a step quieter', () => {
     const start = weekAroundToday(3);
-    renderInScroller();
+    renderLaidOut(start);
 
     const quietness = (date: string): string =>
       screen.getByTestId(`day-${date}`).parentElement?.className ?? '';
@@ -642,7 +714,7 @@ describe('MealPlanWeekPage — landing on today (#639, Phase 2)', () => {
     const start = addDays(TODAY, -30);
     mockStart._set(start);
     mockWeek._set(emptyWeek(start));
-    renderInScroller();
+    renderLaidOut(start);
 
     for (const date of weekDates(start)) {
       expect(screen.getByTestId(`day-${date}`).parentElement?.className ?? '').not.toContain(

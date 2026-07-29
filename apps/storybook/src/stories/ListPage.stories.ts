@@ -17,6 +17,7 @@ const meta = {
     isEmpty: false,
     selectionMode: false,
     selectionCount: 0,
+    fill: false,
   },
   argTypes: {
     title: { control: 'text' },
@@ -26,6 +27,7 @@ const meta = {
     isEmpty: { control: 'boolean' },
     selectionMode: { control: 'boolean' },
     selectionCount: { control: 'number' },
+    fill: { control: 'boolean' },
   },
 } satisfies Meta<typeof ListPageDemo>;
 
@@ -49,3 +51,8 @@ export const Error: Story = { args: { isError: true } };
 export const SelectionMode: Story = {
   args: { selectionMode: true, selectionCount: 2 },
 };
+
+// Fill mode (ui-spec-v05 §1): the page takes the height of its container instead of
+// growing with its content, and hands the leftover to `children` — for the rare page
+// that owns its own scrolling surface. The dashed box stands in for AppShell's <main>.
+export const Fill: Story = { args: { fill: true, title: 'Meal plan' } };
