@@ -99,10 +99,15 @@
   // count needs no memory, self-clears when you fix the thing, and is honest on a
   // cold launch. "Just happened" is excluded — it is time-windowed and needs no
   // action, so it must not nag for 24 hours.
+  //
+  // The tab is hidden from non-admins for now — the view needs more design work
+  // before it earns a primary slot for the whole household (see lib/nav.ts).
   const decoratedNavItems = $derived(
-    navItems.map((item) =>
-      item.id === 'mine' && $mineOpenCount > 0 ? { ...item, badge: $mineOpenCount } : item,
-    ),
+    navItems
+      .filter((item) => item.id !== 'mine' || isAdmin)
+      .map((item) =>
+        item.id === 'mine' && $mineOpenCount > 0 ? { ...item, badge: $mineOpenCount } : item,
+      ),
   );
 
   // Canon management now lives behind the operator area (#157), so its
