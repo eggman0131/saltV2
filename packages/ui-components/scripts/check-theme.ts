@@ -104,6 +104,7 @@ const COLOR_MAP: Record<string, string> = {
   'on-tertiary': '--salt-tertiary-foreground',
   'tertiary-container': '--salt-tertiary-container',
   'on-tertiary-container': '--salt-on-tertiary-container',
+  'on-tertiary-fixed-variant': '--salt-on-tertiary-fixed-variant',
   'surface-container': '--salt-muted',
   'on-surface-variant': '--salt-muted-foreground',
   error: '--salt-destructive',

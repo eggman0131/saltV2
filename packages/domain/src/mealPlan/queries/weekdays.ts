@@ -61,6 +61,35 @@ export function dayIndexInWeek(startDate: string, date: string): number {
   return Number.isFinite(diff) && diff >= 0 && diff < 7 ? diff : -1;
 }
 
+// How close to the END of a cycle the planner starts showing the next one
+// (issue #639). Deliberately expressed as a position in the CYCLE rather than as
+// the literal weekday "Wednesday": what makes Wednesday the trigger is that it is
+// the penultimate day of a Friday-start week, and `firstDayOfWeek` is a
+// configurable admin setting. Move the first day of the week and the trigger
+// moves with it — which is the intent, because "the week you need is the one you
+// are not looking at" is a fact about the shop and the plan, both of which sit at
+// the end of the cycle, not about Wednesday.
+export const WEEK_EXTENSION_DAYS = 2;
+
+// Does the week starting `startDate` show the whole of next week beneath it?
+//
+// True only for TODAY's week, and only once today has reached the last
+// `WEEK_EXTENSION_DAYS` days of it. Every other week shows alone — the extension
+// belongs to today's week, not to whatever the user navigated to.
+//
+// Pure by contract: there is no clock in domain, so the caller supplies today.
+export function weekExtendsIntoNext(
+  startDate: string,
+  today: string,
+  firstDayOfWeek: Weekday,
+): boolean {
+  // "Contains today" is asked of the CYCLE, not of the two strings: a startDate
+  // that is not a week start under `firstDayOfWeek` is not today's week at all,
+  // whatever its distance from today happens to be.
+  if (weekStartFor(today, firstDayOfWeek) !== startDate) return false;
+  return dayIndexInWeek(startDate, today) >= 7 - WEEK_EXTENSION_DAYS;
+}
+
 // The seven consecutive "YYYY-MM-DD" date keys of a week starting at `startDate`.
 export function weekDates(startDate: string): string[] {
   const start = toUtcDate(startDate);

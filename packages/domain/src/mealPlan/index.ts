@@ -14,6 +14,8 @@ export {
   weekDates,
   weekdayOf,
   dayIndexInWeek,
+  weekExtendsIntoNext,
+  WEEK_EXTENSION_DAYS,
   WEEKDAY_INDEX,
 } from './queries/weekdays.js';
 

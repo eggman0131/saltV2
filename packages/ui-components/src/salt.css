@@ -128,6 +128,7 @@
   --color-secondary-container-foreground: hsl(var(--salt-on-secondary-container));
   --color-tertiary: hsl(var(--salt-tertiary));
   --color-tertiary-foreground: hsl(var(--salt-tertiary-foreground));
+  --color-tertiary-variant: hsl(var(--salt-on-tertiary-fixed-variant));
   --color-muted: hsl(var(--salt-muted));
   --color-muted-foreground: hsl(var(--salt-muted-foreground));
   --color-accent: hsl(var(--salt-accent));
@@ -285,6 +286,7 @@
   --salt-tertiary-foreground: 0 0% 100%; /* #ffffff */
   --salt-tertiary-container: 10 100% 17%; /* #580f00 */
   --salt-on-tertiary-container: 12 76% 61%; /* #e76e50 */
+  --salt-on-tertiary-fixed-variant: 13 82% 28%; /* #83260e  burnt terracotta */
   --salt-muted: 180 6% 93%; /* #eceeee  surface-container */
   --salt-muted-foreground: 195 6% 27%; /* #42484a  on-surface-variant */
   --salt-accent: 94 47% 82%; /* secondary-container */
@@ -351,6 +353,7 @@
   --salt-tertiary-foreground: 0 0% 100%;
   --salt-tertiary-container: 10 100% 17%;
   --salt-on-tertiary-container: 12 76% 61%;
+  --salt-on-tertiary-fixed-variant: 13 82% 28%;
   --salt-muted: 180 3% 24%;
   --salt-muted-foreground: 195 5% 58%;
   --salt-accent: 98 20% 33%;

@@ -5,6 +5,7 @@ import {
   emptyWeek,
   setDayNote,
   weekDates,
+  weekdayOf,
   type MealPlanWeek,
   type Member,
   type Recipe,
@@ -26,10 +27,15 @@ const {
   mockWeek,
   mockStart,
   mockLoading,
+  mockFirstDay,
+  mockExtensionWeek,
+  mockExtensionStart,
+  mockSetExtensionWeek,
   mockRecipes,
   mockCanonItems,
   mockDefaultListId,
   mockShopDay,
+  mockExtensionShopDay,
   mockBuildRecipeAddPlan,
   mockCommitRecipeAddPlan,
   mockRecipeAddPlanItemCount,
@@ -51,6 +57,11 @@ const {
       },
     };
   }
+  // Start date of the second week the planner is holding, '' for none. The real
+  // service owns this; here `setExtensionWeek` drives it, so the page's own
+  // request for a second week is what makes one appear — exactly the loop the
+  // feature runs on.
+  const extensionStart = makeStore<string>('');
   return {
     mockMembers: makeStore<Member[]>([]),
     mockWeek: makeStore<MealPlanWeek>({
@@ -62,6 +73,12 @@ const {
     }),
     mockStart: makeStore<string>('2026-06-08'),
     mockLoading: makeStore<boolean>(false),
+    // The household's first day of the week — what makes "the last two days of
+    // the cycle" land on a Wednesday in production.
+    mockFirstDay: makeStore<string>('mon'),
+    mockExtensionWeek: makeStore<MealPlanWeek | null>(null),
+    mockExtensionStart: extensionStart,
+    mockSetExtensionWeek: vi.fn((start: string | null) => extensionStart._set(start ?? '')),
     mockRecipes: makeStore<readonly Recipe[]>([
       { id: 'r1', title: 'Spaghetti Bolognese' } as unknown as Recipe,
     ]),
@@ -69,6 +86,8 @@ const {
     mockDefaultListId: makeStore<string | null>('list-1'),
     // The week's shop day (issue #629) — null unless a test marks one.
     mockShopDay: makeStore<{ date: string; slot: 'am' | 'pm' } | null>(null),
+    // Next week's shop day, when the planner is showing next week too (#639).
+    mockExtensionShopDay: makeStore<{ date: string; slot: 'am' | 'pm' } | null>(null),
     // A one-row plan is enough for the sheet to render and confirm.
     mockBuildRecipeAddPlan: vi.fn(() => [
       {
@@ -105,6 +124,7 @@ vi.mock('../src/lib/canonService.js', () => ({ canonItems: mockCanonItems }));
 vi.mock('../src/lib/shoppingListService.svelte.js', () => ({ defaultListId: mockDefaultListId }));
 vi.mock('../src/lib/shoppingDayService.js', () => ({
   weekShopDay: mockShopDay,
+  extensionWeekShopDay: mockExtensionShopDay,
   setShopDay: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   clearShopDay: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
 }));
@@ -112,6 +132,10 @@ vi.mock('../src/lib/mealPlanService.js', () => ({
   currentWeek: mockWeek,
   selectedStartDate: mockStart,
   isLoadingMealPlanWeek: mockLoading,
+  firstDayOfWeek: mockFirstDay,
+  extensionWeek: mockExtensionWeek,
+  extensionStartDate: mockExtensionStart,
+  setExtensionWeek: mockSetExtensionWeek,
   nextWeek: vi.fn(),
   prevWeek: vi.fn(),
   thisWeek: vi.fn(),
@@ -186,12 +210,24 @@ function addDays(date: string, days: number): string {
 }
 
 // Make a week start `offset` days before today, so today is the (offset+1)th row
-// and there are exactly `offset` earlier days above it.
+// and there are exactly `offset` earlier days above it. `firstDayOfWeek` is set to
+// match, so the displayed week really IS today's cycle — which is what decides
+// whether next week is appended (#639, Phase 6).
 function weekAroundToday(offset: number): string {
   const start = addDays(TODAY, -offset);
   mockStart._set(start);
   mockWeek._set(emptyWeek(start));
+  mockFirstDay._set(weekdayOf(start));
   return start;
+}
+
+// The same, plus next week seeded and ready for the page to ask for it. Returns
+// both start dates.
+function weekAroundTodayWithNext(offset: number): { start: string; next: string } {
+  const start = weekAroundToday(offset);
+  const next = addDays(start, 7);
+  mockExtensionWeek._set(emptyWeek(next));
+  return { start, next };
 }
 
 // ─── A fake layout for the deck (#639, Phase 4) ────────────────────────────
@@ -208,7 +244,6 @@ const ROW_H = 200;
 const ROW_GAP = 24;
 const ROW_PITCH = ROW_H + ROW_GAP;
 const VIEWPORT_H = 700;
-const CONTENT_H = 7 * ROW_H + 6 * ROW_GAP;
 
 function fakeRect(top: number, height: number): DOMRect {
   return {
@@ -232,8 +267,13 @@ function deckOffset(): number {
   return match ? -Number(match[1]) || 0 : 0;
 }
 
-function installDeckLayout(startDate: string): void {
-  const dates = weekDates(startDate);
+// `dates` is every row the deck holds, in VISUAL order — one week normally, and
+// this week followed by next week once the planner extends (#639, Phase 6). The
+// column's height follows from the count, so the appended week genuinely gives the
+// deck further to travel, which is the whole reason today's row can reach the top
+// on a Wednesday.
+function installDeckLayout(dates: string[]): void {
+  const contentH = dates.length * ROW_H + (dates.length - 1) * ROW_GAP;
   const realRect = Element.prototype.getBoundingClientRect;
   const realOffsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight')!;
   const realClientHeight = Object.getOwnPropertyDescriptor(Element.prototype, 'clientHeight')!;
@@ -257,7 +297,7 @@ function installDeckLayout(startDate: string): void {
     configurable: true,
     get(this: HTMLElement) {
       if (rowIndex(this) >= 0) return ROW_H;
-      return isColumn(this) ? CONTENT_H : 0;
+      return isColumn(this) ? contentH : 0;
     },
   });
   Object.defineProperty(Element.prototype, 'clientHeight', {
@@ -277,9 +317,16 @@ function installDeckLayout(startDate: string): void {
 
 let restoreLayout: (() => void) | null = null;
 
-/** Render with a believable layout already in place, so the mount-time anchor measures. */
-function renderLaidOut(startDate: string): void {
-  installDeckLayout(startDate);
+/**
+ * Render with a believable layout already in place, so the mount-time anchor
+ * measures. Pass `extensionStart` when the run of days is expected to continue
+ * into next week, so the fake column is as tall as the real one would be.
+ */
+function renderLaidOut(startDate: string, extensionStart?: string): void {
+  installDeckLayout([
+    ...weekDates(startDate),
+    ...(extensionStart ? weekDates(extensionStart) : []),
+  ]);
   render(MealPlanWeekPage);
 }
 
@@ -303,10 +350,14 @@ beforeEach(() => {
   mockStart._set('2026-06-08');
   mockLoading._set(false);
   mockWeek._set(emptyWeek('2026-06-08'));
+  mockFirstDay._set('mon');
+  mockExtensionWeek._set(null);
+  mockExtensionStart._set('');
   mockRecipes._set([RECIPE]);
   mockCanonItems._set([]);
   mockDefaultListId._set('list-1');
   mockShopDay._set(null);
+  mockExtensionShopDay._set(null);
 });
 
 // Attach a recipe through the day's real recipe-picker Combobox: click the input
@@ -721,5 +772,201 @@ describe('MealPlanWeekPage — landing on today (#639, Phases 2 & 4)', () => {
         'opacity-60',
       );
     }
+  });
+});
+
+// ─── Next week appears from Wednesday (#639, Phase 6) ──────────────────────
+// The trigger is the last two days of the CYCLE, so these tests place today at
+// index 5 or 6 of the displayed week rather than naming a weekday — `firstDayOfWeek`
+// is a configurable setting, and Wednesday is only its consequence in production.
+describe('MealPlanWeekPage — next week appears from Wednesday (#639, Phase 6)', () => {
+  it('appends the whole of next week under a dated mark on the penultimate day', async () => {
+    const { start, next } = weekAroundTodayWithNext(5);
+    renderLaidOut(start, next);
+
+    // The page asked the service for exactly next week — not for "some week".
+    await waitFor(() => expect(vi.mocked(mockSetExtensionWeek)).toHaveBeenCalledWith(next));
+
+    // All fourteen days are in one deck: this week's seven and next week's seven.
+    for (const date of [...weekDates(start), ...weekDates(next)]) {
+      expect(screen.getByTestId(`day-${date}`)).toBeInTheDocument();
+    }
+    // …and next week names its own dates, so "next week" is a fact not a direction.
+    const mark = screen.getByTestId('next-week-mark');
+    expect(mark).toHaveTextContent('Next week');
+    expect(mark.textContent).toContain(
+      new Intl.DateTimeFormat('en-GB', {
+        day: 'numeric',
+        month: 'short',
+        timeZone: 'UTC',
+      }).format(new Date(`${next}T00:00:00.000Z`)),
+    );
+  });
+
+  it('appends it on the last day of the cycle too', async () => {
+    const { start, next } = weekAroundTodayWithNext(6);
+    renderLaidOut(start, next);
+    await waitFor(() => expect(screen.getByTestId('next-week-mark')).toBeInTheDocument());
+    expect(screen.getByTestId(`day-${weekDates(next)[6]}`)).toBeInTheDocument();
+  });
+
+  it('shows this week alone before the last two days of the cycle', async () => {
+    const { start, next } = weekAroundTodayWithNext(4);
+    renderLaidOut(start);
+
+    await waitFor(() => expect(vi.mocked(mockSetExtensionWeek)).toHaveBeenCalledWith(null));
+    expect(screen.queryByTestId('next-week-mark')).not.toBeInTheDocument();
+    expect(screen.queryByTestId(`day-${weekDates(next)[0]}`)).not.toBeInTheDocument();
+  });
+
+  it('never extends a week that is not the one today falls in', async () => {
+    // A far-away week, viewed on any day: the extension belongs to today's week.
+    const start = addDays(TODAY, -30);
+    mockStart._set(start);
+    mockWeek._set(emptyWeek(start));
+    mockFirstDay._set(weekdayOf(TODAY));
+    mockExtensionWeek._set(emptyWeek(addDays(start, 7)));
+    renderLaidOut(start);
+
+    await waitFor(() => expect(vi.mocked(mockSetExtensionWeek)).toHaveBeenCalledWith(null));
+    expect(screen.queryByTestId('next-week-mark')).not.toBeInTheDocument();
+    // …and it lands at the top of that week, not mid-list.
+    expect(deckOffset()).toBe(0);
+  });
+
+  it('keeps the header range on the primary week — prev/next still mean one week', async () => {
+    const { start, next } = weekAroundTodayWithNext(5);
+    renderLaidOut(start, next);
+    await waitFor(() => expect(screen.getByTestId('next-week-mark')).toBeInTheDocument());
+
+    const primaryEnd = new Intl.DateTimeFormat('en-GB', {
+      day: 'numeric',
+      month: 'short',
+      timeZone: 'UTC',
+    }).format(new Date(`${weekDates(start)[6]}T00:00:00.000Z`));
+    expect(screen.getByTestId('week-range').textContent).toContain(primaryEnd);
+    // The label stops at this week: next week's last day is not in it.
+    const nextEnd = new Intl.DateTimeFormat('en-GB', {
+      day: 'numeric',
+      month: 'short',
+      timeZone: 'UTC',
+    }).format(new Date(`${weekDates(next)[6]}T00:00:00.000Z`));
+    expect(screen.getByTestId('week-range').textContent).not.toContain(nextEnd);
+  });
+
+  it("shows both weeks' shop rules in the same scroll", async () => {
+    const { start, next } = weekAroundTodayWithNext(5);
+    const thisShop = weekDates(start)[6]!;
+    const nextShop = weekDates(next)[1]!;
+    mockShopDay._set({ date: thisShop, slot: 'pm' });
+    mockExtensionShopDay._set({ date: nextShop, slot: 'am' });
+    renderLaidOut(start, next);
+
+    await waitFor(() => expect(screen.getByTestId('next-week-mark')).toBeInTheDocument());
+    expect(screen.getByTestId(`day-${thisShop}-shop-marker`)).toHaveTextContent('pm');
+    expect(screen.getByTestId(`day-${nextShop}-shop-marker`)).toHaveTextContent('am');
+  });
+
+  it("marks next week's rows for the terracotta rail, and leaves this week's alone", async () => {
+    const { start, next } = weekAroundTodayWithNext(5);
+    renderLaidOut(start, next);
+    await waitFor(() => expect(screen.getByTestId('next-week-mark')).toBeInTheDocument());
+
+    const railOf = (date: string): string =>
+      screen.getByTestId(`day-${date}`).parentElement?.className ?? '';
+    for (const date of weekDates(next)) expect(railOf(date)).toContain('planner-next-week-row');
+    for (const date of weekDates(start)) {
+      expect(railOf(date)).not.toContain('planner-next-week-row');
+    }
+    // The colour is week-scoped on the block, not a prop on MealDayEditor.
+    expect(screen.getByTestId('next-week-block').getAttribute('style')).toContain(
+      '--planner-rail-ink',
+    );
+  });
+
+  it('leaves today its filled teal disc even with next week on screen', async () => {
+    const { start, next } = weekAroundTodayWithNext(5);
+    renderLaidOut(start, next);
+    await waitFor(() => expect(screen.getByTestId('next-week-mark')).toBeInTheDocument());
+
+    // Today outranks which week it is in: the disc is untouched, and today's row
+    // never carries the next-week rail class.
+    expect(screen.getByTestId(`day-${TODAY}-date`).className).toContain('bg-primary');
+    expect(screen.getByTestId(`day-${TODAY}`).parentElement?.className ?? '').not.toContain(
+      'planner-next-week-row',
+    );
+  });
+
+  it('puts today at the top with next week below it — the appended days are what let it', async () => {
+    const { start, next } = weekAroundTodayWithNext(5);
+    renderLaidOut(start, next);
+
+    // Today is the sixth row. With one week (7 rows over a 700px viewport) the
+    // deck could only travel 844px and today would land clamped short of the top;
+    // with next week appended it reaches its own pitch exactly.
+    await waitFor(() => expect(deckOffset()).toBe(5 * ROW_PITCH));
+  });
+
+  it('reaches next week by gesture — one deck, not two lists', async () => {
+    const { start, next } = weekAroundTodayWithNext(5);
+    renderLaidOut(start, next);
+    await waitFor(() => expect(deckOffset()).toBe(5 * ROW_PITCH));
+
+    // Two days on from today is the first day of NEXT week, and the deck stops on
+    // it: next week's rows are stops in the same deck, not a separate scroller.
+    const deck = screen.getByTestId('week-deck');
+    deck.focus();
+    // One press, one day — and the spring must land before the next press, or the
+    // second stop is measured from mid-flight.
+    await userEvent.keyboard('{ArrowDown}');
+    await waitFor(() => expect(deckOffset()).toBe(6 * ROW_PITCH));
+    await userEvent.keyboard('{ArrowDown}');
+    await waitFor(() => expect(deckOffset()).toBe(7 * ROW_PITCH));
+  });
+
+  it('edits a day in next week under that day’s own date key', async () => {
+    const { start, next } = weekAroundTodayWithNext(5);
+    renderLaidOut(start, next);
+    await waitFor(() => expect(screen.getByTestId('next-week-mark')).toBeInTheDocument());
+
+    const nextDay = weekDates(next)[2]!;
+    await expandDay(nextDay);
+    await userEvent.type(screen.getByTestId(`day-${nextDay}-note`), 'Roast');
+
+    // The date key IS the routing (Phase 5): no week argument, and never this
+    // week's date for a day that belongs to next week.
+    await waitFor(() => expect(vi.mocked(setWeekDayNote)).toHaveBeenCalled());
+    expect(vi.mocked(setWeekDayNote).mock.calls[0]![0]).toBe(nextDay);
+  });
+
+  it('surfaces a refused save instead of swallowing it', async () => {
+    // A week the service has not read is one it refuses to overwrite. With two
+    // weeks on screen a silent refusal would look exactly like a saved edit.
+    vi.mocked(setWeekDayGuests).mockResolvedValueOnce({
+      kind: 'err',
+      error: { kind: 'ValidationError', code: 'WEEK_NOT_LOADED', message: 'nope' },
+    } as never);
+    const { start, next } = weekAroundTodayWithNext(5);
+    renderLaidOut(start, next);
+    await waitFor(() => expect(screen.getByTestId('next-week-mark')).toBeInTheDocument());
+
+    const nextDay = weekDates(next)[2]!;
+    await expandDay(nextDay);
+    await userEvent.click(screen.getByTestId(`day-${nextDay}-guests-inc`));
+
+    await waitFor(() =>
+      expect(vi.mocked(addToast)).toHaveBeenCalledWith('Failed to save the day.', 'destructive'),
+    );
+  });
+
+  it('drops next week when the planner is left', async () => {
+    const { start, next } = weekAroundTodayWithNext(5);
+    renderLaidOut(start, next);
+    await waitFor(() => expect(vi.mocked(mockSetExtensionWeek)).toHaveBeenCalledWith(next));
+
+    cleanup();
+    // The service is a module singleton; leaving must not leave a second week
+    // (and a second shop-day range read) subscribed behind us.
+    expect(vi.mocked(mockSetExtensionWeek)).toHaveBeenLastCalledWith(null);
   });
 });

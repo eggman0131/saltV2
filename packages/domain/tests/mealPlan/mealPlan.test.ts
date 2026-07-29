@@ -5,6 +5,8 @@ import {
   weekDates,
   weekdayOf,
   dayIndexInWeek,
+  weekExtendsIntoNext,
+  WEEK_EXTENSION_DAYS,
   emptyDay,
   emptyWeek,
   emptyTemplate,
@@ -113,6 +115,75 @@ describe('dayIndexInWeek', () => {
     // BST ends on 2026-10-25; the week straddling it must still be seven days.
     expect(dayIndexInWeek('2026-10-19', '2026-10-25')).toBe(6);
     expect(dayIndexInWeek('2026-10-19', '2026-10-26')).toBe(-1);
+  });
+});
+
+describe('weekExtendsIntoNext (#639)', () => {
+  // Production runs a Friday-start week, which is what makes "from Wednesday" the
+  // user-facing rule: Wednesday is index 5 of a fri→thu cycle.
+  const FRI = '2026-07-24'; // a Friday
+  const [fri, sat, sun, mon, tue, wed, thu] = weekDates(FRI) as [
+    string,
+    string,
+    string,
+    string,
+    string,
+    string,
+    string,
+  ];
+
+  it('holds for the last two days of the cycle and no earlier', () => {
+    expect(weekExtendsIntoNext(FRI, fri, 'fri')).toBe(false);
+    expect(weekExtendsIntoNext(FRI, sat, 'fri')).toBe(false);
+    expect(weekExtendsIntoNext(FRI, sun, 'fri')).toBe(false);
+    expect(weekExtendsIntoNext(FRI, mon, 'fri')).toBe(false);
+    expect(weekExtendsIntoNext(FRI, tue, 'fri')).toBe(false);
+    // Wednesday and Thursday — the days you plan and shop for the week ahead.
+    expect(weekExtendsIntoNext(FRI, wed, 'fri')).toBe(true);
+    expect(weekExtendsIntoNext(FRI, thu, 'fri')).toBe(true);
+  });
+
+  it('is the last two days of the CYCLE, not the literal weekday Wednesday', () => {
+    // Same calendar Wednesday, a Monday-start household: it is now index 2, four
+    // days from the end, so nothing is appended. Move firstDayOfWeek and the
+    // trigger moves with it.
+    const monStart = weekStartFor(wed, 'mon');
+    expect(weekExtendsIntoNext(monStart, wed, 'mon')).toBe(false);
+    // Its own penultimate day (Saturday) is the trigger instead.
+    expect(weekExtendsIntoNext(monStart, weekDates(monStart)[5]!, 'mon')).toBe(true);
+    expect(weekExtendsIntoNext(monStart, weekDates(monStart)[6]!, 'mon')).toBe(true);
+  });
+
+  it('never extends a week that is not the one today falls in', () => {
+    // The week AFTER today's, viewed on a Wednesday — the extension belongs to
+    // today's week only, so navigating forward shows that week alone.
+    expect(weekExtendsIntoNext('2026-07-31', wed, 'fri')).toBe(false);
+    expect(weekExtendsIntoNext('2026-07-17', wed, 'fri')).toBe(false);
+    expect(weekExtendsIntoNext('2026-01-02', wed, 'fri')).toBe(false);
+  });
+
+  it('rejects a startDate that is not a week start under firstDayOfWeek', () => {
+    // Mid-week anchors are not cycles; "contains today" is asked of the cycle.
+    expect(weekExtendsIntoNext(sun, wed, 'fri')).toBe(false);
+    expect(weekExtendsIntoNext('', wed, 'fri')).toBe(false);
+  });
+
+  it('extends across a month and a year boundary like any other week', () => {
+    // 2026-12-25 is a Friday; its cycle's last two days are 30 and 31 December.
+    expect(weekExtendsIntoNext('2026-12-25', '2026-12-30', 'fri')).toBe(true);
+    expect(weekExtendsIntoNext('2026-12-25', '2026-12-31', 'fri')).toBe(true);
+    expect(weekExtendsIntoNext('2026-12-25', '2026-12-29', 'fri')).toBe(false);
+  });
+
+  it('is unaffected by the DST boundary inside the week (all week maths is UTC)', () => {
+    // BST ends on 2026-10-25, inside this mon→sun cycle.
+    expect(weekExtendsIntoNext('2026-10-19', '2026-10-24', 'mon')).toBe(true);
+    expect(weekExtendsIntoNext('2026-10-19', '2026-10-25', 'mon')).toBe(true);
+    expect(weekExtendsIntoNext('2026-10-19', '2026-10-23', 'mon')).toBe(false);
+  });
+
+  it('WEEK_EXTENSION_DAYS is the two days the rule is stated in', () => {
+    expect(WEEK_EXTENSION_DAYS).toBe(2);
   });
 });
 

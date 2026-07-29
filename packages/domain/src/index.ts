@@ -214,6 +214,8 @@ export {
   weekDates,
   weekdayOf,
   dayIndexInWeek,
+  weekExtendsIntoNext,
+  WEEK_EXTENSION_DAYS,
   emptyDay,
   emptyWeek,
   emptyTemplate,

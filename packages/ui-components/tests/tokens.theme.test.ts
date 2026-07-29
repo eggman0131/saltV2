@@ -152,9 +152,14 @@ describe('token constants', () => {
     it('primaryForeground is a CSS var reference string', () => {
       expect(colors.primaryForeground).toBe('hsl(var(--salt-primary-foreground))');
     });
-    it('exports all 23 semantic color constants', () => {
+    it('exports all 24 semantic color constants', () => {
       const keys = Object.keys(colors);
-      expect(keys.length).toBe(23);
+      expect(keys.length).toBe(24);
+    });
+    it('exposes the burnt-terracotta variant used to mark next week (#639)', () => {
+      // A hue shift at the same weight, not a lighter tint — the planner already
+      // spends "quieter" on days that are behind you.
+      expect(colors.tertiaryVariant).toBe('hsl(var(--salt-on-tertiary-fixed-variant))');
     });
   });
 
