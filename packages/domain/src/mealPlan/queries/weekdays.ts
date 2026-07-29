@@ -90,6 +90,30 @@ export function weekExtendsIntoNext(
   return dayIndexInWeek(startDate, today) >= 7 - WEEK_EXTENSION_DAYS;
 }
 
+// How many weeks the planner offers to fill from the standard template
+// (issue #639): this week, next week, and the week after next — "week
+// commencing", the one week further out worth templating early.
+export const TEMPLATE_WEEK_OFFERS = 3;
+
+// The start dates, in offer order, of the weeks the load-template picker offers.
+//
+// Start dates only: what each one is CALLED ("This week", "Next week", "Week
+// commencing") and how its dates are formatted are presentation, and stay in the
+// page. What is domain is that the three are consecutive cycles anchored on the
+// week that contains today — so they follow `firstDayOfWeek` like every other
+// week in the planner, and the picker can never offer a date that is not the
+// first day of a real document.
+//
+// Pure by contract: there is no clock in domain, so the caller supplies today.
+export function templateWeekStarts(today: string, firstDayOfWeek: Weekday): string[] {
+  const start = toUtcDate(weekStartFor(today, firstDayOfWeek));
+  return Array.from({ length: TEMPLATE_WEEK_OFFERS }, (_unused, i) => {
+    const d = new Date(start);
+    d.setUTCDate(d.getUTCDate() + i * 7);
+    return formatUtc(d);
+  });
+}
+
 // The seven consecutive "YYYY-MM-DD" date keys of a week starting at `startDate`.
 export function weekDates(startDate: string): string[] {
   const start = toUtcDate(startDate);

@@ -2,6 +2,7 @@ import {
   subscribeMealPlanConfig,
   subscribeMealPlanTemplate,
   subscribeMealPlanWeek,
+  loadMealPlanWeek,
   saveMealPlanConfig,
   saveMealPlanTemplate,
   saveMealPlanWeek,
@@ -25,7 +26,7 @@ import {
   type MealPlanWeek,
   type Weekday,
 } from '@salt/domain';
-import { ErrorCode, failure, type DomainError, type ReadResult } from '@salt/shared-types';
+import { ErrorCode, failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
 import { writable, derived, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 
@@ -350,9 +351,28 @@ export function loadTemplateIntoWeek(date: string): Promise<ReadResult<void, Dom
   return persistWeek(week);
 }
 
-/** Load the standard template into the PRIMARY week. */
-export function loadTemplateIntoCurrentWeek(): Promise<ReadResult<void, DomainError>> {
-  return loadTemplateIntoWeek(get(_subscribedStart) || todayIso());
+/**
+ * Does the week containing `date` already hold saved edits (issue #639, phase 7)?
+ *
+ * The load-template picker offers three weeks and warns against each one that
+ * would lose work, so this must answer for weeks the planner is not showing.
+ *
+ * A week we HOLD is answered from the document we hold — that is the freshest
+ * answer there is, since it includes an optimistic write that has not landed
+ * yet. A week we do not hold is READ, one shot. Deliberately not inferred from
+ * the absence of a document in memory: "we never loaded it" and "it has no
+ * edits" are different facts, and confusing them overwrites a real plan without
+ * warning. A read failure stays a `Failure` so the caller can say it could not
+ * check, rather than implying safety (Rule 10).
+ */
+export async function weekHasEdits(date: string): Promise<ReadResult<boolean, DomainError>> {
+  const start = weekStartFor(date, firstDay());
+  const held = get(_weeks)[start];
+  // `updatedAt` is stamped by every persist; the empty-week fallback carries ''.
+  if (held) return success(held.updatedAt !== '');
+  const read = await loadMealPlanWeek(start);
+  if (read.kind !== 'ok') return read;
+  return success(read.value !== null && read.value.updatedAt !== '');
 }
 
 // — Week day/attendee mutators —

@@ -14,6 +14,7 @@ vi.mock('@salt/firebase-sync', () => ({
   subscribeMealPlanConfig: vi.fn(),
   subscribeMealPlanTemplate: vi.fn(),
   subscribeMealPlanWeek: vi.fn(),
+  loadMealPlanWeek: vi.fn().mockResolvedValue({ kind: 'ok', value: null }),
   saveMealPlanConfig: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   saveMealPlanTemplate: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   saveMealPlanWeek: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
@@ -32,8 +33,8 @@ import {
   nextWeek,
   prevWeek,
   setExtensionWeek,
-  loadTemplateIntoCurrentWeek,
   loadTemplateIntoWeek,
+  weekHasEdits,
   setWeekDayNote,
   setWeekDayChefs,
   setWeekDayGuests,
@@ -96,6 +97,7 @@ beforeEach(() => {
   fs.saveMealPlanConfig.mockResolvedValue({ kind: 'ok', value: undefined });
   fs.saveMealPlanTemplate.mockResolvedValue({ kind: 'ok', value: undefined });
   fs.saveMealPlanWeek.mockResolvedValue({ kind: 'ok', value: undefined });
+  fs.loadMealPlanWeek.mockResolvedValue({ kind: 'ok', value: null });
 });
 
 describe('mealPlanService — subscriptions', () => {
@@ -186,12 +188,12 @@ describe('mealPlanService — mutations', () => {
     seedMealPlanConfig(CONFIG);
   });
 
-  it('loadTemplateIntoCurrentWeek instantiates the week from the template and saves', async () => {
+  it('loadTemplateIntoWeek instantiates the displayed week from the template and saves', async () => {
     const template = setDayNote(emptyTemplate(), 'mon', 'roast');
     seedMealPlanTemplate(template);
     goToWeek('2026-06-08'); // Monday start
 
-    await loadTemplateIntoCurrentWeek();
+    await loadTemplateIntoWeek('2026-06-08');
 
     const saved = fs.saveMealPlanWeek.mock.calls[0]![0]!;
     expect(saved.days['2026-06-08']!.note).toBe('roast');
@@ -346,6 +348,55 @@ describe('mealPlanService — two weeks at once', () => {
     const saved = fs.saveMealPlanWeek.mock.calls.at(-1)![0]!;
     expect(saved.startDate).toBe(EXTENSION);
     expect(saved.days['2026-06-17']!.note).toBe('curry');
+  });
+});
+
+// The load-template picker (#639, Phase 7) offers three weeks and warns against
+// the ones that would lose work — so this answer has to be right for weeks the
+// planner is not holding, and honest when it cannot be got at all.
+describe('mealPlanService — weekHasEdits', () => {
+  beforeEach(() => {
+    wireSubscriptions();
+    initMealPlanSync();
+    seedMealPlanConfig(CONFIG);
+  });
+
+  it('answers from the held document, without a read, when we have one', async () => {
+    seedMealPlanWeek(weekWithNote('2026-06-08', 'roast', '2026-06-08T10:00:00.000Z'));
+
+    await expect(weekHasEdits('2026-06-10')).resolves.toEqual({ kind: 'ok', value: true });
+    expect(fs.loadMealPlanWeek).not.toHaveBeenCalled();
+  });
+
+  it('reads a week it is not holding rather than assuming it is empty', async () => {
+    fs.loadMealPlanWeek.mockResolvedValue({
+      kind: 'ok',
+      value: weekWithNote('2026-06-29', 'pie', '2026-06-29T10:00:00.000Z'),
+    });
+
+    await expect(weekHasEdits('2026-06-29')).resolves.toEqual({ kind: 'ok', value: true });
+    expect(fs.loadMealPlanWeek).toHaveBeenCalledWith('2026-06-29');
+  });
+
+  it('reports a week with no document as unedited', async () => {
+    fs.loadMealPlanWeek.mockResolvedValue({ kind: 'ok', value: null });
+    await expect(weekHasEdits('2026-06-29')).resolves.toEqual({ kind: 'ok', value: false });
+  });
+
+  it('surfaces a failed read instead of claiming the week is clear', async () => {
+    fs.loadMealPlanWeek.mockResolvedValue({
+      kind: 'err',
+      error: { kind: 'NetworkError', reason: 'offline' },
+    });
+
+    const result = await weekHasEdits('2026-06-29');
+    expect(result.kind).toBe('err');
+  });
+
+  it('resolves the week the date belongs to, not the date itself', async () => {
+    fs.loadMealPlanWeek.mockResolvedValue({ kind: 'ok', value: null });
+    await weekHasEdits('2026-07-01'); // a Wednesday
+    expect(fs.loadMealPlanWeek).toHaveBeenCalledWith('2026-06-29'); // its Monday
   });
 });
 

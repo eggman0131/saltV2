@@ -8,6 +8,8 @@
     DialogHeader,
     DialogTitle,
     ListPage,
+    RadioGroup,
+    RadioGroupItem,
   } from '@salt/ui-components';
   import { onMount } from 'svelte';
   import { ChevronLeft, ChevronRight, ChevronUp, ShoppingCart } from '@lucide/svelte';
@@ -15,6 +17,7 @@
     weekDates,
     dayIndexInWeek,
     weekExtendsIntoNext,
+    templateWeekStarts,
     addCalendarDays,
     type Attendee,
     type Day,
@@ -41,7 +44,8 @@
     prevWeek,
     thisWeek,
     goToWeek,
-    loadTemplateIntoCurrentWeek,
+    loadTemplateIntoWeek,
+    weekHasEdits,
     setWeekDayNote,
     setWeekDayChefs,
     setWeekDayRecipes,
@@ -258,22 +262,68 @@
     if (result.kind !== 'ok') addToast('Failed to save the shopping day.', 'destructive');
   }
 
-  // ─── Load-template confirmation ───────────────────────────────────────────
-  let showLoadConfirm = $state(false);
+  // ─── Load template: which week? (#639, Phase 7) ───────────────────────────
+  // The button used to fill whichever week happened to be displayed, silently,
+  // behind a generic "are you sure". It now ASKS, offering three weeks anchored
+  // on today — this one, next, and the one after that ("week commencing") — each
+  // with its dates, and each carrying its OWN overwrite warning. One dialog: the
+  // caution belongs against the week you are about to overwrite, not in a second
+  // dialog that can only speak generally.
+  const OFFER_TITLES = ['This week', 'Next week', 'Week commencing'];
+
+  // What we know about a week's contents. `checking` and `unknown` are states we
+  // say out loud rather than resolve optimistically: a week we could not read is
+  // not a week we can promise is empty, and this dialog's only job is to be
+  // specific about what would be lost.
+  type WeekEdits = 'checking' | 'edits' | 'clear' | 'unknown';
+
+  let showLoadPicker = $state(false);
+  let pickedWeek = $state('');
+  let weekEdits = $state<Record<string, WeekEdits>>({});
+  let loadBusy = $state(false);
+  // Discriminates the probes of one dialog opening from the last one's, so a slow
+  // answer to a dismissed question can never paint a warning on a new question.
+  let probeRun = 0;
+
+  const offeredWeeks = $derived(templateWeekStarts(todayDate, $firstDayOfWeek));
 
   function requestLoadTemplate(): void {
-    // Only confirm when the week has already been edited (persisted).
-    if ($currentWeek.updatedAt !== '') {
-      showLoadConfirm = true;
-    } else {
-      void doLoadTemplate();
+    const weeks = offeredWeeks;
+    // Default to the week you are looking at when it is one of the three, so the
+    // old behaviour is still one tap away; otherwise this week.
+    pickedWeek = weeks.includes($selectedStartDate) ? $selectedStartDate : weeks[0]!;
+    weekEdits = Object.fromEntries(weeks.map((w) => [w, 'checking' as WeekEdits]));
+    showLoadPicker = true;
+
+    // Only one of these weeks is subscribed, so the rest are read (the service
+    // answers from a held document when it has one). Errors never throw — they
+    // land as `unknown` and the option says it could not be checked (Rule 10).
+    const run = ++probeRun;
+    for (const week of weeks) {
+      void weekHasEdits(week).then((result) => {
+        if (run !== probeRun) return;
+        weekEdits = {
+          ...weekEdits,
+          [week]: result.kind !== 'ok' ? 'unknown' : result.value ? 'edits' : 'clear',
+        };
+      });
     }
   }
 
   async function doLoadTemplate(): Promise<void> {
-    showLoadConfirm = false;
-    const result = await loadTemplateIntoCurrentWeek();
-    if (result.kind !== 'ok') addToast('Failed to load the template.', 'destructive');
+    const target = pickedWeek;
+    if (!target || loadBusy) return;
+    loadBusy = true;
+    const result = await loadTemplateIntoWeek(target);
+    loadBusy = false;
+    showLoadPicker = false;
+    if (result.kind !== 'ok') {
+      addToast('Failed to load the template.', 'destructive');
+      return;
+    }
+    // Show the week that just changed. Filling a week you are not looking at and
+    // staying put would leave the planner looking as though nothing happened.
+    if (target !== $selectedStartDate) goToWeek(target);
   }
 
   // ─── Day-editor handlers (bound to a concrete date) ───────────────────────
@@ -537,19 +587,59 @@
   {/snippet}
 </ListPage>
 
-<Dialog open={showLoadConfirm} onOpenChange={(v) => (showLoadConfirm = v)}>
+<!-- Which week? (#639, Phase 7). The warning is INSIDE the option it is about —
+     part of that radio's own label, so it is read out with the week it would
+     overwrite — rather than one line of general caution under the group. -->
+<Dialog open={showLoadPicker} onOpenChange={(v) => (showLoadPicker = v)}>
   <DialogContent>
-    <div class="flex flex-col gap-4" data-testid="load-template-confirm">
+    <div class="flex flex-col gap-4" data-testid="load-template-picker">
       <DialogHeader>
-        <DialogTitle>Load the standard template?</DialogTitle>
+        <DialogTitle>Load the standard template</DialogTitle>
         <DialogDescription>
-          This overwrites this week's days back to the standard template. Any edits you've made to
-          this week will be lost.
+          Choose a week to fill. Its days are replaced with the standard template.
         </DialogDescription>
       </DialogHeader>
+      <RadioGroup
+        label="Week to fill"
+        value={pickedWeek}
+        onValueChange={(v: string) => (pickedWeek = v)}
+      >
+        {#each offeredWeeks as start, i (start)}
+          <RadioGroupItem value={start} class="items-start" disabled={loadBusy}>
+            <span class="flex flex-col gap-0.5">
+              <span class="text-sm font-medium text-foreground">{OFFER_TITLES[i]}</span>
+              <span class="text-xs text-muted-foreground">{rangeOf(weekDates(start), false)}</span>
+              {#if weekEdits[start] === 'edits'}
+                <span
+                  class="text-xs text-destructive"
+                  data-testid={`load-template-warning-${start}`}
+                >
+                  Already has edits — they will be lost.
+                </span>
+              {:else if weekEdits[start] === 'unknown'}
+                <span
+                  class="text-xs text-destructive"
+                  data-testid={`load-template-unknown-${start}`}
+                >
+                  Couldn't check this week for edits — it may have some.
+                </span>
+              {:else if weekEdits[start] === 'checking'}
+                <span class="text-xs text-muted-foreground">Checking for edits…</span>
+              {/if}
+            </span>
+          </RadioGroupItem>
+        {/each}
+      </RadioGroup>
       <DialogFooter>
-        <Button variant="outline" onclick={() => (showLoadConfirm = false)}>Cancel</Button>
-        <Button onclick={doLoadTemplate} data-testid="load-template-confirm-btn">
+        <Button variant="outline" onclick={() => (showLoadPicker = false)} disabled={loadBusy}>
+          Cancel
+        </Button>
+        <Button
+          onclick={doLoadTemplate}
+          loading={loadBusy}
+          disabled={loadBusy}
+          data-testid="load-template-confirm-btn"
+        >
           Load template
         </Button>
       </DialogFooter>

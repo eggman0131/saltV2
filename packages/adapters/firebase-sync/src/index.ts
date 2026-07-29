@@ -73,6 +73,7 @@ export {
   subscribeMealPlanConfig,
   subscribeMealPlanTemplate,
   subscribeMealPlanWeek,
+  loadMealPlanWeek,
   saveMealPlanConfig,
   saveMealPlanTemplate,
   saveMealPlanWeek,

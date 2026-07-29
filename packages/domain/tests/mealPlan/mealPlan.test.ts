@@ -7,6 +7,8 @@ import {
   dayIndexInWeek,
   weekExtendsIntoNext,
   WEEK_EXTENSION_DAYS,
+  templateWeekStarts,
+  TEMPLATE_WEEK_OFFERS,
   emptyDay,
   emptyWeek,
   emptyTemplate,
@@ -184,6 +186,57 @@ describe('weekExtendsIntoNext (#639)', () => {
 
   it('WEEK_EXTENSION_DAYS is the two days the rule is stated in', () => {
     expect(WEEK_EXTENSION_DAYS).toBe(2);
+  });
+});
+
+describe('templateWeekStarts (#639)', () => {
+  it('offers this week, next week and the week after next', () => {
+    // 2026-07-29 is a Wednesday inside the fri→thu cycle starting 2026-07-24.
+    expect(templateWeekStarts('2026-07-29', 'fri')).toEqual([
+      '2026-07-24',
+      '2026-07-31',
+      '2026-08-07',
+    ]);
+    expect(TEMPLATE_WEEK_OFFERS).toBe(3);
+  });
+
+  it('anchors on the cycle today falls in, so it follows firstDayOfWeek', () => {
+    // Same day, a Monday-start household: a different first week, and the two
+    // that follow move with it.
+    expect(templateWeekStarts('2026-07-29', 'mon')).toEqual([
+      '2026-07-27',
+      '2026-08-03',
+      '2026-08-10',
+    ]);
+  });
+
+  it('always offers real week starts, seven days apart', () => {
+    for (const first of WEEKDAYS) {
+      const starts = templateWeekStarts('2026-07-29', first);
+      expect(starts).toHaveLength(TEMPLATE_WEEK_OFFERS);
+      for (const start of starts) {
+        expect(weekStartFor(start, first)).toBe(start);
+        expect(weekdayOf(start)).toBe(first);
+      }
+      expect(dayIndexInWeek(starts[0]!, '2026-07-29')).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('crosses month and year boundaries like any other week arithmetic', () => {
+    expect(templateWeekStarts('2026-12-28', 'mon')).toEqual([
+      '2026-12-28',
+      '2027-01-04',
+      '2027-01-11',
+    ]);
+  });
+
+  it('is unaffected by a DST boundary between the offered weeks', () => {
+    // BST ends on 2026-10-25, between the first and second offered week.
+    expect(templateWeekStarts('2026-10-19', 'mon')).toEqual([
+      '2026-10-19',
+      '2026-10-26',
+      '2026-11-02',
+    ]);
   });
 });
 

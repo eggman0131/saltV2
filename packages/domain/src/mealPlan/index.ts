@@ -16,6 +16,8 @@ export {
   dayIndexInWeek,
   weekExtendsIntoNext,
   WEEK_EXTENSION_DAYS,
+  templateWeekStarts,
+  TEMPLATE_WEEK_OFFERS,
   WEEKDAY_INDEX,
 } from './queries/weekdays.js';
 

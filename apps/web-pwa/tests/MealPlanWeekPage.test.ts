@@ -3,7 +3,7 @@ import { render, screen, cleanup, waitFor, within } from '@testing-library/svelt
 import userEvent from '@testing-library/user-event';
 import {
   emptyWeek,
-  setDayNote,
+  templateWeekStarts,
   weekDates,
   weekdayOf,
   type MealPlanWeek,
@@ -139,7 +139,11 @@ vi.mock('../src/lib/mealPlanService.js', () => ({
   nextWeek: vi.fn(),
   prevWeek: vi.fn(),
   thisWeek: vi.fn(),
-  loadTemplateIntoCurrentWeek: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  goToWeek: vi.fn(),
+  loadTemplateIntoWeek: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  // "Does that week already hold edits?", asked once per offered week when the
+  // load-template picker opens. Clear by default; tests that care override it.
+  weekHasEdits: vi.fn().mockResolvedValue({ kind: 'ok', value: false }),
   setWeekDayNote: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   setWeekDayChefs: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   setWeekDayRecipes: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
@@ -154,7 +158,9 @@ import MealPlanWeekPage from '../src/routes/mealplan/MealPlanWeekPage.svelte';
 import {
   nextWeek,
   prevWeek,
-  loadTemplateIntoCurrentWeek,
+  goToWeek,
+  loadTemplateIntoWeek,
+  weekHasEdits,
   setWeekDayNote,
   setWeekDayGuests,
   setWeekDayChefs,
@@ -358,6 +364,10 @@ beforeEach(() => {
   mockDefaultListId._set('list-1');
   mockShopDay._set(null);
   mockExtensionShopDay._set(null);
+  // clearAllMocks keeps implementations, so a per-test override would leak into
+  // the next test; the picker's default answer is re-stated here.
+  vi.mocked(weekHasEdits).mockResolvedValue({ kind: 'ok', value: false });
+  vi.mocked(loadTemplateIntoWeek).mockResolvedValue({ kind: 'ok', value: undefined });
 });
 
 // Attach a recipe through the day's real recipe-picker Combobox: click the input
@@ -432,26 +442,83 @@ describe('MealPlanWeekPage', () => {
     );
   });
 
-  it('loads the template directly for an unedited week (no confirm)', async () => {
-    render(MealPlanWeekPage);
+  // ─── Load template asks which week (#639, Phase 7) ───────────────────────
+  // The offered weeks are anchored on the REAL today (the page reads the clock),
+  // so the expectations are derived the same way rather than hard-coded — the
+  // household's first day is 'mon' in these tests.
+  const offered = () => templateWeekStarts(TODAY, 'mon');
+
+  async function openLoadPicker(): Promise<void> {
     await userEvent.click(screen.getByTestId('load-template'));
-    expect(vi.mocked(loadTemplateIntoCurrentWeek)).toHaveBeenCalled();
+    await waitFor(() => screen.getByTestId('load-template-picker'));
+  }
+
+  it('asks which of three weeks to fill instead of silently taking the displayed one', async () => {
+    render(MealPlanWeekPage);
+    await openLoadPicker();
+    expect(screen.getAllByRole('radio')).toHaveLength(3);
+    // Each option names its week and shows that week's dates.
+    const commencing = screen.getByRole('radio', { name: /Week commencing/ });
+    expect(screen.getByRole('radio', { name: /This week/ })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /Next week/ })).toBeInTheDocument();
+    expect(commencing.textContent).toMatch(/\d/);
+    // Nothing is written until a week is chosen and confirmed.
+    expect(vi.mocked(loadTemplateIntoWeek)).not.toHaveBeenCalled();
   });
 
-  it('confirms before overwriting an already-edited week', async () => {
-    mockWeek._set(
-      setDayNote(
-        { ...emptyWeek('2026-06-08'), updatedAt: '2026-06-08T00:00:00.000Z' },
-        '2026-06-08',
-        'edited',
-      ),
+  it('fills the week you chose, not the week on screen', async () => {
+    const [, , commencingStart] = offered();
+    render(MealPlanWeekPage);
+    await openLoadPicker();
+    await userEvent.click(screen.getByRole('radio', { name: /Week commencing/ }));
+    await userEvent.click(screen.getByTestId('load-template-confirm-btn'));
+    await waitFor(() =>
+      expect(vi.mocked(loadTemplateIntoWeek)).toHaveBeenCalledWith(commencingStart),
+    );
+    // …and takes you to it, so the week that changed is the week you can see.
+    expect(vi.mocked(goToWeek)).toHaveBeenCalledWith(commencingStart);
+  });
+
+  it('warns inline against exactly the offered weeks that already hold edits', async () => {
+    const [thisStart, nextStart] = offered();
+    vi.mocked(weekHasEdits).mockImplementation((date: string) =>
+      Promise.resolve({ kind: 'ok', value: date === nextStart }),
     );
     render(MealPlanWeekPage);
-    await userEvent.click(screen.getByTestId('load-template'));
-    await waitFor(() => screen.getByTestId('load-template-confirm'));
-    expect(vi.mocked(loadTemplateIntoCurrentWeek)).not.toHaveBeenCalled();
+    await openLoadPicker();
+    const warning = await screen.findByTestId(`load-template-warning-${nextStart}`);
+    // The caution is part of that option's own label, not a separate dialog.
+    expect(screen.getByRole('radio', { name: /Next week/ })).toContainElement(warning);
+    expect(screen.queryByTestId(`load-template-warning-${thisStart}`)).not.toBeInTheDocument();
+  });
+
+  it('says a week could not be checked rather than implying it is empty', async () => {
+    const [thisStart] = offered();
+    vi.mocked(weekHasEdits).mockResolvedValue({
+      kind: 'err',
+      error: { kind: 'StorageError', reason: 'corruption' },
+    });
+    render(MealPlanWeekPage);
+    await openLoadPicker();
+    await screen.findByTestId(`load-template-unknown-${thisStart}`);
+    expect(screen.queryByTestId(`load-template-warning-${thisStart}`)).not.toBeInTheDocument();
+  });
+
+  it('toasts when the load itself fails', async () => {
+    vi.mocked(loadTemplateIntoWeek).mockResolvedValue({
+      kind: 'err',
+      error: { kind: 'StorageError', reason: 'unavailable' },
+    });
+    render(MealPlanWeekPage);
+    await openLoadPicker();
     await userEvent.click(screen.getByTestId('load-template-confirm-btn'));
-    expect(vi.mocked(loadTemplateIntoCurrentWeek)).toHaveBeenCalled();
+    await waitFor(() =>
+      expect(vi.mocked(addToast)).toHaveBeenCalledWith(
+        'Failed to load the template.',
+        'destructive',
+      ),
+    );
+    expect(vi.mocked(goToWeek)).not.toHaveBeenCalled();
   });
 
   it('renders an unknown attendee as removable in the detail panel', async () => {
