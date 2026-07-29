@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { Button, Card, Progress } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
-  import { ChefHat, ShoppingCart, Sparkles } from '@lucide/svelte';
+  import { ChefHat, CircleCheck, ShoppingCart, Sparkles } from '@lucide/svelte';
   import type { Recipe } from '@salt/domain';
   import WeatherSummary from '../mealplan/WeatherSummary.svelte';
   import RecipeAddToListSheet from '../recipes/RecipeAddToListSheet.svelte';
@@ -12,7 +12,7 @@
   import { currentMember } from '../../lib/membersService.js';
   import {
     justHappened,
-    liveCook,
+    liveCooks,
     needsYou,
     nowMs,
     tonight,
@@ -123,44 +123,57 @@
     <p class="text-sm text-muted-foreground">What needs you, right now.</p>
   </header>
 
-  <!-- 1. Live — the only thing on the page happening this minute. -->
-  {#if $liveCook}
-    <div data-testid="mine-live">
-      <Card class="border-primary/40 bg-primary/5">
-        <button
-          type="button"
-          class="w-full p-4 text-left"
-          onclick={() => push(`/recipes/${$liveCook?.recipe.id}/cook`)}
-          data-testid="mine-live-resume"
-        >
-          <div class="flex items-center justify-between gap-3">
-            <div class="min-w-0">
-              <p class="text-xs font-medium uppercase tracking-wide text-primary">Cooking now</p>
-              <p class="truncate text-base font-semibold text-foreground">
-                {$liveCook.recipe.title}
-              </p>
-              <p class="text-sm text-muted-foreground" data-testid="mine-live-step">
-                {$liveCook.stepCount > 0
-                  ? `Step ${$liveCook.stepNumber} of ${$liveCook.stepCount}`
-                  : 'Mise en place'}
-              </p>
+  <!-- 1. Live — the things on this page happening this minute. All of them: a
+       two-pan dinner is two open cooks, and hiding one would misreport the
+       kitchen. Newest first. -->
+  {#if $liveCooks.length > 0}
+    <div class="flex flex-col gap-2" data-testid="mine-live">
+      {#if $liveCooks.length > 1}
+        <p class="text-xs font-medium uppercase tracking-wide text-primary">
+          Cooking now · {$liveCooks.length} on the go
+        </p>
+      {/if}
+      {#each $liveCooks as cook (cook.session.id)}
+        <Card class="border-primary/40 bg-primary/5">
+          <button
+            type="button"
+            class="w-full p-4 text-left"
+            onclick={() => push(`/recipes/${cook.recipe.id}/cook`)}
+            data-testid="mine-live-resume"
+          >
+            <div class="flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                {#if $liveCooks.length === 1}
+                  <p class="text-xs font-medium uppercase tracking-wide text-primary">
+                    Cooking now
+                  </p>
+                {/if}
+                <p class="truncate text-base font-semibold text-foreground">
+                  {cook.recipe.title}
+                </p>
+                <p class="text-sm text-muted-foreground" data-testid="mine-live-step">
+                  {cook.stepCount > 0
+                    ? `Step ${cook.stepNumber} of ${cook.stepCount}`
+                    : 'Mise en place'}
+                </p>
+              </div>
+              <span
+                class="shrink-0 rounded bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground"
+              >
+                Resume
+              </span>
             </div>
-            <span
-              class="shrink-0 rounded bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground"
-            >
-              Resume
-            </span>
-          </div>
-          {#if $liveCook.stepCount > 0}
-            <Progress
-              class="mt-3"
-              value={$liveCook.completedCount}
-              max={$liveCook.stepCount}
-              ariaLabel="Cook progress"
-            />
-          {/if}
-        </button>
-      </Card>
+            {#if cook.stepCount > 0}
+              <Progress
+                class="mt-3"
+                value={cook.completedCount}
+                max={cook.stepCount}
+                ariaLabel={`Cook progress: ${cook.recipe.title}`}
+              />
+            {/if}
+          </button>
+        </Card>
+      {/each}
     </div>
   {/if}
 
@@ -277,10 +290,18 @@
   <div class="flex flex-col gap-2" data-testid="mine-needs-you">
     <h2 class="text-sm font-medium text-muted-foreground">Needs you</h2>
     {#if $needsYou.length === 0}
+      <!-- The queue is empty most of the time, so this is the page's usual face:
+           it should read as an achievement, not an absence. -->
       <Card class="p-4">
-        <p class="text-sm text-muted-foreground" data-testid="mine-needs-empty">
-          Nothing needs you.
-        </p>
+        <div class="flex items-center gap-3" data-testid="mine-needs-empty">
+          <CircleCheck class="h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
+          <div>
+            <p class="text-sm font-medium text-foreground">You're all caught up</p>
+            <p class="text-xs text-muted-foreground">
+              Nothing needs you right now — go and enjoy your evening.
+            </p>
+          </div>
+        </div>
       </Card>
     {:else}
       {#each $needsYou as card (card.id)}

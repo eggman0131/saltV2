@@ -8,7 +8,7 @@ import type { ShoppingDayDoc } from '@salt/domain/schemas';
 // screen: fixed order, the always-present cards, the zero state, and the actions.
 
 const {
-  mockLiveCook,
+  mockLiveCooks,
   mockTonight,
   mockYourWeek,
   mockNeedsYou,
@@ -39,7 +39,7 @@ const {
     };
   }
   return {
-    mockLiveCook: makeStore<unknown>(null),
+    mockLiveCooks: makeStore<unknown[]>([]),
     mockTonight: makeStore<unknown>(null),
     mockYourWeek: makeStore<unknown>({ days: [], chefDates: [] }),
     mockNeedsYou: makeStore<unknown[]>([]),
@@ -57,7 +57,7 @@ const {
 vi.mock('svelte-spa-router', () => ({ push: mockPush }));
 vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
 vi.mock('../src/lib/personalViewService.js', () => ({
-  liveCook: mockLiveCook,
+  liveCooks: mockLiveCooks,
   tonight: mockTonight,
   yourWeek: mockYourWeek,
   needsYou: mockNeedsYou,
@@ -123,7 +123,7 @@ function tonightPlan(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockLiveCook._set(null);
+  mockLiveCooks._set([]);
   mockTonight._set(tonightPlan());
   mockYourWeek._set({
     days: [
@@ -146,14 +146,15 @@ afterEach(() => {
 });
 
 describe('MinePage — the always-present cards', () => {
-  it('renders Tonight and Your week and says nothing needs you, on an empty day', () => {
+  it('renders Tonight and Your week, and reads an empty queue as an achievement', () => {
     // The acceptance case: nothing planned, no shop day — the page is still not
-    // blank, and the queue is honestly empty.
+    // blank. The empty queue is the page's usual face, so it congratulates rather
+    // than reporting an absence.
     const { getByTestId } = render(MinePage);
     expect(getByTestId('mine-tonight')).toBeInTheDocument();
     expect(getByTestId('mine-tonight-empty')).toHaveTextContent('Nothing planned yet');
     expect(getByTestId('mine-week')).toBeInTheDocument();
-    expect(getByTestId('mine-needs-empty')).toHaveTextContent('Nothing needs you.');
+    expect(getByTestId('mine-needs-empty')).toHaveTextContent("You're all caught up");
     expect(getByTestId('mine-footer')).toHaveTextContent('No shop day set · 0 items on the list');
   });
 
@@ -179,19 +180,44 @@ describe('MinePage — the always-present cards', () => {
   });
 });
 
+function liveCook(id: string, title: string, overrides: Record<string, unknown> = {}) {
+  return {
+    session: { id: `${id}_uid` },
+    recipe: recipe(id, title),
+    stepNumber: 3,
+    stepCount: 12,
+    completedCount: 2,
+    ...overrides,
+  };
+}
+
 describe('MinePage — Live', () => {
   it('leads with the cook in progress and resumes it in one tap', async () => {
-    mockLiveCook._set({
-      session: { id: 'r1_uid' },
-      recipe: recipe('r1', 'Noodle Bowl'),
-      stepNumber: 3,
-      stepCount: 12,
-      completedCount: 2,
-    });
+    mockLiveCooks._set([liveCook('r1', 'Noodle Bowl')]);
     const { getByTestId } = render(MinePage);
     expect(getByTestId('mine-live-step')).toHaveTextContent('Step 3 of 12');
 
     await fireEvent.click(getByTestId('mine-live-resume'));
+    expect(mockPush).toHaveBeenCalledWith('/recipes/r1/cook');
+  });
+
+  it('shows EVERY open cook, each resumable on its own', async () => {
+    // A two-pan dinner is two open cooks; showing one and hiding the other would
+    // misreport the kitchen.
+    mockLiveCooks._set([
+      liveCook('r2', 'Side Salad', { stepNumber: 1, stepCount: 3, completedCount: 0 }),
+      liveCook('r1', 'Noodle Bowl'),
+    ]);
+    const { getByTestId, getAllByTestId } = render(MinePage);
+    const resumes = getAllByTestId('mine-live-resume');
+    expect(resumes).toHaveLength(2);
+    expect(getByTestId('mine-live')).toHaveTextContent('2 on the go');
+    expect(getAllByTestId('mine-live-step').map((n) => n.textContent?.trim())).toEqual([
+      'Step 1 of 3',
+      'Step 3 of 12',
+    ]);
+
+    await fireEvent.click(resumes[1]!);
     expect(mockPush).toHaveBeenCalledWith('/recipes/r1/cook');
   });
 

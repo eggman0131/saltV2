@@ -60,16 +60,20 @@ export interface LiveCook {
 }
 
 /**
- * The cook I am in the middle of, if any — the only thing on the page that is
- * happening *this minute*, so it comes first and there is at most one.
+ * Every cook I have on the go, newest first — the things on this page that are
+ * happening *this minute*, so they come first.
  *
- * Sessions arrive newest-first; the first one whose recipe still exists wins. A
- * session whose recipe was deleted is skipped rather than shown as a broken card
- * (the cook page cleans those up when it next opens one).
+ * ALL of them, not just the newest: a two-pan dinner is two open sessions, and a
+ * view that showed one and silently hid the other would be lying about the state
+ * of the kitchen. Bounded by the adapter's query limit, not by policy here.
+ *
+ * A session whose recipe was deleted is skipped rather than shown as a broken
+ * card (the cook page cleans those up when it next opens one).
  */
-export const liveCook: Readable<LiveCook | null> = derived(
+export const liveCooks: Readable<readonly LiveCook[]> = derived(
   [myCookSessions, recipes],
   ([$sessions, $recipes]) => {
+    const out: LiveCook[] = [];
     for (const session of $sessions) {
       const recipe = $recipes.find((r) => r.id === session.recipeId);
       if (!recipe) continue;
@@ -79,16 +83,16 @@ export const liveCook: Readable<LiveCook | null> = derived(
       // Count over the RECIPE, not the session's id list: a step edited out of the
       // recipe must not inflate progress (same reasoning as miseProgress).
       const completedCount = recipe.steps.filter((s) => completed.has(s.id)).length;
-      return {
+      out.push({
         session,
         recipe,
         // Every step done (or a recipe with no steps) resumes at the last step.
         stepNumber: index >= 0 ? index + 1 : recipe.steps.length,
         stepCount: recipe.steps.length,
         completedCount,
-      };
+      });
     }
-    return null;
+    return out;
   },
 );
 
@@ -274,7 +278,7 @@ export const justHappened: Readable<readonly Recipe[]> = derived(
 // ─── Nav badge ───────────────────────────────────────────────────────────────
 
 /**
- * What is open right now: the live cook plus the "Needs you" queue.
+ * What is open right now: every live cook plus the "Needs you" queue.
  *
  * A COUNT OF WHAT IS OPEN, not "what changed since you last looked" — the latter
  * needs a per-user `lastSeenAt`, which means either browser storage (Rule 3) or a
@@ -282,6 +286,6 @@ export const justHappened: Readable<readonly Recipe[]> = derived(
  * all, self-clears when the thing is fixed, and survives a cold launch honestly.
  */
 export const mineOpenCount: Readable<number> = derived(
-  [liveCook, needsYou],
-  ([$live, $cards]) => ($live ? 1 : 0) + $cards.length,
+  [liveCooks, needsYou],
+  ([$live, $cards]) => $live.length + $cards.length,
 );

@@ -64,7 +64,7 @@ vi.mock('../src/lib/shoppingDayService.js', () => ({
 vi.mock('../src/lib/weatherService.js', () => ({ weatherForecast: mockForecast }));
 
 import {
-  liveCook,
+  liveCooks,
   mineOpenCount,
   needsYou,
   tonight,
@@ -209,35 +209,43 @@ beforeEach(() => {
   mockForecast._set(null);
 });
 
-describe('liveCook', () => {
-  it('resumes the newest session at the first step not yet done', () => {
+describe('liveCooks', () => {
+  it('resumes a session at the first step not yet done', () => {
     const r = recipe('r1', 'Noodle Bowl', 3, 5);
     mockRecipes._set([r]);
     mockSessions._set([session('r1', ['r1-s0', 'r1-s1'])]);
 
-    expect(get(liveCook)).toMatchObject({
+    expect(get(liveCooks)[0]).toMatchObject({
       stepNumber: 3,
       stepCount: 5,
       completedCount: 2,
     });
-    expect(get(liveCook)?.recipe.title).toBe('Noodle Bowl');
+    expect(get(liveCooks)[0]?.recipe.title).toBe('Noodle Bowl');
+  });
+
+  it('carries EVERY open cook, newest first — a two-pan dinner is two cooks', () => {
+    mockRecipes._set([recipe('r1', 'Noodle Bowl', 3, 5), recipe('r2', 'Side Salad', 2, 2)]);
+    // The adapter query orders newest-first; the projection preserves that order.
+    mockSessions._set([session('r2'), session('r1', ['r1-s0'])]);
+
+    expect(get(liveCooks).map((c) => c.recipe.title)).toEqual(['Side Salad', 'Noodle Bowl']);
   });
 
   it('ignores step ids that are no longer in the recipe', () => {
     // A step edited out from under the cook must not inflate progress.
     mockRecipes._set([recipe('r1', 'Noodle Bowl', 3, 2)]);
     mockSessions._set([session('r1', ['r1-s0', 'gone-1', 'gone-2'])]);
-    expect(get(liveCook)?.completedCount).toBe(1);
+    expect(get(liveCooks)[0]?.completedCount).toBe(1);
   });
 
   it('skips a session whose recipe was deleted rather than showing a broken card', () => {
     mockRecipes._set([recipe('r2', 'Still here', 3, 2)]);
     mockSessions._set([session('deleted'), session('r2')]);
-    expect(get(liveCook)?.recipe.id).toBe('r2');
+    expect(get(liveCooks).map((c) => c.recipe.id)).toEqual(['r2']);
   });
 
-  it('is null with no sessions — another member does not see my cook', () => {
-    expect(get(liveCook)).toBeNull();
+  it('is empty with no sessions — another member does not see my cook', () => {
+    expect(get(liveCooks)).toEqual([]);
   });
 });
 
@@ -351,14 +359,17 @@ describe('needsYou', () => {
 });
 
 describe('mineOpenCount', () => {
-  it('counts the live cook plus the queue, and nothing else', () => {
+  it('counts every live cook plus the queue, and nothing else', () => {
     expect(get(mineOpenCount)).toBe(0);
 
-    mockRecipes._set([recipe('r1', 'Noodle Bowl', 3, 4)]);
+    mockRecipes._set([recipe('r1', 'Noodle Bowl', 3, 4), recipe('r2', 'Side Salad', 2, 2)]);
     mockSessions._set([session('r1')]);
     expect(get(mineOpenCount)).toBe(1);
 
-    mockItems._set([item({ needsCheck: true })]);
+    mockSessions._set([session('r1'), session('r2')]);
     expect(get(mineOpenCount)).toBe(2);
+
+    mockItems._set([item({ needsCheck: true })]);
+    expect(get(mineOpenCount)).toBe(3);
   });
 });
