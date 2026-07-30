@@ -110,6 +110,9 @@ test.describe('meal planner — week happy path', () => {
     await page.getByTestId(`${testid}-note`).fill(meal);
 
     // Mark the signed-in member attending and make them chef; add a guest.
+    // Attending reveals the home time ON THE MEMBER'S OWN LINE (#640, Phase 3) —
+    // no second row, and the personal note stays behind its affordance, so the
+    // chef hat is reachable without scrolling the sheet.
     await page.getByTestId(`${testid}-attend-${email}`).click();
     await expect(page.getByTestId(`${testid}-time-${email}`)).toBeVisible({
       timeout: SYNC_TIMEOUT,

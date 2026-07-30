@@ -167,6 +167,7 @@ import {
   setWeekDayRecipes,
   addWeekAttendee,
   setWeekAttendeeHomeTime,
+  setWeekAttendeeNote,
 } from '../src/lib/mealPlanService.js';
 import { addToast } from '../src/lib/toastStore.js';
 
@@ -659,6 +660,92 @@ describe('MealPlanWeekPage', () => {
     await openDay('2026-06-08');
     expect(screen.getByTestId('day-2026-06-08-time-alice@e.org')).toHaveTextContent('19:10');
     expect(vi.mocked(setWeekAttendeeHomeTime)).not.toHaveBeenCalled();
+  });
+
+  // ─── A member is one line (#640, Phase 3) ────────────────────────────────
+  // Avatar, name, home time and chef hat share ONE row; the free-text personal
+  // note hides behind an affordance on that row and drops below it when opened.
+  const dayWithAliceNote = (note: string) => ({
+    ...emptyWeek('2026-06-08'),
+    days: {
+      ...emptyWeek('2026-06-08').days,
+      '2026-06-08': {
+        note: '',
+        recipeIds: [],
+        chefs: [],
+        attendees: [{ memberId: 'alice@e.org', homeTime: '18:00', note }],
+        guests: 0,
+      },
+    },
+  });
+
+  it('puts a member on one line — avatar, name, time and chef hat together', async () => {
+    mockWeek._set(dayWithAlice('18:00'));
+    render(MealPlanWeekPage);
+    await openDay('2026-06-08');
+    const row = screen.getByTestId('day-2026-06-08-attendee-alice@e.org');
+    const line = row.firstElementChild!;
+    expect(line).toContainElement(screen.getByTestId('day-2026-06-08-attend-alice@e.org'));
+    expect(line).toContainElement(screen.getByTestId('day-2026-06-08-time-alice@e.org'));
+    expect(line).toContainElement(screen.getByTestId('day-2026-06-08-chef-alice@e.org'));
+    expect(line).toContainElement(screen.getByTestId('day-2026-06-08-attnote-toggle-alice@e.org'));
+    // The eating toggle is still the accessible checkbox the roster is driven by.
+    expect(
+      within(screen.getByTestId('day-2026-06-08-attend-alice@e.org')).getByRole('checkbox'),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps an unwritten note behind its affordance until it is asked for', async () => {
+    mockWeek._set(dayWithAliceNote(''));
+    render(MealPlanWeekPage);
+    await openDay('2026-06-08');
+    // Nothing to say about Alice tonight: no field, no wasted line.
+    expect(screen.queryByTestId('day-2026-06-08-attnote-alice@e.org')).not.toBeInTheDocument();
+    const toggle = screen.getByTestId('day-2026-06-08-attnote-toggle-alice@e.org');
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    // One tap reveals it, and typing saves per keystroke (fire-and-forget).
+    await fireEvent.click(toggle);
+    const input = await screen.findByTestId('day-2026-06-08-attnote-alice@e.org');
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await userEvent.type(input, 'late');
+    await waitFor(() =>
+      expect(vi.mocked(setWeekAttendeeNote)).toHaveBeenCalledWith(
+        '2026-06-08',
+        'alice@e.org',
+        expect.any(String),
+      ),
+    );
+
+    // Tapping again puts it away.
+    await fireEvent.click(toggle);
+    expect(screen.queryByTestId('day-2026-06-08-attnote-alice@e.org')).not.toBeInTheDocument();
+  });
+
+  it('shows a note that is already written without a tap, and flags it on the line', async () => {
+    mockWeek._set(dayWithAliceNote('portion for tomorrow'));
+    render(MealPlanWeekPage);
+    await openDay('2026-06-08');
+    expect(screen.getByTestId('day-2026-06-08-attnote-alice@e.org')).toHaveValue(
+      'portion for tomorrow',
+    );
+    // …and the affordance itself carries the note, so a collapsed row still says
+    // that something was written.
+    const toggle = screen.getByTestId('day-2026-06-08-attnote-toggle-alice@e.org');
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(toggle).toHaveAccessibleName('Alice note: portion for tomorrow');
+    await fireEvent.click(toggle);
+    expect(screen.queryByTestId('day-2026-06-08-attnote-alice@e.org')).not.toBeInTheDocument();
+    expect(toggle).toHaveAccessibleName('Alice note: portion for tomorrow');
+  });
+
+  it('offers no note affordance to a member who is not eating', async () => {
+    render(MealPlanWeekPage);
+    await openDay('2026-06-08');
+    expect(
+      screen.queryByTestId('day-2026-06-08-attnote-toggle-alice@e.org'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId('day-2026-06-08-attnote-alice@e.org')).not.toBeInTheDocument();
   });
 
   it('lets a non-attending member be set as chef', async () => {

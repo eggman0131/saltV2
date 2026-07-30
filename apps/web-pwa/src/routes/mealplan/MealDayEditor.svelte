@@ -245,6 +245,20 @@
     onAttendeeHomeTime(memberId, t === '' ? null : t);
   };
 
+  // ─── The personal note lives behind an affordance (#640, Phase 3) ──────────
+  // A member is ONE LINE. The per-person note is the rare exception ("portion for
+  // tomorrow"), so it costs one extra tap to write and nothing to ignore — but a
+  // note that already exists is never hidden: it renders unprompted, and its
+  // affordance is tinted, so nobody has to go looking. Which notes are open is
+  // in-memory only (Rule 3) and per member — a plain record, keyed by memberId,
+  // deliberately not persisted anywhere. An entry is absent until the member's
+  // affordance is tapped; absent means "whatever the note itself implies", so the
+  // toggle is handed the state it is flipping rather than reading the record.
+  let notesOpen = $state<Record<string, boolean>>({});
+  function toggleNote(id: string, shown: boolean): void {
+    notesOpen[id] = !shown;
+  }
+
   const isAttending = (id: string): boolean => day.attendees.some((a) => a.memberId === id);
   const isChef = (id: string): boolean => day.chefs.includes(id);
   const attendeeOf = (id: string) => day.attendees.find((a) => a.memberId === id);
@@ -610,17 +624,27 @@
           {/if}
         </div>
 
-        <!-- 3. At the table: one compact row per member. The avatar toggles EATING
-           (a checkbox — tap to opt in/out); the chef-hat toggles COOKING,
-           independent of eating (a chef need not eat). Home-time + note reveal only
-           for members who are eating. Unknown attendees stay removable; guests are a
-           small +/- stepper at the foot. -->
+        <!-- 3. At the table: A MEMBER IS ONE LINE (#640, Phase 3). Avatar, name,
+           home time and chef hat all sit on a single row; the free-text personal
+           note — the rare thing, wanted on maybe one person on maybe one evening —
+           hides behind a small affordance beside the chef hat. On an ordinary
+           evening with nobody noted the whole table fits without scrolling.
+           The avatar toggles EATING (a checkbox — tap to opt in/out); the chef-hat
+           toggles COOKING, independent of eating (a chef need not eat). Home time
+           and the note affordance show only for members who are eating. Unknown
+           attendees stay removable; guests are a small +/- stepper at the foot. -->
         <div class="flex flex-col gap-2">
           <span class="text-xs font-medium text-muted-foreground">At the table</span>
           {#each members as m (m.id)}
             {@const a = attendeeOf(m.id)}
+            {@const attending = isAttending(m.id)}
+            {@const note = a?.note ?? ''}
+            <!-- Untouched (`undefined`) ⇒ open iff a note is already written, so an
+               existing note is never hidden; once the member's affordance has been
+               tapped that explicit choice wins in both directions. -->
+            {@const noteShown = attending && (notesOpen[m.id] ?? note !== '')}
             <div class="flex flex-col gap-1" data-testid={`${testid}-attendee-${m.id}`}>
-              <div class="flex items-center gap-2.5">
+              <div class="flex items-center gap-2">
                 <!-- Avatar = eating toggle. `role="checkbox"` + aria-checked keep it an
                    accessible toggle and satisfy the roster tests; filled when eating,
                    muted when not. The testid wraps it so `within(attend).getByRole`
@@ -629,10 +653,10 @@
                   <button
                     type="button"
                     role="checkbox"
-                    aria-checked={isAttending(m.id)}
+                    aria-checked={attending}
                     aria-label={m.name}
                     class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold transition-colors
-                    {isAttending(m.id)
+                    {attending
                       ? 'bg-primary text-primary-foreground'
                       : 'bg-muted text-muted-foreground/60 hover:bg-muted/70'}"
                     onclick={() => onAttendeeToggle(m.id)}
@@ -641,38 +665,17 @@
                   </button>
                 </span>
                 <span
-                  class="min-w-0 flex-1 truncate text-sm {isAttending(m.id)
+                  class="min-w-0 flex-1 truncate text-sm {attending
                     ? 'font-medium text-foreground'
                     : 'text-muted-foreground'}"
                 >
                   {m.name}
                 </span>
-                <!-- Chef-hat = cooking toggle, independent of eating. Plain button so both
-                   states are fully Tailwind: selected = filled amber, unselected = clear
-                   neutral. Keeps `bg-amber-500` when on (styling test). -->
-                <button
-                  type="button"
-                  class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border transition-colors
-                  {isChef(m.id)
-                    ? 'border-amber-500 bg-amber-500 text-white hover:bg-amber-600'
-                    : 'border-input bg-background text-muted-foreground hover:bg-muted'}"
-                  onclick={() => onChefToggle(m.id)}
-                  aria-pressed={isChef(m.id)}
-                  aria-label={`${m.name} is cooking`}
-                  data-testid={`${testid}-chef-${m.id}`}
-                >
-                  <ChefHat class="h-4 w-4" strokeWidth={2.5} />
-                </button>
-              </div>
-              {#if isAttending(m.id)}
-                <!-- Home time + note reveal only when this member is eating. Time entry
-                   sits to the left of the note; both share the same height so the row
-                   reads as one control. -->
-                <div class="ml-11 flex items-stretch gap-2">
-                  <!-- Home time as one quarter-hour dropdown. `value` seeds to the
-                     dinner default so a blank field opens at ~18:30 (not at the top
-                     of the window), while the trigger reads "No time" until a real
-                     value is set. -->
+                {#if attending}
+                  <!-- Home time as one quarter-hour dropdown (#640, Phase 2), now on
+                     the member's own line. `value` seeds to the dinner default so a
+                     blank field opens at ~18:30 (not at the top of the window), while
+                     the trigger reads "No time" until a real value is set. -->
                   <Select
                     value={a?.homeTime || DINNER_TIME}
                     portal={DROPDOWN_PORTAL}
@@ -694,15 +697,59 @@
                       {/each}
                     </SelectContent>
                   </Select>
-                  <input
-                    class="h-8 w-full flex-1 rounded-md border bg-background px-2 text-sm"
-                    placeholder="Add a note (e.g. portion for tomorrow)"
-                    value={a?.note ?? ''}
-                    oninput={(e) => onAttendeeNote(m.id, e.currentTarget.value)}
-                    aria-label={`${m.name} note`}
-                    data-testid={`${testid}-attnote-${m.id}`}
-                  />
-                </div>
+                  <!-- The note affordance. Empty note = a quiet outline the eye skips;
+                     a note already written = filled in the primary tint, so "someone
+                     has said something about tonight" reads off the closed row without
+                     opening anything. -->
+                  <button
+                    type="button"
+                    class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border transition-colors
+                    {note !== ''
+                      ? 'border-primary bg-primary/10 text-primary hover:bg-primary/20'
+                      : 'border-input bg-background text-muted-foreground hover:bg-muted'}"
+                    onclick={() => toggleNote(m.id, noteShown)}
+                    aria-expanded={noteShown}
+                    aria-label={note !== ''
+                      ? `${m.name} note: ${note}`
+                      : `Add a note for ${m.name}`}
+                    data-testid={`${testid}-attnote-toggle-${m.id}`}
+                  >
+                    <Icon name="StickyNote" size={16} />
+                  </button>
+                {/if}
+                <!-- Chef-hat = cooking toggle, independent of eating. Plain button so both
+                   states are fully Tailwind: selected = filled amber, unselected = clear
+                   neutral. Keeps `bg-amber-500` when on (styling test). -->
+                <button
+                  type="button"
+                  class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border transition-colors
+                  {isChef(m.id)
+                    ? 'border-amber-500 bg-amber-500 text-white hover:bg-amber-600'
+                    : 'border-input bg-background text-muted-foreground hover:bg-muted'}"
+                  onclick={() => onChefToggle(m.id)}
+                  aria-pressed={isChef(m.id)}
+                  aria-label={`${m.name} is cooking`}
+                  data-testid={`${testid}-chef-${m.id}`}
+                >
+                  <ChefHat class="h-4 w-4" strokeWidth={2.5} />
+                </button>
+              </div>
+              {#if noteShown}
+                <!-- The note itself, on its own line under the name (ml-11 = the avatar
+                   plus the row gap). Still fire-and-forget per keystroke — the parent
+                   owns the write; opening it here pins the row so clearing the text
+                   mid-edit cannot yank the field out from under the caret. -->
+                <input
+                  class="ml-11 h-8 rounded-md border bg-background px-2 text-sm"
+                  placeholder="Add a note (e.g. portion for tomorrow)"
+                  value={note}
+                  oninput={(e) => {
+                    notesOpen[m.id] = true;
+                    onAttendeeNote(m.id, e.currentTarget.value);
+                  }}
+                  aria-label={`${m.name} note`}
+                  data-testid={`${testid}-attnote-${m.id}`}
+                />
               {/if}
             </div>
           {/each}
