@@ -8,6 +8,10 @@
  * lives under its OWN section (and is absent from the default Recipes view), and
  * its page offers nothing that does not apply to it.
  *
+ * Phase 4 adds the second journey: an outing is PICKABLE in the meal planner —
+ * same picker as a recipe, same note auto-fill — and the day it lands on offers
+ * no "Add to shop", because a takeaway has nothing to buy.
+ *
  * No AI stub is needed. Creating an entry fires the `onRecipeWritten` hero-image
  * trigger, but nothing asserted here depends on that trigger's output — the same
  * reason recipe-crud.spec.ts does not stub either.
@@ -97,5 +101,80 @@ test.describe('recipes — when you CBA', () => {
       timeout: SYNC_TIMEOUT,
     });
     await expect(cards.filter({ hasText: OUTING_TITLE })).toHaveCount(0);
+  });
+
+  test('plan a CBA night: it is offered in the picker, fills the day, and asks for no shopping', async ({
+    page,
+  }, testInfo) => {
+    // Single-tab and no AI/trigger wait, but two separate document round-trips
+    // (the recipe create, then the meal-plan week) plus a route change — the same
+    // budget the planner spec runs on, not the 60 s create-only tier (NF-F2).
+    test.setTimeout(90_000);
+    const email = uniqueEmail(testInfo.testId);
+    await gotoAndSignIn(page, email, '/', { admin: true });
+
+    // ── Seed the outing through the editor ───────────────────────────────────
+    // Authored, not bridge-seeded: the point is that the thing a user creates in
+    // Phase 3 is the thing the planner offers in Phase 4.
+    await page.goto('/#/recipes/new/outing');
+    await expect(page.getByRole('heading', { name: 'New — When you CBA' })).toBeVisible();
+    await page.getByLabel('Title').fill(OUTING_TITLE);
+    await page.getByTestId('recipe-save-btn').click();
+    await expect(page).toHaveURL(/#\/recipes\/(?!new)[a-z0-9-]+$/, { timeout: SYNC_TIMEOUT });
+    const outingId = new URL(page.url()).hash.split('/').pop()!;
+    expect(outingId).toBeTruthy();
+
+    // ── Anchor on a real day of the current week ─────────────────────────────
+    await page.goto('/#/mealplan');
+    await expect(page.getByTestId('this-week')).toBeVisible({ timeout: SYNC_TIMEOUT });
+    await page.getByTestId('this-week').click();
+    await expect(page.getByTestId('week-range')).not.toHaveText('', { timeout: SYNC_TIMEOUT });
+
+    // Derived from the store, never guessed: today is the one day guaranteed to
+    // be both in the displayed week and on screen (the deck opens on it, #639).
+    const dayKey = await page.evaluate(() => {
+      const days = window.__e2e!.getMealPlanSnapshot().days;
+      const today = new Date().toLocaleDateString('en-CA');
+      return today in days ? today : Object.keys(days).sort()[0]!;
+    });
+    expect(dayKey).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const testid = `day-${dayKey}`;
+
+    await page.getByTestId(`${testid}-summary`).click();
+    await expect(page.getByTestId(`${testid}-detail`)).toBeVisible({ timeout: SYNC_TIMEOUT });
+
+    // ── The outing is offered, alongside the recipes ─────────────────────────
+    // The picker input is an unlabelled action affordance (NF-B2); the OPTION —
+    // the content under test — is resolved accessibly. Its accessible name is the
+    // title plus its "When you CBA" badge, hence the substring match.
+    await page.getByTestId(`${testid}-recipe-picker`).click();
+    const option = page.getByRole('option', { name: new RegExp(OUTING_TITLE) });
+    await expect(option).toBeVisible({ timeout: SYNC_TIMEOUT });
+    // The badge is what tells it apart from a recipe at a glance.
+    await expect(option).toContainText('When you CBA');
+    await option.click();
+
+    // ── The day takes its title and its id, exactly as a recipe night would ──
+    // Poll the store, not the DOM: the attach is an optimistic whole-doc save and
+    // the assertion is about what landed (NF-A3/NF-D3).
+    await expect
+      .poll(
+        () =>
+          page.evaluate((key) => {
+            const d = window.__e2e!.getMealPlanSnapshot().days[key];
+            return { recipeIds: d?.recipeIds ?? [], note: d?.note ?? '' };
+          }, dayKey),
+        { timeout: SYNC_TIMEOUT },
+      )
+      .toEqual({ recipeIds: [outingId], note: OUTING_TITLE });
+
+    // ── And nothing that does not apply is offered ───────────────────────────
+    // The row is there and removable; only "Add to shop" is absent, because a
+    // takeaway has nothing to buy.
+    await expect(page.getByTestId(`${testid}-recipe-row-${outingId}`)).toBeVisible({
+      timeout: SYNC_TIMEOUT,
+    });
+    await expect(page.getByTestId(`${testid}-recipe-remove-${outingId}`)).toBeVisible();
+    await expect(page.getByTestId(`${testid}-recipe-addshop-${outingId}`)).toHaveCount(0);
   });
 });

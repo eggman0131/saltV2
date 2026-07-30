@@ -348,6 +348,28 @@ describe('needsYou', () => {
     expect(get(needsYou)[0]?.urgent).toBe(false);
   });
 
+  it('says nothing about a planned night that has nothing to buy (#637)', () => {
+    // A "When you CBA" night — a takeaway, a picnic — is a planned entry with no
+    // ingredients, so nothing can ever be added for it and no item can ever carry
+    // a source back to it: an unshopped card for it would sit there for ever
+    // saying "0 to add". The night alongside it, which DOES have ingredients,
+    // still nags. The rule is content-based, never kind-based (`kind` is absent
+    // from these fixtures on purpose) — a half-written recipe with no ingredient
+    // lines yet is the same non-problem, and the domain layer never learns about
+    // recipe kinds to get this right.
+    mockRecipes._set([recipe('o1', 'Takeaway — Indian', 0), recipe('r1', 'Noodle Bowl', 4)]);
+    mockWeek._set(
+      week({
+        [TOMORROW]: day({ recipeIds: ['o1'], chefs: [alex.id] }),
+        [IN_TWO]: day({ recipeIds: ['r1'], chefs: [alex.id] }),
+      }),
+    );
+
+    expect(get(needsYou)).toMatchObject([
+      { kind: 'unshopped-mine', id: 'unshopped:r1', missingCount: 4 },
+    ]);
+  });
+
   it('drops a recipe as soon as anything on the list came from it', () => {
     mockRecipes._set([recipe('r1', 'Noodle Bowl')]);
     mockWeek._set(week({ [IN_TWO]: day({ recipeIds: ['r1'], chefs: [alex.id] }) }));
