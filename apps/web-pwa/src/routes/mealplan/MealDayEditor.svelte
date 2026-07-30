@@ -220,42 +220,29 @@
   // absence identical to today's no-weather behaviour, no placeholder box.
   const icon = $derived(weather ? weatherIcon(weather) : null);
 
-  // Home time is optional and picked as two short dropdowns — [HH]:[MM] — rather
-  // than a native <input type="time">, which renders a different control on every
-  // OS (spinner / wheel / free-text) and makes the minute field an unwanted scroll
-  // through all 60 values. This field answers "when are you home for dinner", so
-  // both lists are deliberately short: the hour spans the dinner window (17–22)
-  // and the minute is quarter-hours only (00/15/30/45) — no scrolling in either,
-  // and both seed to the usual dinner time. Empty value = no home time set (stays
-  // blank until an explicit pick); stored 24h "HH:MM" matches the summary chip. A
-  // legacy value outside the window still displays in the trigger (it just isn't
-  // re-selectable without moving into the window).
-  const HOUR_OPTIONS = Array.from({ length: 6 }, (_, i) => String(17 + i));
-  const MINUTE_OPTIONS = ['00', '15', '30', '45'];
-  const DINNER_HOUR = '18';
-  const DINNER_MINUTE = '30';
+  // Home time is optional and picked as ONE dropdown (#640, Phase 2) rather than a
+  // native <input type="time">, which renders a different control on every OS
+  // (spinner / wheel / free-text) and makes the minutes an unwanted scroll through
+  // all 60 values. This field answers "when are you home for dinner", so the list
+  // is deliberately short and whole: the dinner window on the quarter hour,
+  // 17:00–22:45 (24 entries), plus "No time" to clear. One tap, one choice — the
+  // times on offer are exactly what the old [HH]:[MM] pair could produce. Empty
+  // value = no home time set: the trigger reads "No time" while the Select's own
+  // value seeds to the dinner default so an opened list lands on ~18:30 rather
+  // than at the top. Stored 24h "HH:MM" matches the summary chip. A legacy value
+  // off the quarter hour or outside the window is displayed VERBATIM in the
+  // trigger (never silently reset); it simply isn't in the list, so re-picking
+  // means moving into the window.
+  const DINNER_TIME = '18:30';
+  const TIME_OPTIONS = Array.from(
+    { length: 24 },
+    (_, i) => `${17 + Math.floor(i / 4)}:${String((i % 4) * 15).padStart(2, '0')}`,
+  );
 
-  // Split a stored "HH:MM" (or null) into its parts; '' for each when unset so the
-  // triggers can show a placeholder while the dropdowns still seed to dinner time.
-  const timeParts = (t: string | null | undefined): { hh: string; mm: string } => {
-    const [hh = '', mm = ''] = (t ?? '').split(':');
-    return { hh, mm };
-  };
-  // Commit a change from either dropdown. Picking the hour's "No time" (value '')
-  // clears to null; otherwise the untouched half falls back to the dinner-time
-  // seed so a single pick still yields a whole, sensible time.
-  const commitHour = (memberId: string, h: string): void => {
-    if (h === '') return onAttendeeHomeTime(memberId, null);
-    onAttendeeHomeTime(
-      memberId,
-      `${h}:${timeParts(attendeeOf(memberId)?.homeTime).mm || DINNER_MINUTE}`,
-    );
-  };
-  const commitMinute = (memberId: string, m: string): void => {
-    onAttendeeHomeTime(
-      memberId,
-      `${timeParts(attendeeOf(memberId)?.homeTime).hh || DINNER_HOUR}:${m}`,
-    );
+  // Picking "No time" (value '') clears to null; every other option is already a
+  // whole "HH:MM" and stores verbatim.
+  const commitTime = (memberId: string, t: string): void => {
+    onAttendeeHomeTime(memberId, t === '' ? null : t);
   };
 
   const isAttending = (id: string): boolean => day.attendees.some((a) => a.memberId === id);
@@ -678,58 +665,35 @@
                 </button>
               </div>
               {#if isAttending(m.id)}
-                {@const parts = timeParts(a?.homeTime)}
                 <!-- Home time + note reveal only when this member is eating. Time entry
                    sits to the left of the note; both share the same height so the row
                    reads as one control. -->
                 <div class="ml-11 flex items-stretch gap-2">
-                  <!-- Home time as [HH]:[MM]. Each dropdown's `value` seeds to the
-                     dinner default so a blank field opens at ~18:30 (not midnight),
-                     while the trigger shows a placeholder until a real value is set. -->
-                  <div class="flex shrink-0 items-center gap-0.5">
-                    <Select
-                      value={parts.hh || DINNER_HOUR}
-                      portal={DROPDOWN_PORTAL}
-                      onValueChange={(v) => commitHour(m.id, v)}
+                  <!-- Home time as one quarter-hour dropdown. `value` seeds to the
+                     dinner default so a blank field opens at ~18:30 (not at the top
+                     of the window), while the trigger reads "No time" until a real
+                     value is set. -->
+                  <Select
+                    value={a?.homeTime || DINNER_TIME}
+                    portal={DROPDOWN_PORTAL}
+                    onValueChange={(v) => commitTime(m.id, v)}
+                  >
+                    <SelectTrigger
+                      class="h-8 w-20 shrink-0 justify-center px-1 tabular-nums {a?.homeTime
+                        ? ''
+                        : 'text-muted-foreground'}"
+                      aria-label={`${m.name} home time`}
+                      data-testid={`${testid}-time-${m.id}`}
                     >
-                      <SelectTrigger
-                        class="h-8 w-12 justify-center px-1 tabular-nums {parts.hh
-                          ? ''
-                          : 'text-muted-foreground'}"
-                        aria-label={`${m.name} home time hour`}
-                        data-testid={`${testid}-time-${m.id}`}
-                      >
-                        {parts.hh || 'HH'}
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="">No time</SelectItem>
-                        {#each HOUR_OPTIONS as h (h)}
-                          <SelectItem value={h}>{h}</SelectItem>
-                        {/each}
-                      </SelectContent>
-                    </Select>
-                    <span class="text-sm text-muted-foreground">:</span>
-                    <Select
-                      value={parts.mm || DINNER_MINUTE}
-                      portal={DROPDOWN_PORTAL}
-                      onValueChange={(v) => commitMinute(m.id, v)}
-                    >
-                      <SelectTrigger
-                        class="h-8 w-12 justify-center px-1 tabular-nums {parts.mm
-                          ? ''
-                          : 'text-muted-foreground'}"
-                        aria-label={`${m.name} home time minute`}
-                        data-testid={`${testid}-time-min-${m.id}`}
-                      >
-                        {parts.mm || 'MM'}
-                      </SelectTrigger>
-                      <SelectContent>
-                        {#each MINUTE_OPTIONS as mo (mo)}
-                          <SelectItem value={mo}>{mo}</SelectItem>
-                        {/each}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                      {a?.homeTime || 'No time'}
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">No time</SelectItem>
+                      {#each TIME_OPTIONS as t (t)}
+                        <SelectItem value={t}>{t}</SelectItem>
+                      {/each}
+                    </SelectContent>
+                  </Select>
                   <input
                     class="h-8 w-full flex-1 rounded-md border bg-background px-2 text-sm"
                     placeholder="Add a note (e.g. portion for tomorrow)"
