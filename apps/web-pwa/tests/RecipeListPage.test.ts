@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import type { Recipe } from '@salt/domain';
+import type { Recipe, RecipeKind } from '@salt/domain';
 
 // ─── Mock stores and services ──────────────────────────────────────────────────
 // The list page is a pure view over the recipeService stores; mock them so we can
@@ -57,10 +57,12 @@ function makeRecipe(over: {
   imageHidden?: boolean;
   imageRequestedAt?: number;
   createdAt: string;
+  kind?: RecipeKind;
 }): Recipe {
   return {
     id: over.id,
     schemaVersion: 1,
+    kind: over.kind ?? 'recipe',
     title: over.title,
     description: null,
     ingredients: [
@@ -318,5 +320,183 @@ describe('RecipeListPage', () => {
     seed([]);
     render(RecipeListPage);
     expect(screen.getByText('No recipes yet.')).toBeInTheDocument();
+  });
+});
+
+// ─── Sections (issue #637) ────────────────────────────────────────────────────
+// The chip row is a place you STAND, not a filter you have applied — which is
+// why switching it clears the tag vocabulary but keeps your search, and why
+// "Clear filters" leaves you exactly where you were.
+
+const TAKEAWAY = makeRecipe({
+  id: 'takeaway',
+  kind: 'outing',
+  title: 'Takeaway — Indian',
+  tags: ['friday', 'quick'],
+  totalTimeMinutes: null,
+  servings: null,
+  ingredientCount: 0,
+  image: null,
+  createdAt: '2026-06-01T00:00:00.000Z',
+});
+const PICNIC = makeRecipe({
+  id: 'picnic',
+  kind: 'outing',
+  title: 'Picnic food',
+  tags: ['summer'],
+  totalTimeMinutes: null,
+  servings: null,
+  ingredientCount: 0,
+  image: null,
+  createdAt: '2026-06-02T00:00:00.000Z',
+});
+
+function kindChip(kind: string): HTMLElement {
+  const row = screen.getByTestId('recipe-kind-filters');
+  const chip = within(row)
+    .getAllByTestId('recipe-kind-filter')
+    .find((b) => b.getAttribute('data-kind') === kind);
+  if (!chip) throw new Error(`no chip for kind ${kind}`);
+  return chip;
+}
+
+describe('RecipeListPage — sections', () => {
+  it('shows only recipes by default, with every section still offered', () => {
+    seed([APPLE, TAKEAWAY, PICNIC]);
+    render(RecipeListPage);
+
+    expect(cardTitles()).toEqual(['Apple Pie']);
+    expect(kindChip('recipe')).toHaveAttribute('aria-pressed', 'true');
+    expect(kindChip('outing')).toHaveAttribute('aria-pressed', 'false');
+    // Cocktails are Phase 5 — the kind exists, the section does not yet.
+    expect(screen.getAllByTestId('recipe-kind-filter')).toHaveLength(2);
+  });
+
+  it('switches sections and shows only that section', async () => {
+    const user = userEvent.setup();
+    seed([APPLE, BANANA, TAKEAWAY, PICNIC]);
+    render(RecipeListPage);
+
+    await user.click(kindChip('outing'));
+
+    expect(cardTitles()).toEqual(['Picnic food', 'Takeaway — Indian']);
+    expect(kindChip('outing')).toHaveAttribute('aria-pressed', 'true');
+    expect(kindChip('recipe')).toHaveAttribute('aria-pressed', 'false');
+    expect(normalized(screen.getByTestId('recipe-result-count'))).toContain('2 ideas');
+  });
+
+  it('offers an empty section rather than hiding it', async () => {
+    const user = userEvent.setup();
+    // Recipes exist, outings do not — the section must still be reachable so you
+    // can see for yourself that there is nothing in it.
+    seed([APPLE, BANANA]);
+    render(RecipeListPage);
+
+    await user.click(kindChip('outing'));
+
+    expect(screen.queryByTestId('recipe-list')).toBeNull();
+    expect(screen.getByTestId('recipe-kind-empty')).toBeInTheDocument();
+    // Nothing to clear: this is an empty section, not a failed filter.
+    expect(screen.queryByTestId('recipe-no-matches')).toBeNull();
+    expect(screen.queryByTestId('recipe-clear-filters')).toBeNull();
+    expect(normalized(screen.getByTestId('recipe-result-count'))).toContain('0 ideas');
+  });
+
+  it('re-facets the tag chips to the section you are standing in', async () => {
+    const user = userEvent.setup();
+    seed([APPLE, BANANA, TAKEAWAY, PICNIC]);
+    render(RecipeListPage);
+
+    const filterTags = () =>
+      within(screen.getByTestId('recipe-tag-filters'))
+        .getAllByTestId('recipe-tag-filter')
+        .map((b) => b.getAttribute('data-tag'));
+
+    expect(filterTags()).toEqual(['baking', 'dessert', 'quick']);
+
+    await user.click(kindChip('outing'));
+    // Only the outings' own tags — "baking" and "dessert" are recipe vocabulary.
+    expect(filterTags()).toEqual(['friday', 'quick', 'summer']);
+  });
+
+  it('clears the selected tags on a switch but keeps what you typed', async () => {
+    const user = userEvent.setup();
+    seed([APPLE, BANANA, TAKEAWAY, PICNIC]);
+    render(RecipeListPage);
+
+    // "quick" exists in BOTH sections, so a stale selection would silently
+    // survive the switch unless it is explicitly dropped.
+    await user.click(
+      within(screen.getByTestId('recipe-tag-filters')).getByRole('button', { name: '#quick' }),
+    );
+    expect(cardTitles()).toEqual(['Banana Bread']);
+
+    const search = screen.getByTestId('recipe-search-input');
+    await user.type(search, 'a');
+
+    await user.click(kindChip('outing'));
+
+    // Tag dropped: both outings show, not just the one tagged "quick".
+    expect(
+      within(screen.getByTestId('recipe-tag-filters'))
+        .getAllByTestId('recipe-tag-filter')
+        .every((b) => b.getAttribute('aria-pressed') === 'false'),
+    ).toBe(true);
+    // Search kept: "Picnic food" has no "a", "Takeaway — Indian" does.
+    expect(search).toHaveValue('a');
+    expect(cardTitles()).toEqual(['Takeaway — Indian']);
+  });
+
+  it('does not throw you back to Recipes when you clear the filters', async () => {
+    const user = userEvent.setup();
+    seed([APPLE, TAKEAWAY, PICNIC]);
+    render(RecipeListPage);
+
+    await user.click(kindChip('outing'));
+    await user.type(screen.getByTestId('recipe-search-input'), 'picnic');
+    expect(cardTitles()).toEqual(['Picnic food']);
+
+    await user.click(screen.getByTestId('recipe-clear-filters'));
+
+    expect(kindChip('outing')).toHaveAttribute('aria-pressed', 'true');
+    expect(cardTitles()).toEqual(['Picnic food', 'Takeaway — Indian']);
+  });
+
+  it('reports "filtered" for a search but never merely for a section', async () => {
+    const user = userEvent.setup();
+    seed([APPLE, TAKEAWAY, PICNIC]);
+    render(RecipeListPage);
+
+    await user.click(kindChip('outing'));
+    expect(normalized(screen.getByTestId('recipe-result-count'))).not.toContain('filtered');
+
+    await user.type(screen.getByTestId('recipe-search-input'), 'picnic');
+    expect(normalized(screen.getByTestId('recipe-result-count'))).toContain('filtered');
+  });
+
+  it('drops the ingredient count from cards that cannot have ingredients', async () => {
+    const user = userEvent.setup();
+    seed([APPLE, TAKEAWAY]);
+    render(RecipeListPage);
+
+    // A recipe card carries three meta chips (time, servings, ingredients).
+    expect(screen.getByTestId('recipe-list-item').textContent).toContain('5');
+
+    await user.click(kindChip('outing'));
+    // No "0 ingredients" chip on a takeaway — the concept does not apply.
+    const card = screen.getByTestId('recipe-list-item');
+    expect(card.textContent).not.toContain('0');
+  });
+
+  it('routes the New menu straight to the outing editor', async () => {
+    const user = userEvent.setup();
+    const { push } = await import('svelte-spa-router');
+    seed([APPLE]);
+    render(RecipeListPage);
+
+    await user.click(screen.getByTestId('recipe-new-btn'));
+    await user.click(screen.getByTestId('recipe-new-outing'));
+
+    expect(push).toHaveBeenCalledWith('/recipes/new/outing');
   });
 });

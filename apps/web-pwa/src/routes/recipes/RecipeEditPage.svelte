@@ -23,7 +23,10 @@
     newStep,
     clearIngredientMatch,
     hasLiveCanonMatch,
+    isCookable,
+    takesIngredients,
     type Recipe,
+    type RecipeKind,
     type IngredientGroup,
     type Ingredient,
     type Step,
@@ -36,16 +39,29 @@
     matchIngredient,
     takeImportedDraft,
   } from '../../lib/recipeService.js';
+  import { RecipeKindSchema } from '@salt/domain/schemas';
   import { canonItems } from '../../lib/canonService.js';
   import { addToast } from '../../lib/toastStore.js';
+  import { KIND_COPY, kindOf } from './recipeKind.js';
 
   interface Props {
-    // Present on /recipes/:id/edit; absent (undefined) on /recipes/new.
-    params?: { id?: string };
+    // `id` is present on /recipes/:id/edit; `kind` on /recipes/new/:kind. Both
+    // absent on /recipes/new, which is still the plain new-recipe route.
+    params?: { id?: string; kind?: string };
   }
   let { params }: Props = $props();
 
   const editingId = $derived(params?.id ?? null);
+
+  // The kind arrives as a raw URL segment, so it is user input: validate it and
+  // fall back rather than persisting whatever was typed. /recipes/new/pudding
+  // opens an ordinary new recipe instead of writing a document with a kind
+  // nothing downstream can read. /recipes/new (no segment) takes the same path,
+  // which is why that route's behaviour is untouched.
+  function parseKindParam(raw: string | undefined): RecipeKind {
+    const parsed = RecipeKindSchema.safeParse(raw);
+    return parsed.success ? parsed.data : 'recipe';
+  }
 
   // Live canon ids drive the unmatched indicator: an ingredient whose canon
   // item has since been deleted reads as unmatched (re-matchable), same as the
@@ -75,8 +91,17 @@
       const imported = takeImportedDraft();
       if (imported) return cloneRecipe(imported);
     }
-    return emptyRecipe(crypto.randomUUID(), new Date().toISOString());
+    return emptyRecipe(crypto.randomUUID(), new Date().toISOString(), parseKindParam(params?.kind));
   }
+
+  // Which sections this entry gets. Sourced from the DRAFT, never from the URL:
+  // on /recipes/:id/edit there is no kind segment and the answer must follow the
+  // loaded recipe, and the draft is the one object that is right in both modes.
+  // Both questions go through the domain predicates — nothing here compares
+  // against `'outing'`.
+  const draftKind = $derived(kindOf(draft));
+  const showIngredients = $derived(takesIngredients(draftKind));
+  const showCooking = $derived(isCookable(draftKind));
 
   // Hydrate the draft from the store in edit mode. Depends on `$recipes` so a
   // cold deep-link (store not yet hydrated) populates once the subscription
@@ -408,7 +433,8 @@
       addToast('Failed to save recipe.', 'destructive');
       return;
     }
-    addToast(editingId === null ? 'Recipe created' : 'Recipe saved', 'success');
+    const copy = KIND_COPY[draftKind];
+    addToast(editingId === null ? copy.createdToast : copy.savedToast, 'success');
     push(`/recipes/${toSave.id}`);
   }
 
@@ -416,7 +442,9 @@
     push(editingId === null ? '/recipes' : `/recipes/${editingId}`);
   }
 
-  const pageTitle = $derived(editingId === null ? 'New recipe' : 'Edit recipe');
+  const pageTitle = $derived(
+    editingId === null ? KIND_COPY[draftKind].newTitle : KIND_COPY[draftKind].editTitle,
+  );
 </script>
 
 <DetailPage title={pageTitle} onBack={handleCancel} backLabel="Recipes" class="p-4 sm:p-6">
@@ -455,320 +483,342 @@
       />
     </section>
 
-    <!-- Ingredient groups -->
-    <section class="flex flex-col gap-3">
-      <div class="flex items-center justify-between">
-        <p class="text-sm font-medium">Ingredients</p>
-        <div class="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onclick={() => (showPasteArea = !showPasteArea)}
-            data-testid="recipe-parse-toggle-btn"
-          >
-            {#snippet leading()}<Icon name="Wand" size={16} />{/snippet}
-            Parse from text
-          </Button>
-          <Button variant="outline" size="sm" onclick={addGroup} data-testid="recipe-add-group-btn">
-            {#snippet leading()}<Icon name="Plus" size={16} />{/snippet}
-            Add group
-          </Button>
-        </div>
-      </div>
-
-      {#if showPasteArea}
-        <div
-          class="flex flex-col gap-2 rounded border border-border bg-muted/50 p-3"
-          data-testid="recipe-parse-area"
-        >
-          <p class="text-sm text-muted-foreground">
-            Paste an ingredient list. The AI will detect groups and structure each ingredient while
-            preserving the original text.
-          </p>
-          <TextArea
-            label="Ingredient list"
-            placeholder="1 cup plain flour, sifted&#10;2 eggs&#10;&#10;For the sauce:&#10;2 cloves garlic, crushed"
-            value={pasteText}
-            onValueChange={(v) => (pasteText = v)}
-            rows={6}
-            autoresize
-            data-testid="recipe-parse-text-input"
-          />
+    <!-- Ingredient groups. Absent entirely for a kind that takes no ingredients
+         (a takeaway has none to list) — an empty section you can add rows to
+         would invite filling in something the rest of the app never reads. -->
+    {#if showIngredients}
+      <section class="flex flex-col gap-3">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium">Ingredients</p>
           <div class="flex gap-2">
             <Button
+              variant="outline"
               size="sm"
-              onclick={handleParse}
-              loading={parsing}
-              disabled={pasteText.trim() === '' || parsing}
-              data-testid="recipe-parse-btn"
+              onclick={() => (showPasteArea = !showPasteArea)}
+              data-testid="recipe-parse-toggle-btn"
             >
-              Parse
+              {#snippet leading()}<Icon name="Wand" size={16} />{/snippet}
+              Parse from text
             </Button>
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
-              onclick={() => {
-                showPasteArea = false;
-                pasteText = '';
-              }}
+              onclick={addGroup}
+              data-testid="recipe-add-group-btn"
             >
-              Cancel
+              {#snippet leading()}<Icon name="Plus" size={16} />{/snippet}
+              Add group
             </Button>
           </div>
         </div>
-      {/if}
 
-      {#if draft.ingredients.length === 0}
-        <p class="text-sm text-muted-foreground">
-          No ingredient groups yet. Add a group to start entering ingredients.
-        </p>
-      {/if}
-
-      {#each draft.ingredients as group, gIdx (group.id)}
-        <div
-          class="flex flex-col gap-3 rounded border border-border bg-card p-3"
-          data-testid="recipe-group"
-          data-group-id={group.id}
-        >
-          <div class="flex items-end gap-2">
-            <TextField
-              label="Group name"
-              placeholder="e.g. For the sauce (leave blank for the main list)"
-              value={group.name ?? ''}
-              onValueChange={(v) => setGroupName(group.id, v)}
-              class="flex-1"
-              data-testid="recipe-group-name-input"
+        {#if showPasteArea}
+          <div
+            class="flex flex-col gap-2 rounded border border-border bg-muted/50 p-3"
+            data-testid="recipe-parse-area"
+          >
+            <p class="text-sm text-muted-foreground">
+              Paste an ingredient list. The AI will detect groups and structure each ingredient
+              while preserving the original text.
+            </p>
+            <TextArea
+              label="Ingredient list"
+              placeholder="1 cup plain flour, sifted&#10;2 eggs&#10;&#10;For the sauce:&#10;2 cloves garlic, crushed"
+              value={pasteText}
+              onValueChange={(v) => (pasteText = v)}
+              rows={6}
+              autoresize
+              data-testid="recipe-parse-text-input"
             />
-            <Button
-              variant="ghost"
-              size="sm"
-              onclick={() => moveGroup(gIdx, -1)}
-              disabled={gIdx === 0}
-              aria-label="Move group up"
-            >
-              <Icon name="ChevronUp" size={16} />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onclick={() => moveGroup(gIdx, 1)}
-              disabled={gIdx === draft.ingredients.length - 1}
-              aria-label="Move group down"
-            >
-              <Icon name="ChevronDown" size={16} />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onclick={() => removeGroup(group.id)}
-              aria-label="Remove group"
-              data-testid="recipe-remove-group-btn"
-            >
-              <Icon name="Trash2" size={16} />
-            </Button>
-          </div>
-
-          {#each group.items as ingredient (ingredient.id)}
-            <div
-              class="flex items-center gap-2"
-              data-testid="recipe-ingredient"
-              data-ingredient-id={ingredient.id}
-            >
-              <TextField
-                label="Ingredient"
-                placeholder="e.g. 1 ½ cups plain flour, sifted"
-                value={ingredient.rawText}
-                onValueChange={(v) => setIngredientRawText(group, ingredient.id, v)}
-                class="flex-1"
-                data-testid="recipe-ingredient-input"
-              />
-              {#if ingredient.rawText.trim() !== '' && !hasLiveCanonMatch(ingredient, liveCanonIds)}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onclick={() => handleMatchIngredient(group, ingredient)}
-                  loading={matchingIds[ingredient.id] ?? false}
-                  disabled={matchingIds[ingredient.id] ?? false}
-                  aria-label="Not matched — tap to match this ingredient"
-                  title="Not matched — tap to match this ingredient"
-                  class="shrink-0 text-destructive"
-                  data-testid="recipe-ingredient-match-btn"
-                >
-                  <Icon name="CircleX" size={16} />
-                </Button>
-              {/if}
-              <Switch
-                label="Optional"
-                checked={ingredient.isOptional}
-                onCheckedChange={(c) => setIngredientOptional(group, ingredient.id, c)}
-              />
+            <div class="flex gap-2">
+              <Button
+                size="sm"
+                onclick={handleParse}
+                loading={parsing}
+                disabled={pasteText.trim() === '' || parsing}
+                data-testid="recipe-parse-btn"
+              >
+                Parse
+              </Button>
               <Button
                 variant="ghost"
                 size="sm"
-                onclick={() => removeIngredient(group, ingredient.id)}
-                aria-label="Remove ingredient"
+                onclick={() => {
+                  showPasteArea = false;
+                  pasteText = '';
+                }}
               >
-                <Icon name="X" size={16} />
+                Cancel
               </Button>
             </div>
-          {/each}
+          </div>
+        {/if}
 
-          <Button
-            variant="ghost"
-            size="sm"
-            onclick={() => addIngredient(group)}
-            class="self-start"
-            data-testid="recipe-add-ingredient-btn"
+        {#if draft.ingredients.length === 0}
+          <p class="text-sm text-muted-foreground">
+            No ingredient groups yet. Add a group to start entering ingredients.
+          </p>
+        {/if}
+
+        {#each draft.ingredients as group, gIdx (group.id)}
+          <div
+            class="flex flex-col gap-3 rounded border border-border bg-card p-3"
+            data-testid="recipe-group"
+            data-group-id={group.id}
           >
-            {#snippet leading()}<Icon name="Plus" size={16} />{/snippet}
-            Add ingredient
-          </Button>
-        </div>
-      {/each}
-    </section>
-
-    <!-- Steps -->
-    <section class="flex flex-col gap-3">
-      <div class="flex items-center justify-between">
-        <p class="text-sm font-medium">Method</p>
-        <Button variant="outline" size="sm" onclick={addStepRow} data-testid="recipe-add-step-btn">
-          {#snippet leading()}<Icon name="Plus" size={16} />{/snippet}
-          Add step
-        </Button>
-      </div>
-
-      {#if draft.steps.length === 0}
-        <p class="text-sm text-muted-foreground">No steps yet.</p>
-      {/if}
-
-      {#each draft.steps as step, sIdx (step.id)}
-        <div
-          class="flex flex-col gap-2 rounded border border-border bg-card p-3"
-          data-testid="recipe-step"
-          data-step-id={step.id}
-        >
-          <div class="flex items-start gap-2">
-            <span class="mt-2 text-sm font-medium text-muted-foreground">{sIdx + 1}.</span>
-            <TextArea
-              label="Step"
-              placeholder="Describe this step"
-              value={step.text}
-              onValueChange={(v) => setStepText(step.id, v)}
-              rows={2}
-              autoresize
-              class="flex-1"
-              data-testid="recipe-step-input"
-            />
-            <div class="flex flex-col">
+            <div class="flex items-end gap-2">
+              <TextField
+                label="Group name"
+                placeholder="e.g. For the sauce (leave blank for the main list)"
+                value={group.name ?? ''}
+                onValueChange={(v) => setGroupName(group.id, v)}
+                class="flex-1"
+                data-testid="recipe-group-name-input"
+              />
               <Button
                 variant="ghost"
                 size="sm"
-                onclick={() => moveStep(sIdx, -1)}
-                disabled={sIdx === 0}
-                aria-label="Move step up"
+                onclick={() => moveGroup(gIdx, -1)}
+                disabled={gIdx === 0}
+                aria-label="Move group up"
               >
                 <Icon name="ChevronUp" size={16} />
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
-                onclick={() => moveStep(sIdx, 1)}
-                disabled={sIdx === draft.steps.length - 1}
-                aria-label="Move step down"
+                onclick={() => moveGroup(gIdx, 1)}
+                disabled={gIdx === draft.ingredients.length - 1}
+                aria-label="Move group down"
               >
                 <Icon name="ChevronDown" size={16} />
               </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onclick={() => removeGroup(group.id)}
+                aria-label="Remove group"
+                data-testid="recipe-remove-group-btn"
+              >
+                <Icon name="Trash2" size={16} />
+              </Button>
             </div>
+
+            {#each group.items as ingredient (ingredient.id)}
+              <div
+                class="flex items-center gap-2"
+                data-testid="recipe-ingredient"
+                data-ingredient-id={ingredient.id}
+              >
+                <TextField
+                  label="Ingredient"
+                  placeholder="e.g. 1 ½ cups plain flour, sifted"
+                  value={ingredient.rawText}
+                  onValueChange={(v) => setIngredientRawText(group, ingredient.id, v)}
+                  class="flex-1"
+                  data-testid="recipe-ingredient-input"
+                />
+                {#if ingredient.rawText.trim() !== '' && !hasLiveCanonMatch(ingredient, liveCanonIds)}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onclick={() => handleMatchIngredient(group, ingredient)}
+                    loading={matchingIds[ingredient.id] ?? false}
+                    disabled={matchingIds[ingredient.id] ?? false}
+                    aria-label="Not matched — tap to match this ingredient"
+                    title="Not matched — tap to match this ingredient"
+                    class="shrink-0 text-destructive"
+                    data-testid="recipe-ingredient-match-btn"
+                  >
+                    <Icon name="CircleX" size={16} />
+                  </Button>
+                {/if}
+                <Switch
+                  label="Optional"
+                  checked={ingredient.isOptional}
+                  onCheckedChange={(c) => setIngredientOptional(group, ingredient.id, c)}
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onclick={() => removeIngredient(group, ingredient.id)}
+                  aria-label="Remove ingredient"
+                >
+                  <Icon name="X" size={16} />
+                </Button>
+              </div>
+            {/each}
+
             <Button
               variant="ghost"
               size="sm"
-              onclick={() => removeStep(step.id)}
-              aria-label="Remove step"
+              onclick={() => addIngredient(group)}
+              class="self-start"
+              data-testid="recipe-add-ingredient-btn"
             >
-              <Icon name="Trash2" size={16} />
+              {#snippet leading()}<Icon name="Plus" size={16} />{/snippet}
+              Add ingredient
             </Button>
           </div>
+        {/each}
+      </section>
+    {/if}
 
-          <div class="flex items-center gap-3 pl-6">
-            <Switch
-              label="Timer"
-              checked={step.timer !== null}
-              onCheckedChange={(c) => toggleStepTimer(step.id, c)}
-            />
-            {#if step.timer}
-              <TextField
-                label="Minutes"
-                inputmode="numeric"
-                value={String(step.timer.durationMinutes)}
-                onValueChange={(v) => setStepTimerMinutes(step.id, v)}
-                class="w-28"
-                data-testid="recipe-step-timer-minutes"
-              />
-              <TextField
-                label="Timer label"
-                placeholder="e.g. until golden"
-                value={step.timer.description ?? ''}
-                onValueChange={(v) => setStepTimerDescription(step.id, v)}
-                class="flex-1"
-                data-testid="recipe-step-timer-description"
-              />
-            {/if}
-          </div>
-
-          <div class="pl-6">
-            <TextArea
-              label="Note (optional)"
-              placeholder="Any note for this step"
-              value={step.note ?? ''}
-              onValueChange={(v) => setStepNote(step.id, v)}
-              rows={2}
-              autoresize
-              data-testid="recipe-step-note-input"
-            />
-          </div>
+    <!-- Steps. Gated on the same capability as the Cook button and the timings:
+         an outing is eaten, not cooked, so there is no method to write. -->
+    {#if showCooking}
+      <section class="flex flex-col gap-3">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium">Method</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onclick={addStepRow}
+            data-testid="recipe-add-step-btn"
+          >
+            {#snippet leading()}<Icon name="Plus" size={16} />{/snippet}
+            Add step
+          </Button>
         </div>
-      {/each}
-    </section>
+
+        {#if draft.steps.length === 0}
+          <p class="text-sm text-muted-foreground">No steps yet.</p>
+        {/if}
+
+        {#each draft.steps as step, sIdx (step.id)}
+          <div
+            class="flex flex-col gap-2 rounded border border-border bg-card p-3"
+            data-testid="recipe-step"
+            data-step-id={step.id}
+          >
+            <div class="flex items-start gap-2">
+              <span class="mt-2 text-sm font-medium text-muted-foreground">{sIdx + 1}.</span>
+              <TextArea
+                label="Step"
+                placeholder="Describe this step"
+                value={step.text}
+                onValueChange={(v) => setStepText(step.id, v)}
+                rows={2}
+                autoresize
+                class="flex-1"
+                data-testid="recipe-step-input"
+              />
+              <div class="flex flex-col">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onclick={() => moveStep(sIdx, -1)}
+                  disabled={sIdx === 0}
+                  aria-label="Move step up"
+                >
+                  <Icon name="ChevronUp" size={16} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onclick={() => moveStep(sIdx, 1)}
+                  disabled={sIdx === draft.steps.length - 1}
+                  aria-label="Move step down"
+                >
+                  <Icon name="ChevronDown" size={16} />
+                </Button>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onclick={() => removeStep(step.id)}
+                aria-label="Remove step"
+              >
+                <Icon name="Trash2" size={16} />
+              </Button>
+            </div>
+
+            <div class="flex items-center gap-3 pl-6">
+              <Switch
+                label="Timer"
+                checked={step.timer !== null}
+                onCheckedChange={(c) => toggleStepTimer(step.id, c)}
+              />
+              {#if step.timer}
+                <TextField
+                  label="Minutes"
+                  inputmode="numeric"
+                  value={String(step.timer.durationMinutes)}
+                  onValueChange={(v) => setStepTimerMinutes(step.id, v)}
+                  class="w-28"
+                  data-testid="recipe-step-timer-minutes"
+                />
+                <TextField
+                  label="Timer label"
+                  placeholder="e.g. until golden"
+                  value={step.timer.description ?? ''}
+                  onValueChange={(v) => setStepTimerDescription(step.id, v)}
+                  class="flex-1"
+                  data-testid="recipe-step-timer-description"
+                />
+              {/if}
+            </div>
+
+            <div class="pl-6">
+              <TextArea
+                label="Note (optional)"
+                placeholder="Any note for this step"
+                value={step.note ?? ''}
+                onValueChange={(v) => setStepNote(step.id, v)}
+                rows={2}
+                autoresize
+                data-testid="recipe-step-note-input"
+              />
+            </div>
+          </div>
+        {/each}
+      </section>
+    {/if}
 
     <!-- Metadata -->
     <section class="flex flex-col gap-3">
       <p class="text-sm font-medium">Details</p>
-      <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <TextField
-          label="Servings"
-          inputmode="numeric"
-          value={draft.metadata.servings === null ? '' : String(draft.metadata.servings)}
-          onValueChange={(v) => setMetadata({ servings: parseNumberOrNull(v) })}
-          data-testid="recipe-servings-input"
-        />
-        <TextField
-          label="Prep (min)"
-          inputmode="numeric"
-          value={draft.metadata.prepTimeMinutes === null
-            ? ''
-            : String(draft.metadata.prepTimeMinutes)}
-          onValueChange={(v) => setMetadata({ prepTimeMinutes: parseNumberOrNull(v) })}
-          data-testid="recipe-prep-input"
-        />
-        <TextField
-          label="Cook (min)"
-          inputmode="numeric"
-          value={draft.metadata.cookTimeMinutes === null
-            ? ''
-            : String(draft.metadata.cookTimeMinutes)}
-          onValueChange={(v) => setMetadata({ cookTimeMinutes: parseNumberOrNull(v) })}
-          data-testid="recipe-cook-input"
-        />
-        <TextField
-          label="Total (min)"
-          inputmode="numeric"
-          value={draft.metadata.totalTimeMinutes === null
-            ? ''
-            : String(draft.metadata.totalTimeMinutes)}
-          onValueChange={(v) => setMetadata({ totalTimeMinutes: parseNumberOrNull(v) })}
-          data-testid="recipe-total-input"
-        />
-      </div>
+      <!-- Servings and timings only where they mean something. Source URL and
+           "makes…" below stay: a takeaway can still have a menu page it came
+           from. -->
+      {#if showCooking}
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <TextField
+            label="Servings"
+            inputmode="numeric"
+            value={draft.metadata.servings === null ? '' : String(draft.metadata.servings)}
+            onValueChange={(v) => setMetadata({ servings: parseNumberOrNull(v) })}
+            data-testid="recipe-servings-input"
+          />
+          <TextField
+            label="Prep (min)"
+            inputmode="numeric"
+            value={draft.metadata.prepTimeMinutes === null
+              ? ''
+              : String(draft.metadata.prepTimeMinutes)}
+            onValueChange={(v) => setMetadata({ prepTimeMinutes: parseNumberOrNull(v) })}
+            data-testid="recipe-prep-input"
+          />
+          <TextField
+            label="Cook (min)"
+            inputmode="numeric"
+            value={draft.metadata.cookTimeMinutes === null
+              ? ''
+              : String(draft.metadata.cookTimeMinutes)}
+            onValueChange={(v) => setMetadata({ cookTimeMinutes: parseNumberOrNull(v) })}
+            data-testid="recipe-cook-input"
+          />
+          <TextField
+            label="Total (min)"
+            inputmode="numeric"
+            value={draft.metadata.totalTimeMinutes === null
+              ? ''
+              : String(draft.metadata.totalTimeMinutes)}
+            onValueChange={(v) => setMetadata({ totalTimeMinutes: parseNumberOrNull(v) })}
+            data-testid="recipe-total-input"
+          />
+        </div>
+      {/if}
       <!-- Source -->
       <TextField
         label="Source URL"

@@ -46,10 +46,13 @@
     appendCacheBuster,
     diffRecipe,
     hasLiveCanonMatch,
+    isCookable,
+    takesIngredients,
     type IngredientGroup,
     type Ingredient,
     type Recipe,
   } from '@salt/domain';
+  import { kindOf } from './recipeKind.js';
   import type { ChatSessionDoc, RecipeDiff } from '@salt/domain/schemas';
   import type { DomainError, ReadResult } from '@salt/shared-types';
   import { defaultListId } from '../../lib/shoppingListService.svelte.js';
@@ -111,8 +114,19 @@ Finish with a short note on what you changed and why, so I can read the gist her
       : null,
   );
 
+  // What this entry can do (issue #637). Everything that gates a section or an
+  // action on this page reads one of these two — never the kind itself. Both are
+  // false while the recipe is still loading, which is the conservative side: a
+  // Cook button that appears and then vanishes is worse than one that arrives
+  // with the content it belongs to.
+  const showIngredients = $derived(recipe !== null && takesIngredients(kindOf(recipe)));
+  const showCooking = $derived(recipe !== null && isCookable(kindOf(recipe)));
+
   function timeParts(): string[] {
     if (!recipe) return [];
+    // Serves / Prep / Cook / Total are cooking facts. An outing has none of
+    // them, and gating here covers both the chips and the card that wraps them.
+    if (!isCookable(kindOf(recipe))) return [];
     const m = recipe.metadata;
     const parts: string[] = [];
     if (m.servings !== null) parts.push(`Serves ${m.servings}`);
@@ -684,20 +698,26 @@ Finish with a short note on what you changed and why, so I can read the gist her
       <!-- Cook + Add to list are the two primary actions and stay visible at
            every width. Ask/amend, Edit and Delete are hidden below `sm` and
            collapse into the ⋮ overflow menu at the end so the header fits a
-           phone; from `sm:` up all five render inline as before. -->
-      <Button
-        size="sm"
-        variant="outline"
-        onclick={handleAskAmend}
-        loading={amendBusy}
-        disabled={amendBusy}
-        class="hidden sm:inline-flex"
-        data-testid="recipe-ask-amend-button"
-      >
-        {#snippet leading()}<Icon name="ChefHat" size={16} />{/snippet}
-        Ask / amend
-      </Button>
-      {#if hasEquipment}
+           phone; from `sm:` up all five render inline as before.
+           Four of them are capability-gated (issue #637): things that don't
+           apply simply aren't offered, so a takeaway shows Edit and Delete and
+           nothing else. Ask/amend and Optimise render on BOTH surfaces, so each
+           is gated twice — Cook and Add to list only ever render inline. -->
+      {#if showCooking}
+        <Button
+          size="sm"
+          variant="outline"
+          onclick={handleAskAmend}
+          loading={amendBusy}
+          disabled={amendBusy}
+          class="hidden sm:inline-flex"
+          data-testid="recipe-ask-amend-button"
+        >
+          {#snippet leading()}<Icon name="ChefHat" size={16} />{/snippet}
+          Ask / amend
+        </Button>
+      {/if}
+      {#if showCooking && hasEquipment}
         <Button
           size="sm"
           variant="outline"
@@ -711,24 +731,28 @@ Finish with a short note on what you changed and why, so I can read the gist her
           Optimise for my kitchen
         </Button>
       {/if}
-      <Button
-        size="sm"
-        variant="outline"
-        onclick={() => push(`/recipes/${recipe.id}/cook`)}
-        data-testid="recipe-cook-button"
-      >
-        {#snippet leading()}<Icon name="CookingPot" size={16} />{/snippet}
-        Cook
-      </Button>
-      <Button
-        size="sm"
-        variant="outline"
-        onclick={openAddToList}
-        data-testid="recipe-add-to-list-button"
-      >
-        {#snippet leading()}<Icon name="ShoppingCart" size={16} />{/snippet}
-        Add to list
-      </Button>
+      {#if showCooking}
+        <Button
+          size="sm"
+          variant="outline"
+          onclick={() => push(`/recipes/${recipe.id}/cook`)}
+          data-testid="recipe-cook-button"
+        >
+          {#snippet leading()}<Icon name="CookingPot" size={16} />{/snippet}
+          Cook
+        </Button>
+      {/if}
+      {#if showIngredients}
+        <Button
+          size="sm"
+          variant="outline"
+          onclick={openAddToList}
+          data-testid="recipe-add-to-list-button"
+        >
+          {#snippet leading()}<Icon name="ShoppingCart" size={16} />{/snippet}
+          Add to list
+        </Button>
+      {/if}
       <Button
         size="sm"
         onclick={() => push(`/recipes/${recipe.id}/edit`)}
@@ -751,7 +775,10 @@ Finish with a short note on what you changed and why, so I can read the gist her
 
       <!-- Mobile overflow (⋮): the three secondary actions above, hidden from
            `sm:` up. Menu items carry their own testids so the desktop button
-           testids stay unique. -->
+           testids stay unique. Edit and Delete are unconditional — every kind of
+           entry can be edited and deleted — so the menu is never empty and the
+           trigger never opens onto nothing, whatever the capability gates say
+           about the two items above them. -->
       <div class="sm:hidden">
         <Popover bind:open={overflowMenuOpen}>
           <PopoverTrigger>
@@ -767,20 +794,22 @@ Finish with a short note on what you changed and why, so I can read the gist her
             {/snippet}
           </PopoverTrigger>
           <PopoverContent align="end" class="min-w-44 p-1">
-            <button
-              type="button"
-              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
-              onclick={() => {
-                overflowMenuOpen = false;
-                void handleAskAmend();
-              }}
-              disabled={amendBusy}
-              data-testid="recipe-ask-amend-menu-item"
-            >
-              <Icon name="ChefHat" size={14} />
-              Ask / amend
-            </button>
-            {#if hasEquipment}
+            {#if showCooking}
+              <button
+                type="button"
+                class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
+                onclick={() => {
+                  overflowMenuOpen = false;
+                  void handleAskAmend();
+                }}
+                disabled={amendBusy}
+                data-testid="recipe-ask-amend-menu-item"
+              >
+                <Icon name="ChefHat" size={14} />
+                Ask / amend
+              </button>
+            {/if}
+            {#if showCooking && hasEquipment}
               <button
                 type="button"
                 class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
@@ -964,104 +993,115 @@ Finish with a short note on what you changed and why, so I can read the gist her
           </Card>
         {/if}
 
-        <!-- Ingredients -->
-        <Card>
-          <CardHeader class="px-4 pt-4 pb-0">
-            <div class="flex items-center justify-between">
-              <CardTitle class="text-sm">Ingredients</CardTitle>
-              {#if hasParsedPending}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onclick={handleCanonicalise}
-                  loading={canonalising}
-                  disabled={canonalising}
-                  data-testid="recipe-canonicalise-button"
-                >
-                  {#snippet leading()}<Icon name="Link" size={14} />{/snippet}
-                  Canonicalise
-                </Button>
-              {/if}
-            </div>
-          </CardHeader>
-          <CardContent class="px-4 pb-4 pt-3">
-            {#if recipe.ingredients.length === 0}
-              <p class="text-sm text-muted-foreground">No ingredients.</p>
-            {/if}
-            {#each recipe.ingredients as group (group.id)}
-              <div class="flex flex-col gap-1 [&+&]:mt-3" data-testid="recipe-view-group">
-                {#if group.name}
-                  <p
-                    class="text-xs font-medium uppercase tracking-wide text-muted-foreground"
-                    data-testid="recipe-view-group-name"
+        <!-- Ingredients. The whole CARD goes when the concept doesn't apply
+             (issue #637), not just its contents: a card headed "Ingredients"
+             saying "No ingredients." is worse than no card, because it reads as
+             an unfinished recipe rather than a takeaway. The inner
+             "No ingredients." guard stays for the half-written-recipe case it
+             was written for. -->
+        {#if showIngredients}
+          <Card>
+            <CardHeader class="px-4 pt-4 pb-0">
+              <div class="flex items-center justify-between">
+                <CardTitle class="text-sm">Ingredients</CardTitle>
+                {#if hasParsedPending}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onclick={handleCanonicalise}
+                    loading={canonalising}
+                    disabled={canonalising}
+                    data-testid="recipe-canonicalise-button"
                   >
-                    {group.name}
-                  </p>
+                    {#snippet leading()}<Icon name="Link" size={14} />{/snippet}
+                    Canonicalise
+                  </Button>
                 {/if}
-                <ul class="flex flex-col gap-1">
-                  {#each group.items as ingredient (ingredient.id)}
-                    <li class="text-sm" data-testid="recipe-view-ingredient">
-                      <IngredientText
-                        {ingredient}
-                      />{#if !hasLiveCanonMatch(ingredient, liveCanonIds)}<button
-                          type="button"
-                          class="ml-1 text-xs text-destructive hover:underline disabled:opacity-50"
-                          title="Not matched — tap to match"
-                          aria-label="Not matched — tap to match"
-                          onclick={() => handleRematch(group, ingredient)}
-                          disabled={matchingIds[ingredient.id] ?? false}
-                          data-testid="match-state-unmatched"
-                          >{(matchingIds[ingredient.id] ?? false) ? '…' : '✗'}</button
-                        >{/if}
-                    </li>
-                  {/each}
-                </ul>
               </div>
-            {/each}
-          </CardContent>
-        </Card>
-
-        <!-- Method -->
-        <Card>
-          <CardHeader class="px-4 pt-4 pb-0">
-            <CardTitle class="text-sm">Method</CardTitle>
-          </CardHeader>
-          <CardContent class="px-4 pb-4 pt-3">
-            {#if recipe.steps.length === 0}
-              <p class="text-sm text-muted-foreground">No steps.</p>
-            {/if}
-            <ol class="flex flex-col gap-4">
-              {#each recipe.steps as step, idx (step.id)}
-                <li class="flex gap-3 text-sm" data-testid="recipe-view-step">
-                  <span class="mt-0.5 shrink-0 font-semibold text-muted-foreground">{idx + 1}</span>
-                  <div class="flex flex-1 flex-col gap-1.5">
-                    <span>{step.text}</span>
-                    {#if step.note}
-                      <div
-                        class="flex items-start gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
-                        data-testid="recipe-step-note-content"
-                      >
-                        <Icon
-                          name="TriangleAlert"
-                          size={13}
-                          class="mt-0.5 shrink-0 text-amber-500"
-                        />
-                        <span class="whitespace-pre-wrap">{step.note}</span>
-                      </div>
-                    {/if}
-                    {#if step.timer}
-                      <span class="text-xs text-muted-foreground">
-                        ⏱ {step.timer.durationMinutes} min{step.timer.description
-                          ? ` — ${step.timer.description}`
-                          : ''}
-                      </span>
-                    {/if}
-                  </div>
-                </li>
+            </CardHeader>
+            <CardContent class="px-4 pb-4 pt-3">
+              {#if recipe.ingredients.length === 0}
+                <p class="text-sm text-muted-foreground">No ingredients.</p>
+              {/if}
+              {#each recipe.ingredients as group (group.id)}
+                <div class="flex flex-col gap-1 [&+&]:mt-3" data-testid="recipe-view-group">
+                  {#if group.name}
+                    <p
+                      class="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                      data-testid="recipe-view-group-name"
+                    >
+                      {group.name}
+                    </p>
+                  {/if}
+                  <ul class="flex flex-col gap-1">
+                    {#each group.items as ingredient (ingredient.id)}
+                      <li class="text-sm" data-testid="recipe-view-ingredient">
+                        <IngredientText
+                          {ingredient}
+                        />{#if !hasLiveCanonMatch(ingredient, liveCanonIds)}<button
+                            type="button"
+                            class="ml-1 text-xs text-destructive hover:underline disabled:opacity-50"
+                            title="Not matched — tap to match"
+                            aria-label="Not matched — tap to match"
+                            onclick={() => handleRematch(group, ingredient)}
+                            disabled={matchingIds[ingredient.id] ?? false}
+                            data-testid="match-state-unmatched"
+                            >{(matchingIds[ingredient.id] ?? false) ? '…' : '✗'}</button
+                          >{/if}
+                      </li>
+                    {/each}
+                  </ul>
+                </div>
               {/each}
-            </ol>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        {/if}
+
+        <!-- Method — same treatment, gated on the same capability as Cook. -->
+        {#if showCooking}
+          <Card>
+            <CardHeader class="px-4 pt-4 pb-0">
+              <CardTitle class="text-sm">Method</CardTitle>
+            </CardHeader>
+            <CardContent class="px-4 pb-4 pt-3">
+              {#if recipe.steps.length === 0}
+                <p class="text-sm text-muted-foreground">No steps.</p>
+              {/if}
+              <ol class="flex flex-col gap-4">
+                {#each recipe.steps as step, idx (step.id)}
+                  <li class="flex gap-3 text-sm" data-testid="recipe-view-step">
+                    <span class="mt-0.5 shrink-0 font-semibold text-muted-foreground"
+                      >{idx + 1}</span
+                    >
+                    <div class="flex flex-1 flex-col gap-1.5">
+                      <span>{step.text}</span>
+                      {#if step.note}
+                        <div
+                          class="flex items-start gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
+                          data-testid="recipe-step-note-content"
+                        >
+                          <Icon
+                            name="TriangleAlert"
+                            size={13}
+                            class="mt-0.5 shrink-0 text-amber-500"
+                          />
+                          <span class="whitespace-pre-wrap">{step.note}</span>
+                        </div>
+                      {/if}
+                      {#if step.timer}
+                        <span class="text-xs text-muted-foreground">
+                          ⏱ {step.timer.durationMinutes} min{step.timer.description
+                            ? ` — ${step.timer.description}`
+                            : ''}
+                        </span>
+                      {/if}
+                    </div>
+                  </li>
+                {/each}
+              </ol>
+            </CardContent>
+          </Card>
+        {/if}
 
         <!-- Notes -->
         {#if recipe.notes}

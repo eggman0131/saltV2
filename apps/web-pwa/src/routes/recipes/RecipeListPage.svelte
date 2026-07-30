@@ -9,7 +9,7 @@
     PopoverTrigger,
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
-  import { appendCacheBuster, type Recipe } from '@salt/domain';
+  import { appendCacheBuster, takesIngredients, type Recipe, type RecipeKind } from '@salt/domain';
   import {
     recipes,
     isLoadingRecipes,
@@ -18,6 +18,7 @@
     stashImportedDraft,
   } from '../../lib/recipeService.js';
   import { addToast } from '../../lib/toastStore.js';
+  import { KIND_COPY, KIND_SECTIONS, kindOf } from './recipeKind.js';
 
   function ingredientCount(recipe: Recipe): number {
     return recipe.ingredients.reduce((n, g) => n + g.items.length, 0);
@@ -50,6 +51,30 @@
   let sortBy = $state<SortBy>('title');
   let activeTags = $state<string[]>([]);
 
+  // ─── Section (kind) ───────────────────────────────────────────────────────────
+  // Which SECTION of the library you are looking at (issue #637) — deliberately
+  // not a filter. It is single-select, it always has exactly one value, and it
+  // is never cleared: "Clear filters" drops your search and tags but leaves you
+  // exactly where you were standing. The default keeps the page as it was —
+  // Recipes, and only recipes.
+  //
+  // This is one of the two places allowed to compare a kind directly: which
+  // section an entry belongs to is an identity question, not a capability one.
+  let kindFilter = $state<RecipeKind>('recipe');
+
+  const kindCopy = $derived(KIND_COPY[kindFilter]);
+
+  function selectKind(kind: RecipeKind): void {
+    if (kind === kindFilter) return;
+    kindFilter = kind;
+    // Tags are per-section vocabulary: "baking" means nothing among takeaways,
+    // and carrying it across would land you on an empty page you did not ask
+    // for. The search box is different — a word you typed is still what you are
+    // looking for, so it survives the switch.
+    activeTags = [];
+    showAllTags = false;
+  }
+
   // Popover open state for the "New" and sort menus, plus the tag-list expander.
   let newMenuOpen = $state(false);
   let sortMenuOpen = $state(false);
@@ -70,9 +95,12 @@
     return activeTags.every((t) => r.metadata.tags.includes(t));
   }
 
+  // Section first, deliberately: `rankedTags` counts over `visible`, so putting
+  // the kind ahead of the other predicates re-facets the tag chips to the
+  // current section for free — no second pass, no separate per-section index.
   const visible = $derived(
     $recipes
-      .filter((r) => matchesSearch(r) && matchesTags(r))
+      .filter((r) => kindOf(r) === kindFilter && matchesSearch(r) && matchesTags(r))
       .sort((a, b) => {
         switch (sortBy) {
           case 'recent':
@@ -90,7 +118,14 @@
       }),
   );
 
+  // The section is NOT part of this. Clearing filters must not teleport you back
+  // to Recipes, and "· filtered" must not appear merely because you are looking
+  // at When you CBA.
   const hasFilters = $derived(query !== '' || activeTags.length > 0);
+
+  // Ingredients are a capability, so this asks the domain rather than the kind.
+  // Every card in `visible` shares `kindFilter`, so one answer covers the grid.
+  const showIngredientCount = $derived(takesIngredients(kindFilter));
 
   // Tags offered as filter chips: those present on the currently displayed
   // recipes, so the choices narrow as you filter (a faceted drill-down) rather
@@ -227,6 +262,21 @@
           <Icon name="Pencil" size={14} />
           Manual
         </button>
+        <!-- "When you CBA" (issue #637): a takeaway, a picnic, a night off. The
+             kind is set by the route and never again — there is no selector in
+             the editor, because an outing does not become a recipe. -->
+        <button
+          type="button"
+          class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+          onclick={() => {
+            newMenuOpen = false;
+            push('/recipes/new/outing');
+          }}
+          data-testid="recipe-new-outing"
+        >
+          <Icon name={KIND_COPY.outing.menuIcon} size={14} />
+          {KIND_COPY.outing.label}
+        </button>
       </PopoverContent>
     </Popover>
   {/snippet}
@@ -317,6 +367,35 @@
         </div>
       </div>
     {/if}
+
+    <!-- Section chips (issue #637). Every section is always offered, including
+         an empty one: you have to be able to walk into "When you CBA" and SEE
+         that there is nothing there yet, otherwise the only signal that the
+         section exists is a New-menu entry. Hand-rolled in the same idiom as the
+         tag chips below (there is no chip primitive in @salt/ui-components),
+         adapted to single-select — exactly one is pressed at all times. -->
+    <div
+      class="mb-3 flex flex-wrap gap-1.5"
+      role="group"
+      aria-label="Section"
+      data-testid="recipe-kind-filters"
+    >
+      {#each KIND_SECTIONS as kind (kind)}
+        {@const active = kind === kindFilter}
+        <button
+          type="button"
+          class="rounded-full border px-3 py-1 text-xs font-medium transition-colors {active
+            ? 'border-primary bg-primary text-primary-foreground'
+            : 'border-border bg-background text-muted-foreground hover:bg-muted'}"
+          aria-pressed={active}
+          onclick={() => selectKind(kind)}
+          data-testid="recipe-kind-filter"
+          data-kind={kind}
+        >
+          {KIND_COPY[kind].label}
+        </button>
+      {/each}
+    </div>
 
     <!-- Search + sort toolbar: search fills the row, sort collapses to an icon -->
     <div class="mb-3 flex items-center gap-2">
@@ -416,7 +495,7 @@
     <div class="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
       <span data-testid="recipe-result-count">
         {visible.length}
-        {visible.length === 1 ? 'recipe' : 'recipes'}
+        {visible.length === 1 ? kindCopy.one : kindCopy.many}
         {#if hasFilters}<span class="text-muted-foreground/70">· filtered</span>{/if}
       </span>
       {#if hasFilters}
@@ -431,14 +510,24 @@
       {/if}
     </div>
 
-    {#if visible.length === 0}
+    {#if visible.length === 0 && hasFilters}
       <div
         class="flex flex-col items-center gap-2 py-12 text-center"
         data-testid="recipe-no-matches"
       >
         <Icon name="Search" size={24} class="text-muted-foreground" />
-        <p class="text-sm text-muted-foreground">No recipes match your filters.</p>
+        <p class="text-sm text-muted-foreground">{kindCopy.noMatchText}</p>
         <Button variant="outline" size="sm" onclick={clearFilters}>Clear filters</Button>
+      </div>
+    {:else if visible.length === 0}
+      <!-- An empty SECTION, not a failed filter — there is nothing to clear, so
+           offering a "Clear filters" button here would be a dead end. -->
+      <div
+        class="flex flex-col items-center gap-2 py-12 text-center"
+        data-testid="recipe-kind-empty"
+      >
+        <Icon name={kindCopy.thumbIcon} size={24} class="text-muted-foreground" />
+        <p class="text-sm text-muted-foreground">{kindCopy.emptyText}</p>
       </div>
     {:else}
       <ul class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid="recipe-list">
@@ -480,7 +569,7 @@
                     class="flex h-full w-full items-center justify-center bg-gradient-to-br from-muted to-muted/40 text-muted-foreground/60"
                     data-testid="recipe-list-thumb-fallback"
                   >
-                    <Icon name="CookingPot" size={32} />
+                    <Icon name={kindCopy.thumbIcon} size={32} />
                   </div>
                 {/if}
               </div>
@@ -505,10 +594,12 @@
                       {recipe.metadata.servings}
                     </span>
                   {/if}
-                  <span class="inline-flex items-center gap-1">
-                    <Icon name="Carrot" size={12} />
-                    {count}
-                  </span>
+                  {#if showIngredientCount}
+                    <span class="inline-flex items-center gap-1">
+                      <Icon name="Carrot" size={12} />
+                      {count}
+                    </span>
+                  {/if}
                 </div>
 
                 {#if tags.length > 0}
