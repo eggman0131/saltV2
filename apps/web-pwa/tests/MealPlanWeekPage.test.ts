@@ -196,7 +196,12 @@ async function openDay(date: string): Promise<void> {
 // current answer, opening the whole week's choice — the same shape as "Load
 // template", and reached the same way.
 async function openShopPicker(): Promise<void> {
-  await userEvent.click(screen.getByTestId('week-shop-trigger'));
+  // Two doors to the same picker (#640): the header trigger exists only
+  // while the week has NO shop day — once one is set, the rule across the list is
+  // the control, and the header row is gone. Open whichever this week has.
+  const trigger =
+    screen.queryByTestId('week-shop-trigger') ?? screen.getAllByTestId(/-shop-marker$/)[0]!;
+  await userEvent.click(trigger);
   await waitFor(() => screen.getByTestId('week-shop-picker'));
 }
 
@@ -273,6 +278,11 @@ const ROW_H = 200;
 const ROW_GAP = 24;
 const ROW_PITCH = ROW_H + ROW_GAP;
 const VIEWPORT_H = 700;
+// The deck rests a row-gap ABOVE the day it lands on, so the previous day's bottom
+// edge sits just off the top rather than the card starting at the screen's first
+// pixel. Every landing below is therefore a pitch multiple minus this lead — except
+// the very top, which has nothing above it to show and clamps to 0.
+const LEAD = ROW_GAP;
 
 function fakeRect(top: number, height: number): DOMRect {
   return {
@@ -576,7 +586,7 @@ describe('MealPlanWeekPage', () => {
     expect(screen.getByTestId('day-2026-06-08-unknown-gone@e.org')).toBeInTheDocument();
   });
 
-  it('reads the cook, who is eating and any home time off the collapsed row (#639)', () => {
+  it('reads the cook, the head count and any home time off the collapsed row (#640)', () => {
     mockWeek._set({
       ...emptyWeek('2026-06-08'),
       days: {
@@ -595,9 +605,13 @@ describe('MealPlanWeekPage', () => {
     });
     render(MealPlanWeekPage);
     const meta = screen.getByTestId('day-2026-06-08-meta');
-    expect(meta.textContent).toContain('Bob cooking');
-    // Both members are eating, so the roster collapses to one word…
-    expect(meta.textContent).toContain('Everyone');
+    // The cook is named — it is the fact the row is answering.
+    expect(meta.textContent).toContain('Bob');
+    // The table is a COUNT, not a roster: with five in the house the name list was
+    // the longest and least stable thing in the row. Who, exactly, is in the sheet.
+    expect(meta.textContent).toContain('2');
+    expect(meta.textContent).not.toContain('Everyone');
+    expect(meta.textContent).not.toContain('Alice,');
     // …and only Alice's time is set, so only Alice's shows.
     expect(meta.textContent).toContain('Alice 18:00');
     expect(meta.textContent).not.toContain('Bob 1');
@@ -625,17 +639,23 @@ describe('MealPlanWeekPage', () => {
   // week's own dates — never by opening a day. The rule across the list keeps
   // displaying the answer (asserted above, unchanged).
 
-  it('says the week’s shop day on the week header', () => {
+  it('gives the header back once the shop day is set — the rule says it instead', async () => {
     mockShopDay._set({ date: '2026-06-10', slot: 'am' });
     render(MealPlanWeekPage);
-    const trigger = screen.getByTestId('week-shop-trigger');
-    expect(trigger).toHaveTextContent('Shop');
-    expect(trigger).toHaveTextContent('am');
+    // The answer is already on the list, in place, so a header row repeating it
+    // was the most expensive line on the page.
+    expect(screen.queryByTestId('week-shop')).not.toBeInTheDocument();
+    // …and the rule it is displayed on is the way back to the picker.
+    await userEvent.click(screen.getByTestId('day-2026-06-10-shop-marker'));
+    await waitFor(() => expect(screen.getByTestId('week-shop-picker')).toBeInTheDocument());
+    await closeShopPicker();
   });
 
-  it('says so when the week has no shop day yet', () => {
+  it('keeps a header control while there is no shop day to tap', () => {
+    // The rule cannot be the control when there is no rule — an unset week would
+    // otherwise have nowhere at all to say so from.
     render(MealPlanWeekPage);
-    expect(screen.getByTestId('week-shop-trigger')).toHaveTextContent('No shop day set');
+    expect(screen.getByTestId('week-shop-trigger')).toHaveTextContent('Set a shop day');
   });
 
   it('sets the day and the slot in one tap, without opening a day', async () => {
@@ -1105,12 +1125,12 @@ describe('MealPlanWeekPage — landing on today (#639, Phases 2 & 4)', () => {
     const start = weekAroundToday(3);
     renderLaidOut(start);
 
-    // Today is the fourth row, so the deck starts three pitches down — today sits
-    // flush under the header rather than wherever the Friday-start week left it.
-    await waitFor(() => expect(deckOffset()).toBe(3 * ROW_PITCH));
+    // Today is the fourth row, so the deck starts three pitches down — less the
+    // lead, which keeps yesterday's bottom edge just above today's card.
+    await waitFor(() => expect(deckOffset()).toBe(3 * ROW_PITCH - LEAD));
   });
 
-  it('lands another week at the top instead, and never shows the pill there', async () => {
+  it('lands another week at the top, with no cue until it is moved', async () => {
     const start = addDays(TODAY, -30);
     mockStart._set(start);
     mockWeek._set(emptyWeek(start));
@@ -1118,53 +1138,41 @@ describe('MealPlanWeekPage — landing on today (#639, Phases 2 & 4)', () => {
 
     expect(screen.getByTestId(`day-${start}`)).toBeInTheDocument();
     expect(deckOffset()).toBe(0);
-    expect(screen.queryByTestId('earlier-days')).not.toBeInTheDocument();
     expect(screen.queryByTestId('scroll-shadow')).not.toBeInTheDocument();
 
-    // Even moved, a week without today has no earlier-days pill — only the header
-    // shadow, which is about position in the list, not about today.
+    // The shadow is about position in the list, not about today — so a week
+    // without today earns it just the same once the deck moves.
     await pressDeck('ArrowDown');
     await waitFor(() => expect(screen.getByTestId('scroll-shadow')).toBeInTheDocument());
-    expect(screen.queryByTestId('earlier-days')).not.toBeInTheDocument();
   });
 
-  it('names the earlier days once the deck has left the top', async () => {
+  it('shows the cue on arrival when the landing is mid-list', async () => {
     const start = weekAroundToday(3);
     renderLaidOut(start);
 
-    // Landing mid-list IS the reason the cue exists, so it is there on arrival.
-    const pill = await screen.findByTestId('earlier-days');
-    expect(pill).toHaveTextContent('3 earlier days');
-    expect(screen.getByTestId('scroll-shadow')).toBeInTheDocument();
+    // Landing three days down IS the reason the cue exists: nothing else says
+    // there is anything above today.
+    await waitFor(() => expect(screen.getByTestId('scroll-shadow')).toBeInTheDocument());
   });
 
-  it('takes you back up to the earlier days when the pill is tapped', async () => {
+  it('withdraws the cue once the deck is back at the top', async () => {
     const start = weekAroundToday(2);
     renderLaidOut(start);
+    await waitFor(() => expect(screen.getByTestId('scroll-shadow')).toBeInTheDocument());
 
-    await userEvent.click(await screen.findByTestId('earlier-days'));
+    await pressDeck('Home');
 
     // The spring carries it home, and the cue withdraws once it arrives.
     await waitFor(() => expect(deckOffset()).toBe(0));
-    await waitFor(() => expect(screen.queryByTestId('earlier-days')).not.toBeInTheDocument());
-    expect(screen.queryByTestId('scroll-shadow')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByTestId('scroll-shadow')).not.toBeInTheDocument());
   });
 
-  it('counts one earlier day in the singular', async () => {
-    const start = weekAroundToday(1);
-    renderLaidOut(start);
-    expect(await screen.findByTestId('earlier-days')).toHaveTextContent('1 earlier day');
-  });
-
-  it('shows no pill when today is the first day of the week', async () => {
+  it('shows no cue when today is the first day of the week', () => {
     const start = weekAroundToday(0);
     renderLaidOut(start);
 
     expect(deckOffset()).toBe(0);
-    expect(screen.queryByTestId('earlier-days')).not.toBeInTheDocument();
-    // Moving off the top earns the shadow, but there is still nothing above today.
-    await pressDeck('ArrowDown');
-    expect(screen.queryByTestId('earlier-days')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('scroll-shadow')).not.toBeInTheDocument();
   });
 
   it('moves day to day under the arrow keys', async () => {
@@ -1173,7 +1181,7 @@ describe('MealPlanWeekPage — landing on today (#639, Phases 2 & 4)', () => {
 
     await pressDeck('ArrowDown');
     // One press, one day — the stops are the day headers, not arbitrary pixels.
-    await waitFor(() => expect(deckOffset()).toBe(ROW_PITCH));
+    await waitFor(() => expect(deckOffset()).toBe(ROW_PITCH - LEAD));
   });
 
   it('renders the days already behind us a step quieter', () => {
@@ -1354,13 +1362,13 @@ describe('MealPlanWeekPage — next week appears from Wednesday (#639, Phase 6)'
     // Today is the sixth row. With one week (7 rows over a 700px viewport) the
     // deck could only travel 844px and today would land clamped short of the top;
     // with next week appended it reaches its own pitch exactly.
-    await waitFor(() => expect(deckOffset()).toBe(5 * ROW_PITCH));
+    await waitFor(() => expect(deckOffset()).toBe(5 * ROW_PITCH - LEAD));
   });
 
   it('reaches next week by gesture — one deck, not two lists', async () => {
     const { start, next } = weekAroundTodayWithNext(5);
     renderLaidOut(start, next);
-    await waitFor(() => expect(deckOffset()).toBe(5 * ROW_PITCH));
+    await waitFor(() => expect(deckOffset()).toBe(5 * ROW_PITCH - LEAD));
 
     // Two days on from today is the first day of NEXT week, and the deck stops on
     // it: next week's rows are stops in the same deck, not a separate scroller.
@@ -1369,9 +1377,9 @@ describe('MealPlanWeekPage — next week appears from Wednesday (#639, Phase 6)'
     // One press, one day — and the spring must land before the next press, or the
     // second stop is measured from mid-flight.
     await userEvent.keyboard('{ArrowDown}');
-    await waitFor(() => expect(deckOffset()).toBe(6 * ROW_PITCH));
+    await waitFor(() => expect(deckOffset()).toBe(6 * ROW_PITCH - LEAD));
     await userEvent.keyboard('{ArrowDown}');
-    await waitFor(() => expect(deckOffset()).toBe(7 * ROW_PITCH));
+    await waitFor(() => expect(deckOffset()).toBe(7 * ROW_PITCH - LEAD));
   });
 
   it('edits a day in next week under that day’s own date key', async () => {

@@ -21,7 +21,7 @@
     SheetTitle,
     type ComboboxItemType,
   } from '@salt/ui-components';
-  import { ChefHat, X } from '@lucide/svelte';
+  import { ChefHat, Clock, Utensils, X } from '@lucide/svelte';
   import { push } from 'svelte-spa-router';
   import {
     appendCacheBuster,
@@ -271,39 +271,19 @@
     attachedRecipes.map((r) => heroUrl(r)).find((u): u is string => u !== null) ?? null,
   );
 
-  // ─── The row's one grey meta line (#639) ───────────────────────────────────
-  // "who is cooking · who is eating (by name) · any home time that has actually
-  // been set" — names, not avatars, so the line reads as a sentence and truncates
-  // gracefully. "Everyone" replaces the full roster; guests append as "+2".
+  // ─── The row's cook-and-table line (#639, reshaped in #640) ────────────────
+  // Two facts, one at each end: who is cooking, and how many are at the table.
+  // It used to be one sentence naming every eater, but with five in the house —
+  // two of them here only part of the week — that list was the longest and least
+  // stable thing in the row. The head count survives any width; WHO is eating is
+  // named in the sheet, one tap away, where it can be read and changed.
   const cookNames = $derived(members.filter((m) => isChef(m.id)).map((m) => m.name));
-  const attendingNames = $derived(members.filter((m) => isAttending(m.id)).map((m) => m.name));
-  const everyoneEating = $derived(
-    members.length > 0 && attendingNames.length === members.length && unknownAttendees.length === 0,
-  );
-  const eatingSegment = $derived(
-    attendingNames.length === 0
-      ? day.guests > 0
-        ? `${day.guests} guest${day.guests === 1 ? '' : 's'}`
-        : ''
-      : `${everyoneEating ? 'Everyone' : attendingNames.join(', ')}${
-          day.guests > 0 ? ` +${day.guests}` : ''
-        }`,
-  );
   const homeTimes = $derived(
     members
       .filter((m) => isAttending(m.id))
       .map((m) => ({ name: m.name, at: attendeeOf(m.id)?.homeTime ?? null }))
       .filter((x): x is { name: string; at: string } => x.at !== null && x.at !== '')
       .map((x) => `${x.name} ${x.at}`),
-  );
-  // Everything after the cook. Rendered as one string so the whole line is a
-  // single truncating block rather than a row of competing flex children.
-  const metaSegments = $derived(
-    [
-      ...(cookNames.length > 0 ? [`${cookNames.join(' & ')} cooking`] : []),
-      ...(eatingSegment ? [eatingSegment] : []),
-      ...(homeTimes.length > 0 ? [homeTimes.join(', ')] : []),
-    ].join(' · '),
   );
 
   // Evening-window temperature band (drives the header temp colour, cool→warm),
@@ -334,6 +314,50 @@
      is held together by the dated rail on its left and the air around it (the
      page spaces the rows 24px apart), not by a box. -->
 <div data-testid={testid}>
+  <!-- The two rows of the card, defined once and rendered into either the scrim
+       over the photograph or the bare text block, so a change lands in both.
+       Every colour is passed in, because the ink is a fact about the GROUND the
+       row sits on (near-black photograph vs the page) and nothing else differs. -->
+  {#snippet mealLine(sizeCls: string, inkCls: string, mutedCls: string)}
+    <span
+      class="line-clamp-2 text-center font-display font-semibold leading-snug {sizeCls} {mealFirstLine
+        ? inkCls
+        : mutedCls}"
+      data-testid={`${testid}-meal`}
+    >
+      {mealFirstLine || 'No meal set'}
+    </span>
+  {/snippet}
+
+  <!-- Cook on the left, the table on the right, and the row's priority written
+       into the flex: the cook and any home time are shrink-0 and never truncate,
+       so the ONE thing that can give way is the head count — which is already a
+       number. Who is actually eating is named in the sheet, a tap away. -->
+  {#snippet tableLine(inkCls: string, noCookCls: string)}
+    <span class="flex items-center gap-2.5 text-xs {inkCls}" data-testid={`${testid}-meta`}>
+      <span class="flex min-w-0 shrink items-center gap-1.5">
+        <ChefHat class="h-[15px] w-[15px] shrink-0" aria-hidden="true" />
+        {#if hasCook}
+          <span class="truncate">{cookNames.join(' & ')}</span>
+        {:else}
+          <span class="whitespace-nowrap {noCookCls}" data-testid={`${testid}-no-cook`}>
+            No cook
+          </span>
+        {/if}
+      </span>
+      <span class="flex min-w-0 flex-1 items-center justify-end gap-1.5">
+        <span class="shrink-0 font-semibold tabular-nums">{attendingCount}</span>
+        <Utensils class="h-[15px] w-[15px] shrink-0" aria-hidden="true" />
+        {#if homeTimes.length}
+          <span class="flex shrink-0 items-center gap-1.5 whitespace-nowrap">
+            <Clock class="h-[15px] w-[15px] shrink-0" aria-hidden="true" />
+            {homeTimes.join(', ')}
+          </span>
+        {/if}
+      </span>
+    </span>
+  {/snippet}
+
   <!-- The collapsed row (#639, Phase 1): dated rail | photograph → title → meta.
        The whole row is the tap target; tapping raises the day's sheet (#640).
        No `aria-expanded`: nothing expands in place any more, and the dialog the
@@ -387,39 +411,41 @@
       {/if}
     </div>
 
-    <!-- The day's card. The photograph is a clean, undamaged rectangle — no text
-         over it, no gradient scrim — with the meal title beneath it in Epilogue
-         (the `font-display` family token). A day with no photo is not
-         second-class: the card is the same text block with the meal one step
-         larger, and no placeholder tile stands in for the missing picture. -->
-    <div class="flex min-w-0 flex-1 flex-col gap-2">
+    <!-- The day's card. The two rows RIDE THE FOOT of the photograph rather than
+         sitting under it: the row gives back the height the text used to cost and
+         the picture gets a wider 1.6:1 crop in the same space. A day with no photo
+         is not second-class — the same two rows, unboxed, with the meal one step
+         larger and in the page's own ink. Both cases render from the snippets
+         below, so the two layouts cannot drift apart. -->
+    <div class="flex min-w-0 flex-1 flex-col">
       {#if photoUrl}
-        <img
-          src={photoUrl}
-          alt=""
-          loading="lazy"
-          class="aspect-[3/2] w-full rounded-lg object-cover"
-          data-testid={`${testid}-photo`}
-        />
+        <div class="relative overflow-hidden rounded-lg">
+          <img
+            src={photoUrl}
+            alt=""
+            loading="lazy"
+            class="aspect-[1.6] w-full object-cover"
+            data-testid={`${testid}-photo`}
+          />
+          <!-- The scrim is readability, not decoration: opaque at the foot and
+               clear before the middle, so no more of the dish is veiled than the
+               two rows actually need. -->
+          <div
+            class="absolute inset-x-0 bottom-0 flex flex-col gap-0.5 bg-gradient-to-t from-black/100 via-black/60 to-transparent px-3 py-2.5"
+          >
+            {@render mealLine('text-base', 'text-white', 'text-white/70')}
+            {@render tableLine(
+              'text-white/80',
+              'rounded bg-destructive px-1.5 font-medium text-destructive-foreground',
+            )}
+          </div>
+        </div>
+      {:else}
+        <div class="flex flex-col gap-2">
+          {@render mealLine('text-lg', 'text-foreground', 'text-muted-foreground')}
+          {@render tableLine('text-muted-foreground', 'text-destructive')}
+        </div>
       {/if}
-      <span
-        class="truncate font-display font-semibold leading-snug {photoUrl
-          ? 'text-base'
-          : 'text-lg'} {mealFirstLine ? 'text-foreground' : 'text-muted-foreground'}"
-        data-testid={`${testid}-meal`}
-      >
-        {mealFirstLine || 'No meal set'}
-      </span>
-
-      <!-- One quiet grey line: cook · who is eating (by name) · home times that
-           have actually been set. Rendered as a single truncating block so the
-           name list gives way gracefully on a narrow screen. "No cook" keeps its
-           own colour — it is the one thing in the line that wants answering. -->
-      <span class="truncate text-xs text-muted-foreground" data-testid={`${testid}-meta`}>
-        {#if !hasCook}<span class="font-medium text-destructive" data-testid={`${testid}-no-cook`}
-            >No cook</span
-          >{/if}{#if metaSegments}{hasCook ? '' : ' · '}{metaSegments}{/if}
-      </span>
     </div>
   </button>
 
@@ -470,6 +496,18 @@
             placeholder="What's for dinner?"
             value={day.note}
             oninput={(e) => onNoteChange(e.currentTarget.value)}
+            onblur={(e) => {
+              // Re-seed an emptied meal field from the first attached recipe. The
+              // attach-time seed (see `addRecipe`) only fires once, so clearing the
+              // text used to leave a day with a recipe and no meal. BLUR, not input:
+              // while the caret is in the field the text is the user's — they may be
+              // mid-way through replacing it — so the refill waits until they leave
+              // it empty. Read the DOM value, not `day.note`: `onNoteChange` is
+              // fire-and-forget and the prop lags the store re-emit. Guard on
+              // `attachedRecipes` so a since-deleted recipe id can't seed nothing.
+              if (!e.currentTarget.value.trim() && attachedRecipes[0])
+                onNoteChange(attachedRecipes[0].title);
+            }}
             data-testid={`${testid}-note`}></textarea>
 
           <!-- Attached recipes (issue #17): the chosen recipes as thumbnail rows, then
@@ -684,7 +722,7 @@
                   aria-label={`${m.name} is cooking`}
                   data-testid={`${testid}-chef-${m.id}`}
                 >
-                  <ChefHat class="h-4 w-4" strokeWidth={2.5} />
+                  <ChefHat class="h-4 w-4" />
                 </button>
               </div>
               {#if noteShown}

@@ -10,7 +10,7 @@ import { chooseLandingStop, deriveStops } from '../src/lib/cookDeck.js';
 // The page's own wiring is covered in MealPlanWeekPage.test.ts; everything here is
 // pure arithmetic and needs no DOM.
 
-const PLANNER_THRESHOLDS = { commitRatio: 0.08, flingPxPerMs: 0.35 };
+const PLANNER_THRESHOLDS = { commitRatio: 0.08, flingPxPerMs: 0.35, leadPx: 24 };
 
 const ROW_H = 200;
 const ROW_GAP = 24;
@@ -31,6 +31,44 @@ describe('the planner deck rests on day headers', () => {
 
   it('never rests past the end of the list', () => {
     const stops = deriveStops({ sections: WEEK, screen: SCREEN, limit: LIMIT });
+    for (const stop of stops) expect(stop).toBeLessThanOrEqual(LIMIT);
+    expect(Math.max(...stops)).toBe(LIMIT);
+  });
+});
+
+// A day that lands flush with the top of the viewport starts at the screen's very
+// first pixel, which reads as cramped. `leadPx` lands the deck a gap early so the
+// previous day's bottom edge sits just above the fold — the card arrives with the
+// air it is laid out with. Cook mode keeps 0: a step should own its screen.
+describe('the planner deck leaves the row gap above the day it rests on', () => {
+  const LEAD = PLANNER_THRESHOLDS.leadPx;
+
+  it('rests a gap above each day rather than flush with it', () => {
+    const stops = deriveStops({ sections: WEEK, screen: SCREEN, limit: LIMIT, leadPx: LEAD });
+    // Second and third days sit a lead earlier than their own tops…
+    expect(stops[1]).toBe(ROW_PITCH - LEAD);
+    expect(stops[2]).toBe(2 * ROW_PITCH - LEAD);
+    // …which is exactly the bottom edge of the day before them.
+    expect(stops[1]).toBe(ROW_H);
+  });
+
+  it('still starts at the very top, with nothing above the first day to show', () => {
+    const stops = deriveStops({ sections: WEEK, screen: SCREEN, limit: LIMIT, leadPx: LEAD });
+    expect(stops[0]).toBe(0);
+  });
+
+  it('keeps the days one pitch apart, so the lead never changes the throw', () => {
+    const stops = deriveStops({ sections: WEEK, screen: SCREEN, limit: LIMIT, leadPx: LEAD });
+    expect(stops[2]! - stops[1]!).toBe(ROW_PITCH);
+  });
+
+  it('leaves cook mode flush when no lead is asked for', () => {
+    const flush = deriveStops({ sections: WEEK, screen: SCREEN, limit: LIMIT });
+    expect(flush[1]).toBe(ROW_PITCH);
+  });
+
+  it('still never rests past the end of the list', () => {
+    const stops = deriveStops({ sections: WEEK, screen: SCREEN, limit: LIMIT, leadPx: LEAD });
     for (const stop of stops) expect(stop).toBeLessThanOrEqual(LIMIT);
     expect(Math.max(...stops)).toBe(LIMIT);
   });

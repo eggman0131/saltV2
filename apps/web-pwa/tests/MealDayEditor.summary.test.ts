@@ -67,7 +67,7 @@ afterEach(() => {
 });
 
 describe('MealDayEditor — the Ledger row (#639)', () => {
-  it('names the cook and says "Everyone" when the whole household eats', () => {
+  it('names the cook and counts the table (#640)', () => {
     const day = makeDay({
       chefs: ['m1'],
       attendees: [
@@ -77,8 +77,12 @@ describe('MealDayEditor — the Ledger row (#639)', () => {
     });
     const { getByTestId, queryByTestId } = render(MealDayEditor, { props: baseProps(day) });
     const meta = getByTestId('day-meta');
-    expect(meta.textContent).toContain('Alex cooking');
-    expect(meta.textContent).toContain('Everyone');
+    // The cook is named; the table is a number. Naming every eater made the row's
+    // longest, least stable element out of the one thing a tap already answers.
+    expect(meta.textContent).toContain('Alex');
+    expect(meta.textContent).toContain('2');
+    expect(meta.textContent).not.toContain('Everyone');
+    expect(meta.textContent).not.toContain('cooking');
     // A cook is assigned, so the "No cook" flag is absent.
     expect(queryByTestId('day-no-cook')).not.toBeInTheDocument();
     // The avatar roster the row replaces is gone entirely.
@@ -86,15 +90,18 @@ describe('MealDayEditor — the Ledger row (#639)', () => {
     expect(queryByTestId('day-cook-m1')).not.toBeInTheDocument();
   });
 
-  it('lists eaters by name when only some are eating, with guests appended', () => {
+  it('counts guests into the table, not as a separate "+2" (#640)', () => {
     const day = makeDay({
       chefs: ['m2'],
       attendees: [{ memberId: 'm1', homeTime: null, note: '' }],
       guests: 2,
     });
     const meta = render(MealDayEditor, { props: baseProps(day) }).getByTestId('day-meta');
-    expect(meta.textContent).toContain('Bea cooking');
-    expect(meta.textContent).toContain('Alex +2');
+    expect(meta.textContent).toContain('Bea');
+    // One eater plus two guests is three at the table — the row answers "how many
+    // am I cooking for", and a guest eats the same as anyone else.
+    expect(meta.textContent).toContain('3');
+    expect(meta.textContent).not.toContain('+2');
     expect(meta.textContent).not.toContain('Everyone');
   });
 
