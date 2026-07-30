@@ -53,6 +53,7 @@ function buildRecipe(steps: readonly StepSpec[], ingredients: readonly Ingredien
   return {
     id: RECIPE_ID,
     schemaVersion: 1,
+    kind: 'recipe',
     title: 'Emulator Ragù',
     description: null,
     ingredients: [

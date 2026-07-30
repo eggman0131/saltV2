@@ -55,7 +55,15 @@ export function unshoppedPlannedRecipes(
       const recipe = byId.get(recipeId);
       if (!recipe) continue;
       seen.add(recipeId);
-      out.push({ date, recipeId, missingCount: flattenIngredients(recipe).length });
+      // A recipe with no ingredient lines can never be shopped for: an add-to-list
+      // would write nothing, so nothing can ever carry a source back to it and the
+      // card would sit there for ever saying "0 to add". Keyed on the ingredient
+      // COUNT, deliberately not on the recipe's kind — an entry with nothing to
+      // buy is the same non-problem however it got that way. Note the guard comes
+      // AFTER `seen.add`, so the same empty dish planned twice stays deduped.
+      const missingCount = flattenIngredients(recipe).length;
+      if (missingCount === 0) continue;
+      out.push({ date, recipeId, missingCount });
     }
   }
   return out;

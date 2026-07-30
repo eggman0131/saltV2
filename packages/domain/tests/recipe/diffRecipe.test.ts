@@ -351,6 +351,15 @@ describe('diffRecipe', () => {
     expect(diff.hasChanges).toBe(false);
   });
 
+  // `kind` is immutable: an outing never becomes a recipe, it is deleted and
+  // re-created. Nothing can change it, so the diff — which exists to narrate an
+  // AI edit back to the cook — has nothing to say about it (issue #637).
+  it('ignores kind: it is fixed at creation, so it is never a change to report', () => {
+    const before = recipe({ title: 'Soup' });
+    const diff = diffRecipe(before, { ...before, kind: 'outing' });
+    expect(diff.hasChanges).toBe(false);
+  });
+
   it('produces a schema-valid RecipeDiff shape', () => {
     const before = withIngredients(recipe({ title: 'X' }), [newIngredient('i-1', 'a')]);
     const after = withIngredients(recipe({ title: 'Y' }), [newIngredient('i-1', 'b')]);

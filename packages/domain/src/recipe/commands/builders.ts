@@ -1,4 +1,4 @@
-import type { Recipe } from '../entities/Recipe.js';
+import type { Recipe, RecipeKind } from '../entities/Recipe.js';
 import type { Ingredient, IngredientGroup } from '../entities/Ingredient.js';
 import type { Step } from '../entities/Step.js';
 
@@ -7,11 +7,14 @@ import type { Step } from '../entities/Step.js';
 // 'pending', `schemaVersion` 1 — so callers (the service, tests) never hand-roll
 // a partial entity. `updatedAt` is left blank until the service stamps it on save.
 
-// A blank recipe: no ingredients, no steps, empty metadata.
-export function emptyRecipe(id: string, now: string): Recipe {
+// A blank recipe: no ingredients, no steps, empty metadata. `kind` defaults to
+// 'recipe' (issue #637) so every existing caller is untouched; an outing or a
+// cocktail is built by passing it.
+export function emptyRecipe(id: string, now: string, kind: RecipeKind = 'recipe'): Recipe {
   return {
     id,
     schemaVersion: 1,
+    kind,
     title: '',
     description: null,
     ingredients: [],

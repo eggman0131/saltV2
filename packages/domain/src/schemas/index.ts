@@ -261,6 +261,7 @@ export {
   RecipeMetadataSchema,
   RecipeSourceSchema,
   RecipeImageSchema,
+  RecipeKindSchema,
   RecipeSchema,
 } from './recipe.js';
 export type {
@@ -276,6 +277,7 @@ export type {
   RecipeMetadataDoc,
   RecipeSourceDoc,
   RecipeImageDoc,
+  RecipeKindDoc,
   RecipeDoc,
 } from './recipe.js';
 
