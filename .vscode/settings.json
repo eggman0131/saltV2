@@ -9,7 +9,8 @@
         "Export Prod Firestore",
         "Restore Staging from Prod",
         "Export Staging Firestore",
-        "Restore Dev from Staging"
+        "Restore Dev from Staging",
+        "Restore Dev from Prod"
     ],
     "terminal.integrated.enablePersistentSessions": true,
     "terminal.integrated.persistentSessionReviveProcess": "onExitAndWindowClose",
