@@ -62,6 +62,7 @@ function makeRecipe(id: string, overrides: Partial<RecipeDoc> = {}): RecipeDoc {
   return {
     id,
     schemaVersion: 1,
+    kind: 'recipe',
     title: 'Roast chicken',
     description: 'A whole roast chicken with lemon and thyme.',
     ingredients: [],
@@ -115,6 +116,7 @@ describe('onRecipeWritten — hero-image branch', () => {
     expect(mockGenerateImage).toHaveBeenCalledWith({
       title: 'Roast chicken',
       description: 'A whole roast chicken with lemon and thyme.',
+      kind: 'recipe',
       tags: [],
       sceneBrief: 'A blistered, golden-topped bake.',
     });
@@ -137,6 +139,7 @@ describe('onRecipeWritten — hero-image branch', () => {
     expect(mockGenerateImage).toHaveBeenCalledWith({
       title: 'Roast chicken',
       description: 'A whole roast chicken with lemon and thyme.',
+      kind: 'recipe',
       hint: 'on a rustic board',
       tags: [],
       sceneBrief: 'A blistered, golden-topped bake.',
@@ -271,6 +274,7 @@ describe('onRecipeWritten — scene brief', () => {
     expect(mockDescribeScene).toHaveBeenCalledWith({
       title: 'Roast chicken',
       description: 'A whole roast chicken with lemon and thyme.',
+      kind: 'recipe',
       ingredients: ['a handful of basil'],
       steps: ['Grill until the top is blistered and golden.'],
     });
@@ -341,5 +345,53 @@ describe('onRecipeWritten — scene brief', () => {
       makeEvent('r1', makeRecipe('r1', { image: { url: 'https://x/u.webp', source: 'upload' } })),
     );
     expect(mockDescribeScene).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Entry kinds (issue #637) ────────────────────────────────────────────────
+// The trigger runs the SAME two-step pipeline for every kind — an outing gets a
+// brief and a hero exactly as a recipe does, because the regenerate dialog seeds
+// its textarea from `imageBrief` and skipping the brief step would leave it empty.
+// The only thing that changes is which prompts the flows pick, so the trigger's
+// whole job here is to forward the kind.
+describe('onRecipeWritten — entry kinds', () => {
+  it('forwards the kind to BOTH flows so an outing is painted as an outing', async () => {
+    await (onRecipeWritten as Function)(
+      makeEvent(
+        'r-out',
+        makeRecipe('r-out', {
+          kind: 'outing',
+          title: 'Friday night curry',
+          description: 'From the place on the corner.',
+        }),
+      ),
+    );
+
+    expect(mockDescribeScene).toHaveBeenCalledWith(expect.objectContaining({ kind: 'outing' }));
+    expect(mockGenerateImage).toHaveBeenCalledWith(expect.objectContaining({ kind: 'outing' }));
+  });
+
+  it('still generates a hero for an outing — no ingredients, no method, same pipeline', async () => {
+    await (onRecipeWritten as Function)(
+      makeEvent('r-out', makeRecipe('r-out', { kind: 'outing', ingredients: [], steps: [] })),
+    );
+
+    expect(mockGenerateImage).toHaveBeenCalledOnce();
+    const writeArg = mockUpdate.mock.calls[0]![0];
+    expect(writeArg.image.source).toBe('ai');
+    // The brief is persisted, which is what the regenerate dialog's textarea reads.
+    expect(writeArg.imageBrief).toBe('A blistered, golden-topped bake.');
+  });
+
+  it('defaults a pre-#637 doc with no kind to "recipe"', async () => {
+    // RecipeSchema defaults the field on read, so a recipe written before kinds
+    // existed reaches both flows as a plain recipe and its prompt is unchanged.
+    const legacy = makeRecipe('r-old') as Record<string, unknown>;
+    delete legacy['kind'];
+
+    await (onRecipeWritten as Function)(makeEvent('r-old', legacy as never));
+
+    expect(mockDescribeScene).toHaveBeenCalledWith(expect.objectContaining({ kind: 'recipe' }));
+    expect(mockGenerateImage).toHaveBeenCalledWith(expect.objectContaining({ kind: 'recipe' }));
   });
 });

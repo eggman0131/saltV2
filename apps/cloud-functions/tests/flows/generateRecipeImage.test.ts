@@ -19,8 +19,18 @@ vi.mock('firebase-functions', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-const { generateRecipeImageFlow, RECIPE_IMAGE_STYLE_ANCHORS, RECIPE_IMAGE_DISH_READING_FALLBACK } =
-  await import('../../src/flows/generateRecipeImage.js');
+const {
+  generateRecipeImageFlow,
+  RECIPE_IMAGE_STYLE_ANCHORS,
+  RECIPE_IMAGE_DISH_READING_FALLBACK,
+  OUTING_IMAGE_STYLE_ANCHORS,
+  OUTING_SCENE_FALLBACK,
+  GENERATE_RECIPE_IMAGE_KINDS,
+} = await import('../../src/flows/generateRecipeImage.js');
+
+const { RecipeKindSchema } = await import('@salt/domain/schemas');
+
+const IMAGE_OK = { media: { url: 'data:image/png;base64,QUJD', contentType: 'image/png' } };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -284,5 +294,119 @@ describe('generateRecipeImage flow', () => {
     await expect(
       (generateRecipeImageFlow as Function)({ title: 'Roast chicken', description: null }),
     ).rejects.toThrow(/no image/);
+  });
+});
+
+// ─── Entry kinds (issue #637) ────────────────────────────────────────────────
+// The `recipes` collection also holds outings — a takeaway, a picnic, a meal out.
+// Painting one with the recipe anchors produces a home-plated dish that never
+// existed, so `kind` selects a sibling opener, fallback and anchor set. 'recipe' is
+// the default arm everywhere, so absent and unrecognised kinds are unchanged.
+describe('generateRecipeImage flow — entry kinds', () => {
+  beforeEach(() => {
+    mockGenerate.mockResolvedValue(IMAGE_OK);
+  });
+
+  async function promptFor(input: Record<string, unknown>): Promise<string> {
+    mockGenerate.mockClear();
+    await (generateRecipeImageFlow as Function)(input);
+    return mockGenerate.mock.calls[0]![0].prompt as string;
+  }
+
+  it('pins the locally-declared kind literals against the domain enum', () => {
+    // These literals CANNOT be imported: genkit bundles its own zod instance, so a
+    // schema built from plain `zod` is not interchangeable with genkit's `z`. This
+    // assertion is what stops the hand-copied list from drifting — add a kind to
+    // RecipeKindSchema and this fails until the flow's list follows.
+    expect([...GENERATE_RECIPE_IMAGE_KINDS]).toEqual(RecipeKindSchema.options);
+  });
+
+  it('produces a byte-identical prompt when kind is absent, "recipe", or unrecognised', async () => {
+    const input = {
+      title: 'Roast chicken',
+      description: 'A whole roast chicken with lemon and thyme.',
+      tags: ['comfort-food'],
+      hint: 'show it on a rustic board',
+    };
+
+    const absent = await promptFor(input);
+    const explicit = await promptFor({ ...input, kind: 'recipe' });
+    // 'cocktail' has no art direction of its own yet (Phase 5) and must fall to the
+    // default arm rather than to nothing.
+    const unrecognised = await promptFor({ ...input, kind: 'cocktail' });
+
+    expect(explicit).toBe(absent);
+    expect(unrecognised).toBe(absent);
+  });
+
+  it('paints an outing as food that ARRIVES — outing anchors, never the recipe ones', async () => {
+    const prompt = await promptFor({
+      title: 'Friday night curry',
+      description: null,
+      kind: 'outing',
+    });
+
+    expect(prompt).toContain(OUTING_IMAGE_STYLE_ANCHORS);
+    expect(prompt).toContain(OUTING_SCENE_FALLBACK);
+    // The recipe house style must not leak in — a plated-dish anchor set is exactly
+    // the picture an outing is not.
+    expect(prompt).not.toContain(RECIPE_IMAGE_STYLE_ANCHORS);
+    expect(prompt).not.toContain(RECIPE_IMAGE_DISH_READING_FALLBACK);
+    // …nor the "finished dish" opener.
+    expect(prompt).not.toContain('the finished dish');
+    expect(prompt).toContain('as it actually arrives');
+  });
+
+  it('keeps the outing anchors LAST on the brief path', async () => {
+    const prompt = await promptFor({
+      title: 'Friday night curry',
+      description: 'From the place on the corner.',
+      kind: 'outing',
+      sceneBrief: 'Foil trays opened out on a coffee table, naan torn in half.',
+      tags: ['takeaway'],
+      hint: 'lots of little tubs',
+    });
+
+    // The brief REPLACES the fallback, exactly as on the recipe path…
+    expect(prompt).toContain('Foil trays opened out on a coffee table');
+    expect(prompt).not.toContain(OUTING_SCENE_FALLBACK);
+    // …and everything authored still sits before the anchors, which end the prompt.
+    // This ordering matters MORE here: with no method to read, a hand-edited brief
+    // is the primary path for an outing, so it is the likeliest thing to try to
+    // talk the model out of "no people, no logos".
+    expect(prompt.indexOf('Foil trays opened out')).toBeLessThan(
+      prompt.indexOf(OUTING_IMAGE_STYLE_ANCHORS),
+    );
+    expect(prompt.indexOf('This recipe is tagged')).toBeLessThan(
+      prompt.indexOf(OUTING_IMAGE_STYLE_ANCHORS),
+    );
+    expect(prompt.indexOf('Additional guidance for this photo')).toBeLessThan(
+      prompt.indexOf(OUTING_IMAGE_STYLE_ANCHORS),
+    );
+    expect(prompt.endsWith(OUTING_IMAGE_STYLE_ANCHORS)).toBe(true);
+  });
+
+  it('keeps the outing anchors LAST on the fallback path too (no brief)', async () => {
+    const prompt = await promptFor({
+      title: 'Friday night curry',
+      description: null,
+      kind: 'outing',
+      hint: 'lots of little tubs',
+    });
+    expect(prompt.endsWith(OUTING_IMAGE_STYLE_ANCHORS)).toBe(true);
+  });
+
+  it('keeps the outing anchor wording verbatim', () => {
+    // Canary, mirroring the recipe anchors': these are the outing house style and
+    // the prohibitions. Reword deliberately, then update this test.
+    expect(OUTING_IMAGE_STYLE_ANCHORS).toContain('IN THE VESSEL IT ARRIVED IN');
+    expect(OUTING_IMAGE_STYLE_ANCHORS).toContain('Do NOT plate it up onto home crockery');
+    expect(OUTING_IMAGE_STYLE_ANCHORS).toContain('photorealistic photograph');
+    expect(OUTING_IMAGE_STYLE_ANCHORS).toContain('shallow depth of field');
+    expect(OUTING_IMAGE_STYLE_ANCHORS).toContain(
+      'Absolutely no text, no captions, no watermark, no logos, no branding, no hands, no people.',
+    );
+    // The fallback owns the occasion-reading guess and must not smuggle anchors in.
+    expect(OUTING_SCENE_FALLBACK).not.toContain('no hands, no people');
   });
 });

@@ -226,9 +226,11 @@ async function assembleDraft(
   return {
     id: crypto.randomUUID(),
     schemaVersion: 1,
-    // An authored recipe is always a cookable recipe (issue #637); outings are
-    // created by hand and have nothing to author.
-    kind: 'recipe',
+    // Authoring produces a cookable recipe (issue #637) — outings are written by
+    // hand and have nothing to author. On an edit-mode amend the base recipe's own
+    // kind is carried through instead, so an amend can never silently re-type the
+    // entry it is editing.
+    kind: baseRecipe?.kind ?? 'recipe',
     title: raw.title,
     description: raw.description,
     ingredients: ingredientGroups,
