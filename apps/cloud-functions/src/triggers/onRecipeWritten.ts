@@ -124,6 +124,11 @@ async function maybeGenerateImage(
       generateRecipeImageFlow({
         title,
         description: recipe.description,
+        // Selects the opener, the scene fallback and the style anchors (issue
+        // #637): an outing is photographed as food that ARRIVES, not as a plated
+        // dish. Always parsed (RecipeSchema defaults it), so pre-#637 docs read
+        // back as 'recipe' and their prompt is byte-for-byte unchanged.
+        kind: recipe.kind,
         ...(hint ? { hint } : {}),
         ...(brief ? { sceneBrief: brief } : {}),
         // Feed the recipe's own tags to the model as a dish-type cue for reading
@@ -180,6 +185,10 @@ async function describeSceneOrNothing(recipe: RecipeDoc): Promise<string | undef
     const { brief } = await describeRecipeSceneFlow({
       title: recipe.title.trim(),
       description: recipe.description,
+      // An outing has no method and no ingredients for the art director to read,
+      // so it gets a prompt that asks what the food looks like as it ARRIVES
+      // (issue #637) rather than what it looks like once cooked and plated.
+      kind: recipe.kind,
       // Flatten the ingredient groups to their display lines — the flow wants the
       // dish's content, not its grouping.
       ingredients: recipe.ingredients.flatMap((g) => g.items.map((i) => i.rawText)),

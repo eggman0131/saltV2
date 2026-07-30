@@ -1,6 +1,7 @@
 import type {
   RecipeDoc,
   RecipeImageDoc,
+  RecipeKindDoc,
   RecipeMetadataDoc,
   RecipeSourceDoc,
 } from '../../schemas/recipe.js';
@@ -23,6 +24,12 @@ export type RecipeMetadata = RecipeMetadataDoc;
 // are reserved seams for the deferred URL/photo import epic (no migration needed
 // when they arrive).
 export type RecipeSource = RecipeSourceDoc;
+
+// What kind of entry a `recipes/{id}` document is (issue #637). Aliased here so
+// the whole recipe surface — including the kind — is reachable from `@salt/domain`
+// (Svelte files import from the package root, never from `@salt/domain/schemas`).
+// Never switch on this outside the domain: use the capability predicates.
+export type RecipeKind = RecipeKindDoc;
 
 // One Firestore document at `recipes/{id}`. Whole-document last-write-wins on
 // `updatedAt` (Firestore-as-master; no tombstones, no revision counter).

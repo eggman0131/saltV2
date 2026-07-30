@@ -19,17 +19,21 @@
   import { push } from 'svelte-spa-router';
   import {
     appendCacheBuster,
+    isPlannable,
     memberInitials,
+    takesIngredients,
     weatherIcon,
     temperatureBand,
     type Day,
     type Member,
     type Recipe,
+    type RecipeKind,
     type TemperatureBand,
   } from '@salt/domain';
   import type { WeatherDaySummary, ShoppingSlot } from '@salt/domain/schemas';
   import WeatherIcon from '$lib/weather-icons/WeatherIcon.svelte';
   import WeatherSummary from './WeatherSummary.svelte';
+  import { KIND_COPY, kindOf } from '../recipes/recipeKind.js';
 
   // Collapsible editor for a single Day, shared by the weekly page (date-keyed)
   // and the template editor (weekday-keyed).
@@ -132,12 +136,21 @@
       .filter((r): r is Recipe => r !== undefined),
   );
   // Picker options exclude already-attached recipes so the same dish can't be
-  // added twice. Items are {value: id, label: title}, matching the canon picker.
+  // added twice, and anything that cannot occupy a dinner slot — a cocktail is
+  // not dinner (issue #637). The gate is `isPlannable`, never a comparison
+  // against a kind: a fourth kind decides whether it belongs here in the domain
+  // capability table, not in this file. Items are {value: id, label: title},
+  // matching the canon picker.
   const recipePickerItems: ComboboxItemType[] = $derived(
     recipes
-      .filter((r) => !day.recipeIds.includes(r.id))
+      .filter((r) => isPlannable(kindOf(r)) && !day.recipeIds.includes(r.id))
       .map((r) => ({ value: r.id, label: r.title })),
   );
+  // Kind by id, so a picker row can wear the badge that says what it is. A
+  // separate projection because `ComboboxItemType` is the shared primitive's
+  // contract ({value,label}) and must not grow a Salt-specific field — the badge
+  // is composed here, in the app, out of the item's own `value`.
+  const kindById = $derived(new Map<string, RecipeKind>(recipes.map((r) => [r.id, kindOf(r)])));
   function recipeFilter(input: string, item: ComboboxItemType): boolean {
     return item.label.toLowerCase().includes(input.trim().toLowerCase());
   }
@@ -164,9 +177,15 @@
   // Display-time cache-bust for the row thumbnail (mirrors RecipeListPage, issue
   // #460): a regenerated hero reuses the same Storage URL, so bust it with the
   // per-regeneration nonce (`imageRequestedAt`, falling back to `updatedAt`). Null
-  // when the image is hidden/absent — the row then shows the CookingPot fallback.
+  // when there is no image — the row then shows the kind's fallback pictogram.
+  //
+  // `imageHidden` is deliberately NOT consulted. The field is retired: neither
+  // RecipeListPage nor RecipeViewPage reads it any more, so a document still
+  // carrying a legacy `true` would blank the planner thumbnail while the same
+  // photo showed on every other screen. The schema field stays (production data
+  // holds it); this was its last reader in web-pwa.
   function heroUrl(recipe: Recipe): string | null {
-    return recipe.image?.url && !recipe.imageHidden
+    return recipe.image?.url
       ? appendCacheBuster(recipe.image.url, recipe.imageRequestedAt ?? recipe.updatedAt)
       : null;
   }
@@ -474,6 +493,7 @@
           <div class="flex flex-col gap-1.5" data-testid={`${testid}-recipes`}>
             {#each attachedRecipes as r (r.id)}
               {@const url = heroUrl(r)}
+              {@const kind = kindOf(r)}
               <div
                 class="flex items-center justify-between gap-2 rounded border px-2 py-1.5"
                 data-testid={`${testid}-recipe-row-${r.id}`}
@@ -502,7 +522,10 @@
                         class="flex h-full w-full items-center justify-center bg-gradient-to-br from-muted to-muted/40 text-muted-foreground/60"
                         data-testid={`${testid}-recipe-thumb-fallback-${r.id}`}
                       >
-                        <Icon name="CookingPot" size={18} />
+                        <!-- The kind's own pictogram, so a photo-less takeaway
+                             reads as a takeaway rather than a pot. Copy/icon
+                             selection only — no behaviour hangs off this. -->
+                        <Icon name={KIND_COPY[kind].thumbIcon} size={18} />
                       </span>
                     {/if}
                   </span>
@@ -511,8 +534,11 @@
                 <!-- Add to shop (Phase 4, #469): hand the full recipe up to the page,
                      which guards the default list then opens RecipeAddToListSheet.
                      Rendered only when the parent supplies the callback — the template
-                     editor omits it and so stays shopping-free. -->
-                {#if onRecipeAddToList}
+                     editor omits it and so stays shopping-free.
+                     Also gated on `takesIngredients` (#637): a takeaway has nothing
+                     to buy, so the action simply isn't offered rather than opening a
+                     sheet with an empty plan. -->
+                {#if onRecipeAddToList && takesIngredients(kind)}
                   <Button
                     variant="ghost"
                     size="sm"
@@ -546,7 +572,7 @@
                 value=""
                 filterFn={recipeFilter}
                 restrict
-                placeholder="Add a recipe…"
+                placeholder="Add a recipe or idea…"
                 onValueChange={addRecipe}
               >
                 <ComboboxField>
@@ -556,10 +582,32 @@
                 <ComboboxContent>
                   {#snippet children({ filteredItems })}
                     {#each filteredItems as item, i (item.value)}
-                      <ComboboxItem {item} index={i} />
+                      {@const kind = kindById.get(item.value) ?? 'recipe'}
+                      <!-- A "When you CBA" option sits in the same list as the
+                           recipes and is told apart by a small quiet chip. The
+                           badge is COPY: `KIND_COPY[kind].label` names it, and
+                           `recipe` — the norm — wears nothing, so the picker
+                           looks exactly as it does today for anyone who never
+                           adds an alternative. The chip is inside the option, so
+                           it is part of the option's accessible name too and a
+                           screen reader hears "Takeaway — Indian, When you CBA".
+                           `ComboboxItem`'s `children` snippet takes no arguments,
+                           so this closes over the loop's own `item`. -->
+                      <ComboboxItem {item} index={i} class="gap-2">
+                        {#snippet children()}
+                          <span class="min-w-0 flex-1 truncate">{item.label}</span>
+                          {#if kind !== 'recipe'}
+                            <span
+                              class="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
+                            >
+                              {KIND_COPY[kind].label}
+                            </span>
+                          {/if}
+                        {/snippet}
+                      </ComboboxItem>
                     {/each}
                     {#if filteredItems.length === 0}
-                      <ComboboxEmpty>No recipes found</ComboboxEmpty>
+                      <ComboboxEmpty>Nothing found</ComboboxEmpty>
                     {/if}
                   {/snippet}
                 </ComboboxContent>

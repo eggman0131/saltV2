@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { RecipeKindSchema } from './recipe.js';
 
 // Input/output for the describeRecipeScene flow (recipe hero art-direction).
 // A cheap text step in front of the expensive image step: a fast model reads the
@@ -12,6 +13,13 @@ import { z } from 'zod';
 export const DescribeRecipeSceneInputSchema = z.object({
   title: z.string(),
   description: z.string().nullable(),
+  // What kind of entry this is (issue #637). It selects the art director's brief
+  // entirely: a recipe brief is written from the METHOD and the INGREDIENTS ("the
+  // blistered top, the torn basil"), and an outing has neither — so an outing
+  // brief describes the food as it ARRIVES instead (vessel, packaging, spread,
+  // setting). OPTIONAL and defaulted downstream to `'recipe'`, so a caller that
+  // omits it (and every request already in flight) gets exactly today's prompt.
+  kind: RecipeKindSchema.optional(),
   // Ingredient display lines (rawText). The whole point of this flow: a garnish
   // or a finishing ingredient that appears ONLY here is exactly the detail the
   // title/description-only prompt could never see.

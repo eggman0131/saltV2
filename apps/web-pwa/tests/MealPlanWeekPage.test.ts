@@ -21,6 +21,27 @@ const RECIPE: Recipe = {
   ingredients: [],
 } as unknown as Recipe;
 
+// The other two kinds (#637). Neither carries ingredients or steps: what the
+// planner does with them is decided by the domain capability predicates, not by
+// their contents. RECIPE deliberately has NO `kind` field — a pre-#637 document
+// — so every assertion below also proves the `kindOf` default still reads as a
+// recipe.
+const OUTING: Recipe = {
+  id: 'o1',
+  title: 'Takeaway — Indian',
+  kind: 'outing',
+  metadata: { servings: 2 },
+  ingredients: [],
+} as unknown as Recipe;
+
+const COCKTAIL: Recipe = {
+  id: 'c1',
+  title: 'Negroni',
+  kind: 'cocktail',
+  metadata: { servings: 1 },
+  ingredients: [],
+} as unknown as Recipe;
+
 // ─── Hoisted reactive stubs ────────────────────────────────────────────────
 const {
   mockMembers,
@@ -169,19 +190,6 @@ import {
   setWeekAttendeeHomeTime,
 } from '../src/lib/mealPlanService.js';
 import { addToast } from '../src/lib/toastStore.js';
-
-// A week whose single day already has recipe r1 attached, so its detail renders a
-// recipe row (with the per-row "Add to shop" action) without going through the
-// picker (setWeekDayRecipes is a no-op mock and never updates the store).
-function weekWithRecipe(date: string): MealPlanWeek {
-  return {
-    ...emptyWeek(date),
-    days: {
-      ...emptyWeek(date).days,
-      [date]: { note: '', recipeIds: ['r1'], chefs: [], attendees: [], guests: 0 },
-    },
-  };
-}
 
 async function expandDay(date: string): Promise<void> {
   await userEvent.click(screen.getByTestId(`day-${date}-summary`));
@@ -371,10 +379,33 @@ beforeEach(() => {
 });
 
 // Attach a recipe through the day's real recipe-picker Combobox: click the input
-// to open the listbox, then click the option by its title.
-async function attachRecipe(date: string, title: string): Promise<void> {
+// to open the listbox, then click the option by its title. `title` accepts a
+// RegExp because a "When you CBA" option carries its kind badge INSIDE the
+// option, so its accessible name is the title plus the badge — see the #637
+// block at the foot of this file.
+async function attachRecipe(date: string, title: string | RegExp): Promise<void> {
   await userEvent.click(screen.getByTestId(`day-${date}-recipe-picker`));
   await userEvent.click(await screen.findByRole('option', { name: title }));
+}
+
+// Open a day's picker without choosing anything, so the offered options can be
+// inspected.
+async function openPicker(date: string): Promise<void> {
+  await userEvent.click(screen.getByTestId(`day-${date}-recipe-picker`));
+  await screen.findAllByRole('option');
+}
+
+// A week whose single day already holds the given entries, so its detail renders
+// their rows (with the per-row "Add to shop" action) without going through the
+// picker (setWeekDayRecipes is a no-op mock and never updates the store).
+function weekWith(date: string, recipeIds: string[]): MealPlanWeek {
+  return {
+    ...emptyWeek(date),
+    days: {
+      ...emptyWeek(date).days,
+      [date]: { note: '', recipeIds, chefs: [], attendees: [], guests: 0 },
+    },
+  };
 }
 
 describe('MealPlanWeekPage', () => {
@@ -693,7 +724,7 @@ describe('MealPlanWeekPage', () => {
   });
 
   it('adds an attached recipe to the shopping list from the day detail (Phase 4, #469)', async () => {
-    mockWeek._set(weekWithRecipe('2026-06-08'));
+    mockWeek._set(weekWith('2026-06-08', ['r1']));
     render(MealPlanWeekPage);
     await expandDay('2026-06-08');
 
@@ -714,7 +745,7 @@ describe('MealPlanWeekPage', () => {
 
   it('shows the friendly toast and does not open the sheet with no default list (Phase 4, #469)', async () => {
     mockDefaultListId._set(null);
-    mockWeek._set(weekWithRecipe('2026-06-08'));
+    mockWeek._set(weekWith('2026-06-08', ['r1']));
     render(MealPlanWeekPage);
     await expandDay('2026-06-08');
 
@@ -1050,5 +1081,115 @@ describe('MealPlanWeekPage — next week appears from Wednesday (#639, Phase 6)'
     // The service is a module singleton; leaving must not leave a second week
     // (and a second shop-day range read) subscribed behind us.
     expect(vi.mocked(mockSetExtensionWeek)).toHaveBeenLastCalledWith(null);
+  });
+});
+
+// ─── "When you CBA" in the planner (#637, Phase 4) ─────────────────────────
+// An outing fills a dinner slot like any other entry — same picker, same note
+// auto-fill, same hero thumbnail — and offers nothing that does not apply to it.
+// A cocktail is not dinner and is never offered at all. Every one of these is a
+// consequence of the DOMAIN predicates (`isPlannable`, `takesIngredients`), so
+// the assertions are about what the screen offers, not about the kind string.
+describe('MealPlanWeekPage — when you CBA (#637, Phase 4)', () => {
+  it('offers CBA options alongside recipes, and never a cocktail', async () => {
+    mockRecipes._set([RECIPE, OUTING, COCKTAIL]);
+    render(MealPlanWeekPage);
+    await expandDay('2026-06-08');
+    await openPicker('2026-06-08');
+
+    expect(screen.getByRole('option', { name: 'Spaghetti Bolognese' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Takeaway — Indian/ })).toBeInTheDocument();
+    // `isPlannable('cocktail')` is false, so it is not on the menu for a dinner.
+    expect(screen.queryByRole('option', { name: /Negroni/ })).not.toBeInTheDocument();
+  });
+
+  it('drops an already-attached CBA option from the picker', async () => {
+    mockRecipes._set([RECIPE, OUTING]);
+    mockWeek._set(weekWith('2026-06-08', ['o1']));
+    render(MealPlanWeekPage);
+    await expandDay('2026-06-08');
+    await openPicker('2026-06-08');
+
+    // Attached once is enough — the same night out can't be added twice.
+    expect(screen.queryByRole('option', { name: /Takeaway — Indian/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Spaghetti Bolognese' })).toBeInTheDocument();
+  });
+
+  it('badges a CBA option and leaves a recipe unmarked', async () => {
+    mockRecipes._set([RECIPE, OUTING]);
+    render(MealPlanWeekPage);
+    await expandDay('2026-06-08');
+    await openPicker('2026-06-08');
+
+    const outing = screen.getByRole('option', { name: /Takeaway — Indian/ });
+    expect(within(outing).getByText('When you CBA')).toBeInTheDocument();
+
+    // The default kind wears nothing: the picker looks exactly as it does today
+    // for anyone who never adds an alternative.
+    const recipe = screen.getByRole('option', { name: 'Spaghetti Bolognese' });
+    expect(recipe.textContent?.trim()).toBe('Spaghetti Bolognese');
+  });
+
+  it('auto-fills an empty meal with a CBA title exactly as with a recipe', async () => {
+    mockRecipes._set([RECIPE, OUTING]);
+    render(MealPlanWeekPage);
+    await expandDay('2026-06-08');
+    await attachRecipe('2026-06-08', /Takeaway — Indian/);
+
+    // Attaching is attaching: `addRecipe` deliberately does NOT branch on kind,
+    // so the day gets its title just as a recipe night would.
+    expect(vi.mocked(setWeekDayRecipes)).toHaveBeenCalledWith('2026-06-08', ['o1']);
+    await waitFor(() =>
+      expect(vi.mocked(setWeekDayNote)).toHaveBeenCalledWith('2026-06-08', 'Takeaway — Indian'),
+    );
+  });
+
+  it('offers no "Add to shop" on an attached CBA night, but still does on a recipe', async () => {
+    mockRecipes._set([RECIPE, OUTING]);
+    mockWeek._set(weekWith('2026-06-08', ['r1', 'o1']));
+    render(MealPlanWeekPage);
+    await expandDay('2026-06-08');
+
+    // Both rows render — the outing is a first-class night, not a lesser one…
+    expect(screen.getByTestId('day-2026-06-08-recipe-row-o1')).toBeInTheDocument();
+    expect(screen.getByTestId('day-2026-06-08-recipe-row-r1')).toBeInTheDocument();
+    // …but a takeaway has nothing to buy, so the action simply isn't there.
+    expect(screen.queryByTestId('day-2026-06-08-recipe-addshop-o1')).not.toBeInTheDocument();
+    expect(screen.getByTestId('day-2026-06-08-recipe-addshop-r1')).toBeInTheDocument();
+    // Removing works on either, so a wrongly-attached outing is not stuck.
+    expect(screen.getByTestId('day-2026-06-08-recipe-remove-o1')).toBeInTheDocument();
+  });
+
+  it('wears the kind pictogram when a CBA option has no hero image', async () => {
+    mockRecipes._set([RECIPE, OUTING]);
+    mockWeek._set(weekWith('2026-06-08', ['o1']));
+    render(MealPlanWeekPage);
+    await expandDay('2026-06-08');
+
+    // No image on the fixture, so the row falls back to the kind's own glyph
+    // rather than a cooking pot.
+    const fallback = screen.getByTestId('day-2026-06-08-recipe-thumb-fallback-o1');
+    expect(fallback.querySelector('.lucide-hand-platter')).not.toBeNull();
+  });
+
+  it('shows the hero thumbnail even on a document still carrying legacy imageHidden', async () => {
+    // `imageHidden` is retired and no longer read anywhere in web-pwa; a stale
+    // `true` must not blank the planner thumbnail while the same photo shows on
+    // the recipe list and view pages.
+    mockRecipes._set([
+      {
+        ...OUTING,
+        image: { url: 'https://example.test/curry.webp' },
+        imageHidden: true,
+        updatedAt: '2026-06-01T00:00:00.000Z',
+      } as unknown as Recipe,
+    ]);
+    mockWeek._set(weekWith('2026-06-08', ['o1']));
+    render(MealPlanWeekPage);
+    await expandDay('2026-06-08');
+
+    const thumb = screen.getByTestId('day-2026-06-08-recipe-thumb-o1');
+    expect(thumb.getAttribute('src')).toContain('https://example.test/curry.webp');
+    expect(screen.queryByTestId('day-2026-06-08-recipe-thumb-fallback-o1')).not.toBeInTheDocument();
   });
 });

@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
-import { render, screen, cleanup, waitFor } from '@testing-library/svelte';
+import { render, screen, cleanup, waitFor, within } from '@testing-library/svelte';
+import userEvent from '@testing-library/user-event';
 import type { Recipe, CanonItem, IngredientGroup, ProductForm } from '@salt/domain';
 
 // The first render coverage for the recipe-add review sheet. A product-form row is
@@ -99,6 +100,7 @@ function makeRecipe(items: IngredientGroup['items']): Recipe {
   return {
     id: 'recipe-1',
     schemaVersion: 1,
+    kind: 'recipe',
     title: 'Test Recipe',
     description: null,
     ingredients: [{ id: 'g1', name: null, items }],
@@ -196,5 +198,40 @@ describe('RecipeAddToListSheet — original recipe wording', () => {
 
     await waitFor(() => expect(screen.getAllByTestId('recipe-add-review-row')).toHaveLength(1));
     expect(screen.queryAllByTestId('recipe-add-review-original-text')).toHaveLength(0);
+  });
+});
+
+describe('RecipeAddToListSheet — nothing to add', () => {
+  it('says so and disables the confirm when there are no rows at all', async () => {
+    // Reachable two ways: an entry that takes no ingredients, and a recipe whose
+    // ingredients are all unresolvable. Either way the sheet used to render a
+    // bare header row above an enabled "Add 0 to list".
+    renderSheet(makeRecipe([]));
+
+    await waitFor(() => expect(screen.getByTestId('recipe-add-review-empty')).toBeInTheDocument());
+    expect(screen.queryAllByTestId('recipe-add-review-row')).toHaveLength(0);
+    expect(screen.getByTestId('recipe-add-to-list-confirm')).toBeDisabled();
+  });
+
+  it('disables the confirm once the last row is toggled off', async () => {
+    mockGetCanonItemsSnapshot.mockReturnValue([makeCanonItem('canon-salt', 'salt')]);
+    renderSheet(makeRecipe([ingredient('i1', 'canon-salt', 'salt', 5, 'g')]));
+
+    await waitFor(() => expect(screen.getAllByTestId('recipe-add-review-row')).toHaveLength(1));
+    const confirm = screen.getByTestId('recipe-add-to-list-confirm');
+    expect(confirm).not.toBeDisabled();
+
+    // The testid sits on the Checkbox's wrapper; the control itself is the
+    // role=checkbox button inside it.
+    await userEvent.click(
+      within(screen.getByTestId('recipe-add-review-add')).getByRole('checkbox'),
+    );
+
+    // A pre-existing hole, not a kind-specific one: the sheet let you press
+    // "Add 0 to list" and then told you nothing had been added.
+    await waitFor(() => expect(confirm).toBeDisabled());
+    // The row is still there — it is deselected, not gone, so it can be
+    // selected again.
+    expect(screen.getAllByTestId('recipe-add-review-row')).toHaveLength(1);
   });
 });

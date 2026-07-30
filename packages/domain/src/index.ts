@@ -245,6 +245,7 @@ export type {
   StepTimer,
   Recipe,
   RecipeImage,
+  RecipeKind,
   RecipeMetadata,
   RecipeSource,
 } from './recipe/index.js';
@@ -255,6 +256,9 @@ export {
   newStep,
   clearIngredientMatch,
   flattenIngredients,
+  takesIngredients,
+  isCookable,
+  isPlannable,
   findProducingRecipes,
   diffRecipe,
 } from './recipe/index.js';

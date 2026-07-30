@@ -2,6 +2,7 @@ import { googleAI } from '@genkit-ai/google-genai';
 import {
   DescribeRecipeSceneInputSchema,
   DescribeRecipeSceneOutputSchema,
+  type DescribeRecipeSceneInput,
 } from '@salt/domain/schemas';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
@@ -26,6 +27,14 @@ import { resolveModel } from '../ai/resolveModel.js';
 // be a per-recipe vote on the house style, which is exactly what the anchors exist
 // to prevent (and, once a brief is human-editable, a way to talk the image model
 // out of "no people").
+//
+// The scope rule itself is hoisted into ONE constant because every system prompt
+// here — recipe, outing and cocktail, authoring and revising — must say it
+// identically. It
+// is the sentence that keeps the brief on the dish-specific half; a per-kind
+// paraphrase of it is a per-kind loophole in the house style.
+const SCENE_SCOPE_RULE = `Do NOT write about photographic style, lighting, lens, framing, camera angle, or what must not appear in the shot — those are fixed elsewhere and anything you say about them is discarded.`;
+
 const DESCRIBE_SCENE_SYSTEM = `You are a food photographer's art director. You are given one recipe — its title, \
 description, tags, ingredients and method. Write a short art-direction brief for a photograph of the FINISHED dish.
 
@@ -39,8 +48,7 @@ Cover only what is specific to THIS dish:
 - how it is plated and in what vessel, and any garnish or finishing touch the method calls for
 - the mood, season and cuisine the dish reads as, and why the dish itself implies that
 
-Do NOT write about photographic style, lighting, lens, framing, camera angle, or what must not appear in the shot — \
-those are fixed elsewhere and anything you say about them is discarded. Do not restate the recipe, do not list \
+${SCENE_SCOPE_RULE} Do not restate the recipe, do not list \
 quantities, and do not give instructions for cooking it.
 
 Write ONE paragraph of plain prose, at most about 80 words. A brief, not an essay. Return only the brief.`;
@@ -88,13 +96,150 @@ change asks for it.
 
 Write ONE paragraph of plain prose, at most about 80 words. Return only the revised brief.`;
 
+// ─── OUTINGS (issue #637) ────────────────────────────────────────────────────
+// An outing is a takeaway, a picnic or a meal out. The recipe prompt above is
+// built on a premise an outing cannot satisfy — "read the whole recipe, especially
+// the METHOD and the INGREDIENTS" — because an outing has neither. All the model
+// gets is a title and a hand-written description, and asked the recipe question it
+// invents a plated, cooked-from-scratch dish: exactly the picture an outing is not.
+//
+// So the question changes. Not "what does this look like once it is cooked and
+// plated" but "what does this look like as it ARRIVES" — in the box, the tray, the
+// wrapping, the spread on the blanket, the plate the restaurant sent out.
+//
+// SCOPE is identical to the recipe prompts and inherits the same rule verbatim:
+// the subject half ONLY. The anchors stay locked in generateRecipeImage.ts and are
+// appended after the brief. This matters MORE here than for recipes: with no
+// method for the model to read, editing the brief by hand is the stated primary way
+// a user gets an outing's hero right, so the brief is user text far more often.
+const DESCRIBE_OUTING_SCENE_SYSTEM = `You are a food photographer's art director. You are given one OUTING — a takeaway, \
+a picnic, a chippy tea, a street-food stop or a meal out — with its title, description and tags. Write a short \
+art-direction brief for a photograph of that food.
+
+This food was not cooked here. There is no method and no ingredient list, and there is no plating up to describe. \
+Describe the food AS IT ARRIVES: what it comes in and what it looks like when it is opened out in front of you. \
+Read the title and description for what kind of outing it is and what cuisine it is, and let that decide everything \
+else.
+
+Cover only what is specific to THIS outing:
+- what the food itself looks like — colour, texture, char, glaze, sauce, steam, how it is piled or laid out
+- the vessel and packaging it arrives in — the foil tray, the carton, the pizza box, the paper wrapping, the tub, \
+the restaurant's own plate — and how it is opened out or spread
+- where it is eaten and what it is set down on, and the mood, occasion and cuisine the outing reads as
+
+${SCENE_SCOPE_RULE} Do not describe cooking it, do not invent a method or an ingredient list, and do not turn it into \
+a home-cooked dish plated onto crockery.
+
+Write ONE paragraph of plain prose, at most about 80 words. A brief, not an essay. Return only the brief.`;
+
+// The outing counterpart to REVISE_SCENE_SYSTEM. Same failure it exists to prevent
+// (a steer stapled on the end, contradicting the paragraph it was added to), same
+// "keep what the change does not touch" rule — but anchored to the outing rather
+// than to a recipe the model could otherwise drift into inventing.
+const REVISE_OUTING_SCENE_SYSTEM = `You are a food photographer's art director. You are given one OUTING — a \
+takeaway, a picnic or a meal out — an existing art-direction brief for a photograph of that food, and a requested \
+change from the person who will use it. Rewrite the brief so it incorporates the requested change.
+
+Fold the change THROUGH the whole brief. If the change is "make it a picnic", then the vessel, the setting, the \
+surface, the light and the mood all move together — do NOT keep an indoor-takeaway brief and staple "make it a \
+picnic" on the end. The result must read as one coherent brief that was always written that way, never as an edit \
+with a contradiction left in it.
+
+Keep everything the requested change does not touch. Anything the brief already says that still holds should survive \
+the rewrite — this is a revision, not a fresh start.
+
+Stay true to the outing. The change re-directs how the food is SHOT and styled; it must not turn it into food this \
+outing does not serve, and it must never turn it into a home-cooked dish plated onto crockery.
+
+Cover only what is specific to THIS outing: the food's appearance, the vessel and packaging it arrives in, where it \
+is eaten, and the mood, occasion and cuisine it reads as. ${SCENE_SCOPE_RULE} That holds even if the requested \
+change asks for it.
+
+Write ONE paragraph of plain prose, at most about 80 words. Return only the revised brief.`;
+
+// ─── COCKTAILS (issue #637) ──────────────────────────────────────────────────
+// A cocktail sits on the opposite side of the outing from a recipe. An outing had
+// to lose the "read the method" premise because it has no method; a cocktail keeps
+// it in full — 50ml gin, 25ml Campari, stir over ice, strain, orange twist is an
+// ingredient list and a method, and it is where every visual fact about the drink
+// lives. What has to change is the SUBJECT the model is asked to describe: the
+// recipe prompt asks what the dish looks like "once it is cooked and plated", and
+// there is no plating up a Negroni. Asked the recipe question, the model reaches
+// for crockery and a garnish it can serve with a fork.
+//
+// So this prompt asks the same reading question against the glass: the spirits set
+// the colour, the technique (stirred vs shaken vs built) sets the clarity and the
+// texture, and the serve (straight up vs on the rocks, the ice, the garnish) IMPLIES
+// the glassware. All four are things only the method knows.
+//
+// SCOPE is identical to the other prompts and inherits the same rule verbatim.
+const DESCRIBE_COCKTAIL_SCENE_SYSTEM = `You are a drinks photographer's art director. You are given one COCKTAIL — its \
+title, description, tags, ingredients and method. Write a short art-direction brief for a photograph of the FINISHED \
+drink in its glass.
+
+Read the whole recipe, especially the METHOD and the INGREDIENTS: they carry everything the drink actually looks like \
+once it is made. The spirits, liqueurs, juices and bitters set the colour and the clarity — water-clear, blush pink, \
+deep amber, cloudy, layered. The technique sets the texture: stirred is silky and crystal clear, shaken is livelier \
+and often carries a fine pale foam, a build over ice is bright and beaded. And the serve the method calls for — \
+straight up or over ice, the ice cubed or cracked or crushed, the twist or the wedge or the sprig placed at the end — \
+is what implies the glass it belongs in. None of this is in the title.
+
+Cover only what is specific to THIS drink:
+- what is in the glass — colour, clarity, foam or crema, layers, bubbles, the ice and how it sits
+- the glassware the serve implies, and the garnish and finishing touch the method calls for
+- the bar surface it stands on, and the hour, mood and character the drink reads as, and why the drink implies that
+
+${SCENE_SCOPE_RULE} Do not restate the recipe, do not list \
+quantities or measures, and do not give instructions for making it.
+
+Write ONE paragraph of plain prose, at most about 80 words. A brief, not an essay. Return only the brief.`;
+
+// The cocktail counterpart to REVISE_SCENE_SYSTEM. Same failure it exists to
+// prevent (a steer stapled on the end, contradicting the paragraph it was added
+// to), same "keep what the change does not touch" rule — but anchored to the drink,
+// so a steer re-directs the SHOT and never quietly re-pours what is in the glass.
+const REVISE_COCKTAIL_SCENE_SYSTEM = `You are a drinks photographer's art director. You are given one COCKTAIL, an \
+existing art-direction brief for a photograph of the finished drink, and a requested change from the person who will \
+use it. Rewrite the brief so it incorporates the requested change.
+
+Fold the change THROUGH the whole brief. If the change is "make it a summer afternoon", then the light, the bar \
+surface, the props, the palette and the mood all move together — do NOT keep a late-night brief and staple "make it a \
+summer afternoon" on the end. The result must read as one coherent brief that was always written that way, never as \
+an edit with a contradiction left in it.
+
+Keep everything the requested change does not touch. Anything the brief already says that still holds should survive \
+the rewrite — this is a revision, not a fresh start.
+
+Stay true to the recipe. The change re-directs how the drink is SHOT and styled; it must not turn it into a drink \
+this recipe does not make. What is in the glass — its colour, clarity, ice, foam and garnish — and the glassware the \
+serve implies are set by the method and the ingredients, not by the requested change.
+
+Cover only what is specific to THIS drink: what is in the glass, the glassware, the garnish, the bar surface, and the \
+hour and mood it reads as. ${SCENE_SCOPE_RULE} That holds even if the requested change asks for it.
+
+Write ONE paragraph of plain prose, at most about 80 words. Return only the revised brief.`;
+
+// The kind switch. 'recipe' is the DEFAULT arm, so an absent kind (an older
+// caller, a doc written before #637) and any kind with no prompts of its own get
+// exactly today's prompts rather than nothing.
+function systemFor(kind: DescribeRecipeSceneInput['kind'], revising: boolean): string {
+  switch (kind) {
+    case 'outing':
+      return revising ? REVISE_OUTING_SCENE_SYSTEM : DESCRIBE_OUTING_SCENE_SYSTEM;
+    case 'cocktail':
+      return revising ? REVISE_COCKTAIL_SCENE_SYSTEM : DESCRIBE_COCKTAIL_SCENE_SYSTEM;
+    default:
+      return revising ? REVISE_SCENE_SYSTEM : DESCRIBE_SCENE_SYSTEM;
+  }
+}
+
 export const describeRecipeSceneFlow = ai.defineFlow(
   {
     name: 'describeRecipeScene',
     inputSchema: DescribeRecipeSceneInputSchema,
     outputSchema: DescribeRecipeSceneOutputSchema,
   },
-  async ({ title, description, ingredients, steps, currentBrief, hint }) => {
+  async ({ title, description, ingredients, steps, currentBrief, hint, kind }) => {
     // Revision needs BOTH halves: a paragraph to revise and a steer to revise it
     // by. With either missing there is nothing to fold through anything, so we
     // author from scratch — which is also, deliberately, what "start over" sends
@@ -122,7 +267,7 @@ export const describeRecipeSceneFlow = ai.defineFlow(
       () =>
         ai.generate({
           model,
-          system: revising ? REVISE_SCENE_SYSTEM : DESCRIBE_SCENE_SYSTEM,
+          system: systemFor(kind, revising),
           prompt: promptParts.join('\n\n'),
           output: { schema: DescribeRecipeSceneOutputSchema },
         }),

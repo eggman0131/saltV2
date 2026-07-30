@@ -39,6 +39,7 @@ function recipe(id: string, ingredientCount: number, overrides: Partial<Recipe> 
   return {
     id,
     schemaVersion: 1,
+    kind: 'recipe',
     title: id,
     description: null,
     ingredients: [
@@ -170,6 +171,34 @@ describe('unshoppedPlannedRecipes', () => {
   it('says nothing about a planned recipe that no longer exists', () => {
     const w = week({ [WED]: day({ recipeIds: ['deleted'] }) });
     expect(unshoppedPlannedRecipes(w, [], recipes, MON)).toEqual([]);
+  });
+
+  // A planned entry with no ingredient lines used to emit a permanently stuck
+  // "needs you" card: an add-to-list writes nothing, so no item can ever carry a
+  // source back to it and the card can never clear. Nothing to buy, nothing to say.
+  it('says nothing about a planned recipe with no ingredients at all', () => {
+    const empty = recipe('empty', 0);
+    const w = week({ [WED]: day({ recipeIds: ['empty'] }) });
+    expect(unshoppedPlannedRecipes(w, [], [...recipes, empty], MON)).toEqual([]);
+  });
+
+  it('still reports the other planned recipes alongside an empty one', () => {
+    const empty = recipe('empty', 0);
+    const w = week({ [WED]: day({ recipeIds: ['empty', 'noodles'] }) });
+    expect(unshoppedPlannedRecipes(w, [], [...recipes, empty], MON)).toEqual([
+      { date: WED, recipeId: 'noodles', missingCount: 4 },
+    ]);
+  });
+
+  it('keeps an empty recipe deduped across days rather than re-testing it each night', () => {
+    // The skip sits AFTER the dedupe, so an empty dish planned twice is still
+    // one decision — and stays silent on both nights.
+    const empty = recipe('empty', 0);
+    const w = week({
+      [WED]: day({ recipeIds: ['empty'] }),
+      [FRI]: day({ recipeIds: ['empty'] }),
+    });
+    expect(unshoppedPlannedRecipes(w, [], [...recipes, empty], MON)).toEqual([]);
   });
 });
 
