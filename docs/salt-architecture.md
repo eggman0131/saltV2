@@ -111,6 +111,7 @@ The domain exposes:
   - Recipes (single-document model)
   - Canon items (name, synonyms, aisle, optional embedding, thumbnail icon)
   - Shopping lists (items, checked state, canon links)
+  - Shopping days (ShoppingDay — the family-shared shop-day doc for the week, `shoppingDays/{YYYY-MM-DD}`; `date`, `slot: 'am' | 'pm'`, `setBy`, `setAt`; pure helpers `isBeforeShop`, `dateInZone`, `addCalendarDays`, `daysBetween`, `tomorrowInZone`, `shopDayForWeek` in `domain/src/shoppingDay/`)
   - Members (email-keyed allowlist membership records, admin role, email normalisation)
   - Meal plan (MealPlanConfig, MealPlanTemplate, MealPlanWeek, Day, Attendee, Weekday — weekly evening-meal planner with a weekday-keyed template and per-day guest count)
   - Chat sessions (ChatSession, Message — per-user AI kitchen assistant conversations; `ownerUid`-scoped, 14-day TTL via Firestore TTL policy on `expiresAt`; optional `recipeId` for recipe-attached sessions)
@@ -163,9 +164,10 @@ This model is intentionally narrow. Multi‑workspace, sharing, or per‑documen
   - Shopping list config: `subscribeShoppingListsConfig`, `loadShoppingListsConfig`, `saveShoppingListsConfig`
   - Members: `subscribeMembers`, `upsertMember`, `deleteMember`
   - Meal plan: `subscribeMealPlanConfig`, `subscribeMealPlanTemplate`, `subscribeMealPlanWeek`, `saveMealPlanConfig`, `saveMealPlanTemplate`, `saveMealPlanWeek`
+  - Shopping days: `subscribeShoppingDaysInRange`, `saveShoppingDay`, `deleteShoppingDay`
   - Recipes: `subscribeRecipes`, `loadRecipe`, `saveRecipe`, `deleteRecipe`
   - Chat sessions: `subscribeChatSessions`, `loadChatSession`, `saveChatSession`, `deleteChatSession`
-  - Cook sessions: `subscribeCookSession`, `loadCookSession`, `saveCookSession`, `deleteCookSession`
+  - Cook sessions: `subscribeCookSession`, `subscribeMyCookSessions`, `loadCookSession`, `saveCookSession`, `deleteCookSession`
   - Push subscriptions: `savePushSubscription`, `deletePushSubscription`
   - Chef chat streaming: `streamChefChat`
   - Recipe authoring: `callAuthorRecipe`

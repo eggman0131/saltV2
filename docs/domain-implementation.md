@@ -345,6 +345,15 @@ The `weather` module is a lightweight variant — pure classification utilities
 (`WeatherForecastSchema`, `WeatherDaySummarySchema`) follow the standard
 `@salt/domain/schemas` convention.
 
+The `shoppingDay` module is a lightweight variant — pure, runtime-neutral
+helpers over the `shoppingDays/{YYYY-MM-DD}` collection (issue #629): `isBeforeShop`
+(the planner's pre-shop shading predicate), `shopDayForWeek` (the one-shop-per-week
+reducer), `dateInZone`, `addCalendarDays`, `daysBetween`, and `tomorrowInZone` (UTC
+date-only arithmetic so a 23- or 25-hour local day cannot round the answer off).
+No entities, commands, queries, or ports subfolders — flat, matching the `weather`
+pattern. The doc shape (`ShoppingDaySchema`) lives in `@salt/domain/schemas`.
+No I/O, no clock (CLAUDE.md Rule 1): every date and timezone is injected.
+
 The `cookSession` module is a similar lightweight variant — pure session-state
 producers (`makeFreshSession`, `withStepDone`, `withIngredientChecked`,
 `withAllIngredientsChecked`, `withGroupChecked`, `withTimerStarted`, `withTimerDismissed`) and
