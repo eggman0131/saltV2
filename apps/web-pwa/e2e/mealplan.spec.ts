@@ -52,15 +52,50 @@ test.describe('meal planner — week happy path', () => {
     await page.getByTestId('this-week').click();
     await expect(page.getByTestId('week-range')).not.toHaveText('', { timeout: SYNC_TIMEOUT });
 
-    // Derive a real day key from the store rather than guessing a date. Day 3 of
-    // the displayed week — guaranteed present, away from the week edges.
+    // Derive a real day key from the store rather than guessing a date. TODAY is
+    // the anchor: the planner opens on today's row and puts it flush under the
+    // header (#639), so it is the one day guaranteed to be both in the displayed
+    // week and on screen — which a fixed "day 3 of the week" is not, now that the
+    // page is a deck rather than a scroller and, from the last two days of the
+    // cycle, also holds next week beneath it.
     const startDate = await readStartDate(page);
     expect(startDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     const dayKey = await page.evaluate(() => {
-      const days = Object.keys(window.__e2e!.getMealPlanSnapshot().days).sort();
-      return days[2] ?? days[0]!;
+      const days = window.__e2e!.getMealPlanSnapshot().days;
+      const today = new Date().toLocaleDateString('en-CA');
+      return today in days ? today : Object.keys(days).sort()[0]!;
     });
     expect(dayKey).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+    // ── Next week appears from Wednesday (#639, Phase 6) ──
+    // Date-dependent by nature, so the expectation is DERIVED, not hardcoded:
+    // from the last two days of the cycle the deck also holds the whole of next
+    // week under a dated mark, and before that it holds this week alone. The
+    // primary snapshot is still one week — next week's days are a second document
+    // and never appear in it, so the day key above stays unambiguous either way.
+    // Counted rather than branched on: the expected count IS the expectation, so
+    // the same two assertions run on every day of the week. A count (not
+    // visibility) is the honest test — the appended week starts below the fold of
+    // a deck that opens on today.
+    const { expectedNextWeek, nextWeekFirstDay } = await page.evaluate((start: string) => {
+      const utc = (d: string) => new Date(`${d}T00:00:00.000Z`);
+      const today = new Date().toLocaleDateString('en-CA');
+      const index = Math.round((utc(today).getTime() - utc(start).getTime()) / 86_400_000);
+      const next = utc(start);
+      next.setUTCDate(next.getUTCDate() + 7);
+      // The last two days of a seven-day cycle — the domain rule, restated here
+      // because e2e sees only the wire, not `weekExtendsIntoNext`.
+      return {
+        expectedNextWeek: Number(index >= 5),
+        nextWeekFirstDay: next.toISOString().slice(0, 10),
+      };
+    }, startDate);
+    await expect(page.getByTestId('next-week-mark')).toHaveCount(expectedNextWeek, {
+      timeout: SYNC_TIMEOUT,
+    });
+    await expect(page.getByTestId(`day-${nextWeekFirstDay}`)).toHaveCount(expectedNextWeek, {
+      timeout: SYNC_TIMEOUT,
+    });
 
     const testid = `day-${dayKey}`;
     const meal = `Spaghetti bolognese ${testInfo.testId}`;

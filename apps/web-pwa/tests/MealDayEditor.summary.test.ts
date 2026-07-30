@@ -1,26 +1,34 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/svelte';
-import type { Day, Member } from '@salt/domain';
+import type { Day, Member, Recipe } from '@salt/domain';
 import type { WeatherDaySummary } from '@salt/domain/schemas';
 
 import MealDayEditor from '../src/routes/mealplan/MealDayEditor.svelte';
 
-// The restacked collapsed summary (#469): the cook is marked ONCE inside the
-// roster (a chef-hat badge on their own avatar, never a duplicate column), the
-// evening temperature rides beside the weather glyph in the header, the meal's
-// first line sits beneath the avatars, and a "No cook" flag shows only when the
-// day is unassigned. MealDayEditor is fully prop-driven, so these render it
-// directly with no store mocking.
+// The Ledger row (#639, Phase 1): a dated rail (weekday over date, today in a
+// filled teal disc), the recipe photograph as a clean rectangle, the meal title
+// beneath it, and ONE grey meta line — cook · who is eating, by name · home
+// times that have actually been set. The avatar roster it replaces is gone, so
+// with it go the per-member chips, the chef-hat badge and the note badge; the
+// "No cook" flag survives, inside the meta line. MealDayEditor is fully
+// prop-driven, so these render it directly with no store mocking.
 
 const alex: Member = { id: 'm1', name: 'Alex' } as Member;
 const bea: Member = { id: 'm2', name: 'Bea' } as Member;
 
+const roast: Recipe = {
+  id: 'r1',
+  title: 'Roast',
+  image: { url: 'https://example.test/roast.jpg' },
+  updatedAt: '2026-06-30T00:00:00.000Z',
+} as unknown as Recipe;
+
 const noop = () => {};
 
-function baseProps(day: Day, weather?: WeatherDaySummary) {
+function baseProps(day: Day, weather?: WeatherDaySummary, extra: Record<string, unknown> = {}) {
   return {
     label: 'Mon',
-    sublabel: '30 Jun',
+    sublabel: '30',
     day,
     members: [alex, bea],
     testid: 'day',
@@ -31,7 +39,12 @@ function baseProps(day: Day, weather?: WeatherDaySummary) {
     onAttendeeHomeTime: noop,
     onAttendeeNote: noop,
     onGuestsChange: noop,
+    ...extra,
   };
+}
+
+function makeDay(overrides: Partial<Day> = {}): Day {
+  return { note: 'Roast', recipeIds: [], chefs: [], attendees: [], guests: 0, ...overrides };
 }
 
 const sunnyDay: WeatherDaySummary = {
@@ -50,73 +63,99 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-describe('MealDayEditor — collapsed summary (#469 restack)', () => {
-  it('marks the cook once with a chef-hat badge, not a duplicate column', () => {
-    const day: Day = {
-      note: 'Roast',
-      recipeIds: [],
+describe('MealDayEditor — the Ledger row (#639)', () => {
+  it('names the cook and says "Everyone" when the whole household eats', () => {
+    const day = makeDay({
       chefs: ['m1'],
-      attendees: [{ memberId: 'm1', homeTime: null, note: '' }],
-      guests: 0,
-    };
-    const { queryByTestId, queryAllByTestId } = render(MealDayEditor, {
-      props: baseProps(day),
+      attendees: [
+        { memberId: 'm1', homeTime: null, note: '' },
+        { memberId: 'm2', homeTime: null, note: '' },
+      ],
     });
-    // The chef-hat badge sits on the chef's own avatar…
-    expect(queryByTestId('day-cook-m1')).toBeInTheDocument();
-    // …and there is exactly one avatar chip for that member (no second cook column).
-    expect(queryAllByTestId('day-chip-m1')).toHaveLength(1);
+    const { getByTestId, queryByTestId } = render(MealDayEditor, { props: baseProps(day) });
+    const meta = getByTestId('day-meta');
+    expect(meta.textContent).toContain('Alex cooking');
+    expect(meta.textContent).toContain('Everyone');
     // A cook is assigned, so the "No cook" flag is absent.
     expect(queryByTestId('day-no-cook')).not.toBeInTheDocument();
+    // The avatar roster the row replaces is gone entirely.
+    expect(queryByTestId('day-chip-m1')).not.toBeInTheDocument();
+    expect(queryByTestId('day-cook-m1')).not.toBeInTheDocument();
+  });
+
+  it('lists eaters by name when only some are eating, with guests appended', () => {
+    const day = makeDay({
+      chefs: ['m2'],
+      attendees: [{ memberId: 'm1', homeTime: null, note: '' }],
+      guests: 2,
+    });
+    const meta = render(MealDayEditor, { props: baseProps(day) }).getByTestId('day-meta');
+    expect(meta.textContent).toContain('Bea cooking');
+    expect(meta.textContent).toContain('Alex +2');
+    expect(meta.textContent).not.toContain('Everyone');
+  });
+
+  it('shows only a home time that has actually been set', () => {
+    const day = makeDay({
+      chefs: ['m1'],
+      attendees: [
+        { memberId: 'm1', homeTime: '18:30', note: '' },
+        { memberId: 'm2', homeTime: null, note: '' },
+      ],
+    });
+    const meta = render(MealDayEditor, { props: baseProps(day) }).getByTestId('day-meta');
+    expect(meta.textContent).toContain('Alex 18:30');
+    // Bea has no home time, so she contributes nothing to the times segment.
+    expect(meta.textContent).not.toContain('Bea 1');
   });
 
   it('flags an unassigned day with "No cook"', () => {
-    const day: Day = {
-      note: 'Roast',
-      recipeIds: [],
-      chefs: [],
-      attendees: [],
-      guests: 0,
-    };
-    const { queryByTestId } = render(MealDayEditor, { props: baseProps(day) });
-    expect(queryByTestId('day-cook-m1')).not.toBeInTheDocument();
+    const { queryByTestId } = render(MealDayEditor, { props: baseProps(makeDay()) });
     expect(queryByTestId('day-no-cook')).toBeInTheDocument();
   });
 
-  it('shows the evening high/low temperature beside the weather glyph', () => {
-    const day: Day = {
-      note: 'Roast',
-      recipeIds: [],
-      chefs: [],
-      attendees: [],
-      guests: 0,
-    };
-    const { getByTestId } = render(MealDayEditor, { props: baseProps(day, sunnyDay) });
+  it('renders the attached recipe photograph as a plain rectangle', () => {
+    const day = makeDay({ recipeIds: ['r1'] });
+    const { getByTestId } = render(MealDayEditor, {
+      props: baseProps(day, undefined, { recipes: [roast] }),
+    });
+    const img = getByTestId('day-photo') as HTMLImageElement;
+    expect(img.getAttribute('src')).toContain('https://example.test/roast.jpg');
+    // No text over the photo and no scrim: the title is a sibling, not an overlay.
+    expect(getByTestId('day-meal').textContent).toContain('Roast');
+  });
+
+  it('gives a photoless day the meal one step larger, with no placeholder tile', () => {
+    const { getByTestId, queryByTestId } = render(MealDayEditor, { props: baseProps(makeDay()) });
+    expect(queryByTestId('day-photo')).not.toBeInTheDocument();
+    expect(getByTestId('day-meal').className).toContain('text-lg');
+  });
+
+  it("wears today's date in a filled disc, and no disc on any other day", () => {
+    const { getByTestId, unmount } = render(MealDayEditor, {
+      props: baseProps(makeDay(), undefined, { isToday: true }),
+    });
+    expect(getByTestId('day-date').className).toContain('bg-primary');
+    unmount();
+
+    const other = render(MealDayEditor, { props: baseProps(makeDay()) });
+    expect(other.getByTestId('day-date').className).not.toContain('bg-primary');
+  });
+
+  it('shows the evening high/low temperature on the rail', () => {
+    const { getByTestId } = render(MealDayEditor, { props: baseProps(makeDay(), sunnyDay) });
     const temp = getByTestId('day-header-temp');
     expect(temp.textContent).toContain('24°');
     expect(temp.textContent).toContain('16°');
   });
 
-  it('omits the header temperature when no weather is passed', () => {
-    const day: Day = {
-      note: 'Roast',
-      recipeIds: [],
-      chefs: [],
-      attendees: [],
-      guests: 0,
-    };
-    const { queryByTestId } = render(MealDayEditor, { props: baseProps(day) });
+  it('omits the temperature when no weather is passed', () => {
+    const { queryByTestId } = render(MealDayEditor, { props: baseProps(makeDay()) });
     expect(queryByTestId('day-header-temp')).not.toBeInTheDocument();
   });
 
-  it('shows only the first line of a multi-line meal beneath the avatars', () => {
-    const day: Day = {
-      note: 'Roast chicken\nwith all the trimmings',
-      recipeIds: [],
-      chefs: [],
-      attendees: [],
-      guests: 0,
-    };
+  it('shows only the first line of a multi-line meal as the title', () => {
+    const day = makeDay({ note: 'Roast chicken\nwith all the trimmings' });
     const summary = render(MealDayEditor, { props: baseProps(day) }).getByTestId('day-summary');
     expect(summary.textContent).toContain('Roast chicken');
     expect(summary.textContent).not.toContain('with all the trimmings');

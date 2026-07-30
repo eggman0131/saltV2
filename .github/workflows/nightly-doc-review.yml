@@ -35,8 +35,8 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: >-
-            --max-turns 40
-            --model claude-sonnet-4-6
+            --max-turns 50
+            --model sonnet
             --allowed-tools "Read,Edit,Write,Bash(git:*),Bash(gh:*)"
           prompt: |
             You are running a nightly documentation review for the Salt 2.0 monorepo.
@@ -54,20 +54,35 @@ jobs:
 
             ## Step 2 — Route changed files to relevant docs
 
-            Match each changed file against the table below. Only proceed with the
-            docs in matched buckets. If NO changed file matches any bucket, output
+            Read the **"Docs map"** section of `CLAUDE.md`. Its table is the single
+            source of truth for which doc covers which code: the **Tracks** column
+            holds the path globs, the **Read this** column the doc. This workflow
+            deliberately keeps NO copy of that table — if the map and this job
+            disagree, the map wins. Do not route from memory; read the file.
+
+            Match each changed file against the Tracks globs. Only proceed with the
+            docs whose globs matched. A file may match several docs; review each.
+            If NO changed file matches any glob, output
             "Verdict C: no doc-relevant changes" and stop.
 
-            | Path glob                                                                              | Docs to review                                                  |
-            |----------------------------------------------------------------------------------------|-----------------------------------------------------------------|
-            | `packages/domain/**`                                                                   | `docs/domain-implementation.md`, `docs/salt-architecture.md` (§3, §6) |
-            | `packages/adapters/firebase-sync/**`                                                   | `docs/salt-architecture.md` (§6.1, §11), `docs/matching-pipeline.md` |
-            | `packages/adapters/observability/**`                                                   | `docs/salt-architecture.md` (§6.2), `docs/matching-pipeline.md` |
-            | `apps/cloud-functions/**`                                                              | `docs/matching-pipeline.md`, `docs/salt-architecture.md` (§8)   |
-            | `apps/web-pwa/**`                                                                      | `docs/salt-architecture.md` (§7)                                |
-            | `packages/ui-components/**`                                                            | `docs/design/ui-spec-v04.md` (and any other ui-spec doc cited in changed files) |
-            | `pnpm-workspace.yaml`, root `package.json`, `eslint.config.*`, `.dependency-cruiser.*` | `CLAUDE.md`, `docs/salt-architecture.md` (§3, §11)              |
-            | `.github/workflows/**`, `e2e/**`, top-level `*.md`-only changes                        | (none — skip)                                                   |
+            Two additions the map does not cover:
+
+            - **Root config** (`pnpm-workspace.yaml`, root `package.json`,
+              `eslint.config.*`, `.dependency-cruiser.*`) → also review `CLAUDE.md`
+              itself (layer map, hard rules, enforcement).
+            - **Skip entirely**: changes confined to `docs/**` or top-level
+              `*.md`. Documentation changing is not evidence that documentation
+              is stale.
+
+            Anything matching no glob is out of scope by construction — there is no
+            blanket workflow/e2e skip any more, because the map deliberately tracks
+            a few specific workflow files (`chromatic.yml`, `deploy-*.yml`) and
+            `e2e/**`. Every other workflow file simply matches nothing and is
+            skipped for that reason.
+
+            Never cite a section number from memory — `docs/salt-architecture.md`
+            has been renumbered before. If you reference a section, confirm the
+            number by reading its heading first.
 
             ## Step 3 — Read the routed docs
 
@@ -89,6 +104,16 @@ jobs:
             primitive generation; auto-amending them undermines that contract. If
             you find drift between ui-components code and a ui-spec doc, treat as
             Verdict B and flag it for human review.
+
+            The ui-specs are **cumulative, not superseding** (see the Docs map):
+            v0.2 holds the foundations and stays in force; each later version only
+            adds components. Name the spec that actually owns the changed component
+            — do not assume the highest-numbered file, and never describe an older
+            spec as obsolete.
+
+            `docs/design/design.md` is also never Verdict A: its frontmatter is
+            machine-consumed by `packages/ui-components/scripts/check-theme.ts`, so
+            editing it changes behaviour, not prose.
 
             **B — Drift, ambiguous, or UI-spec change.**
             Code change might violate intended architecture; you can't tell whether
@@ -115,6 +140,15 @@ jobs:
 
             b) Edit only the doc files identified in Step 2. Keep the same tone
                and structure. No padding.
+
+               A doc earns its place by holding what code cannot say — decisions,
+               gotchas, external setup, contracts. If the change is already
+               explained by a header comment next to the code, do NOT restate it
+               in `docs/`; that duplication is what the map exists to prevent.
+
+               If your update adds, renames, or removes a doc, update its row in
+               the `CLAUDE.md` Docs map in the SAME commit — a doc missing from
+               the map is invisible to agents and to this job.
 
             c) Commit and push directly to main:
                git config user.email "claude-nightly[bot]@users.noreply.github.com"

@@ -1,14 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockUnsubscribe, mockOnSnapshot, mockSetDoc, mockDoc, mockGetFirestore } = vi.hoisted(
-  () => ({
+const { mockUnsubscribe, mockOnSnapshot, mockSetDoc, mockGetDoc, mockDoc, mockGetFirestore } =
+  vi.hoisted(() => ({
     mockUnsubscribe: vi.fn(),
     mockOnSnapshot: vi.fn(),
     mockSetDoc: vi.fn(),
+    mockGetDoc: vi.fn(),
     mockDoc: vi.fn(() => 'mock-doc-ref'),
     mockGetFirestore: vi.fn(() => 'mock-db'),
-  }),
-);
+  }));
 
 vi.mock('firebase/app', () => ({
   getApp: vi.fn(() => ({})),
@@ -19,12 +19,14 @@ vi.mock('firebase/firestore', () => ({
   doc: mockDoc,
   onSnapshot: mockOnSnapshot,
   setDoc: mockSetDoc,
+  getDoc: mockGetDoc,
 }));
 
 import {
   subscribeMealPlanConfig,
   subscribeMealPlanTemplate,
   subscribeMealPlanWeek,
+  loadMealPlanWeek,
   saveMealPlanConfig,
   saveMealPlanTemplate,
   saveMealPlanWeek,
@@ -175,6 +177,41 @@ describe('subscribeMealPlanWeek', () => {
       data: () => ({ id: '2026-06-08', schemaVersion: 1 }),
     });
     expect(onError).toHaveBeenCalledWith({ kind: 'StorageError', reason: 'corruption' });
+  });
+});
+
+// One-shot read (issue #639): the load-template picker asks whether a week it is
+// not subscribed to already holds edits.
+describe('loadMealPlanWeek', () => {
+  it('targets mealPlans/{startDate} and maps a valid doc', async () => {
+    mockGetDoc.mockResolvedValue({ exists: () => true, data: () => WEEK });
+    const result = await loadMealPlanWeek('2026-06-08');
+    expect(mockDoc).toHaveBeenCalledWith('mock-db', 'mealPlans', '2026-06-08');
+    expect(result).toEqual({ kind: 'ok', value: WEEK });
+  });
+
+  it('returns null when the week has never been written', async () => {
+    mockGetDoc.mockResolvedValue({ exists: () => false, data: () => undefined });
+    expect(await loadMealPlanWeek('2026-06-08')).toEqual({ kind: 'ok', value: null });
+  });
+
+  it('returns corruption on an invalid doc (single-doc read contract)', async () => {
+    mockGetDoc.mockResolvedValue({
+      exists: () => true,
+      data: () => ({ id: '2026-06-08', schemaVersion: 1 }),
+    });
+    expect(await loadMealPlanWeek('2026-06-08')).toEqual({
+      kind: 'err',
+      error: { kind: 'StorageError', reason: 'corruption' },
+    });
+  });
+
+  it('returns failure (never throws) on a Firestore error', async () => {
+    mockGetDoc.mockRejectedValue(Object.assign(new Error('e'), { code: 'permission-denied' }));
+    expect(await loadMealPlanWeek('2026-06-08')).toEqual({
+      kind: 'err',
+      error: { kind: 'AuthError', reason: 'forbidden' },
+    });
   });
 });
 

@@ -1,4 +1,4 @@
-// spec: ui-spec-v04.md §9 v0.4
+// spec: ui-spec-v04.md §9 v0.4; ui-spec-v05.md §1 v0.5 (fill)
 import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 import type { icons } from '@lucide/svelte';
@@ -83,6 +83,18 @@ export type ListPageProps = {
   loading?: Snippet;
   error?: Snippet;
   empty?: Snippet;
+  /**
+   * Fill the app shell's content area instead of growing with the content, and give
+   * `children` the leftover height (ui-spec-v05 §1). For the rare page that owns its own
+   * scrolling surface — a gesture deck, a virtualised list — rather than letting
+   * `AppShell`'s `<main>` scroll it.
+   *
+   * `AppShell`'s `<main>` is `overflow-y-auto`, so it scrolls only ON OVERFLOW: a page that
+   * exactly fits stops it scrolling without `AppShell` knowing anything about this. That is
+   * the whole mechanism — do not set `overflow` on `<main>` and do not compute a pixel
+   * height in the page. Default `false`, so every ordinary list page is unaffected.
+   */
+  fill?: boolean;
   children?: Snippet;
   class?: string;
 } & Omit<HTMLAttributes<HTMLElement>, 'class'>;

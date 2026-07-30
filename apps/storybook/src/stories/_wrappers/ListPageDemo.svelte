@@ -17,6 +17,7 @@
     isEmpty = false,
     selectionMode = false,
     selectionCount = 0,
+    fill = false,
   }: {
     title?: string;
     description?: string;
@@ -25,6 +26,7 @@
     isEmpty?: boolean;
     selectionMode?: boolean;
     selectionCount?: number;
+    fill?: boolean;
   } = $props();
 
   const items = ['Tinned tomatoes', 'Olive oil', 'Basmati rice', 'Free-range eggs', 'Sourdough'];
@@ -49,7 +51,15 @@
   ];
 </script>
 
-<div class="w-full max-w-2xl">
+<!-- Fill mode only means anything inside a box with a definite height — in the app
+     that is AppShell's <main>. The dashed box stands in for it, so the story shows
+     the page stopping at the box edge and its child owning the overflow, rather
+     than the page growing and the box scrolling. -->
+<div
+  class={fill
+    ? 'h-[420px] w-full max-w-2xl border border-dashed border-border'
+    : 'w-full max-w-2xl'}
+>
   <ListPage
     {title}
     {description}
@@ -59,6 +69,7 @@
     {selectionMode}
     {selectionCount}
     {bulkActions}
+    {fill}
   >
     {#snippet empty()}
       <EmptyState title="Your list is empty" description="Items you add will show up here." />
@@ -69,8 +80,12 @@
     {#snippet selectionBar()}
       <span class="text-sm font-medium">{selectionCount} selected</span>
     {/snippet}
-    <ul class="flex flex-col divide-y divide-border rounded border border-border">
-      {#each items as item (item)}
+    <ul
+      class={fill
+        ? 'flex min-h-0 flex-1 flex-col divide-y divide-border overflow-y-auto rounded border border-border'
+        : 'flex flex-col divide-y divide-border rounded border border-border'}
+    >
+      {#each fill ? [...items, ...items, ...items] : items as item, i (i)}
         <li class="px-3 py-2 text-sm text-foreground">{item}</li>
       {/each}
     </ul>

@@ -10,6 +10,7 @@ export const secondaryContainer = 'hsl(var(--salt-secondary-container))';
 export const secondaryContainerForeground = 'hsl(var(--salt-on-secondary-container))';
 export const tertiary = 'hsl(var(--salt-tertiary))';
 export const tertiaryForeground = 'hsl(var(--salt-tertiary-foreground))';
+export const tertiaryVariant = 'hsl(var(--salt-on-tertiary-fixed-variant))';
 export const muted = 'hsl(var(--salt-muted))';
 export const mutedForeground = 'hsl(var(--salt-muted-foreground))';
 export const accent = 'hsl(var(--salt-accent))';

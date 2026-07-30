@@ -127,6 +127,10 @@ export const ErrorCode = {
   INVALID_LIST_NAME: 'INVALID_LIST_NAME',
   INVALID_ITEM_RAW_TEXT: 'INVALID_ITEM_RAW_TEXT',
   LIST_IS_DEFAULT: 'LIST_IS_DEFAULT',
+  // Refusing to write a meal-plan week we have never read: the write is a
+  // full-document replace under LWW, so it would blow away the week's other
+  // days (issue #639).
+  WEEK_NOT_LOADED: 'WEEK_NOT_LOADED',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

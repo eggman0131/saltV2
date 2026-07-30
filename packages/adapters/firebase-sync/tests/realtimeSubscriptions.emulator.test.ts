@@ -40,6 +40,11 @@ import {
   saveCookSession,
   deleteCookSession,
 } from '../src/cookSessionSubscription.js';
+import {
+  subscribeShoppingDaysInRange,
+  saveShoppingDay,
+  deleteShoppingDay,
+} from '../src/shoppingDaySync.js';
 import { clearFirestoreEmulator, resetDefaultApp, PROJECT_ID } from './emulatorHelpers.js';
 import type {
   CanonItem,
@@ -50,7 +55,7 @@ import type {
   ShoppingListItem,
   ShoppingListsConfig,
 } from '@salt/domain';
-import type { CookSessionDoc } from '@salt/domain/schemas';
+import type { CookSessionDoc, ShoppingDayDoc } from '@salt/domain/schemas';
 
 // Cross-client onSnapshot propagation tolerance. Generous to absorb cold-start
 // latency on CI's Dockerized emulator (the first subscription in each block and
@@ -787,6 +792,97 @@ describe('realtimeSubscriptions — Firestore emulator', () => {
         expect(final.thumbnail).toBe('https://icons.example/onion.webp');
       } finally {
         unsubscribe();
+      }
+    });
+  });
+
+  // Two weeks on screen (issue #639). The planner can now hold a second week, and
+  // the shop marker is ONE PER WEEK — so re-marking one week's shop must clear
+  // that week's previous day and nothing else. Against real Firestore this pins
+  // the property the service's week-keyed clear depends on: the week reads are
+  // disjoint ranges over doc ids, so a delete inside one week's range is
+  // invisible to the other's — including to the `shoppingDays/{YYYY-MM-DD}` get
+  // the daily reminder function does by deterministic id.
+  describe('shoppingDays — one shop per week, two weeks held (issue #639)', () => {
+    const WEEK_A = '2026-08-10'; // Mon
+    const WEEK_A_END = '2026-08-16';
+    const WEEK_B = '2026-08-17'; // the Mon after
+    const WEEK_B_END = '2026-08-23';
+
+    function shopDay(date: string, slot: 'am' | 'pm'): ShoppingDayDoc {
+      return {
+        date,
+        slot,
+        schemaVersion: 1,
+        setBy: 'uid-a',
+        setAt: '2026-08-09T09:00:00.000Z',
+      };
+    }
+
+    function dates(received: ShoppingDayDoc[][]): string[] {
+      return (received.at(-1) ?? []).map((d) => d.date).sort();
+    }
+
+    it('re-marking one week’s shop leaves the other week’s doc untouched', async () => {
+      const weekA: ShoppingDayDoc[][] = [];
+      const weekB: ShoppingDayDoc[][] = [];
+      const unsubA = subscribeShoppingDaysInRange(
+        WEEK_A,
+        WEEK_A_END,
+        (days) => weekA.push(days),
+        () => {},
+      );
+      const unsubB = subscribeShoppingDaysInRange(
+        WEEK_B,
+        WEEK_B_END,
+        (days) => weekB.push(days),
+        () => {},
+      );
+
+      try {
+        // Each week has its shop: Saturday in week A, Wednesday in week B.
+        await saveShoppingDay(shopDay('2026-08-15', 'am'));
+        await saveShoppingDay(shopDay('2026-08-19', 'pm'));
+        await waitFor(() => dates(weekA).length === 1 && dates(weekB).length === 1, CONVERGENCE_MS);
+
+        // Move week B's shop to the Tuesday — the clear is scoped to week B, as
+        // `setShopDay` computes it from weekStartFor(date, firstDayOfWeek).
+        await deleteShoppingDay('2026-08-19');
+        await saveShoppingDay(shopDay('2026-08-18', 'am'));
+        await waitFor(() => dates(weekB).join() === '2026-08-18', CONVERGENCE_MS);
+
+        // One shop in week B, and week A's Saturday is exactly where it was. A
+        // clear scoped to the displayed RANGE rather than the date's week would
+        // have taken it — and the reminder that reads it — with it.
+        expect(dates(weekB)).toEqual(['2026-08-18']);
+        expect(dates(weekA)).toEqual(['2026-08-15']);
+      } finally {
+        unsubA();
+        unsubB();
+      }
+    });
+
+    it('a week’s range read never sees the adjacent week’s shop', async () => {
+      const weekA: ShoppingDayDoc[][] = [];
+      const unsubA = subscribeShoppingDaysInRange(
+        WEEK_A,
+        WEEK_A_END,
+        (days) => weekA.push(days),
+        () => {},
+      );
+
+      try {
+        await saveShoppingDay(shopDay('2026-08-15', 'am'));
+        await waitFor(() => dates(weekA).length === 1, CONVERGENCE_MS);
+
+        // The very next day after week A's window, and the last day of week B.
+        await saveShoppingDay(shopDay('2026-08-17', 'pm'));
+        await saveShoppingDay(shopDay('2026-08-23', 'am'));
+        await delay(500);
+
+        expect(dates(weekA)).toEqual(['2026-08-15']);
+      } finally {
+        unsubA();
       }
     });
   });

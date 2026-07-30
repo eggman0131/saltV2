@@ -2,8 +2,10 @@
 // Task Pilot one-shot: export the PRODUCTION Firestore database to a GCS bucket.
 //
 // This is the SAFE half of the prod→staging refresh — it is read-only against
-// prod. Pair it with scripts/restore-staging-from-prod.mjs, which wipes staging
-// and imports the newest export this produces.
+// prod. Pair it with scripts/restore-firestore.mjs, which wipes the target and
+// imports the newest export this produces:
+//   --from prod --to staging   (the prod→staging refresh)
+//   --from prod --to dev       (straight to dev-cloud, skipping the staging hop)
 //
 // Why managed export: it does NOT bill document reads and does NOT fire Cloud
 // Functions triggers, so it is cheap and side-effect-free on prod. `gcloud

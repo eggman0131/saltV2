@@ -11,6 +11,10 @@ import {
   PEEK_MAX_PX,
   FADE_MIN_PX,
   RUBBER_BAND,
+  COMMIT_RATIO,
+  FLING_PX_PER_MS,
+  PROJECTION_MS,
+  OVERHANG_SLACK_PX,
 } from '../src/lib/cookDeck.js';
 
 // The deck geometry behind cook mode's one-step-per-screen pager. These tests state the
@@ -224,5 +228,94 @@ describe('the fade over the peeking next step', () => {
   it('lands on whole pixels', () => {
     expect(fadeHeightFor(150.4)).toBe(150);
     expect(fadeHeightFor(150.6)).toBe(151);
+  });
+});
+
+describe('retuning the feel for a deck of a different size', () => {
+  // Every threshold above is stated relative to a section that FILLS the screen, which
+  // is true of a cook step and of nothing else. A second surface pages between short
+  // cards, so it has to be able to say what "far enough" means for its own sections.
+  // These tests say two things: the overrides bite, and omitting them is cook mode
+  // exactly — which is what makes them safe to add.
+
+  const settle = (over: Partial<Parameters<typeof chooseLandingStop>[0]>): number =>
+    chooseLandingStop({
+      stops: STOPS,
+      startIndex: 0,
+      offset: 0,
+      dragged: 0,
+      velocity: 0,
+      screen: SCREEN,
+      ...over,
+    });
+
+  it('keeps the numbers cook mode was tuned with as its defaults', () => {
+    expect(COMMIT_RATIO).toBe(0.22);
+    expect(FLING_PX_PER_MS).toBe(0.45);
+    expect(PROJECTION_MS).toBe(220);
+    expect(OVERHANG_SLACK_PX).toBe(8);
+  });
+
+  it('behaves identically whether the defaults are passed or left out', () => {
+    // The one assertion that says the parameters changed nothing for the caller that
+    // doesn't use them.
+    const drag = { offset: 200, dragged: 200, velocity: 0.1 };
+    expect(settle(drag)).toBe(
+      settle({
+        ...drag,
+        commitRatio: COMMIT_RATIO,
+        flingPxPerMs: FLING_PX_PER_MS,
+        projectionMs: PROJECTION_MS,
+      }),
+    );
+    const sections = [{ top: 0, height: SCREEN * 3 }];
+    expect(deriveStops({ sections, screen: SCREEN, limit: LIMIT })).toEqual(
+      deriveStops({ sections, screen: SCREEN, limit: LIMIT, overhangSlackPx: OVERHANG_SLACK_PX }),
+    );
+  });
+
+  it('a shorter card commits on a shorter drag, once it says so', () => {
+    // The case the defaults cannot serve: 200px cards in an 800px viewport. A drag of
+    // 60px has crossed a third of a card and plainly means to turn the page, but it is
+    // nowhere near `800 * 0.22`, so on the cook-mode numbers it springs back.
+    const cards = [0, 200, 400, 600];
+    const swipe = { stops: cards, offset: 60, dragged: 60, velocity: 0.1 };
+    expect(settle(swipe)).toBe(0);
+    expect(settle({ ...swipe, commitRatio: 0.06 })).toBe(1);
+  });
+
+  it('a stricter commit ratio holds a drag that the default would have committed', () => {
+    expect(settle({ offset: 200, dragged: 200, velocity: 0.1 })).toBe(1);
+    expect(settle({ offset: 200, dragged: 200, velocity: 0.1, commitRatio: 0.5 })).toBe(0);
+  });
+
+  it('raising the fling speed stops a flick from counting as one', () => {
+    // Same flick as "a fling always turns at least one page", now below the bar: it has
+    // to earn its page on distance instead, and 30px does not.
+    expect(settle({ offset: 30, dragged: 30, velocity: 0.6 })).toBe(1);
+    expect(settle({ offset: 30, dragged: 30, velocity: 0.6, flingPxPerMs: 1 })).toBe(0);
+  });
+
+  it('projecting a fling further carries it across more stops', () => {
+    expect(settle({ offset: 100, dragged: 100, velocity: 6 })).toBe(2);
+    expect(settle({ offset: 100, dragged: 100, velocity: 6, projectionMs: 400 })).toBe(3);
+  });
+
+  it('a tighter overhang slack lets a barely-overhanging section earn its own stop', () => {
+    // The default calls 4px of overhang layout noise; a deck whose sections are measured
+    // more precisely can ask for that stop.
+    const sections = [{ top: 0, height: SCREEN + 4 }];
+    expect(deriveStops({ sections, screen: SCREEN, limit: LIMIT })).toEqual([0]);
+    expect(deriveStops({ sections, screen: SCREEN, limit: LIMIT, overhangSlackPx: 2 })).toEqual([
+      0, 800,
+    ]);
+  });
+
+  it('a looser overhang slack suppresses a stop the default would have minted', () => {
+    const sections = [{ top: 0, height: SCREEN + 20 }];
+    expect(deriveStops({ sections, screen: SCREEN, limit: LIMIT })).toEqual([0, 800]);
+    expect(deriveStops({ sections, screen: SCREEN, limit: LIMIT, overhangSlackPx: 40 })).toEqual([
+      0,
+    ]);
   });
 });

@@ -4,10 +4,13 @@ import type { Day, Member } from '@salt/domain';
 
 import MealDayEditor from '../src/routes/mealplan/MealDayEditor.svelte';
 
-// Shop day on the planner (issue #629). Three states per day: the shop itself
-// (a marker in the collapsed header), a day BEFORE it ("using what's in" —
-// shaded), and an ordinary day. MealDayEditor is fully prop-driven, so these
-// render it directly with no store mocking; the parent owns which date is which.
+// Shop day on the planner (issue #629, restated by #639). The DISPLAY of the
+// shop moved out of this component: it is now a rule across the list, drawn by
+// MealPlanWeekPage as a sibling of the rows (see MealPlanWeekPage.test.ts). What
+// stays here is the CONTROL — the AM/PM picker in the expanded detail — plus the
+// deletions #639 made: no pre-shop wash, no "using what's in" note, no per-row
+// shop pill. MealDayEditor is fully prop-driven, so these render it directly
+// with no store mocking; the parent owns which date is which.
 
 const alex: Member = { id: 'm1', name: 'Alex' } as Member;
 
@@ -37,35 +40,22 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-describe('MealDayEditor — shop day (#629)', () => {
-  it('marks the shop day in the collapsed header so the week reads at a glance', () => {
-    const { getByTestId } = render(MealDayEditor, {
-      props: baseProps({ shopSlot: 'am', onShopSlotChange: noop }),
-    });
-    expect(getByTestId('day-shop-marker')).toHaveTextContent('am');
-  });
-
-  it('shows no marker on an ordinary day', () => {
+describe('MealDayEditor — shop day (#629, restated by #639)', () => {
+  it('draws no shop pill on the row — the page draws the rule instead', () => {
     const { queryByTestId } = render(MealDayEditor, {
-      props: baseProps({ shopSlot: null, onShopSlotChange: noop }),
+      props: baseProps({ shopSlot: 'am', onShopSlotChange: noop }),
     });
     expect(queryByTestId('day-shop-marker')).not.toBeInTheDocument();
   });
 
-  it('shades a day that falls before the shop', () => {
+  it('never washes a row grey, whatever its relation to the shop (#639)', () => {
     const { getByTestId } = render(MealDayEditor, {
-      props: baseProps({ preShop: true, onShopSlotChange: noop }),
+      props: baseProps({ shopSlot: null, onShopSlotChange: noop }),
     });
-    const card = getByTestId('day');
-    expect(card).toHaveAttribute('data-pre-shop', 'true');
-    expect(card.className).toContain('bg-muted/50');
-  });
-
-  it('does not shade the shop day itself or a day after it', () => {
-    const { getByTestId } = render(MealDayEditor, {
-      props: baseProps({ shopSlot: 'pm', preShop: false, onShopSlotChange: noop }),
-    });
-    expect(getByTestId('day')).not.toHaveAttribute('data-pre-shop');
+    const row = getByTestId('day');
+    // The pre-shop shading and the attribute that drove it are both gone.
+    expect(row).not.toHaveAttribute('data-pre-shop');
+    expect(row.className).not.toContain('bg-muted');
   });
 
   it('reports the picked slot when a day is marked', async () => {
@@ -89,12 +79,14 @@ describe('MealDayEditor — shop day (#629)', () => {
     expect(onShopSlotChange).toHaveBeenCalledWith(null);
   });
 
-  it('explains the shading in plain language on a pre-shop day', async () => {
-    const { getByTestId } = render(MealDayEditor, {
-      props: baseProps({ preShop: true, onShopSlotChange: noop }),
+  it('drops the "using what\'s in" footnote (#639)', async () => {
+    const { getByTestId, queryByTestId } = render(MealDayEditor, {
+      props: baseProps({ shopSlot: null, onShopSlotChange: noop }),
     });
     await fireEvent.click(getByTestId('day-summary'));
-    expect(getByTestId('day-pre-shop-note')).toHaveTextContent("Using what's in");
+    // The AM/PM control survives; the note that explained the vanished wash does not.
+    expect(getByTestId('day-shop')).toBeInTheDocument();
+    expect(queryByTestId('day-pre-shop-note')).not.toBeInTheDocument();
   });
 
   it('stays shop-free in the weekday template editor', async () => {

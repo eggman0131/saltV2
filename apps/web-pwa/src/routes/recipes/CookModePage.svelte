@@ -1,7 +1,6 @@
 <script lang="ts">
   import { Button, CanonIcon, Icon, Spinner } from '@salt/ui-components';
   import { onDestroy } from 'svelte';
-  import { prefersReducedMotion } from 'svelte/motion';
   import { push } from 'svelte-spa-router';
   import { recipes, isLoadingRecipes } from '../../lib/recipeService.js';
   import {
@@ -20,18 +19,12 @@
   import { primeChime } from '../../lib/chime.js';
   import { createCheckOffHold } from '../../lib/checkOffHold.svelte.js';
   import { tick as hapticTick } from '../../lib/haptics.js';
-  // Pure deck geometry (issue #556) — the viewport arithmetic behind the pager. This
-  // component keeps what only it can do: measuring elements and running the spring.
-  import {
-    deriveStops,
-    nearestStopIndex,
-    rubberBand,
-    chooseLandingStop,
-    sectionMinHeight,
-    fadeHeightFor,
-    PEEK_MAX_PX,
-    RUBBER_BAND,
-  } from '../../lib/cookDeck.js';
+  // The gesture-owned pager — spring, pointer/wheel/keyboard, element measurement —
+  // lives in `$lib/deck`, and the pure viewport arithmetic it runs on lives in
+  // `$lib/cookDeck` (issue #556). What stays in this component is the only part that
+  // knows these sections are recipe STEPS.
+  import { createDeck } from '../../lib/deck.svelte.js';
+  import { sectionMinHeight, fadeHeightFor, PEEK_MAX_PX } from '../../lib/cookDeck.js';
   import IngredientText from './IngredientText.svelte';
   // Pure cook-session logic lives in `@salt/domain` (issue #556) — every producer
   // is immutable, none of them stamp `updatedAt` (the service owns that), and
@@ -458,7 +451,6 @@
   // the footer (`handleStepDone` / `handleSkipToNext`), or their own swipe. Completed
   // steps stay above, collapsed but scrollable back and re-openable. Degrades to a
   // plain scroll (or top-of-list) if the anchor or scrollIntoView isn't available.
-  let deckViewport = $state<HTMLElement | null>(null);
   const stepEls = new Map<string, HTMLElement>();
   function stepAnchor(node: HTMLElement, id: string) {
     stepEls.set(id, node);
@@ -467,6 +459,30 @@
         if (stepEls.get(id) === node) stepEls.delete(id);
       },
     };
+  }
+
+  // ─── The pager ─────────────────────────────────────────────────────────────────
+  // The deck is not a native scroller: `$lib/deck` owns the drag, the fling, the
+  // wheel, the arrow keys and the spring that settles them, and it is the thing that
+  // holds the viewport and column elements. All this component tells it is which
+  // elements are the sections — everything about what a "step" IS stays here.
+  //
+  // No threshold overrides: cook mode's sections ARE the screen, which is the case
+  // the defaults in `$lib/cookDeck` were tuned for. The peek — how much of the next
+  // step stays on screen — comes from there too (`sectionMinHeight`, `PEEK_MAX_PX`):
+  // it replaces both the old "Next" strip and the scrollbar we gave up by owning the
+  // gesture, and it is the ONLY thing telling the cook there is more below.
+  const deck = createDeck({
+    sections: () =>
+      (recipe?.steps ?? [])
+        .map((step) => stepEls.get(step.id))
+        .filter((el): el is HTMLElement => el !== undefined),
+  });
+
+  // Where the deck must sit for a given step to be parked at the top of the viewport.
+  function stepStop(id: string): number | null {
+    const el = stepEls.get(id);
+    return el ? deck.offsetOf(el) : null;
   }
 
   // ─── The step the footer acts on ───────────────────────────────────────────────
@@ -486,7 +502,7 @@
   let fadeHeight = $state(0);
 
   function probeVisibleStep(): void {
-    const root = deckViewport;
+    const root = deck.viewportEl;
     if (!root) return;
     const rootRect = root.getBoundingClientRect();
     const probeY = rootRect.top + 8;
@@ -503,265 +519,15 @@
     }
   }
 
-  // ─── Gesture-owned pagination ──────────────────────────────────────────────────
-  // The deck is no longer a native scroller: `overflow` is hidden and the whole column
-  // is moved by a transform, so this component owns the gesture end to end. The drag
-  // tracks the thumb 1:1, and on release the FLING VELOCITY decides both which step you
-  // land on and the animation that carries you there.
-  //
-  // That velocity is the thing native scrolling could never hand over. By the time a
-  // scroll container has come to rest there is no velocity left, which is why every
-  // earlier attempt had to start its animation from a dead stop and always read as a
-  // separate movement bolted on after the scroll rather than a continuation of it.
-  //
-  // Svelte's `Spring` has `preserveMomentum` for exactly this case, but it can't be
-  // used here: it derives velocity from the spring's own last two values, and the
-  // `{ instant: true }` sets that 1:1 finger-tracking requires assign `last_value`
-  // alongside `current` — zeroing that velocity on every move. Tracking the finger
-  // with a plain `set` keeps the velocity but gives up the 1:1 feel, and lags on
-  // 120Hz screens where its fixed `dt` covers only half a frame. Hence the integrator
-  // below, seeded with the velocity measured off the pointer itself.
-  const DECK_STIFFNESS = 170; // with DECK_DAMPING → ζ ≈ 0.61, about 10% overshoot
-  const DECK_DAMPING = 16;
-  // Long jumps ("Resume · step 9") are where a spring turns violent, because its force
-  // scales with displacement. Capping speed keeps the physics for the short travel that
-  // dominates while stopping a big jump from being fired across the screen.
-  const DECK_MAX_SPEED = 2600; // px/s
-  const DRAG_START_PX = 6; // slop before a touch counts as a drag rather than a tap
-  // The thresholds that decide WHERE a released gesture lands (commit ratio, fling
-  // speed, projection) live in `$lib/cookDeck`, alongside the arithmetic that uses
-  // them. The peek — how much of the next step stays on screen — lives there too: it
-  // replaces both the old "Next" strip and the scrollbar we gave up by owning the
-  // gesture, and it is the ONLY thing telling the cook there is more below.
-
-  let deckEl = $state<HTMLElement | null>(null);
-  let deckOffset = $state(0);
-
-  // A step's height is MEASURED rather than set with `min-h-full`. Percentage heights
-  // resolve against the parent, and since the sections moved inside the transformed
-  // deck their parent is auto-height — `min-height: 100%` against an indefinite height
-  // computes to `auto`, which quietly turns one-step-per-screen back into a continuous
-  // list. The viewport is the definite box, so it's the one to measure.
-  let viewportHeight = $state(0);
-
-  $effect(() => {
-    const vp = deckViewport;
-    if (!vp) return;
-    const sync = (): void => {
-      viewportHeight = vp.clientHeight;
-    };
-    sync();
-    if (typeof ResizeObserver !== 'function') return;
-    // Re-measures when the timers bar or the recipe-changed banner appears, and on
-    // rotation — each of which changes how much room a step actually has.
-    const observer = new ResizeObserver(sync);
-    observer.observe(vp);
-    return () => observer.disconnect();
-  });
-
-  function maxOffset(): number {
-    const vp = deckViewport;
-    if (!vp || !deckEl) return 0;
-    return Math.max(0, deckEl.offsetHeight - vp.clientHeight);
-  }
-
-  // Measures each step section into deck coordinates and hands the numbers to
-  // `deriveStops`, which owns the rule about where the deck may come to rest.
-  function computeStops(): number[] {
-    const vp = deckViewport;
-    if (!vp) return [0];
-    const vpTop = vp.getBoundingClientRect().top;
-    const sections = [];
-    for (const step of recipe?.steps ?? []) {
-      const el = stepEls.get(step.id);
-      if (!el) continue;
-      sections.push({
-        top: deckOffset + (el.getBoundingClientRect().top - vpTop),
-        height: el.offsetHeight,
-      });
-    }
-    return deriveStops({ sections, screen: vp.clientHeight, limit: maxOffset() });
-  }
-
-  let stops: number[] = [0];
-
-  function stepStop(id: string): number | null {
-    const vp = deckViewport;
-    const el = stepEls.get(id);
-    if (!vp || !el) return null;
-    const top = deckOffset + (el.getBoundingClientRect().top - vp.getBoundingClientRect().top);
-    return Math.max(0, Math.min(Math.round(top), maxOffset()));
-  }
-
-  // ─── The animation ─────────────────────────────────────────────────────────────
-  // A plain spring integrator over the deck offset. `velocity0` is what makes it feel
-  // continuous: released mid-fling the deck keeps travelling at the speed your thumb
-  // left it at, and the spring only takes over as it approaches the stop — carrying
-  // slightly past it and pulling back, because it is under-damped.
-  let deckAnim: number | null = null;
-
-  function stopDeckAnimation(): void {
-    if (deckAnim !== null && typeof cancelAnimationFrame === 'function') {
-      cancelAnimationFrame(deckAnim);
-    }
-    deckAnim = null;
-  }
-
-  function animateDeckTo(target: number, velocity0 = 0): void {
-    stopDeckAnimation();
-    if (prefersReducedMotion.current || typeof requestAnimationFrame !== 'function') {
-      deckOffset = target;
-      return;
-    }
-    let position = deckOffset;
-    let velocity = velocity0;
-    let last = -1;
-    const tick = (now: number): void => {
-      if (last < 0) last = now;
-      const dt = Math.min(0.032, (now - last) / 1000); // clamp: a stalled tab must not explode
-      last = now;
-      const acceleration = -DECK_STIFFNESS * (position - target) - DECK_DAMPING * velocity;
-      velocity = Math.max(-DECK_MAX_SPEED, Math.min(DECK_MAX_SPEED, velocity + acceleration * dt));
-      position += velocity * dt;
-      if (Math.abs(position - target) < 0.5 && Math.abs(velocity) < 30) {
-        deckOffset = target;
-        deckAnim = null;
-        return;
-      }
-      deckOffset = position;
-      deckAnim = requestAnimationFrame(tick);
-    };
-    deckAnim = requestAnimationFrame(tick);
-  }
-
-  // ─── The gesture ───────────────────────────────────────────────────────────────
-  let dragging = false;
-  let dragPointer: number | null = null;
-  let dragStartY = 0;
-  let dragStartOffset = 0;
-  let dragStartIndex = 0;
-  let lastMoveY = 0;
-  let lastMoveTime = 0;
-  let dragVelocity = 0; // px/ms, positive = content travelling up (offset increasing)
-
-  function handlePointerDown(event: PointerEvent): void {
-    if (event.pointerType === 'mouse' && event.button !== 0) return;
-    stopDeckAnimation();
-    stops = computeStops();
-    dragPointer = event.pointerId;
-    dragging = false; // not until it clears DRAG_START_PX — taps must still reach buttons
-    dragStartY = event.clientY;
-    dragStartOffset = deckOffset;
-    dragStartIndex = nearestStopIndex(deckOffset, stops);
-    lastMoveY = event.clientY;
-    lastMoveTime = event.timeStamp;
-    dragVelocity = 0;
-  }
-
-  function handlePointerMove(event: PointerEvent): void {
-    if (dragPointer !== event.pointerId) return;
-    const travelled = dragStartY - event.clientY;
-    if (!dragging) {
-      if (Math.abs(travelled) < DRAG_START_PX) return;
-      dragging = true;
-      deckViewport?.setPointerCapture?.(event.pointerId);
-    }
-    deckOffset = rubberBand(dragStartOffset + travelled, maxOffset(), RUBBER_BAND);
-    const elapsed = event.timeStamp - lastMoveTime;
-    if (elapsed > 0) {
-      // Smoothed, so one erratic sample at the moment of release can't fling the deck.
-      dragVelocity = dragVelocity * 0.7 + ((lastMoveY - event.clientY) / elapsed) * 0.3;
-      lastMoveY = event.clientY;
-      lastMoveTime = event.timeStamp;
-    }
-  }
-
-  function handlePointerUp(event: PointerEvent): void {
-    if (dragPointer !== event.pointerId) return;
-    dragPointer = null;
-    if (!dragging) return; // it was a tap; leave it to the button underneath
-    dragging = false;
-    deckViewport?.releasePointerCapture?.(event.pointerId);
-    settleAfterGesture();
-  }
-
-  // Carries the released gesture to wherever `chooseLandingStop` says it belongs. The
-  // decision is pure arithmetic and lives in `$lib/cookDeck`; what's left here is the
-  // animation, seeded with the velocity the thumb left behind so the travel reads as a
-  // continuation of the swipe rather than a new movement.
-  function settleAfterGesture(): void {
-    const vp = deckViewport;
-    if (!vp) return;
-    const index = chooseLandingStop({
-      stops,
-      startIndex: dragStartIndex,
-      offset: deckOffset,
-      dragged: deckOffset - dragStartOffset,
-      velocity: dragVelocity,
-      screen: vp.clientHeight,
-    });
-    animateDeckTo(stops[index] ?? 0, dragVelocity * 1000); // px/ms → px/s
-  }
-
-  // Trackpad and mouse wheel. No fling to inherit, so it moves the deck directly and
-  // settles to the nearest stop once the wheel goes quiet.
-  let wheelIdle: ReturnType<typeof setTimeout> | null = null;
-
-  function handleWheel(event: WheelEvent): void {
-    const vp = deckViewport;
-    if (!vp) return;
-    // Nothing here scrolls natively, so without this the page behind takes the wheel.
-    event.preventDefault();
-    stopDeckAnimation();
-    if (wheelIdle === null) stops = computeStops();
-    else clearTimeout(wheelIdle);
-    // deltaY is only in pixels when deltaMode is 0 — Firefox reports lines, and page
-    // mode exists too. Untranslated, a Firefox wheel would barely move the deck.
-    const delta =
-      event.deltaMode === 1
-        ? event.deltaY * 16
-        : event.deltaMode === 2
-          ? event.deltaY * vp.clientHeight
-          : event.deltaY;
-    deckOffset = Math.max(0, Math.min(deckOffset + delta, maxOffset()));
-    wheelIdle = setTimeout(() => {
-      wheelIdle = null;
-      animateDeckTo(stops[nearestStopIndex(deckOffset, stops)] ?? 0);
-    }, 110);
-  }
-
-  // Keyboard. A native scroller gave us arrow keys for free; owning the gesture means
-  // putting them back by hand.
-  function handleDeckKey(event: KeyboardEvent): void {
-    const keys = ['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'End'];
-    if (!keys.includes(event.key)) return;
-    event.preventDefault();
-    stops = computeStops();
-    const here = nearestStopIndex(deckOffset, stops);
-    const to =
-      event.key === 'Home'
-        ? 0
-        : event.key === 'End'
-          ? stops.length - 1
-          : event.key === 'ArrowDown' || event.key === 'PageDown'
-            ? Math.min(here + 1, stops.length - 1)
-            : Math.max(here - 1, 0);
-    animateDeckTo(stops[to] ?? 0);
-  }
-
   // The footer follows the deck. Effects run after the DOM update, so the transform is
   // already applied and the probe measures where things actually are.
   $effect(() => {
-    void deckOffset;
+    void deck.offset;
     // Re-probe on resize too, now that the fade height comes from here: the timers bar
     // or the recipe-changed banner appearing re-lays out every section, so the peek the
     // fade is covering changes without the deck having moved a pixel.
-    void viewportHeight;
+    void deck.viewportHeight;
     probeVisibleStep();
-  });
-
-  $effect(() => {
-    return () => stopDeckAnimation();
   });
 
   // ─── Re-reading a step you've already ticked ───────────────────────────────────
@@ -823,7 +589,7 @@
   // a button press has none to inherit — so the two settle identically.
   function alignToTop(id: string): void {
     const stop = stepStop(id);
-    if (stop !== null) animateDeckTo(stop);
+    if (stop !== null) deck.animateTo(stop);
   }
 
   $effect(() => {
@@ -871,7 +637,7 @@
 
   $effect(() => {
     if (stage !== 'steps') return;
-    if (!deckViewport || !deckEl) return;
+    if (!deck.viewportEl || !deck.contentEl) return;
     const snap = getCookSessionSnapshot();
     const done = new Set(snap?.completedStepIds ?? []);
     const steps = recipe?.steps ?? [];
@@ -881,7 +647,7 @@
     // Placed, not animated — this is where the deck STARTS, not somewhere it travels to.
     const landOn = (): void => {
       const stop = stepStop(target.id);
-      if (stop !== null) deckOffset = stop;
+      if (stop !== null) deck.place(stop);
     };
     if (typeof requestAnimationFrame === 'function') requestAnimationFrame(landOn);
     else landOn();
@@ -1448,7 +1214,7 @@
     {:else}
       <!-- Guided steps: one full-viewport step per screen. NOT a scroll container —
          the deck inside is moved by transform and the gesture is handled in script
-         (see "Gesture-owned pagination"), which is what lets a release carry its fling
+         (see `$lib/deck`), which is what lets a release carry its fling
          velocity into the settle. `touch-pinch-zoom` hands us the vertical pan while
          leaving zoom alone; `tabindex` restores the arrow-key paging a native scroller
          would have given for free. Completed steps collapse to a compact row (tap to
@@ -1461,17 +1227,17 @@
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <main
-        bind:this={deckViewport}
+        bind:this={deck.viewportEl}
         class="relative min-h-0 flex-1 touch-pinch-zoom overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         data-testid="cook-steps-view"
         tabindex="0"
         aria-label="Guided steps"
-        onpointerdown={handlePointerDown}
-        onpointermove={handlePointerMove}
-        onpointerup={handlePointerUp}
-        onpointercancel={handlePointerUp}
-        onwheel={handleWheel}
-        onkeydown={handleDeckKey}
+        onpointerdown={deck.handlePointerDown}
+        onpointermove={deck.handlePointerMove}
+        onpointerup={deck.handlePointerUp}
+        onpointercancel={deck.handlePointerUp}
+        onwheel={deck.handleWheel}
+        onkeydown={deck.handleKeyDown}
       >
         {#if recipe.steps.length === 0}
           <div class="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
@@ -1487,9 +1253,9 @@
            `viewport - PEEK_MAX_PX`, and the padding has to cover that whole shortfall
            or the last step can't reach the top of the screen. -->
         <div
-          bind:this={deckEl}
+          bind:this={deck.contentEl}
           class="will-change-transform"
-          style="transform: translate3d(0, {-deckOffset}px, 0); padding-bottom: {PEEK_MAX_PX}px"
+          style="transform: translate3d(0, {-deck.offset}px, 0); padding-bottom: {PEEK_MAX_PX}px"
           data-testid="cook-steps-deck"
         >
           {#each recipe.steps as step, i (step.id)}
@@ -1502,7 +1268,7 @@
               data-complete={done}
               data-testid="cook-step"
               class="flex flex-col px-4 {collapsed ? 'py-2' : 'border-t py-6'}"
-              style="min-height: {collapsed ? 0 : sectionMinHeight(viewportHeight)}px"
+              style="min-height: {collapsed ? 0 : sectionMinHeight(deck.viewportHeight)}px"
             >
               {#if collapsed}
                 <!-- Collapsed / done: compact row, tap to re-read it. Peeking is

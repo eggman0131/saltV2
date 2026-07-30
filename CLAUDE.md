@@ -98,6 +98,60 @@ storybook                  →  ui-components                 # dev-only Storybo
 | `apps/cloud-functions`            | `@salt/cloud-functions` |
 | `apps/storybook`                  | `@salt/storybook`       |
 
+## Docs map — read these when the task touches their area
+
+`docs/` is **not** auto-loaded; only this file is. Everything below is invisible
+unless you open it deliberately, so treat this table as the index. Each doc holds
+knowledge that is **not** recoverable from the code — decisions, gotchas, external
+setup, and contracts. Read the one that matches your task **before** editing.
+
+Rule for maintaining them: a doc earns its place by holding what code cannot say.
+If something is already explained in a header comment next to the code, it does
+**not** get restated here or in `docs/` — one source, no duplication.
+
+The **Tracks** column is the routing source for the nightly doc review
+([.github/workflows/nightly-doc-review.yml](.github/workflows/nightly-doc-review.yml)) —
+that job reads this table instead of keeping its own copy, so adding a row here is
+all it takes to bring a doc into nightly review. Keep the globs accurate.
+
+| Read this | Tracks | When |
+| --- | --- | --- |
+| [docs/salt-architecture.md](docs/salt-architecture.md) | `packages/**`, `apps/**`, `eslint.config.*`, `.dependency-cruiser.*`, `pnpm-workspace.yaml` | The prose contract behind this file: §3 dependency graph, §4 domain, §6 adapters, §7 adapter errors (§7.6 error-reporting policy), §8 cloud functions, §9 PWA, §11 enforcement. Any layering/boundary question. |
+| [docs/domain-implementation.md](docs/domain-implementation.md) | `packages/domain/**` | Writing anything in the domain layer — module/coordinator pattern. |
+| [docs/matching-pipeline.md](docs/matching-pipeline.md) | `packages/domain/src/canon/**`, `packages/adapters/**`, `apps/cloud-functions/**` | Canon matching: stages, thresholds, AI arbitration, `needs_approval`, and the **live** `MatchLogEntry` logging schema. |
+| [docs/canon-icons.md](docs/canon-icons.md) | `apps/cloud-functions/src/triggers/onCanonItemWritten.ts`, `apps/cloud-functions/src/imaging/**` | Canon pictograms — generation pipeline, storage, rendering, and the verbatim prompt (reproduce exactly). |
+| [docs/recipe-module.md](docs/recipe-module.md) | `packages/domain/src/recipe/**`, `packages/domain/src/schemas/recipe.ts`, `apps/cloud-functions/src/triggers/onRecipeWritten.ts` | Recipe schema, canon batch interaction, shopping-list extraction. |
+| [docs/meal-planning.md](docs/meal-planning.md) | `packages/domain/src/mealPlan/**`, `apps/web-pwa/src/routes/mealplan/**` | Planner: week identity, `firstDayOfWeek`, shop day (#629), conflict model. |
+| [docs/ai-kitchen-assistant.md](docs/ai-kitchen-assistant.md) | `apps/cloud-functions/src/flows/**`, `apps/web-pwa/src/routes/chat/**`, `apps/web-pwa/src/routes/recipes/CookModePage.svelte`, `apps/web-pwa/src/lib/cook*.ts` | Chef chat / cook mode — design principles and per-user data exceptions. |
+| [docs/releases.md](docs/releases.md) | `.github/workflows/deploy-*.yml`, `firebase.json`, `.firebaserc`, `apps/*/.env*` | Deploying, the three Firebase projects, and where config/secrets live. |
+| [docs/data-refresh.md](docs/data-refresh.md) | `scripts/*firestore*.mjs`, `scripts/restore-*.mjs`, `storage.rules` | Copying data between environments, plus the cross-project image-bucket posture. |
+| [docs/e2e.md](docs/e2e.md) | `apps/web-pwa/e2e/**`, `docker/**`, `apps/web-pwa/playwright.config.ts`, `vitest.config.ts`, `firebase.test.docker.json` | Running/debugging e2e + emulator integration suites; poisoned-environment recovery. |
+| [docs/e2e-test-spec.md](docs/e2e-test-spec.md) | `apps/web-pwa/e2e/**` | **Writing or reviewing** an e2e test — non-functional rules and the reviewer checklist. |
+| [docs/visual-regression.md](docs/visual-regression.md) | `.github/workflows/chromatic.yml`, `apps/storybook/**` | Chromatic VR: why it is selective and non-blocking, accepting diffs. |
+| [docs/error-reporting-calibration.md](docs/error-reporting-calibration.md) | `packages/adapters/observability/**` | Verifying reporting changes in PostHog; the intentional asymmetries that are **not** bugs. |
+| [docs/runbooks/product-forms-staging-validation.md](docs/runbooks/product-forms-staging-validation.md) | `packages/domain/src/productForm/**` | Exercising product-forms on staging (live — see #512). Gotchas section first. |
+
+### Design docs (`docs/design/`)
+
+- [design.md](docs/design/design.md) — **machine-consumed, not prose.** Its YAML
+  frontmatter is the source of truth for the Culinary Modernist palette and
+  tokens; `packages/ui-components/scripts/check-theme.ts` and
+  `tests/tokens.theme.test.ts` read it. Editing tokens starts here, not in CSS.
+- [component-tokens.md](docs/design/component-tokens.md) — the procedure when a
+  component "looks wrong" and the fix should become a token. Follow it rather
+  than inventing tokens.
+Design docs track `packages/ui-components/**` and `apps/web-pwa/src/**` styling.
+
+- **ui-spec-v02 → v05 are cumulative, never superseding.** v0.2 holds the
+  foundations (boundaries, package surface, event naming, styling rules) and stays
+  in force for every later version; each later spec only adds components —
+  [v03](docs/design/ui-spec-v03.md) RadioGroup/Select/Slider/Sheet/Toast,
+  [v04](docs/design/ui-spec-v04.md) Combobox + `ListPage` selection mode,
+  [v05](docs/design/ui-spec-v05.md) `ListPage` fill mode. Touching
+  `@salt/ui-components` means reading [v02](docs/design/ui-spec-v02.md) **plus**
+  the spec that owns your component. The specs are binding: if something is
+  missing or ambiguous, stop and extend the spec rather than inventing.
+
 ## Code search (Serena MCP)
 
 Serena (`oraios/serena`) provides LSP-backed semantic code search. It is configured **TypeScript-only** (`languages: [typescript]` in `.serena/project.yml`), and that is deliberate.

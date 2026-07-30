@@ -1,4 +1,4 @@
-import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import type { MealPlanConfig, MealPlanTemplate, MealPlanWeek } from '@salt/domain';
 import type { DomainError, ReadResult } from '@salt/shared-types';
@@ -88,6 +88,30 @@ export function subscribeMealPlanWeek(
     },
     (err) => onError(classifyFirestoreError(err)),
   );
+}
+
+/**
+ * One-shot read of a single week (issue #639).
+ *
+ * The load-template picker offers three weeks and must say which of them already
+ * hold edits — including weeks nothing is subscribed to. Inferring "no edits"
+ * from an absent in-memory document would answer that question by guessing, and
+ * the wrong guess silently overwrites a real plan, so it reads the document.
+ * Single-doc read contract: a corrupt doc is a `Failure`, never a throw.
+ */
+export async function loadMealPlanWeek(
+  startDate: string,
+): Promise<ReadResult<MealPlanWeek | null, DomainError>> {
+  try {
+    const db = getFirestore(getApp());
+    const snap = await getDoc(doc(db, WEEKS_COLLECTION, startDate));
+    if (!snap.exists()) return success(null);
+    const result = MealPlanWeekSchema.safeParse(snap.data());
+    if (!result.success) return failure({ kind: 'StorageError', reason: 'corruption' });
+    return success(result.data as MealPlanWeek);
+  } catch (err) {
+    return failure(classifyFirestoreError(err));
+  }
 }
 
 export async function saveMealPlanConfig(

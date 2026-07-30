@@ -126,7 +126,7 @@
       "detail": "DESTRUCTIVE: wipes staging Firestore and restores it from the newest prod export. Requires typing STAGING to confirm; refuses to target prod. Run 'Export Prod Firestore' first.",
       "type": "shell",
       "command": "node",
-      "args": ["scripts/restore-staging-from-prod.mjs"],
+      "args": ["scripts/restore-firestore.mjs", "--from", "prod", "--to", "staging"],
       "isBackground": false,
       "problemMatcher": [],
       "presentation": {
@@ -160,7 +160,24 @@
       "detail": "DESTRUCTIVE: wipes dev-cloud Firestore and restores it from the newest staging export. Requires typing DEV to confirm; refuses to target prod or staging. Run 'Export Staging Firestore' first.",
       "type": "shell",
       "command": "node",
-      "args": ["scripts/restore-dev-from-staging.mjs"],
+      "args": ["scripts/restore-firestore.mjs", "--from", "staging", "--to", "dev"],
+      "isBackground": false,
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "showReuseMessage": true,
+        "clear": true
+      }
+    },
+    {
+      "label": "Restore Dev from Prod",
+      "detail": "DESTRUCTIVE: wipes dev-cloud Firestore and restores it DIRECTLY from the newest prod export, skipping the staging hop. Requires typing DEV to confirm; refuses to target prod or staging. Run 'Export Prod Firestore' first.",
+      "type": "shell",
+      "command": "node",
+      "args": ["scripts/restore-firestore.mjs", "--from", "prod", "--to", "dev"],
       "isBackground": false,
       "problemMatcher": [],
       "presentation": {
