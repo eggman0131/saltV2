@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, cleanup, waitFor, within } from '@testing-library/svelte';
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import {
   emptyWeek,
@@ -188,11 +188,52 @@ import {
   setWeekDayRecipes,
   addWeekAttendee,
   setWeekAttendeeHomeTime,
+  setWeekAttendeeNote,
 } from '../src/lib/mealPlanService.js';
 import { addToast } from '../src/lib/toastStore.js';
+import { setShopDay, clearShopDay } from '../src/lib/shoppingDayService.js';
 
-async function expandDay(date: string): Promise<void> {
+// A week whose single day already has recipe r1 attached, so its detail renders a
+// recipe row (with the per-row "Add to shop" action) without going through the
+// picker (setWeekDayRecipes is a no-op mock and never updates the store).
+function weekWithRecipe(date: string): MealPlanWeek {
+  return {
+    ...emptyWeek(date),
+    days: {
+      ...emptyWeek(date).days,
+      [date]: { note: '', recipeIds: ['r1'], chefs: [], attendees: [], guests: 0 },
+    },
+  };
+}
+
+// Tapping a day's row raises its sheet (#640). The row is still the trigger and
+// still carries the same testid; what changed is where the detail lands — in a
+// portalled dialog on <body>, which `screen` queries reach exactly as before.
+async function openDay(date: string): Promise<void> {
   await userEvent.click(screen.getByTestId(`day-${date}-summary`));
+}
+
+// The week's shop-day picker (#640, Phase 4): a header button that says the
+// current answer, opening the whole week's choice — the same shape as "Load
+// template", and reached the same way.
+async function openShopPicker(): Promise<void> {
+  // Two doors to the same picker (#640): the header trigger exists only
+  // while the week has NO shop day — once one is set, the rule across the list is
+  // the control, and the header row is gone. Open whichever this week has.
+  const trigger =
+    screen.queryByTestId('week-shop-trigger') ?? screen.getAllByTestId(/-shop-marker$/)[0]!;
+  await userEvent.click(trigger);
+  await waitFor(() => screen.getByTestId('week-shop-picker'));
+}
+
+// Close it the way a user would. A test that ENDS with the dialog open is torn
+// down mid-modal, and bits-ui's focus scope is module-level state: the abandoned
+// scope outlives the unmount and fights the next test's sheet for focus, which
+// shows up as keystrokes landing nowhere in a later, unrelated test. Picking a
+// day closes the dialog by itself; the tests that only look must close it.
+async function closeShopPicker(): Promise<void> {
+  await userEvent.click(screen.getByTestId('week-shop-done'));
+  await waitFor(() => expect(screen.queryByTestId('week-shop-picker')).not.toBeInTheDocument());
 }
 
 function member(id: string, name: string): Member {
@@ -258,6 +299,11 @@ const ROW_H = 200;
 const ROW_GAP = 24;
 const ROW_PITCH = ROW_H + ROW_GAP;
 const VIEWPORT_H = 700;
+// The deck rests a row-gap ABOVE the day it lands on, so the previous day's bottom
+// edge sits just off the top rather than the card starting at the screen's first
+// pixel. Every landing below is therefore a pitch multiple minus this lead — except
+// the very top, which has nothing above it to show and clamps to 0.
+const LEAD = ROW_GAP;
 
 function fakeRect(top: number, height: number): DOMRect {
   return {
@@ -378,14 +424,24 @@ beforeEach(() => {
   vi.mocked(loadTemplateIntoWeek).mockResolvedValue({ kind: 'ok', value: undefined });
 });
 
-// Attach a recipe through the day's real recipe-picker Combobox: click the input
-// to open the listbox, then click the option by its title. `title` accepts a
+// Attach a recipe through the day's real recipe-picker Combobox: open the
+// listbox from the input, then pick the option by its title. `title` accepts a
 // RegExp because a "When you CBA" option carries its kind badge INSIDE the
-// option, so its accessible name is the title plus the badge — see the #637
-// block at the foot of this file.
+// option, so its accessible name is the title plus the badge (#637).
+//
+// Both taps are dispatched with `fireEvent` rather than `userEvent` on purpose.
+// `userEvent.click` emulates the browser's focus-on-pointerdown, and the
+// combobox closes on input blur (in a microtask) — so a synthetic focus shuffle
+// can tear the listbox down before the click lands, and the test then depends on
+// timing and on how many bits-ui dialogs have been mounted in the document. That
+// race is a jsdom/user-event artifact, not the component's behaviour, and
+// `fireEvent` dispatches exactly the `click` the input and the option listen for.
+// That the option is genuinely REACHABLE over the sheet — the real risk in a
+// modal, where <body> is inert — is asserted directly in
+// MealDayEditor.recipePicker.test.ts.
 async function attachRecipe(date: string, title: string | RegExp): Promise<void> {
-  await userEvent.click(screen.getByTestId(`day-${date}-recipe-picker`));
-  await userEvent.click(await screen.findByRole('option', { name: title }));
+  await fireEvent.click(screen.getByTestId(`day-${date}-recipe-picker`));
+  await fireEvent.click(await screen.findByRole('option', { name: title }));
 }
 
 // Open a day's picker without choosing anything, so the offered options can be
@@ -414,8 +470,10 @@ describe('MealPlanWeekPage', () => {
     expect(screen.getByTestId('day-2026-06-08')).toBeInTheDocument();
     expect(screen.getByTestId('day-2026-06-14')).toBeInTheDocument();
     expect(screen.getByTestId('week-range').textContent).toContain('Jun');
-    // Detail is hidden until a day is expanded.
+    // No day is open: the week is a list of rows and nothing else. The detail
+    // lives in a sheet now (#640), so "collapsed" means "no dialog mounted".
     expect(screen.queryByTestId('day-2026-06-08-detail')).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('navigates with prev/next', async () => {
@@ -428,7 +486,7 @@ describe('MealPlanWeekPage', () => {
 
   it('edits a meal note through the service after expanding the day', async () => {
     render(MealPlanWeekPage);
-    await expandDay('2026-06-08');
+    await openDay('2026-06-08');
     const noteInput = screen.getByTestId('day-2026-06-08-note');
     await userEvent.type(noteInput, 'Pasta');
     await waitFor(() => expect(vi.mocked(setWeekDayNote)).toHaveBeenCalled());
@@ -437,7 +495,7 @@ describe('MealPlanWeekPage', () => {
 
   it('toggles an attendee and reveals a savable blank home-time', async () => {
     render(MealPlanWeekPage);
-    await expandDay('2026-06-08');
+    await openDay('2026-06-08');
     const attendWrap = screen.getByTestId('day-2026-06-08-attend-alice@e.org');
     await userEvent.click(within(attendWrap).getByRole('checkbox'));
     expect(vi.mocked(addWeekAttendee)).toHaveBeenCalledWith(
@@ -567,11 +625,11 @@ describe('MealPlanWeekPage', () => {
       },
     });
     render(MealPlanWeekPage);
-    await expandDay('2026-06-08');
+    await openDay('2026-06-08');
     expect(screen.getByTestId('day-2026-06-08-unknown-gone@e.org')).toBeInTheDocument();
   });
 
-  it('reads the cook, who is eating and any home time off the collapsed row (#639)', () => {
+  it('reads the cook, the head count and any home time off the collapsed row (#640)', () => {
     mockWeek._set({
       ...emptyWeek('2026-06-08'),
       days: {
@@ -590,9 +648,13 @@ describe('MealPlanWeekPage', () => {
     });
     render(MealPlanWeekPage);
     const meta = screen.getByTestId('day-2026-06-08-meta');
-    expect(meta.textContent).toContain('Bob cooking');
-    // Both members are eating, so the roster collapses to one word…
-    expect(meta.textContent).toContain('Everyone');
+    // The cook is named — it is the fact the row is answering.
+    expect(meta.textContent).toContain('Bob');
+    // The table is a COUNT, not a roster: with five in the house the name list was
+    // the longest and least stable thing in the row. Who, exactly, is in the sheet.
+    expect(meta.textContent).toContain('2');
+    expect(meta.textContent).not.toContain('Everyone');
+    expect(meta.textContent).not.toContain('Alice,');
     // …and only Alice's time is set, so only Alice's shows.
     expect(meta.textContent).toContain('Alice 18:00');
     expect(meta.textContent).not.toContain('Bob 1');
@@ -615,48 +677,275 @@ describe('MealPlanWeekPage', () => {
     expect(screen.queryByTestId('day-2026-06-10-shop-marker')).not.toBeInTheDocument();
   });
 
-  it('splits into hour + quarter-hour minute, seeded to the dinner default', async () => {
-    mockWeek._set({
-      ...emptyWeek('2026-06-08'),
-      days: {
-        ...emptyWeek('2026-06-08').days,
-        '2026-06-08': {
-          note: '',
-          recipeIds: [],
-          chefs: [],
-          attendees: [{ memberId: 'alice@e.org', homeTime: null, note: '' }],
-          guests: 0,
-        },
-      },
-    });
-    render(MealPlanWeekPage);
-    await expandDay('2026-06-08');
-    const hourTrigger = screen.getByTestId('day-2026-06-08-time-alice@e.org');
-    const minuteTrigger = screen.getByTestId('day-2026-06-08-time-min-alice@e.org');
-    // A blank home time reads as placeholders; nothing is persisted until a pick.
-    expect(hourTrigger).toHaveTextContent('HH');
-    expect(minuteTrigger).toHaveTextContent('MM');
-    expect(vi.mocked(setWeekAttendeeHomeTime)).not.toHaveBeenCalled();
+  // ─── The shop day is chosen at the WEEK (#640, Phase 4) ───────────────────
+  // Which day you shop is a fact about the week, so it is set once beside the
+  // week's own dates — never by opening a day. The rule across the list keeps
+  // displaying the answer (asserted above, unchanged).
 
-    // The minute list offers only quarter-hours — no scrolling through 60 values.
-    await userEvent.click(minuteTrigger);
-    await waitFor(() => screen.getByRole('option', { name: '15' }));
-    expect(screen.queryByRole('option', { name: '10' })).not.toBeInTheDocument();
-    // Picking a minute from blank persists HH:MM, defaulting the untouched hour to
-    // the dinner-time seed (18) — so a single pick still yields a whole time.
-    await userEvent.click(screen.getByRole('option', { name: '15' }));
+  it('gives the header back once the shop day is set — the rule says it instead', async () => {
+    mockShopDay._set({ date: '2026-06-10', slot: 'am' });
+    render(MealPlanWeekPage);
+    // The answer is already on the list, in place, so a header row repeating it
+    // was the most expensive line on the page.
+    expect(screen.queryByTestId('week-shop')).not.toBeInTheDocument();
+    // …and the rule it is displayed on is the way back to the picker.
+    await userEvent.click(screen.getByTestId('day-2026-06-10-shop-marker'));
+    await waitFor(() => expect(screen.getByTestId('week-shop-picker')).toBeInTheDocument());
+    await closeShopPicker();
+  });
+
+  it('keeps a header control while there is no shop day to tap', () => {
+    // The rule cannot be the control when there is no rule — an unset week would
+    // otherwise have nowhere at all to say so from.
+    render(MealPlanWeekPage);
+    expect(screen.getByTestId('week-shop-trigger')).toHaveTextContent('Set a shop day');
+  });
+
+  it('sets the day and the slot in one tap, without opening a day', async () => {
+    render(MealPlanWeekPage);
+    await openShopPicker();
+    await userEvent.click(screen.getByTestId('week-shop-2026-06-10-pm'));
+
+    expect(vi.mocked(setShopDay)).toHaveBeenCalledWith('2026-06-10', 'pm');
+    // The choice was the whole question, so the dialog closes on it.
+    await waitFor(() => expect(screen.queryByTestId('week-shop-picker')).not.toBeInTheDocument());
+  });
+
+  it('offers the week’s own seven days, in the household’s week order', async () => {
+    // `firstDayOfWeek` is a setting ('fri' in production), so the list follows
+    // `weekDates` rather than a hard-coded Mon–Sun.
+    mockFirstDay._set('fri');
+    mockStart._set('2026-06-12');
+    mockWeek._set(emptyWeek('2026-06-12'));
+    render(MealPlanWeekPage);
+    await openShopPicker();
+
+    const rows = screen.getAllByTestId(/^week-shop-row-/);
+    expect(rows.map((r) => r.dataset.testid)).toEqual(
+      weekDates('2026-06-12').map((d) => `week-shop-row-${d}`),
+    );
+    await closeShopPicker();
+  });
+
+  it('shows which slot is set, and moves the shop to another day', async () => {
+    mockShopDay._set({ date: '2026-06-10', slot: 'am' });
+    render(MealPlanWeekPage);
+    await openShopPicker();
+    // The marked day reads as chosen — at its slot only.
+    expect(screen.getByTestId('week-shop-2026-06-10-am')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('week-shop-2026-06-10-pm')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('week-shop-2026-06-12-am')).toHaveAttribute('aria-pressed', 'false');
+
+    await userEvent.click(screen.getByTestId('week-shop-2026-06-12-am'));
+    expect(vi.mocked(setShopDay)).toHaveBeenCalledWith('2026-06-12', 'am');
+    // Moving it is one write: the service owns the one-shop-per-week clear, and
+    // this phase must not reopen that.
+    expect(vi.mocked(clearShopDay)).not.toHaveBeenCalled();
+  });
+
+  it('clears the week’s shop day', async () => {
+    mockShopDay._set({ date: '2026-06-10', slot: 'am' });
+    render(MealPlanWeekPage);
+    await openShopPicker();
+    await userEvent.click(screen.getByTestId('week-shop-clear-2026-06-08'));
+
+    expect(vi.mocked(clearShopDay)).toHaveBeenCalledWith('2026-06-10');
+    expect(vi.mocked(setShopDay)).not.toHaveBeenCalled();
+  });
+
+  it('offers nothing to clear on a week with no shop day', async () => {
+    render(MealPlanWeekPage);
+    await openShopPicker();
+    expect(screen.queryByTestId('week-shop-clear-2026-06-08')).not.toBeInTheDocument();
+    await closeShopPicker();
+  });
+
+  it('offers no shop control inside a day any more', async () => {
+    mockShopDay._set({ date: '2026-06-10', slot: 'am' });
+    render(MealPlanWeekPage);
+    await openDay('2026-06-10');
+
+    expect(screen.getByTestId('day-2026-06-10-detail')).toBeInTheDocument();
+    expect(screen.queryByTestId('day-2026-06-10-shop')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('day-2026-06-10-shop-am')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('day-2026-06-10-shop-pm')).not.toBeInTheDocument();
+  });
+
+  it('surfaces a failed shop-day save as a toast (Rule 10)', async () => {
+    vi.mocked(setShopDay).mockResolvedValueOnce({
+      kind: 'err',
+      error: { kind: 'StorageError', code: 'nope', message: 'nope' },
+    } as never);
+    render(MealPlanWeekPage);
+    await openShopPicker();
+    await userEvent.click(screen.getByTestId('week-shop-2026-06-10-am'));
+
     await waitFor(() =>
-      expect(vi.mocked(setWeekAttendeeHomeTime)).toHaveBeenCalledWith(
-        '2026-06-08',
-        'alice@e.org',
-        '18:15',
+      expect(vi.mocked(addToast)).toHaveBeenCalledWith(
+        'Failed to save the shopping day.',
+        'destructive',
       ),
     );
   });
 
+  // ─── Home time is one control (#640, Phase 2) ────────────────────────────
+  // Taps go through `fireEvent`, not `userEvent`, for the reason spelled out
+  // above `attachRecipe`: `userEvent` focuses on pointerdown and the popover can
+  // be torn down before the click lands.
+  const dayWithAlice = (homeTime: string | null) => ({
+    ...emptyWeek('2026-06-08'),
+    days: {
+      ...emptyWeek('2026-06-08').days,
+      '2026-06-08': {
+        note: '',
+        recipeIds: [],
+        chefs: [],
+        attendees: [{ memberId: 'alice@e.org', homeTime, note: '' }],
+        guests: 0,
+      },
+    },
+  });
+
+  it('picks a home time in one tap from the dinner window on the quarter hour', async () => {
+    mockWeek._set(dayWithAlice(null));
+    render(MealPlanWeekPage);
+    await openDay('2026-06-08');
+    const trigger = screen.getByTestId('day-2026-06-08-time-alice@e.org');
+    // One control, not an hour + a minute: the second trigger is gone.
+    expect(screen.queryByTestId('day-2026-06-08-time-min-alice@e.org')).not.toBeInTheDocument();
+    // A blank home time reads as "No time"; nothing is persisted until a pick.
+    expect(trigger).toHaveTextContent('No time');
+    expect(vi.mocked(setWeekAttendeeHomeTime)).not.toHaveBeenCalled();
+
+    // On offer: whole quarter-hours inside the dinner window, plus the clear.
+    await fireEvent.click(trigger);
+    await waitFor(() => screen.getByRole('option', { name: '19:15' }));
+    expect(screen.getByRole('option', { name: 'No time' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '17:00' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '22:45' })).toBeInTheDocument();
+    // No off-quarter values, and nothing outside 17:00–22:45.
+    expect(screen.queryByRole('option', { name: '19:10' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: '16:00' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: '23:00' })).not.toBeInTheDocument();
+
+    // One choice saves the whole "HH:mm" — no second dropdown, no seeded half.
+    await fireEvent.click(screen.getByRole('option', { name: '19:15' }));
+    await waitFor(() =>
+      expect(vi.mocked(setWeekAttendeeHomeTime)).toHaveBeenCalledWith(
+        '2026-06-08',
+        'alice@e.org',
+        '19:15',
+      ),
+    );
+  });
+
+  it('displays a stored home time verbatim, including one off the quarter hour', async () => {
+    // `homeTime` is a free string in the schema, so production may hold a value
+    // that is not on the list. It must still show, never silently blank or reset.
+    mockWeek._set(dayWithAlice('19:10'));
+    render(MealPlanWeekPage);
+    await openDay('2026-06-08');
+    expect(screen.getByTestId('day-2026-06-08-time-alice@e.org')).toHaveTextContent('19:10');
+    expect(vi.mocked(setWeekAttendeeHomeTime)).not.toHaveBeenCalled();
+  });
+
+  // ─── A member is one line (#640, Phase 3) ────────────────────────────────
+  // Avatar, name, home time and chef hat share ONE row; the free-text personal
+  // note hides behind an affordance on that row and drops below it when opened.
+  const dayWithAliceNote = (note: string) => ({
+    ...emptyWeek('2026-06-08'),
+    days: {
+      ...emptyWeek('2026-06-08').days,
+      '2026-06-08': {
+        note: '',
+        recipeIds: [],
+        chefs: [],
+        attendees: [{ memberId: 'alice@e.org', homeTime: '18:00', note }],
+        guests: 0,
+      },
+    },
+  });
+
+  it('puts a member on one line — avatar, name, time and chef hat together', async () => {
+    mockWeek._set(dayWithAlice('18:00'));
+    render(MealPlanWeekPage);
+    await openDay('2026-06-08');
+    const row = screen.getByTestId('day-2026-06-08-attendee-alice@e.org');
+    const line = row.firstElementChild!;
+    expect(line).toContainElement(screen.getByTestId('day-2026-06-08-attend-alice@e.org'));
+    expect(line).toContainElement(screen.getByTestId('day-2026-06-08-time-alice@e.org'));
+    expect(line).toContainElement(screen.getByTestId('day-2026-06-08-chef-alice@e.org'));
+    expect(line).toContainElement(screen.getByTestId('day-2026-06-08-attnote-toggle-alice@e.org'));
+    // The eating toggle is still the accessible checkbox the roster is driven by.
+    expect(
+      within(screen.getByTestId('day-2026-06-08-attend-alice@e.org')).getByRole('checkbox'),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps an unwritten note behind its affordance until it is asked for', async () => {
+    mockWeek._set(dayWithAliceNote(''));
+    render(MealPlanWeekPage);
+    await openDay('2026-06-08');
+    // Nothing to say about Alice tonight: no field, no wasted line.
+    expect(screen.queryByTestId('day-2026-06-08-attnote-alice@e.org')).not.toBeInTheDocument();
+    const toggle = screen.getByTestId('day-2026-06-08-attnote-toggle-alice@e.org');
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    // One tap reveals it, and typing saves per keystroke (fire-and-forget).
+    await fireEvent.click(toggle);
+    expect(await screen.findByTestId('day-2026-06-08-attnote-alice@e.org')).toBeInTheDocument();
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    // `fireEvent.input` on a node queried in the SAME expression, not
+    // `userEvent.type` on one held from a previous await. This field is created
+    // by the tap above, and userEvent's click-then-keystroke round trip leaves
+    // the sheet a window to re-render it: under load the keystrokes then land on
+    // a node Svelte's delegated handler no longer reaches and NOTHING is saved —
+    // a ~50% flake under the full suite, silent when the file runs alone.
+    await fireEvent.input(screen.getByTestId('day-2026-06-08-attnote-alice@e.org'), {
+      target: { value: 'late' },
+    });
+    await waitFor(() =>
+      expect(vi.mocked(setWeekAttendeeNote)).toHaveBeenCalledWith(
+        '2026-06-08',
+        'alice@e.org',
+        'late',
+      ),
+    );
+
+    // Tapping again puts it away.
+    await fireEvent.click(toggle);
+    expect(screen.queryByTestId('day-2026-06-08-attnote-alice@e.org')).not.toBeInTheDocument();
+  });
+
+  it('shows a note that is already written without a tap, and flags it on the line', async () => {
+    mockWeek._set(dayWithAliceNote('portion for tomorrow'));
+    render(MealPlanWeekPage);
+    await openDay('2026-06-08');
+    expect(screen.getByTestId('day-2026-06-08-attnote-alice@e.org')).toHaveValue(
+      'portion for tomorrow',
+    );
+    // …and the affordance itself carries the note, so a collapsed row still says
+    // that something was written.
+    const toggle = screen.getByTestId('day-2026-06-08-attnote-toggle-alice@e.org');
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(toggle).toHaveAccessibleName('Alice note: portion for tomorrow');
+    await fireEvent.click(toggle);
+    expect(screen.queryByTestId('day-2026-06-08-attnote-alice@e.org')).not.toBeInTheDocument();
+    expect(toggle).toHaveAccessibleName('Alice note: portion for tomorrow');
+  });
+
+  it('offers no note affordance to a member who is not eating', async () => {
+    render(MealPlanWeekPage);
+    await openDay('2026-06-08');
+    expect(
+      screen.queryByTestId('day-2026-06-08-attnote-toggle-alice@e.org'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId('day-2026-06-08-attnote-alice@e.org')).not.toBeInTheDocument();
+  });
+
   it('lets a non-attending member be set as chef', async () => {
     render(MealPlanWeekPage);
-    await expandDay('2026-06-08');
+    await openDay('2026-06-08');
     // Alice is not attending; the Chef toggle is still present and works.
     await userEvent.click(screen.getByTestId('day-2026-06-08-chef-alice@e.org'));
     expect(vi.mocked(setWeekDayChefs)).toHaveBeenCalledWith('2026-06-08', ['alice@e.org']);
@@ -672,7 +961,7 @@ describe('MealPlanWeekPage', () => {
     });
     mockWeek._set(chefDay(['alice@e.org']));
     render(MealPlanWeekPage);
-    await expandDay('2026-06-08');
+    await openDay('2026-06-08');
     const btn = screen.getByTestId('day-2026-06-08-chef-alice@e.org');
     expect(btn.className).toContain('bg-amber-500');
 
@@ -683,14 +972,14 @@ describe('MealPlanWeekPage', () => {
 
   it('adjusts the guest count through the service', async () => {
     render(MealPlanWeekPage);
-    await expandDay('2026-06-08');
+    await openDay('2026-06-08');
     await userEvent.click(screen.getByTestId('day-2026-06-08-guests-inc'));
     expect(vi.mocked(setWeekDayGuests)).toHaveBeenCalledWith('2026-06-08', 1);
   });
 
   it('auto-fills an empty meal with the attached recipe title (Phase 3, #469)', async () => {
     render(MealPlanWeekPage);
-    await expandDay('2026-06-08');
+    await openDay('2026-06-08');
     await attachRecipe('2026-06-08', 'Spaghetti Bolognese');
     // The recipe is stored…
     expect(vi.mocked(setWeekDayRecipes)).toHaveBeenCalledWith('2026-06-08', ['r1']);
@@ -715,7 +1004,7 @@ describe('MealPlanWeekPage', () => {
       },
     });
     render(MealPlanWeekPage);
-    await expandDay('2026-06-08');
+    await openDay('2026-06-08');
     await attachRecipe('2026-06-08', 'Spaghetti Bolognese');
     // The recipe still attaches…
     expect(vi.mocked(setWeekDayRecipes)).toHaveBeenCalledWith('2026-06-08', ['r1']);
@@ -726,7 +1015,7 @@ describe('MealPlanWeekPage', () => {
   it('adds an attached recipe to the shopping list from the day detail (Phase 4, #469)', async () => {
     mockWeek._set(weekWith('2026-06-08', ['r1']));
     render(MealPlanWeekPage);
-    await expandDay('2026-06-08');
+    await openDay('2026-06-08');
 
     // The attached recipe row carries a per-row "Add to shop" action.
     await userEvent.click(screen.getByTestId('day-2026-06-08-recipe-addshop-r1'));
@@ -747,7 +1036,7 @@ describe('MealPlanWeekPage', () => {
     mockDefaultListId._set(null);
     mockWeek._set(weekWith('2026-06-08', ['r1']));
     render(MealPlanWeekPage);
-    await expandDay('2026-06-08');
+    await openDay('2026-06-08');
 
     await userEvent.click(screen.getByTestId('day-2026-06-08-recipe-addshop-r1'));
 
@@ -783,17 +1072,108 @@ describe('MealPlanWeekPage', () => {
   });
 });
 
+// ─── The day opens in a sheet (#640, Phase 1) ──────────────────────────────
+// The detail used to be a panel pushed in under the row, which shoved the rest
+// of the week down the deck and lost its place. It is now a bottom sheet over a
+// dimmed week, owned by the PAGE — so a snapshot landing mid-edit cannot close
+// it, and only one day is ever open.
+describe('MealPlanWeekPage — the day opens in a sheet (#640, Phase 1)', () => {
+  it('raises the day in a dialog titled with its full date', async () => {
+    render(MealPlanWeekPage);
+    await openDay('2026-06-08');
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toContainElement(screen.getByTestId('day-2026-06-08-detail'));
+    // Written out in full — the rail's "MON / 8" is too terse to title a sheet.
+    expect(screen.getByRole('heading', { name: 'Monday 8 June' })).toBeInTheDocument();
+  });
+
+  it('lifts the detail out of the row rather than nesting it under one', async () => {
+    render(MealPlanWeekPage);
+    await openDay('2026-06-08');
+
+    // Portalled to <body>: reachable by testid exactly as before, but no longer
+    // inside the row — which is what stops it displacing the deck.
+    const row = screen.getByTestId('day-2026-06-08');
+    expect(row.contains(screen.getByTestId('day-2026-06-08-detail'))).toBe(false);
+    // The row itself is unchanged, and says nothing about being expanded.
+    expect(screen.getByTestId('day-2026-06-08-summary')).not.toHaveAttribute('aria-expanded');
+  });
+
+  it('dismisses on Escape, leaving the week untouched', async () => {
+    render(MealPlanWeekPage);
+    await openDay('2026-06-08');
+    await userEvent.keyboard('{Escape}');
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('day-2026-06-08-detail')).not.toBeInTheDocument(),
+    );
+    // The week is still there, in the same order — the sheet never replaced it.
+    expect(screen.getByTestId('day-2026-06-08')).toBeInTheDocument();
+    expect(screen.getByTestId('day-2026-06-14')).toBeInTheDocument();
+  });
+
+  it('closes from the footer control', async () => {
+    render(MealPlanWeekPage);
+    await openDay('2026-06-08');
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await waitFor(() =>
+      expect(screen.queryByTestId('day-2026-06-08-detail')).not.toBeInTheDocument(),
+    );
+  });
+
+  it('opens one day at a time — the week owns which', async () => {
+    render(MealPlanWeekPage);
+    await openDay('2026-06-08');
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() =>
+      expect(screen.queryByTestId('day-2026-06-08-detail')).not.toBeInTheDocument(),
+    );
+    // The modal makes the week inert while it is up; wait for it to hand the
+    // page back before tapping another row (bits-ui restores this on a timer).
+    await waitFor(() => expect(document.body.style.pointerEvents).toBe(''));
+
+    await openDay('2026-06-10');
+    expect(screen.getByTestId('day-2026-06-10-detail')).toBeInTheDocument();
+    expect(screen.queryByTestId('day-2026-06-08-detail')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+  });
+
+  it('survives the week re-emitting mid-edit — the page owns the open day', async () => {
+    render(MealPlanWeekPage);
+    await openDay('2026-06-08');
+
+    // A Firestore snapshot lands while the day is open. Under row-local state
+    // this remounted the row and closed the day underneath the user (the reason
+    // the e2e spec carried a re-open retry loop).
+    mockWeek._set({
+      ...emptyWeek('2026-06-08'),
+      days: {
+        ...emptyWeek('2026-06-08').days,
+        '2026-06-08': { note: 'Roast', recipeIds: [], chefs: [], attendees: [], guests: 0 },
+      },
+    });
+
+    await waitFor(() =>
+      expect((screen.getByTestId('day-2026-06-08-note') as HTMLTextAreaElement).value).toBe(
+        'Roast',
+      ),
+    );
+    expect(screen.getByTestId('day-2026-06-08-detail')).toBeInTheDocument();
+  });
+});
+
 describe('MealPlanWeekPage — landing on today (#639, Phases 2 & 4)', () => {
   it("opens with today's row at the top of the deck", async () => {
     const start = weekAroundToday(3);
     renderLaidOut(start);
 
-    // Today is the fourth row, so the deck starts three pitches down — today sits
-    // flush under the header rather than wherever the Friday-start week left it.
-    await waitFor(() => expect(deckOffset()).toBe(3 * ROW_PITCH));
+    // Today is the fourth row, so the deck starts three pitches down — less the
+    // lead, which keeps yesterday's bottom edge just above today's card.
+    await waitFor(() => expect(deckOffset()).toBe(3 * ROW_PITCH - LEAD));
   });
 
-  it('lands another week at the top instead, and never shows the pill there', async () => {
+  it('lands another week at the top, with no cue until it is moved', async () => {
     const start = addDays(TODAY, -30);
     mockStart._set(start);
     mockWeek._set(emptyWeek(start));
@@ -801,53 +1181,41 @@ describe('MealPlanWeekPage — landing on today (#639, Phases 2 & 4)', () => {
 
     expect(screen.getByTestId(`day-${start}`)).toBeInTheDocument();
     expect(deckOffset()).toBe(0);
-    expect(screen.queryByTestId('earlier-days')).not.toBeInTheDocument();
     expect(screen.queryByTestId('scroll-shadow')).not.toBeInTheDocument();
 
-    // Even moved, a week without today has no earlier-days pill — only the header
-    // shadow, which is about position in the list, not about today.
+    // The shadow is about position in the list, not about today — so a week
+    // without today earns it just the same once the deck moves.
     await pressDeck('ArrowDown');
     await waitFor(() => expect(screen.getByTestId('scroll-shadow')).toBeInTheDocument());
-    expect(screen.queryByTestId('earlier-days')).not.toBeInTheDocument();
   });
 
-  it('names the earlier days once the deck has left the top', async () => {
+  it('shows the cue on arrival when the landing is mid-list', async () => {
     const start = weekAroundToday(3);
     renderLaidOut(start);
 
-    // Landing mid-list IS the reason the cue exists, so it is there on arrival.
-    const pill = await screen.findByTestId('earlier-days');
-    expect(pill).toHaveTextContent('3 earlier days');
-    expect(screen.getByTestId('scroll-shadow')).toBeInTheDocument();
+    // Landing three days down IS the reason the cue exists: nothing else says
+    // there is anything above today.
+    await waitFor(() => expect(screen.getByTestId('scroll-shadow')).toBeInTheDocument());
   });
 
-  it('takes you back up to the earlier days when the pill is tapped', async () => {
+  it('withdraws the cue once the deck is back at the top', async () => {
     const start = weekAroundToday(2);
     renderLaidOut(start);
+    await waitFor(() => expect(screen.getByTestId('scroll-shadow')).toBeInTheDocument());
 
-    await userEvent.click(await screen.findByTestId('earlier-days'));
+    await pressDeck('Home');
 
     // The spring carries it home, and the cue withdraws once it arrives.
     await waitFor(() => expect(deckOffset()).toBe(0));
-    await waitFor(() => expect(screen.queryByTestId('earlier-days')).not.toBeInTheDocument());
-    expect(screen.queryByTestId('scroll-shadow')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByTestId('scroll-shadow')).not.toBeInTheDocument());
   });
 
-  it('counts one earlier day in the singular', async () => {
-    const start = weekAroundToday(1);
-    renderLaidOut(start);
-    expect(await screen.findByTestId('earlier-days')).toHaveTextContent('1 earlier day');
-  });
-
-  it('shows no pill when today is the first day of the week', async () => {
+  it('shows no cue when today is the first day of the week', () => {
     const start = weekAroundToday(0);
     renderLaidOut(start);
 
     expect(deckOffset()).toBe(0);
-    expect(screen.queryByTestId('earlier-days')).not.toBeInTheDocument();
-    // Moving off the top earns the shadow, but there is still nothing above today.
-    await pressDeck('ArrowDown');
-    expect(screen.queryByTestId('earlier-days')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('scroll-shadow')).not.toBeInTheDocument();
   });
 
   it('moves day to day under the arrow keys', async () => {
@@ -856,7 +1224,7 @@ describe('MealPlanWeekPage — landing on today (#639, Phases 2 & 4)', () => {
 
     await pressDeck('ArrowDown');
     // One press, one day — the stops are the day headers, not arbitrary pixels.
-    await waitFor(() => expect(deckOffset()).toBe(ROW_PITCH));
+    await waitFor(() => expect(deckOffset()).toBe(ROW_PITCH - LEAD));
   });
 
   it('renders the days already behind us a step quieter', () => {
@@ -980,6 +1348,26 @@ describe('MealPlanWeekPage — next week appears from Wednesday (#639, Phase 6)'
     expect(screen.getByTestId(`day-${nextShop}-shop-marker`)).toHaveTextContent('am');
   });
 
+  it("offers next week's days in the shop picker, and leaves this week's shop alone", async () => {
+    // On a Wednesday the week you are provisioning IS next week, so the days on
+    // the deck are the days on offer. Marking one is week-scoped by the service.
+    const { start, next } = weekAroundTodayWithNext(5);
+    const thisShop = weekDates(start)[6]!;
+    mockShopDay._set({ date: thisShop, slot: 'pm' });
+    renderLaidOut(start, next);
+    await waitFor(() => expect(screen.getByTestId('next-week-mark')).toBeInTheDocument());
+
+    await openShopPicker();
+    const nextShop = weekDates(next)[1]!;
+    await userEvent.click(screen.getByTestId(`week-shop-${nextShop}-am`));
+
+    expect(vi.mocked(setShopDay)).toHaveBeenCalledWith(nextShop, 'am');
+    // Nothing here clears anything: one shop per week is the service's rule, and
+    // this week's rule is still drawn.
+    expect(vi.mocked(clearShopDay)).not.toHaveBeenCalled();
+    expect(screen.getByTestId(`day-${thisShop}-shop-marker`)).toBeInTheDocument();
+  });
+
   it("marks next week's rows for the terracotta rail, and leaves this week's alone", async () => {
     const { start, next } = weekAroundTodayWithNext(5);
     renderLaidOut(start, next);
@@ -1017,13 +1405,13 @@ describe('MealPlanWeekPage — next week appears from Wednesday (#639, Phase 6)'
     // Today is the sixth row. With one week (7 rows over a 700px viewport) the
     // deck could only travel 844px and today would land clamped short of the top;
     // with next week appended it reaches its own pitch exactly.
-    await waitFor(() => expect(deckOffset()).toBe(5 * ROW_PITCH));
+    await waitFor(() => expect(deckOffset()).toBe(5 * ROW_PITCH - LEAD));
   });
 
   it('reaches next week by gesture — one deck, not two lists', async () => {
     const { start, next } = weekAroundTodayWithNext(5);
     renderLaidOut(start, next);
-    await waitFor(() => expect(deckOffset()).toBe(5 * ROW_PITCH));
+    await waitFor(() => expect(deckOffset()).toBe(5 * ROW_PITCH - LEAD));
 
     // Two days on from today is the first day of NEXT week, and the deck stops on
     // it: next week's rows are stops in the same deck, not a separate scroller.
@@ -1032,9 +1420,9 @@ describe('MealPlanWeekPage — next week appears from Wednesday (#639, Phase 6)'
     // One press, one day — and the spring must land before the next press, or the
     // second stop is measured from mid-flight.
     await userEvent.keyboard('{ArrowDown}');
-    await waitFor(() => expect(deckOffset()).toBe(6 * ROW_PITCH));
+    await waitFor(() => expect(deckOffset()).toBe(6 * ROW_PITCH - LEAD));
     await userEvent.keyboard('{ArrowDown}');
-    await waitFor(() => expect(deckOffset()).toBe(7 * ROW_PITCH));
+    await waitFor(() => expect(deckOffset()).toBe(7 * ROW_PITCH - LEAD));
   });
 
   it('edits a day in next week under that day’s own date key', async () => {
@@ -1043,7 +1431,7 @@ describe('MealPlanWeekPage — next week appears from Wednesday (#639, Phase 6)'
     await waitFor(() => expect(screen.getByTestId('next-week-mark')).toBeInTheDocument());
 
     const nextDay = weekDates(next)[2]!;
-    await expandDay(nextDay);
+    await openDay(nextDay);
     await userEvent.type(screen.getByTestId(`day-${nextDay}-note`), 'Roast');
 
     // The date key IS the routing (Phase 5): no week argument, and never this
@@ -1064,7 +1452,7 @@ describe('MealPlanWeekPage — next week appears from Wednesday (#639, Phase 6)'
     await waitFor(() => expect(screen.getByTestId('next-week-mark')).toBeInTheDocument());
 
     const nextDay = weekDates(next)[2]!;
-    await expandDay(nextDay);
+    await openDay(nextDay);
     await userEvent.click(screen.getByTestId(`day-${nextDay}-guests-inc`));
 
     await waitFor(() =>
@@ -1094,7 +1482,7 @@ describe('MealPlanWeekPage — when you CBA (#637, Phase 4)', () => {
   it('offers CBA options alongside recipes, and never a cocktail', async () => {
     mockRecipes._set([RECIPE, OUTING, COCKTAIL]);
     render(MealPlanWeekPage);
-    await expandDay('2026-06-08');
+    await openDay('2026-06-08');
     await openPicker('2026-06-08');
 
     expect(screen.getByRole('option', { name: 'Spaghetti Bolognese' })).toBeInTheDocument();
@@ -1107,7 +1495,7 @@ describe('MealPlanWeekPage — when you CBA (#637, Phase 4)', () => {
     mockRecipes._set([RECIPE, OUTING]);
     mockWeek._set(weekWith('2026-06-08', ['o1']));
     render(MealPlanWeekPage);
-    await expandDay('2026-06-08');
+    await openDay('2026-06-08');
     await openPicker('2026-06-08');
 
     // Attached once is enough — the same night out can't be added twice.
@@ -1118,7 +1506,7 @@ describe('MealPlanWeekPage — when you CBA (#637, Phase 4)', () => {
   it('badges a CBA option and leaves a recipe unmarked', async () => {
     mockRecipes._set([RECIPE, OUTING]);
     render(MealPlanWeekPage);
-    await expandDay('2026-06-08');
+    await openDay('2026-06-08');
     await openPicker('2026-06-08');
 
     const outing = screen.getByRole('option', { name: /Takeaway — Indian/ });
@@ -1133,7 +1521,7 @@ describe('MealPlanWeekPage — when you CBA (#637, Phase 4)', () => {
   it('auto-fills an empty meal with a CBA title exactly as with a recipe', async () => {
     mockRecipes._set([RECIPE, OUTING]);
     render(MealPlanWeekPage);
-    await expandDay('2026-06-08');
+    await openDay('2026-06-08');
     await attachRecipe('2026-06-08', /Takeaway — Indian/);
 
     // Attaching is attaching: `addRecipe` deliberately does NOT branch on kind,
@@ -1148,7 +1536,7 @@ describe('MealPlanWeekPage — when you CBA (#637, Phase 4)', () => {
     mockRecipes._set([RECIPE, OUTING]);
     mockWeek._set(weekWith('2026-06-08', ['r1', 'o1']));
     render(MealPlanWeekPage);
-    await expandDay('2026-06-08');
+    await openDay('2026-06-08');
 
     // Both rows render — the outing is a first-class night, not a lesser one…
     expect(screen.getByTestId('day-2026-06-08-recipe-row-o1')).toBeInTheDocument();
@@ -1164,7 +1552,7 @@ describe('MealPlanWeekPage — when you CBA (#637, Phase 4)', () => {
     mockRecipes._set([RECIPE, OUTING]);
     mockWeek._set(weekWith('2026-06-08', ['o1']));
     render(MealPlanWeekPage);
-    await expandDay('2026-06-08');
+    await openDay('2026-06-08');
 
     // No image on the fixture, so the row falls back to the kind's own glyph
     // rather than a cooking pot.
@@ -1186,7 +1574,7 @@ describe('MealPlanWeekPage — when you CBA (#637, Phase 4)', () => {
     ]);
     mockWeek._set(weekWith('2026-06-08', ['o1']));
     render(MealPlanWeekPage);
-    await expandDay('2026-06-08');
+    await openDay('2026-06-08');
 
     const thumb = screen.getByTestId('day-2026-06-08-recipe-thumb-o1');
     expect(thumb.getAttribute('src')).toContain('https://example.test/curry.webp');

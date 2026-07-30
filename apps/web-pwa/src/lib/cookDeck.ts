@@ -67,6 +67,14 @@ export interface DeckThresholds {
   projectionMs?: number | undefined;
   /** Slack before a barely-overhanging section earns an intermediate stop. */
   overhangSlackPx?: number | undefined;
+  /**
+   * Whitespace kept ABOVE a section when the deck rests on it, in px. 0 is flush —
+   * cook mode's answer, where a step should own the screen it lands on. A list of
+   * short cards wants the opposite: resting hard against a card's first pixel reads
+   * as cramped, so the lead keeps the gap between rows on screen and the previous
+   * card's bottom edge sits just above the fold.
+   */
+  leadPx?: number | undefined;
 }
 
 /** One measured step section, in deck coordinates. */
@@ -92,17 +100,22 @@ export function deriveStops({
   screen,
   limit,
   overhangSlackPx = OVERHANG_SLACK_PX,
+  leadPx = 0,
 }: {
   sections: readonly DeckSection[];
   screen: number;
   limit: number;
-} & Pick<DeckThresholds, 'overhangSlackPx'>): number[] {
+} & Pick<DeckThresholds, 'overhangSlackPx' | 'leadPx'>): number[] {
   if (screen <= 0) return [0];
   const stops: number[] = [];
   for (const section of sections) {
-    stops.push(section.top);
+    // The lead translates the whole ladder for this section, so a section taller
+    // than the screen pages on from where it actually came to rest. Clamping to
+    // [0, limit] below absorbs the first section's negative start.
+    const start = section.top - leadPx;
+    stops.push(start);
     for (
-      let extra = section.top + screen;
+      let extra = start + screen;
       extra < section.top + section.height - overhangSlackPx;
       extra += screen
     ) {

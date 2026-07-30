@@ -2,9 +2,10 @@
  * Meal planner first E2E (issue #169 coverage gap).
  *
  * Exercises the weekly planner happy path end-to-end:
- *   open the current week → configure a day (meal note + attendee + chef +
- *   guests) → the whole-doc save round-trips to Firestore → reload → the data
- *   persists (proving the Firestore round-trip, not just a hot store).
+ *   open the current week → open a day's editor sheet and configure it (meal
+ *   note + attendee + chef + guests) → the whole-doc save round-trips to
+ *   Firestore → reload → the data persists (proving the Firestore round-trip,
+ *   not just a hot store).
  *
  * Determinism: the week id is a date that depends on the run date, so nothing is
  * hardcoded. We click `this-week`, read the actual `startDate` from the
@@ -100,7 +101,7 @@ test.describe('meal planner — week happy path', () => {
     const testid = `day-${dayKey}`;
     const meal = `Spaghetti bolognese ${testInfo.testId}`;
 
-    // Expand the day's editor.
+    // Tap the day's row to raise its editor sheet (#640).
     await page.getByTestId(`${testid}-summary`).click();
     await expect(page.getByTestId(`${testid}-detail`)).toBeVisible({ timeout: SYNC_TIMEOUT });
 
@@ -109,6 +110,9 @@ test.describe('meal planner — week happy path', () => {
     await page.getByTestId(`${testid}-note`).fill(meal);
 
     // Mark the signed-in member attending and make them chef; add a guest.
+    // Attending reveals the home time ON THE MEMBER'S OWN LINE (#640, Phase 3) —
+    // no second row, and the personal note stays behind its affordance, so the
+    // chef hat is reachable without scrolling the sheet.
     await page.getByTestId(`${testid}-attend-${email}`).click();
     await expect(page.getByTestId(`${testid}-time-${email}`)).toBeVisible({
       timeout: SYNC_TIMEOUT,
@@ -141,11 +145,15 @@ test.describe('meal planner — week happy path', () => {
     });
 
     // ── Reload: prove the Firestore round-trip, not a hot store ──
+    // `page.reload()`, NOT `goto('/#/mealplan')`: we are already at that URL, and
+    // navigating to the URL you are on is a same-document hash navigation — the
+    // app never remounts, so nothing is proved and the day's sheet is still open
+    // underneath. Reload keeps the hash, so the router lands back on the planner.
     // The page's onMount anchors to this week on its own; clicking `this-week`
     // again would force a re-subscription (the store briefly nulls the week),
     // which remounts the day editors mid-interaction. So we rely on the mount
     // anchor and just wait for the week to load.
-    await page.goto('/#/mealplan');
+    await page.reload();
     await expect(page.getByTestId('this-week')).toBeVisible({ timeout: SYNC_TIMEOUT });
     await expect(page.getByTestId(testid)).toBeVisible({ timeout: SYNC_TIMEOUT });
 
@@ -170,13 +178,13 @@ test.describe('meal planner — week happy path', () => {
     await expect(page.getByTestId(`${testid}-summary`)).toContainText(meal, {
       timeout: SYNC_TIMEOUT,
     });
-    // Expand to inspect the editor. The day editors can re-render as the week
-    // settles in from Firestore (which resets the collapsible's local open
-    // state), so retry the toggle until the detail panel stays open.
-    await expect(async () => {
-      await page.getByTestId(`${testid}-summary`).click();
-      await expect(page.getByTestId(`${testid}-detail`)).toBeVisible({ timeout: 1000 });
-    }).toPass({ timeout: SYNC_TIMEOUT });
+    // Open the day again to inspect the editor. One click, no retry: which day is
+    // open is owned by the PAGE now (#640), so a week settling in from Firestore
+    // re-renders the row without closing the sheet. Under the old row-local
+    // toggle this needed a `toPass` loop, because the snapshot that arrived
+    // mid-interaction reset it.
+    await page.getByTestId(`${testid}-summary`).click();
+    await expect(page.getByTestId(`${testid}-detail`)).toBeVisible({ timeout: SYNC_TIMEOUT });
     await expect(page.getByTestId(`${testid}-note`)).toHaveValue(meal, { timeout: SYNC_TIMEOUT });
     await expect(page.getByTestId(`${testid}-guests-count`)).toHaveText('1', {
       timeout: SYNC_TIMEOUT,

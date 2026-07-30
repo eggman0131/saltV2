@@ -128,6 +128,7 @@ export function createDeck(options: DeckOptions) {
       screen: vp.clientHeight,
       limit: maxOffset(),
       overhangSlackPx: tuning().overhangSlackPx,
+      leadPx: tuning().leadPx,
     });
   }
 
@@ -135,11 +136,19 @@ export function createDeck(options: DeckOptions) {
   // read only inside it, so making it state would buy nothing and re-run effects mid-drag.
   let stops: number[] = [0];
 
-  /** Where the deck must sit for `el` to be at the top. `null` if nothing is measurable. */
+  /**
+   * Where the deck must sit for `el` to be at the top. `null` if nothing is measurable.
+   * Carries the same `leadPx` the stops do, so the place a deck STARTS is one of the
+   * places it can rest — anchoring flush and then snapping to a lead would show the
+   * list shifting by the lead on the first gesture.
+   */
   function offsetOf(el: HTMLElement): number | null {
     const vp = viewportEl;
     if (!vp) return null;
-    const top = offset + (el.getBoundingClientRect().top - vp.getBoundingClientRect().top);
+    const top =
+      offset +
+      (el.getBoundingClientRect().top - vp.getBoundingClientRect().top) -
+      (tuning().leadPx ?? 0);
     return Math.max(0, Math.min(Math.round(top), maxOffset()));
   }
 

@@ -33,6 +33,10 @@
     sun: 'Sunday',
   };
 
+  // Which weekday's sheet is open (#640, Phase 1) — page-owned, in memory only
+  // (Rule 3), so exactly one day of the template is open at a time.
+  let openDay = $state<Weekday | null>(null);
+
   async function onFirstDayChange(value: string): Promise<void> {
     const result = await saveFirstDayOfWeek(value as Weekday);
     if (result.kind !== 'ok') addToast('Failed to save the first day of the week.', 'destructive');
@@ -97,6 +101,13 @@
         {#if day}
           <MealDayEditor
             label={WEEKDAY_LABELS[wd]}
+            bind:open={
+              () => openDay === wd,
+              (v) => {
+                if (v) openDay = wd;
+                else if (openDay === wd) openDay = null;
+              }
+            }
             {day}
             members={$members}
             testid={`tmpl-${wd}`}

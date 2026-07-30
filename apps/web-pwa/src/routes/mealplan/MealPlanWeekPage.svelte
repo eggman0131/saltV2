@@ -12,7 +12,7 @@
     RadioGroupItem,
   } from '@salt/ui-components';
   import { onMount } from 'svelte';
-  import { ChevronLeft, ChevronRight, ChevronUp, ShoppingCart } from '@lucide/svelte';
+  import { ChevronLeft, ChevronRight, ShoppingCart } from '@lucide/svelte';
   import {
     weekDates,
     dayIndexInWeek,
@@ -108,8 +108,8 @@
   // looking backwards.
   //
   // `todayIndex` is the whole state machine: -1 means the displayed week does
-  // not contain today (so we land at the top and show no cue), and otherwise it
-  // is both today's row and the number of earlier days above it.
+  // not contain today, so we land at the top instead of anchoring; otherwise it
+  // is today's row.
   const todayIndex = $derived(dayIndexInWeek($selectedStartDate, todayDate));
 
   // ─── Next week appears from Wednesday (#639, Phase 6) ─────────────────────
@@ -162,7 +162,15 @@
   // one is what shortens the throw. 0.08 of a ~700px viewport ≈ 56px, about a
   // third of a card. The fling threshold drops with it so a light flick still
   // turns a day; projection and overhang slack keep cook mode's values.
-  const PLANNER_THRESHOLDS: DeckThresholds = { commitRatio: 0.08, flingPxPerMs: 0.35 };
+  // `leadPx` is the row gap (`gap-6`): a day that snaps flush against the top of
+  // the viewport reads as cramped, because its first pixel is the screen's first
+  // pixel. Landing a gap early puts the previous day's bottom edge just above the
+  // fold, so the card arrives with the air it is laid out with.
+  const PLANNER_THRESHOLDS: DeckThresholds = {
+    commitRatio: 0.08,
+    flingPxPerMs: 0.35,
+    leadPx: 24,
+  };
 
   // The deck's stops are BOTH weeks' rows in visual order (#639, Phase 6). One
   // deck, one gesture: next week is scrolled into, not paged to.
@@ -209,10 +217,6 @@
     anchoredWeek = key;
   });
 
-  function scrollToEarliest(): void {
-    deck.animateTo(0);
-  }
-
   // Friendly labels for the week range and each day, formatted from the UTC date.
   function fmt(date: string, opts: Intl.DateTimeFormatOptions): string {
     return new Intl.DateTimeFormat('en-GB', { ...opts, timeZone: 'UTC' }).format(
@@ -250,16 +254,40 @@
     addShopOpen = true;
   }
 
-  // ─── Shop day (issue #629) ────────────────────────────────────────────────
+  // ─── Shop day (issue #629, moved to the week by #640 Phase 4) ─────────────
   // The shop marker sits INSIDE the week wherever it falls — `firstDayOfWeek` and
   // the layout above are completely untouched, so the shop can move freely week to
   // week without disturbing anything. The service owns the one-shop-per-week rule
   // (marking a day clears any other in the same week) and keys its markers BY WEEK,
   // so with two weeks on screen each draws its own rule and marking next week's
   // shop never clears this week's.
+  //
+  // WHICH day you shop is a fact about the WEEK, so it is now set at the week's
+  // own altitude: one control under the week nav, not a block inside one day's
+  // sheet. Before, you opened Thursday to say "we shop Thursday" and the answer
+  // then appeared as a rule across the list, somewhere else entirely.
   async function changeShopSlot(date: string, slot: ShoppingSlot | null): Promise<void> {
     const result = slot === null ? await clearShopDay(date) : await setShopDay(date, slot);
     if (result.kind !== 'ok') addToast('Failed to save the shopping day.', 'destructive');
+  }
+
+  // The picker follows the page's own header idiom (the same shape as "Load
+  // template"): a small button that says the current answer, opening a dialog that
+  // holds the whole choice. A Select of fourteen day×slot pairs would say the same
+  // thing in a list you have to scroll on a phone; here every day of the week is on
+  // screen at once and ONE tap sets both the day and the slot.
+  let showShopPicker = $state(false);
+
+  // Only rendered when the week has no shop day, so it names the action rather
+  // than the (absent) answer — the answer, once there is one, is the rule itself.
+  const shopLabel = 'Set a shop day';
+
+  // One tap = the whole answer, so the dialog closes on it. Closing first keeps the
+  // write off the dismissal path: the toast on failure (Rule 10) is the report, and
+  // it is not worth holding the dialog open behind a Firestore round trip.
+  function pickShopDay(date: string, slot: ShoppingSlot | null): void {
+    showShopPicker = false;
+    void changeShopSlot(date, slot);
   }
 
   // ─── Load template: which week? (#639, Phase 7) ───────────────────────────
@@ -326,6 +354,14 @@
     if (target !== $selectedStartDate) goToWeek(target);
   }
 
+  // ─── Which day is open (#640, Phase 1) ────────────────────────────────────
+  // The day opens in a bottom sheet, and the PAGE owns which one — one `$state`
+  // for the whole run of days, so only one is ever open and the answer survives
+  // the row re-rendering when a Firestore snapshot lands. Purely in memory: it is
+  // a fact about this glance at the planner, never persisted (Rule 3). Dates are
+  // unique across both weeks, so one field covers the extension too.
+  let openDay = $state<string | null>(null);
+
   // ─── Day-editor handlers (bound to a concrete date) ───────────────────────
   // Every day mutator routes to the document its DATE belongs in (Phase 5), so a
   // day in next week saves to next week with no week argument here. What that
@@ -390,15 +426,26 @@
              hour the evening before — and stays lower-case in the DOM, with
              the caps done in CSS. Both weeks draw their own, so this week's
              shop and next week's are visible in the same scroll. -->
-        <div class="-mb-2 flex items-center gap-2" data-testid={`day-${date}-shop-marker`}>
+        <!-- Sage, not terracotta: terracotta already means "next week" in this
+             list, and a second rule in the same ink would read as another week
+             boundary. The label sits ABOVE its rule rather than interrupting it,
+             so the line runs the full width and the division is unmistakable.
+             Tapping it opens the same picker the header used to — the rule is
+             now the control, which is why the header no longer carries one. -->
+        <button
+          type="button"
+          class="-mb-2 flex flex-col gap-1 pl-[3px] text-left"
+          onclick={() => (showShopPicker = true)}
+          data-testid={`day-${date}-shop-marker`}
+        >
           <span
-            class="flex shrink-0 items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+            class="flex shrink-0 items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-secondary"
           >
-            <ShoppingCart class="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden="true" />
+            <ShoppingCart class="h-[15px] w-[15px]" aria-hidden="true" />
             Shop · {shop.slot}
           </span>
-          <span class="h-px flex-1 bg-border"></span>
-        </div>
+          <span class="border-t-2 border-secondary"></span>
+        </button>
       {/if}
       <!-- The wrapper is the page's grip on the row: it is what we anchor the
            scroll to, what carries the quieter treatment for days already behind
@@ -416,14 +463,23 @@
         <MealDayEditor
           label={fmt(date, { weekday: 'short' })}
           sublabel={fmt(date, { day: 'numeric' })}
+          sheetTitle={fmt(date, { weekday: 'long', day: 'numeric', month: 'long' })}
+          bind:open={
+            () => openDay === date,
+            (v) => {
+              // Opening a day closes whichever was open; closing only clears the
+              // field when this row still owns it, so a stale close can never
+              // shut the day somebody just opened.
+              if (v) openDay = date;
+              else if (openDay === date) openDay = null;
+            }
+          }
           {day}
           members={$members}
           recipes={$recipes}
           testid={`day-${date}`}
           isToday={date === todayDate}
           weather={$weatherForecast?.days[date]}
-          shopSlot={shop?.date === date ? shop.slot : null}
-          onShopSlotChange={(slot) => void changeShopSlot(date, slot)}
           onNoteChange={(note) => void save(setWeekDayNote(date, note))}
           onRecipesChange={(ids) => void save(setWeekDayRecipes(date, ids))}
           onRecipeAddToList={openRecipeAddToList}
@@ -436,6 +492,60 @@
       </div>
     {/if}
   {/each}
+{/snippet}
+
+<!-- One week's days as shop options: the day written out, then AM and PM. The
+     order is `weekDates`, so the list runs in the household's own week order
+     (`firstDayOfWeek`) rather than a hard-coded Mon–Sun. "No shop day" appears
+     only for a week that HAS one — there is nothing to clear otherwise, and an
+     always-present clear would be the loudest thing in a list of days. -->
+{#snippet shopWeekOptions(dateList: string[], shop: ShoppingDayDoc | null, heading: string | null)}
+  {#if heading}
+    <p class="pt-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+      {heading}
+    </p>
+  {/if}
+  {#each dateList as d (d)}
+    {@const isShop = shop?.date === d}
+    <div class="flex items-center gap-2" data-testid={`week-shop-row-${d}`}>
+      <span
+        class="min-w-0 flex-1 truncate text-sm {isShop
+          ? 'font-medium text-foreground'
+          : 'text-muted-foreground'}"
+      >
+        {fmt(d, { weekday: 'long', day: 'numeric', month: 'short' })}
+      </span>
+      <Button
+        variant={isShop && shop?.slot === 'am' ? 'solid' : 'outline'}
+        size="sm"
+        onclick={() => pickShopDay(d, 'am')}
+        aria-pressed={isShop && shop?.slot === 'am'}
+        data-testid={`week-shop-${d}-am`}
+      >
+        AM
+      </Button>
+      <Button
+        variant={isShop && shop?.slot === 'pm' ? 'solid' : 'outline'}
+        size="sm"
+        onclick={() => pickShopDay(d, 'pm')}
+        aria-pressed={isShop && shop?.slot === 'pm'}
+        data-testid={`week-shop-${d}-pm`}
+      >
+        PM
+      </Button>
+    </div>
+  {/each}
+  {#if shop}
+    {@const marked = shop.date}
+    <button
+      type="button"
+      class="self-start text-xs text-muted-foreground underline-offset-2 hover:underline"
+      onclick={() => pickShopDay(marked, null)}
+      data-testid={`week-shop-clear-${dateList[0]}`}
+    >
+      No shop day
+    </button>
+  {/if}
 {/snippet}
 
 <ListPage title="Meal plan" isLoading={$isLoadingMealPlanWeek} fill class="p-4 sm:p-6">
@@ -465,6 +575,27 @@
       </Button>
     </div>
 
+    <!-- The week's shop day (#640, Phase 4, since reduced). Once a shop day
+         is set, the rule across the list IS the control — it says the answer in
+         place and opens the picker when tapped, so a permanent header row saying
+         the same thing was the most expensive line on the page. What the rule
+         cannot do is exist when there is no shop day, so the header keeps exactly
+         that case: an unset week still has somewhere to say so from. -->
+    {#if !$weekShopDay}
+      <div class="mt-1 flex justify-center" data-testid="week-shop">
+        <Button
+          variant="ghost"
+          size="sm"
+          class="gap-1.5 text-muted-foreground"
+          onclick={() => (showShopPicker = true)}
+          data-testid="week-shop-trigger"
+        >
+          <ShoppingCart class="h-[15px] w-[15px]" aria-hidden="true" />
+          {shopLabel}
+        </Button>
+      </div>
+    {/if}
+
     <!-- The deck. The viewport is the clipping box — it takes the height ListPage's
          `fill` hands down — and the column inside it is moved by a transform, so
          this page owns the gesture end to end rather than sharing a scroller with
@@ -483,7 +614,7 @@
       <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <div
         bind:this={deck.viewportEl}
-        class="relative min-h-0 flex-1 touch-pinch-zoom overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        class="relative -mx-2.5 min-h-0 flex-1 touch-pinch-zoom overflow-hidden px-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         role="region"
         tabindex="0"
         aria-label="Week of {rangeLabel}"
@@ -513,8 +644,13 @@
                job is to differ from this, not the other way round. Decorative: the
                dates beside it say everything it says. -->
           <div class="relative flex flex-col gap-6">
+            <!-- `-left-2.5` puts the stem in the page gutter, clear of the marks
+                 it used to run straight through. It only has somewhere to go
+                 because the viewport bleeds 10px into that gutter and pads it
+                 back (`-mx-2.5 px-2.5`) — the viewport clips on both axes, so at
+                 a plain `left-0` container edge a negative offset is invisible. -->
             <span
-              class="pointer-events-none absolute inset-y-0 left-0 w-0 border-l-2 border-border"
+              class="pointer-events-none absolute inset-y-0 -left-2.5 w-0 border-l-2 border-border"
               data-testid="this-week-rail"
               aria-hidden="true"
             ></span>
@@ -538,7 +674,7 @@
                    the empty left margin of the rail column so it never crosses the
                    dates it belongs to. Decorative — the mark below says it in words. -->
               <span
-                class="pointer-events-none absolute inset-y-0 left-0 w-0 border-l-2 border-dashed"
+                class="pointer-events-none absolute inset-y-0 -left-2.5 w-0 border-l-2 border-dashed"
                 style="border-color: var(--planner-rail-ink)"
                 aria-hidden="true"
               ></span>
@@ -546,7 +682,7 @@
               <!-- The dated mark. Same rule-across-the-list grammar as the shop day,
                    dashed and terracotta, and it names the dates so "next week" is a
                    fact rather than a direction. -->
-              <div class="-mb-2 flex items-center gap-2" data-testid="next-week-mark">
+              <div class="-mb-2 flex items-center gap-2 pl-[3px]" data-testid="next-week-mark">
                 <span
                   class="shrink-0 text-xs font-semibold uppercase tracking-wider"
                   style="color: var(--planner-rail-ink)"
@@ -572,30 +708,18 @@
 
       <!-- The scroll-up cue (#639, Phase 2). Landing mid-list gives no clue there
            is anything above, so once the deck has moved a shadow appears under the
-           sticky app header and — when the week is today's — a pill names the
-           earlier days and takes you back to them. Zero-height and pinned to the
-           top of the viewport, so it costs the list no space and today's row still
-           sits flush under the header; `-mx-4 sm:-mx-6` cancels this page's own
-           ListPage padding so the shadow runs edge to edge. -->
+           sticky app header. Zero-height and pinned to the top of the viewport, so
+           it costs the list no space and today's row still sits flush under the
+           header; `-mx-4 sm:-mx-6` cancels this page's own ListPage padding so the
+           shadow runs edge to edge. The shadow is the whole cue: the pill that
+           used to name the earlier days sat over the first card and said what the
+           shadow and one swipe already do. -->
       {#if scrolled}
         <div class="pointer-events-none absolute inset-x-0 top-0 z-10 -mx-4 sm:-mx-6">
           <div
             class="h-3 w-full bg-gradient-to-b from-foreground/10 to-transparent"
             data-testid="scroll-shadow"
           ></div>
-          {#if todayIndex > 0}
-            <div class="flex justify-center">
-              <button
-                type="button"
-                class="pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm"
-                onclick={scrollToEarliest}
-                data-testid="earlier-days"
-              >
-                <ChevronUp class="h-3.5 w-3.5" aria-hidden="true" />
-                {todayIndex} earlier {todayIndex === 1 ? 'day' : 'days'}
-              </button>
-            </div>
-          {/if}
         </div>
       {/if}
     </div>
@@ -656,6 +780,41 @@
           data-testid="load-template-confirm-btn"
         >
           Load template
+        </Button>
+      </DialogFooter>
+    </div>
+  </DialogContent>
+</Dialog>
+
+<!-- Which day do we shop? (#640, Phase 4). The whole week is on screen at once and
+     one tap answers both halves of the question — the day and the slot — so the
+     dialog closes on it. When next week is appended to the deck it is offered here
+     too, under its own heading: on a Wednesday the week you are provisioning IS
+     next week, and the service scopes "one shop per week" by the DATE's week, so
+     marking one week's shop never disturbs the other's. -->
+<Dialog open={showShopPicker} onOpenChange={(v) => (showShopPicker = v)}>
+  <DialogContent>
+    <div class="flex flex-col gap-4" data-testid="week-shop-picker">
+      <DialogHeader>
+        <DialogTitle>Shopping day</DialogTitle>
+        <DialogDescription>
+          One shop a week. AM or PM is a note to each other — the reminder comes the evening before
+          either way.
+        </DialogDescription>
+      </DialogHeader>
+      <div class="flex max-h-[60dvh] flex-col gap-1.5 overflow-y-auto">
+        {@render shopWeekOptions(dates, $weekShopDay, extensionDates.length ? 'This week' : null)}
+        {#if extensionDates.length}
+          {@render shopWeekOptions(extensionDates, $extensionWeekShopDay, 'Next week')}
+        {/if}
+      </div>
+      <DialogFooter>
+        <Button
+          variant="outline"
+          onclick={() => (showShopPicker = false)}
+          data-testid="week-shop-done"
+        >
+          Done
         </Button>
       </DialogFooter>
     </div>

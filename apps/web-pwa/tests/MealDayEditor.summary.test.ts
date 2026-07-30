@@ -12,6 +12,9 @@ import MealDayEditor from '../src/routes/mealplan/MealDayEditor.svelte';
 // with it go the per-member chips, the chef-hat badge and the note badge; the
 // "No cook" flag survives, inside the meta line. MealDayEditor is fully
 // prop-driven, so these render it directly with no store mocking.
+//
+// The row is also the whole of what renders until it is tapped (#640): the day's
+// detail is a sheet now, and an unopened sheet mounts nothing at all.
 
 const alex: Member = { id: 'm1', name: 'Alex' } as Member;
 const bea: Member = { id: 'm2', name: 'Bea' } as Member;
@@ -64,7 +67,7 @@ afterEach(() => {
 });
 
 describe('MealDayEditor — the Ledger row (#639)', () => {
-  it('names the cook and says "Everyone" when the whole household eats', () => {
+  it('names the cook and counts the table (#640)', () => {
     const day = makeDay({
       chefs: ['m1'],
       attendees: [
@@ -74,8 +77,12 @@ describe('MealDayEditor — the Ledger row (#639)', () => {
     });
     const { getByTestId, queryByTestId } = render(MealDayEditor, { props: baseProps(day) });
     const meta = getByTestId('day-meta');
-    expect(meta.textContent).toContain('Alex cooking');
-    expect(meta.textContent).toContain('Everyone');
+    // The cook is named; the table is a number. Naming every eater made the row's
+    // longest, least stable element out of the one thing a tap already answers.
+    expect(meta.textContent).toContain('Alex');
+    expect(meta.textContent).toContain('2');
+    expect(meta.textContent).not.toContain('Everyone');
+    expect(meta.textContent).not.toContain('cooking');
     // A cook is assigned, so the "No cook" flag is absent.
     expect(queryByTestId('day-no-cook')).not.toBeInTheDocument();
     // The avatar roster the row replaces is gone entirely.
@@ -83,15 +90,18 @@ describe('MealDayEditor — the Ledger row (#639)', () => {
     expect(queryByTestId('day-cook-m1')).not.toBeInTheDocument();
   });
 
-  it('lists eaters by name when only some are eating, with guests appended', () => {
+  it('counts guests into the table, not as a separate "+2" (#640)', () => {
     const day = makeDay({
       chefs: ['m2'],
       attendees: [{ memberId: 'm1', homeTime: null, note: '' }],
       guests: 2,
     });
     const meta = render(MealDayEditor, { props: baseProps(day) }).getByTestId('day-meta');
-    expect(meta.textContent).toContain('Bea cooking');
-    expect(meta.textContent).toContain('Alex +2');
+    expect(meta.textContent).toContain('Bea');
+    // One eater plus two guests is three at the table — the row answers "how many
+    // am I cooking for", and a guest eats the same as anyone else.
+    expect(meta.textContent).toContain('3');
+    expect(meta.textContent).not.toContain('+2');
     expect(meta.textContent).not.toContain('Everyone');
   });
 
@@ -152,6 +162,14 @@ describe('MealDayEditor — the Ledger row (#639)', () => {
   it('omits the temperature when no weather is passed', () => {
     const { queryByTestId } = render(MealDayEditor, { props: baseProps(makeDay()) });
     expect(queryByTestId('day-header-temp')).not.toBeInTheDocument();
+  });
+
+  it('is the only thing on screen until it is tapped (#640)', () => {
+    const { queryByRole, queryByTestId } = render(MealDayEditor, {
+      props: baseProps(makeDay()),
+    });
+    expect(queryByRole('dialog')).not.toBeInTheDocument();
+    expect(queryByTestId('day-detail')).not.toBeInTheDocument();
   });
 
   it('shows only the first line of a multi-line meal as the title', () => {
