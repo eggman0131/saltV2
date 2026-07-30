@@ -111,6 +111,14 @@ chat session doc (Firestore)         ← owned by web-pwa + firebase-sync (clien
 - Canon: the draft's ingredients are run through the existing
   `canonicaliseRecipeIngredients` path to fill `canonId` / `matchState`. The client
   assembles the final `RecipeDoc` and persists with the existing `saveRecipe`.
+- **The librarian only ever authors cookable kinds** (#637). A fresh draft is
+  written as `kind: 'recipe'` — ingredients and a method are the entire output, so
+  there is nothing for it to produce that is not one. On an *amend* it carries the
+  base recipe's own kind through unchanged, so re-running the librarian against an
+  existing entry can never silently re-type it (`kind` is immutable by design).
+  A "When you CBA" outing is hand-written and has nothing to author, and the
+  Ask / amend affordance is capability-gated off its view page, so the librarian is
+  simply unreachable for one.
 
 ## Surfaces (web-pwa)
 

@@ -7,7 +7,12 @@ import {
   flattenIngredients,
 } from '@salt/domain';
 import type { Recipe, Ingredient, RecipeImage } from '@salt/domain';
-import { RecipeSchema, QuantitySchema, RecipeImageSchema } from '@salt/domain/schemas';
+import {
+  RecipeSchema,
+  QuantitySchema,
+  RecipeImageSchema,
+  RecipeKindSchema,
+} from '@salt/domain/schemas';
 
 // A deliberately messy recipe that exercises the union types: two groups (one
 // named, one default/unnamed), a single quantity, a range, a mixed "1 ½", a bare
@@ -285,6 +290,41 @@ describe('RecipeSchema', () => {
 
   it('rejects a non-boolean needs_approval', () => {
     expect(RecipeSchema.safeParse({ ...messyRecipe(), needs_approval: 'yes' }).success).toBe(false);
+  });
+
+  // The kind discriminator (issue #637). `.default('recipe')` is the back-compat
+  // guarantee for the production collection (#240): the realtime subscription
+  // SKIPS documents that fail validation, so a required `kind` would empty the
+  // recipe list for every existing user.
+  it('defaults a recipe written before `kind` existed to "recipe"', () => {
+    const { kind: _omitted, ...legacy } = messyRecipe();
+    expect('kind' in legacy).toBe(false);
+    const result = RecipeSchema.safeParse(legacy);
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.kind).toBe('recipe');
+  });
+
+  it('round-trips each of the three kinds', () => {
+    for (const kind of ['recipe', 'outing', 'cocktail'] as const) {
+      const result = RecipeSchema.safeParse({ ...messyRecipe(), kind });
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.kind).toBe(kind);
+    }
+  });
+
+  it('rejects an unknown kind', () => {
+    expect(RecipeSchema.safeParse({ ...messyRecipe(), kind: 'pudding' }).success).toBe(false);
+    expect(RecipeKindSchema.safeParse('pudding').success).toBe(false);
+    expect(RecipeKindSchema.safeParse('outing').success).toBe(true);
+  });
+
+  it('emptyRecipe builds a recipe by default and the asked-for kind otherwise', () => {
+    expect(emptyRecipe('r1', '2026-06-11T00:00:00.000Z').kind).toBe('recipe');
+    expect(emptyRecipe('r2', '2026-06-11T00:00:00.000Z', 'outing').kind).toBe('outing');
+  });
+
+  it('type-level: Recipe kind is the closed union', () => {
+    expectTypeOf<Recipe['kind']>().toEqualTypeOf<'recipe' | 'outing' | 'cocktail'>();
   });
 
   it('rejects a non-numeric imageRequestedAt and a non-boolean imageHidden', () => {

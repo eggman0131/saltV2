@@ -64,6 +64,105 @@ export const RECIPE_IMAGE_STYLE_ANCHORS =
 export const RECIPE_IMAGE_DISH_READING_FALLBACK =
   'First read the dish itself — is it fresh and light or hearty and slow-cooked, what cuisine is it, and which season does it naturally belong to — then let that reading drive the season, setting, surface, props, colour palette and quality of light of the scene: a fresh salad calls for high summer — bright, sunny, airy, cool clear light, a breezy outdoor or sun-lit table; a cottage pie or a slow-cooked stew calls for autumn or winter — cosy and warm, low golden or soft overcast light, deeper earthy tones, a hearty indoor table. Make this seasonal and situational shift clearly legible at a glance — a deliberate, confident step, never a faint tint — so each dish feels like it lives in its own moment.';
 
+// ─── The OUTING anchors + fallback (issue #637) ─────────────────────────────
+// An outing is a takeaway, a picnic or a meal out: it fills a planner slot but is
+// never cooked here, so it has no ingredients and no method. Painting one with the
+// recipe anchors gets a home-plated dish on rustic ceramic — a picture of a meal
+// that never happened. These siblings paint the food as it ACTUALLY ARRIVES.
+//
+// Same contract as the recipe pair, and for the same reasons: LOCKED IN CODE,
+// appended LAST on every prompt, carrying the same prohibitions. "No logos" earns
+// its keep twice over here — takeaway packaging is where a model most wants to
+// invent a brand.
+//
+// The kind switch lives in `anchorsFor`/`fallbackFor`/`openerFor` below, with
+// 'recipe' as the default arm, so an absent or unrecognised kind is byte-for-byte
+// today's prompt.
+export const OUTING_IMAGE_STYLE_ANCHORS =
+  'But the FOOD is always the star of the shot: fill the frame with it, composing tight and close so the food is unmistakably the subject and takes up most of the image. The table, the room and the background are only supporting context glimpsed around and behind the food — never the main event; avoid wide or pulled-back shots where the surroundings occupy more of the frame than the food itself. Show the food IN THE VESSEL IT ARRIVED IN, exactly as it turns up: the open foil tray, the lidded carton, the pizza box, the paper wrapping, the styrofoam or bamboo container, the picnic spread laid out on a blanket, the plate as the restaurant sent it out to a laid table. Do NOT plate it up onto home crockery, and do NOT stage it as a cooked-from-scratch dish — the whole point is food someone else made and handed over. Vary the vessel, the surface and the angle to suit each outing; do NOT default to the same box, cloth, tabletop or camera position every time. Within that freedom, hold a recognisable house style: a photorealistic photograph with the warm, unfussy, appetising feel of a good evening, shot with real affection. Always keep these anchors — the food generous and filling most of the frame as the clear subject; soft natural light; a shallow depth of field with the food in crisp focus and the surroundings falling softly out of focus; the packaging honest and a little used, never pristine studio product photography. Absolutely no text, no captions, no watermark, no logos, no branding, no hands, no people. A single, mouth-watering hero shot of one spread of food, framed large and close so it fills the frame and makes you want to eat it.';
+
+// The outing counterpart to RECIPE_IMAGE_DISH_READING_FALLBACK: used only when no
+// scene brief is available. It asks the same question the recipe fallback asks —
+// read the thing, then let that reading drive the scene — but the reading it asks
+// for is about the OCCASION, because that is what decides how the food shows up.
+export const OUTING_SCENE_FALLBACK =
+  'First read the outing itself — is it a takeaway eaten at home, a picnic outdoors, a chippy tea, a street-food stop or a sit-down meal in a restaurant, and what cuisine is it — then let that reading drive the vessel and packaging, the setting, the surface, the props, the colour palette and the quality of light: a curry or a pizza delivered home calls for a cosy indoor evening — warm lamplight, a sofa or a kitchen table, boxes and cartons opened out; a picnic calls for bright outdoor daylight — a rug on the grass, a spread of wrapped and tubbed things; a meal out calls for the restaurant itself — low warm light, a laid table, the dish as the kitchen sent it. Make this shift clearly legible at a glance — a deliberate, confident step, never a faint tint — so each outing feels like it lives in its own moment.';
+
+// ─── The COCKTAIL anchors + fallback (issue #637) ───────────────────────────
+// A cocktail IS a recipe — it has ingredients and a method, and it keeps the full
+// editor and the full recipe page. What it does NOT have is a plate. Painted with
+// the recipe anchors it comes out as food "generously plated on rustic ceramic",
+// which is a picture of a drink that was served as dinner. These siblings move the
+// subject from the plate to the GLASS and the surface from the table to the bar.
+//
+// Same contract as the other two pairs: LOCKED IN CODE, appended LAST on every
+// prompt, carrying the same prohibitions. The prohibition set follows the OUTING's
+// (with "no branding") rather than the recipe's, and adds bottle labels: a bar back
+// is the one setting where the model most wants to invent a spirits brand, and a
+// legible label on a bottle behind the glass is a logo by another name.
+export const COCKTAIL_IMAGE_STYLE_ANCHORS =
+  'But the DRINK is always the star of the shot: fill the frame with the glass, composing tight and close so the drink is unmistakably the subject and takes up most of the image. The bar top, the bottles and the room behind are only supporting context glimpsed around and behind the glass — never the main event; avoid wide or pulled-back shots where the bar, the props or the surroundings occupy more of the frame than the drink itself. Serve it in the CORRECT GLASSWARE for the drink, and show the details that say it was just made: the garnish placed as the method calls for it, the ice — a clear block, cubed, cracked or crushed, or no ice at all when it is served straight up — the condensation beading on the outside of the glass, the citrus oils sitting on the surface, the colour reading true through the glass. Stand it on a bar top — polished wood, zinc, marble or worn timber — with the working clutter of a bar (a jigger, a bar spoon, a strainer, a spent citrus half, a folded towel) only ever glimpsed at the edges. Do NOT plate it as food, and do NOT stage it on home dining crockery. Vary the glass, the surface and the angle to suit each drink; do NOT default to the same coupe, bar top or camera position every time. Within that freedom, hold a recognisable house style: a photorealistic photograph with the warm, unfussy, inviting feel of a good bar at the start of the evening, shot with real affection. Always keep these anchors — the glass filled to the right level and filling most of the frame as the clear subject; soft, low, warm light; a shallow depth of field with the glass in crisp focus and the bar falling softly out of focus; the drink freshly made and never a dusty, flat or half-drunk glass. Absolutely no text, no captions, no watermark, no logos, no branding, no bottle labels, no hands, no people. A single, tempting hero shot of one finished drink, framed large and close so the glass fills the frame and makes you want to pour one.';
+
+// The cocktail counterpart to RECIPE_IMAGE_DISH_READING_FALLBACK: used only when no
+// scene brief is available. It asks the same question the other two fallbacks ask —
+// read the thing, then let that reading drive the scene — but what it asks the model
+// to read is the SERVE, because the glass, the ice and the light all follow from it.
+export const COCKTAIL_SCENE_FALLBACK =
+  'First read the drink itself — what it is built on and how it is served: a stirred, spirit-forward classic served straight up in a coupe; a bittersweet aperitivo over a big clear cube in a rocks glass; a shaken sour with a fine pale foam on top; a tall, bright highball over crushed ice; something creamy and rich — then let that reading drive the glassware, the ice, the garnish, the colour, the bar surface and the quality of light: a Negroni or an old fashioned calls for a late, low-lit evening — dark wood, deep amber and jewel reds, unhurried; a spritz or a highball calls for bright, cool, early-evening air — pale golds and greens, condensation, a fresher and breezier bar. Make this shift clearly legible at a glance — a deliberate, confident step, never a faint tint — so each drink feels like it lives in its own moment.';
+
+// The kinds this flow knows how to paint. Declared LOCALLY as genkit-`z` literals
+// rather than imported from `RecipeKindSchema`: genkit re-exports its own bundled
+// zod instance, and a schema built from plain `zod` is not interchangeable with it.
+// The drift between the two lists is closed by a test that pins this array against
+// `RecipeKindSchema.options`, not by an import.
+export const GENERATE_RECIPE_IMAGE_KINDS = ['recipe', 'outing', 'cocktail'] as const;
+
+type ImageKind = (typeof GENERATE_RECIPE_IMAGE_KINDS)[number];
+
+// The three kind switches. Each has 'recipe' as its DEFAULT arm, so an absent kind
+// (an older caller, a doc written before #637) and any kind this flow has no art
+// direction for render exactly today's prompt rather than nothing.
+function anchorsFor(kind: ImageKind | undefined): string {
+  switch (kind) {
+    case 'outing':
+      return OUTING_IMAGE_STYLE_ANCHORS;
+    case 'cocktail':
+      return COCKTAIL_IMAGE_STYLE_ANCHORS;
+    default:
+      return RECIPE_IMAGE_STYLE_ANCHORS;
+  }
+}
+
+function fallbackFor(kind: ImageKind | undefined): string {
+  switch (kind) {
+    case 'outing':
+      return OUTING_SCENE_FALLBACK;
+    case 'cocktail':
+      return COCKTAIL_SCENE_FALLBACK;
+    default:
+      return RECIPE_IMAGE_DISH_READING_FALLBACK;
+  }
+}
+
+function openerFor(
+  kind: ImageKind | undefined,
+  title: string,
+  description?: string | null,
+): string {
+  const lead = (() => {
+    switch (kind) {
+      case 'outing':
+        return `A beautiful, appetising photograph of "${title}" — food from a takeaway, a picnic or a meal out, shown as it actually arrives.`;
+      case 'cocktail':
+        return `A beautiful, tempting photograph of the cocktail "${title}" — the finished drink in its glass, on the bar.`;
+      default:
+        return `A beautiful, appetising photograph of the finished dish "${title}".`;
+    }
+  })();
+  const desc = description?.trim();
+  return desc ? `${lead} ${desc}` : lead;
+}
+
 // Per-recipe generation prompt. The dish identity comes from the recipe title and
 // (when present) its description. The scene direction is either the supplied
 // `sceneBrief` (art direction written from the WHOLE recipe by describeRecipeScene)
@@ -81,18 +180,14 @@ function buildRecipePrompt(
   hint?: string,
   tags?: string[],
   sceneBrief?: string,
+  kind?: ImageKind,
 ): string {
-  const desc = description?.trim();
-  const dish = desc
-    ? `A beautiful, appetising photograph of the finished dish "${title}". ${desc}`
-    : `A beautiful, appetising photograph of the finished dish "${title}".`;
+  const dish = openerFor(kind, title, description);
 
   // The brief replaces the fallback clause — it answers the same question the
   // fallback asks, but from the whole recipe rather than from the title.
   const trimmedBrief = sceneBrief?.trim();
-  let prompt = trimmedBrief
-    ? `${dish} ${trimmedBrief}`
-    : `${dish} ${RECIPE_IMAGE_DISH_READING_FALLBACK}`;
+  let prompt = trimmedBrief ? `${dish} ${trimmedBrief}` : `${dish} ${fallbackFor(kind)}`;
 
   // Recipe tags (e.g. #comfort-food, #slow-cooker, #salad, #summer) give the model
   // an explicit dish-type cue beyond the title/description: a plainly-named dish
@@ -110,8 +205,11 @@ function buildRecipePrompt(
     prompt += ` Additional guidance for this photo: ${trimmedHint}`;
   }
 
-  // Anchors last, always — see RECIPE_IMAGE_STYLE_ANCHORS. Nothing goes after this.
-  return `${prompt} ${RECIPE_IMAGE_STYLE_ANCHORS}`;
+  // Anchors last, always — see RECIPE_IMAGE_STYLE_ANCHORS. Nothing goes after this,
+  // for any kind: the anchors being the final word is the only thing stopping a
+  // user-edited brief from talking the model out of "no people, no logos", and that
+  // matters MORE for an outing, where editing the brief is the primary path.
+  return `${prompt} ${anchorsFor(kind)}`;
 }
 
 export const GenerateRecipeImageInputSchema = z.object({
@@ -129,6 +227,12 @@ export const GenerateRecipeImageInputSchema = z.object({
   // yourself" fallback clause; when absent (brief step failed, or an older recipe)
   // the fallback is used and the prompt is exactly what it was before briefs.
   sceneBrief: z.string().optional(),
+  // What kind of entry this is (issue #637) — selects the opener, the fallback and
+  // the style anchors. OPTIONAL: absent means 'recipe', which is byte-for-byte the
+  // prompt this flow built before kinds existed. Declared here as genkit-`z`
+  // literals rather than imported from `@salt/domain`'s `RecipeKindSchema`, because
+  // genkit bundles its own zod instance; a test pins the two lists together.
+  kind: z.enum(GENERATE_RECIPE_IMAGE_KINDS).optional(),
 });
 
 // Raw generated image bytes, base64-encoded (Genkit flow outputs must be
@@ -144,7 +248,7 @@ export const generateRecipeImageFlow = ai.defineFlow(
     inputSchema: GenerateRecipeImageInputSchema,
     outputSchema: GenerateRecipeImageOutputSchema,
   },
-  async ({ title, description, hint, tags, sceneBrief }) => {
+  async ({ title, description, hint, tags, sceneBrief, kind }) => {
     setActiveSpanName(`generateRecipeImage: ${title}`);
 
     const modelId = await resolveModel('image', 'generateRecipeImage');
@@ -154,7 +258,7 @@ export const generateRecipeImageFlow = ai.defineFlow(
       () =>
         ai.generate({
           model: imageModel,
-          prompt: buildRecipePrompt(title, description, hint, tags, sceneBrief),
+          prompt: buildRecipePrompt(title, description, hint, tags, sceneBrief, kind),
         }),
       { timeoutMs: IMAGE_GEN_TIMEOUT_MS, retries: 1 },
     );

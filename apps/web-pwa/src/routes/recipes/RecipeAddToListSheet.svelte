@@ -197,6 +197,14 @@
         <span class="w-12 text-center">Add</span>
         <span class="w-12 text-center">Check</span>
       </div>
+      {#if rows.length === 0}
+        <p
+          class="px-1 py-6 text-center text-sm text-muted-foreground"
+          data-testid="recipe-add-review-empty"
+        >
+          Nothing to add — this one has no ingredients.
+        </p>
+      {/if}
       {#each rows as row (row.ingredientId)}
         <div
           class="rounded border border-border text-sm"
@@ -406,11 +414,14 @@
       <Button variant="ghost" size="sm" onclick={() => (open = false)} disabled={busy}
         >Cancel</Button
       >
+      <!-- Nothing selected is nothing to do. Already reachable before kinds
+           existed by toggling every row off: the sheet let you press "Add 0 to
+           list" and then told you nothing had been added. -->
       <Button
         size="sm"
         onclick={handleConfirm}
         loading={busy}
-        disabled={busy}
+        disabled={busy || addCount === 0}
         data-testid="recipe-add-to-list-confirm"
       >
         Add {addCount} to list

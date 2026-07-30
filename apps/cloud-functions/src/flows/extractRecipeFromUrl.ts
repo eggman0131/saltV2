@@ -375,6 +375,9 @@ async function assembleDraft(raw: ExtractRecipeAIOutput, sourceUrl: string): Pro
   return {
     id: crypto.randomUUID(),
     schemaVersion: 1,
+    // A URL import is always a cookable recipe (issue #637); outings are created
+    // by hand and have nothing to extract.
+    kind: 'recipe',
     title: raw.title,
     description: raw.description,
     ingredients: ingredientGroups,

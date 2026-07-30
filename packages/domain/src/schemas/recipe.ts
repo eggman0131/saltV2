@@ -105,9 +105,22 @@ export const RecipeImageSchema = z.object({
   source: z.enum(['ai', 'upload']),
 });
 
+// What kind of entry this is (issue #637). The `recipes` collection holds more
+// than recipes: an `outing` is a takeaway / picnic / meal out — it fills a
+// planner slot but has no ingredients and no method; a `cocktail` has both but
+// is never a dinner. NOTHING outside packages/domain branches on this value —
+// behaviour comes from the pure capability predicates in
+// `recipe/queries/capabilities.ts`, so a fourth kind stays a one-file change.
+export const RecipeKindSchema = z.enum(['recipe', 'outing', 'cocktail']);
+
 export const RecipeSchema = z.object({
   id: z.string(),
   schemaVersion: z.literal(1),
+  // `.default('recipe')` (NOT `.optional()`) is load-bearing, not stylistic: the
+  // realtime subscription skips documents that fail validation, so a required
+  // `kind` would make every recipe already in production (#240) silently vanish
+  // from the list. Defaulted, they read back as exactly what they are — recipes.
+  kind: RecipeKindSchema.default('recipe'),
   title: z.string(),
   description: z.string().nullable(),
   ingredients: z.array(IngredientGroupSchema),
@@ -181,4 +194,5 @@ export type StepDoc = z.infer<typeof StepSchema>;
 export type RecipeMetadataDoc = z.infer<typeof RecipeMetadataSchema>;
 export type RecipeSourceDoc = z.infer<typeof RecipeSourceSchema>;
 export type RecipeImageDoc = z.infer<typeof RecipeImageSchema>;
+export type RecipeKindDoc = z.infer<typeof RecipeKindSchema>;
 export type RecipeDoc = z.infer<typeof RecipeSchema>;

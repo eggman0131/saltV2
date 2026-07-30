@@ -58,6 +58,12 @@ export const routes: RouteDefinition = new Map<
   // parameterised view route. Lazy-loaded (#411).
   ['/recipes', lazy(() => import('./recipes/RecipeListPage.svelte'))],
   ['/recipes/new', lazy(() => import('./recipes/RecipeEditPage.svelte'))],
+  // Same editor, creating a non-recipe kind (issue #637): `/recipes/new/outing`
+  // is "When you CBA". The kind is set here and only here — it is immutable, so
+  // there is no selector in the form and no way to change it after the fact. An
+  // unrecognised segment falls back to a plain new recipe (the page validates it
+  // with RecipeKindSchema); a URL is user input.
+  ['/recipes/new/:kind', lazy(() => import('./recipes/RecipeEditPage.svelte'))],
   ['/recipes/:id/edit', lazy(() => import('./recipes/RecipeEditPage.svelte'))],
   ['/recipes/:id/cook', lazy(() => import('./recipes/CookModePage.svelte'))],
   ['/recipes/:id', lazy(() => import('./recipes/RecipeViewPage.svelte'))],

@@ -2,7 +2,10 @@
 
 I want to investigate and fix: $ARGUMENTS
 
+You are investigating and specifying, not fixing. The deliverable is a GitHub issue. Do not write the fix.
+
 ## When to use this
+
 This is the heavyweight path — Explore agents, a tracked issue, the decision audit trail. It earns its weight only when at least one is true:
 - the root cause is non-obvious and needs tracing across files/packages to locate;
 - there is a real scope fork the user should decide (targeted vs broad, hotfix vs full fix);
@@ -11,38 +14,54 @@ This is the heavyweight path — Explore agents, a tracked issue, the decision a
 
 If the cause is obvious, the change is contained to a file or two, and there is no decision for the user to make, **do not run this** — just fix it inline (with a regression test) and report. When unsure, say so and ask before spinning up the full flow.
 
+## Standing rules
+
+- **CLAUDE.md is binding.** Layer map, hard rules, data-model and Zod conventions. A fix that requires bending one of them is a finding for Step 3, not a detail to settle during implementation.
+- **Fix the mechanism, not the symptom.** No bodges: if the honest fix is larger than the bug looks, say so. Suppressing a symptom to close an issue is worse than leaving the issue open.
+- **Flag the simpler path.** If the defect exists because the surrounding design is wrong, and a different shape would be *simpler and more maintainable* (not merely quicker to patch), raise it with the trade-off — even when that means a second issue rather than this one.
+- **GitHub through the `gh` CLI** (`gh issue list`, `gh issue create`, `gh label list`). There is no GitHub MCP server in this repo.
+
 ## Step 1 — Reproduce & triage
+
 Confirm the defect is real before theorising. Reproduce it (run the failing test, the command, the flow) and capture concrete evidence — error text, a failing assertion, a log line, a trace. Then state plainly:
 - **Is it a real defect, a flake, or intended behavior?** If intermittent, characterize frequency. If the "buggy" behavior turns out to be intended, stop and report that instead of inventing a fix.
 - **First-guess severity / blast radius:** who or what is affected, and is any production data being corrupted while the bug is live?
 
+Check for prior art before investigating far: `gh issue list --search "<symptom keywords>" --state all`. This repo has known-flake history worth not rediscovering.
+
 Do not propose a fix yet.
 
 ## Step 2 — Root-cause investigation
-Trace the symptom to the mechanism in code. Spawn Explore subagents for breadth when the trail crosses files or packages. Report:
-- The exact code path with `file:line` references and the precise mechanism — quote the code.
-- Whether **more than one** bug contributes (investigations often surface a second).
-- **Behavior that must be preserved** — adjacent correct behavior the fix must not regress, and the tests that encode it.
-- Constraints from CLAUDE.md / docs that bound the fix (layers, purity, schema/back-compat).
 
-Verify the root cause empirically where you can (a probe, or a test that pinpoints it) rather than asserting it.
+Trace the symptom to the mechanism in code. Delegate breadth to Explore subagents when the trail crosses files or packages; follow it yourself when it's one module deep. CLAUDE.md's **Docs map** routes you to the doc that owns the area — read it before concluding, since these docs hold the deliberate asymmetries that look like bugs.
+
+Verify the root cause empirically where you can (a probe, or a test that pinpoints it) rather than asserting it. Scope the report to these four, and nothing else:
+
+> 1. **The mechanism** — the exact code path with `file:line`, and quoted code. State whether **more than one** bug contributes; investigations often surface a second.
+> 2. **Behavior that must be preserved** — adjacent correct behavior the fix must not regress, and the tests that encode it.
+> 3. **Binding constraints** — the CLAUDE.md rules and doc contracts bounding the fix, each named (rule number, `docs/…` section) rather than paraphrased.
+> 4. **Blast radius** — what else this mechanism affects, and whether live data is already wrong.
+>
+> No preamble, no restating the symptom, no fix proposal yet.
 
 ## Step 3 — Clarify with user
-Ask me to decide the forks the investigation surfaced. Typical ones:
+
+Ask me to decide the forks the investigation surfaced. Use `AskUserQuestion` where the options are discrete. Typical ones:
 - **Fix scope** — minimal/targeted vs a broader retune of the surrounding logic.
 - **Existing data** — does live/production data already need remediation, or fix-forward only?
 - **Urgency** — minimal hotfix now vs the full fix.
 
-Surface the regression risks. Do not propose implementation detail yet.
+Surface the regression risks. Do not propose implementation detail yet. If the fix needs a new or upgraded dependency, check what is actually published (`npm view <pkg> version`) before it reaches the issue.
 
 ## Step 4 — Draft and post the issue
-Once we've agreed, post a GitHub issue.
+
+Once we've agreed, post it with `gh issue create`.
 
 **Issue metadata:**
 - Title: `fix: <concise defect description>` (imperative, no trailing period)
-- Labels: `bug` (plus area labels, e.g. `canon`, `domain`)
+- Labels: `bug`, plus the area and priority labels that fit (`gh label list` — e.g. `canon`, `domain`, `area: web-pwa`, `priority: critical` when it is breaking production, `flaky-test`, `breaking-change` when the fix changes a behavior contract)
 
-**Issue body — use exactly this structure:**
+**Issue body — use exactly this structure.** `/run` consumes these headings; the phase blocks are its scope contract.
 
 ---
 ## Observed vs Expected
@@ -73,19 +92,30 @@ Written for a fresh agent with no prior context.]
 Unresolved items stay listed as open questions, not silently assumed away. This is the audit trail.]
 
 ## Phases
-[One `### Phase` block per phase. A defect almost always pairs the fix with a regression test in
-Phase 1; add a docs phase when a behavior contract changes, and a data-remediation phase only if
-Step 3 chose to remediate. Repeat the block for every phase — do not collapse into one.]
+[One `### Phase` block per phase.
+
+Every phase must end verifiable — but that is a constraint on where a boundary may *fall*, not a reason
+for one to exist. Phases are not free: each costs a context read, a validation pass, a gate run, a commit
+and a handoff contract. **Most defects are one phase**: the fix plus the regression test that proves it,
+landing together. That is the default, not a compromise.
+
+Split only where there is a reason to:
+- **an unresolved fork** — the fix rests on something in Open Questions the user should judge first;
+- **data remediation** — a migration or backfill is its own phase, and only if Step 3 chose to remediate;
+- **a changed behavior contract** — docs or callers needing updating can be their own phase;
+- **too large to validate as one diff** — a multi-bug fix the reviewer can't reliably judge in one pass.
+
+None of those apply? One phase.]
 
 ### Phase 1: [Name]
 **Scope:** [What gets changed — precise, not vague]
-**Verifiable outcome:** [What proves it is fixed — ideally a regression test that fails before the change and passes after]
+**Verifiable outcome(s):** [What proves it is fixed — ideally a regression test that fails before the change and passes after]
 **Technical deliverables:** [Files, functions, tests]
 **Must not touch:** [Explicitly out of scope; the preserved behavior]
 
 ### Phase 2: [Name]
 **Scope:** [...]
-**Verifiable outcome:** [...]
+**Verifiable outcome(s):** [...]
 **Technical deliverables:** [...]
 **Must not touch:** [...]
 
@@ -96,4 +126,4 @@ Step 3 chose to remediate. Repeat the block for every phase — do not collapse 
 preserved behavior stays green; no schema/data regressions.]
 ---
 
-After posting: share the issue URL and ask me to confirm the **Root Cause and Fix Approach** before any implementation starts. Do not write code.
+After posting: share the issue URL and ask me to confirm the **Root Cause and Fix Approach** before any implementation starts.

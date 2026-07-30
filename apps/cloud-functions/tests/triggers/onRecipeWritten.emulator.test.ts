@@ -68,6 +68,7 @@ function makeRecipe(id: string, overrides: Partial<RecipeDoc> = {}): RecipeDoc {
   return {
     id,
     schemaVersion: 1,
+    kind: 'recipe',
     title: 'Roast chicken',
     description: 'A whole roast chicken with lemon and thyme.',
     ingredients: [],
@@ -157,6 +158,7 @@ describe('onRecipeWritten — Firestore emulator', () => {
     expect(mockGenerateImage).toHaveBeenCalledWith({
       title: 'Lemon drizzle cake',
       description: 'A moist sponge soaked in lemon syrup.',
+      kind: 'recipe',
       tags: [],
     });
   });
@@ -171,6 +173,7 @@ describe('onRecipeWritten — Firestore emulator', () => {
     expect(mockGenerateImage).toHaveBeenCalledWith({
       title: 'Roast chicken',
       description: 'A whole roast chicken with lemon and thyme.',
+      kind: 'recipe',
       hint: 'on a rustic board',
       tags: [],
     });
@@ -276,6 +279,56 @@ describe('onRecipeWritten — Firestore emulator', () => {
     await (onRecipeWritten as Function)(makeEvent('r-regen', after, before));
 
     expect(mockGenerateImage).toHaveBeenCalledOnce();
+  });
+
+  // Issue #637: an outing — a takeaway, a picnic, a meal out — is a `recipes` doc
+  // with no ingredients and no method. It goes through the SAME hero pipeline (the
+  // regenerate dialog seeds its textarea from `imageBrief`, so skipping the brief
+  // step would leave it empty); only the prompts differ, selected by `kind`. This
+  // pins the end-to-end path against the real Firestore round-trip: the kind
+  // survives write → schema parse → flow input, and the hero still lands.
+  it('generates a hero for an outing and forwards its kind to the image flow', async () => {
+    const db = getFirestore(adminApp);
+    const outing = makeRecipe('r-outing', {
+      kind: 'outing',
+      title: 'Friday night curry',
+      description: 'From the place on the corner. Always the same order.',
+      ingredients: [],
+      steps: [],
+      image: null,
+    });
+    await db.collection('recipes').doc('r-outing').set(outing);
+
+    await (onRecipeWritten as Function)(makeEvent('r-outing', outing));
+
+    expect(mockGenerateImage).toHaveBeenCalledOnce();
+    expect(mockGenerateImage.mock.calls[0]![0]).toMatchObject({
+      title: 'Friday night curry',
+      kind: 'outing',
+    });
+
+    const snap = await db.collection('recipes').doc('r-outing').get();
+    expect(snap.data()!['image']).toEqual({
+      url: 'https://firebasestorage.googleapis.com/v0/b/demo-salt.appspot.com/o/recipe-images%2Fr-outing.webp?alt=media',
+      source: 'ai',
+    });
+  });
+
+  // Back-compat: every recipe already in production predates `kind`. RecipeSchema
+  // defaults it on read, so the doc round-trips through Firestore without the field
+  // and still reaches the flow as a plain recipe — today's prompt, unchanged.
+  it('defaults a stored doc with no kind field to "recipe"', async () => {
+    const db = getFirestore(adminApp);
+    const legacy = makeRecipe('r-legacy', { image: null }) as Record<string, unknown>;
+    delete legacy['kind'];
+    await db.collection('recipes').doc('r-legacy').set(legacy);
+
+    const stored = (await db.collection('recipes').doc('r-legacy').get()).data()!;
+    expect(stored['kind']).toBeUndefined();
+
+    await (onRecipeWritten as Function)(makeEvent('r-legacy', stored as never));
+
+    expect(mockGenerateImage.mock.calls[0]![0]).toMatchObject({ kind: 'recipe' });
   });
 
   it('regenerates when imageRequestedAt is bumped even though image was already null', async () => {

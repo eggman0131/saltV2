@@ -27,7 +27,9 @@ the same shape:
 ```
 Day {
   note: string                       // free-text meal description (v1)
-  recipeIds: string[]                // RESERVED seam for recipes (#17); empty until then
+  recipeIds: string[]                // attached `recipes/{id}` entries (#17). An entry may be a
+                                     // non-cookable "When you CBA" outing (#637) — same collection,
+                                     // same reference; nothing here changes shape for it
   chefs: memberId[]                  // zero or more; a chef need NOT be an attendee
   attendees: Attendee[]
 }
@@ -161,9 +163,25 @@ The shop day (#629) follows the same shape, in its own files:
 - `apps/web-pwa/src/lib/shoppingDayService.ts` — stores, the one-shop-per-week rule
 - `apps/cloud-functions/src/maintenance/remindShoppingDay.ts` — the daily 17:00 nudge (the module's first Cloud Function)
 
-## Future seam: recipes (#17)
+## Recipes on a day (#17, #637)
 
-`Day.recipeIds` ships now as an always-empty array. When the recipe module
-lands, the weekly/template UI gains a recipe multi-select that populates it; the
-free-text `note` remains for ad-hoc meals. No schema-shape break required
-(pre-launch greenfield; adding use of an existing field is free).
+`Day.recipeIds` is populated. The weekly editor attaches entries through a
+picker over the recipes store; titles and hero thumbnails resolve live at display
+time (never denormalised), and the free-text `note` remains for ad-hoc meals. The
+field's shape never changed to get here — adding use of an existing field is
+free, which is why no migration was ever needed.
+
+`MealPlanDaySchema` is likewise **unchanged** by the kind discriminator (#637):
+an outing lands in `day.recipeIds` like anything else, because it lives in the
+same `recipes` collection. What the picker filters on is
+`isPlannable(kind)` — a cocktail is not dinner and never appears — and what the
+per-recipe **Add to shop** action is gated on is `takesIngredients(kind)`, since
+a takeaway has nothing to buy. Both are the pure domain predicates: the planner
+never compares a kind to decide behaviour. The one place it names a kind at all
+is copy — a non-`recipe` picker row wears a small label ("When you CBA") so the
+option can be told apart in a list of dinners.
+
+Production data caveat: the planner collections hold real production data, and so
+has `recipes` since 2026-06-17 (#240). Anything added to a `Day` — or to the
+recipe documents it points at — has to be back-compatible on read or ship a
+migration.

@@ -34,6 +34,8 @@
 
 import { initializeApp, applicationDefault } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { takesIngredients } from '@salt/domain';
+import { RecipeKindSchema } from '@salt/domain/schemas';
 import { categoriseRecipeFlow } from '../src/flows/categoriseRecipe.js';
 
 const apply = process.argv.includes('--apply');
@@ -68,6 +70,21 @@ for (const doc of snap.docs) {
   const title = typeof recipe['title'] === 'string' ? recipe['title'] : '';
   if (!title) {
     console.log(`${doc.id}  (skipped — no title)`);
+    continue;
+  }
+
+  // Not every doc in `recipes` is a recipe (issue #637). The categoriser reads a
+  // dish's ingredients and method to decide its tags, so an entry that has neither
+  // — an outing — would be categorised from its title alone, which is worse than
+  // leaving its tags be. `takesIngredients` is the honest gate: it is exactly the
+  // question "is there content here for the flow to read?". Guarded HERE, at the
+  // caller, so `categoriseRecipeFlow` stays kind-agnostic. Raw Firestore data is a
+  // trust boundary, so the kind is parsed, and anything unrecognised (or absent,
+  // pre-#637) is treated as a plain recipe — the same default the schema applies.
+  const parsedKind = RecipeKindSchema.safeParse(recipe['kind'] ?? 'recipe');
+  const kind = parsedKind.success ? parsedKind.data : 'recipe';
+  if (!takesIngredients(kind)) {
+    console.log(`${doc.id}  "${title}"  (skipped — ${kind})`);
     continue;
   }
 
