@@ -7,8 +7,9 @@ import MealDayEditor from '../src/routes/mealplan/MealDayEditor.svelte';
 // Shop day on the planner (issue #629, restated by #639). The DISPLAY of the
 // shop moved out of this component: it is now a rule across the list, drawn by
 // MealPlanWeekPage as a sibling of the rows (see MealPlanWeekPage.test.ts). What
-// stays here is the CONTROL — the AM/PM picker in the expanded detail — plus the
-// deletions #639 made: no pre-shop wash, no "using what's in" note, no per-row
+// stays here is the CONTROL — the AM/PM picker, which since #640 lives in the
+// day's SHEET rather than a panel under the row (tapping the row still raises
+// it, and the testids are unchanged) — plus the deletions #639 made: no pre-shop wash, no "using what's in" note, no per-row
 // shop pill. MealDayEditor is fully prop-driven, so these render it directly
 // with no store mocking; the parent owns which date is which.
 
@@ -63,7 +64,7 @@ describe('MealDayEditor — shop day (#629, restated by #639)', () => {
     const { getByTestId } = render(MealDayEditor, {
       props: baseProps({ shopSlot: null, onShopSlotChange }),
     });
-    await fireEvent.click(getByTestId('day-summary')); // expand
+    await fireEvent.click(getByTestId('day-summary')); // raise the day's sheet
     await fireEvent.click(getByTestId('day-shop-pm'));
     expect(onShopSlotChange).toHaveBeenCalledWith('pm');
   });
@@ -74,7 +75,7 @@ describe('MealDayEditor — shop day (#629, restated by #639)', () => {
     const { getByTestId } = render(MealDayEditor, {
       props: baseProps({ shopSlot: 'am', onShopSlotChange }),
     });
-    await fireEvent.click(getByTestId('day-summary'));
+    await fireEvent.click(getByTestId('day-summary')); // raise the day's sheet
     await fireEvent.click(getByTestId('day-shop-am'));
     expect(onShopSlotChange).toHaveBeenCalledWith(null);
   });
@@ -83,7 +84,7 @@ describe('MealDayEditor — shop day (#629, restated by #639)', () => {
     const { getByTestId, queryByTestId } = render(MealDayEditor, {
       props: baseProps({ shopSlot: null, onShopSlotChange: noop }),
     });
-    await fireEvent.click(getByTestId('day-summary'));
+    await fireEvent.click(getByTestId('day-summary')); // raise the day's sheet
     // The AM/PM control survives; the note that explained the vanished wash does not.
     expect(getByTestId('day-shop')).toBeInTheDocument();
     expect(queryByTestId('day-pre-shop-note')).not.toBeInTheDocument();
@@ -93,7 +94,7 @@ describe('MealDayEditor — shop day (#629, restated by #639)', () => {
     // The template editor omits onShopSlotChange (a shop day is a date-only
     // concept), so it gains no shop UI at all.
     const { queryByTestId, getByTestId } = render(MealDayEditor, { props: baseProps() });
-    await fireEvent.click(getByTestId('day-summary'));
+    await fireEvent.click(getByTestId('day-summary')); // raise the day's sheet
     expect(queryByTestId('day-shop')).not.toBeInTheDocument();
     expect(queryByTestId('day-shop-marker')).not.toBeInTheDocument();
   });

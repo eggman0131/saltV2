@@ -92,7 +92,7 @@ describe('AdminMealPlanPage', () => {
     expect(screen.getByTestId('tmpl-sun')).toBeInTheDocument();
   });
 
-  it('edits a weekday template note through the service after expanding the day', async () => {
+  it("edits a weekday template note through the service after opening the day's sheet", async () => {
     render(AdminMealPlanPage);
     await userEvent.click(screen.getByTestId('tmpl-fri-summary'));
     await userEvent.type(screen.getByTestId('tmpl-fri-note'), 'Pizza');
@@ -100,11 +100,40 @@ describe('AdminMealPlanPage', () => {
     expect(vi.mocked(setTemplateDayNote).mock.calls[0]![0]).toBe('fri');
   });
 
-  it('reflects an existing template note when expanded', async () => {
+  it("reflects an existing template note in the day's sheet", async () => {
     mockTemplate._set(setDayNote(emptyTemplate(), 'mon', 'Roast'));
     render(AdminMealPlanPage);
     await userEvent.click(screen.getByTestId('tmpl-mon-summary'));
     expect((screen.getByTestId('tmpl-mon-note') as HTMLInputElement).value).toBe('Roast');
+  });
+
+  // The template editor gets the same sheet as the planner (#640, Phase 1), but
+  // it has no dates — so its title is the weekday alone, from the `label` the row
+  // already carries. It passes no `sheetTitle`, and that is the whole difference.
+  it('opens the weekday in a sheet titled with the weekday alone', async () => {
+    render(AdminMealPlanPage);
+    await userEvent.click(screen.getByTestId('tmpl-wed-summary'));
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toContainElement(screen.getByTestId('tmpl-wed-detail'));
+    expect(screen.getByRole('heading', { name: 'Wednesday' })).toBeInTheDocument();
+    // Recipe-free and shop-free: the template passes neither handler, and the
+    // move into a sheet did not change that gating.
+    expect(screen.queryByTestId('tmpl-wed-recipes')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('tmpl-wed-shop')).not.toBeInTheDocument();
+  });
+
+  it('opens one weekday at a time', async () => {
+    render(AdminMealPlanPage);
+    await userEvent.click(screen.getByTestId('tmpl-mon-summary'));
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByTestId('tmpl-mon-detail')).not.toBeInTheDocument());
+    await waitFor(() => expect(document.body.style.pointerEvents).toBe(''));
+
+    await userEvent.click(screen.getByTestId('tmpl-tue-summary'));
+    expect(screen.getByTestId('tmpl-tue-detail')).toBeInTheDocument();
+    expect(screen.queryByTestId('tmpl-mon-detail')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
   });
 
   it('saves a new first-day-of-week selection', async () => {

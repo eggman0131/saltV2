@@ -326,6 +326,14 @@
     if (target !== $selectedStartDate) goToWeek(target);
   }
 
+  // ─── Which day is open (#640, Phase 1) ────────────────────────────────────
+  // The day opens in a bottom sheet, and the PAGE owns which one — one `$state`
+  // for the whole run of days, so only one is ever open and the answer survives
+  // the row re-rendering when a Firestore snapshot lands. Purely in memory: it is
+  // a fact about this glance at the planner, never persisted (Rule 3). Dates are
+  // unique across both weeks, so one field covers the extension too.
+  let openDay = $state<string | null>(null);
+
   // ─── Day-editor handlers (bound to a concrete date) ───────────────────────
   // Every day mutator routes to the document its DATE belongs in (Phase 5), so a
   // day in next week saves to next week with no week argument here. What that
@@ -416,6 +424,17 @@
         <MealDayEditor
           label={fmt(date, { weekday: 'short' })}
           sublabel={fmt(date, { day: 'numeric' })}
+          sheetTitle={fmt(date, { weekday: 'long', day: 'numeric', month: 'long' })}
+          bind:open={
+            () => openDay === date,
+            (v) => {
+              // Opening a day closes whichever was open; closing only clears the
+              // field when this row still owns it, so a stale close can never
+              // shut the day somebody just opened.
+              if (v) openDay = date;
+              else if (openDay === date) openDay = null;
+            }
+          }
           {day}
           members={$members}
           recipes={$recipes}

@@ -65,9 +65,10 @@ than a field on a list or on the week doc.
 
 It **does not move the week.** `firstDayOfWeek` and the layout above are
 completely untouched: the shop marker sits *inside* the week wherever it falls.
-On the planner a day shows an AM/PM control when expanded and a shop marker in
-its collapsed header; marking a day clears any other in that week (there is one
-shop per week), and tapping the slot already set clears it.
+On the planner the AM/PM control lives in the day's sheet (tap the row to raise
+it, issue #640); the shop itself is drawn as a labelled rule across the week's
+list, not as a badge on the row. Marking a day clears any other in that week
+(there is one shop per week), and tapping the slot already set clears it.
 
 Days **before** the shop are shaded — they can only be cooked from food already
 in the house, which is meal-planning information and the reason to record the

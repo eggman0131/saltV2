@@ -12,6 +12,9 @@ import MealDayEditor from '../src/routes/mealplan/MealDayEditor.svelte';
 // with it go the per-member chips, the chef-hat badge and the note badge; the
 // "No cook" flag survives, inside the meta line. MealDayEditor is fully
 // prop-driven, so these render it directly with no store mocking.
+//
+// The row is also the whole of what renders until it is tapped (#640): the day's
+// detail is a sheet now, and an unopened sheet mounts nothing at all.
 
 const alex: Member = { id: 'm1', name: 'Alex' } as Member;
 const bea: Member = { id: 'm2', name: 'Bea' } as Member;
@@ -152,6 +155,14 @@ describe('MealDayEditor — the Ledger row (#639)', () => {
   it('omits the temperature when no weather is passed', () => {
     const { queryByTestId } = render(MealDayEditor, { props: baseProps(makeDay()) });
     expect(queryByTestId('day-header-temp')).not.toBeInTheDocument();
+  });
+
+  it('is the only thing on screen until it is tapped (#640)', () => {
+    const { queryByRole, queryByTestId } = render(MealDayEditor, {
+      props: baseProps(makeDay()),
+    });
+    expect(queryByRole('dialog')).not.toBeInTheDocument();
+    expect(queryByTestId('day-detail')).not.toBeInTheDocument();
   });
 
   it('shows only the first line of a multi-line meal as the title', () => {

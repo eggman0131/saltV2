@@ -13,6 +13,12 @@
     ComboboxInput,
     ComboboxItem,
     ComboboxTrigger,
+    Sheet,
+    SheetClose,
+    SheetContent,
+    SheetFooter,
+    SheetHeader,
+    SheetTitle,
     type ComboboxItemType,
   } from '@salt/ui-components';
   import { ChefHat, X } from '@lucide/svelte';
@@ -31,8 +37,8 @@
   import WeatherIcon from '$lib/weather-icons/WeatherIcon.svelte';
   import WeatherSummary from './WeatherSummary.svelte';
 
-  // Collapsible editor for a single Day, shared by the weekly page (date-keyed)
-  // and the template editor (weekday-keyed).
+  // Editor for a single Day, shared by the weekly page (date-keyed) and the
+  // template editor (weekday-keyed).
   //
   // Collapsed it is a LEDGER ROW (#639, Phase 1): a dated rail down the left
   // (weekday over date, today's date in a filled teal disc) and, to its right,
@@ -42,10 +48,14 @@
   // the photo, no scrim, no border, no wash. A day with no photo is not
   // second-class: the card is a text block with the meal one step larger.
   //
-  // Expand one day to edit detail in a roomy panel. It knows nothing about day
-  // keys: the parent supplies handlers already bound to the right date/weekday.
-  // Members resolve live; an unknown memberId renders as removable, never
-  // blocking. See docs/meal-planning.md.
+  // TAPPING THE ROW OPENS THE DAY IN A BOTTOM SHEET (#640, Phase 1) — the detail
+  // is no longer a panel pushed in underneath, which shoved the rest of the week
+  // down the deck. `open` is a BINDABLE prop, not row-local state: the PAGE owns
+  // which day is open (in memory only — Rule 3), so exactly one day is ever open,
+  // and a Firestore snapshot re-render can no longer collapse the day you are
+  // editing. It knows nothing about day keys: the parent supplies handlers
+  // already bound to the right date/weekday. Members resolve live; an unknown
+  // memberId renders as removable, never blocking. See docs/meal-planning.md.
   //
   // `weather` (issue #382, Phase 3) is the OPTIONAL per-day evening forecast. The
   // PARENT does the in-window gating: the dated weekly page passes
@@ -55,6 +65,16 @@
   interface Props {
     label: string;
     sublabel?: string;
+    // The day's sheet heading. `label`/`sublabel` are sized for the RAIL — "THU"
+    // over "30" — so the planner passes the day written out in full here
+    // ("Thursday 30 July") rather than widening the rail. Optional: the template
+    // editor's `label` is already the whole weekday, so it says nothing extra and
+    // the fallback below is exactly right.
+    sheetTitle?: string;
+    // Which day is open is owned by the PAGE, not the row (#640): bindable so the
+    // parent can hold one `openDay` for the whole week and get one-at-a-time for
+    // free. In memory only — never persisted (Rule 3).
+    open?: boolean;
     day: Day;
     members: Member[];
     // Full recipe list, resolved live so attached ids render their current title
@@ -95,6 +115,8 @@
   let {
     label,
     sublabel,
+    sheetTitle,
+    open = $bindable(false),
     day,
     members,
     recipes = [],
@@ -119,7 +141,21 @@
     onShopSlotChange?.(shopSlot === slot ? null : slot);
   }
 
-  let open = $state(false);
+  // The sheet's heading. Falls back to the rail's own words, which is the whole
+  // answer for the template editor ("Monday") and a sane one anywhere else.
+  const heading = $derived(sheetTitle ?? `${label}${sublabel ? ` ${sublabel}` : ''}`);
+
+  // ─── Where this sheet's dropdowns portal to (#640, Phase 1) ────────────────
+  // A modal dialog makes the rest of the page inert by putting
+  // `pointer-events: none` on <body>. Select/Combobox portal their popover to
+  // <body> by DEFAULT, which lands it OUTSIDE the dialog and therefore inert:
+  // the list renders, and every option is unclickable. So this sheet's dropdowns
+  // portal INTO the sheet's own content element instead — inside the live layer,
+  // and outside the scrolling region below, so nothing clips them either. The
+  // hook is a plain marker class on SheetContent (not a bits-ui internal), and
+  // only one day's sheet is ever open, so the selector is unambiguous.
+  const DROPDOWN_HOST = 'meal-day-sheet';
+  const DROPDOWN_PORTAL = `.${DROPDOWN_HOST}`;
 
   // ─── Attached recipes (issue #17) ──────────────────────────────────────────
   // The day stores recipe IDS only; titles resolve live from the `recipes` prop
@@ -314,13 +350,14 @@
      page spaces the rows 24px apart), not by a box. -->
 <div data-testid={testid}>
   <!-- The collapsed row (#639, Phase 1): dated rail | photograph → title → meta.
-       The whole row is the tap target; tapping opens the day's detail below,
-       unchanged. -->
+       The whole row is the tap target; tapping raises the day's sheet (#640).
+       No `aria-expanded`: nothing expands in place any more, and the dialog the
+       sheet opens carries its own ARIA set (role, modality, labelled by its
+       title). Markup otherwise untouched. -->
   <button
     type="button"
     class="flex w-full gap-3 text-left"
-    onclick={() => (open = !open)}
-    aria-expanded={open}
+    onclick={() => (open = true)}
     data-testid={`${testid}-summary`}
   >
     <!-- The dated rail: weekday over date, an edge to run the eye down. Today's
@@ -401,343 +438,375 @@
     </div>
   </button>
 
-  {#if open}
-    <!-- Expanded detail (Phase 2, #469): three stacked blocks, top→bottom —
-         (1) forecast strip, (2) Dinner (meal + recipes), (3) At the table (roster).
-         Flatter and shorter than the old form: the forecast leads, and the roster
-         is one tidy row per member (avatar = eating toggle, chef-hat = cooking),
-         with shift/late times revealed only for people who are eating. -->
-    <div
-      class="mt-3 flex flex-col gap-4 rounded-lg border bg-card px-3 py-3"
-      data-testid={`${testid}-detail`}
+  <!-- The day opens in a bottom sheet (#640, Phase 1). The deck moves its column
+       with a transform, which creates a containing block — so an in-row `fixed`
+       panel would be trapped by it. `portal` is left at its default ('body'),
+       which is what puts the sheet over the whole dimmed week. Scrim, focus trap,
+       scroll lock, Escape and outside-click dismissal all come from the Dialog
+       underneath; there is no drag-to-dismiss. -->
+  <Sheet bind:open side="bottom">
+    <SheetContent
+      class="{DROPDOWN_HOST} max-h-[85dvh] gap-3 p-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]"
     >
-      <!-- 1. Forecast strip: the evening forecast leads the detail. Real-week only
+      <SheetHeader>
+        <SheetTitle>{heading}</SheetTitle>
+      </SheetHeader>
+
+      <!-- Detail (Phase 2, #469): three stacked blocks, top→bottom —
+           (1) forecast strip, (2) Dinner (meal + recipes), (3) At the table (roster).
+           Flatter and shorter than the old form: the forecast leads, and the roster
+           is one tidy row per member (avatar = eating toggle, chef-hat = cooking),
+           with shift/late times revealed only for people who are eating.
+           The base sheet class carries no max-height and no overflow, so the
+           scrolling region is constrained here — the header and footer stay put
+           and only the day's detail moves. -->
+      <div
+        class="flex max-h-[70dvh] flex-col gap-4 overflow-y-auto"
+        data-testid={`${testid}-detail`}
+      >
+        <!-- 1. Forecast strip: the evening forecast leads the detail. Real-week only
            — gated on `weather`, so the weekday template editor and out-of-horizon
            days render nothing (parent passes no weather there). Keeps WeatherSummary's
            tap-tooltip metric chips. -->
-      {#if weather}
-        <WeatherSummary {weather} testid={`${testid}-weather`} />
-      {/if}
+        {#if weather}
+          <WeatherSummary {weather} testid={`${testid}-weather`} />
+        {/if}
 
-      <!-- 1b. Shop day (#629): mark this day as the week's shop, AM or PM.
+        <!-- 1b. Shop day (#629): mark this day as the week's shop, AM or PM.
            Rendered only in the dated week editor (onShopSlotChange present); the
            weekday template editor omits the prop and stays shop-free. Tapping the
            active slot clears it — one control, three states. The parent clears any
            other shop day in the week, so there is exactly one. -->
-      {#if onShopSlotChange}
-        <div class="flex flex-col gap-1.5" data-testid={`${testid}-shop`}>
-          <div class="flex items-center gap-2">
-            <span class="flex-1 text-xs font-medium text-muted-foreground">Shopping day</span>
-            <Button
-              variant={shopSlot === 'am' ? 'solid' : 'outline'}
-              size="sm"
-              onclick={() => pickSlot('am')}
-              aria-pressed={shopSlot === 'am'}
-              data-testid={`${testid}-shop-am`}
-            >
-              AM
-            </Button>
-            <Button
-              variant={shopSlot === 'pm' ? 'solid' : 'outline'}
-              size="sm"
-              onclick={() => pickSlot('pm')}
-              aria-pressed={shopSlot === 'pm'}
-              data-testid={`${testid}-shop-pm`}
-            >
-              PM
-            </Button>
+        {#if onShopSlotChange}
+          <div class="flex flex-col gap-1.5" data-testid={`${testid}-shop`}>
+            <div class="flex items-center gap-2">
+              <span class="flex-1 text-xs font-medium text-muted-foreground">Shopping day</span>
+              <Button
+                variant={shopSlot === 'am' ? 'solid' : 'outline'}
+                size="sm"
+                onclick={() => pickSlot('am')}
+                aria-pressed={shopSlot === 'am'}
+                data-testid={`${testid}-shop-am`}
+              >
+                AM
+              </Button>
+              <Button
+                variant={shopSlot === 'pm' ? 'solid' : 'outline'}
+                size="sm"
+                onclick={() => pickSlot('pm')}
+                aria-pressed={shopSlot === 'pm'}
+                data-testid={`${testid}-shop-pm`}
+              >
+                PM
+              </Button>
+            </div>
           </div>
-        </div>
-      {/if}
+        {/if}
 
-      <!-- 2. Dinner: the meal field and any attached recipes, grouped. -->
-      <div class="flex flex-col gap-2">
-        <label class="text-xs font-medium text-muted-foreground" for={`${testid}-note`}
-          >Dinner</label
-        >
-        <textarea
-          bind:this={noteEl}
-          id={`${testid}-note`}
-          rows="1"
-          class="w-full resize-none overflow-hidden rounded-md border bg-background px-3 py-2 text-sm"
-          placeholder="What's for dinner?"
-          value={day.note}
-          oninput={(e) => onNoteChange(e.currentTarget.value)}
-          data-testid={`${testid}-note`}></textarea>
+        <!-- 2. Dinner: the meal field and any attached recipes, grouped. -->
+        <div class="flex flex-col gap-2">
+          <label class="text-xs font-medium text-muted-foreground" for={`${testid}-note`}
+            >Dinner</label
+          >
+          <textarea
+            bind:this={noteEl}
+            id={`${testid}-note`}
+            rows="1"
+            class="w-full resize-none overflow-hidden rounded-md border bg-background px-3 py-2 text-sm"
+            placeholder="What's for dinner?"
+            value={day.note}
+            oninput={(e) => onNoteChange(e.currentTarget.value)}
+            data-testid={`${testid}-note`}></textarea>
 
-        <!-- Attached recipes (issue #17): the chosen recipes as thumbnail rows, then
+          <!-- Attached recipes (issue #17): the chosen recipes as thumbnail rows, then
              a quiet "Add a recipe" picker at the foot. Selecting a recipe APPENDS its
              id; the picker remounts (keyed) so its input clears, ready for the next
              add. Rendered only in the week editor (onRecipesChange present); the
              weekday template editor omits the prop and stays recipe-free. -->
-        {#if onRecipesChange}
-          <div class="flex flex-col gap-1.5" data-testid={`${testid}-recipes`}>
-            {#each attachedRecipes as r (r.id)}
-              {@const url = heroUrl(r)}
-              <div
-                class="flex items-center justify-between gap-2 rounded border px-2 py-1.5"
-                data-testid={`${testid}-recipe-row-${r.id}`}
-              >
-                <!-- Thumbnail + title open the recipe's full view. One button owns the
+          {#if onRecipesChange}
+            <div class="flex flex-col gap-1.5" data-testid={`${testid}-recipes`}>
+              {#each attachedRecipes as r (r.id)}
+                {@const url = heroUrl(r)}
+                <div
+                  class="flex items-center justify-between gap-2 rounded border px-2 py-1.5"
+                  data-testid={`${testid}-recipe-row-${r.id}`}
+                >
+                  <!-- Thumbnail + title open the recipe's full view. One button owns the
                      leading thumbnail and the title so the whole area is the tap
                      target; the Remove button (a sibling, not nested) keeps its own
                      handler and never triggers navigation. -->
-                <button
-                  type="button"
-                  class="flex min-w-0 flex-1 items-center gap-2 text-left"
-                  onclick={() => openRecipe(r.id)}
-                  data-testid={`${testid}-recipe-open-${r.id}`}
-                >
-                  <span class="h-10 w-10 shrink-0 overflow-hidden rounded bg-muted">
-                    {#if url}
-                      <img
-                        src={url}
-                        alt=""
-                        loading="lazy"
-                        class="h-full w-full object-cover"
-                        data-testid={`${testid}-recipe-thumb-${r.id}`}
-                      />
-                    {:else}
-                      <span
-                        class="flex h-full w-full items-center justify-center bg-gradient-to-br from-muted to-muted/40 text-muted-foreground/60"
-                        data-testid={`${testid}-recipe-thumb-fallback-${r.id}`}
-                      >
-                        <Icon name="CookingPot" size={18} />
-                      </span>
-                    {/if}
-                  </span>
-                  <span class="min-w-0 truncate text-sm">{r.title}</span>
-                </button>
-                <!-- Add to shop (Phase 4, #469): hand the full recipe up to the page,
+                  <button
+                    type="button"
+                    class="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    onclick={() => openRecipe(r.id)}
+                    data-testid={`${testid}-recipe-open-${r.id}`}
+                  >
+                    <span class="h-10 w-10 shrink-0 overflow-hidden rounded bg-muted">
+                      {#if url}
+                        <img
+                          src={url}
+                          alt=""
+                          loading="lazy"
+                          class="h-full w-full object-cover"
+                          data-testid={`${testid}-recipe-thumb-${r.id}`}
+                        />
+                      {:else}
+                        <span
+                          class="flex h-full w-full items-center justify-center bg-gradient-to-br from-muted to-muted/40 text-muted-foreground/60"
+                          data-testid={`${testid}-recipe-thumb-fallback-${r.id}`}
+                        >
+                          <Icon name="CookingPot" size={18} />
+                        </span>
+                      {/if}
+                    </span>
+                    <span class="min-w-0 truncate text-sm">{r.title}</span>
+                  </button>
+                  <!-- Add to shop (Phase 4, #469): hand the full recipe up to the page,
                      which guards the default list then opens RecipeAddToListSheet.
                      Rendered only when the parent supplies the callback — the template
                      editor omits it and so stays shopping-free. -->
-                {#if onRecipeAddToList}
+                  {#if onRecipeAddToList}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        onRecipeAddToList?.(r);
+                      }}
+                      aria-label={`Add ${r.title} to shopping list`}
+                      data-testid={`${testid}-recipe-addshop-${r.id}`}
+                    >
+                      <Icon name="ShoppingCart" size={16} />
+                    </Button>
+                  {/if}
                   <Button
                     variant="ghost"
                     size="sm"
                     onclick={(e) => {
                       e.stopPropagation();
-                      onRecipeAddToList?.(r);
+                      removeRecipe(r.id);
                     }}
-                    aria-label={`Add ${r.title} to shopping list`}
-                    data-testid={`${testid}-recipe-addshop-${r.id}`}
+                    aria-label={`Remove ${r.title}`}
+                    data-testid={`${testid}-recipe-remove-${r.id}`}
                   >
-                    <Icon name="ShoppingCart" size={16} />
+                    <X class="h-4 w-4" />
                   </Button>
-                {/if}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onclick={(e) => {
-                    e.stopPropagation();
-                    removeRecipe(r.id);
-                  }}
-                  aria-label={`Remove ${r.title}`}
-                  data-testid={`${testid}-recipe-remove-${r.id}`}
+                </div>
+              {/each}
+              {#key recipePickerKey}
+                <Combobox
+                  items={recipePickerItems}
+                  value=""
+                  filterFn={recipeFilter}
+                  portal={DROPDOWN_PORTAL}
+                  restrict
+                  placeholder="Add a recipe…"
+                  onValueChange={addRecipe}
                 >
-                  <X class="h-4 w-4" />
-                </Button>
-              </div>
-            {/each}
-            {#key recipePickerKey}
-              <Combobox
-                items={recipePickerItems}
-                value=""
-                filterFn={recipeFilter}
-                restrict
-                placeholder="Add a recipe…"
-                onValueChange={addRecipe}
-              >
-                <ComboboxField>
-                  <ComboboxInput data-testid={`${testid}-recipe-picker`} />
-                  <ComboboxTrigger />
-                </ComboboxField>
-                <ComboboxContent>
-                  {#snippet children({ filteredItems })}
-                    {#each filteredItems as item, i (item.value)}
-                      <ComboboxItem {item} index={i} />
-                    {/each}
-                    {#if filteredItems.length === 0}
-                      <ComboboxEmpty>No recipes found</ComboboxEmpty>
-                    {/if}
-                  {/snippet}
-                </ComboboxContent>
-              </Combobox>
-            {/key}
-          </div>
-        {/if}
-      </div>
+                  <ComboboxField>
+                    <ComboboxInput data-testid={`${testid}-recipe-picker`} />
+                    <ComboboxTrigger />
+                  </ComboboxField>
+                  <ComboboxContent>
+                    {#snippet children({ filteredItems })}
+                      {#each filteredItems as item, i (item.value)}
+                        <ComboboxItem {item} index={i} />
+                      {/each}
+                      {#if filteredItems.length === 0}
+                        <ComboboxEmpty>No recipes found</ComboboxEmpty>
+                      {/if}
+                    {/snippet}
+                  </ComboboxContent>
+                </Combobox>
+              {/key}
+            </div>
+          {/if}
+        </div>
 
-      <!-- 3. At the table: one compact row per member. The avatar toggles EATING
+        <!-- 3. At the table: one compact row per member. The avatar toggles EATING
            (a checkbox — tap to opt in/out); the chef-hat toggles COOKING,
            independent of eating (a chef need not eat). Home-time + note reveal only
            for members who are eating. Unknown attendees stay removable; guests are a
            small +/- stepper at the foot. -->
-      <div class="flex flex-col gap-2">
-        <span class="text-xs font-medium text-muted-foreground">At the table</span>
-        {#each members as m (m.id)}
-          {@const a = attendeeOf(m.id)}
-          <div class="flex flex-col gap-1" data-testid={`${testid}-attendee-${m.id}`}>
-            <div class="flex items-center gap-2.5">
-              <!-- Avatar = eating toggle. `role="checkbox"` + aria-checked keep it an
+        <div class="flex flex-col gap-2">
+          <span class="text-xs font-medium text-muted-foreground">At the table</span>
+          {#each members as m (m.id)}
+            {@const a = attendeeOf(m.id)}
+            <div class="flex flex-col gap-1" data-testid={`${testid}-attendee-${m.id}`}>
+              <div class="flex items-center gap-2.5">
+                <!-- Avatar = eating toggle. `role="checkbox"` + aria-checked keep it an
                    accessible toggle and satisfy the roster tests; filled when eating,
                    muted when not. The testid wraps it so `within(attend).getByRole`
                    resolves the avatar. -->
-              <span data-testid={`${testid}-attend-${m.id}`}>
-                <button
-                  type="button"
-                  role="checkbox"
-                  aria-checked={isAttending(m.id)}
-                  aria-label={m.name}
-                  class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold transition-colors
+                <span data-testid={`${testid}-attend-${m.id}`}>
+                  <button
+                    type="button"
+                    role="checkbox"
+                    aria-checked={isAttending(m.id)}
+                    aria-label={m.name}
+                    class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold transition-colors
                     {isAttending(m.id)
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted text-muted-foreground/60 hover:bg-muted/70'}"
-                  onclick={() => onAttendeeToggle(m.id)}
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted text-muted-foreground/60 hover:bg-muted/70'}"
+                    onclick={() => onAttendeeToggle(m.id)}
+                  >
+                    {memberInitials(m.name)}
+                  </button>
+                </span>
+                <span
+                  class="min-w-0 flex-1 truncate text-sm {isAttending(m.id)
+                    ? 'font-medium text-foreground'
+                    : 'text-muted-foreground'}"
                 >
-                  {memberInitials(m.name)}
-                </button>
-              </span>
-              <span
-                class="min-w-0 flex-1 truncate text-sm {isAttending(m.id)
-                  ? 'font-medium text-foreground'
-                  : 'text-muted-foreground'}"
-              >
-                {m.name}
-              </span>
-              <!-- Chef-hat = cooking toggle, independent of eating. Plain button so both
+                  {m.name}
+                </span>
+                <!-- Chef-hat = cooking toggle, independent of eating. Plain button so both
                    states are fully Tailwind: selected = filled amber, unselected = clear
                    neutral. Keeps `bg-amber-500` when on (styling test). -->
-              <button
-                type="button"
-                class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border transition-colors
+                <button
+                  type="button"
+                  class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border transition-colors
                   {isChef(m.id)
-                  ? 'border-amber-500 bg-amber-500 text-white hover:bg-amber-600'
-                  : 'border-input bg-background text-muted-foreground hover:bg-muted'}"
-                onclick={() => onChefToggle(m.id)}
-                aria-pressed={isChef(m.id)}
-                aria-label={`${m.name} is cooking`}
-                data-testid={`${testid}-chef-${m.id}`}
-              >
-                <ChefHat class="h-4 w-4" strokeWidth={2.5} />
-              </button>
-            </div>
-            {#if isAttending(m.id)}
-              {@const parts = timeParts(a?.homeTime)}
-              <!-- Home time + note reveal only when this member is eating. Time entry
+                    ? 'border-amber-500 bg-amber-500 text-white hover:bg-amber-600'
+                    : 'border-input bg-background text-muted-foreground hover:bg-muted'}"
+                  onclick={() => onChefToggle(m.id)}
+                  aria-pressed={isChef(m.id)}
+                  aria-label={`${m.name} is cooking`}
+                  data-testid={`${testid}-chef-${m.id}`}
+                >
+                  <ChefHat class="h-4 w-4" strokeWidth={2.5} />
+                </button>
+              </div>
+              {#if isAttending(m.id)}
+                {@const parts = timeParts(a?.homeTime)}
+                <!-- Home time + note reveal only when this member is eating. Time entry
                    sits to the left of the note; both share the same height so the row
                    reads as one control. -->
-              <div class="ml-11 flex items-stretch gap-2">
-                <!-- Home time as [HH]:[MM]. Each dropdown's `value` seeds to the
+                <div class="ml-11 flex items-stretch gap-2">
+                  <!-- Home time as [HH]:[MM]. Each dropdown's `value` seeds to the
                      dinner default so a blank field opens at ~18:30 (not midnight),
                      while the trigger shows a placeholder until a real value is set. -->
-                <div class="flex shrink-0 items-center gap-0.5">
-                  <Select
-                    value={parts.hh || DINNER_HOUR}
-                    onValueChange={(v) => commitHour(m.id, v)}
-                  >
-                    <SelectTrigger
-                      class="h-8 w-12 justify-center px-1 tabular-nums {parts.hh
-                        ? ''
-                        : 'text-muted-foreground'}"
-                      aria-label={`${m.name} home time hour`}
-                      data-testid={`${testid}-time-${m.id}`}
+                  <div class="flex shrink-0 items-center gap-0.5">
+                    <Select
+                      value={parts.hh || DINNER_HOUR}
+                      portal={DROPDOWN_PORTAL}
+                      onValueChange={(v) => commitHour(m.id, v)}
                     >
-                      {parts.hh || 'HH'}
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">No time</SelectItem>
-                      {#each HOUR_OPTIONS as h (h)}
-                        <SelectItem value={h}>{h}</SelectItem>
-                      {/each}
-                    </SelectContent>
-                  </Select>
-                  <span class="text-sm text-muted-foreground">:</span>
-                  <Select
-                    value={parts.mm || DINNER_MINUTE}
-                    onValueChange={(v) => commitMinute(m.id, v)}
-                  >
-                    <SelectTrigger
-                      class="h-8 w-12 justify-center px-1 tabular-nums {parts.mm
-                        ? ''
-                        : 'text-muted-foreground'}"
-                      aria-label={`${m.name} home time minute`}
-                      data-testid={`${testid}-time-min-${m.id}`}
+                      <SelectTrigger
+                        class="h-8 w-12 justify-center px-1 tabular-nums {parts.hh
+                          ? ''
+                          : 'text-muted-foreground'}"
+                        aria-label={`${m.name} home time hour`}
+                        data-testid={`${testid}-time-${m.id}`}
+                      >
+                        {parts.hh || 'HH'}
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">No time</SelectItem>
+                        {#each HOUR_OPTIONS as h (h)}
+                          <SelectItem value={h}>{h}</SelectItem>
+                        {/each}
+                      </SelectContent>
+                    </Select>
+                    <span class="text-sm text-muted-foreground">:</span>
+                    <Select
+                      value={parts.mm || DINNER_MINUTE}
+                      portal={DROPDOWN_PORTAL}
+                      onValueChange={(v) => commitMinute(m.id, v)}
                     >
-                      {parts.mm || 'MM'}
-                    </SelectTrigger>
-                    <SelectContent>
-                      {#each MINUTE_OPTIONS as mo (mo)}
-                        <SelectItem value={mo}>{mo}</SelectItem>
-                      {/each}
-                    </SelectContent>
-                  </Select>
+                      <SelectTrigger
+                        class="h-8 w-12 justify-center px-1 tabular-nums {parts.mm
+                          ? ''
+                          : 'text-muted-foreground'}"
+                        aria-label={`${m.name} home time minute`}
+                        data-testid={`${testid}-time-min-${m.id}`}
+                      >
+                        {parts.mm || 'MM'}
+                      </SelectTrigger>
+                      <SelectContent>
+                        {#each MINUTE_OPTIONS as mo (mo)}
+                          <SelectItem value={mo}>{mo}</SelectItem>
+                        {/each}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <input
+                    class="h-8 w-full flex-1 rounded-md border bg-background px-2 text-sm"
+                    placeholder="Add a note (e.g. portion for tomorrow)"
+                    value={a?.note ?? ''}
+                    oninput={(e) => onAttendeeNote(m.id, e.currentTarget.value)}
+                    aria-label={`${m.name} note`}
+                    data-testid={`${testid}-attnote-${m.id}`}
+                  />
                 </div>
-                <input
-                  class="h-8 w-full flex-1 rounded-md border bg-background px-2 text-sm"
-                  placeholder="Add a note (e.g. portion for tomorrow)"
-                  value={a?.note ?? ''}
-                  oninput={(e) => onAttendeeNote(m.id, e.currentTarget.value)}
-                  aria-label={`${m.name} note`}
-                  data-testid={`${testid}-attnote-${m.id}`}
-                />
-              </div>
-            {/if}
-          </div>
-        {/each}
+              {/if}
+            </div>
+          {/each}
 
-        {#each unknownAttendees as a (a.memberId)}
-          <div
-            class="flex items-center justify-between gap-2 rounded border border-dashed px-2 py-1.5"
-            data-testid={`${testid}-unknown-${a.memberId}`}
-          >
-            <span class="truncate text-sm text-muted-foreground">
-              Unknown member ({a.memberId})
+          {#each unknownAttendees as a (a.memberId)}
+            <div
+              class="flex items-center justify-between gap-2 rounded border border-dashed px-2 py-1.5"
+              data-testid={`${testid}-unknown-${a.memberId}`}
+            >
+              <span class="truncate text-sm text-muted-foreground">
+                Unknown member ({a.memberId})
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onclick={() => onAttendeeToggle(a.memberId)}
+                data-testid={`${testid}-unknown-remove-${a.memberId}`}
+              >
+                Remove
+              </Button>
+            </div>
+          {/each}
+
+          <!-- Occasional unnamed guests: a small +/- stepper at the foot. -->
+          <div class="flex items-center gap-2 pt-1" data-testid={`${testid}-guests`}>
+            <span class="flex-1 text-sm text-muted-foreground">Guests</span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={day.guests <= 0}
+              onclick={() => onGuestsChange(day.guests - 1)}
+              aria-label="Fewer guests"
+              data-testid={`${testid}-guests-dec`}
+            >
+              −
+            </Button>
+            <span
+              class="w-6 text-center text-sm tabular-nums"
+              data-testid={`${testid}-guests-count`}
+            >
+              {day.guests}
             </span>
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
-              onclick={() => onAttendeeToggle(a.memberId)}
-              data-testid={`${testid}-unknown-remove-${a.memberId}`}
+              onclick={() => onGuestsChange(day.guests + 1)}
+              aria-label="More guests"
+              data-testid={`${testid}-guests-inc`}
             >
-              Remove
+              +
             </Button>
           </div>
-        {/each}
 
-        <!-- Occasional unnamed guests: a small +/- stepper at the foot. -->
-        <div class="flex items-center gap-2 pt-1" data-testid={`${testid}-guests`}>
-          <span class="flex-1 text-sm text-muted-foreground">Guests</span>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={day.guests <= 0}
-            onclick={() => onGuestsChange(day.guests - 1)}
-            aria-label="Fewer guests"
-            data-testid={`${testid}-guests-dec`}
-          >
-            −
-          </Button>
-          <span class="w-6 text-center text-sm tabular-nums" data-testid={`${testid}-guests-count`}>
-            {day.guests}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            onclick={() => onGuestsChange(day.guests + 1)}
-            aria-label="More guests"
-            data-testid={`${testid}-guests-inc`}
-          >
-            +
-          </Button>
+          <p class="text-[11px] text-muted-foreground">
+            {attendingCount}
+            {attendingCount === 1 ? 'person' : 'people'} eating
+          </p>
         </div>
-
-        <p class="text-[11px] text-muted-foreground">
-          {attendingCount}
-          {attendingCount === 1 ? 'person' : 'people'} eating
-        </p>
       </div>
-    </div>
-  {/if}
+
+      <!-- Every edit above is already saved (fire-and-forget through the parent's
+           handlers), so the footer has nothing to confirm — only a way out that
+           does not require finding the scrim. -->
+      <SheetFooter>
+        <SheetClose class="h-9 w-auto rounded-md border border-input px-4 text-sm font-medium">
+          Done
+        </SheetClose>
+      </SheetFooter>
+    </SheetContent>
+  </Sheet>
 </div>
