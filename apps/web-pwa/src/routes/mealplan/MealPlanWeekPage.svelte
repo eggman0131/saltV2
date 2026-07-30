@@ -505,7 +505,22 @@
           class="flex flex-col gap-6 pb-2 will-change-transform"
           style="transform: translate3d(0, {-deck.offset}px, 0)"
         >
-          {@render weekRows(dates, $currentWeek.days, $weekShopDay, false)}
+          <!-- This week. Its rail's stem is the DEFAULT state of the same element
+               next week recolours: one continuous line down the whole run of days,
+               in the empty left margin of the rail column, so there is an edge to
+               run the eye down (#639, "a continuous dated rail"). Solid and in the
+               border ink — the shop rule's hairline weight — because next week's
+               job is to differ from this, not the other way round. Decorative: the
+               dates beside it say everything it says. -->
+          <div class="relative flex flex-col gap-6">
+            <span
+              class="pointer-events-none absolute inset-y-0 left-0 w-0 border-l-2 border-border"
+              data-testid="this-week-rail"
+              aria-hidden="true"
+            ></span>
+
+            {@render weekRows(dates, $currentWeek.days, $weekShopDay, false)}
+          </div>
 
           {#if extensionDates.length}
             <!-- Next week. Its rail is burnt terracotta and dashed — a HUE SHIFT at

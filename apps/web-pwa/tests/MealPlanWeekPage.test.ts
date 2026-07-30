@@ -729,6 +729,21 @@ describe('MealPlanWeekPage', () => {
     expect(vi.mocked(mockCommitRecipeAddPlan)).not.toHaveBeenCalled();
   });
 
+  // The rail is a continuous EDGE, not merely a column of dates (#639): the week
+  // draws one line down its whole run of days. Next week recolours this same
+  // element, so with only next week's stem drawn the current week looked as though
+  // it had no rail at all.
+  it('draws a continuous rail stem down the displayed week', () => {
+    render(MealPlanWeekPage);
+    const stem = screen.getByTestId('this-week-rail');
+    // Spans the run of days, and is the quiet border ink — next week's job is to
+    // differ from this, not the other way round.
+    expect(stem.className).toContain('inset-y-0');
+    expect(stem.className).toContain('border-border');
+    // Decorative: the dates beside it already say what it says.
+    expect(stem).toHaveAttribute('aria-hidden', 'true');
+  });
+
   it('shows a spinner while the week is loading', () => {
     mockLoading._set(true);
     render(MealPlanWeekPage);
