@@ -145,11 +145,15 @@ test.describe('meal planner — week happy path', () => {
     });
 
     // ── Reload: prove the Firestore round-trip, not a hot store ──
+    // `page.reload()`, NOT `goto('/#/mealplan')`: we are already at that URL, and
+    // navigating to the URL you are on is a same-document hash navigation — the
+    // app never remounts, so nothing is proved and the day's sheet is still open
+    // underneath. Reload keeps the hash, so the router lands back on the planner.
     // The page's onMount anchors to this week on its own; clicking `this-week`
     // again would force a re-subscription (the store briefly nulls the week),
     // which remounts the day editors mid-interaction. So we rely on the mount
     // anchor and just wait for the week to load.
-    await page.goto('/#/mealplan');
+    await page.reload();
     await expect(page.getByTestId('this-week')).toBeVisible({ timeout: SYNC_TIMEOUT });
     await expect(page.getByTestId(testid)).toBeVisible({ timeout: SYNC_TIMEOUT });
 
