@@ -29,7 +29,8 @@ import { resolveModel } from '../ai/resolveModel.js';
 // out of "no people").
 //
 // The scope rule itself is hoisted into ONE constant because every system prompt
-// here — recipe and outing, authoring and revising — must say it identically. It
+// here — recipe, outing and cocktail, authoring and revising — must say it
+// identically. It
 // is the sentence that keeps the brief on the dish-specific half; a per-kind
 // paraphrase of it is a per-kind loophole in the house style.
 const SCENE_SCOPE_RULE = `Do NOT write about photographic style, lighting, lens, framing, camera angle, or what must not appear in the shot — those are fixed elsewhere and anything you say about them is discarded.`;
@@ -156,13 +157,77 @@ change asks for it.
 
 Write ONE paragraph of plain prose, at most about 80 words. Return only the revised brief.`;
 
+// ─── COCKTAILS (issue #637) ──────────────────────────────────────────────────
+// A cocktail sits on the opposite side of the outing from a recipe. An outing had
+// to lose the "read the method" premise because it has no method; a cocktail keeps
+// it in full — 50ml gin, 25ml Campari, stir over ice, strain, orange twist is an
+// ingredient list and a method, and it is where every visual fact about the drink
+// lives. What has to change is the SUBJECT the model is asked to describe: the
+// recipe prompt asks what the dish looks like "once it is cooked and plated", and
+// there is no plating up a Negroni. Asked the recipe question, the model reaches
+// for crockery and a garnish it can serve with a fork.
+//
+// So this prompt asks the same reading question against the glass: the spirits set
+// the colour, the technique (stirred vs shaken vs built) sets the clarity and the
+// texture, and the serve (straight up vs on the rocks, the ice, the garnish) IMPLIES
+// the glassware. All four are things only the method knows.
+//
+// SCOPE is identical to the other prompts and inherits the same rule verbatim.
+const DESCRIBE_COCKTAIL_SCENE_SYSTEM = `You are a drinks photographer's art director. You are given one COCKTAIL — its \
+title, description, tags, ingredients and method. Write a short art-direction brief for a photograph of the FINISHED \
+drink in its glass.
+
+Read the whole recipe, especially the METHOD and the INGREDIENTS: they carry everything the drink actually looks like \
+once it is made. The spirits, liqueurs, juices and bitters set the colour and the clarity — water-clear, blush pink, \
+deep amber, cloudy, layered. The technique sets the texture: stirred is silky and crystal clear, shaken is livelier \
+and often carries a fine pale foam, a build over ice is bright and beaded. And the serve the method calls for — \
+straight up or over ice, the ice cubed or cracked or crushed, the twist or the wedge or the sprig placed at the end — \
+is what implies the glass it belongs in. None of this is in the title.
+
+Cover only what is specific to THIS drink:
+- what is in the glass — colour, clarity, foam or crema, layers, bubbles, the ice and how it sits
+- the glassware the serve implies, and the garnish and finishing touch the method calls for
+- the bar surface it stands on, and the hour, mood and character the drink reads as, and why the drink implies that
+
+${SCENE_SCOPE_RULE} Do not restate the recipe, do not list \
+quantities or measures, and do not give instructions for making it.
+
+Write ONE paragraph of plain prose, at most about 80 words. A brief, not an essay. Return only the brief.`;
+
+// The cocktail counterpart to REVISE_SCENE_SYSTEM. Same failure it exists to
+// prevent (a steer stapled on the end, contradicting the paragraph it was added
+// to), same "keep what the change does not touch" rule — but anchored to the drink,
+// so a steer re-directs the SHOT and never quietly re-pours what is in the glass.
+const REVISE_COCKTAIL_SCENE_SYSTEM = `You are a drinks photographer's art director. You are given one COCKTAIL, an \
+existing art-direction brief for a photograph of the finished drink, and a requested change from the person who will \
+use it. Rewrite the brief so it incorporates the requested change.
+
+Fold the change THROUGH the whole brief. If the change is "make it a summer afternoon", then the light, the bar \
+surface, the props, the palette and the mood all move together — do NOT keep a late-night brief and staple "make it a \
+summer afternoon" on the end. The result must read as one coherent brief that was always written that way, never as \
+an edit with a contradiction left in it.
+
+Keep everything the requested change does not touch. Anything the brief already says that still holds should survive \
+the rewrite — this is a revision, not a fresh start.
+
+Stay true to the recipe. The change re-directs how the drink is SHOT and styled; it must not turn it into a drink \
+this recipe does not make. What is in the glass — its colour, clarity, ice, foam and garnish — and the glassware the \
+serve implies are set by the method and the ingredients, not by the requested change.
+
+Cover only what is specific to THIS drink: what is in the glass, the glassware, the garnish, the bar surface, and the \
+hour and mood it reads as. ${SCENE_SCOPE_RULE} That holds even if the requested change asks for it.
+
+Write ONE paragraph of plain prose, at most about 80 words. Return only the revised brief.`;
+
 // The kind switch. 'recipe' is the DEFAULT arm, so an absent kind (an older
-// caller, a doc written before #637) and a kind with no art direction of its own
-// yet (cocktail — Phase 5) both get exactly today's prompts.
+// caller, a doc written before #637) and any kind with no prompts of its own get
+// exactly today's prompts rather than nothing.
 function systemFor(kind: DescribeRecipeSceneInput['kind'], revising: boolean): string {
   switch (kind) {
     case 'outing':
       return revising ? REVISE_OUTING_SCENE_SYSTEM : DESCRIBE_OUTING_SCENE_SYSTEM;
+    case 'cocktail':
+      return revising ? REVISE_COCKTAIL_SCENE_SYSTEM : DESCRIBE_COCKTAIL_SCENE_SYSTEM;
     default:
       return revising ? REVISE_SCENE_SYSTEM : DESCRIBE_SCENE_SYSTEM;
   }

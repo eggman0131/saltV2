@@ -96,6 +96,13 @@ export const KIND_COPY: Record<RecipeKind, KindCopy> = {
   },
 };
 
-// The sections the list page offers, in chip order. Cocktails have copy above
-// but no chip: the kind exists end-to-end, the section lands in Phase 5.
-export const KIND_SECTIONS: readonly RecipeKind[] = ['recipe', 'outing'];
+// The sections the list page offers, in chip order — and, minus the first, the
+// New-menu entries too. `recipe` leads because it is where you land and what most
+// entries are; it is also the only section whose New entry is NOT derived from
+// this list, because /recipes/new (no kind segment) is pinned by an e2e spec.
+//
+// This array is the whole of a section's existence on the list page: adding a kind
+// here gives it a chip, a New-menu entry and a filtered grid, because every screen
+// below reads the kind's words from KIND_COPY and its behaviour from the domain
+// capability predicates. Nothing else needs a fourth case.
+export const KIND_SECTIONS: readonly RecipeKind[] = ['recipe', 'outing', 'cocktail'];

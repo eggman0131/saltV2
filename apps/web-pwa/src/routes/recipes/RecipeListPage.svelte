@@ -262,21 +262,27 @@
           <Icon name="Pencil" size={14} />
           Manual
         </button>
-        <!-- "When you CBA" (issue #637): a takeaway, a picnic, a night off. The
-             kind is set by the route and never again — there is no selector in
+        <!-- One entry per non-recipe section (issue #637) — "When you CBA", then
+             Cocktails. Derived from KIND_SECTIONS rather than written out per kind
+             so a section and its way in can never disagree about which kinds
+             exist. `recipe` is sliced off because its entry is the "Manual" button
+             above, which routes to the bare /recipes/new an e2e spec pins.
+             The kind is set by the route and never again — there is no selector in
              the editor, because an outing does not become a recipe. -->
-        <button
-          type="button"
-          class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
-          onclick={() => {
-            newMenuOpen = false;
-            push('/recipes/new/outing');
-          }}
-          data-testid="recipe-new-outing"
-        >
-          <Icon name={KIND_COPY.outing.menuIcon} size={14} />
-          {KIND_COPY.outing.label}
-        </button>
+        {#each KIND_SECTIONS.slice(1) as kind (kind)}
+          <button
+            type="button"
+            class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+            onclick={() => {
+              newMenuOpen = false;
+              push(`/recipes/new/${kind}`);
+            }}
+            data-testid="recipe-new-{kind}"
+          >
+            <Icon name={KIND_COPY[kind].menuIcon} size={14} />
+            {KIND_COPY[kind].label}
+          </button>
+        {/each}
       </PopoverContent>
     </Popover>
   {/snippet}

@@ -88,6 +88,28 @@ export const OUTING_IMAGE_STYLE_ANCHORS =
 export const OUTING_SCENE_FALLBACK =
   'First read the outing itself — is it a takeaway eaten at home, a picnic outdoors, a chippy tea, a street-food stop or a sit-down meal in a restaurant, and what cuisine is it — then let that reading drive the vessel and packaging, the setting, the surface, the props, the colour palette and the quality of light: a curry or a pizza delivered home calls for a cosy indoor evening — warm lamplight, a sofa or a kitchen table, boxes and cartons opened out; a picnic calls for bright outdoor daylight — a rug on the grass, a spread of wrapped and tubbed things; a meal out calls for the restaurant itself — low warm light, a laid table, the dish as the kitchen sent it. Make this shift clearly legible at a glance — a deliberate, confident step, never a faint tint — so each outing feels like it lives in its own moment.';
 
+// ─── The COCKTAIL anchors + fallback (issue #637) ───────────────────────────
+// A cocktail IS a recipe — it has ingredients and a method, and it keeps the full
+// editor and the full recipe page. What it does NOT have is a plate. Painted with
+// the recipe anchors it comes out as food "generously plated on rustic ceramic",
+// which is a picture of a drink that was served as dinner. These siblings move the
+// subject from the plate to the GLASS and the surface from the table to the bar.
+//
+// Same contract as the other two pairs: LOCKED IN CODE, appended LAST on every
+// prompt, carrying the same prohibitions. The prohibition set follows the OUTING's
+// (with "no branding") rather than the recipe's, and adds bottle labels: a bar back
+// is the one setting where the model most wants to invent a spirits brand, and a
+// legible label on a bottle behind the glass is a logo by another name.
+export const COCKTAIL_IMAGE_STYLE_ANCHORS =
+  'But the DRINK is always the star of the shot: fill the frame with the glass, composing tight and close so the drink is unmistakably the subject and takes up most of the image. The bar top, the bottles and the room behind are only supporting context glimpsed around and behind the glass — never the main event; avoid wide or pulled-back shots where the bar, the props or the surroundings occupy more of the frame than the drink itself. Serve it in the CORRECT GLASSWARE for the drink, and show the details that say it was just made: the garnish placed as the method calls for it, the ice — a clear block, cubed, cracked or crushed, or no ice at all when it is served straight up — the condensation beading on the outside of the glass, the citrus oils sitting on the surface, the colour reading true through the glass. Stand it on a bar top — polished wood, zinc, marble or worn timber — with the working clutter of a bar (a jigger, a bar spoon, a strainer, a spent citrus half, a folded towel) only ever glimpsed at the edges. Do NOT plate it as food, and do NOT stage it on home dining crockery. Vary the glass, the surface and the angle to suit each drink; do NOT default to the same coupe, bar top or camera position every time. Within that freedom, hold a recognisable house style: a photorealistic photograph with the warm, unfussy, inviting feel of a good bar at the start of the evening, shot with real affection. Always keep these anchors — the glass filled to the right level and filling most of the frame as the clear subject; soft, low, warm light; a shallow depth of field with the glass in crisp focus and the bar falling softly out of focus; the drink freshly made and never a dusty, flat or half-drunk glass. Absolutely no text, no captions, no watermark, no logos, no branding, no bottle labels, no hands, no people. A single, tempting hero shot of one finished drink, framed large and close so the glass fills the frame and makes you want to pour one.';
+
+// The cocktail counterpart to RECIPE_IMAGE_DISH_READING_FALLBACK: used only when no
+// scene brief is available. It asks the same question the other two fallbacks ask —
+// read the thing, then let that reading drive the scene — but what it asks the model
+// to read is the SERVE, because the glass, the ice and the light all follow from it.
+export const COCKTAIL_SCENE_FALLBACK =
+  'First read the drink itself — what it is built on and how it is served: a stirred, spirit-forward classic served straight up in a coupe; a bittersweet aperitivo over a big clear cube in a rocks glass; a shaken sour with a fine pale foam on top; a tall, bright highball over crushed ice; something creamy and rich — then let that reading drive the glassware, the ice, the garnish, the colour, the bar surface and the quality of light: a Negroni or an old fashioned calls for a late, low-lit evening — dark wood, deep amber and jewel reds, unhurried; a spritz or a highball calls for bright, cool, early-evening air — pale golds and greens, condensation, a fresher and breezier bar. Make this shift clearly legible at a glance — a deliberate, confident step, never a faint tint — so each drink feels like it lives in its own moment.';
+
 // The kinds this flow knows how to paint. Declared LOCALLY as genkit-`z` literals
 // rather than imported from `RecipeKindSchema`: genkit re-exports its own bundled
 // zod instance, and a schema built from plain `zod` is not interchangeable with it.
@@ -98,12 +120,14 @@ export const GENERATE_RECIPE_IMAGE_KINDS = ['recipe', 'outing', 'cocktail'] as c
 type ImageKind = (typeof GENERATE_RECIPE_IMAGE_KINDS)[number];
 
 // The three kind switches. Each has 'recipe' as its DEFAULT arm, so an absent kind
-// (an older caller, a doc written before #637) and a kind this flow has no art
-// direction for yet (cocktail — Phase 5) both render exactly today's prompt.
+// (an older caller, a doc written before #637) and any kind this flow has no art
+// direction for render exactly today's prompt rather than nothing.
 function anchorsFor(kind: ImageKind | undefined): string {
   switch (kind) {
     case 'outing':
       return OUTING_IMAGE_STYLE_ANCHORS;
+    case 'cocktail':
+      return COCKTAIL_IMAGE_STYLE_ANCHORS;
     default:
       return RECIPE_IMAGE_STYLE_ANCHORS;
   }
@@ -113,6 +137,8 @@ function fallbackFor(kind: ImageKind | undefined): string {
   switch (kind) {
     case 'outing':
       return OUTING_SCENE_FALLBACK;
+    case 'cocktail':
+      return COCKTAIL_SCENE_FALLBACK;
     default:
       return RECIPE_IMAGE_DISH_READING_FALLBACK;
   }
@@ -127,6 +153,8 @@ function openerFor(
     switch (kind) {
       case 'outing':
         return `A beautiful, appetising photograph of "${title}" — food from a takeaway, a picnic or a meal out, shown as it actually arrives.`;
+      case 'cocktail':
+        return `A beautiful, tempting photograph of the cocktail "${title}" — the finished drink in its glass, on the bar.`;
       default:
         return `A beautiful, appetising photograph of the finished dish "${title}".`;
     }

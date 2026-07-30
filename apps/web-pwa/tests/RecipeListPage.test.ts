@@ -351,6 +351,18 @@ const PICNIC = makeRecipe({
   createdAt: '2026-06-02T00:00:00.000Z',
 });
 
+const NEGRONI = makeRecipe({
+  id: 'negroni',
+  kind: 'cocktail',
+  title: 'Negroni',
+  tags: ['aperitivo'],
+  totalTimeMinutes: 5,
+  servings: 1,
+  ingredientCount: 3,
+  image: null,
+  createdAt: '2026-06-03T00:00:00.000Z',
+});
+
 function kindChip(kind: string): HTMLElement {
   const row = screen.getByTestId('recipe-kind-filters');
   const chip = within(row)
@@ -368,8 +380,10 @@ describe('RecipeListPage — sections', () => {
     expect(cardTitles()).toEqual(['Apple Pie']);
     expect(kindChip('recipe')).toHaveAttribute('aria-pressed', 'true');
     expect(kindChip('outing')).toHaveAttribute('aria-pressed', 'false');
-    // Cocktails are Phase 5 — the kind exists, the section does not yet.
-    expect(screen.getAllByTestId('recipe-kind-filter')).toHaveLength(2);
+    expect(kindChip('cocktail')).toHaveAttribute('aria-pressed', 'false');
+    // All three sections, and only three — a chip row you STAND in, so a fourth
+    // would be a kind that shipped a section without anyone deciding to.
+    expect(screen.getAllByTestId('recipe-kind-filter')).toHaveLength(3);
   });
 
   it('switches sections and shows only that section', async () => {
@@ -498,5 +512,56 @@ describe('RecipeListPage — sections', () => {
     await user.click(screen.getByTestId('recipe-new-outing'));
 
     expect(push).toHaveBeenCalledWith('/recipes/new/outing');
+  });
+
+  // ─── Cocktails (Phase 5) ───────────────────────────────────────────────────
+  // A cocktail IS a recipe — ingredients, a method, the full editor and the full
+  // recipe page. It differs in exactly three places, and two of them are here: its
+  // own chip and its own way in. (The third — never offered in the dinner planner —
+  // is `isPlannable('cocktail') === false`, pinned in MealPlanWeekPage.test.ts.)
+
+  it('switches to the Cocktails section and shows only cocktails', async () => {
+    const user = userEvent.setup();
+    seed([APPLE, TAKEAWAY, NEGRONI]);
+    render(RecipeListPage);
+
+    await user.click(kindChip('cocktail'));
+
+    expect(cardTitles()).toEqual(['Negroni']);
+    expect(kindChip('cocktail')).toHaveAttribute('aria-pressed', 'true');
+    expect(kindChip('recipe')).toHaveAttribute('aria-pressed', 'false');
+    expect(normalized(screen.getByTestId('recipe-result-count'))).toContain('1 cocktail');
+  });
+
+  it('keeps cocktails out of the Recipes section', async () => {
+    // The chip row is the only thing separating them; a cocktail must not also
+    // show up under Recipes just because it is cookable.
+    seed([APPLE, NEGRONI]);
+    render(RecipeListPage);
+
+    expect(cardTitles()).toEqual(['Apple Pie']);
+  });
+
+  it('keeps the ingredient count on a cocktail card — a cocktail has ingredients', async () => {
+    const user = userEvent.setup();
+    seed([APPLE, NEGRONI]);
+    render(RecipeListPage);
+
+    await user.click(kindChip('cocktail'));
+
+    // `takesIngredients('cocktail')` is true, so unlike an outing the count stays.
+    expect(screen.getByTestId('recipe-list-item').textContent).toContain('3');
+  });
+
+  it('routes the New menu straight to the cocktail editor', async () => {
+    const user = userEvent.setup();
+    const { push } = await import('svelte-spa-router');
+    seed([APPLE]);
+    render(RecipeListPage);
+
+    await user.click(screen.getByTestId('recipe-new-btn'));
+    await user.click(screen.getByTestId('recipe-new-cocktail'));
+
+    expect(push).toHaveBeenCalledWith('/recipes/new/cocktail');
   });
 });

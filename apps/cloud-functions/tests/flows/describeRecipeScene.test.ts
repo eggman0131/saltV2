@@ -265,16 +265,98 @@ describe('describeRecipeScene flow — outings', () => {
     }
   });
 
-  it('leaves the recipe prompt untouched for an absent, "recipe", or unrecognised kind', async () => {
+  it('leaves the recipe prompt untouched for an absent or "recipe" kind', async () => {
     const absent = await systemFor(RECIPE);
     const explicit = await systemFor({ ...RECIPE, kind: 'recipe' });
-    // 'cocktail' has no prompt of its own yet (Phase 5) — it falls to the default
-    // arm rather than to nothing.
-    const unrecognised = await systemFor({ ...RECIPE, kind: 'cocktail' });
 
     expect(absent).toContain('especially the METHOD and the INGREDIENTS');
     expect(explicit).toBe(absent);
-    expect(unrecognised).toBe(absent);
     expect(absent).not.toContain('AS IT ARRIVES');
+  });
+});
+
+// ─── Cocktails (issue #637, Phase 5) ─────────────────────────────────────────
+// A cocktail sits on the far side of the outing from a recipe. The outing had to
+// LOSE the "read the method" premise; a cocktail keeps it in full — 50ml gin, 25ml
+// Campari, stir, strain, orange twist is an ingredient list and a method, and it is
+// where every visual fact about the drink lives. What changes is the SUBJECT: there
+// is no plating up a Negroni, so asked the recipe question the model reaches for
+// crockery.
+describe('describeRecipeScene flow — cocktails', () => {
+  const COCKTAIL = {
+    title: 'Negroni',
+    description: 'Equal parts, stirred, big cube.',
+    ingredients: ['25ml gin', '25ml Campari', '25ml sweet vermouth', 'an orange twist'],
+    steps: [
+      'Stir over ice until well chilled.',
+      'Strain over a big cube.',
+      'Twist orange over it.',
+    ],
+  };
+
+  const SHARED_SCOPE_RULE =
+    'Do NOT write about photographic style, lighting, lens, framing, camera angle, or what must not appear in the shot — those are fixed elsewhere and anything you say about them is discarded.';
+
+  async function systemFor(input: Record<string, unknown>): Promise<string> {
+    mockGenerate.mockClear();
+    mockGenerate.mockResolvedValue({ output: { brief: 'x' } });
+    await (describeRecipeSceneFlow as Function)(input);
+    return mockGenerate.mock.calls[0]![0].system as string;
+  }
+
+  it('asks what is in the GLASS, and still asks the model to read the method', async () => {
+    const system = await systemFor({ ...COCKTAIL, kind: 'cocktail' });
+
+    // Unlike an outing, the method premise SURVIVES — it is the only thing that
+    // knows the colour, the clarity and the serve.
+    expect(system).toContain('especially the METHOD and the INGREDIENTS');
+    expect(system).toContain('glassware the serve implies');
+    expect(system).toContain('garnish');
+    // The technique is a visual fact, not a procedural one.
+    expect(system).toContain('stirred is silky and crystal clear');
+    // But the plated-dish framing is gone: there is no plating up a Negroni.
+    expect(system).not.toContain('You are given one recipe — its title');
+    expect(system).not.toContain('cooked and plated');
+    expect(system).toContain('ONE paragraph');
+  });
+
+  it('revises a cocktail brief with the cocktail revision prompt', async () => {
+    const system = await systemFor({
+      ...COCKTAIL,
+      kind: 'cocktail',
+      currentBrief: 'A deep red Negroni on dark wood under low amber light.',
+      hint: 'make it a summer afternoon',
+    });
+
+    expect(system).toContain('Fold the change THROUGH the whole brief');
+    expect(system).toContain('what is in the glass');
+    // A steer re-directs the SHOT; it must never quietly re-pour the drink.
+    expect(system).toContain('must not turn it into a drink this recipe does not make');
+    // Neither of the other two revision prompts is the one that ran.
+    expect(system).not.toContain('The finished dish');
+    expect(system).not.toContain('vessel and packaging it arrives in');
+  });
+
+  it('inherits the shared scope rule verbatim on both cocktail variants', async () => {
+    const authoring = await systemFor({ ...COCKTAIL, kind: 'cocktail' });
+    const revising = await systemFor({
+      ...COCKTAIL,
+      kind: 'cocktail',
+      currentBrief: 'A deep red Negroni on dark wood.',
+      hint: 'make it a summer afternoon',
+    });
+
+    for (const system of [authoring, revising]) {
+      expect(system).toContain(SHARED_SCOPE_RULE);
+    }
+  });
+
+  it('does not paint a cocktail with the recipe or outing prompt', async () => {
+    const cocktail = await systemFor({ ...COCKTAIL, kind: 'cocktail' });
+    const recipe = await systemFor(RECIPE);
+    const outing = await systemFor({ ...COCKTAIL, kind: 'outing' });
+
+    expect(cocktail).not.toBe(recipe);
+    expect(cocktail).not.toBe(outing);
   });
 });
