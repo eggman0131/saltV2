@@ -374,6 +374,18 @@ module indexes. Every clock value ("today", "now", "is the shop imminent") is an
 injected parameter, which is what keeps the ranking and the 24-hour import
 window testable without faking time.
 
+`unshoppedPlannedRecipes` is the one genuinely new piece of logic in there, and
+the one place the module could plausibly have grown a `kind` branch — it has not.
+A planned entry with **no ingredient lines** is skipped, keyed on the count and
+never on the recipe's kind (#637). That is not a concession to outings: it fixes
+a live bug that pre-dated them. Any planned zero-ingredient recipe emitted a
+"needs you" card reading `missingCount: 0` that could never clear, because an
+add-to-list would write nothing and nothing could therefore ever carry a `recipe`
+source back to it. An entry with nothing to buy is the same non-problem however
+it got that way, so `packages/domain/src/personalView/` stays entirely kind-free.
+Note the ordering: the guard sits *after* the `seen` bookkeeping, so the same
+empty dish planned twice is still deduped rather than reconsidered.
+
 The goal is not architectural purity. The goal is hard, enforceable
 boundaries so that drift — by humans or AI agents — is caught by the
 build instead of accumulating into spaghetti.

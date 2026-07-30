@@ -17,11 +17,18 @@ the recipe imagery feature.
 | Tier | What | Where | Style | Generation |
 | --- | --- | --- | --- | --- |
 | **1 — pictogram** | canon-item icon | dense lists, ~30px | flat warm line-art, transparent | this feature |
-| **2 — hero** | recipe photo | recipe card/detail, large | photorealistic | **separate future issue** |
+| **2 — hero** | photo of a `recipes/{id}` entry | recipe/planner cards + detail, large | photorealistic | **separate issue** (shipped: `onRecipeWritten`) |
 
 They do not clash because they never share size or context. The recipe feature must
 **not** try to "match" the icon style — different tier, different job. Tier 2 reuses
 the same Storage + `thumbnail`-style conventions but is out of scope here.
+
+**Tier 2 is no longer only dishes.** The `recipes` collection also holds "When you
+CBA" outings and cocktails (#637), so the hero pipeline carries three art
+directions — a plated dish, food as it *arrives* (takeaway, picnic, a table out),
+and a drink in glassware — selected by the entry's `kind`. Tier 1 is unaffected:
+canon items are groceries, one style, and nothing about a hero's art direction
+reaches down here.
 
 ## House style (proven in prototype)
 
