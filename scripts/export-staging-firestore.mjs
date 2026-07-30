@@ -2,12 +2,16 @@
 // Task Pilot one-shot: export the STAGING Firestore database to a GCS bucket.
 //
 // This is the SAFE half of the staging→dev refresh — it is read-only against
-// staging. Pair it with scripts/restore-dev-from-staging.mjs, which wipes the
-// dev-cloud project and imports the newest export this produces.
+// staging. Pair it with `scripts/restore-firestore.mjs --from staging --to dev`,
+// which wipes the dev-cloud project and imports the newest export this produces.
 //
 // Sibling of scripts/export-prod-firestore.mjs (prod→staging). Same mechanism,
 // staging as the source. The point of the staging→dev copy is a faithful,
 // agent-reachable mirror on the ungated dev-cloud project (s2-dev-eggman).
+//
+// Only needed when you specifically want STAGING's state on dev (e.g. verifying
+// something a migration did to staging). For plain real-shaped data on dev, the
+// `--from prod --to dev` route skips this step entirely.
 //
 // Why managed export: it does NOT bill document reads and does NOT fire Cloud
 // Functions triggers, so it is cheap and side-effect-free on staging. `gcloud

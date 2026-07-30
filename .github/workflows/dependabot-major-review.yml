@@ -96,7 +96,7 @@ jobs:
           allowed_bots: "dependabot[bot]"
           claude_args: >-
             --max-turns 30
-            --model claude-opus-4-8
+            --model opus
             --allowed-tools "Read,Grep,Glob,WebFetch,WebSearch,Bash(git log:*),Bash(git diff:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr checks:*),Bash(gh run view:*)"
           prompt: |
             You are assessing a MAJOR-version Dependabot update for a NON-TECHNICAL
