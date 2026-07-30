@@ -65,16 +65,29 @@ than a field on a list or on the week doc.
 
 It **does not move the week.** `firstDayOfWeek` and the layout above are
 completely untouched: the shop marker sits *inside* the week wherever it falls.
-On the planner the AM/PM control lives in the day's sheet (tap the row to raise
-it, issue #640); the shop itself is drawn as a labelled rule across the week's
-list, not as a badge on the row. Marking a day clears any other in that week
-(there is one shop per week), and tapping the slot already set clears it.
 
-Days **before** the shop are shaded — they can only be cooked from food already
-in the house, which is meal-planning information and the reason to record the
-date at all beyond the reminder. The predicate is the pure
-`isBeforeShop(day, shopDate)` in `packages/domain/src/shoppingDay/`; the shop day
-itself is not shaded, and an unmarked week shades nothing (it makes no claim).
+**Which day you shop is a fact about the week, so it is set at the week** (issue
+#640, Phase 4). The planner carries one control under its week nav: a button that
+says the current answer — *Shop · Sat 1 pm*, or *No shop day set* — opening a
+picker that holds the week's seven days in `firstDayOfWeek` order, each with AM
+and PM. One tap sets both halves and closes it; *No shop day* clears. When the
+planner is also showing next week (#639) that week is offered too, under its own
+heading — from the last two days of the cycle the week you are provisioning *is*
+next week — and `setShopDay` scopes its one-shop-per-week clear by the **date's
+own** week, so marking one week's shop never disturbs the other's. Until #640 the
+AM/PM pair lived inside a single day's sheet: you opened Thursday to say "we shop
+Thursday", and the answer then appeared as a rule across the list, somewhere else
+entirely. Nothing about the shop is left in `MealDayEditor`, in either of its
+shapes.
+
+The shop itself is **drawn as a labelled rule across the week's list** — a cart,
+the slot, then a hairline to the edge — not as a badge on a row, so the week
+visibly divides into before the shop and after wherever the shop falls.
+
+Days before the shop are **not** shaded: #639 dropped the pre-shop wash along
+with the per-row pill, leaving the rule as the whole display. The pure predicate
+`isBeforeShop(day, shopDate)` in `packages/domain/src/shoppingDay/` survives,
+tested, but is wired to no surface today.
 
 The **default shopping list** carries the same fact as a read-only line under the
 list name — *Shopping Sat AM* — tapping through to that week in the planner via

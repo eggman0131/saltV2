@@ -33,7 +33,7 @@
     type Recipe,
     type TemperatureBand,
   } from '@salt/domain';
-  import type { WeatherDaySummary, ShoppingSlot } from '@salt/domain/schemas';
+  import type { WeatherDaySummary } from '@salt/domain/schemas';
   import WeatherIcon from '$lib/weather-icons/WeatherIcon.svelte';
   import WeatherSummary from './WeatherSummary.svelte';
 
@@ -103,14 +103,6 @@
     // Absent in the recipe-free template editor, so it gains no shopping UI — all
     // shopping imports stay out of this shared component.
     onRecipeAddToList?: (recipe: Recipe) => void;
-    // ─── Shop day (issue #629) ──────────────────────────────────────────────
-    // Both are date-only concepts, so the weekday-keyed template editor omits
-    // them and stays shop-free. The parent owns which date is the shop and the
-    // one-shop-per-week rule; this component only reports the picked slot.
-    // `shopSlot` non-null ⇒ THIS day is the shop. The shop is DISPLAYED by the
-    // page as a labelled rule across the list (#639), not by this row.
-    shopSlot?: ShoppingSlot | null;
-    onShopSlotChange?: (slot: ShoppingSlot | null) => void;
   }
   let {
     label,
@@ -131,15 +123,7 @@
     onGuestsChange,
     onRecipesChange,
     onRecipeAddToList,
-    shopSlot = null,
-    onShopSlotChange,
   }: Props = $props();
-
-  // Tapping the slot that is already set clears the shop day — one control, three
-  // states (none / AM / PM), no separate "clear" affordance to find.
-  function pickSlot(slot: ShoppingSlot): void {
-    onShopSlotChange?.(shopSlot === slot ? null : slot);
-  }
 
   // The sheet's heading. Falls back to the rail's own words, which is the whole
   // answer for the template editor ("Monday") and a sane one anywhere else.
@@ -471,37 +455,6 @@
            tap-tooltip metric chips. -->
         {#if weather}
           <WeatherSummary {weather} testid={`${testid}-weather`} />
-        {/if}
-
-        <!-- 1b. Shop day (#629): mark this day as the week's shop, AM or PM.
-           Rendered only in the dated week editor (onShopSlotChange present); the
-           weekday template editor omits the prop and stays shop-free. Tapping the
-           active slot clears it — one control, three states. The parent clears any
-           other shop day in the week, so there is exactly one. -->
-        {#if onShopSlotChange}
-          <div class="flex flex-col gap-1.5" data-testid={`${testid}-shop`}>
-            <div class="flex items-center gap-2">
-              <span class="flex-1 text-xs font-medium text-muted-foreground">Shopping day</span>
-              <Button
-                variant={shopSlot === 'am' ? 'solid' : 'outline'}
-                size="sm"
-                onclick={() => pickSlot('am')}
-                aria-pressed={shopSlot === 'am'}
-                data-testid={`${testid}-shop-am`}
-              >
-                AM
-              </Button>
-              <Button
-                variant={shopSlot === 'pm' ? 'solid' : 'outline'}
-                size="sm"
-                onclick={() => pickSlot('pm')}
-                aria-pressed={shopSlot === 'pm'}
-                data-testid={`${testid}-shop-pm`}
-              >
-                PM
-              </Button>
-            </div>
-          </div>
         {/if}
 
         <!-- 2. Dinner: the meal field and any attached recipes, grouped. -->

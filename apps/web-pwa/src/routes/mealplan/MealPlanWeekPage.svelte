@@ -250,16 +250,42 @@
     addShopOpen = true;
   }
 
-  // ─── Shop day (issue #629) ────────────────────────────────────────────────
+  // ─── Shop day (issue #629, moved to the week by #640 Phase 4) ─────────────
   // The shop marker sits INSIDE the week wherever it falls — `firstDayOfWeek` and
   // the layout above are completely untouched, so the shop can move freely week to
   // week without disturbing anything. The service owns the one-shop-per-week rule
   // (marking a day clears any other in the same week) and keys its markers BY WEEK,
   // so with two weeks on screen each draws its own rule and marking next week's
   // shop never clears this week's.
+  //
+  // WHICH day you shop is a fact about the WEEK, so it is now set at the week's
+  // own altitude: one control under the week nav, not a block inside one day's
+  // sheet. Before, you opened Thursday to say "we shop Thursday" and the answer
+  // then appeared as a rule across the list, somewhere else entirely.
   async function changeShopSlot(date: string, slot: ShoppingSlot | null): Promise<void> {
     const result = slot === null ? await clearShopDay(date) : await setShopDay(date, slot);
     if (result.kind !== 'ok') addToast('Failed to save the shopping day.', 'destructive');
+  }
+
+  // The picker follows the page's own header idiom (the same shape as "Load
+  // template"): a small button that says the current answer, opening a dialog that
+  // holds the whole choice. A Select of fourteen day×slot pairs would say the same
+  // thing in a list you have to scroll on a phone; here every day of the week is on
+  // screen at once and ONE tap sets both the day and the slot.
+  let showShopPicker = $state(false);
+
+  const shopLabel = $derived(
+    $weekShopDay
+      ? `Shop · ${fmt($weekShopDay.date, { weekday: 'short', day: 'numeric' })} ${$weekShopDay.slot}`
+      : 'No shop day set',
+  );
+
+  // One tap = the whole answer, so the dialog closes on it. Closing first keeps the
+  // write off the dismissal path: the toast on failure (Rule 10) is the report, and
+  // it is not worth holding the dialog open behind a Firestore round trip.
+  function pickShopDay(date: string, slot: ShoppingSlot | null): void {
+    showShopPicker = false;
+    void changeShopSlot(date, slot);
   }
 
   // ─── Load template: which week? (#639, Phase 7) ───────────────────────────
@@ -441,8 +467,6 @@
           testid={`day-${date}`}
           isToday={date === todayDate}
           weather={$weatherForecast?.days[date]}
-          shopSlot={shop?.date === date ? shop.slot : null}
-          onShopSlotChange={(slot) => void changeShopSlot(date, slot)}
           onNoteChange={(note) => void save(setWeekDayNote(date, note))}
           onRecipesChange={(ids) => void save(setWeekDayRecipes(date, ids))}
           onRecipeAddToList={openRecipeAddToList}
@@ -455,6 +479,60 @@
       </div>
     {/if}
   {/each}
+{/snippet}
+
+<!-- One week's days as shop options: the day written out, then AM and PM. The
+     order is `weekDates`, so the list runs in the household's own week order
+     (`firstDayOfWeek`) rather than a hard-coded Mon–Sun. "No shop day" appears
+     only for a week that HAS one — there is nothing to clear otherwise, and an
+     always-present clear would be the loudest thing in a list of days. -->
+{#snippet shopWeekOptions(dateList: string[], shop: ShoppingDayDoc | null, heading: string | null)}
+  {#if heading}
+    <p class="pt-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+      {heading}
+    </p>
+  {/if}
+  {#each dateList as d (d)}
+    {@const isShop = shop?.date === d}
+    <div class="flex items-center gap-2" data-testid={`week-shop-row-${d}`}>
+      <span
+        class="min-w-0 flex-1 truncate text-sm {isShop
+          ? 'font-medium text-foreground'
+          : 'text-muted-foreground'}"
+      >
+        {fmt(d, { weekday: 'long', day: 'numeric', month: 'short' })}
+      </span>
+      <Button
+        variant={isShop && shop?.slot === 'am' ? 'solid' : 'outline'}
+        size="sm"
+        onclick={() => pickShopDay(d, 'am')}
+        aria-pressed={isShop && shop?.slot === 'am'}
+        data-testid={`week-shop-${d}-am`}
+      >
+        AM
+      </Button>
+      <Button
+        variant={isShop && shop?.slot === 'pm' ? 'solid' : 'outline'}
+        size="sm"
+        onclick={() => pickShopDay(d, 'pm')}
+        aria-pressed={isShop && shop?.slot === 'pm'}
+        data-testid={`week-shop-${d}-pm`}
+      >
+        PM
+      </Button>
+    </div>
+  {/each}
+  {#if shop}
+    {@const marked = shop.date}
+    <button
+      type="button"
+      class="self-start text-xs text-muted-foreground underline-offset-2 hover:underline"
+      onclick={() => pickShopDay(marked, null)}
+      data-testid={`week-shop-clear-${dateList[0]}`}
+    >
+      No shop day
+    </button>
+  {/if}
 {/snippet}
 
 <ListPage title="Meal plan" isLoading={$isLoadingMealPlanWeek} fill class="p-4 sm:p-6">
@@ -481,6 +559,24 @@
       </div>
       <Button variant="outline" size="sm" onclick={nextWeek} aria-label="Next week">
         <ChevronRight class="h-4 w-4" />
+      </Button>
+    </div>
+
+    <!-- The week's shop day (#640, Phase 4). It sits with the week's own heading,
+         beside the dates it is a fact about — not inside a day, which is where it
+         used to be set and nowhere near where it is shown. The button SAYS the
+         current answer, so the week's provisioning reads off the header without
+         opening anything; the rule across the list still marks it in place. -->
+    <div class="mt-1 flex justify-center" data-testid="week-shop">
+      <Button
+        variant="ghost"
+        size="sm"
+        class="gap-1.5 {$weekShopDay ? 'text-foreground' : 'text-muted-foreground'}"
+        onclick={() => (showShopPicker = true)}
+        data-testid="week-shop-trigger"
+      >
+        <ShoppingCart class="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden="true" />
+        {shopLabel}
       </Button>
     </div>
 
@@ -675,6 +771,41 @@
           data-testid="load-template-confirm-btn"
         >
           Load template
+        </Button>
+      </DialogFooter>
+    </div>
+  </DialogContent>
+</Dialog>
+
+<!-- Which day do we shop? (#640, Phase 4). The whole week is on screen at once and
+     one tap answers both halves of the question — the day and the slot — so the
+     dialog closes on it. When next week is appended to the deck it is offered here
+     too, under its own heading: on a Wednesday the week you are provisioning IS
+     next week, and the service scopes "one shop per week" by the DATE's week, so
+     marking one week's shop never disturbs the other's. -->
+<Dialog open={showShopPicker} onOpenChange={(v) => (showShopPicker = v)}>
+  <DialogContent>
+    <div class="flex flex-col gap-4" data-testid="week-shop-picker">
+      <DialogHeader>
+        <DialogTitle>Shopping day</DialogTitle>
+        <DialogDescription>
+          One shop a week. AM or PM is a note to each other — the reminder comes the evening before
+          either way.
+        </DialogDescription>
+      </DialogHeader>
+      <div class="flex max-h-[60dvh] flex-col gap-1.5 overflow-y-auto">
+        {@render shopWeekOptions(dates, $weekShopDay, extensionDates.length ? 'This week' : null)}
+        {#if extensionDates.length}
+          {@render shopWeekOptions(extensionDates, $extensionWeekShopDay, 'Next week')}
+        {/if}
+      </div>
+      <DialogFooter>
+        <Button
+          variant="outline"
+          onclick={() => (showShopPicker = false)}
+          data-testid="week-shop-done"
+        >
+          Done
         </Button>
       </DialogFooter>
     </div>

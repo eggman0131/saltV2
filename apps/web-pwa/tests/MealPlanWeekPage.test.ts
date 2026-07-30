@@ -170,6 +170,7 @@ import {
   setWeekAttendeeNote,
 } from '../src/lib/mealPlanService.js';
 import { addToast } from '../src/lib/toastStore.js';
+import { setShopDay, clearShopDay } from '../src/lib/shoppingDayService.js';
 
 // A week whose single day already has recipe r1 attached, so its detail renders a
 // recipe row (with the per-row "Add to shop" action) without going through the
@@ -189,6 +190,24 @@ function weekWithRecipe(date: string): MealPlanWeek {
 // portalled dialog on <body>, which `screen` queries reach exactly as before.
 async function openDay(date: string): Promise<void> {
   await userEvent.click(screen.getByTestId(`day-${date}-summary`));
+}
+
+// The week's shop-day picker (#640, Phase 4): a header button that says the
+// current answer, opening the whole week's choice — the same shape as "Load
+// template", and reached the same way.
+async function openShopPicker(): Promise<void> {
+  await userEvent.click(screen.getByTestId('week-shop-trigger'));
+  await waitFor(() => screen.getByTestId('week-shop-picker'));
+}
+
+// Close it the way a user would. A test that ENDS with the dialog open is torn
+// down mid-modal, and bits-ui's focus scope is module-level state: the abandoned
+// scope outlives the unmount and fights the next test's sheet for focus, which
+// shows up as keystrokes landing nowhere in a later, unrelated test. Picking a
+// day closes the dialog by itself; the tests that only look must close it.
+async function closeShopPicker(): Promise<void> {
+  await userEvent.click(screen.getByTestId('week-shop-done'));
+  await waitFor(() => expect(screen.queryByTestId('week-shop-picker')).not.toBeInTheDocument());
 }
 
 function member(id: string, name: string): Member {
@@ -601,6 +620,111 @@ describe('MealPlanWeekPage', () => {
     expect(screen.queryByTestId('day-2026-06-10-shop-marker')).not.toBeInTheDocument();
   });
 
+  // ─── The shop day is chosen at the WEEK (#640, Phase 4) ───────────────────
+  // Which day you shop is a fact about the week, so it is set once beside the
+  // week's own dates — never by opening a day. The rule across the list keeps
+  // displaying the answer (asserted above, unchanged).
+
+  it('says the week’s shop day on the week header', () => {
+    mockShopDay._set({ date: '2026-06-10', slot: 'am' });
+    render(MealPlanWeekPage);
+    const trigger = screen.getByTestId('week-shop-trigger');
+    expect(trigger).toHaveTextContent('Shop');
+    expect(trigger).toHaveTextContent('am');
+  });
+
+  it('says so when the week has no shop day yet', () => {
+    render(MealPlanWeekPage);
+    expect(screen.getByTestId('week-shop-trigger')).toHaveTextContent('No shop day set');
+  });
+
+  it('sets the day and the slot in one tap, without opening a day', async () => {
+    render(MealPlanWeekPage);
+    await openShopPicker();
+    await userEvent.click(screen.getByTestId('week-shop-2026-06-10-pm'));
+
+    expect(vi.mocked(setShopDay)).toHaveBeenCalledWith('2026-06-10', 'pm');
+    // The choice was the whole question, so the dialog closes on it.
+    await waitFor(() => expect(screen.queryByTestId('week-shop-picker')).not.toBeInTheDocument());
+  });
+
+  it('offers the week’s own seven days, in the household’s week order', async () => {
+    // `firstDayOfWeek` is a setting ('fri' in production), so the list follows
+    // `weekDates` rather than a hard-coded Mon–Sun.
+    mockFirstDay._set('fri');
+    mockStart._set('2026-06-12');
+    mockWeek._set(emptyWeek('2026-06-12'));
+    render(MealPlanWeekPage);
+    await openShopPicker();
+
+    const rows = screen.getAllByTestId(/^week-shop-row-/);
+    expect(rows.map((r) => r.dataset.testid)).toEqual(
+      weekDates('2026-06-12').map((d) => `week-shop-row-${d}`),
+    );
+    await closeShopPicker();
+  });
+
+  it('shows which slot is set, and moves the shop to another day', async () => {
+    mockShopDay._set({ date: '2026-06-10', slot: 'am' });
+    render(MealPlanWeekPage);
+    await openShopPicker();
+    // The marked day reads as chosen — at its slot only.
+    expect(screen.getByTestId('week-shop-2026-06-10-am')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('week-shop-2026-06-10-pm')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('week-shop-2026-06-12-am')).toHaveAttribute('aria-pressed', 'false');
+
+    await userEvent.click(screen.getByTestId('week-shop-2026-06-12-am'));
+    expect(vi.mocked(setShopDay)).toHaveBeenCalledWith('2026-06-12', 'am');
+    // Moving it is one write: the service owns the one-shop-per-week clear, and
+    // this phase must not reopen that.
+    expect(vi.mocked(clearShopDay)).not.toHaveBeenCalled();
+  });
+
+  it('clears the week’s shop day', async () => {
+    mockShopDay._set({ date: '2026-06-10', slot: 'am' });
+    render(MealPlanWeekPage);
+    await openShopPicker();
+    await userEvent.click(screen.getByTestId('week-shop-clear-2026-06-08'));
+
+    expect(vi.mocked(clearShopDay)).toHaveBeenCalledWith('2026-06-10');
+    expect(vi.mocked(setShopDay)).not.toHaveBeenCalled();
+  });
+
+  it('offers nothing to clear on a week with no shop day', async () => {
+    render(MealPlanWeekPage);
+    await openShopPicker();
+    expect(screen.queryByTestId('week-shop-clear-2026-06-08')).not.toBeInTheDocument();
+    await closeShopPicker();
+  });
+
+  it('offers no shop control inside a day any more', async () => {
+    mockShopDay._set({ date: '2026-06-10', slot: 'am' });
+    render(MealPlanWeekPage);
+    await openDay('2026-06-10');
+
+    expect(screen.getByTestId('day-2026-06-10-detail')).toBeInTheDocument();
+    expect(screen.queryByTestId('day-2026-06-10-shop')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('day-2026-06-10-shop-am')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('day-2026-06-10-shop-pm')).not.toBeInTheDocument();
+  });
+
+  it('surfaces a failed shop-day save as a toast (Rule 10)', async () => {
+    vi.mocked(setShopDay).mockResolvedValueOnce({
+      kind: 'err',
+      error: { kind: 'StorageError', code: 'nope', message: 'nope' },
+    } as never);
+    render(MealPlanWeekPage);
+    await openShopPicker();
+    await userEvent.click(screen.getByTestId('week-shop-2026-06-10-am'));
+
+    await waitFor(() =>
+      expect(vi.mocked(addToast)).toHaveBeenCalledWith(
+        'Failed to save the shopping day.',
+        'destructive',
+      ),
+    );
+  });
+
   // ─── Home time is one control (#640, Phase 2) ────────────────────────────
   // Taps go through `fireEvent`, not `userEvent`, for the reason spelled out
   // above `attachRecipe`: `userEvent` focuses on pointerdown and the popover can
@@ -706,14 +830,22 @@ describe('MealPlanWeekPage', () => {
 
     // One tap reveals it, and typing saves per keystroke (fire-and-forget).
     await fireEvent.click(toggle);
-    const input = await screen.findByTestId('day-2026-06-08-attnote-alice@e.org');
+    expect(await screen.findByTestId('day-2026-06-08-attnote-alice@e.org')).toBeInTheDocument();
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    await userEvent.type(input, 'late');
+    // `fireEvent.input` on a node queried in the SAME expression, not
+    // `userEvent.type` on one held from a previous await. This field is created
+    // by the tap above, and userEvent's click-then-keystroke round trip leaves
+    // the sheet a window to re-render it: under load the keystrokes then land on
+    // a node Svelte's delegated handler no longer reaches and NOTHING is saved —
+    // a ~50% flake under the full suite, silent when the file runs alone.
+    await fireEvent.input(screen.getByTestId('day-2026-06-08-attnote-alice@e.org'), {
+      target: { value: 'late' },
+    });
     await waitFor(() =>
       expect(vi.mocked(setWeekAttendeeNote)).toHaveBeenCalledWith(
         '2026-06-08',
         'alice@e.org',
-        expect.any(String),
+        'late',
       ),
     );
 
@@ -1163,6 +1295,26 @@ describe('MealPlanWeekPage — next week appears from Wednesday (#639, Phase 6)'
     await waitFor(() => expect(screen.getByTestId('next-week-mark')).toBeInTheDocument());
     expect(screen.getByTestId(`day-${thisShop}-shop-marker`)).toHaveTextContent('pm');
     expect(screen.getByTestId(`day-${nextShop}-shop-marker`)).toHaveTextContent('am');
+  });
+
+  it("offers next week's days in the shop picker, and leaves this week's shop alone", async () => {
+    // On a Wednesday the week you are provisioning IS next week, so the days on
+    // the deck are the days on offer. Marking one is week-scoped by the service.
+    const { start, next } = weekAroundTodayWithNext(5);
+    const thisShop = weekDates(start)[6]!;
+    mockShopDay._set({ date: thisShop, slot: 'pm' });
+    renderLaidOut(start, next);
+    await waitFor(() => expect(screen.getByTestId('next-week-mark')).toBeInTheDocument());
+
+    await openShopPicker();
+    const nextShop = weekDates(next)[1]!;
+    await userEvent.click(screen.getByTestId(`week-shop-${nextShop}-am`));
+
+    expect(vi.mocked(setShopDay)).toHaveBeenCalledWith(nextShop, 'am');
+    // Nothing here clears anything: one shop per week is the service's rule, and
+    // this week's rule is still drawn.
+    expect(vi.mocked(clearShopDay)).not.toHaveBeenCalled();
+    expect(screen.getByTestId(`day-${thisShop}-shop-marker`)).toBeInTheDocument();
   });
 
   it("marks next week's rows for the terracotta rail, and leaves this week's alone", async () => {
