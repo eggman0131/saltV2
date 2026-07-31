@@ -263,8 +263,9 @@ export {
   diffRecipe,
   pickPlaceholder,
   PLACEHOLDER_MOODS,
+  PLACEHOLDER_CONDITION_TAGS,
 } from './recipe/index.js';
-export type { PlaceholderMood } from './recipe/index.js';
+export type { PlaceholderMood, PlaceholderCondition } from './recipe/index.js';
 export type { ParsedImportUrl, IpClass } from './recipe/index.js';
 export {
   parseImportUrl,

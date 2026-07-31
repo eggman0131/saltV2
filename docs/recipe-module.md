@@ -233,6 +233,40 @@ Decisions worth not relitigating:
   picks within the mood. The caller reads both once, when the day is planned, and
   stores the id — so the picture cannot drift after the fact as the forecast ages
   out of its ~14-day horizon.
+- **Condition tags WEIGHT the draw; they never filter it.** The mood is the one
+  hard filter, so a February night can never wear a summer table. Beyond it a
+  picture is worth `1 + (condition tags it shares with the evening)`, and the day
+  draws from that distribution by `hash(dateKey) % totalWeight`. Five tags exist —
+  `wet`, `sunny`, `cloudy`, `hot`, `cold` — each firing on a cutoff that already
+  existed (`classifyEatingMood`'s rain/clear/cloudy signals; `temperatureBand` for
+  the two extremes), so a tag can never disagree with the planner about the
+  weather. Adding another is one line in `conditionsFor`.
+
+  Three properties follow, and all three are the point:
+  1. **A closer match is proportionally likelier** — two matching tags beat one.
+  2. **An untagged picture keeps a real chance** (the `+1` base weight), so no
+     combination of weather can starve a day.
+  3. **The gradient is smooth** — tag one picture `sunny` and it is slightly
+     likelier on a sunny evening; make five more and that kind fills most sunny
+     evenings, with no threshold to cross and nothing to switch on.
+
+  Rejected, in order. **More mood values:** two moods × four seasons × wet/dry is
+  sixteen buckets needing ~80 images to be as robust as ten are now, and every
+  empty bucket is a night that renders as text. **A filtering cascade** (narrow to
+  the tag, widen if empty): it starves — tag one picture `wet` and it becomes the
+  answer to *every* rainy evening, manufacturing the repetition the tags exist to
+  cure. **A shortlist of the top N, picked uniformly:** score then decides only
+  membership of the shortlist, not odds within it, so a two-tag match and an
+  untagged picture that both make the cut are equally likely — which is not a
+  ranking at all.
+- **A heroless placeholder is never picked.** `image` is required-but-nullable, so
+  a document whose generation failed parses perfectly well and reads back as
+  `image: null`; without the guard it would hand a night a card with no
+  photograph, which is worse than the text it replaced. (A document missing the
+  field entirely fails validation and never reaches the app, so the guard exists
+  precisely for the failed-generation case.) This is what makes the library safe
+  to grow casually — a generation that quietly fails costs you one picture, not a
+  blank card on a planner day.
 
 Open question, recorded not resolved: whether "When you CBA" entries should
 eventually be excluded from Chef Chat's recipe context. Not blocking — Ask/amend
