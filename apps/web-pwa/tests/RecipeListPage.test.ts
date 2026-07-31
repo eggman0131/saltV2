@@ -363,30 +363,76 @@ const NEGRONI = makeRecipe({
   createdAt: '2026-06-03T00:00:00.000Z',
 });
 
-function kindChip(kind: string): HTMLElement {
+function queryKindChip(kind: string): HTMLElement | undefined {
   const row = screen.getByTestId('recipe-kind-filters');
-  const chip = within(row)
-    .getAllByTestId('recipe-kind-filter')
+  return within(row)
+    .queryAllByTestId('recipe-kind-filter')
     .find((b) => b.getAttribute('data-kind') === kind);
+}
+
+function kindChip(kind: string): HTMLElement {
+  const chip = queryKindChip(kind);
   if (!chip) throw new Error(`no chip for kind ${kind}`);
   return chip;
 }
 
+// Only the primary sections are on screen to start with; the rest sit behind the
+// "+N more" chip. Reaching one is reveal-then-pick, so every test that switches
+// section goes through here rather than assuming which chips are rendered.
+async function pickKind(user: ReturnType<typeof userEvent.setup>, kind: string): Promise<void> {
+  if (!queryKindChip(kind)) await user.click(screen.getByTestId('recipe-kind-show-all'));
+  await user.click(kindChip(kind));
+}
+
 describe('RecipeListPage — sections', () => {
-  it('shows only recipes by default, with every section still offered', () => {
+  it('shows only recipes by default, behind the two primary section chips', () => {
     seed([APPLE, TAKEAWAY, PICNIC]);
     render(RecipeListPage);
 
     expect(cardTitles()).toEqual(['Apple Pie']);
     expect(kindChip('recipe')).toHaveAttribute('aria-pressed', 'true');
-    expect(kindChip('outing')).toHaveAttribute('aria-pressed', 'false');
     expect(kindChip('cocktail')).toHaveAttribute('aria-pressed', 'false');
-    expect(kindChip('placeholder')).toHaveAttribute('aria-pressed', 'false');
+    // The other two are not gone, just folded away — the row leads with the
+    // sections you browse and counts the rest, exactly as the tag row does.
+    expect(queryKindChip('outing')).toBeUndefined();
+    expect(queryKindChip('placeholder')).toBeUndefined();
+    expect(screen.getAllByTestId('recipe-kind-filter')).toHaveLength(2);
+    expect(normalized(screen.getByTestId('recipe-kind-show-all'))).toBe('+2 more');
+  });
+
+  it('reveals every section behind the "+N more" chip, and folds them back', async () => {
+    const user = userEvent.setup();
+    seed([APPLE, TAKEAWAY, PICNIC]);
+    render(RecipeListPage);
+
+    await user.click(screen.getByTestId('recipe-kind-show-all'));
+
     // All four sections, and only four — a chip row you STAND in, so a fifth
     // would be a kind that shipped a section without anyone deciding to. The
     // fourth (issue #652) was decided: you need somewhere to open Regenerate
     // from, and that is the view page you reach from this grid.
     expect(screen.getAllByTestId('recipe-kind-filter')).toHaveLength(4);
+    expect(kindChip('outing')).toHaveAttribute('aria-pressed', 'false');
+    expect(kindChip('placeholder')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByTestId('recipe-kind-show-all')).toBeNull();
+
+    await user.click(screen.getByTestId('recipe-kind-show-less'));
+    expect(screen.getAllByTestId('recipe-kind-filter')).toHaveLength(2);
+  });
+
+  it('pins the section you are standing in when the row folds back up', async () => {
+    const user = userEvent.setup();
+    seed([APPLE, TAKEAWAY, PICNIC]);
+    render(RecipeListPage);
+
+    await pickKind(user, 'outing');
+    await user.click(screen.getByTestId('recipe-kind-show-less'));
+
+    // Collapsing must never hide the chip that says where you are — otherwise
+    // the row claims you are in Recipes while the grid shows outings.
+    expect(kindChip('outing')).toHaveAttribute('aria-pressed', 'true');
+    expect(cardTitles()).toEqual(['Picnic food', 'Takeaway — Indian']);
+    expect(queryKindChip('placeholder')).toBeUndefined();
   });
 
   it('switches sections and shows only that section', async () => {
@@ -394,7 +440,7 @@ describe('RecipeListPage — sections', () => {
     seed([APPLE, BANANA, TAKEAWAY, PICNIC]);
     render(RecipeListPage);
 
-    await user.click(kindChip('outing'));
+    await pickKind(user, 'outing');
 
     expect(cardTitles()).toEqual(['Picnic food', 'Takeaway — Indian']);
     expect(kindChip('outing')).toHaveAttribute('aria-pressed', 'true');
@@ -409,7 +455,7 @@ describe('RecipeListPage — sections', () => {
     seed([APPLE, BANANA]);
     render(RecipeListPage);
 
-    await user.click(kindChip('outing'));
+    await pickKind(user, 'outing');
 
     expect(screen.queryByTestId('recipe-list')).toBeNull();
     expect(screen.getByTestId('recipe-kind-empty')).toBeInTheDocument();
@@ -431,7 +477,7 @@ describe('RecipeListPage — sections', () => {
 
     expect(filterTags()).toEqual(['baking', 'dessert', 'quick']);
 
-    await user.click(kindChip('outing'));
+    await pickKind(user, 'outing');
     // Only the outings' own tags — "baking" and "dessert" are recipe vocabulary.
     expect(filterTags()).toEqual(['friday', 'quick', 'summer']);
   });
@@ -451,7 +497,7 @@ describe('RecipeListPage — sections', () => {
     const search = screen.getByTestId('recipe-search-input');
     await user.type(search, 'a');
 
-    await user.click(kindChip('outing'));
+    await pickKind(user, 'outing');
 
     // Tag dropped: both outings show, not just the one tagged "quick".
     expect(
@@ -469,7 +515,7 @@ describe('RecipeListPage — sections', () => {
     seed([APPLE, TAKEAWAY, PICNIC]);
     render(RecipeListPage);
 
-    await user.click(kindChip('outing'));
+    await pickKind(user, 'outing');
     await user.type(screen.getByTestId('recipe-search-input'), 'picnic');
     expect(cardTitles()).toEqual(['Picnic food']);
 
@@ -484,7 +530,7 @@ describe('RecipeListPage — sections', () => {
     seed([APPLE, TAKEAWAY, PICNIC]);
     render(RecipeListPage);
 
-    await user.click(kindChip('outing'));
+    await pickKind(user, 'outing');
     expect(normalized(screen.getByTestId('recipe-result-count'))).not.toContain('filtered');
 
     await user.type(screen.getByTestId('recipe-search-input'), 'picnic');
@@ -499,7 +545,7 @@ describe('RecipeListPage — sections', () => {
     // A recipe card carries three meta chips (time, servings, ingredients).
     expect(screen.getByTestId('recipe-list-item').textContent).toContain('5');
 
-    await user.click(kindChip('outing'));
+    await pickKind(user, 'outing');
     // No "0 ingredients" chip on a takeaway — the concept does not apply.
     const card = screen.getByTestId('recipe-list-item');
     expect(card.textContent).not.toContain('0');
@@ -528,7 +574,7 @@ describe('RecipeListPage — sections', () => {
     seed([APPLE, TAKEAWAY, NEGRONI]);
     render(RecipeListPage);
 
-    await user.click(kindChip('cocktail'));
+    await pickKind(user, 'cocktail');
 
     expect(cardTitles()).toEqual(['Negroni']);
     expect(kindChip('cocktail')).toHaveAttribute('aria-pressed', 'true');
@@ -550,7 +596,7 @@ describe('RecipeListPage — sections', () => {
     seed([APPLE, NEGRONI]);
     render(RecipeListPage);
 
-    await user.click(kindChip('cocktail'));
+    await pickKind(user, 'cocktail');
 
     // `takesIngredients('cocktail')` is true, so unlike an outing the count stays.
     expect(screen.getByTestId('recipe-list-item').textContent).toContain('3');

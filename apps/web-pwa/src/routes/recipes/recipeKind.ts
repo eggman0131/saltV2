@@ -124,3 +124,13 @@ export const KIND_COPY: Record<RecipeKind, KindCopy> = {
 // below reads the kind's words from KIND_COPY and its behaviour from the domain
 // capability predicates. Nothing else needs a fourth case.
 export const KIND_SECTIONS: readonly RecipeKind[] = ['recipe', 'outing', 'cocktail', 'placeholder'];
+
+// The sections whose chips are shown before you ask for the rest. Everything in
+// KIND_SECTIONS still exists and is still one tap away — the chip row just leads
+// with the two sections you actually browse (you cook dinner, you make a drink)
+// and folds the rest behind a "+N more" chip, exactly as the tag row does. The
+// two it hides are both places you WRITE to more than you read from: "When you
+// CBA" is a handful of standing answers, and a placeholder is picked for you by
+// the planner rather than browsed. Membership here is a presentation choice, so
+// it lives beside the copy; it never decides whether a section exists.
+export const PRIMARY_KIND_SECTIONS: readonly RecipeKind[] = ['recipe', 'cocktail'];

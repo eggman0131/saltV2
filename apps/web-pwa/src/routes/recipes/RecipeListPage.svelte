@@ -18,7 +18,7 @@
     stashImportedDraft,
   } from '../../lib/recipeService.js';
   import { addToast } from '../../lib/toastStore.js';
-  import { KIND_COPY, KIND_SECTIONS, kindOf } from './recipeKind.js';
+  import { KIND_COPY, KIND_SECTIONS, PRIMARY_KIND_SECTIONS, kindOf } from './recipeKind.js';
 
   function ingredientCount(recipe: Recipe): number {
     return recipe.ingredients.reduce((n, g) => n + g.items.length, 0);
@@ -75,10 +75,24 @@
     showAllTags = false;
   }
 
-  // Popover open state for the "New" and sort menus, plus the tag-list expander.
+  // Popover open state for the "New" and sort menus, plus the two chip-row
+  // expanders (sections, tags).
   let newMenuOpen = $state(false);
   let sortMenuOpen = $state(false);
   let showAllTags = $state(false);
+  let showAllKinds = $state(false);
+
+  // Collapsed, the row offers the primary sections only; the rest sit behind a
+  // "+N more" chip in the tag row's idiom. The section you are STANDING in is
+  // pinned in regardless — collapsing must never hide the chip that says where
+  // you are, and single-select means there is always exactly one to pin.
+  const shownKinds = $derived.by(() => {
+    if (showAllKinds) return KIND_SECTIONS;
+    const primary = KIND_SECTIONS.filter((k) => PRIMARY_KIND_SECTIONS.includes(k));
+    return primary.includes(kindFilter) ? primary : [...primary, kindFilter];
+  });
+
+  const hiddenKindCount = $derived(KIND_SECTIONS.length - shownKinds.length);
 
   const query = $derived(searchText.trim().toLowerCase());
 
@@ -379,14 +393,16 @@
          that there is nothing there yet, otherwise the only signal that the
          section exists is a New-menu entry. Hand-rolled in the same idiom as the
          tag chips below (there is no chip primitive in @salt/ui-components),
-         adapted to single-select — exactly one is pressed at all times. -->
+         adapted to single-select — exactly one is pressed at all times.
+         Collapsed to the primary sections by default and expanded by the same
+         "+N more" chip the tags use: still offered, just not all at once. -->
     <div
       class="mb-3 flex flex-wrap gap-1.5"
       role="group"
       aria-label="Section"
       data-testid="recipe-kind-filters"
     >
-      {#each KIND_SECTIONS as kind (kind)}
+      {#each shownKinds as kind (kind)}
         {@const active = kind === kindFilter}
         <button
           type="button"
@@ -401,6 +417,25 @@
           {KIND_COPY[kind].label}
         </button>
       {/each}
+      {#if hiddenKindCount > 0}
+        <button
+          type="button"
+          class="rounded-full border border-dashed border-border px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted"
+          onclick={() => (showAllKinds = true)}
+          data-testid="recipe-kind-show-all"
+        >
+          +{hiddenKindCount} more
+        </button>
+      {:else if showAllKinds}
+        <button
+          type="button"
+          class="rounded-full border border-dashed border-border px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted"
+          onclick={() => (showAllKinds = false)}
+          data-testid="recipe-kind-show-less"
+        >
+          Show less
+        </button>
+      {/if}
     </div>
 
     <!-- Search + sort toolbar: search fills the row, sort collapses to an icon -->
