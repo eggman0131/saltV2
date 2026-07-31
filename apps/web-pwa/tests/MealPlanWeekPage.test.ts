@@ -657,11 +657,10 @@ describe('MealPlanWeekPage', () => {
     const meta = screen.getByTestId('day-2026-06-08-meta');
     // The cook is named — it is the fact the row is answering.
     expect(meta.textContent).toContain('Bob');
-    // The table is a COUNT, not a roster: with five in the house the name list was
-    // the longest and least stable thing in the row. Who, exactly, is in the sheet.
-    expect(meta.textContent).toContain('2');
+    // The table names its eaters whenever the line can hold them; "Alice & Bob"
+    // with one home time is well inside the budget, so this row gets names.
+    expect(meta.textContent).toContain('Alice, Bob');
     expect(meta.textContent).not.toContain('Everyone');
-    expect(meta.textContent).not.toContain('Alice,');
     // …and only Alice's time is set, so only Alice's shows.
     expect(meta.textContent).toContain('Alice 18:00');
     expect(meta.textContent).not.toContain('Bob 1');

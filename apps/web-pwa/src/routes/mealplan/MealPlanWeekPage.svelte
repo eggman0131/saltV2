@@ -511,14 +511,15 @@
                24px above it is that same gap, now measured to the wrapper. -->
           <!-- Sage, not terracotta: terracotta already means "next week" in this
                list, and a second rule in the same ink would read as another week
-               boundary. The label sits ABOVE its rule rather than interrupting
-               it, so the line runs the full width and the division is
-               unmistakable. Tapping it opens the same picker the header used to —
-               the rule is now the control, which is why the header no longer
-               carries one. -->
+               boundary. The label INTERRUPTS its rule rather than sitting above
+               it — the same grammar as the next-week mark directly above, and the
+               two marks are the same kind of thing (a labelled division of the
+               list), so they are drawn the same way and differ only in ink and in
+               dash. Tapping it opens the same picker the header used to — the rule
+               is now the control, which is why the header no longer carries one. -->
           <button
             type="button"
-            class="mb-4 flex w-full flex-col gap-1 pl-3 text-left"
+            class="mb-4 flex w-full items-center gap-2 pl-3 text-left"
             onclick={() => (showShopPicker = true)}
             data-testid={`day-${date}-shop-marker`}
           >
@@ -530,10 +531,15 @@
             <span
               class="flex shrink-0 items-center gap-1.5 text-sm font-semibold uppercase leading-none tracking-wider text-secondary"
             >
-              <ShoppingCart class="h-4 w-4" aria-hidden="true" />
+              <!-- Sized and weighted against the WORDS, not against the nominal
+                   text size: the cart is drawn inside its box with room to spare,
+                   so at the text's own 16px it reads smaller than the caps beside
+                   it, and lucide's default 2px stroke is lighter than a semibold
+                   uppercase stem. 18px at 2.5 matches both. -->
+              <ShoppingCart class="h-[18px] w-[18px]" strokeWidth={2.5} aria-hidden="true" />
               Shop · {shop.slot}
             </span>
-            <span class="border-t-2 border-secondary"></span>
+            <span class="flex-1 border-t-2 border-secondary"></span>
           </button>
         {/if}
         <MealDayEditor
