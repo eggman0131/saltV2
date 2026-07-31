@@ -108,10 +108,17 @@ export const RecipeImageSchema = z.object({
 // What kind of entry this is (issue #637). The `recipes` collection holds more
 // than recipes: an `outing` is a takeaway / picnic / meal out — it fills a
 // planner slot but has no ingredients and no method; a `cocktail` has both but
-// is never a dinner. NOTHING outside packages/domain branches on this value —
-// behaviour comes from the pure capability predicates in
-// `recipe/queries/capabilities.ts`, so a fourth kind stays a one-file change.
-export const RecipeKindSchema = z.enum(['recipe', 'outing', 'cocktail']);
+// is never a dinner; a `placeholder` (issue #652) is neither — it is a stock
+// photograph of "a good dinner, no particular dish", attached to a planner day
+// that was planned in a sentence so that night gets a card like any other.
+// NOTHING outside packages/domain branches on this value — behaviour comes from
+// the pure capability predicates in `recipe/queries/capabilities.ts`, so the
+// fourth kind was, as promised, a one-file change there.
+//
+// Adding a member here is back-compatible on read by construction: `kind` carries
+// `.default('recipe')` below, so every document already in production parses
+// unchanged (salt-architecture.md §1.1 — no migration).
+export const RecipeKindSchema = z.enum(['recipe', 'outing', 'cocktail', 'placeholder']);
 
 export const RecipeSchema = z.object({
   id: z.string(),

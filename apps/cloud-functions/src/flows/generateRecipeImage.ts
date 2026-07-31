@@ -110,12 +110,41 @@ export const COCKTAIL_IMAGE_STYLE_ANCHORS =
 export const COCKTAIL_SCENE_FALLBACK =
   'First read the drink itself — what it is built on and how it is served: a stirred, spirit-forward classic served straight up in a coupe; a bittersweet aperitivo over a big clear cube in a rocks glass; a shaken sour with a fine pale foam on top; a tall, bright highball over crushed ice; something creamy and rich — then let that reading drive the glassware, the ice, the garnish, the colour, the bar surface and the quality of light: a Negroni or an old fashioned calls for a late, low-lit evening — dark wood, deep amber and jewel reds, unhurried; a spritz or a highball calls for bright, cool, early-evening air — pale golds and greens, condensation, a fresher and breezier bar. Make this shift clearly legible at a glance — a deliberate, confident step, never a faint tint — so each drink feels like it lives in its own moment.';
 
+// ─── The PLACEHOLDER anchors + fallback (issue #652) ────────────────────────
+// A placeholder is not an entry for a meal — it is the picture a night gets when
+// the whole plan was a sentence typed into the dinner box. Ten of them exist, and
+// each is attached to many different evenings, so the one thing they must never
+// do is claim a dish: a photograph of a lasagne on a night someone typed "roast
+// chicken dinner" is worse than the thin line of text it replaced.
+//
+// This anchor set is therefore the load-bearing piece of the feature's art
+// direction, and the illegibility rule belongs HERE rather than in a brief for
+// exactly the reason the anchors exist at all: locked in code and appended LAST,
+// it survives every Regenerate and every hand-written revision, so no steer typed
+// into the revise box can drift a placeholder into "a roast chicken".
+//
+// It deliberately does NOT inherit the "fill the frame with the subject" clause
+// its three siblings share. That clause exists to stop a wide shot burying a real
+// dish; here there is no real dish, and forcing food to dominate the frame is
+// precisely what would push the model back toward painting an identifiable one.
+export const PLACEHOLDER_IMAGE_STYLE_ANCHORS =
+  'But NOTHING in this photograph may be identifiable as a particular dish. The picture says "a good dinner is planned"; it must never say what dinner is. Any food in shot is generic or lost — to focus, to steam, to a lid, to a low angle, to the edge of the frame — and never a recognisable, nameable meal. That rule is absolute and outranks everything else here. The subject need not be food at all: a glass of wine mid-pour crisp in the foreground, a smart cloche waiting to be lifted with the meal still under it, steam rising off a bowl on a cold night, a generously filled serving dish shot so tight and so shallow that only warmth and colour survive — any of these is a legitimate lead, with whatever is plated sitting soft and unresolved behind it. Do NOT compose this as a hero shot of food; let the lead be the glass, the lid, the steam, the light, the table about to be sat down at. But it must always read WARM and APPETISING — the picture of an evening someone is about to enjoy, with something good just out of focus. Never a cold, bare or purely decorative frame: no empty table, no bare worktop, no styled still life with nothing about to be eaten. Vary the lead, the surface, the props and the angle from picture to picture; do NOT default to the same glass, cloth, tabletop or camera position every time. Within that freedom, hold a recognisable house style: a photorealistic photograph with the warm, unfussy, appetising feel of a good evening at home, shot with real affection. Always keep these anchors — soft natural light; a shallow depth of field with the lead in crisp focus and everything behind it falling softly out of focus; real, lived-in ceramic, glassware and linen rather than studio props. Absolutely no text, no captions, no watermark, no logos, no branding, no hands, no people. A single, inviting hero shot of a meal about to happen, in which nothing can be named.';
+
+// The placeholder counterpart to RECIPE_IMAGE_DISH_READING_FALLBACK: used only
+// when no scene brief is available. Its three siblings all ask the model to read
+// the THING — the dish, the occasion, the serve — and let that drive the scene.
+// This one cannot: there is no thing. All it has to read is the MOOD the
+// placeholder is tagged with, and bright-versus-comfort is the only variable it
+// gets, so that is what chooses which of the legitimate leads a picture takes.
+export const PLACEHOLDER_SCENE_FALLBACK =
+  'First read the MOOD this picture is for — its tags say either "bright" or "comfort", and that is the only thing there is to read, because there is no dish here and there must not be one. Bright calls for cool daylight and a light, open evening: pale crockery, clear glass, a sunlit table, a bright kitchen, fresh greens and whites, air and space — the lead more likely a glass being poured or a dish being carried to a table by a window. Comfort calls for lamplight and a dark autumn or winter evening: warm ceramics, deep earthy colours, steam, a low golden pool of light on a table indoors, the weather shut outside — the lead more likely steam rising off a bowl or a cloche about to be lifted. Let the mood choose the lead, and drive the setting, the surface, the props, the colour palette and the quality of light from it. Make the shift clearly legible at a glance — a deliberate, confident step, never a faint tint — but let it stop at the mood: whatever food is in shot stays generic and unresolved, never a dish anyone could name.';
+
 // The kinds this flow knows how to paint. Declared LOCALLY as genkit-`z` literals
 // rather than imported from `RecipeKindSchema`: genkit re-exports its own bundled
 // zod instance, and a schema built from plain `zod` is not interchangeable with it.
 // The drift between the two lists is closed by a test that pins this array against
 // `RecipeKindSchema.options`, not by an import.
-export const GENERATE_RECIPE_IMAGE_KINDS = ['recipe', 'outing', 'cocktail'] as const;
+export const GENERATE_RECIPE_IMAGE_KINDS = ['recipe', 'outing', 'cocktail', 'placeholder'] as const;
 
 type ImageKind = (typeof GENERATE_RECIPE_IMAGE_KINDS)[number];
 
@@ -128,6 +157,8 @@ function anchorsFor(kind: ImageKind | undefined): string {
       return OUTING_IMAGE_STYLE_ANCHORS;
     case 'cocktail':
       return COCKTAIL_IMAGE_STYLE_ANCHORS;
+    case 'placeholder':
+      return PLACEHOLDER_IMAGE_STYLE_ANCHORS;
     default:
       return RECIPE_IMAGE_STYLE_ANCHORS;
   }
@@ -139,6 +170,8 @@ function fallbackFor(kind: ImageKind | undefined): string {
       return OUTING_SCENE_FALLBACK;
     case 'cocktail':
       return COCKTAIL_SCENE_FALLBACK;
+    case 'placeholder':
+      return PLACEHOLDER_SCENE_FALLBACK;
     default:
       return RECIPE_IMAGE_DISH_READING_FALLBACK;
   }
@@ -155,6 +188,12 @@ function openerFor(
         return `A beautiful, appetising photograph of "${title}" — food from a takeaway, a picnic or a meal out, shown as it actually arrives.`;
       case 'cocktail':
         return `A beautiful, tempting photograph of the cocktail "${title}" — the finished drink in its glass, on the bar.`;
+      // The one opener that does NOT make the title the subject. A placeholder's
+      // title is a note to the person browsing the library ("Placeholder —
+      // autumn evening"), not a dish, so it is handed over explicitly as a cue
+      // about mood and season and explicitly disclaimed as something to paint.
+      case 'placeholder':
+        return `A beautiful, appetising photograph of a good dinner about to be eaten, with no particular dish in it. This one is titled "${title}" — read the title only as a note on the mood and the time of year, never as a dish to paint.`;
       default:
         return `A beautiful, appetising photograph of the finished dish "${title}".`;
     }

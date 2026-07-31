@@ -29,6 +29,8 @@ export { flattenIngredients } from './queries/ingredients.js';
 export { takesIngredients, isCookable, isPlannable } from './queries/capabilities.js';
 export { findProducingRecipes } from './queries/producers.js';
 export { diffRecipe } from './queries/diffRecipe.js';
+export { pickPlaceholder, PLACEHOLDER_MOODS } from './queries/pickPlaceholder.js';
+export type { PlaceholderMood } from './queries/pickPlaceholder.js';
 
 // URL import — pure SSRF/URL classification helpers (no I/O). The live fetch +
 // DNS resolution lives in cloud-functions; this module only holds the policy.

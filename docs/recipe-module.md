@@ -35,7 +35,7 @@ newest local edit).
 Recipe {
   id: string
   schemaVersion: 1
-  kind: 'recipe' | 'outing' | 'cocktail'  // .default('recipe') — see "Schema extensions (kind)"
+  kind: 'recipe' | 'outing' | 'cocktail' | 'placeholder'  // .default('recipe') — see "Schema extensions (kind)"
   title: string
   description: string | null
   ingredients: IngredientGroup[]   // required array; [] for an outing (NOT a discriminated union)
@@ -121,16 +121,20 @@ and both have since been filled in — `image` by the Tier-2 hero pipeline,
   auto-generation trigger skips a user upload rather than clobbering it.
   Reuses the canon **Tier-2** Storage conventions (see `docs/canon-icons.md`).
 
-### Schema extensions (kind discriminator, issue #637)
+### Schema extensions (kind discriminator, issues #637, #652)
 
 The `recipes` collection holds more than recipes. One additive field,
-`kind: 'recipe' | 'outing' | 'cocktail'`, says which:
+`kind: 'recipe' | 'outing' | 'cocktail' | 'placeholder'`, says which:
 
 - an **`outing`** (UI label **"When you CBA"**) is a takeaway, picnic, meal out
   or fend-for-yourself night — it fills a planner slot but has no ingredients and
   no method;
 - a **`cocktail`** is a real recipe, ingredients and method intact, that simply
-  is not dinner.
+  is not dinner;
+- a **`placeholder`** is neither: a stock photograph of "a good dinner, no
+  particular dish", attached to a planner day that was planned in a sentence so
+  that night carries a card like any other. Around ten of them exist, each
+  reused across many evenings.
 
 **`.default('recipe')` is mandatory, not stylistic.** The realtime subscription
 skips documents that fail validation, so a *required* `kind` would make every
@@ -157,6 +161,12 @@ art-direction prompt the hero pipeline reaches for.
 | `recipe` | ✓ | ✓ | ✓ |
 | `outing` | ✗ | ✗ | ✓ |
 | `cocktail` | ✓ | ✓ | ✗ |
+| `placeholder` | ✗ | ✗ | ✗ |
+
+Read `isPlannable` as **"is offered in the planner picker"**, which is all it has
+ever gated. A `placeholder` is `false` and still occupies a planner slot — it is
+attached on its own when a day is planned in a sentence, never chosen from a
+list. #652 weighed a fourth predicate for this and rejected it: see below.
 
 Decisions worth not relitigating:
 
@@ -196,7 +206,33 @@ Decisions worth not relitigating:
   `imageBrief`, so the regenerate dialog would open **empty** — and editing that
   brief is the primary way a user gets an outing's image right, there being no
   method for the AI to read. The `describeRecipeScene` brief step is likewise kept
-  for every kind, with kind-specific system prompts.
+  for every kind, with kind-specific system prompts. Placeholders inherit this for
+  the same reason, twice over: the brief is the *only* way to tune them.
+- **A placeholder's mood is a tag, not a field** (#652). `bright` / `comfort` are
+  ordinary entries in the existing free-form `tags` array; the constants are
+  exported from `@salt/domain` (`PLACEHOLDER_MOODS`) so the library and the picker
+  cannot drift. A typed `mood` field would be null on every production document to
+  serve ten, and — the real cost — would need a mood `<Select>` shown only for
+  placeholders, which is a `kind` branch on *behaviour* inside `RecipeEditPage`,
+  exactly what the rule above keeps out of the app layer. The accepted downside is
+  that a typo silently drops one document out of a mood; `pickPlaceholder`
+  degrades to `null`, which is cheap to spot across ten hand-made documents.
+- **No fourth capability predicate.** #652 weighed a `countsAsMeal(kind)` driving
+  the planner's hero pick, the note re-seed and an auto-detach, and rejected it:
+  three new behaviours to pre-empt two states the user undoes with one tap on the
+  row's X. The two consequences, so they are not reported as bugs — a day holding
+  both a placeholder and a real recipe shows the *placeholder's* photograph (the
+  card takes the first attached entry with one, in `recipeIds` order), and
+  clearing the dinner text on a placeholder day re-seeds it with the
+  *placeholder's* own title. Available later if it grates in daily use.
+- **Which placeholder a day gets is pure and frozen at attach time.**
+  `pickPlaceholder(recipes, dateKey, weather?)` in
+  `domain/src/recipe/queries/pickPlaceholder.ts`: the season chosen from the date
+  key leads (it is known for every day, past or future), a decisive forecast
+  overrides it via the existing `classifyEatingMood`, and `hash(dateKey) % n`
+  picks within the mood. The caller reads both once, when the day is planned, and
+  stores the id — so the picture cannot drift after the fact as the forecast ages
+  out of its ~14-day horizon.
 
 Open question, recorded not resolved: whether "When you CBA" entries should
 eventually be excluded from Chef Chat's recipe context. Not blocking — Ask/amend

@@ -15,6 +15,7 @@ describe('recipe kind capabilities', () => {
     { kind: 'recipe', takesIngredients: true, isCookable: true, isPlannable: true },
     { kind: 'outing', takesIngredients: false, isCookable: false, isPlannable: true },
     { kind: 'cocktail', takesIngredients: true, isCookable: true, isPlannable: false },
+    { kind: 'placeholder', takesIngredients: false, isCookable: false, isPlannable: false },
   ];
 
   for (const row of table) {
@@ -37,5 +38,15 @@ describe('recipe kind capabilities', () => {
     expect(takesIngredients('cocktail')).toBe(true);
     expect(isCookable('cocktail')).toBe(true);
     expect(isPlannable('cocktail')).toBe(false);
+  });
+
+  it('a placeholder can do nothing at all — it is a photograph and a title', () => {
+    // Named separately because every one of these `false`s is load-bearing
+    // somewhere (issue #652): nothing to buy, nothing to cook, and — the one that
+    // reads oddly until you know why — never offered in the planner picker, even
+    // though it is the only kind that reaches a planner day WITHOUT being picked.
+    expect(takesIngredients('placeholder')).toBe(false);
+    expect(isCookable('placeholder')).toBe(false);
+    expect(isPlannable('placeholder')).toBe(false);
   });
 });

@@ -29,8 +29,8 @@ import { resolveModel } from '../ai/resolveModel.js';
 // out of "no people").
 //
 // The scope rule itself is hoisted into ONE constant because every system prompt
-// here — recipe, outing and cocktail, authoring and revising — must say it
-// identically. It
+// here — recipe, outing, cocktail and placeholder, authoring and revising — must
+// say it identically. It
 // is the sentence that keeps the brief on the dish-specific half; a per-kind
 // paraphrase of it is a per-kind loophole in the house style.
 const SCENE_SCOPE_RULE = `Do NOT write about photographic style, lighting, lens, framing, camera angle, or what must not appear in the shot — those are fixed elsewhere and anything you say about them is discarded.`;
@@ -219,6 +219,74 @@ hour and mood it reads as. ${SCENE_SCOPE_RULE} That holds even if the requested 
 
 Write ONE paragraph of plain prose, at most about 80 words. Return only the revised brief.`;
 
+// ─── PLACEHOLDERS (issue #652) ───────────────────────────────────────────────
+// A placeholder goes further than an outing did. An outing lost the method and
+// the ingredients but kept a subject — a curry, a chippy tea, something the model
+// can picture. A placeholder has no subject at all: it is the picture a night
+// gets when the plan was a sentence, and it is attached to many different
+// evenings, so naming a dish is the one thing it must never do.
+//
+// So the reading question, which all three other prompts ask of the thing, has
+// nothing to ask it of. What is left to read is the MOOD — the entry is tagged
+// `bright` or `comfort` — and the brief's job is to turn that into a scene: which
+// lead the picture takes, what light it is in, what it is set on.
+//
+// The illegibility rule is NOT trusted to this prompt. It lives in the locked
+// anchors in generateRecipeImage.ts, appended after every brief, precisely
+// because a brief is editable and this rule is the feature. Saying it here too is
+// belt and braces on the authoring pass — the braces are the anchors.
+//
+// SCOPE is identical to the other prompts and inherits the same rule verbatim.
+const DESCRIBE_PLACEHOLDER_SCENE_SYSTEM = `You are a food photographer's art director. You are given one PLACEHOLDER — a \
+stock photograph that stands in for dinner on an evening someone planned in a sentence. Write a short art-direction \
+brief for it.
+
+There is no dish here, and there must not be one. This picture says "a good dinner is planned" and never says what \
+dinner is. Do not invent a meal, do not name one, and do not describe a plate of anything recognisable: any food in \
+the frame stays generic, or is lost to steam, to focus, to a lid, to the edge of the shot.
+
+What you read instead is the MOOD, which the tags carry: "bright" is cool daylight, pale crockery, clear glass, a \
+sunlit table, air and space; "comfort" is lamplight, steam, warm ceramics, deep colours, a dark evening indoors. Let \
+the mood decide the scene.
+
+Cover only what is specific to THIS placeholder:
+- what LEADS the picture — it need not be food: a glass of wine mid-pour, a cloche waiting to be lifted, steam rising \
+off a bowl, a serving dish so close and so soft that only warmth and colour survive
+- what sits behind and around the lead, unresolved — the table, the surface, the props, the light in the room
+- the mood, the hour and the season it reads as, and why the tags imply that
+
+${SCENE_SCOPE_RULE} It must read warm and appetising — an evening someone is about to enjoy — and never a cold, empty \
+table or a styled still life with nothing about to be eaten.
+
+Write ONE paragraph of plain prose, at most about 80 words. A brief, not an essay. Return only the brief.`;
+
+// The placeholder counterpart to REVISE_SCENE_SYSTEM. Same failure it exists to
+// prevent (a steer stapled on the end, contradicting the paragraph it was added
+// to), same "keep what the change does not touch" rule — but with one extra
+// guard the other three do not need: the steer here is the primary way these ten
+// pictures get good, so "make it a roast dinner" is a plausible thing to type,
+// and it is the one change this brief must not fold in.
+const REVISE_PLACEHOLDER_SCENE_SYSTEM = `You are a food photographer's art director. You are given one PLACEHOLDER — a \
+stock photograph that stands in for dinner on an evening planned in a sentence — an existing art-direction brief for \
+it, and a requested change from the person who will use it. Rewrite the brief so it incorporates the requested change.
+
+Fold the change THROUGH the whole brief. If the change is "make it a winter evening", then the light, the surface, \
+the props, the palette and the lead all move together — do NOT keep a bright summer brief and staple "make it a \
+winter evening" on the end. The result must read as one coherent brief that was always written that way, never as an \
+edit with a contradiction left in it.
+
+Keep everything the requested change does not touch. Anything the brief already says that still holds should survive \
+the rewrite — this is a revision, not a fresh start.
+
+There is still no dish, whatever the change asks for. If the requested change names a meal, take from it only the \
+mood, the season, the colour and the light, and never the dish itself: any food in the frame stays generic or lost to \
+steam, focus, a lid or the edge of the shot. This picture must never become one anyone could name.
+
+Cover only what is specific to THIS placeholder: what leads the picture, what sits unresolved behind it, and the \
+mood, hour and season it reads as. ${SCENE_SCOPE_RULE} That holds even if the requested change asks for it.
+
+Write ONE paragraph of plain prose, at most about 80 words. Return only the revised brief.`;
+
 // The kind switch. 'recipe' is the DEFAULT arm, so an absent kind (an older
 // caller, a doc written before #637) and any kind with no prompts of its own get
 // exactly today's prompts rather than nothing.
@@ -228,6 +296,8 @@ function systemFor(kind: DescribeRecipeSceneInput['kind'], revising: boolean): s
       return revising ? REVISE_OUTING_SCENE_SYSTEM : DESCRIBE_OUTING_SCENE_SYSTEM;
     case 'cocktail':
       return revising ? REVISE_COCKTAIL_SCENE_SYSTEM : DESCRIBE_COCKTAIL_SCENE_SYSTEM;
+    case 'placeholder':
+      return revising ? REVISE_PLACEHOLDER_SCENE_SYSTEM : DESCRIBE_PLACEHOLDER_SCENE_SYSTEM;
     default:
       return revising ? REVISE_SCENE_SYSTEM : DESCRIBE_SCENE_SYSTEM;
   }

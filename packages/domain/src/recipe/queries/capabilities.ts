@@ -22,7 +22,11 @@ interface Capabilities {
   // Whether there is a method to follow: gates the Cook button, the Method card,
   // and the timings grid. An outing is eaten, not cooked.
   readonly isCookable: boolean;
-  // Whether the entry may occupy a meal-planner slot. A cocktail is not dinner.
+  // Whether the entry is OFFERED in the meal planner's "Add a recipe…" picker.
+  // Note what this does and does not say: it gates the picker's candidate list,
+  // not what may sit in a day. A cocktail is not dinner and is never offered; a
+  // placeholder (issue #652) is not offered either, but does occupy a slot —
+  // it is attached on its own when a day is planned in a sentence, never chosen.
   readonly isPlannable: boolean;
 }
 
@@ -30,6 +34,12 @@ const CAPABILITIES: Record<RecipeKind, Capabilities> = {
   recipe: { takesIngredients: true, isCookable: true, isPlannable: true },
   outing: { takesIngredients: false, isCookable: false, isPlannable: true },
   cocktail: { takesIngredients: true, isCookable: true, isPlannable: false },
+  // A placeholder is a photograph and a title, nothing else: nothing to buy,
+  // nothing to cook, and never offered in the picker. Every downstream question
+  // answers itself from this row — including the one that would otherwise have
+  // needed work, `unshoppedPlannedRecipes`, which keys on ingredient COUNT, so a
+  // placeholder in `day.recipeIds` never nags anyone to shop for it.
+  placeholder: { takesIngredients: false, isCookable: false, isPlannable: false },
 };
 
 export function takesIngredients(kind: RecipeKind): boolean {
