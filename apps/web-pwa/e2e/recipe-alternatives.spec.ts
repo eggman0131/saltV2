@@ -88,7 +88,9 @@ test.describe('recipes — when you CBA', () => {
     });
     await expect(cards.filter({ hasText: OUTING_TITLE })).toHaveCount(0);
 
-    // Switching sections swaps one for the other.
+    // Switching sections swaps one for the other. "When you CBA" is a secondary
+    // section, so the row has to be expanded before its chip exists.
+    await page.getByTestId('recipe-kind-show-all').click();
     await sections.getByRole('button', { name: 'When you CBA' }).click();
     await expect(cards.filter({ hasText: OUTING_TITLE })).toHaveCount(1);
     await expect(cards.filter({ hasText: RECIPE_TITLE })).toHaveCount(0);
