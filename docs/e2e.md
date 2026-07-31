@@ -76,12 +76,31 @@ container is healthy), and every host-side readiness/reuse probe is `fetch` +
 diagnosis. Do not re-introduce a Playwright `webServer` block, and do not add a raw socket probe
 to a possibly-free port.
 
-**Reuse contract (accepted gap).** `globalSetup` reuses any server that answers `status < 500` on
-`:5174`; it does **not** verify the reused server is e2e-configured (env-wired to the test
-emulators). This is deliberately accepted, not hardened: the dev server is on `:5173` and nothing
-else binds `:5174` on this host, so in practice the only thing answering there is a prior e2e Vite
-with the same env. Revisit (e.g. a sentinel/health route) only if a non-e2e process ever contends
-for `:5174`.
+**Reuse contract.** `:5174` is host-global and Playwright does not manage it, so a server answering
+there could be a prior e2e Vite from a different checkout, branch or emulator env — or a foreign
+process. Reuse therefore requires **both**:
+
+1. **Identity match.** A host-global sentinel records the pid and an identity hash over
+   `{gitSha, appDir, emulatorEnv, ports}`. Anything healthy on `:5174` whose identity does not
+   match this run's — or whose recorded pid is dead — is killed and the port drained before a fresh
+   spawn (`--strictPort` fails immediately if the port is still bound).
+2. **A health probe that fetches a transformed module** (`/src/main.ts`), asserting a JS
+   content-type — not `fetch('/')`. Vite serves `index.html` straight off disk even when its
+   transform pipeline is dead, so the old `status < 500` check passed against a wedged server that
+   could no longer compile a module. `globalSetup` then adopted it and **every** spec in the run
+   failed at `waitForBridge`, reading exactly like "my change broke everything" (issue #560). The
+   content-type assertion is what rejects Vite's SPA fallback, which would otherwise return
+   `index.html` with a 200 for a path the server no longer has mounted.
+
+The server got wedged in the first place because it was spawned `stdio: 'pipe'` with nothing ever
+reading those pipes: Vite's output filled the ~64KB buffer and then blocked on write once the
+parent shell went away and closed the read end. Local spawns now use `'ignore'` (the CI path
+already wrote to a real file, and is the only path that reads the log). **Do not spawn the e2e Vite
+with an unread `'pipe'`.**
+
+The discriminator, if you ever see it again: `globalSetup` output says whether the run *spawned* a
+fresh Vite or *reused an identity-matched pid*. Killing `:5174` before the run forces the spawn
+path.
 
 ## Lifecycle, reuse & teardown
 

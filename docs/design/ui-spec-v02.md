@@ -725,9 +725,30 @@ Only `duration-fast`/`base`/`slow`/`reveal` are exposed as Tailwind `duration-*`
 
 ### Z-index
 
+Named utilities (registered in `salt.css`, mirrored in `tokens/z-index.ts`):
+
 - `z-popover` → 40
 - `z-dialog` → 50
 - `z-tooltip` → 70
+
+**The ladder.** Named tokens cover the floating layers, but the app also stacks
+things the tokens never named, and a new overlay must pick its rung **by this
+table** rather than by choosing a number bigger than whatever it collided with:
+
+| Rung | Value | What sits here |
+| --- | --- | --- |
+| Page-local sticky | `z-10` | In-page sticky headers and absolutely-positioned badges. Scoped to one page; never competes with chrome. |
+| App chrome | `z-10` | `TopBar` (sticky), `BottomNav` (fixed). |
+| Chrome-replacing bar | `z-30` | A contextual bar that deliberately **covers** the `BottomNav` for the duration of a mode — `ListPage`'s bulk-action bar (ui-spec-v04 §9), the chat composer at `z-20`. Above the nav, below any floating layer. |
+| Popover | `z-popover` (40) | Popover, and any anchored floating surface that is not a dialog. |
+| Dialog / Sheet / full-viewport route | `z-dialog` (50) | Dialog and Sheet overlays and panels, and a full-viewport route (v0.5 §2). |
+| Tooltip | `z-tooltip` (70) | Above dialogs on purpose: a tooltip inside a dialog must not be clipped by it. |
+| Toast | `z-[100]` | Deliberately top of the ladder. A toast reports something that has already happened and must stay legible over every other layer, including a full-viewport mode. |
+
+Two rules follow from the table and are the point of writing it down:
+
+- **A new overlay joins an existing rung or amends this table.** "One more than the thing I collided with" is how a ladder stops being one.
+- **Raw `z-<n>` is permitted only below the named tokens** (the first three rungs), where the value is structural rather than a floating layer. At `z-popover` and above, use the token.
 
 ---
 

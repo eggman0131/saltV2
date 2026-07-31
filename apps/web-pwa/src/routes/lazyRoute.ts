@@ -1,7 +1,8 @@
+import type { Component } from 'svelte';
 import type { WrappedComponent } from 'svelte-spa-router';
 import { wrap } from 'svelte-spa-router/wrap';
 import type { AsyncSvelteComponent } from 'svelte-spa-router/wrap';
-import RouteLoading from './RouteLoading.svelte';
+import LazyRoute from './LazyRoute.svelte';
 import RouteLoadFailed from './RouteLoadFailed.svelte';
 import { hasPreloadReloadGuard } from '../lib/pwa';
 import { reportWriteError } from '../lib/errorReporting';
@@ -74,12 +75,20 @@ export async function loadRouteWithFallback(
   }
 }
 
-// Wrap a lazily-imported route in svelte-spa-router's `wrap()`, showing
-// RouteLoading while the chunk fetches and the failed-recovery fallback if it
-// never loads. `RouteLoading` is a dependency-free placeholder kept in the boot
-// chunk so it never itself triggers a fetch at load time.
+// Register a lazily-imported route. `LazyRoute` is a STATIC (eagerly-imported)
+// host that performs the dynamic import itself and shows RouteLoading while the
+// chunk fetches — see its block comment for why the import does not go through
+// svelte-spa-router's own `asyncComponent`/`loadingComponent` path (issue #599:
+// a second navigation landing mid-import strands the placeholder forever).
+// `RouteLoading` is a dependency-free placeholder kept in the boot chunk so it
+// never itself triggers a fetch at load time, and the thunk stays wrapped in
+// `loadRouteWithFallback` so #472's failed-recovery fallback is unchanged.
+//
+// Passing `component` (not `asyncComponent`) is load-bearing, not stylistic: it is
+// what puts the router on the branch that cannot strand a route. A `loadingComponent`
+// must never be reintroduced here — that is the branch with the defect.
 export const lazy = (asyncComponent: AsyncSvelteComponent): WrappedComponent =>
   wrap({
-    asyncComponent: () => loadRouteWithFallback(asyncComponent),
-    loadingComponent: RouteLoading,
+    component: LazyRoute as Component<Record<string, unknown>>,
+    props: { load: () => loadRouteWithFallback(asyncComponent) },
   });

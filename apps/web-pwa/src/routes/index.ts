@@ -88,3 +88,7 @@ export const routes: RouteDefinition = new Map<
   ['/admin/product-forms/:id', lazy(() => import('./admin/ProductFormEditPage.svelte'))],
   ['*', NotFound],
 ]);
+
+// Which of these are FULL-VIEWPORT routes — running without the app shell's nav
+// chrome — is declared next door in ./fullViewport.ts (issue #641). Keep the two
+// in step: a new full-viewport page needs an entry there as well as here.
