@@ -14,6 +14,7 @@
   import { auth } from './lib/auth.svelte.js';
   import { navItems, overflowNavItems, adminNavItem } from './lib/nav.js';
   import { routes } from './routes/index.js';
+  import { isFullViewportRoute } from './routes/fullViewport.js';
   import { toasts, dismissToast } from './lib/toastStore.js';
   import { canonItems, initCanonSync } from './lib/canonService.js';
   import { productForms, initProductFormSync } from './lib/productFormService.js';
@@ -122,6 +123,12 @@
   // Admin joins the overflow rather than the four primary tabs. The BottomNav sums
   // the overflow badges onto its "More" tab, so the review count still surfaces
   // even while Admin itself is folded away.
+  // A full-viewport route (cook mode) replaces the shell's chrome rather than
+  // painting over it (issue #641) — covered nav stays focusable and stays in the
+  // accessibility tree, so a keyboard user tabs into invisible navigation and can
+  // leave mid-cook by accident.
+  const showChrome = $derived(!isFullViewportRoute(router.location));
+
   const decoratedOverflowNavItems = $derived([
     ...overflowNavItems,
     ...(isAdmin ? [reviewCount > 0 ? { ...adminNavItem, badge: reviewCount } : adminNavItem] : []),
@@ -134,6 +141,7 @@
       navItems={decoratedNavItems}
       overflowNavItems={decoratedOverflowNavItems}
       currentPath={router.location}
+      chrome={showChrome}
       title="Salt"
       envLabel={envBanner?.label}
       envClass={envBanner?.barClass}
@@ -147,9 +155,12 @@
     <!--
       Lift toasts above the mobile BottomNav so they don't cover it. Mirrors the
       nav reservation used by AppShell's <main> (h-14 = 3.5rem + safe-area).
-      lg:bottom-0: the BottomNav is hidden on desktop, so drop back to the edge.
+      lg:bottom-0: the BottomNav is hidden on desktop, so drop back to the edge —
+      as does a full-viewport route, which has no BottomNav to clear at any width.
     -->
-    <ToastViewport class="bottom-[calc(3.5rem_+_env(safe-area-inset-bottom))] lg:bottom-0">
+    <ToastViewport
+      class={showChrome ? 'bottom-[calc(3.5rem_+_env(safe-area-inset-bottom))] lg:bottom-0' : ''}
+    >
       {#each $toasts as toast (toast.id)}
         <Toast
           defaultOpen={true}

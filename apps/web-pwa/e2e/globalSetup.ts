@@ -159,10 +159,29 @@ async function wipeEmulatorData(): Promise<void> {
 // Every probe here is fetch + AbortSignal.timeout — never a raw socket connect.
 // A connect to a possibly-free port hangs forever on this WSL2 host (issue #79);
 // the timer-based abort bounds it regardless of whether anything is listening.
+//
+// The probe fetches a TRANSFORMED MODULE, not `/` (issue #560). Vite serves
+// index.html straight off disk even when its transform pipeline is dead, so a
+// `fetch('/') < 500` check passes against a wedged server that can no longer
+// compile a single module — and `ensureE2eServer` then ADOPTS it, after which
+// every spec in the run fails at `waitForBridge` and reads exactly like "my change
+// broke everything". Requesting the app's entry module makes the transform
+// pipeline part of the health contract: a wedged server 500s (or times out) here.
+// The content-type assertion is what rejects Vite's SPA fallback — an unknown path
+// returns index.html as `text/html` with a 200, which would otherwise read as
+// healthy on a server that no longer has the app mounted at all.
+const E2E_APP_PROBE_URL = `${E2E_APP_URL}/src/main.ts`;
 async function e2eServerHealthy(): Promise<boolean> {
   try {
-    const res = await fetch(E2E_APP_URL, { signal: AbortSignal.timeout(2000) });
-    return res.status < 500;
+    const res = await fetch(E2E_APP_PROBE_URL, { signal: AbortSignal.timeout(2000) });
+    if (!res.ok) return false;
+    // Vite labels transformed modules `text/javascript` (some versions
+    // `application/javascript`); either way the substring is the discriminator.
+    if (!(res.headers.get('content-type') ?? '').includes('javascript')) return false;
+    // Drain the body so the socket is released rather than left half-read for the
+    // duration of the run's keep-alive — this probe runs on a 500ms poll loop.
+    await res.arrayBuffer();
+    return true;
   } catch {
     return false;
   }
@@ -184,10 +203,17 @@ function currentServerIdentity(): string {
 }
 
 // Spawn a fresh e2e Vite server, record its identity in the host-global
-// sentinel, and poll until it answers. Command / cwd / env / stdio / detached
-// are unchanged from the original spawn — only the returned child's pid is now
-// captured and persisted so a later run can identity-verify reuse and teardown
-// can kill it precisely.
+// sentinel, and poll until it answers. The child's pid is captured and persisted
+// so a later run can identity-verify reuse and teardown can kill it precisely.
+//
+// stdio is 'ignore', never 'pipe' (issue #560). The server outlives this process
+// by design — Playwright does not manage it and the next run may reuse it — but
+// nothing ever attached a reader to those pipes, so Vite's output went nowhere,
+// filled the ~64KB pipe buffer, and then blocked on write the moment the parent
+// shell went away and closed the read end. That is how a server ends up listening
+// on :5174 while unable to transform a module. /dev/null has no such ceiling and
+// survives the parent's death. The CI path already wrote to a real file for the
+// same reason, and keeps doing so — it is the only path where the log is read.
 async function spawnE2eServer(identity: string): Promise<void> {
   const viteLog = process.env.CI ? fs.openSync('/tmp/e2e-vite.log', 'w') : null;
   const child = spawn(
@@ -196,7 +222,7 @@ async function spawnE2eServer(identity: string): Promise<void> {
     {
       cwd: APP_DIR,
       env: { ...process.env, ...TEST_EMULATOR_ENV },
-      stdio: viteLog ? ['ignore', viteLog, viteLog] : 'pipe',
+      stdio: viteLog ? ['ignore', viteLog, viteLog] : ['ignore', 'ignore', 'ignore'],
       detached: false,
     },
   );

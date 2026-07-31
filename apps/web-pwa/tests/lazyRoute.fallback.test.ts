@@ -43,8 +43,10 @@ vi.mock('@salt/observability', async () => {
   };
 });
 
-import { loadRouteWithFallback } from '../src/routes/lazyRoute.js';
+import { loadRouteWithFallback, lazy } from '../src/routes/lazyRoute.js';
 import RouteLoadFailed from '../src/routes/RouteLoadFailed.svelte';
+import LazyRoute from '../src/routes/LazyRoute.svelte';
+import NotFound from '../src/routes/NotFound.svelte';
 
 const CHUNK_URL = 'https://app.example/assets/ChatListPage-abc123.js';
 const failLoad = () =>
@@ -86,6 +88,58 @@ describe('loadRouteWithFallback — failed-recovery fallback (Phase 2)', () => {
     const resolved = await loadRouteWithFallback(() => Promise.resolve(okModule));
     expect(resolved).toBe(okModule);
     expect(reportSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Issue #599: a lazy route must never strand the loading placeholder ───────
+//
+// svelte-spa-router@5.1.1's location effect assigns its module-scoped
+// `componentObj = obj` BEFORE awaiting a lazy route — but only on the branch that
+// renders a `loadingComponent` (Router.svelte, `if (obj.loading)`). A second
+// location change landing mid-import cancels the first run; the re-run then sees
+// `componentObj == obj`, skips the load-and-swap entirely, and leaves the spinner
+// up permanently at the right URL with nothing pending. Registering with
+// `component` instead takes the branch that resets `componentObj = null` first, so
+// a re-run always re-enters — and the import itself now lives in LazyRoute, where a
+// second navigation is an ordinary prop change.
+describe('lazy() — router registration (issue #599)', () => {
+  it('registers on the branch that cannot strand a route: no loadingComponent', () => {
+    const wrapped = lazy(() => Promise.resolve({ default: NotFound }));
+    // `obj.loading` is the ENTIRE precondition for the upstream hang. Its absence
+    // is what this guards — do not reintroduce a `loadingComponent` here.
+    expect((wrapped.component as { loading?: unknown }).loading).toBeUndefined();
+    expect(wrapped.props).toMatchObject({ load: expect.any(Function) });
+  });
+});
+
+describe('LazyRoute — the host that owns the chunk fetch (issue #599)', () => {
+  it('shows the loading placeholder until the chunk resolves, then swaps it in', async () => {
+    let release!: (mod: { default: unknown }) => void;
+    const load = () => new Promise<{ default: unknown }>((r) => (release = r));
+
+    const { getByRole, findByText } = render(LazyRoute, { props: { load } });
+    expect(getByRole('status', { name: 'Loading' })).toBeTruthy();
+
+    release({ default: NotFound });
+    expect(await findByText(/page not found/i)).toBeTruthy();
+    cleanup();
+  });
+
+  it('a second navigation landing MID-IMPORT lands on the new route, not a stranded spinner', async () => {
+    let releaseFirst!: (mod: { default: unknown }) => void;
+    const slowLoad = () => new Promise<{ default: unknown }>((r) => (releaseFirst = r));
+    const secondLoad = () => Promise.resolve({ default: RouteLoadFailed });
+
+    // Navigation 1 starts and is still in flight…
+    const { rerender, findByText, queryByRole } = render(LazyRoute, { props: { load: slowLoad } });
+    // …navigation 2 arrives before it resolves.
+    await rerender({ load: secondLoad });
+    // The first import completing afterwards must not overwrite the second.
+    releaseFirst({ default: NotFound });
+
+    expect(await findByText(/couldn't load this page/i)).toBeTruthy();
+    expect(queryByRole('status', { name: 'Loading' })).toBeNull();
+    cleanup();
   });
 });
 

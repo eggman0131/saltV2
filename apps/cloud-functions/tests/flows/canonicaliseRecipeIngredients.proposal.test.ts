@@ -215,6 +215,42 @@ describe('canonicaliseRecipeIngredients — product-form proposals (Phase 3)', (
     expect(result[1]!.value!.item.id).toBe(limeId);
   });
 
+  it('runs arbitration on a COLD (empty) canon and mints the parent from nothing', async () => {
+    // Issue #512. The flow used to gate arbitration on `candidates.length > 0` —
+    // the pre-existing buyable catalog — so with an empty canon no proposal was
+    // ever requested and every derivative fell through to plain matching as an
+    // ORPHAN canon item. That is exactly the greenfield case #505's parent-minting
+    // exists for: fresh environments, e2e/integration setup, a bulk re-import into
+    // a cleared canon. Nothing is seeded here, deliberately.
+    collections.clear();
+    mockProposal.mockResolvedValue({
+      kind: 'form',
+      parentName: 'Lemon',
+      matcher: 'lemon juice',
+      label: 'Lemon juice',
+      formUnit: 'ml',
+      amountPerParent: 40,
+    });
+
+    const result = (await (canonicaliseRecipeIngredientsFlow as Function)({
+      items: [{ rawName: 'lemon juice' }],
+    })) as Array<{ kind: string; value?: { item: { id: string } } }>;
+
+    // Arbitration was consulted despite there being nothing to offer it.
+    expect(mockProposal).toHaveBeenCalledTimes(1);
+    expect(mockProposal.mock.calls[0]![0]).toMatchObject({ candidates: [] });
+
+    // The parent was minted, the form written pending, and the derivative bound —
+    // no orphan "Lemon Juice" canon.
+    const lemons = canonDocsNamed('Lemon');
+    expect(lemons).toHaveLength(1);
+    expect(canonDocsNamed('Lemon Juice')).toHaveLength(0);
+    const forms = productFormDocs();
+    expect(forms).toHaveLength(1);
+    expect(forms[0]!.parentCanonId).toBe(lemons[0]!.id);
+    expect(result[0]!.value!.item.id).toBe(lemons[0]!.id);
+  });
+
   it('is idempotent — no duplicate form when one already covers the matcher', async () => {
     seed('productForms', 'existing', {
       id: 'existing',

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button, CanonIcon, Icon, Spinner } from '@salt/ui-components';
-  import { onDestroy } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import { push } from 'svelte-spa-router';
   import { recipes, isLoadingRecipes } from '../../lib/recipeService.js';
   import {
@@ -57,6 +57,20 @@
   // because cooking is a heads-down, single-task mode. Stage 1 is mise en place —
   // tick every ingredient off before you start. Ticking is NOT a gate; it's a
   // memory aid that persists to Firestore so it survives a device switch.
+  //
+  // The pattern is now named and its obligations are written down (issue #641):
+  // ui-spec-v05 §3 and the layer contract in CLAUDE.md. The one that used to be
+  // missing here: the shell must not simply be COVERED. `routes/index.ts` lists
+  // this route in FULL_VIEWPORT_ROUTES, which makes App.svelte pass
+  // `chrome={false}` to AppShell, so TopBar/SideNav/BottomNav are not rendered at
+  // all while cooking. Before that, they sat behind this overlay still focusable
+  // and still in the accessibility tree — a keyboard user tabbing through cook mode
+  // landed on invisible navigation and could leave mid-cook by activating it.
+  //
+  // NOT `role="dialog"` / `aria-modal`. This is a ROUTE that occupies the whole
+  // screen, not a dialog layered over a page the user can return to — with the
+  // chrome gone there is no background left to mark inert, and dialog semantics
+  // would have a screen reader announce a modal that nothing ever opened.
 
   interface Props {
     params: { id: string };
@@ -189,6 +203,20 @@
   const TICK_BEAT_MS = 600;
   const justTicked = createCheckOffHold(TICK_BEAT_MS);
   onDestroy(() => justTicked.dispose());
+
+  // Focus entry for the full-viewport mode (issue #641). The chrome that had focus
+  // is unmounted the moment this route becomes active, dropping focus to <body>, so
+  // a keyboard user's next Tab would restart from the top of the document. Pull it
+  // into the page instead: the first Tab from here is "Close cook mode".
+  //
+  // There is deliberately no matching restore on the way out. Cook mode is always
+  // entered from a route that unmounts as it opens (the recipe view's Cook button,
+  // the "resume a cook" card in Mine), so the element to restore to no longer
+  // exists by the time we leave. On exit focus falls to <body> with the chrome
+  // remounted, which puts the next Tab on the TopBar — the correct start of the
+  // restored page. Keeping a reference to a dead node to "restore" would be theatre.
+  let pageEl = $state.raw<HTMLElement | null>(null);
+  onMount(() => pageEl?.focus({ preventScroll: true }));
 
   // One tick and one pop per action, however many rows it moves. Only the rows the
   // action actually CHANGES pop — bulk-ticking a section that is half done shouldn't
@@ -823,7 +851,19 @@
    stops propagation so its expand survives the same click. -->
 <svelte:window onclick={() => (expandedChipId = null)} />
 
-<div class="fixed inset-0 z-50 flex h-dvh flex-col bg-background" data-testid="cook-mode-page">
+<!-- `z-dialog` (50), not a raw z-50: a full-viewport route shares the dialog rung of
+   the ladder in ui-spec-v02 §4.1 — above the nav (z-10) and any chrome-replacing bar
+   (z-30), below toasts, which must stay legible while cooking. tabindex="-1" exists
+   only to make the container a programmatic focus target (see onMount above); it is
+   not a tab stop. focus:outline-none because that focus is a handoff, not a
+   selection — there is nothing here for a ring to point at. -->
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+<div
+  bind:this={pageEl}
+  tabindex="-1"
+  class="z-dialog fixed inset-0 flex h-dvh flex-col bg-background focus:outline-none"
+  data-testid="cook-mode-page"
+>
   {#if recipe === null}
     <!-- Loading, or the recipe was deleted (orphan handled by the effect above). -->
     <div class="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">

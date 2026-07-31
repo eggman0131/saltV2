@@ -102,8 +102,11 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
         unresolved.push(i);
       }
 
-      // Buyable canon items the proposal AI may pick a parent from. Best-effort: a
-      // read failure (or an empty catalog) simply means no proposals this batch.
+      // Buyable canon items the proposal AI may pick a parent from — a PREFERENCE
+      // list, not a requirement: the model is told to reuse one of these names when
+      // it fits and otherwise to name a new parent, which #505's
+      // `resolveParentCanonId` then mints. Best-effort: a read failure just means an
+      // empty list (see the cold-start note below).
       // ponytail: second canon list read (matchOrCreateBatch lists again); fold
       // into a shared load if recipe-import canon reads ever show up hot.
       const canonList = await ports.store.list();
@@ -127,10 +130,18 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
           return { kind: 'none' };
         }
       };
-      const proposals =
-        candidates.length > 0
-          ? await Promise.all(unresolved.map((i) => proposeForm(i)))
-          : unresolved.map(() => ({ kind: 'none' }) as ProductFormProposal);
+      // Arbitration runs regardless of how big the catalog is — INCLUDING an empty
+      // one (issue #512). The old `candidates.length > 0` gate dated from when a
+      // proposal could only bind to a pre-existing buyable canon; since #505 the
+      // parent is named by the model and minted through matchOrCreateBatch, so a
+      // cold canon is a legitimate input, not a reason to skip. With the gate in
+      // place the first recipe imported into an empty canon turned every derivative
+      // ("lemon juice", "egg yolk") into an orphan canon item and #505's parent
+      // minting could never fire in the greenfield case it exists for. Both halves
+      // already handle the empty list: the prompt renders the catalog as "(none)"
+      // and tells the model to name a new parent, and `decideProductFormProposal`
+      // gates on `modifier_kind`, never on catalog membership.
+      const proposals = await Promise.all(unresolved.map((i) => proposeForm(i)));
 
       // In-batch dedupe: mint each named parent through matchOrCreateBatch at most
       // ONCE per recipe. Two forms naming the same parent (e.g. "lime juice" +

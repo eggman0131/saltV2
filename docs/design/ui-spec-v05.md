@@ -1,7 +1,7 @@
 # Salt 2.0 — UI Primitives Specification (v0.5)
 
 **Status:** Planning  
-**Scope:** `@salt/ui-components` — `ListPage` fill mode  
+**Scope:** `@salt/ui-components` — `ListPage` fill mode, `AppShell` full-viewport routes  
 **Audience:** AI code-generation agents + human contributors
 
 > Rule: If anything is missing or ambiguous → STOP → extend this spec → regenerate.  
@@ -17,8 +17,9 @@ All global rules, architecture, naming, styling, and testing conventions from v0
 v0.5 introduces:
 
 - **`ListPage` fill mode** — an opt-in `fill` prop that makes a page occupy the app shell's content area rather than grow with its content, handing the leftover height to `children` so the page can own its own scrolling surface (§1)
+- **`AppShell` full-viewport routes** — an opt-in `chrome` prop that suppresses the shell's navigation for a route that owns the whole screen, plus the rules a full-viewport page must follow (§2)
 
-Nothing in v0.5 changes the default behaviour of any existing component. `fill` defaults to `false`; every page that does not pass it renders exactly as it did under v0.4.
+Nothing in v0.5 changes the default behaviour of any existing component. `fill` defaults to `false` and `chrome` defaults to `true`; every page that does not pass them renders exactly as it did under v0.4.
 
 ---
 
@@ -92,3 +93,50 @@ A page passing `fill` **must** give its scrolling child a definite height from t
 - Do not compute a pixel height in a consuming page (`calc(100dvh - …)`, measuring `TopBar`, reading `clientHeight` to set a style). That hardcodes shell chrome into a page and breaks when the chrome changes; use `fill` and the height chain.
 - Do not use `fill` merely to suppress page scrolling, or to make content fit without addressing why it overflows.
 - Do not nest a second `fill` `ListPage` inside a filled one.
+
+---
+
+# 2. AppShell — Full-viewport routes
+
+## 2.1 Overview
+
+A **full-viewport route** is a page that occupies the entire screen with no app chrome: no `TopBar`, no `SideNav`, no `BottomNav`. Cook mode (`/recipes/:id/cook`) is the first and, at v0.5, the only one.
+
+This is not the same thing as `ListPage` fill (§1). Fill is a page that fills the shell's content area; a full-viewport route **leaves the shell** entirely. Fill is a layout choice; this is a mode.
+
+## 2.2 When it is justified
+
+Only for a genuinely **modal, single-task mode** — one where the app's other destinations are not merely unused but actively unwanted for the duration. Cook mode qualifies: cooking is heads-down and hands-busy, and a nav bar you can fat-finger mid-step is a hazard, not an escape hatch.
+
+It is **not** justified by a layout that is awkward inside the shell, by a page that wants more vertical room, or by a screen that "looks better" without a nav bar. Those are §1 problems, or design problems. A full-viewport route removes the user's way out; it must earn that.
+
+## 2.3 `AppShell` props
+
+```ts
+chrome?: boolean; // default true
+```
+
+`chrome={false}` makes `AppShell` **not render** `TopBar`, `SideNav` or `BottomNav`, and drops `<main>`'s BottomNav height reservation. It adds no other behaviour: no focus trap, no scroll lock, no `inert`.
+
+Not rendering is the mechanism, and the distinction is load-bearing. A page that paints over the shell with `fixed inset-0` leaves the chrome in the DOM — still in the tab order, still in the accessibility tree. Keyboard focus then lands on invisible navigation behind the overlay, and activating it navigates away mid-task; a screen-reader user browses the covered nav as though it were available. That was the defect in issue #641, and `inert` would only be the second-best fix for it.
+
+## 2.4 The consuming app's contract
+
+- The route is declared in `apps/web-pwa/src/routes/fullViewport.ts`; `App.svelte` derives `chrome` from it. A page must **not** reach for a store or a context to switch the shell off from the inside — the shell's shape is decided by the route, in one place, before the page renders.
+- The page **moves focus into itself on mount** (a `tabindex="-1"` container is enough). The chrome that had focus is unmounted as the route activates, so without this the user's next Tab restarts at the top of the document.
+- Focus on exit needs no ceremony **when the route was entered from a page that unmounts** — the element to restore to no longer exists, and focus falling to `<body>` with the chrome remounted puts the next Tab on the `TopBar`, which is the correct start of the restored page. A full-viewport route reachable from something that *survives* must restore focus to it.
+- The page owns the whole screen; it does not re-implement a `TopBar`. Its own header, if any, is its own design.
+
+## 2.5 Testing requirements
+
+- A default `AppShell` renders its chrome.
+- `chrome={false}` renders no `header` and no `nav`, and leaves **nothing focusable** in the shell — assert on absence from the DOM, not on `inert` or `aria-hidden`.
+- `chrome={false}` drops `<main>`'s BottomNav padding reservation.
+- The consuming app's route predicate is anchored at both ends (a full-viewport route must not match by prefix).
+
+## 2.6 Forbidden
+
+- Do not add a full-viewport route without a spec amendment naming it and its justification. The list is closed by default.
+- Do not paint over the chrome instead of suppressing it — see §2.3.
+- Do not give a full-viewport route `role="dialog"` / `aria-modal`. It is a route, not a layer over a page the user can return to; with the chrome gone there is no background to mark inert, and dialog semantics announce a modal that nothing opened.
+- Do not put a focus trap in `AppShell`. There is nothing to trap focus away from once the chrome is not rendered.
