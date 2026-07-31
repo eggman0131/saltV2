@@ -7,9 +7,11 @@ import type { WeatherDaySummary } from '@salt/domain/schemas';
 // because it is known for every day; a decisive forecast overrides it; the hash
 // picks within the mood so a week varies and never reshuffles.
 
+const HERO = { url: 'https://example.test/hero.webp', source: 'ai' } as const;
+
 function entry(id: string, kind: RecipeKind, tags: string[] = []): Recipe {
   const base = emptyRecipe(id, '2026-01-01T00:00:00.000Z');
-  return { ...base, kind, metadata: { ...base.metadata, tags } };
+  return { ...base, kind, image: { ...HERO }, metadata: { ...base.metadata, tags } };
 }
 
 function placeholders(mood: PlaceholderMood, count: number): Recipe[] {
@@ -17,15 +19,16 @@ function placeholders(mood: PlaceholderMood, count: number): Recipe[] {
 }
 
 // A summary at a given feels-like temperature, with the secondary signals sat
-// squarely in the middle so only the temperature can decide anything.
-function evening(apparentTemp: number): WeatherDaySummary {
+// squarely in the middle so only the temperature can decide anything. `rain` is
+// the one dial a test may turn on its own — it drives the `wet` refinement.
+function evening(apparentTemp: number, rain = 20): WeatherDaySummary {
   return {
     tempHigh: apparentTemp + 1,
     tempLow: apparentTemp - 1,
     apparentTemp,
     humidity: 65,
     cloudCover: 55,
-    precipitationChance: 20,
+    precipitationChance: rain,
   };
 }
 
@@ -128,6 +131,142 @@ describe('pickPlaceholder — the empty set', () => {
   it('matches a mood tag regardless of case and surrounding space', () => {
     const sloppy = [entry('ph-sloppy', 'placeholder', ['  Bright '])];
     expect(pickPlaceholder(sloppy, '2026-06-15')).toBe('ph-sloppy');
+  });
+});
+
+describe('pickPlaceholder — condition tags rank, they do not filter', () => {
+  // Temperatures sit on `classifyEatingMood`'s poles in these tests so the MOOD is
+  // pinned and only the condition under test is in play — otherwise a high rain
+  // chance would itself drag the mood and confuse what is being asserted.
+
+  // How often each picture wins across a long run of days, which is the only
+  // honest way to assert on a ranking: any single day is just one hash.
+  function tally(library: Recipe[], weather?: WeatherDaySummary): Map<string, number> {
+    const counts = new Map<string, number>();
+    // A full year of December-through-February keys, so a share is a share and not
+    // the variance of a 28-day sample.
+    for (let year = 2026; year <= 2035; year++) {
+      for (const month of ['12', '01', '02']) {
+        for (let day = 1; day <= 28; day++) {
+          const dateKey = `${year}-${month}-${String(day).padStart(2, '0')}`;
+          const picked = pickPlaceholder(library, dateKey, weather);
+          if (picked !== null) counts.set(picked, (counts.get(picked) ?? 0) + 1);
+        }
+      }
+    }
+    return counts;
+  }
+
+  const TOTAL_DAYS = 10 * 3 * 28;
+
+  it('a matching tag improves the odds without ever guaranteeing the pick', () => {
+    const wet = entry('ph-comfort-wet', 'placeholder', ['comfort', 'wet']);
+    const library = [...placeholders('comfort', 9), wet];
+
+    const rainy = tally(library, evening(5, 80));
+    const dry = tally(library, evening(5, 10));
+
+    // It wins more often in the rain than out of it…
+    expect(rainy.get('ph-comfort-wet') ?? 0).toBeGreaterThan(dry.get('ph-comfort-wet') ?? 0);
+    // …but it does NOT own every rainy evening, and the whole library is still in
+    // use. This is the property a filter-based design got wrong: one tagged
+    // picture became the answer to every rainy day.
+    expect(rainy.get('ph-comfort-wet') ?? 0).toBeLessThan(TOTAL_DAYS / 2);
+    expect(rainy.size).toBe(10);
+  });
+
+  it('the more pictures carry a tag, the more often that kind shows up', () => {
+    // The gradient the whole scheme exists for: make more of a kind and that kind
+    // appears more, with no threshold to cross.
+    const share = (wetCount: number): number => {
+      const wets = Array.from({ length: wetCount }, (_, i) =>
+        entry(`ph-comfort-wet-${i}`, 'placeholder', ['comfort', 'wet']),
+      );
+      const counts = tally([...placeholders('comfort', 9), ...wets], evening(5, 80));
+      return [...counts].reduce((n, [id, c]) => (id.includes('wet') ? n + c : n), 0);
+    };
+
+    expect(share(1)).toBeLessThan(share(3));
+    expect(share(3)).toBeLessThan(share(6));
+  });
+
+  it('scores every matching condition, so a closer match outranks a partial one', () => {
+    const both = entry('ph-comfort-both', 'placeholder', ['comfort', 'wet', 'cold']);
+    const one = entry('ph-comfort-one', 'placeholder', ['comfort', 'wet']);
+    // A freezing, soaking, grey evening: tempHigh 2 → cold, rain 80 → wet.
+    const counts = tally([both, one, ...placeholders('comfort', 9)], {
+      ...evening(2, 80),
+      tempHigh: 2,
+      cloudCover: 90,
+    });
+    expect(counts.get('ph-comfort-both') ?? 0).toBeGreaterThan(counts.get('ph-comfort-one') ?? 0);
+  });
+
+  it('never lets conditions cross the mood boundary', () => {
+    // A warm, wet August evening is bright AND wet — the case two moods alone
+    // could not express. It must still never reach for a comfort picture.
+    const library = [
+      ...placeholders('bright', 5),
+      entry('ph-bright-wet', 'placeholder', ['bright', 'wet']),
+      entry('ph-comfort-wet', 'placeholder', ['comfort', 'wet']),
+    ];
+    for (let day = 1; day <= 28; day++) {
+      const picked = pickPlaceholder(library, `2026-08-${String(day).padStart(2, '0')}`, {
+        ...evening(24, 80),
+        tempHigh: 24,
+      });
+      expect(picked).not.toBe('ph-comfort-wet');
+    }
+  });
+
+  it('changes nothing when no picture carries the condition', () => {
+    const library = placeholders('comfort', 5);
+    expect(pickPlaceholder(library, '2026-12-15', evening(5, 80))).toBe(
+      pickPlaceholder(library, '2026-12-15', evening(5, 10)),
+    );
+  });
+
+  it('uses the WHOLE library when there is no forecast to weight by', () => {
+    // Every picture weighs the same, so this is a plain uniform draw — and all
+    // twelve must be reachable, not just a favoured few.
+    const counts = tally(placeholders('comfort', 12));
+    expect(counts.size).toBe(12);
+  });
+});
+
+describe('pickPlaceholder — placeholders with no hero', () => {
+  it('never picks a placeholder whose image is null', () => {
+    // A failed generation leaves `image: null`, which parses perfectly well — so
+    // without this guard the night would get a card with no photograph, which is
+    // worse than the text it replaced.
+    const heroless = { ...entry('ph-comfort-broken', 'placeholder', ['comfort']), image: null };
+    expect(pickPlaceholder([heroless], '2026-12-15')).toBeNull();
+  });
+
+  it('picks from the rest of the mood when one entry is heroless', () => {
+    const heroless = { ...entry('ph-comfort-broken', 'placeholder', ['comfort']), image: null };
+    const library = [...placeholders('comfort', 5), heroless];
+    const picked = pickPlaceholder(library, '2026-12-15');
+    expect(picked).not.toBeNull();
+    expect(picked).not.toBe('ph-comfort-broken');
+  });
+
+  it('does not let a heroless entry rank at all', () => {
+    // The nastiest version: the broken document is the best-matching one, so it
+    // would top the ranking and hand rainy nights a blank card.
+    const heroless = {
+      ...entry('ph-comfort-broken', 'placeholder', ['comfort', 'wet']),
+      image: null,
+    };
+    const library = [...placeholders('comfort', 5), heroless];
+    for (let day = 1; day <= 28; day++) {
+      const picked = pickPlaceholder(library, `2026-12-${String(day).padStart(2, '0')}`, {
+        ...evening(5, 80),
+        tempHigh: 5,
+      });
+      expect(picked).not.toBeNull();
+      expect(picked).not.toBe('ph-comfort-broken');
+    }
   });
 });
 
