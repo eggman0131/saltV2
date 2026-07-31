@@ -261,7 +261,10 @@ export {
   isPlannable,
   findProducingRecipes,
   diffRecipe,
+  pickPlaceholder,
+  PLACEHOLDER_MOODS,
 } from './recipe/index.js';
+export type { PlaceholderMood } from './recipe/index.js';
 export type { ParsedImportUrl, IpClass } from './recipe/index.js';
 export {
   parseImportUrl,

@@ -381,9 +381,12 @@ describe('RecipeListPage — sections', () => {
     expect(kindChip('recipe')).toHaveAttribute('aria-pressed', 'true');
     expect(kindChip('outing')).toHaveAttribute('aria-pressed', 'false');
     expect(kindChip('cocktail')).toHaveAttribute('aria-pressed', 'false');
-    // All three sections, and only three — a chip row you STAND in, so a fourth
-    // would be a kind that shipped a section without anyone deciding to.
-    expect(screen.getAllByTestId('recipe-kind-filter')).toHaveLength(3);
+    expect(kindChip('placeholder')).toHaveAttribute('aria-pressed', 'false');
+    // All four sections, and only four — a chip row you STAND in, so a fifth
+    // would be a kind that shipped a section without anyone deciding to. The
+    // fourth (issue #652) was decided: you need somewhere to open Regenerate
+    // from, and that is the view page you reach from this grid.
+    expect(screen.getAllByTestId('recipe-kind-filter')).toHaveLength(4);
   });
 
   it('switches sections and shows only that section', async () => {

@@ -1,4 +1,4 @@
-// Presentation for the three kinds of `recipes/{id}` entry (issue #637).
+// Presentation for the kinds of `recipes/{id}` entry (issues #637, #652).
 //
 // This module holds COPY and ICONS only — the words and pictures each kind wears
 // on screen. It never decides whether a section, button or action exists: every
@@ -94,6 +94,24 @@ export const KIND_COPY: Record<RecipeKind, KindCopy> = {
     thumbIcon: 'Martini',
     menuIcon: 'Martini',
   },
+  // Issue #652. The plural label is what the chip and the New menu say, matching
+  // the other three; the singular is only ever a count noun. These entries are
+  // read far more often by the person BUILDING the library than by anyone
+  // browsing it — a placeholder reaches the planner on its own, never by being
+  // picked — so the words are plain rather than coy.
+  placeholder: {
+    label: 'Placeholders',
+    one: 'placeholder',
+    many: 'placeholders',
+    newTitle: 'New placeholder',
+    editTitle: 'Edit placeholder',
+    createdToast: 'Placeholder created',
+    savedToast: 'Placeholder saved',
+    emptyText: 'No placeholders yet — build a few and a note-only night gets a picture.',
+    noMatchText: 'No placeholders match your filters.',
+    thumbIcon: 'Images',
+    menuIcon: 'Images',
+  },
 };
 
 // The sections the list page offers, in chip order — and, minus the first, the
@@ -105,4 +123,4 @@ export const KIND_COPY: Record<RecipeKind, KindCopy> = {
 // here gives it a chip, a New-menu entry and a filtered grid, because every screen
 // below reads the kind's words from KIND_COPY and its behaviour from the domain
 // capability predicates. Nothing else needs a fourth case.
-export const KIND_SECTIONS: readonly RecipeKind[] = ['recipe', 'outing', 'cocktail'];
+export const KIND_SECTIONS: readonly RecipeKind[] = ['recipe', 'outing', 'cocktail', 'placeholder'];

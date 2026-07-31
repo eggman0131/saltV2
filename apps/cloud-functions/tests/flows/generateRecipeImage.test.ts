@@ -27,6 +27,8 @@ const {
   OUTING_SCENE_FALLBACK,
   COCKTAIL_IMAGE_STYLE_ANCHORS,
   COCKTAIL_SCENE_FALLBACK,
+  PLACEHOLDER_IMAGE_STYLE_ANCHORS,
+  PLACEHOLDER_SCENE_FALLBACK,
   GENERATE_RECIPE_IMAGE_KINDS,
 } = await import('../../src/flows/generateRecipeImage.js');
 
@@ -487,11 +489,128 @@ describe('generateRecipeImage flow — entry kinds', () => {
     expect(COCKTAIL_SCENE_FALLBACK).not.toContain('no hands, no people');
   });
 
+  // ─── Placeholders (issue #652) ─────────────────────────────────────────────
+  // A placeholder goes further than an outing did. An outing lost the method but
+  // kept a subject; a placeholder has none — it stands in for dinner on many
+  // different evenings, so the one thing it must never do is name a dish. That
+  // rule lives in the anchors rather than in a brief precisely because the
+  // anchors are locked and appended last, and therefore survive a hand-edited
+  // brief that the rule's whole job is to outrank.
+
+  it('paints a placeholder as an unnameable evening — its own anchors, never the others', async () => {
+    const prompt = await promptFor({
+      title: 'Placeholder — autumn evening',
+      description: null,
+      kind: 'placeholder',
+    });
+
+    expect(prompt).toContain(PLACEHOLDER_IMAGE_STYLE_ANCHORS);
+    expect(prompt).toContain(PLACEHOLDER_SCENE_FALLBACK);
+    // None of the other three house styles may leak in. Each of them makes a
+    // subject the star, which is exactly what would paint a nameable dish.
+    expect(prompt).not.toContain(RECIPE_IMAGE_STYLE_ANCHORS);
+    expect(prompt).not.toContain(RECIPE_IMAGE_DISH_READING_FALLBACK);
+    expect(prompt).not.toContain(OUTING_IMAGE_STYLE_ANCHORS);
+    expect(prompt).not.toContain(COCKTAIL_IMAGE_STYLE_ANCHORS);
+    expect(prompt).not.toContain('the finished dish');
+    expect(prompt).toContain('with no particular dish in it');
+  });
+
+  it('hands the title over as a mood cue, never as the subject', async () => {
+    // The one opener that does not make the title the thing being photographed:
+    // "Placeholder — autumn evening" is a note to the person browsing the
+    // library, and a model told to paint it would paint a label.
+    const prompt = await promptFor({
+      title: 'Placeholder — autumn evening',
+      description: null,
+      kind: 'placeholder',
+    });
+
+    expect(prompt).toContain('titled "Placeholder — autumn evening"');
+    expect(prompt).toContain('never as a dish to paint');
+  });
+
+  it('keeps the placeholder anchors LAST on the brief path', async () => {
+    const prompt = await promptFor({
+      title: 'Placeholder — autumn evening',
+      description: 'Lamplight and steam.',
+      kind: 'placeholder',
+      sceneBrief: 'Steam rising off a bowl under a low lamp, the room dark behind it.',
+      tags: ['comfort'],
+      hint: 'push the depth of field harder',
+    });
+
+    // The brief REPLACES the fallback, exactly as on the other three paths…
+    expect(prompt).toContain('Steam rising off a bowl under a low lamp');
+    expect(prompt).not.toContain(PLACEHOLDER_SCENE_FALLBACK);
+    // …and everything authored still sits before the anchors, which end the
+    // prompt. This ordering matters MOST here: the "nothing nameable" rule lives
+    // in the anchors, and a revised brief is the primary way these ten pictures
+    // get tuned, so it is the likeliest text to talk the model into a dish.
+    expect(prompt.indexOf('Steam rising off a bowl')).toBeLessThan(
+      prompt.indexOf(PLACEHOLDER_IMAGE_STYLE_ANCHORS),
+    );
+    expect(prompt.indexOf('This recipe is tagged')).toBeLessThan(
+      prompt.indexOf(PLACEHOLDER_IMAGE_STYLE_ANCHORS),
+    );
+    expect(prompt.indexOf('Additional guidance for this photo')).toBeLessThan(
+      prompt.indexOf(PLACEHOLDER_IMAGE_STYLE_ANCHORS),
+    );
+    expect(prompt.endsWith(PLACEHOLDER_IMAGE_STYLE_ANCHORS)).toBe(true);
+  });
+
+  it('keeps the placeholder anchors LAST on the fallback path too (no brief)', async () => {
+    const prompt = await promptFor({
+      title: 'Placeholder — bright evening',
+      description: null,
+      kind: 'placeholder',
+      hint: 'a glass being poured',
+    });
+    expect(prompt.endsWith(PLACEHOLDER_IMAGE_STYLE_ANCHORS)).toBe(true);
+  });
+
+  it('keeps the placeholder anchor wording verbatim', () => {
+    // Canary, mirroring the other three — but the first clause here is not a
+    // house-style preference, it is the feature. Reword deliberately, then
+    // update this test.
+    expect(PLACEHOLDER_IMAGE_STYLE_ANCHORS).toContain(
+      'NOTHING in this photograph may be identifiable as a particular dish',
+    );
+    expect(PLACEHOLDER_IMAGE_STYLE_ANCHORS).toContain(
+      'That rule is absolute and outranks everything else here',
+    );
+    // The subject need not be food — and must NOT be composed as a food hero
+    // shot, which is what would push the model back toward a nameable dish.
+    expect(PLACEHOLDER_IMAGE_STYLE_ANCHORS).toContain('The subject need not be food at all');
+    expect(PLACEHOLDER_IMAGE_STYLE_ANCHORS).toContain('Do NOT compose this as a hero shot of food');
+    // Warm, never a cold still life — the failure mode this set exists to avoid
+    // is the second-class treatment in a new coat.
+    expect(PLACEHOLDER_IMAGE_STYLE_ANCHORS).toContain('must always read WARM and APPETISING');
+    expect(PLACEHOLDER_IMAGE_STYLE_ANCHORS).toContain('no styled still life');
+    // House style and prohibitions, inherited from its siblings.
+    expect(PLACEHOLDER_IMAGE_STYLE_ANCHORS).toContain('photorealistic photograph');
+    expect(PLACEHOLDER_IMAGE_STYLE_ANCHORS).toContain('shallow depth of field');
+    expect(PLACEHOLDER_IMAGE_STYLE_ANCHORS).toContain(
+      'Absolutely no text, no captions, no watermark, no logos, no branding, no hands, no people.',
+    );
+    // It must NOT inherit the "fill the frame with the subject" clause its three
+    // siblings share — that is the clause that would paint a dish.
+    expect(PLACEHOLDER_IMAGE_STYLE_ANCHORS).not.toContain('fill the frame with the dish');
+    expect(PLACEHOLDER_IMAGE_STYLE_ANCHORS).not.toContain('always the star of the shot');
+    // The fallback owns the mood-reading guess and must not smuggle anchors in.
+    expect(PLACEHOLDER_SCENE_FALLBACK).not.toContain('no hands, no people');
+    // …but it does have to know what the two moods mean, because they are the
+    // only thing it has to read.
+    expect(PLACEHOLDER_SCENE_FALLBACK).toContain('"bright"');
+    expect(PLACEHOLDER_SCENE_FALLBACK).toContain('"comfort"');
+  });
+
   it('gives each kind its own anchors — no two share a set', () => {
     const sets = [
       RECIPE_IMAGE_STYLE_ANCHORS,
       OUTING_IMAGE_STYLE_ANCHORS,
       COCKTAIL_IMAGE_STYLE_ANCHORS,
+      PLACEHOLDER_IMAGE_STYLE_ANCHORS,
     ];
     expect(new Set(sets).size).toBe(GENERATE_RECIPE_IMAGE_KINDS.length);
   });

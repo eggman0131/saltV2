@@ -360,3 +360,89 @@ describe('describeRecipeScene flow — cocktails', () => {
     expect(cocktail).not.toBe(outing);
   });
 });
+
+// ─── Placeholders (issue #652) ───────────────────────────────────────────────
+// An outing lost the "read the method" premise but kept a SUBJECT — a curry, a
+// chippy tea, something the model can picture. A placeholder has neither: it
+// stands in for dinner on an evening someone planned in a sentence, and it is
+// attached to many different evenings, so naming a dish is the one thing it must
+// never do. All that is left to read is the MOOD the entry is tagged with.
+describe('describeRecipeScene flow — placeholders', () => {
+  const PLACEHOLDER = {
+    title: 'Placeholder — autumn evening',
+    description: 'Lamplight, steam, the weather shut outside.',
+    ingredients: [],
+    steps: [],
+  };
+
+  const SHARED_SCOPE_RULE =
+    'Do NOT write about photographic style, lighting, lens, framing, camera angle, or what must not appear in the shot — those are fixed elsewhere and anything you say about them is discarded.';
+
+  async function systemFor(input: Record<string, unknown>): Promise<string> {
+    mockGenerate.mockClear();
+    mockGenerate.mockResolvedValue({ output: { brief: 'x' } });
+    await (describeRecipeSceneFlow as Function)(input);
+    return mockGenerate.mock.calls[0]![0].system as string;
+  }
+
+  it('asks for a MOOD, and forbids inventing a dish to hang it on', async () => {
+    const system = await systemFor({ ...PLACEHOLDER, kind: 'placeholder' });
+
+    expect(system).toContain('There is no dish here, and there must not be one');
+    expect(system).toContain('Do not invent a meal');
+    expect(system).toContain('"bright"');
+    expect(system).toContain('"comfort"');
+    // The subject need not be food — the lead may be a glass, a cloche, steam.
+    expect(system).toContain('what LEADS the picture');
+    expect(system).toContain('it need not be food');
+    // Neither recipe premise survives: there is no method and no arrival.
+    expect(system).not.toContain('especially the METHOD and the INGREDIENTS');
+    expect(system).not.toContain('AS IT ARRIVES');
+    expect(system).toContain('ONE paragraph');
+  });
+
+  it('refuses the dish even when the requested change asks for one', async () => {
+    // The guard the other three revision prompts do not need. Editing the brief
+    // is how these ten pictures get good, so "make it a roast dinner" is a
+    // plausible thing to type — and it is the one steer this must not fold in.
+    const system = await systemFor({
+      ...PLACEHOLDER,
+      kind: 'placeholder',
+      currentBrief: 'Steam off a bowl under a low lamp.',
+      hint: 'make it a roast dinner',
+    });
+
+    expect(system).toContain('Fold the change THROUGH the whole brief');
+    expect(system).toContain('There is still no dish, whatever the change asks for');
+    expect(system).toContain('never the dish itself');
+    // None of the other three revision prompts is the one that ran.
+    expect(system).not.toContain('The finished dish');
+    expect(system).not.toContain('vessel and packaging it arrives in');
+    expect(system).not.toContain('what is in the glass');
+  });
+
+  it('inherits the shared scope rule verbatim on both placeholder variants', async () => {
+    const authoring = await systemFor({ ...PLACEHOLDER, kind: 'placeholder' });
+    const revising = await systemFor({
+      ...PLACEHOLDER,
+      kind: 'placeholder',
+      currentBrief: 'Steam off a bowl under a low lamp.',
+      hint: 'make it a winter evening',
+    });
+
+    for (const system of [authoring, revising]) {
+      expect(system).toContain(SHARED_SCOPE_RULE);
+    }
+  });
+
+  it('does not paint a placeholder with any of the other three prompts', async () => {
+    const placeholder = await systemFor({ ...PLACEHOLDER, kind: 'placeholder' });
+    const recipe = await systemFor(RECIPE);
+    const outing = await systemFor({ ...PLACEHOLDER, kind: 'outing' });
+    const cocktail = await systemFor({ ...PLACEHOLDER, kind: 'cocktail' });
+
+    expect(placeholder).not.toBe(recipe);
+    expect(placeholder).not.toBe(outing);
+    expect(placeholder).not.toBe(cocktail);
+  });
+});
