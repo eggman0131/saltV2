@@ -74,7 +74,7 @@ says the current answer — *Shop · Sat 1 pm*, or *No shop day set* — opening
 picker that holds the week's seven days in `firstDayOfWeek` order, each with AM
 and PM. One tap sets both halves and closes it; *No shop day* clears. When the
 planner is also showing next week (#639) that week is offered too, under its own
-heading — from the last two days of the cycle the week you are provisioning *is*
+heading — from the last three days of the cycle the week you are provisioning *is*
 next week — and `setShopDay` scopes its one-shop-per-week clear by the **date's
 own** week, so marking one week's shop never disturbs the other's. Until #640 the
 AM/PM pair lived inside a single day's sheet: you opened Thursday to say "we shop

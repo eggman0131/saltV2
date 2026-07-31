@@ -331,17 +331,24 @@ function deckOffset(): number {
 // this week followed by next week once the planner extends (#639, Phase 6). The
 // column's height follows from the count, so the appended week genuinely gives the
 // deck further to travel, which is the whole reason today's row can reach the top
-// on a Wednesday.
+// at the end of a cycle.
 function installDeckLayout(dates: string[]): void {
   const contentH = dates.length * ROW_H + (dates.length - 1) * ROW_GAP;
   const realRect = Element.prototype.getBoundingClientRect;
   const realOffsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight')!;
   const realClientHeight = Object.getOwnPropertyDescriptor(Element.prototype, 'clientHeight')!;
 
-  // A row wrapper is identified by the day editor it wraps.
+  // A row wrapper is identified by the day editor it wraps — found among its
+  // children rather than assumed to be the first of them: a row also carries the
+  // marks that belong to its day (the shop rule, the next-week mark), and both
+  // render ABOVE the editor. The match is the bare `day-{date}` id, since the shop
+  // marker's own testid is `day-{date}-shop-marker` and would otherwise answer
+  // first with a date that is in no list.
   const rowIndex = (el: Element): number => {
-    const id = el.firstElementChild?.getAttribute('data-testid') ?? '';
-    return id.startsWith('day-') ? dates.indexOf(id.slice(4)) : -1;
+    const editor = Array.from(el.children).find((c) =>
+      /^day-\d{4}-\d{2}-\d{2}$/.test(c.getAttribute('data-testid') ?? ''),
+    );
+    return editor ? dates.indexOf(editor.getAttribute('data-testid')!.slice(4)) : -1;
   };
   const isViewport = (el: Element): boolean => el.getAttribute?.('data-testid') === 'week-deck';
   const isColumn = (el: Element): boolean =>
@@ -1256,13 +1263,14 @@ describe('MealPlanWeekPage — landing on today (#639, Phases 2 & 4)', () => {
   });
 });
 
-// ─── Next week appears from Wednesday (#639, Phase 6) ──────────────────────
-// The trigger is the last two days of the CYCLE, so these tests place today at
-// index 5 or 6 of the displayed week rather than naming a weekday — `firstDayOfWeek`
-// is a configurable setting, and Wednesday is only its consequence in production.
-describe('MealPlanWeekPage — next week appears from Wednesday (#639, Phase 6)', () => {
-  it('appends the whole of next week under a dated mark on the penultimate day', async () => {
-    const { start, next } = weekAroundTodayWithNext(5);
+// ─── Next week appears from Tuesday (#639, Phase 6) ────────────────────────
+// The trigger is the last three days of the CYCLE, so these tests place today at
+// index 4, 5 or 6 of the displayed week rather than naming a weekday —
+// `firstDayOfWeek` is a configurable setting, and Tuesday is only its consequence
+// in production.
+describe('MealPlanWeekPage — next week appears from Tuesday (#639, Phase 6)', () => {
+  it('appends the whole of next week under a dated mark on the first day it triggers', async () => {
+    const { start, next } = weekAroundTodayWithNext(4);
     renderLaidOut(start, next);
 
     // The page asked the service for exactly next week — not for "some week".
@@ -1291,8 +1299,8 @@ describe('MealPlanWeekPage — next week appears from Wednesday (#639, Phase 6)'
     expect(screen.getByTestId(`day-${weekDates(next)[6]}`)).toBeInTheDocument();
   });
 
-  it('shows this week alone before the last two days of the cycle', async () => {
-    const { start, next } = weekAroundTodayWithNext(4);
+  it('shows this week alone before the last three days of the cycle', async () => {
+    const { start, next } = weekAroundTodayWithNext(3);
     renderLaidOut(start);
 
     await waitFor(() => expect(vi.mocked(mockSetExtensionWeek)).toHaveBeenCalledWith(null));
