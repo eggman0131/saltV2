@@ -466,8 +466,13 @@
            no notion of "today"). Today is excluded from the next-week rail
            treatment on purpose: today outranks which week it falls in, and keeps
            its filled teal disc wherever it is. -->
+      <!-- Its own testid, because the wrapper is the DECK'S SECTION and the day's
+           card is not: a day carrying a mark starts with that mark, so the card
+           sits well below the place the deck actually snaps to. A geometry test
+           addressing the card would silently measure the wrong box. -->
       <div
         bind:this={rowEls[date]}
+        data-testid={`day-${date}-row`}
         class="{isEarlier ? 'opacity-60' : ''} {isExtension && date !== todayDate
           ? 'planner-next-week-row'
           : ''}"

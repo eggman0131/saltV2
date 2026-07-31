@@ -5,13 +5,13 @@ import {
   setAiStub,
   saveMealPlanWeek,
 } from '@salt/firebase-sync';
-import type { CanonItem, MealPlanWeek, Recipe, Weekday } from '@salt/domain';
+import type { CanonItem, MealPlanWeek, Recipe } from '@salt/domain';
 import { devSignIn } from './auth.svelte.js';
 import { addAislesBulk, aisles } from './aisleService.js';
 import { canonItems, isLoadingAisles } from './canonService.js';
 import { seedEquipmentManifest, getEquipmentSnapshot } from './equipmentService.js';
 import { getRecipesSnapshot, persistRecipe } from './recipeService.js';
-import { getMealPlanWeekSnapshot, saveFirstDayOfWeek } from './mealPlanService.js';
+import { getMealPlanWeekSnapshot } from './mealPlanService.js';
 import { getChatSessionsSnapshot } from './chatService.js';
 import {
   getShoppingListsSnapshot,
@@ -134,13 +134,6 @@ export function installE2EHooks(): void {
       const result = await saveMealPlanWeek(week);
       if (result.kind !== 'ok') {
         throw new Error(`seedMealPlanWeek failed: ${JSON.stringify(result.error)}`);
-      }
-    },
-
-    async setFirstDayOfWeek(day: Weekday) {
-      const result = await saveFirstDayOfWeek(day);
-      if (result.kind !== 'ok') {
-        throw new Error(`setFirstDayOfWeek failed: ${JSON.stringify(result.error)}`);
       }
     },
 

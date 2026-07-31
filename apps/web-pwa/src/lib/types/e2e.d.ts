@@ -6,7 +6,6 @@ import type {
   Recipe,
   ShoppingList,
   ShoppingListItem,
-  Weekday,
 } from '@salt/domain';
 import type { ObservabilitySessionMeta } from '@salt/observability';
 import type { ChatSessionDoc } from '@salt/domain/schemas';
@@ -60,11 +59,6 @@ export interface E2EBridge {
   // carries a photograph — and building that through the day sheets would be
   // seven dialogs of typing. Emulator-only, like every other seeder here.
   seedMealPlanWeek(week: MealPlanWeek): Promise<void>;
-  // Sets `firstDayOfWeek` through the same call the admin screen makes. Which day
-  // starts the week decides where TODAY falls in the displayed week — and, from
-  // the last three days of the cycle, whether next week is appended at all — so a
-  // date-dependent layout test seeds it rather than hoping for a helpful weekday.
-  setFirstDayOfWeek(day: Weekday): Promise<void>;
   // Synchronous snapshot of the owner-scoped chat-sessions store (test-infra
   // Phase 5). Chat is the one owner-scoped exception to the family-shared rule:
   // each user's store holds only their own sessions (subscribeChatSessions
