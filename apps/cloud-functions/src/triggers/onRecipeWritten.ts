@@ -185,6 +185,11 @@ async function describeSceneOrNothing(recipe: RecipeDoc): Promise<string | undef
     const { brief } = await describeRecipeSceneFlow({
       title: recipe.title.trim(),
       description: recipe.description,
+      // The brief step never used to get these — only the image flow did. For a
+      // placeholder that was a hole rather than a missed cue: it has no method
+      // and no ingredients, and its mood lives in `tags`, so the prompt's "read
+      // the MOOD, which the tags carry" was reading a field nobody sent.
+      tags: recipe.metadata.tags,
       // An outing has no method and no ingredients for the art director to read,
       // so it gets a prompt that asks what the food looks like as it ARRIVES
       // (issue #637) rather than what it looks like once cooked and plated.

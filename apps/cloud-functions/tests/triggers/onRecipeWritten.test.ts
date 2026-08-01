@@ -275,9 +275,41 @@ describe('onRecipeWritten — scene brief', () => {
       title: 'Roast chicken',
       description: 'A whole roast chicken with lemon and thyme.',
       kind: 'recipe',
+      tags: [],
       ingredients: ['a handful of basil'],
       steps: ['Grill until the top is blistered and golden.'],
     });
+  });
+
+  it('sends the tags to the art director, not only to the image model', async () => {
+    // They used to reach generateRecipeImage and stop there. For a placeholder
+    // that was a hole rather than a missed cue: no ingredients, no method, and a
+    // mood that lives in `tags` — so the brief prompt's "read the MOOD, which the
+    // tags carry" was reading a field the trigger never sent, leaving the title
+    // and description as its only input.
+    await (onRecipeWritten as Function)(
+      makeEvent(
+        'r1',
+        makeRecipe('r1', {
+          kind: 'placeholder',
+          metadata: {
+            servings: null,
+            totalTimeMinutes: null,
+            prepTimeMinutes: null,
+            cookTimeMinutes: null,
+            tags: ['comfort', 'wet'],
+          },
+        }),
+      ),
+    );
+
+    expect(mockDescribeScene).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'placeholder', tags: ['comfort', 'wet'] }),
+    );
+    // And still to the image model, which is where they already worked.
+    expect(mockGenerateImage).toHaveBeenCalledWith(
+      expect.objectContaining({ tags: ['comfort', 'wet'] }),
+    );
   });
 
   it('uses a brief already on the doc verbatim, without authoring a new one', async () => {

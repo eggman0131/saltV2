@@ -184,6 +184,11 @@ function sceneInputFor(recipe: Recipe): DescribeRecipeSceneInput {
     // no method and no ingredients. Carried on both brief actions, so the
     // Regenerate dialog and the write trigger reason about the same entry.
     kind: recipe.kind,
+    // Carried for the same reason the trigger carries them: a placeholder's mood
+    // is an ordinary tags entry, and without it the art director is asked to read
+    // a mood it was never given. Sending them here too keeps a brief authored
+    // from the dialog identical to one authored by the write trigger.
+    tags: recipe.metadata.tags,
     ingredients: recipe.ingredients.flatMap((g) => g.items.map((i) => i.rawText)),
     steps: recipe.steps.map((s) => s.text),
   };

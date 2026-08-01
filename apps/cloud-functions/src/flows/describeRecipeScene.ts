@@ -228,8 +228,18 @@ Write ONE paragraph of plain prose, at most about 80 words. Return only the revi
 //
 // So the reading question, which all three other prompts ask of the thing, has
 // nothing to ask it of. What is left to read is the MOOD — the entry is tagged
-// `bright` or `comfort` — and the brief's job is to turn that into a scene: which
-// lead the picture takes, what light it is in, what it is set on.
+// `bright` or `comfort` — and the brief's job is to turn that into a scene: what
+// light the picture is in, what it is set on, what sits unresolved behind.
+//
+// It does NOT choose the lead. It used to: this prompt offered a menu of four
+// (a glass mid-pour, a cloche, steam off a bowl, a dish shot soft), and with no
+// method and no ingredients to read, that menu was the most concrete thing in
+// front of the model — so ten placeholders came back as four ideas, and the
+// per-doc description that should have decided the shot was averaged into them.
+// The menu is gone. The DESCRIPTION names the lead; this prompt builds a scene
+// around it. That is also why `tags` is now on the input schema at all — the
+// paragraph below has always claimed to read a mood it was never given, so the
+// only signal reaching it was the title and the description it then diluted.
 //
 // The illegibility rule is NOT trusted to this prompt. It lives in the locked
 // anchors in generateRecipeImage.ts, appended after every brief, precisely
@@ -250,8 +260,9 @@ sunlit table, air and space; "comfort" is lamplight, steam, warm ceramics, deep 
 the mood decide the scene.
 
 Cover only what is specific to THIS placeholder:
-- what LEADS the picture — it need not be food: a glass of wine mid-pour, a cloche waiting to be lifted, steam rising \
-off a bowl, a serving dish so close and so soft that only warmth and colour survive
+- what LEADS the picture — the description says what this one leads with, so take it as given and build the scene \
+around it rather than substituting a lead of your own; it need not be food. Only when the description names no lead \
+should you choose one, and then it must suit the mood and must not be a plate of dinner
 - what sits behind and around the lead, unresolved — the table, the surface, the props, the light in the room
 - the mood, the hour and the season it reads as, and why the tags imply that
 
@@ -309,7 +320,10 @@ export const describeRecipeSceneFlow = ai.defineFlow(
     inputSchema: DescribeRecipeSceneInputSchema,
     outputSchema: DescribeRecipeSceneOutputSchema,
   },
-  async ({ title, description, ingredients, steps, currentBrief, hint, kind }) => {
+  // `tags` is defaulted here as well as on the schema: the schema default only
+  // applies when the input is actually parsed, and a direct in-process call to
+  // the flow function (which is how the whole suite drives it) skips that.
+  async ({ title, description, tags = [], ingredients, steps, currentBrief, hint, kind }) => {
     // Revision needs BOTH halves: a paragraph to revise and a steer to revise it
     // by. With either missing there is nothing to fold through anything, so we
     // author from scratch — which is also, deliberately, what "start over" sends
@@ -320,6 +334,10 @@ export const describeRecipeSceneFlow = ai.defineFlow(
     const promptParts = [
       `Title: ${title}`,
       description ? `Description: ${description}` : null,
+      // Sits directly under the description because for a placeholder these two
+      // ARE the input — there is no method below to outweigh them. Omitted when
+      // empty so a tagless entry's prompt is unchanged.
+      tags.length > 0 ? `Tags: ${tags.join(', ')}` : null,
       ingredients.length > 0
         ? `Ingredients:\n${ingredients.map((i) => `- ${i}`).join('\n')}`
         : null,

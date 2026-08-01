@@ -547,16 +547,124 @@ describe('generateRecipeImage flow — entry kinds', () => {
     // prompt. This ordering matters MOST here: the "nothing nameable" rule lives
     // in the anchors, and a revised brief is the primary way these ten pictures
     // get tuned, so it is the likeliest text to talk the model into a dish.
-    expect(prompt.indexOf('Steam rising off a bowl')).toBeLessThan(
-      prompt.indexOf(PLACEHOLDER_IMAGE_STYLE_ANCHORS),
-    );
-    expect(prompt.indexOf('This recipe is tagged')).toBeLessThan(
-      prompt.indexOf(PLACEHOLDER_IMAGE_STYLE_ANCHORS),
-    );
-    expect(prompt.indexOf('Additional guidance for this photo')).toBeLessThan(
-      prompt.indexOf(PLACEHOLDER_IMAGE_STYLE_ANCHORS),
-    );
+    // Assert PRESENCE before ordering: `indexOf` returns -1 for a missing needle,
+    // which is less than any real index, so an ordering assertion alone passes
+    // vacuously when the clause it is about has been renamed out from under it.
+    for (const clause of [
+      'Steam rising off a bowl',
+      'This picture is tagged',
+      'Additional guidance for this photo',
+    ]) {
+      expect(prompt).toContain(clause);
+      expect(prompt.indexOf(clause)).toBeLessThan(prompt.indexOf(PLACEHOLDER_IMAGE_STYLE_ANCHORS));
+    }
     expect(prompt.endsWith(PLACEHOLDER_IMAGE_STYLE_ANCHORS)).toBe(true);
+  });
+
+  it('names no lead of its own — that is the description’s job, not the anchors’', () => {
+    // The regression this pins. These anchors are byte-identical on all ten
+    // pictures, and they used to be the only place in the prompt with concrete
+    // imagery in it — four named leads, in a block otherwise made of
+    // prohibitions. Ten placeholders therefore came back as four ideas, wine
+    // glass and linen over and over, whatever their descriptions said.
+    for (const lead of [
+      'a glass of wine mid-pour',
+      'a smart cloche waiting to be lifted',
+      'steam rising off a bowl on a cold night',
+      'let the lead be the glass, the lid, the steam',
+    ]) {
+      expect(PLACEHOLDER_IMAGE_STYLE_ANCHORS).not.toContain(lead);
+    }
+    // And the sentence that was supposed to prevent the sameness is gone too: a
+    // negation still feeds the model the nouns it names, so "do NOT default to
+    // the same glass, cloth, tabletop" was three more votes for glass and cloth.
+    expect(PLACEHOLDER_IMAGE_STYLE_ANCHORS).not.toContain('do NOT default to the same glass');
+    expect(PLACEHOLDER_IMAGE_STYLE_ANCHORS).not.toContain('glassware and linen');
+    // What replaces them points AT the per-picture direction instead of
+    // supplying a subject the anchors have no business choosing.
+    expect(PLACEHOLDER_IMAGE_STYLE_ANCHORS).toContain(
+      'compose around whatever the direction above leads with',
+    );
+  });
+
+  it("hands a placeholder's description over as binding direction, not as background prose", async () => {
+    // A placeholder has no method and no dish for the model to fall back on, so
+    // its description is the only thing that says what this picture leads with —
+    // one sentence against ~300 words of locked anchors. Named as direction it
+    // reads as an instruction; run on as prose it reads as scenery.
+    const prompt = await promptFor({
+      title: 'Placeholder — autumn evening',
+      description: 'A cloche about to be lifted, the table laid around it.',
+      kind: 'placeholder',
+    });
+
+    expect(prompt).toContain(
+      'The scene direction for this particular picture, which you must follow: A cloche about to be lifted',
+    );
+
+    // The other three kinds are untouched: their description still runs on after
+    // the opener exactly as it always has.
+    const recipe = await promptFor({
+      title: 'Roast chicken',
+      description: 'Lemon and thyme.',
+      kind: 'recipe',
+    });
+    expect(recipe).toContain('the finished dish "Roast chicken". Lemon and thyme.');
+    expect(recipe).not.toContain('The scene direction for this particular picture');
+  });
+
+  it('glosses a placeholder’s tags into what they look like', async () => {
+    // The mood is the ONLY per-picture variable these ten photographs have, and
+    // the image model only ever saw the bare word. Everything saying what
+    // "comfort" looks like lived in the fallback — which by construction is used
+    // only when there is NO brief, i.e. never on the path that normally runs.
+    const prompt = await promptFor({
+      title: 'Placeholder — autumn evening',
+      description: 'A cloche about to be lifted.',
+      kind: 'placeholder',
+      sceneBrief: 'A low lamp over a laid table, the room dark behind it.',
+      tags: ['comfort', 'wet'],
+    });
+
+    expect(prompt).toContain('This picture is tagged: comfort, wet.');
+    expect(prompt).toContain('lamplight and a dark autumn or winter evening');
+    expect(prompt).toContain('rain running down the glass');
+    // Read as the evening, never as a dish, and never rendered as text.
+    expect(prompt).toContain('Read the tags as the EVENING this picture is for');
+    expect(prompt).toContain('never let them name a dish');
+    // A placeholder has no dish, so it must not be told to read "the dish's mood".
+    expect(prompt).not.toContain("hints for reading the dish's mood");
+  });
+
+  it('leaves the tags clause byte-for-byte unchanged for the other three kinds', async () => {
+    // Only `placeholder` diverges. Everything else keeps the issue #148 clause.
+    for (const kind of ['recipe', 'outing', 'cocktail'] as const) {
+      const prompt = await promptFor({
+        title: 'Something',
+        description: null,
+        kind,
+        tags: ['comfort', 'wet'],
+      });
+      expect(prompt).toContain(
+        "This recipe is tagged: comfort, wet. Use these tags only as hints for reading the dish's mood, season and cuisine when you stage the scene — do NOT draw, write, label or otherwise show any of these words in the image.",
+      );
+    }
+  });
+
+  it('lists an unglossed tag without inventing a meaning for it', async () => {
+    // `tags` is free-form; only the moods and weather conditions have pictures to
+    // hand. An unknown tag is still a cue, so it stays listed — it just gets no
+    // gloss rather than a fabricated one.
+    const prompt = await promptFor({
+      title: 'Placeholder — bright evening',
+      description: null,
+      kind: 'placeholder',
+      tags: ['bright', 'something-nobody-glossed'],
+    });
+
+    expect(prompt).toContain('This picture is tagged: bright, something-nobody-glossed.');
+    expect(prompt).toContain('cool daylight and a light, open evening');
+    expect(prompt).not.toContain('something-nobody-glossed —');
   });
 
   it('keeps the placeholder anchors LAST on the fallback path too (no brief)', async () => {

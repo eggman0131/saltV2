@@ -401,6 +401,42 @@ describe('describeRecipeScene flow — placeholders', () => {
     expect(system).toContain('ONE paragraph');
   });
 
+  it('is actually GIVEN the mood it is told to read', async () => {
+    // The prompt has always said "what you read instead is the MOOD, which the
+    // tags carry" — and the input schema had no `tags` field, so nothing ever
+    // carried them. For a placeholder that left title + description as the whole
+    // input to a step whose stated job is to read a mood.
+    mockGenerate.mockClear();
+    mockGenerate.mockResolvedValue({ output: { brief: 'x' } });
+    await (describeRecipeSceneFlow as Function)({
+      ...PLACEHOLDER,
+      kind: 'placeholder',
+      tags: ['comfort', 'wet'],
+    });
+
+    const prompt = mockGenerate.mock.calls[0]![0].prompt as string;
+    expect(prompt).toContain('Tags: comfort, wet');
+  });
+
+  it('takes the lead from the description instead of offering a menu of four', async () => {
+    // With no method and no ingredients to read, an enumerated list of leads was
+    // the most concrete thing in front of the model — so it chose from the list
+    // and the per-doc description that should have decided the shot was averaged
+    // into it. Ten placeholders, four ideas.
+    const system = await systemFor({ ...PLACEHOLDER, kind: 'placeholder' });
+
+    expect(system).toContain('the description says what this one leads with');
+    expect(system).toContain('take it as given');
+    for (const lead of [
+      'a glass of wine mid-pour',
+      'a cloche waiting to be lifted',
+      'steam rising off a bowl',
+      'a serving dish so close and so soft',
+    ]) {
+      expect(system).not.toContain(lead);
+    }
+  });
+
   it('refuses the dish even when the requested change asks for one', async () => {
     // The guard the other three revision prompts do not need. Editing the brief
     // is how these ten pictures get good, so "make it a roast dinner" is a
