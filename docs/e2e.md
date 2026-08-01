@@ -255,6 +255,49 @@ There are no flaky `sleep`s anywhere in the gate — readiness is the container 
 report and traces as `playwright-report` / `playwright-test-results` artifacts (14-day retention);
 the downloaded Playwright trace is the CI debugging path.
 
+### Flake telemetry (issue #669)
+
+Those artifacts are the *debugging* path, and they are `failure()`-only — which means the **flaky**
+signal (failed once, passed on the retry) left no trace at all, and workflow logs expire after ~8
+days. "Is the suite flakier than it was two weeks ago, and which tests?" was therefore
+unanswerable by the time anyone asked. #668 was the proof: 128 retry-recovered flakes against 13
+red jobs, and the flakes started ten days before the first red.
+
+So every shard now also runs
+[`e2e/reporter/flakeReporter.ts`](../apps/web-pwa/e2e/reporter/flakeReporter.ts) (CI only — see
+`reporter:` in `playwright.config.ts`), which writes **one NDJSON record per test** to
+`apps/web-pwa/e2e-flake-events.ndjson`, passes included. An `if: always()` step wraps that file in
+a `/batch/` envelope with `jq` and `curl`s it to PostHog.
+
+| Property | Why it is there |
+| --- | --- |
+| `status` | `passed` / `flaky` / `failed` / `skipped`, collapsed from `TestCase.outcome()` |
+| `retries` | attempts − 1; a `flaky` record is `retries ≥ 1` by definition |
+| `shard`, `shard_total` | #668's pattern was flakiness following shard **position**, not the test — invisible without this |
+| `test_title`, `test_file`, `project` | the breakdown keys |
+| `duration_ms`, `error` | deciding attempt's duration; first line of the failing attempt, de-coloured and capped at 300 chars |
+| `branch`, `commit_sha`, `run_id`, `run_attempt` | which run to go and look at |
+| `source: ci`, `$process_person_profile: false` | CI is not a person and must never mint a person profile |
+
+**The reporter imports no PostHog SDK, and must not.** `posthog-js` / `posthog-node` are confined
+to `@salt/observability` (CLAUDE.md rule 11) and `web-pwa` cannot import
+`@salt/observability/server` either (cross-runtime rule). Emitting capture-shaped JSON and POSTing
+it with `curl` crosses no boundary. Do not "tidy" this into the adapter.
+
+**Where it lands.** A **separate PostHog project** — `Salt CI` (238605), not the `Salt` product
+project — so CI traffic can never distort product insights or funnels. The workflow reads its write
+key from the repo variable `POSTHOG_CI_KEY` (already set; `gh variable set POSTHOG_CI_KEY` to
+rotate) — a `phc_…` project key, public by design, like the ones already committed in
+`apps/web-pwa/.env.*`. An unset variable is a **skip with a notice**, not a failure, so forks are
+unaffected, and the whole step is `continue-on-error` because telemetry must never turn a green
+suite red.
+
+**What to look at.** The [`e2e reliability`](https://eu.posthog.com/project/238605/dashboard/867049)
+dashboard: the weekly flaky trend by test (the early-warning chart), the 14-day top offenders split
+by test and shard, and flake rate as `flaky ÷ ran`. A daily alert fires by email when any single
+test exceeds 3 flakes in a rolling 7 days — it evaluates a SQL insight row-by-row (`any_row`),
+because a breakdown trend cannot be alerted on per breakdown value.
+
 ## Spotting & clearing a poisoned environment
 
 **This is what the container boundary fixes.** Historically (pre-#84) the e2e stop path was

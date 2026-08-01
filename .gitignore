@@ -20,6 +20,9 @@ firebase-export*/
 apps/web-pwa/test-results/
 apps/web-pwa/playwright-report/
 apps/web-pwa/playwright/.cache/
+# Flake telemetry emitted by e2e/reporter/flakeReporter.ts (issue #669); CI ships
+# it to PostHog and drops it with the runner.
+apps/web-pwa/e2e-flake-events.ndjson
 apps/cloud-functions/.secret.local
 apps/cloud-functions/.genkit/
 coverage/
