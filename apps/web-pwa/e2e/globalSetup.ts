@@ -248,6 +248,52 @@ async function spawnE2eServer(identity: string): Promise<void> {
   );
 }
 
+// Compile every app component before the first test navigates (issue #668).
+//
+// A dev server transforms modules on demand, so the first navigation to a route
+// pays vite-plugin-svelte's compile for that route AND everything it imports.
+// Unsharded that cost was paid once, by the first spec of the whole run; #587's
+// 3-way shard made three cold servers each pay it, on whichever spec happens to
+// sort first in their slice — which is precisely the set of tests that flake
+// (aisles-seed, issue-16-canon-create-detail, recipe-shopping-list, and
+// equipment-capture while it still led shard 2). Requesting the modules here
+// moves that work off the first test's 10s expect budget.
+//
+// One level, not a crawl: the transform cost lives in the .svelte compiles, and
+// requesting each file compiles it regardless of who imports it. The
+// dep-optimizer half of the same cold-start problem is handled config-side by
+// optimizeDeps.include (apps/web-pwa/vite.config.ts) — read that comment before
+// changing either; on their own neither one closes the window.
+//
+// Best-effort by construction: a module that fails to transform leaves exactly
+// one component cold, which is the status quo this improves on. Failing the run
+// here would turn a warm-up into a new way for CI to go red before a single
+// test has run.
+async function warmE2eServer(): Promise<void> {
+  const modules = fs
+    .globSync('src/**/*.svelte', { cwd: APP_DIR })
+    // Deliberate layer-violation fixtures — linted, never rendered (see
+    // .boundary-tests/run.sh). Nothing under test imports them.
+    .filter((rel) => !rel.includes('__boundary_tests__'));
+  const startedAt = Date.now();
+  await Promise.all(
+    modules.map(async (rel) => {
+      try {
+        const res = await fetch(`${E2E_APP_URL}/${rel.split(path.sep).join('/')}`, {
+          signal: AbortSignal.timeout(30_000),
+        });
+        // Drain so the socket is released rather than held open for the run.
+        await res.arrayBuffer();
+      } catch {
+        // See above: a cold component is not a reason to fail the suite.
+      }
+    }),
+  );
+  console.log(
+    `globalSetup: warmed ${modules.length} components in ${((Date.now() - startedAt) / 1000).toFixed(1)}s.`,
+  );
+}
+
 async function ensureE2eServer(): Promise<void> {
   // Reuse contract (hardened, issue #79 fallout): :5174 is HOST-GLOBAL and
   // Playwright does not manage it, so a healthy server here could be a prior
@@ -325,4 +371,5 @@ export default async function globalSetup(): Promise<void> {
   await wipeEmulatorData();
 
   await ensureE2eServer();
+  await warmE2eServer();
 }

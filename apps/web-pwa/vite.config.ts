@@ -190,6 +190,35 @@ export default defineConfig(({ mode }) => {
     },
     optimizeDeps: {
       exclude: ['@salt/shared-types', '@salt/domain', '@salt/firebase-sync'],
+      // Deps that ONLY the excluded workspace packages import. Vite's startup
+      // scan cannot see through an excluded (linked, unbundled) package, so
+      // without this it meets `firebase/*` and `zod` for the first time when the
+      // BROWSER requests @salt/firebase-sync's source — mid-page-load — then
+      // re-bundles and issues a full page reload to swap the new deps in
+      // ("optimized dependencies changed. reloading"). Under e2e that reload
+      // lands on whatever test is running: locators it just resolved vanish and
+      // the failure reads as "element(s) not found" / a click timing out.
+      //
+      // That is the whole of the shard flake class (issue #668): it used to be
+      // paid once, by the first spec of a single unsharded run, and #587's 3-way
+      // shard made three cold servers pay it — one per shard, on whichever spec
+      // happens to sort first. Listing them here moves the work into the startup
+      // scan, so the cache is complete before the first navigation and no reload
+      // is ever sent. Keep in sync with what @salt/firebase-sync imports.
+      //
+      // The `<pkg> > <dep>` form is required, not decoration: neither `firebase`
+      // nor `zod` is a dependency of web-pwa itself, so a bare specifier does not
+      // resolve from the app root ("Failed to resolve dependency ... present in
+      // optimizeDeps.include") and the entry is dropped — which silently restores
+      // the runtime-discovery reload this exists to prevent.
+      include: [
+        '@salt/firebase-sync > firebase/app',
+        '@salt/firebase-sync > firebase/app-check',
+        '@salt/firebase-sync > firebase/auth',
+        '@salt/firebase-sync > firebase/firestore',
+        '@salt/firebase-sync > firebase/functions',
+        '@salt/domain > zod',
+      ],
     },
   };
 });
