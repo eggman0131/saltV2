@@ -163,7 +163,7 @@ The shop day (#629) follows the same shape, in its own files:
 - `apps/web-pwa/src/lib/shoppingDayService.ts` — stores, the one-shop-per-week rule
 - `apps/cloud-functions/src/maintenance/remindShoppingDay.ts` — the daily 17:00 nudge (the module's first Cloud Function)
 
-## Recipes on a day (#17, #637)
+## Recipes on a day (#17, #637, #652)
 
 `Day.recipeIds` is populated. The weekly editor attaches entries through a
 picker over the recipes store; titles and hero thumbnails resolve live at display
@@ -181,7 +181,49 @@ never compares a kind to decide behaviour. The one place it names a kind at all
 is copy — a non-`recipe` picker row wears a small label ("When you CBA") so the
 option can be told apart in a list of dinners.
 
+### The note-only night attaches its own picture (#652)
+
+A night planned in a sentence — "roast chicken dinner", no recipe and none ever
+coming — used to be a thin line of text between full photographic cards, so it
+read as a gap in the ledger. It now attaches a **placeholder**: an ordinary
+`recipes` document (`kind: 'placeholder'`) whose hero says "a good dinner is
+planned" without claiming a particular dish. Nothing about the plan document
+changed to allow this — the id lands in `day.recipeIds` like any other.
+
+The mechanics, and why each is what it is:
+
+- **On the dinner field's `onblur` in `MealDayEditor.svelte`, never in an
+  `$effect`.** An effect reconciling "has a note, has no recipe" would fire
+  across every rendered day — seven to fourteen of them — and each one is a
+  whole-week `setDoc` through `persistWeek`. Blur is one write per user action.
+- **Guarded on four things**: the field is non-empty, `day.recipeIds` is empty,
+  `onRecipesChange` is supplied, and the row has a `dateKey`. The last is what
+  keeps the weekday-keyed **template editor** out of it without a special case —
+  it has no dates at all, the same way it has no picker.
+- **The pick is frozen.** `pickPlaceholder(recipes, dateKey, weather)` reads the
+  evening's forecast once, at the real moment the day was planned, and the id is
+  stored; nothing re-evaluates it. Resolving at render time could only
+  approximate that, because the forecast expires as a day ages.
+- **No `kind` branch in the app.** Every recipe is handed over and the domain
+  filters to placeholders itself — including skipping any whose hero generation
+  failed. `null` means "nothing to attach" (notably: before any placeholder has
+  been built) and the day simply stays a block of text.
+- **It is attached, not conjured**, so it is a removable row in the day's sheet
+  like any other. Remove it and the day is text again. The two accepted
+  consequences of treating it as an ordinary attached entry — the day's card
+  takes the placeholder's photograph even after a real recipe joins it, and
+  clearing the dinner text re-seeds it with the placeholder's own title — are
+  recorded, and rejected as bugs, in
+  [recipe-module.md](recipe-module.md#schema-extensions-kind-discriminator-issues-637-652).
+
+A day with **neither** a note nor a recipe reads **"Nothing planned"** (it said
+"No meal set"). That is the whole of the empty-day treatment, deliberately: once
+every planned night carries a photograph, a short muted line between them already
+reads as the hole it is, and a dashed ghost card would cost ~187px of deck height
+saying nothing.
+
 Production data caveat: the planner collections hold real production data, and so
 has `recipes` since 2026-06-17 (#240). Anything added to a `Day` — or to the
 recipe documents it points at — has to be back-compatible on read or ship a
-migration.
+migration. Placeholders were **not** backfilled: days already planned in a
+sentence stay as they are until someone next edits the note.

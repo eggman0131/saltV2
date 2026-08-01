@@ -480,6 +480,7 @@
           testid={`day-${date}`}
           isToday={date === todayDate}
           weather={$weatherForecast?.days[date]}
+          dateKey={date}
           onNoteChange={(note) => void save(setWeekDayNote(date, note))}
           onRecipesChange={(ids) => void save(setWeekDayRecipes(date, ids))}
           onRecipeAddToList={openRecipeAddToList}

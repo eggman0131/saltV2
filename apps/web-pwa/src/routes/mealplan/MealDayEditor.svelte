@@ -27,6 +27,7 @@
     appendCacheBuster,
     isPlannable,
     memberInitials,
+    pickPlaceholder,
     takesIngredients,
     weatherIcon,
     temperatureBand,
@@ -92,6 +93,12 @@
     // `| undefined` so the parent can pass `forecast?.days[date]` directly under
     // exactOptionalPropertyTypes (noUncheckedIndexedAccess makes it optional).
     weather?: WeatherDaySummary | undefined;
+    // The concrete day this row is for, `YYYY-MM-DD` (issue #652, Phase 2). The
+    // one thing the placeholder attach needs that nothing else in here has: the
+    // rail's `sublabel` is a bare day number and `label` a weekday word. Optional,
+    // and its absence is the gate — the weekday-keyed template editor has no dates
+    // at all, so it never attaches anything, the same way it renders no picker.
+    dateKey?: string;
     onNoteChange: (note: string) => void;
     onChefToggle: (memberId: string) => void;
     onAttendeeToggle: (memberId: string) => void;
@@ -119,6 +126,7 @@
     testid,
     isToday = false,
     weather,
+    dateKey,
     onNoteChange,
     onChefToggle,
     onAttendeeToggle,
@@ -194,6 +202,39 @@
   function removeRecipe(id: string): void {
     onRecipesChange?.(day.recipeIds.filter((r) => r !== id));
   }
+
+  // ─── The note-only night gets a photograph too (#652, Phase 2) ─────────────
+  // A night planned in a sentence — "roast chicken dinner", no recipe attached
+  // and none ever coming, because nobody writes a recipe for roast chicken — is
+  // as planned as any other, but in the week it is a thin line of text between
+  // full cards, so it reads as a gap in the ledger. So a PLACEHOLDER is attached
+  // to it: an ordinary recipe document whose hero says "a good dinner is planned"
+  // without claiming a particular dish. It lands in `day.recipeIds` like anything
+  // else, which is what makes the mechanism legible — it is a row you can see and
+  // remove, in the list just above, not a picture that appears for reasons you
+  // cannot inspect.
+  //
+  // ON BLUR, never in an `$effect`. An effect reconciling "has a note, has no
+  // recipe" would fire across every rendered day — seven to fourteen of them —
+  // and each one is a whole-week `setDoc` through `persistWeek`. Blur is one
+  // write per user action, exactly the shape of the note re-seed beside it.
+  //
+  // The pick is FROZEN here. `pickPlaceholder` reads the evening's forecast once,
+  // at the real moment the day was planned, and the id it returns is stored;
+  // nothing re-evaluates it afterwards, so the picture cannot drift as the
+  // forecast ages out of its ~14-day horizon.
+  //
+  // No `kind` branch, and none needed: we hand over every recipe we hold and the
+  // domain filters to placeholders itself (and skips any whose hero generation
+  // failed — a card with no photograph is worse than the text it replaced).
+  // `null` means "nothing to attach", including before a single placeholder has
+  // been built, and the day simply stays a block of text.
+  function attachPlaceholder(): void {
+    if (!dateKey || !onRecipesChange || day.recipeIds.length > 0) return;
+    const id = pickPlaceholder(recipes, dateKey, weather);
+    if (id) onRecipesChange([id]);
+  }
+
   // Display-time cache-bust for the row thumbnail (mirrors RecipeListPage, issue
   // #460): a regenerated hero reuses the same Storage URL, so bust it with the
   // per-regeneration nonce (`imageRequestedAt`, falling back to `updatedAt`). Null
@@ -279,7 +320,10 @@
 
   // The meal's FIRST line only for the collapsed row — the meal field is a
   // multi-line textarea, but the row shows a single truncating title. Empty →
-  // the muted "No meal set" placeholder.
+  // the muted "Nothing planned" line. It says nothing is PLANNED rather than
+  // that no meal is set because, since #652, every planned night carries a
+  // photograph — so this row is now the only kind of day without one, and it
+  // should read as the hole in the week that it is.
   const mealFirstLine = $derived(day.note.split('\n')[0]?.trim() ?? '');
 
   // ─── The row's photograph (#639) ───────────────────────────────────────────
@@ -344,7 +388,7 @@
         : mutedCls}"
       data-testid={`${testid}-meal`}
     >
-      {mealFirstLine || 'No meal set'}
+      {mealFirstLine || 'Nothing planned'}
     </span>
   {/snippet}
 
@@ -526,6 +570,12 @@
               // `attachedRecipes` so a since-deleted recipe id can't seed nothing.
               if (!e.currentTarget.value.trim() && attachedRecipes[0])
                 onNoteChange(attachedRecipes[0].title);
+              // …and the mirror image (#652, Phase 2): a day left with a MEAL and
+              // no recipe gets a placeholder, so it carries a card like every
+              // other planned night. Same event, and mutually exclusive with the
+              // re-seed above — that one needs the field empty, this one needs it
+              // written. Read the DOM value here too, for the same reason.
+              else if (e.currentTarget.value.trim()) attachPlaceholder();
             }}
             data-testid={`${testid}-note`}></textarea>
 
