@@ -23,6 +23,13 @@ import { SYNC_TIMEOUT } from './helpers/timeouts';
 const OUTING_TITLE = 'Takeaway — Indian';
 const RECIPE_TITLE = 'Reference Recipe';
 
+// A phone, pinned explicitly (#663, Phase 2). The second test below plans a night
+// through the day's BOTTOM SHEET, and from 700x480 up the planner shows that same
+// detail as a docked pane instead (with its own `day-pane-*` testids) — so the
+// default desktop project viewport would put this spec on the other layout. Same
+// numbers as `mealplan.spec.ts` and `mealplan-deck.spec.ts`.
+test.use({ viewport: { width: 393, height: 851 } });
+
 test.describe('recipes — when you CBA', () => {
   test('create an outing, find it under its own section, and not among the recipes', async ({
     page,
@@ -74,8 +81,15 @@ test.describe('recipes — when you CBA', () => {
     await expect(page.getByTestId('recipe-add-to-list-button')).toHaveCount(0);
     await expect(page.getByText('Ingredients', { exact: true })).toHaveCount(0);
     await expect(page.getByText('Method', { exact: true })).toHaveCount(0);
-    // Edit and Delete always apply, so the header is never left bare.
-    await expect(page.getByTestId('recipe-edit-button')).toBeVisible();
+    // Edit and Delete always apply, so the header is never left bare. On a phone
+    // that is read through the ⋮ overflow: the header's secondary actions are
+    // `hidden sm:inline-flex`, and below `sm` the same items live in the menu
+    // (RecipeViewPage). Asserting the desktop button here only passed because the
+    // spec used to run at the project's 1280px default — the fact being pinned is
+    // the affordance, not which of the two boxes draws it.
+    await page.getByTestId('recipe-actions-overflow').click();
+    await expect(page.getByTestId('recipe-edit-menu-item')).toBeVisible();
+    await page.keyboard.press('Escape');
 
     // ── Sections ─────────────────────────────────────────────────────────────
     await page.goto('/#/recipes');

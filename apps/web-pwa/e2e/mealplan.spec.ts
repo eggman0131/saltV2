@@ -27,6 +27,13 @@ import { gotoAndSignIn, uniqueEmail } from './helpers/auth';
 import { seedRecipe } from './helpers/seed';
 import { SYNC_TIMEOUT } from './helpers/timeouts';
 
+// A phone, pinned explicitly (#663, Phase 2). The planner shows the week and the
+// open day SIDE BY SIDE from 700x480 up, and the day is then a docked pane rather
+// than a bottom sheet — so the default desktop project viewport (1280x720) would
+// silently move every assertion below onto the other layout. These are the same
+// numbers `mealplan-deck.spec.ts` runs at; the split layout has its own spec.
+test.use({ viewport: { width: 393, height: 851 } });
+
 // Read the current week's startDate from the in-page store bridge.
 async function readStartDate(page: import('@playwright/test').Page): Promise<string> {
   return page.evaluate(() => window.__e2e!.getMealPlanSnapshot().startDate);
