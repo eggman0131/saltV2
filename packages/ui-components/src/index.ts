@@ -131,6 +131,7 @@ export type { IconProps } from './primitives/Icon/Icon.types';
 export type {
   ImageCropperProps,
   ImageCropperHandle,
+  ImageCropperAspect,
 } from './primitives/ImageCropper/ImageCropper.types';
 export type { InlineProps } from './primitives/Inline/Inline.types';
 export type {

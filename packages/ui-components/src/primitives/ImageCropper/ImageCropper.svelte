@@ -1,14 +1,17 @@
-<!-- spec: SPEC.md §8.7 v0.3 -->
+<!-- spec: SPEC.md §8.7 v0.3; ui-spec-v06 §1 (free-aspect mode) -->
 <script lang="ts">
   import Cropper from 'svelte-easy-crop';
   import type { CropArea, Point } from 'svelte-easy-crop';
   import { cn } from '../../lib/cn';
   import type { ImageCropperProps } from './ImageCropper.types';
 
-  // The recipe hero is ALWAYS 3:2 — locked, not a prop.
-  const ASPECT = 3 / 2;
+  // The recipe hero is ALWAYS 3:2 — hence the default. `aspect='free'` is the one
+  // sanctioned escape (ui-spec-v06 §1), for a source a hero frame would crop the
+  // content out of; it locks the frame to the source's OWN ratio, so it is still
+  // a locked frame, just not this constant.
+  const HERO_ASPECT = 3 / 2;
 
-  let { src, maxEdge = 1600, class: className }: ImageCropperProps = $props();
+  let { src, aspect = '3:2', maxEdge = 1600, class: className }: ImageCropperProps = $props();
 
   // svelte-easy-crop drives these; crop/zoom are bindable so pan (drag) and zoom
   // (wheel/pinch/slider) stay in sync with the overlay.
@@ -16,6 +19,12 @@
   let zoom = $state(1);
   // Source-image pixel rect of the current selection, updated on every crop change.
   let croppedAreaPixels = $state<CropArea | null>(null);
+  // Free mode only: the source image's own ratio, measured once per `src`.
+  let measuredAspect = $state<number | null>(null);
+
+  // The single ratio the frame, the stage and the output canvas all follow.
+  // `null` only in free mode, while the source is unmeasured (ui-spec-v06 §1.4).
+  const activeAspect = $derived(aspect === 'free' ? measuredAspect : HERO_ASPECT);
 
   function onCropComplete(e: { percent: CropArea; pixels: CropArea }): void {
     croppedAreaPixels = e.pixels;
@@ -28,6 +37,31 @@
     crop = { x: 0, y: 0 };
     zoom = 1;
     croppedAreaPixels = null;
+  });
+
+  // Free mode: measure the source's own ratio (ui-spec-v06 §1.4). The locked mode
+  // needs no decode of its own. A result arriving after `src` changed again is
+  // discarded, so the frame never takes a stale image's shape; an unloadable src
+  // leaves the aspect unknown (placeholder stage) rather than throwing or
+  // silently falling back to 3:2.
+  $effect(() => {
+    if (aspect !== 'free') return;
+    const url = src;
+    measuredAspect = null;
+    let cancelled = false;
+    loadImage(url).then(
+      (img) => {
+        if (cancelled) return;
+        measuredAspect =
+          img.naturalWidth > 0 && img.naturalHeight > 0
+            ? img.naturalWidth / img.naturalHeight
+            : null;
+      },
+      () => {},
+    );
+    return () => {
+      cancelled = true;
+    };
   });
 
   function loadImage(url: string): Promise<HTMLImageElement> {
@@ -54,18 +88,30 @@
   }
 
   // Exposed on the component instance (Svelte 5): the consumer calls this via
-  // `bind:this` on Save. Draws the selected source region onto an offscreen 3:2
-  // canvas (capped at `maxEdge` on the long side) and returns bare base64 WebP.
-  // All Canvas/Blob work lives here in ui-components — never in @salt/domain.
+  // `bind:this` on Save. Draws the selected source region onto an offscreen canvas
+  // at the active aspect (capped at `maxEdge` on the long side) and returns bare
+  // base64 WebP. All Canvas/Blob work lives here in ui-components — never in
+  // @salt/domain.
   export async function getCroppedBase64(): Promise<string | null> {
     const area = croppedAreaPixels;
+    const ratio = activeAspect;
     if (!area || area.width <= 0 || area.height <= 0) return null;
+    if (ratio === null || ratio <= 0) return null;
 
     const img = await loadImage(src);
-    // The selection is already 3:2 (aspect-locked); force the output to an exact
-    // 3:2 canvas so any sub-pixel rounding can't drift the stored ratio.
-    const outWidth = Math.min(Math.round(area.width), maxEdge);
-    const outHeight = Math.round(outWidth / ASPECT);
+    // The selection already matches the active ratio (the frame is locked to it);
+    // force the output to that exact ratio so sub-pixel rounding can't drift the
+    // stored shape. `maxEdge` caps the genuinely longest edge — which is the
+    // height once the frame is portrait (ui-spec-v06 §1.5).
+    let outWidth: number;
+    let outHeight: number;
+    if (ratio >= 1) {
+      outWidth = Math.min(Math.round(area.width), maxEdge);
+      outHeight = Math.round(outWidth / ratio);
+    } else {
+      outHeight = Math.min(Math.round(area.height), maxEdge);
+      outWidth = Math.round(outHeight * ratio);
+    }
 
     const canvas = document.createElement('canvas');
     canvas.width = outWidth;
@@ -83,10 +129,30 @@
 </script>
 
 <div class={cn('flex flex-col gap-3', className)}>
-  <!-- Positioned, fixed-3:2 stage: svelte-easy-crop's container is absolutely
-       filled, so it needs a relative ancestor with an intrinsic height. -->
-  <div class="relative aspect-[3/2] w-full overflow-hidden rounded-md bg-muted">
-    <Cropper image={src} bind:crop bind:zoom aspect={ASPECT} oncropcomplete={onCropComplete} />
+  <!-- Positioned stage: svelte-easy-crop's container is absolutely filled, so it
+       needs a relative ancestor with an intrinsic height. That height comes from
+       the active ratio (inline, because it is a runtime number Tailwind cannot
+       generate a class for — sanctioned in ui-spec-v06 §1.2). While a free-mode
+       source is unmeasured the stage is a neutral placeholder and the cropper is
+       NOT mounted: a frame that flashed 3:2 and snapped to portrait would read as
+       a bug, and could be dragged in before it settled. -->
+  <div
+    class={cn(
+      'relative w-full overflow-hidden rounded-md bg-muted',
+      activeAspect === null && 'min-h-40',
+    )}
+    style={activeAspect === null ? undefined : `aspect-ratio: ${activeAspect}`}
+    data-testid="image-cropper-stage"
+  >
+    {#if activeAspect !== null}
+      <Cropper
+        image={src}
+        bind:crop
+        bind:zoom
+        aspect={activeAspect}
+        oncropcomplete={onCropComplete}
+      />
+    {/if}
   </div>
   <!-- Zoom control (pan is drag/scroll/pinch on the stage). -->
   <label class="flex items-center gap-2 text-xs text-muted-foreground">
