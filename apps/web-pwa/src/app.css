@@ -11,3 +11,33 @@
 
 @source "./**/*.{ts,svelte,html}";
 @source "../index.html";
+
+/* ─── `split`: there is room for two panes (issue #663, Phase 2) ─────────────
+ *
+ * The meal planner shows the week and the open day SIDE BY SIDE once the screen
+ * can hold both at their phone size. The target is a Pixel 9 Pro Fold, unfolded:
+ * 755 x 587 of usable frame inside a browser tab. Both numbers were measured on
+ * the real device, not guessed.
+ *
+ * Why a named variant rather than `md:` — `md` is 768px, four pixels wider than
+ * the only hardware this is for, so the pair would never appear on it. And a bare
+ * width breakpoint is not the question: the HEIGHT floor is what keeps a phone in
+ * landscape (~430px tall) on the single column, where two 200px day cards beside
+ * a detail pane would be a worse week than the bottom sheet.
+ *
+ * Deliberately NOT the nav breakpoint. `SideNav` is `lg:flex` and `BottomNav`
+ * `lg:hidden` (1024px), and the fold sits well below that — so it keeps its
+ * bottom bar AND gets two panes. The two seams are different numbers on purpose.
+ *
+ * It lives HERE, in web-pwa's own stylesheet, and never in
+ * `packages/ui-components/src/salt.css`: that file is the shared design system's
+ * entry and CLAUDE.md's token source of truth (it is parsed by `check-theme.ts`).
+ * A one-app page-layout breakpoint is not a token.
+ *
+ * ⚠ The query below is duplicated, as a string, in
+ * `src/routes/mealplan/MealPlanWeekPage.svelte` (`SPLIT_QUERY`) — two behaviours
+ * there need the answer in JS and a Tailwind variant cannot be read from script.
+ * The two MUST move together. It is written there in the RANGE syntax Tailwind v4
+ * compiles this to (`@media (width>=700px) and (height>=480px)`) rather than in
+ * the form below, deliberately: see the comment at that constant. */
+@custom-variant split (@media (min-width: 700px) and (min-height: 480px));
