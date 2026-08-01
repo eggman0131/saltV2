@@ -8,9 +8,11 @@ import {
   AuthorRecipeWireInputSchema,
   DescribeRecipeSceneWireInputSchema,
   ExtractRecipeFromUrlWireInputSchema,
+  ExtractRecipeFromPhotoWireInputSchema,
   IdentifyEquipmentWireInputSchema,
   PopulateEquipmentEntryWireInputSchema,
   RefreshWeatherForecastWireInputSchema,
+  PHOTO_IMPORT_TIMEOUT_SECONDS,
 } from '@salt/domain/schemas';
 import { enableFirebaseTelemetry } from '@genkit-ai/firebase';
 import {
@@ -39,6 +41,11 @@ import {
   UrlImportError,
   type UrlImportFailureCode,
 } from './flows/extractRecipeFromUrl.js';
+import {
+  extractRecipeFromPhotoFlow,
+  PhotoImportError,
+  type PhotoImportFailureCode,
+} from './flows/extractRecipeFromPhoto.js';
 import { generateChatTitleFlow } from './flows/generateChatTitle.js';
 import { onShoppingListItemWrite } from './triggers/onShoppingListItemWrite.js';
 import { onCanonItemWritten } from './triggers/onCanonItemWritten.js';
@@ -302,6 +309,67 @@ export const extractRecipeFromUrl = makeTracedCallable({
     throw new HttpsError(
       'internal',
       'The recipe reader had trouble with that page — try again, or add it manually.',
+    );
+  },
+});
+
+// Import from photographs of a cookbook page (issue #649, Phase 3). Same shape as
+// the URL import — a user-initiated, AI-heavy callable that persists the recipe
+// it extracts — over its OWN failure taxonomy: none of the URL codes
+// (invalid-url, blocked-url, fetch-failed) mean anything when the input is a
+// photograph, so UrlImportFailureCode is deliberately NOT widened.
+//
+// The photographs are request-scoped: they ride in on the payload, go to the
+// model, and are discarded. Nothing is written to Storage.
+function mapPhotoImportFailure(code: PhotoImportFailureCode): HttpsError {
+  switch (code) {
+    case 'invalid-photos':
+      // Raised by the wire safeParse, not the flow — see invalidArgumentMessage.
+      return new HttpsError('invalid-argument', "Those photos can't be imported.");
+    case 'unreadable-photos':
+      // Blurry/dark and no-recipe-on-the-page are indistinguishable server-side,
+      // so the copy has to cover both honestly.
+      return new HttpsError(
+        'failed-precondition',
+        "We couldn't read a recipe from those photos — try a sharper, brighter shot of the whole page.",
+      );
+    case 'import-failed':
+      return new HttpsError(
+        'internal',
+        'The recipe reader had trouble with those photos — try again, or add it manually.',
+      );
+  }
+}
+
+export const extractRecipeFromPhoto = makeTracedCallable({
+  wireSchema: ExtractRecipeFromPhotoWireInputSchema,
+  flow: extractRecipeFromPhotoFlow,
+  // PHOTO_IMPORT_TIMEOUT_SECONDS is shared with the firebase-sync wrapper, which
+  // passes it as the callable client's explicit `HttpsCallableOptions.timeout`.
+  // Without that the client's 70s default would truncate a slow multi-page
+  // extraction while the server was still working — one constant, no drift.
+  options: {
+    secrets: [geminiApiKey, posthogApiKey],
+    timeoutSeconds: PHOTO_IMPORT_TIMEOUT_SECONDS,
+  },
+  // A bad wire envelope is a bad payload from the capture UI: no images, more
+  // than four, an unsupported content type, or empty bytes.
+  invalidArgumentMessage: "Those photos can't be imported.",
+  // Report the GENUINE cause before mapping to a user-facing HttpsError. The
+  // PhotoImportError taxonomy encodes EXPECTED user outcomes — a photograph too
+  // blurry to read, or a page with no recipe on it — which are suppressed per
+  // policy; only `import-failed` (the recipe reader itself failing) is the
+  // unexpected one worth surfacing. A non-PhotoImportError throw is a bug →
+  // report.
+  onError: async (err) => {
+    if (err instanceof PhotoImportError) {
+      if (err.code === 'import-failed') await reportFlowError(err);
+      throw mapPhotoImportFailure(err.code);
+    }
+    await reportFlowError(err);
+    throw new HttpsError(
+      'internal',
+      'The recipe reader had trouble with those photos — try again, or add it manually.',
     );
   },
 });

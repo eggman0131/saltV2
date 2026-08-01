@@ -1,7 +1,5 @@
 import { z } from 'genkit';
 import { googleAI } from '@genkit-ai/google-genai';
-import { getFirestore } from 'firebase-admin/firestore';
-import { logger } from 'firebase-functions';
 import { isHttpsScheme, parseImportUrl } from '@salt/domain';
 import { ExtractRecipeFromUrlInputSchema, ExtractRecipeAIOutputSchema } from '@salt/domain/schemas';
 import type { ExtractRecipeAIOutput, UrlImportFailureCode } from '@salt/domain/schemas';
@@ -12,10 +10,9 @@ import { ai } from '../genkit.js';
 import { ssrfGuardedFetch, SsrfFetchError } from '../adapters/ssrfFetch.js';
 import { extractRecipeJsonLd, type JsonLdRecipe } from '../adapters/jsonLdRecipe.js';
 import { assembleRecipeDraft } from './assembleRecipeDraft.js';
+import { persistImportedRecipe } from './persistImportedRecipe.js';
 import { resolveModel } from '../ai/resolveModel.js';
-import { CATEGORY_TAG_RULES } from './categoryTags.js';
-import { INGREDIENT_SUBSTITUTION_RULES } from './ingredientConversions.js';
-import { STEP_RULES, FIRST_USE_ORDINAL_RULE } from './stepRules.js';
+import { CONVERSION_RULES, FIELD_RULES } from './recipeExtractionRules.js';
 
 // SSRF-hardened URL import (recipe URL import epic, Phases 1 & 3).
 //
@@ -162,37 +159,12 @@ export const extractRecipeFromUrlFlow = ai.defineFlow(
     });
 
     // 7. Persist it here, server-side, flagged as not yet human-reviewed
-    //    (issue #616). The client used to hold the only copy in memory until the
-    //    user saved from the editor — so an import shared in from the Android
-    //    share sheet (#589) was lost outright whenever Android killed the
-    //    backgrounded PWA mid-extraction, along with the AI call that produced
-    //    it. Writing it here means the recipe exists the moment the extraction
-    //    finishes, whatever the client does next.
-    await persistImportedRecipe(recipe);
+    //    (issue #616) — see persistImportedRecipe for why, and for why a write
+    //    failure must not fail the import.
+    await persistImportedRecipe(recipe, 'extractRecipeFromUrl');
     return recipe;
   },
 );
-
-// Write the freshly-extracted recipe to `recipes/{id}` with needs_approval set.
-// A full `.set()` on a server-generated id: the doc cannot already exist, so
-// there is nothing to merge with and no LWW hazard.
-//
-// A write failure does NOT fail the import. The callable still returns the
-// recipe, and the client stashes it for the editor, which degrades to exactly
-// the pre-#616 behaviour (the user saves it themselves) rather than throwing
-// away a successful, already-paid-for extraction. Logged so the failure is
-// visible; not reported as an unexpected error, since the user still gets a
-// working import.
-async function persistImportedRecipe(recipe: RecipeDoc): Promise<void> {
-  try {
-    await getFirestore().collection('recipes').doc(recipe.id).set(recipe);
-  } catch (err) {
-    logger.error('extractRecipeFromUrl: failed to persist imported recipe', {
-      recipeId: recipe.id,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-}
 
 // Tighten the not-a-recipe decision now that JSON-LD gives a stronger signal.
 // - hadJsonLd: a validated schema.org/Recipe was present on the page. That alone
@@ -289,28 +261,9 @@ function buildHtmlPrompt(html: string, sourceUrl: string): { system: string; pro
   };
 }
 
-// Shared conversion + field rules, reused by both the HTML-fallback prompt and
-// the JSON-LD prompt so unit/spelling conversion can't drift between the paths.
-const CONVERSION_RULES = `## Conversion rules (apply to EVERYTHING)
-- Metric only: convert all quantities to metric. Volumes in millilitres/litres, weights in grams/kilograms. \
-Convert cups, sticks, ounces, pounds, fluid ounces, tablespoons and teaspoons. Temperatures in °C only — \
-never Fahrenheit; convert and round sensibly (e.g. 350°F → 180°C).
-${INGREDIENT_SUBSTITUTION_RULES}
-- Use British spelling everywhere (e.g. "flavour", "colour", "caramelise").`;
-
-const FIELD_RULES = `## Fields
-- title: clear, concise recipe name.
-- description: 1–2 sentence summary, or null.
-- servings: integer portions, or null if not stated.
-- totalTimeMinutes/prepTimeMinutes/cookTimeMinutes: integers in minutes, or null.
-${CATEGORY_TAG_RULES}
-- ingredientGroups: group ingredients by course/stage (null name = default group).
-  Each ingredient: rawText (the ingredient line, already converted to metric + British spelling/terms — \
-this is what the rest of the pipeline parses, so write a clean natural line e.g. "240ml whole milk" or \
-"2 cloves garlic, crushed"), isOptional (true only if explicitly optional), \
-${FIRST_USE_ORDINAL_RULE}
-${STEP_RULES}
-- notes: the author's overall notes/tips, or null.`;
+// CONVERSION_RULES / FIELD_RULES now live in ./recipeExtractionRules.js — the
+// photo import (issue #649) needs the identical wording, and a second copy is one
+// edit away from the two import paths converting differently.
 
 const EXTRACT_SYSTEM = `You are a precise recipe extraction assistant. You are given the raw HTML \
 of a web page and its source URL. Extract a single complete recipe from the page and convert it \

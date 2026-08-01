@@ -1,7 +1,8 @@
-import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, screen, cleanup, within } from '@testing-library/svelte';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
+import { render, screen, cleanup, within, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import type { Recipe, RecipeKind } from '@salt/domain';
+import { setNextCrop } from './fixtures/cropStub.js';
 
 // ─── Mock stores and services ──────────────────────────────────────────────────
 // The list page is a pure view over the recipeService stores; mock them so we can
@@ -39,10 +40,23 @@ vi.mock('../src/lib/recipeService.js', () => ({
   isLoadingRecipes: mockIsLoading,
   importRecipeFromUrl: vi.fn(),
   urlImportMessage: vi.fn(),
+  importRecipeFromPhoto: vi.fn(),
+  photoImportMessage: vi.fn((code: string) => `copy-for:${code}`),
   stashImportedDraft: vi.fn(),
 }));
 
+// Only the cropper is swapped out of @salt/ui-components: jsdom has no canvas,
+// so the real primitive can never produce cropped bytes (see
+// tests/fixtures/StubImageCropper.svelte). Everything else the list page renders
+// is the shipped primitive.
+vi.mock('@salt/ui-components', async () => {
+  const actual = await vi.importActual<typeof import('@salt/ui-components')>('@salt/ui-components');
+  const stub = await import('./fixtures/StubImageCropper.svelte');
+  return { ...actual, ImageCropper: stub.default };
+});
+
 import RecipeListPage from '../src/routes/recipes/RecipeListPage.svelte';
+import { importRecipeFromPhoto, stashImportedDraft } from '../src/lib/recipeService.js';
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -612,5 +626,66 @@ describe('RecipeListPage — sections', () => {
     await user.click(screen.getByTestId('recipe-new-cocktail'));
 
     expect(push).toHaveBeenCalledWith('/recipes/new/cocktail');
+  });
+});
+
+// ─── Import from photo (issue #649) ───────────────────────────────────────────
+// The list page owns only the way in and the way out; capture, framing and the
+// extraction call belong to RecipeImportPhotoDialog (covered by its own suite).
+
+describe('RecipeListPage — import from photo', () => {
+  beforeEach(() => {
+    vi.mocked(URL).createObjectURL = vi.fn(() => 'blob:page-1');
+    vi.mocked(URL).revokeObjectURL = vi.fn();
+    setNextCrop('stub-cropped-base64');
+  });
+
+  it('offers photo import in the New menu and opens the capture dialog', async () => {
+    const user = userEvent.setup();
+    seed([APPLE]);
+    render(RecipeListPage);
+
+    expect(screen.queryByTestId('recipe-import-photo-dialog')).toBeNull();
+
+    await user.click(screen.getByTestId('recipe-new-btn'));
+    await user.click(screen.getByTestId('recipe-new-import-photo'));
+
+    expect(await screen.findByTestId('recipe-import-photo-dialog')).toBeInTheDocument();
+  });
+
+  it('offers photo import as a peer of URL import in the empty state', async () => {
+    const user = userEvent.setup();
+    seed([]);
+    render(RecipeListPage);
+
+    // An empty library is exactly where someone stands holding a cookbook, so
+    // the two imports are offered side by side rather than one being buried.
+    expect(screen.getByTestId('recipe-import-url-toggle-empty')).toBeInTheDocument();
+    await user.click(screen.getByTestId('recipe-import-photo-toggle-empty'));
+
+    expect(await screen.findByTestId('recipe-import-photo-dialog')).toBeInTheDocument();
+  });
+
+  it('stashes the draft and opens the saved recipe’s editor on success', async () => {
+    const user = userEvent.setup();
+    const { push } = await import('svelte-spa-router');
+    const draft = { ...APPLE, id: 'imported-9' };
+    vi.mocked(importRecipeFromPhoto).mockResolvedValue({ kind: 'ok', value: draft });
+    seed([APPLE]);
+    render(RecipeListPage);
+
+    await user.click(screen.getByTestId('recipe-new-btn'));
+    await user.click(screen.getByTestId('recipe-new-import-photo'));
+    await user.upload(
+      await screen.findByTestId('recipe-import-photo-input'),
+      new File(['bytes'], 'page.jpg', { type: 'image/jpeg' }),
+    );
+    await user.click(await screen.findByTestId('recipe-import-photo-use'));
+    await user.click(await screen.findByTestId('recipe-import-photo-btn'));
+
+    // The callable already persisted the recipe flagged as not yet reviewed
+    // (issue #616), so this opens THAT recipe's editor — never /recipes/new.
+    await waitFor(() => expect(stashImportedDraft).toHaveBeenCalledWith(draft));
+    expect(push).toHaveBeenCalledWith('/recipes/imported-9/edit');
   });
 });

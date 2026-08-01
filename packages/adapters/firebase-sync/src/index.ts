@@ -66,6 +66,7 @@ export {
   callParseRecipeIngredients,
   callDescribeRecipeScene,
   callExtractRecipeFromUrl,
+  callExtractRecipeFromPhoto,
   callRegenerateRecipeImage,
   callSetRecipeImageUpload,
 } from './recipeCallables.js';

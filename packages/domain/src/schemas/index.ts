@@ -61,6 +61,7 @@ export {
   CanonicaliseRecipeIngredientsWireInputSchema,
   AuthorRecipeWireInputSchema,
   ExtractRecipeFromUrlWireInputSchema,
+  ExtractRecipeFromPhotoWireInputSchema,
   IdentifyEquipmentWireInputSchema,
   PopulateEquipmentEntryWireInputSchema,
   RefreshWeatherForecastWireInputSchema,
@@ -71,6 +72,7 @@ export type {
   CanonicaliseRecipeIngredientsWireInput,
   AuthorRecipeWireInput,
   ExtractRecipeFromUrlWireInput,
+  ExtractRecipeFromPhotoWireInput,
   IdentifyEquipmentWireInput,
   PopulateEquipmentEntryWireInput,
   RefreshWeatherForecastWireInput,
@@ -247,6 +249,27 @@ export type {
   ExtractedStep,
   UrlImportFailureCode,
 } from './extractRecipeFromUrl.js';
+
+export {
+  ExtractRecipeFromPhotoInputSchema,
+  ExtractRecipeFromPhotoOutputSchema,
+  ExtractRecipeFromPhotoAIOutputSchema,
+  ExtractedBookSourceSchema,
+  RecipePagePhotoSchema,
+  RECIPE_PAGE_PHOTO_CONTENT_TYPES,
+  MAX_RECIPE_PAGE_PHOTOS,
+  PHOTO_IMPORT_TIMEOUT_SECONDS,
+  PHOTO_IMPORT_FAILURE_CODES,
+} from './extractRecipeFromPhoto.js';
+export type {
+  ExtractRecipeFromPhotoInput,
+  ExtractRecipeFromPhotoOutput,
+  ExtractRecipeFromPhotoAIOutput,
+  ExtractedBookSource,
+  RecipePagePhoto,
+  RecipePagePhotoContentType,
+  PhotoImportFailureCode,
+} from './extractRecipeFromPhoto.js';
 
 export {
   SingleQuantitySchema,

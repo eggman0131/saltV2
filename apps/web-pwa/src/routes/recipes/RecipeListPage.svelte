@@ -19,6 +19,7 @@
   } from '../../lib/recipeService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { KIND_COPY, KIND_SECTIONS, PRIMARY_KIND_SECTIONS, kindOf } from './recipeKind.js';
+  import RecipeImportPhotoDialog from './RecipeImportPhotoDialog.svelte';
 
   function ingredientCount(recipe: Recipe): number {
     return recipe.ingredients.reduce((n, g) => n + g.items.length, 0);
@@ -215,6 +216,26 @@
       addToast('Could not open the editor — please try again.', 'destructive');
     }
   }
+
+  // ─── Import from photo (issue #649) ───────────────────────────────────────────
+  // This page owns only the way in and the way out. Capturing, framing, the page
+  // strip and the extraction call all live in RecipeImportPhotoDialog; it hands
+  // back the persisted draft and we do exactly what the URL path does with one.
+  let showPhotoImport = $state(false);
+
+  function handlePhotoImported(recipe: Recipe): void {
+    // Same hand-off as the URL path (issue #616): the callable has ALREADY
+    // persisted the recipe flagged as not yet reviewed, so this routes into that
+    // recipe's editor rather than /recipes/new. The draft is stashed so the
+    // editor paints immediately instead of waiting for the Firestore listener.
+    stashImportedDraft(recipe);
+    try {
+      push(`/recipes/${recipe.id}/edit`);
+      showPhotoImport = false;
+    } catch {
+      addToast('Could not open the editor — please try again.', 'destructive');
+    }
+  }
 </script>
 
 <ListPage
@@ -251,6 +272,18 @@
         >
           <Icon name="Link" size={14} />
           Import URL
+        </button>
+        <button
+          type="button"
+          class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+          onclick={() => {
+            newMenuOpen = false;
+            showPhotoImport = true;
+          }}
+          data-testid="recipe-new-import-photo"
+        >
+          <Icon name="Camera" size={14} />
+          Import from photo
         </button>
         <button
           type="button"
@@ -304,7 +337,7 @@
   {#snippet empty()}
     <div class="flex flex-col items-center gap-3 py-12 text-center">
       <p class="text-sm text-muted-foreground">No recipes yet.</p>
-      <div class="flex gap-2">
+      <div class="flex flex-wrap justify-center gap-2">
         <Button
           variant="outline"
           size="sm"
@@ -313,6 +346,18 @@
         >
           {#snippet leading()}<Icon name="Link" size={16} />{/snippet}
           Import from URL
+        </Button>
+        <!-- A peer of the URL button, deliberately: an empty library is exactly
+             where someone stands holding a cookbook, and offering only a URL box
+             there says photo import does not exist. -->
+        <Button
+          variant="outline"
+          size="sm"
+          onclick={() => (showPhotoImport = true)}
+          data-testid="recipe-import-photo-toggle-empty"
+        >
+          {#snippet leading()}<Icon name="Camera" size={16} />{/snippet}
+          Import from photo
         </Button>
         <Button size="sm" onclick={() => push('/recipes/new')}>Create your first recipe</Button>
       </div>
@@ -665,3 +710,7 @@
     {/if}
   {/snippet}
 </ListPage>
+
+<!-- Reachable from both the New menu and the empty state, so it is mounted
+     outside ListPage's snippets — one dialog, one piece of state. -->
+<RecipeImportPhotoDialog bind:open={showPhotoImport} onImported={handlePhotoImported} />
