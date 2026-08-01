@@ -142,9 +142,9 @@ export async function parseIngredients(
 // The photoreal hero is generated server-side by the onRecipeWritten trigger on
 // create. These two commands are the manual controls.
 
-// Regenerate (or first-time generate / un-hide) the hero via the auth-gated
-// callable. The callable clears `image` + un-hides + bumps the nonce, re-firing
-// the trigger; the new URL arrives via the recipe subscription. Deliberately a
+// Regenerate (or first-time generate) the hero via the auth-gated callable. The
+// callable clears `image` and bumps the nonce, re-firing the trigger; the new URL
+// arrives via the recipe subscription. Deliberately a
 // callable, not an optimistic store write — a client whole-document write would
 // risk clobbering the trigger's image write (whole-document LWW).
 //

@@ -1,8 +1,8 @@
 import { z } from 'zod';
 
 // Input for the regenerateRecipeImage callable (issue #148, Tier-2): clears the
-// recipe's hero image so the onRecipeWritten trigger regenerates it (and un-hides
-// it if it was hidden). Mirrors RegenerateCanonIconInputSchema.
+// recipe's hero image so the onRecipeWritten trigger regenerates it. Mirrors
+// RegenerateCanonIconInputSchema.
 //
 // `brief` is the art direction for the next generation — the one-paragraph scene
 // description the user edits in the regenerate dialog, pre-filled from the recipe's
