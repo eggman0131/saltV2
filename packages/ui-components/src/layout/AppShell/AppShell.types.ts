@@ -21,7 +21,7 @@ export interface AppShellProps {
    * `BottomNav`). Defaults to `true`.
    *
    * Set `false` for a FULL-VIEWPORT route — a genuinely modal, single-task mode
-   * that owns the whole screen (see ui-spec-v05 §3). The chrome is not rendered
+   * that owns the whole screen (see ui-spec-v05 §2). The chrome is not rendered
    * at all rather than merely covered: a page painting over it leaves `TopBar`
    * and `BottomNav` in the DOM, in the tab order, and in the accessibility tree,
    * so keyboard focus lands on invisible navigation behind the overlay and

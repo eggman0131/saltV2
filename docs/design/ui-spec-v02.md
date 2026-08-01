@@ -731,15 +731,25 @@ Named utilities (registered in `salt.css`, mirrored in `tokens/z-index.ts`):
 - `z-dialog` → 50
 - `z-tooltip` → 70
 
+**Where these live.** The `@utility z-*` blocks in `salt.css` are the source;
+`generate-tokens` extracts them into `src/tokens/z-index.ts` and
+`tests/tokens.theme.test.ts` asserts the three values, so CSS and TS cannot
+drift. `docs/design/design.md` deliberately carries **no** z-index key: it is the
+theme export (colour, typography, radius, spacing, controls) — values a designer
+picks and that vary by theme — whereas layering is structural and has no light /
+dark or brand variant. `check-theme.ts` therefore has nothing to check here, and
+adding a key would only create a fourth copy of numbers already generated from
+CSS (see #661).
+
 **The ladder.** Named tokens cover the floating layers, but the app also stacks
 things the tokens never named, and a new overlay must pick its rung **by this
 table** rather than by choosing a number bigger than whatever it collided with:
 
 | Rung | Value | What sits here |
 | --- | --- | --- |
-| Page-local sticky | `z-10` | In-page sticky headers and absolutely-positioned badges. Scoped to one page; never competes with chrome. |
-| App chrome | `z-10` | `TopBar` (sticky), `BottomNav` (fixed). |
-| Chrome-replacing bar | `z-30` | A contextual bar that deliberately **covers** the `BottomNav` for the duration of a mode — `ListPage`'s bulk-action bar (ui-spec-v04 §9), the chat composer at `z-20`. Above the nav, below any floating layer. |
+| Page & chrome | `z-10` | In-page sticky headers, absolutely-positioned badges, `TopBar` (sticky) and `BottomNav` (fixed). One rung on purpose: a page-local sticky is scoped to its own scroll container and never needs to outrank the chrome. If it does, it belongs on a rung above — not on a bigger number here. |
+| Bar above the nav | `z-20` | A fixed bar that sits **clear of** the `BottomNav` rather than over it, offset by the nav's height — the chat composer (`bottom-14`, `lg:bottom-0`). Above page content, below anything that covers the nav. |
+| Chrome-replacing bar | `z-30` | A contextual bar that deliberately **covers** the `BottomNav` for the duration of a mode — `ListPage`'s bulk-action bar (ui-spec-v04 §9). Above the nav, below any floating layer. |
 | Popover | `z-popover` (40) | Popover, and any anchored floating surface that is not a dialog. |
 | Dialog / Sheet / full-viewport route | `z-dialog` (50) | Dialog and Sheet overlays and panels, and a full-viewport route (v0.5 §2). |
 | Tooltip | `z-tooltip` (70) | Above dialogs on purpose: a tooltip inside a dialog must not be clipped by it. |
@@ -749,6 +759,15 @@ Two rules follow from the table and are the point of writing it down:
 
 - **A new overlay joins an existing rung or amends this table.** "One more than the thing I collided with" is how a ladder stops being one.
 - **Raw `z-<n>` is permitted only below the named tokens** (the first three rungs), where the value is structural rather than a floating layer. At `z-popover` and above, use the token.
+
+**Known exception (#674).** `SelectContent` and `ComboboxContent` portal their
+listbox to `<body>` and use a raw `z-50`. That is not sloppiness: body-portalled
+puts them in the root stacking context alongside `Dialog`/`Sheet`, so a `Select`
+opened inside a Sheet must clear the panel at `z-dialog` (50) — `z-popover` (40)
+would render it underneath. The ladder has no rung for *an anchored floating
+surface opened from within a dialog or sheet*, and the fix is to portal into the
+enclosing `SheetContent` (which also repairs the `pointer-events` bug that makes
+such a dropdown inert), not to invent a rung. Do not copy the raw value.
 
 ---
 
