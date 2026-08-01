@@ -168,12 +168,14 @@ export const RecipeSchema = z.object({
   // already null — which is what re-fires the onRecipeWritten image branch
   // (Firestore emits no write event for a no-op update). Mirrors iconRequestedAt.
   imageRequestedAt: z.number().optional(),
-  // Opt-out: when true the trigger never auto-generates a hero and the UI hides
-  // any existing one. "Hide" sets it true (a plain client write, no callable —
-  // it needs no server authority); "Show" clears it; "Regenerate" clears it too.
-  // Distinct from `image === null` (which means "generate one"). Mirrors the
-  // CanonItem "hidden" thumbnail sentinel, but as its own boolean so
-  // RecipeImageSchema stays a real image (url + source), never a sentinel.
+  // RETIRED and inert: kept on the schema only so production documents that still
+  // carry it parse on read (#240). It has no readers anywhere — onRecipeWritten
+  // stopped honouring it (auto-generation now runs regardless), and as of #648 no
+  // web-pwa site reads it either: hero visibility is purely "does an image URL
+  // exist". Its only remaining mention is the regenerateRecipeImage callable
+  // deleting it, which is cleanup of legacy data, not a read. It formerly meant
+  // "never auto-generate a hero, and hide any existing one" — do not resurrect
+  // that behaviour without reinstating readers on both sides.
   imageHidden: z.boolean().optional(),
   // Art-direction brief for the hero: a prose paragraph describing what the
   // plated dish looks like and how it reads in mood/season/cuisine, authored by

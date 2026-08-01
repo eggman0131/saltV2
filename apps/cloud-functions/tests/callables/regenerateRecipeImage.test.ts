@@ -47,7 +47,7 @@ describe('regenerateRecipeImage callable', () => {
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
-  it('clears the image, un-hides, and clears the brief when none is supplied', async () => {
+  it('clears the image, the retired imageHidden, and the brief when none is supplied', async () => {
     const result = await (regenerateRecipeImage as Function)({
       auth: { uid: 'u1' },
       data: { recipeId: 'recipe-123' },
