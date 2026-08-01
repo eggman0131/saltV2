@@ -21,8 +21,10 @@
  * Load template, not deleted). Recipe attach is a reserved seam (#17, not
  * shipped) — "add a meal" means setting the day's meal note + attendees here.
  */
+import type { Recipe } from '@salt/domain';
 import { expect, test } from './fixtures/test';
 import { gotoAndSignIn, uniqueEmail } from './helpers/auth';
+import { seedRecipe } from './helpers/seed';
 import { SYNC_TIMEOUT } from './helpers/timeouts';
 
 // Read the current week's startDate from the in-page store bridge.
@@ -36,6 +38,59 @@ async function readDayNote(
   dayKey: string,
 ): Promise<string | undefined> {
   return page.evaluate((key) => window.__e2e!.getMealPlanSnapshot().days[key]?.note, dayKey);
+}
+
+// The recipe ids attached to a given day key.
+async function readDayRecipeIds(
+  page: import('@playwright/test').Page,
+  dayKey: string,
+): Promise<readonly string[]> {
+  return page.evaluate(
+    (key) => window.__e2e!.getMealPlanSnapshot().days[key]?.recipeIds ?? [],
+    dayKey,
+  );
+}
+
+// Today's day key, if the displayed week holds it, else the week's first day.
+// Today is the anchor wherever it can be: the planner opens on its row and puts
+// it flush under the header (#639), so it is the one day guaranteed to be both
+// in the displayed week and on screen.
+async function readAnchorDayKey(page: import('@playwright/test').Page): Promise<string> {
+  return page.evaluate(() => {
+    const days = window.__e2e!.getMealPlanSnapshot().days;
+    const today = new Date().toLocaleDateString('en-CA');
+    return today in days ? today : Object.keys(days).sort()[0]!;
+  });
+}
+
+// A placeholder document, whole (#652). Seeded through the bridge rather than
+// authored in the editor because the thing under test needs one that already has
+// a HERO: a placeholder with no photograph is deliberately never picked, and hero
+// generation is skipped under the e2e AI fake. The url never has to resolve —
+// nothing here asserts on pixels, only on which document got attached.
+function placeholderRecipe(id: string, mood: 'bright' | 'comfort'): Recipe {
+  return {
+    id,
+    schemaVersion: 1,
+    kind: 'placeholder',
+    title: `Placeholder — ${mood}`,
+    description: null,
+    ingredients: [],
+    steps: [],
+    metadata: {
+      servings: null,
+      totalTimeMinutes: null,
+      prepTimeMinutes: null,
+      cookTimeMinutes: null,
+      tags: [mood],
+    },
+    source: null,
+    notes: null,
+    producesCanonId: null,
+    image: { url: `https://example.test/${id}.webp` },
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  } as unknown as Recipe;
 }
 
 test.describe('meal planner — week happy path', () => {
@@ -61,11 +116,7 @@ test.describe('meal planner — week happy path', () => {
     // cycle, also holds next week beneath it.
     const startDate = await readStartDate(page);
     expect(startDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    const dayKey = await page.evaluate(() => {
-      const days = window.__e2e!.getMealPlanSnapshot().days;
-      const today = new Date().toLocaleDateString('en-CA');
-      return today in days ? today : Object.keys(days).sort()[0]!;
-    });
+    const dayKey = await readAnchorDayKey(page);
     expect(dayKey).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 
     // ── Next week appears from Wednesday (#639, Phase 6) ──
@@ -189,5 +240,95 @@ test.describe('meal planner — week happy path', () => {
     await expect(page.getByTestId(`${testid}-guests-count`)).toHaveText('1', {
       timeout: SYNC_TIMEOUT,
     });
+  });
+});
+
+test.describe('meal planner — the note-only night (#652)', () => {
+  test('typing a meal into an empty day gives it a placeholder card you can remove', async ({
+    page,
+  }, testInfo) => {
+    // Single tab, no AI, no cross-tab convergence: the 60 s tier (NF-F2). Every
+    // wait below is bound to a real signal — a store read or a rendered element.
+    test.setTimeout(60_000);
+    const email = uniqueEmail(testInfo.testId);
+    await gotoAndSignIn(page, email, '/');
+
+    // ── The library ──────────────────────────────────────────────────────────
+    // One picture in each mood, so a pick is guaranteed whatever month CI runs
+    // in: the season chooses the mood, and a mood with an empty set is exactly
+    // what makes `pickPlaceholder` return null and leave the day as text.
+    await seedRecipe(page, placeholderRecipe('e2e-ph-bright', 'bright'));
+    await seedRecipe(page, placeholderRecipe('e2e-ph-comfort', 'comfort'));
+    const PLACEHOLDER_IDS = ['e2e-ph-bright', 'e2e-ph-comfort'];
+
+    await page.goto('/#/mealplan');
+    await expect(page.getByTestId('this-week')).toBeVisible({ timeout: SYNC_TIMEOUT });
+    await page.getByTestId('this-week').click();
+    await expect(page.getByTestId('week-range')).not.toHaveText('', { timeout: SYNC_TIMEOUT });
+
+    const dayKey = await readAnchorDayKey(page);
+    expect(dayKey).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const testid = `day-${dayKey}`;
+    const meal = `Roast chicken dinner ${testInfo.testId}`;
+
+    // The day starts unplanned, and says so.
+    await expect(page.getByTestId(`${testid}-meal`)).toHaveText('Nothing planned', {
+      timeout: SYNC_TIMEOUT,
+    });
+
+    // ── Plan it in a sentence ────────────────────────────────────────────────
+    await page.getByTestId(`${testid}-summary`).click();
+    await expect(page.getByTestId(`${testid}-detail`)).toBeVisible({ timeout: SYNC_TIMEOUT });
+
+    // A placeholder is never OFFERED — it arrives on its own or not at all. The
+    // two seeded above are the only recipes in the store, so an entirely empty
+    // picker is the assertion; `isPlannable` is what empties it, not a second
+    // filter in the planner.
+    const dialog = page.getByRole('dialog');
+    await page.getByTestId(`${testid}-recipe-picker`).click();
+    await expect(dialog.getByText('Nothing found')).toBeVisible();
+    // Dismissed by moving focus off the input, which is what the picker closes
+    // on. Escape is avoided deliberately: the sheet underneath listens for it too.
+    await dialog.getByRole('heading').click();
+    await expect(dialog.getByText('Nothing found')).toBeHidden();
+
+    // Typing the meal and tapping out of the field is the whole gesture.
+    await page.getByTestId(`${testid}-note`).fill(meal);
+    await page.getByTestId(`${testid}-note`).blur();
+
+    // ── The day is now carrying a placeholder ────────────────────────────────
+    await expect
+      .poll(() => readDayRecipeIds(page, dayKey), { timeout: SYNC_TIMEOUT })
+      .toHaveLength(1);
+    const attachedIds = await readDayRecipeIds(page, dayKey);
+    expect(PLACEHOLDER_IDS).toContain(attachedIds[0]!);
+    const attachedId = attachedIds[0]!;
+    await expect.poll(() => readDayNote(page, dayKey), { timeout: SYNC_TIMEOUT }).toBe(meal);
+
+    // It is attached, not conjured, so it is visible as an ordinary row with a
+    // title and an X — the thing that makes the mechanism inspectable.
+    await expect(page.getByTestId(`${testid}-recipe-row-${attachedId}`)).toBeVisible();
+    await expect(page.getByTestId(`${testid}-recipe-remove-${attachedId}`)).toBeVisible();
+
+    // And the week's row is a photographic card like any other planned night.
+    await expect(page.getByTestId(`${testid}-photo`)).toHaveCount(1, { timeout: SYNC_TIMEOUT });
+
+    // ── Leaving the field again attaches nothing further ─────────────────────
+    // The day now has a recipe, which is the guard: the pick is frozen at the one
+    // moment the day was planned and nothing re-evaluates it.
+    await page.getByTestId(`${testid}-note`).fill(`${meal} (with gravy)`);
+    await page.getByTestId(`${testid}-note`).blur();
+    await expect
+      .poll(() => readDayNote(page, dayKey), { timeout: SYNC_TIMEOUT })
+      .toBe(`${meal} (with gravy)`);
+    expect(await readDayRecipeIds(page, dayKey)).toEqual([attachedId]);
+
+    // ── Remove it, and the day goes back to being a block of text ────────────
+    await page.getByTestId(`${testid}-recipe-remove-${attachedId}`).click();
+    await expect
+      .poll(() => readDayRecipeIds(page, dayKey), { timeout: SYNC_TIMEOUT })
+      .toHaveLength(0);
+    await expect(page.getByTestId(`${testid}-photo`)).toHaveCount(0, { timeout: SYNC_TIMEOUT });
+    await expect(page.getByTestId(`${testid}-meal`)).toContainText(meal);
   });
 });

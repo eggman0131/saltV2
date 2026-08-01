@@ -365,7 +365,9 @@ Decisions:
 - **Meal plan** — `Day.recipeIds: string[]` is live: the planner attaches recipe
   ids from this collection, and (since #637) outings alongside them. Anything a
   planner consumer does with an attached entry has to hold for a non-cookable
-  one.
+  one. Since #652 the planner also attaches placeholders *on its own*, on the
+  dinner field's blur — the one caller of `pickPlaceholder`. See
+  [meal-planning.md](meal-planning.md#recipes-on-a-day-17-637-652).
 
 ## Architecture placement
 
