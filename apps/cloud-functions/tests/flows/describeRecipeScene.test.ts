@@ -195,12 +195,19 @@ describe('describeRecipeScene flow — revision mode', () => {
   });
 });
 
-// ─── Outings (issue #637) ─────────────────────────────────────────────────────
-// An outing — a takeaway, a picnic, a meal out — has no method and no ingredients,
-// so the recipe prompt's premise ("read the whole recipe, especially the METHOD")
-// is one it cannot satisfy. Asked that question it invents a plated, cooked dish:
-// exactly the picture an outing is not. `kind` selects a prompt that asks what the
-// food looks like as it ARRIVES instead.
+// ─── Outings (issues #637, #671) ──────────────────────────────────────────────
+// An outing — a night off from cooking — has no method and no ingredients, so the
+// recipe prompt's premise ("read the whole recipe, especially the METHOD") is one
+// it cannot satisfy. Asked that question it invents a plated, cooked dish: exactly
+// the picture an outing is not. `kind` selects a prompt that asks what the food
+// looks like when it really turns up instead.
+//
+// #671: "when it really turns up" is FOUR pictures, not one. This prompt used to
+// say "a takeaway, a picnic, a chippy tea, a street-food stop or a meal out" and
+// hand over a vessel list starting "the foil tray", so every brief it wrote came
+// back describing takeaway packaging — including for a meal out, a butcher's pie
+// and a sandwich, none of which have any. It now makes deciding WHICH of the four
+// the model's first job, and names no vessel for it to default to.
 describe('describeRecipeScene flow — outings', () => {
   const OUTING = {
     title: 'Friday night curry',
@@ -219,17 +226,32 @@ describe('describeRecipeScene flow — outings', () => {
     return mockGenerate.mock.calls[0]![0].system as string;
   }
 
-  it('asks what the food looks like AS IT ARRIVES, not how it is cooked and plated', async () => {
+  it('asks what the food looks like when it TURNS UP, not how it is cooked and plated', async () => {
     const system = await systemFor({ ...OUTING, kind: 'outing' });
 
-    expect(system).toContain('AS IT ARRIVES');
-    expect(system).toContain('vessel and packaging');
+    expect(system).toContain('NIGHT OFF FROM COOKING');
+    expect(system).toContain('how it is served and what it is served in or on');
     expect(system).toContain('mood, occasion and cuisine');
     // The recipe premise — a method and an ingredient list to read — is absent, and
     // is explicitly ruled out rather than merely omitted.
     expect(system).not.toContain('especially the METHOD and the INGREDIENTS');
     expect(system).toContain('do not invent a method or an ingredient list');
     expect(system).toContain('ONE paragraph');
+  });
+
+  // Issue #671. Deciding which of the four kinds of night off this is comes FIRST,
+  // because the vessel, the setting and the light are all downstream of it — and
+  // three of the four have no packaging at all.
+  it('makes the model choose which kind of night off it is, and names no default vessel', async () => {
+    const system = await systemFor({ ...OUTING, kind: 'outing' });
+
+    expect(system).toContain('Your FIRST job');
+    expect(system).toContain('Do NOT assume a takeaway');
+    for (const branch of ['handed over', 'eaten OUT', 'bought ready to eat', 'no real cooking']) {
+      expect(system).toContain(branch);
+    }
+    // The old vessel list — whose first noun every brief then reached for.
+    expect(system).not.toContain('the foil tray, the carton, the pizza box');
   });
 
   it('revises an outing brief with the outing revision prompt', async () => {
@@ -241,9 +263,27 @@ describe('describeRecipeScene flow — outings', () => {
     });
 
     expect(system).toContain('Fold the change THROUGH the whole brief');
-    expect(system).toContain('vessel and packaging it arrives in');
+    expect(system).toContain('NIGHT OFF FROM COOKING');
     // The recipe revision prompt must not be the one that ran.
     expect(system).not.toContain('The finished dish');
+  });
+
+  // Issue #671. "Keep everything the requested change does not touch" is correct and
+  // load-bearing, but it is also why a foil tray survived every attempt to steer an
+  // outing away from being a takeaway: the packaging counted as untouched. Packaging
+  // is a consequence of the occasion, so it has to move when the occasion does.
+  it('moves the packaging when the occasion moves', async () => {
+    const system = await systemFor({
+      ...OUTING,
+      kind: 'outing',
+      currentBrief: 'Foil trays on a coffee table under warm lamplight.',
+      hint: 'actually we went out for this one',
+    });
+
+    expect(system).toContain('NEVER independent of the occasion');
+    expect(system).toContain(
+      'Do not leave a takeaway container in a brief that is no longer a takeaway',
+    );
   });
 
   it('inherits the shared scope rule verbatim on both outing variants', async () => {
@@ -271,7 +311,7 @@ describe('describeRecipeScene flow — outings', () => {
 
     expect(absent).toContain('especially the METHOD and the INGREDIENTS');
     expect(explicit).toBe(absent);
-    expect(absent).not.toContain('AS IT ARRIVES');
+    expect(absent).not.toContain('NIGHT OFF FROM COOKING');
   });
 });
 
@@ -334,7 +374,7 @@ describe('describeRecipeScene flow — cocktails', () => {
     expect(system).toContain('must not turn it into a drink this recipe does not make');
     // Neither of the other two revision prompts is the one that ran.
     expect(system).not.toContain('The finished dish');
-    expect(system).not.toContain('vessel and packaging it arrives in');
+    expect(system).not.toContain('NIGHT OFF FROM COOKING');
   });
 
   it('inherits the shared scope rule verbatim on both cocktail variants', async () => {
@@ -397,7 +437,7 @@ describe('describeRecipeScene flow — placeholders', () => {
     expect(system).toContain('it need not be food');
     // Neither recipe premise survives: there is no method and no arrival.
     expect(system).not.toContain('especially the METHOD and the INGREDIENTS');
-    expect(system).not.toContain('AS IT ARRIVES');
+    expect(system).not.toContain('NIGHT OFF FROM COOKING');
     expect(system).toContain('ONE paragraph');
   });
 
@@ -491,7 +531,7 @@ describe('describeRecipeScene flow — placeholders', () => {
     expect(system).toContain('never the dish itself');
     // None of the other three revision prompts is the one that ran.
     expect(system).not.toContain('The finished dish');
-    expect(system).not.toContain('vessel and packaging it arrives in');
+    expect(system).not.toContain('NIGHT OFF FROM COOKING');
     expect(system).not.toContain('what is in the glass');
   });
 

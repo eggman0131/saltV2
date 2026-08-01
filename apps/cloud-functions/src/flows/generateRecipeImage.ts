@@ -69,29 +69,64 @@ export const RECIPE_IMAGE_STYLE_ANCHORS =
 export const RECIPE_IMAGE_DISH_READING_FALLBACK =
   'First read the dish itself — is it fresh and light or hearty and slow-cooked, what cuisine is it, and which season does it naturally belong to — then let that reading drive the season, setting, surface, props, colour palette and quality of light of the scene: a fresh salad calls for high summer — bright, sunny, airy, cool clear light, a breezy outdoor or sun-lit table; a cottage pie or a slow-cooked stew calls for autumn or winter — cosy and warm, low golden or soft overcast light, deeper earthy tones, a hearty indoor table. Make this seasonal and situational shift clearly legible at a glance — a deliberate, confident step, never a faint tint — so each dish feels like it lives in its own moment.';
 
-// ─── The OUTING anchors + fallback (issue #637) ─────────────────────────────
-// An outing is a takeaway, a picnic or a meal out: it fills a planner slot but is
-// never cooked here, so it has no ingredients and no method. Painting one with the
-// recipe anchors gets a home-plated dish on rustic ceramic — a picture of a meal
-// that never happened. These siblings paint the food as it ACTUALLY ARRIVES.
+// ─── The OUTING anchors + fallback (issues #637, #671) ──────────────────────
+// An outing — "When you CBA" on screen — is a NIGHT OFF FROM COOKING: it fills a
+// planner slot but no recipe was cooked for it, so it has no ingredients and no
+// method. Painting one with the recipe anchors gets a home-plated dish on rustic
+// ceramic — a picture of a meal that never happened. These siblings paint the food
+// as it REALLY TURNS UP.
 //
-// Same contract as the recipe pair, and for the same reasons: LOCKED IN CODE,
-// appended LAST on every prompt, carrying the same prohibitions. "No logos" earns
-// its keep twice over here — takeaway packaging is where a model most wants to
-// invent a brand.
+// What "really turns up" means is NOT one picture, and #671 is what it cost to
+// assume it was. There are at least four, and only the first is a takeaway:
+// food someone else made and handed over; a meal eaten out on the restaurant's
+// own plate; something good bought ready to eat from a baker, butcher or deli;
+// and something assembled at home with no cooking at all — a sandwich, cheese and
+// crackers, beans on toast. This block used to enumerate takeaway vessels ("the
+// open foil tray, the lidded carton, the pizza box…") and assert the takeaway
+// premise outright ("the whole point is food someone else made and handed over",
+// "do NOT plate it up onto home crockery"). Both were false for three of the four,
+// and the crockery prohibition was actively wrong for the sandwich — you make one
+// ON a plate.
+//
+// It read as a bug rather than a bias because of WHERE it sat. This text is
+// appended LAST, after the brief, the description, the tags and the hint, so the
+// enumeration outranked everything a user could type and every outing came back in
+// a foil tray no matter what it was. That is the identical failure #652 diagnosed
+// in the placeholder anchors, and it takes the identical fix: a VESSEL is a subject
+// decision, and by this file's contract subjects belong to the per-doc brief while
+// the anchors hold style and prohibitions. So the anchors now REFERENCE how the
+// direction above says the food is served rather than naming it. The "vary the
+// vessel; do NOT default to the same box, cloth, tabletop" sentence went with it —
+// it fed those same nouns back in a negation, which conditions an image model far
+// more weakly than the noun does.
+//
+// The one prohibition that survives is the one true of all four: this was not
+// cooked from a recipe tonight, so it must not be styled as though it were.
+//
+// Same contract as the recipe pair otherwise: LOCKED IN CODE, appended LAST on
+// every prompt, carrying the same prohibitions. "No logos" earns its keep twice
+// over here — packaging, whether a takeaway's or a supermarket's, is where a model
+// most wants to invent a brand.
 //
 // The kind switch lives in `anchorsFor`/`fallbackFor`/`openerFor` below, with
 // 'recipe' as the default arm, so an absent or unrecognised kind is byte-for-byte
 // today's prompt.
 export const OUTING_IMAGE_STYLE_ANCHORS =
-  'But the FOOD is always the star of the shot: fill the frame with it, composing tight and close so the food is unmistakably the subject and takes up most of the image. The table, the room and the background are only supporting context glimpsed around and behind the food — never the main event; avoid wide or pulled-back shots where the surroundings occupy more of the frame than the food itself. Show the food IN THE VESSEL IT ARRIVED IN, exactly as it turns up: the open foil tray, the lidded carton, the pizza box, the paper wrapping, the styrofoam or bamboo container, the picnic spread laid out on a blanket, the plate as the restaurant sent it out to a laid table. Do NOT plate it up onto home crockery, and do NOT stage it as a cooked-from-scratch dish — the whole point is food someone else made and handed over. Vary the vessel, the surface and the angle to suit each outing; do NOT default to the same box, cloth, tabletop or camera position every time. Within that freedom, hold a recognisable house style: a photorealistic photograph with the warm, unfussy, appetising feel of a good evening, shot with real affection. Always keep these anchors — the food generous and filling most of the frame as the clear subject; soft natural light; a shallow depth of field with the food in crisp focus and the surroundings falling softly out of focus; the packaging honest and a little used, never pristine studio product photography. Absolutely no text, no captions, no watermark, no logos, no branding, no hands, no people. A single, mouth-watering hero shot of one spread of food, framed large and close so it fills the frame and makes you want to eat it.';
+  "But the FOOD is always the star of the shot: fill the frame with it, composing tight and close so the food is unmistakably the subject and takes up most of the image. The table, the room and the background are only supporting context glimpsed around and behind the food — never the main event; avoid wide or pulled-back shots where the surroundings occupy more of the frame than the food itself. NOBODY COOKED A RECIPE HERE: show the food exactly as it really turns up, served however the direction above says it is served, and never dressed up into something it is not. Do NOT stage it as a dish cooked from scratch — no careful plating, no chef's garnish, no arranged still life. If it came in packaging, leave it in its packaging; if it arrived on the restaurant's own plate, leave it on that plate; if it was thrown together at home, let it look thrown together. Let the vessel, the surface and the angle follow the direction above rather than a habit. Within that, hold a recognisable house style: a photorealistic photograph with the warm, unfussy, appetising feel of a good evening, shot with real affection. Always keep these anchors — the food generous and filling most of the frame as the clear subject; soft natural light; a shallow depth of field with the food in crisp focus and the surroundings falling softly out of focus; everything real and a little lived-in, never pristine studio product photography. Absolutely no text, no captions, no watermark, no logos, no branding, no hands, no people. A single, mouth-watering hero shot of one spread of food, framed large and close so it fills the frame and makes you want to eat it.";
 
 // The outing counterpart to RECIPE_IMAGE_DISH_READING_FALLBACK: used only when no
 // scene brief is available. It asks the same question the recipe fallback asks —
 // read the thing, then let that reading drive the scene — but the reading it asks
 // for is about the OCCASION, because that is what decides how the food shows up.
+//
+// Unlike the anchors above it may name concrete things, and should: it runs only
+// when there is no brief, so it is the one place on that path with anything
+// specific in it. What #671 changed here is the SPREAD of what it names — it used
+// to offer takeaway, picnic, chippy, street food and restaurant, which are five
+// wordings of two of the four cases, so the shop-bought haul and the sandwich had
+// no picture to reach for at all.
 export const OUTING_SCENE_FALLBACK =
-  'First read the outing itself — is it a takeaway eaten at home, a picnic outdoors, a chippy tea, a street-food stop or a sit-down meal in a restaurant, and what cuisine is it — then let that reading drive the vessel and packaging, the setting, the surface, the props, the colour palette and the quality of light: a curry or a pizza delivered home calls for a cosy indoor evening — warm lamplight, a sofa or a kitchen table, boxes and cartons opened out; a picnic calls for bright outdoor daylight — a rug on the grass, a spread of wrapped and tubbed things; a meal out calls for the restaurant itself — low warm light, a laid table, the dish as the kitchen sent it. Make this shift clearly legible at a glance — a deliberate, confident step, never a faint tint — so each outing feels like it lives in its own moment.';
+  "First read what kind of night off this is — food someone else made and handed over (a takeaway, a chippy tea, street food, a picnic); a meal eaten out, plated by the restaurant's own kitchen; something good bought ready to eat (a pie from the butcher, bread and cheese from the baker, a deli counter, a good thing out of a packet); or something assembled at home with no real cooking (a sandwich, cheese and crackers, beans on toast) — and what cuisine it is, then let that reading drive how the food is served, the setting, the surface, the props, the colour palette and the quality of light: a curry delivered home calls for a cosy indoor evening — warm lamplight, a kitchen table, cartons opened out; a picnic calls for bright outdoor daylight — a rug on the grass, a spread of wrapped and tubbed things; a meal out calls for the restaurant itself — low warm light, a laid table, the dish as the kitchen sent it; a baker's or butcher's haul calls for a board and a bread knife on a worktop in honest daylight; a sandwich made standing up calls for a plate, a kitchen counter and no ceremony at all. Make this shift clearly legible at a glance — a deliberate, confident step, never a faint tint — so each one feels like it lives in its own moment.";
 
 // ─── The COCKTAIL anchors + fallback (issue #637) ───────────────────────────
 // A cocktail IS a recipe — it has ingredients and a method, and it keeps the full
@@ -217,8 +252,12 @@ function openerFor(
 ): string {
   const lead = (() => {
     switch (kind) {
+      // Deliberately says nothing about HOW this one turns up (issue #671). The
+      // opener names the subject; which of the four kinds of night off it is —
+      // handed over, eaten out, bought ready, or thrown together here — is read
+      // per doc from the title and description by the brief.
       case 'outing':
-        return `A beautiful, appetising photograph of "${title}" — food from a takeaway, a picnic or a meal out, shown as it actually arrives.`;
+        return `A beautiful, appetising photograph of "${title}" — a night off from cooking, shown exactly as it really turns up.`;
       case 'cocktail':
         return `A beautiful, tempting photograph of the cocktail "${title}" — the finished drink in its glass, on the bar.`;
       // The one opener that does NOT make the title the subject. A placeholder's

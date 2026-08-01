@@ -301,9 +301,10 @@ describe('generateRecipeImage flow', () => {
   });
 });
 
-// ─── Entry kinds (issue #637) ────────────────────────────────────────────────
-// The `recipes` collection also holds outings — a takeaway, a picnic, a meal out.
-// Painting one with the recipe anchors produces a home-plated dish that never
+// ─── Entry kinds (issues #637, #671) ─────────────────────────────────────────
+// The `recipes` collection also holds outings — a night off from cooking, which is
+// a takeaway OR a meal out OR something bought ready to eat OR a sandwich made at
+// home. Painting one with the recipe anchors produces a home-plated dish that never
 // existed, so `kind` selects a sibling opener, fallback and anchor set. 'recipe' is
 // the default arm everywhere, so absent and unrecognised kinds are unchanged.
 describe('generateRecipeImage flow — entry kinds', () => {
@@ -341,7 +342,7 @@ describe('generateRecipeImage flow — entry kinds', () => {
     expect(explicit).toBe(absent);
   });
 
-  it('paints an outing as food that ARRIVES — outing anchors, never the recipe ones', async () => {
+  it('paints an outing as food that REALLY TURNS UP — outing anchors, never the recipe ones', async () => {
     const prompt = await promptFor({
       title: 'Friday night curry',
       description: null,
@@ -356,7 +357,7 @@ describe('generateRecipeImage flow — entry kinds', () => {
     expect(prompt).not.toContain(RECIPE_IMAGE_DISH_READING_FALLBACK);
     // …nor the "finished dish" opener.
     expect(prompt).not.toContain('the finished dish');
-    expect(prompt).toContain('as it actually arrives');
+    expect(prompt).toContain('a night off from cooking');
   });
 
   it('keeps the outing anchors LAST on the brief path', async () => {
@@ -401,8 +402,8 @@ describe('generateRecipeImage flow — entry kinds', () => {
   it('keeps the outing anchor wording verbatim', () => {
     // Canary, mirroring the recipe anchors': these are the outing house style and
     // the prohibitions. Reword deliberately, then update this test.
-    expect(OUTING_IMAGE_STYLE_ANCHORS).toContain('IN THE VESSEL IT ARRIVED IN');
-    expect(OUTING_IMAGE_STYLE_ANCHORS).toContain('Do NOT plate it up onto home crockery');
+    expect(OUTING_IMAGE_STYLE_ANCHORS).toContain('NOBODY COOKED A RECIPE HERE');
+    expect(OUTING_IMAGE_STYLE_ANCHORS).toContain('Do NOT stage it as a dish cooked from scratch');
     expect(OUTING_IMAGE_STYLE_ANCHORS).toContain('photorealistic photograph');
     expect(OUTING_IMAGE_STYLE_ANCHORS).toContain('shallow depth of field');
     expect(OUTING_IMAGE_STYLE_ANCHORS).toContain(
@@ -410,6 +411,33 @@ describe('generateRecipeImage flow — entry kinds', () => {
     );
     // The fallback owns the occasion-reading guess and must not smuggle anchors in.
     expect(OUTING_SCENE_FALLBACK).not.toContain('no hands, no people');
+  });
+
+  // Issue #671. "When you CBA" is not a synonym for takeaway — it is equally a meal
+  // out, a pie from the butcher, or a sandwich made standing up. The anchors are
+  // appended LAST, after the brief, the description, the tags and the hint, so any
+  // vessel named in them outranks everything a user can type: naming "the open foil
+  // tray" there put a disposable takeaway box in every outing hero regardless of
+  // what the outing was. A vessel is a SUBJECT decision and belongs to the per-doc
+  // brief; the anchors reference how the direction above serves the food instead.
+  //
+  // This is the same rule #652 established for the placeholder anchors, and it is
+  // asserted the same way: no concrete vessel noun in the invariant text.
+  it('names no vessel and assumes no takeaway in the outing anchors', () => {
+    for (const vessel of ['foil', 'carton', 'pizza box', 'styrofoam', 'bamboo', 'paper wrapping']) {
+      expect(OUTING_IMAGE_STYLE_ANCHORS.toLowerCase()).not.toContain(vessel);
+    }
+    // Nor the takeaway PREMISE, which was false for three of the four cases — and
+    // whose crockery prohibition was actively wrong for the sandwich, which is made
+    // on a plate at home.
+    expect(OUTING_IMAGE_STYLE_ANCHORS).not.toContain('home crockery');
+    expect(OUTING_IMAGE_STYLE_ANCHORS).not.toContain('someone else made and handed over');
+    // The fallback is the no-brief path, so it MAY name things — but it has to span
+    // all four kinds of night off, not five wordings of takeaway.
+    expect(OUTING_SCENE_FALLBACK).toContain('bought ready to eat');
+    expect(OUTING_SCENE_FALLBACK).toContain('sandwich');
+    expect(OUTING_SCENE_FALLBACK).toContain('restaurant');
+    expect(OUTING_SCENE_FALLBACK).toContain('takeaway');
   });
 
   // ─── Cocktails (Phase 5) ───────────────────────────────────────────────────
