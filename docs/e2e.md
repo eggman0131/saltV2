@@ -284,12 +284,19 @@ to `@salt/observability` (CLAUDE.md rule 11) and `web-pwa` cannot import
 `@salt/observability/server` either (cross-runtime rule). Emitting capture-shaped JSON and POSTing
 it with `curl` crosses no boundary. Do not "tidy" this into the adapter.
 
-**Setup.** The events land in a **separate PostHog project** (`Salt CI`), so CI traffic can never
-distort product insights or funnels. The workflow reads its write key from the repo variable
-`POSTHOG_CI_KEY` (`gh variable set POSTHOG_CI_KEY`) — a `phc_…` project key, public by design, like
-the ones already committed in `apps/web-pwa/.env.*`. An unset variable is a **skip with a notice**,
-not a failure, so forks and pre-setup runs are unaffected, and the whole step is
-`continue-on-error` because telemetry must never turn a green suite red.
+**Where it lands.** A **separate PostHog project** — `Salt CI` (238605), not the `Salt` product
+project — so CI traffic can never distort product insights or funnels. The workflow reads its write
+key from the repo variable `POSTHOG_CI_KEY` (already set; `gh variable set POSTHOG_CI_KEY` to
+rotate) — a `phc_…` project key, public by design, like the ones already committed in
+`apps/web-pwa/.env.*`. An unset variable is a **skip with a notice**, not a failure, so forks are
+unaffected, and the whole step is `continue-on-error` because telemetry must never turn a green
+suite red.
+
+**What to look at.** The [`e2e reliability`](https://eu.posthog.com/project/238605/dashboard/867049)
+dashboard: the weekly flaky trend by test (the early-warning chart), the 14-day top offenders split
+by test and shard, and flake rate as `flaky ÷ ran`. A daily alert fires by email when any single
+test exceeds 3 flakes in a rolling 7 days — it evaluates a SQL insight row-by-row (`any_row`),
+because a breakdown trend cannot be alerted on per breakdown value.
 
 ## Spotting & clearing a poisoned environment
 
