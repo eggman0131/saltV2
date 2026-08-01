@@ -556,23 +556,40 @@
            card is not: a day carrying a mark starts with that mark, so the card
            sits well below the place the deck actually snaps to. A geometry test
            addressing the card would silently measure the wrong box. -->
-      <!-- The selected treatment is a RING, never padding, a border or a margin:
-           this element is the deck's section, and the deck measures its geometry
-           to decide where a day comes to rest. A ring is drawn as a box-shadow, so
-           it costs the row not one pixel of layout and the deck cannot tell the
-           selected row from any other. `data-selected` is the same fact stated
-           plainly, so a test can assert selection without depending on a class
-           string. -->
+      <!-- The selected treatment must cost the row NO LAYOUT: this element is the
+           deck's section, and the deck measures its geometry to decide where a day
+           comes to rest. So the outline is an absolutely-positioned overlay, out of
+           flow entirely — never padding, a border or a margin on the row itself.
+           `data-selected` is the same fact stated plainly, so a test can assert
+           selection without depending on a class string. -->
       <div
         bind:this={rowEls[date]}
         data-testid={`day-${date}-row`}
         data-selected={isSelected ? 'true' : undefined}
         class="{isEarlier ? 'opacity-60' : ''} {isExtension && date !== todayDate
           ? 'planner-next-week-row'
-          : ''} {isSelected
-          ? 'rounded-xl ring-2 ring-ring ring-offset-4 ring-offset-background'
-          : ''}"
+          : ''} {isSelected ? 'relative' : ''}"
       >
+        {#if isSelected}
+          <!-- An outline drawn INSIDE the row's own bounds and OVER its contents.
+               Both halves of that matter, and neither is optional:
+               INSIDE, because the row fills the deck's column edge to edge and the
+               deck viewport is `overflow-hidden` — anything drawn outside the row
+               (a ring with an offset, an `outline`) has its left and right sides
+               clipped clean off, leaving two lines floating above and below the day
+               and no sides at all.
+               OVER, because an inset box-shadow paints beneath child content, and
+               the day's photograph is opaque and flush to the row's right edge — so
+               `ring-inset` on this element would be hidden everywhere the picture
+               covers, which is three sides of the four.
+               `rounded-lg` matches the card's own radius, so the outline traces its
+               corners rather than cutting across them. Absolute, so the deck cannot
+               tell the selected row from any other. -->
+          <span
+            class="pointer-events-none absolute inset-0 z-10 rounded-lg border-2 border-ring"
+            aria-hidden="true"
+          ></span>
+        {/if}
         {#if isExtension && i === 0}
           <!-- The dated mark. Same rule-across-the-list grammar as the shop day,
                dashed and terracotta, and it names the dates so "next week" is a
