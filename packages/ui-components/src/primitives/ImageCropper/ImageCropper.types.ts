@@ -1,4 +1,4 @@
-// spec: SPEC.md §8.7 v0.3; ui-spec-v06 §1 (free-aspect mode)
+// spec: ui-spec-v06.md §1 v0.6
 
 /** Which ratio the crop frame is locked to (ui-spec-v06 §1.3). */
 export type ImageCropperAspect = '3:2' | 'free';
