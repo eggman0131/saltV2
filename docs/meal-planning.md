@@ -181,6 +181,24 @@ never compares a kind to decide behaviour. The one place it names a kind at all
 is copy — a non-`recipe` picker row wears a small label ("When you CBA") so the
 option can be told apart in a list of dinners.
 
+### Attaching from the recipe page
+
+A recipe's own page carries **Add to planner**, gated on the same
+`isPlannable(kind)` the picker uses — the question is identical ("is this
+offered for a night?"), so it gets one answer, not two. It opens a hand-rolled
+month grid rather than `<input type="date">`: the native control hands the
+interaction to the OS, which means a different picker on every device and none of
+them able to start the week on `firstDayOfWeek`.
+
+The non-obvious part is the write. Every other day mutator **refuses** a week it
+has not read, because a full-document write built on a week nobody looked at
+destroys its other six days — safe in the planner, where the days on screen are
+the days it is subscribed to. This caller can name any date, so `addRecipeToDay`
+reads the week first and writes what it read; a failed read stays a `Failure`
+rather than becoming a blind overwrite. That one-shot read is deliberately **not**
+cached in the service's week store: nothing is listening to it, so nothing would
+refresh it, and its presence would make `weekIsKnown` lie to the next writer.
+
 ### The note-only night attaches its own picture (#652)
 
 A night planned in a sentence — "roast chicken dinner", no recipe and none ever

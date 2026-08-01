@@ -4,6 +4,7 @@ import {
   emptyTemplate,
   emptyWeek,
   setDayNote,
+  setDayRecipes,
   weekStartFor,
   type MealPlanConfig,
   type MealPlanTemplate,
@@ -35,6 +36,7 @@ import {
   setExtensionWeek,
   loadTemplateIntoWeek,
   weekHasEdits,
+  addRecipeToDay,
   setWeekDayNote,
   setWeekDayChefs,
   setWeekDayGuests,
@@ -397,6 +399,92 @@ describe('mealPlanService — weekHasEdits', () => {
     fs.loadMealPlanWeek.mockResolvedValue({ kind: 'ok', value: null });
     await weekHasEdits('2026-07-01'); // a Wednesday
     expect(fs.loadMealPlanWeek).toHaveBeenCalledWith('2026-06-29'); // its Monday
+  });
+});
+
+// "Add to planner" from the recipe page reaches any date, not just the week the
+// planner happens to be holding — so unlike every other day mutator this one
+// READS the week it is about to overwrite rather than refusing it, and must not
+// leave that one-shot read behind as if it were a live document.
+describe('mealPlanService — addRecipeToDay', () => {
+  beforeEach(() => {
+    wireSubscriptions();
+    initMealPlanSync();
+    seedMealPlanConfig(CONFIG);
+  });
+
+  it('appends to a day of the week already on screen, without a read', async () => {
+    seedMealPlanWeek(setDayRecipes(emptyWeek('2026-06-08'), '2026-06-10', ['pie']));
+
+    await expect(addRecipeToDay('2026-06-10', 'roast')).resolves.toEqual({
+      kind: 'ok',
+      value: 'added',
+    });
+
+    expect(fs.loadMealPlanWeek).not.toHaveBeenCalled();
+    const saved = fs.saveMealPlanWeek.mock.calls.at(-1)![0]!;
+    expect(saved.days['2026-06-10']!.recipeIds).toEqual(['pie', 'roast']);
+  });
+
+  it('reads a week it is not holding rather than overwriting its other six days', async () => {
+    fs.loadMealPlanWeek.mockResolvedValue({
+      kind: 'ok',
+      value: weekWithNote('2026-06-29', 'pie', '2026-06-29T10:00:00.000Z'),
+    });
+
+    await addRecipeToDay('2026-07-01', 'roast'); // a Wednesday, three weeks out
+
+    expect(fs.loadMealPlanWeek).toHaveBeenCalledWith('2026-06-29'); // its Monday
+    const saved = fs.saveMealPlanWeek.mock.calls.at(-1)![0]!;
+    expect(saved.startDate).toBe('2026-06-29');
+    expect(saved.days['2026-07-01']!.recipeIds).toEqual(['roast']);
+    // The rest of the week survived the full-document write.
+    expect(saved.days['2026-06-29']!.note).toBe('pie');
+  });
+
+  it('does not cache a week it only read, so a later write re-reads it', async () => {
+    fs.loadMealPlanWeek.mockResolvedValue({ kind: 'ok', value: null });
+
+    await addRecipeToDay('2026-07-01', 'roast');
+    await addRecipeToDay('2026-07-01', 'pie');
+
+    expect(fs.loadMealPlanWeek).toHaveBeenCalledTimes(2);
+    // Second write is built on the re-read, not on the first write's leftovers.
+    const saved = fs.saveMealPlanWeek.mock.calls.at(-1)![0]!;
+    expect(saved.days['2026-07-01']!.recipeIds).toEqual(['pie']);
+  });
+
+  it('surfaces a failed read instead of writing over a plan it could not see', async () => {
+    fs.loadMealPlanWeek.mockResolvedValue({
+      kind: 'err',
+      error: { kind: 'NetworkError', reason: 'offline' },
+    });
+
+    const result = await addRecipeToDay('2026-07-01', 'roast');
+
+    expect(result.kind).toBe('err');
+    expect(fs.saveMealPlanWeek).not.toHaveBeenCalled();
+  });
+
+  it('is idempotent — a dish already on the day is reported, not duplicated', async () => {
+    seedMealPlanWeek(setDayRecipes(emptyWeek('2026-06-08'), '2026-06-10', ['roast']));
+
+    await expect(addRecipeToDay('2026-06-10', 'roast')).resolves.toEqual({
+      kind: 'ok',
+      value: 'already-there',
+    });
+    expect(fs.saveMealPlanWeek).not.toHaveBeenCalled();
+  });
+
+  it('seeds a day the stored week has no key for (firstDayOfWeek moved since)', async () => {
+    // A Sunday-start document, read back while the household starts weeks on
+    // Monday: the target date is inside the Monday week but absent from the doc.
+    fs.loadMealPlanWeek.mockResolvedValue({ kind: 'ok', value: emptyWeek('2026-06-28') });
+
+    await addRecipeToDay('2026-07-05', 'roast');
+
+    const saved = fs.saveMealPlanWeek.mock.calls.at(-1)![0]!;
+    expect(saved.days['2026-07-05']).toMatchObject({ recipeIds: ['roast'], attendees: [] });
   });
 });
 
