@@ -97,39 +97,58 @@ change asks for it.
 
 Write ONE paragraph of plain prose, at most about 80 words. Return only the revised brief.`;
 
-// ─── OUTINGS (issue #637) ────────────────────────────────────────────────────
-// An outing is a takeaway, a picnic or a meal out. The recipe prompt above is
-// built on a premise an outing cannot satisfy — "read the whole recipe, especially
-// the METHOD and the INGREDIENTS" — because an outing has neither. All the model
-// gets is a title and a hand-written description, and asked the recipe question it
-// invents a plated, cooked-from-scratch dish: exactly the picture an outing is not.
+// ─── OUTINGS (issues #637, #671) ─────────────────────────────────────────────
+// An outing — "When you CBA" on screen — is a night off from cooking. The recipe
+// prompt above is built on a premise it cannot satisfy — "read the whole recipe,
+// especially the METHOD and the INGREDIENTS" — because it has neither. All the
+// model gets is a title and a hand-written description, and asked the recipe
+// question it invents a plated, cooked-from-scratch dish: exactly the picture an
+// outing is not.
 //
 // So the question changes. Not "what does this look like once it is cooked and
-// plated" but "what does this look like as it ARRIVES" — in the box, the tray, the
-// wrapping, the spread on the blanket, the plate the restaurant sent out.
+// plated" but "what does this look like when it really turns up".
+//
+// The answer to THAT is four different pictures, which is what #671 fixed. This
+// prompt used to say "a takeaway, a picnic, a chippy tea, a street-food stop or a
+// meal out" and then hand over a vessel list beginning "the foil tray" — five
+// wordings of one idea, and a first concrete noun that every brief then reached
+// for. Food bought ready to eat from a baker or a butcher, and food thrown
+// together at home with no cooking, are equally "when you CBA" and neither has
+// packaging that arrives. So the model's FIRST job is now to decide which of the
+// four it is holding; everything else is downstream of that.
+//
+// The vessel list is gone with it. This prompt is per-doc and CAN legitimately name
+// a vessel — that is exactly what a brief is for — but it must name the one THIS
+// outing has, read off the title and description, rather than the one at the head
+// of a fixed list.
 //
 // SCOPE is identical to the recipe prompts and inherits the same rule verbatim:
 // the subject half ONLY. The anchors stay locked in generateRecipeImage.ts and are
 // appended after the brief. This matters MORE here than for recipes: with no
 // method for the model to read, editing the brief by hand is the stated primary way
 // a user gets an outing's hero right, so the brief is user text far more often.
-const DESCRIBE_OUTING_SCENE_SYSTEM = `You are a food photographer's art director. You are given one OUTING — a takeaway, \
-a picnic, a chippy tea, a street-food stop or a meal out — with its title, description and tags. Write a short \
-art-direction brief for a photograph of that food.
+const DESCRIBE_OUTING_SCENE_SYSTEM = `You are a food photographer's art director. You are given one NIGHT OFF FROM \
+COOKING — with its title, description and tags. Write a short art-direction brief for a photograph of that food.
 
-This food was not cooked here. There is no method and no ingredient list, and there is no plating up to describe. \
-Describe the food AS IT ARRIVES: what it comes in and what it looks like when it is opened out in front of you. \
-Read the title and description for what kind of outing it is and what cuisine it is, and let that decide everything \
-else.
+Nobody cooked a recipe here. There is no method and no ingredient list. Your FIRST job is to read the title and \
+description and decide which kind of night off this is, because everything else follows from it:
+- food someone else made and handed over — a takeaway, a chippy tea, street food, a picnic
+- a meal eaten OUT — the dish as the restaurant's own kitchen sent it, at their table
+- something good bought ready to eat — a pie from the butcher, bread and cheese from the baker, a deli counter, a \
+good thing out of a packet
+- something assembled at home with no real cooking — a sandwich, cheese and crackers, beans on toast
 
-Cover only what is specific to THIS outing:
-- what the food itself looks like — colour, texture, char, glaze, sauce, steam, how it is piled or laid out
-- the vessel and packaging it arrives in — the foil tray, the carton, the pizza box, the paper wrapping, the tub, \
-the restaurant's own plate — and how it is opened out or spread
-- where it is eaten and what it is set down on, and the mood, occasion and cuisine the outing reads as
+Do NOT assume a takeaway, and do not give this food packaging it does not have: a meal out arrives on the \
+restaurant's plate, a baker's or butcher's haul is unwrapped onto a board, and a sandwich is made on a plate at \
+home. Read what kind of outing it is and what cuisine it is, and let that decide everything else.
+
+Cover only what is specific to THIS one:
+- what the food itself looks like — colour, texture, char, glaze, sauce, steam, how it is piled, laid out or stacked
+- how it is served and what it is served in or on, and whether it is opened out, unwrapped, spread or simply set down
+- where it is eaten and what it is set down on, and the mood, occasion and cuisine it reads as
 
 ${SCENE_SCOPE_RULE} Do not describe cooking it, do not invent a method or an ingredient list, and do not turn it into \
-a home-cooked dish plated onto crockery.
+a dish cooked from scratch and carefully plated.
 
 Write ONE paragraph of plain prose, at most about 80 words. A brief, not an essay. Return only the brief.`;
 
@@ -137,9 +156,17 @@ Write ONE paragraph of plain prose, at most about 80 words. A brief, not an essa
 // (a steer stapled on the end, contradicting the paragraph it was added to), same
 // "keep what the change does not touch" rule — but anchored to the outing rather
 // than to a recipe the model could otherwise drift into inventing.
-const REVISE_OUTING_SCENE_SYSTEM = `You are a food photographer's art director. You are given one OUTING — a \
-takeaway, a picnic or a meal out — an existing art-direction brief for a photograph of that food, and a requested \
-change from the person who will use it. Rewrite the brief so it incorporates the requested change.
+//
+// The "keep what the change does not touch" rule is load-bearing and correct, and
+// it is also what made #671 impossible to steer out of by hand: an existing brief
+// that said "foil tray" counted as something the change did not touch, so it
+// survived every revision. Hence the explicit carve-out below — a change of
+// occasion moves the packaging with it, because the packaging is a CONSEQUENCE of
+// the occasion rather than an independent fact about the food.
+const REVISE_OUTING_SCENE_SYSTEM = `You are a food photographer's art director. You are given one NIGHT OFF FROM \
+COOKING — a takeaway, a meal out, something good bought ready to eat, or something thrown together at home — an \
+existing art-direction brief for a photograph of that food, and a requested change from the person who will use it. \
+Rewrite the brief so it incorporates the requested change.
 
 Fold the change THROUGH the whole brief. If the change is "make it a picnic", then the vessel, the setting, the \
 surface, the light and the mood all move together — do NOT keep an indoor-takeaway brief and staple "make it a \
@@ -147,14 +174,17 @@ picnic" on the end. The result must read as one coherent brief that was always w
 with a contradiction left in it.
 
 Keep everything the requested change does not touch. Anything the brief already says that still holds should survive \
-the rewrite — this is a revision, not a fresh start.
+the rewrite — this is a revision, not a fresh start. But how the food is packaged, served and set down is NEVER \
+independent of the occasion: if the change moves this to a restaurant, a shop-bought spread or a sandwich at home, \
+the packaging in the old brief goes with it. Do not leave a takeaway container in a brief that is no longer a \
+takeaway.
 
 Stay true to the outing. The change re-directs how the food is SHOT and styled; it must not turn it into food this \
-outing does not serve, and it must never turn it into a home-cooked dish plated onto crockery.
+outing does not serve, and it must never turn it into a dish cooked from scratch here and carefully plated.
 
-Cover only what is specific to THIS outing: the food's appearance, the vessel and packaging it arrives in, where it \
-is eaten, and the mood, occasion and cuisine it reads as. ${SCENE_SCOPE_RULE} That holds even if the requested \
-change asks for it.
+Cover only what is specific to THIS outing: the food's appearance, how it is served and what it is served in or on, \
+where it is eaten, and the mood, occasion and cuisine it reads as. ${SCENE_SCOPE_RULE} That holds even if the \
+requested change asks for it.
 
 Write ONE paragraph of plain prose, at most about 80 words. Return only the revised brief.`;
 
