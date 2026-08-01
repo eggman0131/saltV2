@@ -26,6 +26,7 @@
   import type { ShoppingDayDoc, ShoppingSlot } from '@salt/domain/schemas';
   import type { DomainError, ReadResult } from '@salt/shared-types';
   import MealDayEditor from './MealDayEditor.svelte';
+  import MealDayDetail from './MealDayDetail.svelte';
   import RecipeAddToListSheet from '../recipes/RecipeAddToListSheet.svelte';
   import { createDeck } from '../../lib/deck.svelte.js';
   import type { DeckThresholds } from '../../lib/cookDeck.js';
@@ -402,6 +403,11 @@
   // the row re-rendering when a Firestore snapshot lands. Purely in memory: it is
   // a fact about this glance at the planner, never persisted (Rule 3). Dates are
   // unique across both weeks, so one field covers the extension too.
+  //
+  // Since #663 Phase 2 this same field is also WHICH DAY THE DOCKED PANE SHOWS on
+  // a screen with room for two columns. Still one field: "the day you are looking
+  // at" is one fact, and whether it is presented as a sheet over the week or as a
+  // pane beside it is a fact about the screen, not about the day.
   let openDay = $state<string | null>(null);
 
   // ─── Day-editor handlers (bound to a concrete date) ───────────────────────
@@ -440,6 +446,82 @@
       void save(addWeekAttendee(date, attendee));
     }
   }
+
+  // ─── Side by side, once there is room (#663, Phase 2) ─────────────────────
+  // On a screen that can hold both — the target is a Pixel 9 Pro Fold, unfolded —
+  // the week and the open day sit SIDE BY SIDE: the run of dated day cards on the
+  // left at exactly the size a phone gives them, and the day you are looking at
+  // docked on the right. Tapping another day swaps the pane; nothing slides over
+  // the week, and the week never moves.
+  //
+  // The LAYOUT is entirely CSS (the `split` variant, declared in app.css). Only
+  // two BEHAVIOURS need the answer in script — seeding which day the pane opens
+  // on, and suppressing the sheet — so the page holds one reactive boolean rather
+  // than a second copy of the gate in markup.
+  //
+  // ⚠ This is the SAME query as `@custom-variant split` in `src/app.css`. A
+  // Tailwind variant cannot be read from JS, so it is written out twice and the
+  // two MUST move together. The reasoning behind the two numbers (and why this is
+  // not `md:`, and why it is not the nav's `lg` seam) is on the variant, which is
+  // where a reader looking at the layout will land.
+  //
+  // Written in RANGE syntax, which is what Tailwind v4 actually emits for that
+  // variant (`@media (width>=700px) and (height>=480px)`), rather than the
+  // `min-width:`/`min-height:` form the variant is authored in. It has to be the
+  // form the browser sees, not the form we typed: on an engine too old for range
+  // syntax the emitted CSS is inert, and a `min-width:` query here would answer
+  // "yes, split" to a page that is still one column — suppressing the sheet with
+  // no pane to replace it, which is a planner where tapping a day does nothing.
+  // Same syntax, same parser, so the two agree in both directions; an unparseable
+  // query is `not all`, i.e. `false`, which is exactly the phone path.
+  const SPLIT_QUERY = '(width >= 700px) and (height >= 480px)';
+
+  // `false` — the phone path — is the honest default whenever the answer cannot
+  // be read: SSR, a jsdom without `matchMedia`, a query the engine rejects. Same
+  // shape as `isCoarsePointer` in `lib/swipe.svelte.ts`, which is the house
+  // pattern for a live media read.
+  let isSplit = $state(false);
+  $effect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    let mql: MediaQueryList;
+    try {
+      mql = window.matchMedia(SPLIT_QUERY);
+    } catch {
+      return;
+    }
+    isSplit = mql.matches;
+    // A stubbed MediaQueryList (the unit suite ships one) can carry no listener
+    // API at all, and folding/unfolding is the only thing the listener is for — so
+    // a one-shot read is the whole answer wherever it is missing.
+    if (typeof mql.addEventListener !== 'function') return;
+    const onChange = (event: MediaQueryListEvent): void => {
+      isSplit = event.matches;
+    };
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+  });
+
+  // The pane opens on TODAY, the same day the deck itself lands on, so arriving
+  // with the phone unfolded shows tonight without a tap.
+  //
+  // It is also the repair: paging to another week leaves `openDay` pointing at a
+  // date that is no longer in the deck, and a blank pane beside a full week is
+  // worse than the week's first day. Still one field, still in memory only (Rule
+  // 3) — this only ever rewrites it when the day it holds has left the screen.
+  //
+  // Nothing here runs below the gate: `isSplit` is false, the effect returns, and
+  // the planner is byte-for-byte the single column and bottom sheet it is today.
+  $effect(() => {
+    if (!isSplit) return;
+    if (openDay !== null && (dates.includes(openDay) || extensionDates.includes(openDay))) return;
+    openDay = todayIndex >= 0 ? todayDate : (dates[0] ?? null);
+  });
+
+  // What the pane shows. `dayAt`, not `$currentWeek.days`, for the reason given on
+  // that function: from the last three days of the cycle the deck also holds next
+  // week, and those days live in a second document.
+  const paneDate = $derived(isSplit ? openDay : null);
+  const paneDay = $derived(paneDate ? dayAt(paneDate) : undefined);
 </script>
 
 <!-- One week's worth of rows, rendered identically for the week you are on and for
@@ -459,6 +541,10 @@
     {@const day = days[date]}
     {@const isEarlier = !isExtension && todayIndex > 0 && i < todayIndex}
     {#if day}
+      <!-- The row the docked pane is showing (#663, Phase 2). Only above the gate:
+           on a phone the SHEET is the selected state, and nothing in the list is
+           allowed to change. -->
+      {@const isSelected = isSplit && openDay === date}
       <!-- The wrapper is the page's grip on the row: it is what we anchor the
            scroll to, what carries the quieter treatment for days already behind
            us, and what marks a row as belonging to next week. MealDayEditor
@@ -470,11 +556,21 @@
            card is not: a day carrying a mark starts with that mark, so the card
            sits well below the place the deck actually snaps to. A geometry test
            addressing the card would silently measure the wrong box. -->
+      <!-- The selected treatment is a RING, never padding, a border or a margin:
+           this element is the deck's section, and the deck measures its geometry
+           to decide where a day comes to rest. A ring is drawn as a box-shadow, so
+           it costs the row not one pixel of layout and the deck cannot tell the
+           selected row from any other. `data-selected` is the same fact stated
+           plainly, so a test can assert selection without depending on a class
+           string. -->
       <div
         bind:this={rowEls[date]}
         data-testid={`day-${date}-row`}
+        data-selected={isSelected ? 'true' : undefined}
         class="{isEarlier ? 'opacity-60' : ''} {isExtension && date !== todayDate
           ? 'planner-next-week-row'
+          : ''} {isSelected
+          ? 'rounded-xl ring-2 ring-ring ring-offset-4 ring-offset-background'
           : ''}"
       >
         {#if isExtension && i === 0}
@@ -547,12 +643,20 @@
             <span class="flex-1 border-t-2 border-secondary"></span>
           </button>
         {/if}
+        <!-- Docked, the sheet is SUPPRESSED, not hidden (#663, Phase 2) — hence the
+             `!isSplit` in the `open` getter below. A modal dialog's scrim, focus
+             trap and scroll lock are real whether or not you can see it, and covered
+             chrome that is still focusable is exactly the bug #641 was about, so the
+             day never opens as a dialog at all while there is a pane to show it in.
+             MealDayEditor gains no prop and no second mode: the page already owned
+             this binding, and tapping a row still means "this is the day I am
+             looking at" — only the presentation differs. -->
         <MealDayEditor
           label={fmt(date, { weekday: 'short' })}
           sublabel={fmt(date, { day: 'numeric' })}
           sheetTitle={fmt(date, { weekday: 'long', day: 'numeric', month: 'long' })}
           bind:open={
-            () => openDay === date,
+            () => !isSplit && openDay === date,
             (v) => {
               // Opening a day closes whichever was open; closing only clears the
               // field when this row still owns it, so a stale close can never
@@ -644,159 +748,255 @@
   {/snippet}
 
   {#snippet children()}
-    <div class="flex items-center justify-between gap-2" data-testid="week-nav">
-      <Button variant="outline" size="sm" onclick={prevWeek} aria-label="Previous week">
-        <ChevronLeft class="h-4 w-4" />
-      </Button>
-      <div class="flex flex-col items-center">
-        <span class="text-sm font-medium" data-testid="week-range">{rangeLabel}</span>
-        <button
-          class="text-xs text-muted-foreground underline-offset-2 hover:underline"
-          onclick={thisWeek}
-          data-testid="this-week"
-        >
-          This week
-        </button>
-      </div>
-      <Button variant="outline" size="sm" onclick={nextWeek} aria-label="Next week">
-        <ChevronRight class="h-4 w-4" />
-      </Button>
-    </div>
-
-    <!-- The week's shop day (#640, Phase 4, since reduced). Once a shop day
-         is set, the rule across the list IS the control — it says the answer in
-         place and opens the picker when tapped, so a permanent header row saying
-         the same thing was the most expensive line on the page. What the rule
-         cannot do is exist when there is no shop day, so the header keeps exactly
-         that case: an unset week still has somewhere to say so from. -->
-    {#if !$weekShopDay}
-      <div class="mt-1 flex justify-center" data-testid="week-shop">
-        <Button
-          variant="ghost"
-          size="sm"
-          class="gap-1.5 text-muted-foreground"
-          onclick={() => (showShopPicker = true)}
-          data-testid="week-shop-trigger"
-        >
-          <ShoppingCart class="h-[15px] w-[15px]" aria-hidden="true" />
-          {shopLabel}
-        </Button>
-      </div>
-    {/if}
-
-    <!-- The deck. The viewport is the clipping box — it takes the height ListPage's
-         `fill` hands down — and the column inside it is moved by a transform, so
-         this page owns the gesture end to end rather than sharing a scroller with
-         the shell. The cue overlay is a SIBLING of the viewport, not a child of the
-         moving column: `sticky` means nothing inside a transformed element, and an
-         overlay that travelled with the days would defeat the point of pinning it. -->
-    <div class="relative mt-4 flex min-h-0 flex-1 flex-col">
-      <!-- A native scroller is focusable and arrow-key operable for free, and this
-           element replaces one, so the tabindex and the key handler are how that
-           behaviour is KEPT rather than dropped — the same trade cook mode makes.
-           Cook mode can use a bare <main> for its viewport because it is a
-           full-viewport page; here the shell already owns the <main>, so the role
-           is stated explicitly rather than nesting a second landmark. Named after
-           the week it holds, so the region announces what it contains. -->
-      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <!-- Side by side, once there is room (#663, Phase 2) ─────────────────────
+         Below the gate this is one flex COLUMN holding exactly what it holds
+         today — the week nav, the shop header, the deck — so a phone (and the
+         fold's cover screen) is untouched. Above it the same three become the
+         LEFT column and the docked day appears beside them, and the week never
+         moves: nothing slides over it, so tapping another day only ever swaps
+         what the pane is showing.
+         The two columns are equal halves with a 40px gutter between them, which
+         is the whole mechanism that keeps the gutter OVER THE FOLD'S CREASE — not
+         the CSS Viewport Segments API, which this device does not report (it says
+         it has one segment, so that code path would never run on the only
+         hardware this targets).
+         `justify-center` matters only once both columns reach the shared ceiling:
+         on a monitor the pair stops growing and sits centred with even space each
+         side, while "Meal plan" and "Load template" stay exactly where they are on
+         every other page — they are ListPage's header, above this box.
+         Wrapping the three existing children in one flex column is layout-neutral
+         below the gate: ListPage's content box is already `flex flex-1 flex-col
+         min-h-0` with no gap of its own (the spacing is the children's `mt-*`). -->
+    <div class="flex min-h-0 flex-1 flex-col split:flex-row split:justify-center split:gap-10">
+      <!-- The week, at exactly the size a phone gives it. `max-w-[540px]` is the
+           ceiling it shares with the pane, so on a wide monitor the week does not
+           stretch into something the day cards were never drawn for. -->
       <div
-        bind:this={deck.viewportEl}
-        class="relative min-h-0 flex-1 touch-pinch-zoom overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-        role="region"
-        tabindex="0"
-        aria-label="Week of {rangeLabel}"
-        data-testid="week-deck"
-        onpointerdown={deck.handlePointerDown}
-        onpointermove={deck.handlePointerMove}
-        onpointerup={deck.handlePointerUp}
-        onpointercancel={deck.handlePointerUp}
-        onwheel={deck.handleWheel}
-        onkeydown={deck.handleKeyDown}
+        class="flex min-h-0 flex-1 flex-col split:min-w-0 split:max-w-[540px]"
+        data-testid="week-column"
       >
-        <!-- The week as one list of dated days, 24px apart (#639): each row is its
-             own object, held together by its rail and the air around it. From the
-             last three days of the cycle a SECOND week follows in the same column
-             (Phase 6) — one continuous deck of twelve to fourteen days, not two
-             lists and not a second scroller. -->
-        <div
-          bind:this={deck.contentEl}
-          class="flex flex-col gap-6 pb-2 will-change-transform"
-          style="transform: translate3d(0, {-deck.offset}px, 0)"
-        >
-          <!-- This week. Its rail's stem is the DEFAULT state of the same element
-               next week recolours: one continuous line down the whole run of days,
-               in the empty left margin of the rail column, so there is an edge to
-               run the eye down (#639, "a continuous dated rail"). Solid and in the
-               border ink — the shop rule's hairline weight — because next week's
-               job is to differ from this, not the other way round. Decorative: the
-               dates beside it say everything it says. -->
-          <div class="relative flex flex-col gap-6">
-            <!-- `left-0`: the stem belongs to the DATED COLUMN it runs beside,
-                 not to the page. #647 exiled it 10px into the gutter (with a
-                 matching viewport bleed) to keep it off the marks it used to run
-                 through — but the marks now start at `pl-[3px]`, which is what
-                 actually clears it, and out in the gutter it read as page chrome
-                 rather than as the rail's own spine. The shop rule and the
-                 next-week mark butt against it instead: a branch off the rail,
-                 which is the structure they describe. -->
-            <span
-              class="pointer-events-none absolute inset-y-0 left-0 w-0 border-l-2 border-border"
-              data-testid="this-week-rail"
-              aria-hidden="true"
-            ></span>
+        <div class="flex items-center justify-between gap-2" data-testid="week-nav">
+          <Button variant="outline" size="sm" onclick={prevWeek} aria-label="Previous week">
+            <ChevronLeft class="h-4 w-4" />
+          </Button>
+          <div class="flex flex-col items-center">
+            <span class="text-sm font-medium" data-testid="week-range">{rangeLabel}</span>
+            <button
+              class="text-xs text-muted-foreground underline-offset-2 hover:underline"
+              onclick={thisWeek}
+              data-testid="this-week"
+            >
+              This week
+            </button>
+          </div>
+          <Button variant="outline" size="sm" onclick={nextWeek} aria-label="Next week">
+            <ChevronRight class="h-4 w-4" />
+          </Button>
+        </div>
 
-            {@render weekRows(dates, $currentWeek.days, $weekShopDay, false)}
+        <!-- The week's shop day (#640, Phase 4, since reduced). Once a shop day
+             is set, the rule across the list IS the control — it says the answer in
+             place and opens the picker when tapped, so a permanent header row saying
+             the same thing was the most expensive line on the page. What the rule
+             cannot do is exist when there is no shop day, so the header keeps exactly
+             that case: an unset week still has somewhere to say so from. -->
+        {#if !$weekShopDay}
+          <div class="mt-1 flex justify-center" data-testid="week-shop">
+            <Button
+              variant="ghost"
+              size="sm"
+              class="gap-1.5 text-muted-foreground"
+              onclick={() => (showShopPicker = true)}
+              data-testid="week-shop-trigger"
+            >
+              <ShoppingCart class="h-[15px] w-[15px]" aria-hidden="true" />
+              {shopLabel}
+            </Button>
+          </div>
+        {/if}
+
+        <!-- The deck. The viewport is the clipping box — it takes the height ListPage's
+             `fill` hands down — and the column inside it is moved by a transform, so
+             this page owns the gesture end to end rather than sharing a scroller with
+             the shell. The cue overlay is a SIBLING of the viewport, not a child of the
+             moving column: `sticky` means nothing inside a transformed element, and an
+             overlay that travelled with the days would defeat the point of pinning it. -->
+        <div class="relative mt-4 flex min-h-0 flex-1 flex-col">
+          <!-- A native scroller is focusable and arrow-key operable for free, and this
+               element replaces one, so the tabindex and the key handler are how that
+               behaviour is KEPT rather than dropped — the same trade cook mode makes.
+               Cook mode can use a bare <main> for its viewport because it is a
+               full-viewport page; here the shell already owns the <main>, so the role
+               is stated explicitly rather than nesting a second landmark. Named after
+               the week it holds, so the region announces what it contains. -->
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+          <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+          <div
+            bind:this={deck.viewportEl}
+            class="relative min-h-0 flex-1 touch-pinch-zoom overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            role="region"
+            tabindex="0"
+            aria-label="Week of {rangeLabel}"
+            data-testid="week-deck"
+            onpointerdown={deck.handlePointerDown}
+            onpointermove={deck.handlePointerMove}
+            onpointerup={deck.handlePointerUp}
+            onpointercancel={deck.handlePointerUp}
+            onwheel={deck.handleWheel}
+            onkeydown={deck.handleKeyDown}
+          >
+            <!-- The week as one list of dated days, 24px apart (#639): each row is its
+                 own object, held together by its rail and the air around it. From the
+                 last three days of the cycle a SECOND week follows in the same column
+                 (Phase 6) — one continuous deck of twelve to fourteen days, not two
+                 lists and not a second scroller. -->
+            <div
+              bind:this={deck.contentEl}
+              class="flex flex-col gap-6 pb-2 will-change-transform"
+              style="transform: translate3d(0, {-deck.offset}px, 0)"
+            >
+              <!-- This week. Its rail's stem is the DEFAULT state of the same element
+                   next week recolours: one continuous line down the whole run of days,
+                   in the empty left margin of the rail column, so there is an edge to
+                   run the eye down (#639, "a continuous dated rail"). Solid and in the
+                   border ink — the shop rule's hairline weight — because next week's
+                   job is to differ from this, not the other way round. Decorative: the
+                   dates beside it say everything it says. -->
+              <div class="relative flex flex-col gap-6">
+                <!-- `left-0`: the stem belongs to the DATED COLUMN it runs beside,
+                     not to the page. #647 exiled it 10px into the gutter (with a
+                     matching viewport bleed) to keep it off the marks it used to run
+                     through — but the marks now start at `pl-[3px]`, which is what
+                     actually clears it, and out in the gutter it read as page chrome
+                     rather than as the rail's own spine. The shop rule and the
+                     next-week mark butt against it instead: a branch off the rail,
+                     which is the structure they describe. -->
+                <span
+                  class="pointer-events-none absolute inset-y-0 left-0 w-0 border-l-2 border-border"
+                  data-testid="this-week-rail"
+                  aria-hidden="true"
+                ></span>
+
+                {@render weekRows(dates, $currentWeek.days, $weekShopDay, false)}
+              </div>
+
+              {#if extensionDates.length}
+                <!-- Next week. Its rail is burnt terracotta and dashed — a HUE SHIFT at
+                     the same weight, never a lighter tint, because "quieter" already
+                     means "behind you" in this list and a recessive next week would
+                     read as past. The colour is set once here, week-scoped, and read
+                     by the mark, the stem and (via the scoped rule below) each row's
+                     rail; MealDayEditor takes no new prop for it. -->
+                <div
+                  class="planner-next-week relative flex flex-col gap-6"
+                  style="--planner-rail-ink: var(--color-tertiary-variant)"
+                  data-testid="next-week-block"
+                >
+                  <!-- The rail's stem: one dashed line down the whole run of days, in
+                       the empty left margin of the rail column so it never crosses the
+                       dates it belongs to. Decorative — the mark below says it in words. -->
+                  <span
+                    class="pointer-events-none absolute inset-y-0 left-0 w-0 border-l-2 border-dashed"
+                    style="border-color: var(--planner-rail-ink)"
+                    aria-hidden="true"
+                  ></span>
+
+                  {@render weekRows(
+                    extensionDates,
+                    $extensionWeek?.days ?? {},
+                    $extensionWeekShopDay,
+                    true,
+                  )}
+                </div>
+              {/if}
+            </div>
           </div>
 
-          {#if extensionDates.length}
-            <!-- Next week. Its rail is burnt terracotta and dashed — a HUE SHIFT at
-                 the same weight, never a lighter tint, because "quieter" already
-                 means "behind you" in this list and a recessive next week would
-                 read as past. The colour is set once here, week-scoped, and read
-                 by the mark, the stem and (via the scoped rule below) each row's
-                 rail; MealDayEditor takes no new prop for it. -->
+          <!-- The scroll-up cue (#639, Phase 2). Landing mid-list gives no clue there
+               is anything above, so once the deck has moved a shadow appears under the
+               sticky app header. Zero-height and pinned to the top of the viewport, so
+               it costs the list no space and today's row still sits flush under the
+               header; `-mx-4 sm:-mx-6` cancels this page's own ListPage padding so the
+               shadow runs edge to edge. The shadow is the whole cue: the pill that
+               used to name the earlier days sat over the first card and said what the
+               shadow and one swipe already do.
+               `split:mx-0` (#663, Phase 2): once the week is a column beside the pane
+               it no longer touches the page's edges, so cancelling the page padding
+               would bleed the shadow into the gutter — over the crease, which is the
+               one place nothing may be drawn. -->
+          {#if scrolled}
             <div
-              class="planner-next-week relative flex flex-col gap-6"
-              style="--planner-rail-ink: var(--color-tertiary-variant)"
-              data-testid="next-week-block"
+              class="pointer-events-none absolute inset-x-0 top-0 z-10 -mx-4 sm:-mx-6 split:mx-0"
             >
-              <!-- The rail's stem: one dashed line down the whole run of days, in
-                   the empty left margin of the rail column so it never crosses the
-                   dates it belongs to. Decorative — the mark below says it in words. -->
-              <span
-                class="pointer-events-none absolute inset-y-0 left-0 w-0 border-l-2 border-dashed"
-                style="border-color: var(--planner-rail-ink)"
-                aria-hidden="true"
-              ></span>
-
-              {@render weekRows(
-                extensionDates,
-                $extensionWeek?.days ?? {},
-                $extensionWeekShopDay,
-                true,
-              )}
+              <div
+                class="h-3 w-full bg-gradient-to-b from-foreground/10 to-transparent"
+                data-testid="scroll-shadow"
+              ></div>
             </div>
           {/if}
         </div>
       </div>
 
-      <!-- The scroll-up cue (#639, Phase 2). Landing mid-list gives no clue there
-           is anything above, so once the deck has moved a shadow appears under the
-           sticky app header. Zero-height and pinned to the top of the viewport, so
-           it costs the list no space and today's row still sits flush under the
-           header; `-mx-4 sm:-mx-6` cancels this page's own ListPage padding so the
-           shadow runs edge to edge. The shadow is the whole cue: the pill that
-           used to name the earlier days sat over the first card and said what the
-           shadow and one swipe already do. -->
-      {#if scrolled}
-        <div class="pointer-events-none absolute inset-x-0 top-0 z-10 -mx-4 sm:-mx-6">
+      <!-- The docked day (#663, Phase 2). It is a PANE, not a dialog: no scrim, no
+           focus trap, no scroll lock — which is exactly why the row's sheet is
+           SUPPRESSED rather than painted over while this is showing. It lives
+           INSIDE the page's own filled box and is never `fixed inset-0`, so the
+           bottom navigation bar keeps its space and stays reachable (Rule 7, issue
+           #641); at this size the SideNav has not appeared yet and must not.
+           It owns its own `overflow-y-auto` and carries `min-h-0`, which is the
+           consuming-page contract for a `fill` ListPage (ui-spec-v05 §1.4). No new
+           `@salt/ui-components` surface is added — this is one page's layout.
+           The <aside> is the LAYOUT box and the card inside it is the PRESENTATION
+           box, deliberately: `flex-1` shares free space between CONTENT boxes, so a
+           flex child carrying its own border and padding ends up exactly that much
+           wider than its bare sibling — and equal halves are what put the gutter on
+           the crease. Chrome on the inner div costs the outer box nothing. -->
+      <aside
+        class="hidden min-h-0 split:flex split:min-w-0 split:flex-1 split:max-w-[540px] split:flex-col"
+        aria-label="Selected day"
+        data-testid="day-pane"
+      >
+        <!-- Contents only when there is a day to show, so a phone mounts NOTHING in
+             here — the day's detail exists exactly once on the page, in the sheet,
+             rather than a second copy sitting behind `display: none`. -->
+        {#if paneDate && paneDay}
           <div
-            class="h-3 w-full bg-gradient-to-b from-foreground/10 to-transparent"
-            data-testid="scroll-shadow"
-          ></div>
-        </div>
-      {/if}
+            class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto rounded-lg border bg-card p-4"
+          >
+            <!-- The pane names its day, in the same words the sheet's own title
+                 uses. A detail with no date on it would be a regression against the
+                 sheet, which always says which day it opened. -->
+            <h2 class="text-base font-semibold text-foreground" data-testid="day-pane-title">
+              {fmt(paneDate, { weekday: 'long', day: 'numeric', month: 'long' })}
+            </h2>
+
+            <!-- `testid="day-pane"`, never the day's own: this renders the SAME
+                 detail the sheet does, so reusing `day-<date>-*` would give every
+                 field in it a duplicate under strict-mode queries.
+                 No `portalTarget`: the pane is not modal, nothing on this page is
+                 inert, and the primitives' own 'body' default is therefore correct.
+                 Handing it the sheet's `.meal-day-sheet` selector would portal the
+                 dropdowns into an element that does not exist on this surface —
+                 they would render, and every option would be unclickable. -->
+            <MealDayDetail
+              day={paneDay}
+              members={$members}
+              recipes={$recipes}
+              testid="day-pane"
+              weather={$weatherForecast?.days[paneDate]}
+              dateKey={paneDate}
+              onNoteChange={(note) => void save(setWeekDayNote(paneDate, note))}
+              onRecipesChange={(ids) => void save(setWeekDayRecipes(paneDate, ids))}
+              onRecipeAddToList={openRecipeAddToList}
+              onChefToggle={(id) => toggleChef(paneDate, id)}
+              onAttendeeToggle={(id) => toggleAttendee(paneDate, id)}
+              onAttendeeHomeTime={(id, t) => void save(setWeekAttendeeHomeTime(paneDate, id, t))}
+              onAttendeeNote={(id, n) => void save(setWeekAttendeeNote(paneDate, id, n))}
+              onGuestsChange={(g) => void save(setWeekDayGuests(paneDate, g))}
+            />
+          </div>
+        {/if}
+      </aside>
     </div>
   {/snippet}
 </ListPage>
