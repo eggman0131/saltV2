@@ -9,6 +9,7 @@ import {
 } from '@salt/firebase-sync';
 import {
   weekStartFor,
+  emptyDay,
   emptyWeek,
   emptyTemplate,
   instantiateWeek,
@@ -322,10 +323,19 @@ function editWeekDay(
 
 // Stamp updatedAt, update the store optimistically, then persist. The target
 // document is the week's own `startDate` — the object carries where it belongs.
+//
+// The optimistic cache is for weeks we already know (see `weekIsKnown`) and only
+// those. A week read one-shot purely in order to write it — `addRecipeToDay`
+// from the recipe page — must not be left behind in `_weeks`: nothing is
+// listening to it, so nothing would ever refresh it, yet its mere presence would
+// make `weekIsKnown` answer true and let a much later full-document write be
+// built on a snapshot that has since moved on.
 async function persistWeek(week: MealPlanWeek): Promise<ReadResult<void, DomainError>> {
   const stamped: MealPlanWeek = { ...week, updatedAt: new Date().toISOString() };
-  latestWeekUpdatedAt.set(stamped.startDate, stamped.updatedAt);
-  _weeks.update((weeks) => ({ ...weeks, [stamped.startDate]: stamped }));
+  if (weekIsKnown(stamped.startDate)) {
+    latestWeekUpdatedAt.set(stamped.startDate, stamped.updatedAt);
+    _weeks.update((weeks) => ({ ...weeks, [stamped.startDate]: stamped }));
+  }
   return saveMealPlanWeek(stamped);
 }
 
@@ -373,6 +383,48 @@ export async function weekHasEdits(date: string): Promise<ReadResult<boolean, Do
   const read = await loadMealPlanWeek(start);
   if (read.kind !== 'ok') return read;
   return success(read.value !== null && read.value.updatedAt !== '');
+}
+
+/**
+ * Attach one recipe to one day from OUTSIDE the planner (the recipe page's
+ * "Add to planner").
+ *
+ * Every other day mutator refuses to write a week it has not read, because a
+ * full-document write built on a week we never saw would blow away its other six
+ * days. That refusal is right for the planner, where the days on screen are
+ * always the days it is subscribed to — but this caller can name ANY date, and
+ * "pick a date three weeks out" is the normal case, not the edge one. So the
+ * week is READ before it is written rather than declined. A read failure stays a
+ * `Failure`: the alternative is overwriting a plan we could not see.
+ *
+ * Appending, and idempotent on the recipe id — adding a dish a day already
+ * carries is a no-op, not a second chip. It says which of the two happened
+ * rather than reporting both as "added", so the caller can tell the truth.
+ */
+export async function addRecipeToDay(
+  dateKey: string,
+  recipeId: string,
+): Promise<ReadResult<'added' | 'already-there', DomainError>> {
+  const start = weekStartFor(dateKey, firstDay());
+  let week: MealPlanWeek;
+  if (weekIsKnown(start)) {
+    week = weekObjectFor(start);
+  } else {
+    const read = await loadMealPlanWeek(start);
+    if (read.kind !== 'ok') return read;
+    week = read.value ?? emptyWeek(start);
+  }
+  // A stored week holds the seven date keys that were current when it was
+  // written; move `firstDayOfWeek` afterwards and a date can belong to a week
+  // whose document has no entry for it. Seed the day rather than let the day
+  // mutator spread `undefined` into a half-formed one.
+  if (!week.days[dateKey]) {
+    week = { ...week, days: { ...week.days, [dateKey]: emptyDay() } };
+  }
+  const attached = week.days[dateKey]!.recipeIds;
+  if (attached.includes(recipeId)) return success('already-there');
+  const saved = await persistWeek(setDayRecipes(week, dateKey, [...attached, recipeId]));
+  return saved.kind === 'ok' ? success('added') : saved;
 }
 
 // — Week day/attendee mutators —

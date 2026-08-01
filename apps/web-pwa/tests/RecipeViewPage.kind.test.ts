@@ -3,11 +3,15 @@ import { render, cleanup, screen, fireEvent, waitFor } from '@testing-library/sv
 import type { Recipe } from '@salt/domain';
 
 // What an outing's page does NOT offer (issue #637). "Things that don't apply
-// simply aren't offered": no Cook, no Add to list, no Ingredients card, no
-// Method card, no Serves/Prep/Cook/Total. Two of those actions render on BOTH
-// the inline `sm:` row and the mobile ⋮ menu, so each surface is asserted
-// separately — jsdom applies no media queries, which is exactly what makes both
-// markup sites visible to these assertions at once.
+// simply aren't offered": no Cook, no Shop, no Ingredients card, no Method card,
+// no Serves/Prep/Cook/Total. Two of those actions render on BOTH the inline
+// `sm:` row and the mobile ⋮ menu, so each surface is asserted separately —
+// jsdom applies no media queries, which is exactly what makes both markup sites
+// visible to these assertions at once.
+//
+// It also carries the action RANKING (Cook / Shop / Plan filled and always
+// inline; Chat / Optimise / Edit / Delete demoted into the ⋮ below `sm`), since
+// what an entry offers and how loudly it offers it are the same markup.
 //
 // The hero and the regenerate dialog are deliberately NOT gated: an outing's
 // picture is the whole point of the entry, so this file also pins that they
@@ -44,8 +48,8 @@ const {
     mockIsLoading: makeStore<boolean>(false),
     mockDefaultListId: makeStore<string | null>('list-1'),
     mockSessions: makeStore<readonly unknown[]>([]),
-    // Non-null so the equipment-gated "Optimise for my kitchen" button is
-    // offered on its own terms — otherwise its absence would prove nothing.
+    // Non-null so the equipment-gated "Optimise" button is offered on its own
+    // terms — otherwise its absence would prove nothing.
     mockEquipment: makeStore<{ items: readonly { name: string }[] } | null>({
       items: [{ name: 'Sage Pizzaiolo' }],
     }),
@@ -180,17 +184,53 @@ describe('RecipeViewPage — a recipe keeps everything', () => {
     mockRecipes._set([makeEntry()]);
   });
 
-  it('offers Cook, Add to list, Ask/amend and Optimise on both surfaces', async () => {
+  it('offers Cook, Shop and Plan inline, with Chat and Optimise on both surfaces', async () => {
     renderPage();
 
     expect(screen.getByTestId('recipe-cook-button')).toBeInTheDocument();
     expect(screen.getByTestId('recipe-add-to-list-button')).toBeInTheDocument();
+    expect(screen.getByTestId('recipe-add-to-planner-button')).toBeInTheDocument();
     expect(screen.getByTestId('recipe-ask-amend-button')).toBeInTheDocument();
     expect(screen.getByTestId('recipe-optimise-kitchen-button')).toBeInTheDocument();
 
     await openOverflowMenu();
     expect(screen.getByTestId('recipe-ask-amend-menu-item')).toBeInTheDocument();
     expect(screen.getByTestId('recipe-optimise-kitchen-menu-item')).toBeInTheDocument();
+  });
+
+  // The ranking, asserted as markup rather than trusted to the comment above it:
+  // the three key actions are the only filled buttons and the only ones with no
+  // `hidden sm:` — so a phone keeps exactly them, and they are what the eye lands
+  // on at any width.
+  it('ranks Cook, Shop and Plan above the rest, in weight and in width', () => {
+    renderPage();
+
+    for (const id of [
+      'recipe-cook-button',
+      'recipe-add-to-list-button',
+      'recipe-add-to-planner-button',
+    ]) {
+      const button = screen.getByTestId(id);
+      expect(button).toHaveClass('salt-button--solid');
+      expect(button.className).not.toContain('hidden');
+    }
+
+    for (const id of ['recipe-ask-amend-button', 'recipe-optimise-kitchen-button']) {
+      expect(screen.getByTestId(id)).toHaveClass('salt-button--ghost');
+    }
+    expect(screen.getByTestId('recipe-edit-button')).toHaveClass('salt-button--outline');
+    expect(screen.getByTestId('recipe-delete-button')).toHaveClass('salt-button--destructive');
+
+    // The demoted four are the ⋮ menu's contents, so none of them may survive a
+    // narrow viewport inline.
+    for (const id of [
+      'recipe-ask-amend-button',
+      'recipe-optimise-kitchen-button',
+      'recipe-edit-button',
+      'recipe-delete-button',
+    ]) {
+      expect(screen.getByTestId(id).className).toContain('hidden');
+    }
   });
 
   it('shows the Ingredients and Method cards and the timings', () => {
@@ -210,14 +250,14 @@ describe('RecipeViewPage — an outing offers only what applies', () => {
     mockRecipes._set([makeOuting()]);
   });
 
-  it('offers no Cook and no Add to list', () => {
+  it('offers no Cook and no Shop', () => {
     renderPage();
 
     expect(screen.queryByTestId('recipe-cook-button')).toBeNull();
     expect(screen.queryByTestId('recipe-add-to-list-button')).toBeNull();
   });
 
-  it('offers no Ask/amend and no Optimise on EITHER surface', async () => {
+  it('offers no Chat and no Optimise on EITHER surface', async () => {
     renderPage();
 
     // Inline `sm:` row.
@@ -267,5 +307,33 @@ describe('RecipeViewPage — an outing offers only what applies', () => {
     expect(screen.getByTestId('recipe-hero')).toBeInTheDocument();
     expect(screen.getByTestId('recipe-image-regenerate')).toBeInTheDocument();
     expect(screen.getByText('Curry from the place on the corner.')).toBeInTheDocument();
+  });
+
+  it('keeps Plan — a night off is still a night that gets planned', () => {
+    renderPage();
+
+    // The outing's only key action, and it is inline: a phone showing a takeaway
+    // gets one button and the ⋮, not an empty row.
+    expect(screen.getByTestId('recipe-add-to-planner-button')).toBeInTheDocument();
+    expect(screen.getByTestId('recipe-add-to-planner-button').className).not.toContain('hidden');
+  });
+});
+
+// "Plan" asks the same question the planner's own picker asks, so it answers with
+// the same predicate — `isPlannable`, never the kind. A cocktail is cookable and
+// shoppable but is not dinner, which makes it the case that pulls the two apart:
+// everything else on the page stays, and only this goes.
+describe('RecipeViewPage — a cocktail is not offered for a night', () => {
+  beforeEach(() => {
+    mockRecipes._set([makeEntry({ kind: 'cocktail', title: 'Negroni' })]);
+  });
+
+  it('offers no Plan, while keeping Cook and Shop', () => {
+    renderPage();
+
+    expect(screen.getByTestId('recipe-cook-button')).toBeInTheDocument();
+    expect(screen.getByTestId('recipe-add-to-list-button')).toBeInTheDocument();
+    // Plan only ever renders inline, so this one absence covers every width.
+    expect(screen.queryByTestId('recipe-add-to-planner-button')).toBeNull();
   });
 });

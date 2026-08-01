@@ -39,6 +39,7 @@
     setRecipeImageUpload,
   } from '../../lib/recipeService.js';
   import RecipeAddToListSheet from './RecipeAddToListSheet.svelte';
+  import RecipeAddToPlannerSheet from './RecipeAddToPlannerSheet.svelte';
   import RecipeChangeSummary from './RecipeChangeSummary.svelte';
   import IngredientText from './IngredientText.svelte';
   import { canonItems } from '../../lib/canonService.js';
@@ -47,6 +48,7 @@
     diffRecipe,
     hasLiveCanonMatch,
     isCookable,
+    isPlannable,
     takesIngredients,
     type IngredientGroup,
     type Ingredient,
@@ -121,6 +123,11 @@ Finish with a short note on what you changed and why, so I can read the gist her
   // with the content it belongs to.
   const showIngredients = $derived(recipe !== null && takesIngredients(kindOf(recipe)));
   const showCooking = $derived(recipe !== null && isCookable(kindOf(recipe)));
+  // "Add to planner" offers this entry for a night, which is the same question
+  // the planner's own picker asks — so it answers with the same predicate. A
+  // cocktail is not dinner and a placeholder is attached, never chosen; neither
+  // gets the button here, exactly as neither appears in the picker there.
+  const showPlanning = $derived(recipe !== null && isPlannable(kindOf(recipe)));
 
   function timeParts(): string[] {
     if (!recipe) return [];
@@ -221,6 +228,10 @@ Finish with a short note on what you changed and why, so I can read the gist her
   // The review sheet (issue #185) owns servings + per-ingredient Add/Check
   // toggles + the commit; this page only guards that a default list exists.
   let addToListOpen = $state(false);
+
+  // ─── Add to planner ───────────────────────────────────────────────────────
+  // The picker sheet owns the calendar and the write; this page only opens it.
+  let addToPlannerOpen = $state(false);
 
   // Mobile-only overflow menu (⋮) that holds the secondary header actions
   // (Ask/amend, Edit, Delete) below the `sm` breakpoint; Cook + Add to list
@@ -695,18 +706,32 @@ Finish with a short note on what you changed and why, so I can read the gist her
     class="p-4 sm:p-6"
   >
     {#snippet actions()}
-      <!-- Cook + Add to list are the two primary actions and stay visible at
-           every width. Ask/amend, Edit and Delete are hidden below `sm` and
-           collapse into the ⋮ overflow menu at the end so the header fits a
-           phone; from `sm:` up all five render inline as before.
-           Four of them are capability-gated (issue #637): things that don't
-           apply simply aren't offered, so a takeaway shows Edit and Delete and
-           nothing else. Ask/amend and Optimise render on BOTH surfaces, so each
-           is gated twice — Cook and Add to list only ever render inline. -->
+      <!-- Seven actions is too many to shout at once, so they are ranked and the
+           ranking is carried by BOTH weight and width.
+
+           Cook, Shop and Plan are what this page is for — the three things you
+           came to do with a dish — so they are the only `solid` (filled) buttons
+           and the only ones that survive at every width. Everything else steps
+           back: Chat and Optimise are `ghost`, being conveniences rather than
+           destinations; Edit is `outline`, a real action but not one of the
+           three; Delete keeps `destructive` because a delete must stay
+           unmistakable, and that is the same treatment every other detail page
+           in the app gives it.
+
+           Below `sm` the four demoted ones collapse into the ⋮ menu, leaving the
+           header a phone-sized row of Cook / Shop / Plan / ⋮. Above it they all
+           render inline. Labels are single words for the same reason: the row
+           reads as a row rather than as a sentence.
+
+           Five of them are capability-gated (issue #637) — things that don't
+           apply simply aren't offered, so a takeaway shows Plan, Edit and Delete
+           and nothing else. Chat, Optimise, Edit and Delete render on BOTH
+           surfaces, so each is gated twice; Cook, Shop and Plan only ever render
+           inline. -->
       {#if showCooking}
         <Button
           size="sm"
-          variant="outline"
+          variant="ghost"
           onclick={handleAskAmend}
           loading={amendBusy}
           disabled={amendBusy}
@@ -714,13 +739,13 @@ Finish with a short note on what you changed and why, so I can read the gist her
           data-testid="recipe-ask-amend-button"
         >
           {#snippet leading()}<Icon name="ChefHat" size={16} />{/snippet}
-          Ask / amend
+          Chat
         </Button>
       {/if}
       {#if showCooking && hasEquipment}
         <Button
           size="sm"
-          variant="outline"
+          variant="ghost"
           onclick={handleOptimiseForKitchen}
           loading={optimiseBusy}
           disabled={optimiseBusy || sidebarIsSending}
@@ -728,13 +753,12 @@ Finish with a short note on what you changed and why, so I can read the gist her
           data-testid="recipe-optimise-kitchen-button"
         >
           {#snippet leading()}<Icon name="Blender" size={16} />{/snippet}
-          Optimise for my kitchen
+          Optimise
         </Button>
       {/if}
       {#if showCooking}
         <Button
           size="sm"
-          variant="outline"
           onclick={() => push(`/recipes/${recipe.id}/cook`)}
           data-testid="recipe-cook-button"
         >
@@ -743,18 +767,24 @@ Finish with a short note on what you changed and why, so I can read the gist her
         </Button>
       {/if}
       {#if showIngredients}
+        <Button size="sm" onclick={openAddToList} data-testid="recipe-add-to-list-button">
+          {#snippet leading()}<Icon name="ShoppingCart" size={16} />{/snippet}
+          Shop
+        </Button>
+      {/if}
+      {#if showPlanning}
         <Button
           size="sm"
-          variant="outline"
-          onclick={openAddToList}
-          data-testid="recipe-add-to-list-button"
+          onclick={() => (addToPlannerOpen = true)}
+          data-testid="recipe-add-to-planner-button"
         >
-          {#snippet leading()}<Icon name="ShoppingCart" size={16} />{/snippet}
-          Add to list
+          {#snippet leading()}<Icon name="CalendarPlus" size={16} />{/snippet}
+          Plan
         </Button>
       {/if}
       <Button
         size="sm"
+        variant="outline"
         onclick={() => push(`/recipes/${recipe.id}/edit`)}
         class="hidden sm:inline-flex"
         data-testid="recipe-edit-button"
@@ -773,8 +803,10 @@ Finish with a short note on what you changed and why, so I can read the gist her
         Delete
       </Button>
 
-      <!-- Mobile overflow (⋮): the three secondary actions above, hidden from
-           `sm:` up. Menu items carry their own testids so the desktop button
+      <!-- Mobile overflow (⋮): the four demoted actions above — Chat, Optimise,
+           Edit, Delete — hidden from `sm:` up. Cook, Shop and Plan are never in
+           here: they stay inline at every width, which is the whole point of
+           ranking them. Menu items carry their own testids so the desktop button
            testids stay unique. Edit and Delete are unconditional — every kind of
            entry can be edited and deleted — so the menu is never empty and the
            trigger never opens onto nothing, whatever the capability gates say
@@ -806,7 +838,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
                 data-testid="recipe-ask-amend-menu-item"
               >
                 <Icon name="ChefHat" size={14} />
-                Ask / amend
+                Chat
               </button>
             {/if}
             {#if showCooking && hasEquipment}
@@ -821,7 +853,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
                 data-testid="recipe-optimise-kitchen-menu-item"
               >
                 <Icon name="Blender" size={14} />
-                Optimise for my kitchen
+                Optimise
               </button>
             {/if}
             <button
@@ -1264,6 +1296,11 @@ Finish with a short note on what you changed and why, so I can read the gist her
 <!-- Add to shopping list review sheet -->
 {#if recipe && $defaultListId}
   <RecipeAddToListSheet {recipe} listId={$defaultListId} bind:open={addToListOpen} />
+{/if}
+
+<!-- Day picker for "Add to planner" -->
+{#if recipe}
+  <RecipeAddToPlannerSheet {recipe} bind:open={addToPlannerOpen} />
 {/if}
 
 <!-- Review-and-approve gate for the pending AI edit (Phase 2) -->
