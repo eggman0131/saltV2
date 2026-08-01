@@ -5,16 +5,15 @@ import { logger } from 'firebase-functions';
 import { isHttpsScheme, parseImportUrl } from '@salt/domain';
 import { ExtractRecipeFromUrlInputSchema, ExtractRecipeAIOutputSchema } from '@salt/domain/schemas';
 import type { ExtractRecipeAIOutput, UrlImportFailureCode } from '@salt/domain/schemas';
-import type { RecipeDoc, IngredientGroupDoc } from '@salt/domain/schemas';
+import type { RecipeDoc } from '@salt/domain/schemas';
 import { setActiveSpanName } from '@salt/observability/server';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 import { ssrfGuardedFetch, SsrfFetchError } from '../adapters/ssrfFetch.js';
 import { extractRecipeJsonLd, type JsonLdRecipe } from '../adapters/jsonLdRecipe.js';
-import { canonicaliseRecipeIngredientsFlow } from './canonicaliseRecipeIngredients.js';
-import { parseRecipeIngredientsFlow } from './parseRecipeIngredients.js';
+import { assembleRecipeDraft } from './assembleRecipeDraft.js';
 import { resolveModel } from '../ai/resolveModel.js';
-import { CATEGORY_TAG_RULES, normaliseTags } from './categoryTags.js';
+import { CATEGORY_TAG_RULES } from './categoryTags.js';
 import { INGREDIENT_SUBSTITUTION_RULES } from './ingredientConversions.js';
 import { STEP_RULES, FIRST_USE_ORDINAL_RULE } from './stepRules.js';
 
@@ -152,8 +151,15 @@ export const extractRecipeFromUrlFlow = ai.defineFlow(
       throw new UrlImportError('not-a-recipe', 'no recipe found on page');
     }
 
-    // 6. Assemble the draft (reuses parse + canonicalise flows).
-    const recipe = await assembleDraft(extracted, parsed.href);
+    // 6. Assemble the draft (reuses parse + canonicalise flows). Same assembler
+    //    the librarian uses — the import only differs in its provenance, its
+    //    unread-by-a-human flag (#616), and deriving a total time from prep +
+    //    cook when the page states only the parts.
+    const recipe = await assembleRecipeDraft(extracted, {
+      source: { type: 'url', url: parsed.href },
+      needsApproval: true,
+      deriveTotalTime: true,
+    });
 
     // 7. Persist it here, server-side, flagged as not yet human-reviewed
     //    (issue #616). The client used to hold the only copy in memory until the
@@ -280,133 +286,6 @@ function buildHtmlPrompt(html: string, sourceUrl: string): { system: string; pro
   return {
     system: EXTRACT_SYSTEM,
     prompt: `Source URL: ${sourceUrl}\n\nPage HTML:\n${trimmedHtml}`,
-  };
-}
-
-// Mirrors authorRecipe.assembleDraft: assign step IDs, parse ingredient raw
-// texts to clean item names, batch-canonicalise, thread structured `parsed`,
-// resolve step ordinals → IDs. Differs only in source.type='url' + url.
-async function assembleDraft(raw: ExtractRecipeAIOutput, sourceUrl: string): Promise<RecipeDoc> {
-  const now = new Date().toISOString();
-
-  const steps = raw.steps.map((s) => ({
-    id: crypto.randomUUID(),
-    text: s.text,
-    timer:
-      s.timerMinutes !== null
-        ? { durationMinutes: s.timerMinutes, description: s.timerLabel }
-        : null,
-    note: s.note,
-  }));
-
-  type IngMeta = { groupIdx: number; itemIdx: number; rawText: string };
-  const allIngredients: IngMeta[] = [];
-  for (let gi = 0; gi < raw.ingredientGroups.length; gi++) {
-    const group = raw.ingredientGroups[gi]!;
-    for (let ii = 0; ii < group.ingredients.length; ii++) {
-      allIngredients.push({ groupIdx: gi, itemIdx: ii, rawText: group.ingredients[ii]!.rawText });
-    }
-  }
-
-  // Parse raw texts → clean item names + structured parsed objects, keyed by
-  // rawText. Parse failure is non-fatal (falls back to rawText / parsed:null).
-  const parsedItemMap = new Map<string, string>();
-  type ParsedIngredient = Awaited<
-    ReturnType<typeof parseRecipeIngredientsFlow>
-  >[number]['items'][number]['parsed'];
-  const parsedMap = new Map<string, ParsedIngredient>();
-  if (allIngredients.length > 0) {
-    try {
-      const joinedRawText = allIngredients.map((i) => i.rawText).join('\n');
-      const parseResult = await parseRecipeIngredientsFlow({ rawText: joinedRawText });
-      for (const group of parseResult) {
-        for (const item of group.items) {
-          if (item.parsed?.item) parsedItemMap.set(item.rawText, item.parsed.item);
-          if (item.parsed) parsedMap.set(item.rawText, item.parsed);
-        }
-      }
-    } catch {
-      // non-fatal
-    }
-  }
-
-  // Batch canonicalise. Failure is non-fatal — ingredients land as pending.
-  let canonResults: Awaited<ReturnType<typeof canonicaliseRecipeIngredientsFlow>> = [];
-  if (allIngredients.length > 0) {
-    try {
-      canonResults = await canonicaliseRecipeIngredientsFlow({
-        items: allIngredients.map((i) => ({
-          rawName: parsedItemMap.get(i.rawText) ?? i.rawText,
-          rawText: i.rawText,
-        })),
-      });
-    } catch {
-      // non-fatal
-    }
-  }
-
-  const ingredientGroups: IngredientGroupDoc[] = raw.ingredientGroups.map((group, gi) => ({
-    id: crypto.randomUUID(),
-    name: group.name,
-    items: group.ingredients.map((ing, ii) => {
-      const flatIdx = allIngredients.findIndex((m) => m.groupIdx === gi && m.itemIdx === ii);
-      const canon = flatIdx >= 0 ? canonResults[flatIdx] : undefined;
-
-      const canonId = canon && canon.kind === 'ok' ? (canon.value.item as { id: string }).id : null;
-      const matchState: 'matched' | 'pending' | 'failed' =
-        canon && canon.kind === 'ok' ? 'matched' : canon ? 'failed' : 'pending';
-
-      const ord = ing.firstUsedInStepOrdinal;
-      const firstUsedInStepId =
-        ord !== null && ord >= 0 && ord < steps.length ? steps[ord]!.id : null;
-
-      return {
-        id: crypto.randomUUID(),
-        rawText: ing.rawText,
-        parsed: parsedMap.get(ing.rawText) ?? null,
-        canonId,
-        matchState,
-        isOptional: ing.isOptional,
-        firstUsedInStepId,
-      };
-    }),
-  }));
-
-  return {
-    id: crypto.randomUUID(),
-    schemaVersion: 1,
-    // A URL import is always a cookable recipe (issue #637); outings are created
-    // by hand and have nothing to extract.
-    kind: 'recipe',
-    title: raw.title,
-    description: raw.description,
-    ingredients: ingredientGroups,
-    steps,
-    metadata: {
-      servings: raw.servings,
-      // Derive a total from prep + cook when the source only gives the parts
-      // (common — e.g. the page states prep and cook but no explicit total), so
-      // the editor shows a total time instead of a blank.
-      totalTimeMinutes:
-        raw.totalTimeMinutes ??
-        (raw.prepTimeMinutes !== null && raw.cookTimeMinutes !== null
-          ? raw.prepTimeMinutes + raw.cookTimeMinutes
-          : null),
-      prepTimeMinutes: raw.prepTimeMinutes,
-      cookTimeMinutes: raw.cookTimeMinutes,
-      tags: normaliseTags(raw.tags),
-    },
-    source: { type: 'url', url: sourceUrl },
-    notes: raw.notes,
-    // URL import always creates a fresh recipe — no "makes" link yet.
-    producesCanonId: null,
-    // Raw AI output nobody has read yet (issue #616). Carried on the returned
-    // doc as well as the persisted one, so the editor the client opens shows the
-    // same review state as the recipe list.
-    needs_approval: true,
-    image: null,
-    createdAt: now,
-    updatedAt: now,
   };
 }
 
