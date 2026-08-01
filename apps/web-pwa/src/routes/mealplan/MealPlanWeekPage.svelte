@@ -112,17 +112,17 @@
   // is today's row.
   const todayIndex = $derived(dayIndexInWeek($selectedStartDate, todayDate));
 
-  // ─── Next week appears from Wednesday (#639, Phase 6) ─────────────────────
-  // You shop on Friday or Saturday and plan by Thursday, so for the last two days
-  // of every cycle the week you need is the one you are NOT looking at. From then
-  // on the whole of next week is appended beneath a dated mark — one continuous
-  // scroll of thirteen or fourteen days from today, with both weeks' shop rules in
-  // it.
+  // ─── Next week appears from Tuesday (#639, Phase 6) ───────────────────────
+  // You shop on Friday or Saturday and plan by Thursday, so for the last three
+  // days of every cycle the week you need is the one you are NOT looking at. From
+  // then on the whole of next week is appended beneath a dated mark — one
+  // continuous scroll of twelve to fourteen days from today, with both weeks' shop
+  // rules in it.
   //
-  // The trigger is "the last two days of the cycle", never the literal weekday:
-  // Wednesday is only the answer because `firstDayOfWeek` is 'fri', and that is a
-  // configurable setting. The predicate is pure and lives in domain (there is no
-  // clock there, so today is passed in).
+  // The trigger is "the last `WEEK_EXTENSION_DAYS` of the cycle", never the literal
+  // weekday: Tuesday is only the answer because `firstDayOfWeek` is 'fri', and that
+  // is a configurable setting. The predicate is pure and lives in domain (there is
+  // no clock there, so today is passed in).
   //
   // The extension belongs to TODAY's week only. Navigating anywhere else drops it
   // — `weekExtendsIntoNext` is false for any week that does not contain today —
@@ -188,6 +188,18 @@
   // days, and reading it must not make the effect below depend on it.
   let anchoredWeek: string | null = null;
 
+  // The offset the anchor last placed. It is how the re-anchor below tells "the
+  // deck is still exactly where we put it" from "the user has moved it" without
+  // listening to a single gesture. -1 = nothing placed yet, which is why it is not
+  // 0: 0 is a real resting place (the top of the week).
+  let anchoredOffset = -1;
+
+  function anchorTo(next: number, key: string): void {
+    deck.place(next);
+    anchoredOffset = next;
+    anchoredWeek = key;
+  }
+
   // Anchor once per displayed run of days. The rows only exist once the week's
   // data has arrived, so this re-runs until today's row is actually in the DOM.
   // `place` rather than `animateTo`: this is where the deck STARTS, not somewhere
@@ -201,8 +213,7 @@
     if (anchoredWeek === key) return;
     if (todayIndex < 0) {
       // Some other week: land at the top, not wherever the last week was left.
-      deck.place(0);
-      anchoredWeek = key;
+      anchorTo(0, key);
       return;
     }
     if (!todayRow) return;
@@ -213,8 +224,39 @@
     if (extensionDates.length && !lastExtensionRow) return;
     // `offsetOf` clamps to the end of the list, so a day late in the week lands
     // as high as the list allows rather than dragging blank space up behind it.
-    deck.place(deck.offsetOf(todayRow) ?? 0);
-    anchoredWeek = key;
+    anchorTo(deck.offsetOf(todayRow) ?? 0, key);
+  });
+
+  // …and keep it anchored while the list is still growing under it.
+  //
+  // The rows the anchor first measures are NOT the rows the week ends up with: a
+  // day whose recipe is attached grows a 1.6:1 photograph the moment the recipes
+  // store delivers, and the rail gains its forecast on the weather doc's own
+  // snapshot. `offsetOf` clamps against the content height it can see at that
+  // instant, so on a cold load it measured a list barely taller than the viewport,
+  // clamped today's offset to nearly nothing, landed at the top of the week — and
+  // latched. Today was then several hundred pixels below the fold and never
+  // reached. Re-entering the planner with the stores already warm anchored
+  // correctly, which is exactly why this survived review.
+  //
+  // So: re-place on every content resize, and stop for good the moment the deck is
+  // somewhere the user put it. Reading the deck inside the observer registers no
+  // dependency (the callback runs outside effect tracking), so this observes the
+  // list rather than fighting it.
+  $effect(() => {
+    const el = deck.contentEl;
+    if (!el || typeof ResizeObserver !== 'function') return;
+    const observer = new ResizeObserver(() => {
+      if (deck.offset !== anchoredOffset) return;
+      const todayRow = todayIndex >= 0 ? rowEls[todayDate] : null;
+      if (!todayRow) return;
+      const next = deck.offsetOf(todayRow) ?? 0;
+      if (next === anchoredOffset) return;
+      deck.place(next);
+      anchoredOffset = next;
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
   });
 
   // Friendly labels for the week range and each day, formatted from the UTC date.
@@ -417,36 +459,6 @@
     {@const day = days[date]}
     {@const isEarlier = !isExtension && todayIndex > 0 && i < todayIndex}
     {#if day}
-      {#if shop?.date === date}
-        <!-- The shop day is a RULE ACROSS THE LIST, not a badge on a row: a
-             cart and the slot, then a hairline running to the edge, so the
-             week visibly divides into "before the shop" and "after" wherever
-             the shop happens to fall. Sibling of the rows, immediately above
-             the day it marks. The slot is copy only — both nudge at the same
-             hour the evening before — and stays lower-case in the DOM, with
-             the caps done in CSS. Both weeks draw their own, so this week's
-             shop and next week's are visible in the same scroll. -->
-        <!-- Sage, not terracotta: terracotta already means "next week" in this
-             list, and a second rule in the same ink would read as another week
-             boundary. The label sits ABOVE its rule rather than interrupting it,
-             so the line runs the full width and the division is unmistakable.
-             Tapping it opens the same picker the header used to — the rule is
-             now the control, which is why the header no longer carries one. -->
-        <button
-          type="button"
-          class="-mb-2 flex flex-col gap-1 pl-[3px] text-left"
-          onclick={() => (showShopPicker = true)}
-          data-testid={`day-${date}-shop-marker`}
-        >
-          <span
-            class="flex shrink-0 items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-secondary"
-          >
-            <ShoppingCart class="h-[15px] w-[15px]" aria-hidden="true" />
-            Shop · {shop.slot}
-          </span>
-          <span class="border-t-2 border-secondary"></span>
-        </button>
-      {/if}
       <!-- The wrapper is the page's grip on the row: it is what we anchor the
            scroll to, what carries the quieter treatment for days already behind
            us, and what marks a row as belonging to next week. MealDayEditor
@@ -454,12 +466,87 @@
            no notion of "today"). Today is excluded from the next-week rail
            treatment on purpose: today outranks which week it falls in, and keeps
            its filled teal disc wherever it is. -->
+      <!-- Its own testid, because the wrapper is the DECK'S SECTION and the day's
+           card is not: a day carrying a mark starts with that mark, so the card
+           sits well below the place the deck actually snaps to. A geometry test
+           addressing the card would silently measure the wrong box. -->
       <div
         bind:this={rowEls[date]}
+        data-testid={`day-${date}-row`}
         class="{isEarlier ? 'opacity-60' : ''} {isExtension && date !== todayDate
           ? 'planner-next-week-row'
           : ''}"
       >
+        {#if isExtension && i === 0}
+          <!-- The dated mark. Same rule-across-the-list grammar as the shop day,
+               dashed and terracotta, and it names the dates so "next week" is a
+               fact rather than a direction. Inside the first day of next week for
+               the same reason the shop rule is inside its own day: it is the one
+               thing you need on screen when you arrive there, and a mark above the
+               deck's section is the one thing snapping to it scrolls away. A week
+               boundary is not really a fact about a day — this is the cost of
+               keeping it visible when it matters. -->
+          <div class="mb-4 flex items-center gap-2 pl-3" data-testid="next-week-mark">
+            <span
+              class="shrink-0 text-sm font-semibold uppercase leading-none tracking-wider"
+              style="color: var(--planner-rail-ink)"
+            >
+              Next week · {extensionRangeLabel}
+            </span>
+            <span
+              class="flex-1 border-t-2 border-dashed"
+              style="border-color: var(--planner-rail-ink)"
+            ></span>
+          </div>
+        {/if}
+        {#if shop?.date === date}
+          <!-- The shop day is a RULE ACROSS THE LIST, not a badge on a row: a
+               cart and the slot, then a hairline running to the edge, so the
+               week visibly divides into "before the shop" and "after" wherever
+               the shop happens to fall. The slot is copy only — both nudge at the
+               same hour the evening before — and stays lower-case in the DOM,
+               with the caps done in CSS. Both weeks draw their own, so this
+               week's shop and next week's are visible in the same scroll. -->
+          <!-- INSIDE the day's wrapper, not a sibling above it: the wrapper is
+               the deck's section, so a marker outside it is the one thing that
+               snapping to the shop day pushes off the top of the screen. It is
+               the day's own rule now — it travels with it, and landing on the
+               shop day lands on the fact that it IS the shop day. `mb-4` keeps
+               the 16px the old `-mb-2` bought against the column's `gap-6`; the
+               24px above it is that same gap, now measured to the wrapper. -->
+          <!-- Sage, not terracotta: terracotta already means "next week" in this
+               list, and a second rule in the same ink would read as another week
+               boundary. The label INTERRUPTS its rule rather than sitting above
+               it — the same grammar as the next-week mark directly above, and the
+               two marks are the same kind of thing (a labelled division of the
+               list), so they are drawn the same way and differ only in ink and in
+               dash. Tapping it opens the same picker the header used to — the rule
+               is now the control, which is why the header no longer carries one. -->
+          <button
+            type="button"
+            class="mb-4 flex w-full items-center gap-2 pl-3 text-left"
+            onclick={() => (showShopPicker = true)}
+            data-testid={`day-${date}-shop-marker`}
+          >
+            <!-- `leading-none` is what actually centres the cart against the words:
+                 `items-center` centres the two BOXES, and an uppercase line box is
+                 taller than its glyphs (all that unused descender space), so the
+                 icon reads a shade high beside it until the text box hugs its
+                 letters. -->
+            <span
+              class="flex shrink-0 items-center gap-1.5 text-sm font-semibold uppercase leading-none tracking-wider text-secondary"
+            >
+              <!-- Sized and weighted against the WORDS, not against the nominal
+                   text size: the cart is drawn inside its box with room to spare,
+                   so at the text's own 16px it reads smaller than the caps beside
+                   it, and lucide's default 2px stroke is lighter than a semibold
+                   uppercase stem. 18px at 2.5 matches both. -->
+              <ShoppingCart class="h-[18px] w-[18px]" strokeWidth={2.5} aria-hidden="true" />
+              Shop · {shop.slot}
+            </span>
+            <span class="flex-1 border-t-2 border-secondary"></span>
+          </button>
+        {/if}
         <MealDayEditor
           label={fmt(date, { weekday: 'short' })}
           sublabel={fmt(date, { day: 'numeric' })}
@@ -615,7 +702,7 @@
       <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <div
         bind:this={deck.viewportEl}
-        class="relative -mx-2.5 min-h-0 flex-1 touch-pinch-zoom overflow-hidden px-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        class="relative min-h-0 flex-1 touch-pinch-zoom overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         role="region"
         tabindex="0"
         aria-label="Week of {rangeLabel}"
@@ -629,8 +716,8 @@
       >
         <!-- The week as one list of dated days, 24px apart (#639): each row is its
              own object, held together by its rail and the air around it. From the
-             last two days of the cycle a SECOND week follows in the same column
-             (Phase 6) — one continuous deck of thirteen or fourteen days, not two
+             last three days of the cycle a SECOND week follows in the same column
+             (Phase 6) — one continuous deck of twelve to fourteen days, not two
              lists and not a second scroller. -->
         <div
           bind:this={deck.contentEl}
@@ -645,13 +732,16 @@
                job is to differ from this, not the other way round. Decorative: the
                dates beside it say everything it says. -->
           <div class="relative flex flex-col gap-6">
-            <!-- `-left-2.5` puts the stem in the page gutter, clear of the marks
-                 it used to run straight through. It only has somewhere to go
-                 because the viewport bleeds 10px into that gutter and pads it
-                 back (`-mx-2.5 px-2.5`) — the viewport clips on both axes, so at
-                 a plain `left-0` container edge a negative offset is invisible. -->
+            <!-- `left-0`: the stem belongs to the DATED COLUMN it runs beside,
+                 not to the page. #647 exiled it 10px into the gutter (with a
+                 matching viewport bleed) to keep it off the marks it used to run
+                 through — but the marks now start at `pl-[3px]`, which is what
+                 actually clears it, and out in the gutter it read as page chrome
+                 rather than as the rail's own spine. The shop rule and the
+                 next-week mark butt against it instead: a branch off the rail,
+                 which is the structure they describe. -->
             <span
-              class="pointer-events-none absolute inset-y-0 -left-2.5 w-0 border-l-2 border-border"
+              class="pointer-events-none absolute inset-y-0 left-0 w-0 border-l-2 border-border"
               data-testid="this-week-rail"
               aria-hidden="true"
             ></span>
@@ -675,26 +765,10 @@
                    the empty left margin of the rail column so it never crosses the
                    dates it belongs to. Decorative — the mark below says it in words. -->
               <span
-                class="pointer-events-none absolute inset-y-0 -left-2.5 w-0 border-l-2 border-dashed"
+                class="pointer-events-none absolute inset-y-0 left-0 w-0 border-l-2 border-dashed"
                 style="border-color: var(--planner-rail-ink)"
                 aria-hidden="true"
               ></span>
-
-              <!-- The dated mark. Same rule-across-the-list grammar as the shop day,
-                   dashed and terracotta, and it names the dates so "next week" is a
-                   fact rather than a direction. -->
-              <div class="-mb-2 flex items-center gap-2 pl-[3px]" data-testid="next-week-mark">
-                <span
-                  class="shrink-0 text-xs font-semibold uppercase tracking-wider"
-                  style="color: var(--planner-rail-ink)"
-                >
-                  Next week · {extensionRangeLabel}
-                </span>
-                <span
-                  class="flex-1 border-t-2 border-dashed"
-                  style="border-color: var(--planner-rail-ink)"
-                ></span>
-              </div>
 
               {@render weekRows(
                 extensionDates,
@@ -790,7 +864,7 @@
 <!-- Which day do we shop? (#640, Phase 4). The whole week is on screen at once and
      one tap answers both halves of the question — the day and the slot — so the
      dialog closes on it. When next week is appended to the deck it is offered here
-     too, under its own heading: on a Wednesday the week you are provisioning IS
+     too, under its own heading: at the end of a cycle the week you are provisioning IS
      next week, and the service scopes "one shop per week" by the DATE's week, so
      marking one week's shop never disturbs the other's. -->
 <Dialog open={showShopPicker} onOpenChange={(v) => (showShopPicker = v)}>

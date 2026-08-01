@@ -77,10 +77,10 @@ describe('MealDayEditor — the Ledger row (#639)', () => {
     });
     const { getByTestId, queryByTestId } = render(MealDayEditor, { props: baseProps(day) });
     const meta = getByTestId('day-meta');
-    // The cook is named; the table is a number. Naming every eater made the row's
-    // longest, least stable element out of the one thing a tap already answers.
+    // The cook is named, and so is the table when the line has room for it: two
+    // short names against a 36-character budget is nowhere near it.
     expect(meta.textContent).toContain('Alex');
-    expect(meta.textContent).toContain('2');
+    expect(getByTestId('day-eaters').textContent).toBe('Alex, Bea');
     expect(meta.textContent).not.toContain('Everyone');
     expect(meta.textContent).not.toContain('cooking');
     // A cook is assigned, so the "No cook" flag is absent.
@@ -90,19 +90,38 @@ describe('MealDayEditor — the Ledger row (#639)', () => {
     expect(queryByTestId('day-cook-m1')).not.toBeInTheDocument();
   });
 
-  it('counts guests into the table, not as a separate "+2" (#640)', () => {
+  it('tallies guests on the end of the names — they have none to give', () => {
     const day = makeDay({
       chefs: ['m2'],
       attendees: [{ memberId: 'm1', homeTime: null, note: '' }],
       guests: 2,
     });
-    const meta = render(MealDayEditor, { props: baseProps(day) }).getByTestId('day-meta');
-    expect(meta.textContent).toContain('Bea');
-    // One eater plus two guests is three at the table — the row answers "how many
-    // am I cooking for", and a guest eats the same as anyone else.
-    expect(meta.textContent).toContain('3');
-    expect(meta.textContent).not.toContain('+2');
-    expect(meta.textContent).not.toContain('Everyone');
+    const { getByTestId } = render(MealDayEditor, { props: baseProps(day) });
+    expect(getByTestId('day-meta').textContent).toContain('Bea');
+    // The household is named and the guests are counted. Anything else would be
+    // inventing names for people the document does not hold.
+    expect(getByTestId('day-eaters').textContent).toBe('Alex +2');
+  });
+
+  it('falls back to the head count when the names cannot fit, guests included', () => {
+    // Five long names blow the line's 36-character budget, so the table gives way
+    // to the one thing that survives any width — and a guest eats the same as
+    // anyone else, so the number counts them in: 3 members + 2 guests = 5.
+    const longRoster = [
+      { id: 'm1', name: 'Alexandrina' },
+      { id: 'm2', name: 'Beatrice-Rose' },
+      { id: 'm3', name: 'Christopher' },
+    ];
+    const day = makeDay({
+      chefs: ['m1'],
+      attendees: longRoster.map((m) => ({ memberId: m.id, homeTime: null, note: '' })),
+      guests: 2,
+    });
+    const { getByTestId, queryByTestId } = render(MealDayEditor, {
+      props: { ...baseProps(day), members: longRoster },
+    });
+    expect(queryByTestId('day-eaters')).not.toBeInTheDocument();
+    expect(getByTestId('day-meta').textContent).toContain('5');
   });
 
   it('shows only a home time that has actually been set', () => {

@@ -121,8 +121,8 @@ describe('dayIndexInWeek', () => {
 });
 
 describe('weekExtendsIntoNext (#639)', () => {
-  // Production runs a Friday-start week, which is what makes "from Wednesday" the
-  // user-facing rule: Wednesday is index 5 of a fri→thu cycle.
+  // Production runs a Friday-start week, which is what makes "from Tuesday" the
+  // user-facing rule: Tuesday is index 4 of a fri→thu cycle.
   const FRI = '2026-07-24'; // a Friday
   const [fri, sat, sun, mon, tue, wed, thu] = weekDates(FRI) as [
     string,
@@ -134,24 +134,26 @@ describe('weekExtendsIntoNext (#639)', () => {
     string,
   ];
 
-  it('holds for the last two days of the cycle and no earlier', () => {
+  it('holds for the last three days of the cycle and no earlier', () => {
     expect(weekExtendsIntoNext(FRI, fri, 'fri')).toBe(false);
     expect(weekExtendsIntoNext(FRI, sat, 'fri')).toBe(false);
     expect(weekExtendsIntoNext(FRI, sun, 'fri')).toBe(false);
     expect(weekExtendsIntoNext(FRI, mon, 'fri')).toBe(false);
-    expect(weekExtendsIntoNext(FRI, tue, 'fri')).toBe(false);
-    // Wednesday and Thursday — the days you plan and shop for the week ahead.
+    // Tuesday, Wednesday and Thursday — the days you plan and shop for the week
+    // ahead.
+    expect(weekExtendsIntoNext(FRI, tue, 'fri')).toBe(true);
     expect(weekExtendsIntoNext(FRI, wed, 'fri')).toBe(true);
     expect(weekExtendsIntoNext(FRI, thu, 'fri')).toBe(true);
   });
 
-  it('is the last two days of the CYCLE, not the literal weekday Wednesday', () => {
-    // Same calendar Wednesday, a Monday-start household: it is now index 2, four
+  it('is the last three days of the CYCLE, not the literal weekday Tuesday', () => {
+    // Same calendar Tuesday, a Monday-start household: it is now index 1, six
     // days from the end, so nothing is appended. Move firstDayOfWeek and the
     // trigger moves with it.
-    const monStart = weekStartFor(wed, 'mon');
-    expect(weekExtendsIntoNext(monStart, wed, 'mon')).toBe(false);
-    // Its own penultimate day (Saturday) is the trigger instead.
+    const monStart = weekStartFor(tue, 'mon');
+    expect(weekExtendsIntoNext(monStart, tue, 'mon')).toBe(false);
+    // Its own last three days (Friday, Saturday, Sunday) are the trigger instead.
+    expect(weekExtendsIntoNext(monStart, weekDates(monStart)[4]!, 'mon')).toBe(true);
     expect(weekExtendsIntoNext(monStart, weekDates(monStart)[5]!, 'mon')).toBe(true);
     expect(weekExtendsIntoNext(monStart, weekDates(monStart)[6]!, 'mon')).toBe(true);
   });
@@ -171,21 +173,24 @@ describe('weekExtendsIntoNext (#639)', () => {
   });
 
   it('extends across a month and a year boundary like any other week', () => {
-    // 2026-12-25 is a Friday; its cycle's last two days are 30 and 31 December.
+    // 2026-12-25 is a Friday; its cycle's last three days are 29, 30 and 31
+    // December.
+    expect(weekExtendsIntoNext('2026-12-25', '2026-12-29', 'fri')).toBe(true);
     expect(weekExtendsIntoNext('2026-12-25', '2026-12-30', 'fri')).toBe(true);
     expect(weekExtendsIntoNext('2026-12-25', '2026-12-31', 'fri')).toBe(true);
-    expect(weekExtendsIntoNext('2026-12-25', '2026-12-29', 'fri')).toBe(false);
+    expect(weekExtendsIntoNext('2026-12-25', '2026-12-28', 'fri')).toBe(false);
   });
 
   it('is unaffected by the DST boundary inside the week (all week maths is UTC)', () => {
     // BST ends on 2026-10-25, inside this mon→sun cycle.
+    expect(weekExtendsIntoNext('2026-10-19', '2026-10-23', 'mon')).toBe(true);
     expect(weekExtendsIntoNext('2026-10-19', '2026-10-24', 'mon')).toBe(true);
     expect(weekExtendsIntoNext('2026-10-19', '2026-10-25', 'mon')).toBe(true);
-    expect(weekExtendsIntoNext('2026-10-19', '2026-10-23', 'mon')).toBe(false);
+    expect(weekExtendsIntoNext('2026-10-19', '2026-10-22', 'mon')).toBe(false);
   });
 
-  it('WEEK_EXTENSION_DAYS is the two days the rule is stated in', () => {
-    expect(WEEK_EXTENSION_DAYS).toBe(2);
+  it('WEEK_EXTENSION_DAYS is the three days the rule is stated in', () => {
+    expect(WEEK_EXTENSION_DAYS).toBe(3);
   });
 });
 

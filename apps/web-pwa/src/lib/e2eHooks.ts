@@ -1,6 +1,11 @@
 import { get } from 'svelte/store';
-import { upsertCanonItem, setFirestoreNetwork, setAiStub } from '@salt/firebase-sync';
-import type { CanonItem, Recipe } from '@salt/domain';
+import {
+  upsertCanonItem,
+  setFirestoreNetwork,
+  setAiStub,
+  saveMealPlanWeek,
+} from '@salt/firebase-sync';
+import type { CanonItem, MealPlanWeek, Recipe } from '@salt/domain';
 import { devSignIn } from './auth.svelte.js';
 import { addAislesBulk, aisles } from './aisleService.js';
 import { canonItems, isLoadingAisles } from './canonService.js';
@@ -120,6 +125,16 @@ export function installE2EHooks(): void {
 
     getMealPlanSnapshot() {
       return getMealPlanWeekSnapshot();
+    },
+
+    async seedMealPlanWeek(week: MealPlanWeek) {
+      // The same `saveMealPlanWeek` call `persistWeek` ends in (NF-C4) — the doc
+      // arrives by subscription rather than being pushed into the store first,
+      // which is what a week written by the other partner's phone looks like.
+      const result = await saveMealPlanWeek(week);
+      if (result.kind !== 'ok') {
+        throw new Error(`seedMealPlanWeek failed: ${JSON.stringify(result.error)}`);
+      }
     },
 
     getChatSessions() {

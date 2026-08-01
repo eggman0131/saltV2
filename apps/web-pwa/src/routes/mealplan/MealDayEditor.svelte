@@ -334,12 +334,23 @@
     attachedRecipes.map((r) => heroUrl(r)).find((u): u is string => u !== null) ?? null,
   );
 
+  // Nothing has been decided for this day yet — not a note, not a recipe. That is
+  // the ONE state the week wants you to notice: it is the work still to do.
+  //
+  // Deliberately NOT "has no photograph". A night whose whole plan is the word
+  // "Leftovers" is as planned as one with a hero shot; it just has no picture
+  // yet, and dressing it as an unanswered question would be a lie about the week.
+  // Whether a note-only night eventually earns art of its own is a separate
+  // question (placeholder heroes) — this flag stays about the PLAN.
+  const needsPlanning = $derived(!mealFirstLine && attachedRecipes.length === 0);
+
   // ─── The row's cook-and-table line (#639, reshaped in #640) ────────────────
-  // Two facts, one at each end: who is cooking, and how many are at the table.
-  // It used to be one sentence naming every eater, but with five in the house —
-  // two of them here only part of the week — that list was the longest and least
-  // stable thing in the row. The head count survives any width; WHO is eating is
-  // named in the sheet, one tap away, where it can be read and changed.
+  // Two facts, one at each end: who is cooking, and who is at the table.
+  // It used to be one sentence naming every eater, which with five in the house —
+  // two of them here only part of the week — was the longest and least stable
+  // thing in the row, so #639 reduced it to a head count. The names are back, but
+  // only when the line can hold them (see `namesFit`): a number is what a narrow
+  // row falls back to, not what it settles for.
   const cookNames = $derived(members.filter((m) => isChef(m.id)).map((m) => m.name));
   const homeTimes = $derived(
     members
@@ -347,6 +358,38 @@
       .map((m) => ({ name: m.name, at: attendeeOf(m.id)?.homeTime ?? null }))
       .filter((x): x is { name: string; at: string } => x.at !== null && x.at !== '')
       .map((x) => `${x.name} ${x.at}`),
+  );
+
+  // Who is eating, named. Guests have no names to give, so they stay a tally on
+  // the end — "Daniel, Sam +2" — which is also the only honest thing to render.
+  const eaterNames = $derived(members.filter((m) => isAttending(m.id)).map((m) => m.name));
+  const eaterLabel = $derived(
+    [eaterNames.join(', '), day.guests > 0 ? `+${day.guests}` : ''].filter(Boolean).join(' '),
+  );
+
+  // Names, or the number? The line's parts are already ranked — the cook and any
+  // late arrival never truncate, because "who is cooking" and "someone is not
+  // here yet" are the facts you scan for — so the eaters are what has to give, and
+  // giving means falling back to the count rather than trailing off in an ellipsis.
+  //
+  // Decided on the LENGTH OF THE TEXT rather than by measuring the box. Measuring
+  // would mean rendering the names, discovering they overflow and swapping them
+  // for the count — which changes the width, which re-admits the names: a loop
+  // that only stops with a hidden twin of the line to measure against, in fourteen
+  // rows at once. The budget below is that measurement done once — the line holds
+  // 38 characters of its own 12px type on a 393px phone, four fewer when the clock
+  // chip is in it — and it is a decision to TRY, not a promise, because the names
+  // still carry `truncate`. Guess high on a narrower handset and a long name
+  // clips, which is the same graceful end the cook name has always had.
+  const META_CHAR_BUDGET = 36;
+  const CLOCK_CHIP_CHARS = 4;
+  const namesFit = $derived(
+    eaterNames.length > 0 &&
+      (hasCook ? cookNames.join(' & ').length : 'No cook'.length) +
+        homeTimes.join(', ').length +
+        (homeTimes.length ? CLOCK_CHIP_CHARS : 0) +
+        eaterLabel.length <=
+        META_CHAR_BUDGET,
   );
 
   // Evening-window temperature band (drives the header temp colour, cool→warm),
@@ -373,9 +416,10 @@
   });
 </script>
 
-<!-- One day = one object in the list (#639). No card border and no wash: the day
-     is held together by the dated rail on its left and the air around it (the
-     page spaces the rows 24px apart), not by a box. -->
+<!-- One day = one object in the list (#639). What draws the object's edge depends
+     on what the day HAS: a photograph is its own boundary, and a day without one
+     gets a bordered card instead. Either way the rail on the left and the 24px the
+     page puts between rows do the rest. -->
 <div data-testid={testid}>
   <!-- The two rows of the card, defined once and rendered into either the scrim
        over the photograph or the bare text block, so a change lands in both.
@@ -409,7 +453,11 @@
         {/if}
       </span>
       <span class="flex min-w-0 flex-1 items-center justify-end gap-1.5">
-        <span class="shrink-0 font-semibold tabular-nums">{attendingCount}</span>
+        {#if namesFit}
+          <span class="truncate" data-testid={`${testid}-eaters`}>{eaterLabel}</span>
+        {:else}
+          <span class="shrink-0 font-semibold tabular-nums">{attendingCount}</span>
+        {/if}
         <Utensils class="h-[15px] w-[15px] shrink-0" aria-hidden="true" />
         {#if homeTimes.length}
           <span class="flex shrink-0 items-center gap-1.5 whitespace-nowrap">
@@ -477,9 +525,9 @@
     <!-- The day's card. The two rows RIDE THE FOOT of the photograph rather than
          sitting under it: the row gives back the height the text used to cost and
          the picture gets a wider 1.6:1 crop in the same space. A day with no photo
-         is not second-class — the same two rows, unboxed, with the meal one step
-         larger and in the page's own ink. Both cases render from the snippets
-         below, so the two layouts cannot drift apart. -->
+         is not second-class — the same two rows in a bordered card, with the meal
+         one step larger and in the page's own ink. Both cases render from the
+         snippets below, so the two layouts cannot drift apart. -->
     <div class="flex min-w-0 flex-1 flex-col">
       {#if photoUrl}
         <div class="relative overflow-hidden rounded-lg">
@@ -493,19 +541,43 @@
           <!-- The scrim is readability, not decoration: opaque at the foot and
                clear before the middle, so no more of the dish is veiled than the
                two rows actually need. -->
+          <!-- `gap-1.5`, not `gap-0.5`: the title and the cook-and-table line are
+               two different facts, and at 2px apart they read as one block of text
+               laid over the dish. The ink is off-white rather than white — pure
+               white against a near-black scrim is harder than anything else on the
+               page and made the title shout over its own photograph. -->
           <div
-            class="absolute inset-x-0 bottom-0 flex flex-col gap-0.5 bg-gradient-to-t from-black/100 via-black/60 to-transparent px-3 py-2.5"
+            class="absolute inset-x-0 bottom-0 flex flex-col gap-1.5 bg-gradient-to-t from-black/100 via-black/60 to-transparent px-3 py-2.5"
           >
-            {@render mealLine('text-base', 'text-white', 'text-white/70')}
+            {@render mealLine('text-base', 'text-white/90', 'text-white/70')}
             {@render tableLine(
-              'text-white/80',
+              'text-white/75',
               'rounded bg-destructive px-1.5 font-medium text-destructive-foreground',
             )}
           </div>
         </div>
       {:else}
-        <div class="flex flex-col gap-2">
-          {@render mealLine('text-lg', 'text-foreground', 'text-muted-foreground')}
+        <!-- A day with no photograph is still a CARD. Unboxed, it had no bottom
+             edge of its own, so two such days in a row ran together and the rail
+             beside them — which is taller than two lines of text — finished below
+             the words it belongs to, leaving the weather glyph adrift under the
+             previous day. The box gives the row an edge and a floor.
+             `min-h-[6.5rem]` is the rail's own height (weekday 14 + date disc 32 +
+             glyph 32 + temperature 10, plus the gaps) and a little over, so the
+             whole of the date column is held inside the card rather than hanging
+             out of the bottom of it. The cook-and-table line sits at the FOOT and
+             the meal centres in what is left, so the card carries its two facts in
+             the same places the photograph does — the eye finds the cook on the
+             bottom edge of every row in the week, picture or no picture. -->
+        <div
+          class="flex min-h-[6.5rem] flex-col gap-2 rounded-lg border px-3 py-2.5 {needsPlanning
+            ? 'border-dashed border-muted-foreground/40 bg-muted/50'
+            : 'border-border bg-card'}"
+          data-testid={`${testid}-card`}
+        >
+          <span class="flex min-w-0 flex-1 items-center justify-center">
+            {@render mealLine('text-lg', 'text-foreground', 'text-muted-foreground')}
+          </span>
           {@render tableLine('text-muted-foreground', 'text-destructive')}
         </div>
       {/if}

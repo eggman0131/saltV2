@@ -53,6 +53,12 @@ export interface E2EBridge {
   // planner spec assert per-day config (note, attendees, chefs, guests) and
   // prove the Firestore round-trip across reload.
   getMealPlanSnapshot(): MealPlanWeek;
+  // Seeds a whole week document through the real `saveMealPlanWeek` adapter path
+  // (NF-C4). The planner's layout tests need a week that is already full when the
+  // page first mounts — seven days, each with a recipe attached so every row
+  // carries a photograph — and building that through the day sheets would be
+  // seven dialogs of typing. Emulator-only, like every other seeder here.
+  seedMealPlanWeek(week: MealPlanWeek): Promise<void>;
   // Synchronous snapshot of the owner-scoped chat-sessions store (test-infra
   // Phase 5). Chat is the one owner-scoped exception to the family-shared rule:
   // each user's store holds only their own sessions (subscribeChatSessions

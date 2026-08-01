@@ -63,17 +63,17 @@ export function dayIndexInWeek(startDate: string, date: string): number {
 
 // How close to the END of a cycle the planner starts showing the next one
 // (issue #639). Deliberately expressed as a position in the CYCLE rather than as
-// the literal weekday "Wednesday": what makes Wednesday the trigger is that it is
-// the penultimate day of a Friday-start week, and `firstDayOfWeek` is a
+// the literal weekday "Tuesday": what makes Tuesday the trigger is that it is the
+// third day from the end of a Friday-start week, and `firstDayOfWeek` is a
 // configurable admin setting. Move the first day of the week and the trigger
 // moves with it — which is the intent, because "the week you need is the one you
 // are not looking at" is a fact about the shop and the plan, both of which sit at
-// the end of the cycle, not about Wednesday.
-export const WEEK_EXTENSION_DAYS = 2;
+// the end of the cycle, not about Tuesday.
+export const WEEK_EXTENSION_DAYS = 3;
 
 // Does the week starting `startDate` show the whole of next week beneath it?
 //
-// True only for TODAY's week, and only once today has reached the last
+// True only for TODAY's week, and only once today has reached the final
 // `WEEK_EXTENSION_DAYS` days of it. Every other week shows alone — the extension
 // belongs to today's week, not to whatever the user navigated to.
 //
