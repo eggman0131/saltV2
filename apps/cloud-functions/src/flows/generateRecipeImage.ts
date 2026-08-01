@@ -111,6 +111,28 @@ export const COCKTAIL_IMAGE_STYLE_ANCHORS =
 export const COCKTAIL_SCENE_FALLBACK =
   'First read the drink itself — what it is built on and how it is served: a stirred, spirit-forward classic served straight up in a coupe; a bittersweet aperitivo over a big clear cube in a rocks glass; a shaken sour with a fine pale foam on top; a tall, bright highball over crushed ice; something creamy and rich — then let that reading drive the glassware, the ice, the garnish, the colour, the bar surface and the quality of light: a Negroni or an old fashioned calls for a late, low-lit evening — dark wood, deep amber and jewel reds, unhurried; a spritz or a highball calls for bright, cool, early-evening air — pale golds and greens, condensation, a fresher and breezier bar. Make this shift clearly legible at a glance — a deliberate, confident step, never a faint tint — so each drink feels like it lives in its own moment.';
 
+// What the two MOODS mean, in pictures — hoisted into one place because two
+// different strings need them (the tag gloss below and the scene fallback) and a
+// paraphrase in either is a drift in the art direction. Same reasoning as
+// SCENE_SCOPE_RULE in describeRecipeScene.ts.
+//
+// Mood carries ONLY mood: enclosure versus openness, warmth versus air, heavy
+// versus light. It deliberately carries no season, no weather and no hour. It
+// used to carry all three ("a dark autumn or winter evening", "the weather shut
+// outside", "cool daylight"), which put it in direct conflict with the optional
+// condition tags it has to combine with — and those mismatched pairs are the
+// whole reason both axes exist. A bright cold January and a muggy grey August
+// are exactly the evenings the tags are there to describe; a `comfort` gloss
+// asserting "the weather shut outside" against a `hot` gloss asserting "doors
+// open" describes neither. Season, weather and the quality of daylight belong to
+// the conditions; mood keeps the room.
+const PLACEHOLDER_MOOD_MEANINGS: Record<PlaceholderMood, string> = {
+  bright:
+    'openness and air: pale surfaces, clean uncluttered space, clear light colour, an easy unhurried room with nothing heavy or closed-in',
+  comfort:
+    'enclosure and warmth: drawn in close and intimate, lamplight rather than overhead light, deep saturated colour, soft heavy textures, everything close to hand',
+};
+
 // ─── The PLACEHOLDER anchors + fallback (issue #652) ────────────────────────
 // A placeholder is not an entry for a meal — it is the picture a night gets when
 // the whole plan was a sentence typed into the dinner box. Ten of them exist, and
@@ -146,16 +168,27 @@ export const COCKTAIL_SCENE_FALLBACK =
 // feature-critical is untouched: the illegibility rule still leads, still says it
 // outranks everything, and still arrives last where no edited brief can reach it.
 export const PLACEHOLDER_IMAGE_STYLE_ANCHORS =
-  'But NOTHING in this photograph may be identifiable as a particular dish. The picture says "a good dinner is planned"; it must never say what dinner is. Any food in shot is generic or lost — to focus, to steam, to a lid, to a low angle, to the edge of the frame — and never a recognisable, nameable meal. That rule is absolute and outranks everything else here. The subject need not be food at all: compose around whatever the direction above leads with, holding that lead in crisp focus and letting everything else — including anything plated — sit soft and unresolved behind it. Do NOT compose this as a hero shot of food. But it must always read WARM and APPETISING — the picture of an evening someone is about to enjoy, with something good just out of focus. Never a cold, bare or purely decorative frame: no empty table, no bare worktop, no styled still life with nothing about to be eaten. Within that, hold a recognisable house style: a photorealistic photograph with the warm, unfussy, appetising feel of a good evening at home, shot with real affection. Always keep these anchors — soft natural light; a shallow depth of field with the lead in crisp focus and everything behind it falling softly out of focus; real, lived-in props rather than studio-perfect ones. Absolutely no text, no captions, no watermark, no logos, no branding, no hands, no people. A single, inviting hero shot of a meal about to happen, in which nothing can be named.';
+  'But NOTHING in this photograph may be identifiable as a particular dish. The picture says "a good dinner is planned"; it must never say what dinner is. Any food in shot is generic or lost — to focus, to steam, to a lid, to a low angle, to the edge of the frame — and never a recognisable, nameable meal. That rule is absolute and outranks everything else here. The subject need not be food at all: compose around whatever the direction above leads with, holding that lead in crisp focus and letting everything else — including anything plated — sit soft and unresolved behind it. Do NOT compose this as a hero shot of food. But it must always read WARM and APPETISING — the picture of an evening someone is about to enjoy, with something good just out of focus. Never a bleak, bare or purely decorative frame: no empty table, no bare worktop, no styled still life with nothing about to be eaten. Within that, hold a recognisable house style: a photorealistic photograph with the warm, unfussy, appetising feel of a good evening at home, shot with real affection. Always keep these anchors — soft natural light; a shallow depth of field with the lead in crisp focus and everything behind it falling softly out of focus; real, lived-in props rather than studio-perfect ones. Absolutely no text, no captions, no watermark, no logos, no branding, no hands, no people. A single, inviting photograph of a meal about to happen, in which nothing can be named.';
 
 // The placeholder counterpart to RECIPE_IMAGE_DISH_READING_FALLBACK: used only
 // when no scene brief is available. Its three siblings all ask the model to read
 // the THING — the dish, the occasion, the serve — and let that drive the scene.
-// This one cannot: there is no thing. All it has to read is the MOOD the
-// placeholder is tagged with, and bright-versus-comfort is the only variable it
-// gets, so that is what chooses which of the legitimate leads a picture takes.
-export const PLACEHOLDER_SCENE_FALLBACK =
-  'First read the MOOD this picture is for — its tags say either "bright" or "comfort", and that is the only thing there is to read, because there is no dish here and there must not be one. Bright calls for cool daylight and a light, open evening: pale crockery, clear glass, a sunlit table, a bright kitchen, fresh greens and whites, air and space — the lead more likely a glass being poured or a dish being carried to a table by a window. Comfort calls for lamplight and a dark autumn or winter evening: warm ceramics, deep earthy colours, steam, a low golden pool of light on a table indoors, the weather shut outside — the lead more likely steam rising off a bowl or a cloche about to be lifted. Let the mood choose the lead, and drive the setting, the surface, the props, the colour palette and the quality of light from it. Make the shift clearly legible at a glance — a deliberate, confident step, never a faint tint — but let it stop at the mood: whatever food is in shot stays generic and unresolved, never a dish anyone could name.';
+// This one cannot: there is no thing. What it reads is the MOOD, plus whatever
+// conditions the picture is tagged with.
+//
+// It names no leads, for exactly the reason the anchors above name none. This
+// string is byte-identical on every placeholder and branches only two ways, so
+// the four leads it used to offer ("a glass being poured", "a dish being carried
+// to a table by a window", "steam rising off a bowl", "a cloche about to be
+// lifted") were an invariant menu in a prompt with nothing else concrete in it —
+// the same failure, one constant along. It now drives mood, light, surface and
+// palette and leaves the subject to be chosen per picture.
+//
+// The mood sentences interpolate PLACEHOLDER_MOOD_MEANINGS rather than restating
+// it: on the no-brief path this string and the tag gloss both fire, and two
+// hand-maintained descriptions of `comfort` in one prompt is how they end up
+// disagreeing.
+export const PLACEHOLDER_SCENE_FALLBACK = `First read the MOOD this picture is for — its tags say either "bright" or "comfort", and that is nearly all there is to read, because there is no dish here and there must not be one. Bright calls for ${PLACEHOLDER_MOOD_MEANINGS.bright}. Comfort calls for ${PLACEHOLDER_MOOD_MEANINGS.comfort}. Let the mood drive the setting, the surface, the props, the colour palette and the quality of light, and let it choose what the picture leads with — anything that belongs to the evening about to be eaten, chosen fresh for this picture rather than reached for out of habit. Make the shift clearly legible at a glance — a deliberate, confident step, never a faint tint — but let it stop at the mood: whatever food is in shot stays generic and unresolved, never a dish anyone could name.`;
 
 // The kinds this flow knows how to paint. Declared LOCALLY as genkit-`z` literals
 // rather than imported from `RecipeKindSchema`: genkit re-exports its own bundled
@@ -216,28 +249,26 @@ function openerFor(
         return `A beautiful, appetising photograph of the finished dish "${title}".`;
     }
   })();
+  // Every kind joins its description the same way. A placeholder's was briefly
+  // labelled as binding direction ("…which you must follow: …") on the theory
+  // that one sentence was being outvoted by ~300 words of locked anchors. The
+  // production documents say otherwise: their briefs track their descriptions
+  // closely, so the label bought nothing — and it made a WRONG description
+  // harder to correct, which is the live failure here rather than a theoretical
+  // one (a placeholder described as "cool clear midday light" already produced a
+  // brief about lunch, against an opener that says dinner).
   const desc = description?.trim();
-  if (!desc) return lead;
-  // For the other three kinds a description is colour on a subject that already
-  // speaks for itself — the title names a dish, and the brief was written from a
-  // method. A placeholder has neither, so its description is the ONLY thing that
-  // says what this picture leads with, and it is one sentence against ~300 words
-  // of locked anchors. Run on as bare prose it reads as background; named as
-  // direction it reads as an instruction. Nothing else about the ordering moves:
-  // it still sits at the front, still before the brief, still before the anchors.
-  return kind === 'placeholder'
-    ? `${lead} The scene direction for this particular picture, which you must follow: ${desc}`
-    : `${lead} ${desc}`;
+  return desc ? `${lead} ${desc}` : lead;
 }
 
 // What a placeholder's tags MEAN, in pictures.
 //
-// The mood is the only per-doc variable these ten photographs have, and until now
-// the image model only ever saw the bare word: "This recipe is tagged: comfort."
-// Everything that says what comfort LOOKS like — lamplight, warm ceramics, a dark
-// evening indoors — lived in PLACEHOLDER_SCENE_FALLBACK, which by construction is
-// used only when there is no brief. On the normal path (brief present) it was
-// never sent at all, so ten pictures differed by one adjective.
+// Tags are nearly the whole per-doc variable these ten photographs have, and
+// until now the image model only ever saw the bare word: "This recipe is tagged:
+// comfort." Everything that says what comfort LOOKS like — lamplight, soft heavy
+// textures, drawn in close — lived in PLACEHOLDER_SCENE_FALLBACK, which by
+// construction is used only when there is no brief. On the normal path (brief
+// present) it was never sent at all, so ten pictures differed by one adjective.
 //
 // Glossing them here puts that language on the path that actually runs, and does
 // it PER DOC: only the tags a picture carries are expanded, so `bright` and
@@ -248,16 +279,23 @@ function openerFor(
 // condition in `pickPlaceholder.ts` and this stops compiling until it is glossed.
 // A type-only import — no runtime dependency, and the genkit-zod caveat above
 // concerns schemas, not plain types.
+// The two axes are kept strictly apart (see PLACEHOLDER_MOOD_MEANINGS): the mood
+// owns the ROOM, the conditions own the SEASON, the WEATHER and the light. Any
+// mood may pair with any condition, so neither may assert the other's territory.
+//
+// Every condition also reads as EVENING, because every placeholder is dinner. The
+// two that did not — `hot`'s "thin bleached light" and `sunny`'s "hard, clear
+// sun… sharp shadows", both plainly noon — contradicted the opener and the
+// anchors, which each assert a meal about to be eaten. `wet` had the same defect
+// in a quieter form ("a grey afternoon") and is corrected with them.
 const PLACEHOLDER_TAG_MEANINGS: Record<PlaceholderMood | PlaceholderCondition, string> = {
-  bright:
-    'bright — cool daylight and a light, open evening: pale surfaces, sunlit air, fresh greens and whites, space and openness',
-  comfort:
-    'comfort — lamplight and a dark autumn or winter evening: warm ceramics, deep earthy colours, a low golden pool of light indoors, the weather shut outside',
-  wet: 'wet — rain running down the glass, a soaked street or garden beyond it, the room lit against a grey afternoon',
+  bright: `bright — ${PLACEHOLDER_MOOD_MEANINGS.bright}`,
+  comfort: `comfort — ${PLACEHOLDER_MOOD_MEANINGS.comfort}`,
+  wet: 'wet — rain running down the glass and standing on the ground beyond it, the room lit against a wet, darkening evening',
   sunny:
-    'sunny — hard, clear sun: sharp shadows thrown across the surface, bright glare at the edge of the frame',
+    'sunny — late, low sun coming in almost level: long raking shadows thrown across the surface, warm light catching the edges of things',
   cloudy: 'cloudy — flat, soft, even overcast light with almost no shadow anywhere',
-  hot: 'hot — a properly hot day: everything cold beaded and sweating, thin bleached light, doors open to the outside',
+  hot: 'hot — a properly hot day cooling into the evening: everything cold beaded and sweating, hazy late light, doors and windows open to the outside',
   cold: 'cold — a properly cold night: condensation on the inside of the windows, thick knitted and woollen textures, everything steaming',
 };
 

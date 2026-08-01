@@ -587,11 +587,12 @@ describe('generateRecipeImage flow — entry kinds', () => {
     );
   });
 
-  it("hands a placeholder's description over as binding direction, not as background prose", async () => {
-    // A placeholder has no method and no dish for the model to fall back on, so
-    // its description is the only thing that says what this picture leads with —
-    // one sentence against ~300 words of locked anchors. Named as direction it
-    // reads as an instruction; run on as prose it reads as scenery.
+  it('joins a placeholder description the same way every other kind does', async () => {
+    // This was briefly labelled as binding direction ("…which you must follow:")
+    // on the theory that one sentence was being outvoted by the anchors. The
+    // production documents disproved it — their briefs track their descriptions
+    // closely — and the label made a wrong description harder to correct, which
+    // is the failure actually visible in the data.
     const prompt = await promptFor({
       title: 'Placeholder — autumn evening',
       description: 'A cloche about to be lifted, the table laid around it.',
@@ -599,18 +600,16 @@ describe('generateRecipeImage flow — entry kinds', () => {
     });
 
     expect(prompt).toContain(
-      'The scene direction for this particular picture, which you must follow: A cloche about to be lifted',
+      'never as a dish to paint. A cloche about to be lifted, the table laid around it.',
     );
+    expect(prompt).not.toContain('which you must follow');
 
-    // The other three kinds are untouched: their description still runs on after
-    // the opener exactly as it always has.
     const recipe = await promptFor({
       title: 'Roast chicken',
       description: 'Lemon and thyme.',
       kind: 'recipe',
     });
     expect(recipe).toContain('the finished dish "Roast chicken". Lemon and thyme.');
-    expect(recipe).not.toContain('The scene direction for this particular picture');
   });
 
   it('glosses a placeholder’s tags into what they look like', async () => {
@@ -627,7 +626,7 @@ describe('generateRecipeImage flow — entry kinds', () => {
     });
 
     expect(prompt).toContain('This picture is tagged: comfort, wet.');
-    expect(prompt).toContain('lamplight and a dark autumn or winter evening');
+    expect(prompt).toContain('lamplight rather than overhead light');
     expect(prompt).toContain('rain running down the glass');
     // Read as the evening, never as a dish, and never rendered as text.
     expect(prompt).toContain('Read the tags as the EVENING this picture is for');
@@ -663,8 +662,99 @@ describe('generateRecipeImage flow — entry kinds', () => {
     });
 
     expect(prompt).toContain('This picture is tagged: bright, something-nobody-glossed.');
-    expect(prompt).toContain('cool daylight and a light, open evening');
+    expect(prompt).toContain('openness and air');
     expect(prompt).not.toContain('something-nobody-glossed —');
+  });
+
+  it('keeps mood and condition on separate axes so any pair can combine', async () => {
+    // Mood is mandatory, condition is optional, so every mood × condition pair
+    // has to read coherently — and the mismatched ones (a bright cold January, a
+    // muggy grey August) are the whole reason there are two axes. The mood
+    // glosses used to assert season, weather AND hour, which put them in direct
+    // conflict: `comfort`'s "weather shut outside" against `hot`'s "doors open",
+    // `bright`'s "sunlit air" against `cold`'s "properly cold night".
+    for (const mood of ['bright', 'comfort'] as const) {
+      const gloss = (
+        await promptFor({ title: 'P', description: null, kind: 'placeholder', tags: [mood] })
+      ).slice(0);
+      // No season, no weather, no hour anywhere in a mood gloss.
+      for (const trespass of [
+        'autumn',
+        'winter',
+        'summer',
+        'daylight',
+        'sunlit',
+        'weather shut outside',
+        'a dark',
+      ]) {
+        expect(
+          gloss.slice(gloss.indexOf('They mean:'), gloss.indexOf('Read the tags')),
+        ).not.toContain(trespass);
+      }
+    }
+    // And the conflicting pairs now co-exist.
+    const brightCold = await promptFor({
+      title: 'P',
+      description: null,
+      kind: 'placeholder',
+      tags: ['bright', 'cold'],
+    });
+    expect(brightCold).toContain('openness and air');
+    expect(brightCold).toContain('a properly cold night');
+  });
+
+  it('reads every condition as an evening, because every placeholder is dinner', async () => {
+    // `hot` ("thin bleached light") and `sunny` ("hard, clear sun… sharp
+    // shadows") described noon, while the opener and the anchors both assert a
+    // meal about to be eaten. `wet` had the same defect quietly ("a grey
+    // afternoon").
+    const prompt = await promptFor({
+      title: 'P',
+      description: null,
+      kind: 'placeholder',
+      tags: ['sunny', 'hot', 'wet'],
+    });
+
+    expect(prompt).toContain('late, low sun coming in almost level');
+    expect(prompt).toContain('cooling into the evening');
+    expect(prompt).toContain('a wet, darkening evening');
+    for (const noon of ['thin bleached light', 'hard, clear sun', 'a grey afternoon']) {
+      expect(prompt).not.toContain(noon);
+    }
+  });
+
+  it('does not contradict itself on "hero shot", and does not collide with the `cold` tag', () => {
+    // The block prohibits a hero shot of food and then used to close with "A
+    // single, inviting hero shot of a meal about to happen" — the same phrase,
+    // the opposite instruction, in the final and highest-weighted sentence.
+    expect(PLACEHOLDER_IMAGE_STYLE_ANCHORS).toContain('Do NOT compose this as a hero shot of food');
+    expect(PLACEHOLDER_IMAGE_STYLE_ANCHORS).toContain(
+      'A single, inviting photograph of a meal about to happen, in which nothing can be named.',
+    );
+    expect(PLACEHOLDER_IMAGE_STYLE_ANCHORS).not.toContain('inviting hero shot');
+    // "Never a cold, bare or purely decorative frame" collided with `cold`, a tag
+    // whose gloss ships in the same prompt.
+    expect(PLACEHOLDER_IMAGE_STYLE_ANCHORS).not.toContain('Never a cold');
+    expect(PLACEHOLDER_IMAGE_STYLE_ANCHORS).toContain('Never a bleak, bare or purely decorative');
+  });
+
+  it('names no leads in the fallback either — the same failure, one constant along', () => {
+    // The fallback is byte-identical on every placeholder and branches only two
+    // ways, so an enumerated menu here is exactly what it was in the anchors.
+    for (const lead of [
+      'a glass being poured',
+      'a dish being carried to a table by a window',
+      'steam rising off a bowl',
+      'a cloche about to be lifted',
+    ]) {
+      expect(PLACEHOLDER_SCENE_FALLBACK).not.toContain(lead);
+    }
+    // Still usable with no brief: it drives mood, light, surface and palette…
+    expect(PLACEHOLDER_SCENE_FALLBACK).toContain('Let the mood drive the setting, the surface');
+    expect(PLACEHOLDER_SCENE_FALLBACK).toContain('openness and air');
+    expect(PLACEHOLDER_SCENE_FALLBACK).toContain('lamplight rather than overhead light');
+    // …and the illegibility rule survives the rewrite.
+    expect(PLACEHOLDER_SCENE_FALLBACK).toContain('never a dish anyone could name');
   });
 
   it('keeps the placeholder anchors LAST on the fallback path too (no brief)', async () => {
