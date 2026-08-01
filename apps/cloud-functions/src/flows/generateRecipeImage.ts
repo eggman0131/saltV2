@@ -1,11 +1,15 @@
 import { z } from 'genkit';
 import { googleAI } from '@genkit-ai/google-genai';
 import { setActiveSpanName } from '@salt/observability/server';
-import type { PlaceholderCondition, PlaceholderMood } from '@salt/domain';
 import { ai } from '../genkit.js';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { resolveModel } from '../ai/resolveModel.js';
 import { parseDataUrl } from './dataUrl.js';
+import {
+  PLACEHOLDER_MOOD_MEANINGS,
+  PLACEHOLDER_TAG_MEANINGS,
+  isPlaceholderTag,
+} from './placeholderVocabulary.js';
 
 // Tier-2 recipe hero-image generation (issue #148). The counterpart to the
 // Tier-1 canon pictogram (generateCanonIcon.ts): where that paints a flat cartoon
@@ -110,28 +114,6 @@ export const COCKTAIL_IMAGE_STYLE_ANCHORS =
 // to read is the SERVE, because the glass, the ice and the light all follow from it.
 export const COCKTAIL_SCENE_FALLBACK =
   'First read the drink itself — what it is built on and how it is served: a stirred, spirit-forward classic served straight up in a coupe; a bittersweet aperitivo over a big clear cube in a rocks glass; a shaken sour with a fine pale foam on top; a tall, bright highball over crushed ice; something creamy and rich — then let that reading drive the glassware, the ice, the garnish, the colour, the bar surface and the quality of light: a Negroni or an old fashioned calls for a late, low-lit evening — dark wood, deep amber and jewel reds, unhurried; a spritz or a highball calls for bright, cool, early-evening air — pale golds and greens, condensation, a fresher and breezier bar. Make this shift clearly legible at a glance — a deliberate, confident step, never a faint tint — so each drink feels like it lives in its own moment.';
-
-// What the two MOODS mean, in pictures — hoisted into one place because two
-// different strings need them (the tag gloss below and the scene fallback) and a
-// paraphrase in either is a drift in the art direction. Same reasoning as
-// SCENE_SCOPE_RULE in describeRecipeScene.ts.
-//
-// Mood carries ONLY mood: enclosure versus openness, warmth versus air, heavy
-// versus light. It deliberately carries no season, no weather and no hour. It
-// used to carry all three ("a dark autumn or winter evening", "the weather shut
-// outside", "cool daylight"), which put it in direct conflict with the optional
-// condition tags it has to combine with — and those mismatched pairs are the
-// whole reason both axes exist. A bright cold January and a muggy grey August
-// are exactly the evenings the tags are there to describe; a `comfort` gloss
-// asserting "the weather shut outside" against a `hot` gloss asserting "doors
-// open" describes neither. Season, weather and the quality of daylight belong to
-// the conditions; mood keeps the room.
-const PLACEHOLDER_MOOD_MEANINGS: Record<PlaceholderMood, string> = {
-  bright:
-    'openness and air: pale surfaces, clean uncluttered space, clear light colour, an easy unhurried room with nothing heavy or closed-in',
-  comfort:
-    'enclosure and warmth: drawn in close and intimate, lamplight rather than overhead light, deep saturated colour, soft heavy textures, everything close to hand',
-};
 
 // ─── The PLACEHOLDER anchors + fallback (issue #652) ────────────────────────
 // A placeholder is not an entry for a meal — it is the picture a night gets when
@@ -270,39 +252,16 @@ function openerFor(
 // construction is used only when there is no brief. On the normal path (brief
 // present) it was never sent at all, so ten pictures differed by one adjective.
 //
-// Glossing them here puts that language on the path that actually runs, and does
-// it PER DOC: only the tags a picture carries are expanded, so `bright` and
+// Glossing them puts that language on the path that actually runs, and does it
+// PER DOC: only the tags a picture carries are expanded, so `bright` and
 // `comfort` never arrive together contradicting each other — which is exactly why
 // this could not simply be moved into the anchors.
 //
-// Typed against the domain unions so the vocabulary cannot drift: add a mood or a
-// condition in `pickPlaceholder.ts` and this stops compiling until it is glossed.
-// A type-only import — no runtime dependency, and the genkit-zod caveat above
-// concerns schemas, not plain types.
-// The two axes are kept strictly apart (see PLACEHOLDER_MOOD_MEANINGS): the mood
-// owns the ROOM, the conditions own the SEASON, the WEATHER and the light. Any
-// mood may pair with any condition, so neither may assert the other's territory.
+// The words themselves live in placeholderVocabulary.ts, shared with the art
+// director's prompt in describeRecipeScene.ts. They were written separately once
+// and had already drifted: that prompt still described `bright` as "cool
+// daylight, a sunlit table" after this file stopped saying anything of the kind.
 //
-// Every condition also reads as EVENING, because every placeholder is dinner. The
-// two that did not — `hot`'s "thin bleached light" and `sunny`'s "hard, clear
-// sun… sharp shadows", both plainly noon — contradicted the opener and the
-// anchors, which each assert a meal about to be eaten. `wet` had the same defect
-// in a quieter form ("a grey afternoon") and is corrected with them.
-const PLACEHOLDER_TAG_MEANINGS: Record<PlaceholderMood | PlaceholderCondition, string> = {
-  bright: `bright — ${PLACEHOLDER_MOOD_MEANINGS.bright}`,
-  comfort: `comfort — ${PLACEHOLDER_MOOD_MEANINGS.comfort}`,
-  wet: 'wet — rain running down the glass and standing on the ground beyond it, the room lit against a wet, darkening evening',
-  sunny:
-    'sunny — late, low sun coming in almost level: long raking shadows thrown across the surface, warm light catching the edges of things',
-  cloudy: 'cloudy — flat, soft, even overcast light with almost no shadow anywhere',
-  hot: 'hot — a properly hot day cooling into the evening: everything cold beaded and sweating, hazy late light, doors and windows open to the outside',
-  cold: 'cold — a properly cold night: condensation on the inside of the windows, thick knitted and woollen textures, everything steaming',
-};
-
-function isGlossedTag(tag: string): tag is PlaceholderMood | PlaceholderCondition {
-  return Object.prototype.hasOwnProperty.call(PLACEHOLDER_TAG_MEANINGS, tag);
-}
-
 // The tags clause, per kind. The default arm is byte-for-byte the clause every
 // kind has had since issue #148 — only `placeholder` diverges, because only a
 // placeholder has no dish for "the dish's mood, season and cuisine" to refer to
@@ -314,7 +273,7 @@ function tagsClauseFor(kind: ImageKind | undefined, tags: string[]): string {
   }
   // Free-form tags that are not moods or conditions stay listed but unglossed —
   // they are still a cue, we just have no picture to hand for them.
-  const glosses = tags.filter(isGlossedTag).map((t) => PLACEHOLDER_TAG_MEANINGS[t]);
+  const glosses = tags.filter(isPlaceholderTag).map((t) => PLACEHOLDER_TAG_MEANINGS[t]);
   const glossed = glosses.length > 0 ? ` They mean: ${glosses.join('; ')}.` : '';
   return ` This picture is tagged: ${tags.join(', ')}.${glossed} Read the tags as the EVENING this picture is for, and let them drive the light, the colour, the surface, the textures and the season. They are cues for staging only: do NOT draw, write, label or otherwise show any of these words in the image, and never let them name a dish.`;
 }

@@ -418,6 +418,44 @@ describe('describeRecipeScene flow — placeholders', () => {
     expect(prompt).toContain('Tags: comfort, wet');
   });
 
+  it('teaches the SAME tag vocabulary the image prompt uses, on both variants', async () => {
+    // These two prompts were written separately and drifted: this one described
+    // `bright` as "cool daylight, pale crockery, a sunlit table" long after the
+    // generator stopped saying anything of the kind, and it defined none of the
+    // five conditions at all while the flow fed them to it on a `Tags:` line.
+    // The words now live in one module and both prompts interpolate it.
+    const { PLACEHOLDER_TAG_VOCABULARY, PLACEHOLDER_TAG_MEANINGS } =
+      await import('../../src/flows/placeholderVocabulary.js');
+
+    const authoring = await systemFor({ ...PLACEHOLDER, kind: 'placeholder' });
+    const revising = await systemFor({
+      ...PLACEHOLDER,
+      kind: 'placeholder',
+      currentBrief: 'A low lamp over a laid table.',
+      hint: 'make it a winter evening',
+    });
+
+    for (const system of [authoring, revising]) {
+      expect(system).toContain(PLACEHOLDER_TAG_VOCABULARY);
+      // Every tag it can be handed is defined — the five conditions included.
+      for (const tag of ['bright', 'comfort', 'wet', 'sunny', 'cloudy', 'hot', 'cold']) {
+        expect(system).toContain(`"${tag}" is `);
+      }
+      // And the season-laden mood language is gone from both.
+      expect(system).not.toContain('cool daylight');
+      expect(system).not.toContain('a dark evening indoors');
+    }
+    // Same word collision the anchors had: `cold` is a tag whose gloss ships in
+    // this very prompt, so the prohibition must not spend the word on "bleak".
+    expect(authoring).not.toContain('never a cold, empty table');
+    expect(authoring).toContain('never a bleak, empty table');
+
+    // The gloss the image model sees is built from the same source, so the two
+    // cannot say different things about the same word.
+    expect(PLACEHOLDER_TAG_MEANINGS.comfort).toContain('lamplight rather than overhead light');
+    expect(authoring).toContain('lamplight rather than overhead light');
+  });
+
   it('takes the lead from the description instead of offering a menu of four', async () => {
     // With no method and no ingredients to read, an enumerated list of leads was
     // the most concrete thing in front of the model — so it chose from the list
