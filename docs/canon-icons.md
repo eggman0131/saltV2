@@ -24,11 +24,24 @@ They do not clash because they never share size or context. The recipe feature m
 the same Storage + `thumbnail`-style conventions but is out of scope here.
 
 **Tier 2 is no longer only dishes.** The `recipes` collection also holds "When you
-CBA" outings and cocktails (#637), so the hero pipeline carries three art
-directions — a plated dish, food as it *arrives* (takeaway, picnic, a table out),
-and a drink in glassware — selected by the entry's `kind`. Tier 1 is unaffected:
-canon items are groceries, one style, and nothing about a hero's art direction
-reaches down here.
+CBA" outings and cocktails (#637) and placeholders (#652), so the hero pipeline
+carries four art directions — a plated dish, food as it *arrives* (takeaway,
+picnic, a table out), a drink in glassware, and an evening in which **nothing may
+be nameable** — selected by the entry's `kind`. Tier 1 is unaffected: canon items
+are groceries, one style, and nothing about a hero's art direction reaches down
+here.
+
+The placeholder direction is the odd one, and the reason is worth knowing before
+touching it: the other three make a subject the star, and a placeholder must not
+have one. Ten of them are attached to many different evenings each, so a
+nameable dish is a picture of the wrong dinner. Two consequences follow, both
+load-bearing. Its style anchors name **no subject** — they reference whatever the
+per-document direction leads with, because anything concrete in a block that is
+byte-identical across every placeholder becomes the whole brief and every picture
+comes back the same. And what its tags mean lives in one shared module,
+`apps/cloud-functions/src/flows/placeholderVocabulary.ts`, because both the image
+prompt and the art director's prompt have to say it and they drifted apart the
+one time they each said it themselves.
 
 ## House style (proven in prototype)
 

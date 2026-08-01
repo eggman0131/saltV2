@@ -7,6 +7,7 @@ import {
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 import { resolveModel } from '../ai/resolveModel.js';
+import { PLACEHOLDER_TAG_VOCABULARY } from './placeholderVocabulary.js';
 
 // describeRecipeScene — the cheap text step in front of the expensive image step.
 //
@@ -227,9 +228,23 @@ Write ONE paragraph of plain prose, at most about 80 words. Return only the revi
 // evenings, so naming a dish is the one thing it must never do.
 //
 // So the reading question, which all three other prompts ask of the thing, has
-// nothing to ask it of. What is left to read is the MOOD — the entry is tagged
-// `bright` or `comfort` — and the brief's job is to turn that into a scene: which
-// lead the picture takes, what light it is in, what it is set on.
+// nothing to ask it of. What is left to read is the TAGS — a mandatory mood plus
+// any weather conditions — and the brief's job is to turn those into a scene:
+// what light the picture is in, what it is set on, what sits unresolved behind.
+//
+// It does NOT choose the lead. It used to: this prompt offered a menu of four
+// (a glass mid-pour, a cloche, steam off a bowl, a dish shot soft), and with no
+// method and no ingredients to read, that menu was the most concrete thing in
+// front of the model. The menu is gone; the DESCRIPTION names the lead and this
+// prompt builds a scene around it. That is also why `tags` is on the input schema
+// at all — this prompt claimed to read a mood it was never given, leaving the
+// title and description as the only signal that ever reached it.
+//
+// What the tags MEAN is not written here. It lives in placeholderVocabulary.ts,
+// shared verbatim with the image prompt, because these two were written
+// separately and had already drifted apart: this one still called `bright` "cool
+// daylight, pale crockery, a sunlit table" after the generator had stopped
+// saying so, and defined none of the five conditions while being handed them.
 //
 // The illegibility rule is NOT trusted to this prompt. It lives in the locked
 // anchors in generateRecipeImage.ts, appended after every brief, precisely
@@ -245,17 +260,16 @@ There is no dish here, and there must not be one. This picture says "a good dinn
 dinner is. Do not invent a meal, do not name one, and do not describe a plate of anything recognisable: any food in \
 the frame stays generic, or is lost to steam, to focus, to a lid, to the edge of the shot.
 
-What you read instead is the MOOD, which the tags carry: "bright" is cool daylight, pale crockery, clear glass, a \
-sunlit table, air and space; "comfort" is lamplight, steam, warm ceramics, deep colours, a dark evening indoors. Let \
-the mood decide the scene.
+What you read instead is the TAGS. ${PLACEHOLDER_TAG_VOCABULARY} Let them decide the scene.
 
 Cover only what is specific to THIS placeholder:
-- what LEADS the picture — it need not be food: a glass of wine mid-pour, a cloche waiting to be lifted, steam rising \
-off a bowl, a serving dish so close and so soft that only warmth and colour survive
+- what LEADS the picture — the description says what this one leads with, so take it as given and build the scene \
+around it rather than substituting a lead of your own; it need not be food. Only when the description names no lead \
+should you choose one, and then it must suit the mood and must not be a plate of dinner
 - what sits behind and around the lead, unresolved — the table, the surface, the props, the light in the room
 - the mood, the hour and the season it reads as, and why the tags imply that
 
-${SCENE_SCOPE_RULE} It must read warm and appetising — an evening someone is about to enjoy — and never a cold, empty \
+${SCENE_SCOPE_RULE} It must read warm and appetising — an evening someone is about to enjoy — and never a bleak, empty \
 table or a styled still life with nothing about to be eaten.
 
 Write ONE paragraph of plain prose, at most about 80 words. A brief, not an essay. Return only the brief.`;
@@ -281,6 +295,8 @@ the rewrite — this is a revision, not a fresh start.
 There is still no dish, whatever the change asks for. If the requested change names a meal, take from it only the \
 mood, the season, the colour and the light, and never the dish itself: any food in the frame stays generic or lost to \
 steam, focus, a lid or the edge of the shot. This picture must never become one anyone could name.
+
+The tags still say which evening this is, and a rewrite stays true to them. ${PLACEHOLDER_TAG_VOCABULARY}
 
 Cover only what is specific to THIS placeholder: what leads the picture, what sits unresolved behind it, and the \
 mood, hour and season it reads as. ${SCENE_SCOPE_RULE} That holds even if the requested change asks for it.
@@ -309,7 +325,10 @@ export const describeRecipeSceneFlow = ai.defineFlow(
     inputSchema: DescribeRecipeSceneInputSchema,
     outputSchema: DescribeRecipeSceneOutputSchema,
   },
-  async ({ title, description, ingredients, steps, currentBrief, hint, kind }) => {
+  // `tags` is defaulted here as well as on the schema: the schema default only
+  // applies when the input is actually parsed, and a direct in-process call to
+  // the flow function (which is how the whole suite drives it) skips that.
+  async ({ title, description, tags = [], ingredients, steps, currentBrief, hint, kind }) => {
     // Revision needs BOTH halves: a paragraph to revise and a steer to revise it
     // by. With either missing there is nothing to fold through anything, so we
     // author from scratch — which is also, deliberately, what "start over" sends
@@ -320,6 +339,10 @@ export const describeRecipeSceneFlow = ai.defineFlow(
     const promptParts = [
       `Title: ${title}`,
       description ? `Description: ${description}` : null,
+      // Sits directly under the description because for a placeholder these two
+      // ARE the input — there is no method below to outweigh them. Omitted when
+      // empty so a tagless entry's prompt is unchanged.
+      tags.length > 0 ? `Tags: ${tags.join(', ')}` : null,
       ingredients.length > 0
         ? `Ingredients:\n${ingredients.map((i) => `- ${i}`).join('\n')}`
         : null,

@@ -905,6 +905,11 @@
             data-testid="recipe-tags-input"
           />
         </div>
+        {#if KIND_COPY[draftKind].tagsHint}
+          <p class="text-xs text-muted-foreground" data-testid="recipe-tags-hint">
+            {KIND_COPY[draftKind].tagsHint}
+          </p>
+        {/if}
         {#if availableSuggestions.length > 0}
           <div class="flex flex-wrap gap-1.5">
             {#each availableSuggestions as tag (tag)}

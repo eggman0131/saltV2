@@ -401,6 +401,80 @@ describe('describeRecipeScene flow — placeholders', () => {
     expect(system).toContain('ONE paragraph');
   });
 
+  it('is actually GIVEN the mood it is told to read', async () => {
+    // The prompt has always said "what you read instead is the MOOD, which the
+    // tags carry" — and the input schema had no `tags` field, so nothing ever
+    // carried them. For a placeholder that left title + description as the whole
+    // input to a step whose stated job is to read a mood.
+    mockGenerate.mockClear();
+    mockGenerate.mockResolvedValue({ output: { brief: 'x' } });
+    await (describeRecipeSceneFlow as Function)({
+      ...PLACEHOLDER,
+      kind: 'placeholder',
+      tags: ['comfort', 'wet'],
+    });
+
+    const prompt = mockGenerate.mock.calls[0]![0].prompt as string;
+    expect(prompt).toContain('Tags: comfort, wet');
+  });
+
+  it('teaches the SAME tag vocabulary the image prompt uses, on both variants', async () => {
+    // These two prompts were written separately and drifted: this one described
+    // `bright` as "cool daylight, pale crockery, a sunlit table" long after the
+    // generator stopped saying anything of the kind, and it defined none of the
+    // five conditions at all while the flow fed them to it on a `Tags:` line.
+    // The words now live in one module and both prompts interpolate it.
+    const { PLACEHOLDER_TAG_VOCABULARY, PLACEHOLDER_TAG_MEANINGS } =
+      await import('../../src/flows/placeholderVocabulary.js');
+
+    const authoring = await systemFor({ ...PLACEHOLDER, kind: 'placeholder' });
+    const revising = await systemFor({
+      ...PLACEHOLDER,
+      kind: 'placeholder',
+      currentBrief: 'A low lamp over a laid table.',
+      hint: 'make it a winter evening',
+    });
+
+    for (const system of [authoring, revising]) {
+      expect(system).toContain(PLACEHOLDER_TAG_VOCABULARY);
+      // Every tag it can be handed is defined — the five conditions included.
+      for (const tag of ['bright', 'comfort', 'wet', 'sunny', 'cloudy', 'hot', 'cold']) {
+        expect(system).toContain(`"${tag}" is `);
+      }
+      // And the season-laden mood language is gone from both.
+      expect(system).not.toContain('cool daylight');
+      expect(system).not.toContain('a dark evening indoors');
+    }
+    // Same word collision the anchors had: `cold` is a tag whose gloss ships in
+    // this very prompt, so the prohibition must not spend the word on "bleak".
+    expect(authoring).not.toContain('never a cold, empty table');
+    expect(authoring).toContain('never a bleak, empty table');
+
+    // The gloss the image model sees is built from the same source, so the two
+    // cannot say different things about the same word.
+    expect(PLACEHOLDER_TAG_MEANINGS.comfort).toContain('lamplight rather than overhead light');
+    expect(authoring).toContain('lamplight rather than overhead light');
+  });
+
+  it('takes the lead from the description instead of offering a menu of four', async () => {
+    // With no method and no ingredients to read, an enumerated list of leads was
+    // the most concrete thing in front of the model — so it chose from the list
+    // and the per-doc description that should have decided the shot was averaged
+    // into it. Ten placeholders, four ideas.
+    const system = await systemFor({ ...PLACEHOLDER, kind: 'placeholder' });
+
+    expect(system).toContain('the description says what this one leads with');
+    expect(system).toContain('take it as given');
+    for (const lead of [
+      'a glass of wine mid-pour',
+      'a cloche waiting to be lifted',
+      'steam rising off a bowl',
+      'a serving dish so close and so soft',
+    ]) {
+      expect(system).not.toContain(lead);
+    }
+  });
+
   it('refuses the dish even when the requested change asks for one', async () => {
     // The guard the other three revision prompts do not need. Editing the brief
     // is how these ten pictures get good, so "make it a roast dinner" is a

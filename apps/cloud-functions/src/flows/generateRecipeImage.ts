@@ -5,6 +5,11 @@ import { ai } from '../genkit.js';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { resolveModel } from '../ai/resolveModel.js';
 import { parseDataUrl } from './dataUrl.js';
+import {
+  PLACEHOLDER_MOOD_MEANINGS,
+  PLACEHOLDER_TAG_MEANINGS,
+  isPlaceholderTag,
+} from './placeholderVocabulary.js';
 
 // Tier-2 recipe hero-image generation (issue #148). The counterpart to the
 // Tier-1 canon pictogram (generateCanonIcon.ts): where that paints a flat cartoon
@@ -127,17 +132,45 @@ export const COCKTAIL_SCENE_FALLBACK =
 // its three siblings share. That clause exists to stop a wide shot burying a real
 // dish; here there is no real dish, and forcing food to dominate the frame is
 // precisely what would push the model back toward painting an identifiable one.
+//
+// It also, now, names no SUBJECT. It used to enumerate four legitimate leads (a
+// glass of wine mid-pour, a cloche, steam off a bowl, a dish shot soft) and then
+// ask for variety in the next breath. That was self-defeating twice over. This
+// block is byte-identical on all ten pictures, and those four leads were the only
+// concrete nouns in a prompt that is otherwise all prohibitions — so they were
+// the whole positive brief, repeated ten times, and every picture came back with
+// the same wine glass and the same linen. The "do NOT default to the same glass,
+// cloth, tabletop" sentence that was meant to fix it fed those same nouns back in
+// a negation, which conditions an image model far more weakly than the noun does.
+//
+// A lead is a SUBJECT decision, and by this file's own contract subjects belong
+// to the brief (which is per-doc and can differ ten ways) while anchors hold
+// style and prohibitions (which must not). So the anchors now REFERENCE the lead
+// the direction above supplies rather than supplying one. Everything
+// feature-critical is untouched: the illegibility rule still leads, still says it
+// outranks everything, and still arrives last where no edited brief can reach it.
 export const PLACEHOLDER_IMAGE_STYLE_ANCHORS =
-  'But NOTHING in this photograph may be identifiable as a particular dish. The picture says "a good dinner is planned"; it must never say what dinner is. Any food in shot is generic or lost — to focus, to steam, to a lid, to a low angle, to the edge of the frame — and never a recognisable, nameable meal. That rule is absolute and outranks everything else here. The subject need not be food at all: a glass of wine mid-pour crisp in the foreground, a smart cloche waiting to be lifted with the meal still under it, steam rising off a bowl on a cold night, a generously filled serving dish shot so tight and so shallow that only warmth and colour survive — any of these is a legitimate lead, with whatever is plated sitting soft and unresolved behind it. Do NOT compose this as a hero shot of food; let the lead be the glass, the lid, the steam, the light, the table about to be sat down at. But it must always read WARM and APPETISING — the picture of an evening someone is about to enjoy, with something good just out of focus. Never a cold, bare or purely decorative frame: no empty table, no bare worktop, no styled still life with nothing about to be eaten. Vary the lead, the surface, the props and the angle from picture to picture; do NOT default to the same glass, cloth, tabletop or camera position every time. Within that freedom, hold a recognisable house style: a photorealistic photograph with the warm, unfussy, appetising feel of a good evening at home, shot with real affection. Always keep these anchors — soft natural light; a shallow depth of field with the lead in crisp focus and everything behind it falling softly out of focus; real, lived-in ceramic, glassware and linen rather than studio props. Absolutely no text, no captions, no watermark, no logos, no branding, no hands, no people. A single, inviting hero shot of a meal about to happen, in which nothing can be named.';
+  'But NOTHING in this photograph may be identifiable as a particular dish. The picture says "a good dinner is planned"; it must never say what dinner is. Any food in shot is generic or lost — to focus, to steam, to a lid, to a low angle, to the edge of the frame — and never a recognisable, nameable meal. That rule is absolute and outranks everything else here. The subject need not be food at all: compose around whatever the direction above leads with, holding that lead in crisp focus and letting everything else — including anything plated — sit soft and unresolved behind it. Do NOT compose this as a hero shot of food. But it must always read WARM and APPETISING — the picture of an evening someone is about to enjoy, with something good just out of focus. Never a bleak, bare or purely decorative frame: no empty table, no bare worktop, no styled still life with nothing about to be eaten. Within that, hold a recognisable house style: a photorealistic photograph with the warm, unfussy, appetising feel of a good evening at home, shot with real affection. Always keep these anchors — soft natural light; a shallow depth of field with the lead in crisp focus and everything behind it falling softly out of focus; real, lived-in props rather than studio-perfect ones. Absolutely no text, no captions, no watermark, no logos, no branding, no hands, no people. A single, inviting photograph of a meal about to happen, in which nothing can be named.';
 
 // The placeholder counterpart to RECIPE_IMAGE_DISH_READING_FALLBACK: used only
 // when no scene brief is available. Its three siblings all ask the model to read
 // the THING — the dish, the occasion, the serve — and let that drive the scene.
-// This one cannot: there is no thing. All it has to read is the MOOD the
-// placeholder is tagged with, and bright-versus-comfort is the only variable it
-// gets, so that is what chooses which of the legitimate leads a picture takes.
-export const PLACEHOLDER_SCENE_FALLBACK =
-  'First read the MOOD this picture is for — its tags say either "bright" or "comfort", and that is the only thing there is to read, because there is no dish here and there must not be one. Bright calls for cool daylight and a light, open evening: pale crockery, clear glass, a sunlit table, a bright kitchen, fresh greens and whites, air and space — the lead more likely a glass being poured or a dish being carried to a table by a window. Comfort calls for lamplight and a dark autumn or winter evening: warm ceramics, deep earthy colours, steam, a low golden pool of light on a table indoors, the weather shut outside — the lead more likely steam rising off a bowl or a cloche about to be lifted. Let the mood choose the lead, and drive the setting, the surface, the props, the colour palette and the quality of light from it. Make the shift clearly legible at a glance — a deliberate, confident step, never a faint tint — but let it stop at the mood: whatever food is in shot stays generic and unresolved, never a dish anyone could name.';
+// This one cannot: there is no thing. What it reads is the MOOD, plus whatever
+// conditions the picture is tagged with.
+//
+// It names no leads, for exactly the reason the anchors above name none. This
+// string is byte-identical on every placeholder and branches only two ways, so
+// the four leads it used to offer ("a glass being poured", "a dish being carried
+// to a table by a window", "steam rising off a bowl", "a cloche about to be
+// lifted") were an invariant menu in a prompt with nothing else concrete in it —
+// the same failure, one constant along. It now drives mood, light, surface and
+// palette and leaves the subject to be chosen per picture.
+//
+// The mood sentences interpolate PLACEHOLDER_MOOD_MEANINGS rather than restating
+// it: on the no-brief path this string and the tag gloss both fire, and two
+// hand-maintained descriptions of `comfort` in one prompt is how they end up
+// disagreeing.
+export const PLACEHOLDER_SCENE_FALLBACK = `First read the MOOD this picture is for — its tags say either "bright" or "comfort", and that is nearly all there is to read, because there is no dish here and there must not be one. Bright calls for ${PLACEHOLDER_MOOD_MEANINGS.bright}. Comfort calls for ${PLACEHOLDER_MOOD_MEANINGS.comfort}. Let the mood drive the setting, the surface, the props, the colour palette and the quality of light, and let it choose what the picture leads with — anything that belongs to the evening about to be eaten, chosen fresh for this picture rather than reached for out of habit. Make the shift clearly legible at a glance — a deliberate, confident step, never a faint tint — but let it stop at the mood: whatever food is in shot stays generic and unresolved, never a dish anyone could name.`;
 
 // The kinds this flow knows how to paint. Declared LOCALLY as genkit-`z` literals
 // rather than imported from `RecipeKindSchema`: genkit re-exports its own bundled
@@ -198,8 +231,51 @@ function openerFor(
         return `A beautiful, appetising photograph of the finished dish "${title}".`;
     }
   })();
+  // Every kind joins its description the same way. A placeholder's was briefly
+  // labelled as binding direction ("…which you must follow: …") on the theory
+  // that one sentence was being outvoted by ~300 words of locked anchors. The
+  // production documents say otherwise: their briefs track their descriptions
+  // closely, so the label bought nothing — and it made a WRONG description
+  // harder to correct, which is the live failure here rather than a theoretical
+  // one (a placeholder described as "cool clear midday light" already produced a
+  // brief about lunch, against an opener that says dinner).
   const desc = description?.trim();
   return desc ? `${lead} ${desc}` : lead;
+}
+
+// What a placeholder's tags MEAN, in pictures.
+//
+// Tags are nearly the whole per-doc variable these ten photographs have, and
+// until now the image model only ever saw the bare word: "This recipe is tagged:
+// comfort." Everything that says what comfort LOOKS like — lamplight, soft heavy
+// textures, drawn in close — lived in PLACEHOLDER_SCENE_FALLBACK, which by
+// construction is used only when there is no brief. On the normal path (brief
+// present) it was never sent at all, so ten pictures differed by one adjective.
+//
+// Glossing them puts that language on the path that actually runs, and does it
+// PER DOC: only the tags a picture carries are expanded, so `bright` and
+// `comfort` never arrive together contradicting each other — which is exactly why
+// this could not simply be moved into the anchors.
+//
+// The words themselves live in placeholderVocabulary.ts, shared with the art
+// director's prompt in describeRecipeScene.ts. They were written separately once
+// and had already drifted: that prompt still described `bright` as "cool
+// daylight, a sunlit table" after this file stopped saying anything of the kind.
+//
+// The tags clause, per kind. The default arm is byte-for-byte the clause every
+// kind has had since issue #148 — only `placeholder` diverges, because only a
+// placeholder has no dish for "the dish's mood, season and cuisine" to refer to
+// (a sentence asserting a dish exists, in the one kind where one must not) and
+// no other signal for the tags to compete with.
+function tagsClauseFor(kind: ImageKind | undefined, tags: string[]): string {
+  if (kind !== 'placeholder') {
+    return ` This recipe is tagged: ${tags.join(', ')}. Use these tags only as hints for reading the dish's mood, season and cuisine when you stage the scene — do NOT draw, write, label or otherwise show any of these words in the image.`;
+  }
+  // Free-form tags that are not moods or conditions stay listed but unglossed —
+  // they are still a cue, we just have no picture to hand for them.
+  const glosses = tags.filter(isPlaceholderTag).map((t) => PLACEHOLDER_TAG_MEANINGS[t]);
+  const glossed = glosses.length > 0 ? ` They mean: ${glosses.join('; ')}.` : '';
+  return ` This picture is tagged: ${tags.join(', ')}.${glossed} Read the tags as the EVENING this picture is for, and let them drive the light, the colour, the surface, the textures and the season. They are cues for staging only: do NOT draw, write, label or otherwise show any of these words in the image, and never let them name a dish.`;
 }
 
 // Per-recipe generation prompt. The dish identity comes from the recipe title and
@@ -234,9 +310,12 @@ function buildRecipePrompt(
   // They are cues for READING the dish's character only — never text to render, so
   // the clause explicitly forbids drawing or writing them (the style already bans
   // captions/text). Drop empty/whitespace tags; with none usable, add no clause.
+  // The wording itself is kind-switched (tagsClauseFor): a placeholder's tags are
+  // its ONLY per-picture variable, so they are glossed into what they look like
+  // rather than passed as bare words inside a sentence about a dish it hasn't got.
   const cleanTags = tags?.map((t) => t.trim()).filter((t) => t.length > 0);
   if (cleanTags && cleanTags.length > 0) {
-    prompt += ` This recipe is tagged: ${cleanTags.join(', ')}. Use these tags only as hints for reading the dish's mood, season and cuisine when you stage the scene — do NOT draw, write, label or otherwise show any of these words in the image.`;
+    prompt += tagsClauseFor(kind, cleanTags);
   }
 
   const trimmedHint = hint?.trim();

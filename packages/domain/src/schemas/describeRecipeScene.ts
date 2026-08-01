@@ -20,6 +20,18 @@ export const DescribeRecipeSceneInputSchema = z.object({
   // setting). OPTIONAL and defaulted downstream to `'recipe'`, so a caller that
   // omits it (and every request already in flight) gets exactly today's prompt.
   kind: RecipeKindSchema.optional(),
+  // The entry's own tags. Issue #148 fed these to the IMAGE flow but never to
+  // this one, which for three kinds was merely a missed cue — and for a
+  // PLACEHOLDER was a hole: it has no ingredients and no method, and its mood
+  // (`bright` / `comfort`, plus the optional weather conditions) is an ordinary
+  // `tags` entry rather than a schema field, so the placeholder brief prompt's
+  // "what you read instead is the MOOD, which the tags carry" was reading a
+  // field it was never handed. Title and description were the whole input.
+  //
+  // OPTIONAL and defaulted so every existing caller stays valid; the flow adds
+  // no `Tags:` block when the array is empty, so a caller that omits them sends
+  // byte-for-byte the prompt it sent before.
+  tags: z.array(z.string()).optional().default([]),
   // Ingredient display lines (rawText). The whole point of this flow: a garnish
   // or a finishing ingredient that appears ONLY here is exactly the detail the
   // title/description-only prompt could never see.

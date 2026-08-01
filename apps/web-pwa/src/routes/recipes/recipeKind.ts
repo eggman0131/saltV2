@@ -14,6 +14,7 @@
 //
 // The UI label for `outing` is "When you CBA"; the enum value stays neutral so
 // the copy can be reworded later without touching a single stored document.
+import { PLACEHOLDER_CONDITION_TAGS, PLACEHOLDER_MOODS } from '@salt/domain';
 import type { Recipe, RecipeKind } from '@salt/domain';
 import type { IconProps } from '@salt/ui-components';
 
@@ -52,6 +53,20 @@ interface KindCopy {
   readonly thumbIcon: IconProps['name'];
   // New-menu entry icon.
   readonly menuIcon: IconProps['name'];
+  // Help text under the tags field. OPTIONAL, and present on exactly one kind:
+  // for a recipe, an outing or a cocktail, tags are free-form search keywords and
+  // need no explanation. For a placeholder they are load-bearing — `pickPlaceholder`
+  // FILTERS on the mood and WEIGHTS on the conditions, so which evenings a picture
+  // turns up on is decided entirely by what is typed here, and a typo silently
+  // drops the document out of its mood (issue #652, accepted downside). The exact
+  // strings are interpolated from the domain constants rather than retyped, so this
+  // hint cannot tell you to type a word the picker does not recognise.
+  //
+  // This is COPY, which is what this module is for — no control, no validation and
+  // no write-path change hangs off it. The `kind`-gated mood <Select> that #652
+  // rejected was a branch on BEHAVIOUR inside RecipeEditPage; a sentence that is
+  // simply undefined for three kinds is not.
+  readonly tagsHint?: string;
 }
 
 export const KIND_COPY: Record<RecipeKind, KindCopy> = {
@@ -111,6 +126,7 @@ export const KIND_COPY: Record<RecipeKind, KindCopy> = {
     noMatchText: 'No placeholders match your filters.',
     thumbIcon: 'Images',
     menuIcon: 'Images',
+    tagsHint: `Tags decide which evenings this picture turns up on. Mood — exactly one, required: ${PLACEHOLDER_MOODS.join(', ')}. Weather — optional, any number, each one improves the match: ${PLACEHOLDER_CONDITION_TAGS.join(', ')}.`,
   },
 };
 
