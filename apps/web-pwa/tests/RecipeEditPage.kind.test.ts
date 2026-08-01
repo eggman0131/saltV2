@@ -112,6 +112,38 @@ describe('RecipeEditPage — /recipes/new/:kind', () => {
     for (const input of detailInputs()) expect(input).toBeNull();
   });
 
+  it('tells you the tag vocabulary when tagging a placeholder, and nowhere else', async () => {
+    // A placeholder's tags are not search keywords — `pickPlaceholder` FILTERS on
+    // the mood and WEIGHTS on the conditions, so which evenings a picture turns up
+    // on is decided entirely by what is typed into this field, and a typo silently
+    // drops the document out of its mood. Nothing on screen used to say so, or say
+    // which words the picker recognises.
+    const { PLACEHOLDER_MOODS, PLACEHOLDER_CONDITION_TAGS } = await import('@salt/domain');
+
+    render(RecipeEditPage, { props: { params: { kind: 'placeholder' } } });
+    const hint = screen.getByTestId('recipe-tags-hint');
+    // Every string the picker understands is offered, straight from the domain
+    // constants — the hint cannot tell you to type a word `pickPlaceholder` will
+    // not match.
+    for (const tag of [...PLACEHOLDER_MOODS, ...PLACEHOLDER_CONDITION_TAGS]) {
+      expect(hint).toHaveTextContent(tag);
+    }
+    // The distinction that matters: one mood is required, conditions are optional.
+    expect(hint).toHaveTextContent(/exactly one, required/i);
+    expect(hint).toHaveTextContent(/optional/i);
+
+    // Copy only, on exactly one kind. The other three keep a free-form tag field
+    // with no explanation, and no control, validation or write path changes for
+    // any of them — the `kind`-gated mood <Select> that #652 rejected was a branch
+    // on behaviour; a sentence that is undefined for three kinds is not.
+    for (const kind of ['recipe', 'outing', 'cocktail']) {
+      cleanup();
+      render(RecipeEditPage, { props: { params: { kind } } });
+      expect(screen.getByTestId('recipe-tags-input')).toBeInTheDocument();
+      expect(screen.queryByTestId('recipe-tags-hint')).toBeNull();
+    }
+  });
+
   it('titles the page for the kind it is creating', () => {
     render(RecipeEditPage, { props: { params: { kind: 'outing' } } });
     expect(screen.getByText('New — When you CBA')).toBeInTheDocument();
