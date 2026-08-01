@@ -229,10 +229,10 @@ Decisions worth not relitigating:
   `pickPlaceholder(recipes, dateKey, weather?)` in
   `domain/src/recipe/queries/pickPlaceholder.ts`: the season chosen from the date
   key leads (it is known for every day, past or future), a decisive forecast
-  overrides it via the existing `classifyEatingMood`, and `hash(dateKey) % n`
-  picks within the mood. The caller reads both once, when the day is planned, and
-  stores the id — so the picture cannot drift after the fact as the forecast ages
-  out of its ~14-day horizon.
+  overrides it via the existing `classifyEatingMood`, and the draw within the
+  mood is weighted by condition tags (see below). The caller reads both once,
+  when the day is planned, and stores the id — so the picture cannot drift after
+  the fact as the forecast ages out of its ~14-day horizon.
 - **Condition tags WEIGHT the draw; they never filter it.** The mood is the one
   hard filter, so a February night can never wear a summer table. Beyond it a
   picture is worth `1 + (condition tags it shares with the evening)`, and the day
