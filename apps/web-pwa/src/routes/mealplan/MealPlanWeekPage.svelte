@@ -556,23 +556,42 @@
            card is not: a day carrying a mark starts with that mark, so the card
            sits well below the place the deck actually snaps to. A geometry test
            addressing the card would silently measure the wrong box. -->
-      <!-- The selected treatment is a RING, never padding, a border or a margin:
-           this element is the deck's section, and the deck measures its geometry
-           to decide where a day comes to rest. A ring is drawn as a box-shadow, so
-           it costs the row not one pixel of layout and the deck cannot tell the
-           selected row from any other. `data-selected` is the same fact stated
-           plainly, so a test can assert selection without depending on a class
-           string. -->
+      <!-- The selected treatment must cost the row NO LAYOUT: this element is the
+           deck's section, and the deck measures its geometry to decide where a day
+           comes to rest. So the mark is an absolutely-positioned overlay, out of
+           flow entirely — never padding, a border or a margin on the row itself.
+           `data-selected` is the same fact stated plainly, so a test can assert
+           selection without depending on a class string. -->
       <div
         bind:this={rowEls[date]}
         data-testid={`day-${date}-row`}
         data-selected={isSelected ? 'true' : undefined}
         class="{isEarlier ? 'opacity-60' : ''} {isExtension && date !== todayDate
           ? 'planner-next-week-row'
-          : ''} {isSelected
-          ? 'rounded-xl ring-2 ring-ring ring-offset-4 ring-offset-background'
-          : ''}"
+          : ''} {isSelected ? 'relative' : ''}"
       >
+        {#if isSelected}
+          <!-- THE RAIL LIGHTS UP beside the day the pane is showing: a 4px bar down
+               the row's left edge, sitting exactly on the week's own rail stem.
+               It marks the day in the RAIL rather than around the row, and both
+               halves of that are the point. An outline around the row was tried
+               first and is wrong twice over: most of the row is the rail's empty
+               margin, so a box there encloses nothing and reads as a stray
+               container; and the half worth looking at is the photograph, where a
+               hairline of any colour disappears into the picture. It could not be
+               drawn outside the row either — the row fills the deck's column edge
+               to edge and the deck viewport is `overflow-hidden`, so a ring with an
+               offset loses its left and right sides entirely.
+               The bar answers all of it: it is in the empty margin where nothing
+               competes with it, it is inside the row's bounds so nothing clips it,
+               and it composes with today's filled teal disc instead of fighting it
+               — which matters, because today is the day the pane opens on.
+               Absolute, so the deck cannot tell the selected row from any other. -->
+          <span
+            class="pointer-events-none absolute inset-y-0 left-0 w-1 rounded-full bg-tertiary-variant"
+            aria-hidden="true"
+          ></span>
+        {/if}
         {#if isExtension && i === 0}
           <!-- The dated mark. Same rule-across-the-list grammar as the shop day,
                dashed and terracotta, and it names the dates so "next week" is a
