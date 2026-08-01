@@ -383,6 +383,41 @@ jobs:
       - name: Run E2E tests (shard ${{ matrix.shard }}/3)
         run: pnpm --filter @salt/web-pwa exec playwright test --shard=${{ matrix.shard }}/3
 
+      # `always()`, and that is the entire point (issue #669). The artifacts below
+      # are `failure()`-only, so the FLAKY signal — failed once, passed on the
+      # retry — used to be discarded on every green run, and workflow logs expire
+      # after ~8 days, so the history that shows when a test started rotting was
+      # gone before anyone went looking. PostHog is the durable store; the
+      # reporter (e2e/reporter/flakeReporter.ts) already emits capture-shaped
+      # records, so this is a jq wrap and one POST — no SDK, no boundary crossed.
+      #
+      # continue-on-error because telemetry must never turn a green suite red.
+      # No key configured (a fork, or before the repo variable is set) is a
+      # skip, not a failure.
+      - name: Report e2e flakiness to PostHog
+        if: always()
+        continue-on-error: true
+        env:
+          POSTHOG_CI_KEY: ${{ vars.POSTHOG_CI_KEY }}
+          POSTHOG_HOST: https://eu.i.posthog.com
+          EVENTS: apps/web-pwa/e2e-flake-events.ndjson
+        run: |
+          set -euo pipefail
+          if [ -z "${POSTHOG_CI_KEY:-}" ]; then
+            echo "::notice::POSTHOG_CI_KEY is not set — skipping flake telemetry."
+            exit 0
+          fi
+          if [ ! -s "$EVENTS" ]; then
+            echo "::warning::No reporter output at $EVENTS (the run died before onEnd?) — nothing to report."
+            exit 0
+          fi
+          echo "Shipping $(wc -l < "$EVENTS") test results to PostHog."
+          jq -s --arg key "$POSTHOG_CI_KEY" '{api_key: $key, batch: .}' "$EVENTS" > /tmp/posthog-batch.json
+          curl -sS --fail-with-body --max-time 30 \
+            -X POST "$POSTHOG_HOST/batch/" \
+            -H 'Content-Type: application/json' \
+            --data-binary @/tmp/posthog-batch.json
+
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v7

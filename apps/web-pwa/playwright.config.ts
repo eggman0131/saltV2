@@ -14,7 +14,13 @@ export default defineConfig({
   // assertions headroom rather than patching each admin spec.
   expect: { timeout: 10_000 },
   workers: 1,
-  reporter: CI ? [['html'], ['github']] : [['html'], ['list']],
+  // The third CI reporter writes e2e-flake-events.ndjson — one record per test,
+  // INCLUDING the ones that passed on retry, which every other output here
+  // discards (issue #669). CI ships it to PostHog; see the reporter's header for
+  // why it emits capture-shaped JSON without importing a PostHog SDK.
+  // CI-only on purpose: a local run has no branch/sha/run context worth keeping,
+  // and nothing uploads the file.
+  reporter: CI ? [['html'], ['github'], ['./e2e/reporter/flakeReporter.ts']] : [['html'], ['list']],
   globalSetup: './e2e/globalSetup.ts',
   globalTeardown: './e2e/globalTeardown.ts',
 
