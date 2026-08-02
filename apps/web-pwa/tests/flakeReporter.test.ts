@@ -12,7 +12,13 @@ import { readRunContext, toEvent, toEvents } from '../e2e/reporter/flakeReporter
 
 const ROOT = '/repo/apps/web-pwa';
 
-type Attempt = { duration: number; startTime: Date; error?: { message: string } };
+type Attachment = { name: string; contentType: string; body?: Buffer; path?: string };
+type Attempt = {
+  duration: number;
+  startTime: Date;
+  error?: { message: string };
+  attachments?: Attachment[];
+};
 
 /** The slice of Playwright's Suite/TestCase graph the reporter actually walks. */
 function makeTest(options: {
@@ -158,6 +164,287 @@ describe('flake reporter — event mapping (#669)', () => {
     );
 
     expect(event.properties.error).toBe('Error: expected 1');
+  });
+
+  it('keeps the locator and call log — the part that makes a failure diagnosable', () => {
+    // The real shape of the failure that hard-failed CI twice (issue #669
+    // follow-up). First-line-only reduced this to
+    // "Error: expect(locator).toBeVisible() failed", which names neither the
+    // locator nor what it was waiting for.
+    const message = [
+      'Error: expect(locator).toBeVisible() failed',
+      '',
+      "Locator: getByTestId('recipe-add-review-list')",
+      'Expected: visible',
+      'Timeout: 10000ms',
+      'Error: element(s) not found',
+      '',
+      'Call log:',
+      '  - Expect "toBeVisible" with timeout 10000ms',
+      "  - waiting for getByTestId('recipe-add-review-list')",
+    ].join('\n');
+    const event = toEvent(
+      makeTest({
+        outcome: 'unexpected',
+        results: [{ duration: 1, startTime: new Date(0), error: { message } }],
+      }),
+      CONTEXT,
+      ROOT,
+    );
+
+    expect(event.properties.error).toContain("Locator: getByTestId('recipe-add-review-list')");
+    expect(event.properties.error).toContain('Timeout: 10000ms');
+    expect(event.properties.error).toContain('waiting for');
+  });
+
+  it('reports the FAILING attempt duration, not the retry that passed', () => {
+    // The exact shape of every `detail page — change aisle` flake: attempt 1
+    // burns the 30s test timeout, the retry passes in 5s. duration_ms keeps
+    // reporting 5s (the dashboards are built on it); the new field carries the
+    // 30s that actually happened.
+    const event = toEvent(
+      makeTest({
+        outcome: 'flaky',
+        results: [
+          {
+            duration: 30_000,
+            startTime: new Date('2026-08-01T10:00:00.000Z'),
+            error: { message: 'Error: locator.click: Test timeout of 30000ms exceeded.' },
+          },
+          { duration: 5_000, startTime: new Date('2026-08-01T10:00:31.000Z') },
+        ],
+      }),
+      CONTEXT,
+      ROOT,
+    );
+
+    expect(event.properties.duration_ms).toBe(5_000);
+    expect(event.properties.failed_attempt_duration_ms).toBe(30_000);
+    expect(event.properties.failure_kind).toBe('test-timeout');
+  });
+
+  it('leaves the failure-derived fields null when nothing failed', () => {
+    const event = toEvent(makeTest({ outcome: 'expected' }), CONTEXT, ROOT);
+
+    expect(event.properties.failed_attempt_duration_ms).toBeNull();
+    expect(event.properties.failure_kind).toBeNull();
+    expect(event.properties.error_fingerprint).toBeNull();
+  });
+
+  it('separates an assertion failure from a test-level timeout', () => {
+    const assertion = toEvent(
+      makeTest({
+        outcome: 'unexpected',
+        results: [
+          {
+            duration: 1,
+            startTime: new Date(0),
+            error: { message: 'Error: expect(locator).toBeVisible() failed\n\nTimeout: 10000ms' },
+          },
+        ],
+      }),
+      CONTEXT,
+      ROOT,
+    );
+    const thrown = toEvent(
+      makeTest({
+        outcome: 'unexpected',
+        results: [
+          {
+            duration: 1,
+            startTime: new Date(0),
+            error: { message: 'TypeError: undefined is not a function' },
+          },
+        ],
+      }),
+      CONTEXT,
+      ROOT,
+    );
+
+    expect(assertion.properties.failure_kind).toBe('assertion');
+    expect(thrown.properties.failure_kind).toBe('error');
+  });
+
+  it('fingerprints two runs of the same failure identically despite volatile ids', () => {
+    const withVolatiles = (uuid: string, count: number) =>
+      toEvent(
+        makeTest({
+          outcome: 'unexpected',
+          results: [
+            {
+              duration: 1,
+              startTime: new Date(0),
+              error: {
+                message: [
+                  'Error: expect(page).toHaveURL(expected) failed',
+                  `Received string: "http://127.0.0.1:5174/#/recipes/${uuid}"`,
+                  `${count} x locator resolved to <html>`,
+                  'e2e-9f2a@salt.test',
+                ].join('\n'),
+              },
+            },
+          ],
+        }),
+        CONTEXT,
+        ROOT,
+      ).properties.error_fingerprint;
+
+    const a = withVolatiles('4cdde356-396d-9fc0-34b4-a17f60f6b4ef', 24);
+    const b = withVolatiles('a2fd5b57-30e2-4ae0-b725-9fe156ee1d7d', 31);
+
+    expect(a).toBe(b);
+    // Still readable, and still names the assertion that failed.
+    expect(a).toContain('toHaveURL');
+    expect(a).toContain('<uuid>');
+  });
+
+  it('stamps shard position so "first spec of the shard" is chartable', () => {
+    const events = toEvents(
+      [
+        makeTest({ id: 'a', file: `${ROOT}/e2e/aisles-seed.spec.ts` }),
+        makeTest({ id: 'b', file: `${ROOT}/e2e/aisles-seed.spec.ts` }),
+        makeTest({ id: 'c', file: `${ROOT}/e2e/canon-sync.spec.ts` }),
+      ],
+      CONTEXT,
+      ROOT,
+    );
+
+    expect(events.map((e) => e.properties.test_index)).toEqual([0, 1, 2]);
+    // File index is assignment order, so the shard's first file is 0.
+    expect(events.map((e) => e.properties.file_index)).toEqual([0, 0, 1]);
+  });
+
+  it('measures how far into the shard each test started, from its first attempt', () => {
+    const at = (iso: string) => new Date(iso);
+    const events = toEvents(
+      [
+        makeTest({ id: 'a', results: [{ duration: 100, startTime: at('2026-08-01T10:00:00Z') }] }),
+        makeTest({ id: 'b', results: [{ duration: 100, startTime: at('2026-08-01T10:00:40Z') }] }),
+        // A flaky test: the retry starts later, but the test began at :20.
+        makeTest({
+          id: 'c',
+          outcome: 'flaky',
+          results: [
+            {
+              duration: 100,
+              startTime: at('2026-08-01T10:00:20Z'),
+              error: { message: 'boom' },
+            },
+            { duration: 100, startTime: at('2026-08-01T10:01:30Z') },
+          ],
+        }),
+      ],
+      CONTEXT,
+      ROOT,
+    );
+
+    expect(events.map((e) => e.properties.ms_into_shard)).toEqual([0, 40_000, 20_000]);
+  });
+
+  it('promotes a flake-context attachment to namespaced ctx_ properties', () => {
+    const event = toEvent(
+      makeTest({
+        outcome: 'unexpected',
+        results: [
+          {
+            duration: 1,
+            startTime: new Date(0),
+            error: { message: 'Test timeout of 30000ms exceeded.' },
+            attachments: [
+              {
+                name: 'flake-context',
+                contentType: 'application/json',
+                body: Buffer.from(JSON.stringify({ aisles_count: 0, canon_synced: true })),
+              },
+            ],
+          },
+        ],
+      }),
+      CONTEXT,
+      ROOT,
+    );
+
+    expect(event.properties['ctx_aisles_count']).toBe(0);
+    expect(event.properties['ctx_canon_synced']).toBe(true);
+  });
+
+  it('takes the LAST context so a retry describes the retry, and drops non-scalars', () => {
+    const contextAttachment = (payload: unknown) => ({
+      name: 'flake-context',
+      contentType: 'application/json',
+      body: Buffer.from(JSON.stringify(payload)),
+    });
+    const event = toEvent(
+      makeTest({
+        outcome: 'flaky',
+        results: [
+          {
+            duration: 1,
+            startTime: new Date(0),
+            error: { message: 'boom' },
+            attachments: [contextAttachment({ aisles_count: 0, nested: { no: 'thanks' } })],
+          },
+          {
+            duration: 1,
+            startTime: new Date(1000),
+            attachments: [contextAttachment({ aisles_count: 3 })],
+          },
+        ],
+      }),
+      CONTEXT,
+      ROOT,
+    );
+
+    expect(event.properties['ctx_aisles_count']).toBe(3);
+    expect(event.properties['ctx_nested']).toBeUndefined();
+  });
+
+  it('survives a malformed or unreadable context without losing the event', () => {
+    const event = toEvent(
+      makeTest({
+        outcome: 'unexpected',
+        results: [
+          {
+            duration: 1,
+            startTime: new Date(0),
+            error: { message: 'boom' },
+            attachments: [
+              {
+                name: 'flake-context',
+                contentType: 'application/json',
+                body: Buffer.from('{ not json'),
+              },
+              {
+                name: 'flake-context',
+                contentType: 'application/json',
+                path: '/no/such/file.json',
+              },
+            ],
+          },
+        ],
+      }),
+      CONTEXT,
+      ROOT,
+    );
+
+    // The event still exists and is complete; only the context is absent.
+    expect(event.properties.status).toBe('failed');
+    expect(Object.keys(event.properties).some((k) => k.startsWith('ctx_'))).toBe(false);
+  });
+
+  it('caps a stack-free but runaway message by lines and characters', () => {
+    const message = Array.from({ length: 40 }, (_, i) => `line ${i} ${'y'.repeat(200)}`).join('\n');
+    const event = toEvent(
+      makeTest({
+        outcome: 'unexpected',
+        results: [{ duration: 1, startTime: new Date(0), error: { message } }],
+      }),
+      CONTEXT,
+      ROOT,
+    );
+
+    expect(event.properties.error!.length).toBeLessThanOrEqual(1200);
+    expect(event.properties.error!.split('\n').length).toBeLessThanOrEqual(12);
   });
 
   it('emits one record per test, each with its own idempotency uuid', () => {

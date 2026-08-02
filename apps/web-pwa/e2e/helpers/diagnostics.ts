@@ -11,7 +11,54 @@
  * getter, or a serialization failure must NEVER turn a test failure into a
  * different error. Diagnostics swallow their own errors.
  */
+import { writeFile } from 'node:fs/promises';
 import type { Page, TestInfo } from '@playwright/test';
+import { FLAKE_CONTEXT_ATTACHMENT } from '../reporter/flakeReporter';
+
+// Playwright colourises assertion messages. Written straight into a JSON file
+// those escape codes survive as literal noise wrapped around exactly the
+// strings you came to read (the expected pattern, the received value), so strip
+// them where the message stops being terminal output and becomes an artifact.
+// Spelled \u001B rather than a raw ESC byte, matching flakeReporter.ts: an
+// invisible control character in source is a trap for the next reader.
+const ANSI = /\u001B\[[0-9;]*m/g;
+
+function plainMessage(message: string | undefined): string | undefined {
+  return message?.replace(ANSI, '');
+}
+
+/**
+ * Reduces the store snapshot to flat scalars for `ctx_*` correlation properties.
+ *
+ * COUNTS AND FLAGS ONLY — never ids, names, or anything free-form. This crosses
+ * into a telemetry backend, and while the data here is family-shared, the
+ * error-reporting convention (scrub raw user content) applies to anything that
+ * leaves the runner. A count answers "was the store empty?", which is the whole
+ * question; the ids are already in the full snapshot next to the trace.
+ *
+ * Each reader may be absent or an `{ __error }` marker from `guard()`, so every
+ * field degrades to null independently rather than losing the whole context.
+ */
+function flakeContextOf(snapshot: unknown): Record<string, number | boolean | null> {
+  const store = (snapshot ?? {}) as Record<string, unknown>;
+  const countOf = (value: unknown): number | null => (Array.isArray(value) ? value.length : null);
+  const boolOf = (value: unknown): boolean | null =>
+    typeof value === 'boolean'
+      ? value
+      : value === null || value === undefined
+        ? null
+        : Boolean(value);
+
+  return {
+    aisles_count: countOf(store['aisles']),
+    shopping_lists_count: countOf(store['shoppingLists']),
+    shopping_list_items_count: countOf(store['shoppingListItems']),
+    recipes_count: countOf(store['recipes']),
+    chat_sessions_count: countOf(store['chatSessions']),
+    has_default_list: typeof store['defaultListId'] === 'string' ? true : false,
+    canon_synced: boolOf(store['canonSynced']),
+  };
+}
 
 /**
  * Single `page.evaluate()` that calls every available sync bridge store-reader,
@@ -66,8 +113,23 @@ export async function attachStoreSnapshot(
 ): Promise<void> {
   try {
     const snapshot = await readStoreSnapshot(page);
-    await testInfo.attach(label, {
-      body: JSON.stringify({ ...extra, snapshot }, null, 2),
+    // Written to outputPath and attached BY PATH, not as an inline `body`. An
+    // inline body only ever exists base64-encoded inside the HTML report's
+    // bundle, so reading it back means unpacking that bundle — which is exactly
+    // the wrong amount of friction for the artifact you reach for first when a
+    // convergence flake needs explaining. By path it is a plain .json file in
+    // test-results/, sitting next to the trace and readable with `cat`.
+    const file = testInfo.outputPath(`${label.replace(/[^a-zA-Z0-9]+/g, '-')}.json`);
+    await writeFile(file, JSON.stringify({ ...extra, snapshot }, null, 2));
+    await testInfo.attach(label, { path: file, contentType: 'application/json' });
+    // Same state, second form: a handful of scalars the flake reporter promotes
+    // to `ctx_*` event properties. The full snapshot above stays the thing you
+    // read; this is the thing you QUERY. "aisles: []" explained a failure in
+    // seconds once downloaded — as a property it answers "how many of these
+    // failures had an empty aisles store?" across every occurrence at once,
+    // which is the difference between a diagnosis and a pattern.
+    await testInfo.attach(FLAKE_CONTEXT_ATTACHMENT, {
+      body: JSON.stringify(flakeContextOf(snapshot)),
       contentType: 'application/json',
     });
   } catch (err) {
@@ -104,7 +166,7 @@ export async function withConvergenceDiagnostics<T = void>(
     await attachStoreSnapshot(testInfo, page, `converge-timeout:${label}`, {
       label,
       elapsedMs: Date.now() - start,
-      error: (err as Error)?.message,
+      error: plainMessage((err as Error)?.message),
     });
     throw err;
   }
@@ -121,6 +183,6 @@ export async function attachFailureSnapshot(testInfo: TestInfo, page: Page): Pro
   }
   await attachStoreSnapshot(testInfo, page, 'failure-store-snapshot', {
     status: testInfo.status,
-    error: testInfo.error?.message,
+    error: plainMessage(testInfo.error?.message),
   });
 }
