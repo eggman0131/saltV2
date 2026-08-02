@@ -17,6 +17,8 @@ type Attempt = {
   duration: number;
   startTime: Date;
   error?: { message: string };
+  /** Playwright records both; a test timeout puts the useful one here. See #685. */
+  errors?: { message: string }[];
   attachments?: Attachment[];
 };
 
@@ -195,6 +197,56 @@ describe('flake reporter — event mapping (#669)', () => {
     expect(event.properties.error).toContain("Locator: getByTestId('recipe-add-review-list')");
     expect(event.properties.error).toContain('Timeout: 10000ms');
     expect(event.properties.error).toContain('waiting for');
+  });
+
+  /**
+   * A test timeout — the commonest flake shape in this suite — records TWO
+   * errors: `result.error` is the bare budget message, and the one that names
+   * what hung lives further down `result.errors` (issue #685, seen on the real
+   * shard-2 failure in run 30754122031).
+   */
+  function timedOutOn(locator: string): Attempt {
+    const bare = 'Test timeout of 30000ms exceeded.';
+    const detailed = [
+      `Error: locator.click: ${bare}`,
+      'Call log:',
+      `  - waiting for ${locator}`,
+    ].join('\n');
+    return {
+      duration: 30_000,
+      startTime: new Date('2026-08-01T10:00:00.000Z'),
+      error: { message: bare },
+      errors: [{ message: bare }, { message: detailed }],
+    };
+  }
+
+  it('ships the half of a test-timeout that says WHAT hung, not the bare budget', () => {
+    const event = toEvent(
+      makeTest({
+        outcome: 'unexpected',
+        results: [timedOutOn("getByRole('option', { name: 'Produce' })")],
+      }),
+      CONTEXT,
+      ROOT,
+    );
+
+    expect(event.properties.error).toContain('Call log:');
+    expect(event.properties.error).toContain(
+      "waiting for getByRole('option', { name: 'Produce' })",
+    );
+    expect(event.properties.failure_kind).toBe('test-timeout');
+  });
+
+  it('fingerprints two timeouts on different locators differently', () => {
+    // Before #685 both collapsed to "Test timeout of Nms exceeded." — grouping
+    // that looks like it works while merging unrelated failures.
+    const fingerprintOf = (locator: string) =>
+      toEvent(makeTest({ outcome: 'unexpected', results: [timedOutOn(locator)] }), CONTEXT, ROOT)
+        .properties.error_fingerprint;
+
+    expect(fingerprintOf("getByRole('option', { name: 'Produce' })")).not.toBe(
+      fingerprintOf("getByRole('option', { name: 'Bakery' })"),
+    );
   });
 
   it('reports the FAILING attempt duration, not the retry that passed', () => {
