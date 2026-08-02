@@ -1,10 +1,13 @@
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
 import type { IngredientGroup } from '@salt/domain';
+import { PHOTO_IMPORT_TIMEOUT_SECONDS } from '@salt/domain/schemas';
 import type {
   DescribeRecipeSceneInput,
   DescribeRecipeSceneOutput,
   ExtractRecipeFromUrlInput,
+  ExtractRecipeFromPhotoInput,
+  PhotoImportFailureCode,
   RecipeDoc,
   UrlImportFailureCode,
 } from '@salt/domain/schemas';
@@ -183,5 +186,64 @@ export async function callExtractRecipeFromUrl(
     return success(res.data);
   } catch (err) {
     return failure(classifyUrlImportError(err));
+  }
+}
+
+// Map the callable's HttpsError code → the PHOTO-import failure vocabulary
+// (issue #649). Its own closed set, not the URL one: invalid-url / blocked-url /
+// fetch-failed are meaningless when the input is a photograph. The CF entrypoint
+// maps each PhotoImportError code to a distinct gRPC code (see
+// apps/cloud-functions/src/index.ts:mapPhotoImportFailure), so the reverse
+// mapping here is exact.
+function classifyPhotoImportError(err: unknown): PhotoImportFailureCode {
+  const code = (err as { code?: string }).code ?? '';
+  switch (code) {
+    case 'functions/invalid-argument':
+      // A payload the wire schema refused: no images, more than four, an
+      // unsupported content type, or empty bytes.
+      return 'invalid-photos';
+    case 'functions/failed-precondition':
+      // Blurry/dark photo OR a page with no recipe on it — the server genuinely
+      // cannot tell these apart, so one code carries both.
+      return 'unreadable-photos';
+    default:
+      // The recipe reader failed, or the call never reached it (transport,
+      // deadline, cancellation). Either way the honest user-facing outcome is
+      // "that didn't work, try again" rather than a claim about their photos.
+      return 'import-failed';
+  }
+}
+
+// Import a recipe from photographs of a cookbook page (issue #649). Sends 1–4
+// page images as base64, receives a fully-assembled, metric + British recipe
+// draft (source.type='book') that the server has ALREADY persisted with
+// needs_approval. On failure returns the specific PhotoImportFailureCode so the
+// caller can show the right copy. NEVER throws (Rule 10).
+//
+// The explicit `timeout` is load-bearing, not decoration: the Firebase callable
+// client defaults to 70s, so without it a slow multi-page extraction would fail
+// on the client while the function was still working. PHOTO_IMPORT_TIMEOUT_SECONDS
+// is the SAME constant the CF passes as its `timeoutSeconds`, so the two cannot
+// drift apart.
+//
+// `traceparent` (issue #362) is an OPTIONAL, named transport field forwarded on
+// the payload — the callable SDK cannot carry a custom `traceparent` HTTP header,
+// so the browser-supplied W3C trace id rides here and the CF entrypoint strips it
+// before running the flow. firebase-sync only forwards the string (Rule 4: no
+// observability import).
+export async function callExtractRecipeFromPhoto(
+  input: ExtractRecipeFromPhotoInput,
+  traceparent?: string,
+): Promise<ReadResult<RecipeDoc, PhotoImportFailureCode>> {
+  try {
+    const fn = httpsCallable<ExtractRecipeFromPhotoInput & { traceparent?: string }, RecipeDoc>(
+      getFunctions(undefined, 'europe-west2'),
+      'extractRecipeFromPhoto',
+      { timeout: PHOTO_IMPORT_TIMEOUT_SECONDS * 1000 },
+    );
+    const res = await fn(traceparent ? { ...input, traceparent } : input);
+    return success(res.data);
+  } catch (err) {
+    return failure(classifyPhotoImportError(err));
   }
 }

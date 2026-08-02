@@ -39,6 +39,10 @@ export const AI_FLOW_ROLES = {
   describeRecipeScene: 'fast',
   embedText: 'embedding',
   extractRecipeFromUrl: 'fast',
+  // Multimodal: 1–4 cookbook-page images in, structured recipe JSON out (#649).
+  // Same tier as the URL import — accuracy over creativity, and the same model
+  // family reads both, so a model change moves the two together.
+  extractRecipeFromPhoto: 'fast',
   generateCanonIcon: 'image',
   generateRecipeImage: 'image',
   generateChatTitle: 'lite',

@@ -1,22 +1,18 @@
 import { z } from 'genkit';
 import { googleAI } from '@genkit-ai/google-genai';
-import { getFirestore } from 'firebase-admin/firestore';
-import { logger } from 'firebase-functions';
 import { isHttpsScheme, parseImportUrl } from '@salt/domain';
 import { ExtractRecipeFromUrlInputSchema, ExtractRecipeAIOutputSchema } from '@salt/domain/schemas';
 import type { ExtractRecipeAIOutput, UrlImportFailureCode } from '@salt/domain/schemas';
-import type { RecipeDoc, IngredientGroupDoc } from '@salt/domain/schemas';
+import type { RecipeDoc } from '@salt/domain/schemas';
 import { setActiveSpanName } from '@salt/observability/server';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 import { ssrfGuardedFetch, SsrfFetchError } from '../adapters/ssrfFetch.js';
 import { extractRecipeJsonLd, type JsonLdRecipe } from '../adapters/jsonLdRecipe.js';
-import { canonicaliseRecipeIngredientsFlow } from './canonicaliseRecipeIngredients.js';
-import { parseRecipeIngredientsFlow } from './parseRecipeIngredients.js';
+import { assembleRecipeDraft } from './assembleRecipeDraft.js';
+import { persistImportedRecipe } from './persistImportedRecipe.js';
 import { resolveModel } from '../ai/resolveModel.js';
-import { CATEGORY_TAG_RULES, normaliseTags } from './categoryTags.js';
-import { INGREDIENT_SUBSTITUTION_RULES } from './ingredientConversions.js';
-import { STEP_RULES, FIRST_USE_ORDINAL_RULE } from './stepRules.js';
+import { CONVERSION_RULES, FIELD_RULES } from './recipeExtractionRules.js';
 
 // SSRF-hardened URL import (recipe URL import epic, Phases 1 & 3).
 //
@@ -152,41 +148,23 @@ export const extractRecipeFromUrlFlow = ai.defineFlow(
       throw new UrlImportError('not-a-recipe', 'no recipe found on page');
     }
 
-    // 6. Assemble the draft (reuses parse + canonicalise flows).
-    const recipe = await assembleDraft(extracted, parsed.href);
+    // 6. Assemble the draft (reuses parse + canonicalise flows). Same assembler
+    //    the librarian uses — the import only differs in its provenance, its
+    //    unread-by-a-human flag (#616), and deriving a total time from prep +
+    //    cook when the page states only the parts.
+    const recipe = await assembleRecipeDraft(extracted, {
+      source: { type: 'url', url: parsed.href },
+      needsApproval: true,
+      deriveTotalTime: true,
+    });
 
     // 7. Persist it here, server-side, flagged as not yet human-reviewed
-    //    (issue #616). The client used to hold the only copy in memory until the
-    //    user saved from the editor — so an import shared in from the Android
-    //    share sheet (#589) was lost outright whenever Android killed the
-    //    backgrounded PWA mid-extraction, along with the AI call that produced
-    //    it. Writing it here means the recipe exists the moment the extraction
-    //    finishes, whatever the client does next.
-    await persistImportedRecipe(recipe);
+    //    (issue #616) — see persistImportedRecipe for why, and for why a write
+    //    failure must not fail the import.
+    await persistImportedRecipe(recipe, 'extractRecipeFromUrl');
     return recipe;
   },
 );
-
-// Write the freshly-extracted recipe to `recipes/{id}` with needs_approval set.
-// A full `.set()` on a server-generated id: the doc cannot already exist, so
-// there is nothing to merge with and no LWW hazard.
-//
-// A write failure does NOT fail the import. The callable still returns the
-// recipe, and the client stashes it for the editor, which degrades to exactly
-// the pre-#616 behaviour (the user saves it themselves) rather than throwing
-// away a successful, already-paid-for extraction. Logged so the failure is
-// visible; not reported as an unexpected error, since the user still gets a
-// working import.
-async function persistImportedRecipe(recipe: RecipeDoc): Promise<void> {
-  try {
-    await getFirestore().collection('recipes').doc(recipe.id).set(recipe);
-  } catch (err) {
-    logger.error('extractRecipeFromUrl: failed to persist imported recipe', {
-      recipeId: recipe.id,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-}
 
 // Tighten the not-a-recipe decision now that JSON-LD gives a stronger signal.
 // - hadJsonLd: a validated schema.org/Recipe was present on the page. That alone
@@ -283,155 +261,9 @@ function buildHtmlPrompt(html: string, sourceUrl: string): { system: string; pro
   };
 }
 
-// Mirrors authorRecipe.assembleDraft: assign step IDs, parse ingredient raw
-// texts to clean item names, batch-canonicalise, thread structured `parsed`,
-// resolve step ordinals → IDs. Differs only in source.type='url' + url.
-async function assembleDraft(raw: ExtractRecipeAIOutput, sourceUrl: string): Promise<RecipeDoc> {
-  const now = new Date().toISOString();
-
-  const steps = raw.steps.map((s) => ({
-    id: crypto.randomUUID(),
-    text: s.text,
-    timer:
-      s.timerMinutes !== null
-        ? { durationMinutes: s.timerMinutes, description: s.timerLabel }
-        : null,
-    note: s.note,
-  }));
-
-  type IngMeta = { groupIdx: number; itemIdx: number; rawText: string };
-  const allIngredients: IngMeta[] = [];
-  for (let gi = 0; gi < raw.ingredientGroups.length; gi++) {
-    const group = raw.ingredientGroups[gi]!;
-    for (let ii = 0; ii < group.ingredients.length; ii++) {
-      allIngredients.push({ groupIdx: gi, itemIdx: ii, rawText: group.ingredients[ii]!.rawText });
-    }
-  }
-
-  // Parse raw texts → clean item names + structured parsed objects, keyed by
-  // rawText. Parse failure is non-fatal (falls back to rawText / parsed:null).
-  const parsedItemMap = new Map<string, string>();
-  type ParsedIngredient = Awaited<
-    ReturnType<typeof parseRecipeIngredientsFlow>
-  >[number]['items'][number]['parsed'];
-  const parsedMap = new Map<string, ParsedIngredient>();
-  if (allIngredients.length > 0) {
-    try {
-      const joinedRawText = allIngredients.map((i) => i.rawText).join('\n');
-      const parseResult = await parseRecipeIngredientsFlow({ rawText: joinedRawText });
-      for (const group of parseResult) {
-        for (const item of group.items) {
-          if (item.parsed?.item) parsedItemMap.set(item.rawText, item.parsed.item);
-          if (item.parsed) parsedMap.set(item.rawText, item.parsed);
-        }
-      }
-    } catch {
-      // non-fatal
-    }
-  }
-
-  // Batch canonicalise. Failure is non-fatal — ingredients land as pending.
-  let canonResults: Awaited<ReturnType<typeof canonicaliseRecipeIngredientsFlow>> = [];
-  if (allIngredients.length > 0) {
-    try {
-      canonResults = await canonicaliseRecipeIngredientsFlow({
-        items: allIngredients.map((i) => ({
-          rawName: parsedItemMap.get(i.rawText) ?? i.rawText,
-          rawText: i.rawText,
-        })),
-      });
-    } catch {
-      // non-fatal
-    }
-  }
-
-  const ingredientGroups: IngredientGroupDoc[] = raw.ingredientGroups.map((group, gi) => ({
-    id: crypto.randomUUID(),
-    name: group.name,
-    items: group.ingredients.map((ing, ii) => {
-      const flatIdx = allIngredients.findIndex((m) => m.groupIdx === gi && m.itemIdx === ii);
-      const canon = flatIdx >= 0 ? canonResults[flatIdx] : undefined;
-
-      const canonId = canon && canon.kind === 'ok' ? (canon.value.item as { id: string }).id : null;
-      const matchState: 'matched' | 'pending' | 'failed' =
-        canon && canon.kind === 'ok' ? 'matched' : canon ? 'failed' : 'pending';
-
-      const ord = ing.firstUsedInStepOrdinal;
-      const firstUsedInStepId =
-        ord !== null && ord >= 0 && ord < steps.length ? steps[ord]!.id : null;
-
-      return {
-        id: crypto.randomUUID(),
-        rawText: ing.rawText,
-        parsed: parsedMap.get(ing.rawText) ?? null,
-        canonId,
-        matchState,
-        isOptional: ing.isOptional,
-        firstUsedInStepId,
-      };
-    }),
-  }));
-
-  return {
-    id: crypto.randomUUID(),
-    schemaVersion: 1,
-    // A URL import is always a cookable recipe (issue #637); outings are created
-    // by hand and have nothing to extract.
-    kind: 'recipe',
-    title: raw.title,
-    description: raw.description,
-    ingredients: ingredientGroups,
-    steps,
-    metadata: {
-      servings: raw.servings,
-      // Derive a total from prep + cook when the source only gives the parts
-      // (common — e.g. the page states prep and cook but no explicit total), so
-      // the editor shows a total time instead of a blank.
-      totalTimeMinutes:
-        raw.totalTimeMinutes ??
-        (raw.prepTimeMinutes !== null && raw.cookTimeMinutes !== null
-          ? raw.prepTimeMinutes + raw.cookTimeMinutes
-          : null),
-      prepTimeMinutes: raw.prepTimeMinutes,
-      cookTimeMinutes: raw.cookTimeMinutes,
-      tags: normaliseTags(raw.tags),
-    },
-    source: { type: 'url', url: sourceUrl },
-    notes: raw.notes,
-    // URL import always creates a fresh recipe — no "makes" link yet.
-    producesCanonId: null,
-    // Raw AI output nobody has read yet (issue #616). Carried on the returned
-    // doc as well as the persisted one, so the editor the client opens shows the
-    // same review state as the recipe list.
-    needs_approval: true,
-    image: null,
-    createdAt: now,
-    updatedAt: now,
-  };
-}
-
-// Shared conversion + field rules, reused by both the HTML-fallback prompt and
-// the JSON-LD prompt so unit/spelling conversion can't drift between the paths.
-const CONVERSION_RULES = `## Conversion rules (apply to EVERYTHING)
-- Metric only: convert all quantities to metric. Volumes in millilitres/litres, weights in grams/kilograms. \
-Convert cups, sticks, ounces, pounds, fluid ounces, tablespoons and teaspoons. Temperatures in °C only — \
-never Fahrenheit; convert and round sensibly (e.g. 350°F → 180°C).
-${INGREDIENT_SUBSTITUTION_RULES}
-- Use British spelling everywhere (e.g. "flavour", "colour", "caramelise").`;
-
-const FIELD_RULES = `## Fields
-- title: clear, concise recipe name.
-- description: 1–2 sentence summary, or null.
-- servings: integer portions, or null if not stated.
-- totalTimeMinutes/prepTimeMinutes/cookTimeMinutes: integers in minutes, or null.
-${CATEGORY_TAG_RULES}
-- ingredientGroups: group ingredients by course/stage (null name = default group).
-  Each ingredient: rawText (the ingredient line, already converted to metric + British spelling/terms — \
-this is what the rest of the pipeline parses, so write a clean natural line e.g. "240ml whole milk" or \
-"2 cloves garlic, crushed"), isOptional (true only if explicitly optional), \
-${FIRST_USE_ORDINAL_RULE}
-${STEP_RULES}
-- notes: the author's overall notes/tips, or null.`;
+// CONVERSION_RULES / FIELD_RULES now live in ./recipeExtractionRules.js — the
+// photo import (issue #649) needs the identical wording, and a second copy is one
+// edit away from the two import paths converting differently.
 
 const EXTRACT_SYSTEM = `You are a precise recipe extraction assistant. You are given the raw HTML \
 of a web page and its source URL. Extract a single complete recipe from the page and convert it \

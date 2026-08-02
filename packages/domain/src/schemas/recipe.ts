@@ -87,11 +87,21 @@ export const RecipeMetadataSchema = z.object({
 export const RecipeSourceSchema = z.object({
   type: z.enum(['url', 'book', 'manual']),
   url: z.string().optional(),
+  // Book provenance, filled from what a photographed page actually SHOWS (issue
+  // #649): a running head, an author's name, a printed page number. Any of the
+  // three can be absent from the crop the user took, and the model is told to
+  // omit rather than invent — so each part is individually optional and the whole
+  // object is dropped when nothing was legible.
+  //
+  // Relaxing these from required to optional is a widening: every document that
+  // parsed before still parses, and nothing in the codebase has ever written a
+  // `type: 'book'` source, so no production document is affected and no migration
+  // is needed (salt-architecture.md §1.1).
   book: z
     .object({
-      title: z.string(),
-      author: z.string(),
-      page: z.number(),
+      title: z.string().optional(),
+      author: z.string().optional(),
+      page: z.number().optional(),
     })
     .optional(),
 });
