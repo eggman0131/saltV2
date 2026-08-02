@@ -15,11 +15,16 @@ vi.mock('@genkit-ai/google-genai', () => ({
   },
 }));
 
+let fakeOn = false;
+vi.mock('../../src/ai/fakeModel.js', () => ({ aiFakeEnabled: () => fakeOn }));
+
 // Import after mocks so defineFlow returns the handler directly.
 const { embedTextFlow } = await import('../../src/flows/embedText.js');
+const { fakeEmbedding } = await import('../../src/ai/fakeEmbedding.js');
 
 beforeEach(() => {
   vi.clearAllMocks();
+  fakeOn = false;
 });
 
 describe('embedText flow', () => {
@@ -42,5 +47,15 @@ describe('embedText flow', () => {
     await (embedTextFlow as Function)({ text: 'cherry tomatoes' });
 
     expect(mockEmbed).toHaveBeenCalledWith(expect.objectContaining({ content: 'cherry tomatoes' }));
+  });
+
+  // E2E seam: a canned, text-derived vector instead of a live embed call.
+  it('short-circuits to a deterministic stand-in under the e2e fake flag', async () => {
+    fakeOn = true;
+
+    const result = await (embedTextFlow as Function)({ text: 'olive oil' });
+
+    expect(result).toEqual({ values: fakeEmbedding('olive oil') });
+    expect(mockEmbed).not.toHaveBeenCalled();
   });
 });

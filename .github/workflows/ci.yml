@@ -465,6 +465,33 @@ jobs:
           fi
           ls -l apps/web-pwa/e2e-emulator.log apps/web-pwa/e2e-vite.log 2>/dev/null || true
 
+      # Hermeticity guard (issue #686). Under FUNCTIONS_AI_FAKE the stack is meant
+      # to make no AI network calls at all: the dummy GEMINI_API_KEY is there only
+      # to satisfy the plugin's presence check. A flow that still reaches Gemini
+      # fails fast here (400) and so hides in the noise, but it is a live external
+      # dependency in the suite — on slower egress the same call is a 20s
+      # withAiTimeout stall per invocation, i.e. a flake with no obvious cause.
+      #
+      # A hit means a newly-reached flow is missing its fake seam: swap its model
+      # for `flowModel(...)` (src/ai/fakeModel.ts) or short-circuit the call the
+      # way embedText / serverEmbedding do (src/ai/fakeEmbedding.ts).
+      - name: Assert no live AI calls
+        if: always()
+        env:
+          LOG: apps/web-pwa/e2e-emulator.log
+        run: |
+          set -euo pipefail
+          if [ ! -s "$LOG" ]; then
+            echo "::warning::No emulator log — cannot check for live AI calls."
+            exit 0
+          fi
+          if grep -q 'generativelanguage.googleapis.com' "$LOG"; then
+            grep -o 'https://generativelanguage.googleapis.com[^"]*' "$LOG" | sort | uniq -c
+            echo "::error::The e2e stack called the real Gemini API — a flow is missing its FUNCTIONS_AI_FAKE seam."
+            exit 1
+          fi
+          echo "No live Gemini traffic in the emulator log."
+
       - name: Upload Playwright report
         if: failure() || steps.e2e_flakes.outputs.found == 'true'
         uses: actions/upload-artifact@v7
