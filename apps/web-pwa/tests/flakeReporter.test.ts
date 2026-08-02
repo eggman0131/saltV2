@@ -12,7 +12,13 @@ import { readRunContext, toEvent, toEvents } from '../e2e/reporter/flakeReporter
 
 const ROOT = '/repo/apps/web-pwa';
 
-type Attempt = { duration: number; startTime: Date; error?: { message: string } };
+type Attachment = { name: string; contentType: string; body?: Buffer; path?: string };
+type Attempt = {
+  duration: number;
+  startTime: Date;
+  error?: { message: string };
+  attachments?: Attachment[];
+};
 
 /** The slice of Playwright's Suite/TestCase graph the reporter actually walks. */
 function makeTest(options: {
@@ -306,6 +312,124 @@ describe('flake reporter — event mapping (#669)', () => {
     expect(events.map((e) => e.properties.test_index)).toEqual([0, 1, 2]);
     // File index is assignment order, so the shard's first file is 0.
     expect(events.map((e) => e.properties.file_index)).toEqual([0, 0, 1]);
+  });
+
+  it('measures how far into the shard each test started, from its first attempt', () => {
+    const at = (iso: string) => new Date(iso);
+    const events = toEvents(
+      [
+        makeTest({ id: 'a', results: [{ duration: 100, startTime: at('2026-08-01T10:00:00Z') }] }),
+        makeTest({ id: 'b', results: [{ duration: 100, startTime: at('2026-08-01T10:00:40Z') }] }),
+        // A flaky test: the retry starts later, but the test began at :20.
+        makeTest({
+          id: 'c',
+          outcome: 'flaky',
+          results: [
+            {
+              duration: 100,
+              startTime: at('2026-08-01T10:00:20Z'),
+              error: { message: 'boom' },
+            },
+            { duration: 100, startTime: at('2026-08-01T10:01:30Z') },
+          ],
+        }),
+      ],
+      CONTEXT,
+      ROOT,
+    );
+
+    expect(events.map((e) => e.properties.ms_into_shard)).toEqual([0, 40_000, 20_000]);
+  });
+
+  it('promotes a flake-context attachment to namespaced ctx_ properties', () => {
+    const event = toEvent(
+      makeTest({
+        outcome: 'unexpected',
+        results: [
+          {
+            duration: 1,
+            startTime: new Date(0),
+            error: { message: 'Test timeout of 30000ms exceeded.' },
+            attachments: [
+              {
+                name: 'flake-context',
+                contentType: 'application/json',
+                body: Buffer.from(JSON.stringify({ aisles_count: 0, canon_synced: true })),
+              },
+            ],
+          },
+        ],
+      }),
+      CONTEXT,
+      ROOT,
+    );
+
+    expect(event.properties['ctx_aisles_count']).toBe(0);
+    expect(event.properties['ctx_canon_synced']).toBe(true);
+  });
+
+  it('takes the LAST context so a retry describes the retry, and drops non-scalars', () => {
+    const contextAttachment = (payload: unknown) => ({
+      name: 'flake-context',
+      contentType: 'application/json',
+      body: Buffer.from(JSON.stringify(payload)),
+    });
+    const event = toEvent(
+      makeTest({
+        outcome: 'flaky',
+        results: [
+          {
+            duration: 1,
+            startTime: new Date(0),
+            error: { message: 'boom' },
+            attachments: [contextAttachment({ aisles_count: 0, nested: { no: 'thanks' } })],
+          },
+          {
+            duration: 1,
+            startTime: new Date(1000),
+            attachments: [contextAttachment({ aisles_count: 3 })],
+          },
+        ],
+      }),
+      CONTEXT,
+      ROOT,
+    );
+
+    expect(event.properties['ctx_aisles_count']).toBe(3);
+    expect(event.properties['ctx_nested']).toBeUndefined();
+  });
+
+  it('survives a malformed or unreadable context without losing the event', () => {
+    const event = toEvent(
+      makeTest({
+        outcome: 'unexpected',
+        results: [
+          {
+            duration: 1,
+            startTime: new Date(0),
+            error: { message: 'boom' },
+            attachments: [
+              {
+                name: 'flake-context',
+                contentType: 'application/json',
+                body: Buffer.from('{ not json'),
+              },
+              {
+                name: 'flake-context',
+                contentType: 'application/json',
+                path: '/no/such/file.json',
+              },
+            ],
+          },
+        ],
+      }),
+      CONTEXT,
+      ROOT,
+    );
+
+    // The event still exists and is complete; only the context is absent.
+    expect(event.properties.status).toBe('failed');
+    expect(Object.keys(event.properties).some((k) => k.startsWith('ctx_'))).toBe(false);
   });
 
   it('caps a stack-free but runaway message by lines and characters', () => {
