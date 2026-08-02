@@ -36,6 +36,10 @@ export {
   stopObservabilitySession,
   isObservabilitySessionActive,
 } from './sessionControl.js';
+// Feature-usage events (issue #684) — the typed, closed taxonomy web-pwa
+// captures at its action seams.
+export { trackUsageEvent } from './usageEvents.js';
+export type { UsageEventMap, UsageEventName } from './usageEvents.js';
 export { CANON_MATCH_EVENT } from './shared/matchOutcomeEvent.js';
 export type { CanonMatchEventProps, CanonMatchPath } from './shared/matchOutcomeEvent.js';
 // Category-gated error reporting predicate — single source of truth, shared with

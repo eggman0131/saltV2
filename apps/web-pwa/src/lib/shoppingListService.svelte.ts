@@ -11,7 +11,11 @@ import {
   subscribeShoppingListsConfig,
   saveShoppingListsConfig,
 } from '@salt/firebase-sync';
-import { createObservabilityErrorReportingAdapter, startUserActionSpan } from '@salt/observability';
+import {
+  createObservabilityErrorReportingAdapter,
+  startUserActionSpan,
+  trackUsageEvent,
+} from '@salt/observability';
 import {
   createList,
   renameList,
@@ -245,6 +249,9 @@ export async function addItemToList(
     const traceparent = span.traceparent || undefined;
     const saveResult = await saveShoppingListItem(listId, newItem, traceparent);
     if (saveResult.kind === 'err') span.setError(saveResult.error);
+    // User-typed adds only (issue #684) — recipe extraction commits elsewhere
+    // and is deliberately not counted here. Id only, never the rawText.
+    else trackUsageEvent('shopping.item_added', { list_id: listId });
     return reportIfFailed(getErrorReporter(), saveResult);
   } finally {
     // End once the write settles so the span captures client-side latency.
@@ -303,7 +310,11 @@ export async function toggleItemChecked(
     : checkItem(items, { id: item.id, now });
   if (result.kind !== 'ok') return result;
   const updated = result.value.find((i) => i.id === item.id)!;
-  return reportIfFailed(getErrorReporter(), await saveShoppingListItem(listId, updated));
+  const saveResult = await saveShoppingListItem(listId, updated);
+  // Only the tick-off direction is usage (issue #684); unchecking is a correction.
+  if (!item.checked && saveResult.kind === 'ok')
+    trackUsageEvent('shopping.item_completed', { list_id: listId, item_count: 1 });
+  return reportIfFailed(getErrorReporter(), saveResult);
 }
 
 // Clear an item's verification flag — the shopper confirmed they need it (issue
@@ -349,6 +360,10 @@ export async function checkItems(listId: string, itemIds: readonly string[]): Pr
   const toSave = working.filter((i) => itemIds.includes(i.id));
   const results = await Promise.all(toSave.map((item) => saveShoppingListItem(listId, item)));
   reportFirstWriteFailure(results);
+  // One gesture, one event: a bulk completion carries its size rather than
+  // firing per item (issue #684).
+  if (results.some((r) => r.kind === 'ok'))
+    trackUsageEvent('shopping.item_completed', { list_id: listId, item_count: toSave.length });
 }
 
 export async function uncheckItems(listId: string, itemIds: readonly string[]): Promise<void> {

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Button, DetailPage, Icon, Markdown, Spinner } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
+  import { trackUsageEvent } from '@salt/observability';
   import { sessions, isLoadingSessions, sendMessage } from '../../lib/chatService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { saveRecipe as saveRecipeDoc } from '@salt/firebase-sync';
@@ -74,6 +75,11 @@
       addToast('Failed to save recipe.', 'destructive');
       return;
     }
+    trackUsageEvent('recipe.created', {
+      recipe_id: stamped.id,
+      recipe_kind: stamped.kind,
+      recipe_method: 'chat',
+    });
     addToast('Recipe saved!', 'success');
     push(`/recipes/${stamped.id}`);
   }

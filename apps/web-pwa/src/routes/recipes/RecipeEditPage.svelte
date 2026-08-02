@@ -16,6 +16,7 @@
     type ComboboxItemType,
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
+  import { trackUsageEvent } from '@salt/observability';
   import {
     emptyRecipe,
     emptyIngredientGroup,
@@ -433,6 +434,14 @@
       addToast('Failed to save recipe.', 'destructive');
       return;
     }
+    // Creation is a route-level fact (/recipes/new[/:kind] has no id) —
+    // persistRecipe is a blind upsert and cannot tell create from edit.
+    if (editingId === null)
+      trackUsageEvent('recipe.created', {
+        recipe_id: toSave.id,
+        recipe_kind: draftKind,
+        recipe_method: 'manual',
+      });
     const copy = KIND_COPY[draftKind];
     addToast(editingId === null ? copy.createdToast : copy.savedToast, 'success');
     push(`/recipes/${toSave.id}`);
