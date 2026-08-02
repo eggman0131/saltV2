@@ -418,8 +418,55 @@ jobs:
             -H 'Content-Type: application/json' \
             --data-binary @/tmp/posthog-batch.json
 
+      # A FLAKY shard is green, so `failure()` never fires for it and every
+      # artifact below used to be discarded — which is why `detail page — change
+      # aisle` could flake in six of eight runs and leave nothing to read. The
+      # failed attempt's trace, video and store snapshot are all retained on disk
+      # by then (`trace: 'retain-on-failure'` keeps the attempt that actually
+      # failed, not the retry that passed), so the artifacts are sitting there;
+      # only the upload condition was throwing them away.
+      #
+      # Reads the reporter's NDJSON rather than a Playwright exit code because
+      # that file is the only place the flaky/passed distinction survives.
+      - name: Detect e2e flakes
+        id: e2e_flakes
+        if: always()
+        env:
+          EVENTS: apps/web-pwa/e2e-flake-events.ndjson
+        run: |
+          set -euo pipefail
+          found=false
+          if [ -s "$EVENTS" ] && jq -e -s 'any(.[]; .properties.status == "flaky")' "$EVENTS" >/dev/null; then
+            found=true
+            echo "::warning::Shard ${{ matrix.shard }} had retry-recovered flakes — uploading diagnostics."
+          fi
+          echo "found=$found" >> "$GITHUB_OUTPUT"
+
+      # The two server-side logs, which nothing has ever uploaded. The emulator
+      # log is written by globalTeardown BEFORE `down -v` (it is the only moment
+      # it exists); the Vite log is the CI-only server log globalSetup already
+      # redirects to /tmp. Copied into the workspace so the upload path is
+      # relative like every other artifact here.
+      - name: Collect e2e server logs
+        if: always()
+        run: |
+          set -euo pipefail
+          cp /tmp/e2e-vite.log apps/web-pwa/e2e-vite.log 2>/dev/null || true
+          # Fallback for the worst case: Playwright died before globalTeardown,
+          # so nothing captured the container — and a run that crashed outright
+          # is precisely when the emulator log is worth having. The stack is
+          # probably still up in that case, so ask it directly. A no-op when
+          # teardown already did its job (the file is non-empty) or when the
+          # container is genuinely gone.
+          if [ ! -s apps/web-pwa/e2e-emulator.log ]; then
+            echo "::warning::No emulator log from globalTeardown — attempting a late capture."
+            docker compose -f docker/test-emulators/docker-compose.test.yml \
+              logs --no-color --timestamps > apps/web-pwa/e2e-emulator.log 2>/dev/null || true
+          fi
+          ls -l apps/web-pwa/e2e-emulator.log apps/web-pwa/e2e-vite.log 2>/dev/null || true
+
       - name: Upload Playwright report
-        if: failure()
+        if: failure() || steps.e2e_flakes.outputs.found == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report-shard-${{ matrix.shard }}
@@ -427,11 +474,23 @@ jobs:
           retention-days: 14
 
       - name: Upload test results
-        if: failure()
+        if: failure() || steps.e2e_flakes.outputs.found == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: playwright-test-results-shard-${{ matrix.shard }}
           path: apps/web-pwa/test-results/
+          retention-days: 14
+
+      - name: Upload e2e server logs
+        if: failure() || steps.e2e_flakes.outputs.found == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-server-logs-shard-${{ matrix.shard }}
+          path: |
+            apps/web-pwa/e2e-emulator.log
+            apps/web-pwa/e2e-vite.log
+            apps/web-pwa/e2e-flake-events.ndjson
+          if-no-files-found: ignore
           retention-days: 14
 
   # Aggregator. MUST stay named "E2E (Playwright)" — that exact string is a

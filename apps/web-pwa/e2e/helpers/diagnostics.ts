@@ -11,7 +11,20 @@
  * getter, or a serialization failure must NEVER turn a test failure into a
  * different error. Diagnostics swallow their own errors.
  */
+import { writeFile } from 'node:fs/promises';
 import type { Page, TestInfo } from '@playwright/test';
+
+// Playwright colourises assertion messages. Written straight into a JSON file
+// those escape codes survive as literal noise wrapped around exactly the
+// strings you came to read (the expected pattern, the received value), so strip
+// them where the message stops being terminal output and becomes an artifact.
+// Spelled \u001B rather than a raw ESC byte, matching flakeReporter.ts: an
+// invisible control character in source is a trap for the next reader.
+const ANSI = /\u001B\[[0-9;]*m/g;
+
+function plainMessage(message: string | undefined): string | undefined {
+  return message?.replace(ANSI, '');
+}
 
 /**
  * Single `page.evaluate()` that calls every available sync bridge store-reader,
@@ -66,10 +79,15 @@ export async function attachStoreSnapshot(
 ): Promise<void> {
   try {
     const snapshot = await readStoreSnapshot(page);
-    await testInfo.attach(label, {
-      body: JSON.stringify({ ...extra, snapshot }, null, 2),
-      contentType: 'application/json',
-    });
+    // Written to outputPath and attached BY PATH, not as an inline `body`. An
+    // inline body only ever exists base64-encoded inside the HTML report's
+    // bundle, so reading it back means unpacking that bundle — which is exactly
+    // the wrong amount of friction for the artifact you reach for first when a
+    // convergence flake needs explaining. By path it is a plain .json file in
+    // test-results/, sitting next to the trace and readable with `cat`.
+    const file = testInfo.outputPath(`${label.replace(/[^a-zA-Z0-9]+/g, '-')}.json`);
+    await writeFile(file, JSON.stringify({ ...extra, snapshot }, null, 2));
+    await testInfo.attach(label, { path: file, contentType: 'application/json' });
   } catch (err) {
     // Diagnostics must never throw. Best-effort note, also guarded.
     try {
@@ -104,7 +122,7 @@ export async function withConvergenceDiagnostics<T = void>(
     await attachStoreSnapshot(testInfo, page, `converge-timeout:${label}`, {
       label,
       elapsedMs: Date.now() - start,
-      error: (err as Error)?.message,
+      error: plainMessage((err as Error)?.message),
     });
     throw err;
   }
@@ -121,6 +139,6 @@ export async function attachFailureSnapshot(testInfo: TestInfo, page: Page): Pro
   }
   await attachStoreSnapshot(testInfo, page, 'failure-store-snapshot', {
     status: testInfo.status,
-    error: testInfo.error?.message,
+    error: plainMessage(testInfo.error?.message),
   });
 }
