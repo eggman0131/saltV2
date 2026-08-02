@@ -3,6 +3,7 @@ import { MatchOrCreateCanonInputSchema } from './matchOrCreateCanonInput.js';
 import { CanonicaliseRecipeIngredientsInputSchema } from './canonicaliseRecipeIngredientsInput.js';
 import { AuthorRecipeInputSchema } from './authorRecipe.js';
 import { ExtractRecipeFromUrlInputSchema } from './extractRecipeFromUrl.js';
+import { ExtractRecipeFromPhotoInputSchema } from './extractRecipeFromPhoto.js';
 import { IdentifyEquipmentInputSchema } from './identifyEquipment.js';
 import { PopulateEquipmentEntryInputSchema } from './populateEquipmentEntry.js';
 import { RefreshWeatherForecastInputSchema } from './weatherForecast.js';
@@ -47,6 +48,13 @@ export const ExtractRecipeFromUrlWireInputSchema = ExtractRecipeFromUrlInputSche
   traceparent: TraceparentSchema,
 });
 
+// Import from a photograph of a cookbook page (issue #649, Phase 3). Same
+// user-initiated shape as the URL import — the user taps Import, so the browser
+// mints the trace and supplies it here.
+export const ExtractRecipeFromPhotoWireInputSchema = ExtractRecipeFromPhotoInputSchema.extend({
+  traceparent: TraceparentSchema,
+});
+
 // The two equipment-add callables (issue #361). The multi-step add-equipment
 // action fires identifyEquipment then populateEquipmentEntry with human
 // think-time between; the browser mints ONE trace id and supplies the SAME
@@ -82,6 +90,7 @@ export type CanonicaliseRecipeIngredientsWireInput = z.infer<
 >;
 export type AuthorRecipeWireInput = z.infer<typeof AuthorRecipeWireInputSchema>;
 export type ExtractRecipeFromUrlWireInput = z.infer<typeof ExtractRecipeFromUrlWireInputSchema>;
+export type ExtractRecipeFromPhotoWireInput = z.infer<typeof ExtractRecipeFromPhotoWireInputSchema>;
 export type IdentifyEquipmentWireInput = z.infer<typeof IdentifyEquipmentWireInputSchema>;
 export type PopulateEquipmentEntryWireInput = z.infer<typeof PopulateEquipmentEntryWireInputSchema>;
 export type RefreshWeatherForecastWireInput = z.infer<typeof RefreshWeatherForecastWireInputSchema>;

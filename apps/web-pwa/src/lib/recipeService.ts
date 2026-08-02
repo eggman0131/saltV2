@@ -5,6 +5,7 @@ import {
   callParseRecipeIngredients,
   callCanonicaliseRecipeIngredients,
   callExtractRecipeFromUrl,
+  callExtractRecipeFromPhoto,
   callAuthorRecipe,
   callDescribeRecipeScene,
   callRegenerateRecipeImage,
@@ -35,7 +36,11 @@ import type {
   CanonItemUnit,
   FormDemand,
 } from '@salt/domain';
-import type { UrlImportFailureCode } from '@salt/domain/schemas';
+import type {
+  UrlImportFailureCode,
+  PhotoImportFailureCode,
+  RecipePagePhoto,
+} from '@salt/domain/schemas';
 import { hasLiveCanonMatch } from '@salt/domain';
 import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
 import { getCanonItemsSnapshot } from './canonService.js';
@@ -322,6 +327,85 @@ export async function importRecipeFromUrl(
   const child = span.child('callExtractRecipeFromUrl');
   try {
     const result = await callExtractRecipeFromUrl({ url: trimmed }, span.traceparent || undefined);
+    child.end();
+    if (result.kind !== 'ok') {
+      span.setAttribute('import.outcome', result.error);
+      span.setError();
+      return failure(result.error);
+    }
+    span.setAttribute('import.outcome', 'ok');
+    // `Recipe` is an alias of `RecipeDoc` (issue #417), so the draft is already a
+    // Recipe — no cast needed.
+    return success(result.value);
+  } finally {
+    span.end();
+  }
+}
+
+// ─── Photo import (issue #649, Phase 3) ────────────────────────────────────────
+// Photograph a cookbook page (1–MAX_RECIPE_PAGE_PHOTOS pages of ONE recipe, since
+// a recipe routinely runs across a spread) and get back the same fully-converted
+// (metric + British) draft the URL path produces, with the book's title/author/
+// page recorded on `source` where the photographs show them. Unlike the URL path
+// there is nothing to validate client-side beyond the page count, which the
+// capture UI enforces by construction.
+//
+// The page images are REQUEST-SCOPED end to end: cropped in the browser, sent as
+// base64, read by the model, discarded. Nothing is written to Storage on either
+// side, so there is no object to clean up if the import fails.
+
+// User-facing copy per failure code. Its own map, NOT a widening of
+// URL_IMPORT_COPY: `PhotoImportFailureCode` is a separate closed set (an invalid
+// URL means nothing here), and the two vocabularies must not be able to drift
+// into each other. Lives client-side for the same reason the URL copy does — the
+// app never depends on the server's message text.
+const PHOTO_IMPORT_COPY: Record<PhotoImportFailureCode, string> = {
+  // Unreachable while the capture UI respects the 1–MAX_RECIPE_PAGE_PHOTOS bound;
+  // kept honest rather than clever in case some other entry point ever sends a
+  // payload the wire schema refuses.
+  'invalid-photos': 'Those photos couldn’t be sent — take one to four shots of the page and retry.',
+  // ONE message for two indistinguishable server-side outcomes: a page too blurry
+  // or dark to read, and a page with no recipe on it. The model's output carries
+  // no signal separating them, so the copy has to cover both without guessing.
+  'unreadable-photos':
+    'We couldn’t read a recipe from those photos — try a sharper, brighter shot of the whole page.',
+  'import-failed':
+    'The recipe reader had trouble with those photos — try again, or add it manually.',
+};
+
+export function photoImportMessage(code: PhotoImportFailureCode): string {
+  return PHOTO_IMPORT_COPY[code];
+}
+
+// Import a recipe from page photographs. Returns the assembled draft as a Recipe
+// entity (RecipeDoc is structurally identical) which the server has ALREADY
+// persisted with `needs_approval` — so the caller routes to that recipe's editor,
+// exactly as importRecipeFromUrl's caller does since #616.
+//
+// Distributed tracing (issue #362, Phase 4) is identical in shape to the URL
+// path: a ROOT span at the user action so the trace ORIGINATES in the browser,
+// its W3C traceparent handed to the callable, and the round-trip captured as a
+// child span so client-side latency is visible. web-pwa OWNS the observability
+// dependency and bridges the traceparent to firebase-sync (Rule 4). Best-effort:
+// an inert tracer yields a no-op span and an empty traceparent, and import then
+// behaves as a bare callable call.
+//
+// The page count rides as a span attribute — it is the one dimension that
+// materially predicts extraction latency, and it is a number, not user content.
+// The callable's own long timeout is the adapter's business; no timeout is
+// passed from here.
+export async function importRecipeFromPhoto(
+  images: readonly RecipePagePhoto[],
+): Promise<ReadResult<Recipe, PhotoImportFailureCode>> {
+  const span = startUserActionSpan('Import recipe from photo');
+  span.setAttribute('import.source', 'photo');
+  span.setAttribute('import.pageCount', images.length);
+  const child = span.child('callExtractRecipeFromPhoto');
+  try {
+    const result = await callExtractRecipeFromPhoto(
+      { images: [...images] },
+      span.traceparent || undefined,
+    );
     child.end();
     if (result.kind !== 'ok') {
       span.setAttribute('import.outcome', result.error);
