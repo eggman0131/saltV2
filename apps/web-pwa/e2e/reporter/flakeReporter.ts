@@ -162,6 +162,9 @@ const ANSI = /\u001B\[[0-9;]*m/g;
 // unactionable, and since flaky runs uploaded no trace there was nothing else to
 // read. The caps below still bound the property.
 const STACK_FRAME = /^\s*at\s/;
+// The header Playwright prints above the "waiting for …" trace — the part of a
+// timeout that names what hung. See messageOf.
+const CALL_LOG = /^\s*Call log:/m;
 const ERROR_MAX = 1200;
 const ERROR_MAX_LINES = 12;
 
@@ -241,13 +244,38 @@ function failedResultOf(test: TestCase): TestResult | undefined {
 }
 
 /**
+ * The richest message on a failing attempt, not the first one.
+ *
+ * A test timeout — the commonest flake shape here — records TWO errors: a bare
+ * "Test timeout of 30000ms exceeded." (which is what `result.error` is) and the
+ * one that says what actually hung ("locator.click: Test timeout of 30000ms
+ * exceeded" plus the `Call log:` and its "waiting for …" locator). Shipping the
+ * first is worse than useless: it is unactionable, and every timeout in the
+ * suite then fingerprints identically, so `error_fingerprint` mis-groups
+ * unrelated failures while looking like it works (issue #685).
+ *
+ * A call log is the strongest signal, so it wins outright; otherwise length is
+ * the only ordering available and the longer message is never the poorer one.
+ */
+function messageOf(result: TestResult | undefined): string | undefined {
+  const candidates = [...(result?.errors ?? []), result?.error]
+    .map((error) => error?.message)
+    .filter((message): message is string => Boolean(message));
+  if (!candidates.length) return undefined;
+  return (
+    candidates.find((message) => CALL_LOG.test(message)) ??
+    candidates.reduce((longest, message) => (message.length > longest.length ? message : longest))
+  );
+}
+
+/**
  * The assertion block of the first attempt that actually failed — de-coloured,
  * stopped at the stack, and capped. Keeps the locator / expectation / call log
  * that make a failure diagnosable; drops the stack trace that made the old
  * first-line-only cut necessary.
  */
 function errorOf(test: TestCase): string | null {
-  const message = failedResultOf(test)?.error?.message;
+  const message = messageOf(failedResultOf(test));
   if (!message) return null;
   const kept: string[] = [];
   for (const line of message.replace(ANSI, '').trim().split('\n')) {
