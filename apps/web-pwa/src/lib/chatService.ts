@@ -5,7 +5,7 @@ import {
   streamChefChat,
   callGenerateChatTitle,
 } from '@salt/firebase-sync';
-import { createObservabilityErrorReportingAdapter } from '@salt/observability';
+import { createObservabilityErrorReportingAdapter, trackUsageEvent } from '@salt/observability';
 import { reportIfFailed, reportSubscriptionError, reportWriteError } from './errorReporting.js';
 import type { ChatSessionDoc } from '@salt/domain/schemas';
 import type { DomainError, ReadResult } from '@salt/shared-types';
@@ -110,6 +110,7 @@ export async function createChatSession(
     reportWriteError(getErrorReporter(), result.error);
     return result;
   }
+  trackUsageEvent('chat.started', { chat_context: recipeId ? 'recipe' : 'blank' });
   return success(stamped);
 }
 
@@ -139,6 +140,9 @@ export async function sendMessage(
   onChunk: (chunk: string) => void,
 ): Promise<ReadResult<ChatSessionDoc, DomainError>> {
   const isFirstExchange = session.messages.length === 0;
+  // Usage = the send gesture, not the round-trip: a message that then fails to
+  // stream still counts as someone using chat. No content rides on the event.
+  trackUsageEvent('chat.message_sent', {});
 
   const userMsg: ChatSessionDoc['messages'][number] = {
     id: crypto.randomUUID(),

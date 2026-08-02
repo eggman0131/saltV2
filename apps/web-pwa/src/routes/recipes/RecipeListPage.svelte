@@ -9,6 +9,7 @@
     PopoverTrigger,
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
+  import { trackUsageEvent } from '@salt/observability';
   import { appendCacheBuster, takesIngredients, type Recipe, type RecipeKind } from '@salt/domain';
   import {
     recipes,
@@ -207,6 +208,11 @@
     // instead of waiting for the Firestore listener to deliver a doc the server
     // just wrote. If navigation itself fails, surface it rather than silently
     // closing the form: the recipe exists either way, so the user isn't stranded.
+    trackUsageEvent('recipe.created', {
+      recipe_id: result.value.id,
+      recipe_kind: result.value.kind,
+      recipe_method: 'url',
+    });
     stashImportedDraft(result.value);
     try {
       push(`/recipes/${result.value.id}/edit`);
@@ -228,6 +234,11 @@
     // persisted the recipe flagged as not yet reviewed, so this routes into that
     // recipe's editor rather than /recipes/new. The draft is stashed so the
     // editor paints immediately instead of waiting for the Firestore listener.
+    trackUsageEvent('recipe.created', {
+      recipe_id: recipe.id,
+      recipe_kind: recipe.kind,
+      recipe_method: 'photo',
+    });
     stashImportedDraft(recipe);
     try {
       push(`/recipes/${recipe.id}/edit`);

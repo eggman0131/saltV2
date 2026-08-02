@@ -28,6 +28,7 @@ import {
   type Weekday,
 } from '@salt/domain';
 import { ErrorCode, failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
+import { trackUsageEvent } from '@salt/observability';
 import { writable, derived, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 
@@ -336,12 +337,18 @@ async function persistWeek(week: MealPlanWeek): Promise<ReadResult<void, DomainE
     latestWeekUpdatedAt.set(stamped.startDate, stamped.updatedAt);
     _weeks.update((weeks) => ({ ...weeks, [stamped.startDate]: stamped }));
   }
-  return saveMealPlanWeek(stamped);
+  // Every week-level mutator funnels through here, so this one capture is the
+  // whole "is the planner used, and by whom" signal (issue #684).
+  const result = await saveMealPlanWeek(stamped);
+  if (result.kind === 'ok') trackUsageEvent('plan.edited', { plan_scope: 'week' });
+  return result;
 }
 
 async function persistTemplate(template: MealPlanTemplate): Promise<ReadResult<void, DomainError>> {
   _template.set(template);
-  return saveMealPlanTemplate(template);
+  const result = await saveMealPlanTemplate(template);
+  if (result.kind === 'ok') trackUsageEvent('plan.edited', { plan_scope: 'template' });
+  return result;
 }
 
 /**

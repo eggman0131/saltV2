@@ -2,6 +2,7 @@
   import { Button, CanonIcon, Icon, Spinner } from '@salt/ui-components';
   import { onDestroy, onMount } from 'svelte';
   import { push } from 'svelte-spa-router';
+  import { trackUsageEvent } from '@salt/observability';
   import { recipes, isLoadingRecipes } from '../../lib/recipeService.js';
   import {
     cookSession,
@@ -120,6 +121,9 @@
     const result = await persistCookSession(makeFreshSession());
     bootstrapping = false;
     if (result.kind !== 'ok') addToast('Failed to start cooking.', 'destructive');
+    // Bootstrap only — a Restart mid-cook re-persists a session but is the same
+    // cook, not a new start (issue #684).
+    else trackUsageEvent('cook.started', { recipe_id: params.id });
   }
 
   $effect(() => {
@@ -796,6 +800,9 @@
     if (!sessionId || completing) return;
     completing = true;
     await removeCookSession(sessionId);
+    // The explicit "Finish cooking" gesture — restarts and closes are not
+    // completions (issue #684).
+    trackUsageEvent('cook.completed', { recipe_id: params.id });
     // Deliberately left true: removeCookSession clears the store synchronously, and
     // this flag is what stops the bootstrap effect from creating a replacement
     // session in the gap before the navigation tears the page down.
