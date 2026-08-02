@@ -108,11 +108,20 @@ Isolation here is **structural**, not parallel-safe-by-design — and that disti
 
 - **NF-C4 (MUST) — Seed through the real adapter, via the bridge.** Create fixtures with the
   `window.__e2e` helpers ([helpers/seed.ts](../apps/web-pwa/e2e/helpers/seed.ts)) so writes go
-  through the real `@salt/firebase-sync` persistence path, not a side-channel. The one sanctioned
-  REST back door is the **member allowlist** seed
-  ([helpers/auth.ts:18-43](../apps/web-pwa/e2e/helpers/auth.ts#L18-L43)), because the
-  `beforeMemberCreated` blocking function rejects sign-in for un-allowlisted emails — so the member
-  doc must exist _before_ `devSignIn`. Preserve that ordering.
+  through the real `@salt/firebase-sync` persistence path, not a side-channel. Two sanctioned REST
+  back doors exist, both for the same reason: a bridge write depends on the app's own `onSnapshot`
+  re-reading it, and a real listener's _first_ snapshot is not subject to the emulator's
+  long-polling drop hazard (NF-D1) the way a write-then-read-back is.
+  - The **member allowlist** seed
+    ([helpers/auth.ts:18-43](../apps/web-pwa/e2e/helpers/auth.ts#L18-L43)): the
+    `beforeMemberCreated` blocking function rejects sign-in for un-allowlisted emails, so the
+    member doc must exist _before_ `devSignIn`.
+  - The **`firstDayOfWeek`** seed
+    (`seedFirstDayOfWeek`, [helpers/seed.ts:63-77](../apps/web-pwa/e2e/helpers/seed.ts#L63-L77)):
+    a bridge write can be dropped before a geometry-sensitive spec's listeners ever see it, so the
+    doc is put in place before there is a listener at all.
+
+  Preserve both orderings. Do not add a third back door without the same drop-hazard justification.
 
 - **NF-C5 (MUST) — Fresh browser context per tab-scoped identity.** Default per-test context is the
   baseline. Multi-tab tests that model two users (`page1`/`page2`) MUST use separate
@@ -319,7 +328,7 @@ Isolation & state
 [ ] NF-C1  workers:1 not raised; global clearFirestore coupling respected
 [ ] NF-C2  Per-test identity via uniqueEmail(testId)
 [ ] NF-C3  Self-contained; seeds everything it reads; order-independent
-[ ] NF-C4  Seeds through the bridge/real adapter (allowlist REST seed before devSignIn)
+[ ] NF-C4  Seeds through the bridge/real adapter (allowlist + firstDayOfWeek REST seeds precede their listeners)
 [ ] NF-C5  Multi-user tabs use separate contexts, closed in finally
 
 Realtime / cross-tab (if applicable)
