@@ -23,6 +23,11 @@ apps/web-pwa/playwright/.cache/
 # Flake telemetry emitted by e2e/reporter/flakeReporter.ts (issue #669); CI ships
 # it to PostHog and drops it with the runner.
 apps/web-pwa/e2e-flake-events.ndjson
+# Server-side e2e logs captured for CI artifacts: the emulator container's own
+# logs (written by globalTeardown before `down -v` takes the container with it)
+# and the e2e Vite server log. Local runs regenerate both.
+apps/web-pwa/e2e-emulator.log
+apps/web-pwa/e2e-vite.log
 apps/cloud-functions/.secret.local
 apps/cloud-functions/.genkit/
 coverage/

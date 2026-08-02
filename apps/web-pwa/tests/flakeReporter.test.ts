@@ -160,6 +160,169 @@ describe('flake reporter — event mapping (#669)', () => {
     expect(event.properties.error).toBe('Error: expected 1');
   });
 
+  it('keeps the locator and call log — the part that makes a failure diagnosable', () => {
+    // The real shape of the failure that hard-failed CI twice (issue #669
+    // follow-up). First-line-only reduced this to
+    // "Error: expect(locator).toBeVisible() failed", which names neither the
+    // locator nor what it was waiting for.
+    const message = [
+      'Error: expect(locator).toBeVisible() failed',
+      '',
+      "Locator: getByTestId('recipe-add-review-list')",
+      'Expected: visible',
+      'Timeout: 10000ms',
+      'Error: element(s) not found',
+      '',
+      'Call log:',
+      '  - Expect "toBeVisible" with timeout 10000ms',
+      "  - waiting for getByTestId('recipe-add-review-list')",
+    ].join('\n');
+    const event = toEvent(
+      makeTest({
+        outcome: 'unexpected',
+        results: [{ duration: 1, startTime: new Date(0), error: { message } }],
+      }),
+      CONTEXT,
+      ROOT,
+    );
+
+    expect(event.properties.error).toContain("Locator: getByTestId('recipe-add-review-list')");
+    expect(event.properties.error).toContain('Timeout: 10000ms');
+    expect(event.properties.error).toContain('waiting for');
+  });
+
+  it('reports the FAILING attempt duration, not the retry that passed', () => {
+    // The exact shape of every `detail page — change aisle` flake: attempt 1
+    // burns the 30s test timeout, the retry passes in 5s. duration_ms keeps
+    // reporting 5s (the dashboards are built on it); the new field carries the
+    // 30s that actually happened.
+    const event = toEvent(
+      makeTest({
+        outcome: 'flaky',
+        results: [
+          {
+            duration: 30_000,
+            startTime: new Date('2026-08-01T10:00:00.000Z'),
+            error: { message: 'Error: locator.click: Test timeout of 30000ms exceeded.' },
+          },
+          { duration: 5_000, startTime: new Date('2026-08-01T10:00:31.000Z') },
+        ],
+      }),
+      CONTEXT,
+      ROOT,
+    );
+
+    expect(event.properties.duration_ms).toBe(5_000);
+    expect(event.properties.failed_attempt_duration_ms).toBe(30_000);
+    expect(event.properties.failure_kind).toBe('test-timeout');
+  });
+
+  it('leaves the failure-derived fields null when nothing failed', () => {
+    const event = toEvent(makeTest({ outcome: 'expected' }), CONTEXT, ROOT);
+
+    expect(event.properties.failed_attempt_duration_ms).toBeNull();
+    expect(event.properties.failure_kind).toBeNull();
+    expect(event.properties.error_fingerprint).toBeNull();
+  });
+
+  it('separates an assertion failure from a test-level timeout', () => {
+    const assertion = toEvent(
+      makeTest({
+        outcome: 'unexpected',
+        results: [
+          {
+            duration: 1,
+            startTime: new Date(0),
+            error: { message: 'Error: expect(locator).toBeVisible() failed\n\nTimeout: 10000ms' },
+          },
+        ],
+      }),
+      CONTEXT,
+      ROOT,
+    );
+    const thrown = toEvent(
+      makeTest({
+        outcome: 'unexpected',
+        results: [
+          {
+            duration: 1,
+            startTime: new Date(0),
+            error: { message: 'TypeError: undefined is not a function' },
+          },
+        ],
+      }),
+      CONTEXT,
+      ROOT,
+    );
+
+    expect(assertion.properties.failure_kind).toBe('assertion');
+    expect(thrown.properties.failure_kind).toBe('error');
+  });
+
+  it('fingerprints two runs of the same failure identically despite volatile ids', () => {
+    const withVolatiles = (uuid: string, count: number) =>
+      toEvent(
+        makeTest({
+          outcome: 'unexpected',
+          results: [
+            {
+              duration: 1,
+              startTime: new Date(0),
+              error: {
+                message: [
+                  'Error: expect(page).toHaveURL(expected) failed',
+                  `Received string: "http://127.0.0.1:5174/#/recipes/${uuid}"`,
+                  `${count} x locator resolved to <html>`,
+                  'e2e-9f2a@salt.test',
+                ].join('\n'),
+              },
+            },
+          ],
+        }),
+        CONTEXT,
+        ROOT,
+      ).properties.error_fingerprint;
+
+    const a = withVolatiles('4cdde356-396d-9fc0-34b4-a17f60f6b4ef', 24);
+    const b = withVolatiles('a2fd5b57-30e2-4ae0-b725-9fe156ee1d7d', 31);
+
+    expect(a).toBe(b);
+    // Still readable, and still names the assertion that failed.
+    expect(a).toContain('toHaveURL');
+    expect(a).toContain('<uuid>');
+  });
+
+  it('stamps shard position so "first spec of the shard" is chartable', () => {
+    const events = toEvents(
+      [
+        makeTest({ id: 'a', file: `${ROOT}/e2e/aisles-seed.spec.ts` }),
+        makeTest({ id: 'b', file: `${ROOT}/e2e/aisles-seed.spec.ts` }),
+        makeTest({ id: 'c', file: `${ROOT}/e2e/canon-sync.spec.ts` }),
+      ],
+      CONTEXT,
+      ROOT,
+    );
+
+    expect(events.map((e) => e.properties.test_index)).toEqual([0, 1, 2]);
+    // File index is assignment order, so the shard's first file is 0.
+    expect(events.map((e) => e.properties.file_index)).toEqual([0, 0, 1]);
+  });
+
+  it('caps a stack-free but runaway message by lines and characters', () => {
+    const message = Array.from({ length: 40 }, (_, i) => `line ${i} ${'y'.repeat(200)}`).join('\n');
+    const event = toEvent(
+      makeTest({
+        outcome: 'unexpected',
+        results: [{ duration: 1, startTime: new Date(0), error: { message } }],
+      }),
+      CONTEXT,
+      ROOT,
+    );
+
+    expect(event.properties.error!.length).toBeLessThanOrEqual(1200);
+    expect(event.properties.error!.split('\n').length).toBeLessThanOrEqual(12);
+  });
+
   it('emits one record per test, each with its own idempotency uuid', () => {
     const events = toEvents([makeTest({ id: 'a' }), makeTest({ id: 'b' })], CONTEXT, ROOT);
     expect(events.map((event) => event.properties.test_id)).toEqual(['a', 'b']);
