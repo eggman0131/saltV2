@@ -10,6 +10,9 @@ vi.mock('@salt/observability', async () => {
   const actual = await vi.importActual<typeof import('@salt/observability')>('@salt/observability');
   return {
     isReportableCategory: actual.isReportableCategory,
+    // Usage events (issue #684) are inert here — this suite is about the
+    // report/suppress gate, not telemetry.
+    trackUsageEvent: vi.fn(),
     createObservabilityErrorReportingAdapter: vi.fn(() => ({
       report: (error: unknown, category: DomainError['kind']) => {
         if (!actual.isReportableCategory(category)) return;

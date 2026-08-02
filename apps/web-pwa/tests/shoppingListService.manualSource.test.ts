@@ -23,6 +23,9 @@ vi.mock('@salt/firebase-sync', () => ({
 
 vi.mock('@salt/observability', () => ({
   createObservabilityErrorReportingAdapter: vi.fn(() => ({ report: vi.fn() })),
+  // Usage events (issue #684) are inert here — this suite is about source
+  // attribution, not telemetry.
+  trackUsageEvent: vi.fn(),
   // Phase 5: addItemToList roots a browser action span. Inert no-op handle —
   // empty traceparent → saveShoppingListItem writes no traceContext field.
   startUserActionSpan: vi.fn(() => ({

@@ -465,5 +465,6 @@ export { setRecipeImageUpload } from './callables/setRecipeImageUpload.js';
 export { beforeMemberCreated } from './auth/beforeMemberCreated.js';
 export { sweepOrphanedStorage } from './maintenance/sweepOrphanedStorage.js';
 export { remindShoppingDay } from './maintenance/remindShoppingDay.js';
+export { snapshotVolumetrics } from './maintenance/snapshotVolumetrics.js';
 export { requestEmailOtp } from './callables/requestEmailOtp.js';
 export { verifyEmailOtp } from './callables/verifyEmailOtp.js';
