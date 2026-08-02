@@ -1,4 +1,4 @@
-# Salt 2.0 — UI Primitives Specification (v0.2.8)
+# Salt 2.0 — UI Primitives Specification (v0.2.9)
 
 **Status:** Authoritative
 **Audience:** AI code generators + human contributors
@@ -146,7 +146,7 @@ No deep imports. No side-effect imports in any barrel.
 
 ## 1.5 Spec Versioning & Amendment Rule
 
-The spec is versioned `vMAJOR.MINOR.PATCH` (currently v0.2.8).
+The spec is versioned `vMAJOR.MINOR.PATCH` (currently v0.2.9).
 
 - **PATCH** (v0.2.1 → v0.2.2): clarifications, typo fixes, tightened class matrices. No breaking change to generated code.
 - **MINOR** (v0.2.x → v0.3.0): new primitives, new props, new tokens.
@@ -827,13 +827,29 @@ Sized primitives use one of these scales. Deviation requires a spec amendment.
 
 ### Dialog Size Scale
 
-| size   | max-width                  |
-| ------ | -------------------------- |
-| `sm`   | `max-w-sm`                 |
-| `md`   | `max-w-md`                 |
-| `lg`   | `max-w-2xl`                |
-| `xl`   | `max-w-4xl`                |
-| `full` | `max-w-[calc(100vw-2rem)]` |
+The scale is a **ceiling from `sm` up only**. Width itself is stated in the content
+base class (`w-full`), and below the `sm` breakpoint every size collapses to the
+base clamp of `max-w-[calc(100%-2rem)]` — one `rem` of gutter each side once the
+panel is centred. A phone shows the same dialog at every size.
+
+| size   | max-width (≥ `sm`)             | max-width (< `sm`)         |
+| ------ | ------------------------------ | -------------------------- |
+| `sm`   | `sm:max-w-sm`                  | `max-w-[calc(100%-2rem)]`  |
+| `md`   | `sm:max-w-md`                  | `max-w-[calc(100%-2rem)]`  |
+| `lg`   | `sm:max-w-2xl`                 | `max-w-[calc(100%-2rem)]`  |
+| `xl`   | `sm:max-w-4xl`                 | `max-w-[calc(100%-2rem)]`  |
+| `full` | `sm:max-w-[calc(100%-2rem)]`   | `max-w-[calc(100%-2rem)]`  |
+
+**Why the size classes carry an `sm:` modifier.** The base clamp and the size
+ceiling are the same tailwind-merge key. Unprefixed, the size class wins and the
+mobile clamp is dropped. The modifier makes them distinct keys so both survive.
+
+**Why width is stated rather than left to `max-width`.** `DialogContent` is
+`position: fixed` with `left: 50%` and no `right`. With `width: auto` the panel is
+shrink-to-fit against `100vw - left` — half the viewport. A `max-w-*` is only a
+ceiling the panel was already under, so it cannot correct this. Omitting `w-full`
+rendered the photo-import dialog at 221px on a 393px phone — a little over half the
+screen, the rest of it being the min-content floor. Do not remove it.
 
 ### Text Size Scale (Text primitive)
 
@@ -1403,7 +1419,7 @@ thumb size: sm='h-3 w-3 data-[state=checked]:translate-x-3' | md='h-4 w-4 data-[
 
 ```
 overlay: 'fixed inset-0 z-dialog bg-black/60 data-[state=open]:animate-in data-[state=closed]:animate-out motion-reduce:animate-none'
-content base: 'fixed left-1/2 top-1/2 z-dialog grid -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border bg-background p-6 shadow-dialog'
+content base: 'fixed left-1/2 top-1/2 z-dialog grid w-full max-w-[calc(100%-2rem)] max-h-[calc(100dvh-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto overscroll-contain rounded-lg border bg-background p-6 shadow-dialog'
 content size: see §4.4 Dialog Size Scale
 header: 'flex flex-col gap-1.5'
 title: 'text-lg font-semibold text-foreground'
@@ -1412,10 +1428,24 @@ footer: 'flex justify-end gap-2'
 close: styled as ghost Button, size='icon'
 ```
 
+### Overflow
+
+The panel is capped at `calc(100dvh-2rem)` and scrolls its own content. A dialog is
+free to be taller than the viewport; it is never allowed to put its footer out of
+reach. `dvh` rather than `vh` because mobile browser chrome makes `vh` overstate the
+visible height. `overscroll-contain` stops a scroll that reaches the end of the
+panel from chaining to the page behind the overlay.
+
+Consequence for content: a `DialogContent` child must not itself be a viewport-height
+box, and anything positioned outside the panel's padding box will be clipped by the
+scroll container.
+
 ### Forbidden
 
 - Do not implement a custom portal — use `Dialog.Portal` from bits-ui.
 - Do not render `DialogContent` outside a `Dialog` root.
+- Do not drop `w-full` from the content base, and do not "simplify" the size scale
+  by removing the `sm:` modifiers — see §4.4 for what each is holding up.
 
 ---
 
@@ -1728,6 +1758,7 @@ Numeric transform (allowed by §2.3): determinate indicator uses `style="transfo
 
 | Date       | Version | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ---------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-08-02 | v0.2.9  | §8.6 Dialog + §4.4 Dialog Size Scale: the content base gains `w-full`, a mobile `max-w-[calc(100%-2rem)]` clamp, and `max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain`; the size scale becomes an `sm:`-and-up ceiling. The base stated no width at all, so a `position: fixed` panel with `left: 50%` and no `right` was shrink-to-fit against `100vw - left` — **every dialog was capped at roughly half the viewport width** (the photo-import dialog of #676 measured 221px on a 393px phone), with `max-w-*` powerless to correct it — a ceiling the panel was already under. The `sm:` modifiers keep the mobile clamp alive through tailwind-merge. Height is capped so a panel taller than the viewport scrolls rather than putting its footer out of reach. Behavioural amendment — `Dialog.variants.ts` re-stamped. |
 | 2026-07-28 | v0.2.8  | §4.6 **Press Pulse**: specs the `salt-press-pulse` CSS utility as a public, consumer-facing extension point alongside `salt-focus-ring` (§4.2) — what it supplies (depth only: `scale(0.94)` + the `0s` press-in), what the call site retains (its own `transition-property` list including `transform`, its own per-property durations, `ease-standard`, `motion-reduce:transition-none`), why the pressed rule is `:active`-scoped (specificity, not source order), and the `no-preference` gate. Records that `.salt-button` writes the same treatment longhand rather than pulling the utility in — the duplication is deliberate (the Button owns its own `transition-*`) and any change to the press scale must land in both places. Shipped unrecorded in #583 alongside the v0.2.7 Button press system; no code change. Resolves doc/code drift issue #588. |
 | 2026-07-24 | v0.2.7  | §8.1 Button: recorded the system-wide **press feedback** contract — `scale(0.94)`, instant press-in / 180ms (`--duration-base`, `--ease-standard`) release, a 120ms (`--duration-fast`) JS minimum-hold floor so a too-quick click is still visible, `disabled` **and** `loading` excluded, reduced motion = shade only (no movement), no haptics. Adds the `data-pressed` attribute and the pointer/keyboard wiring behind it. **Both halves are now implemented:** the scale, and the per-variant **pressed fill** — each variant one perceptual step deeper than its own hover, as longhand `color-mix(in oklab, …)` (solid/destructive/outline 80% toward black, ghost 90% because `--color-muted` is near-white, link a 12% tint since it has no hover fill to deepen). Values, resolved hexes, and computed light-theme contrast ratios (5.56:1 – 10.85:1, all AA) recorded in §8.1. The fill rules sit **outside** the `prefers-reduced-motion: no-preference` gate that holds the transform, so a shade survives the preference; correspondingly the JS floor (`PRESS_FLOOR_MS`) **no longer skips under reduced motion** — it holds `data-pressed`, which now renders something, so skipping it would let a sub-frame tap flash colour invisibly. `Button.headless.svelte.ts` no longer reads `prefers-reduced-motion` at all. Ratifies the press-in that shipped unrecorded in #573 (retuned from `scale(0.97)`, symmetric 120ms) and fixes the loading-button exclusion it missed. §1.5 gains the rationale for amending on the v0.2.x line (v0.3.0 collides with `ui-spec-v03.md`); §8.1 Styling's two stale `tailwind-preset.ts` references corrected to `salt.css`. Issue #579; approved mock: _Button press (system-wide mock)_ in `Salt.dc.html`, Claude Design project "Salt — Culinary Modernist" (mock not in-repo). |
 | 2026-07-01 | v0.2.6  | §8.8 Tooltip: added touch-readability props `disableCloseOnTriggerClick` and `ignoreNonKeyboardFocus` (both pass-through to bits-ui `Tooltip.Root`) and documented the touch tap-to-toggle pattern; noted `TooltipTrigger` now forwards `class` + native attributes to the trigger `<button>`. Ratifies shipped code from #382/#386, now on bits-ui 2.x (bump #380). Resolves doc/code drift issue #393.                                                                        |
