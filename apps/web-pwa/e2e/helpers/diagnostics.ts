@@ -13,6 +13,7 @@
  */
 import { writeFile } from 'node:fs/promises';
 import type { Page, TestInfo } from '@playwright/test';
+import { FLAKE_CONTEXT_ATTACHMENT } from '../reporter/flakeReporter';
 
 // Playwright colourises assertion messages. Written straight into a JSON file
 // those escape codes survive as literal noise wrapped around exactly the
@@ -24,6 +25,39 @@ const ANSI = /\u001B\[[0-9;]*m/g;
 
 function plainMessage(message: string | undefined): string | undefined {
   return message?.replace(ANSI, '');
+}
+
+/**
+ * Reduces the store snapshot to flat scalars for `ctx_*` correlation properties.
+ *
+ * COUNTS AND FLAGS ONLY — never ids, names, or anything free-form. This crosses
+ * into a telemetry backend, and while the data here is family-shared, the
+ * error-reporting convention (scrub raw user content) applies to anything that
+ * leaves the runner. A count answers "was the store empty?", which is the whole
+ * question; the ids are already in the full snapshot next to the trace.
+ *
+ * Each reader may be absent or an `{ __error }` marker from `guard()`, so every
+ * field degrades to null independently rather than losing the whole context.
+ */
+function flakeContextOf(snapshot: unknown): Record<string, number | boolean | null> {
+  const store = (snapshot ?? {}) as Record<string, unknown>;
+  const countOf = (value: unknown): number | null => (Array.isArray(value) ? value.length : null);
+  const boolOf = (value: unknown): boolean | null =>
+    typeof value === 'boolean'
+      ? value
+      : value === null || value === undefined
+        ? null
+        : Boolean(value);
+
+  return {
+    aisles_count: countOf(store['aisles']),
+    shopping_lists_count: countOf(store['shoppingLists']),
+    shopping_list_items_count: countOf(store['shoppingListItems']),
+    recipes_count: countOf(store['recipes']),
+    chat_sessions_count: countOf(store['chatSessions']),
+    has_default_list: typeof store['defaultListId'] === 'string' ? true : false,
+    canon_synced: boolOf(store['canonSynced']),
+  };
 }
 
 /**
@@ -88,6 +122,16 @@ export async function attachStoreSnapshot(
     const file = testInfo.outputPath(`${label.replace(/[^a-zA-Z0-9]+/g, '-')}.json`);
     await writeFile(file, JSON.stringify({ ...extra, snapshot }, null, 2));
     await testInfo.attach(label, { path: file, contentType: 'application/json' });
+    // Same state, second form: a handful of scalars the flake reporter promotes
+    // to `ctx_*` event properties. The full snapshot above stays the thing you
+    // read; this is the thing you QUERY. "aisles: []" explained a failure in
+    // seconds once downloaded — as a property it answers "how many of these
+    // failures had an empty aisles store?" across every occurrence at once,
+    // which is the difference between a diagnosis and a pattern.
+    await testInfo.attach(FLAKE_CONTEXT_ATTACHMENT, {
+      body: JSON.stringify(flakeContextOf(snapshot)),
+      contentType: 'application/json',
+    });
   } catch (err) {
     // Diagnostics must never throw. Best-effort note, also guarded.
     try {
