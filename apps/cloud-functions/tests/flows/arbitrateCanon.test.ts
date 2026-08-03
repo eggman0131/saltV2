@@ -15,11 +15,15 @@ vi.mock('@genkit-ai/google-genai', () => ({
   },
 }));
 
+let fakeOn = false;
+vi.mock('../../src/ai/fakeModel.js', () => ({ aiFakeEnabled: () => fakeOn }));
+
 // Import after mocks so defineFlow returns the handler directly.
 const { arbitrateCanonFlow } = await import('../../src/flows/arbitrateCanon.js');
 
 beforeEach(() => {
   vi.clearAllMocks();
+  fakeOn = false;
 });
 
 // Flat AI output shape returned by the model.
@@ -293,5 +297,35 @@ describe('arbitrateCanon flow — prompt construction', () => {
 
     const { prompt: sentPrompt } = mockGenerate.mock.calls[0]![0];
     expect(result.prompt).toBe(sentPrompt);
+  });
+});
+
+// ─── E2E fake seam (issue #686) ───────────────────────────────────────────────
+
+describe('arbitrateCanon flow — e2e fake seam', () => {
+  it('short-circuits to no-match without calling the model under the fake flag', async () => {
+    fakeOn = true;
+
+    const result = await (arbitrateCanonFlow as Function)(baseReq);
+
+    expect(result.kind).toBe('no-match');
+    expect(mockGenerate).not.toHaveBeenCalled();
+  });
+
+  it('still returns the built prompt so the match log keeps its shape', async () => {
+    fakeOn = true;
+
+    const result = await (arbitrateCanonFlow as Function)(baseReq);
+
+    expect(result.prompt).toContain('tomato');
+    expect(result.rawResponse).toBe('');
+  });
+
+  it('calls the real model when the flag is off', async () => {
+    mockGenerate.mockResolvedValue({ output: aiOutput({ canonical_name: 'Tomato' }) });
+
+    await (arbitrateCanonFlow as Function)(baseReq);
+
+    expect(mockGenerate).toHaveBeenCalledTimes(1);
   });
 });

@@ -8,6 +8,7 @@ import {
 import { setActiveSpanName } from '@salt/observability/server';
 import { ai } from '../genkit.js';
 import { resolveModel } from '../ai/resolveModel.js';
+import { aiFakeEnabled } from '../ai/fakeModel.js';
 
 // Flow output is the shared `ArbitrationResultSchema` from `@salt/domain/schemas`
 // (issue #417) — the same schema the domain `ArbitrationResult` type derives from,
@@ -23,6 +24,24 @@ export const arbitrateCanonFlow = ai.defineFlow(
   async (req) => {
     setActiveSpanName(`arbitrateCanon: ${req.normalisedName}`);
     const builtPrompt = buildPrompt(req);
+    // E2E fake seam (issue #686, third offender — see #690 for the first two).
+    // Every canon match runs through here, so without a short-circuit the whole
+    // e2e suite made a live Gemini call per unmatched item with the dummy
+    // emulator key. This one only became reachable once #690 gave the batch
+    // embedder a working stand-in vector: before that the pipeline died at the
+    // embedding and never got as far as arbitration.
+    //
+    // `no-match` rather than a `flowModel` stub because no spec asserts an
+    // AI-arbitrated outcome, and `no-match` is byte-for-byte what the 400
+    // already degraded to — `matchOrCreate` funnels an errored and a no-match
+    // arbitration into the same fallback branch, differing only in the
+    // `reasoning` string it records. So this preserves current e2e behaviour
+    // while dropping the network call, the retry budget and the log noise.
+    // Wire it to `flowModel('lite', 'arbitrateCanon')` the day a spec needs a
+    // positive arbitration. Unreachable in production (the flag is never set).
+    if (aiFakeEnabled()) {
+      return { kind: 'no-match' as const, prompt: builtPrompt, rawResponse: '' };
+    }
     const model = await resolveModel('lite', 'arbitrateCanon');
     const result = await ai.generate({
       model: googleAI.model(model),
