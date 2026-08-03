@@ -86,7 +86,11 @@ test.describe('recipes — the chef drawer on a phone', () => {
     // ── Drag the handle up: the chat takes most of the screen ────────────────
     const handle = page.getByTestId('recipe-chat-drawer-handle');
     await expect(handle).toBeVisible();
-    const peekHeight = await drawerHeight(page);
+    // The drawer RISES into its resting stop, so both the height and the handle's
+    // position are still moving for a few frames after it becomes visible. Measuring
+    // either mid-flight reads a number that was never a stop, and — worse — aims the
+    // drag at where the handle used to be, so the gesture lands on nothing.
+    const peekHeight = await settledHeight(page);
 
     const box = (await handle.boundingBox())!;
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -112,6 +116,23 @@ test.describe('recipes — the chef drawer on a phone', () => {
     await expect(page.getByTestId('recipe-chat-list-item')).toContainText(`${RECIPE_TITLE} chat`);
   });
 });
+
+/**
+ * The drawer's height once the spring has stopped moving it — two consecutive equal
+ * readings. Everything that measures or aims at the drawer has to wait for this.
+ */
+async function settledHeight(page: import('@playwright/test').Page): Promise<number> {
+  let previous = -1;
+  await expect
+    .poll(async () => {
+      const height = await drawerHeight(page);
+      const settled = height > 0 && height === previous;
+      previous = height;
+      return settled;
+    })
+    .toBe(true);
+  return previous;
+}
 
 /** The drawer's rendered height, in CSS pixels. */
 async function drawerHeight(page: import('@playwright/test').Page): Promise<number> {

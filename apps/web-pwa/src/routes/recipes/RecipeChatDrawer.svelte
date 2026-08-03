@@ -116,6 +116,13 @@
 
   function handlePointerDown(event: PointerEvent): void {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
+    // Captured HERE, not once the drag is recognised. The handle is a 40px grab bar and
+    // a drag leaves it within the first few pixels; without capture from the outset the
+    // moves retarget to the recipe behind, the gesture is never seen, and the drawer
+    // simply does not move. (Touch pointers get implicit capture and would have hidden
+    // this; a trackpad drag would not.) A capture does not stop the click that follows,
+    // so tap-to-toggle is unaffected.
+    (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
     height.stop();
     stops = measure();
     dragPointer = event.pointerId;
@@ -136,7 +143,6 @@
       if (Math.abs(travelled) < DRAG_START_PX) return;
       dragging = true;
       draggedThisGesture = true;
-      (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
     }
     height.place(stops.peek + rubberBand(dragStartOffset + travelled, limit, RUBBER_BAND));
     const elapsed = event.timeStamp - lastMoveTime;
@@ -151,9 +157,9 @@
   function handlePointerUp(event: PointerEvent): void {
     if (dragPointer !== event.pointerId) return;
     dragPointer = null;
+    (event.currentTarget as HTMLElement).releasePointerCapture?.(event.pointerId);
     if (!dragging) return; // a tap — the click handler toggles
     dragging = false;
-    (event.currentTarget as HTMLElement).releasePointerCapture?.(event.pointerId);
     const offset = height.current - stops.peek;
     const index = chooseLandingStop({
       stops: [0, limit],
