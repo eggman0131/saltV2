@@ -3,24 +3,30 @@
   import { autoUpdate, computePosition, flip, offset, shift, size } from '@floating-ui/dom';
   import { cn } from '../../lib/cn';
   import { COMBOBOX_CONTEXT } from '../../headless/Combobox.headless.svelte';
+  import {
+    PORTAL_CONTAINER_CONTEXT,
+    resolvePortalTarget,
+  } from '../../headless/PortalContainer.headless.svelte';
   import { comboboxContentVariants } from './Combobox.variants';
   import type { ComboboxContentProps } from './Combobox.types';
 
   let { class: className, children }: ComboboxContentProps = $props();
 
   const ctx = COMBOBOX_CONTEXT.get();
+  // Optional: present only when this Combobox is rendered inside a Dialog/Sheet.
+  const portalContainer = PORTAL_CONTAINER_CONTEXT.getOptional();
 
   let wrapperEl: HTMLDivElement | undefined = $state(undefined);
 
-  // Portal: move wrapper to target after mount
+  // Portal: move wrapper to target after mount. By default that is the enclosing
+  // Dialog/Sheet content when there is one — a body-portalled listbox inside a
+  // modal is inert — and <body> otherwise.
   $effect(() => {
     const el = wrapperEl;
-    if (!el || ctx.portal === false) return;
+    if (!el) return;
 
-    const target =
-      typeof ctx.portal === 'string'
-        ? ((document.querySelector(ctx.portal) as HTMLElement | null) ?? document.body)
-        : ctx.portal;
+    const target = resolvePortalTarget(ctx.portal, portalContainer?.el ?? null);
+    if (!target) return;
 
     target.appendChild(el);
     return () => el.remove();
@@ -65,7 +71,7 @@
 </script>
 
 {#if ctx.open}
-  <div bind:this={wrapperEl} class="z-50" style="position: absolute; top: 0; left: 0;">
+  <div bind:this={wrapperEl} class="z-popover" style="position: absolute; top: 0; left: 0;">
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div
       id={ctx.listboxId}

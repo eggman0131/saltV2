@@ -12,7 +12,7 @@ export type ComboboxState = {
   readonly openOnClick: boolean;
   readonly listboxId: string;
   readonly inputId: string;
-  readonly portal: HTMLElement | string | false;
+  readonly portal: HTMLElement | string | false | undefined;
   readonly placeholder: string | undefined;
   readonly anchorEl: HTMLElement | null;
 
@@ -56,7 +56,7 @@ export function createComboboxState(opts: {
   allowCustom: () => boolean;
   restrict: () => boolean;
   openOnClick: () => boolean;
-  portal: () => HTMLElement | string | false;
+  portal: () => HTMLElement | string | false | undefined;
   placeholder: () => string | undefined;
   listboxId: string;
   inputId: string;
