@@ -317,23 +317,10 @@ export {
   shopDayForWeek,
 } from './shoppingDay/index.js';
 
-// Personal-view module (issue #634) — the projections behind "Mine": my chef
-// nights, planned-but-unshopped recipes, unopened imports, and the ranking/cap of
-// the "Needs you" queue. Pure, per-user filters over family-shared documents; no
-// per-user storage and no clock (every `now` is injected).
-export {
-  chefDaysForMember,
-  unshoppedPlannedRecipes,
-  isUnopenedImport,
-  UNOPENED_IMPORT_WINDOW_MS,
-  rankPersonalCards,
-  PERSONAL_CARD_LIMIT,
-} from './personalView/index.js';
-export type {
-  UnshoppedPlannedRecipe,
-  PersonalCardKind,
-  RankableCard,
-} from './personalView/index.js';
+// Personal-view module (issues #634, #682) — the projection behind "Mine": the
+// standing queue of entries nobody has saved yet. Pure, no per-user storage and
+// no clock.
+export { needsReview } from './personalView/index.js';
 
 // URL module — pure display-time cache-buster for regenerated image URLs (#460).
 export { appendCacheBuster } from './url/index.js';

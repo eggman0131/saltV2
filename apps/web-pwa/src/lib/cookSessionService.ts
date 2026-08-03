@@ -160,8 +160,11 @@ export async function persistCookSession(
   }
 }
 
-// Delete the session (Complete / Restart / orphan cleanup). Records the delete as
-// a local edit so a stale echo can't resurrect it, clears the store, then deletes.
+// Delete the session (Complete / Restart / orphan cleanup, and — since #682 —
+// Cancel from the personal view). Records the delete as a local edit so a stale
+// echo can't resurrect it, clears the store, then deletes. The store clear is a
+// no-op for the /mine call: that page renders from `myCookSessions`, which picks
+// the delete up from the local cache like any other snapshot.
 export async function removeCookSession(id: string): Promise<ReadResult<void, DomainError>> {
   latestLocalEdit = { id, updatedAt: new Date().toISOString() };
   const current = get(_session);

@@ -18,13 +18,10 @@ import type { NavItem } from '@salt/ui-components';
 // Chef vacated to the overflow. Its live "what's open now" badge is attached in
 // App.svelte, where the stores it counts are subscribed.
 //
-// "Mine" is currently shown to admins only — the view needs more design thought
-// before it is fit for the whole household, so it is hidden rather than shipped
-// half-considered. The filter lives in App.svelte (that is where `isAdmin` is).
-// This is cosmetic gating of an unfinished feature, not a permission boundary:
-// the `#/mine` route is still reachable by direct URL, and everything it shows
-// is family-shared data the member can already see elsewhere. Non-admins simply
-// see three primary tabs. Drop the filter to re-open it to everyone.
+// "Mine" was shown to admins only until #682, while the view was still deciding
+// what it was for. It now answers exactly one question — what of mine is running
+// right now, and what needs a look — so it is fit for the whole household and
+// the filter is gone. Every member sees four primary tabs.
 export const navItems: NavItem[] = [
   { id: 'shopping', label: 'Shop', icon: ShoppingCart, href: '#/shopping' },
   { id: 'mealplan', label: 'Planner', icon: CalendarDays, href: '#/mealplan' },

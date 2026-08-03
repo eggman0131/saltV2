@@ -183,8 +183,8 @@ Decisions worth not relitigating:
   an outing occupies a planner slot *in place of* a recipe. A second collection
   makes `day.recipeIds` a polymorphic reference, forcing every consumer that
   resolves against the recipes store to resolve against two — `MealDayEditor`,
-  `AdminMealPlanPage`, `personalViewService`, `unshoppedPlannedRecipes`,
-  `MinePage`, plus the e2e seeds — for a library of maybe eight documents.
+  `AdminMealPlanPage`, `personalViewService`, `MinePage`, plus the e2e seeds —
+  for a library of maybe eight documents.
 - **If outings ever need their own fields, climb a ladder rather than splitting.**
   Rung 1: optional nullable fields on the recipe document (Firestore is
   schemaless; sparse documents are free — almost certainly enough for a booking

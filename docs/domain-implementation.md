@@ -365,26 +365,23 @@ subfolders, matching the `weather` pattern. Every timestamp is an injected
 parameter (never read from the clock), which keeps the module pure and makes
 the timer tests deterministic.
 
-The `personalView` module (issue #634) is the same lightweight shape, and is
-purely read-only: `chefDaysForMember`, `unshoppedPlannedRecipes`,
-`isUnopenedImport`, and `rankPersonalCards` project family-shared documents
-through *who am I* for the "Mine" view. No producers, no ports, no schemas of
-its own — it reads `mealPlan`, `recipe` and `shoppingList` types through their
-module indexes. Every clock value ("today", "now", "is the shop imminent") is an
-injected parameter, which is what keeps the ranking and the 24-hour import
-window testable without faking time.
+The `personalView` module (issues #634, #682) is the same lightweight shape, and
+is purely read-only. It began as four projections; #682 cut "Mine" back to *what
+of mine is running right now, and what needs a look*, and the three that were
+restating the planner and the shopping list (`chefDaysForMember`,
+`unshoppedPlannedRecipes`, `rankPersonalCards`) went with the sections they fed.
+What is left is one predicate, `needsReview`. No producers, no ports, no schemas
+of its own, and — now — no clock at all: the 24-hour import window went too,
+because a standing review queue wants the import you forgot about three weeks
+ago, which is exactly the case a window discards.
 
-`unshoppedPlannedRecipes` is the one genuinely new piece of logic in there, and
-the one place the module could plausibly have grown a `kind` branch — it has not.
-A planned entry with **no ingredient lines** is skipped, keyed on the count and
-never on the recipe's kind (#637). That is not a concession to outings: it fixes
-a live bug that pre-dated them. Any planned zero-ingredient recipe emitted a
-"needs you" card reading `missingCount: 0` that could never clear, because an
-add-to-list would write nothing and nothing could therefore ever carry a `recipe`
-source back to it. An entry with nothing to buy is the same non-problem however
-it got that way, so `packages/domain/src/personalView/` stays entirely kind-free.
-Note the ordering: the guard sits *after* the `seen` bookkeeping, so the same
-empty dish planned twice is still deduped rather than reconsidered.
+`needsReview` is the module's one piece of policy, and the one place it could
+plausibly have grown a `kind` branch — it has one, deliberately, expressed
+through the capability predicate `isCookable` rather than a comparison. That is
+the whole reason it lives in the domain layer: `/mine` must not ask what kind an
+entry is, and putting the gate here means it never has to. Without it the queue
+would be mostly stock-photo placeholders and outings — entries written once and
+never edited, so `updatedAt === createdAt` holds for ever with nothing to review.
 
 The goal is not architectural purity. The goal is hard, enforceable
 boundaries so that drift — by humans or AI agents — is caught by the
