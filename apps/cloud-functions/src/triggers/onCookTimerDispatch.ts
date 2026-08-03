@@ -4,7 +4,7 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
 import { CookSessionSchema, PushSubscriptionSchema, RecipeSchema } from '@salt/domain/schemas';
 import { flushServerObservability } from '@salt/observability/server';
-import { sendWebPush } from '../adapters/sendWebPush.js';
+import { sendWebPush, isApplePushEndpoint } from '../adapters/sendWebPush.js';
 import { sendPushover } from '../adapters/sendPushover.js';
 import { resolvePushoverTargets } from '../adapters/pushoverRecipient.js';
 import { reportServerError } from '../observability/reportServerError.js';
@@ -87,6 +87,13 @@ function cookDeepLink(recipeId: string): string | undefined {
 // so the caller stays linear, and NOTHING escapes: a throw would put the whole
 // dispatch into a Cloud Tasks retry it cannot win.
 //
+// Returns whether the timer ACTUALLY reached Pushover, which is what decides the
+// web-push fan-out that follows (see the routing note on the handler). Every
+// non-delivery — unprovisioned, suppressed, unresolved, no devices, a failed
+// send — returns false, so web push covers the gap in all of them. That is what
+// makes the rollout-safe cases work: staging suppresses Pushover, and the
+// emulator refuses it outright, and both still notify.
+//
 // This message DOES carry the recipe title, the timer label and a deep link
 // containing the recipe id, which reverses the original #680 stance that nothing
 // but fixed copy may cross to a third party. That was an explicit product call:
@@ -98,13 +105,13 @@ async function deliverViaPushover(
   sessionId: string,
   recipeId: string,
   payload: { readonly title: string; readonly body: string },
-): Promise<void> {
+): Promise<boolean> {
   const token = pushoverAppToken.value();
   const user = pushoverUserKey.value();
   if (!token || !user) {
-    // Not provisioned in this environment — web push above still ran.
+    // Not provisioned in this environment — web push covers everyone.
     logger.warn('onCookTimerDispatch: Pushover not provisioned', { sessionId });
-    return;
+    return false;
   }
 
   const targets = await resolvePushoverTargets({ token, user }, ownerUid);
@@ -112,7 +119,7 @@ async function deliverViaPushover(
   switch (targets.kind) {
     case 'suppressed':
       // Non-production, and this member is not the test-device owner. Expected.
-      return;
+      return false;
 
     case 'unresolved':
       // Operational blip (network / member read). Logged inside the resolver;
@@ -121,17 +128,22 @@ async function deliverViaPushover(
         sessionId,
         reason: targets.reason,
       });
-      return;
+      return false;
 
     case 'no-devices':
-      // MISCONFIGURATION, and the whole reason the zero-match guard exists: no
-      // device matched `<firstname>-`, so we send NOTHING rather than let
+      // No device matched `<firstname>-`, so we send NOTHING rather than let
       // Pushover fail open and broadcast one person's rice to the whole family.
-      // Reported, because silence is what would make this invisible for weeks.
-      reportServerError(
-        new Error(`Pushover: no devices matched '${targets.firstName}-' — timer not delivered`),
-      );
-      return;
+      //
+      // WARN, not report: this is now an ordinary state, not a misconfiguration.
+      // A member who simply has not installed Pushover lands here on every single
+      // timer, and reporting that would be a permanent alarm for a working app —
+      // they fall back to web push below. A genuinely mistyped device name shows
+      // up in the /settings Pushover readout, which names what did match.
+      logger.warn('onCookTimerDispatch: no Pushover device matched', {
+        sessionId,
+        firstName: targets.firstName,
+      });
+      return false;
 
     case 'send': {
       // Spread rather than assign: under exactOptionalPropertyTypes an absent
@@ -142,10 +154,13 @@ async function deliverViaPushover(
         body: payload.body,
         ...(link ? { url: link, urlTitle: 'Back to the cook' } : {}),
       });
+      // A failed send is NOT reported here any more: returning false routes this
+      // member to web push instead, and the handler reports only if that leaves
+      // the timer undelivered to everything.
       if (result === 'failed') {
-        reportServerError(new Error('Pushover send failed'));
+        logger.warn('onCookTimerDispatch: Pushover send failed', { sessionId });
       }
-      return;
+      return result === 'sent';
     }
   }
 }
@@ -230,8 +245,8 @@ export const onCookTimerDispatch = onTaskDispatched<CookTimerTaskPayload>(
 
       // (f) Name the timer and the cook — "Simmer the sauce" / "Shepherd's pie" —
       // falling back to the generic copy if the recipe cannot be read. ONE copy
-      // for BOTH sinks: they fire for the same timer during the rollout, and one
-      // named notification beside one anonymous one would just read as a bug.
+      // for BOTH sinks: a device may legitimately be reached by either, and a
+      // named notification beside an anonymous one would just read as a bug.
       // The service worker renders whatever it is given, using `tag` to collapse
       // repeats and `sessionId` to deep-link back to the cook.
       const copy = (await describeCookTimer(session.recipeId, stepId)) ?? FALLBACK_COPY;
@@ -243,34 +258,68 @@ export const onCookTimerDispatch = onTaskDispatched<CookTimerTaskPayload>(
         body: copy.body,
       };
 
-      // (g) Send to every valid subscription; prune the dead, report the failed.
-      // BOTH sinks fire during the #680 rollout — Pushover ships ALONGSIDE web
-      // push, not instead of it. Duplicate notifications for a short period are a
-      // cheap price for confirming the delivery timing genuinely improves on the
-      // real devices before the fallback comes out.
+      // (g) PUSHOVER FIRST. It is the primary channel — a native client gets the
+      // high-priority wake that Chrome's push path does not — and whether it
+      // delivered decides the web-push fan-out below, so it has to run first.
+      const pushoverDelivered = await deliverViaPushover(
+        session.ownerUid,
+        sessionId,
+        session.recipeId,
+        payload,
+      );
+
+      // (h) WEB PUSH, ROUTED PER DEVICE. The two sinks no longer both fire for
+      // everyone (they did during the #680 rollout); each device now gets exactly
+      // one channel, chosen by the only per-device signal we have — the push
+      // endpoint's host:
+      //
+      //   Apple endpoint  → ALWAYS. APNs wakes an iPhone/iPad reliably, and this
+      //                     is the channel that measurably works there. It is
+      //                     sent even when Pushover delivered, because Pushover
+      //                     may have reached a DIFFERENT device (an Android
+      //                     phone) — the two are not duplicates of each other.
+      //   everything else → ONLY as a FALLBACK, when Pushover did not deliver.
+      //                     Android web push is throttled into uselessness by
+      //                     Doze and per-OEM battery management, so it is the
+      //                     channel of last resort, not the default. Someone who
+      //                     has not set up Pushover still gets a notification;
+      //                     the day they install it, this stops on its own.
+      //
+      // No schema or client change makes this work, and nothing here needs to
+      // know about platforms — install Pushover and the fallback retires itself.
+      let webPushDelivered = 0;
       if (webPushProvisioned) {
         for (const sub of subscriptions) {
           if (!sub.parsed.success) continue; // narrowing (filtered above)
           const data = sub.parsed.data;
+          if (!isApplePushEndpoint(data.endpoint) && pushoverDelivered) continue;
+
           const result = await sendWebPush(
             { subject, publicKey, privateKey },
             { endpoint: data.endpoint, keys: data.keys },
             payload,
           );
-          if (result === 'gone') {
+          if (result === 'sent') {
+            webPushDelivered += 1;
+          } else if (result === 'gone') {
             // Subscription is permanently dead — prune it so we stop trying.
             await sub.ref.delete();
-          } else if (result === 'failed') {
+          } else {
             // Transient/unexpected send failure. No user content in the error.
             reportServerError(new Error('web-push send failed'));
           }
         }
       }
 
-      // (h) Pushover — the sink that actually wakes a dozing Android device.
-      // Wrapped so a Pushover failure can never cost us the web-push send above
-      // or trip the outer catch into a Cloud Tasks retry.
-      await deliverViaPushover(session.ownerUid, sessionId, session.recipeId, payload);
+      // (i) Report ONLY total non-delivery. Neither sink failing alone is worth an
+      // alert now that each is the other's backstop — but a timer that reached
+      // nothing at all is a person standing over a pan waiting for a ping that is
+      // never coming, which is the one failure of this feature that matters.
+      if (!pushoverDelivered && webPushDelivered === 0) {
+        reportServerError(
+          new Error('Cook timer reached no device — neither Pushover nor web push'),
+        );
+      }
     } catch (err) {
       // Never throw out of the handler — a permanent error would otherwise make
       // Cloud Tasks retry to exhaustion. Report and return.
