@@ -27,6 +27,7 @@ import {
   editItemAmountUnit,
   checkItem,
   confirmItemNeeded as domainConfirmItemNeeded,
+  setItemNeedsCheck as domainSetItemNeedsCheck,
   uncheckItem,
   deleteItem,
   clearCheckedItems,
@@ -326,6 +327,22 @@ export async function confirmItemNeeded(
   const items = get(_itemsForActiveList);
   const now = new Date().toISOString();
   const result = domainConfirmItemNeeded(items, { id: itemId, now });
+  if (result.kind !== 'ok') return result;
+  const updated = result.value.find((i) => i.id === itemId)!;
+  return reportIfFailed(getErrorReporter(), await saveShoppingListItem(listId, updated));
+}
+
+// Raise or clear an item's verification flag from the edit sheet (issue #694).
+// The clearing direction produces exactly the write the row's ✓ does — same
+// pure command, so the two entry points cannot diverge.
+export async function setItemNeedsCheck(
+  listId: string,
+  itemId: string,
+  needsCheck: boolean,
+): Promise<ReadResult<void, DomainError>> {
+  const items = get(_itemsForActiveList);
+  const now = new Date().toISOString();
+  const result = domainSetItemNeedsCheck(items, { id: itemId, needsCheck, now });
   if (result.kind !== 'ok') return result;
   const updated = result.value.find((i) => i.id === itemId)!;
   return reportIfFailed(getErrorReporter(), await saveShoppingListItem(listId, updated));

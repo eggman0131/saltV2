@@ -21,6 +21,7 @@
     SheetHeader,
     SheetTitle,
     Spinner,
+    Switch,
     TextArea,
     TextField,
     EmptyState,
@@ -56,6 +57,7 @@
     moveSelectedItems,
     confirmItemNeeded,
     confirmItemsNeeded,
+    setItemNeedsCheck,
   } from '../../lib/shoppingListService.svelte.js';
   import { upcomingShopDay } from '../../lib/shoppingDayService.js';
   import { addToast } from '../../lib/toastStore.js';
@@ -347,6 +349,7 @@
   let editAmount = $state('');
   let editUnit = $state('');
   let editNotes = $state('');
+  let editNeedsCheck = $state(false);
   let editBusy = $state(false);
   let editDeleteBusy = $state(false);
 
@@ -356,6 +359,7 @@
     editAmount = item.amount !== undefined ? String(item.amount) : '';
     editUnit = item.unit ?? '';
     editNotes = item.notes;
+    editNeedsCheck = item.needsCheck;
     editSheetOpen = true;
   }
 
@@ -393,6 +397,14 @@
       const r = await updateItemNotes(params.listId, editingItem.id, editNotes);
       if (r.kind !== 'ok') {
         addToast('Failed to update notes.', 'destructive');
+        editBusy = false;
+        return;
+      }
+    }
+    if (editNeedsCheck !== editingItem.needsCheck) {
+      const r = await setItemNeedsCheck(params.listId, editingItem.id, editNeedsCheck);
+      if (r.kind !== 'ok') {
+        addToast('Failed to update the check flag.', 'destructive');
         editBusy = false;
         return;
       }
@@ -1236,6 +1248,19 @@
           disabled={editBusy}
           rows={3}
           data-testid="shopping-edit-notes"
+        />
+      </div>
+      <!--
+        The amber "Need it?" flag (#185), raised and cleared from here (#694).
+        Disabled on an already-checked item: `needsVerify` is needsCheck && !checked,
+        so flagging one would change nothing the shopper could see.
+      -->
+      <div data-testid="shopping-edit-needs-check">
+        <Switch
+          bind:checked={editNeedsCheck}
+          disabled={editBusy || (editingItem?.checked ?? false)}
+          label="Need to check"
+          description="Ask whoever shops to confirm we need this before buying."
         />
       </div>
       {#if editingItem && editingItem.sources.length > 0}

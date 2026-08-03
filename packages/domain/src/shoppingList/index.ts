@@ -32,6 +32,8 @@ export { checkItem } from './commands/checkItem.js';
 export type { CheckItemInput } from './commands/checkItem.js';
 export { confirmItemNeeded } from './commands/confirmItemNeeded.js';
 export type { ConfirmItemNeededInput } from './commands/confirmItemNeeded.js';
+export { setItemNeedsCheck } from './commands/setItemNeedsCheck.js';
+export type { SetItemNeedsCheckInput } from './commands/setItemNeedsCheck.js';
 export { uncheckItem } from './commands/uncheckItem.js';
 export type { UncheckItemInput } from './commands/uncheckItem.js';
 export { deleteItem } from './commands/deleteItem.js';
