@@ -16,6 +16,11 @@ build-storybook.log
 firebase-debug.log
 firestore-debug.log
 firebase-export*/
+# Written by `firebase deploy --only extensions` in infra/bigquery-export: install
+# etags for the four BigQuery-export instances, i.e. CLI bookkeeping about what is
+# live on prod right now. The root .firebaserc is the tracked one (project
+# aliases); this sibling holds no configuration and would only ever conflict.
+infra/bigquery-export/.firebaserc
 .vexp/manifest.json
 apps/web-pwa/test-results/
 apps/web-pwa/playwright-report/

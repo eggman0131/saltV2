@@ -34,18 +34,64 @@ noise; the BigQuery dataset would just mirror that environment's own project.
 
 The changelog only accrues from install; the import script backfills the
 current state of pre-existing docs as `IMPORT` rows. Run it per collection,
-**after** the extension has created the tables:
+**after** the extension has created the tables.
+
+> **Done on prod 2026-08-03** — recipes 46, canonItems 219, productForms 6,
+> cookSessions 4. This is a **one-shot**: the script has no idempotency, so a
+> second run appends a duplicate set of `IMPORT` rows. Re-run only after a table
+> rebuild.
+
+`npx` cannot run the tool directly: a fresh install resolves
+`@firebase/database-compat` 2.1.5, whose standalone bundle requires an
+`@firebase/app` peer that does not get installed, so the CLI dies on
+`MODULE_NOT_FOUND` before it does anything. Same breakage that hit Cloud
+Functions installs on 2026-07-30. Pin it in a throwaway directory:
 
 ```bash
-npx @firebaseextensions/fs-bq-import-collection \
+mkdir -p /tmp/bq-import && cd /tmp/bq-import
+cat > package.json <<'EOF'
+{
+  "name": "bq-import-runner",
+  "private": true,
+  "version": "1.0.0",
+  "overrides": { "@firebase/database-compat": "2.1.4" },
+  "dependencies": { "@firebaseextensions/fs-bq-import-collection": "latest" }
+}
+EOF
+npm install
+```
+
+Then, per collection:
+
+```bash
+./node_modules/.bin/fs-bq-import-collection \
   --non-interactive \
   --project s2-prod-e46bd \
   --big-query-project s2-prod-e46bd \
   --source-collection-path recipes \
   --dataset firestore_export \
   --table-name-prefix recipes \
-  --dataset-location us
+  --dataset-location us \
+  --query-collection-group false \
+  --multi-threaded false \
+  --use-new-snapshot-query-syntax true \
+  --firestore-instance-id '(default)'
 # repeat for: canonItems, productForms, cookSessions (matching --table-name-prefix)
+```
+
+The last four flags are not optional padding. `--non-interactive` suppresses the
+prompts but supplies no defaults, so omitting `--query-collection-group` is a
+hard `[ERROR] QueryCollectionGroup is not specified.` And
+`--use-new-snapshot-query-syntax true` must mirror the extension's
+`USE_NEW_SNAPSHOT_QUERY_SYNTAX=yes` — the flag decides how the import rewrites
+the `_raw_latest` view, so a mismatch leaves the view disagreeing with the
+changelog the live extension is writing.
+
+Verify the backfill by checking the views against the source of truth — they
+should equal the counts in the daily `volumetrics.snapshot` PostHog event:
+
+```sql
+SELECT COUNT(*) FROM `s2-prod-e46bd.firestore_export.recipes_raw_latest`
 ```
 
 ## What you get
