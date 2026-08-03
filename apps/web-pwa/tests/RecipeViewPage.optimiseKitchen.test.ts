@@ -181,7 +181,10 @@ describe('RecipeViewPage — optimise for my kitchen', () => {
 
     await fireEvent.click(getByTestId('recipe-optimise-kitchen-button'));
 
-    await waitFor(() => expect(createChatSession).toHaveBeenCalledWith('uid-1', RECIPE_ID));
+    await waitFor(() =>
+      // The seed title comes from the dish (issue #696) — "Test Recipe chat".
+      expect(createChatSession).toHaveBeenCalledWith('uid-1', RECIPE_ID, 'Test Recipe'),
+    );
     await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
     expect(vi.mocked(sendMessage).mock.calls[0]![0]).toMatchObject({ id: 'session-new' });
   });

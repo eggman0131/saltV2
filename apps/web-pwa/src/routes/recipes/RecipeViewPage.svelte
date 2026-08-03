@@ -40,6 +40,8 @@
   import RecipeAddToListSheet from './RecipeAddToListSheet.svelte';
   import RecipeAddToPlannerSheet from './RecipeAddToPlannerSheet.svelte';
   import RecipeChangeSummary from './RecipeChangeSummary.svelte';
+  import RecipeChatList from './RecipeChatList.svelte';
+  import { chatsForRecipe } from './recipeChats.js';
   import IngredientText from './IngredientText.svelte';
   import { canonItems } from '../../lib/canonService.js';
   import {
@@ -54,7 +56,7 @@
     type Recipe,
   } from '@salt/domain';
   import { kindOf } from './recipeKind.js';
-  import type { RecipeDiff } from '@salt/domain/schemas';
+  import type { ChatSessionDoc, RecipeDiff } from '@salt/domain/schemas';
   import type { DomainError, ReadResult } from '@salt/shared-types';
   import { defaultListId } from '../../lib/shoppingListService.svelte.js';
   import { addToast } from '../../lib/toastStore.js';
@@ -247,29 +249,62 @@ Finish with a short note on what you changed and why, so I can read the gist her
     addToListOpen = true;
   }
 
-  // ─── Ask / amend ────────────────────────────────────────────────────────────
+  // ─── This recipe's chats ─────────────────────────────────────────────────────
+  // Every conversation about this dish, newest first — a client-side filter over
+  // the sessions store the app already holds (issue #696).
+  const recipeChats = $derived(recipe ? chatsForRecipe($sessions, recipe.id) : []);
+
+  // Which one is on screen. An EXPLICIT selection: every entry point sets it, and
+  // it falls back to the newest so a recipe you have never chosen a chat on still
+  // opens on the conversation you last had. Cleared implicitly when the selected
+  // session is gone, because the lookup simply misses.
+  let selectedSessionId = $state<string | null>(null);
+  const activeSession = $derived(
+    recipeChats.find((s) => s.id === selectedSessionId) ?? recipeChats[0] ?? null,
+  );
+
   let amendBusy = $state(false);
 
-  async function handleAskAmend(): Promise<void> {
-    if (!recipe) return;
+  // Start a fresh line of enquiry about this dish. Seeds the title from the recipe
+  // ("Cauliflower Steaks chat") until the chef retitles it, and selects it so
+  // whichever surface is showing a chat switches to the new one.
+  async function createRecipeChat(): Promise<ChatSessionDoc | null> {
+    if (!recipe) return null;
     const uid = auth.user?.uid;
-    if (!uid) return;
+    if (!uid) return null;
     amendBusy = true;
-    const result = await createChatSession(uid, recipe.id);
+    const result = await createChatSession(uid, recipe.id, recipe.title);
     amendBusy = false;
     if (result.kind !== 'ok') {
       addToast('Failed to open chat.', 'destructive');
-      return;
+      return null;
     }
-    push(`/chat/${result.value.id}`);
+    selectedSessionId = result.value.id;
+    return result.value;
   }
 
-  // ─── Sidebar chat ────────────────────────────────────────────────────────────
-  const activeSession = $derived(
-    [...$sessions]
-      .filter((s) => s.recipeId === recipe?.id)
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0] ?? null,
-  );
+  function openChat(session: ChatSessionDoc): void {
+    selectedSessionId = session.id;
+    push(`/chat/${session.id}`);
+  }
+
+  async function handleNewChat(): Promise<void> {
+    const created = await createRecipeChat();
+    if (created) openChat(created);
+  }
+
+  // "Chat" in the header and in the ⋮ menu. CONTINUES the most recent conversation
+  // about this dish rather than silently starting another — a new one is a
+  // deliberate act, and the list's "New chat" is where you do it.
+  async function handleAskAmend(): Promise<void> {
+    if (!recipe) return;
+    const newest = recipeChats[0];
+    if (newest) {
+      openChat(newest);
+      return;
+    }
+    await handleNewChat();
+  }
 
   // The transcript, the composer, the auto-scroll and the send path are all
   // ChatThread's — this page only holds the live turn state so "Optimise for my
@@ -281,16 +316,6 @@ Finish with a short note on what you changed and why, so I can read the gist her
   // arrives somewhere the user cannot see. Set once, never unset: having asked for
   // a turn, you keep the transcript.
   let sidebarRevealed = $state(false);
-
-  async function handleStartSidebarChat(): Promise<void> {
-    if (!recipe) return;
-    const uid = auth.user?.uid;
-    if (!uid) return;
-    amendBusy = true;
-    const result = await createChatSession(uid, recipe.id);
-    amendBusy = false;
-    if (result.kind !== 'ok') addToast('Failed to open chat.', 'destructive');
-  }
 
   // ─── Optimise for my kitchen ────────────────────────────────────────────────
   // Sends OPTIMISE_FOR_KITCHEN_PROMPT as an ordinary user turn, creating the
@@ -311,15 +336,10 @@ Finish with a short note on what you changed and why, so I can read the gist her
     sidebarRevealed = true;
     optimiseBusy = true;
 
-    let session = activeSession;
+    const session = activeSession ?? (await createRecipeChat());
     if (!session) {
-      const created = await createChatSession(uid, recipe.id);
-      if (created.kind !== 'ok') {
-        optimiseBusy = false;
-        addToast('Failed to open chat.', 'destructive');
-        return;
-      }
-      session = created.value;
+      optimiseBusy = false;
+      return;
     }
 
     await chat.send(session, OPTIMISE_FOR_KITCHEN_PROMPT);
@@ -1091,6 +1111,17 @@ Finish with a short note on what you changed and why, so I can read the gist her
             </CardContent>
           </Card>
         {/if}
+
+        <!-- Every chat about this dish (issue #696). It sits at the foot of the
+             recipe column so it is reachable on a phone, where the chat column
+             beside it is not rendered. -->
+        <RecipeChatList
+          chats={recipeChats}
+          activeId={activeSession?.id ?? null}
+          onSelect={openChat}
+          onNew={handleNewChat}
+          creating={amendBusy}
+        />
       </div>
 
       <!-- Right column: embedded chat sidebar. Desktop-only by default; below `lg`
@@ -1136,7 +1167,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
                 size="sm"
                 variant="outline"
                 class="w-full"
-                onclick={handleStartSidebarChat}
+                onclick={createRecipeChat}
                 loading={amendBusy}
                 disabled={amendBusy}
               >

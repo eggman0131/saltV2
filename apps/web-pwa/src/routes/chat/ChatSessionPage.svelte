@@ -2,7 +2,7 @@
   import { Button, DetailPage, Icon, Spinner } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
   import { trackUsageEvent } from '@salt/observability';
-  import { sessions, isLoadingSessions } from '../../lib/chatService.js';
+  import { sessions, isLoadingSessions, claimRecipe } from '../../lib/chatService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { saveRecipe as saveRecipeDoc } from '@salt/firebase-sync';
   import { recipes, authorRecipeTraced } from '../../lib/recipeService.js';
@@ -22,6 +22,12 @@
   // The transcript, the composer and the send path all live in ChatThread; this
   // page owns only the route lookup, the header actions and the review gate.
   const thread = createChatThread();
+
+  // Back goes where you came from (issue #696). A chat that belongs to a recipe is
+  // reached FROM that recipe — it is listed there — so returning to the chat list
+  // was always the wrong door.
+  const backTo = $derived(session?.recipeId ? `/recipes/${session.recipeId}` : '/chat');
+  const backLabel = $derived(session?.recipeId ? 'Recipe' : 'Chef');
 
   // Save as recipe — calls the librarian flow and navigates to the new recipe.
   let isSavingRecipe = $state(false);
@@ -50,6 +56,11 @@
       recipe_kind: stamped.kind,
       recipe_method: 'chat',
     });
+    // The conversation now belongs to the dish it produced, so it is listed on
+    // that recipe and stops being swept away after a fortnight (issue #696).
+    // Best-effort: the recipe is already saved and a failed claim must not read
+    // as a failed save.
+    await claimRecipe(session.id, stamped.id);
     addToast('Recipe saved!', 'success');
     push(`/recipes/${stamped.id}`);
   }
@@ -146,12 +157,7 @@
     {/if}
   </div>
 {:else}
-  <DetailPage
-    title={session.title}
-    onBack={() => push('/chat')}
-    backLabel="Chef"
-    class="p-4 sm:p-6"
-  >
+  <DetailPage title={session.title} onBack={() => push(backTo)} {backLabel} class="p-4 sm:p-6">
     {#snippet actions()}
       {#if !session.recipeId && session.messages.some((m) => m.role === 'assistant')}
         <Button
