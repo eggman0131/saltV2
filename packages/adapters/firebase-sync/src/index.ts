@@ -89,6 +89,9 @@ export {
 export { subscribeDevSettings, saveDevSettings } from './devSettingsSync.js';
 export { subscribeAppSettings, saveAppSettings } from './appSettingsSync.js';
 export { callListAiModels, callTestModel } from './aiModelCallables.js';
+// Pushover device readout for the /settings cook-notifications card (issue #680).
+export { callListPushoverDevices } from './pushoverCallables.js';
+export type { PushoverDevices } from './pushoverCallables.js';
 // Weather forecast cache (issue #382, Phase 2): client-side subscribe + the
 // refresh callable wrapper. Phase 3 (planner render) consumes the subscribe.
 export { subscribeWeatherForecast } from './weatherSync.js';

@@ -462,6 +462,7 @@ export { onCookTimerDispatch } from './triggers/onCookTimerDispatch.js';
 export { regenerateCanonIcon } from './callables/regenerateCanonIcon.js';
 export { regenerateRecipeImage } from './callables/regenerateRecipeImage.js';
 export { setRecipeImageUpload } from './callables/setRecipeImageUpload.js';
+export { listPushoverDevices } from './callables/listPushoverDevices.js';
 export { beforeMemberCreated } from './auth/beforeMemberCreated.js';
 export { sweepOrphanedStorage } from './maintenance/sweepOrphanedStorage.js';
 export { remindShoppingDay } from './maintenance/remindShoppingDay.js';

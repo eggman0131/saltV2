@@ -5,6 +5,8 @@ import { logger } from 'firebase-functions';
 import { CookSessionSchema, PushSubscriptionSchema } from '@salt/domain/schemas';
 import { flushServerObservability } from '@salt/observability/server';
 import { sendWebPush } from '../adapters/sendWebPush.js';
+import { sendPushover } from '../adapters/sendPushover.js';
+import { resolvePushoverTargets } from '../adapters/pushoverRecipient.js';
 import { reportServerError } from '../observability/reportServerError.js';
 import { COOK_TIMER_REGION, type CookTimerTaskPayload } from './cookTimerTypes.js';
 
@@ -20,15 +22,80 @@ import { COOK_TIMER_REGION, type CookTimerTaskPayload } from './cookTimerTypes.j
 // has no non-secret function-env mechanism — deployed functions read config only
 // from Secret Manager — so it rides as a secret alongside the private key rather
 // than a would-be-empty process.env var). PostHog key powers error reporting.
+// Pushover credentials are ONE SHARED FAMILY ACCOUNT (issue #680), so they are
+// app-level secrets exactly like the VAPID pair — no per-user identity data is
+// stored anywhere, and per-person targeting is the `device` parameter.
 const vapidPrivateKey = defineSecret('VAPID_PRIVATE_KEY');
 const vapidPublicKey = defineSecret('VAPID_PUBLIC_KEY');
+const pushoverAppToken = defineSecret('PUSHOVER_APP_TOKEN');
+const pushoverUserKey = defineSecret('PUSHOVER_USER_KEY');
 const posthogApiKey = defineSecret('POSTHOG_API_KEY');
+
+// Resolve the owner's Pushover devices and send. Every outcome is handled here
+// so the caller stays linear, and NOTHING escapes: a throw would put the whole
+// dispatch into a Cloud Tasks retry it cannot win.
+//
+// The GENERIC COPY discipline of the web-push payload applies here too, and more
+// strictly: the message crosses to a third party, so it carries the fixed title
+// and body ONLY — never the sessionId (which by design embeds the recipe id),
+// the step id, or any recipe text.
+async function deliverViaPushover(
+  ownerUid: string,
+  sessionId: string,
+  payload: { readonly title: string; readonly body: string },
+): Promise<void> {
+  const token = pushoverAppToken.value();
+  const user = pushoverUserKey.value();
+  if (!token || !user) {
+    // Not provisioned in this environment — web push above still ran.
+    logger.warn('onCookTimerDispatch: Pushover not provisioned', { sessionId });
+    return;
+  }
+
+  const targets = await resolvePushoverTargets({ token, user }, ownerUid);
+
+  switch (targets.kind) {
+    case 'suppressed':
+      // Non-production, and this member is not the test-device owner. Expected.
+      return;
+
+    case 'unresolved':
+      // Operational blip (network / member read). Logged inside the resolver;
+      // not reported, because an offline wobble is not the unexpected (§7.6).
+      logger.warn('onCookTimerDispatch: Pushover targets unresolved', {
+        sessionId,
+        reason: targets.reason,
+      });
+      return;
+
+    case 'no-devices':
+      // MISCONFIGURATION, and the whole reason the zero-match guard exists: no
+      // device matched `<firstname>-`, so we send NOTHING rather than let
+      // Pushover fail open and broadcast one person's rice to the whole family.
+      // Reported, because silence is what would make this invisible for weeks.
+      reportServerError(
+        new Error(`Pushover: no devices matched '${targets.firstName}-' — timer not delivered`),
+      );
+      return;
+
+    case 'send': {
+      const result = await sendPushover({ token, user }, targets.devices, {
+        title: payload.title,
+        body: payload.body,
+      });
+      if (result === 'failed') {
+        reportServerError(new Error('Pushover send failed'));
+      }
+      return;
+    }
+  }
+}
 
 export const onCookTimerDispatch = onTaskDispatched<CookTimerTaskPayload>(
   {
     region: COOK_TIMER_REGION,
     memory: '512MiB',
-    secrets: [vapidPrivateKey, vapidPublicKey, posthogApiKey],
+    secrets: [vapidPrivateKey, vapidPublicKey, pushoverAppToken, pushoverUserKey, posthogApiKey],
     // A push endpoint can be transiently unavailable; retry a handful of times
     // with backoff. A PERMANENT failure never throws (see below), so it never
     // burns retries.
@@ -91,14 +158,15 @@ export const onCookTimerDispatch = onTaskDispatched<CookTimerTaskPayload>(
 
       // (e) VAPID material. Both keys come from bound secrets; the subject is a
       // fixed contact (a valid mailto is all web-push needs). If either key is
-      // empty the feature is not provisioned — log and return rather than throw
-      // (a retry wouldn't help).
+      // empty web push is not provisioned — log and skip that sink. It is no
+      // longer a reason to abandon the dispatch: Pushover is an independent sink
+      // and is the one we actually expect to arrive on time.
       const publicKey = vapidPublicKey.value();
       const privateKey = vapidPrivateKey.value();
       const subject = 'mailto:admin@salt.app';
-      if (!publicKey || !privateKey) {
+      const webPushProvisioned = Boolean(publicKey && privateKey);
+      if (!webPushProvisioned) {
         logger.error('onCookTimerDispatch: VAPID not provisioned', { sessionId });
-        return;
       }
 
       // (f) IDS + GENERIC COPY ONLY — never recipe/step free-text. The service
@@ -113,22 +181,33 @@ export const onCookTimerDispatch = onTaskDispatched<CookTimerTaskPayload>(
       };
 
       // (g) Send to every valid subscription; prune the dead, report the failed.
-      for (const sub of subscriptions) {
-        if (!sub.parsed.success) continue; // narrowing (filtered above)
-        const data = sub.parsed.data;
-        const result = await sendWebPush(
-          { subject, publicKey, privateKey },
-          { endpoint: data.endpoint, keys: data.keys },
-          payload,
-        );
-        if (result === 'gone') {
-          // Subscription is permanently dead — prune it so we stop trying.
-          await sub.ref.delete();
-        } else if (result === 'failed') {
-          // Transient/unexpected send failure. No user content in the error.
-          reportServerError(new Error('web-push send failed'));
+      // BOTH sinks fire during the #680 rollout — Pushover ships ALONGSIDE web
+      // push, not instead of it. Duplicate notifications for a short period are a
+      // cheap price for confirming the delivery timing genuinely improves on the
+      // real devices before the fallback comes out.
+      if (webPushProvisioned) {
+        for (const sub of subscriptions) {
+          if (!sub.parsed.success) continue; // narrowing (filtered above)
+          const data = sub.parsed.data;
+          const result = await sendWebPush(
+            { subject, publicKey, privateKey },
+            { endpoint: data.endpoint, keys: data.keys },
+            payload,
+          );
+          if (result === 'gone') {
+            // Subscription is permanently dead — prune it so we stop trying.
+            await sub.ref.delete();
+          } else if (result === 'failed') {
+            // Transient/unexpected send failure. No user content in the error.
+            reportServerError(new Error('web-push send failed'));
+          }
         }
       }
+
+      // (h) Pushover — the sink that actually wakes a dozing Android device.
+      // Wrapped so a Pushover failure can never cost us the web-push send above
+      // or trip the outer catch into a Cloud Tasks retry.
+      await deliverViaPushover(session.ownerUid, sessionId, payload);
     } catch (err) {
       // Never throw out of the handler — a permanent error would otherwise make
       // Cloud Tasks retry to exhaustion. Report and return.

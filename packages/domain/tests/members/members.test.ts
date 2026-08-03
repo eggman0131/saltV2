@@ -71,7 +71,29 @@ describe('memberFirstName', () => {
   });
 
   it('returns empty string for empty input', () => {
+    expect(memberFirstName('')).toBe('');
     expect(memberFirstName('   ')).toBe('');
+  });
+
+  // The cases below exist because this is load-bearing for cook-timer DELIVERY
+  // (issue #680), not only for display: the result is lowercased into a
+  // `<firstname>-` prefix and matched against Pushover device names, so anything
+  // that leaks whitespace into it silently stops matching and drops the timer.
+  it('treats tabs and newlines as whitespace', () => {
+    expect(memberFirstName('\tDaniel\nPendery')).toBe('Daniel');
+    expect(memberFirstName('\n\t ')).toBe('');
+  });
+
+  it('never yields a value carrying whitespace', () => {
+    for (const name of ['Daniel Pendery', '  Mary  Jane Watson ', 'Cher', '']) {
+      expect(memberFirstName(name)).not.toMatch(/\s/);
+    }
+  });
+
+  it('keeps a hyphenated first name whole', () => {
+    // `Mary-Jane` stays one word, so the device prefix is `mary-jane-` and
+    // `mary-jane-phone` still resolves.
+    expect(memberFirstName('Mary-Jane Watson')).toBe('Mary-Jane');
   });
 });
 
