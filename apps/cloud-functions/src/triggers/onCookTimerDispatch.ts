@@ -2,7 +2,7 @@ import { onTaskDispatched } from 'firebase-functions/v2/tasks';
 import { defineSecret } from 'firebase-functions/params';
 import { getFirestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
-import { CookSessionSchema, PushSubscriptionSchema } from '@salt/domain/schemas';
+import { CookSessionSchema, PushSubscriptionSchema, RecipeSchema } from '@salt/domain/schemas';
 import { flushServerObservability } from '@salt/observability/server';
 import { sendWebPush } from '../adapters/sendWebPush.js';
 import { sendPushover } from '../adapters/sendPushover.js';
@@ -31,17 +31,72 @@ const pushoverAppToken = defineSecret('PUSHOVER_APP_TOKEN');
 const pushoverUserKey = defineSecret('PUSHOVER_USER_KEY');
 const posthogApiKey = defineSecret('POSTHOG_API_KEY');
 
+// Generic copy — what a notification says when the recipe could not be read.
+const FALLBACK_COPY = { title: 'Timer finished', body: 'A cook timer just finished.' } as const;
+
+// Names the timer and the cook it belongs to, e.g. "Simmer the sauce" /
+// "Shepherd's pie". Neither is in the task payload, so this costs ONE extra
+// Firestore read on the dispatch path.
+//
+// The label is `steps[i].timer.description` falling back to `Step N`, which is
+// EXACTLY what the in-app timer chip shows (CookModePage) — a notification that
+// named a timer differently from the screen it deep-links to would be worse than
+// one that named nothing.
+//
+// Returns null on absolutely any failure, and the caller falls back to the
+// generic copy: a missing recipe title must never cost us the notification
+// itself, which is the only part that is time-critical. Never throws.
+async function describeCookTimer(
+  recipeId: string,
+  stepId: string,
+): Promise<{ readonly title: string; readonly body: string } | null> {
+  try {
+    const snap = await getFirestore().collection('recipes').doc(recipeId).get();
+    if (!snap.exists) return null;
+
+    const parsed = RecipeSchema.safeParse(snap.data());
+    if (!parsed.success) return null;
+
+    const { steps, title } = parsed.data;
+    const index = steps.findIndex((s) => s.id === stepId);
+    const label = index >= 0 ? (steps[index]?.timer?.description ?? null) : null;
+
+    return {
+      title: label ?? (index >= 0 ? `Step ${index + 1}` : FALLBACK_COPY.title),
+      body: title,
+    };
+  } catch (err) {
+    logger.warn('onCookTimerDispatch: could not name the timer', { recipeId, err });
+    return null;
+  }
+}
+
+// Absolute deep link back into the cook, for the Pushover `url` (a native client
+// opens it, so a path would have no origin to resolve against). Hosting is
+// `<projectId>.web.app` in all three environments and GCLOUD_PROJECT is set by the
+// Functions runtime, so this needs no new configuration. Undefined when there is
+// no project id (local unit runs) — the notification still sends, just unlinked.
+function cookDeepLink(recipeId: string): string | undefined {
+  const projectId = process.env['GCLOUD_PROJECT'] ?? process.env['GCP_PROJECT'] ?? '';
+  if (!projectId) return undefined;
+  // Hash-routed app, matching the notificationclick route in push-sw.js.
+  return `https://${projectId}.web.app/#/recipes/${recipeId}/cook`;
+}
+
 // Resolve the owner's Pushover devices and send. Every outcome is handled here
 // so the caller stays linear, and NOTHING escapes: a throw would put the whole
 // dispatch into a Cloud Tasks retry it cannot win.
 //
-// The GENERIC COPY discipline of the web-push payload applies here too, and more
-// strictly: the message crosses to a third party, so it carries the fixed title
-// and body ONLY — never the sessionId (which by design embeds the recipe id),
-// the step id, or any recipe text.
+// This message DOES carry the recipe title, the timer label and a deep link
+// containing the recipe id, which reverses the original #680 stance that nothing
+// but fixed copy may cross to a third party. That was an explicit product call:
+// a timer you cannot identify from the lock screen — which cook, which timer,
+// with no way back — is most of the value gone, and the exposure is one family's
+// dinner. Do not re-tighten this without asking; it is a decision, not a slip.
 async function deliverViaPushover(
   ownerUid: string,
   sessionId: string,
+  recipeId: string,
   payload: { readonly title: string; readonly body: string },
 ): Promise<void> {
   const token = pushoverAppToken.value();
@@ -79,9 +134,13 @@ async function deliverViaPushover(
       return;
 
     case 'send': {
+      // Spread rather than assign: under exactOptionalPropertyTypes an absent
+      // deep link must be an absent PROPERTY, not an explicit undefined.
+      const link = cookDeepLink(recipeId);
       const result = await sendPushover({ token, user }, targets.devices, {
         title: payload.title,
         body: payload.body,
+        ...(link ? { url: link, urlTitle: 'Back to the cook' } : {}),
       });
       if (result === 'failed') {
         reportServerError(new Error('Pushover send failed'));
@@ -169,15 +228,19 @@ export const onCookTimerDispatch = onTaskDispatched<CookTimerTaskPayload>(
         logger.error('onCookTimerDispatch: VAPID not provisioned', { sessionId });
       }
 
-      // (f) IDS + GENERIC COPY ONLY — never recipe/step free-text. The service
-      // worker renders a fixed notification and uses `tag` to collapse repeats and
-      // `sessionId` to deep-link back to the cook.
+      // (f) Name the timer and the cook — "Simmer the sauce" / "Shepherd's pie" —
+      // falling back to the generic copy if the recipe cannot be read. ONE copy
+      // for BOTH sinks: they fire for the same timer during the rollout, and one
+      // named notification beside one anonymous one would just read as a bug.
+      // The service worker renders whatever it is given, using `tag` to collapse
+      // repeats and `sessionId` to deep-link back to the cook.
+      const copy = (await describeCookTimer(session.recipeId, stepId)) ?? FALLBACK_COPY;
       const payload = {
         type: 'cook-timer' as const,
         tag: `cook::${sessionId}`,
         sessionId,
-        title: 'Timer finished',
-        body: 'A cook timer just finished.',
+        title: copy.title,
+        body: copy.body,
       };
 
       // (g) Send to every valid subscription; prune the dead, report the failed.
@@ -207,7 +270,7 @@ export const onCookTimerDispatch = onTaskDispatched<CookTimerTaskPayload>(
       // (h) Pushover — the sink that actually wakes a dozing Android device.
       // Wrapped so a Pushover failure can never cost us the web-push send above
       // or trip the outer catch into a Cloud Tasks retry.
-      await deliverViaPushover(session.ownerUid, sessionId, payload);
+      await deliverViaPushover(session.ownerUid, sessionId, session.recipeId, payload);
     } catch (err) {
       // Never throw out of the handler — a permanent error would otherwise make
       // Cloud Tasks retry to exhaustion. Report and return.
