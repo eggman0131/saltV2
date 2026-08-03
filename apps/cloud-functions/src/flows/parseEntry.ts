@@ -1,9 +1,8 @@
 import { z } from 'genkit';
-import { googleAI } from '@genkit-ai/google-genai';
 import { ParseEntryAIOutputSchema } from '@salt/domain/schemas';
 import { setActiveSpanName } from '@salt/observability/server';
 import { ai } from '../genkit.js';
-import { resolveModel } from '../ai/resolveModel.js';
+import { flowModel } from '../ai/fakeModel.js';
 
 const ParseEntryInputSchema = z.object({
   rawText: z.string(),
@@ -18,9 +17,20 @@ export const parseEntryFlow = ai.defineFlow(
   async ({ rawText }) => {
     setActiveSpanName(`parseEntry: ${rawText}`);
     const prompt = buildPrompt(rawText);
-    const model = await resolveModel('lite', 'parseEntry');
+    // Production: googleAI.model(resolveModel('lite', 'parseEntry')).
+    // Under FUNCTIONS_AI_FAKE=1 (emulator e2e only) flowModel returns the
+    // deterministic fake model instead; byte-identical otherwise. See
+    // ../ai/fakeModel.ts for the cross-process stub contract.
+    //
+    // This flow is the compound-entry fallback in `onShoppingListItemWrite`, so
+    // any spec that adds an entry `looksCompound` reached live Gemini with the
+    // dummy emulator key (issue #686 — the offender the hermeticity guard caught
+    // on shard 3). Unstubbed the fake throws, and `createServerEntryParseAdapter`
+    // catches it into a `NetworkError` exactly as the 400 already did, so the
+    // trigger keeps falling back to the deterministic parse — but offline.
+    const model = await flowModel('lite', 'parseEntry');
     const result = await ai.generate({
-      model: googleAI.model(model),
+      model,
       prompt,
       output: { schema: ParseEntryAIOutputSchema },
       config: { temperature: 0 },
