@@ -64,8 +64,11 @@ services:
       # initialises the plugin on the first ai.generate() regardless of which
       # model that call selects, so even a flow using the fake model trips this
       # check. Supply a dummy key so the plugin initialises cleanly; under
-      # FUNCTIONS_AI_FAKE=1 the fake model serves the answer, so this key is
-      # never used for a real Gemini call. Emulator-only, obviously not a secret.
+      # FUNCTIONS_AI_FAKE=1 the fake seams serve every answer, so this key is
+      # never used for a real Gemini call — CI asserts that from this stack's own
+      # log ("Assert no live AI calls" in ci.yml, issue #686), because until then
+      # a flow that slipped the seam just failed quietly against this key.
+      # Emulator-only, obviously not a secret.
       GEMINI_API_KEY: "fake-emulator-key-not-used"
     volumes:
       # Repo read-only: config + the prebuilt CF bundle + pnpm's relative
