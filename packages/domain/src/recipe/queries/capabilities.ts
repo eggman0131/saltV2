@@ -36,9 +36,9 @@ const CAPABILITIES: Record<RecipeKind, Capabilities> = {
   cocktail: { takesIngredients: true, isCookable: true, isPlannable: false },
   // A placeholder is a photograph and a title, nothing else: nothing to buy,
   // nothing to cook, and never offered in the picker. Every downstream question
-  // answers itself from this row — including the one that would otherwise have
-  // needed work, `unshoppedPlannedRecipes`, which keys on ingredient COUNT, so a
-  // placeholder in `day.recipeIds` never nags anyone to shop for it.
+  // answers itself from this row — including /mine's review queue (`needsReview`),
+  // which gates on `isCookable` precisely so the stock-photo placeholders, written
+  // once and never edited, don't sit in it for ever.
   placeholder: { takesIngredients: false, isCookable: false, isPlannable: false },
 };
 

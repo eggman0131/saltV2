@@ -1,54 +1,123 @@
-import {
-  addCalendarDays,
-  chefDaysForMember,
-  firstIncompleteStepId,
-  isUnopenedImport,
-  rankPersonalCards,
-  unshoppedPlannedRecipes,
-  weekDates,
-  type Member,
-  type Recipe,
-} from '@salt/domain';
-import type { CookSessionDoc, ShoppingDayDoc, WeatherDaySummary } from '@salt/domain/schemas';
+import { firstIncompleteStepId, needsReview, type Recipe } from '@salt/domain';
+import type { CookActiveTimerDoc, CookSessionDoc } from '@salt/domain/schemas';
 import { derived, readable } from 'svelte/store';
 import type { Readable } from 'svelte/store';
-import { currentMember, members } from './membersService.js';
-import { currentWeek } from './mealPlanService.js';
-import { itemsForActiveList } from './shoppingListService.svelte.js';
 import { recipes } from './recipeService.js';
 import { myCookSessions } from './cookSessionService.js';
-import { upcomingShopDay, weekShopDay } from './shoppingDayService.js';
-import { weatherForecast } from './weatherService.js';
 
-// Personal view composition (issue #634). "Mine" is not a dashboard and not an
-// inbox — it is a PROJECTION over family-shared data, filtered through who I am.
+// Personal view composition (issues #634, #682). "Mine" is not a dashboard and not
+// an inbox — it answers exactly one question: what of mine is RUNNING right now,
+// and what needs a look?
+//
+// #682 cut it back to that. Tonight, Your week and Needs you were all restating
+// the planner and the shopping list, which say it better on their own pages, so
+// they and their domain helpers are gone. What is left is three things nothing
+// else in the app surfaces: my step timers, my open cooks, and the standing queue
+// of entries nobody has saved yet.
 //
 // Every store read here is already subscribed app-wide from App.svelte, so all of
 // this costs zero extra Firestore reads — which is also what makes the nav badge
-// free from any page. This module issues NO writes: there is no new failure
-// surface and nothing new to report (docs/salt-architecture.md §7.6). All policy
-// (who is cooking, what is unshopped, what ranks first) lives in `@salt/domain`;
-// what is left here is composition and the clock.
-//
-// Note the week these read is the one the PLANNER has selected. MinePage resets it
-// to the current week on mount, exactly as the planner does; the nav badge, which
-// has no mount of its own, counts against whatever week is loaded. Giving the badge
-// its own week subscription would duplicate a subscription to save a member who has
-// browsed to another week from a slightly stale count — not worth it.
+// free from any page. This module issues no writes of its own; the two commands
+// the page fires (dismiss a timer, cancel a cook) go through cookSessionService,
+// which reports per the observability gate (docs/salt-architecture.md §7.6).
 
-function todayIso(): string {
-  return new Date().toLocaleDateString('en-CA'); // en-CA renders local-tz YYYY-MM-DD
+// ─── 1. Timers ───────────────────────────────────────────────────────────────
+
+export interface MineTimer {
+  /** Stable across ticks: one live timer per step, per session. */
+  readonly id: string;
+  readonly session: CookSessionDoc;
+  readonly recipe: Recipe;
+  readonly timer: CookActiveTimerDoc;
+  /** The human timer label, falling back to "Step N", then to "Timer". */
+  readonly label: string;
+  /** The step's own duration, for the progress fill; null once the step is gone. */
+  readonly durationMs: number | null;
 }
 
-// A minute clock, live only while something is subscribed to it. Relative labels
-// ("4 min ago") and the 24-hour import window need a `now` that moves; nothing
-// else on the page does, so this deliberately does not drive the rest.
-export const nowMs: Readable<number> = readable(Date.now(), (set) => {
-  const id = setInterval(() => set(Date.now()), 60_000);
-  return () => clearInterval(id);
+/**
+ * Every timer I have running, soonest-ending first — including the ones that have
+ * already fired and not been dismissed.
+ *
+ * A fired timer is not a separate state in the document: it stays in
+ * `activeTimers` until someone dismisses it, and "fired" is simply
+ * `endsAt <= now`, derived against `timerNowMs` at the point of display. That is
+ * the whole reason no schema field was needed here.
+ *
+ * The sort is on `endsAt` alone, so it needs no clock and yet still floats the
+ * fired ones to the top: whatever ended earliest ended first.
+ *
+ * A session whose recipe was deleted is skipped, exactly as `liveCooks` does —
+ * there is nowhere for "Go to recipe" to go.
+ */
+export const myTimers: Readable<readonly MineTimer[]> = derived(
+  [myCookSessions, recipes],
+  ([$sessions, $recipes]) => {
+    const out: MineTimer[] = [];
+    for (const session of $sessions) {
+      const recipe = $recipes.find((r) => r.id === session.recipeId);
+      if (!recipe) continue;
+      for (const timer of session.activeTimers) {
+        const stepIndex = recipe.steps.findIndex((s) => s.id === timer.stepId);
+        const step = stepIndex >= 0 ? recipe.steps[stepIndex] : undefined;
+        const minutes = step?.timer?.durationMinutes;
+        out.push({
+          id: `${session.id}::${timer.stepId}`,
+          session,
+          recipe,
+          timer,
+          label: step?.timer?.description ?? (stepIndex >= 0 ? `Step ${stepIndex + 1}` : 'Timer'),
+          durationMs: minutes ? minutes * 60_000 : null,
+        });
+      }
+    }
+    return out.sort((a, b) => Date.parse(a.timer.endsAt) - Date.parse(b.timer.endsAt));
+  },
+);
+
+const anyTimerRunning: Readable<boolean> = derived(myCookSessions, ($sessions) =>
+  $sessions.some((s) => s.activeTimers.length > 0),
+);
+
+/**
+ * A one-second clock, live only while a timer of mine actually exists.
+ *
+ * A countdown needs second resolution — the minute ticker this module used to
+ * carry would make "4:37" sit still and then jump — but the nav badge subscribes
+ * this from every page in the app, and an interval that fires every second for
+ * ever to serve a badge that reads zero is pure waste. So the interval is armed
+ * and disarmed by `anyTimerRunning`: nothing ticks at rest, which is the same
+ * bargain cook mode's own `$effect` strikes.
+ *
+ * A fired-but-undismissed timer deliberately keeps the clock running: it is still
+ * in `activeTimers`, and the badge counting it has to stay honest.
+ */
+export const timerNowMs: Readable<number> = readable(Date.now(), (set) => {
+  let handle: ReturnType<typeof setInterval> | undefined;
+  function stop(): void {
+    if (handle !== undefined) clearInterval(handle);
+    handle = undefined;
+  }
+  const unsub = anyTimerRunning.subscribe((running) => {
+    stop();
+    if (!running) return;
+    set(Date.now());
+    if (typeof setInterval !== 'function') return; // SSR guard
+    handle = setInterval(() => set(Date.now()), 1000);
+  });
+  return () => {
+    stop();
+    unsub();
+  };
 });
 
-// ─── 1. Live — resume a cook ─────────────────────────────────────────────────
+/** Timers past their `endsAt` that nobody has dismissed — the things shouting. */
+export const firedTimers: Readable<readonly MineTimer[]> = derived(
+  [myTimers, timerNowMs],
+  ([$timers, $now]) => $timers.filter((t) => Date.parse(t.timer.endsAt) <= $now),
+);
+
+// ─── 2. In-progress cooks ────────────────────────────────────────────────────
 
 export interface LiveCook {
   readonly session: CookSessionDoc;
@@ -60,8 +129,7 @@ export interface LiveCook {
 }
 
 /**
- * Every cook I have on the go, newest first — the things on this page that are
- * happening *this minute*, so they come first.
+ * Every cook I have on the go, newest first.
  *
  * ALL of them, not just the newest: a two-pan dinner is two open sessions, and a
  * view that showed one and silently hid the other would be lying about the state
@@ -96,196 +164,41 @@ export const liveCooks: Readable<readonly LiveCook[]> = derived(
   },
 );
 
-// ─── 2. Tonight ──────────────────────────────────────────────────────────────
-
-export interface TonightPlan {
-  readonly date: string;
-  readonly note: string;
-  readonly recipes: readonly Recipe[];
-  readonly chefs: readonly Member[];
-  /** I am down to cook tonight. */
-  readonly mine: boolean;
-  readonly weather: WeatherDaySummary | undefined;
-  /** Anything at all is planned — a note, a recipe, or a chef. */
-  readonly planned: boolean;
-}
+// ─── 3. Needs review ─────────────────────────────────────────────────────────
 
 /**
- * Tonight's meal — the one HOUSEHOLD card, and what keeps the screen from being
- * blank on a day when nothing is personally yours.
+ * Everything nobody has saved yet, newest first — a standing queue, not a
+ * notification.
  *
- * Null only when today falls outside the loaded week (the planner is browsing
- * another week and this page hasn't reset it yet).
- */
-export const tonight: Readable<TonightPlan | null> = derived(
-  [currentWeek, recipes, members, currentMember, weatherForecast],
-  ([$week, $recipes, $members, $me, $forecast]) => {
-    const date = todayIso();
-    const day = $week.days[date];
-    if (!day) return null;
-    const plannedRecipes = day.recipeIds
-      .map((id) => $recipes.find((r) => r.id === id))
-      .filter((r): r is Recipe => !!r);
-    return {
-      date,
-      note: day.note,
-      recipes: plannedRecipes,
-      chefs: day.chefs
-        .map((id) => $members.find((m) => m.id === id))
-        .filter((m): m is Member => !!m),
-      mine: !!$me && day.chefs.includes($me.id),
-      weather: $forecast?.days[date],
-      planned: day.note.trim() !== '' || day.recipeIds.length > 0 || day.chefs.length > 0,
-    };
-  },
-);
-
-// ─── 3. Your week ────────────────────────────────────────────────────────────
-
-export interface WeekStripDay {
-  readonly date: string;
-  /** I am down to cook. */
-  readonly mine: boolean;
-  readonly isToday: boolean;
-  readonly isPast: boolean;
-  readonly isShopDay: boolean;
-}
-
-export interface YourWeek {
-  readonly days: readonly WeekStripDay[];
-  /** The dates I am cooking, in calendar order. */
-  readonly chefDates: readonly string[];
-}
-
-export const yourWeek: Readable<YourWeek> = derived(
-  [currentWeek, currentMember, weekShopDay],
-  ([$week, $me, $shop]) => {
-    const today = todayIso();
-    const chefDates = chefDaysForMember($week, $me?.id ?? '');
-    const mine = new Set(chefDates);
-    return {
-      chefDates,
-      days: weekDates($week.startDate).map((date) => ({
-        date,
-        mine: mine.has(date),
-        isToday: date === today,
-        isPast: date < today,
-        isShopDay: $shop?.date === date,
-      })),
-    };
-  },
-);
-
-// ─── 4. Needs you ────────────────────────────────────────────────────────────
-
-interface NeedsYouBase {
-  readonly id: string;
-  readonly date: string | null;
-  /** The shop is today or tomorrow. */
-  readonly urgent: boolean;
-}
-
-export interface UnshoppedCard extends NeedsYouBase {
-  readonly kind: 'unshopped-mine' | 'unshopped-other';
-  readonly date: string;
-  readonly recipe: Recipe;
-  readonly missingCount: number;
-}
-
-export interface NeedsCheckCard extends NeedsYouBase {
-  readonly kind: 'needs-check';
-  readonly date: null;
-  readonly count: number;
-}
-
-export type NeedsYouCard = UnshoppedCard | NeedsCheckCard;
-
-// The shop being today or tomorrow is what turns "worth knowing" into "do it now".
-function shopIsImminent(shop: ShoppingDayDoc | null | undefined, today: string): boolean {
-  if (!shop) return false;
-  return shop.date === today || shop.date === addCalendarDays(today, 1);
-}
-
-/**
- * The queue: at most three, ranked, yours first (see `rankPersonalCards`).
+ * No window and no member filter: an import you forgot about three weeks ago is
+ * the case most worth catching, and a recipe is family-shared, so "nobody has
+ * checked this" is everybody's business. The `isCookable` gate that keeps it sane
+ * lives in the domain predicate (see `needsReview`), so nothing out here branches
+ * on `kind`.
  *
- * Somebody else's unshopped night gets exactly ONE card however many there are —
- * this page is what needs *you*, and a backlog of other people's nights is how a
- * personal view turns into a nag.
+ * Deliberately OUT of the nav badge: a standing queue would pin a permanent
+ * number to the tab.
  */
-export const needsYou: Readable<readonly NeedsYouCard[]> = derived(
-  [currentWeek, itemsForActiveList, recipes, currentMember, upcomingShopDay],
-  ([$week, $items, $recipes, $me, $shop]) => {
-    const today = todayIso();
-    const urgent = shopIsImminent($shop, today);
-    const mineDates = new Set(chefDaysForMember($week, $me?.id ?? ''));
-
-    const cards: NeedsYouCard[] = [];
-    let othersCard = false;
-    for (const unshopped of unshoppedPlannedRecipes($week, $items, $recipes, today)) {
-      const recipe = $recipes.find((r) => r.id === unshopped.recipeId);
-      if (!recipe) continue;
-      const mine = mineDates.has(unshopped.date);
-      if (!mine) {
-        if (othersCard) continue;
-        othersCard = true;
-      }
-      cards.push({
-        kind: mine ? 'unshopped-mine' : 'unshopped-other',
-        id: `unshopped:${unshopped.recipeId}`,
-        date: unshopped.date,
-        urgent,
-        recipe,
-        missingCount: unshopped.missingCount,
-      });
-    }
-
-    const needsCheckCount = $items.filter((i) => i.needsCheck && !i.checked).length;
-    if (needsCheckCount > 0) {
-      cards.push({
-        kind: 'needs-check',
-        id: 'needs-check',
-        date: null,
-        urgent,
-        count: needsCheckCount,
-      });
-    }
-
-    return rankPersonalCards(cards);
-  },
-);
-
-// ─── 5. Just happened (Phase 2) ──────────────────────────────────────────────
-
-/**
- * Imports that landed in the last 24 hours and have not been touched since —
- * newest first.
- *
- * This is the recovery path for the module-memory hole: a share-sheet import is
- * persisted server-side, but the draft the client routes you to lives in module
- * memory, so an Android kill loses every pointer to a recipe that is sitting
- * safely in Firestore. Deliberately excluded from the nav badge — it is
- * time-windowed and needs no action, so it must not nag for a day.
- */
-export const justHappened: Readable<readonly Recipe[]> = derived(
-  [recipes, nowMs],
-  ([$recipes, $now]) =>
-    $recipes
-      .filter((r) => isUnopenedImport(r, $now))
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+export const needsReviewRecipes: Readable<readonly Recipe[]> = derived(recipes, ($recipes) =>
+  $recipes.filter(needsReview).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
 );
 
 // ─── Nav badge ───────────────────────────────────────────────────────────────
 
 /**
- * What is open right now: every live cook plus the "Needs you" queue.
+ * What is waiting on me right now: every open cook, plus every timer that has
+ * fired and not been dismissed.
  *
  * A COUNT OF WHAT IS OPEN, not "what changed since you last looked" — the latter
  * needs a per-user `lastSeenAt`, which means either browser storage (Rule 3) or a
  * fourth per-user collection, and it lies across devices. This needs no memory at
- * all, self-clears when the thing is fixed, and survives a cold launch honestly.
+ * all, self-clears when the thing is resolved, and survives a cold launch
+ * honestly.
+ *
+ * A timer still counting down is NOT in here. It is running to plan; the badge is
+ * for things that want a hand.
  */
 export const mineOpenCount: Readable<number> = derived(
-  [liveCooks, needsYou],
-  ([$live, $cards]) => $live.length + $cards.length,
+  [liveCooks, firedTimers],
+  ([$live, $fired]) => $live.length + $fired.length,
 );
