@@ -13,9 +13,13 @@ All data is family-shared (no per-user scoping), consistent with the rest of Sal
 | --- | --- |
 | Recipe data model + persistence | **AI Chef** — conversational creative generation (Stage 1) |
 | Manual CRUD (the schema stress-test) | **Kitchen Agent** — equipment-aware optimisation + faff-cost reasoning (Stage 2) |
-| AI ingredient parsing | URL / photo recipe import |
+| AI ingredient parsing | |
 | Ingredient canonicalisation (reuse `matchOrCreate`) | |
 | Shopping-list extraction | |
+
+URL and photo recipe import have since shipped (`extractRecipeFromUrl`,
+`extractRecipeFromPhoto`) — both are structured-extraction siblings of AI
+ingredient parsing, not part of the deferred AI-generation epic.
 
 Manual entry ships *before* any AI on purpose: the pain of hand-entering a real
 recipe is the fastest way to discover schema flaws before we automate.

@@ -251,9 +251,12 @@ ranges against the live registry.
 
 There are no flaky `sleep`s anywhere in the gate — readiness is the container healthcheck
 (`up --wait`), and teardown is the deterministic `down -v` (in `globalTeardown` for e2e, in a
-`finally` for the Vitest orchestrator). On failure the `e2e` job uploads the Playwright HTML
-report and traces as `playwright-report` / `playwright-test-results` artifacts (14-day retention);
-the downloaded Playwright trace is the CI debugging path.
+`finally` for the Vitest orchestrator). The `e2e` job uploads three artifacts —
+`playwright-report-shard-N`, `playwright-test-results-shard-N`, and `e2e-server-logs-shard-N`
+(the emulator log captured by `globalTeardown` before `down -v`, the Vite server log, and the
+shard's flake NDJSON) — on `failure() || <retry-recovered flakes detected>`, not `failure()` alone:
+a shard that flaked but ended green used to leave nothing to download (14-day retention on all
+three).
 
 ### Flake telemetry (issue #669)
 
@@ -276,8 +279,23 @@ a `/batch/` envelope with `jq` and `curl`s it to PostHog.
 | `shard`, `shard_total` | #668's pattern was flakiness following shard **position**, not the test — invisible without this |
 | `test_title`, `test_file`, `project` | the breakdown keys |
 | `duration_ms`, `error` | deciding attempt's duration; first line of the failing attempt, de-coloured and capped at 300 chars |
+| `failed_attempt_duration_ms` | duration of the attempt that actually FAILED (null when nothing failed) — `duration_ms` alone is the passing retry's time and can wildly understate a timeout |
+| `failure_kind` | `test-timeout` / `assertion` / `error` — how it failed, not just that it did |
+| `test_index`, `file_index` | position in the shard's run order (0-based) and the index of the test's file — flakes cluster at the start of a shard (the cold-server class) |
+| `ms_into_shard` | wall-clock milliseconds from the shard's first test starting to this one starting — the axis the cold-server effect actually lives on |
+| `error_fingerprint` | the error with volatile bits (ids, counts, timeouts, seeded emails) normalised out, so repeat occurrences group by cause |
+| `ctx_*` | scalars a test contributed via a `flake-context` attachment (see below) — generic, namespaced, reporter knows nothing about the app |
 | `branch`, `commit_sha`, `run_id`, `run_attempt` | which run to go and look at |
 | `source: ci`, `$process_person_profile: false` | CI is not a person and must never mint a person profile |
+
+**Authoring `ctx_*` correlation data.** A test can attach app-side state at the moment it failed —
+promoted from artifact-only to queryable — via the helpers in
+[`e2e/helpers/diagnostics.ts`](../apps/web-pwa/e2e/helpers/diagnostics.ts), which reduce the store
+snapshot to flat scalars (counts and booleans only, never ids/names/free-form content — the same
+scrubbing rule as error reporting) and attach them under the `flake-context` name that
+`flakeReporter.ts` reads. These helpers are pure diagnostics: guarded end-to-end so a closed page,
+a thrown getter, or a serialization failure can never turn a test failure into a different one, and
+they never affect pass/fail outcome.
 
 **The reporter imports no PostHog SDK, and must not.** `posthog-js` / `posthog-node` are confined
 to `@salt/observability` (CLAUDE.md rule 11) and `web-pwa` cannot import

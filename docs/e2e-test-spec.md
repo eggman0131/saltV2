@@ -233,10 +233,13 @@ Changing them is a harness change, not a test change — issue-first.
 
 - **NF-G4 (MUST) — Preserve, and strengthen, the failure-diagnosis artifacts.** Trace capture and
   `screenshot: 'only-on-failure'` must stay on, and the CI `e2e` job must keep uploading the HTML
-  report + traces + `test-results` as artifacts. **Those artifacts _are_ the CI debugging path:**
-  download them and open with the normal Playwright UI (`npx playwright show-trace` / `show-report`)
-  and CI debugging is identical to local — the downloaded Playwright trace is the only debugging path
-  (see NF-I1). **Trace
+  report + traces + `test-results` + server logs as artifacts (`playwright-report-shard-N` /
+  `playwright-test-results-shard-N` / `e2e-server-logs-shard-N` — the last carries the emulator log,
+  the Vite log, and the shard's flake NDJSON). Upload now triggers on `failure() || <retry-recovered
+  flakes detected>`, not `failure()` alone (see [docs/e2e.md](e2e.md#flake-telemetry-issue-669)) — a
+  shard that flaked but ended green used to leave nothing to download. **Those artifacts _are_ the CI
+  debugging path:** download them and open with the normal Playwright UI (`npx playwright show-trace`
+  / `show-report`) and CI debugging is identical to local (see NF-I1). **Trace
   mode must be `retain-on-failure`, not `on-first-retry`.** `on-first-retry` only traces the _retry_
   attempt, so for a "passes on retry" flake the retained trace is of a run that _passed_ — useless
   for this suite's exact symptom. `retain-on-failure` keeps the trace of whichever attempt actually
@@ -295,10 +298,14 @@ A test that fails opaquely costs more than the bug it caught.
   `@playwright/test` directly.** The shared fixture wires the auto-fixtures every spec depends on —
   the per-test Firestore clear (NF-C1) and JS coverage
   ([fixtures/test.ts](../apps/web-pwa/e2e/fixtures/test.ts)); bypassing it silently drops them.
-  **Diagnosis path:** the CI flake-debugging tool is the downloaded Playwright trace (NF-G4) — there
+  **Diagnosis path:** the downloaded Playwright trace (NF-G4) remains the artifact-level tool — there
   is no remote session-replay fallback. (Historically the e2e harness attached a LaunchDarkly
   session-replay URL, but that machinery was always a no-op under emulators and was retired with the
-  PostHog migration.)
+  PostHog migration.) Since #683/#687 there is also a query-based path that needs no download first:
+  every test emits a PostHog event carrying `failure_kind`, `error_fingerprint`, `ms_into_shard`, and
+  any `ctx_*` correlation scalars a test attached via a `flake-context` attachment (see
+  [docs/e2e.md](e2e.md#flake-telemetry-issue-669)) — useful for "are these six the same bug?" before
+  reaching for a single trace.
 
 - **NF-I2 (SHOULD) — Name the async path you're waiting on.** A descriptive constant (NF-A5) and a
   one-line comment on each non-obvious settle/hold turns a future timeout into a diagnosable line
