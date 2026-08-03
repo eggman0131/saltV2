@@ -13,6 +13,31 @@ import webpush from 'web-push';
 // a pure send-and-classify.
 export type WebPushResult = 'sent' | 'gone' | 'failed';
 
+// Is this subscription served by Apple's push service (iOS/macOS Safari, and an
+// installed iOS PWA)? The endpoint HOST is the only per-device platform signal we
+// hold anywhere: a push subscription is keyed `${uid}_${deviceHash}` and carries
+// no platform field, and the Pushover side identifies devices by NAME with no
+// platform either (its validate endpoint returns names only, and `licenses` is
+// account-level — useless on one shared family account). There is no key that
+// could correlate the two registries, which is why routing is decided here, off
+// the URL, rather than by pairing a browser subscription to a Pushover device.
+//
+// Used by onCookTimerDispatch to route Apple devices down web push (APNs wakes
+// them reliably) while Android falls to Pushover. It CANNOT separate Chrome on
+// Android from Chrome on a desktop — both are FCM — and deliberately does not
+// try: the fallback rule that consumes this keeps unmatched devices covered.
+export function isApplePushEndpoint(endpoint: string): boolean {
+  try {
+    const { hostname } = new URL(endpoint);
+    return hostname === 'web.push.apple.com' || hostname.endsWith('.push.apple.com');
+  } catch {
+    // Unparseable endpoint — treat as non-Apple. It will still receive a push
+    // whenever Pushover did not deliver, so a malformed URL cannot silence a
+    // device that has no other channel.
+    return false;
+  }
+}
+
 interface Vapid {
   readonly subject: string;
   readonly publicKey: string;

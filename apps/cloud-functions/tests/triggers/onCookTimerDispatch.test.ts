@@ -19,8 +19,12 @@ vi.mock('firebase-functions', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
+// Only the TRANSPORT is faked. `isApplePushEndpoint` is kept real, because the
+// routing assertions below are meaningless against a stubbed one — the whole
+// point is which endpoint lands in which channel.
 const mockSendWebPush = vi.fn(async () => 'sent' as const);
-vi.mock('../../src/adapters/sendWebPush.js', () => ({
+vi.mock('../../src/adapters/sendWebPush.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/adapters/sendWebPush.js')>()),
   sendWebPush: mockSendWebPush,
 }));
 
@@ -103,12 +107,17 @@ function makeSession(overrides: Partial<CookSessionDoc> = {}): CookSessionDoc {
   };
 }
 
-function makeSub(id: string): PushSubscriptionDoc {
+// Subscriptions default to an APPLE endpoint, because that is the branch that
+// always receives a web push. Pass `ANDROID_ENDPOINT` for the fallback-only side.
+const APPLE_ENDPOINT = 'https://web.push.apple.com/';
+const ANDROID_ENDPOINT = 'https://fcm.googleapis.com/fcm/send/';
+
+function makeSub(id: string, host: string = APPLE_ENDPOINT): PushSubscriptionDoc {
   return {
     id,
     schemaVersion: 1,
     ownerUid: 'uid-1',
-    endpoint: `https://push.example/${id}`,
+    endpoint: `${host}${id}`,
     keys: { p256dh: `p256-${id}`, auth: `auth-${id}` },
     createdAt: '2026-07-01T00:00:00.000Z',
     updatedAt: '2026-07-01T00:00:00.000Z',
@@ -345,39 +354,23 @@ describe('onCookTimerDispatch — Pushover sink', () => {
     expect((message as { title: string }).title).toBe('Simmer the sauce');
   });
 
-  it('sends via BOTH sinks during the rollout', async () => {
-    mockSubsDocs = [subDoc(makeSub('dev-1'))];
-
-    await (onCookTimerDispatch as unknown as Function)(req());
-
-    expect(mockSendWebPush).toHaveBeenCalledTimes(1);
-    expect(mockSendPushover).toHaveBeenCalledTimes(1);
-  });
-
-  it('still sends via Pushover when web push is unprovisioned or failing', async () => {
-    mockSubsDocs = [subDoc(makeSub('dev-1'))];
-    mockSendWebPush.mockResolvedValue('failed' as const);
-
-    await (onCookTimerDispatch as unknown as Function)(req());
-
-    expect(mockSendPushover).toHaveBeenCalledTimes(1);
-  });
-
-  it('sends NOTHING and reports when no device matched the member prefix', async () => {
+  it('sends NOTHING via Pushover when no device matched the member prefix', async () => {
     // The fail-open guard. Pushover would broadcast to the whole family if we
-    // sent an unresolvable device name, so a zero-match must not send at all —
-    // and must be reported, since it is a misconfiguration rather than a blip.
+    // sent an unresolvable device name, so a zero-match must not send at all.
     mockResolveTargets.mockResolvedValue({ kind: 'no-devices', firstName: 'Daniel' });
+    mockSubsDocs = [subDoc(makeSub('dev-1'))];
 
     await (onCookTimerDispatch as unknown as Function)(req());
 
     expect(mockSendPushover).not.toHaveBeenCalled();
-    expect(mockReport).toHaveBeenCalledTimes(1);
-    expect(String(mockReport.mock.calls[0]![0])).toContain('Daniel');
+    // NOT reported: a member who has simply never installed Pushover lands here
+    // on every timer, and they are covered by the web-push fallback.
+    expect(mockReport).not.toHaveBeenCalled();
   });
 
   it('sends nothing and does NOT report when suppressed in non-production', async () => {
     mockResolveTargets.mockResolvedValue({ kind: 'suppressed' });
+    mockSubsDocs = [subDoc(makeSub('dev-1'))];
 
     await (onCookTimerDispatch as unknown as Function)(req());
 
@@ -388,18 +381,174 @@ describe('onCookTimerDispatch — Pushover sink', () => {
   it('sends nothing and does NOT report when resolution hits an operational blip', async () => {
     // An offline wobble is the expected, not the unexpected (§7.6).
     mockResolveTargets.mockResolvedValue({ kind: 'unresolved', reason: 'network' });
+    mockSubsDocs = [subDoc(makeSub('dev-1'))];
 
     await (onCookTimerDispatch as unknown as Function)(req());
 
     expect(mockSendPushover).not.toHaveBeenCalled();
     expect(mockReport).not.toHaveBeenCalled();
   });
+});
 
-  it('reports (does not throw) when the Pushover send fails', async () => {
+// Per-device routing (issue #680). Each device gets exactly ONE channel, chosen
+// by the push endpoint's host — the only per-device platform signal in the system.
+// Apple always takes web push (APNs is reliable there); everything else takes it
+// only when Pushover did not deliver, because Android web push is throttled into
+// uselessness by Doze and per-OEM battery management.
+describe('onCookTimerDispatch — channel routing', () => {
+  beforeEach(() => {
+    mockCookSessionSnap = { exists: true, data: () => makeSession() };
+  });
+
+  it('skips web push for a non-Apple device once Pushover has delivered', async () => {
+    mockSubsDocs = [subDoc(makeSub('pixel', ANDROID_ENDPOINT))];
+
+    await (onCookTimerDispatch as unknown as Function)(req());
+
+    expect(mockSendPushover).toHaveBeenCalledTimes(1);
+    expect(mockSendWebPush).not.toHaveBeenCalled();
+  });
+
+  it('still sends web push to an Apple device when Pushover has delivered', async () => {
+    // NOT a duplicate: Pushover reached an Android phone, this reaches the iPad.
+    // The two sinks are covering two different devices.
+    mockSubsDocs = [subDoc(makeSub('ipad', APPLE_ENDPOINT))];
+
+    await (onCookTimerDispatch as unknown as Function)(req());
+
+    expect(mockSendPushover).toHaveBeenCalledTimes(1);
+    expect(mockSendWebPush).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to web push on a non-Apple device when Pushover has no devices', async () => {
+    // The member who never installed Pushover: an unreliable notification beats
+    // silence, and the day they install it this stops on its own.
+    mockResolveTargets.mockResolvedValue({ kind: 'no-devices', firstName: 'Ryan' });
+    mockSubsDocs = [subDoc(makeSub('new-phone', ANDROID_ENDPOINT))];
+
+    await (onCookTimerDispatch as unknown as Function)(req());
+
+    expect(mockSendPushover).not.toHaveBeenCalled();
+    expect(mockSendWebPush).toHaveBeenCalledTimes(1);
+    expect(mockReport).not.toHaveBeenCalled();
+  });
+
+  it('falls back to web push when the Pushover send itself fails', async () => {
+    // Resolution succeeded, the transport did not — that is precisely when a
+    // fallback should engage rather than report.
     mockSendPushover.mockResolvedValue('failed' as const);
+    mockSubsDocs = [subDoc(makeSub('pixel', ANDROID_ENDPOINT))];
 
-    await expect((onCookTimerDispatch as unknown as Function)(req())).resolves.toBeUndefined();
+    await (onCookTimerDispatch as unknown as Function)(req());
+
+    expect(mockSendWebPush).toHaveBeenCalledTimes(1);
+    expect(mockReport).not.toHaveBeenCalled();
+  });
+
+  it('nudges the fallback push to install Pushover when the member has none', async () => {
+    mockResolveTargets.mockResolvedValue({ kind: 'no-devices', firstName: 'Ryan' });
+    mockSubsDocs = [subDoc(makeSub('new-phone', ANDROID_ENDPOINT))];
+
+    await (onCookTimerDispatch as unknown as Function)(req());
+
+    const payload = mockSendWebPush.mock.calls[0]![2] as Record<string, string>;
+    // Appended, never substituted — the timer is still the point of the message.
+    expect(payload['body']).toContain("Shepherd's pie");
+    expect(payload['body']).toContain('install Pushover');
+  });
+
+  it('does NOT nudge an Apple device, which is already on its best channel', async () => {
+    mockResolveTargets.mockResolvedValue({ kind: 'no-devices', firstName: 'Ryan' });
+    mockSubsDocs = [subDoc(makeSub('ipad', APPLE_ENDPOINT))];
+
+    await (onCookTimerDispatch as unknown as Function)(req());
+
+    const payload = mockSendWebPush.mock.calls[0]![2] as Record<string, string>;
+    expect(payload['body']).toBe("Shepherd's pie");
+  });
+
+  it.each([
+    ['the send failed', { kind: 'send', devices: ['ryan-phone'] }, 'failed'],
+    ['resolution hit a blip', { kind: 'unresolved', reason: 'network' }, 'sent'],
+    ['Pushover is suppressed', { kind: 'suppressed' }, 'sent'],
+  ])('does NOT nudge when %s — they may already have Pushover', async (_case, targets, send) => {
+    mockResolveTargets.mockResolvedValue(targets);
+    mockSendPushover.mockResolvedValue(send as 'sent' | 'failed');
+    mockSubsDocs = [subDoc(makeSub('phone', ANDROID_ENDPOINT))];
+
+    await (onCookTimerDispatch as unknown as Function)(req());
+
+    const payload = mockSendWebPush.mock.calls[0]![2] as Record<string, string>;
+    expect(payload['body']).toBe("Shepherd's pie");
+  });
+
+  it('routes a mixed device set to one channel each', async () => {
+    mockSubsDocs = [
+      subDoc(makeSub('ipad', APPLE_ENDPOINT)),
+      subDoc(makeSub('pixel', ANDROID_ENDPOINT)),
+    ];
+
+    await (onCookTimerDispatch as unknown as Function)(req());
+
+    expect(mockSendWebPush).toHaveBeenCalledTimes(1);
+    const [, subscription] = mockSendWebPush.mock.calls[0]!;
+    expect((subscription as { endpoint: string }).endpoint).toContain('apple.com');
+  });
+
+  it('still notifies via Pushover in non-production even with no subscriptions', async () => {
+    mockResolveTargets.mockResolvedValue({ kind: 'suppressed' });
+    mockSubsDocs = [];
+
+    await (onCookTimerDispatch as unknown as Function)(req());
+
+    // Suppressed + nothing to fall back to = genuinely undelivered, so this is
+    // the one case that reports (see the total-non-delivery suite below).
+    expect(mockSendWebPush).not.toHaveBeenCalled();
+  });
+});
+
+// Reporting is now gated on TOTAL non-delivery. Either sink failing alone is a
+// non-event — each is the other's backstop — but a timer that reached nothing at
+// all leaves someone standing over a pan waiting for a ping that never comes.
+describe('onCookTimerDispatch — total non-delivery', () => {
+  beforeEach(() => {
+    mockCookSessionSnap = { exists: true, data: () => makeSession() };
+  });
+
+  it('reports when neither sink delivered', async () => {
+    mockResolveTargets.mockResolvedValue({ kind: 'no-devices', firstName: 'Ryan' });
+    mockSubsDocs = [];
+
+    await (onCookTimerDispatch as unknown as Function)(req());
 
     expect(mockReport).toHaveBeenCalledTimes(1);
+    expect(String(mockReport.mock.calls[0]![0])).toContain('no device');
+  });
+
+  it('reports when the only subscription is dead and Pushover has none', async () => {
+    mockResolveTargets.mockResolvedValue({ kind: 'no-devices', firstName: 'Ryan' });
+    mockSubsDocs = [subDoc(makeSub('dead', ANDROID_ENDPOINT))];
+    mockSendWebPush.mockResolvedValue('gone' as const);
+
+    await (onCookTimerDispatch as unknown as Function)(req());
+
+    expect(mockReport).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT report when Pushover alone delivered', async () => {
+    mockSubsDocs = [];
+
+    await (onCookTimerDispatch as unknown as Function)(req());
+
+    expect(mockReport).not.toHaveBeenCalled();
+  });
+
+  it('does NOT report when web push alone delivered', async () => {
+    mockResolveTargets.mockResolvedValue({ kind: 'no-devices', firstName: 'Ryan' });
+    mockSubsDocs = [subDoc(makeSub('dev-1', ANDROID_ENDPOINT))];
+
+    await (onCookTimerDispatch as unknown as Function)(req());
+
+    expect(mockReport).not.toHaveBeenCalled();
   });
 });
