@@ -991,12 +991,7 @@
 
             <!-- `testid="day-pane"`, never the day's own: this renders the SAME
                  detail the sheet does, so reusing `day-<date>-*` would give every
-                 field in it a duplicate under strict-mode queries.
-                 No `portalTarget`: the pane is not modal, nothing on this page is
-                 inert, and the primitives' own 'body' default is therefore correct.
-                 Handing it the sheet's `.meal-day-sheet` selector would portal the
-                 dropdowns into an element that does not exist on this surface —
-                 they would render, and every option would be unclickable. -->
+                 field in it a duplicate under strict-mode queries. -->
             <MealDayDetail
               day={paneDay}
               members={$members}

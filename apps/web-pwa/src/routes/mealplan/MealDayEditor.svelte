@@ -124,20 +124,6 @@
   // answer for the template editor ("Monday") and a sane one anywhere else.
   const heading = $derived(sheetTitle ?? `${label}${sublabel ? ` ${sublabel}` : ''}`);
 
-  // ─── Where this sheet's dropdowns portal to (#640, Phase 1) ────────────────
-  // A modal dialog makes the rest of the page inert by putting
-  // `pointer-events: none` on <body>. Select/Combobox portal their popover to
-  // <body> by DEFAULT, which lands it OUTSIDE the dialog and therefore inert:
-  // the list renders, and every option is unclickable. So this sheet's dropdowns
-  // portal INTO the sheet's own content element instead — inside the live layer,
-  // and outside the scrolling region below, so nothing clips them either. The
-  // hook is a plain marker class on SheetContent (not a bits-ui internal), and
-  // only one day's sheet is ever open, so the selector is unambiguous. The
-  // detail takes the selector as a prop (`portalTarget`), because which element
-  // is live is a fact about the HOST, not about the day.
-  const DROPDOWN_HOST = 'meal-day-sheet';
-  const DROPDOWN_PORTAL = `.${DROPDOWN_HOST}`;
-
   // ─── Attached recipes (issue #17) ──────────────────────────────────────────
   // The day stores recipe IDS only; titles resolve live from the `recipes` prop
   // at render time (no denormalisation). Ids with no matching recipe — deleted
@@ -445,9 +431,7 @@
        scroll lock, Escape and outside-click dismissal all come from the Dialog
        underneath; there is no drag-to-dismiss. -->
   <Sheet bind:open side="bottom">
-    <SheetContent
-      class="{DROPDOWN_HOST} max-h-[85dvh] gap-3 p-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]"
-    >
+    <SheetContent class="max-h-[85dvh] gap-3 p-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
       <SheetHeader>
         <SheetTitle>{heading}</SheetTitle>
       </SheetHeader>
@@ -463,7 +447,6 @@
         {testid}
         {weather}
         {dateKey}
-        portalTarget={DROPDOWN_PORTAL}
         {onNoteChange}
         {onChefToggle}
         {onAttendeeToggle}

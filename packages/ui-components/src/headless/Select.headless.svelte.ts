@@ -15,7 +15,7 @@ export type SelectState = {
   readonly disabled: boolean;
   readonly required: boolean;
   readonly placeholder: string | undefined;
-  readonly portal: HTMLElement | string | false;
+  readonly portal: HTMLElement | string | false | undefined;
   readonly listboxId: string;
   readonly triggerId: string;
   readonly activeOptionId: string | undefined;
@@ -50,7 +50,7 @@ export function createSelectState(opts: {
   disabled: () => boolean;
   required: () => boolean;
   placeholder: () => string | undefined;
-  portal: () => HTMLElement | string | false;
+  portal: () => HTMLElement | string | false | undefined;
   listboxId: string;
   triggerId: string;
   getItems: () => SelectRegisteredItem[];

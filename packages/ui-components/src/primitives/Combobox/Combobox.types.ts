@@ -18,6 +18,12 @@ export type ComboboxProps = {
   openOnClick?: boolean;
   name?: string;
   placeholder?: string;
+  /**
+   * Where the popup is portalled. Left unset it goes to the enclosing
+   * `DialogContent`/`SheetContent` if there is one, `<body>` otherwise — see
+   * `PortalContainer.headless.svelte.ts`. A string is a CSS selector; `false`
+   * renders in place (and will be clipped by any scrolling ancestor).
+   */
   portal?: HTMLElement | string | false;
   filterFn?: (input: string, item: ComboboxItem) => boolean;
   class?: string;

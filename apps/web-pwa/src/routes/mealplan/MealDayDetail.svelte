@@ -71,15 +71,6 @@
     // props and hands them straight down, which under exactOptionalPropertyTypes
     // is passing `T | undefined` rather than omitting the attribute.
     dateKey?: string | undefined;
-    // Where the Select/Combobox popovers portal to. THE HOST DECIDES: a modal
-    // dialog makes the rest of the page inert by putting `pointer-events: none`
-    // on <body>, and these primitives portal to <body> by DEFAULT — which lands
-    // the popover outside the dialog and therefore inert (it renders, and every
-    // option is unclickable). A host that is a dialog must therefore hand down a
-    // selector for an element inside its own live layer; a host that is not one
-    // can omit this and keep the primitives' own 'body' default. See
-    // MealDayEditor, which passes the marker class it puts on its SheetContent.
-    portalTarget?: string;
     // Extra classes for the root, so THE HOST OWNS ITS OWN SCROLLING CONSTRAINT.
     // The detail is just a stack of blocks; whether it is capped in height and
     // scrolls (the sheet) or flows to its natural length (anywhere else) is a
@@ -108,7 +99,6 @@
     testid,
     weather,
     dateKey,
-    portalTarget = 'body',
     class: className = '',
     onNoteChange,
     onChefToggle,
@@ -418,7 +408,6 @@
             items={recipePickerItems}
             value=""
             filterFn={recipeFilter}
-            portal={portalTarget}
             restrict
             placeholder="Add a recipe or idea…"
             onValueChange={addRecipe}
@@ -517,11 +506,7 @@
                the member's own line. `value` seeds to the dinner default so a
                blank field opens at ~18:30 (not at the top of the window), while
                the trigger reads "No time" until a real value is set. -->
-            <Select
-              value={a?.homeTime || DINNER_TIME}
-              portal={portalTarget}
-              onValueChange={(v) => commitTime(m.id, v)}
-            >
+            <Select value={a?.homeTime || DINNER_TIME} onValueChange={(v) => commitTime(m.id, v)}>
               <SelectTrigger
                 class="h-8 w-20 shrink-0 justify-center px-1 tabular-nums {a?.homeTime
                   ? ''
