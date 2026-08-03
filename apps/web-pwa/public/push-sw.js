@@ -12,8 +12,10 @@
 // hard-coded per feature except the cook-timer foreground rule below.
 
 self.addEventListener('push', function (event) {
-  // Payload carries IDS + GENERIC COPY ONLY (no recipe/step/list free-text) — the
-  // server scrubs user content out of the transport (issue #544, Phase 3).
+  // Copy is entirely server-chosen, and for a cook timer it IS user content: the
+  // timer's label and the recipe's title ("Simmer the sauce" / "Shepherd's pie"),
+  // which #544 deliberately withheld and #680 deliberately restored. Nothing here
+  // inspects or reformats it — render what you are given, fall back if it is absent.
   var payload = {};
   try {
     payload = event.data ? event.data.json() : {};

@@ -1,11 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { CookSessionDoc, PushSubscriptionDoc } from '@salt/domain/schemas';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { CookSessionDoc, PushSubscriptionDoc, RecipeDoc } from '@salt/domain/schemas';
 
 // Unit-level (mock-based, no emulator) coverage of the cook-timer DISPATCH handler
 // (issue #544): re-read the live session, no-op stale/duplicate dispatches via the
-// exactly-once ledger, then send an ids-only push to each owner subscription,
-// pruning the dead and reporting the failed. CookSessionSchema and
-// PushSubscriptionSchema are kept REAL.
+// exactly-once ledger, then send a push naming the timer and the recipe to each
+// owner subscription, pruning the dead and reporting the failed. CookSessionSchema,
+// PushSubscriptionSchema and RecipeSchema are kept REAL.
 
 vi.mock('firebase-functions/v2/tasks', () => ({
   onTaskDispatched: (_opts: unknown, handler: unknown) => handler,
@@ -52,12 +52,19 @@ let mockCookSessionSnap: { exists: boolean; data: () => unknown } = {
 };
 let mockLedgerSnap: { exists: boolean } = { exists: false };
 let mockSubsDocs: Array<{ data: () => unknown; ref: { delete: () => Promise<void> } }> = [];
+let mockRecipeGet: () => Promise<{ exists: boolean; data: () => unknown }> = async () => ({
+  exists: false,
+  data: () => undefined,
+});
 const mockTxSet = vi.fn();
 
 const mockDb = {
   collection: (name: string) => {
     if (name === 'cookSessions') {
       return { doc: () => ({ get: async () => mockCookSessionSnap }) };
+    }
+    if (name === 'recipes') {
+      return { doc: () => ({ get: mockRecipeGet }) };
     }
     if (name === 'timerDeliveries') {
       return { doc: () => ({ id: 'ledger-ref' }) };
@@ -112,6 +119,46 @@ function subDoc(sub: PushSubscriptionDoc) {
   return { data: () => sub, ref: { delete: vi.fn(async () => undefined) } };
 }
 
+// A recipe whose step STEP_ID carries a labelled timer, so the notification can
+// name it exactly as the in-app timer chip does.
+function makeRecipe(overrides: Partial<RecipeDoc> = {}): RecipeDoc {
+  return {
+    id: 'recipe-1',
+    schemaVersion: 1,
+    kind: 'recipe',
+    title: "Shepherd's pie",
+    description: null,
+    ingredients: [],
+    steps: [
+      { id: 'step-0', text: 'Chop the onion.', timer: null, note: null },
+      {
+        id: STEP_ID,
+        text: 'Simmer until thickened.',
+        timer: { durationMinutes: 20, description: 'Simmer the sauce' },
+        note: null,
+      },
+    ],
+    metadata: {
+      servings: null,
+      totalTimeMinutes: null,
+      prepTimeMinutes: null,
+      cookTimeMinutes: null,
+      tags: [],
+    },
+    source: null,
+    notes: null,
+    producesCanonId: null,
+    image: null,
+    createdAt: '2026-07-24T09:00:00.000Z',
+    updatedAt: '2026-07-24T09:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function recipeExists(recipe: RecipeDoc = makeRecipe()) {
+  return async () => ({ exists: true, data: () => recipe });
+}
+
 function req() {
   return { data: { sessionId: SESSION_ID, stepId: STEP_ID, endsAt: ENDS_AT } };
 }
@@ -121,12 +168,20 @@ beforeEach(() => {
   mockCookSessionSnap = { exists: false, data: () => undefined };
   mockLedgerSnap = { exists: false };
   mockSubsDocs = [];
+  mockRecipeGet = recipeExists();
   mockSendWebPush.mockResolvedValue('sent' as const);
   mockSendPushover.mockResolvedValue('sent' as const);
   mockResolveTargets.mockResolvedValue({ kind: 'send', devices: ['daniel-phone'] });
+  // The deep link is derived from the runtime's project id — no new config, but
+  // it does mean the tests must stand one up.
+  vi.stubEnv('GCLOUD_PROJECT', 's2-prod-e46bd');
   // VAPID keys and the Pushover credentials are provided via the mocked
   // defineSecret (.value() → a test string), so the handler treats both sinks as
   // provisioned.
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe('onCookTimerDispatch', () => {
@@ -162,7 +217,7 @@ describe('onCookTimerDispatch', () => {
     expect(mockTxSet).not.toHaveBeenCalled();
   });
 
-  it('sends an ids-only payload to each of the owner subscriptions', async () => {
+  it('names the timer and the recipe in the payload sent to every subscription', async () => {
     mockCookSessionSnap = { exists: true, data: () => makeSession() };
     mockSubsDocs = [subDoc(makeSub('dev-1')), subDoc(makeSub('dev-2'))];
 
@@ -171,19 +226,60 @@ describe('onCookTimerDispatch', () => {
     expect(mockTxSet).toHaveBeenCalledTimes(1); // ledger claimed
     expect(mockSendWebPush).toHaveBeenCalledTimes(2);
 
-    // Payload is ids + generic copy ONLY. The exact-equality assertion proves no
-    // recipe/step free-text leaked: the only ids present are the session id (which
-    // by design embeds the recipe id) and generic, timer-agnostic copy — the step
-    // id, recipe title, and step text never appear.
+    // The timer's own label leads, the cook it belongs to follows — the same two
+    // facts, in the same order, as the in-app timer chip.
     const payload = mockSendWebPush.mock.calls[0]![2] as Record<string, unknown>;
     expect(payload).toEqual({
       type: 'cook-timer',
       tag: `cook::${SESSION_ID}`,
       sessionId: SESSION_ID,
-      title: 'Timer finished',
-      body: 'A cook timer just finished.',
+      title: 'Simmer the sauce',
+      body: "Shepherd's pie",
     });
-    expect(JSON.stringify(payload)).not.toContain(STEP_ID);
+  });
+
+  it('falls back to "Step N" when the timer has no label', async () => {
+    mockCookSessionSnap = { exists: true, data: () => makeSession() };
+    mockSubsDocs = [subDoc(makeSub('dev-1'))];
+    const recipe = makeRecipe();
+    mockRecipeGet = recipeExists({
+      ...recipe,
+      steps: recipe.steps.map((s) =>
+        s.id === STEP_ID ? { ...s, timer: { durationMinutes: 20, description: null } } : s,
+      ),
+    });
+
+    await (onCookTimerDispatch as unknown as Function)(req());
+
+    const payload = mockSendWebPush.mock.calls[0]![2] as Record<string, unknown>;
+    // Second step in the array → "Step 2", matching what the cook screen shows.
+    expect(payload['title']).toBe('Step 2');
+    expect(payload['body']).toBe("Shepherd's pie");
+  });
+
+  it.each([
+    ['the recipe is gone', async () => ({ exists: false, data: () => undefined })],
+    ['the recipe fails validation', async () => ({ exists: true, data: () => ({ id: 'junk' }) })],
+    [
+      'the read throws',
+      async () => {
+        throw new Error('firestore down');
+      },
+    ],
+  ])('still notifies with generic copy when %s', async (_case, get) => {
+    // The name is a nicety; the notification is the time-critical part, so no
+    // failure to name a timer may cost us the delivery itself.
+    mockCookSessionSnap = { exists: true, data: () => makeSession() };
+    mockSubsDocs = [subDoc(makeSub('dev-1'))];
+    mockRecipeGet = get as typeof mockRecipeGet;
+
+    await (onCookTimerDispatch as unknown as Function)(req());
+
+    expect(mockSendWebPush).toHaveBeenCalledTimes(1);
+    expect(mockSendPushover).toHaveBeenCalledTimes(1);
+    const payload = mockSendWebPush.mock.calls[0]![2] as Record<string, unknown>;
+    expect(payload['title']).toBe('Timer finished');
+    expect(payload['body']).toBe('A cook timer just finished.');
   });
 
   it('prunes a subscription that returns gone', async () => {
@@ -217,7 +313,7 @@ describe('onCookTimerDispatch — Pushover sink', () => {
     mockCookSessionSnap = { exists: true, data: () => makeSession() };
   });
 
-  it('sends to the resolved devices with generic copy only', async () => {
+  it('sends to the resolved devices, naming the timer and linking back to the cook', async () => {
     mockResolveTargets.mockResolvedValue({
       kind: 'send',
       devices: ['daniel-phone', 'daniel-tablet'],
@@ -228,11 +324,25 @@ describe('onCookTimerDispatch — Pushover sink', () => {
     expect(mockSendPushover).toHaveBeenCalledTimes(1);
     const [, devices, message] = mockSendPushover.mock.calls[0]!;
     expect(devices).toEqual(['daniel-phone', 'daniel-tablet']);
-    expect(message).toEqual({ title: 'Timer finished', body: 'A cook timer just finished.' });
-    // Stricter than the web-push payload: this crosses to a third party, so not
-    // even the session id (which embeds the recipe id) goes with it.
-    expect(JSON.stringify(message)).not.toContain(SESSION_ID);
-    expect(JSON.stringify(message)).not.toContain(STEP_ID);
+    expect(message).toEqual({
+      title: 'Simmer the sauce',
+      body: "Shepherd's pie",
+      // ABSOLUTE — a native client opens this, so there is no origin to resolve a
+      // path against. Hash-routed, matching push-sw.js's notificationclick route.
+      url: 'https://s2-prod-e46bd.web.app/#/recipes/recipe-1/cook',
+      urlTitle: 'Back to the cook',
+    });
+  });
+
+  it('sends without a link rather than a broken one when there is no project id', async () => {
+    vi.stubEnv('GCLOUD_PROJECT', '');
+    vi.stubEnv('GCP_PROJECT', '');
+
+    await (onCookTimerDispatch as unknown as Function)(req());
+
+    const [, , message] = mockSendPushover.mock.calls[0]!;
+    expect((message as { url?: string }).url).toBeUndefined();
+    expect((message as { title: string }).title).toBe('Simmer the sauce');
   });
 
   it('sends via BOTH sinks during the rollout', async () => {

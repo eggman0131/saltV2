@@ -128,6 +128,33 @@ describe('sendPushover', () => {
     expect(body.get('priority')).toBe('1');
   });
 
+  it('passes a supplementary link through as url + url_title', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ status: 1 }));
+
+    await sendPushover(CREDS, ['daniel-phone'], {
+      title: 'Simmer the sauce',
+      body: "Shepherd's pie",
+      url: 'https://s2-prod-e46bd.web.app/#/recipes/recipe-1/cook',
+      urlTitle: 'Back to the cook',
+    });
+
+    const body = lastFormBody(fetchMock);
+    expect(body.get('url')).toBe('https://s2-prod-e46bd.web.app/#/recipes/recipe-1/cook');
+    expect(body.get('url_title')).toBe('Back to the cook');
+  });
+
+  it('omits both link params entirely when there is no url', async () => {
+    // Not sent-as-empty: Pushover treats a present-but-blank url_title as "use the
+    // bare URL as the link text", which is a worse notification than no link.
+    fetchMock.mockResolvedValue(jsonResponse({ status: 1 }));
+
+    await sendPushover(CREDS, ['daniel-phone'], { title: 't', body: 'b', urlTitle: 'orphaned' });
+
+    const body = lastFormBody(fetchMock);
+    expect(body.has('url')).toBe(false);
+    expect(body.has('url_title')).toBe(false);
+  });
+
   it('refuses to send with an empty device list', async () => {
     // The second line of defence against the fail-open broadcast: omitting
     // `device` entirely would ping the whole family.

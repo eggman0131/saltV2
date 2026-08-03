@@ -145,7 +145,15 @@ export async function resolvePushoverDevices(
 export async function sendPushover(
   creds: PushoverCredentials,
   devices: readonly string[],
-  message: { readonly title: string; readonly body: string },
+  message: {
+    readonly title: string;
+    readonly body: string;
+    // Optional supplementary link, rendered by the Pushover client as a tappable
+    // row beneath the message. Must be ABSOLUTE — this is opened by a native app,
+    // not by a page, so there is no origin to resolve a path against.
+    readonly url?: string;
+    readonly urlTitle?: string;
+  },
 ): Promise<PushoverSendResult> {
   if (devices.length === 0) return 'failed';
 
@@ -154,6 +162,10 @@ export async function sendPushover(
     user: creds.user,
     title: message.title,
     message: message.body,
+    // Omitted entirely rather than sent empty: Pushover shows the bare URL as the
+    // link text when `url_title` is present but blank.
+    ...(message.url ? { url: message.url } : {}),
+    ...(message.url && message.urlTitle ? { url_title: message.urlTitle } : {}),
     // Pushover takes multiple devices as one comma-separated value, so the whole
     // family fan-out for a member is a single round trip.
     device: devices.join(','),
