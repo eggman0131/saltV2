@@ -1,14 +1,16 @@
 <script lang="ts">
-  import { Button, DetailPage, Icon, Markdown, Spinner } from '@salt/ui-components';
+  import { Button, DetailPage, Icon, Spinner } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
   import { trackUsageEvent } from '@salt/observability';
-  import { sessions, isLoadingSessions, sendMessage } from '../../lib/chatService.js';
+  import { sessions, isLoadingSessions } from '../../lib/chatService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { saveRecipe as saveRecipeDoc } from '@salt/firebase-sync';
   import { recipes, authorRecipeTraced } from '../../lib/recipeService.js';
   import { diffRecipe, type Recipe } from '@salt/domain';
   import type { ChatSessionDoc, RecipeDiff } from '@salt/domain/schemas';
   import RecipeChangeSummary from '../recipes/RecipeChangeSummary.svelte';
+  import ChatThread from './ChatThread.svelte';
+  import { createChatThread } from './chatThreadState.svelte.js';
 
   interface Props {
     params: { id: string };
@@ -17,41 +19,9 @@
 
   const session = $derived(($sessions as ChatSessionDoc[]).find((s) => s.id === params.id) ?? null);
 
-  // Live-streamed partial text for the assistant reply in progress.
-  let streamingText = $state('');
-  let isSending = $state(false);
-  let inputText = $state('');
-
-  let messagesEnd: HTMLDivElement | undefined = $state();
-
-  $effect(() => {
-    // Read these reactive values so the effect re-runs and scrolls to the bottom
-    // whenever messages or streaming text change.
-    session?.messages.length;
-    streamingText;
-    messagesEnd?.scrollIntoView({ behavior: 'smooth' });
-  });
-
-  async function handleSend(): Promise<void> {
-    if (!session || !inputText.trim() || isSending) return;
-    const text = inputText.trim();
-    inputText = '';
-    if (inputEl) inputEl.style.height = '';
-    isSending = true;
-    streamingText = '';
-
-    const result = await sendMessage(session, text, (chunk) => {
-      streamingText += chunk;
-    });
-
-    isSending = false;
-    streamingText = '';
-
-    if (result.kind !== 'ok') {
-      addToast('Failed to send message.', 'destructive');
-      inputText = text;
-    }
-  }
+  // The transcript, the composer and the send path all live in ChatThread; this
+  // page owns only the route lookup, the header actions and the review gate.
+  const thread = createChatThread();
 
   // Save as recipe — calls the librarian flow and navigates to the new recipe.
   let isSavingRecipe = $state(false);
@@ -161,22 +131,6 @@
     pendingUpdate = null;
     pendingDiff = null;
   }
-
-  function handleKeydown(e: KeyboardEvent): void {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      void handleSend();
-    }
-  }
-
-  let inputEl: HTMLTextAreaElement | undefined = $state();
-
-  function handleInput(e: Event): void {
-    const el = e.target as HTMLTextAreaElement;
-    inputText = el.value;
-    el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight}px`;
-  }
 </script>
 
 {#if session === null}
@@ -205,7 +159,7 @@
           variant="outline"
           onclick={handleSaveAsRecipe}
           loading={isSavingRecipe}
-          disabled={isSavingRecipe || isSending}
+          disabled={isSavingRecipe || thread.isSending}
           data-testid="chat-save-recipe-btn"
         >
           {#snippet leading()}<Icon name="BookOpen" size={16} />{/snippet}
@@ -226,7 +180,7 @@
           size="sm"
           onclick={handleReviewChanges}
           loading={isProposing}
-          disabled={isProposing || isSending}
+          disabled={isProposing || thread.isSending}
           data-testid="chat-apply-changes-btn"
         >
           {#snippet leading()}<Icon name="Check" size={16} />{/snippet}
@@ -235,82 +189,8 @@
       {/if}
     {/snippet}
 
-    <!-- pb-36 keeps the last message clear of the fixed input bar -->
-    <div class="mx-auto flex w-full max-w-2xl flex-col gap-4 pb-36" data-testid="chat-messages">
-      {#if session.messages.length === 0 && !isSending}
-        <p class="py-12 text-center text-sm text-muted-foreground">
-          Ask me anything about cooking.
-        </p>
-      {/if}
-
-      {#each session.messages as msg (msg.id)}
-        <div
-          class="flex {msg.role === 'user' ? 'justify-end' : 'justify-start'}"
-          data-testid="chat-message-{msg.role}"
-        >
-          <div
-            class="max-w-[85%] text-sm {msg.role === 'user' ? 'rounded-lg bg-muted px-3 py-2' : ''}"
-          >
-            {#if msg.role === 'assistant'}
-              <Markdown text={msg.text} />
-            {:else}
-              {msg.text}
-            {/if}
-          </div>
-        </div>
-      {/each}
-
-      {#if isSending && streamingText}
-        <div class="flex justify-start" data-testid="chat-message-streaming">
-          <div class="max-w-[85%] text-sm">
-            <Markdown text={streamingText} />
-          </div>
-        </div>
-      {:else if isSending}
-        <div class="flex items-center gap-2 text-sm text-muted-foreground">
-          <Spinner size={14} />
-          Thinking…
-        </div>
-      {/if}
-
-      <div bind:this={messagesEnd}></div>
-    </div>
+    <ChatThread {session} {thread} layout="page" emptyText="Ask me anything about cooking." />
   </DetailPage>
-
-  <!-- Input bar — fixed above BottomNav on mobile, at viewport bottom on desktop -->
-  <div
-    class="fixed inset-x-0 bottom-14 z-20 border-t border-border bg-card px-4 py-3 lg:bottom-0"
-    data-testid="chat-input-bar"
-  >
-    <div class="mx-auto flex max-w-2xl items-end gap-3">
-      <div
-        class="flex flex-1 items-start rounded-md border border-input bg-background px-3 text-sm focus-within:ring-2 focus-within:ring-ring {isSending
-          ? 'opacity-50'
-          : ''}"
-      >
-        <textarea
-          bind:this={inputEl}
-          class="flex-1 resize-none bg-transparent py-2 outline-none placeholder:text-muted-foreground"
-          rows={3}
-          placeholder="Message the chef…"
-          value={inputText}
-          onkeydown={handleKeydown}
-          oninput={handleInput}
-          disabled={isSending}
-          data-testid="chat-input"></textarea>
-      </div>
-      <Button
-        onclick={handleSend}
-        disabled={isSending || !inputText.trim()}
-        loading={isSending}
-        aria-label="Send"
-        data-testid="chat-send-btn"
-      >
-        {#snippet leading()}<Icon name="SendHorizontal" size={16} />{/snippet}
-        Send
-      </Button>
-    </div>
-  </div>
 
   <!-- Review-and-approve gate for the pending AI edit (Phase 2) -->
   <RecipeChangeSummary

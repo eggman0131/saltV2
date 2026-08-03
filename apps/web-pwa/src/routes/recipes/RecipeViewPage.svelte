@@ -15,7 +15,6 @@
     DialogTitle,
     Icon,
     ImageCropper,
-    Markdown,
     Popover,
     PopoverContent,
     PopoverTrigger,
@@ -55,12 +54,14 @@
     type Recipe,
   } from '@salt/domain';
   import { kindOf } from './recipeKind.js';
-  import type { ChatSessionDoc, RecipeDiff } from '@salt/domain/schemas';
+  import type { RecipeDiff } from '@salt/domain/schemas';
   import type { DomainError, ReadResult } from '@salt/shared-types';
   import { defaultListId } from '../../lib/shoppingListService.svelte.js';
   import { addToast } from '../../lib/toastStore.js';
   import { auth } from '../../lib/auth.svelte.js';
-  import { createChatSession, sessions, sendMessage } from '../../lib/chatService.js';
+  import { createChatSession, sessions } from '../../lib/chatService.js';
+  import ChatThread from '../chat/ChatThread.svelte';
+  import { createChatThread } from '../chat/chatThreadState.svelte.js';
   import { equipment } from '../../lib/equipmentService.js';
   import { saveRecipe as saveRecipeDoc } from '@salt/firebase-sync';
   import {
@@ -270,24 +271,16 @@ Finish with a short note on what you changed and why, so I can read the gist her
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0] ?? null,
   );
 
-  let sidebarStreamingText = $state('');
-  let sidebarIsSending = $state(false);
-  let sidebarInputText = $state('');
-  let sidebarInputEl = $state<HTMLTextAreaElement | undefined>(undefined);
-  let sidebarMessagesEnd = $state<HTMLDivElement | undefined>(undefined);
+  // The transcript, the composer, the auto-scroll and the send path are all
+  // ChatThread's — this page only holds the live turn state so "Optimise for my
+  // kitchen" can start one on a session the component is not yet showing.
+  const chat = createChatThread();
+
   // The chat column is desktop-only by default (`hidden lg:flex`). An action that
   // streams its answer INTO that column has to reveal it below `lg`, or the reply
   // arrives somewhere the user cannot see. Set once, never unset: having asked for
   // a turn, you keep the transcript.
   let sidebarRevealed = $state(false);
-
-  $effect(() => {
-    // Read these reactive values so the effect re-runs and scrolls to the bottom
-    // whenever messages or streaming text change.
-    activeSession?.messages.length;
-    sidebarStreamingText;
-    sidebarMessagesEnd?.scrollIntoView({ behavior: 'smooth' });
-  });
 
   async function handleStartSidebarChat(): Promise<void> {
     if (!recipe) return;
@@ -297,54 +290,6 @@ Finish with a short note on what you changed and why, so I can read the gist her
     const result = await createChatSession(uid, recipe.id);
     amendBusy = false;
     if (result.kind !== 'ok') addToast('Failed to open chat.', 'destructive');
-  }
-
-  // Shared core: append `text` as a user turn on `session` and stream the reply
-  // into the sidebar. Takes the session explicitly because `activeSession` is
-  // $derived off the sessions store — a turn sent immediately after creating a
-  // session must use the object `createChatSession` handed back rather than wait
-  // for the derived value. The composer is deliberately NOT touched here; the
-  // caller owns it, so a canned prompt never lands in the user's input box.
-  async function streamSidebarTurn(session: ChatSessionDoc, text: string): Promise<boolean> {
-    sidebarIsSending = true;
-    sidebarStreamingText = '';
-
-    const result = await sendMessage(session, text, (chunk) => {
-      sidebarStreamingText += chunk;
-    });
-
-    sidebarIsSending = false;
-    sidebarStreamingText = '';
-
-    if (result.kind !== 'ok') {
-      addToast('Failed to send message.', 'destructive');
-      return false;
-    }
-    return true;
-  }
-
-  async function handleSidebarSend(text: string): Promise<void> {
-    const trimmed = text.trim();
-    if (!activeSession || !trimmed || sidebarIsSending) return;
-    sidebarInputText = '';
-    if (sidebarInputEl) sidebarInputEl.style.height = '';
-
-    const ok = await streamSidebarTurn(activeSession, trimmed);
-    if (!ok) sidebarInputText = trimmed;
-  }
-
-  function handleSidebarKeydown(e: KeyboardEvent): void {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      void handleSidebarSend(sidebarInputText);
-    }
-  }
-
-  function handleSidebarInput(e: Event): void {
-    const el = e.target as HTMLTextAreaElement;
-    sidebarInputText = el.value;
-    el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight}px`;
   }
 
   // ─── Optimise for my kitchen ────────────────────────────────────────────────
@@ -360,7 +305,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
   let optimiseBusy = $state(false);
 
   async function handleOptimiseForKitchen(): Promise<void> {
-    if (!recipe || optimiseBusy || sidebarIsSending) return;
+    if (!recipe || optimiseBusy || chat.isSending) return;
     const uid = auth.user?.uid;
     if (!uid) return;
     sidebarRevealed = true;
@@ -377,7 +322,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
       session = created.value;
     }
 
-    await streamSidebarTurn(session, OPTIMISE_FOR_KITCHEN_PROMPT);
+    await chat.send(session, OPTIMISE_FOR_KITCHEN_PROMPT);
     optimiseBusy = false;
   }
 
@@ -748,7 +693,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
           variant="ghost"
           onclick={handleOptimiseForKitchen}
           loading={optimiseBusy}
-          disabled={optimiseBusy || sidebarIsSending}
+          disabled={optimiseBusy || chat.isSending}
           class="hidden sm:inline-flex"
           data-testid="recipe-optimise-kitchen-button"
         >
@@ -849,7 +794,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
                   overflowMenuOpen = false;
                   void handleOptimiseForKitchen();
                 }}
-                disabled={optimiseBusy || sidebarIsSending}
+                disabled={optimiseBusy || chat.isSending}
                 data-testid="recipe-optimise-kitchen-menu-item"
               >
                 <Icon name="Blender" size={14} />
@@ -1200,92 +1145,32 @@ Finish with a short note on what you changed and why, so I can read the gist her
               </Button>
             </CardContent>
           {:else}
-            <!-- Messages -->
-            <div class="min-h-0 flex-1 overflow-y-auto p-4">
-              <div class="flex flex-col gap-3">
-                {#if activeSession.messages.length === 0 && !sidebarIsSending}
-                  <p class="py-8 text-center text-xs text-muted-foreground">
-                    Ask me anything about this recipe.
-                  </p>
-                {/if}
-                {#each activeSession.messages as msg (msg.id)}
-                  <div class="flex {msg.role === 'user' ? 'justify-end' : 'justify-start'}">
-                    <div
-                      class="max-w-[90%] text-sm {msg.role === 'user'
-                        ? 'rounded-lg bg-muted px-3 py-2'
-                        : ''}"
-                    >
-                      {#if msg.role === 'assistant'}
-                        <Markdown text={msg.text} />
-                      {:else}
-                        {msg.text}
-                      {/if}
-                    </div>
-                  </div>
-                {/each}
-                {#if sidebarIsSending && sidebarStreamingText}
-                  <div class="flex justify-start">
-                    <div class="max-w-[90%] text-sm">
-                      <Markdown text={sidebarStreamingText} />
-                    </div>
-                  </div>
-                {:else if sidebarIsSending}
-                  <div class="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Spinner size={12} />
-                    Thinking…
-                  </div>
-                {/if}
-                <div bind:this={sidebarMessagesEnd}></div>
-              </div>
-            </div>
-
-            <!-- Update recipe -->
-            {#if activeSession.messages.some((m) => m.role === 'assistant')}
-              <div class="shrink-0 border-t px-3 pt-3">
-                <Button
-                  variant="outline"
-                  class="w-full"
-                  onclick={handleSidebarReviewChanges}
-                  loading={sidebarIsProposing}
-                  disabled={sidebarIsProposing || sidebarIsSending}
-                  data-testid="sidebar-apply-changes-btn"
-                >
-                  {#snippet leading()}<Icon name="RefreshCw" size={14} />{/snippet}
-                  Review changes
-                </Button>
-              </div>
-            {/if}
-
-            <!-- Input -->
-            <div class="shrink-0 border-t p-3">
-              <div class="flex items-end gap-2">
-                <div
-                  class="flex flex-1 items-start rounded-md border border-input bg-background px-3 text-sm focus-within:ring-2 focus-within:ring-ring {sidebarIsSending
-                    ? 'opacity-50'
-                    : ''}"
-                >
-                  <textarea
-                    bind:this={sidebarInputEl}
-                    class="flex-1 resize-none bg-transparent py-2 outline-none placeholder:text-muted-foreground"
-                    rows={2}
-                    placeholder="Message the chef…"
-                    value={sidebarInputText}
-                    onkeydown={handleSidebarKeydown}
-                    oninput={handleSidebarInput}
-                    disabled={sidebarIsSending}></textarea>
+            {#snippet sidebarAboveComposer()}
+              <!-- Update recipe -->
+              {#if activeSession!.messages.some((m) => m.role === 'assistant')}
+                <div class="shrink-0 border-t px-3 pt-3">
+                  <Button
+                    variant="outline"
+                    class="w-full"
+                    onclick={handleSidebarReviewChanges}
+                    loading={sidebarIsProposing}
+                    disabled={sidebarIsProposing || chat.isSending}
+                    data-testid="sidebar-apply-changes-btn"
+                  >
+                    {#snippet leading()}<Icon name="RefreshCw" size={14} />{/snippet}
+                    Review changes
+                  </Button>
                 </div>
-                <Button
-                  size="sm"
-                  onclick={() => handleSidebarSend(sidebarInputText)}
-                  disabled={sidebarIsSending || !sidebarInputText.trim()}
-                  loading={sidebarIsSending}
-                  aria-label="Send"
-                >
-                  {#snippet leading()}<Icon name="SendHorizontal" size={14} />{/snippet}
-                  Send
-                </Button>
-              </div>
-            </div>
+              {/if}
+            {/snippet}
+
+            <ChatThread
+              session={activeSession}
+              thread={chat}
+              layout="panel"
+              emptyText="Ask me anything about this recipe."
+              aboveComposer={sidebarAboveComposer}
+            />
           {/if}
         </Card>
       </div>
