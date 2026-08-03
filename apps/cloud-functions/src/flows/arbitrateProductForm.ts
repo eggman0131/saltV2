@@ -9,6 +9,7 @@ import {
 import { setActiveSpanName, setActiveSpanAttributes } from '@salt/observability/server';
 import { ai } from '../genkit.js';
 import { resolveModel } from '../ai/resolveModel.js';
+import { aiFakeEnabled } from '../ai/fakeModel.js';
 
 // Product-form arbitration (issue #500, Phase 3). Given an ingredient that did
 // not resolve to an existing form or match a buyable canon item as itself, ask
@@ -25,6 +26,17 @@ export const arbitrateProductFormFlow = ai.defineFlow(
   },
   async (req) => {
     setActiveSpanName(`arbitrateProductForm: ${req.ingredientName}`);
+    // E2E fake seam (issue #686). This flow is driven by every recipe import, so
+    // without a short-circuit each unresolved ingredient made a live call to
+    // Gemini with the dummy emulator key — the second offender in the run that
+    // issue cites. It has no stub of its own (no spec asserts a product-form
+    // proposal), and "not a form" is exactly what the 400 already degraded to via
+    // the caller's catch — so return it directly, offline and without the retry
+    // budget or the log noise. Wire it to `flowModel` the day a spec needs a
+    // positive proposal. Unreachable in production (the flag is never set there).
+    if (aiFakeEnabled()) {
+      return { kind: 'none' as const };
+    }
     const model = await resolveModel('lite');
     const result = await ai.generate({
       model: googleAI.model(model),
