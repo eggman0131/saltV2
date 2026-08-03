@@ -12,6 +12,7 @@
     Button,
     Switch,
   } from '@salt/ui-components';
+  import { callListPushoverDevices } from '@salt/firebase-sync';
   import { auth } from '../../lib/auth.svelte.js';
   import { submitFeedback } from '../../lib/observability.js';
   import { push } from '../../lib/push.svelte.js';
@@ -27,6 +28,28 @@
     if (next) await push.enable(uid);
     else await push.disable(uid);
   }
+
+  // Pushover delivery readout (issue #680). Timers are ALSO sent through
+  // Pushover, which reaches a dozing Android device that Chrome web push does
+  // not. Devices are matched by a `<firstname>-` prefix and nothing enforces the
+  // naming, so an empty match is a real misconfiguration that would otherwise
+  // only show up as "my timers stopped working" weeks later — this line is what
+  // makes it findable. `null` = still loading or nothing to say; the card simply
+  // omits the line rather than guessing.
+  let pushoverDevices = $state<readonly string[] | null>(null);
+
+  $effect(() => {
+    if (!auth.user) return;
+    let cancelled = false;
+    void callListPushoverDevices().then((result) => {
+      if (cancelled) return;
+      pushoverDevices =
+        result.kind === 'ok' && result.value.status === 'ok' ? (result.value.devices ?? []) : null;
+    });
+    return () => {
+      cancelled = true;
+    };
+  });
 
   // Build stamp injected at build time (vite.config.ts). The timestamp makes
   // every build distinct, so it doubles as the "did the PWA auto-update?" signal.
@@ -110,6 +133,22 @@
         {:else if push.error}
           <Text class="text-sm text-destructive">{push.error}</Text>
         {/if}
+      {/if}
+
+      <!-- Outside the branches above on purpose: Pushover delivery does not
+           depend on this browser's notification permission, so the readout must
+           still show when the toggle is off or unsupported. -->
+      {#if pushoverDevices !== null}
+        <div class="border-t pt-3" data-testid="settings-pushover-devices">
+          {#if pushoverDevices.length > 0}
+            <Text muted>Pushover: {pushoverDevices.join(', ')}</Text>
+          {:else}
+            <Text class="text-sm text-destructive">
+              No Pushover device matched your name, so cook timers won't reach you. In the Pushover
+              app, name your device {'<firstname>'}-phone (or -tablet, or -spare).
+            </Text>
+          {/if}
+        </div>
       {/if}
     </CardContent>
   </Card>

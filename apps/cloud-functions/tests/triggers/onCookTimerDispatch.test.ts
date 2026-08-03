@@ -24,6 +24,19 @@ vi.mock('../../src/adapters/sendWebPush.js', () => ({
   sendWebPush: mockSendWebPush,
 }));
 
+// Pushover is the second, independent sink (issue #680). The transport and the
+// uid→member→devices resolution are covered by their own suites; here we care
+// only that the handler reacts correctly to each resolution outcome.
+const mockSendPushover = vi.fn(async () => 'sent' as const);
+vi.mock('../../src/adapters/sendPushover.js', () => ({
+  sendPushover: mockSendPushover,
+}));
+
+const mockResolveTargets = vi.fn();
+vi.mock('../../src/adapters/pushoverRecipient.js', () => ({
+  resolvePushoverTargets: mockResolveTargets,
+}));
+
 const mockReport = vi.fn();
 const mockFlush = vi.fn().mockResolvedValue(undefined);
 vi.mock('@salt/observability/server', () => ({
@@ -109,8 +122,11 @@ beforeEach(() => {
   mockLedgerSnap = { exists: false };
   mockSubsDocs = [];
   mockSendWebPush.mockResolvedValue('sent' as const);
-  // VAPID keys are provided via the mocked defineSecret (.value() → a test
-  // string), so the handler treats the feature as provisioned.
+  mockSendPushover.mockResolvedValue('sent' as const);
+  mockResolveTargets.mockResolvedValue({ kind: 'send', devices: ['daniel-phone'] });
+  // VAPID keys and the Pushover credentials are provided via the mocked
+  // defineSecret (.value() → a test string), so the handler treats both sinks as
+  // provisioned.
 });
 
 describe('onCookTimerDispatch', () => {
@@ -120,6 +136,7 @@ describe('onCookTimerDispatch', () => {
     await (onCookTimerDispatch as unknown as Function)(req());
 
     expect(mockSendWebPush).not.toHaveBeenCalled();
+    expect(mockSendPushover).not.toHaveBeenCalled();
   });
 
   it('no-ops when the timer is no longer present (removed/extended)', async () => {
@@ -130,6 +147,7 @@ describe('onCookTimerDispatch', () => {
     await (onCookTimerDispatch as unknown as Function)(req());
 
     expect(mockSendWebPush).not.toHaveBeenCalled();
+    expect(mockSendPushover).not.toHaveBeenCalled();
   });
 
   it('no-ops on duplicate delivery (ledger doc already exists)', async () => {
@@ -140,6 +158,7 @@ describe('onCookTimerDispatch', () => {
     await (onCookTimerDispatch as unknown as Function)(req());
 
     expect(mockSendWebPush).not.toHaveBeenCalled();
+    expect(mockSendPushover).not.toHaveBeenCalled();
     expect(mockTxSet).not.toHaveBeenCalled();
   });
 
@@ -188,5 +207,89 @@ describe('onCookTimerDispatch', () => {
 
     expect(mockReport).toHaveBeenCalledTimes(1);
     expect(doc.ref.delete).not.toHaveBeenCalled();
+  });
+});
+
+// The Pushover sink (issue #680). It ships ALONGSIDE web push for the rollout,
+// so the two are independent: neither may suppress or break the other.
+describe('onCookTimerDispatch — Pushover sink', () => {
+  beforeEach(() => {
+    mockCookSessionSnap = { exists: true, data: () => makeSession() };
+  });
+
+  it('sends to the resolved devices with generic copy only', async () => {
+    mockResolveTargets.mockResolvedValue({
+      kind: 'send',
+      devices: ['daniel-phone', 'daniel-tablet'],
+    });
+
+    await (onCookTimerDispatch as unknown as Function)(req());
+
+    expect(mockSendPushover).toHaveBeenCalledTimes(1);
+    const [, devices, message] = mockSendPushover.mock.calls[0]!;
+    expect(devices).toEqual(['daniel-phone', 'daniel-tablet']);
+    expect(message).toEqual({ title: 'Timer finished', body: 'A cook timer just finished.' });
+    // Stricter than the web-push payload: this crosses to a third party, so not
+    // even the session id (which embeds the recipe id) goes with it.
+    expect(JSON.stringify(message)).not.toContain(SESSION_ID);
+    expect(JSON.stringify(message)).not.toContain(STEP_ID);
+  });
+
+  it('sends via BOTH sinks during the rollout', async () => {
+    mockSubsDocs = [subDoc(makeSub('dev-1'))];
+
+    await (onCookTimerDispatch as unknown as Function)(req());
+
+    expect(mockSendWebPush).toHaveBeenCalledTimes(1);
+    expect(mockSendPushover).toHaveBeenCalledTimes(1);
+  });
+
+  it('still sends via Pushover when web push is unprovisioned or failing', async () => {
+    mockSubsDocs = [subDoc(makeSub('dev-1'))];
+    mockSendWebPush.mockResolvedValue('failed' as const);
+
+    await (onCookTimerDispatch as unknown as Function)(req());
+
+    expect(mockSendPushover).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends NOTHING and reports when no device matched the member prefix', async () => {
+    // The fail-open guard. Pushover would broadcast to the whole family if we
+    // sent an unresolvable device name, so a zero-match must not send at all —
+    // and must be reported, since it is a misconfiguration rather than a blip.
+    mockResolveTargets.mockResolvedValue({ kind: 'no-devices', firstName: 'Daniel' });
+
+    await (onCookTimerDispatch as unknown as Function)(req());
+
+    expect(mockSendPushover).not.toHaveBeenCalled();
+    expect(mockReport).toHaveBeenCalledTimes(1);
+    expect(String(mockReport.mock.calls[0]![0])).toContain('Daniel');
+  });
+
+  it('sends nothing and does NOT report when suppressed in non-production', async () => {
+    mockResolveTargets.mockResolvedValue({ kind: 'suppressed' });
+
+    await (onCookTimerDispatch as unknown as Function)(req());
+
+    expect(mockSendPushover).not.toHaveBeenCalled();
+    expect(mockReport).not.toHaveBeenCalled();
+  });
+
+  it('sends nothing and does NOT report when resolution hits an operational blip', async () => {
+    // An offline wobble is the expected, not the unexpected (§7.6).
+    mockResolveTargets.mockResolvedValue({ kind: 'unresolved', reason: 'network' });
+
+    await (onCookTimerDispatch as unknown as Function)(req());
+
+    expect(mockSendPushover).not.toHaveBeenCalled();
+    expect(mockReport).not.toHaveBeenCalled();
+  });
+
+  it('reports (does not throw) when the Pushover send fails', async () => {
+    mockSendPushover.mockResolvedValue('failed' as const);
+
+    await expect((onCookTimerDispatch as unknown as Function)(req())).resolves.toBeUndefined();
+
+    expect(mockReport).toHaveBeenCalledTimes(1);
   });
 });
