@@ -93,22 +93,21 @@
   // this used to do inline; the personal view needs it too, so it lives there now.
   const isAdmin = $derived($currentMember?.admin === true);
 
-  // "Mine" carries a count of what is OPEN right now — the live cook plus the
-  // "Needs you" queue (issue #634). Deliberately not "changed since you last
-  // looked": that needs a per-user lastSeenAt, which means browser storage
-  // (Rule 3) or a fourth per-user collection, and it lies across devices. A live
-  // count needs no memory, self-clears when you fix the thing, and is honest on a
-  // cold launch. "Just happened" is excluded — it is time-windowed and needs no
-  // action, so it must not nag for 24 hours.
+  // "Mine" carries a count of what is OPEN right now — my open cooks plus the
+  // timers that have fired and nobody has dismissed (issues #634, #682).
+  // Deliberately not "changed since you last looked": that needs a per-user
+  // lastSeenAt, which means browser storage (Rule 3) or a fourth per-user
+  // collection, and it lies across devices. A live count needs no memory,
+  // self-clears when you fix the thing, and is honest on a cold launch. The
+  // needs-review queue is excluded — it is a standing queue, so counting it would
+  // pin a permanent number to the tab. A timer still counting down is excluded
+  // too: it is running to plan and wants no hand.
   //
-  // The tab is hidden from non-admins for now — the view needs more design work
-  // before it earns a primary slot for the whole household (see lib/nav.ts).
+  // Shown to every member since #682 — see lib/nav.ts for what changed.
   const decoratedNavItems = $derived(
-    navItems
-      .filter((item) => item.id !== 'mine' || isAdmin)
-      .map((item) =>
-        item.id === 'mine' && $mineOpenCount > 0 ? { ...item, badge: $mineOpenCount } : item,
-      ),
+    navItems.map((item) =>
+      item.id === 'mine' && $mineOpenCount > 0 ? { ...item, badge: $mineOpenCount } : item,
+    ),
   );
 
   // Canon management now lives behind the operator area (#157), so its
