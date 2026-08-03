@@ -445,6 +445,43 @@ describe('onCookTimerDispatch — channel routing', () => {
     expect(mockReport).not.toHaveBeenCalled();
   });
 
+  it('nudges the fallback push to install Pushover when the member has none', async () => {
+    mockResolveTargets.mockResolvedValue({ kind: 'no-devices', firstName: 'Ryan' });
+    mockSubsDocs = [subDoc(makeSub('new-phone', ANDROID_ENDPOINT))];
+
+    await (onCookTimerDispatch as unknown as Function)(req());
+
+    const payload = mockSendWebPush.mock.calls[0]![2] as Record<string, string>;
+    // Appended, never substituted — the timer is still the point of the message.
+    expect(payload['body']).toContain("Shepherd's pie");
+    expect(payload['body']).toContain('install Pushover');
+  });
+
+  it('does NOT nudge an Apple device, which is already on its best channel', async () => {
+    mockResolveTargets.mockResolvedValue({ kind: 'no-devices', firstName: 'Ryan' });
+    mockSubsDocs = [subDoc(makeSub('ipad', APPLE_ENDPOINT))];
+
+    await (onCookTimerDispatch as unknown as Function)(req());
+
+    const payload = mockSendWebPush.mock.calls[0]![2] as Record<string, string>;
+    expect(payload['body']).toBe("Shepherd's pie");
+  });
+
+  it.each([
+    ['the send failed', { kind: 'send', devices: ['ryan-phone'] }, 'failed'],
+    ['resolution hit a blip', { kind: 'unresolved', reason: 'network' }, 'sent'],
+    ['Pushover is suppressed', { kind: 'suppressed' }, 'sent'],
+  ])('does NOT nudge when %s — they may already have Pushover', async (_case, targets, send) => {
+    mockResolveTargets.mockResolvedValue(targets);
+    mockSendPushover.mockResolvedValue(send as 'sent' | 'failed');
+    mockSubsDocs = [subDoc(makeSub('phone', ANDROID_ENDPOINT))];
+
+    await (onCookTimerDispatch as unknown as Function)(req());
+
+    const payload = mockSendWebPush.mock.calls[0]![2] as Record<string, string>;
+    expect(payload['body']).toBe("Shepherd's pie");
+  });
+
   it('routes a mixed device set to one channel each', async () => {
     mockSubsDocs = [
       subDoc(makeSub('ipad', APPLE_ENDPOINT)),

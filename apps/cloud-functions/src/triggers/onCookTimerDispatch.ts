@@ -34,6 +34,30 @@ const posthogApiKey = defineSecret('POSTHOG_API_KEY');
 // Generic copy — what a notification says when the recipe could not be read.
 const FALLBACK_COPY = { title: 'Timer finished', body: 'A cook timer just finished.' } as const;
 
+// Appended to a fallback web push when the recipient has NO Pushover devices at
+// all. It rides the notification rather than sitting in the app because the app
+// is exactly where they are not looking — they are at a hob, holding a pan, and
+// the alert they just got is the degraded one.
+//
+// It repeats on every timer, deliberately, and that is safe for one reason: it
+// STOPS the moment they install Pushover, because they stop taking the fallback
+// path at all. The nag and the problem end together, so it can never become
+// background noise for someone who has nothing left to fix.
+const PUSHOVER_NUDGE = 'This alert may be late — install Pushover in Settings for on-time timers.';
+
+// Why the timer did not reach Pushover, which is not the same question as whether
+// it delivered. Only ONE non-delivery means "this person has no Pushover" and so
+// earns the nudge above; the rest are our problem, or a passing one, and telling
+// someone to install an app they already have would be worse than saying nothing.
+type PushoverOutcome =
+  // Sent. No web-push fallback for non-Apple devices.
+  | 'delivered'
+  // The account answered and nothing matched `<firstname>-`. The nudge case.
+  | 'no-devices'
+  // Not provisioned here, suppressed in non-production, a resolution blip, or a
+  // failed send — all cases where they may well have Pushover already.
+  | 'unavailable';
+
 // Names the timer and the cook it belongs to, e.g. "Simmer the sauce" /
 // "Shepherd's pie". Neither is in the task payload, so this costs ONE extra
 // Firestore read on the dispatch path.
@@ -87,12 +111,12 @@ function cookDeepLink(recipeId: string): string | undefined {
 // so the caller stays linear, and NOTHING escapes: a throw would put the whole
 // dispatch into a Cloud Tasks retry it cannot win.
 //
-// Returns whether the timer ACTUALLY reached Pushover, which is what decides the
-// web-push fan-out that follows (see the routing note on the handler). Every
-// non-delivery — unprovisioned, suppressed, unresolved, no devices, a failed
-// send — returns false, so web push covers the gap in all of them. That is what
-// makes the rollout-safe cases work: staging suppresses Pushover, and the
-// emulator refuses it outright, and both still notify.
+// Returns WHY, not just whether — see PushoverOutcome. The distinction decides
+// both the web-push fan-out that follows (see the routing note on the handler)
+// and whether that fallback carries the install nudge. Every non-delivery leaves
+// web push to cover the gap, which is what makes the rollout-safe cases work:
+// staging suppresses Pushover, and the emulator refuses it outright, and both
+// still notify.
 //
 // This message DOES carry the recipe title, the timer label and a deep link
 // containing the recipe id, which reverses the original #680 stance that nothing
@@ -105,13 +129,14 @@ async function deliverViaPushover(
   sessionId: string,
   recipeId: string,
   payload: { readonly title: string; readonly body: string },
-): Promise<boolean> {
+): Promise<PushoverOutcome> {
   const token = pushoverAppToken.value();
   const user = pushoverUserKey.value();
   if (!token || !user) {
-    // Not provisioned in this environment — web push covers everyone.
+    // Not provisioned in this environment — web push covers everyone. NOT the
+    // nudge case: this is our missing config, not their missing app.
     logger.warn('onCookTimerDispatch: Pushover not provisioned', { sessionId });
-    return false;
+    return 'unavailable';
   }
 
   const targets = await resolvePushoverTargets({ token, user }, ownerUid);
@@ -119,7 +144,7 @@ async function deliverViaPushover(
   switch (targets.kind) {
     case 'suppressed':
       // Non-production, and this member is not the test-device owner. Expected.
-      return false;
+      return 'unavailable';
 
     case 'unresolved':
       // Operational blip (network / member read). Logged inside the resolver;
@@ -128,7 +153,7 @@ async function deliverViaPushover(
         sessionId,
         reason: targets.reason,
       });
-      return false;
+      return 'unavailable';
 
     case 'no-devices':
       // No device matched `<firstname>-`, so we send NOTHING rather than let
@@ -143,7 +168,8 @@ async function deliverViaPushover(
         sessionId,
         firstName: targets.firstName,
       });
-      return false;
+      // The one outcome that earns the install nudge on the fallback push.
+      return 'no-devices';
 
     case 'send': {
       // Spread rather than assign: under exactOptionalPropertyTypes an absent
@@ -157,10 +183,12 @@ async function deliverViaPushover(
       // A failed send is NOT reported here any more: returning false routes this
       // member to web push instead, and the handler reports only if that leaves
       // the timer undelivered to everything.
+      // A failed send is 'unavailable', never 'no-devices': they demonstrably
+      // HAVE Pushover — we just could not reach it this once.
       if (result === 'failed') {
         logger.warn('onCookTimerDispatch: Pushover send failed', { sessionId });
       }
-      return result === 'sent';
+      return result === 'sent' ? 'delivered' : 'unavailable';
     }
   }
 }
@@ -261,12 +289,13 @@ export const onCookTimerDispatch = onTaskDispatched<CookTimerTaskPayload>(
       // (g) PUSHOVER FIRST. It is the primary channel — a native client gets the
       // high-priority wake that Chrome's push path does not — and whether it
       // delivered decides the web-push fan-out below, so it has to run first.
-      const pushoverDelivered = await deliverViaPushover(
+      const pushoverOutcome = await deliverViaPushover(
         session.ownerUid,
         sessionId,
         session.recipeId,
         payload,
       );
+      const pushoverDelivered = pushoverOutcome === 'delivered';
 
       // (h) WEB PUSH, ROUTED PER DEVICE. The two sinks no longer both fire for
       // everyone (they did during the #680 rollout); each device now gets exactly
@@ -292,12 +321,19 @@ export const onCookTimerDispatch = onTaskDispatched<CookTimerTaskPayload>(
         for (const sub of subscriptions) {
           if (!sub.parsed.success) continue; // narrowing (filtered above)
           const data = sub.parsed.data;
-          if (!isApplePushEndpoint(data.endpoint) && pushoverDelivered) continue;
+          const isApple = isApplePushEndpoint(data.endpoint);
+          if (!isApple && pushoverDelivered) continue;
 
+          // Nudge ONLY the degraded path: a non-Apple device taking the fallback
+          // because this member has no Pushover devices at all. An Apple device
+          // is on its best channel already and has nothing to fix, and any other
+          // non-delivery ('unavailable') may well belong to someone who already
+          // has Pushover — telling them to install it would be nonsense.
+          const nudge = !isApple && pushoverOutcome === 'no-devices';
           const result = await sendWebPush(
             { subject, publicKey, privateKey },
             { endpoint: data.endpoint, keys: data.keys },
-            payload,
+            nudge ? { ...payload, body: `${payload.body}\n${PUSHOVER_NUDGE}` } : payload,
           );
           if (result === 'sent') {
             webPushDelivered += 1;
