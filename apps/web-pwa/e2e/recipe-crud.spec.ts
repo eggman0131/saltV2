@@ -10,6 +10,12 @@ import { expect, test } from './fixtures/test';
 import { gotoAndSignIn, uniqueEmail } from './helpers/auth';
 import { SYNC_TIMEOUT } from './helpers/timeouts';
 
+// A phone, pinned explicitly (#696, Phase 4). The recipe page docks its chat column
+// from 700x480 up, and this spec inherits the project's 1280x720 desktop default —
+// which would put it on the two-column layout the assertions below were never
+// written for. Same numbers as `recipe-alternatives.spec.ts`.
+test.use({ viewport: { width: 393, height: 851 } });
+
 test.describe('recipes — manual CRUD', () => {
   test('create with two groups + steps, reload, edit, delete', async ({ page }, testInfo) => {
     test.setTimeout(60_000);
@@ -82,7 +88,10 @@ test.describe('recipes — manual CRUD', () => {
     );
 
     // ── Edit → change title, save ─────────────────────────────────────────────
-    await page.getByTestId('recipe-edit-button').click();
+    // At a phone width Edit and Delete are demoted into the ⋮ overflow menu (they are
+    // `hidden sm:inline-flex` inline); the menu items carry their own testids.
+    await page.getByTestId('recipe-actions-overflow').click();
+    await page.getByTestId('recipe-edit-menu-item').click();
     await expect(page.getByRole('heading', { name: /edit recipe/i })).toBeVisible();
     const titleInput = page.getByTestId('recipe-title-input');
     await titleInput.fill('Test Dahl (revised)');
@@ -96,7 +105,8 @@ test.describe('recipes — manual CRUD', () => {
     });
 
     // ── Delete ───────────────────────────────────────────────────────────────
-    await page.getByTestId('recipe-delete-button').click();
+    await page.getByTestId('recipe-actions-overflow').click();
+    await page.getByTestId('recipe-delete-menu-item').click();
     await expect(page.getByTestId('recipe-delete-dialog')).toBeVisible();
     await page.getByTestId('recipe-delete-confirm').click();
 

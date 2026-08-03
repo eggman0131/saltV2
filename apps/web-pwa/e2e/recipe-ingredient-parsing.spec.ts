@@ -30,6 +30,12 @@ import { seedAisles, seedCanonItem, waitForCanonReady } from './helpers/seed';
 import { SYNC_TIMEOUT } from './helpers/timeouts';
 import type { Recipe } from '@salt/domain';
 
+// A phone, pinned explicitly (#696, Phase 4). The recipe page docks its chat column
+// from 700x480 up, and this spec inherits the project's 1280x720 desktop default —
+// which would put it on the two-column layout the assertions below were never
+// written for. Same numbers as `recipe-alternatives.spec.ts`.
+test.use({ viewport: { width: 393, height: 851 } });
+
 // The canned answer the faked parseRecipeIngredients model returns. Shape must
 // satisfy ParseRecipeIngredientsAIOutputSchema — the slim pre-ID AI shape: the
 // flow adds ids/canonId/matchState afterwards. Quantities are metric (g/ml).

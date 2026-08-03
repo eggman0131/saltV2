@@ -15,7 +15,6 @@
     DialogTitle,
     Icon,
     ImageCropper,
-    Markdown,
     Popover,
     PopoverContent,
     PopoverTrigger,
@@ -41,6 +40,9 @@
   import RecipeAddToListSheet from './RecipeAddToListSheet.svelte';
   import RecipeAddToPlannerSheet from './RecipeAddToPlannerSheet.svelte';
   import RecipeChangeSummary from './RecipeChangeSummary.svelte';
+  import RecipeChatList from './RecipeChatList.svelte';
+  import RecipeChatDrawer from './RecipeChatDrawer.svelte';
+  import { chatsForRecipe } from './recipeChats.js';
   import IngredientText from './IngredientText.svelte';
   import { canonItems } from '../../lib/canonService.js';
   import {
@@ -60,7 +62,9 @@
   import { defaultListId } from '../../lib/shoppingListService.svelte.js';
   import { addToast } from '../../lib/toastStore.js';
   import { auth } from '../../lib/auth.svelte.js';
-  import { createChatSession, sessions, sendMessage } from '../../lib/chatService.js';
+  import { createChatSession, sessions } from '../../lib/chatService.js';
+  import ChatThread from '../chat/ChatThread.svelte';
+  import { createChatThread } from '../chat/chatThreadState.svelte.js';
   import { equipment } from '../../lib/equipmentService.js';
   import { saveRecipe as saveRecipeDoc } from '@salt/firebase-sync';
   import {
@@ -246,106 +250,118 @@ Finish with a short note on what you changed and why, so I can read the gist her
     addToListOpen = true;
   }
 
-  // ─── Ask / amend ────────────────────────────────────────────────────────────
+  // ─── This recipe's chats ─────────────────────────────────────────────────────
+  // Every conversation about this dish, newest first — a client-side filter over
+  // the sessions store the app already holds (issue #696).
+  const recipeChats = $derived(recipe ? chatsForRecipe($sessions, recipe.id) : []);
+
+  // Which one is on screen. An EXPLICIT selection: every entry point sets it, and
+  // it falls back to the newest so a recipe you have never chosen a chat on still
+  // opens on the conversation you last had. Cleared implicitly when the selected
+  // session is gone, because the lookup simply misses.
+  let selectedSessionId = $state<string | null>(null);
+  const activeSession = $derived(
+    recipeChats.find((s) => s.id === selectedSessionId) ?? recipeChats[0] ?? null,
+  );
+
   let amendBusy = $state(false);
 
-  async function handleAskAmend(): Promise<void> {
-    if (!recipe) return;
+  // Start a fresh line of enquiry about this dish. Seeds the title from the recipe
+  // ("Cauliflower Steaks chat") until the chef retitles it, and selects it so
+  // whichever surface is showing a chat switches to the new one.
+  async function createRecipeChat(): Promise<ChatSessionDoc | null> {
+    if (!recipe) return null;
     const uid = auth.user?.uid;
-    if (!uid) return;
+    if (!uid) return null;
     amendBusy = true;
-    const result = await createChatSession(uid, recipe.id);
+    const result = await createChatSession(uid, recipe.id, recipe.title);
     amendBusy = false;
     if (result.kind !== 'ok') {
       addToast('Failed to open chat.', 'destructive');
+      return null;
+    }
+    selectedSessionId = result.value.id;
+    return result.value;
+  }
+
+  // Is the chat docked in a column of its own? From the fold up it is, and there is
+  // nothing for a drawer to do; below it, opening a chat raises the drawer over the
+  // live recipe. `false` — the phone path — is the honest default whenever the answer
+  // cannot be read: SSR, a jsdom without `matchMedia`, a query the engine rejects.
+  // Same shape as `MealPlanWeekPage`'s split read, which is the house pattern.
+  //
+  // This must stay the SAME GATE as the `split:` variant the column is laid out with
+  // (`app.css`), and in the same RANGE SYNTAX the browser actually sees: on an engine
+  // too old for range queries the emitted CSS is inert, and a `min-width:` query here
+  // would answer "yes, docked" for a page that is still one column — suppressing the
+  // drawer with no pane to replace it, i.e. a recipe where tapping a chat does nothing.
+  const DOCKED_QUERY = '(width >= 700px) and (height >= 480px)';
+  let docked = $state(false);
+  $effect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    let mql: MediaQueryList;
+    try {
+      mql = window.matchMedia(DOCKED_QUERY);
+    } catch {
       return;
     }
-    push(`/chat/${result.value.id}`);
-  }
-
-  // ─── Sidebar chat ────────────────────────────────────────────────────────────
-  const activeSession = $derived(
-    [...$sessions]
-      .filter((s) => s.recipeId === recipe?.id)
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0] ?? null,
-  );
-
-  let sidebarStreamingText = $state('');
-  let sidebarIsSending = $state(false);
-  let sidebarInputText = $state('');
-  let sidebarInputEl = $state<HTMLTextAreaElement | undefined>(undefined);
-  let sidebarMessagesEnd = $state<HTMLDivElement | undefined>(undefined);
-  // The chat column is desktop-only by default (`hidden lg:flex`). An action that
-  // streams its answer INTO that column has to reveal it below `lg`, or the reply
-  // arrives somewhere the user cannot see. Set once, never unset: having asked for
-  // a turn, you keep the transcript.
-  let sidebarRevealed = $state(false);
-
-  $effect(() => {
-    // Read these reactive values so the effect re-runs and scrolls to the bottom
-    // whenever messages or streaming text change.
-    activeSession?.messages.length;
-    sidebarStreamingText;
-    sidebarMessagesEnd?.scrollIntoView({ behavior: 'smooth' });
+    docked = mql.matches;
+    // A stubbed MediaQueryList (the unit suite ships one) can carry no listener API at
+    // all, and resizing is the only thing the listener is for.
+    if (typeof mql.addEventListener !== 'function') return;
+    const onChange = (event: MediaQueryListEvent): void => {
+      docked = event.matches;
+    };
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
   });
 
-  async function handleStartSidebarChat(): Promise<void> {
+  // The drawer's stop is in-memory only and so is whether it is open — Rule 3, and
+  // nothing here is worth restoring across a reload anyway.
+  let drawerOpen = $state(false);
+
+  // Opening a chat from the recipe never leaves the recipe. Above the seam the chat is
+  // already beside it, so selecting is the whole action; below it, the drawer rises.
+  function openChat(session: ChatSessionDoc): void {
+    selectedSessionId = session.id;
+    if (!docked) {
+      drawerOpen = true;
+      scrollRecipeToBody();
+    }
+  }
+
+  // The strip the drawer leaves visible should hold the ingredients, not the hero photo
+  // — the whole point is reading the answer and the thing it is about in one glance. So
+  // the page behind scrolls to its body on open, and only then: at every other moment
+  // the recipe's scroll position is the user's.
+  let bodyAnchorEl = $state<HTMLElement | undefined>(undefined);
+
+  function scrollRecipeToBody(): void {
+    bodyAnchorEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  async function handleNewChat(): Promise<void> {
+    const created = await createRecipeChat();
+    if (created) openChat(created);
+  }
+
+  // "Chat" in the header and in the ⋮ menu. CONTINUES the most recent conversation
+  // about this dish rather than silently starting another — a new one is a
+  // deliberate act, and the list's "New chat" is where you do it.
+  async function handleAskAmend(): Promise<void> {
     if (!recipe) return;
-    const uid = auth.user?.uid;
-    if (!uid) return;
-    amendBusy = true;
-    const result = await createChatSession(uid, recipe.id);
-    amendBusy = false;
-    if (result.kind !== 'ok') addToast('Failed to open chat.', 'destructive');
-  }
-
-  // Shared core: append `text` as a user turn on `session` and stream the reply
-  // into the sidebar. Takes the session explicitly because `activeSession` is
-  // $derived off the sessions store — a turn sent immediately after creating a
-  // session must use the object `createChatSession` handed back rather than wait
-  // for the derived value. The composer is deliberately NOT touched here; the
-  // caller owns it, so a canned prompt never lands in the user's input box.
-  async function streamSidebarTurn(session: ChatSessionDoc, text: string): Promise<boolean> {
-    sidebarIsSending = true;
-    sidebarStreamingText = '';
-
-    const result = await sendMessage(session, text, (chunk) => {
-      sidebarStreamingText += chunk;
-    });
-
-    sidebarIsSending = false;
-    sidebarStreamingText = '';
-
-    if (result.kind !== 'ok') {
-      addToast('Failed to send message.', 'destructive');
-      return false;
+    const newest = recipeChats[0];
+    if (newest) {
+      openChat(newest);
+      return;
     }
-    return true;
+    await handleNewChat();
   }
 
-  async function handleSidebarSend(text: string): Promise<void> {
-    const trimmed = text.trim();
-    if (!activeSession || !trimmed || sidebarIsSending) return;
-    sidebarInputText = '';
-    if (sidebarInputEl) sidebarInputEl.style.height = '';
-
-    const ok = await streamSidebarTurn(activeSession, trimmed);
-    if (!ok) sidebarInputText = trimmed;
-  }
-
-  function handleSidebarKeydown(e: KeyboardEvent): void {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      void handleSidebarSend(sidebarInputText);
-    }
-  }
-
-  function handleSidebarInput(e: Event): void {
-    const el = e.target as HTMLTextAreaElement;
-    sidebarInputText = el.value;
-    el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight}px`;
-  }
+  // The transcript, the composer, the auto-scroll and the send path are all
+  // ChatThread's — this page only holds the live turn state so "Optimise for my
+  // kitchen" can start one on a session the component is not yet showing.
+  const chat = createChatThread();
 
   // ─── Optimise for my kitchen ────────────────────────────────────────────────
   // Sends OPTIMISE_FOR_KITCHEN_PROMPT as an ordinary user turn, creating the
@@ -360,24 +376,20 @@ Finish with a short note on what you changed and why, so I can read the gist her
   let optimiseBusy = $state(false);
 
   async function handleOptimiseForKitchen(): Promise<void> {
-    if (!recipe || optimiseBusy || sidebarIsSending) return;
+    if (!recipe || optimiseBusy || chat.isSending) return;
     const uid = auth.user?.uid;
     if (!uid) return;
-    sidebarRevealed = true;
     optimiseBusy = true;
 
-    let session = activeSession;
+    const session = activeSession ?? (await createRecipeChat());
     if (!session) {
-      const created = await createChatSession(uid, recipe.id);
-      if (created.kind !== 'ok') {
-        optimiseBusy = false;
-        addToast('Failed to open chat.', 'destructive');
-        return;
-      }
-      session = created.value;
+      optimiseBusy = false;
+      return;
     }
+    // Put the transcript somewhere visible before the reply starts arriving in it.
+    openChat(session);
 
-    await streamSidebarTurn(session, OPTIMISE_FOR_KITCHEN_PROMPT);
+    await chat.send(session, OPTIMISE_FOR_KITCHEN_PROMPT);
     optimiseBusy = false;
   }
 
@@ -748,7 +760,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
           variant="ghost"
           onclick={handleOptimiseForKitchen}
           loading={optimiseBusy}
-          disabled={optimiseBusy || sidebarIsSending}
+          disabled={optimiseBusy || chat.isSending}
           class="hidden sm:inline-flex"
           data-testid="recipe-optimise-kitchen-button"
         >
@@ -849,7 +861,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
                   overflowMenuOpen = false;
                   void handleOptimiseForKitchen();
                 }}
-                disabled={optimiseBusy || sidebarIsSending}
+                disabled={optimiseBusy || chat.isSending}
                 data-testid="recipe-optimise-kitchen-menu-item"
               >
                 <Icon name="Blender" size={14} />
@@ -885,7 +897,17 @@ Finish with a short note on what you changed and why, so I can read the gist her
       </div>
     {/snippet}
 
-    <div class="grid gap-4 lg:grid-cols-[2fr_1fr] lg:gap-6" data-testid="recipe-view">
+    <!-- Two columns from the fold up (issue #696, Phase 4). At `split` the halves are
+         EQUAL, because that is the only thing keeping the gutter over the crease — the
+         device reports one viewport segment, so nothing can be aligned to the fold
+         directly. `gap-10` is the settled gutter, the same number #663 landed on for the
+         planner. Above `lg` there is no crease and the recipe deserves the room, so the
+         page keeps the 2fr/1fr it has always had. The nav seam stays at `lg`: the fold
+         keeps its bottom bar AND gets two columns. -->
+    <div
+      class="grid gap-4 split:grid-cols-2 split:gap-10 lg:grid-cols-[2fr_1fr] lg:gap-6"
+      data-testid="recipe-view"
+    >
       <!-- Left column: main recipe content -->
       <div class="flex flex-col gap-4">
         <!-- Unreviewed AI import (issue #616). Informational, never a gate: the
@@ -1025,6 +1047,11 @@ Finish with a short note on what you changed and why, so I can read the gist her
           </Card>
         {/if}
 
+        <!-- Where the recipe scrolls to when the drawer opens (issue #696): the strip
+             left above the chat should hold what the chef is talking about, not the
+             hero photograph. -->
+        <div bind:this={bodyAnchorEl} class="scroll-mt-4"></div>
+
         <!-- Ingredients. The whole CARD goes when the concept doesn't apply
              (issue #637), not just its contents: a card headed "Ingredients"
              saying "No ingredients." is worse than no card, because it reads as
@@ -1146,17 +1173,27 @@ Finish with a short note on what you changed and why, so I can read the gist her
             </CardContent>
           </Card>
         {/if}
+
+        <!-- Every chat about this dish (issue #696). Below the seam there is no second
+             column, so the list lives at the foot of the recipe; from `split` up it
+             moves into the chat column above the conversation it selects. Rendered in
+             one place or the other, never both — one `recipe-chat-list` on the page. -->
+        {#if !docked}
+          {@render chatListCard()}
+        {/if}
       </div>
 
-      <!-- Right column: embedded chat sidebar. Desktop-only by default; below `lg`
-           it is revealed on demand by an action that streams a turn into it
-           ("Optimise for my kitchen"), where it stacks under the recipe content. -->
-      <div
-        class="{sidebarRevealed ? 'flex' : 'hidden'} flex-col lg:flex"
-        data-testid="recipe-chat-sidebar"
-      >
+      <!-- Right column: the chat, docked from `split` up. Below that it does not render
+           at all and Phase 3's drawer is the whole story — the reveal hack this column
+           used to need is gone with it. -->
+      <div class="hidden flex-col split:flex" data-testid="recipe-chat-sidebar">
+        <!-- The list of conversations sits above the one you are reading, so choosing
+             another is a glance and a tap rather than a scroll back to the recipe. -->
+        {#if docked}
+          <div class="mb-4 shrink-0">{@render chatListCard()}</div>
+        {/if}
         <Card
-          class="flex flex-col overflow-hidden lg:sticky lg:top-4 lg:min-h-0 lg:max-h-[calc(100dvh_-_5.5rem)] lg:flex-1"
+          class="flex flex-col overflow-hidden split:sticky split:top-4 split:min-h-0 split:max-h-[calc(100dvh_-_5.5rem)] split:flex-1"
         >
           <CardHeader class="shrink-0 border-b px-4 py-3">
             <div class="flex items-center justify-between">
@@ -1191,7 +1228,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
                 size="sm"
                 variant="outline"
                 class="w-full"
-                onclick={handleStartSidebarChat}
+                onclick={createRecipeChat}
                 loading={amendBusy}
                 disabled={amendBusy}
               >
@@ -1200,92 +1237,13 @@ Finish with a short note on what you changed and why, so I can read the gist her
               </Button>
             </CardContent>
           {:else}
-            <!-- Messages -->
-            <div class="min-h-0 flex-1 overflow-y-auto p-4">
-              <div class="flex flex-col gap-3">
-                {#if activeSession.messages.length === 0 && !sidebarIsSending}
-                  <p class="py-8 text-center text-xs text-muted-foreground">
-                    Ask me anything about this recipe.
-                  </p>
-                {/if}
-                {#each activeSession.messages as msg (msg.id)}
-                  <div class="flex {msg.role === 'user' ? 'justify-end' : 'justify-start'}">
-                    <div
-                      class="max-w-[90%] text-sm {msg.role === 'user'
-                        ? 'rounded-lg bg-muted px-3 py-2'
-                        : ''}"
-                    >
-                      {#if msg.role === 'assistant'}
-                        <Markdown text={msg.text} />
-                      {:else}
-                        {msg.text}
-                      {/if}
-                    </div>
-                  </div>
-                {/each}
-                {#if sidebarIsSending && sidebarStreamingText}
-                  <div class="flex justify-start">
-                    <div class="max-w-[90%] text-sm">
-                      <Markdown text={sidebarStreamingText} />
-                    </div>
-                  </div>
-                {:else if sidebarIsSending}
-                  <div class="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Spinner size={12} />
-                    Thinking…
-                  </div>
-                {/if}
-                <div bind:this={sidebarMessagesEnd}></div>
-              </div>
-            </div>
-
-            <!-- Update recipe -->
-            {#if activeSession.messages.some((m) => m.role === 'assistant')}
-              <div class="shrink-0 border-t px-3 pt-3">
-                <Button
-                  variant="outline"
-                  class="w-full"
-                  onclick={handleSidebarReviewChanges}
-                  loading={sidebarIsProposing}
-                  disabled={sidebarIsProposing || sidebarIsSending}
-                  data-testid="sidebar-apply-changes-btn"
-                >
-                  {#snippet leading()}<Icon name="RefreshCw" size={14} />{/snippet}
-                  Review changes
-                </Button>
-              </div>
-            {/if}
-
-            <!-- Input -->
-            <div class="shrink-0 border-t p-3">
-              <div class="flex items-end gap-2">
-                <div
-                  class="flex flex-1 items-start rounded-md border border-input bg-background px-3 text-sm focus-within:ring-2 focus-within:ring-ring {sidebarIsSending
-                    ? 'opacity-50'
-                    : ''}"
-                >
-                  <textarea
-                    bind:this={sidebarInputEl}
-                    class="flex-1 resize-none bg-transparent py-2 outline-none placeholder:text-muted-foreground"
-                    rows={2}
-                    placeholder="Message the chef…"
-                    value={sidebarInputText}
-                    onkeydown={handleSidebarKeydown}
-                    oninput={handleSidebarInput}
-                    disabled={sidebarIsSending}></textarea>
-                </div>
-                <Button
-                  size="sm"
-                  onclick={() => handleSidebarSend(sidebarInputText)}
-                  disabled={sidebarIsSending || !sidebarInputText.trim()}
-                  loading={sidebarIsSending}
-                  aria-label="Send"
-                >
-                  {#snippet leading()}<Icon name="SendHorizontal" size={14} />{/snippet}
-                  Send
-                </Button>
-              </div>
-            </div>
+            <ChatThread
+              session={activeSession}
+              thread={chat}
+              layout="panel"
+              emptyText="Ask me anything about this recipe."
+              aboveComposer={sidebarReviewChanges}
+            />
           {/if}
         </Card>
       </div>
@@ -1301,6 +1259,60 @@ Finish with a short note on what you changed and why, so I can read the gist her
 <!-- Day picker for "Add to planner" -->
 {#if recipe}
   <RecipeAddToPlannerSheet {recipe} bind:open={addToPlannerOpen} />
+{/if}
+
+<!-- "Review changes", wherever the conversation is being read — the docked column or the
+     drawer. One button, one handler, so an edit proposed from a phone and an edit
+     proposed from a laptop are the same act. -->
+{#snippet chatListCard()}
+  <RecipeChatList
+    chats={recipeChats}
+    activeId={activeSession?.id ?? null}
+    onSelect={openChat}
+    onNew={handleNewChat}
+    creating={amendBusy}
+  />
+{/snippet}
+
+{#snippet reviewChangesAction(testid: string)}
+  {#if activeSession?.messages.some((m) => m.role === 'assistant')}
+    <div class="shrink-0 border-t px-3 pt-3">
+      <Button
+        variant="outline"
+        class="w-full"
+        onclick={handleSidebarReviewChanges}
+        loading={sidebarIsProposing}
+        disabled={sidebarIsProposing || chat.isSending}
+        data-testid={testid}
+      >
+        {#snippet leading()}<Icon name="RefreshCw" size={14} />{/snippet}
+        Review changes
+      </Button>
+    </div>
+  {/if}
+{/snippet}
+
+<!-- The two surfaces are separate DOM nodes and both can be mounted at once (the column
+     is merely `hidden` below `lg`), so they carry distinct testids — one ambiguous
+     selector is a worse trap than two names for one button. -->
+{#snippet sidebarReviewChanges()}
+  {@render reviewChangesAction('sidebar-apply-changes-btn')}
+{/snippet}
+
+{#snippet drawerReviewChanges()}
+  {@render reviewChangesAction('drawer-apply-changes-btn')}
+{/snippet}
+
+<!-- The chef over the live recipe (issue #696). Only below the seam: above it the same
+     conversation is docked in its own column, and two of it would be one too many. -->
+{#if recipe && activeSession && drawerOpen && !docked}
+  <RecipeChatDrawer
+    session={activeSession}
+    thread={chat}
+    onClose={() => (drawerOpen = false)}
+    onOpenFull={() => push(`/chat/${activeSession!.id}`)}
+    aboveComposer={drawerReviewChanges}
+  />
 {/if}
 
 <!-- Review-and-approve gate for the pending AI edit (Phase 2) -->

@@ -1,5 +1,3 @@
-import { prefersReducedMotion } from 'svelte/motion';
-
 import {
   RUBBER_BAND,
   chooseLandingStop,
@@ -8,6 +6,7 @@ import {
   rubberBand,
   type DeckThresholds,
 } from './cookDeck.js';
+import { createDeckSpring } from './deckSpring.svelte.js';
 
 /**
  * A gesture-owned pager over a column of sections — the machinery cook mode's step deck
@@ -23,13 +22,10 @@ import {
  * had to start its animation from a dead stop and always read as a separate movement
  * bolted on after the scroll rather than a continuation of it.
  *
- * Svelte's `Spring` has `preserveMomentum` for exactly this case, but it can't be used
- * here: it derives velocity from the spring's own last two values, and the
- * `{ instant: true }` sets that 1:1 finger-tracking requires assign `last_value` alongside
- * `current` — zeroing that velocity on every move. Tracking the finger with a plain `set`
- * keeps the velocity but gives up the 1:1 feel, and lags on 120Hz screens where its fixed
- * `dt` covers only half a frame. Hence the integrator below, seeded with the velocity
- * measured off the pointer itself.
+ * That is why the spring is a hand-written integrator seeded with the velocity measured
+ * off the pointer itself rather than Svelte's `Spring` — see `./deckSpring.svelte.ts`,
+ * which holds the physics and the reasoning, and which this deck now shares with the one
+ * other surface that springs without paging.
  *
  * WHAT IS HERE AND WHAT IS NOT. Everything in this file is about pixels, pointers and
  * frames — it knows nothing about steps, recipes, days or plans. The arithmetic that
@@ -43,14 +39,10 @@ import {
  */
 
 // ─── The animation ────────────────────────────────────────────────────────────────────
-const DECK_STIFFNESS = 170; // with DECK_DAMPING → ζ ≈ 0.61, about 10% overshoot
-const DECK_DAMPING = 16;
-/**
- * Long jumps ("Resume · step 9") are where a spring turns violent, because its force
- * scales with displacement. Capping speed keeps the physics for the short travel that
- * dominates while stopping a big jump from being fired across the screen.
- */
-const DECK_MAX_SPEED = 2600; // px/s
+// The integrator itself lives in `./deckSpring.svelte.ts` — same physics, same
+// reduced-motion short-circuit, now shared with the one surface that springs without
+// paging (the recipe chat drawer, issue #696).
+
 /** Slop before a touch counts as a drag rather than a tap. */
 const DRAG_START_PX = 6;
 /** How long the wheel must go quiet before the deck settles to a stop. */
@@ -81,7 +73,7 @@ export function createDeck(options: DeckOptions) {
   let viewportEl = $state<HTMLElement | null>(null);
   /** The transformed column inside it. Bind it with `bind:this={deck.contentEl}`. */
   let contentEl = $state<HTMLElement | null>(null);
-  let offset = $state(0);
+  const spring = createDeckSpring(0);
 
   /**
    * A section's height is MEASURED rather than set with `min-h-full`. Percentage heights
@@ -120,7 +112,7 @@ export function createDeck(options: DeckOptions) {
     if (!vp) return [0];
     const vpTop = vp.getBoundingClientRect().top;
     const sections = options.sections().map((el) => ({
-      top: offset + (el.getBoundingClientRect().top - vpTop),
+      top: spring.current + (el.getBoundingClientRect().top - vpTop),
       height: el.offsetHeight,
     }));
     return deriveStops({
@@ -146,51 +138,17 @@ export function createDeck(options: DeckOptions) {
     const vp = viewportEl;
     if (!vp) return null;
     const top =
-      offset +
+      spring.current +
       (el.getBoundingClientRect().top - vp.getBoundingClientRect().top) -
       (tuning().leadPx ?? 0);
     return Math.max(0, Math.min(Math.round(top), maxOffset()));
   }
 
-  // A plain spring integrator over the deck offset. `velocity0` is what makes it feel
-  // continuous: released mid-fling the deck keeps travelling at the speed your thumb left
-  // it at, and the spring only takes over as it approaches the stop — carrying slightly
-  // past it and pulling back, because it is under-damped.
-  let deckAnim: number | null = null;
-
-  function stopAnimation(): void {
-    if (deckAnim !== null && typeof cancelAnimationFrame === 'function') {
-      cancelAnimationFrame(deckAnim);
-    }
-    deckAnim = null;
-  }
-
-  function animateTo(target: number, velocity0 = 0): void {
-    stopAnimation();
-    if (prefersReducedMotion.current || typeof requestAnimationFrame !== 'function') {
-      offset = target;
-      return;
-    }
-    let position = offset;
-    let velocity = velocity0;
-    let last = -1;
-    const tick = (now: number): void => {
-      if (last < 0) last = now;
-      const dt = Math.min(0.032, (now - last) / 1000); // clamp: a stalled tab must not explode
-      last = now;
-      const acceleration = -DECK_STIFFNESS * (position - target) - DECK_DAMPING * velocity;
-      velocity = Math.max(-DECK_MAX_SPEED, Math.min(DECK_MAX_SPEED, velocity + acceleration * dt));
-      position += velocity * dt;
-      if (Math.abs(position - target) < 0.5 && Math.abs(velocity) < 30) {
-        offset = target;
-        deckAnim = null;
-        return;
-      }
-      offset = position;
-      deckAnim = requestAnimationFrame(tick);
-    };
-    deckAnim = requestAnimationFrame(tick);
-  }
+  // The spring is what makes a release feel continuous: let go mid-fling and the deck keeps
+  // travelling at the speed your thumb left it at, the spring only taking over as it nears
+  // the stop — carrying slightly past it and pulling back, because it is under-damped.
+  const stopAnimation = spring.stop;
+  const animateTo = spring.animateTo;
 
   // ─── The gesture ────────────────────────────────────────────────────────────────────
   let dragging = false;
@@ -209,8 +167,8 @@ export function createDeck(options: DeckOptions) {
     dragPointer = event.pointerId;
     dragging = false; // not until it clears DRAG_START_PX — taps must still reach buttons
     dragStartY = event.clientY;
-    dragStartOffset = offset;
-    dragStartIndex = nearestStopIndex(offset, stops);
+    dragStartOffset = spring.current;
+    dragStartIndex = nearestStopIndex(spring.current, stops);
     lastMoveY = event.clientY;
     lastMoveTime = event.timeStamp;
     dragVelocity = 0;
@@ -224,7 +182,7 @@ export function createDeck(options: DeckOptions) {
       dragging = true;
       viewportEl?.setPointerCapture?.(event.pointerId);
     }
-    offset = rubberBand(dragStartOffset + travelled, maxOffset(), RUBBER_BAND);
+    spring.place(rubberBand(dragStartOffset + travelled, maxOffset(), RUBBER_BAND));
     const elapsed = event.timeStamp - lastMoveTime;
     if (elapsed > 0) {
       // Smoothed, so one erratic sample at the moment of release can't fling the deck.
@@ -254,8 +212,8 @@ export function createDeck(options: DeckOptions) {
     const index = chooseLandingStop({
       stops,
       startIndex: dragStartIndex,
-      offset,
-      dragged: offset - dragStartOffset,
+      offset: spring.current,
+      dragged: spring.current - dragStartOffset,
       velocity: dragVelocity,
       screen: vp.clientHeight,
       commitRatio,
@@ -285,10 +243,10 @@ export function createDeck(options: DeckOptions) {
         : event.deltaMode === 2
           ? event.deltaY * vp.clientHeight
           : event.deltaY;
-    offset = Math.max(0, Math.min(offset + delta, maxOffset()));
+    spring.place(Math.max(0, Math.min(spring.current + delta, maxOffset())));
     wheelIdle = setTimeout(() => {
       wheelIdle = null;
-      animateTo(stops[nearestStopIndex(offset, stops)] ?? 0);
+      animateTo(stops[nearestStopIndex(spring.current, stops)] ?? 0);
     }, WHEEL_IDLE_MS);
   }
 
@@ -299,7 +257,7 @@ export function createDeck(options: DeckOptions) {
     if (!keys.includes(event.key)) return;
     event.preventDefault();
     stops = computeStops();
-    const here = nearestStopIndex(offset, stops);
+    const here = nearestStopIndex(spring.current, stops);
     const to =
       event.key === 'Home'
         ? 0
@@ -332,7 +290,7 @@ export function createDeck(options: DeckOptions) {
     },
     /** How far the column is pushed up, in px. Drive the transform off this. */
     get offset(): number {
-      return offset;
+      return spring.current;
     },
     /** The viewport's measured height, kept in step by a `ResizeObserver`. */
     get viewportHeight(): number {
@@ -343,7 +301,7 @@ export function createDeck(options: DeckOptions) {
      * Use `animateTo` for anything the user should see move.
      */
     place(next: number): void {
-      offset = next;
+      spring.place(next);
     },
     offsetOf,
     animateTo,
