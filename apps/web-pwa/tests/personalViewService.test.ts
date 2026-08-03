@@ -1,24 +1,13 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { get } from 'svelte/store';
-import type { Day, MealPlanWeek, Member, Recipe, ShoppingListItem } from '@salt/domain';
-import type { CookSessionDoc, ShoppingDayDoc } from '@salt/domain/schemas';
+import type { Recipe } from '@salt/domain';
+import type { CookActiveTimerDoc, CookSessionDoc } from '@salt/domain/schemas';
 
-// The personal view's composition layer (issue #634). Everything it reads is a
-// store that is already subscribed app-wide, so these tests drive fake stores and
-// assert the PROJECTION: same family-shared data, two different members, two
-// different screens.
+// The personal view's composition layer (issues #634, #682). Everything it reads
+// is a store that is already subscribed app-wide, so these tests drive fake stores
+// and assert the projection: my timers, my open cooks, and what still wants a look.
 
-const {
-  mockCurrentMember,
-  mockMembers,
-  mockWeek,
-  mockItems,
-  mockRecipes,
-  mockSessions,
-  mockUpcomingShopDay,
-  mockWeekShopDay,
-  mockForecast,
-} = vi.hoisted(() => {
+const { mockRecipes, mockSessions } = vi.hoisted(() => {
   function makeStore<T>(initial: T) {
     let value = initial;
     const subs = new Set<(v: T) => void>();
@@ -37,107 +26,34 @@ const {
     };
   }
   return {
-    mockCurrentMember: makeStore<unknown>(null),
-    mockMembers: makeStore<unknown[]>([]),
-    mockWeek: makeStore<unknown>(null),
-    mockItems: makeStore<unknown[]>([]),
     mockRecipes: makeStore<unknown[]>([]),
     mockSessions: makeStore<unknown[]>([]),
-    mockUpcomingShopDay: makeStore<unknown>(undefined),
-    mockWeekShopDay: makeStore<unknown>(null),
-    mockForecast: makeStore<unknown>(null),
   };
 });
 
-vi.mock('../src/lib/membersService.js', () => ({
-  currentMember: mockCurrentMember,
-  members: mockMembers,
-}));
-vi.mock('../src/lib/mealPlanService.js', () => ({ currentWeek: mockWeek }));
-vi.mock('../src/lib/shoppingListService.svelte.js', () => ({ itemsForActiveList: mockItems }));
 vi.mock('../src/lib/recipeService.js', () => ({ recipes: mockRecipes }));
 vi.mock('../src/lib/cookSessionService.js', () => ({ myCookSessions: mockSessions }));
-vi.mock('../src/lib/shoppingDayService.js', () => ({
-  upcomingShopDay: mockUpcomingShopDay,
-  weekShopDay: mockWeekShopDay,
-}));
-vi.mock('../src/lib/weatherService.js', () => ({ weatherForecast: mockForecast }));
 
 import {
+  firedTimers,
   liveCooks,
   mineOpenCount,
-  needsYou,
-  tonight,
-  yourWeek,
+  myTimers,
+  needsReviewRecipes,
+  timerNowMs,
 } from '../src/lib/personalViewService.js';
 
-// ─── Fixtures anchored on the real "today", since the service reads the clock ──
+const NOW = Date.parse('2026-08-05T12:00:00.000Z');
 
-function addDays(date: string, n: number): string {
-  const d = new Date(`${date}T00:00:00.000Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
-
-const TODAY = new Date().toLocaleDateString('en-CA');
-const TOMORROW = addDays(TODAY, 1);
-const IN_TWO = addDays(TODAY, 2);
-const IN_THREE = addDays(TODAY, 3);
-
-function day(overrides: Partial<Day> = {}): Day {
-  return { note: '', recipeIds: [], chefs: [], attendees: [], guests: 0, ...overrides };
-}
-
-// A week that starts today, so every fixture date is inside it.
-function week(days: Record<string, Day>): MealPlanWeek {
-  const filled: Record<string, Day> = {};
-  for (let i = 0; i < 7; i += 1) {
-    const date = addDays(TODAY, i);
-    filled[date] = days[date] ?? day();
-  }
-  return { id: TODAY, schemaVersion: 1, startDate: TODAY, days: filled, updatedAt: '' };
-}
-
-function member(id: string, name: string): Member {
+function recipe(id: string, title: string, overrides: Partial<Recipe> = {}): Recipe {
   return {
     id,
     schemaVersion: 1,
-    name,
-    email: id,
-    admin: false,
-    sortOrder: 0,
-    icon: null,
-    updatedAt: '',
-  };
-}
-
-function recipe(id: string, title: string, ingredients = 3, steps = 0): Recipe {
-  return {
-    id,
-    schemaVersion: 1,
+    kind: 'recipe',
     title,
     description: null,
-    ingredients: [
-      {
-        id: `${id}-g`,
-        name: null,
-        items: Array.from({ length: ingredients }, (_u, i) => ({
-          id: `${id}-i${i}`,
-          rawText: 'x',
-          parsed: null,
-          canonId: null,
-          matchState: 'pending' as const,
-          isOptional: false,
-          firstUsedInStepId: null,
-        })),
-      },
-    ],
-    steps: Array.from({ length: steps }, (_u, i) => ({
-      id: `${id}-s${i}`,
-      text: `step ${i}`,
-      timer: null,
-      note: null,
-    })),
+    ingredients: [],
+    steps: [],
     metadata: {
       servings: 2,
       totalTimeMinutes: null,
@@ -151,27 +67,27 @@ function recipe(id: string, title: string, ingredients = 3, steps = 0): Recipe {
     image: null,
     createdAt: '2026-07-01T00:00:00.000Z',
     updatedAt: '2026-07-01T00:00:00.000Z',
+    ...overrides,
   } as Recipe;
 }
 
-function item(overrides: Partial<ShoppingListItem> = {}): ShoppingListItem {
-  return {
-    id: crypto.randomUUID(),
-    rawText: 'thing',
-    notes: '',
-    sources: [],
-    canonId: null,
-    matchState: 'matched',
-    checked: false,
-    needsCheck: false,
-    schemaVersion: 1,
-    createdAt: '',
-    updatedAt: '',
+function withSteps(id: string, title: string, count: number, overrides: Partial<Recipe> = {}) {
+  return recipe(id, title, {
+    steps: Array.from({ length: count }, (_u, i) => ({
+      id: `${id}-s${i}`,
+      text: `step ${i}`,
+      timer: null,
+      note: null,
+    })),
     ...overrides,
-  } as ShoppingListItem;
+  } as Partial<Recipe>);
 }
 
-function session(recipeId: string, completedStepIds: string[] = []): CookSessionDoc {
+function session(
+  recipeId: string,
+  completedStepIds: string[] = [],
+  activeTimers: CookActiveTimerDoc[] = [],
+): CookSessionDoc {
   return {
     id: `${recipeId}_uid-a`,
     schemaVersion: 1,
@@ -180,39 +96,32 @@ function session(recipeId: string, completedStepIds: string[] = []): CookSession
     recipeUpdatedAtAtStart: '2026-07-01T00:00:00.000Z',
     checkedIngredientIds: [],
     completedStepIds,
-    activeTimers: [],
+    activeTimers,
     createdAt: '2026-07-01T00:00:00.000Z',
     updatedAt: '2026-07-01T00:00:00.000Z',
   };
 }
 
-const shopDay = (date: string): ShoppingDayDoc => ({
-  date,
-  slot: 'am',
-  schemaVersion: 1,
-  setBy: 'uid-a',
-  setAt: '',
+const timer = (stepId: string, offsetMs: number): CookActiveTimerDoc => ({
+  stepId,
+  endsAt: new Date(NOW + offsetMs).toISOString(),
+  notify: false,
 });
 
-const alex = member('alex@e.org', 'Alex Green');
-const sam = member('sam@e.org', 'Sam Blue');
-
 beforeEach(() => {
-  mockCurrentMember._set(alex);
-  mockMembers._set([alex, sam]);
-  mockWeek._set(week({}));
-  mockItems._set([]);
+  vi.useFakeTimers();
+  vi.setSystemTime(NOW);
   mockRecipes._set([]);
   mockSessions._set([]);
-  mockUpcomingShopDay._set(undefined);
-  mockWeekShopDay._set(null);
-  mockForecast._set(null);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('liveCooks', () => {
   it('resumes a session at the first step not yet done', () => {
-    const r = recipe('r1', 'Noodle Bowl', 3, 5);
-    mockRecipes._set([r]);
+    mockRecipes._set([withSteps('r1', 'Noodle Bowl', 5)]);
     mockSessions._set([session('r1', ['r1-s0', 'r1-s1'])]);
 
     expect(get(liveCooks)[0]).toMatchObject({
@@ -224,7 +133,7 @@ describe('liveCooks', () => {
   });
 
   it('carries EVERY open cook, newest first — a two-pan dinner is two cooks', () => {
-    mockRecipes._set([recipe('r1', 'Noodle Bowl', 3, 5), recipe('r2', 'Side Salad', 2, 2)]);
+    mockRecipes._set([withSteps('r1', 'Noodle Bowl', 5), withSteps('r2', 'Side Salad', 2)]);
     // The adapter query orders newest-first; the projection preserves that order.
     mockSessions._set([session('r2'), session('r1', ['r1-s0'])]);
 
@@ -233,13 +142,13 @@ describe('liveCooks', () => {
 
   it('ignores step ids that are no longer in the recipe', () => {
     // A step edited out from under the cook must not inflate progress.
-    mockRecipes._set([recipe('r1', 'Noodle Bowl', 3, 2)]);
+    mockRecipes._set([withSteps('r1', 'Noodle Bowl', 2)]);
     mockSessions._set([session('r1', ['r1-s0', 'gone-1', 'gone-2'])]);
     expect(get(liveCooks)[0]?.completedCount).toBe(1);
   });
 
   it('skips a session whose recipe was deleted rather than showing a broken card', () => {
-    mockRecipes._set([recipe('r2', 'Still here', 3, 2)]);
+    mockRecipes._set([withSteps('r2', 'Still here', 2)]);
     mockSessions._set([session('deleted'), session('r2')]);
     expect(get(liveCooks).map((c) => c.recipe.id)).toEqual(['r2']);
   });
@@ -249,149 +158,141 @@ describe('liveCooks', () => {
   });
 });
 
-describe('tonight', () => {
-  it("marks the night yours when you're the chef, and not when you aren't", () => {
-    mockWeek._set(week({ [TODAY]: day({ chefs: [alex.id] }) }));
-    expect(get(tonight)?.mine).toBe(true);
+describe('myTimers', () => {
+  function timedRecipe(id: string, title: string) {
+    return recipe(id, title, {
+      steps: [
+        {
+          id: `${id}-s0`,
+          text: 'simmer',
+          timer: { durationMinutes: 10, description: 'Simmer the sauce' },
+          note: null,
+        },
+        { id: `${id}-s1`, text: 'rest', timer: { durationMinutes: 5 }, note: null },
+      ],
+    } as Partial<Recipe>);
+  }
 
-    mockCurrentMember._set(sam);
-    expect(get(tonight)?.mine).toBe(false);
+  it('lists a running timer with its label, recipe and duration', () => {
+    mockRecipes._set([timedRecipe('r1', 'Ragu')]);
+    mockSessions._set([session('r1', [], [timer('r1-s0', 4 * 60_000)])]);
+
+    expect(get(myTimers)).toMatchObject([
+      { id: 'r1_uid-a::r1-s0', label: 'Simmer the sauce', durationMs: 600_000 },
+    ]);
+    expect(get(myTimers)[0]?.recipe.title).toBe('Ragu');
   });
 
-  it('resolves the planned recipes and chefs, and reports an empty night as unplanned', () => {
-    mockRecipes._set([recipe('r1', 'Noodle Bowl')]);
-    mockWeek._set(week({ [TODAY]: day({ recipeIds: ['r1'], chefs: [sam.id] }) }));
+  it('lists a fired-but-undismissed timer alongside the running ones (#682)', () => {
+    // The gap this phase closes: an expired timer stays in `activeTimers` until it
+    // is dismissed, and "fired" is derived from the clock, not from a field.
+    mockRecipes._set([timedRecipe('r1', 'Ragu')]);
+    mockSessions._set([session('r1', [], [timer('r1-s0', -30_000), timer('r1-s1', 60_000)])]);
 
-    const t = get(tonight);
-    expect(t?.recipes.map((r) => r.title)).toEqual(['Noodle Bowl']);
-    expect(t?.chefs.map((c) => c.name)).toEqual(['Sam Blue']);
-    expect(t?.planned).toBe(true);
+    expect(get(myTimers)).toHaveLength(2);
+    expect(get(firedTimers).map((t) => t.timer.stepId)).toEqual(['r1-s0']);
+  });
 
-    mockWeek._set(week({}));
-    expect(get(tonight)?.planned).toBe(false);
+  it('sorts soonest-ending first, so anything already fired floats to the top', () => {
+    mockRecipes._set([timedRecipe('r1', 'Ragu')]);
+    mockSessions._set([session('r1', [], [timer('r1-s1', 60_000), timer('r1-s0', -30_000)])]);
+    expect(get(myTimers).map((t) => t.timer.stepId)).toEqual(['r1-s0', 'r1-s1']);
+  });
+
+  it('falls back to "Step N" without a label, and "Timer" once the step is gone', () => {
+    mockRecipes._set([timedRecipe('r1', 'Ragu')]);
+    mockSessions._set([session('r1', [], [timer('r1-s1', 60_000), timer('deleted', 90_000)])]);
+
+    expect(get(myTimers).map((t) => t.label)).toEqual(['Step 2', 'Timer']);
+    // No step means no duration to scale a progress fill against.
+    expect(get(myTimers)[1]?.durationMs).toBeNull();
+  });
+
+  it('skips timers on a session whose recipe was deleted', () => {
+    mockSessions._set([session('gone', [], [timer('s0', 60_000)])]);
+    expect(get(myTimers)).toEqual([]);
   });
 });
 
-describe('yourWeek', () => {
-  it('highlights only my nights and marks the shop', () => {
-    mockWeek._set(
-      week({
-        [TOMORROW]: day({ chefs: [alex.id] }),
-        [IN_THREE]: day({ chefs: [sam.id] }),
-      }),
-    );
-    mockWeekShopDay._set(shopDay(IN_TWO));
+describe('timerNowMs', () => {
+  it('does not tick while nothing is running, and ticks every second once one is', () => {
+    // The badge subscribes this from every page, so an interval that ran for ever
+    // to serve a badge reading zero would be pure waste.
+    const seen: number[] = [];
+    const unsub = timerNowMs.subscribe((v) => seen.push(v));
+    seen.length = 0;
 
-    const mine = get(yourWeek);
-    expect(mine.chefDates).toEqual([TOMORROW]);
-    expect(mine.days).toHaveLength(7);
-    expect(mine.days.find((d) => d.date === IN_TWO)?.isShopDay).toBe(true);
-    expect(mine.days.find((d) => d.date === TODAY)?.isToday).toBe(true);
+    vi.advanceTimersByTime(5_000);
+    expect(seen).toEqual([]);
 
-    mockCurrentMember._set(sam);
-    expect(get(yourWeek).chefDates).toEqual([IN_THREE]);
+    mockRecipes._set([recipe('r1', 'Ragu')]);
+    mockSessions._set([session('r1', [], [timer('s0', 60_000)])]);
+    seen.length = 0;
+    const from = Date.now();
+
+    vi.advanceTimersByTime(3_000);
+    expect(seen).toEqual([from + 1_000, from + 2_000, from + 3_000]);
+
+    // Dismissing the last timer disarms it again.
+    mockSessions._set([session('r1')]);
+    seen.length = 0;
+    vi.advanceTimersByTime(5_000);
+    expect(seen).toEqual([]);
+
+    unsub();
   });
 });
 
-describe('needsYou', () => {
-  it('leads with the unshopped recipe you are cooking', () => {
-    mockRecipes._set([recipe('r1', 'Noodle Bowl', 4)]);
-    mockWeek._set(week({ [IN_TWO]: day({ recipeIds: ['r1'], chefs: [alex.id] }) }));
-
-    const cards = get(needsYou);
-    expect(cards).toHaveLength(1);
-    expect(cards[0]).toMatchObject({ kind: 'unshopped-mine', missingCount: 4, urgent: false });
-  });
-
-  it('ranks somebody else s night below the list, and shows only one of them', () => {
+describe('needsReviewRecipes', () => {
+  it('lists what nobody has saved yet, newest first, with no time limit', () => {
     mockRecipes._set([
-      recipe('r1', 'Pulled Chicken'),
-      recipe('r2', 'Fish Pie'),
-      recipe('r3', 'Mine'),
-    ]);
-    mockWeek._set(
-      week({
-        [TOMORROW]: day({ recipeIds: ['r1'], chefs: [sam.id] }),
-        [IN_TWO]: day({ recipeIds: ['r2'], chefs: [sam.id] }),
-        [IN_THREE]: day({ recipeIds: ['r3'], chefs: [alex.id] }),
+      recipe('old', 'Ancient import', {
+        createdAt: '2025-01-01T00:00:00.000Z',
+        updatedAt: '2025-01-01T00:00:00.000Z',
       }),
-    );
-    mockItems._set([item({ needsCheck: true })]);
-
-    expect(get(needsYou).map((c) => c.kind)).toEqual([
-      'unshopped-mine',
-      'needs-check',
-      'unshopped-other',
-    ]);
-  });
-
-  it('counts only unchecked flagged items, and says nothing when there are none', () => {
-    mockItems._set([
-      item({ needsCheck: true }),
-      item({ needsCheck: true }),
-      item({ needsCheck: true, checked: true }),
-      item(),
-    ]);
-    expect(get(needsYou)).toMatchObject([{ kind: 'needs-check', count: 2 }]);
-
-    mockItems._set([item()]);
-    expect(get(needsYou)).toEqual([]);
-  });
-
-  it('escalates when the shop is today or tomorrow, but not later in the week', () => {
-    mockItems._set([item({ needsCheck: true })]);
-
-    mockUpcomingShopDay._set(shopDay(TOMORROW));
-    expect(get(needsYou)[0]?.urgent).toBe(true);
-
-    mockUpcomingShopDay._set(shopDay(IN_THREE));
-    expect(get(needsYou)[0]?.urgent).toBe(false);
-  });
-
-  it('says nothing about a planned night that has nothing to buy (#637)', () => {
-    // A "When you CBA" night — a takeaway, a picnic — is a planned entry with no
-    // ingredients, so nothing can ever be added for it and no item can ever carry
-    // a source back to it: an unshopped card for it would sit there for ever
-    // saying "0 to add". The night alongside it, which DOES have ingredients,
-    // still nags. The rule is content-based, never kind-based (`kind` is absent
-    // from these fixtures on purpose) — a half-written recipe with no ingredient
-    // lines yet is the same non-problem, and the domain layer never learns about
-    // recipe kinds to get this right.
-    mockRecipes._set([recipe('o1', 'Takeaway — Indian', 0), recipe('r1', 'Noodle Bowl', 4)]);
-    mockWeek._set(
-      week({
-        [TOMORROW]: day({ recipeIds: ['o1'], chefs: [alex.id] }),
-        [IN_TWO]: day({ recipeIds: ['r1'], chefs: [alex.id] }),
+      recipe('new', 'Yesterday', {
+        createdAt: '2026-08-04T00:00:00.000Z',
+        updatedAt: '2026-08-04T00:00:00.000Z',
       }),
-    );
-
-    expect(get(needsYou)).toMatchObject([
-      { kind: 'unshopped-mine', id: 'unshopped:r1', missingCount: 4 },
+      recipe('done', 'Reviewed', { updatedAt: '2026-08-02T00:00:00.000Z' }),
     ]);
+
+    expect(get(needsReviewRecipes).map((r) => r.id)).toEqual(['new', 'old']);
   });
 
-  it('drops a recipe as soon as anything on the list came from it', () => {
-    mockRecipes._set([recipe('r1', 'Noodle Bowl')]);
-    mockWeek._set(week({ [IN_TWO]: day({ recipeIds: ['r1'], chefs: [alex.id] }) }));
-    expect(get(needsYou)).toHaveLength(1);
-
-    mockItems._set([item({ sources: [{ kind: 'recipe', recipeId: 'r1', servings: 2 }] })]);
-    expect(get(needsYou)).toEqual([]);
+  it('leaves out the kinds nobody would ever edit', () => {
+    mockRecipes._set([
+      recipe('p1', 'Generic Comfort', { kind: 'placeholder' } as Partial<Recipe>),
+      recipe('o1', 'Takeaway', { kind: 'outing' } as Partial<Recipe>),
+      recipe('r1', 'Noodle Bowl'),
+    ]);
+    expect(get(needsReviewRecipes).map((r) => r.id)).toEqual(['r1']);
   });
 });
 
 describe('mineOpenCount', () => {
-  it('counts every live cook plus the queue, and nothing else', () => {
+  it('counts every open cook plus every FIRED timer, and nothing else', () => {
     expect(get(mineOpenCount)).toBe(0);
 
-    mockRecipes._set([recipe('r1', 'Noodle Bowl', 3, 4), recipe('r2', 'Side Salad', 2, 2)]);
+    mockRecipes._set([withSteps('r1', 'Noodle Bowl', 4), withSteps('r2', 'Side Salad', 2)]);
     mockSessions._set([session('r1')]);
     expect(get(mineOpenCount)).toBe(1);
 
     mockSessions._set([session('r1'), session('r2')]);
     expect(get(mineOpenCount)).toBe(2);
 
-    mockItems._set([item({ needsCheck: true })]);
+    // A timer still counting down is running to plan — it does not want a hand.
+    mockSessions._set([session('r1', [], [timer('r1-s0', 60_000)]), session('r2')]);
+    expect(get(mineOpenCount)).toBe(2);
+
+    // Once it fires, it does.
+    mockSessions._set([session('r1', [], [timer('r1-s0', -1_000)]), session('r2')]);
     expect(get(mineOpenCount)).toBe(3);
+  });
+
+  it('leaves the review queue out — a standing queue must not pin a badge', () => {
+    mockRecipes._set([recipe('r1', 'Never reviewed')]);
+    expect(get(needsReviewRecipes)).toHaveLength(1);
+    expect(get(mineOpenCount)).toBe(0);
   });
 });
