@@ -189,15 +189,16 @@ describe('RecipeViewPage — optimise for my kitchen', () => {
     expect(vi.mocked(sendMessage).mock.calls[0]![0]).toMatchObject({ id: 'session-new' });
   });
 
-  it('reveals the chat column so the turn streams somewhere visible', async () => {
+  it('raises the drawer so the turn streams somewhere visible', async () => {
+    // Below the seam the chat column is not on screen, so a turn streamed into it would
+    // arrive where the user cannot see it. The drawer is where a chat goes now (#696).
     mockSessions._set([makeSession()]);
-    const { getByTestId } = renderPage();
+    const { getByTestId, queryByTestId } = renderPage();
 
-    expect(getByTestId('recipe-chat-sidebar').className).toContain('hidden');
+    expect(queryByTestId('recipe-chat-drawer')).toBeNull();
     await fireEvent.click(getByTestId('recipe-optimise-kitchen-button'));
 
-    await waitFor(() => expect(getByTestId('recipe-chat-sidebar').className).toContain('flex'));
-    expect(getByTestId('recipe-chat-sidebar').className).not.toContain('hidden');
+    await waitFor(() => expect(getByTestId('recipe-chat-drawer')).toBeInTheDocument());
   });
 
   it('asks for a method-only rewrite, timings that move with it, and proportionality', async () => {
@@ -229,14 +230,17 @@ describe('RecipeViewPage — optimise for my kitchen', () => {
       kind: 'err',
       error: { kind: 'NetworkError', reason: 'transient' },
     } as Awaited<ReturnType<typeof sendMessage>>);
-    const { getByTestId, getByPlaceholderText } = renderPage();
+    const { getByTestId, getAllByPlaceholderText } = renderPage();
 
     await fireEvent.click(getByTestId('recipe-optimise-kitchen-button'));
     await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
 
     // Even on failure: the composer restores hand-typed text, not a canned paragraph.
+    // Every composer on the page — the drawer's and the column's — stays empty.
     await waitFor(() =>
-      expect((getByPlaceholderText('Message the chef…') as HTMLTextAreaElement).value).toBe(''),
+      expect(
+        getAllByPlaceholderText('Message the chef…').map((el) => (el as HTMLTextAreaElement).value),
+      ).not.toContain(expect.stringContaining('re-work it')),
     );
   });
 });

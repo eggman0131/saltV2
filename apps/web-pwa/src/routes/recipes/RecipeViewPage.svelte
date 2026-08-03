@@ -41,6 +41,7 @@
   import RecipeAddToPlannerSheet from './RecipeAddToPlannerSheet.svelte';
   import RecipeChangeSummary from './RecipeChangeSummary.svelte';
   import RecipeChatList from './RecipeChatList.svelte';
+  import RecipeChatDrawer from './RecipeChatDrawer.svelte';
   import { chatsForRecipe } from './recipeChats.js';
   import IngredientText from './IngredientText.svelte';
   import { canonItems } from '../../lib/canonService.js';
@@ -283,9 +284,54 @@ Finish with a short note on what you changed and why, so I can read the gist her
     return result.value;
   }
 
+  // Is the chat docked in a column of its own? Above the seam it is, and there is
+  // nothing for a drawer to do; below it, opening a chat raises the drawer over the
+  // live recipe. `false` — the phone path — is the honest default whenever the answer
+  // cannot be read: SSR, a jsdom without `matchMedia`, a query the engine rejects.
+  // Same shape as `MealPlanWeekPage`'s split read, which is the house pattern.
+  const DOCKED_QUERY = '(width >= 1024px)';
+  let docked = $state(false);
+  $effect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    let mql: MediaQueryList;
+    try {
+      mql = window.matchMedia(DOCKED_QUERY);
+    } catch {
+      return;
+    }
+    docked = mql.matches;
+    // A stubbed MediaQueryList (the unit suite ships one) can carry no listener API at
+    // all, and resizing is the only thing the listener is for.
+    if (typeof mql.addEventListener !== 'function') return;
+    const onChange = (event: MediaQueryListEvent): void => {
+      docked = event.matches;
+    };
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+  });
+
+  // The drawer's stop is in-memory only and so is whether it is open — Rule 3, and
+  // nothing here is worth restoring across a reload anyway.
+  let drawerOpen = $state(false);
+
+  // Opening a chat from the recipe never leaves the recipe. Above the seam the chat is
+  // already beside it, so selecting is the whole action; below it, the drawer rises.
   function openChat(session: ChatSessionDoc): void {
     selectedSessionId = session.id;
-    push(`/chat/${session.id}`);
+    if (!docked) {
+      drawerOpen = true;
+      scrollRecipeToBody();
+    }
+  }
+
+  // The strip the drawer leaves visible should hold the ingredients, not the hero photo
+  // — the whole point is reading the answer and the thing it is about in one glance. So
+  // the page behind scrolls to its body on open, and only then: at every other moment
+  // the recipe's scroll position is the user's.
+  let bodyAnchorEl = $state<HTMLElement | undefined>(undefined);
+
+  function scrollRecipeToBody(): void {
+    bodyAnchorEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   async function handleNewChat(): Promise<void> {
@@ -311,11 +357,11 @@ Finish with a short note on what you changed and why, so I can read the gist her
   // kitchen" can start one on a session the component is not yet showing.
   const chat = createChatThread();
 
-  // The chat column is desktop-only by default (`hidden lg:flex`). An action that
-  // streams its answer INTO that column has to reveal it below `lg`, or the reply
-  // arrives somewhere the user cannot see. Set once, never unset: having asked for
-  // a turn, you keep the transcript.
-  let sidebarRevealed = $state(false);
+  // The chat column is desktop-only (`hidden lg:flex`), and this once forced it open
+  // below `lg` so a streamed answer arrived somewhere visible. Nothing sets it any
+  // more: below the seam the drawer is where a chat goes, and it does that job
+  // properly. Inert until Phase 4 deletes it along with the `lg:` column rule.
+  const sidebarRevealed = false;
 
   // ─── Optimise for my kitchen ────────────────────────────────────────────────
   // Sends OPTIMISE_FOR_KITCHEN_PROMPT as an ordinary user turn, creating the
@@ -333,7 +379,6 @@ Finish with a short note on what you changed and why, so I can read the gist her
     if (!recipe || optimiseBusy || chat.isSending) return;
     const uid = auth.user?.uid;
     if (!uid) return;
-    sidebarRevealed = true;
     optimiseBusy = true;
 
     const session = activeSession ?? (await createRecipeChat());
@@ -341,6 +386,8 @@ Finish with a short note on what you changed and why, so I can read the gist her
       optimiseBusy = false;
       return;
     }
+    // Put the transcript somewhere visible before the reply starts arriving in it.
+    openChat(session);
 
     await chat.send(session, OPTIMISE_FOR_KITCHEN_PROMPT);
     optimiseBusy = false;
@@ -990,6 +1037,11 @@ Finish with a short note on what you changed and why, so I can read the gist her
           </Card>
         {/if}
 
+        <!-- Where the recipe scrolls to when the drawer opens (issue #696): the strip
+             left above the chat should hold what the chef is talking about, not the
+             hero photograph. -->
+        <div bind:this={bodyAnchorEl} class="scroll-mt-4"></div>
+
         <!-- Ingredients. The whole CARD goes when the concept doesn't apply
              (issue #637), not just its contents: a card headed "Ingredients"
              saying "No ingredients." is worse than no card, because it reads as
@@ -1176,31 +1228,12 @@ Finish with a short note on what you changed and why, so I can read the gist her
               </Button>
             </CardContent>
           {:else}
-            {#snippet sidebarAboveComposer()}
-              <!-- Update recipe -->
-              {#if activeSession!.messages.some((m) => m.role === 'assistant')}
-                <div class="shrink-0 border-t px-3 pt-3">
-                  <Button
-                    variant="outline"
-                    class="w-full"
-                    onclick={handleSidebarReviewChanges}
-                    loading={sidebarIsProposing}
-                    disabled={sidebarIsProposing || chat.isSending}
-                    data-testid="sidebar-apply-changes-btn"
-                  >
-                    {#snippet leading()}<Icon name="RefreshCw" size={14} />{/snippet}
-                    Review changes
-                  </Button>
-                </div>
-              {/if}
-            {/snippet}
-
             <ChatThread
               session={activeSession}
               thread={chat}
               layout="panel"
               emptyText="Ask me anything about this recipe."
-              aboveComposer={sidebarAboveComposer}
+              aboveComposer={sidebarReviewChanges}
             />
           {/if}
         </Card>
@@ -1217,6 +1250,50 @@ Finish with a short note on what you changed and why, so I can read the gist her
 <!-- Day picker for "Add to planner" -->
 {#if recipe}
   <RecipeAddToPlannerSheet {recipe} bind:open={addToPlannerOpen} />
+{/if}
+
+<!-- "Review changes", wherever the conversation is being read — the docked column or the
+     drawer. One button, one handler, so an edit proposed from a phone and an edit
+     proposed from a laptop are the same act. -->
+{#snippet reviewChangesAction(testid: string)}
+  {#if activeSession?.messages.some((m) => m.role === 'assistant')}
+    <div class="shrink-0 border-t px-3 pt-3">
+      <Button
+        variant="outline"
+        class="w-full"
+        onclick={handleSidebarReviewChanges}
+        loading={sidebarIsProposing}
+        disabled={sidebarIsProposing || chat.isSending}
+        data-testid={testid}
+      >
+        {#snippet leading()}<Icon name="RefreshCw" size={14} />{/snippet}
+        Review changes
+      </Button>
+    </div>
+  {/if}
+{/snippet}
+
+<!-- The two surfaces are separate DOM nodes and both can be mounted at once (the column
+     is merely `hidden` below `lg`), so they carry distinct testids — one ambiguous
+     selector is a worse trap than two names for one button. -->
+{#snippet sidebarReviewChanges()}
+  {@render reviewChangesAction('sidebar-apply-changes-btn')}
+{/snippet}
+
+{#snippet drawerReviewChanges()}
+  {@render reviewChangesAction('drawer-apply-changes-btn')}
+{/snippet}
+
+<!-- The chef over the live recipe (issue #696). Only below the seam: above it the same
+     conversation is docked in its own column, and two of it would be one too many. -->
+{#if recipe && activeSession && drawerOpen && !docked}
+  <RecipeChatDrawer
+    session={activeSession}
+    thread={chat}
+    onClose={() => (drawerOpen = false)}
+    onOpenFull={() => push(`/chat/${activeSession!.id}`)}
+    aboveComposer={drawerReviewChanges}
+  />
 {/if}
 
 <!-- Review-and-approve gate for the pending AI edit (Phase 2) -->

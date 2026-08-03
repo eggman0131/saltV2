@@ -177,13 +177,15 @@ describe('RecipeViewPage — the chat list', () => {
     expect(getByTestId('recipe-chat-list-item').textContent).toContain('Use one head.');
   });
 
-  it('opens the chat you tapped', async () => {
+  it('opens the chat you tapped without leaving the recipe', async () => {
     mockSessions._set([makeSession({ id: 'session-7' })]);
-    const { getByTestId } = renderPage();
+    const { getByTestId, queryByTestId } = renderPage();
+    expect(queryByTestId('recipe-chat-drawer')).toBeNull();
 
     await fireEvent.click(getByTestId('recipe-chat-list-item'));
 
-    expect(push).toHaveBeenCalledWith('/chat/session-7');
+    await waitFor(() => expect(getByTestId('recipe-chat-drawer')).toBeInTheDocument());
+    expect(push).not.toHaveBeenCalled();
   });
 
   it('still renders, with an invitation, when there are no chats yet', () => {
@@ -195,11 +197,19 @@ describe('RecipeViewPage — the chat list', () => {
 });
 
 describe('RecipeViewPage — starting and continuing', () => {
-  it('names a new chat after the dish', async () => {
-    vi.mocked(createChatSession).mockResolvedValue({
-      kind: 'ok',
-      value: makeSession({ id: 'session-new' }),
+  // The real createChatSession inserts optimistically before it resolves, which is what
+  // lets the surface showing a chat switch to the new one straight away.
+  function createsInto(id: string) {
+    const created = makeSession({ id, updatedAt: '2026-12-01T00:00:00.000Z' });
+    vi.mocked(createChatSession).mockImplementation(async () => {
+      mockSessions._set([created]);
+      return { kind: 'ok', value: created };
     });
+    return created;
+  }
+
+  it('names a new chat after the dish', async () => {
+    createsInto('session-new');
     const { getByTestId } = renderPage();
 
     await fireEvent.click(getByTestId('recipe-chat-new-btn'));
@@ -207,7 +217,7 @@ describe('RecipeViewPage — starting and continuing', () => {
     await waitFor(() =>
       expect(createChatSession).toHaveBeenCalledWith('uid-1', RECIPE_ID, 'Cauliflower Steaks'),
     );
-    expect(push).toHaveBeenCalledWith('/chat/session-new');
+    await waitFor(() => expect(getByTestId('recipe-chat-drawer')).toBeInTheDocument());
   });
 
   it('"Chat" continues the most recent conversation instead of creating another', async () => {
@@ -220,14 +230,15 @@ describe('RecipeViewPage — starting and continuing', () => {
     await fireEvent.click(getByTestId('recipe-ask-amend-button'));
 
     expect(createChatSession).not.toHaveBeenCalled();
-    expect(push).toHaveBeenCalledWith('/chat/newest');
+    // The newest conversation, raised over the recipe rather than replacing it.
+    await waitFor(() =>
+      expect(getByTestId('recipe-chat-drawer').textContent).toContain('Cauliflower Steaks chat'),
+    );
+    expect(push).not.toHaveBeenCalled();
   });
 
   it('"Chat" starts one when the dish has none', async () => {
-    vi.mocked(createChatSession).mockResolvedValue({
-      kind: 'ok',
-      value: makeSession({ id: 'session-first' }),
-    });
+    createsInto('session-first');
     const { getByTestId } = renderPage();
 
     await fireEvent.click(getByTestId('recipe-ask-amend-button'));
@@ -235,6 +246,6 @@ describe('RecipeViewPage — starting and continuing', () => {
     await waitFor(() =>
       expect(createChatSession).toHaveBeenCalledWith('uid-1', RECIPE_ID, 'Cauliflower Steaks'),
     );
-    expect(push).toHaveBeenCalledWith('/chat/session-first');
+    await waitFor(() => expect(getByTestId('recipe-chat-drawer')).toBeInTheDocument());
   });
 });

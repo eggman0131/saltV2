@@ -32,8 +32,12 @@
     layout: 'page' | 'panel';
     /** Shown when the conversation is empty — the invitation, worded by the host. */
     emptyText: string;
-    /** Host actions that belong with the composer rather than the page header. */
-    aboveComposer?: Snippet;
+    /**
+     * Host actions that belong with the composer rather than the page header.
+     * `| undefined` is `exactOptionalPropertyTypes`: a host that forwards its own
+     * optional snippet has to be able to forward the one it does not have.
+     */
+    aboveComposer?: Snippet | undefined;
   }
   let { session, thread, layout, emptyText, aboveComposer }: Props = $props();
 
