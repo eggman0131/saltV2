@@ -435,6 +435,61 @@ export async function moveSelectedItems(
   );
 }
 
+export interface ItemEdits {
+  readonly rawText: string;
+  readonly amount: number | undefined;
+  readonly unit: string | undefined;
+  readonly notes: string;
+  readonly needsCheck: boolean;
+}
+
+// Apply the edit sheet's fields AND move the item to another list, as one write
+// (issue #694). The edits must ride along INSIDE the moved document: they are
+// composed over the items array in memory, and only the final item is handed to
+// the batch. Writing the fields first and then calling moveSelectedItems would
+// lose them — that function re-reads `_itemsForActiveList`, which is fed by a
+// Firestore snapshot listener and is not guaranteed to show a write issued in
+// the same tick, so the batch could carry the PRE-EDIT item to the destination
+// and delete the edited one from the source.
+//
+// Validation short-circuits before anything is written: editItemRawText rejects
+// an empty rawText with INVALID_ITEM_RAW_TEXT, and no batch is issued.
+export async function moveItemWithEdits(
+  sourceListId: string,
+  targetListId: string,
+  itemId: string,
+  edits: ItemEdits,
+): Promise<ReadResult<void, DomainError>> {
+  const now = new Date().toISOString();
+  const withRawText = editItemRawText(get(_itemsForActiveList), {
+    id: itemId,
+    rawText: edits.rawText,
+    now,
+  });
+  if (withRawText.kind !== 'ok') return withRawText;
+  const withAmountUnit = editItemAmountUnit(withRawText.value, {
+    id: itemId,
+    amount: edits.amount,
+    unit: edits.unit,
+    now,
+  });
+  if (withAmountUnit.kind !== 'ok') return withAmountUnit;
+  const withNotes = editItemNotes(withAmountUnit.value, { id: itemId, notes: edits.notes, now });
+  if (withNotes.kind !== 'ok') return withNotes;
+  const withNeedsCheck = domainSetItemNeedsCheck(withNotes.value, {
+    id: itemId,
+    needsCheck: edits.needsCheck,
+    now,
+  });
+  if (withNeedsCheck.kind !== 'ok') return withNeedsCheck;
+  const moved = moveItems(withNeedsCheck.value, [], { itemIds: [itemId], now });
+  if (moved.kind !== 'ok') return moved;
+  return reportIfFailed(
+    getErrorReporter(),
+    await moveShoppingListItems(sourceListId, targetListId, moved.value.targetItems),
+  );
+}
+
 // ─── Snapshots ────────────────────────────────────────────────────────────────
 
 export function getShoppingListsSnapshot(): readonly ShoppingList[] {

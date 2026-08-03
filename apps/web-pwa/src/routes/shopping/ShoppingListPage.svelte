@@ -15,6 +15,10 @@
     Popover,
     PopoverContent,
     PopoverTrigger,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
     Sheet,
     SheetContent,
     SheetFooter,
@@ -58,6 +62,7 @@
     confirmItemNeeded,
     confirmItemsNeeded,
     setItemNeedsCheck,
+    moveItemWithEdits,
   } from '../../lib/shoppingListService.svelte.js';
   import { upcomingShopDay } from '../../lib/shoppingDayService.js';
   import { addToast } from '../../lib/toastStore.js';
@@ -350,6 +355,10 @@
   let editUnit = $state('');
   let editNotes = $state('');
   let editNeedsCheck = $state(false);
+  // Armed, not applied: a picked list is a pending choice until Save, so Cancel
+  // abandons it exactly as it abandons a half-typed name (issue #694). Empty
+  // string = stay on this list.
+  let editTargetListId = $state('');
   let editBusy = $state(false);
   let editDeleteBusy = $state(false);
 
@@ -360,6 +369,7 @@
     editUnit = item.unit ?? '';
     editNotes = item.notes;
     editNeedsCheck = item.needsCheck;
+    editTargetListId = '';
     editSheetOpen = true;
   }
 
@@ -372,6 +382,29 @@
     const parsedUnit = editUnit.trim() || undefined;
     const amountUnitChanged =
       parsedAmount !== editingItem.amount || parsedUnit !== editingItem.unit;
+    const amount = Number.isNaN(parsedAmount) ? undefined : parsedAmount;
+
+    // Armed move: the edits must ride along INSIDE the moved document, so they
+    // are composed with the move into ONE write rather than issued as separate
+    // per-field writes first. See moveItemWithEdits for why the naive order
+    // silently loses them.
+    if (editTargetListId) {
+      const r = await moveItemWithEdits(params.listId, editTargetListId, editingItem.id, {
+        rawText: editRawText,
+        amount,
+        unit: parsedUnit,
+        notes: editNotes,
+        needsCheck: editNeedsCheck,
+      });
+      editBusy = false;
+      if (r.kind !== 'ok') {
+        addToast('Failed to move item.', 'destructive');
+        return;
+      }
+      editSheetOpen = false;
+      return;
+    }
+
     if (rawChanged) {
       const r = await updateItemRawText(params.listId, editingItem.id, editRawText);
       if (r.kind !== 'ok') {
@@ -381,12 +414,7 @@
       }
     }
     if (amountUnitChanged) {
-      const r = await updateItemAmountUnit(
-        params.listId,
-        editingItem.id,
-        Number.isNaN(parsedAmount) ? undefined : parsedAmount,
-        parsedUnit,
-      );
+      const r = await updateItemAmountUnit(params.listId, editingItem.id, amount, parsedUnit);
       if (r.kind !== 'ok') {
         addToast('Failed to update quantity.', 'destructive');
         editBusy = false;
@@ -1263,6 +1291,33 @@
           description="Ask whoever shops to confirm we need this before buying."
         />
       </div>
+      <!--
+        Which list the item is on (#694). Absent when there is nowhere to move it.
+        The listbox portals into this SheetContent by default since #691 — do not
+        add a portal prop or a marker class.
+      -->
+      {#if otherLists.length > 0}
+        <div class="flex flex-col gap-1.5">
+          <span class="text-sm font-medium">List</span>
+          <Select
+            value={editTargetListId}
+            onValueChange={(v) => (editTargetListId = v)}
+            disabled={editBusy}
+          >
+            <SelectTrigger data-testid="shopping-edit-move-select">
+              {otherLists.find((l) => l.id === editTargetListId)?.name ??
+                currentList?.name ??
+                'This list'}
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">{currentList?.name ?? 'This list'}</SelectItem>
+              {#each otherLists as list (list.id)}
+                <SelectItem value={list.id}>{list.name}</SelectItem>
+              {/each}
+            </SelectContent>
+          </Select>
+        </div>
+      {/if}
       {#if editingItem && editingItem.sources.length > 0}
         <div class="flex flex-col gap-1.5" data-testid="shopping-edit-sources">
           <span class="text-sm font-medium">Sources</span>
