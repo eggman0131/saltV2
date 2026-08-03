@@ -1,4 +1,4 @@
-# Salt 2.0 — UI Primitives Specification (v0.2.9)
+# Salt 2.0 — UI Primitives Specification (v0.2.10)
 
 **Status:** Authoritative
 **Audience:** AI code generators + human contributors
@@ -236,8 +236,10 @@ All interactive primitives must:
 - Compound primitives use explicit sub-components (`DialogTrigger`, `DialogContent`). No string-based `type` props.
 - No DOM traversal upward (`parentNode` walks). Communication is via context keys set by the root.
 - Context keys are defined in the per-primitive `src/headless/<Primitive>.headless.svelte.ts` file and imported directly by that primitive.
-- Portals allowed only for: Dialog, Popover, Tooltip.
-- `portal: HTMLElement | string | false` (default `"body"`). String values are treated as CSS selectors.
+- Portals allowed only for: Dialog, Popover, Tooltip, Select, Combobox. The first three use bits-ui's own `.Portal` part (§3.7); the anchored listboxes of Select and Combobox move their own floating-ui-positioned wrapper, because bits-ui owns no part for them.
+- `portal: HTMLElement | string | false`. String values are treated as CSS selectors.
+  - Dialog, Popover, Tooltip and Sheet default to `"body"`.
+  - **Select and Combobox default to _unset_, which means "the enclosing `DialogContent`/`SheetContent` if there is one, `<body>` otherwise".** A dropdown opened inside a modal must not portal to `<body>`: the modal puts `pointer-events: none` there, so the listbox renders and is inert (#674, #640). The enclosing element is published on the `PortalContainer` context key by `DialogContent`/`SheetContent` and read optionally by the two listboxes — not found by walking the DOM. Passing an explicit target still wins, for a host that knows better.
 - Controlled/uncontrolled pattern (canonical wiring in §3.6):
   - `value` — bindable, always reflects the current state.
   - `defaultValue` — initial uncontrolled value; read once, never again.
@@ -424,12 +426,21 @@ export function createContext<T>(name: string) {
       }
       return value;
     },
+    // Absent is an answer, not an error — for a context one primitive reads to
+    // notice it happens to be rendered inside another (§2.5).
+    getOptional: (): T | undefined => {
+      try {
+        return getContext<T>(key);
+      } catch {
+        return undefined;
+      }
+    },
     key,
   };
 }
 ```
 
-Context objects are exported from each headless file as a named constant (e.g., `DIALOG_CONTEXT = createContext<DialogState>('Dialog')`).
+Context objects are exported from each headless file as a named constant (e.g., `DIALOG_CONTEXT = createContext<DialogState>('Dialog')`). One key is not owned by a primitive: `PORTAL_CONTAINER_CONTEXT` in `src/headless/PortalContainer.headless.svelte.ts`, published by `DialogContent`/`SheetContent` and read with `getOptional` by `SelectContent`/`ComboboxContent` (§2.5).
 
 ### `src/lib/variants.ts`
 
@@ -651,7 +662,7 @@ Which v0.2 primitives wrap which bits-ui primitive. **No other mapping is permit
 | Spinner                      | —                 | Inline SVG.                                                                                            |
 | Progress                     | `Progress`        | Wrap `Progress.Root` + `Progress.Indicator`.                                                           |
 
-Portal implementation uses bits-ui's built-in `.Portal` part for Dialog, Popover, Tooltip. Do not implement a custom portal.
+Portal implementation uses bits-ui's built-in `.Portal` part for Dialog, Popover, Tooltip. Do not implement a custom portal. `Select` and `Combobox` are the stated exception in §2.5 — they are hand-rolled on floating-ui, bits-ui owns no part for them, and their content components move their own wrapper.
 
 ---
 
@@ -760,14 +771,16 @@ Two rules follow from the table and are the point of writing it down:
 - **A new overlay joins an existing rung or amends this table.** "One more than the thing I collided with" is how a ladder stops being one.
 - **Raw `z-<n>` is permitted only below the named tokens** (the first three rungs), where the value is structural rather than a floating layer. At `z-popover` and above, use the token.
 
-**Known exception (#674).** `SelectContent` and `ComboboxContent` portal their
-listbox to `<body>` and use a raw `z-50`. That is not sloppiness: body-portalled
-puts them in the root stacking context alongside `Dialog`/`Sheet`, so a `Select`
-opened inside a Sheet must clear the panel at `z-dialog` (50) — `z-popover` (40)
-would render it underneath. The ladder has no rung for *an anchored floating
-surface opened from within a dialog or sheet*, and the fix is to portal into the
-enclosing `SheetContent` (which also repairs the `pointer-events` bug that makes
-such a dropdown inert), not to invent a rung. Do not copy the raw value.
+**A dropdown opened inside a dialog needs no rung of its own (#674).** It looks
+like it does: body-portalled, `SelectContent`/`ComboboxContent` share the root
+stacking context with `Dialog`/`Sheet`, so their listbox has to clear the panel
+at `z-dialog` (50) and `z-popover` (40) would put it underneath. The resolution
+is not a fourth floating rung but a smaller stacking context — those two portal
+into the enclosing `DialogContent`/`SheetContent` (§2.5), which is `fixed` at
+`z-dialog` and therefore a stacking context of its own. Inside it the listbox is
+simply the anchored floating surface the `Popover` rung already describes, and
+`z-popover` is correct. This is the general answer: when a new overlay seems to
+need a rung above the layer that opened it, put it *inside* that layer instead.
 
 ---
 

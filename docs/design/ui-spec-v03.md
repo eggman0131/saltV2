@@ -1,4 +1,4 @@
-# Salt 2.0 — UI Primitives Specification (v0.3.2, Draft for Planning)
+# Salt 2.0 — UI Primitives Specification (v0.3.3, Draft for Planning)
 
 **Status:** Planning  
 **Scope:** `@salt/ui-components` — new primitives only  
@@ -145,7 +145,7 @@ Not a native `<select>`.
 - `required: boolean = false`
 - `name?: string` — hidden input for forms
 - `placeholder?: string` — shown when no value
-- `portal: HTMLElement | string | false = "body"`
+- `portal?: HTMLElement | string | false` — unset means the enclosing `DialogContent`/`SheetContent` if there is one, `<body>` otherwise (v0.2 §2.5, #674)
 - `class?: string`
 
 ### 3.4 SelectTrigger Props

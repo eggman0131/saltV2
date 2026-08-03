@@ -1,4 +1,4 @@
-// spec: SPEC.md §3.5 v0.2.3
+// spec: SPEC.md §3.5 v0.2.10
 import { getContext, setContext } from 'svelte';
 
 export function createContext<T>(name: string) {
@@ -19,6 +19,16 @@ export function createContext<T>(name: string) {
         throw new Error(`${name} context not found. Wrap in the matching root component.`);
       }
       return value;
+    },
+    // For a context that is genuinely optional — one primitive noticing that it
+    // happens to be rendered inside another (§2.5). Absent is an answer here,
+    // not an error, so this never throws.
+    getOptional: (): T | undefined => {
+      try {
+        return getContext<T>(key);
+      } catch {
+        return undefined;
+      }
     },
     key,
   };

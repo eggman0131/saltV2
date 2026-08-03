@@ -85,7 +85,7 @@ A text input that:
 | `name`         | string \| undefined                                | —              | Hidden input name                 |
 | `placeholder`  | string \| undefined                                | —              | Input placeholder                 |
 | `openOnClick`  | boolean                                            | true           | If false, clicking/focusing the input does **not** open the popup — it opens only once the user types. Shopping-list add field sets this `false`; canon page keeps the default |
-| `portal`       | HTMLElement \| string \| false                     | "body"         | Portal target for content         |
+| `portal`       | HTMLElement \| string \| false                     | unset          | Portal target for content. Unset means the enclosing `DialogContent`/`SheetContent` if there is one, `<body>` otherwise (v0.2 §2.5, #674) |
 | `filterFn`     | (input: string, item: { value; label }) => boolean | default filter | Optional custom filter function   |
 | `class`        | string \| undefined                                | —              | Root class                        |
 
