@@ -22,6 +22,12 @@ import { gotoAndSignIn, uniqueEmail, waitForBridge } from './helpers/auth';
 import { SYNC_TIMEOUT } from './helpers/timeouts';
 import type { ShoppingListItem } from '@salt/domain';
 
+// A phone, pinned explicitly (#696, Phase 4). The recipe page docks its chat column
+// from 700x480 up, and this spec inherits the project's 1280x720 desktop default —
+// which would put it on the two-column layout the assertions below were never
+// written for. Same numbers as `recipe-alternatives.spec.ts`.
+test.use({ viewport: { width: 393, height: 851 } });
+
 test.describe('recipe → shopping list extraction', () => {
   test('adds all ingredients from all groups and carries recipe source', async ({
     page,

@@ -284,12 +284,18 @@ Finish with a short note on what you changed and why, so I can read the gist her
     return result.value;
   }
 
-  // Is the chat docked in a column of its own? Above the seam it is, and there is
+  // Is the chat docked in a column of its own? From the fold up it is, and there is
   // nothing for a drawer to do; below it, opening a chat raises the drawer over the
   // live recipe. `false` — the phone path — is the honest default whenever the answer
   // cannot be read: SSR, a jsdom without `matchMedia`, a query the engine rejects.
   // Same shape as `MealPlanWeekPage`'s split read, which is the house pattern.
-  const DOCKED_QUERY = '(width >= 1024px)';
+  //
+  // This must stay the SAME GATE as the `split:` variant the column is laid out with
+  // (`app.css`), and in the same RANGE SYNTAX the browser actually sees: on an engine
+  // too old for range queries the emitted CSS is inert, and a `min-width:` query here
+  // would answer "yes, docked" for a page that is still one column — suppressing the
+  // drawer with no pane to replace it, i.e. a recipe where tapping a chat does nothing.
+  const DOCKED_QUERY = '(width >= 700px) and (height >= 480px)';
   let docked = $state(false);
   $effect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
@@ -356,12 +362,6 @@ Finish with a short note on what you changed and why, so I can read the gist her
   // ChatThread's — this page only holds the live turn state so "Optimise for my
   // kitchen" can start one on a session the component is not yet showing.
   const chat = createChatThread();
-
-  // The chat column is desktop-only (`hidden lg:flex`), and this once forced it open
-  // below `lg` so a streamed answer arrived somewhere visible. Nothing sets it any
-  // more: below the seam the drawer is where a chat goes, and it does that job
-  // properly. Inert until Phase 4 deletes it along with the `lg:` column rule.
-  const sidebarRevealed = false;
 
   // ─── Optimise for my kitchen ────────────────────────────────────────────────
   // Sends OPTIMISE_FOR_KITCHEN_PROMPT as an ordinary user turn, creating the
@@ -897,7 +897,17 @@ Finish with a short note on what you changed and why, so I can read the gist her
       </div>
     {/snippet}
 
-    <div class="grid gap-4 lg:grid-cols-[2fr_1fr] lg:gap-6" data-testid="recipe-view">
+    <!-- Two columns from the fold up (issue #696, Phase 4). At `split` the halves are
+         EQUAL, because that is the only thing keeping the gutter over the crease — the
+         device reports one viewport segment, so nothing can be aligned to the fold
+         directly. `gap-10` is the settled gutter, the same number #663 landed on for the
+         planner. Above `lg` there is no crease and the recipe deserves the room, so the
+         page keeps the 2fr/1fr it has always had. The nav seam stays at `lg`: the fold
+         keeps its bottom bar AND gets two columns. -->
+    <div
+      class="grid gap-4 split:grid-cols-2 split:gap-10 lg:grid-cols-[2fr_1fr] lg:gap-6"
+      data-testid="recipe-view"
+    >
       <!-- Left column: main recipe content -->
       <div class="flex flex-col gap-4">
         <!-- Unreviewed AI import (issue #616). Informational, never a gate: the
@@ -1164,27 +1174,26 @@ Finish with a short note on what you changed and why, so I can read the gist her
           </Card>
         {/if}
 
-        <!-- Every chat about this dish (issue #696). It sits at the foot of the
-             recipe column so it is reachable on a phone, where the chat column
-             beside it is not rendered. -->
-        <RecipeChatList
-          chats={recipeChats}
-          activeId={activeSession?.id ?? null}
-          onSelect={openChat}
-          onNew={handleNewChat}
-          creating={amendBusy}
-        />
+        <!-- Every chat about this dish (issue #696). Below the seam there is no second
+             column, so the list lives at the foot of the recipe; from `split` up it
+             moves into the chat column above the conversation it selects. Rendered in
+             one place or the other, never both — one `recipe-chat-list` on the page. -->
+        {#if !docked}
+          {@render chatListCard()}
+        {/if}
       </div>
 
-      <!-- Right column: embedded chat sidebar. Desktop-only by default; below `lg`
-           it is revealed on demand by an action that streams a turn into it
-           ("Optimise for my kitchen"), where it stacks under the recipe content. -->
-      <div
-        class="{sidebarRevealed ? 'flex' : 'hidden'} flex-col lg:flex"
-        data-testid="recipe-chat-sidebar"
-      >
+      <!-- Right column: the chat, docked from `split` up. Below that it does not render
+           at all and Phase 3's drawer is the whole story — the reveal hack this column
+           used to need is gone with it. -->
+      <div class="hidden flex-col split:flex" data-testid="recipe-chat-sidebar">
+        <!-- The list of conversations sits above the one you are reading, so choosing
+             another is a glance and a tap rather than a scroll back to the recipe. -->
+        {#if docked}
+          <div class="mb-4 shrink-0">{@render chatListCard()}</div>
+        {/if}
         <Card
-          class="flex flex-col overflow-hidden lg:sticky lg:top-4 lg:min-h-0 lg:max-h-[calc(100dvh_-_5.5rem)] lg:flex-1"
+          class="flex flex-col overflow-hidden split:sticky split:top-4 split:min-h-0 split:max-h-[calc(100dvh_-_5.5rem)] split:flex-1"
         >
           <CardHeader class="shrink-0 border-b px-4 py-3">
             <div class="flex items-center justify-between">
@@ -1255,6 +1264,16 @@ Finish with a short note on what you changed and why, so I can read the gist her
 <!-- "Review changes", wherever the conversation is being read — the docked column or the
      drawer. One button, one handler, so an edit proposed from a phone and an edit
      proposed from a laptop are the same act. -->
+{#snippet chatListCard()}
+  <RecipeChatList
+    chats={recipeChats}
+    activeId={activeSession?.id ?? null}
+    onSelect={openChat}
+    onNew={handleNewChat}
+    creating={amendBusy}
+  />
+{/snippet}
+
 {#snippet reviewChangesAction(testid: string)}
   {#if activeSession?.messages.some((m) => m.role === 'assistant')}
     <div class="shrink-0 border-t px-3 pt-3">

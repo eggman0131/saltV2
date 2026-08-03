@@ -46,13 +46,26 @@
   let inputText = $state('');
   let inputEl = $state<HTMLTextAreaElement | undefined>(undefined);
   let messagesEnd = $state<HTMLDivElement | undefined>(undefined);
+  let scrollBox = $state<HTMLDivElement | undefined>(undefined);
 
   $effect(() => {
     // Read these reactive values so the effect re-runs and scrolls to the bottom
-    // whenever messages or streaming text change.
+    // whenever messages or streaming text change — and whenever the host swaps in
+    // a different conversation.
+    session.id;
     session.messages.length;
     thread.streamingText;
-    messagesEnd?.scrollIntoView({ behavior: 'smooth' });
+    if (panel) {
+      // The panel scrolls ITSELF. `scrollIntoView` walks every scrollable ancestor,
+      // so in a column beside a recipe it drags the page with it — and "the recipe
+      // does not move when you pick another chat" is the point of docking it there.
+      // Optional call: jsdom lays nothing out and ships no element scroller, so in the
+      // unit suite there is genuinely nothing to scroll.
+      scrollBox?.scrollTo?.({ top: scrollBox.scrollHeight, behavior: 'smooth' });
+    } else {
+      // On the full page the document IS the scroller, so this is the right tool.
+      messagesEnd?.scrollIntoView({ behavior: 'smooth' });
+    }
   });
 
   async function handleSend(): Promise<void> {
@@ -154,7 +167,7 @@
 {/snippet}
 
 {#if panel}
-  <div class="min-h-0 flex-1 overflow-y-auto p-4">
+  <div bind:this={scrollBox} class="min-h-0 flex-1 overflow-y-auto p-4">
     <div class="flex flex-col gap-3" data-testid="chat-messages">
       {@render transcript()}
     </div>
