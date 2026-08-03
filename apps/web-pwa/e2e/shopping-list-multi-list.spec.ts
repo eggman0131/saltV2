@@ -135,6 +135,58 @@ test.describe('shopping list — multi-list', () => {
     expect(defaultListId).toBeTruthy();
   });
 
+  test('edit sheet moves a single item, carrying the edits made in the same visit', async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(90_000);
+    const email = uniqueEmail(testInfo.testId);
+    await gotoAndSignIn(page, email);
+
+    const firstListUrl = await createFirstList(page);
+
+    await page.getByTestId('shopping-item-input').fill('soy sauce');
+    await page.getByTestId('shopping-item-add-btn').click();
+    const soyRow = page.getByTestId('shopping-item-row').filter({ hasText: 'soy sauce' });
+    await expect(soyRow).toBeVisible({ timeout: SYNC_TIMEOUT });
+
+    // With one list there is nowhere to move to, so the picker is absent.
+    await soyRow.getByTestId('shopping-item-edit-btn').click();
+    await expect(page.getByTestId('shopping-edit-rawtext')).toBeVisible();
+    await expect(page.getByTestId('shopping-edit-move-select')).toHaveCount(0);
+    await page.getByRole('button', { name: /^cancel$/i }).click();
+
+    await createSecondList(page, 'Asian supermarket');
+    const secondListUrl = page.url();
+    await page.goto(firstListUrl);
+    await expect(soyRow).toBeVisible({ timeout: SYNC_TIMEOUT });
+
+    // ── Arming a move and cancelling leaves the item where it was ─────────────
+    await soyRow.getByTestId('shopping-item-edit-btn').click();
+    await page.getByTestId('shopping-edit-move-select').click();
+    await page.getByRole('option', { name: 'Asian supermarket' }).click();
+    await page.getByRole('button', { name: /^cancel$/i }).click();
+    await expect(soyRow).toBeVisible({ timeout: SYNC_TIMEOUT });
+
+    // ── Edit and move in the same visit ───────────────────────────────────────
+    await soyRow.getByTestId('shopping-item-edit-btn').click();
+    await page.getByTestId('shopping-edit-rawtext').fill('dark soy sauce');
+    await page.getByTestId('shopping-edit-notes').fill('the thick one');
+    await page.getByTestId('shopping-edit-move-select').click();
+    await page.getByRole('option', { name: 'Asian supermarket' }).click();
+    await page.getByTestId('shopping-edit-save').click();
+
+    // Gone from the source…
+    await expect(
+      page.getByTestId('shopping-item-row').filter({ hasText: /soy sauce/i }),
+    ).toHaveCount(0, { timeout: SYNC_TIMEOUT });
+
+    // …and on the destination WITH the edits, not the originals. This is the
+    // regression the composed single write exists to prevent.
+    await page.goto(secondListUrl);
+    await expect(page.getByText('dark soy sauce')).toBeVisible({ timeout: SYNC_TIMEOUT });
+    await expect(page.getByText('the thick one')).toBeVisible({ timeout: SYNC_TIMEOUT });
+  });
+
   test('activeListId survives reload via URL', async ({ page }, testInfo) => {
     test.setTimeout(60_000);
     const email = uniqueEmail(testInfo.testId);

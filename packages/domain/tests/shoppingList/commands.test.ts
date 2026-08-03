@@ -10,6 +10,7 @@ import {
   editItemNotes,
   checkItem,
   confirmItemNeeded,
+  setItemNeedsCheck,
   uncheckItem,
   deleteItem,
   clearCheckedItems,
@@ -356,6 +357,59 @@ describe('confirmItemNeeded', () => {
     expect(result.kind).toBe('err');
     if (result.kind !== 'err') return;
     expect(result.error).toEqual({ kind: 'NotFound', resource: 'shoppingListItem', id: 'no-such' });
+  });
+});
+
+// ── setItemNeedsCheck ─────────────────────────────────────────────────────────
+
+describe('setItemNeedsCheck', () => {
+  it('raises the flag and stamps updatedAt', () => {
+    const items = [makeItem('item-1')];
+    const result = setItemNeedsCheck(items, { id: 'item-1', needsCheck: true, now: NOW2 });
+    expect(result.kind).toBe('ok');
+    if (result.kind !== 'ok') return;
+    expect(result.value[0].needsCheck).toBe(true);
+    expect(result.value[0].updatedAt).toBe(NOW2);
+  });
+
+  it('clears the flag and stamps updatedAt', () => {
+    const items = [makeItem('item-1', { needsCheck: true })];
+    const result = setItemNeedsCheck(items, { id: 'item-1', needsCheck: false, now: NOW2 });
+    expect(result.kind).toBe('ok');
+    if (result.kind !== 'ok') return;
+    expect(result.value[0].needsCheck).toBe(false);
+    expect(result.value[0].updatedAt).toBe(NOW2);
+  });
+
+  it('leaves other items and the other axes untouched', () => {
+    const items = [
+      makeItem('item-1', { checked: true, canonId: 'canon-1', matchState: 'matched' }),
+      makeItem('item-2', { needsCheck: true }),
+    ];
+    const result = setItemNeedsCheck(items, { id: 'item-1', needsCheck: true, now: NOW2 });
+    expect(result.kind).toBe('ok');
+    if (result.kind !== 'ok') return;
+    expect(result.value[0]).toMatchObject({
+      needsCheck: true,
+      checked: true,
+      canonId: 'canon-1',
+      matchState: 'matched',
+    });
+    expect(result.value[1]).toEqual(items[1]);
+  });
+
+  it('returns NotFound for unknown id', () => {
+    const result = setItemNeedsCheck([], { id: 'no-such', needsCheck: true, now: NOW });
+    expect(result.kind).toBe('err');
+    if (result.kind !== 'err') return;
+    expect(result.error).toEqual({ kind: 'NotFound', resource: 'shoppingListItem', id: 'no-such' });
+  });
+
+  it('produces exactly what confirmItemNeeded produces when clearing', () => {
+    const items = [makeItem('item-1', { needsCheck: true }), makeItem('item-2')];
+    expect(setItemNeedsCheck(items, { id: 'item-1', needsCheck: false, now: NOW2 })).toEqual(
+      confirmItemNeeded(items, { id: 'item-1', now: NOW2 }),
+    );
   });
 });
 

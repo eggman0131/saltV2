@@ -133,6 +133,65 @@ test.describe('shopping list — happy path', () => {
     await expect(page.getByText('500g bag')).toBeVisible({ timeout: SYNC_TIMEOUT });
   });
 
+  test('edit sheet raises and clears the "Need it?" flag', async ({ page }, testInfo) => {
+    test.setTimeout(90_000);
+    const email = uniqueEmail(testInfo.testId);
+    await gotoAndSignIn(page, email);
+
+    await page.goto('/#/shopping');
+    await expect(page).toHaveURL(/#\/shopping\/new/, { timeout: 10_000 });
+    await page.getByTestId('shopping-create-list-name').fill('Weekly shop');
+    await page.getByRole('button', { name: /create/i }).click();
+    await expect(page).toHaveURL(/#\/shopping\/[a-z0-9-]+$/, { timeout: SYNC_TIMEOUT });
+
+    await page.getByTestId('shopping-item-input').fill('paprika');
+    await page.getByTestId('shopping-item-add-btn').click();
+
+    const itemRow = page.getByTestId('shopping-item-row').filter({ hasText: 'paprika' });
+    await expect(itemRow).toBeVisible({ timeout: SYNC_TIMEOUT });
+    // Nothing flags a manually added item today, so it starts unflagged.
+    await expect(itemRow.getByTestId('shopping-verify')).toHaveCount(0);
+
+    // The Switch renders a role=switch button with no test hook of its own; the
+    // testid sits on its wrapper, as with settings-cook-notifications.
+    const needsCheckToggle = page.getByTestId('shopping-edit-needs-check').getByRole('switch');
+
+    // ── Raise the flag ────────────────────────────────────────────────────────
+    await itemRow.getByTestId('shopping-item-edit-btn').click();
+    await expect(needsCheckToggle).toBeVisible();
+    await expect(needsCheckToggle).toHaveAttribute('aria-checked', 'false');
+    await needsCheckToggle.click();
+    await page.getByTestId('shopping-edit-save').click();
+
+    // Amber treatment on the row, and the filter chip at the top of the list.
+    await expect(itemRow.getByTestId('shopping-verify')).toBeVisible({ timeout: SYNC_TIMEOUT });
+    await expect(itemRow.getByTestId('shopping-verify-confirm')).toBeVisible();
+    await expect(itemRow.getByTestId('shopping-verify-drop')).toBeVisible();
+    await expect(page.getByTestId('shopping-verify-filter')).toBeVisible({ timeout: SYNC_TIMEOUT });
+
+    // ── Reopen: the toggle reflects the real state, and clears it ─────────────
+    await itemRow.getByTestId('shopping-item-edit-btn').click();
+    await expect(needsCheckToggle).toHaveAttribute('aria-checked', 'true');
+    await needsCheckToggle.click();
+    await page.getByTestId('shopping-edit-save').click();
+
+    await expect(itemRow.getByTestId('shopping-verify')).toHaveCount(0, { timeout: SYNC_TIMEOUT });
+    await expect(page.getByTestId('shopping-verify-filter')).toHaveCount(0, {
+      timeout: SYNC_TIMEOUT,
+    });
+
+    // ── Checked item: flagging it could change nothing, so it is disabled ─────
+    await itemRow.getByTestId('shopping-item-check').click();
+    // A checked row moves into the collapsed "Checked" bucket, so reaching its
+    // edit affordance means expanding that first.
+    await expect(page.getByTestId('shopping-checked-toggle')).toBeVisible({
+      timeout: SYNC_TIMEOUT,
+    });
+    await page.getByTestId('shopping-checked-toggle').click();
+    await itemRow.getByTestId('shopping-item-edit-btn').click();
+    await expect(needsCheckToggle).toBeDisabled();
+  });
+
   test('duplicate direct entries render as separate rows (no canon collapsing)', async ({
     page,
   }, testInfo) => {
