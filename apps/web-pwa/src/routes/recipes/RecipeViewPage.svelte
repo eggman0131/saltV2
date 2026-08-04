@@ -908,8 +908,12 @@ Finish with a short note on what you changed and why, so I can read the gist her
       class="grid gap-4 split:grid-cols-2 split:gap-10 lg:grid-cols-[2fr_1fr] lg:gap-6"
       data-testid="recipe-view"
     >
-      <!-- Left column: main recipe content -->
-      <div class="flex flex-col gap-4">
+      <!-- Left column: main recipe content. `min-w-0` because a grid item's automatic
+           minimum size is its CONTENT's minimum, and one line of `truncate` text is
+           `white-space: nowrap` — a chat titled "<a long recipe name> chat" in the list
+           below would size this column to the untruncated title and take the whole page
+           wider than the phone with it. -->
+      <div class="flex min-w-0 flex-col gap-4">
         <!-- Unreviewed AI import (issue #616). Informational, never a gate: the
              recipe below is fully usable. Amber matches the canon review idiom. -->
         {#if recipe.needs_approval}
@@ -1186,7 +1190,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
       <!-- Right column: the chat, docked from `split` up. Below that it does not render
            at all and Phase 3's drawer is the whole story — the reveal hack this column
            used to need is gone with it. -->
-      <div class="hidden flex-col split:flex" data-testid="recipe-chat-sidebar">
+      <div class="hidden min-w-0 flex-col split:flex" data-testid="recipe-chat-sidebar">
         <!-- The list of conversations sits above the one you are reading, so choosing
              another is a glance and a tap rather than a scroll back to the recipe. -->
         {#if docked}
