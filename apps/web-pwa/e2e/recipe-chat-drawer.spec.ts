@@ -24,7 +24,10 @@ import { SYNC_TIMEOUT } from './helpers/timeouts';
 // Same numbers as `recipe-alternatives.spec.ts` and `mealplan.spec.ts`.
 test.use({ viewport: { width: 393, height: 851 } });
 
-const RECIPE_TITLE = 'Drawer Test Dahl';
+// Long on purpose. A new chat is named "<recipe title> chat", and that title is what the
+// list truncates — the regression this spec guards (the page going wider than the phone)
+// only shows on a title whose untruncated width beats the column.
+const RECIPE_TITLE = 'Drawer Test Dahl With Preserved Lemon And Coconut';
 const INGREDIENT = '1 ½ cups red lentils, rinsed';
 
 test.describe('recipes — the chef drawer on a phone', () => {
@@ -83,6 +86,13 @@ test.describe('recipes — the chef drawer on a phone', () => {
     const nav = page.getByRole('navigation').first();
     await expect(nav).toBeVisible();
 
+    // The page still fits the phone. The recipe column is a grid item, so its automatic
+    // minimum size is its content's minimum — and the chat now listed on the recipe
+    // carries a `truncate` title, which is one unbreakable `nowrap` line. Without
+    // `min-w-0` on the column that title sizes the whole page, and the recipe and the
+    // chat both spill sideways until the page is left and re-entered.
+    expect(await pageOverflowsSideways(page)).toBe(false);
+
     // ── Drag the handle up: the chat takes most of the screen ────────────────
     const handle = page.getByTestId('recipe-chat-drawer-handle');
     await expect(handle).toBeVisible();
@@ -114,8 +124,22 @@ test.describe('recipes — the chef drawer on a phone', () => {
     await expect(page.getByRole('heading', { name: RECIPE_TITLE })).toBeVisible();
     await expect(page.getByTestId('recipe-chat-list-item')).toHaveCount(1);
     await expect(page.getByTestId('recipe-chat-list-item')).toContainText(`${RECIPE_TITLE} chat`);
+    // …and closing does not leave the recipe stretched behind it.
+    expect(await pageOverflowsSideways(page)).toBe(false);
   });
 });
+
+/**
+ * Does the scrolling region hold content wider than itself? `<main>` is the scroller
+ * (`AppShell`), so a page that spills sideways shows up there and NOT on
+ * `document.documentElement`, which is why this asks the element rather than the document.
+ */
+async function pageOverflowsSideways(page: import('@playwright/test').Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const main = document.querySelector('main');
+    return !!main && main.scrollWidth > main.clientWidth + 1;
+  });
+}
 
 /**
  * The drawer's height once the spring has stopped moving it — two consecutive equal
