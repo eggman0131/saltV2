@@ -314,16 +314,6 @@ jobs:
       fail-fast: false
       matrix:
         shard: [1, 2, 3]
-    env:
-      # globalSetup builds the Cloud Functions deploy bundle, whose
-      # `npm install --prefix dist` fetches 259 packages on every run. With the
-      # ~/.npm cache restored below, prefer-offline serves them from disk instead
-      # of round-tripping the registry — that install took 8 MINUTES (vs 11s
-      # healthy) on run 30087640130. Set as a job env var rather than a flag in
-      # the shared `build` script on purpose: the deploy workflows must keep
-      # resolving version ranges against the live registry.
-      npm_config_prefer_offline: 'true'
-
     steps:
       - uses: actions/checkout@v7
 
@@ -337,12 +327,37 @@ jobs:
       # the same way). Keyed on the source manifest because dist/package.json is
       # derived from it by scripts/write-deploy-package.mjs.
       - name: Cache npm registry cache (Cloud Functions deploy bundle)
+        id: npm-cf-cache
         uses: actions/cache@v6
         with:
           path: ~/.npm
           key: npm-cf-bundle-${{ runner.os }}-${{ hashFiles('apps/cloud-functions/package.json') }}
           restore-keys: |
             npm-cf-bundle-${{ runner.os }}-
+
+      # globalSetup builds the Cloud Functions deploy bundle, whose
+      # `npm install --prefix dist` fetches 259 packages on every run. With the
+      # ~/.npm cache restored above, prefer-offline serves them from disk instead
+      # of round-tripping the registry — that install took 8 MINUTES (vs 11s
+      # healthy) on run 30087640130. Set here rather than as a flag in the shared
+      # `build` script on purpose: the deploy workflows must keep resolving
+      # version ranges against the live registry.
+      #
+      # Gated on an EXACT key hit, because prefer-offline is force-cache: npm
+      # serves a cached packument without revalidating it. On an exact hit that
+      # is free — the manifest is unchanged, so the cache provably holds every
+      # version we are about to ask for. On a restore-key fallback the manifest
+      # HAS changed, and a bumped firebase-admin / firebase-functions / sharp
+      # range then resolves against a packument captured before that version was
+      # published: npm reports `ETARGET  No matching version found` for a package
+      # that has been on the registry for a week, and never refetches to find
+      # out otherwise. That red is the dependency bump's only symptom, so it
+      # reads as "the bump is broken" — it took down every e2e shard on #704
+      # (firebase-functions 7.3.2, published 8 days earlier). Falling back to
+      # npm's default cache mode still reuses the ~50 MB of cached tarballs; it
+      # only pays for revalidating metadata.
+      - name: Enable npm prefer-offline (exact cache hit only)
+        run: echo "npm_config_prefer_offline=${{ steps.npm-cf-cache.outputs.cache-hit == 'true' }}" >> "$GITHUB_ENV"
 
       # The browser binaries are a function of the RESOLVED Playwright version and
       # nothing else, so that is the cache key. It used to be
