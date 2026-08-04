@@ -19,13 +19,27 @@ import { classifyFirestoreError } from './firestoreErrors.js';
 // Chat session persistence (issue #206, Phase 1). One doc per session at
 // chatSessions/{id}. Per-user scoped: every read/write is filtered by ownerUid.
 // Messages are stored as an array in the session doc (not a subcollection).
-// saveChatSession bumps expiresAt to now + 14 days on every write; a Firestore
-// TTL policy on chatSessions.expiresAt handles server-side expiry (infra step).
+// saveChatSession bumps expiresAt on every write; a Firestore TTL policy on
+// chatSessions.expiresAt handles server-side expiry (infra step). See expiresAt()
+// below for the one session that is written so it never expires.
 
 const COLLECTION = 'chatSessions';
 const TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
 
-function expiresAt(): string {
+// A chat attached to a recipe has the same lifetime as the recipe (issue #696).
+// The recipe page lists every conversation you have had about a dish, including
+// the one it was written from — a list that a fortnightly sweep would empty for
+// exactly the recipes you have lived with longest.
+//
+// This is deliberately done through `expiresAt` rather than by narrowing the TTL
+// policy: the policy is per-project console infra on dev, staging and prod, and a
+// document whose expiry is a millennium away is simply never swept. So general
+// chats keep tidying themselves away after a fortnight, recipe chats keep, and no
+// console anywhere had to change.
+const NEVER_EXPIRES = '9999-12-31T23:59:59.999Z';
+
+function expiresAt(session: ChatSessionDoc): string {
+  if (session.recipeId !== null) return NEVER_EXPIRES;
   return new Date(Date.now() + TTL_MS).toISOString();
 }
 
@@ -76,7 +90,7 @@ export async function saveChatSession(
 ): Promise<ReadResult<void, DomainError>> {
   try {
     const db = getFirestore(getApp());
-    const stamped: ChatSessionDoc = { ...session, expiresAt: expiresAt() };
+    const stamped: ChatSessionDoc = { ...session, expiresAt: expiresAt(session) };
     await setDoc(doc(db, COLLECTION, stamped.id), { ...stamped });
     return success(undefined);
   } catch (err) {

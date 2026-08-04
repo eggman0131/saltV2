@@ -1,0 +1,251 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { render, cleanup, fireEvent, waitFor } from '@testing-library/svelte';
+import type { Recipe } from '@salt/domain';
+import type { ChatSessionDoc } from '@salt/domain/schemas';
+
+// The recipe is the home for its own conversations (issue #696): every chat about
+// the dish is listed on it, "Chat" continues the most recent one rather than
+// quietly starting a fourth, and a new one is named after the dish.
+
+const {
+  mockRecipes,
+  mockCanonItems,
+  mockIsLoading,
+  mockDefaultListId,
+  mockSessions,
+  mockEquipment,
+} = vi.hoisted(() => {
+  function makeStore<T>(initial: T) {
+    let value = initial;
+    const subs = new Set<(v: T) => void>();
+    return {
+      subscribe(fn: (v: T) => void) {
+        subs.add(fn);
+        fn(value);
+        return () => {
+          subs.delete(fn);
+        };
+      },
+      _set(v: T) {
+        value = v;
+        subs.forEach((fn) => fn(v));
+      },
+    };
+  }
+  return {
+    mockRecipes: makeStore<readonly Recipe[]>([]),
+    mockCanonItems: makeStore<readonly { id: string }[]>([]),
+    mockIsLoading: makeStore<boolean>(false),
+    mockDefaultListId: makeStore<string | null>('list-1'),
+    mockSessions: makeStore<readonly ChatSessionDoc[]>([]),
+    mockEquipment: makeStore<{ items: readonly { name: string }[] } | null>(null),
+  };
+});
+
+vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
+vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
+vi.mock('../src/lib/auth.svelte.js', () => ({
+  auth: { user: { uid: 'uid-1', email: 'cook@test' } },
+}));
+vi.mock('../src/lib/canonService.js', () => ({ canonItems: mockCanonItems }));
+vi.mock('../src/lib/shoppingListService.svelte.js', () => ({ defaultListId: mockDefaultListId }));
+vi.mock('@salt/firebase-sync', () => ({
+  saveRecipe: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+}));
+vi.mock('../src/lib/chatService.js', () => ({
+  sessions: mockSessions,
+  createChatSession: vi.fn(),
+  sendMessage: vi.fn(),
+}));
+vi.mock('../src/lib/equipmentService.js', () => ({ equipment: mockEquipment }));
+vi.mock('../src/lib/clipboardImage.js', () => ({
+  clipboardImageReadSupported: () => false,
+  readClipboardImage: vi.fn(),
+  imageFromClipboardData: vi.fn(),
+}));
+vi.mock('../src/lib/recipeService.js', () => ({
+  recipes: mockRecipes,
+  isLoadingRecipes: mockIsLoading,
+  removeRecipe: vi.fn(),
+  canonicaliseIngredients: vi.fn(),
+  matchIngredient: vi.fn(),
+  persistRecipe: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  authorRecipeTraced: vi.fn(),
+  regenerateRecipeImage: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  reviseRecipeSceneBrief: vi.fn(),
+  startOverRecipeSceneBrief: vi.fn(),
+  setRecipeImageUpload: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  buildRecipeAddPlan: vi.fn().mockReturnValue([]),
+  buildMadeSubRows: vi.fn().mockReturnValue([]),
+  commitRecipeAddPlan: vi.fn(),
+  recipeAddPlanItemCount: vi.fn().mockReturnValue(0),
+}));
+
+import RecipeViewPage from '../src/routes/recipes/RecipeViewPage.svelte';
+import { createChatSession } from '../src/lib/chatService.js';
+import { push } from 'svelte-spa-router';
+
+const RECIPE_ID = 'recipe-1';
+
+function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
+  return {
+    id: RECIPE_ID,
+    schemaVersion: 1,
+    title: 'Cauliflower Steaks',
+    description: null,
+    ingredients: [],
+    steps: [],
+    metadata: {
+      servings: null,
+      prepTimeMinutes: null,
+      cookTimeMinutes: null,
+      totalTimeMinutes: null,
+      tags: [],
+    },
+    source: null,
+    notes: null,
+    image: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  } as Recipe;
+}
+
+function makeSession(overrides: Partial<ChatSessionDoc> = {}): ChatSessionDoc {
+  return {
+    id: 'session-1',
+    schemaVersion: 1,
+    ownerUid: 'uid-1',
+    recipeId: RECIPE_ID,
+    title: 'Cauliflower Steaks chat',
+    messages: [],
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    expiresAt: '9999-12-31T23:59:59.999Z',
+    ...overrides,
+  };
+}
+
+afterEach(() => {
+  cleanup();
+  document.body.style.pointerEvents = '';
+  document.body.style.overflow = '';
+  document.body.innerHTML = '';
+});
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockCanonItems._set([]);
+  mockIsLoading._set(false);
+  mockRecipes._set([makeRecipe()]);
+  mockSessions._set([]);
+  mockEquipment._set({ items: [{ name: 'Sage Pizzaiolo' }] });
+});
+
+function renderPage() {
+  return render(RecipeViewPage, { props: { params: { id: RECIPE_ID } } });
+}
+
+describe('RecipeViewPage — the chat list', () => {
+  it('lists every chat about this dish, newest first', () => {
+    mockSessions._set([
+      makeSession({ id: 'old', title: 'Halving it', updatedAt: '2026-01-01T00:00:00.000Z' }),
+      makeSession({ id: 'new', title: 'Air fryer', updatedAt: '2026-03-01T00:00:00.000Z' }),
+      makeSession({ id: 'other-dish', recipeId: 'recipe-2', title: 'Not this one' }),
+      makeSession({ id: 'general', recipeId: null, title: 'General' }),
+    ]);
+    const { getByTestId, getAllByTestId } = renderPage();
+
+    expect(getByTestId('recipe-chat-list')).toBeInTheDocument();
+    const titles = getAllByTestId('recipe-chat-list-item').map((el) => el.textContent);
+    expect(titles).toHaveLength(2);
+    expect(titles[0]).toContain('Air fryer');
+    expect(titles[1]).toContain('Halving it');
+  });
+
+  it('shows the last thing said', () => {
+    mockSessions._set([
+      makeSession({
+        messages: [
+          { id: 'm1', role: 'user', text: 'halve it?', createdAt: '2026-01-01T00:00:00.000Z' },
+          { id: 'm2', role: 'assistant', text: 'Use one head.', createdAt: '2026-01-01T00:00:01Z' },
+        ],
+      }),
+    ]);
+    const { getByTestId } = renderPage();
+
+    expect(getByTestId('recipe-chat-list-item').textContent).toContain('Use one head.');
+  });
+
+  it('opens the chat you tapped without leaving the recipe', async () => {
+    mockSessions._set([makeSession({ id: 'session-7' })]);
+    const { getByTestId, queryByTestId } = renderPage();
+    expect(queryByTestId('recipe-chat-drawer')).toBeNull();
+
+    await fireEvent.click(getByTestId('recipe-chat-list-item'));
+
+    await waitFor(() => expect(getByTestId('recipe-chat-drawer')).toBeInTheDocument());
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('still renders, with an invitation, when there are no chats yet', () => {
+    const { getByTestId, queryByTestId } = renderPage();
+
+    expect(getByTestId('recipe-chat-list')).toBeInTheDocument();
+    expect(queryByTestId('recipe-chat-list-item')).toBeNull();
+  });
+});
+
+describe('RecipeViewPage — starting and continuing', () => {
+  // The real createChatSession inserts optimistically before it resolves, which is what
+  // lets the surface showing a chat switch to the new one straight away.
+  function createsInto(id: string) {
+    const created = makeSession({ id, updatedAt: '2026-12-01T00:00:00.000Z' });
+    vi.mocked(createChatSession).mockImplementation(async () => {
+      mockSessions._set([created]);
+      return { kind: 'ok', value: created };
+    });
+    return created;
+  }
+
+  it('names a new chat after the dish', async () => {
+    createsInto('session-new');
+    const { getByTestId } = renderPage();
+
+    await fireEvent.click(getByTestId('recipe-chat-new-btn'));
+
+    await waitFor(() =>
+      expect(createChatSession).toHaveBeenCalledWith('uid-1', RECIPE_ID, 'Cauliflower Steaks'),
+    );
+    await waitFor(() => expect(getByTestId('recipe-chat-drawer')).toBeInTheDocument());
+  });
+
+  it('"Chat" continues the most recent conversation instead of creating another', async () => {
+    mockSessions._set([
+      makeSession({ id: 'old', updatedAt: '2026-01-01T00:00:00.000Z' }),
+      makeSession({ id: 'newest', updatedAt: '2026-03-01T00:00:00.000Z' }),
+    ]);
+    const { getByTestId } = renderPage();
+
+    await fireEvent.click(getByTestId('recipe-ask-amend-button'));
+
+    expect(createChatSession).not.toHaveBeenCalled();
+    // The newest conversation, raised over the recipe rather than replacing it.
+    await waitFor(() =>
+      expect(getByTestId('recipe-chat-drawer').textContent).toContain('Cauliflower Steaks chat'),
+    );
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('"Chat" starts one when the dish has none', async () => {
+    createsInto('session-first');
+    const { getByTestId } = renderPage();
+
+    await fireEvent.click(getByTestId('recipe-ask-amend-button'));
+
+    await waitFor(() =>
+      expect(createChatSession).toHaveBeenCalledWith('uid-1', RECIPE_ID, 'Cauliflower Steaks'),
+    );
+    await waitFor(() => expect(getByTestId('recipe-chat-drawer')).toBeInTheDocument());
+  });
+});

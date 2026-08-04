@@ -82,26 +82,40 @@ function now(): string {
   return new Date().toISOString();
 }
 
-function newSession(ownerUid: string, recipeId: string | null): ChatSessionDoc {
+// The seed title, shown until the chef has read the first exchange and retitled
+// it. "Cauliflower Steaks chat" beats "Recipe chat" for the same reason the list
+// on the recipe page exists at all: several conversations about one dish are only
+// tellable apart by what they say.
+function seedTitle(recipeId: string | null, recipeTitle?: string): string {
+  if (!recipeId) return 'New chat';
+  return recipeTitle?.trim() ? `${recipeTitle.trim()} chat` : 'Recipe chat';
+}
+
+function newSession(
+  ownerUid: string,
+  recipeId: string | null,
+  recipeTitle?: string,
+): ChatSessionDoc {
   const ts = now();
   return {
     id: crypto.randomUUID(),
     schemaVersion: 1,
     ownerUid,
     recipeId,
-    title: recipeId ? 'Recipe chat' : 'New chat',
+    title: seedTitle(recipeId, recipeTitle),
     messages: [],
     createdAt: ts,
     updatedAt: ts,
-    expiresAt: ts, // saveChatSession will overwrite with now + 14 days
+    expiresAt: ts, // saveChatSession will overwrite with the real expiry
   };
 }
 
 export async function createChatSession(
   ownerUid: string,
   recipeId: string | null = null,
+  recipeTitle?: string,
 ): Promise<ReadResult<ChatSessionDoc, DomainError>> {
-  const session = newSession(ownerUid, recipeId);
+  const session = newSession(ownerUid, recipeId, recipeTitle);
   const stamped = { ...session, updatedAt: now() };
   latestLocalEdit.set(stamped.id, stamped.updatedAt);
   _sessions.set([...get(_sessions), stamped]);
@@ -122,6 +136,23 @@ export async function persistSession(
   const others = get(_sessions).filter((s) => s.id !== stamped.id);
   _sessions.set([...others, stamped]);
   return reportIfFailed(getErrorReporter(), await saveChatSession(stamped));
+}
+
+// Attach a general chat to the recipe it produced (issue #696). Called once
+// "Save as recipe" has written the recipe, so the conversation a dish was born
+// from is listed on that dish however long ago it happened.
+//
+// FIRST CLAIM WINS: `recipeId` is a scalar and a session that already belongs to
+// a recipe keeps it. Saving a SECOND recipe from one conversation therefore
+// leaves the second recipe with no origin chat — judged vanishingly rare against
+// the cost of an array field and two ways to say the same thing.
+export async function claimRecipe(
+  sessionId: string,
+  recipeId: string,
+): Promise<ReadResult<void, DomainError>> {
+  const session = get(_sessions).find((s) => s.id === sessionId);
+  if (!session || session.recipeId !== null) return success(undefined);
+  return persistSession({ ...session, recipeId });
 }
 
 export async function removeSession(id: string): Promise<ReadResult<void, DomainError>> {
