@@ -46,7 +46,10 @@ family-shared with no `userId` anywhere; this is an intentional, recorded depart
   owner-scoped rule block; all prior blocks are "any authenticated member".
 - Retention ~2 weeks via an `expiresAt` timestamp + a **Firestore TTL policy**
   (configured once per project via console/gcloud — infra, not rules). Each write
-  bumps `expiresAt` to now + 14 days.
+  bumps `expiresAt` to now + 14 days — **except a recipe-attached chat** (`recipeId`
+  set), which is stamped with a far-future `expiresAt` instead: issue #707 lists it
+  permanently on the recipe's "Chef chats" card, so it must survive the TTL sweep
+  rather than expire like a general kitchen-assistant chat.
 - **TTL setup (one-off, both projects):** In the Firebase console (or via
   `gcloud firestore fields ttls update`), enable the TTL policy on the
   `chatSessions` collection for the `expiresAt` field. This must be applied to
