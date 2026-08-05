@@ -5,6 +5,7 @@ import { defineSecret } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { EmailOtpVerifySchema } from '@salt/domain/schemas';
 import { normaliseMemberEmail } from '@salt/domain';
+import { APP_CHECK_ENFORCEMENT } from '../tracedCallable.js';
 import { reportFlowError } from '../observability/reportServerError.js';
 import {
   OTP_COLLECTION,
@@ -32,8 +33,8 @@ const BAD_CODE = 'That code is incorrect or has expired.';
 // magic link is gated by.
 export const verifyEmailOtp = onCall(
   {
+    ...APP_CHECK_ENFORCEMENT,
     region: 'europe-west2',
-    enforceAppCheck: false,
     secrets: [posthogApiKey],
     memory: '512MiB',
   },

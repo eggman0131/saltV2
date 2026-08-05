@@ -3,6 +3,7 @@ import { getStorage } from 'firebase-admin/storage';
 import { onCall, HttpsError } from 'firebase-functions/https';
 import { defineSecret } from 'firebase-functions/params';
 import { SetRecipeImageUploadInputSchema } from '@salt/domain/schemas';
+import { APP_CHECK_ENFORCEMENT } from '../tracedCallable.js';
 import { encodeHeroImage } from '../imaging/encodeHeroImage.js';
 import { buildStorageDownloadUrl } from '../imaging/storageDownloadUrl.js';
 import { reportFlowError } from '../observability/reportServerError.js';
@@ -41,8 +42,8 @@ const IMAGE_STORAGE_PREFIX = 'recipe-images';
 // setGlobalOptions runs — same reason regenerateRecipeImage pins them.
 export const setRecipeImageUpload = onCall(
   {
+    ...APP_CHECK_ENFORCEMENT,
     region: 'europe-west2',
-    enforceAppCheck: false,
     secrets: [posthogApiKey],
     // sharp decode/encode of a full-resolution upload needs headroom above the
     // 256MiB default — same 512MiB floor the rest of the image path uses.

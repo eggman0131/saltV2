@@ -4,6 +4,7 @@ import { defineSecret } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { EmailOtpRequestSchema } from '@salt/domain/schemas';
 import { normaliseMemberEmail } from '@salt/domain';
+import { APP_CHECK_ENFORCEMENT } from '../tracedCallable.js';
 import { reportFlowError } from '../observability/reportServerError.js';
 import { sendOtpEmail } from '../adapters/sendOtpEmail.js';
 import {
@@ -28,8 +29,8 @@ const posthogApiKey = defineSecret('POSTHOG_API_KEY');
 const otpEmailFrom = defineSecret('OTP_EMAIL_FROM');
 
 // Email-OTP request (issue #546). PUBLIC — the caller is signing in, not signed
-// in yet, so there is deliberately no request.auth guard (App Check monitor-first
-// is the platform abuse control). Region/memory pinned inline like the other
+// in yet, so there is deliberately no request.auth guard (App Check is the
+// platform abuse control). Region/memory pinned inline like the other
 // top-imported callables (they run before index.ts's setGlobalOptions).
 //
 // Enumeration-safe: ALWAYS returns { ok: true }. A code is generated + emailed
@@ -39,8 +40,8 @@ const otpEmailFrom = defineSecret('OTP_EMAIL_FROM');
 // allowlist before minting a token.
 export const requestEmailOtp = onCall(
   {
+    ...APP_CHECK_ENFORCEMENT,
     region: 'europe-west2',
-    enforceAppCheck: false,
     secrets: [resendApiKey, posthogApiKey, otpEmailFrom],
     memory: '512MiB',
   },
