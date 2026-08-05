@@ -132,6 +132,7 @@ all it takes to bring a doc into nightly review. Keep the globs accurate.
 | [docs/visual-regression.md](docs/visual-regression.md) | `.github/workflows/chromatic.yml`, `apps/storybook/**` | Chromatic VR: why it is selective and non-blocking, accepting diffs. |
 | [docs/error-reporting-calibration.md](docs/error-reporting-calibration.md) | `packages/adapters/observability/**` | Verifying reporting changes in PostHog; the intentional asymmetries that are **not** bugs. |
 | [docs/runbooks/product-forms-staging-validation.md](docs/runbooks/product-forms-staging-validation.md) | `packages/domain/src/productForm/**` | Exercising product-forms on staging (live — see #512). Gotchas section first. |
+| [docs/runbooks/app-check-preflight.md](docs/runbooks/app-check-preflight.md) | `apps/cloud-functions/src/tracedCallable.ts`, `apps/web-pwa/.env.*` | **Before flipping any App Check enforcement setting** (#718). Two independent origin allowlists that nothing keeps in agreement — the gap that broke prod sign-in on 2026-08-05. |
 | [infra/bigquery-export/README.md](infra/bigquery-export/README.md) | `infra/bigquery-export/**` | Firestore→BigQuery changelog export (#684): why the manifest is isolated from CI deploys, the prod-only install + backfill procedure. |
 
 ### Design docs (`docs/design/`)

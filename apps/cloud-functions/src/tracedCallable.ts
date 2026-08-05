@@ -25,12 +25,23 @@ import { reportFlowError } from './observability/reportServerError.js';
 // per-callable variation (wire schema, flow, secrets, timeout, and the one
 // callable that maps a bespoke error taxonomy) rides in as declarative options.
 
-// App Check enforcement for every callable. Monitor-first (#145): unverified
-// requests are still allowed but reported to App Check metrics. Flip this single
-// line to `true` once staging metrics confirm legitimate traffic verifies — that
-// is the enforcement step of the rollout (callables first, the AI cost surface).
-// Owned here so the factory applies it uniformly; index.ts imports it for the
-// onCallGenkit / non-traced onCall callables so they stay consistent too.
+// App Check enforcement for EVERY callable — the single flip site (#145, #718).
+// Monitor-first today: unverified requests are still allowed but reported to App
+// Check metrics.
+//
+// This is the ONLY place the value lives. Owned here so makeTracedCallable applies
+// it uniformly; index.ts and every callable under ./callables/ import it, and
+// tests/callables/appCheckEnforcement.test.ts fails if a callable is defined
+// without it. That test exists because the value HAD drifted — six callables under
+// ./callables/ each carried their own `enforceAppCheck: false` literal, so "flip
+// one line" had quietly stopped being true. Do not reintroduce a literal.
+//
+// It is a code constant with no per-environment override, by decision (#718): it
+// deploys identically to dev, staging and prod, which is what keeps the three from
+// silently diverging. The practical consequence of flipping it: merging to `main`
+// deploys to STAGING immediately (deploy-staging.yml runs on workflow_run after
+// CI), while PROD only receives it when a release is published. That gap is the
+// soak window — see #718 Phase 2.
 export const APP_CHECK_ENFORCEMENT = { enforceAppCheck: false } as const;
 
 // A validated wire envelope: the pure domain input plus the optional browser-

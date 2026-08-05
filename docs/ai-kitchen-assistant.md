@@ -88,8 +88,9 @@ chat session doc (Firestore)         ← owned by web-pwa + firebase-sync (clien
 
 - Genkit flow in `apps/cloud-functions/src/flows/chefChat.ts`, exposed via
   `onCallGenkit` (gives streaming + `authPolicy: isSignedIn()` for free), region
-  `europe-west2`, `secrets: [geminiApiKey]`, App Check monitor-first
-  (`enforceAppCheck: false`, flip later with the rest).
+  `europe-west2`, `secrets: [geminiApiKey]`, App Check from the shared
+  `APP_CHECK_ENFORCEMENT` constant like every other callable (see
+  [salt-architecture.md §8.1](salt-architecture.md)).
 - **Streaming**: define the flow with a stream schema and emit chunks; the client
   consumes via `httpsCallable(...).stream()`. This is the one piece of newer
   plumbing — **validate it early and interactively** (WSL2 emulator quirks).

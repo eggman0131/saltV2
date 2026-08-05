@@ -1,5 +1,6 @@
 import { onCall, HttpsError } from 'firebase-functions/https';
 import { defineSecret } from 'firebase-functions/params';
+import { APP_CHECK_ENFORCEMENT } from '../tracedCallable.js';
 import { resolvePushoverTargets } from '../adapters/pushoverRecipient.js';
 import { reportServerError } from '../observability/reportServerError.js';
 
@@ -33,8 +34,8 @@ export type ListPushoverDevicesResponse =
 
 export const listPushoverDevices = onCall(
   {
+    ...APP_CHECK_ENFORCEMENT,
     region: 'europe-west2',
-    enforceAppCheck: false,
     secrets: [pushoverAppToken, pushoverUserKey, posthogApiKey],
   },
   async (request): Promise<ListPushoverDevicesResponse> => {

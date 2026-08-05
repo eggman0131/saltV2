@@ -2,6 +2,7 @@ import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { onCall, HttpsError } from 'firebase-functions/https';
 import { defineSecret } from 'firebase-functions/params';
 import { RegenerateCanonIconInputSchema } from '@salt/domain/schemas';
+import { APP_CHECK_ENFORCEMENT } from '../tracedCallable.js';
 import { reportFlowError } from '../observability/reportServerError.js';
 
 // Bound so an unexpected Firestore write failure here can be reported
@@ -21,13 +22,13 @@ const posthogApiKey = defineSecret('POSTHOG_API_KEY');
 // region is set explicitly (not via setGlobalOptions): this module is imported
 // at the top of index.ts, so the onCall runs before index.ts's
 // setGlobalOptions call — same reason the triggers pin their region inline.
-// enforceAppCheck monitor-first (#145): allowed-but-reported now; flip to `true`
-// alongside the index.ts callables at the enforcement step (this also fires AI
-// image generation, so it is part of the cost surface App Check protects).
+// App Check rides in from the shared APP_CHECK_ENFORCEMENT constant (#718) — this
+// also fires AI image generation, so it is part of the cost surface App Check
+// protects, and it must flip with everything else rather than on its own.
 export const regenerateCanonIcon = onCall(
   {
+    ...APP_CHECK_ENFORCEMENT,
     region: 'europe-west2',
-    enforceAppCheck: false,
     secrets: [posthogApiKey],
     // 512MiB floor, pinned inline (top-imported, runs before setGlobalOptions —
     // same reason region is inline above).
