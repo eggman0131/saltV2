@@ -26,8 +26,8 @@ import { reportFlowError } from './observability/reportServerError.js';
 // callable that maps a bespoke error taxonomy) rides in as declarative options.
 
 // App Check enforcement for EVERY callable — the single flip site (#145, #718).
-// Monitor-first today: unverified requests are still allowed but reported to App
-// Check metrics.
+// ENFORCED as of Phase 2a: a request without a valid App Check token is rejected
+// with `unauthenticated` before the handler runs.
 //
 // This is the ONLY place the value lives. Owned here so makeTracedCallable applies
 // it uniformly; index.ts and every callable under ./callables/ import it, and
@@ -36,13 +36,53 @@ import { reportFlowError } from './observability/reportServerError.js';
 // ./callables/ each carried their own `enforceAppCheck: false` literal, so "flip
 // one line" had quietly stopped being true. Do not reintroduce a literal.
 //
-// It is a code constant with no per-environment override, by decision (#718): it
-// deploys identically to dev, staging and prod, which is what keeps the three from
-// silently diverging. The practical consequence of flipping it: merging to `main`
+// It is a code constant with no per-DEPLOYED-environment override, by decision
+// (#718): it deploys identically to dev, staging and prod, which is what keeps the
+// three from silently diverging. The practical consequence: merging to `main`
 // deploys to STAGING immediately (deploy-staging.yml runs on workflow_run after
-// CI), while PROD only receives it when a release is published. That gap is the
-// soak window — see #718 Phase 2.
-export const APP_CHECK_ENFORCEMENT = { enforceAppCheck: false } as const;
+// CI), while PROD only receives it when a release is published.
+//
+// The ONE exception is the local emulator, and it is not a deploy target — so the
+// three real projects stay byte-identical. This is load-bearing, not a convenience:
+// enforcement lives in the FUNCTION's own code (firebase-functions rejects a
+// missing X-Firebase-AppCheck header itself, with no emulator carve-out), whereas
+// Firestore/Storage enforcement lives in a backend the emulators simply do not run.
+// So the widespread belief that "emulators don't enforce App Check" is true of the
+// SERVICES and false of CALLABLES. Meanwhile the client deliberately skips App Check
+// init under emulators (init.ts) — a `demo-*` project has no App Check backend to
+// mint a token against — so without this gate every callable in the e2e suite would
+// 401. Discovered the honest way: flipping enforcement turned two e2e shards red.
+//
+// Safe by construction: FUNCTIONS_EMULATOR is set only by the emulator, and
+// `enforceAppCheck` is captured in the handler closure rather than published on
+// __endpoint, so the deployed runtime re-evaluates this in the real environment
+// even if deploy-time discovery ever ran with the variable set.
+export const APP_CHECK_ENFORCEMENT = {
+  enforceAppCheck: process.env['FUNCTIONS_EMULATOR'] !== 'true',
+} as const;
+
+// The ONE sanctioned exemption: the two email-OTP sign-in callables (#718 Phase 4).
+//
+// Enforcing App Check on the sign-in path is the single change in this rollout that
+// can lock a user out with no in-app recovery. Every other callable fails soft — an
+// AI action errors and the user retries — but a client whose App Check token cannot
+// be minted, and whose ONLY route back in is a callable that demands one, is stuck
+// behind a door whose key is on the other side. That is not hypothetical: on
+// 2026-08-05 a prod origin misconfiguration produced exactly this failure mode
+// (403 on exchangeRecaptchaEnterpriseToken plus a 24-HOUR `appCheck/throttled`
+// back-off), and sign-in was the blast radius. See docs/runbooks/app-check-preflight.md.
+//
+// So the sign-in path is flipped LAST and ALONE, once enforcement is proven
+// everywhere else and a rollback has been rehearsed — Phase 4, not Phase 2. These
+// two stay exempt until then. `verifyEmailOtp` still re-enforces the `members`
+// allowlist itself, and `requestEmailOtp` is enumeration-safe and rate-limited, so
+// the exemption widens abuse surface without widening the authz boundary.
+//
+// A NAMED constant rather than an inline literal on purpose: the "no enforceAppCheck
+// literal outside this file" test stays absolute, and `grep APP_CHECK_SIGN_IN_EXEMPT`
+// enumerates every exempt callable. The guard test pins that list to exactly two
+// files — adding a third is a test failure, not a judgement call.
+export const APP_CHECK_SIGN_IN_EXEMPT = { enforceAppCheck: false } as const;
 
 // A validated wire envelope: the pure domain input plus the optional browser-
 // supplied `traceparent`. Structurally matches a Zod schema's `safeParse` so the

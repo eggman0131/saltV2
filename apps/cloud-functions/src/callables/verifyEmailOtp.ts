@@ -5,7 +5,7 @@ import { defineSecret } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { EmailOtpVerifySchema } from '@salt/domain/schemas';
 import { normaliseMemberEmail } from '@salt/domain';
-import { APP_CHECK_ENFORCEMENT } from '../tracedCallable.js';
+import { APP_CHECK_SIGN_IN_EXEMPT } from '../tracedCallable.js';
 import { reportFlowError } from '../observability/reportServerError.js';
 import {
   OTP_COLLECTION,
@@ -30,10 +30,13 @@ const BAD_CODE = 'That code is incorrect or has expired.';
 // SECURITY: the Admin SDK bypasses the `beforeMemberCreated` blocking function,
 // so this re-enforces the `members` allowlist itself before creating a user or
 // minting a token — otherwise OTP would be a hole around the allowlist that
-// magic link is gated by.
+// magic link is gated by. That allowlist check, not App Check, is this endpoint's
+// authz boundary — which is why it can stay App Check EXEMPT until #718 Phase 4
+// flips the sign-in path alone (see APP_CHECK_SIGN_IN_EXEMPT). A caller without a
+// valid code still gets nothing, and attempts are capped and burned.
 export const verifyEmailOtp = onCall(
   {
-    ...APP_CHECK_ENFORCEMENT,
+    ...APP_CHECK_SIGN_IN_EXEMPT,
     region: 'europe-west2',
     secrets: [posthogApiKey],
     memory: '512MiB',

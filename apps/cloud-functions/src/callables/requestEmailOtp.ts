@@ -4,7 +4,7 @@ import { defineSecret } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { EmailOtpRequestSchema } from '@salt/domain/schemas';
 import { normaliseMemberEmail } from '@salt/domain';
-import { APP_CHECK_ENFORCEMENT } from '../tracedCallable.js';
+import { APP_CHECK_SIGN_IN_EXEMPT } from '../tracedCallable.js';
 import { reportFlowError } from '../observability/reportServerError.js';
 import { sendOtpEmail } from '../adapters/sendOtpEmail.js';
 import {
@@ -29,9 +29,14 @@ const posthogApiKey = defineSecret('POSTHOG_API_KEY');
 const otpEmailFrom = defineSecret('OTP_EMAIL_FROM');
 
 // Email-OTP request (issue #546). PUBLIC — the caller is signing in, not signed
-// in yet, so there is deliberately no request.auth guard (App Check is the
-// platform abuse control). Region/memory pinned inline like the other
-// top-imported callables (they run before index.ts's setGlobalOptions).
+// in yet, so there is deliberately no request.auth guard. Region/memory pinned
+// inline like the other top-imported callables (they run before index.ts's
+// setGlobalOptions).
+//
+// App Check is EXEMPT here until #718 Phase 4 flips the sign-in path on its own —
+// see APP_CHECK_SIGN_IN_EXEMPT for why this one is last. Until then the abuse
+// controls on this endpoint are its own: enumeration-safe responses, the `members`
+// allowlist gating whether any email is sent at all, and the per-email cooldown.
 //
 // Enumeration-safe: ALWAYS returns { ok: true }. A code is generated + emailed
 // only for an email on the `members` allowlist (so strangers are never emailed
@@ -40,7 +45,7 @@ const otpEmailFrom = defineSecret('OTP_EMAIL_FROM');
 // allowlist before minting a token.
 export const requestEmailOtp = onCall(
   {
-    ...APP_CHECK_ENFORCEMENT,
+    ...APP_CHECK_SIGN_IN_EXEMPT,
     region: 'europe-west2',
     secrets: [resendApiKey, posthogApiKey, otpEmailFrom],
     memory: '512MiB',

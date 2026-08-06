@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,6 +31,18 @@ const CALLABLE_FACTORY = /(onCallGenkit|onCall)\s*\(/g;
 // nothing is the classic false-green, so an empty (or suspiciously small) sweep
 // must fail rather than pass. Raise this when callables are added.
 const MIN_EXPECTED_CALL_SITES = 14;
+
+// The two App Check constants a callable may spread. Enforcement is the default;
+// the exemption is the sign-in pair only (#718 Phase 4).
+const ENFORCED = '...APP_CHECK_ENFORCEMENT';
+const EXEMPT = '...APP_CHECK_SIGN_IN_EXEMPT';
+
+// The complete list of callables allowed to be App Check EXEMPT. This is the point
+// of the constant: the exemption is enumerable, and widening it is a deliberate act
+// that fails this test rather than a comment nobody reads. Do not add to this list
+// to make a build pass — an unattested callable is an open door onto the AI spend
+// App Check exists to protect. Phase 4 empties it.
+const SIGN_IN_EXEMPT_FILES = ['callables/requestEmailOtp.ts', 'callables/verifyEmailOtp.ts'];
 
 function tsFilesUnder(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -78,6 +90,39 @@ function callSites(): CallSite[] {
   });
 }
 
+describe('the enforcement value itself', () => {
+  // Evaluated at module load, so each case needs a fresh import under a fresh env.
+  async function enforcementUnder(emulator: string | undefined): Promise<boolean> {
+    vi.resetModules();
+    const previous = process.env['FUNCTIONS_EMULATOR'];
+    if (emulator === undefined) delete process.env['FUNCTIONS_EMULATOR'];
+    else process.env['FUNCTIONS_EMULATOR'] = emulator;
+    try {
+      const mod = await import('../../src/tracedCallable.js');
+      return mod.APP_CHECK_ENFORCEMENT.enforceAppCheck;
+    } finally {
+      if (previous === undefined) delete process.env['FUNCTIONS_EMULATOR'];
+      else process.env['FUNCTIONS_EMULATOR'] = previous;
+    }
+  }
+
+  // The one that matters. Every deployed environment — dev, staging, prod — runs
+  // with FUNCTIONS_EMULATOR unset, so this is the value real users get. If the
+  // emulator gate is ever broadened (say to a truthy check that some CI runner
+  // also satisfies), enforcement would silently switch off in production and
+  // nothing else in the suite would notice.
+  it('enforces when FUNCTIONS_EMULATOR is unset (every deployed environment)', async () => {
+    await expect(enforcementUnder(undefined)).resolves.toBe(true);
+  });
+
+  // Only the literal 'true' the emulator sets disables it — matching the existing
+  // FUNCTIONS_EMULATOR checks elsewhere in this app.
+  it('relaxes only under the emulator', async () => {
+    await expect(enforcementUnder('true')).resolves.toBe(false);
+    await expect(enforcementUnder('false')).resolves.toBe(true);
+  });
+});
+
 describe('App Check enforcement is defined in exactly one place', () => {
   it('finds every callable call site', () => {
     // Guards the scanner itself: if the regex or the walk breaks, the assertion
@@ -85,13 +130,28 @@ describe('App Check enforcement is defined in exactly one place', () => {
     expect(callSites().length).toBeGreaterThanOrEqual(MIN_EXPECTED_CALL_SITES);
   });
 
-  it('spreads the shared APP_CHECK_ENFORCEMENT constant at every callable', () => {
+  it('spreads one of the shared App Check constants at every callable', () => {
     const offenders = callSites()
-      .filter((site) => !site.options?.includes('...APP_CHECK_ENFORCEMENT'))
+      .filter((site) => !(site.options?.includes(ENFORCED) || site.options?.includes(EXEMPT)))
       .map((site) => site.file);
 
     // Named rather than counted, so a failure says which file to fix.
     expect(offenders).toEqual([]);
+  });
+
+  it('grants the sign-in exemption to exactly the two OTP callables', () => {
+    const exempt = [
+      ...new Set(
+        callSites()
+          .filter((s) => s.options?.includes(EXEMPT))
+          .map((s) => s.file),
+      ),
+    ];
+
+    // Both directions matter. An UNEXPECTED file here is a new unattested callable;
+    // a MISSING one means the sign-in pair silently became enforced, which is the
+    // Phase 4 change and must not arrive as a side effect of an unrelated edit.
+    expect(exempt.sort()).toEqual([...SIGN_IN_EXEMPT_FILES].sort());
   });
 
   it('declares no enforceAppCheck literal outside the shared constant', () => {
