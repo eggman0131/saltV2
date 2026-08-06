@@ -32,6 +32,18 @@ const CALLABLE_FACTORY = /(onCallGenkit|onCall)\s*\(/g;
 // must fail rather than pass. Raise this when callables are added.
 const MIN_EXPECTED_CALL_SITES = 14;
 
+// The two App Check constants a callable may spread. Enforcement is the default;
+// the exemption is the sign-in pair only (#718 Phase 4).
+const ENFORCED = '...APP_CHECK_ENFORCEMENT';
+const EXEMPT = '...APP_CHECK_SIGN_IN_EXEMPT';
+
+// The complete list of callables allowed to be App Check EXEMPT. This is the point
+// of the constant: the exemption is enumerable, and widening it is a deliberate act
+// that fails this test rather than a comment nobody reads. Do not add to this list
+// to make a build pass — an unattested callable is an open door onto the AI spend
+// App Check exists to protect. Phase 4 empties it.
+const SIGN_IN_EXEMPT_FILES = ['callables/requestEmailOtp.ts', 'callables/verifyEmailOtp.ts'];
+
 function tsFilesUnder(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const path = join(dir, entry.name);
@@ -85,13 +97,28 @@ describe('App Check enforcement is defined in exactly one place', () => {
     expect(callSites().length).toBeGreaterThanOrEqual(MIN_EXPECTED_CALL_SITES);
   });
 
-  it('spreads the shared APP_CHECK_ENFORCEMENT constant at every callable', () => {
+  it('spreads one of the shared App Check constants at every callable', () => {
     const offenders = callSites()
-      .filter((site) => !site.options?.includes('...APP_CHECK_ENFORCEMENT'))
+      .filter((site) => !(site.options?.includes(ENFORCED) || site.options?.includes(EXEMPT)))
       .map((site) => site.file);
 
     // Named rather than counted, so a failure says which file to fix.
     expect(offenders).toEqual([]);
+  });
+
+  it('grants the sign-in exemption to exactly the two OTP callables', () => {
+    const exempt = [
+      ...new Set(
+        callSites()
+          .filter((s) => s.options?.includes(EXEMPT))
+          .map((s) => s.file),
+      ),
+    ];
+
+    // Both directions matter. An UNEXPECTED file here is a new unattested callable;
+    // a MISSING one means the sign-in pair silently became enforced, which is the
+    // Phase 4 change and must not arrive as a side effect of an unrelated edit.
+    expect(exempt.sort()).toEqual([...SIGN_IN_EXEMPT_FILES].sort());
   });
 
   it('declares no enforceAppCheck literal outside the shared constant', () => {
