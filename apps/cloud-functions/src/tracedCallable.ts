@@ -36,12 +36,30 @@ import { reportFlowError } from './observability/reportServerError.js';
 // ./callables/ each carried their own `enforceAppCheck: false` literal, so "flip
 // one line" had quietly stopped being true. Do not reintroduce a literal.
 //
-// It is a code constant with no per-environment override, by decision (#718): it
-// deploys identically to dev, staging and prod, which is what keeps the three from
-// silently diverging. The practical consequence: merging to `main` deploys to
-// STAGING immediately (deploy-staging.yml runs on workflow_run after CI), while
-// PROD only receives it when a release is published.
-export const APP_CHECK_ENFORCEMENT = { enforceAppCheck: true } as const;
+// It is a code constant with no per-DEPLOYED-environment override, by decision
+// (#718): it deploys identically to dev, staging and prod, which is what keeps the
+// three from silently diverging. The practical consequence: merging to `main`
+// deploys to STAGING immediately (deploy-staging.yml runs on workflow_run after
+// CI), while PROD only receives it when a release is published.
+//
+// The ONE exception is the local emulator, and it is not a deploy target — so the
+// three real projects stay byte-identical. This is load-bearing, not a convenience:
+// enforcement lives in the FUNCTION's own code (firebase-functions rejects a
+// missing X-Firebase-AppCheck header itself, with no emulator carve-out), whereas
+// Firestore/Storage enforcement lives in a backend the emulators simply do not run.
+// So the widespread belief that "emulators don't enforce App Check" is true of the
+// SERVICES and false of CALLABLES. Meanwhile the client deliberately skips App Check
+// init under emulators (init.ts) — a `demo-*` project has no App Check backend to
+// mint a token against — so without this gate every callable in the e2e suite would
+// 401. Discovered the honest way: flipping enforcement turned two e2e shards red.
+//
+// Safe by construction: FUNCTIONS_EMULATOR is set only by the emulator, and
+// `enforceAppCheck` is captured in the handler closure rather than published on
+// __endpoint, so the deployed runtime re-evaluates this in the real environment
+// even if deploy-time discovery ever ran with the variable set.
+export const APP_CHECK_ENFORCEMENT = {
+  enforceAppCheck: process.env['FUNCTIONS_EMULATOR'] !== 'true',
+} as const;
 
 // The ONE sanctioned exemption: the two email-OTP sign-in callables (#718 Phase 4).
 //

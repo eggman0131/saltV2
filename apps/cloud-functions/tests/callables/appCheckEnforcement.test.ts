@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -89,6 +89,39 @@ function callSites(): CallSite[] {
     return found;
   });
 }
+
+describe('the enforcement value itself', () => {
+  // Evaluated at module load, so each case needs a fresh import under a fresh env.
+  async function enforcementUnder(emulator: string | undefined): Promise<boolean> {
+    vi.resetModules();
+    const previous = process.env['FUNCTIONS_EMULATOR'];
+    if (emulator === undefined) delete process.env['FUNCTIONS_EMULATOR'];
+    else process.env['FUNCTIONS_EMULATOR'] = emulator;
+    try {
+      const mod = await import('../../src/tracedCallable.js');
+      return mod.APP_CHECK_ENFORCEMENT.enforceAppCheck;
+    } finally {
+      if (previous === undefined) delete process.env['FUNCTIONS_EMULATOR'];
+      else process.env['FUNCTIONS_EMULATOR'] = previous;
+    }
+  }
+
+  // The one that matters. Every deployed environment — dev, staging, prod — runs
+  // with FUNCTIONS_EMULATOR unset, so this is the value real users get. If the
+  // emulator gate is ever broadened (say to a truthy check that some CI runner
+  // also satisfies), enforcement would silently switch off in production and
+  // nothing else in the suite would notice.
+  it('enforces when FUNCTIONS_EMULATOR is unset (every deployed environment)', async () => {
+    await expect(enforcementUnder(undefined)).resolves.toBe(true);
+  });
+
+  // Only the literal 'true' the emulator sets disables it — matching the existing
+  // FUNCTIONS_EMULATOR checks elsewhere in this app.
+  it('relaxes only under the emulator', async () => {
+    await expect(enforcementUnder('true')).resolves.toBe(false);
+    await expect(enforcementUnder('false')).resolves.toBe(true);
+  });
+});
 
 describe('App Check enforcement is defined in exactly one place', () => {
   it('finds every callable call site', () => {
