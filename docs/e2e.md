@@ -316,6 +316,42 @@ by test and shard, and flake rate as `flaky ÷ ran`. A daily alert fires by emai
 test exceeds 3 flakes in a rolling 7 days — it evaluates a SQL insight row-by-row (`any_row`),
 because a breakdown trend cannot be alerted on per breakdown value.
 
+### Quarantine (issue #721)
+
+A test that is known to flake poisons the thing the suite is for. People learn that amber on _that_
+test means "re-run", and once re-running is the habit, the **next** flake — a real one, in code that
+just changed — arrives into a suite nobody believes and reads as more of the same. Quarantine buys
+that belief back.
+
+To quarantine a test, put `@quarantine` in its title:
+
+```ts
+test('detail page — change aisle @quarantine', async ({ page }) => {
+```
+
+Per **test**, not per file: `shopping-list-multi-list.spec.ts` has five tests and historically only
+one of them rotted, so a file-level mechanism would take four healthy tests out of the gate to
+sideline one bad one.
+
+What then happens to it: the `chromium` and `mobile-touch` projects `grepInvert` the tag, so the
+test leaves the gating run immediately. A `quarantine` project picks it up instead — same retries,
+same reporters — and CI runs that project as a separate, `continue-on-error` step on shard 1. So a
+quarantined test **still runs, still lands in PostHog** with the same `test_title` breakdown key
+(see [Flake telemetry](#flake-telemetry-issue-669)) and `project: quarantine` to tell it apart, and
+no longer decides whether the PR merges.
+
+**Quarantine is not a fix, and not a parking space.** NF-G3 does not soften for a quarantined test:
+it is a bug that is still owed a fix. Tag it, open (or link) an issue in the same breath, and let
+the flake-rate chart tell you when the fix worked — then take the tag off. A tag with no issue
+behind it is how a suite quietly shrinks.
+
+Two things follow from the CI shape and are worth knowing before you tag something. The quarantine
+step greps the specs first and no-ops when nothing is tagged, because a second Playwright
+invocation re-runs `globalSetup` — and CI's `globalTeardown` has already done `down -v`, so that
+means standing the whole emulator stack back up. And because the reporter overwrites its NDJSON,
+the quarantine run is pointed at its own file (`E2E_FLAKE_NDJSON`) and appended to the gating run's,
+so both reach PostHog from the one existing upload step.
+
 ## Spotting & clearing a poisoned environment
 
 **This is what the container boundary fixes.** Historically (pre-#84) the e2e stop path was
