@@ -1,4 +1,4 @@
-<!-- spec: SPEC.md §9.3 v0.2.3 -->
+<!-- spec: SPEC.md §9.3 v0.2.3; ui-spec-v07.md §1 v0.7 (fill) -->
 <script lang="ts">
   import { cn } from '../../lib/cn';
   import Button from '../../primitives/Button/Button.svelte';
@@ -15,10 +15,26 @@
     children,
     class: className,
     titleSlot,
+    fill = false,
   }: DetailPageProps = $props();
 </script>
 
-<section class={cn('flex flex-col gap-6', className)}>
+<!--
+  `fill` (ui-spec-v07 §1) makes the page occupy the shell's content area rather
+  than grow with its content, so a child can own the scrolling. It is the same
+  height chain ListPage's fill uses (ui-spec-v05 §1.2): `h-full` resolves against
+  AppShell's <main>, which has a definite height (and, because <main> carries the
+  bottom-nav padding, resolves to the space above the nav automatically);
+  `min-h-0` is what lets the section shrink inside the flex column instead of
+  being floored at its intrinsic content height. Since <main> is overflow-y-auto
+  it then has nothing left to scroll — no change to AppShell, and no pixel
+  arithmetic anywhere.
+
+  `fill` and `metadata` are mutually exclusive (ui-spec-v07 §1.5): the metadata
+  aside is `lg:sticky lg:top-4`, which presupposes the ancestor scroller `fill`
+  removes. Declared, not enforced — no consumer wants both.
+-->
+<section class={cn('flex flex-col gap-6', className, fill && 'h-full min-h-0')}>
   <header class="flex flex-col gap-3">
     {#if onBack}
       <div>
@@ -54,7 +70,7 @@
 
   {#if metadata}
     <div class="grid grid-cols-1 lg:grid-cols-[1fr_minmax(220px,_280px)] gap-6 items-start">
-      <div class="min-w-0">
+      <div class={cn('min-w-0', fill && 'flex flex-1 flex-col')}>
         {@render children?.()}
       </div>
       <aside class="flex flex-col gap-4 lg:sticky lg:top-4">
@@ -62,7 +78,7 @@
       </aside>
     </div>
   {:else}
-    <div class="min-w-0">
+    <div class={cn('min-w-0', fill && 'flex flex-1 flex-col')}>
       {@render children?.()}
     </div>
   {/if}
