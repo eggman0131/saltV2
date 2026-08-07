@@ -436,11 +436,19 @@ test.describe('meal planner — shop the week (#724)', () => {
     await page.getByTestId('shopping-create-list-name').fill('Weekly shop');
     await page.getByRole('button', { name: /create/i }).click();
     await expect(page).toHaveURL(/#\/shopping\/[0-9a-f-]{36}$/, { timeout: SYNC_TIMEOUT });
+
     // Creating a list also writes the lists CONFIG, and only the config makes it
-    // the default. Leaving the page mid-write abandons it and nothing writes it
-    // again, so wait for the subscription to echo the default back.
+    // the default. That write lands in the same instant as the app's own
+    // listeners are attaching, and the emulator's forced long-polling transport
+    // drops updates delivered in that window (the hazard `waitForCanonReady`
+    // exists for) — observed here as a config doc present in Firestore and a
+    // `defaultListId` still null in the store fifteen seconds later. A
+    // listener's FIRST snapshot is not subject to it, so the page is reloaded
+    // and the default is read off a fresh subscription. This is bootstrap, not
+    // the thing under test: what is being proved below starts at the cart.
+    await page.reload();
     await expect
-      .poll(() => page.evaluate(() => window.__e2e!.getDefaultListId() ?? null), {
+      .poll(() => page.evaluate(() => window.__e2e?.getDefaultListId() ?? null), {
         timeout: SYNC_TIMEOUT,
       })
       .not.toBeNull();
