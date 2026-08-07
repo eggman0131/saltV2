@@ -249,6 +249,36 @@ describe('editItemRawText', () => {
     expect(result.kind === 'ok' && result.value[0].rawText).toBe('trimmed');
   });
 
+  it('keeps the canon match when the text is unchanged', () => {
+    // The edit sheet always submits its text field, edited or not, and this
+    // command is composed into every single-item move (issue #699). Resubmitting
+    // the same text must not re-identify the item.
+    const items = [
+      makeItem('item-1', { rawText: 'milk 2L', canonId: 'c1', matchState: 'matched' }),
+    ];
+    const result = editItemRawText(items, { id: 'item-1', rawText: 'milk 2L', now: NOW2 });
+    expect(result.kind).toBe('ok');
+    if (result.kind !== 'ok') return;
+    expect(result.value[0]).toMatchObject({ canonId: 'c1', matchState: 'matched' });
+    // Still an edit: updatedAt is stamped either way.
+    expect(result.value[0].updatedAt).toBe(NOW2);
+  });
+
+  it('keeps the canon match when only surrounding whitespace changed', () => {
+    // The comparison is against the TRIMMED input, so padding is not a change.
+    const items = [
+      makeItem('item-1', { rawText: 'milk 2L', canonId: 'c1', matchState: 'matched' }),
+    ];
+    const result = editItemRawText(items, { id: 'item-1', rawText: '  milk 2L  ', now: NOW2 });
+    expect(result.kind).toBe('ok');
+    if (result.kind !== 'ok') return;
+    expect(result.value[0]).toMatchObject({
+      rawText: 'milk 2L',
+      canonId: 'c1',
+      matchState: 'matched',
+    });
+  });
+
   it('returns INVALID_ITEM_RAW_TEXT for blank rawText', () => {
     const result = editItemRawText([makeItem('item-1')], { id: 'item-1', rawText: '', now: NOW });
     expect(result.kind).toBe('err');
@@ -459,7 +489,7 @@ describe('clearCheckedItems', () => {
 // ── moveItems ─────────────────────────────────────────────────────────────────
 
 describe('moveItems', () => {
-  it('moves items from source to target, resetting match state', () => {
+  it('moves items from source to target, preserving the canon match', () => {
     const sourceItems = [
       makeItem('item-1', { canonId: 'c1', matchState: 'matched' }),
       makeItem('item-2'),
@@ -472,9 +502,48 @@ describe('moveItems', () => {
     expect(result.value.sourceItems[0].id).toBe('item-2');
     expect(result.value.targetItems).toHaveLength(2);
     const moved = result.value.targetItems.find((i) => i.id === 'item-1')!;
-    expect(moved.canonId).toBeNull();
-    expect(moved.matchState).toBe('pending');
+    // Issue #699: the item arrives already identified, so the trigger's
+    // `matchState !== 'pending' || canonId !== null` guard ignores it and the
+    // row appears in its aisle without a re-match.
+    expect(moved.canonId).toBe('c1');
+    expect(moved.matchState).toBe('matched');
     expect(moved.updatedAt).toBe(NOW2);
+  });
+
+  it('carries needs_approval and failed states across a move unchanged', () => {
+    // One flat rule, no special cases: an item awaiting approval is not re-queued,
+    // and a failed item is not silently re-armed for another attempt (issue #699).
+    const sourceItems = [
+      makeItem('item-1', { canonId: 'c1', matchState: 'needs_approval' }),
+      makeItem('item-2', { canonId: null, matchState: 'failed' }),
+    ];
+    const result = moveItems(sourceItems, [], { itemIds: ['item-1', 'item-2'], now: NOW2 });
+    expect(result.kind).toBe('ok');
+    if (result.kind !== 'ok') return;
+    const [awaiting, failed] = result.value.targetItems;
+    expect(awaiting).toMatchObject({ canonId: 'c1', matchState: 'needs_approval' });
+    expect(failed).toMatchObject({ canonId: null, matchState: 'failed' });
+  });
+
+  it('preserves the parent identity and demand breakdown of a product-form row', () => {
+    // A "Lime ×3" row is pinned to the parent product it was matched to at
+    // recipe-add; formDemand and originalText hang off that identity (issue #699).
+    const lime = makeItem('item-1', {
+      canonId: 'canon-lime',
+      matchState: 'matched',
+      unit: 'count',
+      formDemand: [{ formId: 'form-lime-juice', parentCount: 2.4 }],
+      originalText: ['juice of 2 limes'],
+    });
+    const result = moveItems([lime], [], { itemIds: ['item-1'], now: NOW2 });
+    expect(result.kind).toBe('ok');
+    if (result.kind !== 'ok') return;
+    expect(result.value.targetItems[0]).toMatchObject({
+      canonId: 'canon-lime',
+      matchState: 'matched',
+      formDemand: [{ formId: 'form-lime-juice', parentCount: 2.4 }],
+      originalText: ['juice of 2 limes'],
+    });
   });
 
   it('returns NotFound when any itemId is not in source', () => {

@@ -6,9 +6,52 @@
  * and verifying that activeListId survives a page reload via the URL.
  */
 import { expect, test } from './fixtures/test';
-import { gotoAndSignIn, uniqueEmail } from './helpers/auth';
-import { seedShoppingListBeforeBoot } from './helpers/seed';
-import { SYNC_TIMEOUT } from './helpers/timeouts';
+import { gotoAndSignIn, uniqueEmail, waitForBridge } from './helpers/auth';
+import {
+  getShoppingListItems,
+  seedAisles,
+  seedCanonItem,
+  seedShoppingListBeforeBoot,
+} from './helpers/seed';
+import { SYNC_TIMEOUT, TRIGGER_TIMEOUT } from './helpers/timeouts';
+
+// Wait for the onShoppingListItemWrite trigger to identify `rawText`, and return
+// the canonId it settled on (issue #699). Read through the bridge inside a poll
+// rather than off the DOM, which renders an optimistic pending row first
+// (NF-E2). The caller seeds canon that resolves by exact name, so the match is a
+// stage-1 direct hit with no AI branch (NF-E3).
+async function waitForMatched(
+  page: import('@playwright/test').Page,
+  rawText: string,
+): Promise<string> {
+  await expect
+    .poll(
+      async () => {
+        const items = await getShoppingListItems(page);
+        return items.find((i) => i.rawText === rawText)?.matchState ?? null;
+      },
+      { timeout: TRIGGER_TIMEOUT },
+    )
+    .toBe('matched');
+  const matched = (await getShoppingListItems(page)).find((i) => i.rawText === rawText);
+  return matched!.canonId!;
+}
+
+// Assert the item arrived on the destination list still carrying the identity it
+// had before the move — the whole point of #699. `toPass` because the
+// destination's snapshot has to land first.
+async function expectMatchPreserved(
+  page: import('@playwright/test').Page,
+  rawText: string,
+  canonId: string,
+): Promise<void> {
+  await expect(async () => {
+    const moved = (await getShoppingListItems(page)).find((i) => i.rawText === rawText);
+    expect(moved, `"${rawText}" should be on the destination list`).toBeTruthy();
+    expect(moved!.canonId).toBe(canonId);
+    expect(moved!.matchState).toBe('matched');
+  }).toPass({ timeout: SYNC_TIMEOUT });
+}
 
 async function createFirstList(page: import('@playwright/test').Page): Promise<string> {
   await page.goto('/#/shopping');
@@ -106,9 +149,21 @@ test.describe('shopping list — multi-list', () => {
   });
 
   test('move item to second list removes it from source', async ({ page }, testInfo) => {
-    test.setTimeout(90_000);
+    test.setTimeout(120_000);
     const email = uniqueEmail(testInfo.testId);
     await gotoAndSignIn(page, email);
+
+    // Seed an aisle + a canon item the entry will match by exact name, so the
+    // item is identified before the move and the move has an identity to keep
+    // (issue #699). "Soy Sauce" and the entry "soy sauce" share a normalised
+    // form → stage-1 direct hit, no AI (NF-E3).
+    await page.goto('/');
+    await waitForBridge(page);
+    const [condiments] = await seedAisles(page, ['Condiments']);
+    const soyCanon = await seedCanonItem(page, {
+      name: 'Soy Sauce',
+      aisleId: condiments!.id,
+    });
 
     const firstListUrl = await createFirstList(page);
 
@@ -119,9 +174,15 @@ test.describe('shopping list — multi-list', () => {
       page.getByTestId('shopping-item-row').filter({ hasText: 'soy sauce' }),
     ).toBeVisible({ timeout: SYNC_TIMEOUT });
 
+    // Let the trigger identify it before moving — otherwise the move would be
+    // racing the very re-match this test asserts does not happen.
+    const soyCanonId = await waitForMatched(page, 'soy sauce');
+    expect(soyCanonId).toBe(soyCanon.id);
+
     // Create a second list
     await createSecondList(page, 'Asian supermarket');
     await expect(page).toHaveURL(/#\/shopping\/(?!lists)[a-z0-9-]+$/, { timeout: SYNC_TIMEOUT });
+    const secondListUrl = page.url();
 
     // Go back to first list
     await page.goto(firstListUrl);
@@ -146,6 +207,12 @@ test.describe('shopping list — multi-list', () => {
       page.getByTestId('shopping-item-row').filter({ hasText: 'soy sauce' }),
     ).not.toBeVisible({ timeout: SYNC_TIMEOUT });
 
+    // …and arrive on the destination already identified (issue #699). Before
+    // this, the bulk move wrote canonId: null / matchState: 'pending' and the
+    // row sat under OTHER with a spinner until the trigger re-ran.
+    await page.goto(secondListUrl);
+    await expectMatchPreserved(page, 'soy sauce', soyCanon.id);
+
     // Navigate via bridge to confirm which list is the default
     const defaultListId = await page.evaluate(() => window.__e2e!.getDefaultListId());
     expect(defaultListId).toBeTruthy();
@@ -154,9 +221,21 @@ test.describe('shopping list — multi-list', () => {
   test('edit sheet moves a single item, carrying the edits made in the same visit', async ({
     page,
   }, testInfo) => {
-    test.setTimeout(90_000);
+    test.setTimeout(120_000);
     const email = uniqueEmail(testInfo.testId);
     await gotoAndSignIn(page, email);
+
+    // Canon for the unchanged-text move at the end of this test (issue #699),
+    // seeded by exact name so the match is a stage-1 direct hit with no AI
+    // branch (NF-E3). Nothing here matches "soy sauce", so the edit-and-move
+    // flow below behaves exactly as it did before.
+    await page.goto('/');
+    await waitForBridge(page);
+    const [condiments] = await seedAisles(page, ['Condiments']);
+    const vinegarCanon = await seedCanonItem(page, {
+      name: 'Rice Vinegar',
+      aisleId: condiments!.id,
+    });
 
     const firstListUrl = await createFirstList(page);
 
@@ -201,6 +280,28 @@ test.describe('shopping list — multi-list', () => {
     await page.goto(secondListUrl);
     await expect(page.getByText('dark soy sauce')).toBeVisible({ timeout: SYNC_TIMEOUT });
     await expect(page.getByText('the thick one')).toBeVisible({ timeout: SYNC_TIMEOUT });
+
+    // ── Moving without editing the text keeps the item's identity (#699) ──────
+    // The sheet always submits its text field, so this is the path where an
+    // unconditional reset in editItemRawText would make a single-item move
+    // diverge from the bulk move. Same seeded canon, same assertion.
+    await page.goto(firstListUrl);
+    await page.getByTestId('shopping-item-input').fill('rice vinegar');
+    await page.getByTestId('shopping-item-add-btn').click();
+    const vinegarRow = page.getByTestId('shopping-item-row').filter({ hasText: 'rice vinegar' });
+    await expect(vinegarRow).toBeVisible({ timeout: SYNC_TIMEOUT });
+
+    const vinegarCanonId = await waitForMatched(page, 'rice vinegar');
+    expect(vinegarCanonId).toBe(vinegarCanon.id);
+
+    await vinegarRow.getByTestId('shopping-item-edit-btn').click();
+    // The text field is left exactly as it is — only the destination changes.
+    await page.getByTestId('shopping-edit-move-select').click();
+    await page.getByRole('option', { name: 'Asian supermarket' }).click();
+    await page.getByTestId('shopping-edit-save').click();
+
+    await page.goto(secondListUrl);
+    await expectMatchPreserved(page, 'rice vinegar', vinegarCanon.id);
   });
 
   test('activeListId survives reload via URL', async ({ page }, testInfo) => {
