@@ -159,6 +159,7 @@ This model is intentionally narrow. Multi‑workspace, sharing, or per‑documen
 - Initialises Firebase App Check (reCAPTCHA Enterprise, `isTokenAutoRefreshEnabled: true`) when an optional `AppCheckConfig` is provided and emulators are not in use. Must initialise before any other Firebase service so tokens are attached to requests. The exported `AppCheckConfig` interface carries a public `siteKey` and an optional `debugToken` for unattested environments (local dev / CI hitting a real backend); the debug token must never be baked into a deployed bundle.
 - Exposes the following as its primary data API:
   - Canon: `subscribeCanonItems`, `subscribeAisles`, `upsertCanonItem`, `deleteCanonItem`, `saveAisles`
+  - Canon purchase counts: `recordCanonPurchases`, `loadCanonPurchaseCounts` — the household's tick-off history behind the shopping add-field's ordering. The only place in the codebase using a Firestore field transform (`increment`): one write per tick GESTURE, so a bulk tick-off cannot hammer a single shared document, and the transform survives an offline shop in `persistentLocalCache`.
   - Shopping lists: `subscribeShoppingLists`, `listShoppingLists`, `createShoppingList`, `renameShoppingList`, `deleteShoppingList`
   - Shopping list items: `subscribeShoppingListItems`, `listShoppingListItems`, `saveShoppingListItem`, `deleteShoppingListItem`, `deleteShoppingListItems`, `moveShoppingListItems`
   - Shopping list config: `subscribeShoppingListsConfig`, `loadShoppingListsConfig`, `saveShoppingListsConfig`

@@ -29,7 +29,10 @@ foundation (#179).
 ## Scope boundaries
 
 - "Contents of my kitchen" means **equipment + accessories only**. There is no
-  pantry/fridge inventory module and this feature does not add one.
+  pantry/fridge inventory module and this feature does not add one. The household
+  favourites the chef sees (issue #726) are **not** an inventory: they are a
+  purchase *history* — what got ticked off at the shop, over time — and say
+  nothing about what is in the house right now. Do not let them grow into one.
 - A saved recipe **must canon-match** its ingredients (reuse the existing canon
   pipeline). Adding to the shopping list or meal planner stays a **manual** action
   (shopping-list add already exists).
@@ -99,6 +102,14 @@ chat session doc (Firestore)         ← owned by web-pwa + firebase-sync (clien
 - The flow reads the **equipment manifest** doc server-side (admin SDK, like the
   canon flows read the canon collection) and injects it into the system prompt as
   ambient context. Client stays simple; equipment is always fresh.
+- It also reads **household favourites** the same way (issue #726): the
+  `canonData/purchaseCounts` tick-off history, joined against `canonItems`, with
+  `shoppingBehavior === 'stocked'` dropped so pantry staples cannot drown the
+  taste signal. Ambient context like the equipment, and steered **in words** —
+  "something a bit different" pushes away from the list, "our usual stuff" leans
+  in. There is deliberately no mode flag, no wire field, and no chat UI for it.
+  Absent or empty counts omit the section entirely, so the chef behaves exactly
+  as it did before the feature existed.
 - Plain text out. **No `output` schema. No tools.** Wrap the generate call in
   `withAiTimeout`.
 

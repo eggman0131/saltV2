@@ -24,6 +24,7 @@ vi.mock('@salt/firebase-sync', () => ({
   moveShoppingListItems: vi.fn(),
   subscribeShoppingListsConfig: vi.fn(),
   saveShoppingListsConfig: vi.fn(),
+  recordCanonPurchases: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   subscribeMembers: vi.fn(),
   upsertMember: vi.fn(),
   deleteMember: vi.fn(),
@@ -47,6 +48,9 @@ vi.mock('@salt/observability', () => ({
 const canonItems: CanonItem[] = [];
 vi.mock('../src/lib/canonService.js', () => ({
   getCanonItemsSnapshot: () => canonItems,
+  // The purchase-count sink rides the same tick-off (#726); it is exercised in
+  // shoppingListService.purchaseCounts.test.ts, so here it is only stood up.
+  bumpPurchaseCounts: vi.fn(),
 }));
 
 vi.mock('../src/lib/auth.svelte.js', () => ({
