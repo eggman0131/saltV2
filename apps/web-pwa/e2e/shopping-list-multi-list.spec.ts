@@ -7,6 +7,7 @@
  */
 import { expect, test } from './fixtures/test';
 import { gotoAndSignIn, uniqueEmail } from './helpers/auth';
+import { seedShoppingListBeforeBoot } from './helpers/seed';
 import { SYNC_TIMEOUT } from './helpers/timeouts';
 
 async function createFirstList(page: import('@playwright/test').Page): Promise<string> {
@@ -74,9 +75,24 @@ test.describe('shopping list — multi-list', () => {
   test('default list cannot be deleted — delete button is disabled', async ({ page }, testInfo) => {
     test.setTimeout(60_000);
     const email = uniqueEmail(testInfo.testId);
+
+    // Seeded before boot rather than created through `createFirstList`: this test
+    // asserts on which list is THE DEFAULT, and the default lives in
+    // `shoppingListsConfig/singleton`, written only after the app has already
+    // attached its listener to it — an update the emulator's forced long-polling
+    // transport drops permanently often enough to dominate this test's CI
+    // failures (`ctx_shopping_lists_count: 1` with `ctx_has_default_list: false`
+    // on every recorded one). See `seedShoppingListBeforeBoot`. The other tests in
+    // this file keep `createFirstList`, where creating a list IS the subject.
+    const list = await seedShoppingListBeforeBoot('Weekly shop');
+
     await gotoAndSignIn(page, email);
 
-    await createFirstList(page);
+    // No `/#/shopping/new` redirect to catch here — a default list already
+    // exists, so `/#/shopping` bounces straight to it. Landing on that URL is
+    // also the settle gate: it only resolves once the config snapshot arrives.
+    await page.goto('/#/shopping');
+    await expect(page).toHaveURL(new RegExp(`#/shopping/${list.id}$`), { timeout: SYNC_TIMEOUT });
 
     // Navigate to the lists management page (via the overflow menu)
     await page.getByTestId('shopping-overflow-btn').click();
