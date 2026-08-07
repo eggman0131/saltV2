@@ -21,8 +21,8 @@ import { normaliseTags } from './categoryTags.js';
 //
 // `raw` is typed as LibrarianOutput because that is the common structural shape
 // of the two AI outputs — ExtractRecipeAIOutput is assignable to it (it adds
-// `isRecipe` and narrows the numeric fields to positive ints, neither of which
-// this module reads or relies on).
+// `isRecipe` and narrows the numeric fields to non-negative ints, neither of
+// which this module reads or relies on).
 
 export interface AssembleRecipeDraftOptions {
   /** Provenance stamped on the assembled doc — `{ type: 'manual' }` for the
@@ -187,6 +187,25 @@ export async function assembleRecipeDraft(
     }),
   }));
 
+  // "No cooking" is a real answer (a salad, a dressing, a cocktail) and the
+  // extractor now accepts it as `0` (issue #739). A stored recipe has only one
+  // way to say "no time to state" — null — so fold 0 back to it here rather than
+  // teaching every card, editor and diff to render a 0 that means "none".
+  //
+  // ORDER MATTERS: the total is derived from the RAW values, and only the result
+  // is folded — so prep 15 + cook 0 still totals 15. Folding first would read
+  // cook 0 as "not stated" and throw the total away entirely. A derived total of
+  // 0 (both parts 0) folds too: a recipe that takes no time at all is the same
+  // nonsense the schema rejects on the way in.
+  const zeroToNull = (n: number | null): number | null => (n === 0 ? null : n);
+
+  const derivedTotalTimeMinutes = deriveTotalTime
+    ? (raw.totalTimeMinutes ??
+      (raw.prepTimeMinutes !== null && raw.cookTimeMinutes !== null
+        ? raw.prepTimeMinutes + raw.cookTimeMinutes
+        : null))
+    : raw.totalTimeMinutes;
+
   return {
     id: crypto.randomUUID(),
     schemaVersion: 1,
@@ -200,14 +219,9 @@ export async function assembleRecipeDraft(
     steps,
     metadata: {
       servings: raw.servings,
-      totalTimeMinutes: deriveTotalTime
-        ? (raw.totalTimeMinutes ??
-          (raw.prepTimeMinutes !== null && raw.cookTimeMinutes !== null
-            ? raw.prepTimeMinutes + raw.cookTimeMinutes
-            : null))
-        : raw.totalTimeMinutes,
-      prepTimeMinutes: raw.prepTimeMinutes,
-      cookTimeMinutes: raw.cookTimeMinutes,
+      totalTimeMinutes: zeroToNull(derivedTotalTimeMinutes),
+      prepTimeMinutes: zeroToNull(raw.prepTimeMinutes),
+      cookTimeMinutes: zeroToNull(raw.cookTimeMinutes),
       tags: normaliseTags(raw.tags),
     },
     source,

@@ -35,6 +35,8 @@ const SEED_TIME = '2026-01-01T00:00:00.000Z'; // persistRecipe re-stamps updated
 interface StepSpec {
   readonly id: string;
   readonly text: string;
+  /** The author's aside for this step. Omitted → `note: null`, no callout. */
+  readonly note?: string;
 }
 
 interface IngredientSpec {
@@ -90,7 +92,7 @@ function buildRecipe(steps: readonly StepSpec[], ingredients: readonly Ingredien
         })),
       },
     ],
-    steps: steps.map((s) => ({ id: s.id, text: s.text, timer: null, note: null })),
+    steps: steps.map((s) => ({ id: s.id, text: s.text, timer: null, note: s.note ?? null })),
     metadata: {
       servings: 4,
       totalTimeMinutes: null,
@@ -126,6 +128,28 @@ function journeyRecipe(): Recipe {
       { rawText: '400g tinned plum tomatoes', step: 'step-3' },
       { rawText: 'Sea salt', step: 'step-4' },
       { rawText: '500g rigatoni', step: 'step-4' },
+    ],
+  );
+}
+
+// A note on step 1 and none on step 2, so "exactly one callout in the deck" is
+// itself the assertion that a step without a note stays as it was.
+const NOTE_STEP_ONE_TEXT = 'Soften the garlic in the oil over a low flame.';
+const NOTE_FIRST_LINE = 'Do not let the garlic brown.';
+
+function noteRecipe(): Recipe {
+  return buildRecipe(
+    [
+      {
+        id: 'step-1',
+        text: NOTE_STEP_ONE_TEXT,
+        note: `${NOTE_FIRST_LINE}\nIt turns bitter fast.`,
+      },
+      { id: 'step-2', text: 'Add the tomatoes and simmer until glossy.' },
+    ],
+    [
+      { rawText: '2 cloves garlic', step: 'step-1' },
+      { rawText: '400g tinned plum tomatoes', step: 'step-2' },
     ],
   );
 }
@@ -359,6 +383,48 @@ test.describe('cook mode', () => {
     // Finishing DELETED the session doc — re-entering starts a clean cook.
     await page.getByTestId('recipe-cook-button').click();
     await expect(miseCounter(page)).toHaveText(/0\/7 ready/, { timeout: SYNC_TIMEOUT });
+  });
+
+  // ─── Step notes ─────────────────────────────────────────────────────────────
+
+  // Issue #736. The note was a grey paragraph dimmer than the instruction above
+  // it — at arm's length it read as a second sentence of the step. What is worth
+  // asserting in a real browser (over the component test) is that the callout is
+  // actually painted and actually sits between the instruction and the chips.
+  test('a step note is painted as a callout between the instruction and the chips', async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(60_000); // single tab, no reload
+    await startCook(page, uniqueEmail(testInfo.testId), noteRecipe());
+    await page.getByTestId('cook-stage-toggle').click();
+
+    const note = page.getByTestId('cook-step-note');
+    await expect(note).toHaveCount(1); // step 2 has none
+    await expect(note).toContainText(NOTE_FIRST_LINE);
+
+    // The fill is really painted, not merely classed — a note that renders
+    // transparent is the exact failure this change exists to prevent.
+    await expect(async () => {
+      const bg = await note.evaluate((el) => getComputedStyle(el).backgroundColor);
+      expect(bg).not.toBe('rgba(0, 0, 0, 0)');
+      expect(bg).not.toBe('transparent');
+    }).toPass({ timeout: SYNC_TIMEOUT });
+
+    // Order on the page: instruction, then note, then the chip row.
+    await expect(async () => {
+      const instruction = (await page.getByText(NOTE_STEP_ONE_TEXT).boundingBox())!;
+      const noteBox = (await note.boundingBox())!;
+      const chips = (await page.getByTestId('cook-step-firstuse').first().boundingBox())!;
+      expect(noteBox.y).toBeGreaterThan(instruction.y);
+      expect(chips.y).toBeGreaterThan(noteBox.y);
+      // The words did not shrink: the note reads at cook-mode size, not the
+      // recipe page's caption size.
+      const size = await note
+        .locator('span')
+        .last()
+        .evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+      expect(size).toBeGreaterThanOrEqual(18);
+    }).toPass({ timeout: SYNC_TIMEOUT });
   });
 
   // ─── Chip layout ────────────────────────────────────────────────────────────
