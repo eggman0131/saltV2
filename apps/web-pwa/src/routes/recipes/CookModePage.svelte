@@ -19,6 +19,11 @@
   import { isWakeLockSupported, createWakeLock } from '../../lib/wakeLock.js';
   import { primeChime } from '../../lib/chime.js';
   import { createCheckOffHold } from '../../lib/checkOffHold.svelte.js';
+  import { longpress } from '../../lib/longpress.svelte.js';
+  import {
+    addItemToDefaultList,
+    deleteItemFromList,
+  } from '../../lib/shoppingListService.svelte.js';
   import { tick as hapticTick } from '../../lib/haptics.js';
   // The gesture-owned pager — spring, pointer/wheel/keyboard, element measurement —
   // lives in `$lib/deck`, and the pure viewport arithmetic it runs on lives in
@@ -462,6 +467,44 @@
   // ("400g tinned plum tomatoes, drained") for a screen reader announcing a picture.
   function ingredientLabel(ingredient: IngredientDoc): string {
     return ingredient.parsed?.item ?? ingredient.rawText;
+  }
+
+  // ─── Ran out of something? Hold it (issue #714) ──────────────────────────────────
+  // Both cook surfaces that name an ingredient — the mise row and the step's first-use
+  // chip — answer a press-and-hold by putting that ingredient on the shopping list.
+  // It's the one thing a cook wants mid-recipe that cook mode otherwise makes you
+  // leave the page for, and holding is the only gesture spare: a tap already toggles
+  // the mise row and expands the chip, and a fling already pages the deck.
+  //
+  // The NAME only — `ingredientLabel`, the same string the canon icon is labelled with
+  // — never `IngredientText`'s rendering. "400g tinned plum tomatoes, drained" is what
+  // this recipe needs; what you have to buy is tomatoes, in whatever size the shop
+  // sells. The server's canon-match trigger takes it from there and files it under an
+  // aisle, exactly as it would a typed entry.
+  //
+  // Targets the DEFAULT list, not whichever list the shopping page was last on — the
+  // household has one list it shops from, and cook mode has no list context of its own.
+  async function addIngredientToShoppingList(ingredient: IngredientDoc): Promise<void> {
+    const name = ingredientLabel(ingredient);
+    const result = await addItemToDefaultList(name);
+    if (result.kind !== 'ok') {
+      // No list to add to is the expected shape of failure here, and it is not the
+      // cook's mistake — say what happened and move on. Anything else already
+      // reported itself through the service's gate.
+      const message =
+        result.error.kind === 'NotFound'
+          ? "You haven't made a shopping list yet"
+          : `Couldn't add ${name} to the shopping list`;
+      addToast(message, result.error.kind === 'NotFound' ? 'default' : 'destructive');
+      return;
+    }
+    const { itemId, listId, listName } = result.value;
+    addToast(`Added ${name} to ${listName}`, 'success', {
+      action: {
+        label: 'Undo',
+        onClick: () => void deleteItemFromList(listId, itemId),
+      },
+    });
   }
 
   // Set a step's completion — whole-document LWW via the service (there is no
@@ -1210,6 +1253,9 @@
                           ? 'salt-tick-row motion-reduce:animate-none'
                           : ''}"
                         onclick={() => toggleIngredient(ingredient.id)}
+                        use:longpress={{
+                          onLongPress: () => void addIngredientToShoppingList(ingredient),
+                        }}
                         aria-pressed={checked}
                         data-testid="cook-mise-row"
                       >
@@ -1402,6 +1448,9 @@
                             data-testid="cook-step-firstuse-chip"
                             data-expanded={expandedChip}
                             onclick={(e) => expandChip(e, ing.id)}
+                            use:longpress={{
+                              onLongPress: () => void addIngredientToShoppingList(ing),
+                            }}
                           >
                             <CanonIcon
                               thumbnail={thumbnailFor(ing.canonId)}
