@@ -10,6 +10,7 @@ import {
   moveShoppingListItems,
   subscribeShoppingListsConfig,
   saveShoppingListsConfig,
+  recordCanonPurchases,
 } from '@salt/firebase-sync';
 import {
   createObservabilityErrorReportingAdapter,
@@ -41,7 +42,7 @@ import { writable, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 import { auth } from './auth.svelte.js';
 import { findMemberByEmail } from './membersService.js';
-import { getCanonItemsSnapshot } from './canonService.js';
+import { getCanonItemsSnapshot, bumpPurchaseCounts } from './canonService.js';
 import { reportIfFailed, reportSubscriptionError, reportWriteError } from './errorReporting.js';
 
 // ─── ID generators ───────────────────────────────────────────────────────────
@@ -414,6 +415,25 @@ function trackItemPurchased(item: ShoppingListItem): void {
   });
 }
 
+// The purchase-count sink (issue #726) — the same tick-off gesture the event
+// above reports, persisted so the add field can rank by what we actually buy.
+//
+// One call per GESTURE, not per item: a 30-item bulk tick-off becomes one write
+// carrying 30 field transforms rather than 30 writes to one shared document.
+// Rows with no canon match have no key to count against and are skipped.
+//
+// Fire-and-forget, and deliberately not awaited: `setDoc` does not settle until
+// the server acknowledges, so awaiting it would stall the tick-off for the whole
+// time the shopper is offline — exactly when this data gets made. A failure is
+// reported (it is a StorageError) but never reaches the shopper, whose own write
+// already landed.
+function recordPurchases(items: readonly ShoppingListItem[]): void {
+  const canonIds = items.map((i) => i.canonId).filter((id): id is string => id !== null);
+  if (canonIds.length === 0) return;
+  bumpPurchaseCounts(canonIds);
+  void recordCanonPurchases(canonIds).then((result) => reportIfFailed(getErrorReporter(), result));
+}
+
 export async function toggleItemChecked(
   listId: string,
   item: ShoppingListItem,
@@ -430,6 +450,7 @@ export async function toggleItemChecked(
   if (!item.checked && saveResult.kind === 'ok') {
     trackUsageEvent('shopping.item_completed', { list_id: listId, item_count: 1 });
     trackItemPurchased(updated);
+    recordPurchases([updated]);
   }
   return reportIfFailed(getErrorReporter(), saveResult);
 }
@@ -499,9 +520,10 @@ export async function checkItems(listId: string, itemIds: readonly string[]): Pr
     trackUsageEvent('shopping.item_completed', { list_id: listId, item_count: toSave.length });
   // The purchase signal is the opposite granularity — one per item that saved
   // (issue #725). results is index-aligned with toSave.
-  toSave.forEach((item, i) => {
-    if (results[i]!.kind === 'ok') trackItemPurchased(item);
-  });
+  const saved = toSave.filter((_, i) => results[i]!.kind === 'ok');
+  for (const item of saved) trackItemPurchased(item);
+  // ...and the counts go back to gesture granularity: one write, N transforms.
+  recordPurchases(saved);
 }
 
 export async function uncheckItems(listId: string, itemIds: readonly string[]): Promise<void> {
