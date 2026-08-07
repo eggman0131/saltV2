@@ -5,6 +5,7 @@ import type {
   CanonItem,
   MealPlanWeek,
   Recipe,
+  ShoppingList,
   ShoppingListItem,
   Weekday,
 } from '@salt/domain';
@@ -75,6 +76,128 @@ export async function seedFirstDayOfWeek(day: Weekday): Promise<void> {
   if (!res.ok) {
     throw new Error(`seedFirstDayOfWeek failed: HTTP ${res.status} ${await res.text()}`);
   }
+}
+
+// The aisle list — written straight into the emulator, BEFORE the app boots,
+// rather than through the bridge `seedAisles` above.
+//
+// Same drop hazard as `seedFirstDayOfWeek`, only this one is measured. Aisles
+// live in ONE document (`canonData/aisles`), and the app attaches its
+// `onSnapshot` for that document at boot, with the doc absent. A bridge write
+// afterwards is a post-attach update, and the e2e build's
+// `experimentalForceLongPolling` + `persistentLocalCache` transport drops those
+// intermittently: latency compensation shows the aisle for a moment, then the
+// store settles permanently empty. 35 of 35 recorded CI failures across the two
+// aisle-seeding specs carry `ctx_aisles_count: 0` alongside
+// `ctx_canon_synced: true` — the listener was healthy, the update simply never
+// landed. A listener's FIRST snapshot is not subject to that, so the document is
+// put in place before there is a listener at all.
+//
+// The bridge `seedAisles` stays, and stays correct, for specs where the live
+// write itself is the subject under test (cross-tab convergence in
+// canon-sync.spec.ts) — there the post-attach update IS the assertion.
+export async function seedAislesBeforeBoot(names: readonly string[]): Promise<readonly Aisle[]> {
+  const aisles: Aisle[] = names.map((name, order) => ({
+    id: crypto.randomUUID(),
+    name,
+    order,
+  }));
+  const url = `${FIRESTORE_DOCUMENTS_BASE_URL}/canonData/aisles`;
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: { Authorization: 'Bearer owner', 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      fields: {
+        schemaVersion: { integerValue: '1' },
+        updatedAt: { stringValue: new Date().toISOString() },
+        aisles: {
+          arrayValue: {
+            values: aisles.map((aisle) => ({
+              mapValue: {
+                fields: {
+                  id: { stringValue: aisle.id },
+                  name: { stringValue: aisle.name },
+                  order: { integerValue: String(aisle.order) },
+                },
+              },
+            })),
+          },
+        },
+      },
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`seedAislesBeforeBoot failed: HTTP ${res.status} ${await res.text()}`);
+  }
+  return aisles;
+}
+
+// A shopping list that is ALREADY the default — both documents written straight
+// into the emulator, BEFORE the app boots, rather than created through the UI.
+//
+// Same drop hazard as `seedAislesBeforeBoot`, and equally measured. What makes a
+// list the default lives in ONE document (`shoppingListsConfig/singleton`), and
+// the app attaches its `onSnapshot` for that document at boot, with the doc
+// absent — nothing writes it until the user creates their first list, which is
+// necessarily afterwards. That post-attach update is what the e2e build's
+// `experimentalForceLongPolling` + `persistentLocalCache` transport drops, and
+// when it goes it is gone rather than late: every recorded CI failure of the
+// three specs that bootstrapped a list this way carries
+// `ctx_shopping_lists_count: 1` alongside `ctx_has_default_list: false` — the
+// list document arrived, the config never did. Downstream, `defaultListId`
+// stays null, so `openAddToList` toasts and returns, `/#/shopping` redirects to
+// `/#/shopping/new`, and no list is *the* default for the delete-button rule.
+// A listener's FIRST snapshot is not subject to that, so both documents are put
+// in place before there is a listener at all.
+//
+// Creating a list through the UI is still covered where it is the subject under
+// test — `shopping-list-multi-list.spec.ts` and `shopping-list-happy-path.spec.ts`.
+export async function seedShoppingListBeforeBoot(name: string): Promise<ShoppingList> {
+  const now = new Date().toISOString();
+  const list: ShoppingList = {
+    id: crypto.randomUUID(),
+    name,
+    schemaVersion: 1,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const listRes = await fetch(`${FIRESTORE_DOCUMENTS_BASE_URL}/shoppingLists/${list.id}`, {
+    method: 'PATCH',
+    headers: { Authorization: 'Bearer owner', 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      fields: {
+        id: { stringValue: list.id },
+        name: { stringValue: list.name },
+        schemaVersion: { integerValue: '1' },
+        createdAt: { stringValue: list.createdAt },
+        updatedAt: { stringValue: list.updatedAt },
+      },
+    }),
+  });
+  if (!listRes.ok) {
+    throw new Error(
+      `seedShoppingListBeforeBoot failed (list): HTTP ${listRes.status} ${await listRes.text()}`,
+    );
+  }
+
+  const configRes = await fetch(`${FIRESTORE_DOCUMENTS_BASE_URL}/shoppingListsConfig/singleton`, {
+    method: 'PATCH',
+    headers: { Authorization: 'Bearer owner', 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      fields: {
+        defaultListId: { stringValue: list.id },
+        schemaVersion: { integerValue: '1' },
+      },
+    }),
+  });
+  if (!configRes.ok) {
+    throw new Error(
+      `seedShoppingListBeforeBoot failed (config): HTTP ${configRes.status} ${await configRes.text()}`,
+    );
+  }
+
+  return list;
 }
 
 export async function getAisles(page: Page): Promise<readonly Aisle[]> {

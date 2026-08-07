@@ -1,6 +1,6 @@
 import { test, expect } from './fixtures/test';
 import { signIn, uniqueEmail } from './helpers/auth';
-import { seedAisles, seedCanonItem, getCanonItem } from './helpers/seed';
+import { seedAislesBeforeBoot, seedCanonItem, getCanonItem } from './helpers/seed';
 import { canonCreatePage, canonDetailPage } from './helpers/locators';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -116,10 +116,15 @@ test('detail page — edit synonyms', async ({ page }, testInfo) => {
 
 test('detail page — change aisle', async ({ page }, testInfo) => {
   const email = uniqueEmail(testInfo.testId);
+
+  // Before `page.goto` — the aisles document must exist before the app attaches
+  // its listener to it, or the Produce option never reaches the store and the
+  // select has nothing to pick. See `seedAislesBeforeBoot`.
+  const [aisle] = await seedAislesBeforeBoot(['Produce']);
+
   await page.goto('/');
   await signIn(page, email, { admin: true });
 
-  const [aisle] = await seedAisles(page, ['Produce']);
   const seeded = await seedCanonItem(page, { name: 'Carrot' });
 
   await page.goto(`/#/admin/canon/${seeded.id}`);

@@ -45,6 +45,9 @@ export default defineConfig({
       // testIgnore so the fixtures/helpers/reporter exclusions hold regardless of
       // whether Playwright merges or replaces the global value per-project.
       testIgnore: ['**/fixtures/**', '**/helpers/**', '**/reporter/**', '**/*.touch.spec.ts'],
+      // A `@quarantine`-tagged test leaves the gating run the moment it is tagged
+      // — see the quarantine project below.
+      grepInvert: /@quarantine/,
       use: { ...devices['Desktop Chrome'] },
     },
     {
@@ -55,7 +58,31 @@ export default defineConfig({
       // — which no-ops under reduced motion — is actually exercised.
       name: 'mobile-touch',
       testMatch: '**/*.touch.spec.ts',
+      grepInvert: /@quarantine/,
       use: { ...devices['Pixel 5'], reducedMotion: 'no-preference' },
+    },
+    {
+      // Quarantine (issue #721). A KNOWN-flaky test is habitual amber: everyone
+      // learns to re-run it, and the next NEW flake arrives into a suite nobody
+      // trusts, so it reads as more of the same. Moving the known offender here
+      // restores that signal — the gating projects go back to meaning something,
+      // and the quarantined test keeps running with the SAME reporters and the
+      // SAME retries, so its PostHog flake record (issue #669) is unbroken and
+      // you can still see whether it is getting better or worse.
+      //
+      // It is NOT a fix, and not a place to park a test. A quarantined test is a
+      // bug still owed a fix (NF-G3: a retry-pass is a bug, not a green) — it is
+      // tracked and un-quarantined, never left. See docs/e2e.md.
+      //
+      // To quarantine: put `@quarantine` in the test's title — per TEST, not per
+      // file, because the flakiness is per test (one rotten test in a five-test
+      // spec must not take the other four out of the gate with it).
+      //
+      // Ships with zero members on purpose.
+      name: 'quarantine',
+      testIgnore: ['**/fixtures/**', '**/helpers/**', '**/reporter/**', '**/*.touch.spec.ts'],
+      grep: /@quarantine/,
+      use: { ...devices['Desktop Chrome'] },
     },
   ],
 
