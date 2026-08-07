@@ -289,12 +289,19 @@ test.describe('shopping list — multi-list', () => {
     await page.getByTestId('shopping-item-input').fill('rice vinegar');
     await page.getByTestId('shopping-item-add-btn').click();
     const vinegarRow = page.getByTestId('shopping-item-row').filter({ hasText: 'rice vinegar' });
-    await expect(vinegarRow).toBeVisible({ timeout: SYNC_TIMEOUT });
+    await expect(vinegarRow.first()).toBeVisible({ timeout: SYNC_TIMEOUT });
 
     const vinegarCanonId = await waitForMatched(page, 'rice vinegar');
     expect(vinegarCanonId).toBe(vinegarCanon.id);
 
-    await vinegarRow.getByTestId('shopping-item-edit-btn').click();
+    // `.first()` because the store flips to `matched` before the page's local
+    // canon snapshot has regrouped, and in that window the row is rendered under
+    // BOTH its aisle and OTHER — the cross-context canon-sync race
+    // canon-realtime-match.spec.ts documents, which is why that spec refuses to
+    // assert which bucket a matched row lands in. Either instance is the same
+    // item and opens the same sheet, so the edit is unambiguous; the assertion
+    // that matters is made against the store after the move.
+    await vinegarRow.getByTestId('shopping-item-edit-btn').first().click();
     // The text field is left exactly as it is — only the destination changes.
     await page.getByTestId('shopping-edit-move-select').click();
     await page.getByRole('option', { name: 'Asian supermarket' }).click();
