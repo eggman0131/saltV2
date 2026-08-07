@@ -1411,8 +1411,23 @@
                     <p class="text-xl leading-relaxed sm:text-2xl">{step.text}</p>
                   </div>
 
+                  <!-- Same amber-callout vocabulary as the step note on the recipe
+                     detail page and the recipe-changed banner ten screens above: a
+                     note should look like a note wherever it is met. Two deliberate
+                     departures from the recipe page's copy of this box — the text
+                     stays `text-lg` rather than dropping to its `text-xs`, and the
+                     padding/gap/icon are the banner's cook-mode scale. Cook mode is
+                     read at arm's length across a worktop, so the box grows; the
+                     words do not shrink. `whitespace-pre-wrap` keeps author-typed
+                     line breaks, as the recipe page already does. -->
                   {#if step.note}
-                    <p class="text-lg text-muted-foreground">{step.note}</p>
+                    <div
+                      class="flex items-start gap-3 rounded border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
+                      data-testid="cook-step-note"
+                    >
+                      <Icon name="TriangleAlert" size={20} class="mt-1 shrink-0 text-amber-500" />
+                      <span class="whitespace-pre-wrap text-lg">{step.note}</span>
+                    </div>
                   {/if}
 
                   <!-- First-use ingredients as chips rather than a bordered list. Each
