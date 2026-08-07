@@ -162,7 +162,32 @@ describe('longpress — swallowing the follow-on click', () => {
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
-  it('stops eating clicks once the swallow window lapses', () => {
+  // The regression that made cook mode tick the mise row it had just added: the
+  // eater used to start its cleanup countdown at FIRE time, so any hold that ran
+  // on past it leaked the release's click through. Holding on is the normal case,
+  // not an edge one — the toast that confirms the add waits on a Firestore write,
+  // so a cook keeps their finger down until they see something happen.
+  it('still eats the click after a hold that runs long past the moment it fired', () => {
+    const onLongPress = vi.fn();
+    const { node } = mount(onLongPress);
+    const onClick = vi.fn();
+    node.addEventListener('click', onClick);
+
+    node.dispatchEvent(pointer('pointerdown'));
+    vi.advanceTimersByTime(HOLD_MS);
+    expect(onLongPress).toHaveBeenCalledTimes(1);
+
+    // Two more seconds of holding — far beyond any cleanup window.
+    vi.advanceTimersByTime(2_000);
+    node.dispatchEvent(pointer('pointerup'));
+
+    const swallowed = new MouseEvent('click', { bubbles: true, cancelable: true });
+    node.dispatchEvent(swallowed);
+    expect(onClick).not.toHaveBeenCalled();
+    expect(swallowed.defaultPrevented).toBe(true);
+  });
+
+  it('stops eating clicks once the release has come and gone', () => {
     const onLongPress = vi.fn();
     const { node } = mount(onLongPress);
     const onClick = vi.fn();

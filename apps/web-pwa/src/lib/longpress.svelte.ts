@@ -26,8 +26,10 @@
 // not on release. That makes the follow-on release something other than a tap, so
 // exactly one subsequent `click` is swallowed — otherwise the mise row would also
 // toggle and the chip would also expand. Same capture-phase one-shot eater as
-// `swipe.swallowNextClick`, with the same timed cleanup so a later genuine tap is
-// never eaten.
+// `swipe.swallowNextClick`, but its cleanup window is timed from the RELEASE
+// rather than from the decision: `swipe` decides at the release, whereas this
+// fires mid-press, and a hold can run on for as long as the cook keeps their
+// finger down. See `armClickSwallow`.
 //
 // Never throws (Rule 10 in spirit): a failed haptic is swallowed, and every
 // listener is removed on destroy so no timer outlives the component.
@@ -59,6 +61,8 @@ export function longpress(node: HTMLElement, options: LongPressOptions) {
   let opts = options;
   let pointerId: number | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let swallowTimer: ReturnType<typeof setTimeout> | null = null;
+  let eat: ((event: MouseEvent) => void) | null = null;
   let startX = 0;
   let startY = 0;
   // Whether THIS gesture already fired. Kept until the pointer sequence ends so
@@ -78,20 +82,48 @@ export function longpress(node: HTMLElement, options: LongPressOptions) {
     pointerId = null;
   }
 
-  function swallowNextClick(): void {
-    const eat = (event: MouseEvent): void => {
+  function disarmSwallow(): void {
+    if (swallowTimer !== null) {
+      clearTimeout(swallowTimer);
+      swallowTimer = null;
+    }
+    if (eat !== null) {
+      node.removeEventListener('click', eat, true);
+      eat = null;
+    }
+  }
+
+  /**
+   * Arm the eater at FIRE time and keep it armed for the rest of the press.
+   *
+   * The window is NOT measured from here, unlike `swipe.swallowNextClick` —
+   * `swipe` decides at the release, so for it the click is imminent, but this
+   * gesture fires mid-press and the click is not due until the finger lifts. A
+   * hold can outlast any fixed window: what confirms the add is a toast that
+   * waits on a Firestore write, so a cook naturally keeps holding until they see
+   * it. Time the window from the release instead, where the click actually is.
+   */
+  function armClickSwallow(): void {
+    disarmSwallow();
+    eat = (event: MouseEvent): void => {
       event.stopPropagation();
       event.preventDefault();
-      node.removeEventListener('click', eat, true);
+      disarmSwallow();
     };
     node.addEventListener('click', eat, true);
-    setTimeout(() => node.removeEventListener('click', eat, true), SWALLOW_MS);
+  }
+
+  /** The press is over: the click is due now, or it is never coming. Either way
+   *  stop waiting for it shortly, so a later genuine tap is never eaten. */
+  function scheduleSwallowCleanup(): void {
+    if (eat === null || swallowTimer !== null) return;
+    swallowTimer = setTimeout(disarmSwallow, SWALLOW_MS);
   }
 
   function fire(): void {
     timer = null;
     fired = true;
-    swallowNextClick();
+    armClickSwallow();
     hapticTick(); // self-guarding: a device that can't buzz returns quietly
     opts.onLongPress();
   }
@@ -121,6 +153,10 @@ export function longpress(node: HTMLElement, options: LongPressOptions) {
   }
 
   function onPointerEnd(event: PointerEvent): void {
+    // Unconditional: the click rides on THIS release whether or not the id still
+    // matches ours. A context menu, or a second finger, may already have taken
+    // the gesture out of our hands while leaving the eater armed.
+    scheduleSwallowCleanup();
     if (pointerId !== event.pointerId) return;
     // On a release AFTER firing this only tidies up — the click swallow is
     // already armed and is what stops the tap handler underneath.
@@ -149,6 +185,7 @@ export function longpress(node: HTMLElement, options: LongPressOptions) {
     },
     destroy(): void {
       cancel();
+      disarmSwallow();
       node.removeEventListener('pointerdown', onPointerDown);
       node.removeEventListener('pointermove', onPointerMove);
       node.removeEventListener('pointerup', onPointerEnd);
