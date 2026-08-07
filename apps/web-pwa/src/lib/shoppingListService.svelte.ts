@@ -40,6 +40,7 @@ import { writable, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 import { auth } from './auth.svelte.js';
 import { findMemberByEmail } from './membersService.js';
+import { getCanonItemsSnapshot } from './canonService.js';
 import { reportIfFailed, reportSubscriptionError, reportWriteError } from './errorReporting.js';
 
 // ─── ID generators ───────────────────────────────────────────────────────────
@@ -300,6 +301,21 @@ export async function updateItemNotes(
   return reportIfFailed(getErrorReporter(), await saveShoppingListItem(listId, updated));
 }
 
+// The purchase signal (issue #725): one event per item ticked off, fired only
+// in the tick direction and only after that item's own write succeeded. The
+// canon name is looked up from the already-subscribed canon snapshot; the
+// item's rawText is never attached (the scrubbing rule, usageEvents.ts).
+function trackItemPurchased(item: ShoppingListItem): void {
+  const canonName = item.canonId
+    ? (getCanonItemsSnapshot().find((c) => c.id === item.canonId)?.name ?? null)
+    : null;
+  trackUsageEvent('shopping.item_purchased', {
+    canon_id: item.canonId,
+    canon_name: canonName,
+    item_source: item.sources.some((s) => s.kind === 'recipe') ? 'recipe' : 'manual',
+  });
+}
+
 export async function toggleItemChecked(
   listId: string,
   item: ShoppingListItem,
@@ -313,8 +329,10 @@ export async function toggleItemChecked(
   const updated = result.value.find((i) => i.id === item.id)!;
   const saveResult = await saveShoppingListItem(listId, updated);
   // Only the tick-off direction is usage (issue #684); unchecking is a correction.
-  if (!item.checked && saveResult.kind === 'ok')
+  if (!item.checked && saveResult.kind === 'ok') {
     trackUsageEvent('shopping.item_completed', { list_id: listId, item_count: 1 });
+    trackItemPurchased(updated);
+  }
   return reportIfFailed(getErrorReporter(), saveResult);
 }
 
@@ -381,6 +399,11 @@ export async function checkItems(listId: string, itemIds: readonly string[]): Pr
   // firing per item (issue #684).
   if (results.some((r) => r.kind === 'ok'))
     trackUsageEvent('shopping.item_completed', { list_id: listId, item_count: toSave.length });
+  // The purchase signal is the opposite granularity — one per item that saved
+  // (issue #725). results is index-aligned with toSave.
+  toSave.forEach((item, i) => {
+    if (results[i]!.kind === 'ok') trackItemPurchased(item);
+  });
 }
 
 export async function uncheckItems(listId: string, itemIds: readonly string[]): Promise<void> {
