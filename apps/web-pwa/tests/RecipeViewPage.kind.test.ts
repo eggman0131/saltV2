@@ -4,14 +4,14 @@ import type { Recipe } from '@salt/domain';
 
 // What an outing's page does NOT offer (issue #637). "Things that don't apply
 // simply aren't offered": no Cook, no Shop, no Ingredients card, no Method card,
-// no Serves/Prep/Cook/Total. Two of those actions render on BOTH the inline
-// `sm:` row and the mobile ⋮ menu, so each surface is asserted separately —
-// jsdom applies no media queries, which is exactly what makes both markup sites
-// visible to these assertions at once.
+// no Serves/Prep/Cook/Total.
 //
-// It also carries the action RANKING (Cook / Shop / Plan filled and always
-// inline; Chat / Optimise / Edit / Delete demoted into the ⋮ below `sm`), since
-// what an entry offers and how loudly it offers it are the same markup.
+// It also carries the action RANKING (Cook / Shop / Plan filled and inline;
+// Chat / Optimise / Duplicate / Edit / Delete in the ⋮ menu, which since #735 is
+// their ONLY surface at any width), since what an entry offers and how loudly it
+// offers it are the same markup. jsdom applies no media queries, so a width-gated
+// second markup site would be visible to these assertions — which is what makes
+// "the demoted five have no inline site" a real assertion rather than a hopeful one.
 //
 // The hero and the regenerate dialog are deliberately NOT gated: an outing's
 // picture is the whole point of the entry, so this file also pins that they
@@ -82,6 +82,7 @@ vi.mock('../src/lib/recipeService.js', () => ({
   canonicaliseIngredients: vi.fn(),
   matchIngredient: vi.fn(),
   persistRecipe: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  stashImportedDraft: vi.fn(),
   authorRecipeTraced: vi.fn(),
   regenerateRecipeImage: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   reviseRecipeSceneBrief: vi.fn(),
@@ -93,6 +94,8 @@ vi.mock('../src/lib/recipeService.js', () => ({
   recipeAddPlanItemCount: vi.fn().mockReturnValue(0),
 }));
 
+import { push } from 'svelte-spa-router';
+import { persistRecipe, stashImportedDraft } from '../src/lib/recipeService.js';
 import RecipeViewPage from '../src/routes/recipes/RecipeViewPage.svelte';
 
 const RECIPE_ID = 'entry-1';
@@ -170,10 +173,11 @@ function renderPage() {
 }
 
 // The ⋮ menu's contents only exist in the DOM once it is open (bits-ui renders
-// PopoverContent lazily), so the mobile surface has to be opened before it can
-// be asserted on. Edit is unconditional, which makes it the reliable signal that
-// the menu is actually mounted — an assertion about what is MISSING would
-// otherwise pass against a menu that never opened.
+// PopoverContent lazily), so it has to be opened before it can be asserted on.
+// Edit is unconditional, which makes it the reliable signal that the menu is
+// actually mounted — an assertion about what is MISSING would otherwise pass
+// against a menu that never opened. Since #735 this is the ONLY surface the
+// demoted actions have, at any width.
 async function openOverflowMenu(): Promise<void> {
   await fireEvent.click(screen.getByTestId('recipe-actions-overflow'));
   await waitFor(() => expect(screen.getByTestId('recipe-edit-menu-item')).toBeInTheDocument());
@@ -184,14 +188,12 @@ describe('RecipeViewPage — a recipe keeps everything', () => {
     mockRecipes._set([makeEntry()]);
   });
 
-  it('offers Cook, Shop and Plan inline, with Chat and Optimise on both surfaces', async () => {
+  it('offers Cook, Shop and Plan inline, with Chat and Optimise in the ⋮ menu', async () => {
     renderPage();
 
     expect(screen.getByTestId('recipe-cook-button')).toBeInTheDocument();
     expect(screen.getByTestId('recipe-add-to-list-button')).toBeInTheDocument();
     expect(screen.getByTestId('recipe-add-to-planner-button')).toBeInTheDocument();
-    expect(screen.getByTestId('recipe-ask-amend-button')).toBeInTheDocument();
-    expect(screen.getByTestId('recipe-optimise-kitchen-button')).toBeInTheDocument();
 
     await openOverflowMenu();
     expect(screen.getByTestId('recipe-ask-amend-menu-item')).toBeInTheDocument();
@@ -199,10 +201,10 @@ describe('RecipeViewPage — a recipe keeps everything', () => {
   });
 
   // The ranking, asserted as markup rather than trusted to the comment above it:
-  // the three key actions are the only filled buttons and the only ones with no
-  // `hidden sm:` — so a phone keeps exactly them, and they are what the eye lands
-  // on at any width.
-  it('ranks Cook, Shop and Plan above the rest, in weight and in width', () => {
+  // the three key actions are the only inline buttons, they are all filled, and
+  // none of them is width-gated — so they are what the eye lands on at any width,
+  // phone or desktop, and everything else is behind the ⋮ (#735).
+  it('ranks Cook, Shop and Plan above the rest — the only inline actions, at every width', () => {
     renderPage();
 
     for (const id of [
@@ -215,22 +217,20 @@ describe('RecipeViewPage — a recipe keeps everything', () => {
       expect(button.className).not.toContain('hidden');
     }
 
-    for (const id of ['recipe-ask-amend-button', 'recipe-optimise-kitchen-button']) {
-      expect(screen.getByTestId(id)).toHaveClass('salt-button--ghost');
-    }
-    expect(screen.getByTestId('recipe-edit-button')).toHaveClass('salt-button--outline');
-    expect(screen.getByTestId('recipe-delete-button')).toHaveClass('salt-button--destructive');
-
-    // The demoted four are the ⋮ menu's contents, so none of them may survive a
-    // narrow viewport inline.
+    // The demoted five have NO inline site left: one menu now serves every width,
+    // so there is no second, divergent markup surface to keep in step.
     for (const id of [
       'recipe-ask-amend-button',
       'recipe-optimise-kitchen-button',
+      'recipe-duplicate-button',
       'recipe-edit-button',
       'recipe-delete-button',
     ]) {
-      expect(screen.getByTestId(id).className).toContain('hidden');
+      expect(screen.queryByTestId(id)).toBeNull();
     }
+    // And the trigger itself is never width-gated — Duplicate must be reachable
+    // on a laptop, which is the whole reason the menu was promoted.
+    expect(screen.getByTestId('recipe-actions-overflow').className).not.toContain('hidden');
   });
 
   it('shows the Ingredients and Method cards and the timings', () => {
@@ -257,15 +257,10 @@ describe('RecipeViewPage — an outing offers only what applies', () => {
     expect(screen.queryByTestId('recipe-add-to-list-button')).toBeNull();
   });
 
-  it('offers no Chat and no Optimise on EITHER surface', async () => {
+  it('offers no Chat and no Optimise', async () => {
     renderPage();
 
-    // Inline `sm:` row.
-    expect(screen.queryByTestId('recipe-ask-amend-button')).toBeNull();
-    expect(screen.queryByTestId('recipe-optimise-kitchen-button')).toBeNull();
-
-    // Mobile ⋮ menu — a second, independent markup site. Opened first, so the
-    // absences below are real and not just an unmounted menu.
+    // Opened first, so the absences below are real and not just an unmounted menu.
     await openOverflowMenu();
     expect(screen.queryByTestId('recipe-ask-amend-menu-item')).toBeNull();
     expect(screen.queryByTestId('recipe-optimise-kitchen-menu-item')).toBeNull();
@@ -290,14 +285,15 @@ describe('RecipeViewPage — an outing offers only what applies', () => {
     expect(screen.queryByText('Total 30 min')).toBeNull();
   });
 
-  it('keeps Edit and Delete, so the ⋮ menu never opens onto nothing', async () => {
+  it('keeps Duplicate, Edit and Delete, so the ⋮ menu never opens onto nothing', async () => {
     renderPage();
 
     expect(screen.getByTestId('recipe-actions-overflow')).toBeInTheDocument();
-    expect(screen.getByTestId('recipe-edit-button')).toBeInTheDocument();
-    expect(screen.getByTestId('recipe-delete-button')).toBeInTheDocument();
 
     await openOverflowMenu();
+    // Unconditional for every kind: what an entry IS never decides whether it can
+    // be copied, edited or deleted.
+    expect(screen.getByTestId('recipe-duplicate-menu-item')).toBeInTheDocument();
     expect(screen.getByTestId('recipe-delete-menu-item')).toBeInTheDocument();
   });
 
@@ -336,4 +332,43 @@ describe('RecipeViewPage — a cocktail is not offered for a night', () => {
     // Plan only ever renders inline, so this one absence covers every width.
     expect(screen.queryByTestId('recipe-add-to-planner-button')).toBeNull();
   });
+});
+
+// Duplicate (issue #735). The what-carries policy is `duplicateRecipe`'s and is
+// pinned field-by-field in the domain suite; what belongs here is the wiring —
+// that the action hands the copy to the EXISTING stash seam and routes to the
+// blank-recipe editor, writing nothing.
+describe('RecipeViewPage — duplicate', () => {
+  async function duplicate(): Promise<void> {
+    await openOverflowMenu();
+    await fireEvent.click(screen.getByTestId('recipe-duplicate-menu-item'));
+  }
+
+  it('stashes an unsaved copy and opens the editor — nothing is persisted', async () => {
+    mockRecipes._set([makeEntry()]);
+    renderPage();
+
+    await duplicate();
+
+    expect(vi.mocked(stashImportedDraft)).toHaveBeenCalledTimes(1);
+    const draft = vi.mocked(stashImportedDraft).mock.calls[0]![0];
+    expect(draft.title).toBe('Test Recipe (copy)');
+    expect(draft.id).not.toBe(RECIPE_ID);
+    expect(draft.steps).toEqual(makeEntry().steps);
+    expect(push).toHaveBeenCalledWith('/recipes/new');
+    // The copy is a draft, not a document: no write of any kind on the way out.
+    expect(persistRecipe).not.toHaveBeenCalled();
+  });
+
+  it.each(['recipe', 'outing', 'cocktail', 'placeholder'] as const)(
+    'is offered for a %s, and the copy is the same kind',
+    async (kind) => {
+      mockRecipes._set([makeEntry({ kind })]);
+      renderPage();
+
+      await duplicate();
+
+      expect(vi.mocked(stashImportedDraft).mock.calls[0]![0].kind).toBe(kind);
+    },
+  );
 });

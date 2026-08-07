@@ -9,19 +9,19 @@ All data is family-shared (no per-user scoping), consistent with the rest of Sal
 
 ## Scope split (decided in #28 design session)
 
-| In this epic (foundation) | Deferred to the AI-generation epic |
-| --- | --- |
-| Recipe data model + persistence | **AI Chef** — conversational creative generation (Stage 1) |
-| Manual CRUD (the schema stress-test) | **Kitchen Agent** — equipment-aware optimisation + faff-cost reasoning (Stage 2) |
-| AI ingredient parsing | |
-| Ingredient canonicalisation (reuse `matchOrCreate`) | |
-| Shopping-list extraction | |
+| In this epic (foundation)                           | Deferred to the AI-generation epic                                               |
+| --------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Recipe data model + persistence                     | **AI Chef** — conversational creative generation (Stage 1)                       |
+| Manual CRUD (the schema stress-test)                | **Kitchen Agent** — equipment-aware optimisation + faff-cost reasoning (Stage 2) |
+| AI ingredient parsing                               |                                                                                  |
+| Ingredient canonicalisation (reuse `matchOrCreate`) |                                                                                  |
+| Shopping-list extraction                            |                                                                                  |
 
 URL and photo recipe import have since shipped (`extractRecipeFromUrl`,
 `extractRecipeFromPhoto`) — both are structured-extraction siblings of AI
 ingredient parsing, not part of the deferred AI-generation epic.
 
-Manual entry ships *before* any AI on purpose: the pain of hand-entering a real
+Manual entry ships _before_ any AI on purpose: the pain of hand-entering a real
 recipe is the fastest way to discover schema flaws before we automate.
 
 ## Document
@@ -93,6 +93,7 @@ RecipeSource { type:'url'|'book'|'manual', url?, book?:{ title, author, page } }
 ```
 
 Key invariants:
+
 - **`rawText` is sacred.** Re-parsing with a better model, or a user edit, never
   destroys the original ingredient line.
 - **Canon owns the name.** The recipe stores `canonId`, never an echoed canonical
@@ -107,7 +108,7 @@ Three additive fields were added after the Phase-1/2 hand-entry stress-test
 (`schemaVersion` stays `1`, no migration). **That "greenfield, so no migration"
 licence expired on 2026-06-17**, when the module shipped to all members (#240):
 recipes now hold real production data, and every later schema change must be
-back-compatible *on read* or ship a one-off migration — see the kind
+back-compatible _on read_ or ship a one-off migration — see the kind
 discriminator below for what that costs in practice. `Step.note` was functional
 immediately; `image` and `firstUsedInStepId` were **dormant seams** at the time
 and both have since been filled in — `image` by the Tier-2 hero pipeline,
@@ -118,7 +119,7 @@ and both have since been filled in — `image` by the Tier-2 hero pipeline,
 - **`Ingredient.firstUsedInStepId`** — links an ingredient to the step that
   first uses it, **by `id` (never text)**. Now populated by the authoring, parse
   and URL-import flows, and consumed by cook mode's mise en place
-  (`firstUseByStep`). Integrity: a re-parse must fill `parsed` on the *existing*
+  (`firstUseByStep`). Integrity: a re-parse must fill `parsed` on the _existing_
   ingredient/step without re-minting ids, and delete-step must clear inbound
   links.
 - **`Recipe.image`** — `{ url, source: 'ai' | 'upload' }`, structured so the
@@ -141,7 +142,7 @@ The `recipes` collection holds more than recipes. One additive field,
   reused across many evenings.
 
 **`.default('recipe')` is mandatory, not stylistic.** The realtime subscription
-skips documents that fail validation, so a *required* `kind` would make every
+skips documents that fail validation, so a _required_ `kind` would make every
 recipe already in production (#240) silently vanish from the list. Defaulted,
 they read back as exactly what they are. This is the shape every post-#240
 additive field on this collection has to take.
@@ -156,16 +157,16 @@ outside `packages/domain` branches on the value; `takesIngredients`,
 `isCookable` and `isPlannable` (`domain/src/recipe/queries/capabilities.ts`)
 answer for it, backed by a `Record<RecipeKind, …>` table so a fourth kind fails
 to compile until it has answered all three questions. The direct comparisons that
-remain are *identity and copy*, never behaviour: which section of the recipe list
+remain are _identity and copy_, never behaviour: which section of the recipe list
 you are looking at, whether a planner picker row wears a badge, and which
 art-direction prompt the hero pipeline reaches for.
 
-| kind | `takesIngredients` | `isCookable` | `isPlannable` |
-| --- | --- | --- | --- |
-| `recipe` | ✓ | ✓ | ✓ |
-| `outing` | ✗ | ✗ | ✓ |
-| `cocktail` | ✓ | ✓ | ✗ |
-| `placeholder` | ✗ | ✗ | ✗ |
+| kind          | `takesIngredients` | `isCookable` | `isPlannable` |
+| ------------- | ------------------ | ------------ | ------------- |
+| `recipe`      | ✓                  | ✓            | ✓             |
+| `outing`      | ✗                  | ✗            | ✓             |
+| `cocktail`    | ✓                  | ✓            | ✗             |
+| `placeholder` | ✗                  | ✗            | ✗             |
 
 Read `isPlannable` as **"is offered in the planner picker"**, which is all it has
 ever gated. A `placeholder` is `false` and still occupies a planner slot — it is
@@ -180,7 +181,7 @@ Decisions worth not relitigating:
   and unreachable, with no undo. Immutability is also what lets `diffRecipe` stay
   untouched (pinned by a test).
 - **Reuse this collection; do not add an `outings` one.** The whole point is that
-  an outing occupies a planner slot *in place of* a recipe. A second collection
+  an outing occupies a planner slot _in place of_ a recipe. A second collection
   makes `day.recipeIds` a polymorphic reference, forcing every consumer that
   resolves against the recipes store to resolve against two — `MealDayEditor`,
   `AdminMealPlanPage`, `personalViewService`, `MinePage`, plus the e2e seeds —
@@ -190,13 +191,13 @@ Decisions worth not relitigating:
   schemaless; sparse documents are free — almost certainly enough for a booking
   link or a phone number). Rung 2: a satellite `outingDetails/{recipeId}` keyed by
   deterministic id, following the `canonEmbeddings`-off-`canonItems` precedent
-  (#410) — but only when the data is *bulky, server-only, per-user, or
-  differently access-scoped*, not merely outing-specific; its real costs are
+  (#410) — but only when the data is _bulky, server-only, per-user, or
+  differently access-scoped_, not merely outing-specific; its real costs are
   orphaned satellites on delete (the repo already lives with this — `cookSessions`
   orphan cleanup is client-side only, and `sweepOrphanedStorage` exists because
   the same problem bit for Storage) and a second app-wide subscription **if** the
   extra data must appear on planner or list cards. Rung 3: a separate collection,
-  only once outings develop their own *lifecycle* (different rules, triggers,
+  only once outings develop their own _lifecycle_ (different rules, triggers,
   delete semantics). Different fields alone never justify rung 3.
 - **No `where('kind', '==', …)` on `subscribeRecipes`.** It would need an index
   and would fracture the single in-memory `recipes` store every consumer shares.
@@ -206,18 +207,18 @@ Decisions worth not relitigating:
 - **The UI label is copy, the enum value is data.** "When you CBA" can be
   reworded without touching a stored document or writing a migration.
 - **Outings auto-generate a hero like recipes.** `imageNeedsGeneration` learns
-  nothing about `kind`: a kind branch would leave an outing with no hero *and* no
+  nothing about `kind`: a kind branch would leave an outing with no hero _and_ no
   `imageBrief`, so the regenerate dialog would open **empty** — and editing that
   brief is the primary way a user gets an outing's image right, there being no
   method for the AI to read. The `describeRecipeScene` brief step is likewise kept
   for every kind, with kind-specific system prompts. Placeholders inherit this for
-  the same reason, twice over: the brief is the *only* way to tune them.
+  the same reason, twice over: the brief is the _only_ way to tune them.
 - **A placeholder's mood is a tag, not a field** (#652). `bright` / `comfort` are
   ordinary entries in the existing free-form `tags` array; the constants are
   exported from `@salt/domain` (`PLACEHOLDER_MOODS`) so the library and the picker
   cannot drift. A typed `mood` field would be null on every production document to
   serve ten, and — the real cost — would need a mood `<Select>` shown only for
-  placeholders, which is a `kind` branch on *behaviour* inside `RecipeEditPage`,
+  placeholders, which is a `kind` branch on _behaviour_ inside `RecipeEditPage`,
   exactly what the rule above keeps out of the app layer. The accepted downside is
   that a typo silently drops one document out of a mood; `pickPlaceholder`
   degrades to `null`, which is cheap to spot across ten hand-made documents.
@@ -225,10 +226,10 @@ Decisions worth not relitigating:
   the planner's hero pick, the note re-seed and an auto-detach, and rejected it:
   three new behaviours to pre-empt two states the user undoes with one tap on the
   row's X. The two consequences, so they are not reported as bugs — a day holding
-  both a placeholder and a real recipe shows the *placeholder's* photograph (the
+  both a placeholder and a real recipe shows the _placeholder's_ photograph (the
   card takes the first attached entry with one, in `recipeIds` order), and
   clearing the dinner text on a placeholder day re-seeds it with the
-  *placeholder's* own title. Available later if it grates in daily use.
+  _placeholder's_ own title. Available later if it grates in daily use.
 - **Which placeholder a day gets is pure and frozen at attach time.**
   `pickPlaceholder(recipes, dateKey, weather?)` in
   `domain/src/recipe/queries/pickPlaceholder.ts`: the season chosen from the date
@@ -258,11 +259,12 @@ Decisions worth not relitigating:
   sixteen buckets needing ~80 images to be as robust as ten are now, and every
   empty bucket is a night that renders as text. **A filtering cascade** (narrow to
   the tag, widen if empty): it starves — tag one picture `wet` and it becomes the
-  answer to *every* rainy evening, manufacturing the repetition the tags exist to
+  answer to _every_ rainy evening, manufacturing the repetition the tags exist to
   cure. **A shortlist of the top N, picked uniformly:** score then decides only
   membership of the shortlist, not odds within it, so a two-tag match and an
   untagged picture that both make the cut are equally likely — which is not a
   ranking at all.
+
 - **A heroless placeholder is never picked.** `image` is required-but-nullable, so
   a document whose generation failed parses perfectly well and reads back as
   `image: null`; without the guard it would hand a night a card with no
@@ -276,6 +278,52 @@ Open question, recorded not resolved: whether "When you CBA" entries should
 eventually be excluded from Chef Chat's recipe context. Not blocking — Ask/amend
 is hidden on the view page for non-cookable kinds, so the librarian is
 unreachable for them today.
+
+## Duplicating a recipe (issue #735)
+
+`duplicateRecipe(source, newId, now)` in
+`packages/domain/src/recipe/commands/builders.ts` is the **single home** of the
+what-carries policy. The view page's ⋮ → Duplicate stashes its result through
+`stashImportedDraft` and routes to `/recipes/new`; no field-reset logic lives in
+the UI, and nothing is written to Firestore until the user hits Save. Duplicate is
+**unconditional** — every `kind` can be copied, and the copy is the same kind.
+
+What the code shows: `title` gains `" (copy)"`, `id` and `createdAt` are replaced,
+`updatedAt` is left blank for `persistRecipe`, `producesCanonId` resets, and
+everything else rides along. What the code cannot say is **why the image cannot**:
+
+- **`image` must not carry.** `imageNeedsGeneration` in `onRecipeWritten.ts`
+  returns `false` the moment `after.image !== null`, so a copied `image` leaves the
+  duplicate pointing at the _original's_ Storage object,
+  `recipe-images/{originalId}.webp`. `sweepOrphanedStorage` is **doc-id-keyed, not
+  reference-counted** — delete the original and, after the 7-day grace, the weekly
+  sweep deletes that object and silently breaks the copy's live image. A carried
+  image is a data-loss bug with a seven-day fuse.
+- **`imageBrief` must not carry either.** The trigger uses a brief present on the
+  document _verbatim_ and only authors one when it is absent, so a carried brief
+  would art-direct the copy as though it were still the original dish. Dropping it
+  (along with `imageHint`, `imageRequestedAt` and `imageHidden`) is what makes the
+  copy's hero actually depict the copy: because nothing is written until Save,
+  `describeRecipeScene` sees the _edited_ title and description.
+
+Two further asymmetries worth recording:
+
+- **`needs_approval` carries, `producesCanonId` does not.** The flag means
+  "AI-authored, not yet read by a human", and copying something is not reading it —
+  it clears the normal way, when someone opens the copy. The buy-or-make link is
+  the opposite: two recipes both claiming to produce Chicken Stock would both
+  surface from `findProducingRecipes`, so the copy starts unclaimed.
+- **Ingredient / group / step ids are copied verbatim, never re-minted.** They are
+  document-local, and `Ingredient.firstUsedInStepId` points at a step id inside the
+  same document (see "Schema extensions (issue #180)" above), so verbatim copying
+  preserves every ingredient→step link for free. `parsed` / `canonId` /
+  `matchState` carry for the same reason — `rawText` is identical, so the existing
+  resolutions are still correct and the copy costs no `canonicaliseRecipeIngredients`
+  round-trip.
+
+Accepted cost: the stash is module memory, so reloading before Save loses the
+draft. That is the existing, accepted behaviour of URL and photo import — not
+worsened here.
 
 ## Canon interaction — batch CF, one read per recipe
 
@@ -307,14 +355,14 @@ Adding a recipe to the list is a **reviewed** step, not a silent dump (#194,
 bundling #183/#184/#185). The recipe view opens a sheet listing every ingredient
 with **Add** and **Check** toggles (Check implies Add), seeded from each matched
 canon item's `shoppingBehavior`: `needed` → Add, `check` → Add + Check, `stocked`
-→ neither *unless* the scaled requirement exceeds the canon item's
+→ neither _unless_ the scaled requirement exceeds the canon item's
 `largeQuantityThreshold` (then Add). Unmatched ingredients default to Add so
 nothing is silently dropped. Only Add rows are written; Check rows land with a
 stored `needsCheck` flag and are highlighted on the list with a one-tap
 confirm/drop — a staple you may already have neither joins the buy list nor
 vanishes without the shopper's say-so.
 
-Everything below is a **content** question — *these* ingredient lines, what they
+Everything below is a **content** question — _these_ ingredient lines, what they
 resolve to, what lands on the list. Whether the flow is **offered at all** is a
 different, earlier question, and a capability one: `takesIngredients(kind)`, not
 `ingredients.length > 0`. An outing is never offered an Add-to-list button (there
@@ -323,6 +371,7 @@ still is, because the concept applies and the answer is simply "nothing yet" —
 the sheet says so and its confirm button is disabled at a count of zero.
 
 Decisions:
+
 - **Defaults are a pure domain function** (`recipeItemAddDefault`) fed
   behaviour + scaled amount + threshold; the sheet only renders and commits.
 - **`needsCheck` is its own stored flag**, distinct from `checked` — a
@@ -334,7 +383,7 @@ Decisions:
   ("Cheddar Cheese"). The combined aggregate row is the one place a canon name is shown
   (the page's `rowLabel`, unchanged).
 - **A product-form row carries the recipe's own wording** (`originalText`, #528).
-  When an ingredient resolves to a *product form* the app buys the **parent**:
+  When an ingredient resolves to a _product form_ the app buys the **parent**:
   "juice of 2 limes" becomes a "Lime ×3" row, and the collapse to one row per
   parent drops every line that justified the count — the parent name is
   deliberately far from the recipe's wording, so the shopper in the aisle can't
@@ -352,7 +401,7 @@ Decisions:
   cleaned name (no migration). It must stay `.optional()` — the realtime
   subscription skips docs that fail validation, so a required field would make
   every existing row silently vanish from the list. Not `rawText` (load-bearing:
-  it derives the row label *and* decides the row is a form row) and not `notes`
+  it derives the row label _and_ decides the row is a form row) and not `notes`
   (user-editable, single-valued).
 - **Combining is display-time and recipe-only.** `groupItemsByAisle` merges
   recipe-sourced items resolving to the same canon into one row (per-unit
@@ -369,7 +418,7 @@ Decisions:
 - **Meal plan** — `Day.recipeIds: string[]` is live: the planner attaches recipe
   ids from this collection, and (since #637) outings alongside them. Anything a
   planner consumer does with an attached entry has to hold for a non-cookable
-  one. Since #652 the planner also attaches placeholders *on its own*, on the
+  one. Since #652 the planner also attaches placeholders _on its own_, on the
   dinner field's blur — the one caller of `pickPlaceholder`. See
   [meal-planning.md](meal-planning.md#recipes-on-a-day-17-637-652).
 
@@ -401,7 +450,7 @@ Captured here so the design isn't lost:
   and the gen trigger must **skip** when `source === 'upload'`.
 - **Ingredient→step link population + display.** AI sets `firstUsedInStepId`
   during AI-create / update / URL-parse; the step-view "ingredients introduced
-  here, with quantities" display ships *with* the population so it has data the
+  here, with quantities" display ships _with_ the population so it has data the
   day it appears. Carries the integrity rule above (id stability; delete-step
   clears inbound links).
 - **AI-authored step notes.** AI-create / update / parse-URL may populate
@@ -411,7 +460,7 @@ Captured here so the design isn't lost:
   faff-cost / suitability. A Genkit equipment-**search tool** was considered but
   is premature at ~30 items (whole manifest fits in context); revisit if the
   manifest grows.
-- **Baseline-kitchen assumption** — the manifest holds only *notable* kit (APO,
+- **Baseline-kitchen assumption** — the manifest holds only _notable_ kit (APO,
   Control Freak, Chinois). The Agent must assume a standard baseline (full pan
   range, saucepans, casseroles, knives) is always present and reason specially
   only about manifest items. Likely a short static "assumed baseline" list in the

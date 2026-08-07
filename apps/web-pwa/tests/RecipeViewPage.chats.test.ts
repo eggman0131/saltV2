@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, cleanup, fireEvent, waitFor } from '@testing-library/svelte';
+import { render, cleanup, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import type { Recipe } from '@salt/domain';
 import type { ChatSessionDoc } from '@salt/domain/schemas';
 
@@ -70,6 +70,7 @@ vi.mock('../src/lib/recipeService.js', () => ({
   canonicaliseIngredients: vi.fn(),
   matchIngredient: vi.fn(),
   persistRecipe: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  stashImportedDraft: vi.fn(),
   authorRecipeTraced: vi.fn(),
   regenerateRecipeImage: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   reviseRecipeSceneBrief: vi.fn(),
@@ -220,6 +221,17 @@ describe('RecipeViewPage — starting and continuing', () => {
     await waitFor(() => expect(getByTestId('recipe-chat-drawer')).toBeInTheDocument());
   });
 
+  // "Chat" lives in the ⋮ menu, which since #735 is the ONLY surface it has at any
+  // width. bits-ui renders PopoverContent lazily and portals it, so the menu has to
+  // be opened first and the item is reached through `screen`, not the container.
+  async function clickChatMenuItem(): Promise<void> {
+    await fireEvent.click(screen.getByTestId('recipe-actions-overflow'));
+    await waitFor(() =>
+      expect(screen.getByTestId('recipe-ask-amend-menu-item')).toBeInTheDocument(),
+    );
+    await fireEvent.click(screen.getByTestId('recipe-ask-amend-menu-item'));
+  }
+
   it('"Chat" continues the most recent conversation instead of creating another', async () => {
     mockSessions._set([
       makeSession({ id: 'old', updatedAt: '2026-01-01T00:00:00.000Z' }),
@@ -227,7 +239,7 @@ describe('RecipeViewPage — starting and continuing', () => {
     ]);
     const { getByTestId } = renderPage();
 
-    await fireEvent.click(getByTestId('recipe-ask-amend-button'));
+    await clickChatMenuItem();
 
     expect(createChatSession).not.toHaveBeenCalled();
     // The newest conversation, raised over the recipe rather than replacing it.
@@ -241,7 +253,7 @@ describe('RecipeViewPage — starting and continuing', () => {
     createsInto('session-first');
     const { getByTestId } = renderPage();
 
-    await fireEvent.click(getByTestId('recipe-ask-amend-button'));
+    await clickChatMenuItem();
 
     await waitFor(() =>
       expect(createChatSession).toHaveBeenCalledWith('uid-1', RECIPE_ID, 'Cauliflower Steaks'),
