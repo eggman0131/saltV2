@@ -29,8 +29,31 @@
     recipe: Recipe;
     listId: string;
     open: boolean;
+    // ─── Driven as one of a sequence (issue #724, Phase 2) ──────────────────
+    // Three optional props, all no-ops when omitted, so the two long-standing
+    // ways in — a recipe's own page and a planner day's "Add to shop" — are
+    // behaviourally identical to before. Only the planner's shop-the-week queue
+    // passes them.
+
+    // What the servings stepper OPENS at, overriding the recipe's own base. The
+    // planner knows something the recipe page cannot: how many people are marked
+    // as eating that night. It is a starting point only — the stepper moves
+    // freely from here, exactly as it does today. Undefined falls back to the
+    // recipe's own servings.
+    servings?: number | undefined;
+    // Where this sheet sits in a run of them. `index` is the number SHOWN, so it
+    // is 1-based: `{ index: 2, total: 4 }` renders "2 of 4". Present also means
+    // the dismiss control is a Skip rather than a Cancel — closing moves the
+    // sequence on rather than abandoning an isolated action.
+    sequence?: { index: number; total: number } | undefined;
+    // Told what a successful confirm actually wrote. When supplied it REPLACES
+    // this sheet's own toast: four sheets in a row would otherwise stack four
+    // near-identical toasts, so the caller totals them and says it once at the
+    // end. A failed commit never calls it — the sheet stays open behind its own
+    // destructive toast, which is what stops a sequence.
+    onSettled?: ((added: number) => void) | undefined;
   }
-  let { recipe, listId, open = $bindable() }: Props = $props();
+  let { recipe, listId, open = $bindable(), servings, sequence, onSettled }: Props = $props();
 
   let selectedServings = $state(1);
   let rows = $state<RecipeAddRow[]>([]);
@@ -45,10 +68,14 @@
     rows = buildRecipeAddPlan(recipe, selectedServings);
   });
 
-  // Seed servings from the recipe each time the sheet opens.
+  // Seed servings each time the sheet opens — from the caller's override when
+  // there is one (the planner's headcount for that night), otherwise from the
+  // recipe, exactly as before. Still only on the open transition: a caller whose
+  // override changes mid-sheet must not yank the stepper out from under a hand
+  // that has already moved it.
   let wasOpen = false;
   $effect(() => {
-    if (open && !wasOpen) selectedServings = recipe.metadata.servings ?? 1;
+    if (open && !wasOpen) selectedServings = servings ?? recipe.metadata.servings ?? 1;
     wasOpen = open;
   });
 
@@ -136,13 +163,18 @@
       addToast('Failed to add to shopping list.', 'destructive');
       return;
     }
+    // Report BEFORE closing: closing is what advances a sequence, and by the time
+    // the next sheet has taken this one's place there is nothing left to count.
+    const added = addCount;
+    if (onSettled) onSettled(added);
+    else
+      addToast(
+        added === 0
+          ? 'Nothing added to the list.'
+          : `Added ${added} item${added === 1 ? '' : 's'} to the list.`,
+        'success',
+      );
     open = false;
-    addToast(
-      addCount === 0
-        ? 'Nothing added to the list.'
-        : `Added ${addCount} item${addCount === 1 ? '' : 's'} to the list.`,
-      'success',
-    );
   }
 </script>
 
@@ -155,7 +187,17 @@
 >
   <SheetContent class="flex max-h-[85vh] flex-col gap-4 p-4 pb-8">
     <SheetHeader>
-      <SheetTitle>Add to shopping list</SheetTitle>
+      <!-- Alone, the sheet names the ACTION — it is one thing you asked for and
+           the recipe is already on screen behind it. In a sequence it names the
+           RECIPE instead: four identical headers in a row would leave you unable
+           to tell which dinner you are reviewing, which is the one thing you have
+           to know to answer it. The position rides quietly underneath. -->
+      <SheetTitle>{sequence ? recipe.title : 'Add to shopping list'}</SheetTitle>
+      {#if sequence}
+        <p class="text-xs text-muted-foreground" data-testid="recipe-add-sequence">
+          {sequence.index} of {sequence.total}
+        </p>
+      {/if}
     </SheetHeader>
 
     <!-- Servings -->
@@ -411,8 +453,11 @@
     </div>
 
     <SheetFooter class="flex justify-end gap-2">
+      <!-- "Skip" in a sequence: closing does not abandon the errand, it moves on
+           to the next recipe — and what has already been confirmed is on the list
+           either way. -->
       <Button variant="ghost" size="sm" onclick={() => (open = false)} disabled={busy}
-        >Cancel</Button
+        >{sequence ? 'Skip' : 'Cancel'}</Button
       >
       <!-- Nothing selected is nothing to do. Already reachable before kinds
            existed by toggling every row off: the sheet let you press "Add 0 to

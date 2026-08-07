@@ -6,6 +6,7 @@ import {
   templateWeekStarts,
   weekDates,
   weekdayOf,
+  type Day,
   type MealPlanWeek,
   type Member,
   type Recipe,
@@ -1790,8 +1791,9 @@ describe('MealPlanWeekPage — shop the week (#724, Phase 1)', () => {
     await screen.findByTestId('recipe-add-review-list');
 
     // Closing without confirming is a skip, not an abort: the next recipe opens
-    // and nothing was written for the one dismissed.
-    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    // and nothing was written for the one dismissed. In a sequence the dismiss
+    // control says exactly that (#724, Phase 2).
+    await userEvent.click(screen.getByRole('button', { name: 'Skip' }));
     await confirmReview();
     await waitFor(() => expect(vi.mocked(mockCommitRecipeAddPlan)).toHaveBeenCalledTimes(1));
     expect((vi.mocked(mockCommitRecipeAddPlan).mock.calls[0]![0] as Recipe).id).toBe('r2');
@@ -1841,5 +1843,167 @@ describe('MealPlanWeekPage — shop the week (#724, Phase 1)', () => {
     );
     expect(screen.queryByTestId('shop-week-list')).not.toBeInTheDocument();
     expect(vi.mocked(mockCommitRecipeAddPlan)).not.toHaveBeenCalled();
+  });
+});
+
+// ─── The sequence knows where it is (#724, Phase 2) ────────────────────────
+// Three optional props on the review sheet, and the two facts the planner is
+// uniquely able to supply: which of how many this recipe is, and how many people
+// are actually eating that night.
+describe('MealPlanWeekPage — shop the week, in sequence (#724, Phase 2)', () => {
+  const RECIPE_2: Recipe = {
+    id: 'r2',
+    title: 'Chilli con carne',
+    metadata: { servings: 4 },
+    ingredients: [],
+  } as unknown as Recipe;
+
+  function planned(start: string, plan: Record<string, Day>): MealPlanWeek {
+    const base = emptyWeek(start);
+    return { ...base, days: { ...base.days, ...plan } };
+  }
+
+  function night(recipeIds: string[], attendees: string[] = [], guests = 0): Day {
+    return {
+      note: '',
+      recipeIds,
+      chefs: [],
+      attendees: attendees.map((memberId) => ({ memberId, homeTime: null, note: '' })),
+      guests,
+    };
+  }
+
+  const TOMORROW = addDays(TODAY, 1);
+
+  // `clearAllMocks` keeps implementations, so a per-test item count would leak
+  // into whatever is written after this block. Put the file's default back.
+  afterEach(() => {
+    mockRecipeAddPlanItemCount.mockReturnValue(1);
+  });
+
+  async function runShopWeek(): Promise<void> {
+    await userEvent.click(screen.getByTestId('shop-week-trigger'));
+    await screen.findByTestId('shop-week-list');
+    await userEvent.click(screen.getByTestId('shop-week-confirm'));
+    await screen.findByTestId('recipe-add-review-list');
+  }
+
+  it('names each recipe and its place in the run, and offers Skip rather than Cancel', async () => {
+    mockRecipes._set([RECIPE, RECIPE_2]);
+    const start = weekAroundToday(2);
+    mockWeek._set(planned(start, { [TODAY]: night(['r1']), [TOMORROW]: night(['r2']) }));
+    renderLaidOut(start);
+
+    await runShopWeek();
+
+    expect(screen.getByText('Spaghetti Bolognese')).toBeInTheDocument();
+    expect(screen.getByTestId('recipe-add-sequence')).toHaveTextContent('1 of 2');
+    expect(screen.getByRole('button', { name: 'Skip' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('recipe-add-to-list-confirm'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('recipe-add-sequence')).toHaveTextContent('2 of 2'),
+    );
+    expect(screen.getByText('Chilli con carne')).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('recipe-add-to-list-confirm'));
+  });
+
+  it("opens at the night's headcount, and at the recipe's own servings when nobody is marked", async () => {
+    mockRecipes._set([RECIPE, RECIPE_2]);
+    const start = weekAroundToday(2);
+    mockWeek._set(
+      planned(start, {
+        // Two eating plus a guest…
+        [TODAY]: night(['r1'], [ALICE.id, BOB.id], 1),
+        // …and a night nobody has filled in.
+        [TOMORROW]: night(['r2']),
+      }),
+    );
+    renderLaidOut(start);
+
+    await runShopWeek();
+
+    // The planner's number, not the recipe's own 2.
+    await waitFor(() =>
+      expect(screen.getByTestId('recipe-servings-value')).toHaveTextContent('3 servings'),
+    );
+    // And it is what the plan is actually built at.
+    expect(vi.mocked(mockBuildRecipeAddPlan).mock.calls.at(-1)![1]).toBe(3);
+
+    // The stepper still moves freely from there.
+    await userEvent.click(screen.getByTestId('recipe-servings-increase'));
+    await waitFor(() =>
+      expect(screen.getByTestId('recipe-servings-value')).toHaveTextContent('4 servings'),
+    );
+
+    await userEvent.click(screen.getByTestId('recipe-add-to-list-confirm'));
+
+    // A night with nobody marked falls back to the recipe's own servings — a
+    // headcount of zero would otherwise scale it to nothing.
+    await waitFor(() =>
+      expect(screen.getByTestId('recipe-servings-value')).toHaveTextContent('4 servings'),
+    );
+    expect(vi.mocked(mockBuildRecipeAddPlan).mock.calls.at(-1)![1]).toBe(4);
+  });
+
+  it('says how much went on the list once, at the end', async () => {
+    mockRecipeAddPlanItemCount.mockReturnValue(3);
+    mockRecipes._set([RECIPE, RECIPE_2]);
+    const start = weekAroundToday(2);
+    mockWeek._set(planned(start, { [TODAY]: night(['r1']), [TOMORROW]: night(['r2']) }));
+    renderLaidOut(start);
+
+    await runShopWeek();
+    await userEvent.click(screen.getByTestId('recipe-add-to-list-confirm'));
+    await waitFor(() =>
+      expect(screen.getByTestId('recipe-add-sequence')).toHaveTextContent('2 of 2'),
+    );
+    // Nothing said yet — the run is still going.
+    expect(vi.mocked(addToast)).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByTestId('recipe-add-to-list-confirm'));
+
+    await waitFor(() =>
+      expect(vi.mocked(addToast)).toHaveBeenCalledWith('Added 6 items to the list.', 'success'),
+    );
+    expect(vi.mocked(addToast)).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts only what was confirmed when a recipe is skipped', async () => {
+    mockRecipeAddPlanItemCount.mockReturnValue(2);
+    mockRecipes._set([RECIPE, RECIPE_2]);
+    const start = weekAroundToday(2);
+    mockWeek._set(planned(start, { [TODAY]: night(['r1']), [TOMORROW]: night(['r2']) }));
+    renderLaidOut(start);
+
+    await runShopWeek();
+    await userEvent.click(screen.getByRole('button', { name: 'Skip' }));
+    await userEvent.click(await screen.findByTestId('recipe-add-to-list-confirm'));
+
+    await waitFor(() =>
+      expect(vi.mocked(addToast)).toHaveBeenCalledWith('Added 2 items to the list.', 'success'),
+    );
+  });
+
+  it('leaves the per-day add exactly as it was — one recipe, its own toast', async () => {
+    mockRecipeAddPlanItemCount.mockReturnValue(1);
+    mockRecipes._set([RECIPE]);
+    mockWeek._set(weekWith('2026-06-08', ['r1']));
+    render(MealPlanWeekPage);
+    await openDay('2026-06-08');
+
+    await userEvent.click(screen.getByTestId('day-2026-06-08-recipe-addshop-r1'));
+    // No sequence, no override: the action names itself and the dismiss is a
+    // Cancel, exactly as on a recipe's own page.
+    await screen.findByTestId('recipe-add-review-list');
+    expect(screen.queryByTestId('recipe-add-sequence')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+    expect(screen.getByTestId('recipe-servings-value')).toHaveTextContent('2 servings');
+
+    await userEvent.click(screen.getByTestId('recipe-add-to-list-confirm'));
+    await waitFor(() =>
+      expect(vi.mocked(addToast)).toHaveBeenCalledWith('Added 1 item to the list.', 'success'),
+    );
   });
 });

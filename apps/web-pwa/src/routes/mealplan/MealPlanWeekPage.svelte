@@ -399,6 +399,9 @@
   let shopQueueIndex = $state(0);
   let shopQueueOpen = $state(false);
   const shopQueueEntry = $derived(shopQueue[shopQueueIndex] ?? null);
+  // What the run has actually written so far, so the end can say it once instead
+  // of four near-identical toasts in a row. Not `$state`: nothing renders it.
+  let shopQueueAdded = 0;
 
   // The selection sheet closes and the first review sheet opens in the same
   // render, so the two never stack — `Sheet` and `Dialog` share the one `z-dialog`
@@ -408,7 +411,20 @@
     if (picked.length === 0) return;
     shopQueue = [...picked];
     shopQueueIndex = 0;
+    shopQueueAdded = 0;
     shopQueueOpen = true;
+  }
+
+  // ─── The one thing the planner knows that the recipe page does not ────────
+  // How many people are actually eating that night: the attendees marked on the
+  // day plus any guests. Undefined when nobody has been marked, which is not a
+  // headcount of zero — it is an unanswered question, and the sheet then opens at
+  // the recipe's own servings exactly as it does everywhere else. `dayAt`, so a
+  // night in the appended week is read from the week that holds it.
+  function shopQueueServings(entry: { date: string }): number | undefined {
+    const day = dayAt(entry.date);
+    const eating = (day?.attendees.length ?? 0) + (day?.guests ?? 0);
+    return eating > 0 ? eating : undefined;
   }
 
   // A closed review sheet means "done with this one" whichever way it closed:
@@ -422,6 +438,15 @@
       shopQueue = [];
       shopQueueIndex = 0;
       shopQueueOpen = false;
+      // One toast for the whole errand, in the same words a single add uses —
+      // including when nothing was confirmed, which is a run of skips and worth
+      // saying out loud rather than ending in silence.
+      addToast(
+        shopQueueAdded === 0
+          ? 'Nothing added to the list.'
+          : `Added ${shopQueueAdded} item${shopQueueAdded === 1 ? '' : 's'} to the list.`,
+        'success',
+      );
       return;
     }
     shopQueueIndex += 1;
@@ -1283,6 +1308,9 @@
     <RecipeAddToListSheet
       recipe={shopQueueEntry.recipe}
       listId={$defaultListId}
+      servings={shopQueueServings(shopQueueEntry)}
+      sequence={{ index: shopQueueIndex + 1, total: shopQueue.length }}
+      onSettled={(added) => (shopQueueAdded += added)}
       bind:open={
         () => shopQueueOpen,
         (v) => {
