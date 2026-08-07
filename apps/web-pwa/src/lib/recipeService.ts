@@ -14,7 +14,7 @@ import {
 } from '@salt/firebase-sync';
 import { createObservabilityErrorReportingAdapter, startUserActionSpan } from '@salt/observability';
 import type { AuthorRecipeInput, DescribeRecipeSceneInput, RecipeDoc } from '@salt/domain/schemas';
-import { reportIfFailed, reportSubscriptionError } from './errorReporting.js';
+import { reportIfFailed, reportSubscriptionError, reportWriteError } from './errorReporting.js';
 import {
   addItem,
   recipeItemAddDefault,
@@ -39,8 +39,11 @@ import type {
 import type {
   UrlImportFailureCode,
   PhotoImportFailureCode,
+  UrlImportFailure,
+  PhotoImportFailure,
   RecipePagePhoto,
 } from '@salt/domain/schemas';
+import { isImportError } from '@salt/domain/schemas';
 import { hasLiveCanonMatch } from '@salt/domain';
 import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
 import { getCanonItemsSnapshot } from './canonService.js';
@@ -286,8 +289,52 @@ const URL_IMPORT_COPY: Record<UrlImportFailureCode, string> = {
   'ai-failed': 'The recipe reader had trouble with that page — try again, or add it manually.',
 };
 
-export function urlImportMessage(code: UrlImportFailureCode): string {
-  return URL_IMPORT_COPY[code];
+// Copy for the failures that are NOT about the recipe site (issue #740). Shared
+// by both import paths: "you are signed out" and "something went wrong" read the
+// same whether the input was a URL or a photograph, and having one spelling is
+// the point — the old bug was two bespoke vocabularies each inventing their own
+// story for the same 401.
+const SIGNED_OUT_COPY = "You've been signed out — sign in and try again.";
+const UNKNOWN_IMPORT_COPY = 'Something went wrong — please try again.';
+
+// Message for a URL-import failure. An import-specific code keeps its existing,
+// correct copy; anything else is answered honestly rather than blamed on the
+// recipe site. NOTE the deliberate asymmetry: NetworkError does NOT get
+// "we couldn't reach that page" — the request never reached the page, so we do
+// not know that, and saying so is the exact defect #740 exists to remove.
+export function urlImportMessage(outcome: UrlImportFailure): string {
+  if (isImportError(outcome)) return URL_IMPORT_COPY[outcome.code];
+  if (outcome.kind === 'AuthError') return SIGNED_OUT_COPY;
+  return UNKNOWN_IMPORT_COPY;
+}
+
+// Whether a failure means "your session has died", and so whether the UI should
+// offer a route back to sign-in rather than a retry. One predicate for both
+// import paths so the two sheets cannot drift on what "signed out" means.
+export function isSignedOutFailure(outcome: UrlImportFailure | PhotoImportFailure): boolean {
+  return outcome.kind === 'AuthError';
+}
+
+// Span/telemetry label for an import outcome. Bespoke code where there is one,
+// else the DomainError category — never raw error text.
+function importOutcomeLabel(outcome: UrlImportFailure | PhotoImportFailure): string {
+  return outcome.kind === 'ImportError' ? outcome.code : outcome.kind;
+}
+
+// Route an import failure to the reporting port (issue #740). This is NOT a
+// bespoke "report this import failure" call: it hands the DomainError to the
+// SAME reportWriteError path every other write site uses, and the category gate
+// inside the port decides — AuthError reports, NetworkError/ValidationError
+// suppress (§7.6). A bespoke ImportError code is a user-facing verdict the
+// friendly-message path already handles, so it is not reportable and has no
+// category to gate on; it stops here.
+//
+// Import is a user-INITIATED callable, not an in-flight listener, so it
+// deliberately uses the write path (no isAuthTransitioning() suppression): the
+// sign-out teardown race cannot produce this failure.
+function reportImportFailure(outcome: UrlImportFailure | PhotoImportFailure): void {
+  if (outcome.kind === 'ImportError') return;
+  reportWriteError(getErrorReporter(), outcome);
 }
 
 // Best-effort, bounded host extraction for the human-readable span name. Never
@@ -320,7 +367,7 @@ function hostForSpan(url: string): string {
 export async function importRecipeFromUrl(
   url: string,
   source: 'button' | 'share' = 'button',
-): Promise<ReadResult<Recipe, UrlImportFailureCode>> {
+): Promise<ReadResult<Recipe, UrlImportFailure>> {
   const trimmed = url.trim();
   const span = startUserActionSpan(`Import recipe from ${hostForSpan(trimmed)}`);
   span.setAttribute('import.source', source);
@@ -329,8 +376,9 @@ export async function importRecipeFromUrl(
     const result = await callExtractRecipeFromUrl({ url: trimmed }, span.traceparent || undefined);
     child.end();
     if (result.kind !== 'ok') {
-      span.setAttribute('import.outcome', result.error);
+      span.setAttribute('import.outcome', importOutcomeLabel(result.error));
       span.setError();
+      reportImportFailure(result.error);
       return failure(result.error);
     }
     span.setAttribute('import.outcome', 'ok');
@@ -373,8 +421,14 @@ const PHOTO_IMPORT_COPY: Record<PhotoImportFailureCode, string> = {
     'The recipe reader had trouble with those photos — try again, or add it manually.',
 };
 
-export function photoImportMessage(code: PhotoImportFailureCode): string {
-  return PHOTO_IMPORT_COPY[code];
+// Same split as urlImportMessage (issue #740): a photo-specific verdict keeps its
+// copy, while being signed out or an unknown transport failure no longer arrives
+// as "the recipe reader had trouble with those photos" — which was untrue in
+// exactly the way the URL message was.
+export function photoImportMessage(outcome: PhotoImportFailure): string {
+  if (isImportError(outcome)) return PHOTO_IMPORT_COPY[outcome.code];
+  if (outcome.kind === 'AuthError') return SIGNED_OUT_COPY;
+  return UNKNOWN_IMPORT_COPY;
 }
 
 // Import a recipe from page photographs. Returns the assembled draft as a Recipe
@@ -396,7 +450,7 @@ export function photoImportMessage(code: PhotoImportFailureCode): string {
 // passed from here.
 export async function importRecipeFromPhoto(
   images: readonly RecipePagePhoto[],
-): Promise<ReadResult<Recipe, PhotoImportFailureCode>> {
+): Promise<ReadResult<Recipe, PhotoImportFailure>> {
   const span = startUserActionSpan('Import recipe from photo');
   span.setAttribute('import.source', 'photo');
   span.setAttribute('import.pageCount', images.length);
@@ -408,8 +462,9 @@ export async function importRecipeFromPhoto(
     );
     child.end();
     if (result.kind !== 'ok') {
-      span.setAttribute('import.outcome', result.error);
+      span.setAttribute('import.outcome', importOutcomeLabel(result.error));
       span.setError();
+      reportImportFailure(result.error);
       return failure(result.error);
     }
     span.setAttribute('import.outcome', 'ok');
@@ -458,6 +513,33 @@ export async function authorRecipeTraced(
 // mount (single-use — taking it clears it so a later blank "New recipe" doesn't
 // pick up a stale import). Kept in module state (not the route) because the
 // draft is a rich object that doesn't belong in a URL.
+// Hand-off slot for the URL a signed-out import was carrying (issue #740).
+// Signing back in tears down and remounts the app tree — AuthGate swaps its
+// children — so the list page's local `importUrl` is gone by the time the user
+// returns. Without this they would have to go and re-copy the link, which is the
+// same "work it out yourself" tax the wrong error message already charged.
+//
+// Module state, NOT browser storage: Rule 3 forbids localStorage/sessionStorage
+// outside the two named pre-auth sign-in keys, and this does not qualify. The
+// consequence is honest and bounded — it survives the OTP round trip (same tab)
+// and is lost if the user signs in via a magic link that opens a NEW tab, which
+// degrades to exactly today's behaviour rather than to something worse.
+//
+// Single-use, like takeImportedDraft: reading it clears it, so a later visit to
+// the recipe list does not resurrect a URL the user has moved on from.
+let _pendingImportUrl: string | null = null;
+
+export function stashPendingImportUrl(url: string): void {
+  const trimmed = url.trim();
+  _pendingImportUrl = trimmed === '' ? null : trimmed;
+}
+
+export function takePendingImportUrl(): string | null {
+  const url = _pendingImportUrl;
+  _pendingImportUrl = null;
+  return url;
+}
+
 let _pendingImportDraft: Recipe | null = null;
 
 export function stashImportedDraft(draft: Recipe): void {

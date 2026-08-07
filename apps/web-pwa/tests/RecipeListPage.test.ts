@@ -41,8 +41,11 @@ vi.mock('../src/lib/recipeService.js', () => ({
   importRecipeFromUrl: vi.fn(),
   urlImportMessage: vi.fn(),
   importRecipeFromPhoto: vi.fn(),
-  photoImportMessage: vi.fn((code: string) => `copy-for:${code}`),
+  photoImportMessage: vi.fn((outcome: { code?: string }) => `copy-for:${outcome.code}`),
   stashImportedDraft: vi.fn(),
+  isSignedOutFailure: vi.fn((outcome: { kind: string }) => outcome.kind === 'AuthError'),
+  stashPendingImportUrl: vi.fn(),
+  takePendingImportUrl: vi.fn(() => null),
 }));
 
 // Only the cropper is swapped out of @salt/ui-components: jsdom has no canvas,

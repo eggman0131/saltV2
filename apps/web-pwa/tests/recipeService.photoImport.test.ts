@@ -159,12 +159,15 @@ describe('importRecipeFromPhoto', () => {
   it('passes the failure code straight through and marks the span errored', async () => {
     fs.callExtractRecipeFromPhoto.mockResolvedValue({
       kind: 'err',
-      error: 'unreadable-photos',
+      error: { kind: 'ImportError', code: 'unreadable-photos' },
     });
 
     const result = await importRecipeFromPhoto(PAGES);
 
-    expect(result).toEqual({ kind: 'err', error: 'unreadable-photos' });
+    expect(result).toEqual({
+      kind: 'err',
+      error: { kind: 'ImportError', code: 'unreadable-photos' },
+    });
     const span = lastSpan();
     expect(span.attributes['import.outcome']).toBe('unreadable-photos');
     expect(span.errored).toBe(true);
@@ -191,7 +194,9 @@ describe('importRecipeFromPhoto', () => {
 
 describe('photoImportMessage', () => {
   it('has distinct, non-empty copy for every photo-import failure code', () => {
-    const messages = PHOTO_IMPORT_FAILURE_CODES.map((code) => photoImportMessage(code));
+    const messages = PHOTO_IMPORT_FAILURE_CODES.map((code) =>
+      photoImportMessage({ kind: 'ImportError', code }),
+    );
     expect(messages.every((m) => m.trim().length > 0)).toBe(true);
     expect(new Set(messages).size).toBe(PHOTO_IMPORT_FAILURE_CODES.length);
   });
@@ -199,7 +204,7 @@ describe('photoImportMessage', () => {
   it('covers blurry photos and "no recipe here" with the one message', () => {
     // The server genuinely cannot tell those two apart, so the copy must not
     // claim either — it has to point at the remedy that fixes both.
-    const message = photoImportMessage('unreadable-photos');
+    const message = photoImportMessage({ kind: 'ImportError', code: 'unreadable-photos' });
     expect(message).toContain('couldn’t read a recipe');
     expect(message).toMatch(/sharper|brighter/);
   });

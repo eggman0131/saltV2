@@ -124,6 +124,16 @@
     if (result.kind !== 'ok') {
       // "your photos are still there to retry" — the captures are deliberately
       // NOT cleared, so a blurry-page verdict costs a re-shoot, not the whole set.
+      //
+      // Signed out (issue #740) is MESSAGE-ONLY here, unlike the URL sheet which
+      // offers a sign-in button. The URL path can offer one because a URL is a
+      // string it may hold in module memory across the sign-in round trip; these
+      // captures are request-scoped image bytes with nowhere they are allowed to
+      // live (Rule 3 forbids browser storage, and holding a family's photographs
+      // across an auth transition is not a call to make in passing). A sign-in
+      // button here would silently destroy the user's shots — worse than the
+      // honest message. The issue anticipates this degradation; raised, not
+      // absorbed — see the PR notes.
       addToast(photoImportMessage(result.error), 'destructive');
       return;
     }
