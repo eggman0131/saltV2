@@ -64,6 +64,7 @@ export function initAdmin(env: ProbeEnv): ProbeAdmin {
     projectId: env.projectId,
     credential: applicationDefault(),
     serviceAccountId: env.serviceAccount,
+    storageBucket: env.storageBucket,
   });
 
   return { app, firestore: getFirestore(app) };

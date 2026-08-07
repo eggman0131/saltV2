@@ -17,25 +17,37 @@ interface Args {
 }
 
 function usage(): string {
-  const names = JOURNEYS.map((journey) => `  ${journey.name.padEnd(18)} ${journey.description}`);
+  const names = JOURNEYS.map(
+    (journey) =>
+      `  ${journey.name.padEnd(18)} ${journey.description}${journey.expensive === true ? '  [expensive]' : ''}`,
+  );
   return [
-    'Usage: pnpm probe <journey|all> [--target dev|staging]',
+    'Usage: pnpm probe <journey|all> [--target dev|staging] [--include-expensive]',
     '',
     'Journeys:',
     ...names,
-    `  ${'all'.padEnd(18)} every journey above, in order`,
+    `  ${'all'.padEnd(18)} every journey above except [expensive] ones`,
     '',
     `Targets: ${PROBE_TARGETS.join(', ')} (default: dev). Production is not a target.`,
+    '',
+    'An [expensive] journey spends real money (image generation). It is excluded',
+    'from `all` unless --include-expensive is given, and always runs when named.',
   ].join('\n');
 }
 
 function parseArgs(argv: string[]): Args {
   const positional: string[] = [];
   let target: ProbeTarget = 'dev';
+  let includeExpensive = false;
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === undefined) continue;
+
+    if (arg === '--include-expensive') {
+      includeExpensive = true;
+      continue;
+    }
 
     if (arg === '--target' || arg === '-t') {
       const value = argv[i + 1];
@@ -61,8 +73,12 @@ function parseArgs(argv: string[]): Args {
 
   if (positional.length === 0) throw new Error('no journey named');
 
+  // Naming a journey explicitly is itself the opt-in; only the `all` sweep
+  // filters, so a routine run never silently bills for image generation.
   const journeys = positional.includes('all')
-    ? JOURNEYS.map((journey) => journey.name)
+    ? JOURNEYS.filter((journey) => includeExpensive || journey.expensive !== true).map(
+        (journey) => journey.name,
+      )
     : positional;
 
   for (const name of journeys) {

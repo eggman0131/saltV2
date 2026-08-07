@@ -13,6 +13,8 @@
 
 import { randomBytes } from 'node:crypto';
 
+import { getStorage } from 'firebase-admin/storage';
+
 import type { ProbeAdmin, ProbeIdentity } from './auth.js';
 import type { ProbeEnv } from './env.js';
 
@@ -36,6 +38,8 @@ export interface ProbeReport {
   readonly steps: ProbeStep[];
   readonly warnings: string[];
   readonly teardownErrors: string[];
+  /** Documents the probe did not name but did cause to exist, and removed. */
+  readonly adoptedDocs: string[];
   readonly failure: string | null;
 }
 
@@ -69,6 +73,15 @@ export interface ProbeContext {
   /** Register a probe-created document for guarded deletion. */
   track(collectionPath: string, docId: string): void;
   /**
+   * Register a document the probe *caused* to be created but whose id it did
+   * not choose — a canon item minted by the matching pipeline, say. The
+   * `probe-` guard cannot apply, so a reason is mandatory and is recorded in
+   * the report: every such deletion is visible in the audit trail.
+   */
+  trackCreated(collectionPath: string, docId: string, reason: string): void;
+  /** Register a Storage object a trigger wrote for the probe's document. */
+  trackStorageObject(objectPath: string): void;
+  /**
    * Layer 2 — poll until `probe` returns a non-null value, or fail on the
    * deadline. Never a fixed sleep.
    */
@@ -100,6 +113,7 @@ export async function runProbe(args: RunProbeArgs): Promise<ProbeReport> {
   const steps: ProbeStep[] = [];
   const warnings: string[] = [];
   const teardownErrors: string[] = [];
+  const adoptedDocs: string[] = [];
   const teardown: { name: string; fn: () => Promise<void> }[] = [];
   let failure: string | null = null;
 
@@ -151,6 +165,34 @@ export async function runProbe(args: RunProbeArgs): Promise<ProbeReport> {
         name: `delete ${collectionPath}/${docId}`,
         fn: async () => {
           await admin.firestore.collection(collectionPath).doc(docId).delete();
+        },
+      });
+    },
+
+    trackCreated(collectionPath, docId, reason) {
+      adoptedDocs.push(`${collectionPath}/${docId} (${reason})`);
+      teardown.push({
+        name: `delete ${collectionPath}/${docId}`,
+        fn: async () => {
+          await admin.firestore.collection(collectionPath).doc(docId).delete();
+        },
+      });
+    },
+
+    trackStorageObject(objectPath) {
+      // Same blast-radius guard as `track`, applied to the object's own name:
+      // trigger-written paths are keyed by the document id, so a probe's object
+      // always carries the prefix.
+      const fileName = objectPath.split('/').pop() ?? '';
+      if (!fileName.startsWith(PROBE_PREFIX)) {
+        throw new ProbeAssertionError(
+          `refusing to track storage object "${objectPath}" for deletion — not a ${PROBE_PREFIX}* object`,
+        );
+      }
+      teardown.push({
+        name: `delete gs://${env.storageBucket}/${objectPath}`,
+        fn: async () => {
+          await getStorage(admin.app).bucket().file(objectPath).delete({ ignoreNotFound: true });
         },
       });
     },
@@ -207,6 +249,7 @@ export async function runProbe(args: RunProbeArgs): Promise<ProbeReport> {
     steps,
     warnings,
     teardownErrors,
+    adoptedDocs,
     failure,
   };
 }

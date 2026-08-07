@@ -29,6 +29,8 @@ export interface ProbeEnv {
   readonly apiKey: string;
   /** Web app id, the audience for a minted App Check token. */
   readonly appId: string;
+  /** Bucket the image triggers write into — probes clean up after them. */
+  readonly storageBucket: string;
   /**
    * Service account whose IAM `signBlob` mints both the custom token and the
    * App Check token. Overridable, but the Firebase-generated name is uniform
@@ -81,6 +83,7 @@ export function resolveEnv(target: ProbeTarget): ProbeEnv {
     projectId,
     apiKey: required(vars, 'VITE_FIREBASE_API_KEY', path),
     appId: required(vars, 'VITE_FIREBASE_APP_ID', path),
+    storageBucket: required(vars, 'VITE_FIREBASE_STORAGE_BUCKET', path),
     serviceAccount:
       process.env['SALT_PROBE_SERVICE_ACCOUNT'] ??
       `firebase-adminsdk-fbsvc@${projectId}.iam.gserviceaccount.com`,
