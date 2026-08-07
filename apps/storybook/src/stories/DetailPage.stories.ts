@@ -16,6 +16,7 @@ const meta = {
     withActions: false,
     withMetadata: false,
     withBack: false,
+    fill: false,
   },
   argTypes: {
     title: { control: 'text' },
@@ -23,6 +24,7 @@ const meta = {
     withActions: { control: 'boolean' },
     withMetadata: { control: 'boolean' },
     withBack: { control: 'boolean' },
+    fill: { control: 'boolean' },
   },
 } satisfies Meta<typeof DetailPageDemo>;
 
@@ -40,3 +42,9 @@ export const WithMetadata: Story = { args: { withMetadata: true } };
 
 // A back button rendered when `onBack` is supplied.
 export const WithBack: Story = { args: { withBack: true } };
+
+// Fill mode (ui-spec-v07 §1): the page takes the height of its container instead of
+// growing with its content, and hands the leftover to `children` — so the header stays
+// pinned while the body scrolls beneath it. The dashed box stands in for AppShell's
+// <main>. Not combinable with `withMetadata` (ui-spec-v07 §1.5).
+export const Fill: Story = { args: { fill: true, withActions: true, withBack: true } };

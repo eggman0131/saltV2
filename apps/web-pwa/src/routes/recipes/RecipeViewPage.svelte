@@ -726,11 +726,21 @@ Finish with a short note on what you changed and why, so I can read the gist her
     {/if}
   </div>
 {:else}
+  <!-- `fill` from the fold up (issue #737): the recipe and the chat are two panes that
+       must scroll independently, which needs a real height chain rather than a guessed
+       one. There is deliberately NO `calc(100dvh - …)` anywhere below — every height
+       here comes from `DetailPage`'s fill (ui-spec-v07 §1) resolving against AppShell's
+       <main>. `docked` is reused rather than adding a second gate: it reads the same
+       media query as the `split:` variant, so the classes and the prop cannot disagree.
+       Its `false` default on SSR/no-`matchMedia` means one frame as an ordinary
+       scrolling page before it fills — the same honest default the drawer suppression
+       already accepts. -->
   <DetailPage
     title={recipe.title}
     onBack={() => push('/recipes')}
     backLabel="Recipes"
     class="p-4 sm:p-6"
+    fill={docked}
   >
     {#snippet actions()}
       <!-- Eight actions is far too many to shout at once, so they are ranked and
@@ -874,7 +884,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
          page keeps the 2fr/1fr it has always had. The nav seam stays at `lg`: the fold
          keeps its bottom bar AND gets two columns. -->
     <div
-      class="grid gap-4 split:grid-cols-2 split:gap-10 lg:grid-cols-[2fr_1fr] lg:gap-6"
+      class="grid gap-4 split:min-h-0 split:flex-1 split:grid-cols-2 split:gap-10 lg:grid-cols-[2fr_1fr] lg:gap-6"
       data-testid="recipe-view"
     >
       <!-- Left column: main recipe content. `min-w-0` because a grid item's automatic
@@ -882,7 +892,9 @@ Finish with a short note on what you changed and why, so I can read the gist her
            `white-space: nowrap` — a chat titled "<a long recipe name> chat" in the list
            below would size this column to the untruncated title and take the whole page
            wider than the phone with it. -->
-      <div class="flex min-w-0 flex-col gap-4">
+      <!-- From `split` up this column owns its own scrolling, so reading down the method
+           does not move the conversation beside it (#737). -->
+      <div class="flex min-w-0 flex-col gap-4 split:min-h-0 split:overflow-y-auto">
         <!-- Unreviewed AI import (issue #616). Informational, never a gate: the
              recipe below is fully usable. Amber matches the canon review idiom. -->
         {#if recipe.needs_approval}
@@ -1162,15 +1174,17 @@ Finish with a short note on what you changed and why, so I can read the gist her
       <!-- Right column: the chat, docked from `split` up. Below that it does not render
            at all and Phase 3's drawer is the whole story — the reveal hack this column
            used to need is gone with it. -->
-      <div class="hidden min-w-0 flex-col split:flex" data-testid="recipe-chat-sidebar">
-        <!-- The list of conversations sits above the one you are reading, so choosing
-             another is a glance and a tap rather than a scroll back to the recipe. -->
-        {#if docked}
-          <div class="mb-4 shrink-0">{@render chatListCard()}</div>
-        {/if}
-        <Card
-          class="flex flex-col overflow-hidden split:sticky split:top-4 split:min-h-0 split:max-h-[calc(100dvh_-_5.5rem)] split:flex-1"
-        >
+      <div
+        class="hidden min-w-0 flex-col split:flex split:min-h-0"
+        data-testid="recipe-chat-sidebar"
+      >
+        <!-- The card fills this column and the transcript inside it does the scrolling.
+             It used to be `sticky` with a guessed `max-h-[calc(100dvh - 5.5rem)]`, which
+             was the whole of #737: the number was wrong, so the composer sat below the
+             scrollport; and being sticky it only settled after the recipe had been
+             scrolled past the header, which a short recipe never can. Both are gone —
+             the height comes from the fill chain now, and nothing here measures chrome. -->
+        <Card class="flex flex-col overflow-hidden split:min-h-0 split:flex-1">
           <CardHeader class="shrink-0 border-b px-4 py-3">
             <div class="flex items-center justify-between">
               <CardTitle class="text-sm">Chef Chat</CardTitle>
@@ -1193,32 +1207,44 @@ Finish with a short note on what you changed and why, so I can read the gist her
           </CardHeader>
 
           {#if activeSession === null}
-            <!-- No session yet: prompt to start -->
-            <CardContent
-              class="flex flex-1 flex-col items-center justify-center gap-3 p-4 text-center"
-            >
-              <p class="text-sm text-muted-foreground">
-                Ask your chef to refine this recipe, scale it, or answer cooking questions.
-              </p>
-              <Button
-                size="sm"
-                variant="outline"
-                class="w-full"
-                onclick={createRecipeChat}
-                loading={amendBusy}
-                disabled={amendBusy}
-              >
-                {#snippet leading()}<Icon name="ChefHat" size={16} />{/snippet}
-                Start a chat
-              </Button>
+            <!-- No session yet: the conversations this recipe already has, then the
+                 prompt to start another. The list is still rendered here because there
+                 is no transcript to put it above yet — without it a recipe whose chats
+                 are all closed would list none of them. -->
+            <CardContent class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+              {#if docked}
+                <div class="shrink-0">{@render chatListCard()}</div>
+              {/if}
+              <div class="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+                <p class="text-sm text-muted-foreground">
+                  Ask your chef to refine this recipe, scale it, or answer cooking questions.
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  class="w-full"
+                  onclick={createRecipeChat}
+                  loading={amendBusy}
+                  disabled={amendBusy}
+                >
+                  {#snippet leading()}<Icon name="ChefHat" size={16} />{/snippet}
+                  Start a chat
+                </Button>
+              </div>
             </CardContent>
           {:else}
+            <!-- The list rides INSIDE the transcript's scroll box (`aboveTranscript`), so
+                 it scrolls off as the conversation grows and a long reply gets the whole
+                 column. Scroll the pane back to the top to switch conversations. Guarded
+                 on `docked` because below the seam the list lives at the foot of the
+                 recipe instead — one `recipe-chat-list` on the page, never two. -->
             <ChatThread
               session={activeSession}
               thread={chat}
               layout="panel"
               emptyText="Ask me anything about this recipe."
               aboveComposer={sidebarReviewChanges}
+              aboveTranscript={docked ? dockedChatList : undefined}
             />
           {/if}
         </Card>
@@ -1240,6 +1266,13 @@ Finish with a short note on what you changed and why, so I can read the gist her
 <!-- "Review changes", wherever the conversation is being read — the docked column or the
      drawer. One button, one handler, so an edit proposed from a phone and an edit
      proposed from a laptop are the same act. -->
+<!-- The docked column's copy of the list, with the gap to the first message baked in
+     here rather than in `ChatThread` — the hook is deliberately unstyled so the host
+     owns its own spacing. -->
+{#snippet dockedChatList()}
+  <div class="mb-4">{@render chatListCard()}</div>
+{/snippet}
+
 {#snippet chatListCard()}
   <RecipeChatList
     chats={recipeChats}
