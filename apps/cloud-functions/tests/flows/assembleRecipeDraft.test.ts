@@ -468,3 +468,70 @@ describe('assembleRecipeDraft — total time', () => {
     expect(doc.metadata.cookTimeMinutes).toBe(15);
   });
 });
+
+// ─── zero-time folding (issue #739) ──────────────────────────────────────────
+
+describe('assembleRecipeDraft — no-cook recipes', () => {
+  it('folds cookTimeMinutes: 0 to null so the card renders nothing, not "Cook 0 min"', async () => {
+    const doc = await assembleRecipeDraft(
+      rawOutput({ totalTimeMinutes: 15, prepTimeMinutes: 15, cookTimeMinutes: 0 }),
+      { source: MANUAL, deriveTotalTime: true },
+    );
+
+    expect(doc.metadata.cookTimeMinutes).toBeNull();
+  });
+
+  it('folds prepTimeMinutes: 0 to null as well', async () => {
+    const doc = await assembleRecipeDraft(
+      rawOutput({ totalTimeMinutes: 30, prepTimeMinutes: 0, cookTimeMinutes: 30 }),
+      { source: MANUAL, deriveTotalTime: true },
+    );
+
+    expect(doc.metadata.prepTimeMinutes).toBeNull();
+  });
+
+  it('derives the total BEFORE folding — prep 15 + cook 0 is a 15-minute salad, not an unknown', async () => {
+    const doc = await assembleRecipeDraft(
+      rawOutput({ totalTimeMinutes: null, prepTimeMinutes: 15, cookTimeMinutes: 0 }),
+      { source: MANUAL, deriveTotalTime: true },
+    );
+
+    expect(doc.metadata.totalTimeMinutes).toBe(15);
+    expect(doc.metadata.prepTimeMinutes).toBe(15);
+    expect(doc.metadata.cookTimeMinutes).toBeNull();
+  });
+
+  it('folds a derived total of 0 — no prep and no cook states no time at all', async () => {
+    const doc = await assembleRecipeDraft(
+      rawOutput({ totalTimeMinutes: null, prepTimeMinutes: 0, cookTimeMinutes: 0 }),
+      { source: MANUAL, deriveTotalTime: true },
+    );
+
+    expect(doc.metadata.totalTimeMinutes).toBeNull();
+    expect(doc.metadata.prepTimeMinutes).toBeNull();
+    expect(doc.metadata.cookTimeMinutes).toBeNull();
+  });
+
+  it('folds on the authoring path too — one rule, both ways a recipe is written', async () => {
+    const doc = await assembleRecipeDraft(
+      rawOutput({ totalTimeMinutes: 10, prepTimeMinutes: 10, cookTimeMinutes: 0 }),
+      { source: MANUAL },
+    );
+
+    expect(doc.metadata.cookTimeMinutes).toBeNull();
+    expect(doc.metadata.totalTimeMinutes).toBe(10);
+  });
+
+  it('leaves every non-zero time untouched', async () => {
+    const doc = await assembleRecipeDraft(
+      rawOutput({ totalTimeMinutes: 45, prepTimeMinutes: 15, cookTimeMinutes: 30 }),
+      { source: MANUAL, deriveTotalTime: true },
+    );
+
+    expect(doc.metadata).toMatchObject({
+      totalTimeMinutes: 45,
+      prepTimeMinutes: 15,
+      cookTimeMinutes: 30,
+    });
+  });
+});
