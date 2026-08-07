@@ -3,6 +3,7 @@ import {
   upsertCanonItem,
   deleteCanonItem as deleteCanonItemDoc,
   subscribeAisles,
+  loadCanonPurchaseCounts,
   callMatchOrCreate,
   callRegenerateCanonIcon,
 } from '@salt/firebase-sync';
@@ -56,6 +57,15 @@ export const aisleUsage: Readable<Map<string, number>> = _aisleUsage;
 
 const _isLoadingAisles = writable(false);
 export const isLoadingAisles: Readable<boolean> = _isLoadingAisles;
+
+// How many times the household has ticked each canon item off (issue #726).
+// Read ONCE at startup rather than subscribed: it only reorders the add field's
+// suggestions, so a live listener on a document written by every shop would be
+// paying realtime cost for an ordering hint. This session's own ticks are
+// applied optimistically by bumpPurchaseCounts, so the field reorders as you
+// shop without waiting for a reload.
+const _purchaseCounts = writable<Readonly<Record<string, number>>>({});
+export const purchaseCounts: Readable<Readonly<Record<string, number>>> = _purchaseCounts;
 
 // ─── Error reporting ────────────────────────────────────────────────────────────
 
@@ -141,6 +151,26 @@ export function getCanonItemsSnapshot(): readonly CanonItem[] {
   return get(_canonItems);
 }
 
+// ─── Purchase counts ────────────────────────────────────────────────────────────
+
+/**
+ * Apply a tick-off gesture to the in-memory counts, mirroring the `increment`
+ * transforms the adapter just queued. Called at write time, not on
+ * confirmation: the transform lands eventually even from a supermarket with no
+ * signal, and the shopper should see the field reorder now.
+ *
+ * Ids repeat when two rows resolved to the same canon item — the same genuine
+ * double purchase the stored count records.
+ */
+export function bumpPurchaseCounts(canonIds: readonly string[]): void {
+  if (canonIds.length === 0) return;
+  _purchaseCounts.update((current) => {
+    const next = { ...current };
+    for (const id of canonIds) next[id] = (next[id] ?? 0) + 1;
+    return next;
+  });
+}
+
 // ─── Init / cleanup ─────────────────────────────────────────────────────────────
 
 export function initCanonSync(): () => void {
@@ -167,6 +197,14 @@ export function initCanonSync(): () => void {
     },
     (err, rawError) => reportSubscriptionError(errors, err, rawError),
   );
+
+  // One-shot, and deliberately NOT part of markLoaded: purchase counts only
+  // reorder suggestions, so a slow or failed read costs alphabetical ordering,
+  // never a spinner. isLoadingAisles stays pinned to items + aisles (§7.3).
+  void loadCanonPurchaseCounts().then((result) => {
+    if (result.kind === 'ok') _purchaseCounts.set(result.value.counts);
+    else reportWriteError(errors, result.error);
+  });
 
   return () => {
     unsubItems();
@@ -359,6 +397,7 @@ export function __resetCanonServiceForTest(): void {
   _canonItems.set([]);
   _aisles.set([]);
   _aisleUsage.set(new Map());
+  _purchaseCounts.set({});
   _isLoadingAisles.set(false);
   _receivedItems = false;
   _receivedAisles = false;
