@@ -21,10 +21,10 @@
  * Load template, not deleted). Recipe attach is a reserved seam (#17, not
  * shipped) — "add a meal" means setting the day's meal note + attendees here.
  */
-import type { Recipe } from '@salt/domain';
+import type { Day, MealPlanWeek, Recipe } from '@salt/domain';
 import { expect, test } from './fixtures/test';
 import { gotoAndSignIn, uniqueEmail } from './helpers/auth';
-import { seedRecipe } from './helpers/seed';
+import { seedMealPlanWeek, seedRecipe } from './helpers/seed';
 import { SYNC_TIMEOUT } from './helpers/timeouts';
 
 // A phone, pinned explicitly (#663, Phase 2). The planner shows the week and the
@@ -337,5 +337,180 @@ test.describe('meal planner — the note-only night (#652)', () => {
       .toHaveLength(0);
     await expect(page.getByTestId(`${testid}-photo`)).toHaveCount(0, { timeout: SYNC_TIMEOUT });
     await expect(page.getByTestId(`${testid}-meal`)).toContainText(meal);
+  });
+});
+
+// ─── Shop the week (#724) ───────────────────────────────────────────────────
+// The one thing a browser proves that the unit suite cannot: the header's cart,
+// the selection sheet and the run of review sheets all reach the real shopping
+// list through the real write path, on a phone.
+//
+// Everything is hung on TODAY's night rather than spread across the week. Which
+// days are offered depends on the run date and on `firstDayOfWeek`; today is the
+// one day guaranteed to be in the displayed week, ahead of itself, and on screen
+// — and a night with two recipes is exactly the case worth having in a browser,
+// since it is the one that makes the queue run twice.
+
+/** An ingredient line as the editor would write one before canon has seen it. */
+function ingredient(id: string, rawText: string) {
+  return {
+    id,
+    rawText,
+    parsed: null,
+    canonId: null,
+    matchState: 'pending' as const,
+    isOptional: false,
+    firstUsedInStepId: null,
+  };
+}
+
+function shoppableRecipe(id: string, title: string, item: string): Recipe {
+  return {
+    id,
+    schemaVersion: 1,
+    kind: 'recipe',
+    title,
+    description: null,
+    ingredients: [{ id: `${id}-g1`, name: null, items: [ingredient(`${id}-i1`, item)] }],
+    steps: [],
+    metadata: {
+      servings: 2,
+      totalTimeMinutes: null,
+      prepTimeMinutes: null,
+      cookTimeMinutes: null,
+      tags: [],
+    },
+    source: null,
+    notes: null,
+    producesCanonId: null,
+    image: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  } as unknown as Recipe;
+}
+
+/** A takeaway: a planner slot with nothing to buy. */
+function outingRecipe(id: string, title: string): Recipe {
+  return {
+    ...shoppableRecipe(id, title, ''),
+    kind: 'outing',
+    ingredients: [],
+  } as unknown as Recipe;
+}
+
+/** The displayed week, with one night carrying the given recipes. */
+function weekWithNight(startDate: string, dayKey: string, recipeIds: string[]): MealPlanWeek {
+  const days: Record<string, Day> = {};
+  for (let i = 0; i < 7; i++) {
+    const date = new Date(`${startDate}T00:00:00.000Z`);
+    date.setUTCDate(date.getUTCDate() + i);
+    const key = date.toISOString().slice(0, 10);
+    days[key] = {
+      note: '',
+      recipeIds: key === dayKey ? recipeIds : [],
+      chefs: [],
+      attendees: [],
+      guests: 0,
+    };
+  }
+  return {
+    id: startDate,
+    schemaVersion: 1,
+    startDate,
+    days,
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
+}
+
+test.describe('meal planner — shop the week (#724)', () => {
+  test('picks the week’s nights and reviews each recipe in turn', async ({ page }, testInfo) => {
+    test.setTimeout(120_000);
+    const email = uniqueEmail(testInfo.testId);
+    await gotoAndSignIn(page, email, '/');
+
+    // ── Bootstrap: a default shopping list to write to ───────────────────────
+    // Without one the cart toasts and opens nothing, which is its own assertion
+    // further down — but the flow under test needs a real list.
+    await page.goto('/#/shopping');
+    await expect(page).toHaveURL(/#\/shopping\/new/, { timeout: 10_000 });
+    await page.getByTestId('shopping-create-list-name').fill('Weekly shop');
+    await page.getByRole('button', { name: /create/i }).click();
+    await expect(page).toHaveURL(/#\/shopping\/[0-9a-f-]{36}$/, { timeout: SYNC_TIMEOUT });
+    // Creating a list also writes the lists CONFIG, and only the config makes it
+    // the default. Leaving the page mid-write abandons it and nothing writes it
+    // again, so wait for the subscription to echo the default back.
+    await expect
+      .poll(() => page.evaluate(() => window.__e2e!.getDefaultListId() ?? null), {
+        timeout: SYNC_TIMEOUT,
+      })
+      .not.toBeNull();
+
+    await page.goto('/#/mealplan');
+    await expect(page.getByTestId('this-week')).toBeVisible({ timeout: SYNC_TIMEOUT });
+    await page.getByTestId('this-week').click();
+    await expect(page.getByTestId('week-range')).not.toHaveText('', { timeout: SYNC_TIMEOUT });
+
+    // ── A night with two dinners and a takeaway ──────────────────────────────
+    await seedRecipe(page, shoppableRecipe('e2e-shop-a', 'Aubergine bake', '1 aubergine'));
+    await seedRecipe(page, shoppableRecipe('e2e-shop-b', 'Chorizo stew', '200g chorizo'));
+    await seedRecipe(page, outingRecipe('e2e-shop-out', 'Takeaway — Thai'));
+
+    const startDate = await readStartDate(page);
+    const dayKey = await readAnchorDayKey(page);
+    await seedMealPlanWeek(
+      page,
+      weekWithNight(startDate, dayKey, ['e2e-shop-a', 'e2e-shop-b', 'e2e-shop-out']),
+    );
+    await expect
+      .poll(() => readDayRecipeIds(page, dayKey), { timeout: SYNC_TIMEOUT })
+      .toHaveLength(3);
+
+    // ── Pick the nights ──────────────────────────────────────────────────────
+    await page.getByTestId('shop-week-trigger').click();
+    await expect(page.getByTestId('shop-week-list')).toBeVisible({ timeout: SYNC_TIMEOUT });
+    // Both dinners are offered, ticked; the takeaway has nothing to buy and is
+    // simply not there.
+    await expect(page.getByTestId(`shop-week-row-${dayKey}-e2e-shop-a`)).toBeVisible();
+    await expect(page.getByTestId(`shop-week-row-${dayKey}-e2e-shop-b`)).toBeVisible();
+    await expect(page.getByTestId(`shop-week-row-${dayKey}-e2e-shop-out`)).toHaveCount(0);
+    await expect(page.getByTestId('shop-week-confirm')).toHaveText(/Review 2 recipes/);
+
+    await page.getByTestId('shop-week-confirm').click();
+    // The selection sheet is gone before the review opens — the two never stack.
+    await expect(page.getByTestId('shop-week-list')).toHaveCount(0, { timeout: SYNC_TIMEOUT });
+
+    // ── Review each in turn ──────────────────────────────────────────────────
+    // Identified by their ingredients rather than by a title or a toast: what
+    // each sheet is FOR is the thing under test, and the wording around it is
+    // free to change.
+    const review = page.getByTestId('recipe-add-review-list');
+    await expect(review).toBeVisible({ timeout: SYNC_TIMEOUT });
+    await expect(review).toContainText('aubergine');
+    await page.getByTestId('recipe-add-to-list-confirm').click();
+
+    // The next recipe's sheet opens in its place.
+    await expect(review).toContainText('chorizo', { timeout: SYNC_TIMEOUT });
+    await page.getByTestId('recipe-add-to-list-confirm').click();
+
+    // Nothing is left open once the last one is done.
+    await expect(review).toHaveCount(0, { timeout: SYNC_TIMEOUT });
+
+    // ── Both recipes' ingredients are on the shared list, attributed ─────────
+    await expect
+      .poll(
+        async () =>
+          (await page.evaluate(() => window.__e2e!.getShoppingListItems()))
+            .flatMap((item) => item.sources)
+            .filter((source) => source.kind === 'recipe')
+            .map((source) => source.recipeId)
+            .sort(),
+        { timeout: SYNC_TIMEOUT },
+      )
+      .toEqual(['e2e-shop-a', 'e2e-shop-b']);
+
+    await page.goto('/#/shopping');
+    await expect(page.getByTestId('shopping-list-page')).toBeVisible({ timeout: SYNC_TIMEOUT });
+    await expect(page.getByText('aubergine')).toBeVisible({ timeout: SYNC_TIMEOUT });
+    await expect(page.getByText('chorizo')).toBeVisible({ timeout: SYNC_TIMEOUT });
   });
 });

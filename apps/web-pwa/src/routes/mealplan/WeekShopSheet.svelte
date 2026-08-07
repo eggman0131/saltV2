@@ -1,0 +1,210 @@
+<script lang="ts">
+  import {
+    Button,
+    Checkbox,
+    Icon,
+    Sheet,
+    SheetContent,
+    SheetFooter,
+    SheetHeader,
+    SheetTitle,
+  } from '@salt/ui-components';
+  import { appendCacheBuster, type Recipe } from '@salt/domain';
+  import { KIND_COPY, kindOf } from '../recipes/recipeKind.js';
+
+  // ─── Shop the week: which nights? (issue #724, Phase 1) ────────────────────
+  //
+  // The FIRST of the two sheets this flow raises. It picks the recipes; the
+  // review — servings, per-ingredient Add/Check, Buy/Make — stays entirely with
+  // `RecipeAddToListSheet`, which the page then drives once per pick. Nothing
+  // about the shopping list is decided here: this sheet returns a subset of what
+  // it was given and forgets it.
+  //
+  // It takes the entries ready-made rather than reaching for the week itself.
+  // WHICH week is a fact about where the deck is snapped to, and that belongs to
+  // the page (viewport geometry, never a component's business); which recipes may
+  // be shopped for is `takesIngredients`, applied there too. So this component is
+  // presentation and selection, and both are testable without a deck.
+
+  // One row: a recipe and the night it is planned for. A recipe attached to two
+  // nights is two rows, which is why the date is half of a row's identity.
+  interface Entry {
+    readonly date: string;
+    readonly recipe: Recipe;
+  }
+
+  interface Props {
+    open: boolean;
+    // In day order, already filtered to nights from today onward and to entries
+    // that can be shopped for. Empty is a legitimate state — it is what a week
+    // entirely in the past looks like — and gets its own copy below.
+    entries: readonly Entry[];
+    // The picks, in the order they were offered. The page owns closing the sheet:
+    // the review queue starts as this returns, and the two must not overlap.
+    onConfirm: (picked: readonly Entry[]) => void;
+  }
+  let { open = $bindable(), entries, onConfirm }: Props = $props();
+
+  // Ticked-by-default is expressed as ABSENCE, not as a seeded map of trues: the
+  // record only ever holds the rows that have been unticked, so an entry that
+  // arrives while the sheet is open (a Firestore snapshot landing under it)
+  // starts ticked like every other, and reopening is a one-line reset.
+  //
+  // In memory only, and deliberately (Rule 3): which nights are ticked is a fact
+  // about this glance at the planner, exactly like which day is open.
+  let unticked = $state<Record<string, boolean>>({});
+
+  function keyOf(entry: Entry): string {
+    return `${entry.date}::${entry.recipe.id}`;
+  }
+
+  function isPicked(entry: Entry): boolean {
+    return !unticked[keyOf(entry)];
+  }
+
+  // Reset on the open transition, never on close: a sheet that cleared as it left
+  // would flash an all-ticked list on the way out.
+  let wasOpen = false;
+  $effect(() => {
+    if (open && !wasOpen) unticked = {};
+    wasOpen = open;
+  });
+
+  const picked = $derived(entries.filter(isPicked));
+
+  // Rows grouped under their night. The entries arrive in day order, so this is a
+  // fold rather than a sort — and a night with two recipes keeps both, in the
+  // order the day holds them.
+  const nights = $derived.by(() => {
+    const out: { date: string; entries: Entry[] }[] = [];
+    for (const entry of entries) {
+      const last = out.at(-1);
+      if (last?.date === entry.date) last.entries.push(entry);
+      else out.push({ date: entry.date, entries: [entry] });
+    }
+    return out;
+  });
+
+  // The date, named the way the planner names a day elsewhere. Formatted from the
+  // UTC date, like the page's own labels — a `YYYY-MM-DD` key parsed as local time
+  // is a day earlier west of Greenwich.
+  function nightLabel(date: string): string {
+    return new Intl.DateTimeFormat('en-GB', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'short',
+      timeZone: 'UTC',
+    }).format(new Date(`${date}T00:00:00.000Z`));
+  }
+
+  // Display-time cache-bust, same rule as the planner's own recipe rows (#460):
+  // a regenerated hero reuses its Storage URL, so the per-regeneration nonce is
+  // what makes the new picture appear. Null when there is no image — the row then
+  // wears the kind's pictogram.
+  function heroUrl(recipe: Recipe): string | null {
+    return recipe.image?.url
+      ? appendCacheBuster(recipe.image.url, recipe.imageRequestedAt ?? recipe.updatedAt)
+      : null;
+  }
+</script>
+
+<!-- `side="bottom"` explicitly: the primitive defaults to 'right', and this is a
+     phone-first sheet. The height cap and the internal scroll are this component's
+     own job — `SheetContent` carries no max-height or overflow of its own, so
+     without them a fortnight of dinners would run off the bottom of the screen
+     taking the confirm button with it. Same shape as RecipeAddToListSheet, which
+     is the sheet this one hands over to. -->
+<Sheet bind:open side="bottom">
+  <SheetContent class="flex max-h-[85vh] flex-col gap-4 p-4 pb-8">
+    <SheetHeader>
+      <SheetTitle>Shop the week</SheetTitle>
+    </SheetHeader>
+
+    <div class="flex flex-col gap-3 overflow-y-auto" data-testid="shop-week-list">
+      {#if nights.length === 0}
+        <!-- A week with nothing left is not a failure and not an error: it is
+             Sunday night, or a week you have scrolled back to. Say so plainly
+             rather than showing an empty list under a dead confirm button. -->
+        <p
+          class="px-1 py-6 text-center text-sm text-muted-foreground"
+          data-testid="shop-week-empty"
+        >
+          Nothing left to shop for in this week.
+        </p>
+      {/if}
+      {#each nights as night (night.date)}
+        <div class="flex flex-col gap-1.5">
+          <p
+            class="px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+            data-testid={`shop-week-night-${night.date}`}
+          >
+            {nightLabel(night.date)}
+          </p>
+          {#each night.entries as entry (entry.recipe.id)}
+            {@const url = heroUrl(entry.recipe)}
+            <div
+              class="flex items-center gap-2 rounded border border-border px-2 py-1.5 text-sm"
+              data-testid={`shop-week-row-${night.date}-${entry.recipe.id}`}
+            >
+              <!-- The tick leads the row, as it does on an equipment accessory:
+                   a column of boxes down the left edge is what makes "all of
+                   these are on, untick the ones you don't want" readable at a
+                   glance.
+                   `labelledBy` rather than `aria-label`: the primitive spreads
+                   unknown attributes onto its WRAPPER, so an `aria-label` here
+                   would name a plain <div> and leave the control itself unnamed.
+                   The title is already on screen a few pixels away — pointing at
+                   it is both the accessible name and the honest one. -->
+              <Checkbox
+                checked={isPicked(entry)}
+                onCheckedChange={(v) => (unticked[keyOf(entry)] = v !== true)}
+                labelledBy={`shop-week-title-${night.date}-${entry.recipe.id}`}
+                data-testid={`shop-week-tick-${night.date}-${entry.recipe.id}`}
+              />
+              <span class="h-10 w-10 shrink-0 overflow-hidden rounded bg-muted">
+                {#if url}
+                  <img src={url} alt="" loading="lazy" class="h-full w-full object-cover" />
+                {:else}
+                  <span
+                    class="flex h-full w-full items-center justify-center bg-gradient-to-br from-muted to-muted/40 text-muted-foreground/60"
+                  >
+                    <!-- The kind's own pictogram — copy and pictures only, no
+                         behaviour hangs off it (a cocktail is offered here like
+                         any other entry that takes ingredients). -->
+                    <Icon name={KIND_COPY[kindOf(entry.recipe)].thumbIcon} size={18} />
+                  </span>
+                {/if}
+              </span>
+              <span
+                id={`shop-week-title-${night.date}-${entry.recipe.id}`}
+                class="min-w-0 flex-1 truncate">{entry.recipe.title}</span
+              >
+            </div>
+          {/each}
+        </div>
+      {/each}
+    </div>
+
+    <SheetFooter class="flex justify-end gap-2">
+      <Button
+        variant="ghost"
+        size="sm"
+        onclick={() => (open = false)}
+        data-testid="shop-week-cancel"
+      >
+        Cancel
+      </Button>
+      <!-- Naming the count is the promise the flow then keeps: press it and that
+           many review sheets follow, one at a time. Nothing ticked is nothing to
+           do — the same rule the review sheet's own confirm follows. -->
+      <Button
+        size="sm"
+        onclick={() => onConfirm(picked)}
+        disabled={picked.length === 0}
+        data-testid="shop-week-confirm"
+      >
+        Review {picked.length} recipe{picked.length === 1 ? '' : 's'}
+      </Button>
+    </SheetFooter>
+  </SheetContent>
+</Sheet>

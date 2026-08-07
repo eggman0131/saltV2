@@ -19,6 +19,7 @@
     weekExtendsIntoNext,
     templateWeekStarts,
     addCalendarDays,
+    takesIngredients,
     type Attendee,
     type Day,
     type Recipe,
@@ -27,7 +28,9 @@
   import type { DomainError, ReadResult } from '@salt/shared-types';
   import MealDayEditor from './MealDayEditor.svelte';
   import MealDayDetail from './MealDayDetail.svelte';
+  import WeekShopSheet from './WeekShopSheet.svelte';
   import RecipeAddToListSheet from '../recipes/RecipeAddToListSheet.svelte';
+  import { kindOf } from '../recipes/recipeKind.js';
   import { createDeck } from '../../lib/deck.svelte.js';
   import type { DeckThresholds } from '../../lib/cookDeck.js';
   import { members } from '../../lib/membersService.js';
@@ -295,6 +298,134 @@
     }
     addShopRecipe = recipe;
     addShopOpen = true;
+  }
+
+  // ─── Shop the week (issue #724, Phase 1) ──────────────────────────────────
+  // The weekly shop is the single most repeated thing the planner is used for,
+  // and until now it was the one thing the planner made you do a day at a time.
+  // The header's cart offers the whole week's recipes at once; confirming drives
+  // the EXISTING review sheet once per pick, in day order, each committing as you
+  // confirm it. No new shopping-list write path, no merging, no de-duplication:
+  // it is what you would get by pressing "Add to shop" four times yourself, and
+  // the list's own display-time combining still names each item's contributors.
+
+  // WHICH WEEK is the week you are looking at, which is the week the deck is
+  // snapped to — from the last three days of the cycle the page holds thirteen or
+  // fourteen days in one scroll, and by then the shop you are doing is usually for
+  // the week you cannot see the top of. The days in deck order; the deck is handed
+  // the same list, and this one is derived separately so the anchor never reaches
+  // into the deck's own configuration.
+  const deckDates = $derived([...dates, ...extensionDates]);
+
+  // The day the deck has come to rest on: the LAST row whose stop is at or above
+  // the current offset — i.e. the last one that has reached the top of the
+  // viewport. Ties go to the FIRST row sharing a stop, which is what makes the two
+  // degenerate cases honest: at the very bottom of the deck several trailing rows
+  // clamp to the same maximum offset (the row actually under the header is the
+  // first of them), and where nothing is laid out at all every stop is 0 and the
+  // answer is the first day of the week rather than the last.
+  //
+  // Pixels, measured at the moment the button is pressed — this is read from the
+  // click handler and nowhere else, so a lazily-evaluated `$derived` costs the
+  // deck's own gesture nothing. Viewport geometry stays in the app layer (Rule 1),
+  // exactly as `cookDeck` states and #639 re-affirmed.
+  const anchorDate = $derived.by(() => {
+    let anchor: string | null = deckDates[0] ?? null;
+    let anchorStop = -1;
+    for (const date of deckDates) {
+      const el = rowEls[date];
+      const stop = el ? deck.offsetOf(el) : null;
+      if (stop === null || stop > deck.offset + 1 || stop <= anchorStop) continue;
+      anchor = date;
+      anchorStop = stop;
+    }
+    return anchor;
+  });
+
+  // The week the sheet was opened on, frozen at the press. The deck cannot move
+  // behind a modal sheet, so this only ever differs from `anchorDate` in that it
+  // does not re-measure — which keeps the deck's offset out of the sheet's own
+  // reactivity. Everything else about a row (its recipe's title, its picture)
+  // stays live, resolved from the stores below.
+  let shopWeekAnchor = $state<string | null>(null);
+  let showShopWeek = $state(false);
+
+  // What the sheet offers: every recipe planned for that week from today onward.
+  //
+  // Days hold ids only, so the full recipe is resolved against the store exactly
+  // as MealDayDetail does, silently skipping an id with no matching document.
+  // Eligibility is the capability predicate, never a `kind ===` comparison — so a
+  // takeaway and a note-only placeholder are absent and a cocktail is present,
+  // and a fifth kind decides for itself in the domain table.
+  //
+  // Days already behind us are left out entirely rather than listed unticked:
+  // there is no point shopping for a dinner that has been and gone, and the
+  // shortest possible list is most of the point of this. A week wholly in the past
+  // therefore yields nothing, and the sheet says so.
+  const shopWeekEntries = $derived.by(() => {
+    const anchor = shopWeekAnchor;
+    if (!anchor) return [];
+    const isNext = extensionDates.includes(anchor);
+    const dateList = isNext ? extensionDates : dates;
+    const days = isNext ? ($extensionWeek?.days ?? {}) : $currentWeek.days;
+    return dateList
+      .filter((date) => date >= todayDate)
+      .flatMap((date) =>
+        (days[date]?.recipeIds ?? [])
+          .map((id) => $recipes.find((r) => r.id === id))
+          .filter((r): r is Recipe => r !== undefined && takesIngredients(kindOf(r)))
+          .map((recipe) => ({ date, recipe })),
+      );
+  });
+
+  // The default-list guard runs ONCE, here, before the selection sheet — not per
+  // recipe. Same friendly toast as every other way into the review sheet; with no
+  // list to write to, nothing opens at all.
+  function openShopWeek(): void {
+    if (!$defaultListId) {
+      addToast('No shopping list found. Create one first.', 'destructive');
+      return;
+    }
+    shopWeekAnchor = anchorDate;
+    showShopWeek = true;
+  }
+
+  // ─── The review queue ─────────────────────────────────────────────────────
+  // In memory only (Rule 3), like every other "where am I in this glance at the
+  // planner" fact on this page. Nothing about the sequence is written anywhere:
+  // what has been confirmed is already on the list, and what has not is a decision
+  // still to make.
+  let shopQueue = $state<{ date: string; recipe: Recipe }[]>([]);
+  let shopQueueIndex = $state(0);
+  let shopQueueOpen = $state(false);
+  const shopQueueEntry = $derived(shopQueue[shopQueueIndex] ?? null);
+
+  // The selection sheet closes and the first review sheet opens in the same
+  // render, so the two never stack — `Sheet` and `Dialog` share the one `z-dialog`
+  // rung and there is no sanctioned overlay-over-overlay pattern to mint.
+  function startShopWeek(picked: readonly { date: string; recipe: Recipe }[]): void {
+    showShopWeek = false;
+    if (picked.length === 0) return;
+    shopQueue = [...picked];
+    shopQueueIndex = 0;
+    shopQueueOpen = true;
+  }
+
+  // A closed review sheet means "done with this one" whichever way it closed:
+  // confirmed, or dismissed and therefore skipped. That symmetry is the design —
+  // stop halfway and what you confirmed is on the list, and nothing is held back
+  // waiting for you to finish. A FAILED commit closes nothing: the sheet keeps
+  // itself open behind its destructive toast, so the sequence stops there rather
+  // than rolling silently on to the next recipe (Rule 10).
+  function advanceShopQueue(): void {
+    if (shopQueueIndex + 1 >= shopQueue.length) {
+      shopQueue = [];
+      shopQueueIndex = 0;
+      shopQueueOpen = false;
+      return;
+    }
+    shopQueueIndex += 1;
+    shopQueueOpen = true;
   }
 
   // ─── Shop day (issue #629, moved to the week by #640 Phase 4) ─────────────
@@ -761,6 +892,25 @@
 
 <ListPage title="Meal plan" isLoading={$isLoadingMealPlanWeek} fill class="p-4 sm:p-6">
   {#snippet actions()}
+    <!-- Shop the week (#724). Icon-only, and measured rather than preferred: the
+         planner's header already carries "Meal plan" and "Load template", and on
+         the 393px phone this page is pinned to in e2e there is no room left for a
+         second worded button. The cart is the word — it is the same pictogram the
+         shop-day rule and the shopping nav already use — and the action is named
+         in full for anyone who cannot see it.
+         Always present and always enabled: a week with nothing to shop for opens
+         the sheet onto its empty state rather than hiding the control, because a
+         control that comes and goes is hardest to find on exactly the unplanned
+         week where someone is looking for it. -->
+    <Button
+      variant="outline"
+      size="sm"
+      onclick={openShopWeek}
+      aria-label="Shop the week"
+      data-testid="shop-week-trigger"
+    >
+      <ShoppingCart class="h-4 w-4" aria-hidden="true" />
+    </Button>
     <Button size="sm" onclick={requestLoadTemplate} data-testid="load-template">
       Load template
     </Button>
@@ -1115,6 +1265,33 @@
      default list existing — mirrors RecipeViewPage exactly. -->
 {#if addShopRecipe && $defaultListId}
   <RecipeAddToListSheet recipe={addShopRecipe} listId={$defaultListId} bind:open={addShopOpen} />
+{/if}
+
+<!-- Shop the week (#724): pick the nights… -->
+<WeekShopSheet bind:open={showShopWeek} entries={shopWeekEntries} onConfirm={startShopWeek} />
+
+<!-- …then review each in turn, in the sheet the recipe page and the day panel
+     already use, driven once per pick.
+     `{#key}` on the queue position is what makes each recipe a genuinely NEW
+     sheet: the review sheet seeds its servings on the open transition, so handing
+     the same instance a second recipe without unmounting it would leave the last
+     one's servings on screen. Keyed, the old instance is destroyed and the next
+     one mounts open in the same render — "the next recipe's sheet opens in its
+     place", and never two overlays at once. -->
+{#if shopQueueEntry && $defaultListId}
+  {#key shopQueueIndex}
+    <RecipeAddToListSheet
+      recipe={shopQueueEntry.recipe}
+      listId={$defaultListId}
+      bind:open={
+        () => shopQueueOpen,
+        (v) => {
+          shopQueueOpen = v;
+          if (!v) advanceShopQueue();
+        }
+      }
+    />
+  {/key}
 {/if}
 
 <style>

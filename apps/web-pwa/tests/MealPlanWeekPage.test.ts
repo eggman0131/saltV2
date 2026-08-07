@@ -1588,3 +1588,258 @@ describe('MealPlanWeekPage — when you CBA (#637, Phase 4)', () => {
     expect(screen.queryByTestId('day-2026-06-08-recipe-thumb-fallback-o1')).not.toBeInTheDocument();
   });
 });
+
+// ─── Shop the week (#724, Phase 1) ─────────────────────────────────────────
+// The header's cart offers the whole week at once and then drives the EXISTING
+// review sheet, once per pick, in day order. What is worth testing here is
+// therefore not the review — that is covered where it lives — but the four
+// decisions this page makes: which week the deck is on, which nights are still
+// ahead, which entries can be shopped for at all, and how the queue advances.
+describe('MealPlanWeekPage — shop the week (#724, Phase 1)', () => {
+  // A second dish, so a sequence has somewhere to go.
+  const RECIPE_2: Recipe = {
+    id: 'r2',
+    title: 'Chilli con carne',
+    metadata: { servings: 4 },
+    ingredients: [],
+  } as unknown as Recipe;
+
+  /** A week whose days carry the given recipe ids. */
+  function planned(start: string, plan: Record<string, string[]>): MealPlanWeek {
+    const base = emptyWeek(start);
+    const days = { ...base.days };
+    for (const [date, recipeIds] of Object.entries(plan)) {
+      days[date] = { note: '', recipeIds, chefs: [], attendees: [], guests: 0 };
+    }
+    return { ...base, days };
+  }
+
+  async function openShopWeek(): Promise<void> {
+    await userEvent.click(screen.getByTestId('shop-week-trigger'));
+    await screen.findByTestId('shop-week-list');
+  }
+
+  /** Dismiss the selection sheet the way a user would (see closeShopPicker). */
+  async function cancelShopWeek(): Promise<void> {
+    await userEvent.click(screen.getByTestId('shop-week-cancel'));
+    await waitFor(() => expect(screen.queryByTestId('shop-week-list')).not.toBeInTheDocument());
+  }
+
+  /** Confirm whichever review sheet is currently open. */
+  async function confirmReview(): Promise<void> {
+    await userEvent.click(await screen.findByTestId('recipe-add-to-list-confirm'));
+  }
+
+  const YESTERDAY = addDays(TODAY, -1);
+  const TOMORROW = addDays(TODAY, 1);
+
+  it('offers every recipe planned from today onward, one row per recipe', async () => {
+    mockRecipes._set([RECIPE, COCKTAIL]);
+    const start = weekAroundToday(2);
+    mockWeek._set(planned(start, { [TODAY]: ['r1', 'c1'], [TOMORROW]: ['r1'] }));
+    renderLaidOut(start);
+
+    await openShopWeek();
+
+    // A night with two entries lists both, and a cocktail is offered — it takes
+    // ingredients, so it can be shopped for even though it is not dinner.
+    expect(screen.getByTestId(`shop-week-row-${TODAY}-r1`)).toBeInTheDocument();
+    expect(screen.getByTestId(`shop-week-row-${TODAY}-c1`)).toBeInTheDocument();
+    // The same recipe on a second night is its own row, under its own night.
+    expect(screen.getByTestId(`shop-week-row-${TOMORROW}-r1`)).toBeInTheDocument();
+    expect(screen.getByTestId(`shop-week-night-${TODAY}`)).toBeInTheDocument();
+    // All of them start ticked, and the confirm names the count.
+    expect(screen.getByTestId('shop-week-confirm')).toHaveTextContent('Review 3 recipes');
+
+    await cancelShopWeek();
+  });
+
+  it('leaves out a takeaway, a note-only placeholder and a night already behind us', async () => {
+    const PLACEHOLDER = {
+      id: 'p1',
+      title: 'A good dinner',
+      kind: 'placeholder',
+      metadata: { servings: null },
+      ingredients: [],
+    } as unknown as Recipe;
+    mockRecipes._set([RECIPE, OUTING, PLACEHOLDER]);
+    const start = weekAroundToday(2);
+    mockWeek._set(
+      planned(start, {
+        [YESTERDAY]: ['r1'],
+        [TODAY]: ['r1', 'o1', 'p1'],
+      }),
+    );
+    renderLaidOut(start);
+
+    await openShopWeek();
+
+    // `takesIngredients` is the gate, never a `kind ===` comparison: neither an
+    // outing nor a placeholder has anything to buy.
+    expect(screen.getByTestId(`shop-week-row-${TODAY}-r1`)).toBeInTheDocument();
+    expect(screen.queryByTestId(`shop-week-row-${TODAY}-o1`)).not.toBeInTheDocument();
+    expect(screen.queryByTestId(`shop-week-row-${TODAY}-p1`)).not.toBeInTheDocument();
+    // Yesterday's dinner has been and gone — not listed unticked, not listed at all.
+    expect(screen.queryByTestId(`shop-week-night-${YESTERDAY}`)).not.toBeInTheDocument();
+    expect(screen.getByTestId('shop-week-confirm')).toHaveTextContent('Review 1 recipe');
+
+    await cancelShopWeek();
+  });
+
+  it('says a week with nothing left has nothing to shop for', async () => {
+    mockRecipes._set([RECIPE]);
+    // A week entirely behind us: every night is in the past, so nothing is offered.
+    const start = addDays(TODAY, -30);
+    mockStart._set(start);
+    mockWeek._set(planned(start, { [addDays(start, 3)]: ['r1'] }));
+    renderLaidOut(start);
+
+    await openShopWeek();
+
+    expect(screen.getByTestId('shop-week-empty')).toBeInTheDocument();
+    expect(screen.getByTestId('shop-week-confirm')).toBeDisabled();
+
+    await cancelShopWeek();
+  });
+
+  it("offers next week's nights once the deck is scrolled into them", async () => {
+    mockRecipes._set([RECIPE, RECIPE_2]);
+    const { start, next } = weekAroundTodayWithNext(5);
+    const nextDay = weekDates(next)[2]!;
+    mockWeek._set(planned(start, { [TODAY]: ['r1'] }));
+    mockExtensionWeek._set(planned(next, { [nextDay]: ['r2'] }));
+    renderLaidOut(start, next);
+    await waitFor(() => expect(screen.getByTestId('next-week-mark')).toBeInTheDocument());
+
+    // The week shopped follows the deck, not the header range: scroll down past
+    // the "Next week" mark and it is next week's nights that are offered.
+    const deck = screen.getByTestId('week-deck');
+    deck.focus();
+    await userEvent.keyboard('{End}');
+    await waitFor(() => expect(deckOffset()).toBeGreaterThanOrEqual(7 * ROW_PITCH - LEAD));
+
+    await openShopWeek();
+
+    expect(screen.getByTestId(`shop-week-row-${nextDay}-r2`)).toBeInTheDocument();
+    expect(screen.queryByTestId(`shop-week-row-${TODAY}-r1`)).not.toBeInTheDocument();
+
+    await cancelShopWeek();
+  });
+
+  it('reviews each ticked recipe in turn, committing as each is confirmed', async () => {
+    mockRecipes._set([RECIPE, RECIPE_2]);
+    const start = weekAroundToday(2);
+    mockWeek._set(planned(start, { [TODAY]: ['r1'], [TOMORROW]: ['r2'] }));
+    renderLaidOut(start);
+
+    await openShopWeek();
+    await userEvent.click(screen.getByTestId('shop-week-confirm'));
+
+    // The selection sheet is gone before the first review sheet appears — the two
+    // never stack.
+    await waitFor(() => expect(screen.queryByTestId('shop-week-list')).not.toBeInTheDocument());
+
+    // First recipe, in day order.
+    await confirmReview();
+    await waitFor(() => expect(vi.mocked(mockCommitRecipeAddPlan)).toHaveBeenCalledTimes(1));
+    expect((vi.mocked(mockCommitRecipeAddPlan).mock.calls[0]![0] as Recipe).id).toBe('r1');
+
+    // …then the next one's sheet opens in its place.
+    await confirmReview();
+    await waitFor(() => expect(vi.mocked(mockCommitRecipeAddPlan)).toHaveBeenCalledTimes(2));
+    expect((vi.mocked(mockCommitRecipeAddPlan).mock.calls[1]![0] as Recipe).id).toBe('r2');
+    expect(vi.mocked(mockCommitRecipeAddPlan).mock.calls[1]![1]).toBe('list-1');
+
+    // The last one done, nothing is left open.
+    await waitFor(() =>
+      expect(screen.queryByTestId('recipe-add-review-list')).not.toBeInTheDocument(),
+    );
+  });
+
+  it('reviews only the nights left ticked', async () => {
+    mockRecipes._set([RECIPE, RECIPE_2]);
+    const start = weekAroundToday(2);
+    mockWeek._set(planned(start, { [TODAY]: ['r1'], [TOMORROW]: ['r2'] }));
+    renderLaidOut(start);
+
+    await openShopWeek();
+    // The testid lands on the primitive's wrapper; the control inside it is what
+    // a user actually presses.
+    await userEvent.click(
+      within(screen.getByTestId(`shop-week-tick-${TODAY}-r1`)).getByRole('checkbox'),
+    );
+    expect(screen.getByTestId('shop-week-confirm')).toHaveTextContent('Review 1 recipe');
+    await userEvent.click(screen.getByTestId('shop-week-confirm'));
+
+    await confirmReview();
+    await waitFor(() => expect(vi.mocked(mockCommitRecipeAddPlan)).toHaveBeenCalledTimes(1));
+    expect((vi.mocked(mockCommitRecipeAddPlan).mock.calls[0]![0] as Recipe).id).toBe('r2');
+    await waitFor(() =>
+      expect(screen.queryByTestId('recipe-add-review-list')).not.toBeInTheDocument(),
+    );
+  });
+
+  it('skips a recipe whose sheet is dismissed and opens the next', async () => {
+    mockRecipes._set([RECIPE, RECIPE_2]);
+    const start = weekAroundToday(2);
+    mockWeek._set(planned(start, { [TODAY]: ['r1'], [TOMORROW]: ['r2'] }));
+    renderLaidOut(start);
+
+    await openShopWeek();
+    await userEvent.click(screen.getByTestId('shop-week-confirm'));
+    await screen.findByTestId('recipe-add-review-list');
+
+    // Closing without confirming is a skip, not an abort: the next recipe opens
+    // and nothing was written for the one dismissed.
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await confirmReview();
+    await waitFor(() => expect(vi.mocked(mockCommitRecipeAddPlan)).toHaveBeenCalledTimes(1));
+    expect((vi.mocked(mockCommitRecipeAddPlan).mock.calls[0]![0] as Recipe).id).toBe('r2');
+  });
+
+  it('stops the sequence on a failed write instead of rolling on', async () => {
+    vi.mocked(mockCommitRecipeAddPlan).mockResolvedValueOnce({
+      kind: 'err',
+      error: { kind: 'StorageError', reason: 'write-failed', message: 'nope' },
+    } as never);
+    mockRecipes._set([RECIPE, RECIPE_2]);
+    const start = weekAroundToday(2);
+    mockWeek._set(planned(start, { [TODAY]: ['r1'], [TOMORROW]: ['r2'] }));
+    renderLaidOut(start);
+
+    await openShopWeek();
+    await userEvent.click(screen.getByTestId('shop-week-confirm'));
+
+    await confirmReview();
+    await waitFor(() =>
+      expect(vi.mocked(addToast)).toHaveBeenCalledWith(
+        'Failed to add to shopping list.',
+        'destructive',
+      ),
+    );
+
+    // The failed recipe's sheet is still the one on screen — the sequence has not
+    // moved on. Confirming again retries THAT recipe, not the next one.
+    await confirmReview();
+    await waitFor(() => expect(vi.mocked(mockCommitRecipeAddPlan)).toHaveBeenCalledTimes(2));
+    expect((vi.mocked(mockCommitRecipeAddPlan).mock.calls[1]![0] as Recipe).id).toBe('r1');
+  });
+
+  it('shows the friendly toast and opens nothing with no default list', async () => {
+    mockDefaultListId._set(null);
+    mockRecipes._set([RECIPE]);
+    const start = weekAroundToday(2);
+    mockWeek._set(planned(start, { [TODAY]: ['r1'] }));
+    renderLaidOut(start);
+
+    await userEvent.click(screen.getByTestId('shop-week-trigger'));
+
+    // Guarded ONCE, before the selection sheet — not per recipe.
+    expect(vi.mocked(addToast)).toHaveBeenCalledWith(
+      'No shopping list found. Create one first.',
+      'destructive',
+    );
+    expect(screen.queryByTestId('shop-week-list')).not.toBeInTheDocument();
+    expect(vi.mocked(mockCommitRecipeAddPlan)).not.toHaveBeenCalled();
+  });
+});
