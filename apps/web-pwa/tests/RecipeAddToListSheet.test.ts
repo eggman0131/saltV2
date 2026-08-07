@@ -59,6 +59,8 @@ vi.mock('../src/lib/productFormService.js', () => ({
 }));
 
 import RecipeAddToListSheet from '../src/routes/recipes/RecipeAddToListSheet.svelte';
+import { saveShoppingListItem } from '@salt/firebase-sync';
+import { addToast } from '../src/lib/toastStore.js';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -233,5 +235,102 @@ describe('RecipeAddToListSheet — nothing to add', () => {
     // The row is still there — it is deselected, not gone, so it can be
     // selected again.
     expect(screen.getAllByTestId('recipe-add-review-row')).toHaveLength(1);
+  });
+});
+
+// ─── Driven as one of a sequence (#724, Phase 2) ─────────────────────────────
+// Three optional props. What matters most is what they do when they are ABSENT:
+// a recipe's own page and a planner day's "Add to shop" pass none of them, and
+// both must behave exactly as they did before this existed.
+describe('RecipeAddToListSheet — the optional sequence props', () => {
+  const RECIPE = () => makeRecipe([ingredient('i1', 'canon-salt', 'salt', 5, 'g')]);
+
+  beforeEach(() => {
+    mockGetCanonItemsSnapshot.mockReturnValue([makeCanonItem('canon-salt', 'salt')]);
+  });
+
+  it('is unchanged without them: the action names itself, dismiss is Cancel, servings are the recipe’s', async () => {
+    renderSheet(RECIPE());
+
+    await waitFor(() => expect(screen.getAllByTestId('recipe-add-review-row')).toHaveLength(1));
+    expect(screen.getByText('Add to shopping list')).toBeInTheDocument();
+    expect(screen.queryByTestId('recipe-add-sequence')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+    expect(screen.getByTestId('recipe-servings-value')).toHaveTextContent('2 servings');
+
+    // …and it still says what it wrote itself.
+    await userEvent.click(screen.getByTestId('recipe-add-to-list-confirm'));
+    await waitFor(() =>
+      expect(vi.mocked(addToast)).toHaveBeenCalledWith('Added 1 item to the list.', 'success'),
+    );
+  });
+
+  it('names the recipe and its position, and turns the dismiss into a Skip', async () => {
+    render(RecipeAddToListSheet, {
+      props: {
+        recipe: RECIPE(),
+        listId: 'list-1',
+        open: true,
+        sequence: { index: 2, total: 4 },
+      },
+    });
+
+    await waitFor(() => expect(screen.getAllByTestId('recipe-add-review-row')).toHaveLength(1));
+    expect(screen.getByText('Test Recipe')).toBeInTheDocument();
+    expect(screen.getByTestId('recipe-add-sequence')).toHaveTextContent('2 of 4');
+    expect(screen.getByRole('button', { name: 'Skip' })).toBeInTheDocument();
+  });
+
+  it('opens at the caller’s servings, and the stepper still moves from there', async () => {
+    render(RecipeAddToListSheet, {
+      props: { recipe: RECIPE(), listId: 'list-1', open: true, servings: 5 },
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('recipe-servings-value')).toHaveTextContent('5 servings'),
+    );
+    await userEvent.click(screen.getByTestId('recipe-servings-decrease'));
+    await waitFor(() =>
+      expect(screen.getByTestId('recipe-servings-value')).toHaveTextContent('4 servings'),
+    );
+  });
+
+  it('reports what it wrote instead of toasting when the caller is listening', async () => {
+    const onSettled = vi.fn();
+    render(RecipeAddToListSheet, {
+      props: { recipe: RECIPE(), listId: 'list-1', open: true, onSettled },
+    });
+
+    await waitFor(() => expect(screen.getAllByTestId('recipe-add-review-row')).toHaveLength(1));
+    await userEvent.click(screen.getByTestId('recipe-add-to-list-confirm'));
+
+    // The count goes to the caller, which totals a run of these and says it once.
+    await waitFor(() => expect(onSettled).toHaveBeenCalledWith(1));
+    expect(vi.mocked(addToast)).not.toHaveBeenCalled();
+  });
+
+  it('still reports a failure itself, and stays open on it', async () => {
+    vi.mocked(saveShoppingListItem).mockResolvedValueOnce({
+      kind: 'err',
+      error: { kind: 'StorageError', reason: 'write-failed', message: 'nope' },
+    } as never);
+    const onSettled = vi.fn();
+    render(RecipeAddToListSheet, {
+      props: { recipe: RECIPE(), listId: 'list-1', open: true, onSettled },
+    });
+
+    await waitFor(() => expect(screen.getAllByTestId('recipe-add-review-row')).toHaveLength(1));
+    await userEvent.click(screen.getByTestId('recipe-add-to-list-confirm'));
+
+    // A failed write is the sheet's own business either way — and nothing is
+    // reported as settled, which is what stops a sequence on it.
+    await waitFor(() =>
+      expect(vi.mocked(addToast)).toHaveBeenCalledWith(
+        'Failed to add to shopping list.',
+        'destructive',
+      ),
+    );
+    expect(onSettled).not.toHaveBeenCalled();
+    expect(screen.getByTestId('recipe-add-review-list')).toBeInTheDocument();
   });
 });
