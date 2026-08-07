@@ -2,6 +2,7 @@ import type { Journey } from '../harness/journey.js';
 
 import { authRules } from './auth-rules.js';
 import { canonIcon } from './canon-icon.js';
+import { chefChat } from './chef-chat.js';
 import { cookTimer } from './cook-timer.js';
 import { mealplanShopday } from './mealplan-shopday.js';
 import { recipeCanonShopping } from './recipe-canon-shopping.js';
@@ -15,6 +16,7 @@ export const JOURNEYS: readonly Journey[] = [
   authRules,
   mealplanShopday,
   recipeCanonShopping,
+  chefChat,
   canonIcon,
   cookTimer,
 ];
