@@ -12,7 +12,7 @@
     "prepare": "husky",
     "lint": "eslint \"**/*.{ts,js,svelte}\"",
     "lint:boundaries": "eslint \"packages/**/*.ts\" \"apps/**/*.ts\" \".boundary-tests/**/*.ts\"",
-    "typecheck": "tsc --build && tsc -p apps/web-pwa/e2e/tsconfig.json",
+    "typecheck": "tsc --build && tsc -p apps/web-pwa/e2e/tsconfig.json && tsc -p apps/cloud-functions/probes/tsconfig.json",
     "check": "pnpm -r --if-present check",
     "boundary:test": "sh .boundary-tests/run.sh",
     "depcruise": "depcruise --config .dependency-cruiser.cjs packages apps",
@@ -28,7 +28,8 @@
     "dev:emulators": "node scripts/sync-worktree-env.mjs && node scripts/stop-emulators.mjs && pnpm --filter @salt/cloud-functions build && (cp apps/cloud-functions/.secret.local apps/cloud-functions/dist/.secret.local 2>/dev/null || true) && (node scripts/seed-emulator-admin.mjs &) && exec env NODE_OPTIONS='--disable-warning=DEP0040' GENKIT_ENV=dev GENKIT_TELEMETRY_SERVER=http://localhost:4033 firebase emulators:start --only firestore,auth,functions,storage --import=./.emulator-data --export-on-exit=./.emulator-data",
     "stop:emulators": "node scripts/stop-emulators.mjs",
     "test:emulator": "node scripts/test-emulator.mjs",
-    "deploy:dev": "bash scripts/deploy-dev.sh"
+    "deploy:dev": "bash scripts/deploy-dev.sh",
+    "probe": "pnpm --filter @salt/cloud-functions probe"
   },
   "lint-staged": {
     "*.{ts,js,svelte}": [
