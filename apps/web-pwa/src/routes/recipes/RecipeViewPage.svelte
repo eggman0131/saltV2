@@ -15,6 +15,7 @@
     DialogTitle,
     Icon,
     ImageCropper,
+    Markdown,
     Popover,
     PopoverContent,
     PopoverTrigger,
@@ -1173,7 +1174,10 @@ Finish with a short note on what you changed and why, so I can read the gist her
               <CardTitle class="text-sm">Notes</CardTitle>
             </CardHeader>
             <CardContent class="px-4 pb-4 pt-3">
-              <p class="whitespace-pre-wrap text-sm text-muted-foreground">{recipe.notes}</p>
+              <!-- `breaks` is what makes this a no-op for every note written before
+                   notes were Markdown: it keeps each typed line break a line break,
+                   exactly as the old whitespace-pre-wrap paragraph did. -->
+              <Markdown text={recipe.notes} breaks class="text-sm text-muted-foreground" />
             </CardContent>
           </Card>
         {/if}

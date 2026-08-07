@@ -23,6 +23,7 @@
     name,
     id: idProp,
     class: className,
+    element = $bindable(undefined),
     onValueChange,
     onfocus,
     onblur,
@@ -37,12 +38,16 @@
     description: () => description,
   });
 
-  let textareaEl: HTMLTextAreaElement | undefined = $state(undefined);
-
+  // The one reference to the underlying <textarea>. It is the `element` prop
+  // rather than private state so a consumer that needs the DOM node itself —
+  // selection ranges, `setRangeText` — can reach it without the primitive
+  // growing a bespoke API for every such need. Autoresize uses the same
+  // reference, so an unbound `element` behaves exactly as the old private
+  // `textareaEl` did.
   $effect(() => {
-    if (autoresize && textareaEl) {
-      textareaEl.style.height = 'auto';
-      textareaEl.style.height = `${textareaEl.scrollHeight}px`;
+    if (autoresize && element) {
+      element.style.height = 'auto';
+      element.style.height = `${element.scrollHeight}px`;
     }
   });
 
@@ -50,9 +55,9 @@
     const next = (e.target as HTMLTextAreaElement).value;
     value = next;
     onValueChange?.(next);
-    if (autoresize && textareaEl) {
-      textareaEl.style.height = 'auto';
-      textareaEl.style.height = `${textareaEl.scrollHeight}px`;
+    if (autoresize && element) {
+      element.style.height = 'auto';
+      element.style.height = `${element.scrollHeight}px`;
     }
   }
 </script>
@@ -70,7 +75,7 @@
     })}
   >
     <textarea
-      bind:this={textareaEl}
+      bind:this={element}
       id={fieldState.id}
       {placeholder}
       {name}

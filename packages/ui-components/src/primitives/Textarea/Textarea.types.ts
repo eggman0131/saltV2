@@ -25,6 +25,12 @@ export type TextareaProps = {
   name?: string;
   id?: string;
   class?: string;
+  // Bindable handle on the underlying <textarea> (SPEC §8.3). Optional and
+  // inert when unbound — the component uses the same reference internally for
+  // autoresize either way. Bind it only to drive the DOM node directly
+  // (selection ranges, `setRangeText`); read/write of the text itself stays on
+  // `value`/`onValueChange`.
+  element?: HTMLTextAreaElement | undefined;
   onValueChange?: (value: string) => void;
   onfocus?: HTMLTextareaAttributes['onfocus'];
   onblur?: HTMLTextareaAttributes['onblur'];
