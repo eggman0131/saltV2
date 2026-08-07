@@ -70,7 +70,7 @@
 
   {#if metadata}
     <div class="grid grid-cols-1 lg:grid-cols-[1fr_minmax(220px,_280px)] gap-6 items-start">
-      <div class={cn('min-w-0', fill && 'flex flex-1 flex-col')}>
+      <div class={cn('min-w-0', fill && 'flex min-h-0 flex-1 flex-col')}>
         {@render children?.()}
       </div>
       <aside class="flex flex-col gap-4 lg:sticky lg:top-4">
@@ -78,7 +78,7 @@
       </aside>
     </div>
   {:else}
-    <div class={cn('min-w-0', fill && 'flex flex-1 flex-col')}>
+    <div class={cn('min-w-0', fill && 'flex min-h-0 flex-1 flex-col')}>
       {@render children?.()}
     </div>
   {/if}

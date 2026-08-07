@@ -41,6 +41,16 @@ describe('DetailPage fill mode (ui-spec-v07 §1)', () => {
       expect(contentWrapper(container)).toHaveClass('flex', 'flex-1', 'flex-col');
     });
 
+    it('gives the content wrapper min-h-0, without which flex-1 does nothing', () => {
+      // A column flex item's min-height is `auto`, so it is floored at its content
+      // height: drop this class and the wrapper carries every fill class and still
+      // overflows the section. Cost the recipe page a whole debugging pass (#737).
+      const { container } = render(DetailPage, {
+        props: { title: 'Weeknight pasta', fill: true, children: snippet('panes') },
+      });
+      expect(contentWrapper(container)).toHaveClass('min-h-0');
+    });
+
     it("still merges the caller's own class", () => {
       const { container } = render(DetailPage, {
         props: {

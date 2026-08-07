@@ -41,7 +41,9 @@ Precedent: the recipe view's docked chef chat (issue #737), where the recipe and
 Under `fill`:
 
 - The root `<section>` gains `h-full min-h-0`.
-- The children wrapper gains `flex flex-1 flex-col` alongside its existing `min-w-0`, so it takes the height left over after the header and passes it to `children`.
+- The children wrapper gains `flex min-h-0 flex-1 flex-col` alongside its existing `min-w-0`, so it takes the height left over after the header and passes it to `children`.
+
+`min-h-0` on the wrapper is load-bearing and is **not** optional alongside `flex-1`: a column flex item's `min-height` is `auto`, which floors it at its content's height. Without it the wrapper reports `flex-1` and still renders at its natural height, overflowing the filled section — the page looks unfilled while carrying every fill class. (`ListPage`'s wrapper already carried `min-h-0` for unrelated reasons, so v0.5 §1.2 did not have to say this.)
 
 **`AppShell` is not modified, and must not be.** See v0.5 §1.2 for why the two mechanisms never need to be coordinated.
 
@@ -83,7 +85,7 @@ This is **declared, not enforced at runtime** — no current consumer wants both
 ## 1.7 Testing requirements
 
 - A default (`fill` unset) `DetailPage` renders with no height classes on its root — proving existing pages are untouched.
-- A `fill` `DetailPage` renders `h-full` and `min-h-0` on its root and `flex-1` on its content wrapper.
+- A `fill` `DetailPage` renders `h-full` and `min-h-0` on its root, and `flex-1` **and `min-h-0`** on its content wrapper — the second is what stops the wrapper being floored at its content height.
 - `fill` composes with `class`: a caller's padding still applies and is not dropped by `cn`.
 
 ## 1.8 Forbidden
