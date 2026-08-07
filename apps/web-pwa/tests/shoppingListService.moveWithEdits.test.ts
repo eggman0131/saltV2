@@ -153,7 +153,11 @@ describe('moveItemWithEdits', () => {
     expect(moved[0]).not.toHaveProperty('unit');
   });
 
-  it('keeps parity with the bulk move — canon match is reset', async () => {
+  it('keeps parity with the bulk move — an unedited item keeps its canon match', async () => {
+    // Issue #699. The sheet always submits its text field, so this path used to
+    // reset the match on every single-item move while the bulk move (after #699)
+    // preserves it. Byte-identical documents from both entry points is the
+    // contract; this is the assertion that holds it.
     seedItems('list-a', [item({ id: 'item-1' })]);
 
     await moveItemWithEdits('list-a', 'list-b', 'item-1', {
@@ -164,7 +168,30 @@ describe('moveItemWithEdits', () => {
       needsCheck: false,
     });
 
-    expect(movedItems()[0]).toMatchObject({ canonId: null, matchState: 'pending' });
+    expect(movedItems()[0]).toMatchObject({
+      canonId: 'canon-paprika',
+      matchState: 'matched',
+    });
+  });
+
+  it('clears the canon match when the sheet actually edited the text', async () => {
+    // Editing the text is the one thing that genuinely invalidates a match, and
+    // it still does — whether or not the same save also moves the item (#699).
+    seedItems('list-a', [item({ id: 'item-1' })]);
+
+    await moveItemWithEdits('list-a', 'list-b', 'item-1', {
+      rawText: 'smoked paprika',
+      amount: undefined,
+      unit: undefined,
+      notes: '',
+      needsCheck: false,
+    });
+
+    expect(movedItems()[0]).toMatchObject({
+      rawText: 'smoked paprika',
+      canonId: null,
+      matchState: 'pending',
+    });
   });
 
   it('rejects an empty rawText and writes nothing', async () => {
