@@ -108,8 +108,8 @@ Isolation here is **structural**, not parallel-safe-by-design — and that disti
 
 - **NF-C4 (MUST) — Seed through the real adapter, via the bridge.** Create fixtures with the
   `window.__e2e` helpers ([helpers/seed.ts](../apps/web-pwa/e2e/helpers/seed.ts)) so writes go
-  through the real `@salt/firebase-sync` persistence path, not a side-channel. Two sanctioned REST
-  back doors exist, both for the same reason: a bridge write depends on the app's own `onSnapshot`
+  through the real `@salt/firebase-sync` persistence path, not a side-channel. Three sanctioned REST
+  back doors exist, all for the same reason: a bridge write depends on the app's own `onSnapshot`
   re-reading it, and a real listener's _first_ snapshot is not subject to the emulator's
   long-polling drop hazard (NF-D1) the way a write-then-read-back is.
   - The **member allowlist** seed
@@ -120,8 +120,17 @@ Isolation here is **structural**, not parallel-safe-by-design — and that disti
     (`seedFirstDayOfWeek`, [helpers/seed.ts:63-77](../apps/web-pwa/e2e/helpers/seed.ts#L63-L77)):
     a bridge write can be dropped before a geometry-sensitive spec's listeners ever see it, so the
     doc is put in place before there is a listener at all.
+  - The **aisle list** seed
+    (`seedAislesBeforeBoot`,
+    [helpers/seed.ts:98-132](../apps/web-pwa/e2e/helpers/seed.ts#L98-L132)): the same hazard, here
+    measured rather than inferred. Aisles are one document (`canonData/aisles`) whose listener
+    attaches at boot with the doc absent, and 35 of 35 recorded CI failures across the two
+    aisle-seeding specs carry `ctx_aisles_count: 0` with `ctx_canon_synced: true` — a healthy
+    listener that never received the post-attach update. The bridge `seedAisles` remains for specs
+    where the live write _is_ the subject under test (cross-tab convergence).
 
-  Preserve both orderings. Do not add a third back door without the same drop-hazard justification.
+  Preserve all three orderings. Do not add a fourth back door without the same drop-hazard
+  justification.
 
 - **NF-C5 (MUST) — Fresh browser context per tab-scoped identity.** Default per-test context is the
   baseline. Multi-tab tests that model two users (`page1`/`page2`) MUST use separate
@@ -335,7 +344,7 @@ Isolation & state
 [ ] NF-C1  workers:1 not raised; global clearFirestore coupling respected
 [ ] NF-C2  Per-test identity via uniqueEmail(testId)
 [ ] NF-C3  Self-contained; seeds everything it reads; order-independent
-[ ] NF-C4  Seeds through the bridge/real adapter (allowlist + firstDayOfWeek REST seeds precede their listeners)
+[ ] NF-C4  Seeds through the bridge/real adapter (allowlist + firstDayOfWeek + aisles REST seeds precede their listeners)
 [ ] NF-C5  Multi-user tabs use separate contexts, closed in finally
 
 Realtime / cross-tab (if applicable)

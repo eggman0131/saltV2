@@ -77,6 +77,60 @@ export async function seedFirstDayOfWeek(day: Weekday): Promise<void> {
   }
 }
 
+// The aisle list — written straight into the emulator, BEFORE the app boots,
+// rather than through the bridge `seedAisles` above.
+//
+// Same drop hazard as `seedFirstDayOfWeek`, only this one is measured. Aisles
+// live in ONE document (`canonData/aisles`), and the app attaches its
+// `onSnapshot` for that document at boot, with the doc absent. A bridge write
+// afterwards is a post-attach update, and the e2e build's
+// `experimentalForceLongPolling` + `persistentLocalCache` transport drops those
+// intermittently: latency compensation shows the aisle for a moment, then the
+// store settles permanently empty. 35 of 35 recorded CI failures across the two
+// aisle-seeding specs carry `ctx_aisles_count: 0` alongside
+// `ctx_canon_synced: true` — the listener was healthy, the update simply never
+// landed. A listener's FIRST snapshot is not subject to that, so the document is
+// put in place before there is a listener at all.
+//
+// The bridge `seedAisles` stays, and stays correct, for specs where the live
+// write itself is the subject under test (cross-tab convergence in
+// canon-sync.spec.ts) — there the post-attach update IS the assertion.
+export async function seedAislesBeforeBoot(names: readonly string[]): Promise<readonly Aisle[]> {
+  const aisles: Aisle[] = names.map((name, order) => ({
+    id: crypto.randomUUID(),
+    name,
+    order,
+  }));
+  const url = `${FIRESTORE_DOCUMENTS_BASE_URL}/canonData/aisles`;
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: { Authorization: 'Bearer owner', 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      fields: {
+        schemaVersion: { integerValue: '1' },
+        updatedAt: { stringValue: new Date().toISOString() },
+        aisles: {
+          arrayValue: {
+            values: aisles.map((aisle) => ({
+              mapValue: {
+                fields: {
+                  id: { stringValue: aisle.id },
+                  name: { stringValue: aisle.name },
+                  order: { integerValue: String(aisle.order) },
+                },
+              },
+            })),
+          },
+        },
+      },
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`seedAislesBeforeBoot failed: HTTP ${res.status} ${await res.text()}`);
+  }
+  return aisles;
+}
+
 export async function getAisles(page: Page): Promise<readonly Aisle[]> {
   return page.evaluate(() => window.__e2e!.getAisles());
 }

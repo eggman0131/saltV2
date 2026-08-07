@@ -1,16 +1,18 @@
 import { test, expect } from './fixtures/test';
 import { signIn, uniqueEmail } from './helpers/auth';
-import { seedAisles } from './helpers/seed';
+import { seedAislesBeforeBoot } from './helpers/seed';
 
-test('seedAisles writes aisles that render on /admin/aisles', async ({ page }, testInfo) => {
+test('seeded aisles render on /admin/aisles', async ({ page }, testInfo) => {
   const email = uniqueEmail(testInfo.testId);
+
+  // Before `page.goto` — the aisles document must exist before the app attaches
+  // its listener to it. See `seedAislesBeforeBoot`.
+  const seeded = await seedAislesBeforeBoot(['Produce', 'Dairy']);
+  expect(seeded.map((a) => a.name)).toEqual(['Produce', 'Dairy']);
 
   await page.goto('/');
   await signIn(page, email, { admin: true });
   await expect(page.getByText(email)).toBeVisible();
-
-  const seeded = await seedAisles(page, ['Produce', 'Dairy']);
-  expect(seeded.map((a) => a.name)).toEqual(['Produce', 'Dairy']);
 
   await page.goto('/#/admin/aisles');
 
