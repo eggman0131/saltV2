@@ -32,6 +32,7 @@
     canonicaliseIngredients,
     matchIngredient,
     persistRecipe,
+    stashImportedDraft,
     authorRecipeTraced,
     regenerateRecipeImage,
     reviseRecipeSceneBrief,
@@ -49,6 +50,7 @@
   import {
     appendCacheBuster,
     diffRecipe,
+    duplicateRecipe,
     hasLiveCanonMatch,
     isCookable,
     isPlannable,
@@ -357,6 +359,18 @@ Finish with a short note on what you changed and why, so I can read the gist her
       return;
     }
     await handleNewChat();
+  }
+
+  // "Duplicate" in the ⋮ menu (issue #735). Nothing is written: the copy is
+  // stashed as an unsaved draft and the editor picks it up, so backing out costs
+  // no document and no hero-image generation. `duplicateRecipe` owns the whole
+  // what-carries policy — do not reset fields here. The stash is the SAME
+  // single-use seam URL and photo import already use; there is deliberately no
+  // second draft-passing mechanism, no query param and no store.
+  function handleDuplicate(): void {
+    if (!recipe) return;
+    stashImportedDraft(duplicateRecipe(recipe, crypto.randomUUID(), new Date().toISOString()));
+    push('/recipes/new');
   }
 
   // The transcript, the composer, the auto-scroll and the send path are all
@@ -719,56 +733,22 @@ Finish with a short note on what you changed and why, so I can read the gist her
     class="p-4 sm:p-6"
   >
     {#snippet actions()}
-      <!-- Seven actions is too many to shout at once, so they are ranked and the
-           ranking is carried by BOTH weight and width.
+      <!-- Eight actions is far too many to shout at once, so they are ranked and
+           the ranking is carried by BOTH weight and placement.
 
            Cook, Shop and Plan are what this page is for — the three things you
-           came to do with a dish — so they are the only `solid` (filled) buttons
-           and the only ones that survive at every width. Everything else steps
-           back: Chat and Optimise are `ghost`, being conveniences rather than
-           destinations; Edit is `outline`, a real action but not one of the
-           three; Delete keeps `destructive` because a delete must stay
-           unmistakable, and that is the same treatment every other detail page
-           in the app gives it.
+           came to do with a dish, and the three you want one tap away with your
+           hands full — so they are the only `solid` (filled) buttons and the only
+           ones that render inline. The row reads Cook · Shop · Plan · ⋮ at EVERY
+           width (issue #735): the desktop row was already seven buttons and
+           Duplicate would have made it eight, so the low-frequency actions get one
+           consistent home instead of two divergent layouts to maintain. Labels are
+           single words for the same reason: the row reads as a row rather than as
+           a sentence.
 
-           Below `sm` the four demoted ones collapse into the ⋮ menu, leaving the
-           header a phone-sized row of Cook / Shop / Plan / ⋮. Above it they all
-           render inline. Labels are single words for the same reason: the row
-           reads as a row rather than as a sentence.
-
-           Five of them are capability-gated (issue #637) — things that don't
-           apply simply aren't offered, so a takeaway shows Plan, Edit and Delete
-           and nothing else. Chat, Optimise, Edit and Delete render on BOTH
-           surfaces, so each is gated twice; Cook, Shop and Plan only ever render
-           inline. -->
-      {#if showCooking}
-        <Button
-          size="sm"
-          variant="ghost"
-          onclick={handleAskAmend}
-          loading={amendBusy}
-          disabled={amendBusy}
-          class="hidden sm:inline-flex"
-          data-testid="recipe-ask-amend-button"
-        >
-          {#snippet leading()}<Icon name="ChefHat" size={16} />{/snippet}
-          Chat
-        </Button>
-      {/if}
-      {#if showCooking && hasEquipment}
-        <Button
-          size="sm"
-          variant="ghost"
-          onclick={handleOptimiseForKitchen}
-          loading={optimiseBusy}
-          disabled={optimiseBusy || chat.isSending}
-          class="hidden sm:inline-flex"
-          data-testid="recipe-optimise-kitchen-button"
-        >
-          {#snippet leading()}<Icon name="Blender" size={16} />{/snippet}
-          Optimise
-        </Button>
-      {/if}
+           Three of the inline ones are capability-gated (issue #637) — things that
+           don't apply simply aren't offered, so a takeaway shows Plan and the menu
+           and nothing else. -->
       {#if showCooking}
         <Button
           size="sm"
@@ -795,107 +775,95 @@ Finish with a short note on what you changed and why, so I can read the gist her
           Plan
         </Button>
       {/if}
-      <Button
-        size="sm"
-        variant="outline"
-        onclick={() => push(`/recipes/${recipe.id}/edit`)}
-        class="hidden sm:inline-flex"
-        data-testid="recipe-edit-button"
-      >
-        {#snippet leading()}<Icon name="Pencil" size={16} />{/snippet}
-        Edit
-      </Button>
-      <Button
-        variant="destructive"
-        size="sm"
-        onclick={() => (deleteOpen = true)}
-        class="hidden sm:inline-flex"
-        data-testid="recipe-delete-button"
-      >
-        {#snippet leading()}<Icon name="Trash2" size={16} />{/snippet}
-        Delete
-      </Button>
-
-      <!-- Mobile overflow (⋮): the four demoted actions above — Chat, Optimise,
-           Edit, Delete — hidden from `sm:` up. Cook, Shop and Plan are never in
-           here: they stay inline at every width, which is the whole point of
-           ranking them. Menu items carry their own testids so the desktop button
-           testids stay unique. Edit and Delete are unconditional — every kind of
-           entry can be edited and deleted — so the menu is never empty and the
-           trigger never opens onto nothing, whatever the capability gates say
-           about the two items above them. -->
-      <div class="sm:hidden">
-        <Popover bind:open={overflowMenuOpen}>
-          <PopoverTrigger>
-            {#snippet children()}
-              <button
-                type="button"
-                class="inline-flex h-8 w-8 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                aria-label="More actions"
-                data-testid="recipe-actions-overflow"
-              >
-                <Icon name="EllipsisVertical" size={20} />
-              </button>
-            {/snippet}
-          </PopoverTrigger>
-          <PopoverContent align="end" class="min-w-44 p-1">
-            {#if showCooking}
-              <button
-                type="button"
-                class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
-                onclick={() => {
-                  overflowMenuOpen = false;
-                  void handleAskAmend();
-                }}
-                disabled={amendBusy}
-                data-testid="recipe-ask-amend-menu-item"
-              >
-                <Icon name="ChefHat" size={14} />
-                Chat
-              </button>
-            {/if}
-            {#if showCooking && hasEquipment}
-              <button
-                type="button"
-                class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
-                onclick={() => {
-                  overflowMenuOpen = false;
-                  void handleOptimiseForKitchen();
-                }}
-                disabled={optimiseBusy || chat.isSending}
-                data-testid="recipe-optimise-kitchen-menu-item"
-              >
-                <Icon name="Blender" size={14} />
-                Optimise
-              </button>
-            {/if}
+      <!-- Overflow (⋮), at every width since #735: Chat, Optimise, Duplicate, Edit
+           and Delete. Cook, Shop and Plan are never in here — they stay inline,
+           which is the whole point of ranking them. Duplicate, Edit and Delete are
+           unconditional: every kind of entry can be copied, edited and deleted
+           (deciding that from `kind` is exactly what the capability predicates
+           exist to prevent), so the menu is never empty and the trigger never
+           opens onto nothing, whatever the gates say about the two items above. -->
+      <Popover bind:open={overflowMenuOpen}>
+        <PopoverTrigger>
+          {#snippet children()}
             <button
               type="button"
-              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
-              onclick={() => {
-                overflowMenuOpen = false;
-                push(`/recipes/${recipe.id}/edit`);
-              }}
-              data-testid="recipe-edit-menu-item"
+              class="inline-flex h-8 w-8 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              aria-label="More actions"
+              data-testid="recipe-actions-overflow"
             >
-              <Icon name="Pencil" size={14} />
-              Edit
+              <Icon name="EllipsisVertical" size={20} />
             </button>
+          {/snippet}
+        </PopoverTrigger>
+        <PopoverContent align="end" class="min-w-44 p-1">
+          {#if showCooking}
             <button
               type="button"
-              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-destructive/10"
+              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
               onclick={() => {
                 overflowMenuOpen = false;
-                deleteOpen = true;
+                void handleAskAmend();
               }}
-              data-testid="recipe-delete-menu-item"
+              disabled={amendBusy}
+              data-testid="recipe-ask-amend-menu-item"
             >
-              <Icon name="Trash2" size={14} />
-              Delete
+              <Icon name="ChefHat" size={14} />
+              Chat
             </button>
-          </PopoverContent>
-        </Popover>
-      </div>
+          {/if}
+          {#if showCooking && hasEquipment}
+            <button
+              type="button"
+              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
+              onclick={() => {
+                overflowMenuOpen = false;
+                void handleOptimiseForKitchen();
+              }}
+              disabled={optimiseBusy || chat.isSending}
+              data-testid="recipe-optimise-kitchen-menu-item"
+            >
+              <Icon name="Blender" size={14} />
+              Optimise
+            </button>
+          {/if}
+          <button
+            type="button"
+            class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+            onclick={() => {
+              overflowMenuOpen = false;
+              handleDuplicate();
+            }}
+            data-testid="recipe-duplicate-menu-item"
+          >
+            <Icon name="Copy" size={14} />
+            Duplicate
+          </button>
+          <button
+            type="button"
+            class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+            onclick={() => {
+              overflowMenuOpen = false;
+              push(`/recipes/${recipe.id}/edit`);
+            }}
+            data-testid="recipe-edit-menu-item"
+          >
+            <Icon name="Pencil" size={14} />
+            Edit
+          </button>
+          <button
+            type="button"
+            class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-destructive/10"
+            onclick={() => {
+              overflowMenuOpen = false;
+              deleteOpen = true;
+            }}
+            data-testid="recipe-delete-menu-item"
+          >
+            <Icon name="Trash2" size={14} />
+            Delete
+          </button>
+        </PopoverContent>
+      </Popover>
     {/snippet}
 
     <!-- Two columns from the fold up (issue #696, Phase 4). At `split` the halves are

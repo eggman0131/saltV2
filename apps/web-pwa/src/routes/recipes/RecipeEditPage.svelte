@@ -71,6 +71,12 @@
   // view page and shopping list (reference-integrity, #188).
   const liveCanonIds = $derived(new Set($canonItems.map((c) => c.id)));
 
+  // Did the editor open on a handed-off draft rather than a blank form? A stashed
+  // draft (a duplicate, #735; a share-target import) arrives fully populated and
+  // already titled, so the first thing you do is rename it — the title takes
+  // focus. A blank "New recipe" does not grab the keyboard.
+  let openedFromStash = $state(false);
+
   // The draft is a local, mutable copy of the recipe entity assembled with the
   // Phase 1 builders. It is validated only on read (adapter/schema); the whole
   // document is persisted on save. `rawText` is preserved verbatim.
@@ -92,7 +98,10 @@
     const id = params?.id ?? null;
     if (id === null) {
       const imported = takeImportedDraft();
-      if (imported) return cloneRecipe(imported);
+      if (imported) {
+        openedFromStash = true;
+        return cloneRecipe(imported);
+      }
     }
     return emptyRecipe(crypto.randomUUID(), new Date().toISOString(), parseKindParam(params?.kind));
   }
@@ -489,6 +498,7 @@
         value={draft.title}
         onValueChange={(v) => (draft = { ...draft, title: v })}
         required
+        autofocus={openedFromStash}
         data-testid="recipe-title-input"
       />
       <TextArea

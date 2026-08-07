@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, cleanup, fireEvent, waitFor } from '@testing-library/svelte';
+import { render, cleanup, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import type { Recipe } from '@salt/domain';
 import type { ChatSessionDoc } from '@salt/domain/schemas';
 
@@ -72,6 +72,7 @@ vi.mock('../src/lib/recipeService.js', () => ({
   canonicaliseIngredients: vi.fn(),
   matchIngredient: vi.fn(),
   persistRecipe: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  stashImportedDraft: vi.fn(),
   authorRecipeTraced: vi.fn(),
   regenerateRecipeImage: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   reviseRecipeSceneBrief: vi.fn(),
@@ -148,23 +149,38 @@ function renderPage() {
   return render(RecipeViewPage, { props: { params: { id: RECIPE_ID } } });
 }
 
+// Optimise lives in the ⋮ menu, which since #735 is the ONLY surface it has at any
+// width. bits-ui renders PopoverContent lazily and portals it, so the menu has to
+// be opened first and the items are reached through `screen`, not the container.
+async function clickOverflowItem(testid: string): Promise<void> {
+  await fireEvent.click(screen.getByTestId('recipe-actions-overflow'));
+  await waitFor(() => expect(screen.getByTestId(testid)).toBeInTheDocument());
+  await fireEvent.click(screen.getByTestId(testid));
+}
+
 describe('RecipeViewPage — optimise for my kitchen', () => {
-  it('is hidden when the household owns no equipment', () => {
+  it('is hidden when the household owns no equipment', async () => {
     // With an empty manifest the server injects no kit section, so the prompt would
     // ask the chef to re-work the method around nothing.
     mockEquipment._set({ items: [] });
-    const { queryByTestId } = renderPage();
+    renderPage();
 
-    expect(queryByTestId('recipe-optimise-kitchen-button')).toBeNull();
-    expect(queryByTestId('recipe-optimise-kitchen-menu-item')).toBeNull();
+    await fireEvent.click(screen.getByTestId('recipe-actions-overflow'));
+    // Duplicate is unconditional, so it is the reliable signal that the menu is
+    // actually mounted — an assertion about what is MISSING would otherwise pass
+    // against a menu that never opened.
+    await waitFor(() =>
+      expect(screen.getByTestId('recipe-duplicate-menu-item')).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId('recipe-optimise-kitchen-menu-item')).toBeNull();
   });
 
   it('sends the canned prompt as an ordinary user turn on the existing session', async () => {
     const session = makeSession();
     mockSessions._set([session]);
-    const { getByTestId } = renderPage();
+    renderPage();
 
-    await fireEvent.click(getByTestId('recipe-optimise-kitchen-button'));
+    await clickOverflowItem('recipe-optimise-kitchen-menu-item');
 
     await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
     // Straight through sendMessage — no new callable, no special handling.
@@ -177,9 +193,9 @@ describe('RecipeViewPage — optimise for my kitchen', () => {
     // by the time the send fires — the returned session is the only usable handle.
     const created = makeSession({ id: 'session-new' });
     vi.mocked(createChatSession).mockResolvedValue({ kind: 'ok', value: created });
-    const { getByTestId } = renderPage();
+    renderPage();
 
-    await fireEvent.click(getByTestId('recipe-optimise-kitchen-button'));
+    await clickOverflowItem('recipe-optimise-kitchen-menu-item');
 
     await waitFor(() =>
       // The seed title comes from the dish (issue #696) — "Test Recipe chat".
@@ -196,16 +212,16 @@ describe('RecipeViewPage — optimise for my kitchen', () => {
     const { getByTestId, queryByTestId } = renderPage();
 
     expect(queryByTestId('recipe-chat-drawer')).toBeNull();
-    await fireEvent.click(getByTestId('recipe-optimise-kitchen-button'));
+    await clickOverflowItem('recipe-optimise-kitchen-menu-item');
 
     await waitFor(() => expect(getByTestId('recipe-chat-drawer')).toBeInTheDocument());
   });
 
   it('asks for a method-only rewrite, timings that move with it, and proportionality', async () => {
     mockSessions._set([makeSession()]);
-    const { getByTestId } = renderPage();
+    renderPage();
 
-    await fireEvent.click(getByTestId('recipe-optimise-kitchen-button'));
+    await clickOverflowItem('recipe-optimise-kitchen-menu-item');
     await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
 
     const prompt = vi.mocked(sendMessage).mock.calls[0]![1];
@@ -230,9 +246,9 @@ describe('RecipeViewPage — optimise for my kitchen', () => {
       kind: 'err',
       error: { kind: 'NetworkError', reason: 'transient' },
     } as Awaited<ReturnType<typeof sendMessage>>);
-    const { getByTestId, getAllByPlaceholderText } = renderPage();
+    const { getAllByPlaceholderText } = renderPage();
 
-    await fireEvent.click(getByTestId('recipe-optimise-kitchen-button'));
+    await clickOverflowItem('recipe-optimise-kitchen-menu-item');
     await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
 
     // Even on failure: the composer restores hand-typed text, not a canned paragraph.

@@ -88,8 +88,8 @@ test.describe('recipes — manual CRUD', () => {
     );
 
     // ── Edit → change title, save ─────────────────────────────────────────────
-    // At a phone width Edit and Delete are demoted into the ⋮ overflow menu (they are
-    // `hidden sm:inline-flex` inline); the menu items carry their own testids.
+    // Edit and Delete live in the ⋮ overflow menu, which since #735 is their only
+    // surface at any width; the menu items carry their own testids.
     await page.getByTestId('recipe-actions-overflow').click();
     await page.getByTestId('recipe-edit-menu-item').click();
     await expect(page.getByRole('heading', { name: /edit recipe/i })).toBeVisible();

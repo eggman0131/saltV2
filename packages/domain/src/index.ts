@@ -253,6 +253,7 @@ export type {
 } from './recipe/index.js';
 export {
   emptyRecipe,
+  duplicateRecipe,
   emptyIngredientGroup,
   newIngredient,
   newStep,

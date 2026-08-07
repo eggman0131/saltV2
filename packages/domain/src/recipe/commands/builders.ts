@@ -35,6 +35,84 @@ export function emptyRecipe(id: string, now: string, kind: RecipeKind = 'recipe'
   };
 }
 
+// A copy of an existing entry, ready to be edited and saved as a NEW document
+// (issue #735). This function is the single home of the what-carries policy —
+// no field-reset logic belongs in the UI. Like `emptyRecipe` it mints nothing and
+// reads no clock: the caller passes `newId` (`crypto.randomUUID()`) and `now`.
+//
+// Carried verbatim, value-cloned so the copy never aliases the original's nested
+// objects: `kind` (immutable — you cannot turn a takeaway into a recipe by
+// copying it), `description`, the whole ingredient tree, the steps, `metadata`,
+// `source`, `notes`, and `needs_approval` — that flag means "AI-authored, not yet
+// read by a human", and copying something is not reading it.
+//
+// Ingredient / group / step ids are deliberately NOT re-minted. They are
+// document-local, and `Ingredient.firstUsedInStepId` points at a step id inside
+// the SAME document, so copying verbatim preserves every ingredient→step link for
+// free; re-minting would need a remap table and buys no property. `parsed` /
+// `canonId` / `matchState` ride along for the same reason: `rawText` is identical,
+// so the existing resolutions are still correct and the copy costs no
+// canonicalisation round-trip.
+//
+// Reset: `producesCanonId` → null. Two recipes both claiming to produce Chicken
+// Stock would both surface from `findProducingRecipes`, so the copy starts
+// unclaimed and the buy-or-make link is re-set deliberately if the variant really
+// is the new producer.
+//
+// Dropped entirely: `image` and every hero-image control field (`imageBrief`,
+// `imageHint`, `imageRequestedAt`, `imageHidden`). See docs/recipe-module.md
+// § "Duplicating a recipe" — carrying `image` would point the copy at the
+// ORIGINAL's Storage object, which the doc-id-keyed orphan sweep deletes once the
+// original is gone; and a carried `imageBrief` is used verbatim by the
+// onRecipeWritten trigger, so it would art-direct the copy as the dish it is no
+// longer. With all of them absent the copy gets its own hero, generated from what
+// was actually saved.
+export function duplicateRecipe(source: Recipe, newId: string, now: string): Recipe {
+  return {
+    id: newId,
+    schemaVersion: source.schemaVersion,
+    kind: source.kind,
+    title: `${source.title} (copy)`,
+    description: source.description,
+    ingredients: source.ingredients.map((group) => ({
+      ...group,
+      items: group.items.map((item) => ({
+        ...item,
+        parsed:
+          item.parsed === null
+            ? null
+            : {
+                ...item.parsed,
+                quantity: item.parsed.quantity === null ? null : { ...item.parsed.quantity },
+                preparation: [...item.parsed.preparation],
+              },
+      })),
+    })),
+    steps: source.steps.map((step) => ({
+      ...step,
+      timer: step.timer === null ? null : { ...step.timer },
+    })),
+    metadata: { ...source.metadata, tags: [...source.metadata.tags] },
+    source:
+      source.source === null
+        ? null
+        : {
+            ...source.source,
+            ...(source.source.book === undefined ? {} : { book: { ...source.source.book } }),
+          },
+    notes: source.notes,
+    // Spread-or-omit, not `needs_approval: source.needs_approval`: the field is
+    // `.optional()`, so an absent flag must stay absent rather than become an
+    // explicit `undefined` on the document.
+    ...(source.needs_approval === undefined ? {} : { needs_approval: source.needs_approval }),
+    producesCanonId: null,
+    image: null,
+    createdAt: now,
+    // Blank until `persistRecipe` stamps it on save, exactly as `emptyRecipe` leaves it.
+    updatedAt: '',
+  };
+}
+
 // An empty ingredient group. `name` null is the default/unnamed group.
 export function emptyIngredientGroup(id: string, name: string | null = null): IngredientGroup {
   return { id, name, items: [] };
