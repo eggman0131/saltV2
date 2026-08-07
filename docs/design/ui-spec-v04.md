@@ -756,10 +756,11 @@ Primary use case: rendering AI-generated assistant responses in the chat UI (AI 
 
 ## 12.2 Props
 
-| Name    | Type                  | Default | Notes                                                      |
-| ------- | --------------------- | ------- | ---------------------------------------------------------- |
-| `text`  | `string`              | —       | Markdown source string to render                           |
-| `class` | `string \| undefined` | —       | Extra classes merged onto the `salt-md` wrapper `<div>`    |
+| Name     | Type                  | Default | Notes                                                      |
+| -------- | --------------------- | ------- | ---------------------------------------------------------- |
+| `text`   | `string`              | —       | Markdown source string to render                           |
+| `breaks` | `boolean`             | `false` | Treat every single newline as a hard break (see §12.3.1)   |
+| `class`  | `string \| undefined` | —       | Extra classes merged onto the `salt-md` wrapper `<div>`    |
 
 ## 12.3 Implementation
 
@@ -767,6 +768,32 @@ Primary use case: rendering AI-generated assistant responses in the chat UI (AI 
 - **Renderer:** `svelte-exmarkdown` (`<Markdown md={text} plugins={[gfmPlugin()]} />`)
 - **Plugin:** `gfmPlugin()` from `svelte-exmarkdown/gfm` — adds tables, strikethrough, task lists, and autolinks.
 - **Wrapper:** `<div class={cn('salt-md', className)}>` — the `salt-md` scope prevents styles from leaking into or out of the component.
+
+### 12.3.1 `breaks` — line-per-thought source text
+
+CommonMark folds a lone newline into a space and requires a *blank* line to
+start a new paragraph. That is correct for prose, but wrong for freeform
+line-per-thought text that was written into a plain textarea and previously
+displayed with `whitespace-pre-wrap` — rendering it as Markdown would run every
+line together the first time it were viewed.
+
+`breaks` opts a caller into hard-break semantics: each single `\n` becomes a
+CommonMark hard break, so the rendered output keeps the line structure the
+author typed. It is implemented as a pure string transform that appends the
+two-space hard-break marker ahead of each lone newline (CRLF normalised first),
+so it adds no second Markdown dependency and does not touch the AST → Svelte
+pipeline.
+
+Blank lines are deliberately left untransformed, keeping their CommonMark
+paragraph meaning — a caller gets hard breaks *and* real paragraphs.
+
+**Default is `false`**, so existing consumers (`ChatThread.svelte`, rendering
+AI replies that are already well-formed Markdown) are unaffected. Turn it on
+for user-typed freeform text; leave it off for generated Markdown.
+
+Both the recipe view page and the recipe editor's Notes preview pass `breaks`,
+so "how a recipe note's line breaks render" has exactly one implementation and
+the preview cannot disagree with the saved result.
 
 ## 12.4 `salt-md` CSS scope
 
@@ -808,6 +835,8 @@ All styles are applied via `:global()` selectors scoped under `.salt-md` so they
 - GFM features (tables, strikethrough) are parsed and rendered (not passed through as raw text).
 - The `class` prop is merged onto the wrapper `<div>` alongside `salt-md`.
 - The component does **not** expose event handlers or interactive behaviour — it is display-only.
+- `breaks` off (the default): a single newline does **not** produce a `<br>` — standard CommonMark folding.
+- `breaks` on: a single newline produces a `<br>`; a blank line still produces a second `<p>`, not a `<br>`.
 
 ---
 

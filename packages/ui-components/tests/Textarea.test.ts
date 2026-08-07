@@ -142,4 +142,28 @@ describe('Textarea', () => {
       expect(onValueChange).toHaveBeenCalledWith('a');
     });
   });
+
+  // SPEC §8.3 "Element handle": optional, and inert when unbound.
+  describe('element handle', () => {
+    it('renders and autoresizes normally when element is not bound', () => {
+      render(Textarea, { props: { label: 'x', autoresize: true, defaultValue: 'a\nb\nc' } });
+      const textarea = screen.getByLabelText('x');
+      expect(textarea).toHaveValue('a\nb\nc');
+      expect(textarea.style.height).not.toBe('');
+    });
+
+    it('a direct setRangeText edit reaches onValueChange once an input event is dispatched', async () => {
+      const onValueChange = vi.fn();
+      render(Textarea, { props: { label: 'x', value: 'hello', onValueChange } });
+      const textarea = screen.getByLabelText('x') as HTMLTextAreaElement;
+
+      // The documented consumer contract: mutate the node, then dispatch, since
+      // setRangeText fires no input event of its own.
+      textarea.setRangeText('**hello**', 0, 5, 'end');
+      expect(onValueChange).not.toHaveBeenCalled();
+
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      expect(onValueChange).toHaveBeenCalledWith('**hello**');
+    });
+  });
 });

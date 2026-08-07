@@ -4,13 +4,34 @@
   import { gfmPlugin } from 'svelte-exmarkdown/gfm';
   import { cn } from '../../lib/cn';
 
-  let { text, class: className }: { text: string; class?: string } = $props();
+  let {
+    text,
+    breaks = false,
+    class: className,
+  }: { text: string; breaks?: boolean; class?: string } = $props();
 
   const plugins = [gfmPlugin()];
+
+  // CommonMark folds a lone newline into a space, so line-per-thought prose
+  // (recipe notes) would run together the first time it were rendered as
+  // Markdown. `breaks` opts a caller into treating every single newline as a
+  // hard break instead, by appending the two-space hard-break marker ahead of
+  // it — a pure string transform, so no second Markdown dependency and no
+  // change to the AST → Svelte pipeline.
+  //
+  // Blank lines are deliberately left alone (`(?!\n)`): they keep their
+  // CommonMark paragraph meaning, so a caller gets hard breaks *and* real
+  // paragraphs rather than one flat block. CRLF is normalised first so the
+  // marker lands after the text, not between the \r and the \n.
+  function withHardBreaks(src: string): string {
+    return src.replace(/\r\n?/g, '\n').replace(/([^\n])\n(?!\n)/g, '$1  \n');
+  }
+
+  const md = $derived(breaks ? withHardBreaks(text) : text);
 </script>
 
 <div class={cn('salt-md', className)}>
-  <ExMarkdown md={text} {plugins} />
+  <ExMarkdown {md} {plugins} />
 </div>
 
 <style>
