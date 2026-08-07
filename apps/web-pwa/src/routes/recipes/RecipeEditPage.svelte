@@ -10,6 +10,7 @@
     ComboboxTrigger,
     DetailPage,
     Icon,
+    Markdown,
     Switch,
     TextArea,
     TextField,
@@ -44,6 +45,7 @@
   import { canonItems } from '../../lib/canonService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { KIND_COPY, kindOf } from './recipeKind.js';
+  import NotesFormattingToolbar from './NotesFormattingToolbar.svelte';
 
   interface Props {
     // `id` is present on /recipes/:id/edit; `kind` on /recipes/new/:kind. Both
@@ -384,6 +386,14 @@
       currentGroup.items.map((i) => (i.id === ing.id ? result.value : i)),
     );
   }
+
+  // ─── Notes editing (issue #717) ──────────────────────────────────────────────
+  // Both are view state only — the text itself lives in `draft.notes`, so
+  // flipping to preview and back cannot lose an edit. `notesEl` is the
+  // textarea the formatting toolbar acts on; it is re-bound whenever the
+  // textarea is re-created by the mode switch, and is undefined in preview.
+  let notesMode = $state<'edit' | 'preview'>('edit');
+  let notesEl = $state<HTMLTextAreaElement | undefined>(undefined);
 
   // ─── AI parse ────────────────────────────────────────────────────────────────
   let showPasteArea = $state(false);
@@ -935,18 +945,61 @@
       </div>
     </section>
 
-    <!-- Notes -->
+    <!-- Notes (issue #717). Notes render as Markdown on the view page, so the
+         editor offers the three formats worth having without knowing the
+         syntax, and a preview to check the result before saving. Preview
+         renders through the same `<Markdown … breaks />` the view page uses, so
+         the two cannot disagree. `draft.notes` stays a plain nullable string
+         throughout — none of this touches the save path. -->
     <section class="flex flex-col gap-3">
-      <p class="text-sm font-medium">Notes</p>
-      <TextArea
-        label="Notes"
-        placeholder="Anything else worth remembering"
-        value={draft.notes ?? ''}
-        onValueChange={(v) => (draft = { ...draft, notes: v.trim() === '' ? null : v })}
-        rows={3}
-        autoresize
-        data-testid="recipe-notes-input"
-      />
+      <div class="flex items-center justify-between gap-2">
+        <p class="text-sm font-medium">Notes</p>
+        <div class="flex items-center gap-1" role="group" aria-label="Notes mode">
+          <Button
+            size="sm"
+            variant={notesMode === 'edit' ? 'solid' : 'ghost'}
+            onclick={() => (notesMode = 'edit')}
+            data-testid="recipe-notes-edit-btn"
+          >
+            Edit
+          </Button>
+          <Button
+            size="sm"
+            variant={notesMode === 'preview' ? 'solid' : 'ghost'}
+            onclick={() => (notesMode = 'preview')}
+            data-testid="recipe-notes-preview-btn"
+          >
+            Preview
+          </Button>
+        </div>
+      </div>
+
+      {#if notesMode === 'edit'}
+        <!-- The toolbar drives the textarea's DOM node, so it is rendered only
+             beside a live one; in preview there is no selection to act on. -->
+        <NotesFormattingToolbar element={notesEl} />
+        <TextArea
+          bind:element={notesEl}
+          label="Notes"
+          placeholder="Anything else worth remembering"
+          value={draft.notes ?? ''}
+          onValueChange={(v) => (draft = { ...draft, notes: v.trim() === '' ? null : v })}
+          rows={3}
+          autoresize
+          data-testid="recipe-notes-input"
+        />
+      {:else}
+        <div
+          class="rounded-md border border-input px-4 py-2 min-h-9"
+          data-testid="recipe-notes-preview"
+        >
+          {#if draft.notes}
+            <Markdown text={draft.notes} breaks class="text-sm text-muted-foreground" />
+          {:else}
+            <p class="text-sm text-muted-foreground">Nothing to preview yet.</p>
+          {/if}
+        </div>
+      {/if}
     </section>
   </div>
 </DetailPage>

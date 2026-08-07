@@ -1280,7 +1280,29 @@ Same contract as TextField except:
   - `rows: number = 3`
   - `autoresize: boolean = false`
   - `maxLength?: number`
+  - `element?: HTMLTextAreaElement | undefined` (bindable) — see [Element handle](#element-handle)
 - Frame height is `auto` instead of the Field Size Scale height — size still controls padding/text.
+
+### Element handle
+
+`bind:element` exposes the underlying `<textarea>` DOM node.
+
+**Why it exists.** Some interactions are properties of the DOM node itself and
+cannot be expressed through `value`/`onValueChange`: reading `selectionStart` /
+`selectionEnd`, and writing through `setRangeText`. A formatting toolbar over a
+textarea needs exactly those. Exposing the one node is smaller and more honest
+than growing a bespoke prop per such need.
+
+**Contract:**
+
+- Optional and **inert when unbound**. The component holds this same reference
+  internally for autoresize, so a consumer that does not bind it is unaffected.
+- Text remains owned by `value` / `onValueChange`. A consumer that mutates the
+  node directly must dispatch an `input` event (`new Event('input', { bubbles:
+  true })`) so the component's own handler updates `value` and notifies the
+  caller — `setRangeText` does not fire one by itself.
+- Do not use it to bypass the primitive for styling, focus management, or
+  reading the value; those have props.
 
 ### Size styling
 
