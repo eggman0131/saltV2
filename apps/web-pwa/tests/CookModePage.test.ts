@@ -778,6 +778,66 @@ describe('CookModePage — working through the steps', () => {
   });
 });
 
+describe('CookModePage — a step note', () => {
+  /** Step 1 carries a note; step 2 deliberately does not. */
+  function recipeWithNote(note: string): RecipeDoc {
+    const base = makeRecipe();
+    return makeRecipe({
+      steps: [{ ...base.steps[0]!, note }, base.steps[1]!],
+    });
+  }
+
+  // Issue #736. The note used to be a grey paragraph dimmer than the instruction
+  // above it — at arm's length it read as a second sentence of the step. It now
+  // carries the same amber-callout marker the recipe detail page uses.
+  it('marks a note as a note, in the same amber the recipe page uses', async () => {
+    mockRecipes._set([recipeWithNote('Do not let the garlic brown.')]);
+    renderCookMode();
+    await enterSteps();
+
+    const notes = screen.getAllByTestId('cook-step-note');
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toHaveTextContent('Do not let the garlic brown.');
+    expect(notes[0]).toHaveClass('border-amber-300', 'bg-amber-50', 'text-amber-900');
+  });
+
+  // Cook mode is read at arm's length, so the box grows but the words do not shrink.
+  it('holds the note at the size it is read across a worktop', async () => {
+    mockRecipes._set([recipeWithNote('Do not let the garlic brown.')]);
+    renderCookMode();
+    await enterSteps();
+
+    const text = screen.getByText('Do not let the garlic brown.');
+    expect(text).toHaveClass('text-lg');
+  });
+
+  it('keeps line breaks the author typed, as the recipe page already does', async () => {
+    mockRecipes._set([recipeWithNote('Do not let the garlic brown.\nIt turns bitter fast.')]);
+    renderCookMode();
+    await enterSteps();
+
+    const text = screen.getByText(/It turns bitter fast\./);
+    expect(text).toHaveClass('whitespace-pre-wrap');
+    expect(text.textContent).toContain('\n');
+  });
+
+  it('leaves a step that has no note exactly as it was', async () => {
+    renderCookMode();
+    await enterSteps();
+
+    expect(screen.queryByTestId('cook-step-note')).not.toBeInTheDocument();
+  });
+
+  it('shows no note on a ticked step, which stays a one-line summary', async () => {
+    mockRecipes._set([recipeWithNote('Do not let the garlic brown.')]);
+    mockCookSession._set(makeCookSession({ completedStepIds: ['step-1'] }));
+    renderCookMode();
+
+    await screen.findByTestId('cook-step-collapsed');
+    expect(screen.queryByTestId('cook-step-note')).not.toBeInTheDocument();
+  });
+});
+
 describe('CookModePage — step timers', () => {
   it('starts a countdown as an absolute end time, so a reload can rebuild it', async () => {
     renderCookMode();

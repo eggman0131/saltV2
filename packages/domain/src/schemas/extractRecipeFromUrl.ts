@@ -79,14 +79,24 @@ export const ExtractRecipeAIOutputSchema = z.object({
   isRecipe: z.boolean(),
   title: z.string(),
   description: z.string().nullable(),
-  // Positive integers only — null is the "not stated" sentinel (also what an
-  // isRecipe=false response uses). This rejects nonsensical 0 / negative values
-  // a model glitch might emit (e.g. servings: 0) without breaking the
-  // not-a-recipe path, which leaves these null.
+  // Integers only, never negative — null is the "not stated" sentinel (also what
+  // an isRecipe=false response uses, which is why none of these is required).
+  //
+  // The 0 rule is deliberately asymmetric (issue #739). `servings: 0` and
+  // `totalTimeMinutes: 0` describe a recipe nobody can cook or eat, so 0 there is
+  // a model glitch and stays rejected. `prepTimeMinutes: 0` / `cookTimeMinutes: 0`
+  // are real, correct answers for anything assembled rather than cooked — a Greek
+  // salad, a dressing, overnight oats, most cocktails. Rejecting those failed the
+  // import on the model's *right* answer, and did so intermittently, because "no
+  // cooking" has three expressions (0, null, omitted) and we accepted two.
+  //
+  // Note this is the gate on the way IN. 0 does not survive to the stored recipe:
+  // assembleRecipeDraft folds a 0 back to null once it has derived the total, so
+  // a card renders "—" rather than "Cook 0 min".
   servings: z.number().int().positive().nullable(),
   totalTimeMinutes: z.number().int().positive().nullable(),
-  prepTimeMinutes: z.number().int().positive().nullable(),
-  cookTimeMinutes: z.number().int().positive().nullable(),
+  prepTimeMinutes: z.number().int().nonnegative().nullable(),
+  cookTimeMinutes: z.number().int().nonnegative().nullable(),
   tags: z.array(z.string()),
   ingredientGroups: z.array(ExtractedIngredientGroupSchema),
   steps: z.array(ExtractedStepSchema),

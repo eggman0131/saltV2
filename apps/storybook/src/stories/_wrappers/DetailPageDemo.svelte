@@ -21,29 +21,58 @@
     withActions = false,
     withMetadata = false,
     withBack = false,
+    fill = false,
   }: {
     title?: string;
     subtitle?: string;
     withActions?: boolean;
     withMetadata?: boolean;
     withBack?: boolean;
+    fill?: boolean;
   } = $props();
 
   const noop = () => {};
+
+  const steps = [
+    'Warm the oil in a heavy pan over a low flame.',
+    'Soften the onion, carrot and celery for ten minutes.',
+    'Add the tomatoes and simmer until the sauce turns glossy.',
+    'Season, then fold the drained pasta through the sauce.',
+    'Rest for five minutes before serving.',
+  ];
 </script>
 
-<div class="w-full max-w-3xl">
+<!-- Fill mode only means anything inside a box with a definite height — in the app
+     that is AppShell's <main>. The dashed box stands in for it, so the story shows
+     the header staying put while the body scrolls inside the page, rather than the
+     page growing and the box scrolling. -->
+<div
+  class={fill
+    ? 'h-[420px] w-full max-w-3xl border border-dashed border-border'
+    : 'w-full max-w-3xl'}
+>
   <DetailPage
     {title}
     {subtitle}
+    {fill}
     {...withBack ? { onBack: noop } : {}}
     {...withActions ? { actions } : {}}
     {...withMetadata ? { metadata } : {}}
   >
-    <p class="text-body-md leading-relaxed text-muted-foreground">
-      Slow-braised with aromatics, deglazed with a dry white wine and reduced to a silky jus. Rest
-      for five minutes before serving.
-    </p>
+    {#if fill}
+      <div class="min-h-0 flex-1 overflow-y-auto rounded border border-border">
+        {#each [...steps, ...steps, ...steps, ...steps] as step, i (i)}
+          <p class="border-b border-border px-3 py-2 text-body-md text-muted-foreground">
+            {i + 1}. {step}
+          </p>
+        {/each}
+      </div>
+    {:else}
+      <p class="text-body-md leading-relaxed text-muted-foreground">
+        Slow-braised with aromatics, deglazed with a dry white wine and reduced to a silky jus. Rest
+        for five minutes before serving.
+      </p>
+    {/if}
   </DetailPage>
 </div>
 

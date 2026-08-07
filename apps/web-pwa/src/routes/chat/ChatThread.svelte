@@ -6,9 +6,12 @@
 
   What it deliberately does NOT own is anything that differs by host. "Save as
   recipe", "Review changes", "Open full chat" and the panel's card chrome are the
-  host's to place; the one hook offered here is `aboveComposer`, a snippet dropped
-  between the transcript and the input. There is no branching on which surface is
-  rendering beyond `layout`, which is a layout choice and nothing more:
+  host's to place; the hooks offered here are `aboveComposer`, a snippet dropped
+  between the transcript and the input, and `aboveTranscript`, a snippet dropped
+  INSIDE the panel's scroll box above the messages — so what the host puts there
+  scrolls away with the conversation instead of costing it permanent height.
+  There is no branching on which surface is rendering beyond `layout`, which is a
+  layout choice and nothing more:
 
   - `page`  — the transcript scrolls with the document and the composer is a bar
               fixed above the bottom navigation (the /chat/:id route).
@@ -38,8 +41,19 @@
      * optional snippet has to be able to forward the one it does not have.
      */
     aboveComposer?: Snippet | undefined;
+    /**
+     * Host content that belongs at the TOP of the conversation and should scroll away
+     * with it — the recipe page's list of chats (#737). Rendered inside the panel's
+     * scroll box above the messages, so a long reply gets the column's full height and
+     * the affordance is still there when you scroll back up. `panel` only: in `page`
+     * layout the document scrolls and there is no box to put it in.
+     *
+     * Note the intended consequence: the auto-scroll-to-newest below scrolls this off
+     * as soon as the conversation has content, and again when the host swaps sessions.
+     */
+    aboveTranscript?: Snippet | undefined;
   }
-  let { session, thread, layout, emptyText, aboveComposer }: Props = $props();
+  let { session, thread, layout, emptyText, aboveComposer, aboveTranscript }: Props = $props();
 
   const panel = $derived(layout === 'panel');
 
@@ -168,6 +182,7 @@
 
 {#if panel}
   <div bind:this={scrollBox} class="min-h-0 flex-1 overflow-y-auto p-4">
+    {@render aboveTranscript?.()}
     <div class="flex flex-col gap-3" data-testid="chat-messages">
       {@render transcript()}
     </div>
