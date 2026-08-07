@@ -22,7 +22,13 @@
 
 import { push } from 'svelte-spa-router';
 import { addToast, dismissToast } from './toastStore.js';
-import { importRecipeFromUrl, stashImportedDraft, urlImportMessage } from './recipeService.js';
+import {
+  importRecipeFromUrl,
+  stashImportedDraft,
+  urlImportMessage,
+  isSignedOutFailure,
+  stashPendingImportUrl,
+} from './recipeService.js';
 
 /**
  * A captured share. `url` is null when something was shared but no http(s) link
@@ -166,6 +172,14 @@ export async function runPendingShareImport(signedIn: boolean): Promise<void> {
   }
 
   if (result === null || result.kind !== 'ok') {
+    // A share that died on a dead session (issue #740) hands the link to the
+    // recipe list, which reopens the import sheet with it already filled in and
+    // offers the way back to sign-in. Shared links are the case where re-copying
+    // hurts most — the user came from another app and may not be able to get
+    // back to it.
+    if (result !== null && isSignedOutFailure(result.error)) {
+      stashPendingImportUrl(pending.url);
+    }
     addToast(
       result === null
         ? 'Could not import that link — please try again.'

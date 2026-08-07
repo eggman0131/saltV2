@@ -62,7 +62,7 @@ describe('callExtractRecipeFromPhoto', () => {
     rejectWith('functions/invalid-argument');
     await expect(callExtractRecipeFromPhoto(INPUT)).resolves.toEqual({
       kind: 'err',
-      error: 'invalid-photos',
+      error: { kind: 'ImportError', code: 'invalid-photos' },
     });
   });
 
@@ -70,24 +70,51 @@ describe('callExtractRecipeFromPhoto', () => {
     rejectWith('functions/failed-precondition');
     await expect(callExtractRecipeFromPhoto(INPUT)).resolves.toEqual({
       kind: 'err',
-      error: 'unreadable-photos',
+      error: { kind: 'ImportError', code: 'unreadable-photos' },
     });
   });
 
-  it('maps a reader failure, and any transport hiccup, to import-failed', async () => {
-    for (const code of [
-      'functions/internal',
-      'functions/deadline-exceeded',
-      'functions/unavailable',
-      'functions/unauthenticated',
-      '',
-    ]) {
+  it('maps a reader failure to import-failed', async () => {
+    // The only two codes that mean the reader itself failed: `internal` is what
+    // mapPhotoImportFailure emits for import-failed, `deadline-exceeded` is the
+    // client giving up on a slow extraction.
+    for (const code of ['functions/internal', 'functions/deadline-exceeded']) {
       rejectWith(code);
-      // Never a claim about the user's photos when the server never got to look
-      // at them.
       await expect(callExtractRecipeFromPhoto(INPUT)).resolves.toEqual({
         kind: 'err',
-        error: 'import-failed',
+        error: { kind: 'ImportError', code: 'import-failed' },
+      });
+    }
+  });
+
+  // Issue #740. This is the defect: a dead session used to arrive as
+  // `import-failed`, i.e. "the recipe reader had trouble with those photos",
+  // about photographs nobody had looked at — and with no DomainError category,
+  // so §7.6's reporting gate could never see it.
+  it('crosses a dead session as AuthError, never as a claim about the photos', async () => {
+    rejectWith('functions/unauthenticated');
+    await expect(callExtractRecipeFromPhoto(INPUT)).resolves.toEqual({
+      kind: 'err',
+      error: { kind: 'AuthError', reason: 'unauthenticated' },
+    });
+  });
+
+  it('crosses permission-denied as AuthError/forbidden', async () => {
+    rejectWith('functions/permission-denied');
+    await expect(callExtractRecipeFromPhoto(INPUT)).resolves.toEqual({
+      kind: 'err',
+      error: { kind: 'AuthError', reason: 'forbidden' },
+    });
+  });
+
+  it('crosses a transport hiccup as NetworkError, not as a photo verdict', async () => {
+    // Neither code can come from mapPhotoImportFailure — the call never reached
+    // the reader, so there is no honest verdict to give about the photographs.
+    for (const code of ['functions/unavailable', '']) {
+      rejectWith(code);
+      await expect(callExtractRecipeFromPhoto(INPUT)).resolves.toEqual({
+        kind: 'err',
+        error: { kind: 'NetworkError', reason: 'transient' },
       });
     }
   });

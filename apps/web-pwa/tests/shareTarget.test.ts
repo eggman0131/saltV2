@@ -9,13 +9,17 @@ import { get } from 'svelte/store';
 
 const importRecipeFromUrl = vi.fn();
 const stashImportedDraft = vi.fn();
+const stashPendingImportUrl = vi.fn();
 const push = vi.fn(async () => {});
 
 vi.mock('svelte-spa-router', () => ({ push: (p: string) => push(p) }));
 vi.mock('../src/lib/recipeService.js', () => ({
   importRecipeFromUrl: (url: string, source?: string) => importRecipeFromUrl(url, source),
   stashImportedDraft: (draft: unknown) => stashImportedDraft(draft),
-  urlImportMessage: (code: string) => `friendly:${code}`,
+  urlImportMessage: (outcome: { kind: string; code?: string }) =>
+    `friendly:${outcome.code ?? outcome.kind}`,
+  isSignedOutFailure: (outcome: { kind: string }) => outcome.kind === 'AuthError',
+  stashPendingImportUrl: (url: string) => stashPendingImportUrl(url),
 }));
 
 async function loadModule() {
@@ -186,7 +190,10 @@ describe('runPendingShareImport', () => {
   });
 
   it('shows the friendly message and lands on Recipes when the import fails', async () => {
-    importRecipeFromUrl.mockResolvedValue({ kind: 'err', error: 'not-a-recipe' });
+    importRecipeFromUrl.mockResolvedValue({
+      kind: 'err',
+      error: { kind: 'ImportError', code: 'not-a-recipe' },
+    });
     const { runPendingShareImport, toasts } = await loadWithShare(
       '?url=https%3A%2F%2Fexample.com%2Fr',
     );
@@ -194,8 +201,28 @@ describe('runPendingShareImport', () => {
     await runPendingShareImport(true);
 
     expect(stashImportedDraft).not.toHaveBeenCalled();
+    expect(stashPendingImportUrl).not.toHaveBeenCalled();
     expect(push).toHaveBeenCalledWith('/recipes');
     expect(get(toasts).at(-1)?.message).toBe('friendly:not-a-recipe');
+  });
+
+  // A share that dies on a dead session hands the link on rather than dropping it
+  // (issue #740): the user came from another app, so re-copying may mean going
+  // back to find the link again.
+  it('rescues the shared link for the import sheet when the session has died', async () => {
+    importRecipeFromUrl.mockResolvedValue({
+      kind: 'err',
+      error: { kind: 'AuthError', reason: 'unauthenticated' },
+    });
+    const { runPendingShareImport, toasts } = await loadWithShare(
+      '?url=https%3A%2F%2Fexample.com%2Fr',
+    );
+
+    await runPendingShareImport(true);
+
+    expect(stashPendingImportUrl).toHaveBeenCalledWith('https://example.com/r');
+    expect(push).toHaveBeenCalledWith('/recipes');
+    expect(get(toasts).at(-1)?.message).toBe('friendly:AuthError');
   });
 
   it('explains a linkless share instead of firing a doomed import', async () => {

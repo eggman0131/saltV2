@@ -7,9 +7,9 @@ import type {
   DescribeRecipeSceneOutput,
   ExtractRecipeFromUrlInput,
   ExtractRecipeFromPhotoInput,
-  PhotoImportFailureCode,
+  PhotoImportFailure,
   RecipeDoc,
-  UrlImportFailureCode,
+  UrlImportFailure,
 } from '@salt/domain/schemas';
 
 export async function callParseRecipeIngredients(
@@ -34,14 +34,19 @@ export async function callParseRecipeIngredients(
   }
 }
 
-// Map the callable's HttpsError code → the URL-import failure vocabulary. The
-// CF entrypoint deliberately maps each UrlImportError code to a distinct gRPC
-// code (see apps/cloud-functions/src/index.ts:mapUrlImportFailure), so the
-// reverse mapping here is exact. The error channel carries the failure code
-// directly (not a DomainError) because the import failures are import-specific
-// and the web copy map keys off them. Adapters never throw — every failure
-// crosses as a Failure.
-function classifyUrlImportError(err: unknown): UrlImportFailureCode {
+// Map the callable's HttpsError code → the URL-import failure channel. The CF
+// entrypoint deliberately maps each UrlImportError code to a distinct gRPC code
+// (see apps/cloud-functions/src/index.ts:mapUrlImportFailure), so the reverse
+// mapping here is exact. Adapters never throw — every failure crosses as a
+// Failure.
+//
+// Import-SPECIFIC outcomes keep their bespoke codes (the web copy map keys off
+// them). Auth and transport are NOT import outcomes, so they cross as ordinary
+// DomainError, exactly as the other fifteen callable sites in this package do —
+// which is what lets the §7.6 reporting gate, which gates by CATEGORY, see them
+// at all (issue #740). There is deliberately no `default:` that invents an
+// import code for a failure that never reached the import.
+function classifyUrlImportError(err: unknown): UrlImportFailure {
   const code = (err as { code?: string }).code ?? '';
   switch (code) {
     case 'functions/invalid-argument':
@@ -49,19 +54,29 @@ function classifyUrlImportError(err: unknown): UrlImportFailureCode {
       // them via the message; the client treats both as "can't import this
       // address" — we surface blocked-url (the stricter, no-detail message)
       // only when the message indicates a blocked link, else invalid-url.
-      return /can't be imported/i.test(String((err as { message?: string }).message ?? ''))
-        ? 'blocked-url'
-        : 'invalid-url';
+      return {
+        kind: 'ImportError',
+        code: /can't be imported/i.test(String((err as { message?: string }).message ?? ''))
+          ? 'blocked-url'
+          : 'invalid-url',
+      };
     case 'functions/unavailable':
-      return 'fetch-failed';
+      return { kind: 'ImportError', code: 'fetch-failed' };
     case 'functions/failed-precondition':
-      return 'not-a-recipe';
+      return { kind: 'ImportError', code: 'not-a-recipe' };
     case 'functions/deadline-exceeded':
     case 'functions/internal':
-      return 'ai-failed';
+      return { kind: 'ImportError', code: 'ai-failed' };
+    case 'functions/unauthenticated':
+      // The 401 that used to be told to the user as "we couldn't reach that
+      // page". The import never ran; the session had died.
+      return { kind: 'AuthError', reason: 'unauthenticated' };
+    case 'functions/permission-denied':
+      return { kind: 'AuthError', reason: 'forbidden' };
     default:
-      // Network/transport hiccup before the function ran — treat as unreachable.
-      return 'fetch-failed';
+      // Transport hiccup before the function ran. Honestly unknown — NOT a
+      // statement about the recipe site.
+      return { kind: 'NetworkError', reason: 'transient' };
   }
 }
 
@@ -176,7 +191,7 @@ export async function callDescribeRecipeScene(
 export async function callExtractRecipeFromUrl(
   input: ExtractRecipeFromUrlInput,
   traceparent?: string,
-): Promise<ReadResult<RecipeDoc, UrlImportFailureCode>> {
+): Promise<ReadResult<RecipeDoc, UrlImportFailure>> {
   try {
     const fn = httpsCallable<ExtractRecipeFromUrlInput & { traceparent?: string }, RecipeDoc>(
       getFunctions(undefined, 'europe-west2'),
@@ -195,30 +210,45 @@ export async function callExtractRecipeFromUrl(
 // maps each PhotoImportError code to a distinct gRPC code (see
 // apps/cloud-functions/src/index.ts:mapPhotoImportFailure), so the reverse
 // mapping here is exact.
-function classifyPhotoImportError(err: unknown): PhotoImportFailureCode {
+//
+// Same shape as classifyUrlImportError since #740, and for the same reason: a
+// signed-out photo import used to fall through to `import-failed`, telling the
+// user "the recipe reader had trouble with those photos" when their photographs
+// were never read. Auth and transport cross as DomainError so the §7.6 category
+// gate can see them; only genuine photo outcomes keep a bespoke code. The two
+// code sets remain separate taxonomies — only the union's shape is shared.
+function classifyPhotoImportError(err: unknown): PhotoImportFailure {
   const code = (err as { code?: string }).code ?? '';
   switch (code) {
     case 'functions/invalid-argument':
       // A payload the wire schema refused: no images, more than four, an
       // unsupported content type, or empty bytes.
-      return 'invalid-photos';
+      return { kind: 'ImportError', code: 'invalid-photos' };
     case 'functions/failed-precondition':
       // Blurry/dark photo OR a page with no recipe on it — the server genuinely
       // cannot tell these apart, so one code carries both.
-      return 'unreadable-photos';
+      return { kind: 'ImportError', code: 'unreadable-photos' };
+    case 'functions/deadline-exceeded':
+    case 'functions/internal':
+      // The recipe reader itself failed: "that didn't work, try again" rather
+      // than a claim about their photographs.
+      return { kind: 'ImportError', code: 'import-failed' };
+    case 'functions/unauthenticated':
+      return { kind: 'AuthError', reason: 'unauthenticated' };
+    case 'functions/permission-denied':
+      return { kind: 'AuthError', reason: 'forbidden' };
     default:
-      // The recipe reader failed, or the call never reached it (transport,
-      // deadline, cancellation). Either way the honest user-facing outcome is
-      // "that didn't work, try again" rather than a claim about their photos.
-      return 'import-failed';
+      // Never reached the reader (transport, cancellation). Honestly unknown.
+      return { kind: 'NetworkError', reason: 'transient' };
   }
 }
 
 // Import a recipe from photographs of a cookbook page (issue #649). Sends 1–4
 // page images as base64, receives a fully-assembled, metric + British recipe
 // draft (source.type='book') that the server has ALREADY persisted with
-// needs_approval. On failure returns the specific PhotoImportFailureCode so the
-// caller can show the right copy. NEVER throws (Rule 10).
+// needs_approval. On failure returns a PhotoImportFailure — a bespoke photo code
+// when the photographs are genuinely the story, an ordinary DomainError when they
+// are not — so the caller can show the right copy. NEVER throws (Rule 10).
 //
 // The explicit `timeout` is load-bearing, not decoration: the Firebase callable
 // client defaults to 70s, so without it a slow multi-page extraction would fail
@@ -234,7 +264,7 @@ function classifyPhotoImportError(err: unknown): PhotoImportFailureCode {
 export async function callExtractRecipeFromPhoto(
   input: ExtractRecipeFromPhotoInput,
   traceparent?: string,
-): Promise<ReadResult<RecipeDoc, PhotoImportFailureCode>> {
+): Promise<ReadResult<RecipeDoc, PhotoImportFailure>> {
   try {
     const fn = httpsCallable<ExtractRecipeFromPhotoInput & { traceparent?: string }, RecipeDoc>(
       getFunctions(undefined, 'europe-west2'),

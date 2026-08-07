@@ -271,6 +271,9 @@ export type {
   PhotoImportFailureCode,
 } from './extractRecipeFromPhoto.js';
 
+export { isImportError } from './importFailure.js';
+export type { ImportFailure, UrlImportFailure, PhotoImportFailure } from './importFailure.js';
+
 export {
   SingleQuantitySchema,
   RangeQuantitySchema,
