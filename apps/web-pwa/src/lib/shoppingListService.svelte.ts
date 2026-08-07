@@ -35,6 +35,7 @@ import {
   memberFirstName,
 } from '@salt/domain';
 import type { ShoppingList, ShoppingListItem, ShoppingListsConfig, SourceRef } from '@salt/domain';
+import { failure, success } from '@salt/shared-types';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { writable, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
@@ -259,6 +260,103 @@ export async function addItemToList(
     // End once the write settles so the span captures client-side latency.
     span.end();
   }
+}
+
+// ─── Default-list add (cook mode long-press, issue #714) ─────────────────────
+
+/** What the caller needs to name the list in a toast and to undo the add. */
+export interface QuickAddResult {
+  readonly itemId: string;
+  readonly listId: string;
+  readonly listName: string;
+}
+
+/**
+ * Which list a surface that is NOT the shopping page should write to: the
+ * household default, falling back to the first list when no default is
+ * configured, and `null` when there are no lists at all.
+ *
+ * `_defaultListId` is tri-state — `undefined` (config not loaded yet), `null`
+ * (loaded, no config doc), or an id. Only the id branch is authoritative, and
+ * even then the doc it names can be stale (a deleted list leaves the config
+ * pointing at nothing), so the id is resolved AGAINST `_lists` rather than
+ * trusted. Every other state lands on the same first-list fallback.
+ */
+function resolveTargetList(): ShoppingList | null {
+  const all = get(_lists);
+  if (all.length === 0) return null;
+  const defaultId = get(_defaultListId);
+  if (typeof defaultId === 'string') {
+    const found = all.find((l) => l.id === defaultId);
+    if (found) return found;
+  }
+  return all[0]!;
+}
+
+/**
+ * Add one name-only item to the DEFAULT list, from a surface that has no list of
+ * its own (cook mode's mise rows and step pills, issue #714).
+ *
+ * Deliberately NOT `addItemToList`. That one composes over `get(_itemsForActiveList)`
+ * — and in cook mode the active list is not necessarily the default list, and its
+ * items may not be loaded at all, so the composition would be against the wrong
+ * array (or an empty one that merely LOOKS right). `addItem` does no dedupe and no
+ * cross-item logic — it validates `rawText` and appends — so passing `[]` is
+ * exactly equivalent for a single add, and is active-list-independent by
+ * construction. The written document is shape-identical to a manual add from the
+ * shopping page: same domain command, same `manual` SourceRef, no bespoke fields.
+ *
+ * `NotFound` when there is no list to add to. That category is suppressed by the
+ * reporting gate on purpose — "this household has no shopping list yet" is an
+ * expected state, and the caller answers it with a gentle informational toast.
+ */
+export async function addItemToDefaultList(
+  rawText: string,
+): Promise<ReadResult<QuickAddResult, DomainError>> {
+  const list = resolveTargetList();
+  if (!list) return failure({ kind: 'NotFound', resource: 'shopping-list', id: '' });
+
+  const now = new Date().toISOString();
+  const member = findMemberByEmail(auth.user?.email);
+  const addedBy = member ? memberFirstName(member.name) : '';
+  const source: SourceRef = addedBy ? { kind: 'manual', addedBy } : { kind: 'manual' };
+  const result = addItem([], { rawText, source, now }, ids);
+  if (result.kind !== 'ok') return result;
+  const newItem = result.value[0]!;
+
+  // Same trace shape as addItemToList: root a browser action span so the write,
+  // the onShoppingListItemWrite canon-match trigger and the icon trigger render
+  // as ONE trace. Inert no-op when tracing is off.
+  const span = startUserActionSpan(`Add item: ${rawText}`);
+  try {
+    const traceparent = span.traceparent || undefined;
+    const saveResult = await saveShoppingListItem(list.id, newItem, traceparent);
+    if (saveResult.kind === 'err') {
+      span.setError(saveResult.error);
+      return reportIfFailed(getErrorReporter(), saveResult);
+    }
+    // A user-typed add by any other name — the existing event, not a new one
+    // (`UsageEventMap` is a closed union owned by @salt/observability).
+    trackUsageEvent('shopping.item_added', { list_id: list.id });
+    return success({ itemId: newItem.id, listId: list.id, listName: list.name });
+  } finally {
+    span.end();
+  }
+}
+
+/**
+ * Delete one item from a NAMED list — the undo half of `addItemToDefaultList`.
+ *
+ * Separate from `removeItem` because that one runs the item through
+ * `deleteItem` against `_itemsForActiveList`, which the cook-mode add's target
+ * list is not guaranteed to be. Undo already holds the id it just created, so
+ * there is nothing to look up and no active-list guard to satisfy.
+ */
+export async function deleteItemFromList(
+  listId: string,
+  itemId: string,
+): Promise<ReadResult<void, DomainError>> {
+  return reportIfFailed(getErrorReporter(), await deleteShoppingListItem(listId, itemId));
 }
 
 export async function updateItemRawText(

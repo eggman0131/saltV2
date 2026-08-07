@@ -24,8 +24,8 @@ import type { Locator, Page } from '@playwright/test';
 import type { Recipe } from '@salt/domain';
 import { expect, test } from './fixtures/test';
 import { gotoAndSignIn, uniqueEmail } from './helpers/auth';
-import { seedRecipe } from './helpers/seed';
-import { HYDRATE_TIMEOUT, SYNC_TIMEOUT } from './helpers/timeouts';
+import { getShoppingListItems, seedAisles, seedCanonItem, seedRecipe } from './helpers/seed';
+import { HYDRATE_TIMEOUT, SYNC_TIMEOUT, TRIGGER_TIMEOUT } from './helpers/timeouts';
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -41,6 +41,16 @@ interface IngredientSpec {
   readonly rawText: string;
   /** The step this ingredient is first needed in — what drives the chip row. */
   readonly step: string;
+  /**
+   * The parsed name, when the test needs the line's WORDING and its ITEM to
+   * differ (the long-press add takes the item; `IngredientText` renders the
+   * whole measured line). Omitted → `parsed: null`, the verbatim rendering the
+   * layout tests below depend on.
+   */
+  readonly item?: string;
+  /** Parsed preparation clauses, appended after the item by `IngredientText`.
+   *  Only meaningful alongside `item`. */
+  readonly preparation?: readonly string[];
 }
 
 /**
@@ -63,7 +73,16 @@ function buildRecipe(steps: readonly StepSpec[], ingredients: readonly Ingredien
         items: ingredients.map((ing, index) => ({
           id: `ing-${index + 1}`,
           rawText: ing.rawText,
-          parsed: null,
+          parsed: ing.item
+            ? {
+                quantity: { type: 'single' as const, value: 400 },
+                unit: 'g' as const,
+                item: ing.item,
+                preparation: [...(ing.preparation ?? [])],
+                notes: null,
+                displayText: null,
+              }
+            : null,
           canonId: null,
           matchState: 'pending' as const,
           isOptional: false,
@@ -136,11 +155,61 @@ function chipRecipe(): Recipe {
   );
 }
 
+// The long-press fixture (issue #714). The line the cook reads and the name that
+// goes on the list are deliberately different strings — that difference IS the
+// assertion. Two words, so the entry parser leaves it whole: `looksCompound` is
+// three-or-more, and below it the trigger never reaches the AI entry parse, and
+// `cleanName === rawText` so it never rewrites the row's text either.
+const SHOP_ITEM = 'plum tomatoes';
+const SHOP_LINE_RENDERED = `400g ${SHOP_ITEM}`;
+const SHOP_LIST_NAME = 'Weekly shop';
+const SHOP_STEP_ONE_TEXT = 'Warm the oil in a heavy pan over a low flame.';
+
+function shoppingRecipe(): Recipe {
+  return buildRecipe(
+    [
+      { id: 'step-1', text: SHOP_STEP_ONE_TEXT },
+      { id: 'step-2', text: 'Simmer until the sauce turns glossy.' },
+    ],
+    [
+      {
+        rawText: '400g tinned plum tomatoes, drained and roughly chopped',
+        step: 'step-1',
+        item: SHOP_ITEM,
+        // Long enough that the chip is clipped by its half-row cap, so the
+        // expand/collapse the hold must NOT trigger is actually reachable.
+        preparation: ['drained and roughly chopped', 'then set aside to warm through'],
+      },
+      { rawText: 'Sea salt', step: 'step-2' },
+    ],
+  );
+}
+
 // ─── Shared arrival ───────────────────────────────────────────────────────────
+
+/** Create the household's first shopping list through the create page — which is
+ *  also what makes it the DEFAULT list, the one cook mode's long-press targets. */
+async function createDefaultShoppingList(page: Page, name: string): Promise<void> {
+  await page.goto('/#/shopping');
+  await expect(page).toHaveURL(/#\/shopping\/new/, { timeout: SYNC_TIMEOUT });
+  await page.getByTestId('shopping-create-list-name').fill(name);
+  await page.getByRole('button', { name: /create/i }).click();
+  await expect(page.getByTestId('shopping-list-page')).toBeVisible({ timeout: SYNC_TIMEOUT });
+  // The default id is what the add resolves against, and it arrives on the
+  // config listener rather than with the navigation (NF-A3).
+  await expect
+    .poll(() => page.evaluate(() => window.__e2e!.getDefaultListId() ?? null))
+    .not.toBeNull();
+}
 
 /** Sign in, seed the recipe, and enter cook mode the way a cook does — from the
  *  recipe view's Cook button. */
-async function startCook(page: Page, email: string, recipe: Recipe): Promise<void> {
+async function startCook(
+  page: Page,
+  email: string,
+  recipe: Recipe,
+  opts: { readonly shoppingList?: string } = {},
+): Promise<void> {
   // The deck settles with an UNDER-DAMPED spring: it overshoots its target by
   // ~10% and pulls back, and the footer re-probes which step is on top for every
   // frame of that. A web-first assertion can therefore go green on an overshoot
@@ -151,11 +220,38 @@ async function startCook(page: Page, email: string, recipe: Recipe): Promise<voi
   // makes every deck move deterministic without a single sleep (NF-A1).
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await gotoAndSignIn(page, email, '/');
+  if (opts.shoppingList) await createDefaultShoppingList(page, opts.shoppingList);
   await seedRecipe(page, recipe);
   await page.goto(`/#/recipes/${recipe.id}`);
   await page.getByTestId('recipe-cook-button').click();
   await expect(page).toHaveURL(new RegExp(`#/recipes/${recipe.id}/cook$`));
   await expect(page.getByTestId('cook-mode-page')).toBeVisible({ timeout: SYNC_TIMEOUT });
+}
+
+/**
+ * Press and hold over `target` until the add lands, then let go.
+ *
+ * The hold's DURATION is the input here, so there is nothing to sleep for: the
+ * success toast is the signal that the action fired, and waiting on it while the
+ * button is still down is both the gesture and the settle (NF-A1/NF-A3). Driven
+ * with the mouse rather than a tap because the action is pointer-agnostic by
+ * design, and because this spec runs under `reducedMotion: 'reduce'` — where the
+ * shopping row's touch-only swipe would be inert, this must not be.
+ */
+async function holdAndAwaitToast(page: Page, target: Locator): Promise<void> {
+  const toast = page.getByText(`Added ${SHOP_ITEM} to ${SHOP_LIST_NAME}`);
+  // A toast left over from an earlier hold would satisfy the wait below
+  // instantly and release the button before the hold ever elapsed.
+  await expect(toast).toHaveCount(0);
+  await target.scrollIntoViewIfNeeded();
+  const box = (await target.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  try {
+    await expect(toast).toBeVisible({ timeout: SYNC_TIMEOUT });
+  } finally {
+    await page.mouse.up();
+  }
 }
 
 /** The timeline segment for a step, addressed by its accessible name. The name
@@ -343,5 +439,89 @@ test.describe('cook mode', () => {
     await salt.click();
     await expect(tomatoes).toHaveAttribute('data-expanded', 'false');
     await expect(salt).toHaveAttribute('data-expanded', 'false');
+  });
+
+  // ─── Ran out of something? Hold it (issue #714) ─────────────────────────────
+
+  test('holding an ingredient puts its NAME on the default list, and Undo takes it back off', async ({
+    page,
+  }, testInfo) => {
+    // Single tab, no reload, but a real canon-match CF trigger round-trip (NF-F2).
+    test.setTimeout(90_000);
+
+    await startCook(page, uniqueEmail(testInfo.testId), shoppingRecipe(), {
+      shoppingList: SHOP_LIST_NAME,
+    });
+
+    // Canon seeded to the exact parsed name, so the match trigger resolves at
+    // the deterministic exact-name stage and never reaches an embedding or an
+    // arbitration model (NF-E3/NF-E4). The bridge is global, so this seeds
+    // perfectly well from inside cook mode — all that matters is that it lands
+    // before the write that fires the trigger.
+    const [produce] = await seedAisles(page, ['Produce']);
+    await seedCanonItem(page, { name: SHOP_ITEM, aisleId: produce!.id });
+
+    // ── Hold a mise row ───────────────────────────────────────────────────────
+    const miseRow = page.getByTestId('cook-mise-row').filter({ hasText: SHOP_ITEM });
+    await expect(miseRow).toHaveCount(1);
+    // The row reads as the measured line; only the NAME may reach the list.
+    await expect(miseRow).toContainText(SHOP_LINE_RENDERED);
+
+    await holdAndAwaitToast(page, miseRow);
+
+    // The written document, read from the store rather than the optimistic DOM
+    // (NF-E2). Name only: no amount, no unit, and the recipe's wording gone.
+    await expect
+      .poll(async () => (await getShoppingListItems(page)).map((i) => i.rawText), {
+        timeout: SYNC_TIMEOUT,
+      })
+      .toEqual([SHOP_ITEM]);
+    const [added] = await getShoppingListItems(page);
+    expect(added!.amount).toBeUndefined();
+    expect(added!.unit).toBeUndefined();
+    expect(added!.sources).toHaveLength(1);
+    expect(added!.sources[0]!.kind).toBe('manual');
+
+    // A hold is not a tap: the mise row must not have ticked itself as well.
+    await expect(miseRow).toHaveAttribute('aria-pressed', 'false');
+
+    // ── Undo ──────────────────────────────────────────────────────────────────
+    // Straight away, while the toast that offers it is still on screen — it
+    // auto-dismisses, so nothing slow may come between the add and this.
+    await page.getByRole('button', { name: /undo/i }).click();
+    await expect
+      .poll(async () => (await getShoppingListItems(page)).length, { timeout: SYNC_TIMEOUT })
+      .toBe(0);
+
+    // ── The same gesture, mid-cook, on a step's first-use chip ────────────────
+    await page.getByTestId('cook-stage-toggle').click();
+    const chip = page.getByTestId('cook-step-firstuse-chip').filter({ hasText: SHOP_ITEM });
+    await expect(chip).toHaveCount(1);
+    // A tap expands it — which is what makes "the hold did NOT expand it" below a
+    // real assertion rather than a vacuous one. A chip whose text already reads in
+    // full has nothing to reveal and would report `false` either way.
+    await chip.click();
+    await expect(chip).toHaveAttribute('data-expanded', 'true');
+    await page.getByText(SHOP_STEP_ONE_TEXT).click(); // window-level collapse
+    await expect(chip).toHaveAttribute('data-expanded', 'false');
+
+    await holdAndAwaitToast(page, chip);
+    await expect
+      .poll(async () => (await getShoppingListItems(page)).map((i) => i.rawText), {
+        timeout: SYNC_TIMEOUT,
+      })
+      .toEqual([SHOP_ITEM]);
+    await expect(chip).toHaveAttribute('data-expanded', 'false');
+
+    // ── The server files it, exactly as it would a typed entry ────────────────
+    // Two words: below `looksCompound`'s three-word threshold, so the trigger
+    // never reaches the AI entry parser, and `cleanName === rawText`, so it adds
+    // the match without rewriting the row's text out from under the assertion.
+    await expect
+      .poll(async () => (await getShoppingListItems(page))[0]?.matchState, {
+        timeout: TRIGGER_TIMEOUT,
+      })
+      .toBe('matched');
+    expect((await getShoppingListItems(page))[0]!.rawText).toBe(SHOP_ITEM);
   });
 });
