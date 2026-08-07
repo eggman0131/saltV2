@@ -1090,7 +1090,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
                 <div class="flex flex-col gap-1 [&+&]:mt-3" data-testid="recipe-view-group">
                   {#if group.name}
                     <p
-                      class="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                      class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
                       data-testid="recipe-view-group-name"
                     >
                       {group.name}
