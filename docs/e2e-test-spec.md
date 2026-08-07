@@ -108,8 +108,8 @@ Isolation here is **structural**, not parallel-safe-by-design — and that disti
 
 - **NF-C4 (MUST) — Seed through the real adapter, via the bridge.** Create fixtures with the
   `window.__e2e` helpers ([helpers/seed.ts](../apps/web-pwa/e2e/helpers/seed.ts)) so writes go
-  through the real `@salt/firebase-sync` persistence path, not a side-channel. Two sanctioned REST
-  back doors exist, both for the same reason: a bridge write depends on the app's own `onSnapshot`
+  through the real `@salt/firebase-sync` persistence path, not a side-channel. Four sanctioned REST
+  back doors exist, all for the same reason: a bridge write depends on the app's own `onSnapshot`
   re-reading it, and a real listener's _first_ snapshot is not subject to the emulator's
   long-polling drop hazard (NF-D1) the way a write-then-read-back is.
   - The **member allowlist** seed
@@ -117,11 +117,32 @@ Isolation here is **structural**, not parallel-safe-by-design — and that disti
     `beforeMemberCreated` blocking function rejects sign-in for un-allowlisted emails, so the
     member doc must exist _before_ `devSignIn`.
   - The **`firstDayOfWeek`** seed
-    (`seedFirstDayOfWeek`, [helpers/seed.ts:63-77](../apps/web-pwa/e2e/helpers/seed.ts#L63-L77)):
+    (`seedFirstDayOfWeek`, [helpers/seed.ts:64-79](../apps/web-pwa/e2e/helpers/seed.ts#L64-L79)):
     a bridge write can be dropped before a geometry-sensitive spec's listeners ever see it, so the
     doc is put in place before there is a listener at all.
+  - The **aisle list** seed
+    (`seedAislesBeforeBoot`,
+    [helpers/seed.ts:99-133](../apps/web-pwa/e2e/helpers/seed.ts#L99-L133)): the same hazard, here
+    measured rather than inferred. Aisles are one document (`canonData/aisles`) whose listener
+    attaches at boot with the doc absent, and 35 of 35 recorded CI failures across the two
+    aisle-seeding specs carry `ctx_aisles_count: 0` with `ctx_canon_synced: true` — a healthy
+    listener that never received the post-attach update. The bridge `seedAisles` remains for specs
+    where the live write _is_ the subject under test (cross-tab convergence).
+  - The **default shopping list** seed
+    (`seedShoppingListBeforeBoot`,
+    [helpers/seed.ts:155-201](../apps/web-pwa/e2e/helpers/seed.ts#L155-L201)): the same hazard
+    again, and again measured. Which list is the default lives in one document
+    (`shoppingListsConfig/singleton`) whose listener attaches at boot with the doc absent, and
+    nothing writes it until the user creates their first list — necessarily afterwards. Every
+    recorded CI failure of the three specs that bootstrapped a list that way carries
+    `ctx_shopping_lists_count: 1` with `ctx_has_default_list: false` — the list arrived, the
+    config never did, and `defaultListId` stayed null for the rest of the run. So the list and
+    its config are written together before boot. Creating a list through the UI remains the
+    subject of `shopping-list-multi-list.spec.ts` and `shopping-list-happy-path.spec.ts`, which
+    keep doing it for real.
 
-  Preserve both orderings. Do not add a third back door without the same drop-hazard justification.
+  Preserve all four orderings. Do not add a fifth back door without the same drop-hazard
+  justification.
 
 - **NF-C5 (MUST) — Fresh browser context per tab-scoped identity.** Default per-test context is the
   baseline. Multi-tab tests that model two users (`page1`/`page2`) MUST use separate
@@ -335,7 +356,7 @@ Isolation & state
 [ ] NF-C1  workers:1 not raised; global clearFirestore coupling respected
 [ ] NF-C2  Per-test identity via uniqueEmail(testId)
 [ ] NF-C3  Self-contained; seeds everything it reads; order-independent
-[ ] NF-C4  Seeds through the bridge/real adapter (allowlist + firstDayOfWeek REST seeds precede their listeners)
+[ ] NF-C4  Seeds through the bridge/real adapter (allowlist + firstDayOfWeek + aisles + default-shopping-list REST seeds precede their listeners)
 [ ] NF-C5  Multi-user tabs use separate contexts, closed in finally
 
 Realtime / cross-tab (if applicable)

@@ -10,6 +10,11 @@
  * regardless of whether the async trigger has run. The 'recipe' SourceRef
  * survives the trigger's rewrite untouched (issue #320).
  *
+ * The list itself is setup, not subject: both tests get one already-default list
+ * seeded before the app boots (`seedShoppingListBeforeBoot`). Creating a list
+ * through the UI is covered by shopping-list-multi-list.spec.ts and
+ * shopping-list-happy-path.spec.ts.
+ *
  * Covers:
  * - Items from all ingredient groups reach the shopping list.
  * - Items carry the 'recipe' SourceRef with correct recipeId and servings.
@@ -19,6 +24,7 @@
  */
 import { expect, test } from './fixtures/test';
 import { gotoAndSignIn, uniqueEmail, waitForBridge } from './helpers/auth';
+import { seedShoppingListBeforeBoot } from './helpers/seed';
 import { SYNC_TIMEOUT } from './helpers/timeouts';
 import type { ShoppingListItem } from '@salt/domain';
 import type { Page } from '@playwright/test';
@@ -32,8 +38,13 @@ test.use({ viewport: { width: 393, height: 851 } });
 // The "Shop" button is a no-op until the app knows which list is the default: with
 // `defaultListId` still unresolved, `openAddToList` toasts and returns, and nothing
 // reopens the sheet — so a click that lands first fails the test outright rather than
-// retrying. Waiting on the bridge is the real signal for that (NF-A1/NF-A3); a phone
-// viewport simply made the race easier to lose than the old inherited desktop one.
+// retrying. Waiting on the bridge is the real signal for that (NF-A1/NF-A3).
+//
+// Since the list and its config are seeded before boot, this is now only a settle
+// gate on the listener's FIRST snapshot — a wait that always terminates — rather
+// than the old bet on a post-attach update that the emulator transport could drop
+// for good. One gate, straight after sign-in, is enough: the store only moves
+// forward from there, and everything that needs a default list happens later.
 async function awaitDefaultList(page: Page): Promise<void> {
   await expect
     .poll(() => page.evaluate(() => window.__e2e!.getDefaultListId() ?? null))
@@ -46,24 +57,12 @@ test.describe('recipe → shopping list extraction', () => {
   }, testInfo) => {
     test.setTimeout(90_000);
     const email = uniqueEmail(testInfo.testId);
+
+    // ── Bootstrap: an already-default shopping list, before the app boots ────
+    await seedShoppingListBeforeBoot('Weekly shop');
+
     // Recipes are gated to admins while the module is incomplete (#179).
     await gotoAndSignIn(page, email, '/', { admin: true });
-
-    // ── Bootstrap: create the shopping list ──────────────────────────────────
-    await page.goto('/#/shopping');
-    await expect(page).toHaveURL(/#\/shopping\/new/, { timeout: 10_000 });
-    await page.getByTestId('shopping-create-list-name').fill('Weekly shop');
-    await page.getByRole('button', { name: /create/i }).click();
-    // Wait for the real list id (a UUID), not the `/shopping/new` create page —
-    // `[a-z0-9-]+` would match "new" and let the test race ahead before the
-    // create page's deferred push to the new list fires, yanking us off
-    // /recipes/new mid-edit.
-    await expect(page).toHaveURL(/#\/shopping\/[0-9a-f-]{36}$/, { timeout: SYNC_TIMEOUT });
-    // Before leaving the shopping page: creating a list also writes the lists CONFIG,
-    // and only the config makes that list the default. Navigating away while that write
-    // is still in flight abandons it, and nothing writes it again — so "Add to list"
-    // stays a no-op for the rest of the test. Waiting for the subscription to echo the
-    // default back means the write has round-tripped through the emulator.
     await awaitDefaultList(page);
 
     // ── Create a recipe with two ingredient groups (servings: 4) ─────────────
@@ -93,7 +92,6 @@ test.describe('recipe → shopping list extraction', () => {
     // ── Open review sheet: default servings = 4, confirm ──────────────────────
     // Unmatched ingredients (no canon match in the client store) default to
     // add: true, so all three rows are included; the button reads "Add 3 to list".
-    await awaitDefaultList(page);
     await page.getByTestId('recipe-add-to-list-button').click();
     await expect(page.getByTestId('recipe-add-review-list')).toBeVisible();
     await expect(page.getByTestId('recipe-servings-value')).toContainText('4');
@@ -145,23 +143,12 @@ test.describe('recipe → shopping list extraction', () => {
   }, testInfo) => {
     test.setTimeout(90_000);
     const email = uniqueEmail(testInfo.testId);
+
+    // Bootstrap: an already-default shopping list, before the app boots.
+    await seedShoppingListBeforeBoot('Test list');
+
     // Recipes are gated to admins while the module is incomplete (#179).
     await gotoAndSignIn(page, email, '/', { admin: true });
-
-    // Bootstrap shopping list.
-    await page.goto('/#/shopping');
-    await expect(page).toHaveURL(/#\/shopping\/new/, { timeout: 10_000 });
-    await page.getByTestId('shopping-create-list-name').fill('Test list');
-    await page.getByRole('button', { name: /create/i }).click();
-    // Wait for the real list id (a UUID), not the `/shopping/new` create page —
-    // see the note in the first test: a permissive `[a-z0-9-]+` matches "new"
-    // and lets the deferred push race the recipe navigation.
-    await expect(page).toHaveURL(/#\/shopping\/[0-9a-f-]{36}$/, { timeout: SYNC_TIMEOUT });
-    // Before leaving the shopping page: creating a list also writes the lists CONFIG,
-    // and only the config makes that list the default. Navigating away while that write
-    // is still in flight abandons it, and nothing writes it again — so "Add to list"
-    // stays a no-op for the rest of the test. Waiting for the subscription to echo the
-    // default back means the write has round-tripped through the emulator.
     await awaitDefaultList(page);
 
     // Create a recipe with servings: 2.
@@ -176,7 +163,6 @@ test.describe('recipe → shopping list extraction', () => {
     await expect(page).toHaveURL(/#\/recipes\/(?!new)[a-z0-9-]+$/, { timeout: SYNC_TIMEOUT });
 
     // Open review sheet: default should be 2.
-    await awaitDefaultList(page);
     await page.getByTestId('recipe-add-to-list-button').click();
     await expect(page.getByTestId('recipe-add-review-list')).toBeVisible();
     await expect(page.getByTestId('recipe-servings-value')).toContainText('2');

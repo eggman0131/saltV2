@@ -395,8 +395,45 @@ jobs:
       # No host Java / firebase-emulator cache / manual Vite — emulators are
       # containerized (jars baked into the image). CI=true makes globalTeardown
       # run `docker compose ... down -v`, reaping the whole process tree.
+      #
+      # The gating projects are named EXPLICITLY. Without `--project`, Playwright
+      # runs every project in the config — including `quarantine`, whose whole
+      # purpose is to not gate the merge (issue #721). Adding a project to
+      # playwright.config.ts does not enrol it here; that is deliberate.
       - name: Run E2E tests (shard ${{ matrix.shard }}/3)
-        run: pnpm --filter @salt/web-pwa exec playwright test --shard=${{ matrix.shard }}/3
+        run: pnpm --filter @salt/web-pwa exec playwright test --shard=${{ matrix.shard }}/3 --project=chromium --project=mobile-touch
+
+      # Quarantined tests (issue #721): still run, still report to PostHog, no
+      # longer gate — `continue-on-error` is that second half. A known-flaky test
+      # left in the gate trains everyone to re-run on amber, which is how the NEXT
+      # flake gets lost; a quarantined one is a bug still owed a fix, and its
+      # PostHog history is how you tell whether the fix landed.
+      #
+      # Shard 1 only, and skipped entirely when nothing is tagged, because a second
+      # Playwright invocation re-runs globalSetup — and in CI globalTeardown has
+      # already torn the emulator stack down with `down -v`, so that means bringing
+      # the whole stack back up. Two to three minutes on every PR to run an empty
+      # set is not a price worth paying for a mechanism that usually has no members.
+      - name: Run quarantined E2E tests (non-gating)
+        if: matrix.shard == 1
+        continue-on-error: true
+        env:
+          EVENTS: apps/web-pwa/e2e-flake-events.ndjson
+          # The reporter OVERWRITES its output file, so a second Playwright run
+          # writing to the default path would erase the gating run's records —
+          # which the PostHog step below still has to ship. Point this run at its
+          # own file (the reporter's documented override) and append instead.
+          E2E_FLAKE_NDJSON: /tmp/e2e-flake-events-quarantine.ndjson
+        run: |
+          set -euo pipefail
+          if ! grep -rq '@quarantine' apps/web-pwa/e2e --include='*.spec.ts'; then
+            echo "::notice::No @quarantine-tagged tests — skipping the quarantine run."
+            exit 0
+          fi
+          status=0
+          pnpm --filter @salt/web-pwa exec playwright test --project=quarantine || status=$?
+          cat "$E2E_FLAKE_NDJSON" >> "$EVENTS" 2>/dev/null || true
+          exit "$status"
 
       # `always()`, and that is the entire point (issue #669). The artifacts below
       # are `failure()`-only, so the FLAKY signal — failed once, passed on the
