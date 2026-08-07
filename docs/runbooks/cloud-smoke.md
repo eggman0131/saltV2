@@ -1,0 +1,203 @@
+# Cloud smoke probes — running and triaging (issue #722)
+
+An agent-runnable set of probes that exercises a **real deployed environment**
+(`s2-dev-eggman` routinely, `s2-stage-ccb22` as a pre-release gate), asserting at
+the **callable + Firestore-document seam**. No DOM, no selectors, no browser.
+
+This is not "e2e in the cloud" and does not replace Playwright. The e2e suite
+runs against emulators with `FUNCTIONS_AI_FAKE`, approximated rules and a bundle
+that is never the deployed artefact; these probes run real Gemini against the
+real ruleset and the real deployed functions. Conversely they cover **no**
+rendering, gestures, offline/PWA behaviour or auth UX — that stays with
+Playwright (see [docs/e2e.md](../e2e.md)).
+
+You orchestrate and triage. You do not click.
+
+```
+pnpm probe all                       # the default sweep, against dev
+pnpm probe auth-rules                # one journey
+pnpm probe all --target staging      # pre-release gate (see Preconditions)
+pnpm probe all --include-opt-in      # including the journeys that cost or notify
+pnpm probe                           # usage, and the list of journeys
+```
+
+Structured JSON goes to **stdout** (pipe it straight into triage), human-readable
+progress to **stderr**, and the exit code is non-zero if any probe failed.
+
+---
+
+## Preconditions
+
+**1. Application Default Credentials.** `gcloud auth application-default login`.
+The probes need no service-account key file: they sign through IAM as you.
+
+**2. One IAM grant per project.** `roles/owner` does **not** include
+`iam.serviceAccounts.signBlob`, and both the user custom token and the App Check
+token are signed through it. Without this grant, nothing runs.
+
+```bash
+gcloud iam service-accounts add-iam-policy-binding \
+  firebase-adminsdk-fbsvc@<project>.iam.gserviceaccount.com \
+  --member="user:<you>@gmail.com" \
+  --role="roles/iam.serviceAccountTokenCreator" \
+  --project <project>
+```
+
+| Project          | Granted?                                              |
+| ---------------- | ----------------------------------------------------- |
+| `s2-dev-eggman`  | ✅ granted 2026-08-07                                 |
+| `s2-stage-ccb22` | ❌ **not yet** — `--target staging` fails until it is |
+| `s2-prod-e46bd`  | not a target, deliberately                            |
+
+IAM takes up to ~60 s to propagate. A grant that "did not work" usually just
+needs another minute.
+
+**Nothing else needs configuring.** The harness handles two things people
+otherwise lose an afternoon to:
+
+- **ADC quota project.** `identitytoolkit` refuses user-ADC without one; the
+  harness sets `GOOGLE_CLOUD_QUOTA_PROJECT` itself. Do **not** change your global
+  `gcloud` ADC config for this.
+- **The referrer-restricted browser key.** The public web API key is restricted
+  to the app's own origins, so a headless request sending no `Referer` is
+  refused. The harness sends `https://<projectId>.web.app/` — the same origin a
+  browser would. Not a bypass: the key ships in the bundle and is public by
+  design (see [app-check-preflight.md](app-check-preflight.md)).
+
+### App Check: minted, never a debug token
+
+Every callable enforces App Check (`APP_CHECK_ENFORCEMENT` in
+`apps/cloud-functions/src/tracedCallable.ts` — a code constant, no
+per-environment override). The probes mint a **real** token via
+`getAppCheck().createToken(appId)` on the same service account that signs the
+user token.
+
+Do **not** register an App Check debug token to "make this easier". A debug token
+is a standing attestation bypass for anyone holding it, revocable only by hunting
+down every place its value was pasted. A minted token is revoked with an IAM
+change, works uniformly in all three projects, and shows up in App Check metrics
+as VALID — so probe traffic takes the path users take.
+
+> `requestEmailOtp` / `verifyEmailOtp` are App Check **exempt** until #718
+> Phase 4. The harness sends a token anyway, so nothing silently starts failing
+> when that lands.
+
+### Running against emulators
+
+Don't. `APP_CHECK_ENFORCEMENT` is gated on `FUNCTIONS_EMULATOR`, and callable
+enforcement lives in the function's own code with no emulator carve-out. These
+probes target deployed environments only; `PROBE_TARGETS` is `dev` and `staging`,
+and production is deliberately absent.
+
+---
+
+## The three rules the probes obey
+
+Understand these before changing a journey — they are what let this run
+repeatedly against a **prod-restored** environment.
+
+1. **Run-scoped isolation.** Every document is named `probe-<runId>-…` and
+   deleted in a `finally`. `ctx.track()` _refuses_ any id without the `probe-`
+   prefix. Where an id cannot carry it (`mealPlans` and `shoppingDays` are
+   date-keyed), the run is scoped by a far-future date instead and the deletion
+   goes through `ctx.trackCreated()` with a stated reason, which surfaces in
+   `report.adoptedDocs`. No probe asserts on global state.
+2. **Derive expectations, never hardcode them.** Ingredient names come from
+   canon items the environment already holds (`deriveCanonSeeds`), so the
+   expected outcome is "matched" and a run cannot accrete new canon entries.
+   Hardcoded expected values rot runbooks the way selectors rot e2e — see
+   [product-forms-staging-validation.md](product-forms-staging-validation.md).
+3. **Never assert on AI prose.** Structural invariants only. Semantic judgements
+   are recorded with `ctx.warn()` and can never fail a run.
+
+---
+
+## What each journey covers
+
+| Journey                 | Covers                                                                                                                 | Notes                                                                                   |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `auth-rules`            | Sign-in, App Check attestation, the full allow/deny rules matrix, owner-scoped `chatSessions`                          | Free. No AI, no triggers. **The canary — if it fails, no other result means anything.** |
+| `mealplan-shopday`      | `mealPlans/{startDate}` and `shoppingDays/{YYYY-MM-DD}` round-trip; the date-equals-doc-id invariant; `setBy` unpinned | Free. Writes a far-future week.                                                         |
+| `recipe-canon-shopping` | Recipe create → `canonicaliseRecipeIngredients` → `onShoppingListItemWrite` settles the item off `pending`             | Real Gemini (embeddings, sometimes arbitration).                                        |
+| `chef-chat`             | `chefChat` + `generateChatTitle`, and owner-scoped session persistence                                                 | Real Gemini, text only.                                                                 |
+| `canon-icon`            | `matchOrCreateCanon`; `onCanonItemWritten` writes a thumbnail **and** the companion `canonEmbeddings/{id}`             | **Opt-in** — generates a pictogram with a real image model.                             |
+| `cook-timer`            | `cookSessions` → `onCookTimerWrite` → Cloud Task → `onCookTimerDispatch` → the `timerDeliveries` exactly-once ledger   | **Opt-in** — sends a **real push notification** to the owner's registered devices.      |
+
+An opt-in journey is excluded from `all` unless `--include-opt-in`, and always
+runs when named explicitly. Naming it _is_ the opt-in.
+
+---
+
+## Triage tree
+
+Work top-down; the first match is almost always the cause.
+
+### The run never starts
+
+| Symptom                                                           | Cause                                                                                   | Do this                                                                                                    |
+| ----------------------------------------------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `iam.serviceAccounts.signBlob denied`                             | The tokenCreator grant is missing, or was made under 60 s ago                           | Apply the grant above; wait a minute; re-run                                                               |
+| `The identitytoolkit.googleapis.com API requires a quota project` | ADC is not resolving a quota project and the harness override did not apply             | Confirm you are on a current checkout; `GOOGLE_CLOUD_QUOTA_PROJECT=<project>` in the environment forces it |
+| `Requests from referer <empty> are blocked`                       | The browser key's referrer allowlist no longer contains `https://<projectId>.web.app/*` | Check the key in GCP → APIs & Services → Credentials. **Do not "fix" this by unrestricting the key**       |
+| `<env file> is missing VITE_FIREBASE_…`                           | `apps/web-pwa/.env.<target>` was changed or is absent                                   | Restore the file; every id is derived from it by design                                                    |
+
+### `auth-rules` fails
+
+| Symptom                                                                              | Meaning                                                                                   | Do this                                                                                                     |
+| ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| "an unattested callable request is refused" **fails**                                | App Check enforcement is **off** where it should be on — a real finding, not a probe bug  | Check `APP_CHECK_ENFORCEMENT`; see [app-check-preflight.md](app-check-preflight.md)                         |
+| "a fully attested callable request reaches the handler" fails with `UNAUTHENTICATED` | Attestation is being rejected: minting broke, or the app id no longer matches the project | Verify `VITE_FIREBASE_APP_ID`; confirm App Check registration for that web app                              |
+| Same step fails with a non-JSON body or a bare `403`                                 | Cloud Run `run.invoker` binding missing for that callable                                 | Known drift: `scripts/grant-callable-invokers.sh` omits 9 deployed callables. Re-run it, or add the binding |
+| An allow/deny assertion flips                                                        | `firestore.rules` changed                                                                 | Compare against the rules; if the new behaviour is intended, update the journey                             |
+
+### A `settle` times out
+
+A settle timeout means **a trigger did not do its job**, not that the probe is
+slow. The timeouts already exceed the server-side budgets.
+
+| Settle step                                                       | First check                                                                                                  | Then                                                                                                                                                                                                                           |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `onShoppingListItemWrite settles the item off pending`            | CF logs for `onShoppingListItemWrite`                                                                        | The pipeline makes up to three sequential AI calls (~120 s worst case) and the function's own timeout is 180 s. A Gemini outage or a quota block shows here first                                                              |
+| `onCanonItemWritten generates and stores an icon`                 | `devSettings/singleton.canonIconGenerationEnabled` — the kill-switch                                         | If enabled, pull `onCanonItemWritten` logs. Image generation is the slowest thing in the app                                                                                                                                   |
+| `the embedding lands in the companion canonEmbeddings collection` | Same trigger, different branch — the embedding branch has **no** kill-switch                                 | Only its own idempotency guards can suppress it                                                                                                                                                                                |
+| `the timer dispatches and claims the exactly-once ledger`         | **Does the Cloud Tasks queue exist?** `gcloud tasks queues list --project <project> --location europe-west2` | A known trap: a failed queue-create leaves `onCookTimerDispatch` deployed but permanently "Skipped (No changes detected)" with no queue behind it, so tasks are never delivered. The deployer SA needs Cloud Tasks permissions |
+
+Pull CF logs with the `firebase-dev` / `firebase-staging` MCP servers
+(`functions_get_logs`), not the console.
+
+### Warnings, which never fail a run
+
+| Warning                                                      | Meaning                                                                          | Do this                                                                                                                   |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `… CREATED canon item … instead of matching`                 | Matching thresholds drifted, or the derived name genuinely has no near neighbour | Not a probe bug. Worth a look at [matching-pipeline.md](../matching-pipeline.md) if it recurs. The stray item was removed |
+| `… resolved to canon <id>, not the <id> it was derived from` | Several canon entries share a name or synonym                                    | Usually benign                                                                                                            |
+| `chefChat's answer … did not contain 1000`                   | AI variance                                                                      | Re-run once. Only investigate if it is persistent                                                                         |
+| `generateChatTitle returned N words`                         | Prompt drift                                                                     | Cosmetic; not a failure                                                                                                   |
+
+### Teardown
+
+`WARNING: N probe(s) could not clean up` means documents were left behind. Every
+probe-created id carries the `probe-` prefix, so they are easy to find and safe
+to delete. Check `teardownErrors` in the JSON for exactly which. The one place a
+leftover is not prefixed is the far-future `mealPlans` / `shoppingDays` pair —
+`report.adoptedDocs` names those explicitly.
+
+**Never delete anything untagged.** Dev and staging hold prod-restored data.
+
+---
+
+## Cost and side effects
+
+- The default sweep spends a handful of embedding and text calls. It is cheap
+  enough to run on demand, repeatedly.
+- `canon-icon` generates one image per run. `cook-timer` sends one real push.
+  Both are opt-in for that reason.
+- No journey mutates existing data. A probe that needed to would have to
+  read-then-restore, or not ship.
+
+## Out of scope (issue #722)
+
+Scheduling this (cron/CI) and emitting results to PostHog are both deliberately
+deferred — get it green on demand first. The service account is already
+reachable from CI via the existing deploy WIF, so scheduling later introduces no
+new secrets, but it will need the same tokenCreator grant on the CI principal.
