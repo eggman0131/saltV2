@@ -6,10 +6,12 @@ export interface Journey {
   readonly name: string;
   readonly description: string;
   /**
-   * True when a run spends real money beyond an embedding call — image
-   * generation, photo import. Excluded from the default `all` sweep and run
-   * only under `--include-expensive`, or when named explicitly.
+   * Set when a run has a consequence beyond reading and cleaning up after
+   * itself — real money (image generation) or a real-world side effect (a push
+   * notification to someone's actual phone). The value is the reason, shown in
+   * `--help`; its presence excludes the journey from the default `all` sweep.
+   * Naming the journey explicitly always runs it.
    */
-  readonly expensive?: boolean;
+  readonly optIn?: string;
   run(ctx: ProbeContext): Promise<void>;
 }

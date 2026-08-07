@@ -1,9 +1,9 @@
 // Journey 3 — canon match/create + `onCanonItemWritten` (issue #722).
 //
-// Marked EXPENSIVE: creating a canon item makes the trigger generate a
-// pictogram with a real image model. That is the one thing issue #722 says to
-// keep out of the default sweep, so `all` skips this journey unless
-// --include-expensive is given. Naming it explicitly always runs it.
+// OPT-IN: creating a canon item makes the trigger generate a pictogram with a
+// real image model. That is the one thing issue #722 says to keep out of the
+// default sweep, so `all` skips this journey unless --include-opt-in is given.
+// Naming it explicitly always runs it.
 //
 // It covers both halves of the trigger — the icon branch and the embedding
 // branch (which writes the companion `canonEmbeddings/{id}` doc, deliberately a
@@ -29,7 +29,7 @@ const ICON_STORAGE_PREFIX = 'canon-icons';
 export const canonIcon: Journey = {
   name: 'canon-icon',
   description: 'matchOrCreateCanon matches, and a new canon item gets an icon + embedding.',
-  expensive: true,
+  optIn: 'generates a pictogram with a real image model (real cost)',
 
   async run(ctx) {
     // ---- matchOrCreateCanon, match path -----------------------------------

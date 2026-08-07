@@ -17,35 +17,38 @@ interface Args {
 }
 
 function usage(): string {
-  const names = JOURNEYS.map(
-    (journey) =>
-      `  ${journey.name.padEnd(18)} ${journey.description}${journey.expensive === true ? '  [expensive]' : ''}`,
-  );
+  const names = JOURNEYS.flatMap((journey) => {
+    const line = `  ${journey.name.padEnd(22)} ${journey.description}`;
+    return journey.optIn === undefined
+      ? [line]
+      : [line, `  ${' '.repeat(22)} opt-in only — ${journey.optIn}`];
+  });
   return [
-    'Usage: pnpm probe <journey|all> [--target dev|staging] [--include-expensive]',
+    'Usage: pnpm probe <journey|all> [--target dev|staging] [--include-opt-in]',
     '',
     'Journeys:',
     ...names,
-    `  ${'all'.padEnd(18)} every journey above except [expensive] ones`,
+    `  ${'all'.padEnd(22)} every journey above except the opt-in ones`,
     '',
     `Targets: ${PROBE_TARGETS.join(', ')} (default: dev). Production is not a target.`,
     '',
-    'An [expensive] journey spends real money (image generation). It is excluded',
-    'from `all` unless --include-expensive is given, and always runs when named.',
+    'An opt-in journey has a consequence beyond cleaning up after itself — real',
+    'money, or a real-world side effect. It is excluded from `all` unless',
+    '--include-opt-in is given, and always runs when named explicitly.',
   ].join('\n');
 }
 
 function parseArgs(argv: string[]): Args {
   const positional: string[] = [];
   let target: ProbeTarget = 'dev';
-  let includeExpensive = false;
+  let includeOptIn = false;
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === undefined) continue;
 
-    if (arg === '--include-expensive') {
-      includeExpensive = true;
+    if (arg === '--include-opt-in') {
+      includeOptIn = true;
       continue;
     }
 
@@ -76,7 +79,7 @@ function parseArgs(argv: string[]): Args {
   // Naming a journey explicitly is itself the opt-in; only the `all` sweep
   // filters, so a routine run never silently bills for image generation.
   const journeys = positional.includes('all')
-    ? JOURNEYS.filter((journey) => includeExpensive || journey.expensive !== true).map(
+    ? JOURNEYS.filter((journey) => includeOptIn || journey.optIn === undefined).map(
         (journey) => journey.name,
       )
     : positional;
