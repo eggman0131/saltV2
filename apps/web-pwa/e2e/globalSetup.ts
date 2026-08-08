@@ -42,10 +42,34 @@ const APP_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const E2E_APP_HOST = '127.0.0.1';
 const E2E_APP_PORT = 5174;
 const E2E_APP_URL = `http://${E2E_APP_HOST}:${E2E_APP_PORT}`;
+
+// Emulator Firestore transport arm (issue #734, Phase 2). Defaults to #122's
+// forced long-polling, so an ordinary run is unchanged. Validated HERE, at the
+// one place the variable enters the run: the adapter falls back to the default
+// on an unrecognised value (it must never throw), which would silently run the
+// wrong arm while the reporter recorded the typo. Failing setup is the honest
+// outcome — this is test infra, not a test.
+const FIRESTORE_TRANSPORTS = ['force-long-polling', 'auto-detect', 'grpc'] as const;
+
+function resolveFirestoreTransport(): string {
+  const arm = process.env.VITE_E2E_FIRESTORE_TRANSPORT ?? 'force-long-polling';
+  if (!(FIRESTORE_TRANSPORTS as readonly string[]).includes(arm)) {
+    throw new Error(
+      `globalSetup: VITE_E2E_FIRESTORE_TRANSPORT="${arm}" is not one of ${FIRESTORE_TRANSPORTS.join(', ')}.`,
+    );
+  }
+  return arm;
+}
+
 const TEST_EMULATOR_ENV = {
   VITE_EMULATOR_FIRESTORE_PORT: FIRESTORE_EMULATOR_PORT_STRING,
   VITE_EMULATOR_AUTH_PORT: '9100',
   VITE_EMULATOR_FUNCTIONS_PORT: '5002',
+  // Part of TEST_EMULATOR_ENV deliberately: the server identity hashes this
+  // object, so switching arms invalidates a running :5174 server and forces a
+  // fresh one. Reusing a warm server from the previous arm would mislabel a
+  // whole run.
+  VITE_E2E_FIRESTORE_TRANSPORT: resolveFirestoreTransport(),
   // Gate browser observability (PostHog) OFF under e2e: an empty key makes the
   // app's `if (_phKey)` guard in src/lib/observability.ts falsy, so posthog.init
   // is never called. Vite prioritizes an env var already in process.env over

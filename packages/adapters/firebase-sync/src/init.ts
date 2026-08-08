@@ -33,6 +33,53 @@ export interface AppCheckConfig {
   debugToken?: string;
 }
 
+/**
+ * Emulator-only Firestore transport arm (issue #734, Phase 2).
+ *
+ * `experimentalForceLongPolling` was forced against the emulator in #122 for a
+ * *different* symptom, three firebase minors ago. This makes the arm selectable
+ * so we can find out whether it is still earning its keep, without ever
+ * touching production: `useEmulators === false` returns `{}` unconditionally,
+ * so a real backend keeps the SDK's default transport whatever the variable
+ * says. It is read from `VITE_E2E_FIRESTORE_TRANSPORT`, and anything
+ * unrecognised (including unset) is today's behaviour — the e2e harness
+ * validates the value at the source, in globalSetup.ts, so a typo fails the run
+ * rather than silently reporting the wrong arm.
+ *
+ * Note `auto-detect` passes NO setting: `experimentalAutoDetectLongPolling`
+ * has defaulted to `true` since firebase v9.22, so the SDK default IS
+ * auto-detect and `grpc` is the arm that has to opt out of it explicitly.
+ *
+ * Read from `import.meta.env` like every other `VITE_*` in this file, which
+ * makes the arm BROWSER-ONLY: the e2e harness exports it to the Vite server it
+ * spawns and Vite inlines it into the bundle. The Node-side emulator
+ * integration suite has a Vite-provided `import.meta.env` that `process.env`
+ * does not feed, so it keeps #122's forced long-polling unconditionally — which
+ * is what we want, since it is not part of the A/B.
+ *
+ * Exported from this module (not from the package barrel) purely so the arms
+ * can be unit-tested: `import.meta.env` cannot be written from a test, which is
+ * exactly why the env arrives as a parameter rather than being read in here.
+ */
+export function emulatorTransportSettings(
+  useEmulators: boolean,
+  env: Record<string, string | undefined>,
+): { experimentalForceLongPolling?: boolean; experimentalAutoDetectLongPolling?: boolean } {
+  if (!useEmulators) return {};
+  switch (env['VITE_E2E_FIRESTORE_TRANSPORT']) {
+    case 'auto-detect':
+      return {};
+    case 'grpc':
+      return { experimentalAutoDetectLongPolling: false };
+    default:
+      return { experimentalForceLongPolling: true };
+  }
+}
+
+function importMetaEnv(): Record<string, string | undefined> {
+  return (import.meta as { env?: Record<string, string | undefined> }).env ?? {};
+}
+
 export function initFirebase(
   options: FirebaseOptions,
   useEmulators = false,
@@ -65,14 +112,16 @@ export function initFirebase(
     // gRPC Listen-stream corruption as the integration suite (#122/#199), which
     // surfaces as flaky cross-tab convergence (canon-sync aisle specs). Real
     // backends keep default gRPC streaming. (see the emulator branch below)
+    // The arm is selectable under emulators only; the default is #122's forced
+    // long-polling, so this is unchanged unless the e2e harness says otherwise.
     initializeFirestore(app, {
       localCache: persistentLocalCache(),
-      ...(useEmulators ? { experimentalForceLongPolling: true } : {}),
+      ...emulatorTransportSettings(useEmulators, importMetaEnv()),
     });
   }
 
   if (useEmulators && !emulatorConnectedApps.has(app)) {
-    const _env = (import.meta as { env?: Record<string, string | undefined> }).env ?? {};
+    const _env = importMetaEnv();
     const firestorePort = Number(_env['VITE_EMULATOR_FIRESTORE_PORT'] ?? 8080);
     const functionsPort = Number(_env['VITE_EMULATOR_FUNCTIONS_PORT'] ?? 5001);
     // Force long-polling for the emulator transport. The default gRPC streaming
@@ -82,9 +131,10 @@ export function initFirebase(
     // lifetime, after which realtime subscriptions never deliver and the
     // integration suite times out. Long-polling sidesteps the streaming
     // transport entirely. Emulator-only — production keeps default gRPC. (#122)
+    // Selectable arm since #734; the default below is still #122's behaviour.
     const db =
       isNew && !usePersistentCache
-        ? initializeFirestore(app, { experimentalForceLongPolling: true })
+        ? initializeFirestore(app, emulatorTransportSettings(useEmulators, _env))
         : getFirestore(app);
     connectFirestoreEmulator(db, '127.0.0.1', firestorePort);
     connectFunctionsEmulator(getFunctions(app, 'europe-west2'), '127.0.0.1', functionsPort);
