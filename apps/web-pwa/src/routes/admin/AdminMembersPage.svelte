@@ -13,7 +13,7 @@
     SortableList,
     TextField,
   } from '@salt/ui-components';
-  import { push } from 'svelte-spa-router';
+  import { goBack } from '../../lib/nav.js';
   import { memberInitials, type Member } from '@salt/domain';
   import AdminGuard from './AdminGuard.svelte';
   import {
@@ -97,7 +97,7 @@
     class="p-4 sm:p-6"
   >
     {#snippet actions()}
-      <Button size="sm" onclick={() => push('/admin')}>Back to admin</Button>
+      <Button size="sm" onclick={() => goBack('/admin')}>Back to admin</Button>
       <Button size="sm" onclick={openCreate} data-testid="member-add">Add member</Button>
     {/snippet}
 

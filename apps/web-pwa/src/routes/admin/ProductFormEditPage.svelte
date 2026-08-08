@@ -1,5 +1,6 @@
 <script lang="ts">
   import { push } from 'svelte-spa-router';
+  import { goBack } from '../../lib/nav.js';
   import {
     Button,
     Combobox,
@@ -168,8 +169,8 @@
     {:else}
       <DetailPage
         title={isEdit ? label || 'Edit form' : 'Add product form'}
-        onBack={() => push('/admin/product-forms')}
-        backLabel="Product forms"
+        onBack={() => goBack('/admin/product-forms')}
+        backLabel="Back"
       >
         {#snippet actions()}
           {#if isEdit}
@@ -294,7 +295,7 @@
           <div class="flex justify-end gap-2 border-t border-border pt-4">
             <Button
               variant="ghost"
-              onclick={() => push('/admin/product-forms')}
+              onclick={() => goBack('/admin/product-forms')}
               disabled={busy || confirmBusy}
             >
               Cancel

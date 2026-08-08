@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button, Switch } from '@salt/ui-components';
-  import { push } from 'svelte-spa-router';
+  import { goBack } from '../../lib/nav.js';
   import AdminGuard from './AdminGuard.svelte';
   import {
     canonIconGenerationEnabled,
@@ -39,7 +39,7 @@
           each have their own).
         </p>
       </div>
-      <Button size="sm" onclick={() => push('/admin')}>Back to admin</Button>
+      <Button size="sm" onclick={() => goBack('/admin')}>Back to admin</Button>
     </div>
 
     <div class="rounded-lg border p-4" data-testid="canon-icon-generation-setting">

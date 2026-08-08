@@ -1,5 +1,6 @@
 <script lang="ts">
   import { push } from 'svelte-spa-router';
+  import { goBack } from '../../lib/nav.js';
   import {
     Button,
     CanonIcon,
@@ -277,8 +278,8 @@
     {:else}
       <DetailPage
         title={titleCase(item.name)}
-        onBack={() => push('/admin/canon')}
-        backLabel="Items"
+        onBack={() => goBack('/admin/canon')}
+        backLabel="Back"
       >
         {#snippet titleSlot()}
           {#if editingNameActive}

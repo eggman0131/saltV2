@@ -1,6 +1,7 @@
 <script lang="ts">
   import { FormPage, TextField } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
+  import { goBack } from '../../lib/nav.js';
   import { addList } from '../../lib/shoppingListService.svelte.js';
   import { addToast } from '../../lib/toastStore.js';
 
@@ -31,7 +32,7 @@
   isSubmitting={busy}
   {canSubmit}
   onSubmit={handleSubmit}
-  onCancel={() => push('/shopping')}
+  onCancel={() => goBack('/shopping')}
   class="p-4 sm:p-6"
 >
   <div class="flex flex-col gap-1.5">

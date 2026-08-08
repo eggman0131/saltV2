@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { push } from 'svelte-spa-router';
+  import { goBack } from '../../lib/nav.js';
   import AdminGuard from '../admin/AdminGuard.svelte';
   import {
     Button,
@@ -241,7 +241,7 @@
       {bulkActions}
     >
       {#snippet actions()}
-        <Button size="sm" onclick={() => push('/admin')}>
+        <Button size="sm" onclick={() => goBack('/admin')}>
           <Icon name="ArrowLeft" size={16} />
           Back
         </Button>
