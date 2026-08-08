@@ -15,6 +15,7 @@ export type { MakeFreshSessionArgs } from './makeFreshSession.js';
 export { withStepDone } from './withStepDone.js';
 export { withIngredientChecked } from './withIngredientChecked.js';
 export { withPrepChecked } from './withPrepChecked.js';
+export { withContainerChecked } from './withContainerChecked.js';
 export { withAllIngredientsChecked } from './withAllIngredientsChecked.js';
 export { withGroupChecked } from './withGroupChecked.js';
 export { withTimerStarted } from './withTimerStarted.js';
@@ -49,6 +50,13 @@ export type {
   DuplicateContainerName,
   DanglingContainerName,
 } from './guidedContainerProblems.js';
+// Get out (issue #761, Phase 3) — the same container-name join read a third way:
+// as the vessels to fetch BEFORE any chopping, so counting the rows answers "how
+// many bowls?" before the first cut. Grouped by the one normaliser, so a plan that
+// repeats a name still reports the right number.
+export { containerGetOutList } from './containerGetOutList.js';
+export type { ContainerGetOutRow } from './containerGetOutList.js';
+export { guidedGetOutProgress } from './guidedGetOutProgress.js';
 // `hasRecipeChanged` used to live here. It now takes two timestamps rather than a
 // session (issue #751 needed the same comparison for a guided plan's own stamp),
 // so it belongs to the recipe module — see recipe/queries/hasRecipeChanged.ts.

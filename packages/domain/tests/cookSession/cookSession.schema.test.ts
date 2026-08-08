@@ -121,3 +121,49 @@ describe('CookSessionSchema.checkedPrepIds', () => {
     expect(result.success && result.data.checkedIngredientIds).toEqual(['ing-1']);
   });
 });
+
+describe('CookSessionSchema.checkedContainerNames', () => {
+  // Get out (issue #761, Phase 3). The THIRD tick list, and the same back-compat
+  // obligation as the other two: cookSessions have no TTL and a cook can span days,
+  // so every session in Firestore today predates the field and must still parse —
+  // otherwise a cook in progress dies on a deploy.
+  const base = {
+    id: 'r1_u1',
+    schemaVersion: 1,
+    ownerUid: 'u1',
+    recipeId: 'r1',
+    recipeUpdatedAtAtStart: '2026-07-01T09:00:00.000Z',
+    createdAt: '2026-08-08T18:30:00.000Z',
+    updatedAt: '2026-08-08T18:30:00.000Z',
+  };
+
+  it('BACK-COMPAT: defaults to [] when the field is absent', () => {
+    const result = CookSessionSchema.safeParse(base);
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.checkedContainerNames).toEqual([]);
+  });
+
+  it('BACK-COMPAT: a mid-cook guided session written before #761 parses intact', () => {
+    const result = CookSessionSchema.safeParse({
+      ...base,
+      checkedPrepIds: ['prep-1'],
+      completedStepIds: ['step-1'],
+    });
+    expect(result.success && result.data.checkedPrepIds).toEqual(['prep-1']);
+    expect(result.success && result.data.completedStepIds).toEqual(['step-1']);
+    expect(result.success && result.data.checkedContainerNames).toEqual([]);
+  });
+
+  it('parses normalised container names, alongside the other two tick lists', () => {
+    const result = CookSessionSchema.safeParse({
+      ...base,
+      checkedIngredientIds: ['ing-1'],
+      checkedPrepIds: ['prep-1'],
+      checkedContainerNames: ['onion bowl', 'jug'],
+    });
+    expect(result.success && result.data.checkedContainerNames).toEqual(['onion bowl', 'jug']);
+    // Three lists, three separate facts; none of them leaks into another.
+    expect(result.success && result.data.checkedPrepIds).toEqual(['prep-1']);
+    expect(result.success && result.data.checkedIngredientIds).toEqual(['ing-1']);
+  });
+});

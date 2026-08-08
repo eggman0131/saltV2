@@ -297,11 +297,14 @@ export type { WeatherIconId } from './weather/index.js';
 // are what keeps guided mode from ever showing less than plain cook mode (#761),
 // and `guidedContainerProblems` is that same join read backwards, so the editor
 // can warn about a name that will not resolve before anyone cooks from it.
+// `containerGetOutList` reads it a third way — the vessels to fetch before any
+// chopping starts, which is the Get-out stage's whole content.
 export {
   makeFreshSession,
   withStepDone,
   withIngredientChecked,
   withPrepChecked,
+  withContainerChecked,
   withAllIngredientsChecked,
   withGroupChecked,
   withTimerStarted,
@@ -319,6 +322,8 @@ export {
   prepEntryIngredients,
   looseIngredientsForStep,
   guidedContainerProblems,
+  containerGetOutList,
+  guidedGetOutProgress,
   formatClock,
   timerProgress,
 } from './cookSession/index.js';
@@ -328,6 +333,7 @@ export type {
   GuidedContainerProblems,
   DuplicateContainerName,
   DanglingContainerName,
+  ContainerGetOutRow,
 } from './cookSession/index.js';
 
 // Shopping-day module (issue #629) — pure helpers over `shoppingDays/{date}`:

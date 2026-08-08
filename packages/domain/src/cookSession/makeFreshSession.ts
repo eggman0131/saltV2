@@ -14,8 +14,9 @@ export interface MakeFreshSessionArgs {
   readonly nowIso: string;
 }
 
-// A brand-new session with nothing ticked (neither list — see `checkedPrepIds`),
-// nothing done, and no timers running.
+// A brand-new session with nothing ticked (none of the three lists — see
+// `checkedPrepIds` and `checkedContainerNames`), nothing done, and no timers
+// running.
 // `recipeUpdatedAtAtStart` is the snapshot `hasRecipeChanged` later compares the
 // live recipe against.
 export function makeFreshSession(args: MakeFreshSessionArgs): CookSessionDoc {
@@ -27,6 +28,7 @@ export function makeFreshSession(args: MakeFreshSessionArgs): CookSessionDoc {
     recipeUpdatedAtAtStart: args.recipeUpdatedAtAtStart,
     checkedIngredientIds: [],
     checkedPrepIds: [],
+    checkedContainerNames: [],
     completedStepIds: [],
     activeTimers: [],
     createdAt: args.nowIso,

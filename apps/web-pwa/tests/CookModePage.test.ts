@@ -195,9 +195,11 @@ function makeCookSession(over: Partial<CookSessionDoc> = {}): CookSessionDoc {
     recipeId: RECIPE_ID,
     recipeUpdatedAtAtStart: RECIPE_UPDATED_AT,
     checkedIngredientIds: [],
-    // Guided cook's own tick list (issue #751). Present on the fixture so normal
-    // cook mode is exercised against the document shape it will actually meet.
+    // Guided cook's own tick lists (issues #751, #761). Present on the fixture so
+    // normal cook mode is exercised against the document shape it will actually
+    // meet — it writes neither, and must not read either as its own.
     checkedPrepIds: [],
+    checkedContainerNames: [],
     completedStepIds: [],
     activeTimers: [],
     createdAt: '2026-07-01T11:00:00.000Z',
