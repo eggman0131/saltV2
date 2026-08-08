@@ -22,6 +22,7 @@ describe('makeFreshSession', () => {
       recipeId: 'recipe-1',
       recipeUpdatedAtAtStart: '2026-07-01T09:00:00.000Z',
       checkedIngredientIds: [],
+      checkedPrepIds: [],
       completedStepIds: [],
       activeTimers: [],
       createdAt: '2026-07-22T18:30:00.000Z',
@@ -53,6 +54,7 @@ describe('makeFreshSession', () => {
     const a = makeFreshSession(ARGS);
     const b = makeFreshSession(ARGS);
     expect(a.checkedIngredientIds).not.toBe(b.checkedIngredientIds);
+    expect(a.checkedPrepIds).not.toBe(b.checkedPrepIds);
     expect(a.completedStepIds).not.toBe(b.completedStepIds);
     expect(a.activeTimers).not.toBe(b.activeTimers);
   });

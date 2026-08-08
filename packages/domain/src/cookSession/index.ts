@@ -14,14 +14,25 @@ export { makeFreshSession } from './makeFreshSession.js';
 export type { MakeFreshSessionArgs } from './makeFreshSession.js';
 export { withStepDone } from './withStepDone.js';
 export { withIngredientChecked } from './withIngredientChecked.js';
+export { withPrepChecked } from './withPrepChecked.js';
 export { withAllIngredientsChecked } from './withAllIngredientsChecked.js';
 export { withGroupChecked } from './withGroupChecked.js';
 export { withTimerStarted } from './withTimerStarted.js';
 export { withTimerDismissed } from './withTimerDismissed.js';
+// A guided plan's check-ins ride `activeTimers` as ordinary entries, so their
+// identity has to be derived — see checkInTimerId.ts for why, and for the three
+// places that derivation is the only handle anything has on them.
+export { checkInTimerId, isCheckInTimerId, isCheckInOf } from './checkInTimerId.js';
 export { firstUseByStep } from './firstUseByStep.js';
 export { firstIncompleteStepId } from './firstIncompleteStepId.js';
 export { miseProgress } from './miseProgress.js';
 export type { MiseProgress } from './miseProgress.js';
-export { hasRecipeChanged } from './hasRecipeChanged.js';
+// Guided cook (issue #751, Phase 2) — the same two questions asked of a guided
+// prep list rather than of the recipe's ingredient checklist.
+export { guidedMiseProgress } from './guidedMiseProgress.js';
+export { unpreppedIngredients } from './unpreppedIngredients.js';
+// `hasRecipeChanged` used to live here. It now takes two timestamps rather than a
+// session (issue #751 needed the same comparison for a guided plan's own stamp),
+// so it belongs to the recipe module — see recipe/queries/hasRecipeChanged.ts.
 export { formatClock } from './formatClock.js';
 export { timerProgress } from './timerProgress.js';

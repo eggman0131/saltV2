@@ -12,6 +12,7 @@ import type { ChatSessionDoc } from '@salt/domain/schemas';
 const {
   mockRecipes,
   mockCanonItems,
+  mockGuidedPlan,
   mockIsLoading,
   mockDefaultListId,
   mockSessions,
@@ -37,6 +38,7 @@ const {
   return {
     mockRecipes: makeStore<readonly Recipe[]>([]),
     mockCanonItems: makeStore<readonly { id: string }[]>([]),
+    mockGuidedPlan: makeStore<unknown>(null),
     mockIsLoading: makeStore<boolean>(false),
     mockDefaultListId: makeStore<string | null>('list-1'),
     mockSessions: makeStore<readonly ChatSessionDoc[]>([]),
@@ -50,6 +52,15 @@ vi.mock('../src/lib/auth.svelte.js', () => ({
   auth: { user: { uid: 'uid-1', email: 'cook@test' } },
 }));
 vi.mock('../src/lib/canonService.js', () => ({ canonItems: mockCanonItems }));
+// The guided-plan store (issue #751). `null` is its LOADED-AND-EMPTY state — the
+// one that keeps the "Cook, guided" half of the Cook button off a recipe nobody
+// has written a plan for. `undefined` (not loaded) would keep it off too, so a
+// suite that never sets this proves nothing about the button; the ranking suite
+// sets it deliberately.
+vi.mock('../src/lib/guidedPlanService.js', () => ({
+  guidedPlan: mockGuidedPlan,
+  initGuidedPlanSync: vi.fn(() => () => {}),
+}));
 vi.mock('../src/lib/shoppingListService.svelte.js', () => ({ defaultListId: mockDefaultListId }));
 vi.mock('@salt/firebase-sync', () => ({
   saveRecipe: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),

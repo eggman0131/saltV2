@@ -680,3 +680,77 @@ describe.skipIf(!reachable)('firestore.rules — shoppingDays (issue #629)', () 
     await assertFails(deleteDoc(doc(db, 'shoppingDays', SHOP_DATE)));
   });
 });
+
+describe.skipIf(!reachable)('firestore.rules — guidedPlans (issue #751)', () => {
+  let testEnv: RulesTestEnvironment;
+
+  beforeAll(async () => {
+    testEnv = await initializeTestEnvironment({
+      projectId: PROJECT_ID,
+      firestore: {
+        host: HOST,
+        port: PORT,
+        rules: readFileSync(RULES_PATH, 'utf8'),
+      },
+    });
+  });
+
+  afterAll(async () => {
+    await testEnv?.cleanup();
+  });
+
+  beforeEach(async () => {
+    await testEnv.clearFirestore();
+  });
+
+  const PLAN_RECIPE = 'recipe-1';
+  const plan = () => ({
+    id: PLAN_RECIPE,
+    schemaVersion: 1,
+    recipeId: PLAN_RECIPE,
+    recipeUpdatedAtAtSave: '2026-08-01T09:00:00.000Z',
+    prep: [{ id: 'prep-1', text: 'Dice the onion', container: 'bowl', ingredientIds: ['ing-1'] }],
+    stepNotes: [],
+    createdAt: '2026-08-01T09:00:00.000Z',
+    updatedAt: '2026-08-01T09:00:00.000Z',
+  });
+
+  function userCtx(uid: string) {
+    return testEnv.authenticatedContext(uid, { email: `${uid}@e.org` }).firestore();
+  }
+
+  it('lets any signed-in user write, read and clear a plan', async () => {
+    const db = userCtx('uid-a');
+    await assertSucceeds(setDoc(doc(db, 'guidedPlans', PLAN_RECIPE), plan()));
+    await assertSucceeds(getDoc(doc(db, 'guidedPlans', PLAN_RECIPE)));
+    await assertSucceeds(deleteDoc(doc(db, 'guidedPlans', PLAN_RECIPE)));
+  });
+
+  // The load-bearing property: a plan is FAMILY-SHARED, like the recipe it
+  // describes, and carries no ownerUid. Either member may re-run or hand-correct
+  // the other's plan — this is deliberately NOT a fourth per-user collection.
+  it('lets another member overwrite a plan someone else wrote', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'guidedPlans', PLAN_RECIPE), plan());
+    });
+    const db = userCtx('uid-b');
+    await assertSucceeds(setDoc(doc(db, 'guidedPlans', PLAN_RECIPE), plan()));
+    await assertSucceeds(getDoc(doc(db, 'guidedPlans', PLAN_RECIPE)));
+  });
+
+  // The deterministic id means the editor subscribes to the plan for a recipe that
+  // has none. Unlike cookSessions this needs no `resource == null` clause — the
+  // rule never dereferences resource.data — but the BEHAVIOUR is what matters, so
+  // it is pinned here rather than assumed.
+  it('lets a signed-in user read a plan id that does not exist yet', async () => {
+    await assertSucceeds(getDoc(doc(userCtx('uid-a'), 'guidedPlans', 'recipe-never-planned')));
+  });
+
+  it('denies an unauthenticated caller entirely', async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, 'guidedPlans', PLAN_RECIPE)));
+    await assertFails(getDocs(collection(db, 'guidedPlans')));
+    await assertFails(setDoc(doc(db, 'guidedPlans', PLAN_RECIPE), plan()));
+    await assertFails(deleteDoc(doc(db, 'guidedPlans', PLAN_RECIPE)));
+  });
+});

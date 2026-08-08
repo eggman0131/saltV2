@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'vitest-axe';
+import { checkInTimerId } from '@salt/domain';
 import type { CookSessionDoc, IngredientDoc, RecipeDoc } from '@salt/domain/schemas';
 
 // Cook mode is the only full-viewport page in the app and the only one that owns its
@@ -194,6 +195,9 @@ function makeCookSession(over: Partial<CookSessionDoc> = {}): CookSessionDoc {
     recipeId: RECIPE_ID,
     recipeUpdatedAtAtStart: RECIPE_UPDATED_AT,
     checkedIngredientIds: [],
+    // Guided cook's own tick list (issue #751). Present on the fixture so normal
+    // cook mode is exercised against the document shape it will actually meet.
+    checkedPrepIds: [],
     completedStepIds: [],
     activeTimers: [],
     createdAt: '2026-07-01T11:00:00.000Z',
@@ -1451,6 +1455,78 @@ describe('CookModePage — adjusting a timer, and setting your own (#748)', () =
 
     await waitFor(() => expect(removeCookSession).toHaveBeenCalledWith(SESSION_ID));
     expect(screen.queryByTestId('cook-timers-bar')).not.toBeInTheDocument();
+  });
+});
+
+// Plain cook mode NEVER arms a check-in — that belongs to guided cook, the only
+// mode holding the plan. But it shares the SAME session document with it, so a
+// cook who switches modes mid-braise finds them here and this page has to leave
+// them alone sensibly.
+describe('CookModePage — check-ins armed by the guided cook (#751)', () => {
+  function braising() {
+    const startMs = Date.now();
+    const at = (m: number) => new Date(startMs + m * 60_000).toISOString();
+    return [
+      {
+        id: 'step-2',
+        stepId: 'step-2',
+        label: 'Braise',
+        durationMinutes: 180,
+        endsAt: at(180),
+        notify: true,
+      },
+      {
+        id: checkInTimerId('step-2', 20),
+        stepId: 'step-2',
+        label: 'Check the heat',
+        durationMinutes: 20,
+        endsAt: at(20),
+        notify: true,
+      },
+    ];
+  }
+
+  it("leaves the step's inline slot on the step's OWN timer, not on a reminder", async () => {
+    mockCookSession._set(
+      makeCookSession({ completedStepIds: ['step-1'], activeTimers: braising() }),
+    );
+    renderCookMode();
+    await screen.findByTestId('cook-steps-view');
+
+    // Without this the last entry naming the step would win, and the inline
+    // countdown would show 20 minutes while its Cancel called off the reminder.
+    await userEvent.click(screen.getByTestId('cook-step-timer-dismiss'));
+    await waitFor(
+      () => expect(lastPersisted().activeTimers).toEqual([]), // the braise takes its reminder with it
+    );
+  });
+
+  it('offers no way to re-time a reminder from here either', async () => {
+    mockCookSession._set(makeCookSession({ activeTimers: braising() }));
+    renderCookMode();
+
+    const chips = await screen.findAllByTestId('cook-timer-chip');
+    const reminder = chips.find((c) => c.dataset['timerId'] === checkInTimerId('step-2', 20))!;
+    expect(reminder).toHaveTextContent('Check the heat');
+    expect(reminder.querySelector('[data-testid="cook-timer-chip-edit"]')).toBeNull();
+  });
+
+  it('lets a fired reminder leave the bar on its own', async () => {
+    const timers = braising();
+    timers[1]!.endsAt = new Date(Date.now() - 5_000).toISOString();
+    mockCookSession._set(makeCookSession({ activeTimers: timers }));
+    renderCookMode();
+
+    const chips = await screen.findAllByTestId('cook-timer-chip');
+    expect(chips.map((c) => c.dataset['timerId'])).toEqual(['step-2']);
+  });
+
+  it('never arms one of its own', async () => {
+    renderCookMode();
+    await enterSteps();
+    await userEvent.click(screen.getByTestId('cook-step-timer-start'));
+
+    await waitFor(() => expect(lastPersisted().activeTimers).toHaveLength(1));
   });
 });
 

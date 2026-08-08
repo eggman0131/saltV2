@@ -63,6 +63,12 @@ export {
   saveCookSession,
   deleteCookSession,
 } from './cookSessionSubscription.js';
+// Guided plan (issue #751): the per-recipe prep list + step notes. A single
+// family-shared doc keyed by the recipe id, plus the callable that authors one.
+// See guidedPlanSubscription.ts for why a corrupt plan is an error rather than
+// "no plan yet" — unlike a cook session, a human wrote it.
+export { subscribeGuidedPlan, loadGuidedPlan, saveGuidedPlan } from './guidedPlanSubscription.js';
+export { callGenerateGuidedPlan } from './guidedPlanCallables.js';
 export { savePushSubscription, deletePushSubscription } from './pushSubscriptionSync.js';
 export { streamChefChat, callGenerateChatTitle } from './chatCallables.js';
 export { callAuthorRecipe } from './authorRecipeCallable.js';

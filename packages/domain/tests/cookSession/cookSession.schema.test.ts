@@ -89,3 +89,35 @@ describe('CookSessionSchema.activeTimers', () => {
     expect(result.success && result.data.activeTimers).toEqual([]);
   });
 });
+
+describe('CookSessionSchema.checkedPrepIds', () => {
+  // Guided cook (issue #751, Phase 2). Same back-compat obligation as every other
+  // array on this document, and for the same reason: cookSessions have no TTL, so
+  // every session in Firestore today predates the field.
+  const base = {
+    id: 'r1_u1',
+    schemaVersion: 1,
+    ownerUid: 'u1',
+    recipeId: 'r1',
+    recipeUpdatedAtAtStart: '2026-07-01T09:00:00.000Z',
+    createdAt: '2026-08-08T18:30:00.000Z',
+    updatedAt: '2026-08-08T18:30:00.000Z',
+  };
+
+  it('BACK-COMPAT: defaults to [] when the field is absent', () => {
+    const result = CookSessionSchema.safeParse(base);
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.checkedPrepIds).toEqual([]);
+  });
+
+  it('parses a guided session verbatim, alongside the ingredient tick list', () => {
+    const result = CookSessionSchema.safeParse({
+      ...base,
+      checkedIngredientIds: ['ing-1'],
+      checkedPrepIds: ['prep-1', 'ing-9'],
+    });
+    expect(result.success && result.data.checkedPrepIds).toEqual(['prep-1', 'ing-9']);
+    // The two lists are separate facts and neither leaks into the other.
+    expect(result.success && result.data.checkedIngredientIds).toEqual(['ing-1']);
+  });
+});

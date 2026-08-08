@@ -47,6 +47,7 @@ import {
   type PhotoImportFailureCode,
 } from './flows/extractRecipeFromPhoto.js';
 import { generateChatTitleFlow } from './flows/generateChatTitle.js';
+import { generateGuidedPlanFlow } from './flows/generateGuidedPlan.js';
 import { onShoppingListItemWrite } from './triggers/onShoppingListItemWrite.js';
 import { onCanonItemWritten } from './triggers/onCanonItemWritten.js';
 import { onRecipeWritten } from './triggers/onRecipeWritten.js';
@@ -319,6 +320,33 @@ export const describeRecipeScene = makeTracedCallable({
   flow: describeRecipeSceneFlow,
   options: { secrets: [geminiApiKey, posthogApiKey], timeoutSeconds: 90 },
 });
+
+// Guided plan (issue #751, Phase 1): read the recipe → return the prep list and
+// the notes to sit under its steps. Takes only a recipe id; the flow reads the
+// recipe with the Admin SDK, so the plan is always about the recipe that is
+// actually stored. PERSISTS NOTHING — the web service assembles and writes the
+// document, which is the single place `needs_approval`, `recipeUpdatedAtAtSave`
+// and the timestamps are decided.
+//
+// Plain onCallGenkit rather than makeTracedCallable: there is no browser trace id
+// to unify here (one call, one click, no cross-invocation pair like the equipment
+// callables), so the traced factory would buy only a wire envelope to maintain.
+// 90s so the flow's 55s withAiTimeout has headroom, and comfortably inside the
+// callable client's 70s default so no shared timeout constant is needed.
+//
+// `pro` (see the flow): cue quality IS the feature, and the volume is a handful of
+// recipes ever. posthogApiKey is the bearer token for the AI-OTLP span exporter as
+// well as the posthog-node key — without it this function's AI usage never lands
+// in PostHog.
+export const generateGuidedPlan = onCallGenkit(
+  {
+    ...APP_CHECK_ENFORCEMENT,
+    secrets: [geminiApiKey, posthogApiKey],
+    authPolicy: isSignedIn(),
+    timeoutSeconds: 90,
+  },
+  generateGuidedPlanFlow,
+);
 
 // SSRF-hardened URL import (recipe URL import epic). A custom onError maps the
 // flow's UrlImportError taxonomy to specific HttpsError codes with user-safe copy
