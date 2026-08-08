@@ -293,7 +293,8 @@ export type { WeatherIconId } from './weather/index.js';
 // completion, timers, clock formatting (issue #556). Immutable producers, and
 // every timestamp is injected (never read from a clock). The recipe-drift
 // comparison it used to own now lives in the recipe module (`hasRecipeChanged`),
-// which the guided plan (#751) shares.
+// which the guided plan (#751) shares. The four container/amount queries below
+// are what keeps guided mode from ever showing less than plain cook mode (#761).
 export {
   makeFreshSession,
   withStepDone,
@@ -311,6 +312,10 @@ export {
   miseProgress,
   guidedMiseProgress,
   unpreppedIngredients,
+  normaliseContainerName,
+  prepEntryForContainer,
+  prepEntryIngredients,
+  looseIngredientsForStep,
   formatClock,
   timerProgress,
 } from './cookSession/index.js';

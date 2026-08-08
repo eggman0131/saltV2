@@ -25,6 +25,9 @@ foundation (#179).
    "engineer" is just the user asking ("how do I make the most of my kit here?") —
    the equipment context is already present, so the same agent answers. Only the
    librarian is a genuinely separate (non-conversational) component.
+5. **Guided cook mode never shows less than plain cook mode** (#761). Guidance is
+   added on top of what the recipe already says — it never replaces or withholds it,
+   so every amount plain cook mode prints must be on the guided screen too.
 
 ## Scope boundaries
 

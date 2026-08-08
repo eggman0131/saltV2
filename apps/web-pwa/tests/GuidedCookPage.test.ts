@@ -552,8 +552,15 @@ describe('GuidedCookPage — the steps carry the plan-s notes', () => {
     );
     renderGuidedCook();
     await enterSteps();
-    // Step 2 is annotated by nothing at all, so it renders no block whatsoever.
-    expect(screen.getAllByTestId('guided-step-notes')).toHaveLength(1);
+    // Asserted on the PLAN-AUTHORED rows, not on the `guided-step-notes` <ul>.
+    // Since #761 that list also carries the loose ingredients a step introduces
+    // from no bowl, which exist whether or not the plan said anything — so its
+    // presence no longer means "the plan annotated this step". Exactly one step is
+    // annotated, and none of the other three row kinds appears anywhere.
+    expect(screen.getAllByTestId('guided-step-note-container')).toHaveLength(1);
+    expect(screen.queryByTestId('guided-step-note-setup')).toBeNull();
+    expect(screen.queryByTestId('guided-step-note-cue')).toBeNull();
+    expect(screen.queryByTestId('guided-step-check-in')).toBeNull();
   });
 
   it('omits a line the plan left null rather than inventing one', async () => {
@@ -589,7 +596,12 @@ describe('GuidedCookPage — the steps carry the plan-s notes', () => {
     renderGuidedCook();
     await enterSteps();
 
-    expect(screen.queryByTestId('guided-step-notes')).toBeNull();
+    // Asserted on the plan-authored rows rather than on the `guided-step-notes`
+    // <ul>: since #761 that list is "what guided mode adds under this step", and
+    // the loose ingredients in it come from the RECIPE, not the plan. What this
+    // test is about is that the orphaned note contributes NOTHING — no row, no
+    // text, and no re-attachment to a neighbouring step.
+    expect(screen.queryByTestId('guided-step-note-container')).toBeNull();
     expect(screen.queryByText('A bowl that is not there')).toBeNull();
   });
 
@@ -642,6 +654,144 @@ describe('GuidedCookPage — the steps carry the plan-s notes', () => {
     // cook mode writes it. (Its check-ins ride alongside — see the suites below.)
     await waitFor(() => expect(mainTimer()).toBeDefined());
     expect(mainTimer()).toMatchObject({ id: 'step-2', stepId: 'step-2', durationMinutes: 20 });
+  });
+});
+
+// ─── Amounts (issue #761, Phase 1) ─────────────────────────────────────────────
+//
+// The governing rule: guided mode never shows less than plain cook mode. Plain
+// mode prints an amount on the mise checklist AND again beside the step that first
+// uses it; guided mode printed it nowhere. Everything below asserts the amount is
+// now on screen — under the prep job that prepares it, inside the bowl a step
+// names, or beside a step that uses it out of no bowl at all.
+
+describe('GuidedCookPage — a prep job says how much it prepares', () => {
+  it('lists the recipe amounts under the job-s own words', () => {
+    renderGuidedCook();
+
+    const lines = screen.getAllByTestId('guided-prep-ingredient');
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toHaveTextContent('2 onions');
+    expect(lines[1]).toHaveTextContent('400g tinned tomatoes');
+    // The job's sentence is untouched — the amount is added, never spliced in.
+    expect(screen.getAllByTestId('guided-prep-row')[0]).toHaveTextContent(
+      'Dice the onions into 5mm pieces',
+    );
+  });
+
+  it('shows nothing extra for a job that names no ingredients', () => {
+    mockGuidedPlan._set(
+      makePlan({
+        prep: [{ id: 'prep-1', text: 'Get a big pan out', container: null, ingredientIds: [] }],
+      }),
+    );
+    renderGuidedCook();
+
+    expect(screen.queryByTestId('guided-prep-ingredient')).toBeNull();
+  });
+
+  it('drops an id for an ingredient the recipe no longer has, rather than erroring', () => {
+    mockGuidedPlan._set(
+      makePlan({
+        prep: [
+          {
+            id: 'prep-1',
+            text: 'Dice the onions',
+            container: 'small bowl',
+            ingredientIds: ['ing-1', 'ing-gone'],
+          },
+        ],
+      }),
+    );
+    renderGuidedCook();
+
+    const lines = screen.getAllByTestId('guided-prep-ingredient');
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toHaveTextContent('2 onions');
+  });
+});
+
+describe('GuidedCookPage — a step says what is in the bowl, and what is not', () => {
+  /** step-1 reaches for the bowl prep-1 filled; step-2 for nothing. */
+  function matchedPlan(): GuidedPlanDoc {
+    return makePlan({
+      stepNotes: [
+        // Typed with different case and spacing from the prep job's "small bowl",
+        // which is exactly how a hand-edited plan drifts.
+        { stepId: 'step-1', container: 'Small  Bowl', setup: null, cue: null, checkIns: [] },
+      ],
+    });
+  }
+
+  it('lists what is in the bowl the step names, with amounts', async () => {
+    mockGuidedPlan._set(matchedPlan());
+    renderGuidedCook();
+    await enterSteps();
+
+    const contents = screen.getAllByTestId('guided-step-container-contents');
+    expect(contents).toHaveLength(1);
+    expect(contents[0]).toHaveTextContent('2 onions');
+    // Under the bowl's own name, which is still the row the plan authored.
+    expect(screen.getByTestId('guided-step-note-container')).toHaveTextContent('Small Bowl');
+  });
+
+  it('does not reprint an ingredient already shown inside the bowl', async () => {
+    mockGuidedPlan._set(matchedPlan());
+    renderGuidedCook();
+    await enterSteps();
+
+    // ing-1 is in the bowl step 1 names, so it is not ALSO loose on step 1. ing-2
+    // is prepped by a `container: null` job ("open the tin"), so it is still
+    // printed at step 2 — being prepped is not the same as being visible.
+    const loose = screen.getAllByTestId('guided-step-loose');
+    expect(loose).toHaveLength(1);
+    expect(loose[0]).toHaveTextContent('400g tinned tomatoes');
+  });
+
+  it('renders the container line unchanged when no job fills that name', async () => {
+    // The stock fixture's step-1 asks for "The small bowl — onion" and the prep
+    // job filled "small bowl". Graceful fallback: the line the plan wrote, and no
+    // contents beneath it — never an error.
+    renderGuidedCook();
+    await enterSteps();
+
+    expect(screen.getByTestId('guided-step-note-container')).toHaveTextContent(
+      'The small bowl — onion',
+    );
+    expect(screen.queryByTestId('guided-step-container-contents')).toBeNull();
+  });
+
+  it('lists a step-s loose ingredients even when the plan annotates it not at all', async () => {
+    mockGuidedPlan._set(makePlan({ stepNotes: [] }));
+    renderGuidedCook();
+    await enterSteps();
+
+    const loose = screen.getAllByTestId('guided-step-loose');
+    expect(loose).toHaveLength(2);
+    expect(loose[0]).toHaveTextContent('2 onions');
+    expect(loose[1]).toHaveTextContent('400g tinned tomatoes');
+    expect(screen.queryByTestId('guided-step-note-container')).toBeNull();
+  });
+
+  it('shows nothing loose for a step that introduces nothing', async () => {
+    mockRecipes._set([
+      makeRecipe({
+        ingredients: [
+          {
+            id: 'group-1',
+            name: null,
+            items: [
+              makeIngredient({ id: 'ing-1', firstUsedInStepId: null }),
+              makeIngredient({ id: 'ing-2', firstUsedInStepId: null }),
+            ],
+          },
+        ],
+      }),
+    ]);
+    renderGuidedCook();
+    await enterSteps();
+
+    expect(screen.queryByTestId('guided-step-loose')).toBeNull();
   });
 });
 

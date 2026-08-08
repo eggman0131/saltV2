@@ -38,8 +38,12 @@
     withTimerStarted,
     withTimerDismissed,
     firstIncompleteStepId,
+    firstUseByStep,
     guidedMiseProgress,
     unpreppedIngredients,
+    prepEntryForContainer,
+    prepEntryIngredients,
+    looseIngredientsForStep,
     hasRecipeChanged,
     formatClock,
     timerProgress,
@@ -263,9 +267,25 @@
   //
   const noteByStep = $derived(new Map((plan?.stepNotes ?? []).map((n) => [n.stepId, n] as const)));
 
+  // ─── Amounts (issue #761) ──────────────────────────────────────────────────────
+  // Guided mode never shows less than plain cook mode. Plain mode prints an amount
+  // twice — on the mise checklist and again beside the step that first uses it —
+  // and guided mode printed it nowhere: a prep job is a SENTENCE with the
+  // quantities deliberately stripped out of it (an amount baked into prose cannot
+  // be corrected or re-scaled), and a step named a bowl without ever saying what
+  // was in it. The link was always there; only the rendering was missing.
+  //
+  // ONE first-use map for the whole cook, computed here rather than per step —
+  // `firstUseByStep` is the only first-use calculation there is, and a second one
+  // inside the each-block would be both waste and an answer waiting to disagree
+  // with plain cook mode's.
+  const firstUseMap = $derived(firstUseByStep(recipe?.ingredients ?? []));
+
   // ─── Canon icons ───────────────────────────────────────────────────────────────
-  // Only the "Also get out" rows use these — a prep JOB is an instruction, not an
-  // ingredient, and has no canon item to picture. Lookup mirrors ShoppingListPage's
+  // Every row that names an INGREDIENT uses these: "Also get out", the amounts
+  // under a prep job, a bowl's contents, and a step's loose ingredients (#761). A
+  // prep JOB itself still has none — it is an instruction, not an ingredient, and
+  // has no canon item to picture. Lookup mirrors ShoppingListPage's
   // `thumbnailFor`/`iconVersionFor`, cache-bust included.
   const canonIconMap = $derived(
     new Map(
@@ -1061,6 +1081,7 @@
               {#each prepEntries as entry (entry.id)}
                 {@const checked = checkedPrepIds.has(entry.id)}
                 {@const popping = checked && justTicked.isExiting(entry.id)}
+                {@const prepared = prepEntryIngredients(recipe, entry)}
                 <li>
                   <button
                     type="button"
@@ -1088,6 +1109,41 @@
                       <span class="text-base {checked ? 'text-muted-foreground line-through' : ''}">
                         {entry.text}
                       </span>
+                      <!-- HOW MUCH (issue #761). The job's sentence carries no
+                         quantities by design, so without these the cook is told to
+                         finely slice "the red onion" and never told there is one of
+                         them. Indented under the instruction they belong to, and
+                         between it and the container line, so the row reads
+                         top-to-bottom as do this / to this much / into that.
+                         NON-INTERACTIVE: the whole row is already a <button>, so
+                         these are plain text inside it. Deliberately NOT
+                         long-press-to-shopping-list — that gesture stays on the
+                         "Also get out" rows, which are their own buttons. -->
+                      {#if prepared.length > 0}
+                        <span class="mt-0.5 flex flex-col gap-1.5">
+                          {#each prepared as ingredient (ingredient.id)}
+                            <span
+                              class="flex items-center gap-2"
+                              data-testid="guided-prep-ingredient"
+                            >
+                              <CanonIcon
+                                thumbnail={thumbnailFor(ingredient.canonId)}
+                                name={ingredientLabel(ingredient)}
+                                version={iconVersionFor(ingredient.canonId)}
+                                dimmed={checked}
+                                size={32}
+                              />
+                              <span
+                                class="min-w-0 flex-1 text-base {checked
+                                  ? 'text-muted-foreground line-through'
+                                  : ''}"
+                              >
+                                <IngredientText {ingredient} />
+                              </span>
+                            </span>
+                          {/each}
+                        </span>
+                      {/if}
                       <!-- The destination. A job with somewhere to put the result is
                          the whole point of a prep list — when the last row is
                          ticked, everything the recipe needs is in a bowl with a
@@ -1213,6 +1269,21 @@
                timer has nothing to hang them on — they are neither shown nor armed
                rather than promised and never delivered. -->
             {@const checkIns = step.timer ? (note?.checkIns ?? []) : []}
+            <!-- What is in the bowl this step reaches for, and what it introduces
+               that came out of no bowl (issue #761). `containerContents` is empty
+               whenever the named container matches no prep job — plan drift, a
+               renamed bowl, a hand-edit — and the container line then renders
+               exactly as it did before this existed. `loose` is the first-use list
+               minus only THAT bowl's contents: an ingredient prepped elsewhere, or
+               into no container at all, is still printed here, because plain cook
+               mode prints it here. -->
+            {@const containerEntry = prepEntryForContainer(prepEntries, note?.container ?? null)}
+            {@const containerContents = prepEntryIngredients(recipe, containerEntry)}
+            {@const loose = looseIngredientsForStep(
+              firstUseMap.get(step.id) ?? [],
+              prepEntries,
+              note,
+            )}
             <section
               use:stepAnchor={step.id}
               data-step-id={step.id}
@@ -1288,20 +1359,78 @@
                      step's timer will say, and when. Displayed, never enforced —
                      starting the timer is what arms them, and ignoring one changes
                      nothing about the cook. -->
-                  {#if note && (note.container || note.setup || note.cue || checkIns.length > 0)}
+                  <!-- The guard admits `loose` too (issue #761): an ingredient this
+                     step introduces from no bowl has to be printed whether or not
+                     the plan had anything to say about the step, so this list is
+                     "everything guided mode adds under this step" rather than
+                     "everything the plan authored". -->
+                  {#if loose.length > 0 || (note && (note.container || note.setup || note.cue || checkIns.length > 0))}
                     <ul class="flex flex-col gap-3" data-testid="guided-step-notes">
-                      {#if note.container}
-                        <li class="flex items-start gap-3" data-testid="guided-step-note-container">
-                          <Icon
-                            name="Soup"
-                            size={22}
-                            class="mt-1 shrink-0 text-muted-foreground"
-                            ariaLabel="Use"
-                          />
-                          <span class="whitespace-pre-wrap text-lg">{note.container}</span>
+                      {#if note?.container}
+                        <li class="flex flex-col gap-2" data-testid="guided-step-note-container">
+                          <span class="flex items-start gap-3">
+                            <Icon
+                              name="Soup"
+                              size={22}
+                              class="mt-1 shrink-0 text-muted-foreground"
+                              ariaLabel="Use"
+                            />
+                            <span class="whitespace-pre-wrap text-lg">{note.container}</span>
+                          </span>
+                          <!-- What is actually in it. Nested UNDER the bowl's name
+                             rather than beside it: the name is the handle the cook
+                             already knows from the prep screen, and the contents are
+                             the amounts that screen showed. Empty when no prep job
+                             fills this name, in which case the row above is all
+                             there is — the pre-#761 rendering, unchanged. -->
+                          {#if containerContents.length > 0}
+                            <ul class="ml-9 flex flex-col gap-1.5">
+                              {#each containerContents as ingredient (ingredient.id)}
+                                <li
+                                  class="flex items-center gap-2"
+                                  data-testid="guided-step-container-contents"
+                                >
+                                  <CanonIcon
+                                    thumbnail={thumbnailFor(ingredient.canonId)}
+                                    name={ingredientLabel(ingredient)}
+                                    version={iconVersionFor(ingredient.canonId)}
+                                    size={32}
+                                  />
+                                  <span class="min-w-0 flex-1 text-base">
+                                    <IngredientText {ingredient} />
+                                  </span>
+                                </li>
+                              {/each}
+                            </ul>
+                          {/if}
                         </li>
                       {/if}
-                      {#if note.setup}
+                      <!-- Used here, out of no bowl. Plain cook mode reprints every
+                         ingredient at the step that first uses it; this is the same
+                         list with the bowl's own contents taken out, so nothing is
+                         said twice on one screen and nothing goes unsaid. A quiet
+                         row in the same register as the others — an ingredient is
+                         not a warning. -->
+                      {#each loose as ingredient (ingredient.id)}
+                        <li class="flex items-center gap-3" data-testid="guided-step-loose">
+                          <Icon
+                            name="Plus"
+                            size={22}
+                            class="shrink-0 text-muted-foreground"
+                            ariaLabel="Also"
+                          />
+                          <CanonIcon
+                            thumbnail={thumbnailFor(ingredient.canonId)}
+                            name={ingredientLabel(ingredient)}
+                            version={iconVersionFor(ingredient.canonId)}
+                            size={32}
+                          />
+                          <span class="min-w-0 flex-1 text-lg">
+                            <IngredientText {ingredient} />
+                          </span>
+                        </li>
+                      {/each}
+                      {#if note?.setup}
                         <li class="flex items-start gap-3" data-testid="guided-step-note-setup">
                           <Icon
                             name="Flame"
@@ -1312,7 +1441,7 @@
                           <span class="whitespace-pre-wrap text-lg">{note.setup}</span>
                         </li>
                       {/if}
-                      {#if note.cue}
+                      {#if note?.cue}
                         <li class="flex items-start gap-3" data-testid="guided-step-note-cue">
                           <Icon
                             name="Ear"
