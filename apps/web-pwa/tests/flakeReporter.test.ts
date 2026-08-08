@@ -111,6 +111,18 @@ describe('flake reporter — event mapping (#669)', () => {
     expect(event.properties.repository).toBe('eggman0131/saltV2');
   });
 
+  it('stamps the Firestore transport arm so the #734 A/B is a breakdown (#734)', () => {
+    // Unset is #122's forced long-polling, so every historical run and every
+    // ordinary run reports the same arm rather than a null.
+    expect(readRunContext({} as NodeJS.ProcessEnv).firestoreTransport).toBe('force-long-polling');
+
+    const grpc = readRunContext({
+      VITE_E2E_FIRESTORE_TRANSPORT: 'grpc',
+    } as NodeJS.ProcessEnv);
+    expect(grpc.firestoreTransport).toBe('grpc');
+    expect(toEvent(makeTest({}), grpc, ROOT).properties.firestore_transport).toBe('grpc');
+  });
+
   it('keeps CI out of the person tables and labels the source', () => {
     const event = toEvent(makeTest({}), CONTEXT, ROOT);
     expect(event.properties.$process_person_profile).toBe(false);
