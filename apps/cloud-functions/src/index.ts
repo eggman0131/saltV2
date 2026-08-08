@@ -91,10 +91,8 @@ process.env['OTEL_PROPAGATORS'] ||= 'tracecontext';
 //  1. enableFirebaseTelemetry() owns the single process-wide OTel
 //     NodeTracerProvider — it is the Genkit-native telemetry integration, so
 //     every exported callable flow and the onCanonItemWritten trigger emit
-//     spans/metrics through it (to Firebase Genkit Monitoring in prod). It is
-//     safe in the local emulator: with GENKIT_ENV=dev and forceDevExport off
-//     (the default) it does not export to GCP, so absent credentials never
-//     crash. Wrapped so a telemetry-init failure can never take down the CF.
+//     spans/metrics through it (to Firebase Genkit Monitoring in prod). Wrapped
+//     so a telemetry-init failure can never take down the CF.
 //     Once it resolves (the provider is registered), attachAiOtlpSpanProcessor()
 //     adds our PostHog AI-OTLP span processor to that same provider, so Genkit's
 //     AI spans are remapped (genkit:* → gen_ai.*/ai.*) and shipped to PostHog LLM
@@ -105,12 +103,41 @@ process.env['OTEL_PROPAGATORS'] ||= 'tracecontext';
 //     by trace_id to the AI generations. Both no-op without POSTHOG_API_KEY and
 //     are suppressed under GENKIT_TELEMETRY_SERVER (local dev → Genkit Dev UI only;
 //     set SALT_AI_OTLP_LOCAL=1 to opt back in for deliberate local verification).
+//
+//     It is NOT safe under the Functions emulator (issue #749) — hence the gate
+//     below. The emulator sets K_SERVICE in every function worker, so
+//     @genkit-ai/firebase treats the process as deployed GCP and resolves
+//     credentials for trace/metric export; that lookup reaches the GCE metadata
+//     server at 169.254.169.254, which inside Docker Desktop for Mac is a black
+//     hole (packets dropped, no RST, no refusal). The promise then NEVER settles
+//     and EVERY Genkit flow blocks behind it — measured on a trivial no-AI flow:
+//     3 ms with the boot skipped, never returned with it. The failure mode is a
+//     silent unbounded hang, not a crash, which is why it went unnoticed: locally
+//     it made the whole AI e2e surface deterministically red. GENKIT_ENV=dev does
+//     NOT make it safe (it is unset in the e2e stack, and setting it was tested
+//     and still hangs); nor does METADATA_SERVER_DETECTION=none (tested). Nothing
+//     is lost by skipping it: the emulator project (demo-salt) has no GCP backend
+//     to export to, so the credential lookup is doomed by construction. Precedent
+//     for the same root cause fixed at one call site: onCanonItemWritten.ts skips
+//     icon generation under the fake seam because the Storage upload authenticates
+//     the same way and hangs the trigger.
 //  2. PostHog server telemetry (posthog-node) — the cf-path canon.match event and
 //     server error reporting (AI model/token/cost now rides the AI-OTLP spans in
 //     (1), not a flat $ai_generation event). No-ops when POSTHOG_API_KEY is absent
 //     (e.g. an emulator run without the secret).
 //  3. registerGenkitDevTracing() points Genkit's native trace export at the
 //     local Dev UI when GENKIT_TELEMETRY_SERVER is set (pnpm dev:emulators).
+
+// Skip the GCP telemetry boot in a Functions-emulator worker (issue #749 — see
+// (1) above for the mechanism). FUNCTIONS_EMULATOR is set ONLY by the emulator, so
+// prod and staging can never take this branch and their telemetry is byte-identical
+// to before; this is the same gate shape as genkit.ts's sandboxedRuntime switch.
+// SALT_AI_OTLP_LOCAL=1 opts back in, so deliberate local verification of the
+// PostHog AI-OTLP span pipeline still works — that run pays the metadata stall,
+// which is the cost of asking for the real pipeline.
+const skipGcpTelemetryBoot =
+  Boolean(process.env['FUNCTIONS_EMULATOR']) && process.env['SALT_AI_OTLP_LOCAL'] !== '1';
+
 try {
   // Arm the trigger telemetry-readiness gate (issue #370) with the boot promise:
   // Firestore triggers await it before extracting a supplied trace, so a cold-
@@ -118,12 +145,18 @@ try {
   // async init lands (which silently dropped the trace and re-rooted the flow).
   // armCfTelemetry SETTLES readiness on rejection too, so a telemetry-export setup
   // failure (e.g. no GCP creds locally) degrades to a root trace without a separate
-  // .catch and without an unhandled rejection.
+  // .catch and without an unhandled rejection. The gate stays ARMED on the skipped
+  // path — with an already-resolved promise — so whenCfTelemetryReady() settles
+  // immediately instead of every cold-started trigger burning the full
+  // CF_TELEMETRY_READY_TIMEOUT_MS (10 s) fallback waiting for a boot that will
+  // never happen.
   armCfTelemetry(
-    enableFirebaseTelemetry().then(() => {
-      attachAiOtlpSpanProcessor();
-      attachDistributedSpanProcessor();
-    }),
+    skipGcpTelemetryBoot
+      ? Promise.resolve()
+      : enableFirebaseTelemetry().then(() => {
+          attachAiOtlpSpanProcessor();
+          attachDistributedSpanProcessor();
+        }),
   );
 } catch {
   // enableFirebaseTelemetry is async, but guard the synchronous path too.
