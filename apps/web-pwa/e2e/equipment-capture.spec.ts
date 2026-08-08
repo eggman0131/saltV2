@@ -249,7 +249,7 @@ test.describe('equipment — capture, edit, and persistence', () => {
     // clobber the seeded store right after navigation. Seeding last makes our
     // write the final snapshot the subscription delivers.
     await page.goto('/#/equipment');
-    await expect(page.getByRole('heading', { name: /kitchen/i })).toBeVisible({
+    await expect(page.getByRole('heading', { name: 'Equipment' })).toBeVisible({
       timeout: HYDRATE_TIMEOUT,
     });
 
@@ -306,7 +306,7 @@ test.describe('equipment — capture, edit, and persistence', () => {
     // Navigate first, then seed (see the list-appears test for the seed-vs-
     // subscription ordering rationale).
     await page.goto('/#/equipment');
-    await expect(page.getByRole('heading', { name: /kitchen/i })).toBeVisible({
+    await expect(page.getByRole('heading', { name: 'Equipment' })).toBeVisible({
       timeout: HYDRATE_TIMEOUT,
     });
 

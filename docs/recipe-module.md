@@ -310,7 +310,13 @@ Two further asymmetries worth recording:
 
 - **`needs_approval` carries, `producesCanonId` does not.** The flag means
   "AI-authored, not yet read by a human", and copying something is not reading it —
-  it clears the normal way, when someone opens the copy. The buy-or-make link is
+  the copy clears the normal way, when someone says so: an editor save, the review
+  chip on the recipe page, or **Mark reviewed** on the `/mine` queue row (#755).
+  Merely opening the copy clears nothing, because viewing writes nothing at all.
+  That is also why `/mine`'s queue is this flag and not a derived signal: an
+  inference from `updatedAt === createdAt` had no clear action short of an editor
+  round-trip, and swept up every hand-typed entry nobody had reason to revisit.
+  The buy-or-make link is
   the opposite: two recipes both claiming to produce Chicken Stock would both
   surface from `findProducingRecipes`, so the copy starts unclaimed.
 - **Ingredient / group / step ids are copied verbatim, never re-minted.** They are

@@ -21,6 +21,7 @@ import {
   removeAttendee,
   setAttendeeHomeTime,
   setAttendeeNote,
+  weekExtendsIntoNext,
   type Attendee,
   type MealPlanConfig,
   type MealPlanTemplate,
@@ -47,6 +48,12 @@ import type { Readable } from 'svelte/store';
 // `Record<string, Day>`, so writing a foreign date key into the wrong week's
 // document is not an error anywhere in the stack — it is silent corruption of
 // production data.
+//
+// Since #755 there are THREE claims on that set, not two: the planner's primary
+// and extension weeks, plus one or two weeks the kitchen page holds, anchored on
+// today rather than on what the planner is showing. They overlap constantly, so
+// the subscription set is a union and no claimant may close a week by name —
+// see `pruneWeekSubscriptions`.
 
 const DEFAULT_FIRST_DAY: Weekday = 'mon';
 
@@ -88,6 +95,18 @@ const _subscribedStart = writable<string>('');
 // Start date of the optional SECOND week held alongside the primary one, or ''
 // for none. Purely additive: it never changes what "the current week" means.
 const _extensionStart = writable<string>('');
+// Start dates of the weeks the KITCHEN page holds (issue #755), or [] when it is
+// not mounted. A third, independent slot: anchored on TODAY rather than on
+// `_anchorDate`, because "which nights are mine next" is a question about now,
+// not about wherever the planner was last scrolled to. One or two entries — the
+// second appears in the last days of a cycle, on the same `weekExtendsIntoNext`
+// rule the planner extends on.
+const _kitchenStarts = writable<readonly string[]>([]);
+// The `today` the current kitchen set was computed for, or '' when there is
+// none. Exported so `personalViewService` filters its nights against exactly the
+// day these subscriptions were opened for, rather than reading a second clock of
+// its own that could disagree with them across midnight.
+const _kitchenToday = writable<string>('');
 // Per-week loading flags, keyed by start date. Absent = not loaded yet.
 const _loading = writable<Record<string, boolean>>({});
 
@@ -122,6 +141,21 @@ export const extensionWeek: Readable<MealPlanWeek | null> = derived(
   [_weeks, _extensionStart],
   ([$w, $start]) => ($start ? ($w[$start] ?? emptyWeek($start)) : null),
 );
+
+/**
+ * The week documents the kitchen slot is holding, in date order (issue #755).
+ *
+ * Only weeks a document actually exists for: unlike `currentWeek` there is no
+ * empty-week fallback, because nobody is editing these. An unplanned week has no
+ * chef nights in it, and fabricating seven blank days to say so would be noise.
+ */
+export const kitchenWeeks: Readable<readonly MealPlanWeek[]> = derived(
+  [_weeks, _kitchenStarts],
+  ([$w, $starts]) => $starts.map((s) => $w[s]).filter((w): w is MealPlanWeek => w !== undefined),
+);
+
+/** The date `kitchenWeeks` was computed for, or '' when the slot is empty. */
+export const kitchenAnchorDate: Readable<string> = _kitchenToday;
 
 // ─── Subscriptions / navigation ───────────────────────────────────────────────
 
@@ -191,9 +225,18 @@ function unsubscribeWeekDoc(start: string): void {
   _loading.update((l) => without(l, start));
 }
 
-// Keep exactly the primary and (if set) extension weeks subscribed.
+// Keep the weeks SOMEBODY still wants: the primary, the (optional) extension, and
+// whatever the kitchen slot is holding.
+//
+// The keep-set is a UNION, and that is the whole safety property. Two pages now
+// ask for weeks independently and they routinely ask for the same one, so no
+// caller may drop a week by name — leaving the planner would otherwise close the
+// kitchen's subscription, and vice versa. Each caller clears its OWN claim and
+// then re-asserts the union here.
 function pruneWeekSubscriptions(): void {
-  const keep = new Set([get(_subscribedStart), get(_extensionStart)].filter(Boolean));
+  const keep = new Set(
+    [get(_subscribedStart), get(_extensionStart), ...get(_kitchenStarts)].filter(Boolean),
+  );
   for (const start of [...weekUnsubs.keys()]) {
     if (!keep.has(start)) unsubscribeWeekDoc(start);
   }
@@ -224,12 +267,71 @@ export function setExtensionWeek(start: string | null): void {
   pruneWeekSubscriptions();
 }
 
+// Is the kitchen page mounted? A plain boolean, and it is load-bearing: the
+// config snapshot re-asserts the kitchen weeks (below), and without this flag a
+// `firstDayOfWeek` change arriving while nobody is on that page would open week
+// documents for a screen that does not exist.
+let kitchenActive = false;
+
+// The one or two weeks the kitchen page needs, anchored on today.
+//
+// The second week is the planner's own extension rule (`weekExtendsIntoNext`),
+// reused rather than re-derived: what makes the last three days of a cycle the
+// moment next week matters is a fact about the household's week, not about the
+// planner, so both pages must agree by construction or one of them will start
+// showing a Friday the other does not.
+function kitchenStartsForToday(today: string): string[] {
+  const day = firstDay();
+  const start = weekStartFor(today, day);
+  return weekExtendsIntoNext(start, today, day) ? [start, addDays(start, 7)] : [start];
+}
+
+// (Re)assert the kitchen's claim on its weeks. No-op unless the page is mounted.
+function syncKitchenSubscriptions(): void {
+  if (!kitchenActive) return;
+  const today = todayIso();
+  _kitchenToday.set(today);
+  const starts = kitchenStartsForToday(today);
+  _kitchenStarts.set(starts);
+  for (const start of starts) subscribeWeekDoc(start);
+  pruneWeekSubscriptions();
+}
+
+/**
+ * Hold the week (or two) the kitchen page projects "Cooking soon" from, until the
+ * returned teardown is called (issue #755).
+ *
+ * Page-owned rather than started at auth time, for the reason the planner's
+ * extension is: these are real subscriptions on a module-level singleton, and a
+ * second week document kept alive for a page nobody is looking at is exactly the
+ * cost the planner already refuses to pay.
+ *
+ * The teardown drops the CLAIM and re-prunes; it never unsubscribes a week by
+ * name. The planner may be holding the very same document, and only the union in
+ * `pruneWeekSubscriptions` knows that.
+ */
+export function subscribeKitchenWeeks(): () => void {
+  kitchenActive = true;
+  syncKitchenSubscriptions();
+  return () => {
+    kitchenActive = false;
+    _kitchenStarts.set([]);
+    _kitchenToday.set('');
+    pruneWeekSubscriptions();
+  };
+}
+
 export function initMealPlanSync(): () => void {
   configUnsub = subscribeMealPlanConfig(
     (c) => {
       _config.set(c);
       // firstDayOfWeek may have changed which date this week starts on.
       syncWeekSubscription();
+      // And with it which document today's nights live in. `firstDay()` answers
+      // 'mon' until this snapshot lands, so on the common cold-launch ordering —
+      // mount, subscribe under the fallback, config arrives saying 'fri' — the
+      // kitchen's first guess was the wrong week identity entirely.
+      syncKitchenSubscriptions();
     },
     () => {
       // Config load errors leave the last-known config (or null) in place; the
@@ -250,6 +352,9 @@ export function initMealPlanSync(): () => void {
     templateUnsub?.();
     configUnsub = templateUnsub = null;
     _extensionStart.set('');
+    kitchenActive = false;
+    _kitchenStarts.set([]);
+    _kitchenToday.set('');
     for (const start of [...weekUnsubs.keys()]) unsubscribeWeekDoc(start);
   };
 }
@@ -288,6 +393,13 @@ function currentTemplateObject(): MealPlanTemplate {
 // True once we can honestly claim to know what is in a week's document: either
 // we hold a snapshot, or we have a live subscription that has told us (or is
 // about to tell us) there is none.
+//
+// The kitchen slot WIDENS this set while that page is mounted, and that is
+// correct: `addRecipeToDay` will then build on the held document instead of
+// re-reading, which is safe precisely because a kitchen week has a live listener
+// keeping it fresh. The thing forbidden by docs/meal-planning.md is caching a
+// week nothing is listening to — a one-shot read left behind, which nothing would
+// ever refresh.
 function weekIsKnown(start: string): boolean {
   return weekUnsubs.has(start) || get(_weeks)[start] !== undefined;
 }
@@ -503,6 +615,7 @@ export function __resetMealPlanServiceForTest(): void {
   configUnsub?.();
   templateUnsub?.();
   configUnsub = templateUnsub = null;
+  kitchenActive = false;
   for (const unsub of weekUnsubs.values()) unsub();
   weekUnsubs.clear();
   latestWeekUpdatedAt.clear();
@@ -512,6 +625,8 @@ export function __resetMealPlanServiceForTest(): void {
   _anchorDate.set(todayIso());
   _subscribedStart.set('');
   _extensionStart.set('');
+  _kitchenStarts.set([]);
+  _kitchenToday.set('');
   _loading.set({});
 }
 

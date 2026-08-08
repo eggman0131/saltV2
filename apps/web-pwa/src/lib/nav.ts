@@ -15,19 +15,26 @@ import { pop, push } from 'svelte-spa-router';
 // its active-indicator pill; everything else goes in `overflowNavItems`. The
 // desktop SideNav shows both lists inline (see AppShell).
 //
-// The fourth slot is the personal view ("Mine", issue #634), which took the slot
+// The fourth slot is the personal view ("Kitchen", issue #634), which took the slot
 // Chef vacated to the overflow. Its live "what's open now" badge is attached in
 // App.svelte, where the stores it counts are subscribed.
 //
-// "Mine" was shown to admins only until #682, while the view was still deciding
+// The tab was shown to admins only until #682, while the view was still deciding
 // what it was for. It now answers exactly one question — what of mine is running
 // right now, and what needs a look — so it is fit for the whole household and
 // the filter is gone. Every member sees four primary tabs.
+//
+// It was labelled "Mine" until #755, which renamed it "Kitchen" — the room, not a
+// possessive, since what it shows is the state of the kitchen you share. The id,
+// href and route are unchanged: only the word on the tab moved. One word by
+// necessity — BottomNav gives each of five columns an equal slice of a fixed bar
+// and never truncates (ui-spec-v04 §17.2), and "Kitchen" is no wider than the
+// "Recipes" and "Planner" already sitting beside it.
 export const navItems: NavItem[] = [
   { id: 'shopping', label: 'Shop', icon: ShoppingCart, href: '#/shopping' },
   { id: 'mealplan', label: 'Planner', icon: CalendarDays, href: '#/mealplan' },
   { id: 'recipes', label: 'Recipes', icon: BookOpen, href: '#/recipes' },
-  { id: 'mine', label: 'Mine', icon: UserRound, href: '#/mine' },
+  { id: 'mine', label: 'Kitchen', icon: UserRound, href: '#/mine' },
 ];
 
 // Set-up-and-forget destinations: folded behind the BottomNav's "More" tab on

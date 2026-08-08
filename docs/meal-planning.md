@@ -199,6 +199,52 @@ rather than becoming a blind overwrite. That one-shot read is deliberately **not
 cached in the service's week store: nothing is listening to it, so nothing would
 refresh it, and its presence would make `weekIsKnown` lie to the next writer.
 
+### A second page now holds planner weeks (#755)
+
+`mealPlanService` has **three** claims on its subscription set, not two. The
+planner owns the primary week and the optional extension week; the Kitchen page
+(`/mine`) owns a third slot, `subscribeKitchenWeeks()`, holding the one or two
+weeks its *Cooking soon* list projects over.
+
+**Anchored on today, not on `_anchorDate`.** The planner's weeks follow wherever
+the user scrolled to; "which nights are mine next" is a question about now. Browse
+to October in the planner, switch to the Kitchen, and the answer must still be
+*this* week — so the kitchen slot recomputes `weekStartFor(today, firstDayOfWeek)`
+for itself and never reads or moves the planner's anchor. It takes a second week
+on exactly the planner's own `weekExtendsIntoNext` rule, reused rather than
+re-derived: what makes the last three days of a cycle the moment next week matters
+is a fact about the household's week, and two pages disagreeing about it would be
+a defect nobody could see from either one.
+
+**The keep-set is a union, and no claimant may close a week by name.** The two
+pages ask for weeks independently and routinely ask for the *same* week — today's,
+most of the time — so `pruneWeekSubscriptions` keeps the union of primary +
+extension + kitchen starts, and each caller's teardown clears only its own claim
+before re-asserting it. Unsubscribing a kitchen week directly on unmount would
+close the planner's live subscription behind it and freeze a page that is still
+open. In the common case the union is why the Kitchen costs **no** extra read at
+all: `subscribeWeekDoc` is idempotent, so a week the planner already holds is
+shared rather than opened twice.
+
+**It is page-owned, not started at auth time.** Same bargain the extension week
+strikes: these are real subscriptions on a module-level singleton, and holding a
+week document open for a screen nobody is looking at is the cost the planner
+already refuses to pay. The nav badge deliberately does not read this projection,
+so no other page drags the weeks in.
+
+**Recomputed on the config snapshot.** `firstDayOfWeek` answers `'mon'` until the
+config document lands. On a cold launch — mount, subscribe under the fallback,
+config arrives saying `'fri'` — a set computed in that gap is the wrong week
+*identity*, not merely a stale one, so the kitchen slot re-asserts itself in the
+same callback that calls `syncWeekSubscription()`.
+
+**It widens `weekIsKnown`, and that is safe.** While the Kitchen is mounted,
+`addRecipeToDay` will build on a held kitchen week instead of re-reading it. The
+prohibition above is specifically about a week **nothing is listening to**; a
+kitchen week has a live listener keeping it fresh, which is the property that
+makes the optimistic path honest. `loadMealPlanWeek` is deliberately *not* used
+for these weeks for the same reason.
+
 ### The note-only night attaches its own picture (#652)
 
 A night planned in a sentence — "roast chicken dinner", no recipe and none ever

@@ -320,10 +320,12 @@ export {
   shopDayForWeek,
 } from './shoppingDay/index.js';
 
-// Personal-view module (issues #634, #682) — the projection behind "Mine": the
-// standing queue of entries nobody has saved yet. Pure, no per-user storage and
-// no clock.
-export { needsReview } from './personalView/index.js';
+// Personal-view module (issues #634, #682, #755) — the projections behind
+// "Kitchen": which nights from today onward are yours to cook, across however
+// many week documents the caller is holding. Pure, no per-user storage and no
+// clock.
+export { upcomingChefDays } from './personalView/index.js';
+export type { ChefNight } from './personalView/index.js';
 
 // URL module — pure display-time cache-buster for regenerated image URLs (#460).
 export { appendCacheBuster } from './url/index.js';

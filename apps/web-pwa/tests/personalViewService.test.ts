@@ -1,38 +1,49 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { get } from 'svelte/store';
-import type { Recipe } from '@salt/domain';
+import { emptyWeek, setDayChefs, setDayNote, setDayRecipes, type Recipe } from '@salt/domain';
 import type { CookActiveTimerDoc, CookSessionDoc } from '@salt/domain/schemas';
 
 // The personal view's composition layer (issues #634, #682). Everything it reads
 // is a store that is already subscribed app-wide, so these tests drive fake stores
 // and assert the projection: my timers, my open cooks, and what still wants a look.
 
-const { mockRecipes, mockSessions } = vi.hoisted(() => {
-  function makeStore<T>(initial: T) {
-    let value = initial;
-    const subs = new Set<(v: T) => void>();
+const { mockRecipes, mockSessions, mockChats, mockKitchenWeeks, mockToday, mockMember } =
+  vi.hoisted(() => {
+    function makeStore<T>(initial: T) {
+      let value = initial;
+      const subs = new Set<(v: T) => void>();
+      return {
+        subscribe(fn: (v: T) => void) {
+          subs.add(fn);
+          fn(value);
+          return () => {
+            subs.delete(fn);
+          };
+        },
+        _set(v: T) {
+          value = v;
+          subs.forEach((f) => f(v));
+        },
+      };
+    }
     return {
-      subscribe(fn: (v: T) => void) {
-        subs.add(fn);
-        fn(value);
-        return () => {
-          subs.delete(fn);
-        };
-      },
-      _set(v: T) {
-        value = v;
-        subs.forEach((f) => f(v));
-      },
+      mockRecipes: makeStore<unknown[]>([]),
+      mockSessions: makeStore<unknown[]>([]),
+      mockChats: makeStore<unknown[]>([]),
+      mockKitchenWeeks: makeStore<unknown[]>([]),
+      mockToday: makeStore<string>(''),
+      mockMember: makeStore<unknown>(null),
     };
-  }
-  return {
-    mockRecipes: makeStore<unknown[]>([]),
-    mockSessions: makeStore<unknown[]>([]),
-  };
-});
+  });
 
 vi.mock('../src/lib/recipeService.js', () => ({ recipes: mockRecipes }));
 vi.mock('../src/lib/cookSessionService.js', () => ({ myCookSessions: mockSessions }));
+vi.mock('../src/lib/chatService.js', () => ({ sessions: mockChats }));
+vi.mock('../src/lib/mealPlanService.js', () => ({
+  kitchenWeeks: mockKitchenWeeks,
+  kitchenAnchorDate: mockToday,
+}));
+vi.mock('../src/lib/membersService.js', () => ({ currentMember: mockMember }));
 
 import {
   firedTimers,
@@ -40,7 +51,9 @@ import {
   mineOpenCount,
   myTimers,
   needsReviewRecipes,
+  recentChats,
   timerNowMs,
+  upcomingChefNights,
 } from '../src/lib/personalViewService.js';
 
 const NOW = Date.parse('2026-08-05T12:00:00.000Z');
@@ -121,6 +134,10 @@ beforeEach(() => {
   vi.setSystemTime(NOW);
   mockRecipes._set([]);
   mockSessions._set([]);
+  mockChats._set([]);
+  mockKitchenWeeks._set([]);
+  mockToday._set('');
+  mockMember._set(null);
 });
 
 afterEach(() => {
@@ -251,30 +268,188 @@ describe('timerNowMs', () => {
   });
 });
 
+// "Cooking soon" (#755). The window and the span are the domain helper's; what is
+// asserted here is the RESOLUTION — the member id, the entries that name the meal,
+// and the distance from the same today the weeks were subscribed for.
+describe('upcomingChefNights', () => {
+  const ALEX = { id: 'alex@e.org', name: 'Alex Green' };
+  const MONDAY = '2026-08-03';
+  const NEXT_MONDAY = '2026-08-10';
+
+  function week(start: string, dates: string[]) {
+    return dates.reduce((w, d) => setDayChefs(w, d, [ALEX.id]), emptyWeek(start));
+  }
+
+  it('is my nights, soonest first, with how far off each one is', () => {
+    mockMember._set(ALEX);
+    mockToday._set('2026-08-05');
+    mockKitchenWeeks._set([week(MONDAY, ['2026-08-04', '2026-08-05', '2026-08-08'])]);
+
+    expect(get(upcomingChefNights).map((n) => [n.date, n.daysAway])).toEqual([
+      ['2026-08-05', 0],
+      ['2026-08-08', 3],
+    ]);
+  });
+
+  it('spans the week boundary, so the last days of a cycle still show what is next', () => {
+    mockMember._set(ALEX);
+    mockToday._set('2026-08-07');
+    mockKitchenWeeks._set([week(MONDAY, ['2026-08-08']), week(NEXT_MONDAY, ['2026-08-11'])]);
+
+    expect(get(upcomingChefNights).map((n) => n.date)).toEqual(['2026-08-08', '2026-08-11']);
+  });
+
+  it('resolves attached entries live from the recipes store', () => {
+    mockRecipes._set([recipe('r1', 'Ragu'), recipe('r2', 'Focaccia')]);
+    mockMember._set(ALEX);
+    mockToday._set('2026-08-05');
+    mockKitchenWeeks._set([
+      setDayRecipes(week(MONDAY, ['2026-08-06']), '2026-08-06', ['r1', 'r2']),
+    ]);
+
+    expect(get(upcomingChefNights)[0]?.recipes.map((r) => r.title)).toEqual(['Ragu', 'Focaccia']);
+  });
+
+  it('drops an entry that has since been deleted rather than carrying a dead title', () => {
+    mockRecipes._set([recipe('r1', 'Ragu')]);
+    mockMember._set(ALEX);
+    mockToday._set('2026-08-05');
+    mockKitchenWeeks._set([
+      setDayRecipes(week(MONDAY, ['2026-08-06']), '2026-08-06', ['r1', 'gone']),
+    ]);
+
+    expect(get(upcomingChefNights)[0]?.recipes.map((r) => r.id)).toEqual(['r1']);
+  });
+
+  it('carries the day itself, so a note-only night can still say what it is', () => {
+    mockMember._set(ALEX);
+    mockToday._set('2026-08-05');
+    mockKitchenWeeks._set([setDayNote(week(MONDAY, ['2026-08-06']), '2026-08-06', 'leeks')]);
+
+    expect(get(upcomingChefNights)[0]?.day.note).toBe('leeks');
+    expect(get(upcomingChefNights)[0]?.recipes).toEqual([]);
+  });
+
+  it('is empty when the sign-in matches nobody on the roster', () => {
+    // Better to show no section than to claim every night in the house is yours.
+    mockMember._set(null);
+    mockToday._set('2026-08-05');
+    mockKitchenWeeks._set([week(MONDAY, ['2026-08-06', '2026-08-07'])]);
+
+    expect(get(upcomingChefNights)).toEqual([]);
+  });
+
+  it('is empty before the page has opened any week', () => {
+    mockMember._set(ALEX);
+    expect(get(upcomingChefNights)).toEqual([]);
+  });
+
+  it('stays out of the nav badge — a night you are cooking is not a summons', () => {
+    mockMember._set(ALEX);
+    mockToday._set('2026-08-05');
+    mockKitchenWeeks._set([week(MONDAY, ['2026-08-06'])]);
+
+    expect(get(upcomingChefNights)).toHaveLength(1);
+    expect(get(mineOpenCount)).toBe(0);
+  });
+});
+
 describe('needsReviewRecipes', () => {
-  it('lists what nobody has saved yet, newest first, with no time limit', () => {
+  const unreviewed = (id: string, title: string, overrides: Partial<Recipe> = {}) =>
+    recipe(id, title, { needs_approval: true, ...overrides } as Partial<Recipe>);
+
+  it('lists what carries the flag, newest first, with no time limit', () => {
     mockRecipes._set([
-      recipe('old', 'Ancient import', {
-        createdAt: '2025-01-01T00:00:00.000Z',
-        updatedAt: '2025-01-01T00:00:00.000Z',
-      }),
-      recipe('new', 'Yesterday', {
-        createdAt: '2026-08-04T00:00:00.000Z',
-        updatedAt: '2026-08-04T00:00:00.000Z',
-      }),
-      recipe('done', 'Reviewed', { updatedAt: '2026-08-02T00:00:00.000Z' }),
+      unreviewed('old', 'Ancient import', { createdAt: '2025-01-01T00:00:00.000Z' }),
+      unreviewed('new', 'Yesterday', { createdAt: '2026-08-04T00:00:00.000Z' }),
     ]);
 
     expect(get(needsReviewRecipes).map((r) => r.id)).toEqual(['new', 'old']);
   });
 
-  it('leaves out the kinds nobody would ever edit', () => {
+  it('leaves out everything the flag is not set on (issue #755)', () => {
+    // The queue is the stored flag now, not "updatedAt === createdAt". A recipe
+    // typed in by hand and never touched again has been read by the person who
+    // typed it — it was never a review item, and used to be one.
     mockRecipes._set([
+      unreviewed('flagged', 'URL import'),
+      recipe('handwritten', 'Never edited'),
+      recipe('cleared', 'Already reviewed', { needs_approval: false } as Partial<Recipe>),
+    ]);
+    expect(get(needsReviewRecipes).map((r) => r.id)).toEqual(['flagged']);
+  });
+
+  it('does not gate on kind — a flagged entry of any kind is in the queue', () => {
+    // The isCookable gate went with the derived predicate: only the import flows
+    // set the flag, so there is nothing to keep out.
+    mockRecipes._set([
+      unreviewed('c1', 'Negroni', { kind: 'cocktail' } as Partial<Recipe>),
       recipe('p1', 'Generic Comfort', { kind: 'placeholder' } as Partial<Recipe>),
       recipe('o1', 'Takeaway', { kind: 'outing' } as Partial<Recipe>),
-      recipe('r1', 'Noodle Bowl'),
     ]);
-    expect(get(needsReviewRecipes).map((r) => r.id)).toEqual(['r1']);
+    expect(get(needsReviewRecipes).map((r) => r.id)).toEqual(['c1']);
+  });
+});
+
+describe('recentChats', () => {
+  function chat(id: string, title: string, updatedAt: string, recipeId: string | null = null) {
+    return {
+      id,
+      schemaVersion: 1,
+      ownerUid: 'uid-a',
+      recipeId,
+      title,
+      messages: [],
+      createdAt: '2026-07-01T00:00:00.000Z',
+      updatedAt,
+      expiresAt: '2026-08-19T00:00:00.000Z',
+    };
+  }
+
+  it('is newest-touched first, matching the chat list itself', () => {
+    mockChats._set([
+      chat('mid', 'Braising', '2026-08-03T00:00:00.000Z'),
+      chat('newest', 'Sourdough', '2026-08-05T00:00:00.000Z'),
+      chat('oldest', 'Stock', '2026-07-20T00:00:00.000Z'),
+    ]);
+    expect(get(recentChats).map((c) => c.id)).toEqual(['newest', 'mid', 'oldest']);
+  });
+
+  it('caps at five — a shortcut, not a second chat list', () => {
+    mockChats._set(
+      Array.from({ length: 9 }, (_u, i) =>
+        chat(`c${i}`, `Chat ${i}`, `2026-08-0${i + 1}T00:00:00.000Z`),
+      ),
+    );
+    const ids = get(recentChats).map((c) => c.id);
+    expect(ids).toHaveLength(5);
+    expect(ids).toEqual(['c8', 'c7', 'c6', 'c5', 'c4']);
+  });
+
+  it('includes recipe-attached sessions — a chat is a chat (#707 duplication accepted)', () => {
+    mockChats._set([
+      chat('general', 'General', '2026-08-02T00:00:00.000Z'),
+      chat('attached', 'Ragu chat', '2026-08-04T00:00:00.000Z', 'r1'),
+    ]);
+    expect(get(recentChats).map((c) => c.id)).toEqual(['attached', 'general']);
+  });
+
+  it('is empty with no chats, so the section can be absent entirely', () => {
+    expect(get(recentChats)).toEqual([]);
+  });
+
+  it("passes a long naive title through untouched — truncation is the row's job", () => {
+    // Until generateChatTitle lands, a title is `text.slice(0, 60)` of the first
+    // message. The store must not shorten or tidy it; the row truncates on display.
+    const naive = 'how do i stop my sourdough starter from smelling like acetone';
+    mockChats._set([chat('c1', naive, '2026-08-05T00:00:00.000Z')]);
+    expect(get(recentChats)[0]?.title).toBe(naive);
+  });
+
+  it('stays out of the nav badge — a chat you had is not waiting on you', () => {
+    mockChats._set([chat('c1', 'Sourdough', '2026-08-05T00:00:00.000Z')]);
+    expect(get(recentChats)).toHaveLength(1);
+    expect(get(mineOpenCount)).toBe(0);
   });
 });
 
@@ -299,7 +474,7 @@ describe('mineOpenCount', () => {
   });
 
   it('leaves the review queue out — a standing queue must not pin a badge', () => {
-    mockRecipes._set([recipe('r1', 'Never reviewed')]);
+    mockRecipes._set([recipe('r1', 'Never reviewed', { needs_approval: true } as Partial<Recipe>)]);
     expect(get(needsReviewRecipes)).toHaveLength(1);
     expect(get(mineOpenCount)).toBe(0);
   });

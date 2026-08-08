@@ -54,7 +54,7 @@
 </script>
 
 <ListPage
-  title="Kitchen"
+  title="Equipment"
   description="Your equipment manifest."
   isLoading={$isLoadingEquipment}
   isEmpty={visibleItems.length === 0}
