@@ -10,6 +10,9 @@ vi.mock('@salt/firebase-sync', () => ({
   upsertCanonItem: vi.fn().mockResolvedValue(undefined),
   deleteCanonItem: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   callMatchOrCreate: vi.fn(),
+  loadCanonPurchaseCounts: vi
+    .fn()
+    .mockResolvedValue({ kind: 'ok', value: { counts: {}, lastAt: {} } }),
   isAuthTransitioning: vi.fn(() => false),
 }));
 

@@ -53,6 +53,14 @@ vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
 vi.mock('../src/lib/canonService.js', () => ({
   canonItems: mockCanonItems,
   aisles: mockAisles,
+  // The add field ranks by tick-off count (#726); ordering is not this file's
+  // subject, so an empty readable is enough — see ShoppingListPage.addFieldOrder.
+  purchaseCounts: {
+    subscribe(fn: (v: Record<string, number>) => void) {
+      fn({});
+      return () => {};
+    },
+  },
 }));
 vi.mock('../src/lib/productFormService.js', () => ({
   productForms: mockForms,

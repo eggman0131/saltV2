@@ -122,6 +122,9 @@ export type { CanonEmbeddingDoc } from './canonEmbedding.js';
 export { AisleSchema, AislesDocumentSchema } from './aislesDocument.js';
 export type { AisleDoc, AislesDocumentDoc } from './aislesDocument.js';
 
+export { CanonPurchaseCountsSchema } from './canonPurchaseCounts.js';
+export type { CanonPurchaseCountsDoc } from './canonPurchaseCounts.js';
+
 export {
   AccessorySchema,
   EquipmentItemSchema,

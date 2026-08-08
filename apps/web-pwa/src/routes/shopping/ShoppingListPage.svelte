@@ -41,7 +41,7 @@
     resolveItemDisplayName,
   } from '@salt/domain';
   import type { ShoppingListItem, AisleRow, AmountSubtotal } from '@salt/domain';
-  import { canonItems, aisles } from '../../lib/canonService.js';
+  import { canonItems, aisles, purchaseCounts } from '../../lib/canonService.js';
   import {
     lists,
     defaultListId,
@@ -304,7 +304,21 @@
   // find and refocus the freshly-mounted input after an item is added.
   let addFieldEl = $state<HTMLDivElement | undefined>(undefined);
 
-  const comboItems = $derived($canonItems.map((c) => ({ value: c.id, label: titleCase(c.name) })));
+  // Most-bought first, then alphabetical (issue #726). Combobox filters in place
+  // and preserves the consumer's array order (ui-spec-v04 §4.1), so ranking is
+  // this page's job and needs no change to the primitive. Sorting on the canon
+  // `name` rather than the title-cased label keeps the comparison on the one
+  // string that cannot drift with presentation. Day one every count is zero, so
+  // the tiebreak IS the ordering — already steadier than collection order.
+  const comboItems = $derived(
+    [...$canonItems]
+      .sort(
+        (a, b) =>
+          ($purchaseCounts[b.id] ?? 0) - ($purchaseCounts[a.id] ?? 0) ||
+          a.name.localeCompare(b.name),
+      )
+      .map((c) => ({ value: c.id, label: titleCase(c.name) })),
+  );
 
   function filterFn(input: string, comboItem: { value: string; label: string }): boolean {
     const q = input.trim().toLowerCase();

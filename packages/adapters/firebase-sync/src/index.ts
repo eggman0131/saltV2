@@ -14,6 +14,10 @@ export {
   deleteProductForm,
 } from './productFormSubscription.js';
 export { subscribeAisles, saveAisles } from './aisleSubscription.js';
+// Purchase counts (issue #726): the tick-off history behind the add field's
+// ordering. One write per GESTURE carrying `increment` transforms — see
+// canonPurchaseSync.ts for why the sentinel cannot leave this package.
+export { recordCanonPurchases, loadCanonPurchaseCounts } from './canonPurchaseSync.js';
 export {
   subscribeEquipmentManifest,
   saveEquipmentManifest,
