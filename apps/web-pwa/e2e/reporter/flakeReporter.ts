@@ -114,6 +114,14 @@ export type FlakeEvent = {
     repository: string | null;
     workflow: string | null;
     /**
+     * Which Firestore transport the emulator ran on (issue #734, Phase 2):
+     * `force-long-polling` (#122's default), `auto-detect`, or `grpc`. A
+     * first-class property, not a `ctx_*` one — it is a fact about the RUN, set
+     * before any test starts, and every event in the run carries the same value.
+     * This is what makes the transport A/B a breakdown instead of a workflow.
+     */
+    firestore_transport: string | null;
+    /**
      * Scalars a test contributed via a `flake-context` attachment — the app-side
      * state at the moment it failed, promoted from artifact-only to queryable.
      *
@@ -140,6 +148,7 @@ export type RunContext = {
   runAttempt: number | null;
   repository: string | null;
   workflow: string | null;
+  firestoreTransport: string | null;
 };
 
 const OUTCOME_TO_STATUS: Record<ReturnType<TestCase['outcome']>, TestStatus> = {
@@ -213,6 +222,10 @@ export function readRunContext(env: NodeJS.ProcessEnv, config?: FullConfig): Run
     runAttempt: Number.isFinite(attempt) && attempt > 0 ? attempt : null,
     repository: env.GITHUB_REPOSITORY ?? null,
     workflow: env.GITHUB_WORKFLOW ?? null,
+    // globalSetup.ts resolves and validates the arm, then exports it to the
+    // spawned Vite server; the reporter is a sibling process of that setup, so
+    // it reads the same variable and applies the same default.
+    firestoreTransport: env.VITE_E2E_FIRESTORE_TRANSPORT || 'force-long-polling',
   };
 }
 
@@ -427,6 +440,7 @@ export function toEvent(
       error,
       ms_into_shard: position?.msIntoShard ?? null,
       ...contextProperties(test),
+      firestore_transport: context.firestoreTransport,
       branch: context.branch,
       commit_sha: context.commitSha,
       run_id: context.runId,

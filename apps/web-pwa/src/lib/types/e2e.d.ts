@@ -8,6 +8,7 @@ import type {
   ShoppingListItem,
 } from '@salt/domain';
 import type { ObservabilitySessionMeta } from '@salt/observability';
+import type { E2EFirestoreCacheProbe } from '@salt/firebase-sync';
 import type { ChatSessionDoc } from '@salt/domain/schemas';
 
 export interface SeedCanonItemInput {
@@ -76,6 +77,13 @@ export interface E2EBridge {
   // (e.g. 'populateEquipmentEntry'); `response` is the structured object the
   // flow's `ai.generate({ output })` should resolve to. Emulator-only.
   stubAi(flowName: string, response: unknown): Promise<void>;
+  // Firestore local-cache probe (issue #734). Reads `path` (a full slash-
+  // separated document path, e.g. `canonData/aisles`) from the SDK's own cache
+  // and reports what it found, so a failure snapshot can say whether the SDK
+  // still held a document the store was missing. Pure diagnostics: it resolves
+  // rather than throwing — including for the absent-from-cache case — and does
+  // no network I/O, so it can never change a test's outcome. Emulator-only.
+  probeFirestoreCache(path: string): Promise<E2EFirestoreCacheProbe>;
 }
 
 declare global {

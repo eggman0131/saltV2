@@ -4,6 +4,7 @@ import {
   setFirestoreNetwork,
   setAiStub,
   saveMealPlanWeek,
+  probeFirestoreCache,
 } from '@salt/firebase-sync';
 import type { CanonItem, MealPlanWeek, Recipe } from '@salt/domain';
 import { devSignIn } from './auth.svelte.js';
@@ -152,6 +153,14 @@ export function installE2EHooks(): void {
       // See packages/adapters/firebase-sync/src/e2eAiStubSync.ts and
       // apps/cloud-functions/src/ai/fakeModel.ts for the full contract.
       await setAiStub(flowName, response);
+    },
+
+    async probeFirestoreCache(path) {
+      // Reads the Firestore SDK's own local cache for `path` (issue #734).
+      // Failure diagnostics only: it answers "did the SDK still have the
+      // document the store was missing?". Never throws, never touches the
+      // network. See packages/adapters/firebase-sync/src/e2eFirestoreProbe.ts.
+      return probeFirestoreCache(path);
     },
 
     tagSession(meta) {
