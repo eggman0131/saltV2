@@ -24,7 +24,12 @@
     generateGuidedPlan,
     saveGuidedPlan,
   } from '../../lib/guidedPlanService.js';
-  import { flattenIngredients, hasRecipeChanged, isCookable } from '@salt/domain';
+  import {
+    flattenIngredients,
+    guidedContainerProblems,
+    hasRecipeChanged,
+    isCookable,
+  } from '@salt/domain';
   import type { GuidedPlanDoc } from '@salt/domain/schemas';
   import { kindOf } from './recipeKind.js';
   import { addToast } from '../../lib/toastStore.js';
@@ -286,6 +291,33 @@
     ),
   );
 
+  // ─── Container names (issue #761) ─────────────────────────────────────────────
+  //
+  // The plan's two halves join on the container NAME and nothing else: a step note
+  // says "onion bowl" and the job that filled the onion bowl is where that step's
+  // amounts come from. Two ways an author breaks it — the same name on two jobs
+  // (the step reaches the first one, and is shown the wrong contents) and a name no
+  // job fills (the step shows no contents at all).
+  //
+  // Both WARN and neither BLOCKS, which is the opposite call to `hasCheckInError`
+  // above and for a reason worth stating: an unfirable check-in is a promise the
+  // app cannot keep, while a mis-named bowl only costs a line of guidance from a
+  // plan that is otherwise correct and perfectly cookable. Refusing to save it
+  // would strand every hand-edit made alongside it. The save gate is unchanged.
+  //
+  // Computed off the DRAFTS, not the stored plan, so the warning appears as the
+  // problem is created and clears the moment it is fixed. Only notes for steps the
+  // recipe still has are asked about: a note for a deleted step renders nowhere, so
+  // a warning about it would be one nobody could act on.
+  const containerProblems = $derived(
+    guidedContainerProblems(
+      prepDraft,
+      (recipe?.steps ?? []).map((s) => noteFor(s.id)),
+    ),
+  );
+  const prepNumbers = $derived(new Map(prepDraft.map((p, i) => [p.id, i + 1])));
+  const stepNumbers = $derived(new Map((recipe?.steps ?? []).map((s, i) => [s.id, i + 1])));
+
   // ─── Drift ────────────────────────────────────────────────────────────────────
   //
   // The saved stamp against the live recipe (the same comparison cook mode makes
@@ -506,6 +538,50 @@
           </div>
         {/if}
 
+        {#if containerProblems.duplicates.length > 0}
+          <!-- Two jobs, one name. While cooking, a step that asks for that name
+               reaches the FIRST job in the list and shows its contents — so the
+               other bowl's are shown to nobody, and the step is confidently wrong.
+               A warning, never a gate: the plan still cooks. -->
+          <div
+            class="flex flex-col gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-3"
+            data-testid="guided-plan-duplicate-container-warning"
+          >
+            <p class="text-sm text-amber-900">
+              Two prep steps can't share a container name — a step that asks for it only ever gets
+              the first one. Name each for what's in it: "onion bowl", "sugar bowl".
+            </p>
+            {#each containerProblems.duplicates as dup (dup.name)}
+              <p class="text-sm text-amber-900">
+                <span class="font-medium">{dup.name}</span>
+                — prep steps {dup.prepIds.map((id) => prepNumbers.get(id) ?? '?').join(', ')}
+              </p>
+            {/each}
+          </div>
+        {/if}
+
+        {#if containerProblems.dangling.length > 0}
+          <!-- A step reaching for a bowl nothing fills. It still cooks — the step
+               simply shows no contents, and its ingredients stay in the loose list
+               — so this warns and nothing more. Usually a word apart from a real
+               container name ("the onion bowl" vs "onion bowl"). -->
+          <div
+            class="flex flex-col gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-3"
+            data-testid="guided-plan-dangling-container-warning"
+          >
+            <p class="text-sm text-amber-900">
+              A step wants a container no prep step fills, so it can't show what's in it. Copy the
+              name from the prep step exactly, word for word.
+            </p>
+            {#each containerProblems.dangling as miss (miss.stepId + miss.name)}
+              <p class="text-sm text-amber-900">
+                Step {stepNumbers.get(miss.stepId) ?? '?'} wants
+                <span class="font-medium">{miss.name}</span>
+              </p>
+            {/each}
+          </div>
+        {/if}
+
         <!-- ─── Prep ─────────────────────────────────────────────────────────── -->
         <Card>
           <CardHeader>
@@ -540,7 +616,7 @@
                 </div>
                 <TextField
                   label="Into"
-                  placeholder="small bowl — leave blank if nothing is set aside"
+                  placeholder="onion bowl — leave blank if nothing is set aside"
                   value={entry.container}
                   onValueChange={(v) => setPrepField(entry.id, 'container', v)}
                   data-testid="guided-plan-prep-container"
@@ -600,7 +676,7 @@
                 <div class="flex flex-col gap-2 border-l-2 pl-3">
                   <TextField
                     label="Wants"
-                    placeholder="the small bowl"
+                    placeholder="onion bowl — exactly as the prep step names it"
                     value={note.container}
                     onValueChange={(v) => updateNote(step.id, { container: v })}
                     data-testid="guided-plan-note-container"

@@ -93,6 +93,48 @@ describe('GUIDED_PREP_RULES', () => {
     expect(STEP_RULES).toContain('NO QUANTITIES');
     expect(GUIDED_PREP_RULES).toContain('NO QUANTITIES');
   });
+
+  it('demands a container name no other job uses (issue #761)', () => {
+    // The container name is the plan's only join between its two halves, and it is
+    // load-bearing: a step reaching for "small bowl" when two jobs filled a "small
+    // bowl" is shown the FIRST one's contents, silently and possibly wrongly.
+    expect(GUIDED_PREP_RULES).toContain(
+      'EVERY CONTAINER NAME MUST BE UNIQUE ACROSS THE WHOLE PREP LIST',
+    );
+    expect(GUIDED_PREP_RULES).toContain('Never the same name twice');
+  });
+
+  it('pushes names that say what is IN the bowl, not numbered duplicates', () => {
+    // "small bowl 1" / "small bowl 2" satisfies uniqueness and helps nobody: the
+    // cook has to remember which number holds what. A name that says its contents
+    // is self-checking at the bench.
+    expect(GUIDED_PREP_RULES).toContain('NAME IT FOR WHAT IS IN IT');
+    expect(GUIDED_PREP_RULES).toContain('"onion bowl"');
+    expect(GUIDED_PREP_RULES).toContain('never numbered duplicates');
+  });
+
+  it('offers merging as the other way out of a shared bowl', () => {
+    // Two jobs into one bowl is usually one job that got split — the rules already
+    // say things used together prep together, so the fix is not always a new name.
+    expect(GUIDED_PREP_RULES).toContain('they are ONE JOB');
+  });
+
+  it('refuses a bare adverb where the method depends on a dimension', () => {
+    // "Finely slice the red onion" is what real plans came back with under the old
+    // wording ("Say the size, shape or state the method depends on"). Someone who
+    // needs a guided plan cannot calibrate "finely" — that is precisely why they
+    // are reading it.
+    expect(GUIDED_PREP_RULES).toContain('GIVE THE MEASUREMENT');
+    expect(GUIDED_PREP_RULES).toContain('"slice into 2mm half-moons", NOT "finely slice"');
+    expect(GUIDED_PREP_RULES).toContain('A bare adverb');
+  });
+
+  it('keeps the cut size from being read as a quantity', () => {
+    // Both rules sit in the same bullet, so without this the model can read "NO
+    // QUANTITIES" as a licence to drop the 2mm it was just told to give.
+    expect(GUIDED_PREP_RULES).toContain('A cut size is NOT a quantity');
+    expect(GUIDED_PREP_RULES).toContain('never about how big you cut it');
+  });
 });
 
 describe('GUIDED_STEP_NOTE_RULES', () => {
@@ -113,6 +155,29 @@ describe('GUIDED_STEP_NOTE_RULES', () => {
     // something that will never happen.
     expect(GUIDED_STEP_NOTE_RULES).toContain('A made-up cue is worse than no cue');
     expect(GUIDED_STEP_NOTE_RULES).toContain('null WHENEVER THERE IS NO GENUINE TEST');
+  });
+
+  it('requires a container the prep list actually fills, copied verbatim', () => {
+    // `prepEntryForContainer` in @salt/domain folds case and whitespace and NOTHING
+    // else, deliberately — a looser match would nest the wrong bowl's contents into
+    // a step AND subtract them from that step's loose ingredients. So the name has
+    // to arrive right, and the model has to be told what a wrong one costs.
+    expect(GUIDED_STEP_NOTE_RULES).toContain('one the PREP LIST ACTUALLY FILLS');
+    expect(GUIDED_STEP_NOTE_RULES).toContain('COPIED VERBATIM');
+    expect(GUIDED_STEP_NOTE_RULES).toContain('character for character');
+    expect(GUIDED_STEP_NOTE_RULES).toContain('can no longer show the cook its contents');
+  });
+
+  it('illustrates the container with the SAME string the prep rules do', () => {
+    // The defect this pair was written to close: the prep rules used to illustrate a
+    // container as "small bowl" while this one illustrated the very same bowl as
+    // "the small bowl" — one word apart, and no match. The prompt was teaching the
+    // drift. If either example is ever reworded, both must move together.
+    expect(GUIDED_PREP_RULES).toContain('"onion bowl"');
+    expect(GUIDED_STEP_NOTE_RULES).toContain(
+      'A job that says "onion bowl" is written here as "onion bowl"',
+    );
+    expect(GUIDED_STEP_NOTE_RULES).toContain('NOT "the onion bowl"');
   });
 
   it('confines check-ins to timed steps, strictly inside the timer', () => {

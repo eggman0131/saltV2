@@ -294,7 +294,9 @@ export type { WeatherIconId } from './weather/index.js';
 // every timestamp is injected (never read from a clock). The recipe-drift
 // comparison it used to own now lives in the recipe module (`hasRecipeChanged`),
 // which the guided plan (#751) shares. The four container/amount queries below
-// are what keeps guided mode from ever showing less than plain cook mode (#761).
+// are what keeps guided mode from ever showing less than plain cook mode (#761),
+// and `guidedContainerProblems` is that same join read backwards, so the editor
+// can warn about a name that will not resolve before anyone cooks from it.
 export {
   makeFreshSession,
   withStepDone,
@@ -316,10 +318,17 @@ export {
   prepEntryForContainer,
   prepEntryIngredients,
   looseIngredientsForStep,
+  guidedContainerProblems,
   formatClock,
   timerProgress,
 } from './cookSession/index.js';
-export type { MakeFreshSessionArgs, MiseProgress } from './cookSession/index.js';
+export type {
+  MakeFreshSessionArgs,
+  MiseProgress,
+  GuidedContainerProblems,
+  DuplicateContainerName,
+  DanglingContainerName,
+} from './cookSession/index.js';
 
 // Shopping-day module (issue #629) — pure helpers over `shoppingDays/{date}`:
 // the planner's pre-shop shading predicate, the reminder's "tomorrow in zone"

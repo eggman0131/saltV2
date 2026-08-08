@@ -84,12 +84,20 @@ const RECIPE = {
   updatedAt: '2026-08-01T09:00:00.000Z',
 };
 
+// A CORRECT plan, and it has to be: the container name is the only join between
+// the two halves, so a fixture whose note says "the small bowl" about a job that
+// filled a "small bowl" models a plan whose step can never show its contents
+// (issue #761). The name is unique, says what is in the bowl, and is copied
+// character for character onto the note — and the prep text gives a dimension
+// rather than "finely".
 const AI_OUTPUT = {
-  prep: [{ text: 'Dice the onion finely', container: 'small bowl', ingredientIds: ['ing-1'] }],
+  prep: [
+    { text: 'Dice the onion into 5mm dice', container: 'onion bowl', ingredientIds: ['ing-1'] },
+  ],
   stepNotes: [
     {
       stepId: 'step-1',
-      container: 'the small bowl',
+      container: 'onion bowl',
       setup: 'small hob burner, medium-low',
       cue: 'a very gentle sizzle, not a crackle',
       checkIns: [{ atMinutes: 5, text: 'give it a stir' }],
@@ -130,6 +138,37 @@ describe('generateGuidedPlan', () => {
     expect(prompt).toContain('[ing-1] 1 onion');
     expect(prompt).toContain('[step-1]');
     expect(prompt).toContain('timer: 10 minutes');
+  });
+
+  it('tells the model the container rules that make the plan joinable', async () => {
+    // The prep/step-note halves join on the container NAME and nothing else, so the
+    // two rules that keep that name resolvable — unique per job, verbatim on the
+    // note — have to actually reach the model. They ride the system prompt.
+    mockGenerate.mockResolvedValue({ output: AI_OUTPUT });
+    await run({ recipeId: 'recipe-1' });
+    const system = String(mockGenerate.mock.calls[0][0].system);
+    expect(system).toContain('EVERY CONTAINER NAME MUST BE UNIQUE ACROSS THE WHOLE PREP LIST');
+    expect(system).toContain('COPIED VERBATIM');
+  });
+
+  it('stores a note whose container no job fills, exactly as authored', async () => {
+    // Deliberately NOT filtered or rejected. A container name that does not resolve
+    // costs a step its contents and nothing more — the plan is still cookable, and
+    // the editor is where it gets fixed, so dropping the note here would delete the
+    // cue and setup the model got right along with the one word it got wrong.
+    mockGenerate.mockResolvedValue({
+      output: {
+        ...AI_OUTPUT,
+        stepNotes: [{ ...AI_OUTPUT.stepNotes[0], container: 'the tureen' }],
+      },
+    });
+
+    const result = (await run({ recipeId: 'recipe-1' })) as unknown as {
+      stepNotes: { container: string | null }[];
+    };
+
+    expect(result.stepNotes).toHaveLength(1);
+    expect(result.stepNotes[0]!.container).toBe('the tureen');
   });
 
   it('drops a note for a step the recipe does not have', async () => {

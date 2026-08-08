@@ -40,6 +40,15 @@ export { normaliseContainerName } from './normaliseContainerName.js';
 export { prepEntryForContainer } from './prepEntryForContainer.js';
 export { prepEntryIngredients } from './prepEntryIngredients.js';
 export { looseIngredientsForStep } from './looseIngredientsForStep.js';
+// Guided plan authoring (issue #761, Phase 2) — the same container-name join read
+// backwards, to say what is wrong with it while the plan is still being written.
+// A REPORT, never a gate: nothing refuses to save or to cook on the strength of it.
+export { guidedContainerProblems } from './guidedContainerProblems.js';
+export type {
+  GuidedContainerProblems,
+  DuplicateContainerName,
+  DanglingContainerName,
+} from './guidedContainerProblems.js';
 // `hasRecipeChanged` used to live here. It now takes two timestamps rather than a
 // session (issue #751 needed the same comparison for a guided plan's own stamp),
 // so it belongs to the recipe module — see recipe/queries/hasRecipeChanged.ts.
