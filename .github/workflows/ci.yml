@@ -544,6 +544,37 @@ jobs:
           fi
           echo "No live Gemini traffic in the emulator log."
 
+      # Hermeticity guard (issue #749). The emulator has no GCP backend to talk to
+      # (project demo-salt), so nothing in the stack should ever resolve GCP
+      # credentials. It used to: the emulator sets K_SERVICE per function worker,
+      # which made enableFirebaseTelemetry() treat the process as deployed GCP and
+      # reach the GCE metadata server. Under Docker Desktop for Mac that address
+      # swallows packets, so the promise never settled and every Genkit flow blocked
+      # behind it — the entire local AI e2e surface was deterministically red while
+      # CI stayed green, which is exactly how a real regression gets waved through.
+      #
+      # This asserts the INVARIANT (nothing reaches for GCP credentials) rather than
+      # the code shape, so it also catches a different code path acquiring them
+      # later. A hit means something re-enabled a GCP-authenticated client under the
+      # emulator: gate it on FUNCTIONS_EMULATOR the way index.ts does the telemetry
+      # boot, not by making the lookup fail faster.
+      - name: Assert no GCP metadata calls
+        if: always()
+        env:
+          LOG: apps/web-pwa/e2e-emulator.log
+        run: |
+          set -euo pipefail
+          if [ ! -s "$LOG" ]; then
+            echo "::warning::No emulator log — cannot check for GCP metadata calls."
+            exit 0
+          fi
+          if grep -qE '169\.254\.169\.254|metadata\.google\.internal' "$LOG"; then
+            grep -nE '169\.254\.169\.254|metadata\.google\.internal' "$LOG" | head -20
+            echo "::error::The e2e stack reached the GCE metadata server — something is resolving GCP credentials under the emulator (see issue #749)."
+            exit 1
+          fi
+          echo "No GCE metadata traffic in the emulator log."
+
       - name: Upload Playwright report
         if: failure() || steps.e2e_flakes.outputs.found == 'true'
         uses: actions/upload-artifact@v7
