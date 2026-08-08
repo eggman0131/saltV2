@@ -12,12 +12,18 @@ const {
   mockLiveCooks,
   mockMyTimers,
   mockNeedsReview,
+  mockRecentChats,
+  mockUpcomingNights,
   mockTimerNowMs,
   mockCurrentMember,
   mockPush,
   mockPersist,
   mockRemove,
   mockAddToast,
+  mockRecipes,
+  mockPersistRecipe,
+  mockKitchenTeardown,
+  mockSubscribeKitchenWeeks,
 } = vi.hoisted(() => {
   function makeStore<T>(initial: T) {
     let value = initial;
@@ -36,16 +42,23 @@ const {
       },
     };
   }
+  const mockKitchenTeardown = vi.fn();
   return {
     mockLiveCooks: makeStore<unknown[]>([]),
     mockMyTimers: makeStore<unknown[]>([]),
     mockNeedsReview: makeStore<unknown[]>([]),
+    mockRecentChats: makeStore<unknown[]>([]),
+    mockUpcomingNights: makeStore<unknown[]>([]),
     mockTimerNowMs: makeStore<number>(Date.parse('2026-08-05T12:00:00.000Z')),
     mockCurrentMember: makeStore<unknown>(null),
     mockPush: vi.fn(),
     mockPersist: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
     mockRemove: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
     mockAddToast: vi.fn(),
+    mockRecipes: makeStore<unknown[]>([]),
+    mockPersistRecipe: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+    mockKitchenTeardown,
+    mockSubscribeKitchenWeeks: vi.fn(() => mockKitchenTeardown),
   };
 });
 
@@ -55,19 +68,29 @@ vi.mock('../src/lib/personalViewService.js', () => ({
   liveCooks: mockLiveCooks,
   myTimers: mockMyTimers,
   needsReviewRecipes: mockNeedsReview,
+  recentChats: mockRecentChats,
   timerNowMs: mockTimerNowMs,
+  upcomingChefNights: mockUpcomingNights,
 }));
 vi.mock('../src/lib/membersService.js', () => ({ currentMember: mockCurrentMember }));
+// The page owns the meal-plan week subscriptions "Cooking soon" projects over.
+vi.mock('../src/lib/mealPlanService.js', () => ({
+  subscribeKitchenWeeks: mockSubscribeKitchenWeeks,
+}));
 vi.mock('../src/lib/cookSessionService.js', () => ({
   persistCookSession: mockPersist,
   removeCookSession: mockRemove,
+}));
+vi.mock('../src/lib/recipeService.js', () => ({
+  recipes: mockRecipes,
+  persistRecipe: mockPersistRecipe,
 }));
 
 import MinePage from '../src/routes/mine/MinePage.svelte';
 
 const NOW = Date.parse('2026-08-05T12:00:00.000Z');
 
-function recipe(id: string, title: string): Recipe {
+function recipe(id: string, title: string, overrides: Record<string, unknown> = {}): Recipe {
   return {
     id,
     title,
@@ -77,7 +100,13 @@ function recipe(id: string, title: string): Recipe {
     steps: [],
     createdAt: '2026-08-01T11:56:00.000Z',
     updatedAt: '2026-08-01T11:56:00.000Z',
+    ...overrides,
   } as unknown as Recipe;
+}
+
+/** A recipe as it sits in the review queue: AI-authored, unread. */
+function unreviewed(id: string, title: string): Recipe {
+  return recipe(id, title, { needs_approval: true });
 }
 
 const alex = { id: 'alex@e.org', name: 'Alex Green' } as Member;
@@ -128,13 +157,53 @@ function mineTimer(
   };
 }
 
+function chefNight(
+  date: string,
+  daysAway: number,
+  day: Partial<{ note: string; recipeIds: string[]; chefs: string[] }> = {},
+  recipes: Recipe[] = [],
+) {
+  return {
+    date,
+    daysAway,
+    recipes,
+    day: {
+      note: '',
+      recipeIds: [],
+      chefs: ['alex@e.org'],
+      attendees: [],
+      guests: 0,
+      ...day,
+    },
+  };
+}
+
+function chatDoc(id: string, title: string) {
+  return {
+    id,
+    schemaVersion: 1,
+    ownerUid: 'uid',
+    recipeId: null,
+    title,
+    messages: [],
+    createdAt: '2026-08-01T11:56:00.000Z',
+    updatedAt: '2026-08-04T11:56:00.000Z',
+    expiresAt: '2026-08-18T11:56:00.000Z',
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockPersist.mockResolvedValue({ kind: 'ok', value: undefined });
   mockRemove.mockResolvedValue({ kind: 'ok', value: undefined });
+  mockPersistRecipe.mockResolvedValue({ kind: 'ok', value: undefined });
   mockLiveCooks._set([]);
   mockMyTimers._set([]);
   mockNeedsReview._set([]);
+  mockRecentChats._set([]);
+  mockUpcomingNights._set([]);
+  mockRecipes._set([]);
+  mockSubscribeKitchenWeeks.mockReturnValue(mockKitchenTeardown);
   mockTimerNowMs._set(NOW);
   mockCurrentMember._set(alex);
 });
@@ -144,16 +213,20 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-describe('MinePage — the three sections', () => {
-  it('is three sections and nothing else — no planner, no shopping list', () => {
+describe('MinePage — the sections', () => {
+  it('is these sections and nothing else — no week grid, no shopping list', () => {
     mockMyTimers._set([mineTimer('r1', 'r1-s0', 4 * 60_000)]);
     mockLiveCooks._set([liveCook('r2', 'Noodle Bowl')]);
-    mockNeedsReview._set([recipe('r3', 'Lemon drizzle traybake')]);
+    mockUpcomingNights._set([chefNight('2026-08-08', 3)]);
+    mockNeedsReview._set([unreviewed('r3', 'Lemon drizzle traybake')]);
+    mockRecentChats._set([chatDoc('c1', 'Sourdough starter')]);
 
     const { getByTestId, queryByTestId } = render(MinePage);
     expect(getByTestId('mine-timers')).toBeInTheDocument();
     expect(getByTestId('mine-live')).toBeInTheDocument();
+    expect(getByTestId('mine-upcoming')).toBeInTheDocument();
     expect(getByTestId('mine-needs-review')).toBeInTheDocument();
+    expect(getByTestId('mine-chats')).toBeInTheDocument();
 
     for (const gone of ['mine-tonight', 'mine-week', 'mine-needs-you', 'mine-footer']) {
       expect(queryByTestId(gone)).not.toBeInTheDocument();
@@ -165,13 +238,149 @@ describe('MinePage — the three sections', () => {
     expect(getByTestId('mine-empty')).toHaveTextContent("You're all caught up");
     expect(queryByTestId('mine-timers')).not.toBeInTheDocument();
     expect(queryByTestId('mine-live')).not.toBeInTheDocument();
+    expect(queryByTestId('mine-upcoming')).not.toBeInTheDocument();
     expect(queryByTestId('mine-needs-review')).not.toBeInTheDocument();
+    expect(queryByTestId('mine-chats')).not.toBeInTheDocument();
   });
 
   it('drops the empty state as soon as anything is live', () => {
     mockMyTimers._set([mineTimer('r1', 'r1-s0', 60_000)]);
     const { queryByTestId } = render(MinePage);
     expect(queryByTestId('mine-empty')).not.toBeInTheDocument();
+  });
+});
+
+describe('MinePage — the heading', () => {
+  it('is the member first name, possessive, over their kitchen', () => {
+    const { getByTestId } = render(MinePage);
+    expect(getByTestId('mine-page')).toHaveTextContent("Alex's Kitchen");
+  });
+
+  it('falls back to "My Kitchen" before the roster has loaded', () => {
+    // The members subscription can still be in flight on a cold launch; the page
+    // must never render a headless possessive.
+    mockCurrentMember._set(null);
+    const { getByTestId } = render(MinePage);
+    expect(getByTestId('mine-page')).toHaveTextContent('My Kitchen');
+  });
+});
+
+describe('MinePage — cooking soon', () => {
+  it('holds the meal-plan weeks only while the page is mounted', () => {
+    // A live week subscription kept alive for a page nobody is looking at is the
+    // failure mode; the planner's extension week is unmounted the same way.
+    const { unmount } = render(MinePage);
+    expect(mockSubscribeKitchenWeeks).toHaveBeenCalledTimes(1);
+    expect(mockKitchenTeardown).not.toHaveBeenCalled();
+
+    unmount();
+    expect(mockKitchenTeardown).toHaveBeenCalledTimes(1);
+  });
+
+  it('names tonight and tomorrow, and dates the rest', () => {
+    mockUpcomingNights._set([
+      chefNight('2026-08-05', 0),
+      chefNight('2026-08-06', 1),
+      chefNight('2026-08-09', 4),
+    ]);
+    const { getAllByTestId } = render(MinePage);
+
+    expect(getAllByTestId('mine-upcoming-when').map((n) => n.textContent?.trim())).toEqual([
+      'Tonight',
+      'Tomorrow',
+      'Sun 9 Aug',
+    ]);
+  });
+
+  it('says what is planned: the entries, else the note, else nothing yet', () => {
+    mockUpcomingNights._set([
+      chefNight('2026-08-05', 0, { recipeIds: ['r1', 'r2'] }, [
+        recipe('r1', 'Ragu'),
+        recipe('r2', 'Focaccia'),
+      ]),
+      chefNight('2026-08-06', 1, { note: 'something with the leeks' }),
+      chefNight('2026-08-07', 2),
+    ]);
+    const { getAllByTestId } = render(MinePage);
+
+    expect(getAllByTestId('mine-upcoming-meal').map((n) => n.textContent?.trim())).toEqual([
+      'Ragu · Focaccia',
+      'something with the leeks',
+      'Nothing planned yet',
+    ]);
+  });
+
+  it('opens the recipe when the night has one', async () => {
+    mockUpcomingNights._set([
+      chefNight('2026-08-06', 1, { recipeIds: ['r1'] }, [recipe('r1', 'Ragu')]),
+    ]);
+    const { getByTestId } = render(MinePage);
+
+    await fireEvent.click(getByTestId('mine-upcoming-open'));
+    expect(mockPush).toHaveBeenCalledWith('/recipes/r1');
+  });
+
+  it('opens that day in the planner when the night is a note', async () => {
+    // A note lives on the plan document; the planner day is the only place it can
+    // be read in full or changed.
+    mockUpcomingNights._set([chefNight('2026-08-06', 1, { note: 'leeks' })]);
+    const { getByTestId } = render(MinePage);
+
+    await fireEvent.click(getByTestId('mine-upcoming-open'));
+    expect(mockPush).toHaveBeenCalledWith('/mealplan/2026-08-06');
+  });
+
+  it('is absent entirely when no upcoming night is mine', () => {
+    const { queryByTestId } = render(MinePage);
+    expect(queryByTestId('mine-upcoming')).not.toBeInTheDocument();
+  });
+
+  it('stops the page reading as all-clear — three nights of cooking is not caught up', () => {
+    mockUpcomingNights._set([chefNight('2026-08-06', 1)]);
+    const { getByTestId, queryByTestId } = render(MinePage);
+    expect(queryByTestId('mine-empty')).not.toBeInTheDocument();
+    expect(getByTestId('mine-upcoming')).toBeInTheDocument();
+  });
+});
+
+describe('MinePage — recent chats', () => {
+  it('lists the conversations in the order the store hands them over', () => {
+    mockRecentChats._set([chatDoc('c1', 'Sourdough starter'), chatDoc('c2', 'Braising a shin')]);
+    const { getAllByTestId } = render(MinePage);
+    expect(getAllByTestId('mine-chat-title').map((n) => n.textContent?.trim())).toEqual([
+      'Sourdough starter',
+      'Braising a shin',
+    ]);
+  });
+
+  it('opens that conversation', async () => {
+    mockRecentChats._set([chatDoc('c1', 'Sourdough starter')]);
+    const { getByTestId } = render(MinePage);
+    await fireEvent.click(getByTestId('mine-chat-open'));
+    expect(mockPush).toHaveBeenCalledWith('/chat/c1');
+  });
+
+  it('survives the long naive title a chat carries before it is retitled', () => {
+    // `text.slice(0, 60)` of the first message, until generateChatTitle replaces it.
+    const naive = 'how do i stop my sourdough starter from smelling like ac';
+    mockRecentChats._set([chatDoc('c1', naive)]);
+    const { getByTestId } = render(MinePage);
+    const title = getByTestId('mine-chat-title');
+    expect(title).toHaveTextContent(naive);
+    // One line, clipped — never wrapped into a growing row.
+    expect(title.className).toContain('truncate');
+  });
+
+  it('is absent entirely when there are none', () => {
+    const { queryByTestId } = render(MinePage);
+    expect(queryByTestId('mine-chats')).not.toBeInTheDocument();
+  });
+
+  it('does not stop the page reading as all-clear — a chat is not a chore', () => {
+    mockRecentChats._set([chatDoc('c1', 'Sourdough starter')]);
+    const { getByTestId } = render(MinePage);
+    expect(getByTestId('mine-empty')).toHaveTextContent("You're all caught up");
+    expect(getByTestId('mine-chats')).toBeInTheDocument();
   });
 });
 
@@ -281,30 +490,94 @@ describe('MinePage — cooking now', () => {
 });
 
 describe('MinePage — needs review', () => {
-  it('claims only what the signal supports, and spells out how to clear it', async () => {
-    // Viewing a recipe writes nothing, so the old "you haven't opened it yet" was a
-    // claim the data could not support. An item clears when somebody SAVES it, and
-    // that is not guessable — the section has to say it.
-    mockNeedsReview._set([recipe('r9', 'Lemon drizzle traybake')]);
+  it('says what the flag means and offers both ways out of the queue', async () => {
+    // The signal is the stored `needs_approval` flag (issue #755): AI-authored,
+    // unread. Two ways to clear it, and the copy has to offer both — opening one
+    // to fix something, or marking it reviewed from here.
+    mockNeedsReview._set([unreviewed('r9', 'Lemon drizzle traybake')]);
     const { getByTestId } = render(MinePage);
 
     const section = getByTestId('mine-needs-review');
     expect(section).toHaveTextContent('Lemon drizzle traybake');
     expect(section).toHaveTextContent('Not reviewed yet');
-    expect(section).not.toHaveTextContent("haven't opened");
     expect(getByTestId('mine-needs-review-hint')).toHaveTextContent(
-      "Nobody's checked these yet. Open one, fix anything that's off, and save it to clear it.",
+      "These were written by AI and nobody's read them yet. Open one to fix anything that's off, or mark it reviewed if it looks right.",
     );
 
     await fireEvent.click(getByTestId('mine-needs-review-open'));
     expect(mockPush).toHaveBeenCalledWith('/recipes/r9');
   });
 
-  it('has no time limit — an ancient unsaved import still shows', () => {
-    mockNeedsReview._set([recipe('r9', 'Ancient import')]);
+  it('has no time limit — an ancient unreviewed import still shows', () => {
+    mockNeedsReview._set([unreviewed('r9', 'Ancient import')]);
     const { getByTestId, queryByText } = render(MinePage);
     expect(getByTestId('mine-needs-review')).toHaveTextContent('Ancient import');
     // Nothing relative-time about it any more; it is a queue, not news.
     expect(queryByText(/ago/)).not.toBeInTheDocument();
+  });
+
+  it('clears the flag from the row, without an editor round-trip', async () => {
+    mockNeedsReview._set([unreviewed('r9', 'Lemon drizzle traybake')]);
+    mockRecipes._set([unreviewed('r9', 'Lemon drizzle traybake')]);
+    const { getByTestId } = render(MinePage);
+
+    await fireEvent.click(getByTestId('mine-needs-review-clear'));
+
+    expect(mockPersistRecipe).toHaveBeenCalledTimes(1);
+    const saved = mockPersistRecipe.mock.calls[0]?.[0] as Record<string, unknown>;
+    // Dropped, not set false — absent means reviewed. `false` would still be a
+    // written field, and nothing in the app reads it that way.
+    expect('needs_approval' in saved).toBe(false);
+    expect(saved).toMatchObject({ id: 'r9', title: 'Lemon drizzle traybake' });
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockAddToast).not.toHaveBeenCalled();
+  });
+
+  it('writes the LIVE document, not the row it rendered from', async () => {
+    // persistRecipe writes the whole doc, so saving the stale card would roll back
+    // whatever onRecipeWritten wrote alongside us.
+    mockNeedsReview._set([unreviewed('r9', 'Lemon drizzle traybake')]);
+    mockRecipes._set([
+      recipe('r9', 'Lemon drizzle traybake', {
+        needs_approval: true,
+        image: { url: 'https://example.test/hero.webp' },
+      }),
+    ]);
+    const { getByTestId } = render(MinePage);
+
+    await fireEvent.click(getByTestId('mine-needs-review-clear'));
+    expect(mockPersistRecipe.mock.calls[0]?.[0]).toMatchObject({
+      image: { url: 'https://example.test/hero.webp' },
+    });
+  });
+
+  it('says so when the clear fails rather than pretending it worked', async () => {
+    mockPersistRecipe.mockResolvedValue({ kind: 'failure', error: { kind: 'StorageError' } });
+    mockNeedsReview._set([unreviewed('r9', 'Lemon drizzle traybake')]);
+    mockRecipes._set([unreviewed('r9', 'Lemon drizzle traybake')]);
+    const { getByTestId } = render(MinePage);
+
+    await fireEvent.click(getByTestId('mine-needs-review-clear'));
+    expect(mockAddToast).toHaveBeenCalledWith("Couldn't mark that as reviewed.", 'destructive');
+    // The row stays put: the store still holds it, so nothing here removes it.
+    expect(getByTestId('mine-needs-review')).toHaveTextContent('Lemon drizzle traybake');
+  });
+
+  it('ignores a second tap while the first write is in flight', async () => {
+    let release: (() => void) | undefined;
+    mockPersistRecipe.mockReturnValue(
+      new Promise((resolve) => {
+        release = () => resolve({ kind: 'ok', value: undefined });
+      }),
+    );
+    mockNeedsReview._set([unreviewed('r9', 'Lemon drizzle traybake')]);
+    mockRecipes._set([unreviewed('r9', 'Lemon drizzle traybake')]);
+    const { getByTestId } = render(MinePage);
+
+    await fireEvent.click(getByTestId('mine-needs-review-clear'));
+    await fireEvent.click(getByTestId('mine-needs-review-clear'));
+    expect(mockPersistRecipe).toHaveBeenCalledTimes(1);
+
+    release?.();
   });
 });

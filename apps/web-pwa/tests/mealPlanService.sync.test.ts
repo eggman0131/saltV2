@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi, type Mocked } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, type Mocked } from 'vitest';
 import { get } from 'svelte/store';
 import {
   emptyTemplate,
@@ -28,6 +28,9 @@ import {
   selectedStartDate,
   extensionStartDate,
   firstDayOfWeek,
+  kitchenWeeks,
+  kitchenAnchorDate,
+  subscribeKitchenWeeks,
   mealPlanTemplate,
   initMealPlanSync,
   goToWeek,
@@ -485,6 +488,157 @@ describe('mealPlanService — addRecipeToDay', () => {
 
     const saved = fs.saveMealPlanWeek.mock.calls.at(-1)![0]!;
     expect(saved.days['2026-07-05']).toMatchObject({ recipeIds: ['roast'], attendees: [] });
+  });
+});
+
+// Issue #755: the Kitchen page holds week documents of its own, anchored on TODAY
+// rather than on wherever the planner was left. Two pages now claim weeks
+// independently and routinely claim the same one, so the subscription set is a
+// union — the risk under test is one page's teardown closing the other's week.
+describe('mealPlanService — kitchen weeks', () => {
+  const TODAY = '2026-06-10'; // a Wednesday
+  const THIS_WEEK = '2026-06-08'; // its Monday
+  const NEXT_WEEK = '2026-06-15';
+  const ELSEWHERE = '2026-07-06'; // a Monday the planner can sit on
+
+  // Boot the service with the clock pinned. The reset has to happen AFTER the
+  // system time is set: it re-seeds `_anchorDate` from the clock.
+  function bootAt(nowIso: string) {
+    vi.setSystemTime(Date.parse(nowIso));
+    __resetMealPlanServiceForTest();
+    const wired = wireSubscriptions();
+    initMealPlanSync();
+    seedMealPlanConfig(CONFIG);
+    return wired;
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('holds today’s week while the page is mounted, wherever the planner is', () => {
+    const { emitWeekFor } = bootAt(`${TODAY}T12:00:00.000Z`);
+    goToWeek(ELSEWHERE);
+    fs.subscribeMealPlanWeek.mockClear();
+
+    subscribeKitchenWeeks();
+
+    expect(fs.subscribeMealPlanWeek.mock.calls.map((c) => c[0])).toEqual([THIS_WEEK]);
+    expect(get(kitchenAnchorDate)).toBe(TODAY);
+
+    emitWeekFor(THIS_WEEK, weekWithNote(THIS_WEEK, 'roast', '2026-06-08T10:00:00.000Z'));
+    expect(get(kitchenWeeks).map((w) => w.startDate)).toEqual([THIS_WEEK]);
+  });
+
+  it('reaches into next week for the last three days of the cycle', () => {
+    // The planner's own extension rule, reused rather than re-derived: the nights
+    // that are yours do not stop at the end of a cycle.
+    bootAt('2026-06-12T12:00:00.000Z'); // Friday — index 4 of a Monday week
+    goToWeek(ELSEWHERE);
+    fs.subscribeMealPlanWeek.mockClear();
+
+    subscribeKitchenWeeks();
+
+    expect(fs.subscribeMealPlanWeek.mock.calls.map((c) => c[0])).toEqual([THIS_WEEK, NEXT_WEEK]);
+  });
+
+  it('does not move the planner’s own week or its extension', () => {
+    bootAt(`${TODAY}T12:00:00.000Z`);
+    goToWeek(ELSEWHERE);
+
+    subscribeKitchenWeeks();
+
+    expect(get(selectedStartDate)).toBe(ELSEWHERE);
+    expect(get(extensionStartDate)).toBe('');
+    expect(get(currentWeek).startDate).toBe(ELSEWHERE);
+  });
+
+  it('costs no second subscription when the planner already holds today’s week', () => {
+    bootAt(`${TODAY}T12:00:00.000Z`); // the planner opens on today
+    expect(get(selectedStartDate)).toBe(THIS_WEEK);
+    fs.subscribeMealPlanWeek.mockClear();
+
+    subscribeKitchenWeeks();
+
+    expect(fs.subscribeMealPlanWeek).not.toHaveBeenCalled();
+  });
+
+  it('drops a kitchen-only week when the page unmounts', () => {
+    const { weekUnsub } = bootAt(`${TODAY}T12:00:00.000Z`);
+    goToWeek(ELSEWHERE);
+    const teardown = subscribeKitchenWeeks();
+    weekUnsub.mockClear();
+
+    teardown();
+
+    expect(weekUnsub).toHaveBeenCalledTimes(1);
+    expect(get(kitchenWeeks)).toEqual([]);
+    expect(get(kitchenAnchorDate)).toBe('');
+  });
+
+  it('leaves a week the planner is still holding alone', () => {
+    // The union is the whole safety property: unsubscribing by name here would
+    // close the planner's own subscription and freeze the page behind it.
+    const { weekUnsub, emitWeekFor } = bootAt(`${TODAY}T12:00:00.000Z`);
+    const teardown = subscribeKitchenWeeks();
+    weekUnsub.mockClear();
+
+    teardown();
+
+    expect(weekUnsub).not.toHaveBeenCalled();
+    // Still live: a later snapshot for that week still lands on the planner.
+    emitWeekFor(THIS_WEEK, weekWithNote(THIS_WEEK, 'stew', '2026-06-08T11:00:00.000Z'));
+    expect(get(currentWeek).days[THIS_WEEK]!.note).toBe('stew');
+  });
+
+  it('recomputes when the config snapshot moves firstDayOfWeek', () => {
+    // `firstDay()` answers 'mon' until config lands, so a set computed in that gap
+    // is the wrong week identity — not merely a stale one.
+    const { emitConfig } = bootAt(`${TODAY}T12:00:00.000Z`);
+    subscribeKitchenWeeks();
+    expect(get(kitchenWeeks)).toEqual([]);
+    fs.subscribeMealPlanWeek.mockClear();
+
+    emitConfig({ firstDayOfWeek: 'fri', schemaVersion: 1 });
+
+    // Wednesday now sits in the week that began on Friday 5 June.
+    expect(fs.subscribeMealPlanWeek.mock.calls.map((c) => c[0])).toContain('2026-06-05');
+    expect(get(kitchenAnchorDate)).toBe(TODAY);
+  });
+
+  it('opens nothing on a config snapshot while the page is not mounted', () => {
+    const { emitConfig } = bootAt(`${TODAY}T12:00:00.000Z`);
+    const teardown = subscribeKitchenWeeks();
+    teardown();
+    fs.subscribeMealPlanWeek.mockClear();
+
+    emitConfig({ firstDayOfWeek: 'fri', schemaVersion: 1 });
+
+    // Only the planner's own week, and no kitchen claim at all.
+    expect(fs.subscribeMealPlanWeek.mock.calls.map((c) => c[0])).toEqual(['2026-06-05']);
+    expect(get(kitchenAnchorDate)).toBe('');
+    expect(get(kitchenWeeks)).toEqual([]);
+  });
+
+  it('widens weekIsKnown, so an add to a kitchen week writes what it holds', async () => {
+    // Legal precisely because a kitchen week has a live listener keeping it fresh;
+    // what meal-planning.md forbids is caching a week nothing is listening to.
+    const { emitWeekFor } = bootAt(`${TODAY}T12:00:00.000Z`);
+    goToWeek(ELSEWHERE);
+    subscribeKitchenWeeks();
+    emitWeekFor(THIS_WEEK, weekWithNote(THIS_WEEK, 'roast', '2026-06-08T10:00:00.000Z'));
+
+    await addRecipeToDay('2026-06-11', 'pie');
+
+    expect(fs.loadMealPlanWeek).not.toHaveBeenCalled();
+    const saved = fs.saveMealPlanWeek.mock.calls.at(-1)![0]!;
+    expect(saved.startDate).toBe(THIS_WEEK);
+    expect(saved.days['2026-06-11']!.recipeIds).toEqual(['pie']);
+    expect(saved.days[THIS_WEEK]!.note).toBe('roast');
   });
 });
 
