@@ -17,6 +17,7 @@
     type ComboboxItemType,
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
+  import { goBack } from '../../lib/nav.js';
   import { trackUsageEvent } from '@salt/observability';
   import {
     emptyRecipe,
@@ -467,7 +468,7 @@
   }
 
   function handleCancel(): void {
-    push(editingId === null ? '/recipes' : `/recipes/${editingId}`);
+    goBack(editingId === null ? '/recipes' : `/recipes/${editingId}`);
   }
 
   const pageTitle = $derived(
@@ -475,7 +476,7 @@
   );
 </script>
 
-<DetailPage title={pageTitle} onBack={handleCancel} backLabel="Recipes" class="p-4 sm:p-6">
+<DetailPage title={pageTitle} onBack={handleCancel} backLabel="Back" class="p-4 sm:p-6">
   {#snippet actions()}
     <Button variant="outline" size="sm" onclick={handleCancel} disabled={saving}>Cancel</Button>
     <Button

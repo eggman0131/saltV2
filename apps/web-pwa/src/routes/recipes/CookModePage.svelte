@@ -2,6 +2,7 @@
   import { Button, CanonIcon, Icon, Spinner } from '@salt/ui-components';
   import { onDestroy, onMount } from 'svelte';
   import { push } from 'svelte-spa-router';
+  import { goBack } from '../../lib/nav.js';
   import { trackUsageEvent } from '@salt/observability';
   import { recipes, isLoadingRecipes } from '../../lib/recipeService.js';
   import {
@@ -853,8 +854,10 @@
   }
 
   // Close leaves the session intact so it can be resumed later / on another device.
+  // Back goes where you came from (the recipe, or Mine if you launched it there),
+  // falling back to the recipe view on a cold-launch straight into cook mode.
   function handleClose(): void {
-    push(`/recipes/${params.id}`);
+    goBack(`/recipes/${params.id}`);
   }
 
   // ─── Wake lock ──────────────────────────────────────────────────────────────────

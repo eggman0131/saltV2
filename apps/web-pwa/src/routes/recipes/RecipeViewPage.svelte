@@ -25,6 +25,7 @@
     type ImageCropperHandle,
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
+  import { goBack } from '../../lib/nav.js';
   import {
     recipes,
     isLoadingRecipes,
@@ -737,8 +738,8 @@ Finish with a short note on what you changed and why, so I can read the gist her
        already accepts. -->
   <DetailPage
     title={recipe.title}
-    onBack={() => push('/recipes')}
-    backLabel="Recipes"
+    onBack={() => goBack('/recipes')}
+    backLabel="Back"
     class="p-4 sm:p-6"
     fill={docked}
   >

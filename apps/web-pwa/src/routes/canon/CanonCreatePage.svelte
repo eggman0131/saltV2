@@ -1,5 +1,6 @@
 <script lang="ts">
   import { push } from 'svelte-spa-router';
+  import { goBack } from '../../lib/nav.js';
   import {
     Button,
     Combobox,
@@ -148,7 +149,7 @@
       {/if}
 
       <div class="flex justify-end gap-2 border-t border-border pt-4">
-        <Button variant="ghost" onclick={() => push('/admin/canon')}>Cancel</Button>
+        <Button variant="ghost" onclick={() => goBack('/admin/canon')}>Cancel</Button>
       </div>
     </div>
   </div>

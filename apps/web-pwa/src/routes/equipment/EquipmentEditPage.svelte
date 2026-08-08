@@ -13,6 +13,7 @@
     TextField,
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
+  import { goBack } from '../../lib/nav.js';
   import {
     equipment,
     renameEquipmentItem,
@@ -186,8 +187,8 @@
 {:else}
   <DetailPage
     title={item.name}
-    onBack={() => push('/equipment')}
-    backLabel="Kitchen"
+    onBack={() => goBack('/equipment')}
+    backLabel="Back"
     class="p-4 sm:p-6"
   >
     {#snippet titleSlot()}

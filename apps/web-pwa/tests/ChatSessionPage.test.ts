@@ -31,7 +31,7 @@ const { mockSessions, mockIsLoading, mockRecipes } = vi.hoisted(() => {
   };
 });
 
-vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
+vi.mock('svelte-spa-router', () => ({ push: vi.fn(), pop: vi.fn() }));
 vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
 vi.mock('@salt/observability', () => ({ trackUsageEvent: vi.fn() }));
 vi.mock('@salt/firebase-sync', () => ({
@@ -80,6 +80,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockIsLoading._set(false);
   mockRecipes._set([]);
+  // No in-app history behind the current entry, so `goBack` takes its fallback
+  // route (what these tests assert). See src/lib/nav.ts.
+  window.history.replaceState(null, '', '#/');
 });
 
 function renderPage(id = 'session-1') {
@@ -87,20 +90,20 @@ function renderPage(id = 'session-1') {
 }
 
 describe('ChatSessionPage — where back goes', () => {
-  it('returns to the recipe when the chat belongs to one', async () => {
+  it('falls back to the recipe when the chat belongs to one', async () => {
     mockSessions._set([makeSession({ recipeId: 'recipe-1' })]);
     const { getByRole } = renderPage();
 
-    await fireEvent.click(getByRole('button', { name: 'Recipe' }));
+    await fireEvent.click(getByRole('button', { name: 'Back' }));
 
     expect(push).toHaveBeenCalledWith('/recipes/recipe-1');
   });
 
-  it('returns to the chat list for a general chat', async () => {
+  it('falls back to the chat list for a general chat', async () => {
     mockSessions._set([makeSession({ recipeId: null })]);
     const { getByRole } = renderPage();
 
-    await fireEvent.click(getByRole('button', { name: 'Chef' }));
+    await fireEvent.click(getByRole('button', { name: 'Back' }));
 
     expect(push).toHaveBeenCalledWith('/chat');
   });

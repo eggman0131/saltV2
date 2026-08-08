@@ -9,6 +9,7 @@ import {
   UserRound,
 } from '@lucide/svelte';
 import type { NavItem } from '@salt/ui-components';
+import { pop, push } from 'svelte-spa-router';
 
 // The daily-driver destinations. Kept to FOUR so the mobile BottomNav has room for
 // its active-indicator pill; everything else goes in `overflowNavItems`. The
@@ -52,3 +53,47 @@ export const adminNavItem: NavItem = {
   icon: Shield,
   href: '#/admin',
 };
+
+// A back button should return you to wherever you came from, not to a section's
+// home list. Every page navigates with svelte-spa-router's `push('/fixed/route')`,
+// so a hard-coded back destination is wrong the moment you arrive from anywhere
+// other than that list (open a recipe from the planner, hit back, land on the
+// recipes list). `goBack` uses real browser history instead.
+//
+// The catch: `pop()` is `window.history.back()`, which on a PWA cold-launch /
+// deep-link / shared URL — where the detail page is the FIRST entry in this tab —
+// walks the user straight out of the app. So we track our depth in the in-app
+// history stack: svelte-spa-router navigates by setting `window.location.hash`,
+// which creates a fresh history entry (its own state carries only scroll data, no
+// marker of ours). On every `hashchange` we stamp the current entry with a
+// monotonic `__saltIdx` if it has none; a back/forward navigation restores an
+// already-stamped entry and is left untouched. The router preserves our marker
+// because it always spreads `...history.state` when it writes scroll state, and
+// `replace()` reuses the same (already-stamped) entry. `goBack` then reads the
+// current entry's index: index 0 (or an unstamped entry) means nothing in-app is
+// behind us, so it falls back to the caller's route instead of popping out.
+let saltIdxCounter = -1;
+
+function stampCurrentEntry(): void {
+  const state = (window.history.state ?? {}) as { __saltIdx?: number };
+  if (state.__saltIdx == null) {
+    saltIdxCounter += 1;
+    window.history.replaceState({ ...state, __saltIdx: saltIdxCounter }, '');
+  }
+}
+
+if (typeof window !== 'undefined') {
+  stampCurrentEntry(); // the initial landing entry becomes index 0
+  window.addEventListener('hashchange', stampCurrentEntry);
+}
+
+/**
+ * Return to the previous in-app screen. Falls back to `fallback` when the current
+ * screen is the first in-app history entry (cold-launch / deep-link / shared URL),
+ * so a back press never ejects the user out of the app.
+ */
+export function goBack(fallback: string): void {
+  const idx = (window.history.state as { __saltIdx?: number } | null)?.__saltIdx ?? 0;
+  if (idx > 0) pop();
+  else push(fallback);
+}

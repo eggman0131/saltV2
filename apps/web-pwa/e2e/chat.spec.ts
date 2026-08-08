@@ -113,7 +113,9 @@ test.describe('chat — stubbed chef reply, lifecycle, owner-scoping', () => {
       expect(stored.ownerUid).toBeTruthy();
 
       // ── Back nav → the list now shows the session ─────────────────────────
-      await page1.getByRole('button', { name: 'Chef' }).click();
+      // The back control is labelled generically ("Back") since `goBack` returns
+      // to wherever you came from — here the chat list you pushed from.
+      await page1.getByRole('button', { name: 'Back' }).click();
       await expect(page1).toHaveURL(/#\/chat$/, { timeout: SYNC_TIMEOUT });
       await expect(page1.getByTestId('chat-session-item')).toHaveCount(1, {
         timeout: SYNC_TIMEOUT,

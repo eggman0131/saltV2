@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Button, DetailPage, Icon, Spinner } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
+  import { goBack } from '../../lib/nav.js';
   import { trackUsageEvent } from '@salt/observability';
   import { sessions, isLoadingSessions, claimRecipe } from '../../lib/chatService.js';
   import { addToast } from '../../lib/toastStore.js';
@@ -23,11 +24,11 @@
   // page owns only the route lookup, the header actions and the review gate.
   const thread = createChatThread();
 
-  // Back goes where you came from (issue #696). A chat that belongs to a recipe is
-  // reached FROM that recipe — it is listed there — so returning to the chat list
-  // was always the wrong door.
+  // Back goes where you came from. `goBack` uses real browser history first; this
+  // route is only the fallback for a cold-launch straight into the chat (issue
+  // #696: a chat that belongs to a recipe is reached FROM that recipe, so the
+  // recipe — not the chat list — is the right door when there is no history).
   const backTo = $derived(session?.recipeId ? `/recipes/${session.recipeId}` : '/chat');
-  const backLabel = $derived(session?.recipeId ? 'Recipe' : 'Chef');
 
   // Save as recipe — calls the librarian flow and navigates to the new recipe.
   let isSavingRecipe = $state(false);
@@ -157,7 +158,12 @@
     {/if}
   </div>
 {:else}
-  <DetailPage title={session.title} onBack={() => push(backTo)} {backLabel} class="p-4 sm:p-6">
+  <DetailPage
+    title={session.title}
+    onBack={() => goBack(backTo)}
+    backLabel="Back"
+    class="p-4 sm:p-6"
+  >
     {#snippet actions()}
       {#if !session.recipeId && session.messages.some((m) => m.role === 'assistant')}
         <Button

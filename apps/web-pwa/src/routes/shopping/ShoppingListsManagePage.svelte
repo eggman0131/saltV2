@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Button, DetailPage, TextField } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
+  import { goBack } from '../../lib/nav.js';
   import {
     lists,
     defaultListId,
@@ -94,8 +95,8 @@
 
 <DetailPage
   title="Shopping lists"
-  onBack={() => push('/shopping')}
-  backLabel="Back to shopping"
+  onBack={() => goBack('/shopping')}
+  backLabel="Back"
   class="p-4 sm:p-6"
 >
   <div class="flex flex-col gap-6">

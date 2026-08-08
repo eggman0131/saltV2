@@ -2,6 +2,7 @@
   import { onDestroy } from 'svelte';
   import { Button, Checkbox, FormPage, Spinner, TextField } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
+  import { goBack } from '../../lib/nav.js';
   import { startUserActionSpan } from '@salt/observability';
   import {
     callIdentifyEquipment,
@@ -171,7 +172,7 @@
     onSubmit={handleIdentify}
     onCancel={() => {
       endActionSpan();
-      push('/equipment');
+      goBack('/equipment');
     }}
     class="p-4 sm:p-6"
   >

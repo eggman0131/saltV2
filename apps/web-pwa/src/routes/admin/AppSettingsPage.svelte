@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button } from '@salt/ui-components';
-  import { push } from 'svelte-spa-router';
+  import { goBack } from '../../lib/nav.js';
   import {
     AI_MODEL_DEFAULTS,
     AI_MODEL_ROLES,
@@ -242,7 +242,7 @@
           by each flow.
         </p>
       </div>
-      <Button size="sm" onclick={() => push('/admin')}>Back to admin</Button>
+      <Button size="sm" onclick={() => goBack('/admin')}>Back to admin</Button>
     </div>
 
     {#if lastUpdatedLabel}
