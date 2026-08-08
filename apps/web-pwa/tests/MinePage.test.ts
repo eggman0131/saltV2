@@ -13,6 +13,7 @@ const {
   mockMyTimers,
   mockNeedsReview,
   mockRecentChats,
+  mockUpcomingNights,
   mockTimerNowMs,
   mockCurrentMember,
   mockPush,
@@ -21,6 +22,8 @@ const {
   mockAddToast,
   mockRecipes,
   mockPersistRecipe,
+  mockKitchenTeardown,
+  mockSubscribeKitchenWeeks,
 } = vi.hoisted(() => {
   function makeStore<T>(initial: T) {
     let value = initial;
@@ -39,11 +42,13 @@ const {
       },
     };
   }
+  const mockKitchenTeardown = vi.fn();
   return {
     mockLiveCooks: makeStore<unknown[]>([]),
     mockMyTimers: makeStore<unknown[]>([]),
     mockNeedsReview: makeStore<unknown[]>([]),
     mockRecentChats: makeStore<unknown[]>([]),
+    mockUpcomingNights: makeStore<unknown[]>([]),
     mockTimerNowMs: makeStore<number>(Date.parse('2026-08-05T12:00:00.000Z')),
     mockCurrentMember: makeStore<unknown>(null),
     mockPush: vi.fn(),
@@ -52,6 +57,8 @@ const {
     mockAddToast: vi.fn(),
     mockRecipes: makeStore<unknown[]>([]),
     mockPersistRecipe: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+    mockKitchenTeardown,
+    mockSubscribeKitchenWeeks: vi.fn(() => mockKitchenTeardown),
   };
 });
 
@@ -63,8 +70,13 @@ vi.mock('../src/lib/personalViewService.js', () => ({
   needsReviewRecipes: mockNeedsReview,
   recentChats: mockRecentChats,
   timerNowMs: mockTimerNowMs,
+  upcomingChefNights: mockUpcomingNights,
 }));
 vi.mock('../src/lib/membersService.js', () => ({ currentMember: mockCurrentMember }));
+// The page owns the meal-plan week subscriptions "Cooking soon" projects over.
+vi.mock('../src/lib/mealPlanService.js', () => ({
+  subscribeKitchenWeeks: mockSubscribeKitchenWeeks,
+}));
 vi.mock('../src/lib/cookSessionService.js', () => ({
   persistCookSession: mockPersist,
   removeCookSession: mockRemove,
@@ -144,6 +156,27 @@ function mineTimer(
   };
 }
 
+function chefNight(
+  date: string,
+  daysAway: number,
+  day: Partial<{ note: string; recipeIds: string[]; chefs: string[] }> = {},
+  recipes: Recipe[] = [],
+) {
+  return {
+    date,
+    daysAway,
+    recipes,
+    day: {
+      note: '',
+      recipeIds: [],
+      chefs: ['alex@e.org'],
+      attendees: [],
+      guests: 0,
+      ...day,
+    },
+  };
+}
+
 function chatDoc(id: string, title: string) {
   return {
     id,
@@ -167,7 +200,9 @@ beforeEach(() => {
   mockMyTimers._set([]);
   mockNeedsReview._set([]);
   mockRecentChats._set([]);
+  mockUpcomingNights._set([]);
   mockRecipes._set([]);
+  mockSubscribeKitchenWeeks.mockReturnValue(mockKitchenTeardown);
   mockTimerNowMs._set(NOW);
   mockCurrentMember._set(alex);
 });
@@ -178,15 +213,17 @@ afterEach(() => {
 });
 
 describe('MinePage — the sections', () => {
-  it('is these sections and nothing else — no planner, no shopping list', () => {
+  it('is these sections and nothing else — no week grid, no shopping list', () => {
     mockMyTimers._set([mineTimer('r1', 'r1-s0', 4 * 60_000)]);
     mockLiveCooks._set([liveCook('r2', 'Noodle Bowl')]);
+    mockUpcomingNights._set([chefNight('2026-08-08', 3)]);
     mockNeedsReview._set([unreviewed('r3', 'Lemon drizzle traybake')]);
     mockRecentChats._set([chatDoc('c1', 'Sourdough starter')]);
 
     const { getByTestId, queryByTestId } = render(MinePage);
     expect(getByTestId('mine-timers')).toBeInTheDocument();
     expect(getByTestId('mine-live')).toBeInTheDocument();
+    expect(getByTestId('mine-upcoming')).toBeInTheDocument();
     expect(getByTestId('mine-needs-review')).toBeInTheDocument();
     expect(getByTestId('mine-chats')).toBeInTheDocument();
 
@@ -200,6 +237,7 @@ describe('MinePage — the sections', () => {
     expect(getByTestId('mine-empty')).toHaveTextContent("You're all caught up");
     expect(queryByTestId('mine-timers')).not.toBeInTheDocument();
     expect(queryByTestId('mine-live')).not.toBeInTheDocument();
+    expect(queryByTestId('mine-upcoming')).not.toBeInTheDocument();
     expect(queryByTestId('mine-needs-review')).not.toBeInTheDocument();
     expect(queryByTestId('mine-chats')).not.toBeInTheDocument();
   });
@@ -223,6 +261,84 @@ describe('MinePage — the heading', () => {
     mockCurrentMember._set(null);
     const { getByTestId } = render(MinePage);
     expect(getByTestId('mine-page')).toHaveTextContent('My Kitchen');
+  });
+});
+
+describe('MinePage — cooking soon', () => {
+  it('holds the meal-plan weeks only while the page is mounted', () => {
+    // A live week subscription kept alive for a page nobody is looking at is the
+    // failure mode; the planner's extension week is unmounted the same way.
+    const { unmount } = render(MinePage);
+    expect(mockSubscribeKitchenWeeks).toHaveBeenCalledTimes(1);
+    expect(mockKitchenTeardown).not.toHaveBeenCalled();
+
+    unmount();
+    expect(mockKitchenTeardown).toHaveBeenCalledTimes(1);
+  });
+
+  it('names tonight and tomorrow, and dates the rest', () => {
+    mockUpcomingNights._set([
+      chefNight('2026-08-05', 0),
+      chefNight('2026-08-06', 1),
+      chefNight('2026-08-09', 4),
+    ]);
+    const { getAllByTestId } = render(MinePage);
+
+    expect(getAllByTestId('mine-upcoming-when').map((n) => n.textContent?.trim())).toEqual([
+      'Tonight',
+      'Tomorrow',
+      'Sun 9 Aug',
+    ]);
+  });
+
+  it('says what is planned: the entries, else the note, else nothing yet', () => {
+    mockUpcomingNights._set([
+      chefNight('2026-08-05', 0, { recipeIds: ['r1', 'r2'] }, [
+        recipe('r1', 'Ragu'),
+        recipe('r2', 'Focaccia'),
+      ]),
+      chefNight('2026-08-06', 1, { note: 'something with the leeks' }),
+      chefNight('2026-08-07', 2),
+    ]);
+    const { getAllByTestId } = render(MinePage);
+
+    expect(getAllByTestId('mine-upcoming-meal').map((n) => n.textContent?.trim())).toEqual([
+      'Ragu · Focaccia',
+      'something with the leeks',
+      'Nothing planned yet',
+    ]);
+  });
+
+  it('opens the recipe when the night has one', async () => {
+    mockUpcomingNights._set([
+      chefNight('2026-08-06', 1, { recipeIds: ['r1'] }, [recipe('r1', 'Ragu')]),
+    ]);
+    const { getByTestId } = render(MinePage);
+
+    await fireEvent.click(getByTestId('mine-upcoming-open'));
+    expect(mockPush).toHaveBeenCalledWith('/recipes/r1');
+  });
+
+  it('opens that day in the planner when the night is a note', async () => {
+    // A note lives on the plan document; the planner day is the only place it can
+    // be read in full or changed.
+    mockUpcomingNights._set([chefNight('2026-08-06', 1, { note: 'leeks' })]);
+    const { getByTestId } = render(MinePage);
+
+    await fireEvent.click(getByTestId('mine-upcoming-open'));
+    expect(mockPush).toHaveBeenCalledWith('/mealplan/2026-08-06');
+  });
+
+  it('is absent entirely when no upcoming night is mine', () => {
+    const { queryByTestId } = render(MinePage);
+    expect(queryByTestId('mine-upcoming')).not.toBeInTheDocument();
+  });
+
+  it('stops the page reading as all-clear — three nights of cooking is not caught up', () => {
+    mockUpcomingNights._set([chefNight('2026-08-06', 1)]);
+    const { getByTestId, queryByTestId } = render(MinePage);
+    expect(queryByTestId('mine-empty')).not.toBeInTheDocument();
+    expect(getByTestId('mine-upcoming')).toBeInTheDocument();
   });
 });
 

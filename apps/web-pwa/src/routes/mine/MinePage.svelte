@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Button, Card, Icon, Progress } from '@salt/ui-components';
+  import { onMount } from 'svelte';
   import { push } from 'svelte-spa-router';
   import { formatClock, timerProgress, withTimerDismissed, type Recipe } from '@salt/domain';
   import { currentMember } from '../../lib/membersService.js';
@@ -9,25 +10,71 @@
     needsReviewRecipes,
     recentChats,
     timerNowMs,
+    upcomingChefNights,
     type LiveCook,
     type MineTimer,
+    type UpcomingChefNight,
   } from '../../lib/personalViewService.js';
+  import { subscribeKitchenWeeks } from '../../lib/mealPlanService.js';
   import { persistCookSession, removeCookSession } from '../../lib/cookSessionService.js';
   import { persistRecipe, recipes } from '../../lib/recipeService.js';
   import { addToast } from '../../lib/toastStore.js';
 
-  // "My Kitchen" (issues #634, #682, #755) — what of mine is RUNNING right now, and
-  // what needs a look. Four sections, in that order:
+  // "My Kitchen" (issues #634, #682, #755) — what of mine is running right now,
+  // what is coming at me, and what needs a look. Five sections, in that order:
   //
-  //   1. Timers      — running and fired-but-undismissed, in one list
-  //   2. Cooking now — my open cook sessions
-  //   3. Needs review — entries flagged `needs_approval`
-  //   4. Recent chats — a quiet footer, the only thing here not waiting on you
+  //   1. Timers       — running and fired-but-undismissed, in one list
+  //   2. Cooking now  — my open cook sessions
+  //   3. Cooking soon — the nights from today onward that I am chef on
+  //   4. Needs review — entries flagged `needs_approval`
+  //   5. Recent chats — a quiet footer, the only thing here not waiting on you
   //
-  // Nothing here restates the planner or the shopping list; each of those has its
-  // own page that says it better. Every card is a projection of a document that
-  // exists at this moment: it appears when true and disappears when resolved. No
-  // read state, no dismissals, nothing stored per user.
+  // Cooking soon is the one section that reads plan data, and it is not a
+  // restatement of the planner: which nights are YOURS is a run of days forward
+  // from today that does not stop at the end of a cycle, and the planner renders
+  // weeks. Nothing here restates the shopping list. Every card is a projection of
+  // a document that exists at this moment: it appears when true and disappears
+  // when resolved. No read state, no dismissals, nothing stored per user.
+
+  // Cooking soon needs one or two meal-plan week documents, which nothing else
+  // holds on this page's behalf. Page-owned for the reason the planner's own
+  // extension week is: a live subscription kept alive for a screen nobody is
+  // looking at is the failure mode. The teardown only drops this page's CLAIM —
+  // the planner may be holding the same week (see `pruneWeekSubscriptions`).
+  onMount(() => subscribeKitchenWeeks());
+
+  // ─── Cooking soon ─────────────────────────────────────────────────────────
+  // "Tonight" and "Tomorrow" are worth naming; past that a weekday reads faster
+  // than a countdown. Formatted in UTC because a date key is a calendar day, not
+  // an instant — parsing it as local midnight would shift it a day west of GMT.
+  const NIGHT_FORMAT = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'UTC',
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  });
+
+  function nightLabel(night: UpcomingChefNight): string {
+    if (night.daysAway === 0) return 'Tonight';
+    if (night.daysAway === 1) return 'Tomorrow';
+    return NIGHT_FORMAT.format(new Date(`${night.date}T00:00:00.000Z`));
+  }
+
+  // What is planned, in the order the day carries it — attached entries first,
+  // then the note. A night that is yours but blank still shows: that IS the
+  // useful signal, so it says so rather than being hidden.
+  function nightMeal(night: UpcomingChefNight): string {
+    if (night.recipes.length > 0) return night.recipes.map((r) => r.title).join(' · ');
+    if (night.day.note.trim()) return night.day.note.trim();
+    return 'Nothing planned yet';
+  }
+
+  // The recipe when there is one, otherwise that day in the planner — which is
+  // where a note lives and the only place it can be changed.
+  function openNight(night: UpcomingChefNight): void {
+    const first = night.recipes[0];
+    push(first ? `/recipes/${first.id}` : `/mealplan/${night.date}`);
+  }
 
   // ─── Timers ───────────────────────────────────────────────────────────────
   // `endsAt` is absolute, so the countdown is pure arithmetic against a shared
@@ -91,7 +138,10 @@
   // conversations in it is still all-clear, and hiding "You're all caught up"
   // behind a chat you had last Tuesday would make a shortcut look like a chore.
   const allClear = $derived(
-    $myTimers.length === 0 && $liveCooks.length === 0 && $needsReviewRecipes.length === 0,
+    $myTimers.length === 0 &&
+      $liveCooks.length === 0 &&
+      $upcomingChefNights.length === 0 &&
+      $needsReviewRecipes.length === 0,
   );
 </script>
 
@@ -226,7 +276,40 @@
     </div>
   {/if}
 
-  <!-- 3. Needs review — imported by AI, not read by a human yet. Standing queue,
+  <!-- 3. Cooking soon — the nights from here on that are mine. One or two week
+       documents behind it (this week, plus next week's once the cycle is nearly
+       out), so the boundary is invisible: it is one run of nights, not a week. -->
+  {#if $upcomingChefNights.length > 0}
+    <div class="flex flex-col gap-2" data-testid="mine-upcoming">
+      <h2 class="text-sm font-medium text-muted-foreground">Cooking soon</h2>
+      {#each $upcomingChefNights as night (night.date)}
+        <Card class="overflow-hidden">
+          <button
+            type="button"
+            class="flex w-full items-center gap-3 p-3 text-left"
+            onclick={() => openNight(night)}
+            data-testid="mine-upcoming-open"
+          >
+            <Icon name="CalendarDays" size={18} class="shrink-0 text-muted-foreground" />
+            <div class="min-w-0 flex-1">
+              <p
+                class="truncate text-sm font-medium text-foreground"
+                data-testid="mine-upcoming-when"
+              >
+                {nightLabel(night)}
+              </p>
+              <p class="truncate text-xs text-muted-foreground" data-testid="mine-upcoming-meal">
+                {nightMeal(night)}
+              </p>
+            </div>
+            <Icon name="ChevronRight" size={16} class="shrink-0 text-muted-foreground" />
+          </button>
+        </Card>
+      {/each}
+    </div>
+  {/if}
+
+  <!-- 4. Needs review — imported by AI, not read by a human yet. Standing queue,
        no time limit. Both actions clear it: opening one to fix something and
        saving, or marking it reviewed here when it came through clean. -->
   {#if $needsReviewRecipes.length > 0}
@@ -279,14 +362,14 @@
         <div>
           <p class="text-sm font-medium text-foreground">You're all caught up</p>
           <p class="text-xs text-muted-foreground">
-            No timers, no cook on the go, nothing to review.
+            No timers, no cook on the go, no nights of yours coming up, nothing to review.
           </p>
         </div>
       </div>
     </Card>
   {/if}
 
-  <!-- 4. Recent chats — last, after the empty state, because it is a shortcut back
+  <!-- 5. Recent chats — last, after the empty state, because it is a shortcut back
        into a conversation rather than something waiting on you. Read-only: the
        subscription is already running app-wide, and a chat is deleted or expires
        from its own page, never from here. Titles are a raw slice of the first

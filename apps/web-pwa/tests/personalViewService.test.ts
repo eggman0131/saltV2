@@ -1,40 +1,49 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { get } from 'svelte/store';
-import type { Recipe } from '@salt/domain';
+import { emptyWeek, setDayChefs, setDayNote, setDayRecipes, type Recipe } from '@salt/domain';
 import type { CookActiveTimerDoc, CookSessionDoc } from '@salt/domain/schemas';
 
 // The personal view's composition layer (issues #634, #682). Everything it reads
 // is a store that is already subscribed app-wide, so these tests drive fake stores
 // and assert the projection: my timers, my open cooks, and what still wants a look.
 
-const { mockRecipes, mockSessions, mockChats } = vi.hoisted(() => {
-  function makeStore<T>(initial: T) {
-    let value = initial;
-    const subs = new Set<(v: T) => void>();
+const { mockRecipes, mockSessions, mockChats, mockKitchenWeeks, mockToday, mockMember } =
+  vi.hoisted(() => {
+    function makeStore<T>(initial: T) {
+      let value = initial;
+      const subs = new Set<(v: T) => void>();
+      return {
+        subscribe(fn: (v: T) => void) {
+          subs.add(fn);
+          fn(value);
+          return () => {
+            subs.delete(fn);
+          };
+        },
+        _set(v: T) {
+          value = v;
+          subs.forEach((f) => f(v));
+        },
+      };
+    }
     return {
-      subscribe(fn: (v: T) => void) {
-        subs.add(fn);
-        fn(value);
-        return () => {
-          subs.delete(fn);
-        };
-      },
-      _set(v: T) {
-        value = v;
-        subs.forEach((f) => f(v));
-      },
+      mockRecipes: makeStore<unknown[]>([]),
+      mockSessions: makeStore<unknown[]>([]),
+      mockChats: makeStore<unknown[]>([]),
+      mockKitchenWeeks: makeStore<unknown[]>([]),
+      mockToday: makeStore<string>(''),
+      mockMember: makeStore<unknown>(null),
     };
-  }
-  return {
-    mockRecipes: makeStore<unknown[]>([]),
-    mockSessions: makeStore<unknown[]>([]),
-    mockChats: makeStore<unknown[]>([]),
-  };
-});
+  });
 
 vi.mock('../src/lib/recipeService.js', () => ({ recipes: mockRecipes }));
 vi.mock('../src/lib/cookSessionService.js', () => ({ myCookSessions: mockSessions }));
 vi.mock('../src/lib/chatService.js', () => ({ sessions: mockChats }));
+vi.mock('../src/lib/mealPlanService.js', () => ({
+  kitchenWeeks: mockKitchenWeeks,
+  kitchenAnchorDate: mockToday,
+}));
+vi.mock('../src/lib/membersService.js', () => ({ currentMember: mockMember }));
 
 import {
   firedTimers,
@@ -44,6 +53,7 @@ import {
   needsReviewRecipes,
   recentChats,
   timerNowMs,
+  upcomingChefNights,
 } from '../src/lib/personalViewService.js';
 
 const NOW = Date.parse('2026-08-05T12:00:00.000Z');
@@ -125,6 +135,9 @@ beforeEach(() => {
   mockRecipes._set([]);
   mockSessions._set([]);
   mockChats._set([]);
+  mockKitchenWeeks._set([]);
+  mockToday._set('');
+  mockMember._set(null);
 });
 
 afterEach(() => {
@@ -252,6 +265,92 @@ describe('timerNowMs', () => {
     expect(seen).toEqual([]);
 
     unsub();
+  });
+});
+
+// "Cooking soon" (#755). The window and the span are the domain helper's; what is
+// asserted here is the RESOLUTION — the member id, the entries that name the meal,
+// and the distance from the same today the weeks were subscribed for.
+describe('upcomingChefNights', () => {
+  const ALEX = { id: 'alex@e.org', name: 'Alex Green' };
+  const MONDAY = '2026-08-03';
+  const NEXT_MONDAY = '2026-08-10';
+
+  function week(start: string, dates: string[]) {
+    return dates.reduce((w, d) => setDayChefs(w, d, [ALEX.id]), emptyWeek(start));
+  }
+
+  it('is my nights, soonest first, with how far off each one is', () => {
+    mockMember._set(ALEX);
+    mockToday._set('2026-08-05');
+    mockKitchenWeeks._set([week(MONDAY, ['2026-08-04', '2026-08-05', '2026-08-08'])]);
+
+    expect(get(upcomingChefNights).map((n) => [n.date, n.daysAway])).toEqual([
+      ['2026-08-05', 0],
+      ['2026-08-08', 3],
+    ]);
+  });
+
+  it('spans the week boundary, so the last days of a cycle still show what is next', () => {
+    mockMember._set(ALEX);
+    mockToday._set('2026-08-07');
+    mockKitchenWeeks._set([week(MONDAY, ['2026-08-08']), week(NEXT_MONDAY, ['2026-08-11'])]);
+
+    expect(get(upcomingChefNights).map((n) => n.date)).toEqual(['2026-08-08', '2026-08-11']);
+  });
+
+  it('resolves attached entries live from the recipes store', () => {
+    mockRecipes._set([recipe('r1', 'Ragu'), recipe('r2', 'Focaccia')]);
+    mockMember._set(ALEX);
+    mockToday._set('2026-08-05');
+    mockKitchenWeeks._set([
+      setDayRecipes(week(MONDAY, ['2026-08-06']), '2026-08-06', ['r1', 'r2']),
+    ]);
+
+    expect(get(upcomingChefNights)[0]?.recipes.map((r) => r.title)).toEqual(['Ragu', 'Focaccia']);
+  });
+
+  it('drops an entry that has since been deleted rather than carrying a dead title', () => {
+    mockRecipes._set([recipe('r1', 'Ragu')]);
+    mockMember._set(ALEX);
+    mockToday._set('2026-08-05');
+    mockKitchenWeeks._set([
+      setDayRecipes(week(MONDAY, ['2026-08-06']), '2026-08-06', ['r1', 'gone']),
+    ]);
+
+    expect(get(upcomingChefNights)[0]?.recipes.map((r) => r.id)).toEqual(['r1']);
+  });
+
+  it('carries the day itself, so a note-only night can still say what it is', () => {
+    mockMember._set(ALEX);
+    mockToday._set('2026-08-05');
+    mockKitchenWeeks._set([setDayNote(week(MONDAY, ['2026-08-06']), '2026-08-06', 'leeks')]);
+
+    expect(get(upcomingChefNights)[0]?.day.note).toBe('leeks');
+    expect(get(upcomingChefNights)[0]?.recipes).toEqual([]);
+  });
+
+  it('is empty when the sign-in matches nobody on the roster', () => {
+    // Better to show no section than to claim every night in the house is yours.
+    mockMember._set(null);
+    mockToday._set('2026-08-05');
+    mockKitchenWeeks._set([week(MONDAY, ['2026-08-06', '2026-08-07'])]);
+
+    expect(get(upcomingChefNights)).toEqual([]);
+  });
+
+  it('is empty before the page has opened any week', () => {
+    mockMember._set(ALEX);
+    expect(get(upcomingChefNights)).toEqual([]);
+  });
+
+  it('stays out of the nav badge — a night you are cooking is not a summons', () => {
+    mockMember._set(ALEX);
+    mockToday._set('2026-08-05');
+    mockKitchenWeeks._set([week(MONDAY, ['2026-08-06'])]);
+
+    expect(get(upcomingChefNights)).toHaveLength(1);
+    expect(get(mineOpenCount)).toBe(0);
   });
 });
 
