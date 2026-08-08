@@ -1,8 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, cleanup, waitFor } from '@testing-library/svelte';
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'vitest-axe';
-import type { CookSessionDoc, GuidedPlanDoc, IngredientDoc, RecipeDoc } from '@salt/domain/schemas';
+import { checkInTimerId, isCheckInOf } from '@salt/domain';
+import type {
+  CookActiveTimerDoc,
+  CookSessionDoc,
+  GuidedPlanDoc,
+  IngredientDoc,
+  RecipeDoc,
+} from '@salt/domain/schemas';
 
 // Guided cook (issue #751, Phase 2). The same jsdom line CookModePage.test.ts
 // draws applies verbatim: everything the cook can DO is exercised here, and
@@ -220,9 +227,21 @@ function makePlan(over: Partial<GuidedPlanDoc> = {}): GuidedPlanDoc {
         container: 'The small bowl — onion',
         setup: 'Small hob burner, medium-low',
         cue: 'A very gentle sizzle, not a crackle',
-        // Stored and editable in the Phase 1 editor; Phase 2 must not render or
-        // arm them. Present on the fixture precisely so a regression would show.
-        checkIns: [{ atMinutes: 5, text: 'Give it a stir' }],
+        checkIns: [],
+      },
+      // A note that says nothing EXCEPT "check in partway" — the case a note-guard
+      // written for the other three lines would hide. It sits on step-2 because
+      // that is the fixture's timed step, and a check-in only exists on a step that
+      // already carries a timer.
+      {
+        stepId: 'step-2',
+        container: null,
+        setup: null,
+        cue: null,
+        checkIns: [
+          { atMinutes: 5, text: 'Give it a stir' },
+          { atMinutes: 15, text: "Check it isn't drying out" },
+        ],
       },
     ],
     createdAt: RECIPE_UPDATED_AT,
@@ -241,6 +260,63 @@ function lastPersisted(): CookSessionDoc {
   const calls = vi.mocked(persistCookSession).mock.calls;
   expect(calls.length).toBeGreaterThan(0);
   return calls[calls.length - 1]![0];
+}
+
+/** Step 2's own timer in the most recent write — never one of its check-ins. */
+function mainTimer(): CookActiveTimerDoc | undefined {
+  return lastPersisted().activeTimers.find((t) => t.id === 'step-2');
+}
+
+/**
+ * A three-hour braise already running on step 2, with its two check-ins armed:
+ * the heat check twenty minutes in and the drying-out check at two hours. Absolute
+ * end-times off the current clock, which is exactly how they are written.
+ */
+function braise(): CookActiveTimerDoc[] {
+  const startMs = Date.now();
+  const at = (minutes: number) => new Date(startMs + minutes * 60_000).toISOString();
+  return [
+    {
+      id: 'step-2',
+      stepId: 'step-2',
+      label: 'Braise',
+      durationMinutes: 180,
+      endsAt: at(180),
+      notify: true,
+    },
+    {
+      id: checkInTimerId('step-2', 20),
+      stepId: 'step-2',
+      label: 'Check the heat',
+      durationMinutes: 20,
+      endsAt: at(20),
+      notify: true,
+    },
+    {
+      id: checkInTimerId('step-2', 120),
+      stepId: 'step-2',
+      label: "Check it isn't drying out",
+      durationMinutes: 120,
+      endsAt: at(120),
+      notify: true,
+    },
+  ];
+}
+
+/**
+ * Set the timer sheet's minutes in ONE input event rather than keystroke by
+ * keystroke. `userEvent.type` re-renders the bound field between characters, and a
+ * three-digit duration can be read back mid-word ("24" for "240").
+ */
+async function setSheetMinutes(value: string): Promise<void> {
+  const field = await screen.findByTestId('cook-timer-sheet-minutes');
+  await fireEvent.input(field, { target: { value } });
+}
+
+function chipFor(chips: HTMLElement[], timerId: string): HTMLElement {
+  const chip = chips.find((c) => c.dataset['timerId'] === timerId);
+  expect(chip).toBeDefined();
+  return chip!;
 }
 
 async function enterSteps() {
@@ -461,9 +537,22 @@ describe('GuidedCookPage — the steps carry the plan-s notes', () => {
   });
 
   it('renders no notes block for a step the plan says nothing about', async () => {
+    mockGuidedPlan._set(
+      makePlan({
+        stepNotes: [
+          {
+            stepId: 'step-1',
+            container: 'The small bowl — onion',
+            setup: null,
+            cue: null,
+            checkIns: [],
+          },
+        ],
+      }),
+    );
     renderGuidedCook();
     await enterSteps();
-    // The fixture annotates step-1 only.
+    // Step 2 is annotated by nothing at all, so it renders no block whatsoever.
     expect(screen.getAllByTestId('guided-step-notes')).toHaveLength(1);
   });
 
@@ -504,10 +593,32 @@ describe('GuidedCookPage — the steps carry the plan-s notes', () => {
     expect(screen.queryByText('A bowl that is not there')).toBeNull();
   });
 
-  it('does NOT render check-ins — Phase 3 owns arming them', async () => {
+  it('lists the check-ins the step-s timer will announce, and when (#751 Phase 3)', async () => {
     renderGuidedCook();
     await enterSteps();
-    // The fixture's step-1 note carries one.
+
+    const rows = screen.getAllByTestId('guided-step-check-in');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent('5 min in');
+    expect(rows[0]).toHaveTextContent('Give it a stir');
+    expect(rows[1]).toHaveTextContent("Check it isn't drying out");
+  });
+
+  it('shows no check-in on a step whose timer the recipe has since dropped', async () => {
+    // Nothing to hang them off, so they are neither shown nor armed — a reminder
+    // promised and never delivered is worse than one never promised.
+    mockRecipes._set([
+      makeRecipe({
+        steps: [
+          { id: 'step-1', text: 'Soften the onions.', timer: null, note: null },
+          { id: 'step-2', text: 'Simmer the sauce.', timer: null, note: null },
+        ],
+      }),
+    ]);
+    renderGuidedCook();
+    await enterSteps();
+
+    expect(screen.queryByTestId('guided-step-check-in')).toBeNull();
     expect(screen.queryByText(/Give it a stir/)).toBeNull();
   });
 
@@ -527,8 +638,186 @@ describe('GuidedCookPage — the steps carry the plan-s notes', () => {
     await screen.findByTestId('cook-steps-view');
 
     await userEvent.click(screen.getByTestId('cook-step-timer-start'));
+    // The step's own timer is written under the step's own id, exactly as plain
+    // cook mode writes it. (Its check-ins ride alongside — see the suites below.)
+    await waitFor(() => expect(mainTimer()).toBeDefined());
+    expect(mainTimer()).toMatchObject({ id: 'step-2', stepId: 'step-2', durationMinutes: 20 });
+  });
+});
+
+// ─── Check-ins (issue #751, Phase 3) ───────────────────────────────────────────
+//
+// A check-in is an ORDINARY `activeTimers` entry with a DERIVED id, riding the
+// existing Cloud Tasks → push path. So everything below is asserted on the session
+// document that gets written: what lands in `activeTimers` IS what gets enqueued,
+// and there is no second mechanism to check.
+
+describe('GuidedCookPage — starting a timer arms its check-ins', () => {
+  /** Everything the last write armed for step 2's timer. */
+  function armed() {
+    return lastPersisted().activeTimers.filter((t) => isCheckInOf(t.id, 'step-2'));
+  }
+
+  async function startStepTwoTimer(): Promise<void> {
+    mockCookSession._set(makeCookSession({ completedStepIds: ['step-1'] }));
+    renderGuidedCook();
+    await screen.findByTestId('cook-steps-view');
+    await userEvent.click(screen.getByTestId('cook-step-timer-start'));
+    await waitFor(() => expect(mainTimer()).toBeDefined());
+  }
+
+  it('writes one entry per check-in, in the same write as the timer', async () => {
+    await startStepTwoTimer();
+
+    expect(armed().map((t) => t.id)).toEqual([
+      checkInTimerId('step-2', 5),
+      checkInTimerId('step-2', 15),
+    ]);
+    // The reminder's own words become the entry's label, which is what the push
+    // copy and the in-app toast both read — no CF change needed for either.
+    expect(armed().map((t) => t.label)).toEqual(['Give it a stir', "Check it isn't drying out"]);
+    // Its step, so the notification can say which one; and its OWN run, so the
+    // progress fill measures the wait for the nudge rather than for the braise.
+    expect(armed()[0]).toMatchObject({ stepId: 'step-2', durationMinutes: 5, notify: true });
+  });
+
+  it('anchors every check-in to the moment the timer started', async () => {
+    await startStepTwoTimer();
+
+    // Both come off the SAME start instant as the 20-minute main timer, so the
+    // offsets are exact without this test owning a clock.
+    const mainEnd = Date.parse(mainTimer()!.endsAt);
+    expect(Date.parse(armed()[0]!.endsAt)).toBe(mainEnd - 15 * 60_000);
+    expect(Date.parse(armed()[1]!.endsAt)).toBe(mainEnd - 5 * 60_000);
+  });
+
+  it('arms nothing a duration the cook shortened no longer reaches', async () => {
+    mockCookSession._set(makeCookSession({ completedStepIds: ['step-1'] }));
+    renderGuidedCook();
+    await screen.findByTestId('cook-steps-view');
+
+    await userEvent.click(screen.getByTestId('cook-step-timer-adjust'));
+    await setSheetMinutes('10');
+    await userEvent.click(screen.getByTestId('cook-timer-sheet-confirm'));
+
+    await waitFor(() => expect(mainTimer()).toBeDefined());
+    // Ten minutes does not reach the fifteen-minute reminder.
+    expect(armed().map((t) => t.label)).toEqual(['Give it a stir']);
+  });
+
+  it('arms none for a timer on a step the plan says nothing about', async () => {
+    mockGuidedPlan._set(makePlan({ stepNotes: [] }));
+    await startStepTwoTimer();
+    expect(armed()).toEqual([]);
+  });
+
+  it('arms none for a timer that belongs to no step', async () => {
+    renderGuidedCook();
+    await userEvent.click(screen.getByTestId('cook-mode-timer'));
+    await screen.findByTestId('cook-timer-sheet-confirm');
+    await userEvent.click(screen.getByTestId('cook-timer-sheet-confirm'));
+
     await waitFor(() => expect(lastPersisted().activeTimers).toHaveLength(1));
-    expect(lastPersisted().activeTimers[0]).toMatchObject({ id: 'step-2', stepId: 'step-2' });
+  });
+});
+
+describe('GuidedCookPage — a check-in in the timers bar', () => {
+  it('shows a pending check-in as a row you cannot re-time, only call off', async () => {
+    mockCookSession._set(makeCookSession({ activeTimers: braise() }));
+    renderGuidedCook();
+
+    const chips = await screen.findAllByTestId('cook-timer-chip');
+    expect(chips).toHaveLength(3);
+    const chip = chipFor(chips, checkInTimerId('step-2', 20));
+    expect(chip).toHaveTextContent('Check the heat');
+    // Tapping a check-in must not open the sheet: its end-time is anchored to the
+    // moment the braise started, and re-timing it from now would detach it.
+    expect(chip.querySelector('[data-testid="cook-timer-chip-edit"]')).toBeNull();
+    expect(chip.querySelector('[data-testid="cook-timer-chip-dismiss"]')).toBeInTheDocument();
+  });
+
+  it('lets a check-in leave on its own once it has fired — nothing to dismiss', async () => {
+    const timers = braise();
+    // The 20-minute reminder has already gone off. Nobody acknowledged it, and
+    // nobody has to.
+    timers[1]!.endsAt = new Date(Date.now() - 5_000).toISOString();
+    mockCookSession._set(makeCookSession({ activeTimers: timers }));
+    renderGuidedCook();
+
+    const chips = await screen.findAllByTestId('cook-timer-chip');
+    expect(chips.map((c) => c.dataset['timerId'])).toEqual([
+      'step-2',
+      checkInTimerId('step-2', 120),
+    ]);
+    expect(screen.queryByText('Check the heat')).toBeNull();
+  });
+
+  it('clears the pending check-ins when the timer they hang off is dismissed', async () => {
+    mockCookSession._set(makeCookSession({ activeTimers: braise() }));
+    renderGuidedCook();
+
+    const chips = await screen.findAllByTestId('cook-timer-chip');
+    await userEvent.click(
+      chipFor(chips, 'step-2').querySelector('[data-testid="cook-timer-chip-dismiss"]')!,
+    );
+
+    await waitFor(() => expect(lastPersisted().activeTimers).toEqual([]));
+  });
+
+  it('calls off one reminder without touching the braise', async () => {
+    mockCookSession._set(makeCookSession({ activeTimers: braise() }));
+    renderGuidedCook();
+
+    const chips = await screen.findAllByTestId('cook-timer-chip');
+    await userEvent.click(
+      chipFor(chips, checkInTimerId('step-2', 20)).querySelector(
+        '[data-testid="cook-timer-chip-dismiss"]',
+      )!,
+    );
+
+    await waitFor(() =>
+      expect(lastPersisted().activeTimers.map((t) => t.id)).toEqual([
+        'step-2',
+        checkInTimerId('step-2', 120),
+      ]),
+    );
+  });
+});
+
+describe('GuidedCookPage — re-timing a braise that has check-ins armed', () => {
+  /** Seeds the braise, re-times it, and hands back the entries it started with —
+   *  the SAME objects, because `braise()` reads the clock and calling it twice
+   *  would give two sets of end-times a millisecond apart. */
+  async function reTimeTo(minutes: string): Promise<CookActiveTimerDoc[]> {
+    const original = braise();
+    mockCookSession._set(makeCookSession({ activeTimers: original }));
+    renderGuidedCook();
+    const chips = await screen.findAllByTestId('cook-timer-chip');
+    await userEvent.click(
+      chipFor(chips, 'step-2').querySelector('[data-testid="cook-timer-chip-edit"]')!,
+    );
+    await setSheetMinutes(minutes);
+    await userEvent.click(screen.getByTestId('cook-timer-sheet-confirm'));
+    await waitFor(() => expect(mainTimer()?.durationMinutes).toBe(Number(minutes)));
+    return original;
+  }
+
+  it('EXTENDING leaves every reminder exactly where it was', async () => {
+    const original = await reTimeTo('240');
+
+    // Not re-anchored, not re-derived: the same entries, byte for byte.
+    expect(lastPersisted().activeTimers.filter((t) => isCheckInOf(t.id, 'step-2'))).toEqual(
+      original.slice(1),
+    );
+  });
+
+  it('SHORTENING drops the reminders the wait no longer reaches', async () => {
+    const original = await reTimeTo('90');
+
+    // The 20-minute heat check is untouched; the 2-hour one never fires.
+    expect(lastPersisted().activeTimers.filter((t) => isCheckInOf(t.id, 'step-2'))).toEqual([
+      original[1],
+    ]);
   });
 });
 

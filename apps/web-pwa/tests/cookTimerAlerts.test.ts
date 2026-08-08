@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { checkInTimerId } from '@salt/domain';
 import type { CookActiveTimerDoc, CookSessionDoc } from '@salt/domain/schemas';
 
 // The watcher is a plain module over a clock, so these tests own the clock
@@ -191,6 +192,95 @@ describe('cookTimerAlerts', () => {
     vi.advanceTimersByTime(1_000);
 
     expect(mockChime.playChime).toHaveBeenCalledTimes(2);
+
+    stop();
+  });
+
+  it('announces the timer by its own name', () => {
+    mockCookSession._set(makeSession([makeTimer({ label: 'Simmer the sauce' })]));
+    const stop = initCookTimerAlerts();
+
+    clock = START + 60_400;
+    vi.advanceTimersByTime(1_000);
+
+    expect(mockToast.addToast).toHaveBeenCalledWith(
+      'Simmer the sauce',
+      'default',
+      expect.anything(),
+    );
+
+    stop();
+  });
+
+  // ─── Guided cook and its check-ins (issue #751, Phase 3) ────────────────────
+
+  it('treats the guided cook page as watching the cook too', () => {
+    window.location.hash = `${COOK_HASH}/guided`;
+    mockCookSession._set(makeSession([runningTimer()]));
+    const stop = initCookTimerAlerts();
+
+    clock = START + 60_400;
+    vi.advanceTimersByTime(1_000);
+
+    // Same reason as the plain page: the chip in front of them flips to "Finished".
+    expect(mockChime.playChime).toHaveBeenCalledTimes(1);
+    expect(mockToast.addToast).not.toHaveBeenCalled();
+
+    stop();
+  });
+
+  it('returns a chef who wandered off mid-guided-cook to the GUIDED page', () => {
+    window.location.hash = `${COOK_HASH}/guided`;
+    mockCookSession._set(makeSession([runningTimer()]));
+    const stop = initCookTimerAlerts();
+
+    // Observed running while they were on the guided page, then they wandered off.
+    vi.advanceTimersByTime(1_000);
+    window.location.hash = '#/shopping';
+    clock = START + 60_400;
+    vi.advanceTimersByTime(1_000);
+
+    const options = mockToast.addToast.mock.calls[0]?.[2] as {
+      action: { onClick: () => void };
+    };
+    options.action.onClick();
+    // Not `/cook`: that would drop them out of the mode they were cooking in.
+    expect(mockRouter.push).toHaveBeenCalledWith(`/recipes/${RECIPE_ID}/cook/guided`);
+
+    stop();
+  });
+
+  it('says what a check-in says, and says it even on the cook page', () => {
+    // A check-in fires by definition while the cook is standing at the hob, and it
+    // has no chip to flip — it leaves on its own. Suppressing the toast would mean
+    // a chime with nothing to read.
+    window.location.hash = `${COOK_HASH}/guided`;
+    mockCookSession._set(
+      makeSession([
+        // The braise itself, still an hour off.
+        makeTimer({ endsAt: iso(START + 3_600_000) }),
+        makeTimer({
+          id: checkInTimerId('step-2', 20),
+          label: 'Check the heat',
+          durationMinutes: 20,
+          endsAt: iso(START + 60_000),
+        }),
+      ]),
+    );
+    const stop = initCookTimerAlerts();
+
+    clock = START + 60_400;
+    vi.advanceTimersByTime(1_000);
+
+    expect(mockToast.addToast).toHaveBeenCalledTimes(1);
+    const [message, , options] = mockToast.addToast.mock.calls[0] as [
+      string,
+      string,
+      { action?: unknown },
+    ];
+    expect(message).toBe('Check the heat');
+    // Nothing to acknowledge and nowhere to go — they are already there.
+    expect(options.action).toBeUndefined();
 
     stop();
   });

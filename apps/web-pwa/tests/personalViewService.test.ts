@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { get } from 'svelte/store';
+import { checkInTimerId } from '@salt/domain';
 import type { Recipe } from '@salt/domain';
 import type { CookActiveTimerDoc, CookSessionDoc } from '@salt/domain/schemas';
 
@@ -220,6 +221,32 @@ describe('myTimers', () => {
   it('skips timers on a session whose recipe was deleted', () => {
     mockSessions._set([session('gone', [], [timer('s0', 60_000)])]);
     expect(get(myTimers)).toEqual([]);
+  });
+
+  it('skips a guided check-in — a nudge is not something that wants a hand (#751)', () => {
+    // Check-ins ride `activeTimers` as ordinary entries, but this page answers
+    // "what of mine wants a hand?" and a check-in never does: nothing to confirm,
+    // nothing to dismiss. Listing them would put a Dismiss button on a nudge.
+    mockRecipes._set([timedRecipe('r1', 'Ragu')]);
+    mockSessions._set([
+      session(
+        'r1',
+        [],
+        [
+          timer('r1-s0', 60_000),
+          timer(checkInTimerId('r1-s0', 5), -30_000, {
+            stepId: 'r1-s0',
+            label: 'Give it a stir',
+          }),
+        ],
+      ),
+    ]);
+
+    expect(get(myTimers).map((t) => t.timer.id)).toEqual(['r1-s0']);
+    // And a FIRED one must not inflate the badge with something nobody has to act
+    // on — it is the one that would, since `firedTimers` feeds the count.
+    expect(get(firedTimers)).toEqual([]);
+    expect(get(mineOpenCount)).toBe(1); // the open cook, and nothing else
   });
 });
 

@@ -43,6 +43,8 @@
     hasRecipeChanged,
     formatClock,
     timerProgress,
+    checkInTimerId,
+    isCheckInTimerId,
   } from '@salt/domain';
   import type {
     CookActiveTimerDoc,
@@ -83,9 +85,12 @@
   // (never paints over it), focus is pulled into the page on mount, and there is
   // no `role="dialog"`, no `aria-modal` and no focus trap.
   //
-  // NOTHING here arms, notifies or renders a check-in. `GuidedCheckInDoc.atMinutes`
-  // is stored and editable in the Phase 1 editor and belongs to Phase 3 at runtime;
-  // this page must not grow a countdown for it.
+  // CHECK-INS (Phase 3) are armed here and NOWHERE ELSE. Starting a step's timer
+  // in this mode also arms the plan's partway reminders for that step, as ordinary
+  // `activeTimers` entries on the same write — the existing Cloud Tasks → push path
+  // carries them with no server change at all. Plain cook mode arms none, which is
+  // what keeps "the same session, two modes" honest: the reminders belong to the
+  // plan, and the plan is only in hand here.
 
   interface Props {
     params: { id: string };
@@ -256,8 +261,6 @@
   // whose step no longer exists render as NOTHING: it is never found, never shown,
   // and never re-attached to a neighbouring step.
   //
-  // `checkIns` is deliberately not read. Phase 3 owns arming and notifying them,
-  // and a reminder shown but never fired would be worse than one not shown at all.
   const noteByStep = $derived(new Map((plan?.stepNotes ?? []).map((n) => [n.stepId, n] as const)));
 
   // ─── Canon icons ───────────────────────────────────────────────────────────────
@@ -491,8 +494,16 @@
   // (lib/cookTimerAlerts.ts), which keeps ticking once the chef navigates away.
   // Do not re-add a chime here; two owners means two honks.
   const activeTimers = $derived($cookSession?.activeTimers ?? []);
+  // Keyed by STEP: "is there a live timer on the step I am cooking?". A check-in
+  // carries its step so the push copy can name it, so this must ask for the step's
+  // OWN timer rather than the last entry that mentions the step — otherwise the
+  // inline control would count down a reminder and its Cancel would cancel one.
   const timerByStep = $derived(
-    new Map(activeTimers.flatMap((t) => (t.stepId === null ? [] : [[t.stepId, t] as const]))),
+    new Map(
+      activeTimers.flatMap((t) =>
+        t.stepId === null || isCheckInTimerId(t.id) ? [] : [[t.stepId, t] as const],
+      ),
+    ),
   );
 
   let now = $state(Date.now());
@@ -505,10 +516,53 @@
     return () => clearInterval(handle);
   });
 
+  // What the bar shows. A check-in that has FIRED leaves on its own: it is a nudge,
+  // not a checkpoint, so there is nothing to confirm and nothing to dismiss, and a
+  // "Check the heat — Finished" chip sitting over the braise for the next two hours
+  // would be exactly the acknowledgement the issue forbids. The entry stays in the
+  // document (harmless — its key is already in the enqueue diff) and goes when the
+  // timer it hangs off is dismissed. Derived off `now` rather than the effect above,
+  // which must keep watching `activeTimers.length` or it would tear its own interval
+  // down every second.
+  const barTimers = $derived(
+    activeTimers.filter((t) => !isCheckInTimerId(t.id) || Date.parse(t.endsAt) > now),
+  );
+
   // A delivery-precision floor, not a "will the chef walk away" heuristic — see
   // CookModePage for the full reasoning. Kept identical so a timer behaves the same
   // whichever mode started it.
   const NOTIFY_MIN_MINUTES = 1.5;
+
+  // A check-in with nothing typed in it. The editor lets the minutes stand alone,
+  // and a reminder that arrives blank is still better than one that silently never
+  // arrives, so it goes out under a name rather than being dropped.
+  const UNNAMED_CHECK_IN = 'Check in';
+
+  // The plan's reminders for this timer, as ordinary timer entries anchored to the
+  // START INSTANT the caller passes in. Absolute, exactly like the main timer's
+  // `endsAt`, which is what makes them survive a reload and — the point of the
+  // whole design — makes extending the main timer leave them untouched.
+  //
+  // `durationMinutes` is the check-in's OWN run (`atMinutes` from the same start),
+  // not the main timer's: it is what the entry was actually started for, so the
+  // progress fill reads as "how far into the wait for this nudge".
+  function checkInEntriesFor(
+    timerId: string,
+    stepId: string | null,
+    startMs: number,
+  ): CookActiveTimerDoc[] {
+    if (stepId === null) return [];
+    return (noteByStep.get(stepId)?.checkIns ?? []).map((c) => ({
+      id: checkInTimerId(timerId, c.atMinutes),
+      stepId,
+      label: c.text.trim() === '' ? UNNAMED_CHECK_IN : c.text.trim(),
+      durationMinutes: c.atMinutes,
+      endsAt: new Date(startMs + c.atMinutes * 60_000).toISOString(),
+      // The same delivery-precision floor the main timer uses — a check-in is the
+      // same kind of thing, delivered the same way.
+      notify: c.atMinutes >= NOTIFY_MIN_MINUTES,
+    }));
+  }
 
   function startTimerEntry(entry: {
     id: string;
@@ -519,13 +573,19 @@
     const s = getCookSessionSnapshot();
     if (!s) return;
     primeChime();
-    const endsAt = new Date(Date.now() + entry.durationMinutes * 60_000).toISOString();
+    // One clock read for the main timer AND its check-ins, so every reminder is
+    // anchored to the same instant the wait started from.
+    const startMs = Date.now();
+    const endsAt = new Date(startMs + entry.durationMinutes * 60_000).toISOString();
     void persistCookSession(
-      withTimerStarted(s, {
-        ...entry,
-        endsAt,
-        notify: entry.durationMinutes >= NOTIFY_MIN_MINUTES,
-      }),
+      withTimerStarted(
+        s,
+        { ...entry, endsAt, notify: entry.durationMinutes >= NOTIFY_MIN_MINUTES },
+        // Always offered; the producer takes them only when this is a fresh start.
+        // Re-timing a running timer keeps the check-ins already armed, because
+        // their anchor is the original start — see withTimerStarted.
+        checkInEntriesFor(entry.id, entry.stepId, startMs),
+      ),
     );
   }
 
@@ -886,15 +946,16 @@
     {/if}
 
     <!-- Persistent timers bar -->
-    {#if activeTimers.length > 0}
+    {#if barTimers.length > 0}
       <div
         class="flex shrink-0 flex-col gap-2 border-b bg-muted/40 px-4 py-3"
         data-testid="cook-timers-bar"
       >
         <div class="mx-auto flex w-full max-w-2xl flex-col gap-2">
-          {#each activeTimers as t (t.id)}
+          {#each barTimers as t (t.id)}
             {@const remaining = new Date(t.endsAt).getTime() - now}
             {@const fired = remaining <= 0}
+            {@const checkIn = isCheckInTimerId(t.id)}
             {@const stepIndex =
               t.stepId === null ? -1 : recipe.steps.findIndex((s) => s.id === t.stepId)}
             {@const stepLabel =
@@ -909,16 +970,16 @@
               data-testid="cook-timer-chip"
               data-timer-id={t.id}
               data-fired={fired}
+              data-check-in={checkIn}
             >
               <div class="flex items-center gap-3 px-3 py-2">
-                <button
-                  type="button"
-                  class="-mx-1 flex min-w-0 flex-1 items-center gap-3 rounded px-1 py-1 text-left hover:bg-muted"
-                  onclick={() => openRunningTimerSheet(t)}
-                  data-testid="cook-timer-chip-edit"
-                >
+                <!-- A check-in's chip is NOT a way into the sheet. Its `endsAt` is
+                   anchored to the moment its timer started, and re-timing it from
+                   now would detach it from the wait it belongs to — so it reads as a
+                   row, and the only thing you can do to it is call it off. -->
+                {#snippet chipBody()}
                   <Icon
-                    name={fired ? 'BellRing' : 'Timer'}
+                    name={checkIn ? 'Bell' : fired ? 'BellRing' : 'Timer'}
                     size={18}
                     class={fired ? 'shrink-0 text-primary' : 'shrink-0 text-muted-foreground'}
                   />
@@ -939,7 +1000,21 @@
                   >
                     {fired ? 'Finished' : formatClock(remaining)}
                   </span>
-                </button>
+                {/snippet}
+                {#if checkIn}
+                  <div class="flex min-w-0 flex-1 items-center gap-3 py-1">
+                    {@render chipBody()}
+                  </div>
+                {:else}
+                  <button
+                    type="button"
+                    class="-mx-1 flex min-w-0 flex-1 items-center gap-3 rounded px-1 py-1 text-left hover:bg-muted"
+                    onclick={() => openRunningTimerSheet(t)}
+                    data-testid="cook-timer-chip-edit"
+                  >
+                    {@render chipBody()}
+                  </button>
+                {/if}
                 <Button
                   size="sm"
                   variant={fired ? 'solid' : 'ghost'}
@@ -1134,6 +1209,10 @@
             {@const done = completedStepIds.has(step.id)}
             {@const note = noteByStep.get(step.id) ?? null}
             {@const collapsed = done && peekedStepId !== step.id}
+            <!-- Check-ins hang off the step's TIMER, so a step that has lost its
+               timer has nothing to hang them on — they are neither shown nor armed
+               rather than promised and never delivered. -->
+            {@const checkIns = step.timer ? (note?.checkIns ?? []) : []}
             <section
               use:stepAnchor={step.id}
               data-step-id={step.id}
@@ -1205,9 +1284,11 @@
                      (null means the plan had nothing honest to say), so a step with
                      no note renders exactly as it does in plain cook mode.
                      `whitespace-pre-wrap` keeps author-typed line breaks.
-                     CHECK-INS ARE NOT RENDERED — Phase 3 owns arming them, and a
-                     reminder shown but never fired is worse than none. -->
-                  {#if note && (note.container || note.setup || note.cue)}
+                     The check-ins are listed here too, as what they are: what this
+                     step's timer will say, and when. Displayed, never enforced —
+                     starting the timer is what arms them, and ignoring one changes
+                     nothing about the cook. -->
+                  {#if note && (note.container || note.setup || note.cue || checkIns.length > 0)}
                     <ul class="flex flex-col gap-3" data-testid="guided-step-notes">
                       {#if note.container}
                         <li class="flex items-start gap-3" data-testid="guided-step-note-container">
@@ -1242,6 +1323,20 @@
                           <span class="whitespace-pre-wrap text-lg">{note.cue}</span>
                         </li>
                       {/if}
+                      {#each checkIns as checkIn, ci (ci)}
+                        <li class="flex items-start gap-3" data-testid="guided-step-check-in">
+                          <Icon
+                            name="Bell"
+                            size={22}
+                            class="mt-1 shrink-0 text-muted-foreground"
+                            ariaLabel="Check in"
+                          />
+                          <span class="whitespace-pre-wrap text-lg">
+                            <span class="text-muted-foreground">{checkIn.atMinutes} min in</span> —
+                            {checkIn.text}
+                          </span>
+                        </li>
+                      {/each}
                     </ul>
                   {/if}
 

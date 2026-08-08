@@ -19,6 +19,10 @@ export { withAllIngredientsChecked } from './withAllIngredientsChecked.js';
 export { withGroupChecked } from './withGroupChecked.js';
 export { withTimerStarted } from './withTimerStarted.js';
 export { withTimerDismissed } from './withTimerDismissed.js';
+// A guided plan's check-ins ride `activeTimers` as ordinary entries, so their
+// identity has to be derived — see checkInTimerId.ts for why, and for the three
+// places that derivation is the only handle anything has on them.
+export { checkInTimerId, isCheckInTimerId, isCheckInOf } from './checkInTimerId.js';
 export { firstUseByStep } from './firstUseByStep.js';
 export { firstIncompleteStepId } from './firstIncompleteStepId.js';
 export { miseProgress } from './miseProgress.js';
