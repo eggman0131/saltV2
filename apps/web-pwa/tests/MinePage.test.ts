@@ -89,6 +89,7 @@ function session(recipeId: string) {
     activeTimers: [],
     completedStepIds: [],
     checkedIngredientIds: [],
+    checkedPrepIds: [],
   };
 }
 

@@ -13,17 +13,29 @@ describe('isFullViewportRoute', () => {
     expect(isFullViewportRoute('/recipes/A-b_9.zZ/cook')).toBe(true);
   });
 
+  it('matches guided cook mode', () => {
+    // Issue #751, Phase 2: the same mode read through the recipe's guided plan,
+    // and so the same chrome-less treatment.
+    expect(isFullViewportRoute('/recipes/abc123/cook/guided')).toBe(true);
+    expect(isFullViewportRoute('/recipes/A-b_9.zZ/cook/guided')).toBe(true);
+  });
+
   it('does not match the recipe routes either side of it', () => {
     expect(isFullViewportRoute('/recipes/abc123')).toBe(false);
     expect(isFullViewportRoute('/recipes/abc123/edit')).toBe(false);
     expect(isFullViewportRoute('/recipes')).toBe(false);
+    // The PLAN EDITOR is desk work in the ordinary shell — never full-viewport.
+    expect(isFullViewportRoute('/recipes/abc123/guided')).toBe(false);
   });
 
   it('anchors both ends — no prefix or suffix sneaks through', () => {
     expect(isFullViewportRoute('/recipes/abc123/cook/steps')).toBe(false);
+    expect(isFullViewportRoute('/recipes/abc123/cook/guided/steps')).toBe(false);
     expect(isFullViewportRoute('/admin/recipes/abc123/cook')).toBe(false);
+    expect(isFullViewportRoute('/admin/recipes/abc123/cook/guided')).toBe(false);
     // A nested id segment is a different route, not a cook page.
     expect(isFullViewportRoute('/recipes/a/b/cook')).toBe(false);
+    expect(isFullViewportRoute('/recipes/a/b/cook/guided')).toBe(false);
   });
 
   it('leaves every ordinary route with its chrome', () => {

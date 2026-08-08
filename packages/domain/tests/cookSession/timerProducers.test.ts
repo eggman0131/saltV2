@@ -28,6 +28,7 @@ function session(activeTimers: CookActiveTimerDoc[]): CookSessionDoc {
     recipeId: 'r1',
     recipeUpdatedAtAtStart: '2026-07-01T09:00:00.000Z',
     checkedIngredientIds: ['i1'],
+    checkedPrepIds: [],
     completedStepIds: ['s1'],
     activeTimers,
     createdAt: '2026-07-22T18:30:00.000Z',

@@ -298,6 +298,7 @@ export {
   makeFreshSession,
   withStepDone,
   withIngredientChecked,
+  withPrepChecked,
   withAllIngredientsChecked,
   withGroupChecked,
   withTimerStarted,
@@ -305,6 +306,8 @@ export {
   firstUseByStep,
   firstIncompleteStepId,
   miseProgress,
+  guidedMiseProgress,
+  unpreppedIngredients,
   formatClock,
   timerProgress,
 } from './cookSession/index.js';

@@ -48,6 +48,7 @@ function makeSession(activeTimers: CookActiveTimerDoc[]): CookSessionDoc {
     recipeId: RECIPE_ID,
     recipeUpdatedAtAtStart: iso(START - 3_600_000),
     checkedIngredientIds: [],
+    checkedPrepIds: [],
     completedStepIds: [],
     activeTimers,
     createdAt: iso(START - 60_000),

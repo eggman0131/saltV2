@@ -14,6 +14,7 @@ function session(checkedIngredientIds: string[]): CookSessionDoc {
     recipeId: 'r1',
     recipeUpdatedAtAtStart: '2026-07-01T09:00:00.000Z',
     checkedIngredientIds,
+    checkedPrepIds: [],
     completedStepIds: ['s1'],
     activeTimers: [
       {

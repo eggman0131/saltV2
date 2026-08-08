@@ -63,6 +63,7 @@
   import { kindOf } from './recipeKind.js';
   import type { ChatSessionDoc, RecipeDiff } from '@salt/domain/schemas';
   import type { DomainError, ReadResult } from '@salt/shared-types';
+  import { guidedPlan, initGuidedPlanSync } from '../../lib/guidedPlanService.js';
   import { defaultListId } from '../../lib/shoppingListService.svelte.js';
   import { addToast } from '../../lib/toastStore.js';
   import { auth } from '../../lib/auth.svelte.js';
@@ -136,6 +137,27 @@ Finish with a short note on what you changed and why, so I can read the gist her
   // cocktail is not dinner and a placeholder is attached, never chosen; neither
   // gets the button here, exactly as neither appears in the picker there.
   const showPlanning = $derived(recipe !== null && isPlannable(kindOf(recipe)));
+
+  // ─── Does this recipe have a guided plan? (issue #751, Phase 2) ──────────────
+  // Subscribed here so the action row can offer "Cook, guided" only where there is
+  // something to be guided BY. There is no all-plans subscription anywhere in the
+  // app — a plan is read one recipe at a time — so this is the only way to answer
+  // the question, and it is answered on the page that asks it.
+  //
+  // The store is a module singleton the plan editor also drives, and every `init`
+  // resets it to the not-loaded state first, so the two pages can never show each
+  // other's plan. Its three states are load-bearing here for the same reason
+  // `showCooking` is conservative: `undefined` means "not loaded", and rendering
+  // the button on it would flash an action that then vanishes.
+  $effect(() => {
+    const id = params.id;
+    if (!id) return;
+    return initGuidedPlanSync(id);
+  });
+  const hasGuidedPlan = $derived($guidedPlan !== null && $guidedPlan !== undefined);
+  // Used-but-flagged, never a gate (guidedPlan.ts): the plan is fully live either
+  // way, and this only records that no human has read it. Absent means reviewed.
+  const guidedPlanUnread = $derived($guidedPlan?.needs_approval === true);
 
   function timeParts(): string[] {
     if (!recipe) return [];
@@ -744,7 +766,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
     fill={docked}
   >
     {#snippet actions()}
-      <!-- Eight actions is far too many to shout at once, so they are ranked and
+      <!-- Nine actions is far too many to shout at once, so they are ranked and
            the ranking is carried by BOTH weight and placement.
 
            Cook, Shop and Plan are what this page is for — the three things you
@@ -757,18 +779,75 @@ Finish with a short note on what you changed and why, so I can read the gist her
            single words for the same reason: the row reads as a row rather than as
            a sentence.
 
+           SINCE #751 the Cook slot can hold TWO cooks. A recipe with a guided plan
+           can be cooked plainly or cooked guided, and that is not a second action —
+           it is the SAME act, chosen at the same moment, with the plan as a lens.
+           So it earns inline placement (unlike "Guided plan" in the menu below,
+           which is desk work: writing and reading the plan, done before you cook).
+           What it does NOT earn is a fourth labelled button: the row is already
+           sized to the narrowest phone, and a fifth word would push it off the
+           edge. It renders as a SEGMENTED PAIR sharing Cook's own button — one
+           control, two ways to press it — which reads as "cook this, one way or the
+           other" and costs 32px rather than 90. The row therefore still reads
+           Cook · Shop · Plan · ⋮ at every width; only the Cook chip gained a right
+           half, and only on recipes that have a plan.
+
            Three of the inline ones are capability-gated (issue #637) — things that
            don't apply simply aren't offered, so a takeaway shows Plan and the menu
-           and nothing else. -->
+           and nothing else. Guided rides on the same gate as Cook and adds one of
+           its own: there must actually be a plan. -->
       {#if showCooking}
-        <Button
-          size="sm"
-          onclick={() => push(`/recipes/${recipe.id}/cook`)}
-          data-testid="recipe-cook-button"
-        >
-          {#snippet leading()}<Icon name="CookingPot" size={16} />{/snippet}
-          Cook
-        </Button>
+        <div class="flex items-center" data-testid="recipe-cook-actions">
+          <Button
+            size="sm"
+            class={hasGuidedPlan ? 'rounded-r-none' : ''}
+            onclick={() => push(`/recipes/${recipe.id}/cook`)}
+            data-testid="recipe-cook-button"
+          >
+            {#snippet leading()}<Icon name="CookingPot" size={16} />{/snippet}
+            Cook
+          </Button>
+          {#if hasGuidedPlan}
+            <!-- The right half. Icon-only because it is the second press of a
+                 control the left half has already named; its accessible name says
+                 the whole thing, and the divider is what makes the two read as one
+                 object rather than as two buttons that happen to touch. -->
+            <Button
+              size="sm"
+              class="rounded-l-none border-l border-primary-foreground/30 px-2"
+              onclick={() => push(`/recipes/${recipe.id}/cook/guided`)}
+              ariaLabel={guidedPlanUnread
+                ? 'Cook, guided — the plan is written by AI and not checked yet'
+                : 'Cook, guided'}
+              title={guidedPlanUnread
+                ? 'Cook, guided — written by AI, not checked yet'
+                : 'Cook, guided'}
+              data-testid="recipe-cook-guided-button"
+              data-unreviewed={guidedPlanUnread}
+            >
+              {#snippet leading()}
+                <!-- "Not checked yet" as an amber dot on the corner of the icon,
+                     composed the way cook mode's keep-awake toggle composes its
+                     Lock badge — there is no room for a word-bearing pill on a
+                     32px segment, and overhanging one would push the row off a
+                     narrow screen for a flag that is informational by design. The
+                     amber is the app's review amber and the words are carried by
+                     the accessible name and the tooltip; the full chip lives on
+                     the plan editor, which is where you act on it. -->
+                <span class="relative inline-flex">
+                  <Icon name="ListChecks" size={16} />
+                  {#if guidedPlanUnread}
+                    <span
+                      class="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-400 ring-1 ring-primary"
+                      aria-hidden="true"
+                      data-testid="recipe-cook-guided-unreviewed-dot"
+                    ></span>
+                  {/if}
+                </span>
+              {/snippet}
+            </Button>
+          {/if}
+        </div>
       {/if}
       {#if showIngredients}
         <Button size="sm" onclick={openAddToList} data-testid="recipe-add-to-list-button">
@@ -788,7 +867,8 @@ Finish with a short note on what you changed and why, so I can read the gist her
       {/if}
       <!-- Overflow (⋮), at every width since #735: Chat, Optimise, Guided plan,
            Duplicate, Edit and Delete. Cook, Shop and Plan are never in here — they stay inline,
-           which is the whole point of ranking them. Duplicate, Edit and Delete are
+           which is the whole point of ranking them, and neither is "Cook, guided",
+           which is a way of pressing Cook. Duplicate, Edit and Delete are
            unconditional: every kind of entry can be copied, edited and deleted
            (deciding that from `kind` is exactly what the capability predicates
            exist to prevent), so the menu is never empty and the trigger never
@@ -838,11 +918,14 @@ Finish with a short note on what you changed and why, so I can read the gist her
             </button>
           {/if}
           {#if showCooking}
-            <!-- The guided plan (issue #751). In the overflow, not inline: writing
+            <!-- The plan EDITOR (issue #751). In the overflow, not inline: writing
                  or reading the plan is preparation you do BEFORE you cook, at a
-                 desk, and the inline three are the hands-full actions. Gated on the
-                 same predicate as Cook — a plan explains a method, so an entry with
-                 no method has nothing to explain. -->
+                 desk, and the inline actions are the hands-full ones. Distinct from
+                 the "Cook, guided" half of the Cook button above, which is cooking.
+                 Unconditional within the gate — this is also how you get a first
+                 plan, so it cannot depend on one existing. Gated on the same
+                 predicate as Cook: a plan explains a method, so an entry with no
+                 method has nothing to explain. -->
             <button
               type="button"
               class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"

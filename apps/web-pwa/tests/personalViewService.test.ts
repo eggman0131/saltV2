@@ -95,6 +95,7 @@ function session(
     recipeId,
     recipeUpdatedAtAtStart: '2026-07-01T00:00:00.000Z',
     checkedIngredientIds: [],
+    checkedPrepIds: [],
     completedStepIds,
     activeTimers,
     createdAt: '2026-07-01T00:00:00.000Z',

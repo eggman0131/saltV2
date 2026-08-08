@@ -67,7 +67,7 @@
   // memory aid that persists to Firestore so it survives a device switch.
   //
   // The pattern is now named and its obligations are written down (issue #641):
-  // ui-spec-v05 §3 and the layer contract in CLAUDE.md. The one that used to be
+  // ui-spec-v05 §2 and the layer contract in CLAUDE.md. The one that used to be
   // missing here: the shell must not simply be COVERED. `routes/index.ts` lists
   // this route in FULL_VIEWPORT_ROUTES, which makes App.svelte pass
   // `chrome={false}` to AppShell, so TopBar/SideNav/BottomNav are not rendered at

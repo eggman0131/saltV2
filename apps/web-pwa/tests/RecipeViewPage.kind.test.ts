@@ -20,6 +20,7 @@ import type { Recipe } from '@salt/domain';
 const {
   mockRecipes,
   mockCanonItems,
+  mockGuidedPlan,
   mockIsLoading,
   mockDefaultListId,
   mockSessions,
@@ -45,6 +46,7 @@ const {
   return {
     mockRecipes: makeStore<readonly Recipe[]>([]),
     mockCanonItems: makeStore<readonly { id: string }[]>([]),
+    mockGuidedPlan: makeStore<unknown>(null),
     mockIsLoading: makeStore<boolean>(false),
     mockDefaultListId: makeStore<string | null>('list-1'),
     mockSessions: makeStore<readonly unknown[]>([]),
@@ -60,6 +62,15 @@ vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
 vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
 vi.mock('../src/lib/auth.svelte.js', () => ({ auth: { user: { email: 'cook@test' } } }));
 vi.mock('../src/lib/canonService.js', () => ({ canonItems: mockCanonItems }));
+// The guided-plan store (issue #751). `null` is its LOADED-AND-EMPTY state — the
+// one that keeps the "Cook, guided" half of the Cook button off a recipe nobody
+// has written a plan for. `undefined` (not loaded) would keep it off too, so a
+// suite that never sets this proves nothing about the button; the ranking suite
+// sets it deliberately.
+vi.mock('../src/lib/guidedPlanService.js', () => ({
+  guidedPlan: mockGuidedPlan,
+  initGuidedPlanSync: vi.fn(() => () => {}),
+}));
 vi.mock('../src/lib/shoppingListService.svelte.js', () => ({ defaultListId: mockDefaultListId }));
 vi.mock('@salt/firebase-sync', () => ({
   saveRecipe: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
@@ -166,7 +177,27 @@ beforeEach(() => {
   mockCanonItems._set([]);
   mockIsLoading._set(false);
   mockRecipes._set([]);
+  // Loaded, and there is no plan — the default a recipe has until someone writes
+  // one. Reset per test so a suite that sets a plan cannot leak it into the next.
+  mockGuidedPlan._set(null);
 });
+
+const RECIPE_UPDATED_AT = '2026-08-01T09:00:00.000Z';
+
+/** A guided plan for this recipe, as the store would hold it. */
+function makePlan(over: Record<string, unknown> = {}) {
+  return {
+    id: RECIPE_ID,
+    schemaVersion: 1,
+    recipeId: RECIPE_ID,
+    recipeUpdatedAtAtSave: RECIPE_UPDATED_AT,
+    prep: [],
+    stepNotes: [],
+    createdAt: RECIPE_UPDATED_AT,
+    updatedAt: RECIPE_UPDATED_AT,
+    ...over,
+  };
+}
 
 function renderPage() {
   return render(RecipeViewPage, { props: { params: { id: RECIPE_ID } } });
@@ -233,6 +264,71 @@ describe('RecipeViewPage — a recipe keeps everything', () => {
     expect(screen.getByTestId('recipe-actions-overflow').className).not.toContain('hidden');
   });
 
+  // ─── "Cook, guided" (issue #751, Phase 2) ────────────────────────────────────
+  // The second half of the Cook control. Everything about it is conditional on
+  // there being a plan to be guided by, and nothing about it moves the other
+  // three: the row still reads Cook · Shop · Plan · ⋮.
+
+  it('offers no guided cook on a recipe with no plan', () => {
+    renderPage();
+    expect(screen.getByTestId('recipe-cook-button')).toBeInTheDocument();
+    expect(screen.queryByTestId('recipe-cook-guided-button')).toBeNull();
+  });
+
+  it('offers no guided cook while the plan store has not resolved', () => {
+    // `undefined`, not `null`. The conservative side, same as `showCooking`: a
+    // button that appears and then vanishes is worse than one that arrives late.
+    mockGuidedPlan._set(undefined);
+    renderPage();
+    expect(screen.queryByTestId('recipe-cook-guided-button')).toBeNull();
+  });
+
+  it('adds a guided half to the Cook button when the recipe has a plan', async () => {
+    mockGuidedPlan._set(makePlan());
+    renderPage();
+
+    const guided = screen.getByTestId('recipe-cook-guided-button');
+    // Inline and filled, like the Cook it belongs to — it is the same act.
+    expect(guided).toHaveClass('salt-button--solid');
+    expect(guided.className).not.toContain('hidden');
+    expect(guided).toHaveAccessibleName('Cook, guided');
+    // Reviewed plans carry no flag at all.
+    expect(screen.queryByTestId('recipe-cook-guided-unreviewed-dot')).toBeNull();
+    // The plan EDITOR stays in the ⋮ menu — writing a plan is not cooking.
+    await openOverflowMenu();
+    expect(screen.getByTestId('recipe-guided-plan-menu-item')).toBeInTheDocument();
+  });
+
+  it('goes to the guided cook route, not the plain one', async () => {
+    mockGuidedPlan._set(makePlan());
+    renderPage();
+
+    await fireEvent.click(screen.getByTestId('recipe-cook-guided-button'));
+    expect(push).toHaveBeenCalledWith(`/recipes/${RECIPE_ID}/cook/guided`);
+  });
+
+  it('flags an unread plan without gating anything', async () => {
+    mockGuidedPlan._set(makePlan({ needs_approval: true }));
+    renderPage();
+
+    const guided = screen.getByTestId('recipe-cook-guided-button');
+    expect(screen.getByTestId('recipe-cook-guided-unreviewed-dot')).toBeInTheDocument();
+    // Used-but-flagged: the words are in the accessible name, and the button is
+    // as pressable as ever.
+    expect(guided).toHaveAccessibleName(/not checked yet/i);
+    expect(guided).not.toBeDisabled();
+    await fireEvent.click(guided);
+    expect(push).toHaveBeenCalledWith(`/recipes/${RECIPE_ID}/cook/guided`);
+  });
+
+  it('leaves the plain Cook button exactly where it was', async () => {
+    mockGuidedPlan._set(makePlan());
+    renderPage();
+
+    await fireEvent.click(screen.getByTestId('recipe-cook-button'));
+    expect(push).toHaveBeenCalledWith(`/recipes/${RECIPE_ID}/cook`);
+  });
+
   it('shows the Ingredients and Method cards and the timings', () => {
     renderPage();
 
@@ -255,6 +351,15 @@ describe('RecipeViewPage — an outing offers only what applies', () => {
 
     expect(screen.queryByTestId('recipe-cook-button')).toBeNull();
     expect(screen.queryByTestId('recipe-add-to-list-button')).toBeNull();
+  });
+
+  it('offers no guided cook even if a plan somehow exists — capability wins', () => {
+    // A plan for an outing should never be written, but the gate must not depend
+    // on that: guided cook rides on `isCookable`, exactly as Cook does.
+    mockGuidedPlan._set(makePlan());
+    renderPage();
+
+    expect(screen.queryByTestId('recipe-cook-guided-button')).toBeNull();
   });
 
   it('offers no Chat and no Optimise', async () => {
