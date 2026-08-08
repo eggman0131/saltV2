@@ -4,7 +4,7 @@
 // rules live here once — a single source of truth that cannot drift between the two
 // prompts, exactly like CATEGORY_TAG_RULES and INGREDIENT_SUBSTITUTION_RULES.
 //
-// Both rules below exist to serve cook mode's one-step-per-screen pager
+// The rules below exist to serve cook mode's one-step-per-screen pager
 // (`apps/web-pwa/src/routes/recipes/CookModePage.svelte`), not the read view:
 //
 //  1. ONE OPERATION PER STEP. A step is a screen the cook reads at arm's length and
@@ -16,6 +16,12 @@
 //     list and from the first-use chips shown beside the step being cooked, so
 //     repeating them inline is noise that pushes the actual instruction down the
 //     screen.
+//  3. A DURATION RANGE TIMES ITS LOWER BOUND. "Simmer for 10–15 minutes" is an
+//     instruction to start checking at 10, so a 15-minute timer fires when the pan
+//     is at best done and at worst burnt. The range is not stored anywhere — it
+//     stays in the step's prose, which is what the cook is reading at that moment,
+//     so the clause has to say so explicitly or the model "tidies" the text to
+//     match the number it chose.
 //
 // Rule 2 makes `firstUsedInStepOrdinal` load-bearing, which is why
 // FIRST_USE_ORDINAL_RULE is deliberately strict about null: `firstUseByStep` in
@@ -31,7 +37,7 @@ export const STEP_RULES = `- steps: numbered method steps, in order. Each step:
   text: the instruction — British terms, temperatures in °C only, never Fahrenheit.
     ONE COHERENT OPERATION PER STEP. A step is one thing the cook does before looking back at the recipe. Actions that happen in a single go stay together ("add the garlic and fry until fragrant"); a change of station, a wait, or a distinct process starts a new step. SPLIT any instruction that bundles several operations into consecutive steps. Do NOT atomise trivia into steps of their own ("get out a bowl", "measure the flour"). One or two sentences — never a paragraph.
     NO QUANTITIES. Name ingredients, never their amounts: "stir in the flour", NOT "stir in the 200 g flour" and NOT "stir in the flour (200 g)". The cook is already shown the amounts alongside the step. Exceptions, because these appear nowhere in the ingredient list: a partial use of a listed ingredient ("add half the butter", "reserve a quarter of the sauce"), pan and tin sizes, oven/pan temperatures, and a quantity that IS the instruction ("top up with water to cover", "roll out to 5 mm").
-  timerMinutes: integer, or null when the step has no wait worth timing.
+  timerMinutes: integer, or null when the step has no wait worth timing. When the source gives a RANGE ("simmer for 10–15 minutes", "bake 40 to 45 mins"), take the LOWER bound — 10, not 15 — so the timer goes off when the cook should START CHECKING rather than when the dish is already done at best. Leave the range itself in text exactly as the source wrote it; do NOT rewrite it to the single number you used (the NO QUANTITIES rule above governs ingredient amounts and never strips a time from the prose).
   timerLabel: when timerMinutes is set, a SHORT imperative label for that timer (2–4 words, e.g. "Simmer the sauce", "Rest the dough", "Boil pasta"). Do NOT repeat the duration in it (the minutes are shown separately). null whenever timerMinutes is null.
   note: a genuine warning or non-obvious caveat only — something that would ruin the dish if missed (e.g. "don't let the heat exceed 80°C or the custard will scramble"). Leave null for routine instructions; most steps should have no note.`;
 

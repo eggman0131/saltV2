@@ -21,6 +21,22 @@ describe('STEP_RULES', () => {
     expect(STEP_RULES).toContain('ONE COHERENT OPERATION PER STEP');
     expect(STEP_RULES).toContain('NO QUANTITIES');
   });
+
+  it('times a duration range at its lower bound, leaving the range in the prose', () => {
+    // The two halves are only correct together: taking the lower bound is useless if
+    // the model also rewrites "10–15 minutes" down to "10 minutes", because then the
+    // cook loses the upper bound entirely — the range reaches them ONLY via the step
+    // text (nothing stores it — see the timerMinutes clause and issue #748).
+    expect(STEP_RULES).toContain('take the LOWER bound');
+    expect(STEP_RULES).toContain('Leave the range itself in text exactly as the source wrote it');
+  });
+
+  it('exempts times from the no-quantities rule', () => {
+    // NO QUANTITIES is about ingredient amounts. Without saying so next to the range
+    // clause, a model reading "never their amounts" has a licence to strip "10–15
+    // minutes" out of the prose it was just told to preserve.
+    expect(STEP_RULES).toContain('never strips a time from the prose');
+  });
 });
 
 describe('FIRST_USE_ORDINAL_RULE', () => {
