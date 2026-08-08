@@ -24,14 +24,18 @@ import { myCookSessions } from './cookSessionService.js';
 // ─── 1. Timers ───────────────────────────────────────────────────────────────
 
 export interface MineTimer {
-  /** Stable across ticks: one live timer per step, per session. */
+  /** Stable across ticks: one live timer per timer id, per session. */
   readonly id: string;
   readonly session: CookSessionDoc;
   readonly recipe: Recipe;
   readonly timer: CookActiveTimerDoc;
-  /** The human timer label, falling back to "Step N", then to "Timer". */
+  /** The timer's own name, falling back to the step's, then "Step N", then "Timer". */
   readonly label: string;
-  /** The step's own duration, for the progress fill; null once the step is gone. */
+  /**
+   * The duration the timer was actually started for, for the progress fill.
+   * Falls back to the step's own duration for legacy entries that stored none;
+   * null once there is no duration to be had (the step is gone, or was never one).
+   */
   readonly durationMs: number | null;
 }
 
@@ -58,15 +62,22 @@ export const myTimers: Readable<readonly MineTimer[]> = derived(
       const recipe = $recipes.find((r) => r.id === session.recipeId);
       if (!recipe) continue;
       for (const timer of session.activeTimers) {
-        const stepIndex = recipe.steps.findIndex((s) => s.id === timer.stepId);
+        // An ad-hoc timer belongs to no step, so there is nothing to look up; the
+        // step lookup exists only to name and size LEGACY entries, written before
+        // a timer carried its own label and duration.
+        const stepIndex =
+          timer.stepId === null ? -1 : recipe.steps.findIndex((s) => s.id === timer.stepId);
         const step = stepIndex >= 0 ? recipe.steps[stepIndex] : undefined;
-        const minutes = step?.timer?.durationMinutes;
+        const minutes = timer.durationMinutes ?? step?.timer?.durationMinutes;
         out.push({
-          id: `${session.id}::${timer.stepId}`,
+          id: `${session.id}::${timer.id}`,
           session,
           recipe,
           timer,
-          label: step?.timer?.description ?? (stepIndex >= 0 ? `Step ${stepIndex + 1}` : 'Timer'),
+          label:
+            timer.label ??
+            step?.timer?.description ??
+            (stepIndex >= 0 ? `Step ${stepIndex + 1}` : 'Timer'),
           durationMs: minutes ? minutes * 60_000 : null,
         });
       }

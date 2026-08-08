@@ -749,7 +749,12 @@
   // timer is live (the $effect re-runs when `activeTimers` gains/loses entries) and
   // is torn down on cleanup — no per-timer intervals, and nothing ticks at rest.
   const activeTimers = $derived($cookSession?.activeTimers ?? []);
-  const timerByStep = $derived(new Map(activeTimers.map((t) => [t.stepId, t] as const)));
+  // Keyed by STEP, deliberately: this is the "is there a live timer on the step I
+  // am cooking?" lookup, not an identity map (that is `t.id`). Entries with no
+  // step of their own are skipped rather than filed under a null key.
+  const timerByStep = $derived(
+    new Map(activeTimers.flatMap((t) => (t.stepId === null ? [] : [[t.stepId, t] as const]))),
+  );
 
   let now = $state(Date.now());
   $effect(() => {
@@ -793,26 +798,41 @@
     // precede a chime, so this stays here even though the chime itself does not.
     primeChime();
     // `endsAt` is computed HERE, not in the domain producer, which never reads a
-    // clock. Replacing any existing entry for the step is the producer's job.
-    const endsAt = new Date(Date.now() + timer.durationMinutes * 60_000).toISOString();
-    const notify = timer.durationMinutes >= NOTIFY_MIN_MINUTES;
-    void persistCookSession(withTimerStarted(s, step.id, endsAt, notify));
+    // clock. Replacing any existing entry with the same id is the producer's job.
+    // A step timer's identity IS its step id, so there is nothing to mint.
+    const durationMinutes = timer.durationMinutes;
+    const endsAt = new Date(Date.now() + durationMinutes * 60_000).toISOString();
+    const notify = durationMinutes >= NOTIFY_MIN_MINUTES;
+    void persistCookSession(
+      withTimerStarted(s, {
+        id: step.id,
+        stepId: step.id,
+        label: timer.description ?? null,
+        durationMinutes,
+        endsAt,
+        notify,
+      }),
+    );
   }
 
-  function dismissTimer(stepId: string): void {
+  function dismissTimer(timerId: string): void {
     const s = getCookSessionSnapshot();
     if (!s) return;
-    void persistCookSession(withTimerDismissed(s, stepId));
+    void persistCookSession(withTimerDismissed(s, timerId));
   }
 
-  // Looks the timer's step up in the LIVE recipe and hands its duration to the
-  // domain clamp, which turns it into the elapsed fraction the progress fill
-  // draws. A step (or its timer) edited away since the countdown started has no
-  // duration to scale against, so `timerProgress` returns null and the chip
-  // renders with no fill rather than a bogus one.
+  // Turns the timer's total run into the elapsed fraction the progress fill draws.
+  // The total is the duration the timer was STARTED for; only a legacy entry
+  // (written before the field existed) falls back to looking its step up in the
+  // LIVE recipe. With neither — a step edited away, or an ad-hoc timer from before
+  // the field — `timerProgress` returns null and the chip renders with no fill
+  // rather than a bogus one.
   function timerProgressFor(timer: CookActiveTimerDoc): number | null {
-    const durationMinutes = recipe?.steps.find((s) => s.id === timer.stepId)?.timer
-      ?.durationMinutes;
+    const durationMinutes =
+      timer.durationMinutes ??
+      (timer.stepId === null
+        ? undefined
+        : recipe?.steps.find((s) => s.id === timer.stepId)?.timer?.durationMinutes);
     return timerProgress(timer, durationMinutes ? durationMinutes * 60_000 : null, now);
   }
 
@@ -1080,12 +1100,14 @@
         data-testid="cook-timers-bar"
       >
         <div class="mx-auto flex w-full max-w-2xl flex-col gap-2">
-          {#each activeTimers as t (t.stepId)}
+          {#each activeTimers as t (t.id)}
             {@const remaining = new Date(t.endsAt).getTime() - now}
             {@const fired = remaining <= 0}
-            {@const stepIndex = recipe.steps.findIndex((s) => s.id === t.stepId)}
+            {@const stepIndex =
+              t.stepId === null ? -1 : recipe.steps.findIndex((s) => s.id === t.stepId)}
             {@const stepLabel =
-              stepIndex >= 0 ? (recipe.steps[stepIndex]?.timer?.description ?? null) : null}
+              t.label ??
+              (stepIndex >= 0 ? (recipe.steps[stepIndex]?.timer?.description ?? null) : null)}
             {@const stepName = stepIndex >= 0 ? `Step ${stepIndex + 1}` : 'Timer'}
             {@const progress = timerProgressFor(t)}
             <div
@@ -1102,10 +1124,11 @@
                   size={18}
                   class={fired ? 'shrink-0 text-primary' : 'shrink-0 text-muted-foreground'}
                 />
-                <!-- Lead with the human timer label ("Simmer the sauce") when the
-                   step has one; fall back to "Step N" so an unlabelled timer is
-                   still locatable. When a label leads, the step number stays
-                   available as a tooltip so you can still find the step (#554). -->
+                <!-- Lead with the human timer label ("Simmer the sauce") — the
+                   timer's own, falling back to its step's for a legacy entry; then
+                   "Step N" so an unlabelled timer is still locatable. When a label
+                   leads, the step number stays available as a tooltip so you can
+                   still find the step (#554). -->
                 <span
                   class="min-w-0 flex-1 truncate text-sm font-medium {fired
                     ? 'text-primary'
@@ -1126,7 +1149,7 @@
                 <Button
                   size="sm"
                   variant={fired ? 'solid' : 'ghost'}
-                  onclick={() => dismissTimer(t.stepId)}
+                  onclick={() => dismissTimer(t.id)}
                   data-testid="cook-timer-chip-dismiss"
                 >
                   {fired ? 'Dismiss' : 'Cancel'}
@@ -1533,7 +1556,7 @@
                               </span>
                               <Button
                                 variant="ghost"
-                                onclick={() => dismissTimer(step.id)}
+                                onclick={() => dismissTimer(timerEntry.id)}
                                 data-testid="cook-step-timer-dismiss"
                               >
                                 Cancel
@@ -1577,7 +1600,7 @@
                               {step.timer.description ? 'Finished' : 'Timer finished'}
                             </span>
                             <Button
-                              onclick={() => dismissTimer(step.id)}
+                              onclick={() => dismissTimer(timerEntry.id)}
                               data-testid="cook-step-timer-dismiss"
                             >
                               Dismiss

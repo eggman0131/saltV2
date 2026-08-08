@@ -55,9 +55,21 @@ function makeSession(activeTimers: CookActiveTimerDoc[]): CookSessionDoc {
   };
 }
 
+function makeTimer(overrides: Partial<CookActiveTimerDoc> = {}): CookActiveTimerDoc {
+  return {
+    id: 'step-2',
+    stepId: 'step-2',
+    label: null,
+    durationMinutes: null,
+    endsAt: iso(START + 60_000),
+    notify: true,
+    ...overrides,
+  };
+}
+
 /** A timer running with a minute left when the watcher starts. */
 function runningTimer(): CookActiveTimerDoc {
-  return { stepId: 'step-2', endsAt: iso(START + 60_000), notify: true };
+  return makeTimer();
 }
 
 beforeEach(() => {
@@ -133,9 +145,7 @@ describe('cookTimerAlerts', () => {
   it('stays silent for a timer that had already finished when it started', () => {
     // A fresh app load, or a cook picked up on another device — never seen
     // running here, so never ours to announce.
-    mockCookSession._set(
-      makeSession([{ stepId: 'step-2', endsAt: iso(START - 30_000), notify: true }]),
-    );
+    mockCookSession._set(makeSession([makeTimer({ endsAt: iso(START - 30_000) })]));
     const stop = initCookTimerAlerts();
 
     vi.advanceTimersByTime(5_000);
@@ -163,7 +173,7 @@ describe('cookTimerAlerts', () => {
     stop();
   });
 
-  it('treats an extended timer as a new one to announce', () => {
+  it('treats an adjusted timer as a new one to announce', () => {
     mockCookSession._set(makeSession([runningTimer()]));
     const stop = initCookTimerAlerts();
 
@@ -171,11 +181,9 @@ describe('cookTimerAlerts', () => {
     vi.advanceTimersByTime(1_000);
     expect(mockChime.playChime).toHaveBeenCalledTimes(1);
 
-    // Extending rewrites `endsAt`, which is part of the key — so the same step
+    // Adjusting rewrites `endsAt`, which is part of the key — so the same timer
     // alerts again when its new end-time lands.
-    mockCookSession._set(
-      makeSession([{ stepId: 'step-2', endsAt: iso(START + 120_000), notify: true }]),
-    );
+    mockCookSession._set(makeSession([makeTimer({ endsAt: iso(START + 120_000) })]));
     clock = START + 61_000;
     vi.advanceTimersByTime(1_000);
     clock = START + 120_400;

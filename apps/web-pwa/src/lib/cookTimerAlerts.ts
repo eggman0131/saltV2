@@ -37,8 +37,8 @@ const GRACE_MS = 2_000;
 // Long enough to notice from across the kitchen, and it carries an action.
 const TOAST_MS = 12_000;
 
-function timerKey(sessionId: string, stepId: string, endsAt: string): string {
-  return `${sessionId}::${stepId}@${endsAt}`;
+function timerKey(sessionId: string, timerId: string, endsAt: string): string {
+  return `${sessionId}::${timerId}@${endsAt}`;
 }
 
 function cookPath(session: CookSessionDoc): string {
@@ -56,9 +56,9 @@ function isViewingCook(session: CookSessionDoc): boolean {
 }
 
 export function initCookTimerAlerts(): () => void {
-  // Both sets are keyed by session + step + end-time, so extending a timer (which
-  // changes `endsAt`) is a new timer to be alerted for, and a re-armed timer on a
-  // later cook is never mistaken for one already handled.
+  // Both sets are keyed by session + timer id + end-time, so adjusting a timer
+  // (which changes `endsAt`) is a new timer to be alerted for, and a re-armed
+  // timer on a later cook is never mistaken for one already handled.
   const observedRunning = new Set<string>();
   const alerted = new Set<string>();
 
@@ -67,7 +67,7 @@ export function initCookTimerAlerts(): () => void {
     if (!session) return;
     const now = Date.now();
     for (const timer of session.activeTimers) {
-      const key = timerKey(session.id, timer.stepId, timer.endsAt);
+      const key = timerKey(session.id, timer.id, timer.endsAt);
       const endsAtMs = new Date(timer.endsAt).getTime();
       if (endsAtMs > now) {
         observedRunning.add(key);

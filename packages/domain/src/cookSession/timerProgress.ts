@@ -4,12 +4,16 @@ import type { CookActiveTimerDoc } from '../schemas/index.js';
 // countdown alone tells you what's left but not how far through you are — "4:00"
 // reads very differently on a 5-minute rest than on a 40-minute braise.
 //
-// Derived from the recipe step's own duration rather than a stored start-time:
-// a timer is started as `endsAt = now + duration`, so `total - remaining` is
-// exact and no field has to be added to the session doc (nothing to migrate).
-// The trade: if the recipe's duration is edited mid-run the ratio is CLAMPED
-// rather than wrong — and the "recipe was updated" banner is already up in that
-// case.
+// Derived from the timer's total run rather than a stored start-time: a timer is
+// started as `endsAt = now + duration`, so `total - remaining` is exact.
+//
+// That total is `timer.durationMinutes` — what the timer was ACTUALLY started
+// for. It used to be looked up from the live recipe step instead, on the argument
+// that an edited duration only CLAMPS the ratio (and the "recipe was updated"
+// banner is up in that case anyway). That trade no longer holds: a timer may be
+// started for a duration its step never mentioned, and the step lookup would then
+// not clamp but simply lie. Callers pass the stored duration and fall back to the
+// step only for legacy entries written before the field existed.
 //
 // Returns null when the step (or its timer) has since been deleted from the
 // recipe, so the caller renders the chip with no fill instead of a bogus one. A

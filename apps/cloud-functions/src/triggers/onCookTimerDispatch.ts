@@ -2,7 +2,12 @@ import { onTaskDispatched } from 'firebase-functions/v2/tasks';
 import { defineSecret } from 'firebase-functions/params';
 import { getFirestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
-import { CookSessionSchema, PushSubscriptionSchema, RecipeSchema } from '@salt/domain/schemas';
+import {
+  CookSessionSchema,
+  PushSubscriptionSchema,
+  RecipeSchema,
+  type CookActiveTimerDoc,
+} from '@salt/domain/schemas';
 import { flushServerObservability } from '@salt/observability/server';
 import { sendWebPush, isApplePushEndpoint } from '../adapters/sendWebPush.js';
 import { sendPushover } from '../adapters/sendPushover.js';
@@ -58,41 +63,50 @@ type PushoverOutcome =
   // failed send — all cases where they may well have Pushover already.
   | 'unavailable';
 
+// The live recipe, or null on absolutely any failure (missing, corrupt, or a read
+// that threw). Never throws — a name we cannot fetch must never cost us the
+// notification itself, which is the only time-critical part.
+async function readRecipe(recipeId: string) {
+  try {
+    const snap = await getFirestore().collection('recipes').doc(recipeId).get();
+    if (!snap.exists) return null;
+    const parsed = RecipeSchema.safeParse(snap.data());
+    return parsed.success ? parsed.data : null;
+  } catch (err) {
+    logger.warn('onCookTimerDispatch: could not read the recipe', { recipeId, err });
+    return null;
+  }
+}
+
 // Names the timer and the cook it belongs to, e.g. "Simmer the sauce" /
 // "Shepherd's pie". Neither is in the task payload, so this costs ONE extra
 // Firestore read on the dispatch path.
 //
-// The label is `steps[i].timer.description` falling back to `Step N`, which is
-// EXACTLY what the in-app timer chip shows (CookModePage) — a notification that
-// named a timer differently from the screen it deep-links to would be worse than
-// one that named nothing.
+// The timer's OWN `label` wins: since #748 a timer carries the name it was
+// started with, and that is exactly what the in-app chip shows — a notification
+// that named a timer differently from the screen it deep-links to would be worse
+// than one that named nothing. Only when there is no label (a legacy entry
+// written before the field existed) do we fall back to the step's
+// `timer.description`, then `Step N`, then the generic copy. An ad-hoc timer has
+// a null `stepId` and no step to look up at all, so the lookup is skipped.
 //
-// Returns null on absolutely any failure, and the caller falls back to the
-// generic copy: a missing recipe title must never cost us the notification
-// itself, which is the only part that is time-critical. Never throws.
+// Returns null when nothing can be named, and the caller falls back to the
+// generic copy.
 async function describeCookTimer(
   recipeId: string,
-  stepId: string,
+  timer: CookActiveTimerDoc,
 ): Promise<{ readonly title: string; readonly body: string } | null> {
-  try {
-    const snap = await getFirestore().collection('recipes').doc(recipeId).get();
-    if (!snap.exists) return null;
+  const recipe = await readRecipe(recipeId);
+  if (!recipe && !timer.label) return null;
 
-    const parsed = RecipeSchema.safeParse(snap.data());
-    if (!parsed.success) return null;
+  const steps = recipe?.steps ?? [];
+  const index = timer.stepId === null ? -1 : steps.findIndex((s) => s.id === timer.stepId);
+  const stepLabel = index >= 0 ? (steps[index]?.timer?.description ?? null) : null;
 
-    const { steps, title } = parsed.data;
-    const index = steps.findIndex((s) => s.id === stepId);
-    const label = index >= 0 ? (steps[index]?.timer?.description ?? null) : null;
-
-    return {
-      title: label ?? (index >= 0 ? `Step ${index + 1}` : FALLBACK_COPY.title),
-      body: title,
-    };
-  } catch (err) {
-    logger.warn('onCookTimerDispatch: could not name the timer', { recipeId, err });
-    return null;
-  }
+  return {
+    title: timer.label ?? stepLabel ?? (index >= 0 ? `Step ${index + 1}` : FALLBACK_COPY.title),
+    body: recipe?.title ?? FALLBACK_COPY.body,
+  };
 }
 
 // Absolute deep link back into the cook, for the Pushover `url` (a native client
@@ -206,7 +220,7 @@ export const onCookTimerDispatch = onTaskDispatched<CookTimerTaskPayload>(
     rateLimits: { maxConcurrentDispatches: 6 },
   },
   async (req) => {
-    const { sessionId, stepId, endsAt } = req.data;
+    const { sessionId, timerId, endsAt } = req.data;
     const db = getFirestore();
 
     try {
@@ -225,19 +239,20 @@ export const onCookTimerDispatch = onTaskDispatched<CookTimerTaskPayload>(
       }
       const session = parsed.data;
 
-      // (b) Confirm the timer STILL matches. If it was removed or extended
-      // (different endsAt), this is a stale task → no-op.
-      const stillArmed = session.activeTimers.some(
-        (t) => t.stepId === stepId && t.endsAt === endsAt,
-      );
-      if (!stillArmed) return;
+      // (b) Confirm the timer STILL matches. If it was removed, extended or
+      // shortened (different endsAt), this is a stale task → no-op. This is also
+      // where a task queued with the PRE-#748 payload shape lands: it carries no
+      // `timerId`, matches nothing, and its push is silently missed. Accepted —
+      // see the note on CookTimerTaskPayload.
+      const timer = session.activeTimers.find((t) => t.id === timerId && t.endsAt === endsAt);
+      if (!timer) return;
 
       // (c) Exactly-once claim via a SEPARATE server-owned ledger doc — NEVER a
       // write-back onto cookSessions (a client setDoc would clobber it under LWW).
       // A duplicate dispatch (Cloud Tasks at-least-once, or a retry) finds the
       // ledger doc already present and bails.
       const endsAtMs = new Date(endsAt).getTime();
-      const ledgerRef = db.collection('timerDeliveries').doc(`${sessionId}_${stepId}_${endsAtMs}`);
+      const ledgerRef = db.collection('timerDeliveries').doc(`${sessionId}_${timerId}_${endsAtMs}`);
       let alreadyDelivered = false;
       await db.runTransaction(async (tx) => {
         const existing = await tx.get(ledgerRef);
@@ -245,7 +260,7 @@ export const onCookTimerDispatch = onTaskDispatched<CookTimerTaskPayload>(
           alreadyDelivered = true;
           return;
         }
-        tx.set(ledgerRef, { deliveredAt: Date.now(), sessionId, stepId });
+        tx.set(ledgerRef, { deliveredAt: Date.now(), sessionId, timerId });
       });
       if (alreadyDelivered) return;
 
@@ -277,7 +292,7 @@ export const onCookTimerDispatch = onTaskDispatched<CookTimerTaskPayload>(
       // named notification beside an anonymous one would just read as a bug.
       // The service worker renders whatever it is given, using `tag` to collapse
       // repeats and `sessionId` to deep-link back to the cook.
-      const copy = (await describeCookTimer(session.recipeId, stepId)) ?? FALLBACK_COPY;
+      const copy = (await describeCookTimer(session.recipeId, timer)) ?? FALLBACK_COPY;
       const payload = {
         type: 'cook-timer' as const,
         tag: `cook::${sessionId}`,

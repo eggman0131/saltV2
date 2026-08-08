@@ -848,10 +848,41 @@ describe('CookModePage — step timers', () => {
 
     await waitFor(() => expect(lastPersisted().activeTimers).toHaveLength(1));
     const timer = lastPersisted().activeTimers[0]!;
+    // A step timer's identity IS its step id (#748) — nothing is minted here.
+    expect(timer.id).toBe('step-2');
     expect(timer.stepId).toBe('step-2');
+    // The duration it was ACTUALLY started for is stored, so an edit to the
+    // recipe afterwards cannot restate this run.
+    expect(timer.durationMinutes).toBe(20);
+    // The default recipe's step-2 timer has description: null.
+    expect(timer.label).toBeNull();
     const runsFor = new Date(timer.endsAt).getTime() - before;
     expect(runsFor).toBeGreaterThanOrEqual(20 * 60_000 - 1_000);
     expect(runsFor).toBeLessThanOrEqual(20 * 60_000 + 10_000);
+  });
+
+  it("stores the step's description as the timer's own label (#748)", async () => {
+    mockRecipes._set([
+      makeRecipe({
+        steps: [
+          { id: 'step-1', text: 'Soften the onions.', timer: null, note: null },
+          {
+            id: 'step-2',
+            text: 'Rest the sauce.',
+            timer: { durationMinutes: 5, description: 'Simmer the sauce' },
+            note: null,
+          },
+        ],
+      }),
+    ]);
+    renderCookMode();
+    await enterSteps();
+    await userEvent.click(screen.getByTestId('cook-step-timer-start'));
+
+    await waitFor(() => expect(lastPersisted().activeTimers).toHaveLength(1));
+    const timer = lastPersisted().activeTimers[0]!;
+    expect(timer.label).toBe('Simmer the sauce');
+    expect(timer.durationMinutes).toBe(5);
   });
 
   it('arms the push backstop on a timer long enough to deliver on time', async () => {
@@ -924,7 +955,14 @@ describe('CookModePage — step timers', () => {
     mockCookSession._set(
       makeCookSession({
         activeTimers: [
-          { stepId: 'step-2', endsAt: new Date(Date.now() + 300_000).toISOString(), notify: true },
+          {
+            id: 'step-2',
+            stepId: 'step-2',
+            label: null,
+            durationMinutes: null,
+            endsAt: new Date(Date.now() + 300_000).toISOString(),
+            notify: true,
+          },
         ],
       }),
     );
@@ -943,7 +981,14 @@ describe('CookModePage — step timers', () => {
     mockCookSession._set(
       makeCookSession({
         activeTimers: [
-          { stepId: 'step-2', endsAt: new Date(Date.now() - 30_000).toISOString(), notify: true },
+          {
+            id: 'step-2',
+            stepId: 'step-2',
+            label: null,
+            durationMinutes: null,
+            endsAt: new Date(Date.now() - 30_000).toISOString(),
+            notify: true,
+          },
         ],
       }),
     );
@@ -971,7 +1016,14 @@ describe('CookModePage — step timers', () => {
     mockCookSession._set(
       makeCookSession({
         activeTimers: [
-          { stepId: 'step-2', endsAt: new Date(Date.now() + 300_000).toISOString(), notify: true },
+          {
+            id: 'step-2',
+            stepId: 'step-2',
+            label: null,
+            durationMinutes: null,
+            endsAt: new Date(Date.now() + 300_000).toISOString(),
+            notify: true,
+          },
         ],
       }),
     );
@@ -988,7 +1040,14 @@ describe('CookModePage — step timers', () => {
     mockCookSession._set(
       makeCookSession({
         activeTimers: [
-          { stepId: 'step-2', endsAt: new Date(Date.now() + 300_000).toISOString(), notify: true },
+          {
+            id: 'step-2',
+            stepId: 'step-2',
+            label: null,
+            durationMinutes: null,
+            endsAt: new Date(Date.now() + 300_000).toISOString(),
+            notify: true,
+          },
         ],
       }),
     );
@@ -1021,7 +1080,14 @@ describe('CookModePage — step timers', () => {
     mockCookSession._set(
       makeCookSession({
         activeTimers: [
-          { stepId: 'step-2', endsAt: new Date(Date.now() + 300_000).toISOString(), notify: true },
+          {
+            id: 'step-2',
+            stepId: 'step-2',
+            label: null,
+            durationMinutes: null,
+            endsAt: new Date(Date.now() + 300_000).toISOString(),
+            notify: true,
+          },
         ],
       }),
     );
@@ -1053,7 +1119,14 @@ describe('CookModePage — step timers', () => {
     mockCookSession._set(
       makeCookSession({
         activeTimers: [
-          { stepId: 'step-2', endsAt: new Date(Date.now() - 30_000).toISOString(), notify: true },
+          {
+            id: 'step-2',
+            stepId: 'step-2',
+            label: null,
+            durationMinutes: null,
+            endsAt: new Date(Date.now() - 30_000).toISOString(),
+            notify: true,
+          },
         ],
       }),
     );
@@ -1070,7 +1143,14 @@ describe('CookModePage — step timers', () => {
     mockCookSession._set(
       makeCookSession({
         activeTimers: [
-          { stepId: 'step-2', endsAt: new Date(Date.now() + 300_000).toISOString(), notify: true },
+          {
+            id: 'step-2',
+            stepId: 'step-2',
+            label: null,
+            durationMinutes: null,
+            endsAt: new Date(Date.now() + 300_000).toISOString(),
+            notify: true,
+          },
         ],
       }),
     );
@@ -1119,7 +1199,14 @@ describe('CookModePage — step timers', () => {
     mockCookSession._set(
       makeCookSession({
         activeTimers: [
-          { stepId: 'step-2', endsAt: new Date(Date.now() + 300_000).toISOString(), notify: true },
+          {
+            id: 'step-2',
+            stepId: 'step-2',
+            label: null,
+            durationMinutes: null,
+            endsAt: new Date(Date.now() + 300_000).toISOString(),
+            notify: true,
+          },
         ],
       }),
     );
@@ -1134,7 +1221,14 @@ describe('CookModePage — step timers', () => {
     mockCookSession._set(
       makeCookSession({
         activeTimers: [
-          { stepId: 'step-2', endsAt: new Date(Date.now() + 300_000).toISOString(), notify: true },
+          {
+            id: 'step-2',
+            stepId: 'step-2',
+            label: null,
+            durationMinutes: null,
+            endsAt: new Date(Date.now() + 300_000).toISOString(),
+            notify: true,
+          },
         ],
       }),
     );
@@ -1318,7 +1412,14 @@ describe('CookModePage — accessibility', () => {
       makeCookSession({
         completedStepIds: ['step-1'],
         activeTimers: [
-          { stepId: 'step-2', endsAt: new Date(Date.now() + 300_000).toISOString(), notify: true },
+          {
+            id: 'step-2',
+            stepId: 'step-2',
+            label: null,
+            durationMinutes: null,
+            endsAt: new Date(Date.now() + 300_000).toISOString(),
+            notify: true,
+          },
         ],
       }),
     );

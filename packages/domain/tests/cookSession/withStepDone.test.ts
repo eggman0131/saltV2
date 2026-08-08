@@ -14,7 +14,16 @@ function session(completedStepIds: string[]): CookSessionDoc {
     recipeUpdatedAtAtStart: '2026-07-01T09:00:00.000Z',
     checkedIngredientIds: ['ing-1'],
     completedStepIds,
-    activeTimers: [{ stepId: 's1', endsAt: '2026-07-22T18:35:00.000Z', notify: true }],
+    activeTimers: [
+      {
+        id: 's1',
+        stepId: 's1',
+        label: null,
+        durationMinutes: null,
+        endsAt: '2026-07-22T18:35:00.000Z',
+        notify: true,
+      },
+    ],
     createdAt: '2026-07-22T18:30:00.000Z',
     updatedAt: '2026-07-22T18:30:00.000Z',
   };

@@ -3,14 +3,23 @@ import { timerProgress } from '@salt/domain';
 import type { CookActiveTimerDoc } from '@salt/domain/schemas';
 
 // Fraction (0..1) of a timer's run that has ELAPSED, for the progress fill
-// (issue #556). Derived from the step's own duration plus the absolute `endsAt`,
-// with `nowMs` INJECTED — no clock read, so no fake timers needed here.
+// (issue #556). Derived from the timer's total run plus the absolute `endsAt`,
+// with `nowMs` INJECTED — no clock read, so no fake timers needed here. The total
+// is passed in (the caller prefers the timer's stored `durationMinutes` and only
+// falls back to the recipe step), so this function is unchanged by #748.
 
 const ENDS_AT = '2026-07-22T18:35:00.000Z';
 const END_MS = Date.parse(ENDS_AT);
 const FIVE_MIN = 5 * 60_000;
 
-const TIMER: CookActiveTimerDoc = { stepId: 's1', endsAt: ENDS_AT, notify: false };
+const TIMER: CookActiveTimerDoc = {
+  id: 's1',
+  stepId: 's1',
+  label: null,
+  durationMinutes: 5,
+  endsAt: ENDS_AT,
+  notify: false,
+};
 
 describe('timerProgress', () => {
   // [label, nowMs, expected fraction]
@@ -31,16 +40,17 @@ describe('timerProgress', () => {
     expect(timerProgress(TIMER, FIVE_MIN, END_MS + 86_400_000)).toBe(1);
   });
 
-  it('clamps to 0 when more time remains than the duration allows', () => {
-    // Happens when the recipe's duration is edited DOWN mid-run: the ratio is
-    // clamped rather than wrong, and the "recipe was updated" banner is already up.
+  it('clamps to 0 when more time remains than the total allows', () => {
+    // Only reachable now for a LEGACY entry falling back to a step whose duration
+    // was edited DOWN mid-run: the ratio is clamped rather than wrong, and the
+    // "recipe was updated" banner is already up.
     expect(timerProgress(TIMER, FIVE_MIN, END_MS - FIVE_MIN * 3)).toBe(0);
   });
 
   // ─── No fill rather than a bogus one ────────────────────────────────────────
   const noFill: Array<[string, number | null | undefined]> = [
     ['the step was deleted from the recipe (null)', null],
-    ['the step has no timer any more (undefined)', undefined],
+    ['neither the timer nor the step carries a duration (undefined)', undefined],
     ['the duration is zero', 0],
   ];
 
@@ -53,7 +63,7 @@ describe('timerProgress', () => {
     expect(timerProgress(TIMER, FIVE_MIN, at)).toBe(timerProgress(TIMER, FIVE_MIN, at));
   });
 
-  it('scales with the step duration, not with wall-clock elapsed time', () => {
+  it('scales with the total duration, not with wall-clock elapsed time', () => {
     // Two minutes left reads very differently on a 5-minute rest than on a
     // 40-minute braise — which is the whole point of the fill.
     const twoMinutesLeft = END_MS - 120_000;
