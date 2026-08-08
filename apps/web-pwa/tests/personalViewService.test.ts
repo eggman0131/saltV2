@@ -252,29 +252,39 @@ describe('timerNowMs', () => {
 });
 
 describe('needsReviewRecipes', () => {
-  it('lists what nobody has saved yet, newest first, with no time limit', () => {
+  const unreviewed = (id: string, title: string, overrides: Partial<Recipe> = {}) =>
+    recipe(id, title, { needs_approval: true, ...overrides } as Partial<Recipe>);
+
+  it('lists what carries the flag, newest first, with no time limit', () => {
     mockRecipes._set([
-      recipe('old', 'Ancient import', {
-        createdAt: '2025-01-01T00:00:00.000Z',
-        updatedAt: '2025-01-01T00:00:00.000Z',
-      }),
-      recipe('new', 'Yesterday', {
-        createdAt: '2026-08-04T00:00:00.000Z',
-        updatedAt: '2026-08-04T00:00:00.000Z',
-      }),
-      recipe('done', 'Reviewed', { updatedAt: '2026-08-02T00:00:00.000Z' }),
+      unreviewed('old', 'Ancient import', { createdAt: '2025-01-01T00:00:00.000Z' }),
+      unreviewed('new', 'Yesterday', { createdAt: '2026-08-04T00:00:00.000Z' }),
     ]);
 
     expect(get(needsReviewRecipes).map((r) => r.id)).toEqual(['new', 'old']);
   });
 
-  it('leaves out the kinds nobody would ever edit', () => {
+  it('leaves out everything the flag is not set on (issue #755)', () => {
+    // The queue is the stored flag now, not "updatedAt === createdAt". A recipe
+    // typed in by hand and never touched again has been read by the person who
+    // typed it — it was never a review item, and used to be one.
     mockRecipes._set([
+      unreviewed('flagged', 'URL import'),
+      recipe('handwritten', 'Never edited'),
+      recipe('cleared', 'Already reviewed', { needs_approval: false } as Partial<Recipe>),
+    ]);
+    expect(get(needsReviewRecipes).map((r) => r.id)).toEqual(['flagged']);
+  });
+
+  it('does not gate on kind — a flagged entry of any kind is in the queue', () => {
+    // The isCookable gate went with the derived predicate: only the import flows
+    // set the flag, so there is nothing to keep out.
+    mockRecipes._set([
+      unreviewed('c1', 'Negroni', { kind: 'cocktail' } as Partial<Recipe>),
       recipe('p1', 'Generic Comfort', { kind: 'placeholder' } as Partial<Recipe>),
       recipe('o1', 'Takeaway', { kind: 'outing' } as Partial<Recipe>),
-      recipe('r1', 'Noodle Bowl'),
     ]);
-    expect(get(needsReviewRecipes).map((r) => r.id)).toEqual(['r1']);
+    expect(get(needsReviewRecipes).map((r) => r.id)).toEqual(['c1']);
   });
 });
 
@@ -299,7 +309,7 @@ describe('mineOpenCount', () => {
   });
 
   it('leaves the review queue out — a standing queue must not pin a badge', () => {
-    mockRecipes._set([recipe('r1', 'Never reviewed')]);
+    mockRecipes._set([recipe('r1', 'Never reviewed', { needs_approval: true } as Partial<Recipe>)]);
     expect(get(needsReviewRecipes)).toHaveLength(1);
     expect(get(mineOpenCount)).toBe(0);
   });

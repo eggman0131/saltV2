@@ -18,6 +18,8 @@ const {
   mockPersist,
   mockRemove,
   mockAddToast,
+  mockRecipes,
+  mockPersistRecipe,
 } = vi.hoisted(() => {
   function makeStore<T>(initial: T) {
     let value = initial;
@@ -46,6 +48,8 @@ const {
     mockPersist: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
     mockRemove: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
     mockAddToast: vi.fn(),
+    mockRecipes: makeStore<unknown[]>([]),
+    mockPersistRecipe: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   };
 });
 
@@ -62,12 +66,16 @@ vi.mock('../src/lib/cookSessionService.js', () => ({
   persistCookSession: mockPersist,
   removeCookSession: mockRemove,
 }));
+vi.mock('../src/lib/recipeService.js', () => ({
+  recipes: mockRecipes,
+  persistRecipe: mockPersistRecipe,
+}));
 
 import MinePage from '../src/routes/mine/MinePage.svelte';
 
 const NOW = Date.parse('2026-08-05T12:00:00.000Z');
 
-function recipe(id: string, title: string): Recipe {
+function recipe(id: string, title: string, overrides: Record<string, unknown> = {}): Recipe {
   return {
     id,
     title,
@@ -77,7 +85,13 @@ function recipe(id: string, title: string): Recipe {
     steps: [],
     createdAt: '2026-08-01T11:56:00.000Z',
     updatedAt: '2026-08-01T11:56:00.000Z',
+    ...overrides,
   } as unknown as Recipe;
+}
+
+/** A recipe as it sits in the review queue: AI-authored, unread. */
+function unreviewed(id: string, title: string): Recipe {
+  return recipe(id, title, { needs_approval: true });
 }
 
 const alex = { id: 'alex@e.org', name: 'Alex Green' } as Member;
@@ -131,9 +145,11 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockPersist.mockResolvedValue({ kind: 'ok', value: undefined });
   mockRemove.mockResolvedValue({ kind: 'ok', value: undefined });
+  mockPersistRecipe.mockResolvedValue({ kind: 'ok', value: undefined });
   mockLiveCooks._set([]);
   mockMyTimers._set([]);
   mockNeedsReview._set([]);
+  mockRecipes._set([]);
   mockTimerNowMs._set(NOW);
   mockCurrentMember._set(alex);
 });
@@ -147,7 +163,7 @@ describe('MinePage — the three sections', () => {
   it('is three sections and nothing else — no planner, no shopping list', () => {
     mockMyTimers._set([mineTimer('r1', 'r1-s0', 4 * 60_000)]);
     mockLiveCooks._set([liveCook('r2', 'Noodle Bowl')]);
-    mockNeedsReview._set([recipe('r3', 'Lemon drizzle traybake')]);
+    mockNeedsReview._set([unreviewed('r3', 'Lemon drizzle traybake')]);
 
     const { getByTestId, queryByTestId } = render(MinePage);
     expect(getByTestId('mine-timers')).toBeInTheDocument();
@@ -280,30 +296,94 @@ describe('MinePage — cooking now', () => {
 });
 
 describe('MinePage — needs review', () => {
-  it('claims only what the signal supports, and spells out how to clear it', async () => {
-    // Viewing a recipe writes nothing, so the old "you haven't opened it yet" was a
-    // claim the data could not support. An item clears when somebody SAVES it, and
-    // that is not guessable — the section has to say it.
-    mockNeedsReview._set([recipe('r9', 'Lemon drizzle traybake')]);
+  it('says what the flag means and offers both ways out of the queue', async () => {
+    // The signal is the stored `needs_approval` flag (issue #755): AI-authored,
+    // unread. Two ways to clear it, and the copy has to offer both — opening one
+    // to fix something, or marking it reviewed from here.
+    mockNeedsReview._set([unreviewed('r9', 'Lemon drizzle traybake')]);
     const { getByTestId } = render(MinePage);
 
     const section = getByTestId('mine-needs-review');
     expect(section).toHaveTextContent('Lemon drizzle traybake');
     expect(section).toHaveTextContent('Not reviewed yet');
-    expect(section).not.toHaveTextContent("haven't opened");
     expect(getByTestId('mine-needs-review-hint')).toHaveTextContent(
-      "Nobody's checked these yet. Open one, fix anything that's off, and save it to clear it.",
+      "These were written by AI and nobody's read them yet. Open one to fix anything that's off, or mark it reviewed if it looks right.",
     );
 
     await fireEvent.click(getByTestId('mine-needs-review-open'));
     expect(mockPush).toHaveBeenCalledWith('/recipes/r9');
   });
 
-  it('has no time limit — an ancient unsaved import still shows', () => {
-    mockNeedsReview._set([recipe('r9', 'Ancient import')]);
+  it('has no time limit — an ancient unreviewed import still shows', () => {
+    mockNeedsReview._set([unreviewed('r9', 'Ancient import')]);
     const { getByTestId, queryByText } = render(MinePage);
     expect(getByTestId('mine-needs-review')).toHaveTextContent('Ancient import');
     // Nothing relative-time about it any more; it is a queue, not news.
     expect(queryByText(/ago/)).not.toBeInTheDocument();
+  });
+
+  it('clears the flag from the row, without an editor round-trip', async () => {
+    mockNeedsReview._set([unreviewed('r9', 'Lemon drizzle traybake')]);
+    mockRecipes._set([unreviewed('r9', 'Lemon drizzle traybake')]);
+    const { getByTestId } = render(MinePage);
+
+    await fireEvent.click(getByTestId('mine-needs-review-clear'));
+
+    expect(mockPersistRecipe).toHaveBeenCalledTimes(1);
+    const saved = mockPersistRecipe.mock.calls[0]?.[0] as Record<string, unknown>;
+    // Dropped, not set false — absent means reviewed. `false` would still be a
+    // written field, and nothing in the app reads it that way.
+    expect('needs_approval' in saved).toBe(false);
+    expect(saved).toMatchObject({ id: 'r9', title: 'Lemon drizzle traybake' });
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockAddToast).not.toHaveBeenCalled();
+  });
+
+  it('writes the LIVE document, not the row it rendered from', async () => {
+    // persistRecipe writes the whole doc, so saving the stale card would roll back
+    // whatever onRecipeWritten wrote alongside us.
+    mockNeedsReview._set([unreviewed('r9', 'Lemon drizzle traybake')]);
+    mockRecipes._set([
+      recipe('r9', 'Lemon drizzle traybake', {
+        needs_approval: true,
+        image: { url: 'https://example.test/hero.webp' },
+      }),
+    ]);
+    const { getByTestId } = render(MinePage);
+
+    await fireEvent.click(getByTestId('mine-needs-review-clear'));
+    expect(mockPersistRecipe.mock.calls[0]?.[0]).toMatchObject({
+      image: { url: 'https://example.test/hero.webp' },
+    });
+  });
+
+  it('says so when the clear fails rather than pretending it worked', async () => {
+    mockPersistRecipe.mockResolvedValue({ kind: 'failure', error: { kind: 'StorageError' } });
+    mockNeedsReview._set([unreviewed('r9', 'Lemon drizzle traybake')]);
+    mockRecipes._set([unreviewed('r9', 'Lemon drizzle traybake')]);
+    const { getByTestId } = render(MinePage);
+
+    await fireEvent.click(getByTestId('mine-needs-review-clear'));
+    expect(mockAddToast).toHaveBeenCalledWith("Couldn't mark that as reviewed.", 'destructive');
+    // The row stays put: the store still holds it, so nothing here removes it.
+    expect(getByTestId('mine-needs-review')).toHaveTextContent('Lemon drizzle traybake');
+  });
+
+  it('ignores a second tap while the first write is in flight', async () => {
+    let release: (() => void) | undefined;
+    mockPersistRecipe.mockReturnValue(
+      new Promise((resolve) => {
+        release = () => resolve({ kind: 'ok', value: undefined });
+      }),
+    );
+    mockNeedsReview._set([unreviewed('r9', 'Lemon drizzle traybake')]);
+    mockRecipes._set([unreviewed('r9', 'Lemon drizzle traybake')]);
+    const { getByTestId } = render(MinePage);
+
+    await fireEvent.click(getByTestId('mine-needs-review-clear'));
+    await fireEvent.click(getByTestId('mine-needs-review-clear'));
+    expect(mockPersistRecipe).toHaveBeenCalledTimes(1);
+
+    release?.();
   });
 });

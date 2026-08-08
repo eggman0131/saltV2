@@ -1,4 +1,4 @@
-import { firstIncompleteStepId, needsReview, type Recipe } from '@salt/domain';
+import { firstIncompleteStepId, type Recipe } from '@salt/domain';
 import type { CookActiveTimerDoc, CookSessionDoc } from '@salt/domain/schemas';
 import { derived, readable } from 'svelte/store';
 import type { Readable } from 'svelte/store';
@@ -13,13 +13,14 @@ import { myCookSessions } from './cookSessionService.js';
 // the planner and the shopping list, which say it better on their own pages, so
 // they and their domain helpers are gone. What is left is three things nothing
 // else in the app surfaces: my step timers, my open cooks, and the standing queue
-// of entries nobody has saved yet.
+// of entries flagged `needs_approval`.
 //
 // Every store read here is already subscribed app-wide from App.svelte, so all of
 // this costs zero extra Firestore reads — which is also what makes the nav badge
-// free from any page. This module issues no writes of its own; the two commands
-// the page fires (dismiss a timer, cancel a cook) go through cookSessionService,
-// which reports per the observability gate (docs/salt-architecture.md §7.6).
+// free from any page. This module issues no writes of its own; the commands the
+// page fires (dismiss a timer, cancel a cook, mark a recipe reviewed) go through
+// cookSessionService and recipeService, which report per the observability gate
+// (docs/salt-architecture.md §7.6).
 
 // ─── 1. Timers ───────────────────────────────────────────────────────────────
 
@@ -178,20 +179,28 @@ export const liveCooks: Readable<readonly LiveCook[]> = derived(
 // ─── 3. Needs review ─────────────────────────────────────────────────────────
 
 /**
- * Everything nobody has saved yet, newest first — a standing queue, not a
- * notification.
+ * Everything carrying the stored `needs_approval` flag, newest first — a standing
+ * queue, not a notification.
+ *
+ * One concept, one signal (issue #755). The flag is set by the import flows on
+ * raw AI output nobody has read, and it is the SAME flag the recipe page's amber
+ * banner and the list's pill read, so all three surfaces agree by construction
+ * and clear together. It replaced a derived `updatedAt === createdAt` predicate,
+ * which said "nobody has saved this" — true of hand-written entries too, and
+ * unclearable without an editor round-trip.
  *
  * No window and no member filter: an import you forgot about three weeks ago is
  * the case most worth catching, and a recipe is family-shared, so "nobody has
- * checked this" is everybody's business. The `isCookable` gate that keeps it sane
- * lives in the domain predicate (see `needsReview`), so nothing out here branches
- * on `kind`.
+ * checked this" is everybody's business. No `kind` gate either, and none is
+ * wanted: only the import flows set the flag, and what they produce is a recipe.
  *
  * Deliberately OUT of the nav badge: a standing queue would pin a permanent
  * number to the tab.
  */
 export const needsReviewRecipes: Readable<readonly Recipe[]> = derived(recipes, ($recipes) =>
-  $recipes.filter(needsReview).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+  $recipes
+    .filter((r) => r.needs_approval === true)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
 );
 
 // ─── Nav badge ───────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Button, Card, Icon, Progress } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
-  import { formatClock, timerProgress, withTimerDismissed } from '@salt/domain';
+  import { formatClock, timerProgress, withTimerDismissed, type Recipe } from '@salt/domain';
   import { currentMember } from '../../lib/membersService.js';
   import {
     liveCooks,
@@ -12,6 +12,7 @@
     type MineTimer,
   } from '../../lib/personalViewService.js';
   import { persistCookSession, removeCookSession } from '../../lib/cookSessionService.js';
+  import { persistRecipe, recipes } from '../../lib/recipeService.js';
   import { addToast } from '../../lib/toastStore.js';
 
   // "Mine" (issues #634, #682) — what of mine is RUNNING right now, and what needs
@@ -19,7 +20,7 @@
   //
   //   1. Timers      — running and fired-but-undismissed, in one list
   //   2. Cooking now — my open cook sessions
-  //   3. Needs review — entries nobody has saved yet
+  //   3. Needs review — entries flagged `needs_approval`
   //
   // Nothing here restates the planner or the shopping list; each of those has its
   // own page that says it better. Every card is a projection of a document that
@@ -55,6 +56,29 @@
     const result = await removeCookSession(cook.session.id);
     cancellingId = null;
     if (result.kind !== 'ok') addToast("Couldn't cancel that cook.", 'destructive');
+  }
+
+  // ─── Needs review ─────────────────────────────────────────────────────────
+  // The same clear the recipe page's banner performs (issue #755), brought to the
+  // row so a queue of clean imports can be emptied without opening any of them.
+  // One id, exactly like `cancellingId`: it names the row that is mid-write so its
+  // spinner lands in the right place, and it holds the rest still meanwhile.
+  let reviewingId = $state<string | null>(null);
+
+  async function markReviewed(recipe: Recipe): Promise<void> {
+    if (reviewingId) return;
+    // Re-read the LIVE document, never the row we rendered from: `persistRecipe`
+    // writes the whole doc, so saving a stale copy would roll back whatever the
+    // onRecipeWritten trigger wrote alongside us (`image`, `imageBrief`).
+    const current = $recipes.find((r) => r.id === recipe.id);
+    if (!current) return;
+    reviewingId = recipe.id;
+    // Dropped, not set false — absent means reviewed, matching the schema and the
+    // full-document setDoc persistRecipe performs.
+    const { needs_approval: _wasUnreviewed, ...reviewed } = current;
+    const persisted = await persistRecipe(reviewed);
+    reviewingId = null;
+    if (persisted.kind !== 'ok') addToast("Couldn't mark that as reviewed.", 'destructive');
   }
 
   // ─── Empty state ──────────────────────────────────────────────────────────
@@ -196,14 +220,15 @@
     </div>
   {/if}
 
-  <!-- 3. Needs review — everything nobody has saved yet. Standing queue, no time
-       limit. The signal is "never saved since it landed", so the copy says exactly
-       that, and spells out the clearing action: opening it is not enough. -->
+  <!-- 3. Needs review — imported by AI, not read by a human yet. Standing queue,
+       no time limit. Both actions clear it: opening one to fix something and
+       saving, or marking it reviewed here when it came through clean. -->
   {#if $needsReviewRecipes.length > 0}
     <div class="flex flex-col gap-2" data-testid="mine-needs-review">
       <h2 class="text-sm font-medium text-muted-foreground">Needs review</h2>
       <p class="text-xs text-muted-foreground" data-testid="mine-needs-review-hint">
-        Nobody's checked these yet. Open one, fix anything that's off, and save it to clear it.
+        These were written by AI and nobody's read them yet. Open one to fix anything that's off, or
+        mark it reviewed if it looks right.
       </p>
       {#each $needsReviewRecipes as recipe (recipe.id)}
         <Card class="p-4">
@@ -215,15 +240,26 @@
               </p>
               <p class="text-xs text-muted-foreground">Not reviewed yet</p>
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              class="shrink-0"
-              onclick={() => push(`/recipes/${recipe.id}`)}
-              data-testid="mine-needs-review-open"
-            >
-              Open
-            </Button>
+            <div class="flex shrink-0 items-center gap-2">
+              <Button
+                size="sm"
+                variant="ghost"
+                loading={reviewingId === recipe.id}
+                disabled={reviewingId !== null}
+                onclick={() => markReviewed(recipe)}
+                data-testid="mine-needs-review-clear"
+              >
+                Mark reviewed
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onclick={() => push(`/recipes/${recipe.id}`)}
+                data-testid="mine-needs-review-open"
+              >
+                Open
+              </Button>
+            </div>
           </div>
         </Card>
       {/each}

@@ -371,23 +371,30 @@ for, and every one of those — including the id — is minted by the caller. `i
 not `stepId`, is a timer's identity: it is what `withTimerStarted` replaces on
 and what `withTimerDismissed` keys on.
 
-The `personalView` module (issues #634, #682) is the same lightweight shape, and
-is purely read-only. It began as four projections; #682 cut "Mine" back to *what
-of mine is running right now, and what needs a look*, and the three that were
-restating the planner and the shopping list (`chefDaysForMember`,
-`unshoppedPlannedRecipes`, `rankPersonalCards`) went with the sections they fed.
-What is left is one predicate, `needsReview`. No producers, no ports, no schemas
-of its own, and — now — no clock at all: the 24-hour import window went too,
-because a standing review queue wants the import you forgot about three weeks
-ago, which is exactly the case a window discards.
+There is **no `personalView` module** in the domain layer, and its disappearance
+is the useful lesson here. It began as four projections behind "Mine" (#634);
+#682 cut the page back to *what of mine is running right now, and what needs a
+look*, and the three that were restating the planner and the shopping list
+(`chefDaysForMember`, `unshoppedPlannedRecipes`, `rankPersonalCards`) went with
+the sections they fed. That left one predicate, `needsReview`, which inferred
+"nobody has saved this" from `updatedAt === createdAt` — real policy, complete
+with a `kind` gate expressed through `isCookable`, and therefore a legitimate
+tenant of the domain layer.
 
-`needsReview` is the module's one piece of policy, and the one place it could
-plausibly have grown a `kind` branch — it has one, deliberately, expressed
-through the capability predicate `isCookable` rather than a comparison. That is
-the whole reason it lives in the domain layer: `/mine` must not ask what kind an
-entry is, and putting the gate here means it never has to. Without it the queue
-would be mostly stock-photo placeholders and outings — entries written once and
-never edited, so `updatedAt === createdAt` holds for ever with nothing to review.
+#755 deleted it, because the inference was answering a question the data already
+answered outright. `needs_approval` is a stored flag, set by the import flows and
+read by the recipe page's banner and the list's pill; deriving a *second*,
+disagreeing notion of "unreviewed" alongside it gave the app two review concepts
+and gave the derived one no clear action short of an editor round-trip. Once
+`/mine` filters on the flag, the policy is a field comparison — `r.needs_approval
+=== true` — and a field comparison is not policy. It lives in
+`personalViewService` with the store that reads it, and the `kind` gate went with
+the predicate: only the import flows set the flag, so there is nothing to gate.
+
+The general rule this illustrates: a domain module earns its place by holding a
+*decision*. When the decision collapses into reading a field that is already on
+the document, the module is indirection, and the honest move is to delete it
+rather than keep an empty barrel warm for a future tenant.
 
 The goal is not architectural purity. The goal is hard, enforceable
 boundaries so that drift — by humans or AI agents — is caught by the
