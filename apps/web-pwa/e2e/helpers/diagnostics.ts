@@ -49,28 +49,62 @@ function flakeContextOf(snapshot: unknown): Record<string, number | boolean | nu
         ? null
         : Boolean(value);
 
+  const hasDefaultList = typeof store['defaultListId'] === 'string';
+  const aislesInCache = probeHeldDocument(store['sdkCacheAisles']);
+  const configInCache = probeHeldDocument(store['sdkCacheShoppingListsConfig']);
+
+  // 7 store keys + 4 probe keys = 11, inside CTX_MAX_KEYS (16).
   return {
     aisles_count: countOf(store['aisles']),
     shopping_lists_count: countOf(store['shoppingLists']),
     shopping_list_items_count: countOf(store['shoppingListItems']),
     recipes_count: countOf(store['recipes']),
     chat_sessions_count: countOf(store['chatSessions']),
-    has_default_list: typeof store['defaultListId'] === 'string' ? true : false,
+    has_default_list: hasDefaultList,
     canon_synced: boolOf(store['canonSynced']),
+    // Issue #734, the whole point of the probe: did the Firestore SDK's own
+    // local cache still hold the document, and does that match what the store
+    // shows? `*_in_sdk_cache` true with an empty store means the SDK had it and
+    // WE lost it — ours to fix. Both empty means the SDK's local view lost an
+    // update it had already received — upstream, not ours.
+    aisles_in_sdk_cache: aislesInCache,
+    aisles_cache_agrees: agreementOf(aislesInCache, countOf(store['aisles'])),
+    shopping_lists_config_in_sdk_cache: configInCache,
+    shopping_lists_config_cache_agrees: agreementOf(configInCache, hasDefaultList ? 1 : 0),
   };
 }
 
 /**
- * Single `page.evaluate()` that calls every available sync bridge store-reader,
- * each guarded so one throwing getter doesn't kill the snapshot. Returns a plain
- * structured-clone-serializable object. If `window.__e2e` is absent (page
- * navigated away / bridge not installed) it returns a marker instead.
+ * True when the SDK's cache held the document AND it existed there. A probe that
+ * is missing, `guard()`ed to an `{ __error }` marker, or reporting its own
+ * failure degrades to null rather than to a confident `false`.
+ */
+function probeHeldDocument(probe: unknown): boolean | null {
+  if (!probe || typeof probe !== 'object') return null;
+  const p = probe as Record<string, unknown>;
+  if (typeof p['error'] === 'string' || typeof p['__error'] === 'string') return null;
+  if (typeof p['inCache'] !== 'boolean') return null;
+  return p['inCache'] && p['exists'] === true;
+}
+
+/** Cache and store tell the same story — both hold the data, or neither does. */
+function agreementOf(inCache: boolean | null, storeCount: number | null): boolean | null {
+  if (inCache === null || storeCount === null) return null;
+  return inCache === storeCount > 0;
+}
+
+/**
+ * Single `page.evaluate()` that calls every available bridge store-reader plus
+ * the Firestore local-cache probe, each guarded so one throwing getter doesn't
+ * kill the snapshot. Returns a plain structured-clone-serializable object. If
+ * `window.__e2e` is absent (page navigated away / bridge not installed) it
+ * returns a marker instead.
  *
  * Deliberately excludes `getCanonItem` (needs an id) and `getLDSessionURL`
  * (LaunchDarkly is retired).
  */
 async function readStoreSnapshot(page: Page): Promise<unknown> {
-  return page.evaluate(() => {
+  return page.evaluate(async () => {
     const bridge = window.__e2e;
     if (!bridge) {
       return { __e2e: 'absent' as const };
@@ -84,7 +118,19 @@ async function readStoreSnapshot(page: Page): Promise<unknown> {
         return { __error: (err as Error)?.message ?? String(err) };
       }
     };
-    return {
+    // Same guard for the async readers — including a bridge that predates the
+    // method (an older bundle), which surfaces as a caught TypeError.
+    const guardAsync = async <T>(fn: () => Promise<T>): Promise<T | { __error: string }> => {
+      try {
+        return await fn();
+      } catch (err) {
+        return { __error: (err as Error)?.message ?? String(err) };
+      }
+    };
+    // Sync store readers FIRST and awaits after, so the store half of the
+    // snapshot is captured at exactly the instant it was before the probe
+    // existed — the probe describes the same moment, not one a few ticks later.
+    const store = {
       aisles: guard(() => bridge.getAisles()),
       shoppingLists: guard(() => bridge.getShoppingLists()),
       defaultListId: guard(() => bridge.getDefaultListId()),
@@ -95,6 +141,14 @@ async function readStoreSnapshot(page: Page): Promise<unknown> {
       chatSessions: guard(() => bridge.getChatSessions()),
       canonSynced: guard(() => bridge.isCanonSynced()),
     };
+    // The two documents #721 watched go missing, read straight out of the
+    // Firestore SDK's own local cache (issue #734). Network-free, so this
+    // cannot perturb the run it is diagnosing.
+    const [sdkCacheAisles, sdkCacheShoppingListsConfig] = await Promise.all([
+      guardAsync(() => bridge.probeFirestoreCache('canonData/aisles')),
+      guardAsync(() => bridge.probeFirestoreCache('shoppingListsConfig/singleton')),
+    ]);
+    return { ...store, sdkCacheAisles, sdkCacheShoppingListsConfig };
   });
 }
 
