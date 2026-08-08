@@ -14,9 +14,15 @@
  * - **Resume across a real reload** — session doc + mise ticks rehydrated from
  *   Firestore through the real adapter, not a mocked store.
  *
- * Deliberately NOT here (Phase 2–4 cover them in milliseconds): step timers,
- * the recipe-changed banner, restart, the deleted-recipe orphan path, and the
- * fling-landing decision — that last one is pure arithmetic in `$lib/cookDeck`
+ * - **The timer sheet against a real dialog and a real session document**
+ *   (#748). The sheet portals OUT of cook mode's full-viewport container, and a
+ *   timer's whole point is that its end time survives the round-trip — neither
+ *   is observable in jsdom, where there is no portal stacking and no Firestore.
+ *   The plain start-in-one-tap path stays with the unit tests.
+ *
+ * Deliberately NOT here (Phase 2–4 cover them in milliseconds): the timer
+ * countdown/fire/dismiss states, the recipe-changed banner, restart, the
+ * deleted-recipe orphan path, and the fling-landing decision — that last one is pure arithmetic in `$lib/cookDeck`
  * and is unit tested, whereas synthesised pointer physics in CI is flake rather
  * than signal. The deck is therefore driven by the footer and the keyboard.
  */
@@ -37,6 +43,8 @@ interface StepSpec {
   readonly text: string;
   /** The author's aside for this step. Omitted → `note: null`, no callout. */
   readonly note?: string;
+  /** The step's own timer. Omitted → `timer: null`, no timer control at all. */
+  readonly timer?: { readonly durationMinutes: number; readonly description: string | null };
 }
 
 interface IngredientSpec {
@@ -92,7 +100,12 @@ function buildRecipe(steps: readonly StepSpec[], ingredients: readonly Ingredien
         })),
       },
     ],
-    steps: steps.map((s) => ({ id: s.id, text: s.text, timer: null, note: s.note ?? null })),
+    steps: steps.map((s) => ({
+      id: s.id,
+      text: s.text,
+      timer: s.timer ? { ...s.timer } : null,
+      note: s.note ?? null,
+    })),
     metadata: {
       servings: 4,
       totalTimeMinutes: null,
@@ -175,6 +188,30 @@ function chipRecipe(): Recipe {
       { rawText: 'Sea salt', step: 'step-1' },
       { rawText: 'Black pepper', step: 'step-1' },
       { rawText: '1 lemon', step: 'step-1' },
+    ],
+  );
+}
+
+// The timer fixture (issue #748). The timer sits on step 1 — the step the deck
+// opens on — so its controls are reachable without moving the deck at all, and the
+// spec's timer coverage never depends on the gesture layer.
+const TIMER_STEP_LABEL = 'Simmer the sauce';
+const TIMER_STEP_MINUTES = 20;
+const AD_HOC_TIMER_NAME = 'Rice';
+
+function timerRecipe(): Recipe {
+  return buildRecipe(
+    [
+      {
+        id: 'step-1',
+        text: 'Simmer the sauce until it turns glossy.',
+        timer: { durationMinutes: TIMER_STEP_MINUTES, description: TIMER_STEP_LABEL },
+      },
+      { id: 'step-2', text: 'Season, then fold the pasta through.' },
+    ],
+    [
+      { rawText: '400g tinned plum tomatoes', step: 'step-1' },
+      { rawText: 'Sea salt', step: 'step-2' },
     ],
   );
 }
@@ -425,6 +462,81 @@ test.describe('cook mode', () => {
         .evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
       expect(size).toBeGreaterThanOrEqual(18);
     }).toPass({ timeout: SYNC_TIMEOUT });
+  });
+
+  // ─── Timers you can change (issue #748) ─────────────────────────────────────
+
+  test('a timer can be re-timed before it starts, set from scratch, and moved while it runs', async ({
+    page,
+  }, testInfo) => {
+    // Single tab, no reload, no CF trigger — but three round-trips through the
+    // session document, each of which has to land before the next assertion
+    // (NF-F2).
+    test.setTimeout(90_000);
+    await startCook(page, uniqueEmail(testInfo.testId), timerRecipe());
+
+    // The sheet's two fields, addressed by their accessible names (NF-B1). Both
+    // are re-resolved on every use because the sheet is torn down between opens.
+    const nameField = page.getByRole('textbox', { name: 'Timer name' });
+    const minutesField = page.getByRole('textbox', { name: 'Minutes' });
+    const chips = page.getByTestId('cook-timer-chip');
+
+    // ── The step's own timer, adjusted before it starts ───────────────────────
+    await page.getByTestId('cook-stage-toggle').click();
+    await expect(page.getByTestId('cook-steps-view')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Adjust this timer' }).click();
+    await expect(nameField).toHaveValue(TIMER_STEP_LABEL);
+    await expect(minutesField).toHaveValue(String(TIMER_STEP_MINUTES));
+
+    // The chips move by a minute below the half-hour and by five at it — and a
+    // typed number is never snapped onto a grid on the way past.
+    await page.getByRole('button', { name: 'Decrease minutes' }).click();
+    await expect(minutesField).toHaveValue('19');
+    await minutesField.fill('30');
+    await page.getByRole('button', { name: 'Increase minutes' }).click();
+    await expect(minutesField).toHaveValue('35');
+
+    await minutesField.fill('3');
+    await page.getByRole('button', { name: 'Start timer' }).click();
+
+    // The countdown is the one the cook chose, not the recipe's twenty. The
+    // window allows for the write landing anywhere inside SYNC_TIMEOUT (NF-A5).
+    await expect(chips).toHaveCount(1);
+    // A minute-wide window, not a ten-second one: the only thing under test is
+    // that it is the THREE minutes chosen and not the recipe's twenty, and a
+    // tighter band would tick past itself on a slow emulator round-trip.
+    await expect(page.getByTestId('cook-timer-chip-time')).toHaveText(/^(2:\d\d|3:00)$/, {
+      timeout: SYNC_TIMEOUT,
+    });
+    await expect(chips).toContainText(TIMER_STEP_LABEL);
+
+    // ── A timer for something the recipe never mentioned ──────────────────────
+    await page.getByRole('button', { name: 'Start a timer' }).click();
+    await expect(nameField).toHaveValue('Salt Timer');
+    await expect(minutesField).toHaveValue('10');
+    await nameField.fill(AD_HOC_TIMER_NAME);
+    await minutesField.fill('2');
+    await page.getByRole('button', { name: 'Start timer' }).click();
+
+    // It joins the bar as an ordinary timer, under the name it was given.
+    await expect(chips).toHaveCount(2, { timeout: SYNC_TIMEOUT });
+    const adHoc = chips.filter({ hasText: AD_HOC_TIMER_NAME });
+    await expect(adHoc.getByTestId('cook-timer-chip-time')).toHaveText(/^(1:\d\d|2:00)$/);
+
+    // ── Moved while it runs ───────────────────────────────────────────────────
+    await adHoc.getByTestId('cook-timer-chip-edit').click();
+    await expect(nameField).toHaveValue(AD_HOC_TIMER_NAME);
+    // Prefilled with what it was SET for, not what is left on it.
+    await expect(minutesField).toHaveValue('2');
+    await minutesField.fill('25');
+    await page.getByRole('button', { name: 'Update timer' }).click();
+
+    await expect(adHoc.getByTestId('cook-timer-chip-time')).toHaveText(/^(24:\d\d|25:00)$/, {
+      timeout: SYNC_TIMEOUT,
+    });
+    // Re-timed, not restarted alongside itself: still one entry per timer.
+    await expect(chips).toHaveCount(2);
   });
 
   // ─── Chip layout ────────────────────────────────────────────────────────────
