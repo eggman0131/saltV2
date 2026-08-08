@@ -53,7 +53,33 @@ import { onRecipeWritten } from './triggers/onRecipeWritten.js';
 import { handleListAiModels } from './ai/listAiModels.js';
 import { handleTestModel } from './ai/testModel.js';
 
-initializeApp();
+// Under the Functions emulator, hand firebase-admin the service-account identity
+// up front so it never goes looking for one (issue #749, second call site).
+//
+// `getFunctions().taskQueue(...).enqueue()` — onCookTimerWrite's cook-timer
+// enqueue — needs a service-account email for the task's OIDC token, and
+// firebase-admin ALWAYS attempts the real lookup first: findServiceAccountEmail()
+// → ApplicationDefaultCredential → the GCE metadata server at 169.254.169.254.
+// It substitutes 'emulated-service-acct@email.com' only in the CATCH, after that
+// request has already failed, and CLOUD_TASKS_EMULATOR_HOST does not shortcut it
+// (see firebase-admin functions-api-client-internal.ts, enqueue → getServiceAccount).
+// Under Docker Desktop for Mac that address is the same black hole that hung every
+// Genkit flow (#753), so the lookup stalls the trigger locally; on a CI runner it
+// merely fails fast and wastes the round trip. There is no GCP project to resolve
+// an identity against under the emulator (demo-salt), so the lookup is doomed by
+// construction either way.
+//
+// getExplicitServiceAccountEmail() short-circuits on `serviceAccountId` before any
+// credential work, so setting it skips the request entirely. The value is exactly
+// what firebase-admin would have substituted anyway, which is what makes this a
+// pure subtraction: the enqueued task is byte-identical, minus the doomed request.
+// FUNCTIONS_EMULATOR is set only by the emulator, so deployed functions keep
+// resolving their real identity from the metadata server as before.
+initializeApp(
+  process.env['FUNCTIONS_EMULATOR']
+    ? { serviceAccountId: 'emulated-service-acct@email.com' }
+    : undefined,
+);
 
 // 512MiB is the memory floor for every function. The 256MiB default sits just
 // below this codebase's resting footprint — firebase-admin, Genkit/OTel
