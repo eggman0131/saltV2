@@ -51,6 +51,7 @@
     hasRecipeChanged,
     formatClock,
     timerProgress,
+    isCheckInTimerId,
   } from '@salt/domain';
   import type {
     CookActiveTimerDoc,
@@ -67,7 +68,7 @@
   // memory aid that persists to Firestore so it survives a device switch.
   //
   // The pattern is now named and its obligations are written down (issue #641):
-  // ui-spec-v05 §3 and the layer contract in CLAUDE.md. The one that used to be
+  // ui-spec-v05 §2 and the layer contract in CLAUDE.md. The one that used to be
   // missing here: the shell must not simply be COVERED. `routes/index.ts` lists
   // this route in FULL_VIEWPORT_ROUTES, which makes App.svelte pass
   // `chrome={false}` to AppShell, so TopBar/SideNav/BottomNav are not rendered at
@@ -753,8 +754,19 @@
   // Keyed by STEP, deliberately: this is the "is there a live timer on the step I
   // am cooking?" lookup, not an identity map (that is `t.id`). Entries with no
   // step of their own are skipped rather than filed under a null key.
+  //
+  // So are guided check-ins (issue #751). This page never ARMS one — that belongs
+  // to guided cook, which is the only mode holding the plan — but it shares the
+  // session document with it, so a cook who switches modes mid-braise finds them
+  // here. A check-in carries its step (the push copy names it), and without this
+  // the last entry mentioning a step would win: the inline control would count down
+  // a reminder and its Cancel would call one off instead of the timer.
   const timerByStep = $derived(
-    new Map(activeTimers.flatMap((t) => (t.stepId === null ? [] : [[t.stepId, t] as const]))),
+    new Map(
+      activeTimers.flatMap((t) =>
+        t.stepId === null || isCheckInTimerId(t.id) ? [] : [[t.stepId, t] as const],
+      ),
+    ),
   );
 
   let now = $state(Date.now());
@@ -766,6 +778,14 @@
     }, 1000);
     return () => clearInterval(handle);
   });
+
+  // What the bar shows. A guided check-in that has FIRED leaves on its own: it is
+  // a nudge, not a checkpoint, so there is nothing to dismiss (see GuidedCookPage).
+  // Derived off `now` rather than folded into the effect above, which must keep
+  // watching `activeTimers.length` or it would tear its own interval down each tick.
+  const barTimers = $derived(
+    activeTimers.filter((t) => !isCheckInTimerId(t.id) || Date.parse(t.endsAt) > now),
+  );
 
   // The audible alert is NOT here. It lives in the app-level watcher
   // (lib/cookTimerAlerts.ts), which keeps ticking once the chef navigates off this
@@ -946,7 +966,9 @@
 
   // ─── Recipe-changed banner ─────────────────────────────────────────────────────
   // The live recipe drifted from the snapshot taken when the session started.
-  const recipeChanged = $derived(hasRecipeChanged($cookSession, recipe?.updatedAt ?? null));
+  const recipeChanged = $derived(
+    hasRecipeChanged($cookSession?.recipeUpdatedAtAtStart ?? null, recipe?.updatedAt ?? null),
+  );
 
   // Restart: discard the current session and start a fresh one against the CURRENT
   // recipe (new baseline, cleared ticks), staying on the cook page so the user
@@ -1216,15 +1238,16 @@
        chef is on another step (or on a now-collapsed done step) is always visible and
        dismissable, and can never be hidden into an un-dismissable state. The per-step
        control below is the start affordance; this bar is the durable surface. -->
-    {#if activeTimers.length > 0}
+    {#if barTimers.length > 0}
       <div
         class="flex shrink-0 flex-col gap-2 border-b bg-muted/40 px-4 py-3"
         data-testid="cook-timers-bar"
       >
         <div class="mx-auto flex w-full max-w-2xl flex-col gap-2">
-          {#each activeTimers as t (t.id)}
+          {#each barTimers as t (t.id)}
             {@const remaining = new Date(t.endsAt).getTime() - now}
             {@const fired = remaining <= 0}
+            {@const checkIn = isCheckInTimerId(t.id)}
             {@const stepIndex =
               t.stepId === null ? -1 : recipe.steps.findIndex((s) => s.id === t.stepId)}
             {@const stepLabel =
@@ -1239,20 +1262,19 @@
               data-testid="cook-timer-chip"
               data-timer-id={t.id}
               data-fired={fired}
+              data-check-in={checkIn}
             >
               <div class="flex items-center gap-3 px-3 py-2">
                 <!-- The chip's body is the way back into the sheet: tap the timer to
                    re-time it. A BUTTON around the icon, name and clock only — the
                    Cancel/Dismiss beside it stays its own control, because a button
-                   inside a button is not a thing the DOM has. -->
-                <button
-                  type="button"
-                  class="-mx-1 flex min-w-0 flex-1 items-center gap-3 rounded px-1 py-1 text-left hover:bg-muted"
-                  onclick={() => openRunningTimerSheet(t)}
-                  data-testid="cook-timer-chip-edit"
-                >
+                   inside a button is not a thing the DOM has.
+                   A guided check-in is the exception: its `endsAt` is anchored to
+                   the moment its timer started, so re-timing it from now would
+                   detach it from the wait it belongs to. -->
+                {#snippet chipBody()}
                   <Icon
-                    name={fired ? 'BellRing' : 'Timer'}
+                    name={checkIn ? 'Bell' : fired ? 'BellRing' : 'Timer'}
                     size={18}
                     class={fired ? 'shrink-0 text-primary' : 'shrink-0 text-muted-foreground'}
                   />
@@ -1278,7 +1300,21 @@
                   >
                     {fired ? 'Finished' : formatClock(remaining)}
                   </span>
-                </button>
+                {/snippet}
+                {#if checkIn}
+                  <div class="flex min-w-0 flex-1 items-center gap-3 py-1">
+                    {@render chipBody()}
+                  </div>
+                {:else}
+                  <button
+                    type="button"
+                    class="-mx-1 flex min-w-0 flex-1 items-center gap-3 rounded px-1 py-1 text-left hover:bg-muted"
+                    onclick={() => openRunningTimerSheet(t)}
+                    data-testid="cook-timer-chip-edit"
+                  >
+                    {@render chipBody()}
+                  </button>
+                {/if}
                 <Button
                   size="sm"
                   variant={fired ? 'solid' : 'ghost'}

@@ -1,4 +1,10 @@
-import { daysBetween, firstIncompleteStepId, upcomingChefDays, type Recipe } from '@salt/domain';
+import {
+  daysBetween,
+  firstIncompleteStepId,
+  isCheckInTimerId,
+  upcomingChefDays,
+  type Recipe,
+} from '@salt/domain';
 import type { Day } from '@salt/domain';
 import type { ChatSessionDoc, CookActiveTimerDoc, CookSessionDoc } from '@salt/domain/schemas';
 import { derived, readable } from 'svelte/store';
@@ -69,6 +75,12 @@ export interface MineTimer {
  *
  * A session whose recipe was deleted is skipped, exactly as `liveCooks` does —
  * there is nowhere for "Go to recipe" to go.
+ *
+ * A guided check-in (issue #751) is skipped too. It rides `activeTimers` as an
+ * ordinary entry, but this page asks "what of mine wants a hand?" and a check-in
+ * never does: there is nothing to confirm, nothing to dismiss, and ignoring one is
+ * allowed. Listing them would put a Dismiss button on a nudge and — once fired —
+ * inflate the nav badge with something nobody has to act on.
  */
 export const myTimers: Readable<readonly MineTimer[]> = derived(
   [myCookSessions, recipes],
@@ -78,6 +90,7 @@ export const myTimers: Readable<readonly MineTimer[]> = derived(
       const recipe = $recipes.find((r) => r.id === session.recipeId);
       if (!recipe) continue;
       for (const timer of session.activeTimers) {
+        if (isCheckInTimerId(timer.id)) continue;
         // An ad-hoc timer belongs to no step, so there is nothing to look up; the
         // step lookup exists only to name and size LEGACY entries, written before
         // a timer carried its own label and duration.
@@ -102,8 +115,12 @@ export const myTimers: Readable<readonly MineTimer[]> = derived(
   },
 );
 
+// Check-ins excluded for the same reason `myTimers` excludes them, plus a
+// practical one: a fired check-in stays in `activeTimers` until its timer is
+// dismissed, and counting it here would leave the badge's 1s interval running for
+// hours over a cook with nothing left to show.
 const anyTimerRunning: Readable<boolean> = derived(myCookSessions, ($sessions) =>
-  $sessions.some((s) => s.activeTimers.length > 0),
+  $sessions.some((s) => s.activeTimers.some((t) => !isCheckInTimerId(t.id))),
 );
 
 /**

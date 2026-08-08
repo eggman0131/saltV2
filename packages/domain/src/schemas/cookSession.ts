@@ -6,10 +6,17 @@ import { z } from 'zod';
 // the same session. Per-user scoped like chatSessions (issue #206): `ownerUid`
 // gates every read/write in firestore.rules. Whole-document last-write-wins.
 //
-// Phase 1 writes only `checkedIngredientIds` (the mise-en-place tick state). The
-// forward-looking fields — `completedStepIds` (Phase 2, guided steps) and
-// `activeTimers` (Phase 3, step timers) — are part of the shape NOW so the doc is
-// stable across phases, but Phase 1 UI never writes them. They default to empty
+// TWO PHASE NUMBERINGS MEET IN THIS FILE, and they are not the same scheme.
+// "Phase 1/2/3" below are COOK MODE's own phases (issue #556) — the order the
+// mise/steps/timers surfaces shipped in. `checkedPrepIds` at the bottom belongs to
+// the GUIDED COOK phases (issue #751), where it is Phase 2. Do not read the two as
+// one sequence, and do not add a #751 field to the #556 forward-looking list: that
+// list is specifically "in the shape now, written by nobody yet".
+//
+// Cook-mode Phase 1 writes only `checkedIngredientIds` (the mise-en-place tick
+// state). The forward-looking fields — `completedStepIds` (Phase 2, guided steps)
+// and `activeTimers` (Phase 3, step timers) — are part of the shape NOW so the doc
+// is stable across phases, but Phase 1 UI never writes them. They default to empty
 // arrays so a session written by an earlier phase (or the bootstrap) parses even
 // when the field is absent (back-compat on read).
 
@@ -72,6 +79,22 @@ export const CookSessionSchema = z.object({
   completedStepIds: z.array(z.string()).default([]),
   // Running step timers (Phase 3). Present now; Phase 1 UI never writes it.
   activeTimers: z.array(CookActiveTimerSchema).default([]),
+  // Guided-cook prep tick state (issue #751, Phase 2) — a SECOND tick list, not a
+  // replacement for the first. Guided cook shows the plan's prep JOBS in place of
+  // the ingredient checklist, so a tick there means "this job is done", which is a
+  // different fact from "this ingredient is on the bench": switching between the
+  // two modes mid-cook must not have either one's progress read as the other's.
+  //
+  // Ids come from two places and share this one list, because both are things the
+  // guided prep screen lists and both are ticked the same way: a prep entry's own
+  // `id`, and — for an ingredient the plan names in no job (a plan written before
+  // the recipe gained it) — the INGREDIENT's id. The two id spaces are disjoint in
+  // practice and, more to the point, both are only ever looked up against the list
+  // currently on screen, so a collision could at worst pre-tick a row.
+  //
+  // `.default([])`: cookSessions have no TTL and a cook can span days, so every
+  // session already in Firestore predates this field and must still parse.
+  checkedPrepIds: z.array(z.string()).default([]),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

@@ -1,0 +1,149 @@
+import { z } from 'zod';
+
+// Guided plan document schema (issue #751, Phase 1). One document per recipe at
+// `guidedPlans/{recipeId}` — a DETERMINISTIC id, and a SEPARATE, FAMILY-SHARED
+// collection rather than fields on the recipe.
+//
+// Why its own collection: a guided plan is a human-reviewable RENDERING of a
+// recipe — what the recipe assumes you already know — not part of the recipe.
+// Keeping it out of `recipes` means the recipe schema gains nothing, a plan can
+// be rewritten without touching (or LWW-clobbering) the dish, and a recipe with
+// no plan carries no empty scaffolding. Nothing about it is personal, so it is
+// family-shared with no `ownerUid` — the rules block mirrors `recipes`.
+//
+// It holds two things:
+//
+//  1. `prep` — mise en place as a list of JOBS, each with the container the
+//     result goes into ("dice the carrots, onion and celery → small bowl").
+//     Things used together are prepped together into one named container.
+//  2. `stepNotes` — additions UNDERNEATH the recipe's existing steps. The step
+//     text itself is never touched: a note may say which prepped container the
+//     step wants, how the hob is set, what the cook should hear or see, and —
+//     on a step that already carries a timer — reminders partway through.
+
+// One reminder partway through a step that already has a timer. Phase 3 owns the
+// runtime side (arming, notifying); Phase 1 only stores and edits these.
+//
+// The schema can only check that `atMinutes` is a positive number: whether it
+// falls INSIDE the step's timer is a question about the RECIPE, which this
+// document does not contain. That cross-check lives at authoring time, in the
+// plan editor, where the recipe is in hand.
+export const GuidedCheckInSchema = z.object({
+  atMinutes: z.number().positive(),
+  text: z.string(),
+});
+
+// ─── The authored content (what the AI writes, and what a human then edits) ───
+//
+// These two schemas are the FIELD LIST for their stored counterparts below,
+// which extend them — so the wire shape and the stored shape cannot drift apart
+// by a field. They deliberately carry NO `.default()`: they are handed to Gemini
+// as a structured-output schema, and the doc-read defaults are a READ contract
+// for documents already in Firestore, not something to ask a model to honour.
+
+export const GuidedPrepEntryContentSchema = z.object({
+  // One instruction. "Dice the carrots, onion and celery into 5mm pieces."
+  text: z.string(),
+  // Where the result is set aside. Null when there is nothing to put anywhere
+  // ("open the tin of tomatoes").
+  container: z.string().nullable(),
+  // Which recipe ingredients this job prepares. LOAD-BEARING: in guided mode the
+  // prep list REPLACES the ingredient checklist, so an ingredient named in no
+  // prep entry is one the cook never sees. Every ingredient in the recipe must
+  // appear in exactly one entry — the prompt demands it and the editor warns
+  // when it is not true.
+  ingredientIds: z.array(z.string()),
+});
+
+export const GuidedStepNoteContentSchema = z.object({
+  // The recipe step this annotates. A note whose step no longer exists renders
+  // as NOTHING — never an error, and never re-attached to a neighbouring step.
+  stepId: z.string(),
+  // Which prepped container this step wants. Null when the step needs none.
+  container: z.string().nullable(),
+  // How the station is set: "small hob burner, medium-low".
+  setup: z.string().nullable(),
+  // The sensory test that says it is going right: "you should hear a very gentle
+  // sizzle, not a crackle". Null wherever there is no genuine test — an invented
+  // cue is worse than no cue, so the prompt is explicit about leaving it out.
+  cue: z.string().nullable(),
+  checkIns: z.array(GuidedCheckInSchema),
+});
+
+// ─── The stored document ──────────────────────────────────────────────────────
+//
+// Every field a plan might not carry is `.default(null)` / `.default([])` rather
+// than `.optional()`, following the `producesCanonId` idiom on RecipeSchema:
+// readers see a concrete `string | null` / array, never `undefined`, and a
+// document written before a field existed still parses (back-compat on read).
+
+export const GuidedPrepEntrySchema = GuidedPrepEntryContentSchema.extend({
+  // Local to this document, minted when the entry is created (the AI does not
+  // author ids — it authors content, and the write path mints the identity).
+  id: z.string(),
+  container: z.string().nullable().default(null),
+  ingredientIds: z.array(z.string()).default([]),
+});
+
+export const GuidedStepNoteSchema = GuidedStepNoteContentSchema.extend({
+  container: z.string().nullable().default(null),
+  setup: z.string().nullable().default(null),
+  cue: z.string().nullable().default(null),
+  checkIns: z.array(GuidedCheckInSchema).default([]),
+});
+
+export const GuidedPlanSchema = z.object({
+  // Deterministic: the recipe's id. One plan per recipe.
+  id: z.string(),
+  schemaVersion: z.literal(1),
+  recipeId: z.string(),
+  // Snapshot of the recipe's `updatedAt` as it stood when this plan was last
+  // written. Mirrors `cookSession.recipeUpdatedAtAtStart`, and is compared the
+  // same way (`hasRecipeChanged`) to raise the "the recipe has changed since this
+  // plan was written" banner.
+  //
+  // RE-STAMPED ON EVERY HUMAN SAVE, not just on generation. A save is a review of
+  // the plan against the recipe as it now stands — the same reasoning that lets a
+  // save clear `needs_approval` — so reconciling a plan by hand clears the banner
+  // without a re-run. Without that, the only way out of a stale banner would be
+  // re-running the flow, which throws away every hand-corrected line.
+  recipeUpdatedAtAtSave: z.string(),
+  // Used-but-flagged, exactly as on RecipeSchema / CanonItem / ProductForm: the
+  // plan is fully live regardless; the flag ONLY records that no human has read
+  // it. Set when the AI writes a plan, dropped (never written `false`) by a save.
+  // `.optional()` — a control field, and ABSENT MEANS REVIEWED, so a plan
+  // authored entirely by hand is never flagged.
+  needs_approval: z.boolean().optional(),
+  prep: z.array(GuidedPrepEntrySchema).default([]),
+  stepNotes: z.array(GuidedStepNoteSchema).default([]),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+// ─── The generateGuidedPlan flow ──────────────────────────────────────────────
+
+// The callable takes only the recipe id: the flow reads the recipe SERVER-SIDE
+// via the Admin SDK, like the canon flows do, so the client cannot hand the model
+// a recipe that is not the one in Firestore.
+export const GenerateGuidedPlanInputSchema = z.object({
+  recipeId: z.string().min(1),
+});
+
+// What the model returns: content only. The document's control fields —
+// `needs_approval`, `recipeUpdatedAtAtSave`, the timestamps, the prep-entry ids —
+// are stamped by the ONE write path in the web service, so a generated plan and a
+// hand-saved plan cannot end up with those fields set two different ways.
+export const GenerateGuidedPlanAIOutputSchema = z.object({
+  prep: z.array(GuidedPrepEntryContentSchema),
+  stepNotes: z.array(GuidedStepNoteContentSchema),
+});
+
+export const GenerateGuidedPlanOutputSchema = GenerateGuidedPlanAIOutputSchema;
+
+export type GuidedCheckInDoc = z.infer<typeof GuidedCheckInSchema>;
+export type GuidedPrepEntryDoc = z.infer<typeof GuidedPrepEntrySchema>;
+export type GuidedStepNoteDoc = z.infer<typeof GuidedStepNoteSchema>;
+export type GuidedPlanDoc = z.infer<typeof GuidedPlanSchema>;
+export type GenerateGuidedPlanInput = z.infer<typeof GenerateGuidedPlanInputSchema>;
+export type GenerateGuidedPlanAIOutput = z.infer<typeof GenerateGuidedPlanAIOutputSchema>;
+export type GenerateGuidedPlanOutput = z.infer<typeof GenerateGuidedPlanOutputSchema>;

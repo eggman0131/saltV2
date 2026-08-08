@@ -65,7 +65,16 @@ export const routes: RouteDefinition = new Map<
   // with RecipeKindSchema); a URL is user input.
   ['/recipes/new/:kind', lazy(() => import('./recipes/RecipeEditPage.svelte'))],
   ['/recipes/:id/edit', lazy(() => import('./recipes/RecipeEditPage.svelte'))],
+  // Guided cook (issue #751, Phase 2) precedes plain cook mode for the same
+  // more-specific-first reason as every other pair here. A SECOND full-viewport
+  // route, and so a second entry in ./fullViewport.ts: it is cook mode with the
+  // recipe's guided plan as a lens — the prep list in place of the ingredient
+  // checklist, and the plan's notes under each step's own words.
+  ['/recipes/:id/cook/guided', lazy(() => import('./recipes/GuidedCookPage.svelte'))],
   ['/recipes/:id/cook', lazy(() => import('./recipes/CookModePage.svelte'))],
+  // The guided-plan EDITOR (issue #751, Phase 1). An ordinary shell route — desk
+  // work, not a hands-full mode — so it gets no entry in ./fullViewport.ts.
+  ['/recipes/:id/guided', lazy(() => import('./recipes/GuidedPlanPage.svelte'))],
   ['/recipes/:id', lazy(() => import('./recipes/RecipeViewPage.svelte'))],
   ['/settings', SettingsPage],
   // Operator area (issues #155, #157). All routes are guarded client-side by

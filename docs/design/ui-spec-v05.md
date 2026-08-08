@@ -100,7 +100,16 @@ A page passing `fill` **must** give its scrolling child a definite height from t
 
 ## 2.1 Overview
 
-A **full-viewport route** is a page that occupies the entire screen with no app chrome: no `TopBar`, no `SideNav`, no `BottomNav`. Cook mode (`/recipes/:id/cook`) is the first and, at v0.5, the only one.
+A **full-viewport route** is a page that occupies the entire screen with no app chrome: no `TopBar`, no `SideNav`, no `BottomNav`. Cook mode (`/recipes/:id/cook`) is the first.
+
+The list, amended (§2.6 requires every member to be named here with its justification):
+
+| Route | Page | Justification |
+| --- | --- | --- |
+| `/recipes/:id/cook` | `CookModePage.svelte` | Cook mode (issue #641). Cooking is heads-down and hands-busy; a nav bar you can fat-finger mid-step is a hazard, not an escape hatch. |
+| `/recipes/:id/cook/guided` | `GuidedCookPage.svelte` | Guided cook (issue #751, Phase 2). **The same mode**, read through the recipe's guided plan: the plan's prep list in place of the ingredient checklist, and the plan's notes under each step's own words. Same pager, same gestures, same keep-awake, same hands-full cook. It is a separate route rather than a flag on the first because what mise en place *is* differs between them, and because which one you get is a choice made at the moment you start cooking — not a stored preference. Everything §2.2 says of cook mode is true of it verbatim. |
+
+The plan **editor** (`/recipes/:id/guided`, issue #751 Phase 1) is deliberately *not* on this list and must not be added: writing and reading a plan is desk work you do before you cook, and it belongs inside the shell you arrived from.
 
 This is not the same thing as `ListPage` fill (§1). Fill is a page that fills the shell's content area; a full-viewport route **leaves the shell** entirely. Fill is a layout choice; this is a mode.
 
@@ -136,7 +145,7 @@ Not rendering is the mechanism, and the distinction is load-bearing. A page that
 
 ## 2.6 Forbidden
 
-- Do not add a full-viewport route without a spec amendment naming it and its justification. The list is closed by default.
+- Do not add a full-viewport route without a spec amendment naming it and its justification in §2.1's table. The list is closed by default. (Worked example: guided cook, added by issue #751 Phase 2 — it earned its row by being cook mode itself rather than a new kind of screen.)
 - Do not paint over the chrome instead of suppressing it — see §2.3.
 - Do not give a full-viewport route `role="dialog"` / `aria-modal`. It is a route, not a layer over a page the user can return to; with the chrome gone there is no background to mark inert, and dialog semantics announce a modal that nothing opened.
 - Do not put a focus trap in `AppShell`. There is nothing to trap focus away from once the chrome is not rendered.

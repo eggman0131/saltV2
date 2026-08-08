@@ -1,5 +1,6 @@
 import { get } from 'svelte/store';
 import { push } from 'svelte-spa-router';
+import { isCheckInTimerId } from '@salt/domain';
 import type { CookSessionDoc } from '@salt/domain/schemas';
 import { cookSession } from './cookSessionService.js';
 import { addToast } from './toastStore.js';
@@ -41,18 +42,22 @@ function timerKey(sessionId: string, timerId: string, endsAt: string): string {
   return `${sessionId}::${timerId}@${endsAt}`;
 }
 
-function cookPath(session: CookSessionDoc): string {
+function plainCookPath(session: CookSessionDoc): string {
   return `/recipes/${session.recipeId}/cook`;
 }
 
-// True when the chef is already looking at the cook page for THIS session, where
-// the chip flips to "Finished" on its own — the chime carries the alert and a
-// toast would only cover the chip's Dismiss button. Hash-routed app, so the live
-// route is the hash; read directly rather than through the router so this stays a
-// plain module with no component or store coupling.
-function isViewingCook(session: CookSessionDoc): boolean {
-  if (typeof window === 'undefined') return false;
-  return window.location.hash === `#${cookPath(session)}`;
+// Which cook page the chef is looking at for THIS session, or null for anywhere
+// else in the app. TWO routes lead to one session — plain cook mode and the guided
+// cook (issue #751) — and they are not interchangeable: the guided one is the same
+// cook read through the recipe's plan. Hash-routed app, so the live route is the
+// hash; read directly rather than through the router so this stays a plain module
+// with no component or store coupling.
+function viewedCookPath(session: CookSessionDoc): string | null {
+  if (typeof window === 'undefined') return null;
+  const plain = plainCookPath(session);
+  if (window.location.hash === `#${plain}`) return plain;
+  if (window.location.hash === `#${plain}/guided`) return `${plain}/guided`;
+  return null;
 }
 
 export function initCookTimerAlerts(): () => void {
@@ -61,11 +66,21 @@ export function initCookTimerAlerts(): () => void {
   // timer on a later cook is never mistaken for one already handled.
   const observedRunning = new Set<string>();
   const alerted = new Set<string>();
+  // The cook page this session was last seen on, so "Back to the cook" returns the
+  // chef to the MODE they left. Which mode a cook is being read in is nowhere in
+  // the session document (deliberately — it is a view, not a fact about the cook),
+  // so the only honest source is where they last were. Keyed by session so a
+  // second cook never inherits the first one's route.
+  let lastSeenOn: { sessionId: string; path: string } | null = null;
 
   function check(): void {
     const session = get(cookSession);
     if (!session) return;
     const now = Date.now();
+    const viewedPath = viewedCookPath(session);
+    if (viewedPath) lastSeenOn = { sessionId: session.id, path: viewedPath };
+    const backPath =
+      lastSeenOn?.sessionId === session.id ? lastSeenOn.path : plainCookPath(session);
     for (const timer of session.activeTimers) {
       const key = timerKey(session.id, timer.id, timer.endsAt);
       const endsAtMs = new Date(timer.endsAt).getTime();
@@ -82,12 +97,22 @@ export function initCookTimerAlerts(): () => void {
       alerted.add(key);
       if (now - endsAtMs > GRACE_MS) continue;
       playChime();
-      if (!isViewingCook(session)) {
-        addToast('Timer finished', 'default', {
-          action: { label: 'Back to the cook', onClick: () => push(cookPath(session)) },
-          duration: TOAST_MS,
-        });
-      }
+      // What it says on the lock screen, said here too: the timer's own name, which
+      // for a guided check-in IS the reminder ("Check the heat"). Announcing every
+      // one of them as "Timer finished" would be worse than saying nothing — the
+      // main timer is still running, and the chef would go and look.
+      const message = timer.label ?? 'Timer finished';
+      // The suppression is earned by the chip flipping to "Finished" in front of
+      // the chef. A guided check-in has no such chip — it fires and leaves, because
+      // there is nothing to acknowledge — so on the cook page it takes the toast
+      // instead, and drops the action: they are already there.
+      if (viewedPath && !isCheckInTimerId(timer.id)) continue;
+      addToast(message, 'default', {
+        duration: TOAST_MS,
+        ...(viewedPath
+          ? {}
+          : { action: { label: 'Back to the cook', onClick: () => push(backPath) } }),
+      });
     }
   }
 
