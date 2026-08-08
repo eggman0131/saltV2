@@ -7,7 +7,7 @@ import type { CookActiveTimerDoc, CookSessionDoc } from '@salt/domain/schemas';
 // is a store that is already subscribed app-wide, so these tests drive fake stores
 // and assert the projection: my timers, my open cooks, and what still wants a look.
 
-const { mockRecipes, mockSessions } = vi.hoisted(() => {
+const { mockRecipes, mockSessions, mockChats } = vi.hoisted(() => {
   function makeStore<T>(initial: T) {
     let value = initial;
     const subs = new Set<(v: T) => void>();
@@ -28,11 +28,13 @@ const { mockRecipes, mockSessions } = vi.hoisted(() => {
   return {
     mockRecipes: makeStore<unknown[]>([]),
     mockSessions: makeStore<unknown[]>([]),
+    mockChats: makeStore<unknown[]>([]),
   };
 });
 
 vi.mock('../src/lib/recipeService.js', () => ({ recipes: mockRecipes }));
 vi.mock('../src/lib/cookSessionService.js', () => ({ myCookSessions: mockSessions }));
+vi.mock('../src/lib/chatService.js', () => ({ sessions: mockChats }));
 
 import {
   firedTimers,
@@ -40,6 +42,7 @@ import {
   mineOpenCount,
   myTimers,
   needsReviewRecipes,
+  recentChats,
   timerNowMs,
 } from '../src/lib/personalViewService.js';
 
@@ -121,6 +124,7 @@ beforeEach(() => {
   vi.setSystemTime(NOW);
   mockRecipes._set([]);
   mockSessions._set([]);
+  mockChats._set([]);
 });
 
 afterEach(() => {
@@ -285,6 +289,68 @@ describe('needsReviewRecipes', () => {
       recipe('o1', 'Takeaway', { kind: 'outing' } as Partial<Recipe>),
     ]);
     expect(get(needsReviewRecipes).map((r) => r.id)).toEqual(['c1']);
+  });
+});
+
+describe('recentChats', () => {
+  function chat(id: string, title: string, updatedAt: string, recipeId: string | null = null) {
+    return {
+      id,
+      schemaVersion: 1,
+      ownerUid: 'uid-a',
+      recipeId,
+      title,
+      messages: [],
+      createdAt: '2026-07-01T00:00:00.000Z',
+      updatedAt,
+      expiresAt: '2026-08-19T00:00:00.000Z',
+    };
+  }
+
+  it('is newest-touched first, matching the chat list itself', () => {
+    mockChats._set([
+      chat('mid', 'Braising', '2026-08-03T00:00:00.000Z'),
+      chat('newest', 'Sourdough', '2026-08-05T00:00:00.000Z'),
+      chat('oldest', 'Stock', '2026-07-20T00:00:00.000Z'),
+    ]);
+    expect(get(recentChats).map((c) => c.id)).toEqual(['newest', 'mid', 'oldest']);
+  });
+
+  it('caps at five — a shortcut, not a second chat list', () => {
+    mockChats._set(
+      Array.from({ length: 9 }, (_u, i) =>
+        chat(`c${i}`, `Chat ${i}`, `2026-08-0${i + 1}T00:00:00.000Z`),
+      ),
+    );
+    const ids = get(recentChats).map((c) => c.id);
+    expect(ids).toHaveLength(5);
+    expect(ids).toEqual(['c8', 'c7', 'c6', 'c5', 'c4']);
+  });
+
+  it('includes recipe-attached sessions — a chat is a chat (#707 duplication accepted)', () => {
+    mockChats._set([
+      chat('general', 'General', '2026-08-02T00:00:00.000Z'),
+      chat('attached', 'Ragu chat', '2026-08-04T00:00:00.000Z', 'r1'),
+    ]);
+    expect(get(recentChats).map((c) => c.id)).toEqual(['attached', 'general']);
+  });
+
+  it('is empty with no chats, so the section can be absent entirely', () => {
+    expect(get(recentChats)).toEqual([]);
+  });
+
+  it("passes a long naive title through untouched — truncation is the row's job", () => {
+    // Until generateChatTitle lands, a title is `text.slice(0, 60)` of the first
+    // message. The store must not shorten or tidy it; the row truncates on display.
+    const naive = 'how do i stop my sourdough starter from smelling like acetone';
+    mockChats._set([chat('c1', naive, '2026-08-05T00:00:00.000Z')]);
+    expect(get(recentChats)[0]?.title).toBe(naive);
+  });
+
+  it('stays out of the nav badge — a chat you had is not waiting on you', () => {
+    mockChats._set([chat('c1', 'Sourdough', '2026-08-05T00:00:00.000Z')]);
+    expect(get(recentChats)).toHaveLength(1);
+    expect(get(mineOpenCount)).toBe(0);
   });
 });
 

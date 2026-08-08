@@ -7,6 +7,7 @@
     liveCooks,
     myTimers,
     needsReviewRecipes,
+    recentChats,
     timerNowMs,
     type LiveCook,
     type MineTimer,
@@ -15,12 +16,13 @@
   import { persistRecipe, recipes } from '../../lib/recipeService.js';
   import { addToast } from '../../lib/toastStore.js';
 
-  // "Mine" (issues #634, #682) — what of mine is RUNNING right now, and what needs
-  // a look. Three sections, in that order:
+  // "My Kitchen" (issues #634, #682, #755) — what of mine is RUNNING right now, and
+  // what needs a look. Four sections, in that order:
   //
   //   1. Timers      — running and fired-but-undismissed, in one list
   //   2. Cooking now — my open cook sessions
   //   3. Needs review — entries flagged `needs_approval`
+  //   4. Recent chats — a quiet footer, the only thing here not waiting on you
   //
   // Nothing here restates the planner or the shopping list; each of those has its
   // own page that says it better. Every card is a projection of a document that
@@ -82,8 +84,12 @@
   }
 
   // ─── Empty state ──────────────────────────────────────────────────────────
-  // All three sections are conditional, so the page can be genuinely empty — and
-  // that is the usual case. It should read as an achievement, not an absence.
+  // Every section is conditional, so the page can be genuinely empty — and that is
+  // the usual case. It should read as an achievement, not an absence.
+  //
+  // Recent chats is deliberately NOT in this sum: a kitchen with nothing but old
+  // conversations in it is still all-clear, and hiding "You're all caught up"
+  // behind a chat you had last Tuesday would make a shortcut look like a chore.
   const allClear = $derived(
     $myTimers.length === 0 && $liveCooks.length === 0 && $needsReviewRecipes.length === 0,
   );
@@ -92,7 +98,7 @@
 <section class="flex flex-col gap-4 p-4 sm:p-6" data-testid="mine-page">
   <header class="flex flex-col gap-1">
     <h1 class="text-xl font-semibold tracking-tight text-foreground">
-      {$currentMember ? `${$currentMember.name.split(' ')[0]}'s Salt` : 'Mine'}
+      {$currentMember ? `${$currentMember.name.split(' ')[0]}'s Kitchen` : 'My Kitchen'}
     </h1>
     <p class="text-sm text-muted-foreground">What's running, and what needs a look.</p>
   </header>
@@ -278,5 +284,36 @@
         </div>
       </div>
     </Card>
+  {/if}
+
+  <!-- 4. Recent chats — last, after the empty state, because it is a shortcut back
+       into a conversation rather than something waiting on you. Read-only: the
+       subscription is already running app-wide, and a chat is deleted or expires
+       from its own page, never from here. Titles are a raw slice of the first
+       message until the chef retitles them, so the row has to survive an ugly one:
+       truncated on one line, and the row itself is the target. -->
+  {#if $recentChats.length > 0}
+    <div class="flex flex-col gap-2" data-testid="mine-chats">
+      <h2 class="text-sm font-medium text-muted-foreground">Recent chats</h2>
+      {#each $recentChats as chat (chat.id)}
+        <Card class="overflow-hidden">
+          <button
+            type="button"
+            class="flex w-full items-center gap-3 p-3 text-left"
+            onclick={() => push(`/chat/${chat.id}`)}
+            data-testid="mine-chat-open"
+          >
+            <Icon name="ChefHat" size={18} class="shrink-0 text-muted-foreground" />
+            <span
+              class="min-w-0 flex-1 truncate text-sm font-medium text-foreground"
+              data-testid="mine-chat-title"
+            >
+              {chat.title}
+            </span>
+            <Icon name="ChevronRight" size={16} class="shrink-0 text-muted-foreground" />
+          </button>
+        </Card>
+      {/each}
+    </div>
   {/if}
 </section>

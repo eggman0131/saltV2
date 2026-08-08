@@ -141,6 +141,10 @@ chat session doc (Firestore)         ← owned by web-pwa + firebase-sync (clien
 - Recipe-attached chat — opened alongside an existing recipe; same chat engine with
   `recipeId` set; "apply changes" re-runs the librarian against the recipe.
 - "Save as recipe" action on a general chat → librarian → new recipe.
+- My Kitchen (`/mine`) — a "Recent chats" footer linking straight back into the last
+  few conversations. Read-only and free: it projects the app-wide subscription
+  started at auth, so it is a shortcut into chat, not a second place chat lives.
+  Chef stays in the nav overflow regardless (#634) — this link is not a promotion.
 
 ## Constraints inherited from the architecture
 

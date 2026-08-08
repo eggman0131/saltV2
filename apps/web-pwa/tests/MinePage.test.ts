@@ -12,6 +12,7 @@ const {
   mockLiveCooks,
   mockMyTimers,
   mockNeedsReview,
+  mockRecentChats,
   mockTimerNowMs,
   mockCurrentMember,
   mockPush,
@@ -42,6 +43,7 @@ const {
     mockLiveCooks: makeStore<unknown[]>([]),
     mockMyTimers: makeStore<unknown[]>([]),
     mockNeedsReview: makeStore<unknown[]>([]),
+    mockRecentChats: makeStore<unknown[]>([]),
     mockTimerNowMs: makeStore<number>(Date.parse('2026-08-05T12:00:00.000Z')),
     mockCurrentMember: makeStore<unknown>(null),
     mockPush: vi.fn(),
@@ -59,6 +61,7 @@ vi.mock('../src/lib/personalViewService.js', () => ({
   liveCooks: mockLiveCooks,
   myTimers: mockMyTimers,
   needsReviewRecipes: mockNeedsReview,
+  recentChats: mockRecentChats,
   timerNowMs: mockTimerNowMs,
 }));
 vi.mock('../src/lib/membersService.js', () => ({ currentMember: mockCurrentMember }));
@@ -141,6 +144,20 @@ function mineTimer(
   };
 }
 
+function chatDoc(id: string, title: string) {
+  return {
+    id,
+    schemaVersion: 1,
+    ownerUid: 'uid',
+    recipeId: null,
+    title,
+    messages: [],
+    createdAt: '2026-08-01T11:56:00.000Z',
+    updatedAt: '2026-08-04T11:56:00.000Z',
+    expiresAt: '2026-08-18T11:56:00.000Z',
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockPersist.mockResolvedValue({ kind: 'ok', value: undefined });
@@ -149,6 +166,7 @@ beforeEach(() => {
   mockLiveCooks._set([]);
   mockMyTimers._set([]);
   mockNeedsReview._set([]);
+  mockRecentChats._set([]);
   mockRecipes._set([]);
   mockTimerNowMs._set(NOW);
   mockCurrentMember._set(alex);
@@ -159,16 +177,18 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-describe('MinePage — the three sections', () => {
-  it('is three sections and nothing else — no planner, no shopping list', () => {
+describe('MinePage — the sections', () => {
+  it('is these sections and nothing else — no planner, no shopping list', () => {
     mockMyTimers._set([mineTimer('r1', 'r1-s0', 4 * 60_000)]);
     mockLiveCooks._set([liveCook('r2', 'Noodle Bowl')]);
     mockNeedsReview._set([unreviewed('r3', 'Lemon drizzle traybake')]);
+    mockRecentChats._set([chatDoc('c1', 'Sourdough starter')]);
 
     const { getByTestId, queryByTestId } = render(MinePage);
     expect(getByTestId('mine-timers')).toBeInTheDocument();
     expect(getByTestId('mine-live')).toBeInTheDocument();
     expect(getByTestId('mine-needs-review')).toBeInTheDocument();
+    expect(getByTestId('mine-chats')).toBeInTheDocument();
 
     for (const gone of ['mine-tonight', 'mine-week', 'mine-needs-you', 'mine-footer']) {
       expect(queryByTestId(gone)).not.toBeInTheDocument();
@@ -181,12 +201,69 @@ describe('MinePage — the three sections', () => {
     expect(queryByTestId('mine-timers')).not.toBeInTheDocument();
     expect(queryByTestId('mine-live')).not.toBeInTheDocument();
     expect(queryByTestId('mine-needs-review')).not.toBeInTheDocument();
+    expect(queryByTestId('mine-chats')).not.toBeInTheDocument();
   });
 
   it('drops the empty state as soon as anything is live', () => {
     mockMyTimers._set([mineTimer('r1', 'r1-s0', 60_000)]);
     const { queryByTestId } = render(MinePage);
     expect(queryByTestId('mine-empty')).not.toBeInTheDocument();
+  });
+});
+
+describe('MinePage — the heading', () => {
+  it('is the member first name, possessive, over their kitchen', () => {
+    const { getByTestId } = render(MinePage);
+    expect(getByTestId('mine-page')).toHaveTextContent("Alex's Kitchen");
+  });
+
+  it('falls back to "My Kitchen" before the roster has loaded', () => {
+    // The members subscription can still be in flight on a cold launch; the page
+    // must never render a headless possessive.
+    mockCurrentMember._set(null);
+    const { getByTestId } = render(MinePage);
+    expect(getByTestId('mine-page')).toHaveTextContent('My Kitchen');
+  });
+});
+
+describe('MinePage — recent chats', () => {
+  it('lists the conversations in the order the store hands them over', () => {
+    mockRecentChats._set([chatDoc('c1', 'Sourdough starter'), chatDoc('c2', 'Braising a shin')]);
+    const { getAllByTestId } = render(MinePage);
+    expect(getAllByTestId('mine-chat-title').map((n) => n.textContent?.trim())).toEqual([
+      'Sourdough starter',
+      'Braising a shin',
+    ]);
+  });
+
+  it('opens that conversation', async () => {
+    mockRecentChats._set([chatDoc('c1', 'Sourdough starter')]);
+    const { getByTestId } = render(MinePage);
+    await fireEvent.click(getByTestId('mine-chat-open'));
+    expect(mockPush).toHaveBeenCalledWith('/chat/c1');
+  });
+
+  it('survives the long naive title a chat carries before it is retitled', () => {
+    // `text.slice(0, 60)` of the first message, until generateChatTitle replaces it.
+    const naive = 'how do i stop my sourdough starter from smelling like ac';
+    mockRecentChats._set([chatDoc('c1', naive)]);
+    const { getByTestId } = render(MinePage);
+    const title = getByTestId('mine-chat-title');
+    expect(title).toHaveTextContent(naive);
+    // One line, clipped — never wrapped into a growing row.
+    expect(title.className).toContain('truncate');
+  });
+
+  it('is absent entirely when there are none', () => {
+    const { queryByTestId } = render(MinePage);
+    expect(queryByTestId('mine-chats')).not.toBeInTheDocument();
+  });
+
+  it('does not stop the page reading as all-clear — a chat is not a chore', () => {
+    mockRecentChats._set([chatDoc('c1', 'Sourdough starter')]);
+    const { getByTestId } = render(MinePage);
+    expect(getByTestId('mine-empty')).toHaveTextContent("You're all caught up");
+    expect(getByTestId('mine-chats')).toBeInTheDocument();
   });
 });
 

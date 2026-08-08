@@ -1,9 +1,10 @@
 import { firstIncompleteStepId, type Recipe } from '@salt/domain';
-import type { CookActiveTimerDoc, CookSessionDoc } from '@salt/domain/schemas';
+import type { ChatSessionDoc, CookActiveTimerDoc, CookSessionDoc } from '@salt/domain/schemas';
 import { derived, readable } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 import { recipes } from './recipeService.js';
 import { myCookSessions } from './cookSessionService.js';
+import { sessions } from './chatService.js';
 
 // Personal view composition (issues #634, #682). "Mine" is not a dashboard and not
 // an inbox — it answers exactly one question: what of mine is RUNNING right now,
@@ -13,7 +14,9 @@ import { myCookSessions } from './cookSessionService.js';
 // the planner and the shopping list, which say it better on their own pages, so
 // they and their domain helpers are gone. What is left is three things nothing
 // else in the app surfaces: my step timers, my open cooks, and the standing queue
-// of entries flagged `needs_approval`.
+// of entries flagged `needs_approval`. #755 added one thing that is NOT of that
+// shape — a short list of recent chats — kept last and kept out of the badge,
+// because it is a shortcut rather than something waiting on you.
 //
 // Every store read here is already subscribed app-wide from App.svelte, so all of
 // this costs zero extra Firestore reads — which is also what makes the nav badge
@@ -201,6 +204,33 @@ export const needsReviewRecipes: Readable<readonly Recipe[]> = derived(recipes, 
   $recipes
     .filter((r) => r.needs_approval === true)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+);
+
+// ─── 4. Recent chats ─────────────────────────────────────────────────────────
+
+/** How many conversations the page is willing to be a shortcut to. */
+const RECENT_CHAT_LIMIT = 5;
+
+/**
+ * My last few chef conversations, most recently touched first.
+ *
+ * Free, like everything else here: `initChatSync` runs from App.svelte at auth
+ * time, so this is a projection over a store that is already subscribed and costs
+ * no extra Firestore reads. Nothing in this module starts a subscription.
+ *
+ * Capped rather than paged: this is a shortcut back into a conversation you were
+ * just having, and /chat is one tap away for the rest. Recipe-attached sessions
+ * are included — a chat is a chat, and the recipe page listing it too (#707) is
+ * accepted duplication rather than a rule about which chats are "personal".
+ *
+ * Sorted on `updatedAt`, matching the chat list itself, so the two surfaces can
+ * never disagree about which conversation is the newest.
+ *
+ * Deliberately OUT of the nav badge: a chat that happened is not something
+ * waiting on you, and a permanent five would say otherwise.
+ */
+export const recentChats: Readable<readonly ChatSessionDoc[]> = derived(sessions, ($sessions) =>
+  [...$sessions].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, RECENT_CHAT_LIMIT),
 );
 
 // ─── Nav badge ───────────────────────────────────────────────────────────────
