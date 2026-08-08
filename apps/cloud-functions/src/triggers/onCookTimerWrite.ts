@@ -17,11 +17,12 @@ export type { CookTimerTaskPayload } from './cookTimerTypes.js';
 // INLINE because this module is evaluated before index.ts's setGlobalOptions
 // runs (same reason the other triggers pin them inline).
 
-// A timer's identity for diffing: same step + same absolute end-time. Extending a
-// timer changes endsAt → a NEW key → a NEW task (the old task no-ops on dispatch
-// because the matching timer is gone).
+// A timer's identity for diffing: same timer + same absolute end-time. Extending
+// (or shortening) a timer changes endsAt → a NEW key → a NEW task (the old task
+// no-ops on dispatch because the matching timer is gone). That is why an adjusted
+// duration needs no cancellation path.
 function timerKey(t: CookActiveTimerDoc): string {
-  return `${t.stepId}@${t.endsAt}`;
+  return `${t.id}@${t.endsAt}`;
 }
 
 export const onCookTimerWrite = onDocumentWritten(
@@ -83,7 +84,7 @@ export const onCookTimerWrite = onDocumentWritten(
       for (const t of newTimers) {
         try {
           await queue.enqueue(
-            { sessionId, stepId: t.stepId, endsAt: t.endsAt },
+            { sessionId, timerId: t.id, endsAt: t.endsAt },
             { scheduleTime: new Date(t.endsAt) },
           );
         } catch (err) {
@@ -92,7 +93,7 @@ export const onCookTimerWrite = onDocumentWritten(
           // move on; the dispatch ledger de-dupes any eventual double anyway.
           logger.error('onCookTimerWrite: enqueue failed', {
             sessionId,
-            stepId: t.stepId,
+            timerId: t.id,
             endsAt: t.endsAt,
             err,
           });

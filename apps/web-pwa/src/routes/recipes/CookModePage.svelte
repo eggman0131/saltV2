@@ -33,6 +33,7 @@
   import { createDeck } from '../../lib/deck.svelte.js';
   import { sectionMinHeight, fadeHeightFor, PEEK_MAX_PX } from '../../lib/cookDeck.js';
   import IngredientText from './IngredientText.svelte';
+  import CookTimerSheet from './CookTimerSheet.svelte';
   // Pure cook-session logic lives in `@salt/domain` (issue #556) — every producer
   // is immutable, none of them stamp `updatedAt` (the service owns that), and
   // every timestamp they need is passed in from here rather than read there.
@@ -749,7 +750,12 @@
   // timer is live (the $effect re-runs when `activeTimers` gains/loses entries) and
   // is torn down on cleanup — no per-timer intervals, and nothing ticks at rest.
   const activeTimers = $derived($cookSession?.activeTimers ?? []);
-  const timerByStep = $derived(new Map(activeTimers.map((t) => [t.stepId, t] as const)));
+  // Keyed by STEP, deliberately: this is the "is there a live timer on the step I
+  // am cooking?" lookup, not an identity map (that is `t.id`). Entries with no
+  // step of their own are skipped rather than filed under a null key.
+  const timerByStep = $derived(
+    new Map(activeTimers.flatMap((t) => (t.stepId === null ? [] : [[t.stepId, t] as const]))),
+  );
 
   let now = $state(Date.now());
   $effect(() => {
@@ -782,9 +788,15 @@
   // floor at 90s keeps the swallowed ones to the genuinely-away minority.
   const NOTIFY_MIN_MINUTES = 1.5;
 
-  function startTimer(step: StepDoc): void {
-    const timer = step.timer;
-    if (!timer) return;
+  // The one write that starts a timer — every entry point funnels through it, so
+  // a timer the cook set by hand is indistinguishable from one the recipe
+  // described the moment it is running.
+  function startTimerEntry(entry: {
+    id: string;
+    stepId: string | null;
+    label: string | null;
+    durationMinutes: number;
+  }): void {
     const s = getCookSessionSnapshot();
     if (!s) return;
     // Unlock the audio context on this user gesture so the app-level watcher can
@@ -793,27 +805,143 @@
     // precede a chime, so this stays here even though the chime itself does not.
     primeChime();
     // `endsAt` is computed HERE, not in the domain producer, which never reads a
-    // clock. Replacing any existing entry for the step is the producer's job.
-    const endsAt = new Date(Date.now() + timer.durationMinutes * 60_000).toISOString();
-    const notify = timer.durationMinutes >= NOTIFY_MIN_MINUTES;
-    void persistCookSession(withTimerStarted(s, step.id, endsAt, notify));
+    // clock. Replacing any existing entry with the same id is the producer's job —
+    // which is also all "adjust a running timer" is: the same id, a fresh `endsAt`,
+    // through the same producer. `notify` re-derives from the duration actually
+    // being started, so a timer stretched over the floor gains its push backstop
+    // and one shortened under it loses it.
+    const endsAt = new Date(Date.now() + entry.durationMinutes * 60_000).toISOString();
+    void persistCookSession(
+      withTimerStarted(s, {
+        ...entry,
+        endsAt,
+        notify: entry.durationMinutes >= NOTIFY_MIN_MINUTES,
+      }),
+    );
   }
 
-  function dismissTimer(stepId: string): void {
+  function startTimer(step: StepDoc): void {
+    const timer = step.timer;
+    if (!timer) return;
+    // A step timer's identity IS its step id, so there is nothing to mint.
+    startTimerEntry({
+      id: step.id,
+      stepId: step.id,
+      label: timer.description ?? null,
+      durationMinutes: timer.durationMinutes,
+    });
+  }
+
+  function dismissTimer(timerId: string): void {
     const s = getCookSessionSnapshot();
     if (!s) return;
-    void persistCookSession(withTimerDismissed(s, stepId));
+    void persistCookSession(withTimerDismissed(s, timerId));
   }
 
-  // Looks the timer's step up in the LIVE recipe and hands its duration to the
-  // domain clamp, which turns it into the elapsed fraction the progress fill
-  // draws. A step (or its timer) edited away since the countdown started has no
-  // duration to scale against, so `timerProgress` returns null and the chip
-  // renders with no fill rather than a bogus one.
+  // Turns the timer's total run into the elapsed fraction the progress fill draws.
+  // The total is the duration the timer was STARTED for; only a legacy entry
+  // (written before the field existed) falls back to looking its step up in the
+  // LIVE recipe. With neither — a step edited away, or an ad-hoc timer from before
+  // the field — `timerProgress` returns null and the chip renders with no fill
+  // rather than a bogus one.
   function timerProgressFor(timer: CookActiveTimerDoc): number | null {
-    const durationMinutes = recipe?.steps.find((s) => s.id === timer.stepId)?.timer
-      ?.durationMinutes;
+    const durationMinutes =
+      timer.durationMinutes ??
+      (timer.stepId === null
+        ? undefined
+        : recipe?.steps.find((s) => s.id === timer.stepId)?.timer?.durationMinutes);
     return timerProgress(timer, durationMinutes ? durationMinutes * 60_000 : null, now);
+  }
+
+  // ─── The timer sheet ────────────────────────────────────────────────────────────
+  // One sheet, three ways in: the pencil beside a step's timer button, the header's
+  // timer button, and a tap on a running chip. What differs between them is only
+  // what the sheet is PREFILLED with and which id the confirm writes to — so the
+  // target is captured on the way in and the sheet itself stays ignorant of steps,
+  // ids and sessions.
+  //
+  // The default ad-hoc timer: a name that says where it came from (it shows up on
+  // My Page beside timers from other cooks) and a round ten minutes, which is what
+  // "I need a timer" usually means before you tell it otherwise.
+  const AD_HOC_TIMER_LABEL = 'Salt Timer';
+  const AD_HOC_TIMER_MINUTES = 10;
+
+  interface TimerSheetTarget {
+    id: string;
+    stepId: string | null;
+    label: string;
+    durationMinutes: number;
+    running: boolean;
+  }
+  let timerSheetOpen = $state(false);
+  let timerSheetTarget = $state<TimerSheetTarget | null>(null);
+  const timerSheetPrefill = $derived({
+    label: timerSheetTarget?.label ?? AD_HOC_TIMER_LABEL,
+    durationMinutes: timerSheetTarget?.durationMinutes ?? AD_HOC_TIMER_MINUTES,
+  });
+
+  function openTimerSheet(target: TimerSheetTarget): void {
+    timerSheetTarget = target;
+    timerSheetOpen = true;
+  }
+
+  // A step timer, before it starts. Re-read from the LIVE step every time, which is
+  // what makes "reset to the recipe's duration" a thing you already have: cancel,
+  // tap the pencil again.
+  function openStepTimerSheet(step: StepDoc): void {
+    if (!step.timer) return;
+    openTimerSheet({
+      id: step.id,
+      stepId: step.id,
+      label: step.timer.description ?? '',
+      durationMinutes: step.timer.durationMinutes,
+      running: false,
+    });
+  }
+
+  // A timer already counting down. Prefilled with what it was SET for, not what is
+  // left on it — the number in the sheet is the length of the run you are about to
+  // re-start, and confirming re-times it from now.
+  function openRunningTimerSheet(timer: CookActiveTimerDoc): void {
+    const stepDuration =
+      timer.stepId === null
+        ? undefined
+        : recipe?.steps.find((s) => s.id === timer.stepId)?.timer?.durationMinutes;
+    openTimerSheet({
+      id: timer.id,
+      stepId: timer.stepId,
+      label: timer.label ?? '',
+      // Neither field survives on a legacy entry written before they existed, so
+      // the step's own duration stands in, and the ad-hoc default behind that.
+      durationMinutes: timer.durationMinutes ?? stepDuration ?? AD_HOC_TIMER_MINUTES,
+      running: true,
+    });
+  }
+
+  // A timer for something the recipe never mentioned. Its id is minted here because
+  // it has no step to borrow one from, and `stepId: null` is what keeps it out of
+  // every step's inline slot while leaving it in the persistent bar.
+  function openAdHocTimerSheet(): void {
+    openTimerSheet({
+      id: crypto.randomUUID(),
+      stepId: null,
+      label: AD_HOC_TIMER_LABEL,
+      durationMinutes: AD_HOC_TIMER_MINUTES,
+      running: false,
+    });
+  }
+
+  function confirmTimerSheet(next: { label: string; durationMinutes: number }): void {
+    const target = timerSheetTarget;
+    if (!target) return;
+    startTimerEntry({
+      id: target.id,
+      stepId: target.stepId,
+      // An emptied name is no name — the chip falls back to the step's label, or to
+      // "Timer", exactly as an unlabelled step timer always has.
+      label: next.label === '' ? null : next.label,
+      durationMinutes: next.durationMinutes,
+    });
   }
 
   // ─── Recipe-changed banner ─────────────────────────────────────────────────────
@@ -964,6 +1092,20 @@
           </span>
         {/if}
       </div>
+      <!-- A timer for something the recipe never mentioned — the rice, the oven
+         preheating, the ten minutes the dough rests. It sits in the header rather
+         than in the step deck because it belongs to the COOK, not to any one step,
+         and it opens the same sheet every other timer does. -->
+      <Button
+        variant="ghost"
+        size="icon"
+        onclick={openAdHocTimerSheet}
+        ariaLabel="Start a timer"
+        title="Start a timer"
+        data-testid="cook-mode-timer"
+      >
+        {#snippet leading()}<Icon name="Timer" size={20} class="text-muted-foreground" />{/snippet}
+      </Button>
       {#if wakeLockSupported}
         <!-- Keep-awake is an icon toggle, not a labelled switch: cook mode is a
            heads-down surface and the header has to stay legible next to a long recipe
@@ -1080,12 +1222,14 @@
         data-testid="cook-timers-bar"
       >
         <div class="mx-auto flex w-full max-w-2xl flex-col gap-2">
-          {#each activeTimers as t (t.stepId)}
+          {#each activeTimers as t (t.id)}
             {@const remaining = new Date(t.endsAt).getTime() - now}
             {@const fired = remaining <= 0}
-            {@const stepIndex = recipe.steps.findIndex((s) => s.id === t.stepId)}
+            {@const stepIndex =
+              t.stepId === null ? -1 : recipe.steps.findIndex((s) => s.id === t.stepId)}
             {@const stepLabel =
-              stepIndex >= 0 ? (recipe.steps[stepIndex]?.timer?.description ?? null) : null}
+              t.label ??
+              (stepIndex >= 0 ? (recipe.steps[stepIndex]?.timer?.description ?? null) : null)}
             {@const stepName = stepIndex >= 0 ? `Step ${stepIndex + 1}` : 'Timer'}
             {@const progress = timerProgressFor(t)}
             <div
@@ -1093,40 +1237,52 @@
                 ? 'border-primary bg-primary/10'
                 : 'bg-card'}"
               data-testid="cook-timer-chip"
-              data-step-id={t.stepId}
+              data-timer-id={t.id}
               data-fired={fired}
             >
               <div class="flex items-center gap-3 px-3 py-2">
-                <Icon
-                  name={fired ? 'BellRing' : 'Timer'}
-                  size={18}
-                  class={fired ? 'shrink-0 text-primary' : 'shrink-0 text-muted-foreground'}
-                />
-                <!-- Lead with the human timer label ("Simmer the sauce") when the
-                   step has one; fall back to "Step N" so an unlabelled timer is
-                   still locatable. When a label leads, the step number stays
-                   available as a tooltip so you can still find the step (#554). -->
-                <span
-                  class="min-w-0 flex-1 truncate text-sm font-medium {fired
-                    ? 'text-primary'
-                    : 'text-foreground'}"
-                  title={stepLabel ? stepName : undefined}
-                  data-testid="cook-timer-chip-label"
+                <!-- The chip's body is the way back into the sheet: tap the timer to
+                   re-time it. A BUTTON around the icon, name and clock only — the
+                   Cancel/Dismiss beside it stays its own control, because a button
+                   inside a button is not a thing the DOM has. -->
+                <button
+                  type="button"
+                  class="-mx-1 flex min-w-0 flex-1 items-center gap-3 rounded px-1 py-1 text-left hover:bg-muted"
+                  onclick={() => openRunningTimerSheet(t)}
+                  data-testid="cook-timer-chip-edit"
                 >
-                  {stepLabel ?? stepName}
-                </span>
-                <span
-                  class="shrink-0 font-mono text-base tabular-nums {fired
-                    ? 'font-semibold text-primary'
-                    : ''}"
-                  data-testid="cook-timer-chip-time"
-                >
-                  {fired ? 'Finished' : formatClock(remaining)}
-                </span>
+                  <Icon
+                    name={fired ? 'BellRing' : 'Timer'}
+                    size={18}
+                    class={fired ? 'shrink-0 text-primary' : 'shrink-0 text-muted-foreground'}
+                  />
+                  <!-- Lead with the human timer label ("Simmer the sauce") — the
+                     timer's own, falling back to its step's for a legacy entry; then
+                     "Step N" so an unlabelled timer is still locatable. When a label
+                     leads, the step number stays available as a tooltip so you can
+                     still find the step (#554). -->
+                  <span
+                    class="min-w-0 flex-1 truncate text-sm font-medium {fired
+                      ? 'text-primary'
+                      : 'text-foreground'}"
+                    title={stepLabel ? stepName : undefined}
+                    data-testid="cook-timer-chip-label"
+                  >
+                    {stepLabel ?? stepName}
+                  </span>
+                  <span
+                    class="shrink-0 font-mono text-base tabular-nums {fired
+                      ? 'font-semibold text-primary'
+                      : ''}"
+                    data-testid="cook-timer-chip-time"
+                  >
+                    {fired ? 'Finished' : formatClock(remaining)}
+                  </span>
+                </button>
                 <Button
                   size="sm"
                   variant={fired ? 'solid' : 'ghost'}
-                  onclick={() => dismissTimer(t.stepId)}
+                  onclick={() => dismissTimer(t.id)}
                   data-testid="cook-timer-chip-dismiss"
                 >
                   {fired ? 'Dismiss' : 'Cancel'}
@@ -1533,7 +1689,7 @@
                               </span>
                               <Button
                                 variant="ghost"
-                                onclick={() => dismissTimer(step.id)}
+                                onclick={() => dismissTimer(timerEntry.id)}
                                 data-testid="cook-step-timer-dismiss"
                               >
                                 Cancel
@@ -1577,7 +1733,7 @@
                               {step.timer.description ? 'Finished' : 'Timer finished'}
                             </span>
                             <Button
-                              onclick={() => dismissTimer(step.id)}
+                              onclick={() => dismissTimer(timerEntry.id)}
                               data-testid="cook-step-timer-dismiss"
                             >
                               Dismiss
@@ -1590,19 +1746,39 @@
                            whole string truncates as one, and since the label is last it
                            is the part that gives way; "Start 20 minute timer" always
                            survives, which is the part you have to be able to read. -->
-                        <Button
-                          variant="outline"
-                          size="lg"
-                          onclick={() => startTimer(step)}
-                          data-testid="cook-step-timer-start"
-                        >
-                          {#snippet leading()}<Icon name="Timer" size={18} />{/snippet}
-                          <span class="min-w-0 truncate">
-                            Start {step.timer.durationMinutes} minute timer{step.timer.description
-                              ? ` (${step.timer.description})`
-                              : ''}
-                          </span>
-                        </Button>
+                        <!-- The button starts the recipe's timer in ONE tap — that is
+                           the common case and it stays a single tap. The pencil
+                           beside it is the other case: change the name or the time
+                           first. Two controls, because a button that sometimes
+                           starts and sometimes opens a dialog is a button you have
+                           to think about. -->
+                        <div class="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="lg"
+                            class="min-w-0 flex-1"
+                            onclick={() => startTimer(step)}
+                            data-testid="cook-step-timer-start"
+                          >
+                            {#snippet leading()}<Icon name="Timer" size={18} />{/snippet}
+                            <span class="min-w-0 truncate">
+                              Start {step.timer.durationMinutes} minute timer{step.timer.description
+                                ? ` (${step.timer.description})`
+                                : ''}
+                            </span>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="lg"
+                            class="shrink-0"
+                            onclick={() => openStepTimerSheet(step)}
+                            ariaLabel="Adjust this timer"
+                            title="Adjust this timer"
+                            data-testid="cook-step-timer-adjust"
+                          >
+                            {#snippet leading()}<Icon name="Pencil" size={18} />{/snippet}
+                          </Button>
+                        </div>
                       {/if}
                     </div>
                   {/if}
@@ -1710,5 +1886,16 @@
         {/if}
       {/if}
     </footer>
+
+    <!-- Mounted for the life of the page, never wrapped in `{#if}` — the sheet owns
+       its own open/close transition, and a conditional mount would tear it out
+       mid-animation. It portals to <body>, so it lands above this full-viewport
+       container rather than inside it. -->
+    <CookTimerSheet
+      bind:open={timerSheetOpen}
+      prefill={timerSheetPrefill}
+      running={timerSheetTarget?.running ?? false}
+      onConfirm={confirmTimerSheet}
+    />
   {/if}
 </div>

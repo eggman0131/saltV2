@@ -14,9 +14,17 @@
 // and the dispatch handler's region must never drift apart.
 export const COOK_TIMER_REGION = 'europe-west2';
 
+// NOTE: this shape changed with issue #748 — `stepId` became `timerId` (a timer's
+// identity is now its own id, and an ad-hoc timer has no step). Tasks queued with
+// the OLD shape shortly before that deploy carry no `timerId`, find no matching
+// timer and no-op, so their push is silently missed. That is an ACCEPTED gap:
+// supporting both shapes would mean dead code in a hot path for a window of
+// minutes, for a handful of users, and the in-app chime is unaffected.
 export interface CookTimerTaskPayload {
   readonly sessionId: string;
-  readonly stepId: string;
+  // The timer's own id — a step timer's id is its step id; an ad-hoc timer's is
+  // minted. Part of the ledger id.
+  readonly timerId: string;
   // Absolute ISO end-time; also the task's scheduleTime and part of the ledger id.
   readonly endsAt: string;
 }

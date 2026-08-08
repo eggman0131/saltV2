@@ -848,10 +848,41 @@ describe('CookModePage — step timers', () => {
 
     await waitFor(() => expect(lastPersisted().activeTimers).toHaveLength(1));
     const timer = lastPersisted().activeTimers[0]!;
+    // A step timer's identity IS its step id (#748) — nothing is minted here.
+    expect(timer.id).toBe('step-2');
     expect(timer.stepId).toBe('step-2');
+    // The duration it was ACTUALLY started for is stored, so an edit to the
+    // recipe afterwards cannot restate this run.
+    expect(timer.durationMinutes).toBe(20);
+    // The default recipe's step-2 timer has description: null.
+    expect(timer.label).toBeNull();
     const runsFor = new Date(timer.endsAt).getTime() - before;
     expect(runsFor).toBeGreaterThanOrEqual(20 * 60_000 - 1_000);
     expect(runsFor).toBeLessThanOrEqual(20 * 60_000 + 10_000);
+  });
+
+  it("stores the step's description as the timer's own label (#748)", async () => {
+    mockRecipes._set([
+      makeRecipe({
+        steps: [
+          { id: 'step-1', text: 'Soften the onions.', timer: null, note: null },
+          {
+            id: 'step-2',
+            text: 'Rest the sauce.',
+            timer: { durationMinutes: 5, description: 'Simmer the sauce' },
+            note: null,
+          },
+        ],
+      }),
+    ]);
+    renderCookMode();
+    await enterSteps();
+    await userEvent.click(screen.getByTestId('cook-step-timer-start'));
+
+    await waitFor(() => expect(lastPersisted().activeTimers).toHaveLength(1));
+    const timer = lastPersisted().activeTimers[0]!;
+    expect(timer.label).toBe('Simmer the sauce');
+    expect(timer.durationMinutes).toBe(5);
   });
 
   it('arms the push backstop on a timer long enough to deliver on time', async () => {
@@ -924,7 +955,14 @@ describe('CookModePage — step timers', () => {
     mockCookSession._set(
       makeCookSession({
         activeTimers: [
-          { stepId: 'step-2', endsAt: new Date(Date.now() + 300_000).toISOString(), notify: true },
+          {
+            id: 'step-2',
+            stepId: 'step-2',
+            label: null,
+            durationMinutes: null,
+            endsAt: new Date(Date.now() + 300_000).toISOString(),
+            notify: true,
+          },
         ],
       }),
     );
@@ -932,7 +970,9 @@ describe('CookModePage — step timers', () => {
 
     // Stage 1 — the bar is above the stage, so it is there before cooking even starts.
     expect(screen.getByTestId('cook-timers-bar')).toBeInTheDocument();
-    expect(screen.getByTestId('cook-timer-chip')).toHaveAttribute('data-step-id', 'step-2');
+    // Identity is the timer's own id (#748) — a chip keyed by step could not
+    // address a timer that has no step.
+    expect(screen.getByTestId('cook-timer-chip')).toHaveAttribute('data-timer-id', 'step-2');
     expect(screen.getByTestId('cook-timer-chip-time')).toHaveTextContent(/^(4:5\d|5:00)$/);
 
     await enterSteps();
@@ -943,7 +983,14 @@ describe('CookModePage — step timers', () => {
     mockCookSession._set(
       makeCookSession({
         activeTimers: [
-          { stepId: 'step-2', endsAt: new Date(Date.now() - 30_000).toISOString(), notify: true },
+          {
+            id: 'step-2',
+            stepId: 'step-2',
+            label: null,
+            durationMinutes: null,
+            endsAt: new Date(Date.now() - 30_000).toISOString(),
+            notify: true,
+          },
         ],
       }),
     );
@@ -971,7 +1018,14 @@ describe('CookModePage — step timers', () => {
     mockCookSession._set(
       makeCookSession({
         activeTimers: [
-          { stepId: 'step-2', endsAt: new Date(Date.now() + 300_000).toISOString(), notify: true },
+          {
+            id: 'step-2',
+            stepId: 'step-2',
+            label: null,
+            durationMinutes: null,
+            endsAt: new Date(Date.now() + 300_000).toISOString(),
+            notify: true,
+          },
         ],
       }),
     );
@@ -988,7 +1042,14 @@ describe('CookModePage — step timers', () => {
     mockCookSession._set(
       makeCookSession({
         activeTimers: [
-          { stepId: 'step-2', endsAt: new Date(Date.now() + 300_000).toISOString(), notify: true },
+          {
+            id: 'step-2',
+            stepId: 'step-2',
+            label: null,
+            durationMinutes: null,
+            endsAt: new Date(Date.now() + 300_000).toISOString(),
+            notify: true,
+          },
         ],
       }),
     );
@@ -1021,7 +1082,14 @@ describe('CookModePage — step timers', () => {
     mockCookSession._set(
       makeCookSession({
         activeTimers: [
-          { stepId: 'step-2', endsAt: new Date(Date.now() + 300_000).toISOString(), notify: true },
+          {
+            id: 'step-2',
+            stepId: 'step-2',
+            label: null,
+            durationMinutes: null,
+            endsAt: new Date(Date.now() + 300_000).toISOString(),
+            notify: true,
+          },
         ],
       }),
     );
@@ -1053,7 +1121,14 @@ describe('CookModePage — step timers', () => {
     mockCookSession._set(
       makeCookSession({
         activeTimers: [
-          { stepId: 'step-2', endsAt: new Date(Date.now() - 30_000).toISOString(), notify: true },
+          {
+            id: 'step-2',
+            stepId: 'step-2',
+            label: null,
+            durationMinutes: null,
+            endsAt: new Date(Date.now() - 30_000).toISOString(),
+            notify: true,
+          },
         ],
       }),
     );
@@ -1070,7 +1145,14 @@ describe('CookModePage — step timers', () => {
     mockCookSession._set(
       makeCookSession({
         activeTimers: [
-          { stepId: 'step-2', endsAt: new Date(Date.now() + 300_000).toISOString(), notify: true },
+          {
+            id: 'step-2',
+            stepId: 'step-2',
+            label: null,
+            durationMinutes: null,
+            endsAt: new Date(Date.now() + 300_000).toISOString(),
+            notify: true,
+          },
         ],
       }),
     );
@@ -1119,7 +1201,14 @@ describe('CookModePage — step timers', () => {
     mockCookSession._set(
       makeCookSession({
         activeTimers: [
-          { stepId: 'step-2', endsAt: new Date(Date.now() + 300_000).toISOString(), notify: true },
+          {
+            id: 'step-2',
+            stepId: 'step-2',
+            label: null,
+            durationMinutes: null,
+            endsAt: new Date(Date.now() + 300_000).toISOString(),
+            notify: true,
+          },
         ],
       }),
     );
@@ -1134,7 +1223,14 @@ describe('CookModePage — step timers', () => {
     mockCookSession._set(
       makeCookSession({
         activeTimers: [
-          { stepId: 'step-2', endsAt: new Date(Date.now() + 300_000).toISOString(), notify: true },
+          {
+            id: 'step-2',
+            stepId: 'step-2',
+            label: null,
+            durationMinutes: null,
+            endsAt: new Date(Date.now() + 300_000).toISOString(),
+            notify: true,
+          },
         ],
       }),
     );
@@ -1144,6 +1240,217 @@ describe('CookModePage — step timers', () => {
     await userEvent.click(screen.getByTestId('cook-step-timer-dismiss'));
     await waitFor(() => expect(lastPersisted().activeTimers).toEqual([]));
     expect(await screen.findByTestId('cook-step-timer-start')).toBeInTheDocument();
+  });
+});
+
+// The sheet is one component serving four cases — a step timer, an adjusted step
+// timer, a timer already running, and a timer for something the recipe never
+// mentioned. What is asserted here is the WIRING: which case prefills with what,
+// and what each one writes. The −/+ arithmetic itself is unit tested next door in
+// `cookTimerDuration.test.ts`, against the function rather than through the DOM.
+describe('CookModePage — adjusting a timer, and setting your own (#748)', () => {
+  /** The sheet's name field, once the sheet is actually open. */
+  function sheetName(): HTMLInputElement {
+    return screen.getByTestId('cook-timer-sheet-name') as HTMLInputElement;
+  }
+  function sheetMinutes(): HTMLInputElement {
+    return screen.getByTestId('cook-timer-sheet-minutes') as HTMLInputElement;
+  }
+
+  async function setMinutes(value: string): Promise<void> {
+    await userEvent.clear(sheetMinutes());
+    await userEvent.type(sheetMinutes(), value);
+  }
+
+  function runningTimer(over: Partial<CookSessionDoc['activeTimers'][number]> = {}) {
+    return {
+      id: 'step-2',
+      stepId: 'step-2' as string | null,
+      label: 'Simmer the sauce' as string | null,
+      durationMinutes: 20 as number | null,
+      endsAt: new Date(Date.now() + 300_000).toISOString(),
+      notify: true,
+      ...over,
+    };
+  }
+
+  it("prefills a step's own name and duration when its pencil is tapped", async () => {
+    mockRecipes._set([
+      makeRecipe({
+        steps: [
+          { id: 'step-1', text: 'Soften the onions.', timer: null, note: null },
+          {
+            id: 'step-2',
+            text: 'Simmer the sauce.',
+            timer: { durationMinutes: 20, description: 'Simmer the sauce' },
+            note: null,
+          },
+        ],
+      }),
+    ]);
+    renderCookMode();
+    await enterSteps();
+
+    await userEvent.click(screen.getByTestId('cook-step-timer-adjust'));
+
+    expect(await screen.findByTestId('cook-timer-sheet-name')).toHaveValue('Simmer the sauce');
+    expect(sheetMinutes()).toHaveValue('20');
+    // Not running yet — the copy says what the button will do.
+    expect(screen.getByTestId('cook-timer-sheet-confirm')).toHaveTextContent('Start timer');
+  });
+
+  it('starts the step timer for the duration the cook chose, not the recipe’s', async () => {
+    renderCookMode();
+    await enterSteps();
+
+    await userEvent.click(screen.getByTestId('cook-step-timer-adjust'));
+    await screen.findByTestId('cook-timer-sheet-name');
+    await setMinutes('7');
+    const before = Date.now();
+    await userEvent.click(screen.getByTestId('cook-timer-sheet-confirm'));
+
+    await waitFor(() => expect(lastPersisted().activeTimers).toHaveLength(1));
+    const timer = lastPersisted().activeTimers[0]!;
+    // Still the step's timer — same identity, same link, just a different length.
+    expect(timer.id).toBe('step-2');
+    expect(timer.stepId).toBe('step-2');
+    expect(timer.durationMinutes).toBe(7);
+    const runsFor = new Date(timer.endsAt).getTime() - before;
+    expect(runsFor).toBeGreaterThanOrEqual(7 * 60_000 - 1_000);
+    expect(runsFor).toBeLessThanOrEqual(7 * 60_000 + 10_000);
+  });
+
+  it('still starts the recipe’s own timer in a single tap, with no sheet in the way', async () => {
+    renderCookMode();
+    await enterSteps();
+
+    await userEvent.click(screen.getByTestId('cook-step-timer-start'));
+
+    await waitFor(() => expect(lastPersisted().activeTimers).toHaveLength(1));
+    expect(lastPersisted().activeTimers[0]!.durationMinutes).toBe(20);
+    expect(screen.queryByTestId('cook-timer-sheet-confirm')).not.toBeInTheDocument();
+  });
+
+  it('opens the header timer on "Salt Timer" and ten minutes', async () => {
+    renderCookMode();
+
+    await userEvent.click(screen.getByTestId('cook-mode-timer'));
+
+    expect(await screen.findByTestId('cook-timer-sheet-name')).toHaveValue('Salt Timer');
+    expect(sheetMinutes()).toHaveValue('10');
+  });
+
+  it('starts a timer of its own, named, belonging to no step', async () => {
+    renderCookMode();
+
+    await userEvent.click(screen.getByTestId('cook-mode-timer'));
+    await screen.findByTestId('cook-timer-sheet-name');
+    await userEvent.clear(sheetName());
+    await userEvent.type(sheetName(), 'Rice');
+    await setMinutes('12');
+    await userEvent.click(screen.getByTestId('cook-timer-sheet-confirm'));
+
+    await waitFor(() => expect(lastPersisted().activeTimers).toHaveLength(1));
+    const timer = lastPersisted().activeTimers[0]!;
+    // A minted id, because there is no step to borrow one from — and a null
+    // `stepId`, which is what keeps it out of every step's inline slot.
+    expect(timer.stepId).toBeNull();
+    expect(timer.id).not.toBe('');
+    expect(timer.label).toBe('Rice');
+    expect(timer.durationMinutes).toBe(12);
+    // Long enough to be worth a push, derived from the duration actually started.
+    expect(timer.notify).toBe(true);
+
+    // It behaves like any other timer: the persistent bar carries it, under the
+    // name the cook gave it.
+    expect(await screen.findByTestId('cook-timers-bar')).toBeInTheDocument();
+    expect(screen.getByTestId('cook-timer-chip-label')).toHaveTextContent('Rice');
+  });
+
+  it('leaves the step’s own inline slot alone — an ad-hoc timer is not its timer', async () => {
+    mockCookSession._set(
+      makeCookSession({
+        activeTimers: [runningTimer({ id: 'ad-hoc-1', stepId: null, label: 'Rice' })],
+      }),
+    );
+    renderCookMode();
+    await enterSteps();
+
+    expect(screen.getByTestId('cook-timer-chip-label')).toHaveTextContent('Rice');
+    // Step 2 has a timer of its own and it has NOT started — the slot still offers
+    // to start it rather than showing someone else's countdown.
+    expect(screen.getByTestId('cook-step-timer-start')).toBeInTheDocument();
+  });
+
+  it('re-opens a running timer on its current name and the length it was set for', async () => {
+    mockCookSession._set(makeCookSession({ activeTimers: [runningTimer()] }));
+    renderCookMode();
+
+    await userEvent.click(screen.getByTestId('cook-timer-chip-edit'));
+
+    expect(await screen.findByTestId('cook-timer-sheet-name')).toHaveValue('Simmer the sauce');
+    // What it was SET for (20), not the 5 minutes left on it.
+    expect(sheetMinutes()).toHaveValue('20');
+    expect(screen.getByTestId('cook-timer-sheet-confirm')).toHaveTextContent('Update timer');
+  });
+
+  it('re-times a running timer through the same entry, moving its end', async () => {
+    mockCookSession._set(makeCookSession({ activeTimers: [runningTimer()] }));
+    renderCookMode();
+
+    await userEvent.click(screen.getByTestId('cook-timer-chip-edit'));
+    await screen.findByTestId('cook-timer-sheet-name');
+    await setMinutes('45');
+    const before = Date.now();
+    await userEvent.click(screen.getByTestId('cook-timer-sheet-confirm'));
+
+    await waitFor(() => expect(lastPersisted().activeTimers[0]?.durationMinutes).toBe(45));
+    // One timer still, not two: adjusting is the same producer keyed on the same id.
+    expect(lastPersisted().activeTimers).toHaveLength(1);
+    const timer = lastPersisted().activeTimers[0]!;
+    expect(timer.id).toBe('step-2');
+    const runsFor = new Date(timer.endsAt).getTime() - before;
+    expect(runsFor).toBeGreaterThanOrEqual(45 * 60_000 - 1_000);
+  });
+
+  it('drops a timer’s name back to its step when the cook empties it', async () => {
+    mockCookSession._set(makeCookSession({ activeTimers: [runningTimer()] }));
+    renderCookMode();
+
+    await userEvent.click(screen.getByTestId('cook-timer-chip-edit'));
+    await screen.findByTestId('cook-timer-sheet-name');
+    await userEvent.clear(sheetName());
+    await userEvent.click(screen.getByTestId('cook-timer-sheet-confirm'));
+
+    await waitFor(() => expect(lastPersisted().activeTimers[0]?.label).toBeNull());
+  });
+
+  it('refuses to start a timer with no duration typed into it', async () => {
+    renderCookMode();
+
+    await userEvent.click(screen.getByTestId('cook-mode-timer'));
+    await screen.findByTestId('cook-timer-sheet-name');
+    await userEvent.clear(sheetMinutes());
+
+    expect(screen.getByTestId('cook-timer-sheet-confirm')).toBeDisabled();
+  });
+
+  // Ad-hoc timers live on the session doc like any other, and Finish deletes the
+  // doc — so they clear with the cook for free. Asserted rather than assumed.
+  it('clears a timer of its own when the cook is finished', async () => {
+    mockCookSession._set(
+      makeCookSession({
+        completedStepIds: ['step-1', 'step-2'],
+        activeTimers: [runningTimer({ id: 'ad-hoc-1', stepId: null, label: 'Rice' })],
+      }),
+    );
+    renderCookMode();
+    expect(screen.getByTestId('cook-timers-bar')).toBeInTheDocument();
+
+    await userEvent.click(await screen.findByTestId('cook-mode-complete'));
+
+    await waitFor(() => expect(removeCookSession).toHaveBeenCalledWith(SESSION_ID));
+    expect(screen.queryByTestId('cook-timers-bar')).not.toBeInTheDocument();
   });
 });
 
@@ -1318,7 +1625,14 @@ describe('CookModePage — accessibility', () => {
       makeCookSession({
         completedStepIds: ['step-1'],
         activeTimers: [
-          { stepId: 'step-2', endsAt: new Date(Date.now() + 300_000).toISOString(), notify: true },
+          {
+            id: 'step-2',
+            stepId: 'step-2',
+            label: null,
+            durationMinutes: null,
+            endsAt: new Date(Date.now() + 300_000).toISOString(),
+            notify: true,
+          },
         ],
       }),
     );

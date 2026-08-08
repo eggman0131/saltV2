@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { CookSessionDoc, PushSubscriptionDoc, RecipeDoc } from '@salt/domain/schemas';
+import type {
+  CookActiveTimerDoc,
+  CookSessionDoc,
+  PushSubscriptionDoc,
+  RecipeDoc,
+} from '@salt/domain/schemas';
 
 // Unit-level (mock-based, no emulator) coverage of the cook-timer DISPATCH handler
 // (issue #544): re-read the live session, no-op stale/duplicate dispatches via the
@@ -61,6 +66,9 @@ let mockRecipeGet: () => Promise<{ exists: boolean; data: () => unknown }> = asy
   data: () => undefined,
 });
 const mockTxSet = vi.fn();
+// The exactly-once ledger's doc id is part of the contract (it is keyed by the
+// TIMER id since #748, not the step id), so the mock records what was asked for.
+let mockLedgerDocId = '';
 
 const mockDb = {
   collection: (name: string) => {
@@ -71,7 +79,12 @@ const mockDb = {
       return { doc: () => ({ get: mockRecipeGet }) };
     }
     if (name === 'timerDeliveries') {
-      return { doc: () => ({ id: 'ledger-ref' }) };
+      return {
+        doc: (id: string) => {
+          mockLedgerDocId = id;
+          return { id };
+        },
+      };
     }
     if (name === 'pushSubscriptions') {
       return { where: () => ({ get: async () => ({ docs: mockSubsDocs }) }) };
@@ -91,6 +104,24 @@ const STEP_ID = 'step-1';
 const ENDS_AT = '2026-07-24T10:00:00.000Z';
 const SESSION_ID = 'recipe-1_uid-1';
 
+// A step timer's identity IS its step id, so TIMER_ID and STEP_ID coincide for the
+// default fixture — the ad-hoc cases below are where they come apart.
+const TIMER_ID = STEP_ID;
+
+function makeTimer(overrides: Partial<CookActiveTimerDoc> = {}): CookActiveTimerDoc {
+  return {
+    id: TIMER_ID,
+    stepId: STEP_ID,
+    // Null by default so the step-lookup fallback (a legacy entry) stays exercised;
+    // the label-precedence cases set it explicitly.
+    label: null,
+    durationMinutes: null,
+    endsAt: ENDS_AT,
+    notify: true,
+    ...overrides,
+  };
+}
+
 function makeSession(overrides: Partial<CookSessionDoc> = {}): CookSessionDoc {
   return {
     id: SESSION_ID,
@@ -100,7 +131,7 @@ function makeSession(overrides: Partial<CookSessionDoc> = {}): CookSessionDoc {
     recipeUpdatedAtAtStart: '2026-07-24T09:00:00.000Z',
     checkedIngredientIds: [],
     completedStepIds: [],
-    activeTimers: [{ stepId: STEP_ID, endsAt: ENDS_AT, notify: true }],
+    activeTimers: [makeTimer()],
     createdAt: '2026-07-24T09:00:00.000Z',
     updatedAt: '2026-07-24T10:00:00.000Z',
     ...overrides,
@@ -168,8 +199,8 @@ function recipeExists(recipe: RecipeDoc = makeRecipe()) {
   return async () => ({ exists: true, data: () => recipe });
 }
 
-function req() {
-  return { data: { sessionId: SESSION_ID, stepId: STEP_ID, endsAt: ENDS_AT } };
+function req(timerId: string = TIMER_ID) {
+  return { data: { sessionId: SESSION_ID, timerId, endsAt: ENDS_AT } };
 }
 
 beforeEach(() => {
@@ -177,6 +208,7 @@ beforeEach(() => {
   mockCookSessionSnap = { exists: false, data: () => undefined };
   mockLedgerSnap = { exists: false };
   mockSubsDocs = [];
+  mockLedgerDocId = '';
   mockRecipeGet = recipeExists();
   mockSendWebPush.mockResolvedValue('sent' as const);
   mockSendPushover.mockResolvedValue('sent' as const);
@@ -203,7 +235,82 @@ describe('onCookTimerDispatch', () => {
     expect(mockSendPushover).not.toHaveBeenCalled();
   });
 
-  it('no-ops when the timer is no longer present (removed/extended)', async () => {
+  it('no-ops when the payload names a timer this session does not have', async () => {
+    // Including a task queued with the PRE-#748 payload shape, which carries no
+    // timerId at all — an accepted, deliberate gap of a few minutes at deploy.
+    mockCookSessionSnap = { exists: true, data: () => makeSession() };
+    mockSubsDocs = [subDoc(makeSub('dev-1'))];
+
+    await (onCookTimerDispatch as unknown as Function)({
+      data: { sessionId: SESSION_ID, endsAt: ENDS_AT },
+    });
+
+    expect(mockSendWebPush).not.toHaveBeenCalled();
+    expect(mockSendPushover).not.toHaveBeenCalled();
+  });
+
+  it('claims the ledger under the TIMER id, not the step id', async () => {
+    mockCookSessionSnap = {
+      exists: true,
+      data: () => makeSession({ activeTimers: [makeTimer({ id: 'adhoc-7', stepId: null })] }),
+    };
+
+    await (onCookTimerDispatch as unknown as Function)(req('adhoc-7'));
+
+    expect(mockLedgerDocId).toBe(`${SESSION_ID}_adhoc-7_${Date.parse(ENDS_AT)}`);
+    expect(mockTxSet).toHaveBeenCalledWith(expect.anything(), {
+      deliveredAt: expect.any(Number),
+      sessionId: SESSION_ID,
+      timerId: 'adhoc-7',
+    });
+  });
+
+  it("prefers the timer's OWN label over the step's description", async () => {
+    // The point of #748: a timer started for 25 minutes under a name the cook
+    // typed must be announced by that name, not by whatever the step still says.
+    mockCookSessionSnap = {
+      exists: true,
+      data: () => makeSession({ activeTimers: [makeTimer({ label: 'Second simmer' })] }),
+    };
+    mockSubsDocs = [subDoc(makeSub('dev-1'))];
+
+    await (onCookTimerDispatch as unknown as Function)(req());
+
+    const payload = mockSendWebPush.mock.calls[0]![2] as Record<string, unknown>;
+    expect(payload['title']).toBe('Second simmer');
+    expect(payload['body']).toBe("Shepherd's pie");
+  });
+
+  it('names an ad-hoc timer (no step to look up) from its own label', async () => {
+    mockCookSessionSnap = {
+      exists: true,
+      data: () => makeSession({ activeTimers: [makeTimer({ stepId: null, label: 'Rice' })] }),
+    };
+    mockSubsDocs = [subDoc(makeSub('dev-1'))];
+
+    await (onCookTimerDispatch as unknown as Function)(req());
+
+    const payload = mockSendWebPush.mock.calls[0]![2] as Record<string, unknown>;
+    expect(payload['title']).toBe('Rice');
+    expect(payload['body']).toBe("Shepherd's pie");
+  });
+
+  it('keeps the label even when the recipe cannot be read', async () => {
+    mockCookSessionSnap = {
+      exists: true,
+      data: () => makeSession({ activeTimers: [makeTimer({ label: 'Rice' })] }),
+    };
+    mockSubsDocs = [subDoc(makeSub('dev-1'))];
+    mockRecipeGet = async () => ({ exists: false, data: () => undefined });
+
+    await (onCookTimerDispatch as unknown as Function)(req());
+
+    const payload = mockSendWebPush.mock.calls[0]![2] as Record<string, unknown>;
+    expect(payload['title']).toBe('Rice');
+    expect(payload['body']).toBe('A cook timer just finished.');
+  });
+
+  it('no-ops when the timer is no longer present (removed/adjusted)', async () => {
     // Session exists but its timer was removed (activeTimers empty).
     mockCookSessionSnap = { exists: true, data: () => makeSession({ activeTimers: [] }) };
     mockSubsDocs = [subDoc(makeSub('dev-1'))];
@@ -247,7 +354,27 @@ describe('onCookTimerDispatch', () => {
     });
   });
 
-  it('falls back to "Step N" when the timer has no label', async () => {
+  it('BACK-COMPAT: a legacy timer entry (no id/label/duration) still dispatches', async () => {
+    // A session written before #748 and still live across the deploy. The schema
+    // backfills `id` from `stepId`, so the task queued for it matches and the
+    // step lookup still names it.
+    mockCookSessionSnap = {
+      exists: true,
+      data: () => ({
+        ...makeSession(),
+        activeTimers: [{ stepId: STEP_ID, endsAt: ENDS_AT, notify: true }],
+      }),
+    };
+    mockSubsDocs = [subDoc(makeSub('dev-1'))];
+
+    await (onCookTimerDispatch as unknown as Function)(req());
+
+    const payload = mockSendWebPush.mock.calls[0]![2] as Record<string, unknown>;
+    expect(payload['title']).toBe('Simmer the sauce');
+    expect(mockLedgerDocId).toBe(`${SESSION_ID}_${STEP_ID}_${Date.parse(ENDS_AT)}`);
+  });
+
+  it('falls back to the step description when the timer has no label of its own', async () => {
     mockCookSessionSnap = { exists: true, data: () => makeSession() };
     mockSubsDocs = [subDoc(makeSub('dev-1'))];
     const recipe = makeRecipe();

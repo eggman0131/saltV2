@@ -2,12 +2,22 @@ import { describe, it, expect } from 'vitest';
 import { withTimerStarted, withTimerDismissed } from '@salt/domain';
 import type { CookActiveTimerDoc, CookSessionDoc } from '@salt/domain/schemas';
 
-// Step timers (issue #556). `endsAt` is an ABSOLUTE end-time supplied by the
-// caller — the module never computes it from a clock — which is what lets a
-// reload reconstruct the remaining time. One live timer per step.
+// Step timers (issue #556, widened in #748). `endsAt` is an ABSOLUTE end-time
+// supplied by the caller — the module never computes it from a clock — which is
+// what lets a reload reconstruct the remaining time. The whole entry comes from
+// the caller, and `id` is its identity: one live timer per id (and since a step
+// timer's id IS its step id, that still means one live timer per step).
 
-function timer(stepId: string, endsAt: string, notify = false): CookActiveTimerDoc {
-  return { stepId, endsAt, notify };
+function timer(id: string, endsAt: string, overrides: Partial<CookActiveTimerDoc> = {}) {
+  return {
+    id,
+    stepId: id,
+    label: null,
+    durationMinutes: null,
+    endsAt,
+    notify: false,
+    ...overrides,
+  } satisfies CookActiveTimerDoc;
 }
 
 function session(activeTimers: CookActiveTimerDoc[]): CookSessionDoc {
@@ -31,45 +41,51 @@ const T3 = '2026-07-22T19:10:00.000Z';
 
 describe('withTimerStarted', () => {
   it('adds a timer to an empty session', () => {
-    expect(withTimerStarted(session([]), 's1', T1, false).activeTimers).toEqual([
-      { stepId: 's1', endsAt: T1, notify: false },
-    ]);
+    expect(withTimerStarted(session([]), timer('s1', T1)).activeTimers).toEqual([timer('s1', T1)]);
   });
 
-  it('carries the endsAt and notify flag through verbatim', () => {
-    const [entry] = withTimerStarted(session([]), 's7', T3, true).activeTimers;
-    expect(entry).toEqual({ stepId: 's7', endsAt: T3, notify: true });
+  it('carries the whole entry through verbatim', () => {
+    const entry = timer('s7', T3, {
+      notify: true,
+      label: 'Simmer the sauce',
+      durationMinutes: 25,
+    });
+    const [written] = withTimerStarted(session([]), entry).activeTimers;
+    expect(written).toEqual(entry);
   });
 
-  it('keeps timers running on other steps', () => {
-    const next = withTimerStarted(session([timer('s1', T1)]), 's2', T2, true);
-    expect(next.activeTimers).toEqual([
-      { stepId: 's1', endsAt: T1, notify: false },
-      { stepId: 's2', endsAt: T2, notify: true },
-    ]);
+  it('carries an ad-hoc timer — minted id, no step — through untouched', () => {
+    const adHoc = timer('adhoc-1', T2, { stepId: null, label: 'Rice', durationMinutes: 12 });
+    expect(withTimerStarted(session([]), adHoc).activeTimers).toEqual([adHoc]);
   });
 
-  it('REPLACES an existing timer for the same step — one live timer per step', () => {
-    const next = withTimerStarted(session([timer('s1', T1)]), 's1', T2, true);
-    expect(next.activeTimers).toEqual([{ stepId: 's1', endsAt: T2, notify: true }]);
+  it('keeps timers running under other ids', () => {
+    const next = withTimerStarted(session([timer('s1', T1)]), timer('s2', T2, { notify: true }));
+    expect(next.activeTimers).toEqual([timer('s1', T1), timer('s2', T2, { notify: true })]);
   });
 
-  it('moves a restarted step to the end of the list', () => {
+  it('REPLACES an existing timer with the same id — one live timer per id', () => {
+    const restarted = timer('s1', T2, { notify: true, durationMinutes: 9 });
+    const next = withTimerStarted(session([timer('s1', T1)]), restarted);
+    expect(next.activeTimers).toEqual([restarted]);
+  });
+
+  it('moves a restarted timer to the end of the list', () => {
     // The timers bar reads in list order, so the freshly started one lands last.
-    const next = withTimerStarted(session([timer('s1', T1), timer('s2', T2)]), 's1', T3, false);
-    expect(next.activeTimers.map((t) => t.stepId)).toEqual(['s2', 's1']);
+    const next = withTimerStarted(session([timer('s1', T1), timer('s2', T2)]), timer('s1', T3));
+    expect(next.activeTimers.map((t) => t.id)).toEqual(['s2', 's1']);
   });
 
   it('is pure — never mutates the input session', () => {
     const s = session([timer('s1', T1)]);
-    withTimerStarted(s, 's2', T2, false);
-    withTimerStarted(s, 's1', T3, true);
-    expect(s.activeTimers).toEqual([{ stepId: 's1', endsAt: T1, notify: false }]);
+    withTimerStarted(s, timer('s2', T2));
+    withTimerStarted(s, timer('s1', T3, { notify: true }));
+    expect(s.activeTimers).toEqual([timer('s1', T1)]);
   });
 
   it('does not stamp updatedAt or disturb tick / step state', () => {
     const s = session([]);
-    const next = withTimerStarted(s, 's1', T1, false);
+    const next = withTimerStarted(s, timer('s1', T1));
     expect(next.updatedAt).toBe(s.updatedAt);
     expect(next.checkedIngredientIds).toEqual(s.checkedIngredientIds);
     expect(next.completedStepIds).toEqual(s.completedStepIds);
@@ -77,18 +93,24 @@ describe('withTimerStarted', () => {
 });
 
 describe('withTimerDismissed', () => {
-  it('removes the timer for the given step', () => {
+  it('removes the timer with the given id', () => {
     expect(withTimerDismissed(session([timer('s1', T1)]), 's1').activeTimers).toEqual([]);
   });
 
-  it('leaves every other step’s timer running', () => {
-    const next = withTimerDismissed(session([timer('s1', T1), timer('s2', T2)]), 's1');
-    expect(next.activeTimers).toEqual([{ stepId: 's2', endsAt: T2, notify: false }]);
+  it('removes an ad-hoc timer by its minted id', () => {
+    const adHoc = timer('adhoc-1', T2, { stepId: null });
+    const next = withTimerDismissed(session([timer('s1', T1), adHoc]), 'adhoc-1');
+    expect(next.activeTimers).toEqual([timer('s1', T1)]);
   });
 
-  it('is idempotent — dismissing an unknown step changes nothing', () => {
+  it('leaves every other timer running', () => {
+    const next = withTimerDismissed(session([timer('s1', T1), timer('s2', T2)]), 's1');
+    expect(next.activeTimers).toEqual([timer('s2', T2)]);
+  });
+
+  it('is idempotent — dismissing an unknown id changes nothing', () => {
     const next = withTimerDismissed(session([timer('s1', T1)]), 's9');
-    expect(next.activeTimers).toEqual([{ stepId: 's1', endsAt: T1, notify: false }]);
+    expect(next.activeTimers).toEqual([timer('s1', T1)]);
   });
 
   it('handles a session with no timers at all', () => {

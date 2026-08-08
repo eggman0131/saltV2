@@ -11,7 +11,7 @@
 //
 //   cookSessions write → onCookTimerWrite enqueues a Cloud Task
 //                      → onCookTimerDispatch claims the exactly-once ledger
-//                      → timerDeliveries/{sessionId}_{stepId}_{endsAtMs}
+//                      → timerDeliveries/{sessionId}_{timerId}_{endsAtMs}
 //
 // The ledger is a SEPARATE server-owned doc, never a write-back onto the
 // client-owned session (a full-document setDoc would clobber it under LWW), and
@@ -43,6 +43,9 @@ export const cookTimer: Journey = {
     // Deterministic id, so it inherits the probe- prefix from the recipe id.
     const sessionId = `${recipeId}_${ctx.identity.uid}`;
     const stepId = `${recipeId}-step-1`;
+    // A step timer's identity IS its step id (#748); the ledger and the Cloud
+    // Task payload are both keyed by the TIMER id, which here is the same string.
+    const timerId = stepId;
     const now = new Date();
     const nowIso = now.toISOString();
 
@@ -79,7 +82,7 @@ export const cookTimer: Journey = {
 
     const endsAt = new Date(now.getTime() + TIMER_LEAD_MS).toISOString();
     const endsAtMs = new Date(endsAt).getTime();
-    const ledgerId = `${sessionId}_${stepId}_${endsAtMs}`;
+    const ledgerId = `${sessionId}_${timerId}_${endsAtMs}`;
     ctx.track('timerDeliveries', ledgerId);
 
     const session = {
@@ -90,7 +93,9 @@ export const cookTimer: Journey = {
       recipeUpdatedAtAtStart: nowIso,
       checkedIngredientIds: [],
       completedStepIds: [],
-      activeTimers: [{ stepId, endsAt, notify: true }],
+      activeTimers: [
+        { id: timerId, stepId, label: 'Probe timer', durationMinutes: 1, endsAt, notify: true },
+      ],
       createdAt: nowIso,
       updatedAt: nowIso,
     };
@@ -122,14 +127,14 @@ export const cookTimer: Journey = {
       { timeoutMs: DELIVERY_TIMEOUT_MS },
     );
 
-    await ctx.step('the ledger entry identifies the session and step it delivered', async () => {
+    await ctx.step('the ledger entry identifies the session and timer it delivered', async () => {
       assert(
         delivery?.['sessionId'] === sessionId,
         `ledger sessionId is ${String(delivery?.['sessionId'])}, expected ${sessionId}`,
       );
       assert(
-        delivery?.['stepId'] === stepId,
-        `ledger stepId is ${String(delivery?.['stepId'])}, expected ${stepId}`,
+        delivery?.['timerId'] === timerId,
+        `ledger timerId is ${String(delivery?.['timerId'])}, expected ${timerId}`,
       );
     });
 

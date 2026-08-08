@@ -363,7 +363,13 @@ read-only queries (`firstIncompleteStepId`, `firstUseByStep`, `miseProgress`,
 Flat structure — no `entities/`, `ports/`, `commands/`, or `queries/`
 subfolders, matching the `weather` pattern. Every timestamp is an injected
 parameter (never read from the clock), which keeps the module pure and makes
-the timer tests deterministic.
+the timer tests deterministic. The same rule is why `withTimerStarted` takes the
+whole timer entry (`withTimerStarted(session, timer)`) rather than a growing list
+of positional arguments: since issue #748 a timer carries its own `id`, a
+nullable `stepId`, a `label` and the `durationMinutes` it was actually started
+for, and every one of those — including the id — is minted by the caller. `id`,
+not `stepId`, is a timer's identity: it is what `withTimerStarted` replaces on
+and what `withTimerDismissed` keys on.
 
 The `personalView` module (issues #634, #682) is the same lightweight shape, and
 is purely read-only. It began as four projections; #682 cut "Mine" back to *what

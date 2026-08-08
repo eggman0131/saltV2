@@ -33,7 +33,15 @@ const T1 = '2026-07-24T10:00:00.000Z';
 const T2 = '2026-07-24T10:05:00.000Z';
 
 function timer(overrides: Partial<CookActiveTimerDoc> = {}): CookActiveTimerDoc {
-  return { stepId: 'step-1', endsAt: T1, notify: true, ...overrides };
+  return {
+    id: 'step-1',
+    stepId: 'step-1',
+    label: null,
+    durationMinutes: null,
+    endsAt: T1,
+    notify: true,
+    ...overrides,
+  };
 }
 
 function makeSession(timers: CookActiveTimerDoc[]): CookSessionDoc {
@@ -81,7 +89,7 @@ describe('onCookTimerWrite', () => {
     );
     expect(mockEnqueue).toHaveBeenCalledTimes(1);
     expect(mockEnqueue).toHaveBeenCalledWith(
-      { sessionId: 'recipe-1_uid-1', stepId: 'step-1', endsAt: T1 },
+      { sessionId: 'recipe-1_uid-1', timerId: 'step-1', endsAt: T1 },
       { scheduleTime: new Date(T1) },
     );
   });
@@ -95,7 +103,7 @@ describe('onCookTimerWrite', () => {
     expect(mockEnqueue).not.toHaveBeenCalled();
   });
 
-  it('does NOT re-enqueue a timer already present in before (same stepId@endsAt)', async () => {
+  it('does NOT re-enqueue a timer already present in before (same id@endsAt)', async () => {
     const before = snap(makeSession([timer()]));
     const after = snap(makeSession([timer()]));
 
@@ -104,7 +112,7 @@ describe('onCookTimerWrite', () => {
     expect(mockEnqueue).not.toHaveBeenCalled();
   });
 
-  it('enqueues for an EXTENDED timer (same stepId, different endsAt → new key)', async () => {
+  it('enqueues for an ADJUSTED timer (same id, different endsAt → new key)', async () => {
     const before = snap(makeSession([timer({ endsAt: T1 })]));
     const after = snap(makeSession([timer({ endsAt: T2 })]));
 
@@ -112,8 +120,37 @@ describe('onCookTimerWrite', () => {
 
     expect(mockEnqueue).toHaveBeenCalledTimes(1);
     expect(mockEnqueue).toHaveBeenCalledWith(
-      { sessionId: 'recipe-1_uid-1', stepId: 'step-1', endsAt: T2 },
+      { sessionId: 'recipe-1_uid-1', timerId: 'step-1', endsAt: T2 },
       { scheduleTime: new Date(T2) },
+    );
+  });
+
+  it('enqueues under the timer id, which is NOT the step id for an ad-hoc timer', async () => {
+    const before = snap(makeSession([]));
+    const after = snap(makeSession([timer({ id: 'adhoc-1', stepId: null })]));
+
+    await (onCookTimerWrite as unknown as Function)(event(before, after));
+
+    expect(mockEnqueue).toHaveBeenCalledWith(
+      { sessionId: 'recipe-1_uid-1', timerId: 'adhoc-1', endsAt: T1 },
+      { scheduleTime: new Date(T1) },
+    );
+  });
+
+  it('BACK-COMPAT: a legacy timer entry enqueues under its backfilled id', async () => {
+    // A session written before #748 (no id/label/durationMinutes) and still live
+    // across the deploy. The schema backfills `id` from `stepId`.
+    const before = snap(makeSession([]));
+    const after = snap({
+      ...makeSession([]),
+      activeTimers: [{ stepId: 'step-1', endsAt: T1, notify: true }],
+    });
+
+    await (onCookTimerWrite as unknown as Function)(event(before, after));
+
+    expect(mockEnqueue).toHaveBeenCalledWith(
+      { sessionId: 'recipe-1_uid-1', timerId: 'step-1', endsAt: T1 },
+      { scheduleTime: new Date(T1) },
     );
   });
 

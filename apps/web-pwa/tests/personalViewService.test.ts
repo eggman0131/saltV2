@@ -102,10 +102,18 @@ function session(
   };
 }
 
-const timer = (stepId: string, offsetMs: number): CookActiveTimerDoc => ({
+const timer = (
+  stepId: string,
+  offsetMs: number,
+  overrides: Partial<CookActiveTimerDoc> = {},
+): CookActiveTimerDoc => ({
+  id: stepId,
   stepId,
+  label: null,
+  durationMinutes: null,
   endsAt: new Date(NOW + offsetMs).toISOString(),
   notify: false,
+  ...overrides,
 });
 
 beforeEach(() => {
@@ -190,13 +198,13 @@ describe('myTimers', () => {
     mockSessions._set([session('r1', [], [timer('r1-s0', -30_000), timer('r1-s1', 60_000)])]);
 
     expect(get(myTimers)).toHaveLength(2);
-    expect(get(firedTimers).map((t) => t.timer.stepId)).toEqual(['r1-s0']);
+    expect(get(firedTimers).map((t) => t.timer.id)).toEqual(['r1-s0']);
   });
 
   it('sorts soonest-ending first, so anything already fired floats to the top', () => {
     mockRecipes._set([timedRecipe('r1', 'Ragu')]);
     mockSessions._set([session('r1', [], [timer('r1-s1', 60_000), timer('r1-s0', -30_000)])]);
-    expect(get(myTimers).map((t) => t.timer.stepId)).toEqual(['r1-s0', 'r1-s1']);
+    expect(get(myTimers).map((t) => t.timer.id)).toEqual(['r1-s0', 'r1-s1']);
   });
 
   it('falls back to "Step N" without a label, and "Timer" once the step is gone', () => {

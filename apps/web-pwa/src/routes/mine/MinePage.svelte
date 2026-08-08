@@ -34,11 +34,11 @@
   const remainingMs = (t: MineTimer, now: number) => Date.parse(t.timer.endsAt) - now;
   const hasFired = (t: MineTimer, now: number) => remainingMs(t, now) <= 0;
 
-  // Cancel and Dismiss are the SAME write: `withTimerDismissed` drops the step's
+  // Cancel and Dismiss are the SAME write: `withTimerDismissed` drops the timer's
   // entry unconditionally, so the two labels are one operation seen from either
   // side of `endsAt`. Whole-document LWW, exactly as cook mode persists it.
   async function dismissTimer(t: MineTimer): Promise<void> {
-    const result = await persistCookSession(withTimerDismissed(t.session, t.timer.stepId));
+    const result = await persistCookSession(withTimerDismissed(t.session, t.timer.id));
     if (result.kind !== 'ok') addToast("Couldn't update that timer.", 'destructive');
   }
 
