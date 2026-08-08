@@ -134,6 +134,7 @@
     embedText: 'Embed text (callable)',
     extractRecipeFromUrl: 'Recipe import from URL',
     extractRecipeFromPhoto: 'Recipe import from photo',
+    generateGuidedPlan: 'Guided plan (prep list + step notes)',
     generateCanonIcon: 'Canon icon generation',
     generateRecipeImage: 'Recipe hero image generation',
     generateChatTitle: 'Chat title generation',

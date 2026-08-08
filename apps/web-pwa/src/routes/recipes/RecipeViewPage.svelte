@@ -786,8 +786,8 @@ Finish with a short note on what you changed and why, so I can read the gist her
           Plan
         </Button>
       {/if}
-      <!-- Overflow (⋮), at every width since #735: Chat, Optimise, Duplicate, Edit
-           and Delete. Cook, Shop and Plan are never in here — they stay inline,
+      <!-- Overflow (⋮), at every width since #735: Chat, Optimise, Guided plan,
+           Duplicate, Edit and Delete. Cook, Shop and Plan are never in here — they stay inline,
            which is the whole point of ranking them. Duplicate, Edit and Delete are
            unconditional: every kind of entry can be copied, edited and deleted
            (deciding that from `kind` is exactly what the capability predicates
@@ -835,6 +835,25 @@ Finish with a short note on what you changed and why, so I can read the gist her
             >
               <Icon name="Blender" size={14} />
               Optimise
+            </button>
+          {/if}
+          {#if showCooking}
+            <!-- The guided plan (issue #751). In the overflow, not inline: writing
+                 or reading the plan is preparation you do BEFORE you cook, at a
+                 desk, and the inline three are the hands-full actions. Gated on the
+                 same predicate as Cook — a plan explains a method, so an entry with
+                 no method has nothing to explain. -->
+            <button
+              type="button"
+              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+              onclick={() => {
+                overflowMenuOpen = false;
+                push(`/recipes/${recipe.id}/guided`);
+              }}
+              data-testid="recipe-guided-plan-menu-item"
+            >
+              <Icon name="ListChecks" size={14} />
+              Guided plan
             </button>
           {/if}
           <button

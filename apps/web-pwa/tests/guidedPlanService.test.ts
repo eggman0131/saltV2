@@ -1,0 +1,263 @@
+import { describe, it, expect, beforeEach, vi, type Mocked } from 'vitest';
+import { get } from 'svelte/store';
+import type { GuidedPlanDoc } from '@salt/domain/schemas';
+import type { Recipe } from '@salt/domain';
+import { emptyRecipe } from '@salt/domain';
+import type { DomainError } from '@salt/shared-types';
+
+// ─── Shared report() spy ────────────────────────────────────────────────────────
+// The service caches getErrorReporter() in module scope, so the adapter mock must
+// hand back a STABLE report(). It delegates to the REAL category gate so the
+// report/suppress boundary under test is the actual one.
+const { reportSpy } = vi.hoisted(() => ({ reportSpy: vi.fn() }));
+
+vi.mock('@salt/observability', async () => {
+  const actual = await vi.importActual<typeof import('@salt/observability')>('@salt/observability');
+  return {
+    isReportableCategory: actual.isReportableCategory,
+    createObservabilityErrorReportingAdapter: vi.fn(() => ({
+      report: (error: unknown, category: DomainError['kind']) => {
+        if (!actual.isReportableCategory(category)) return;
+        reportSpy(error, category);
+      },
+    })),
+  };
+});
+
+vi.mock('@salt/firebase-sync', () => ({
+  subscribeGuidedPlan: vi.fn(() => vi.fn()),
+  saveGuidedPlan: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  callGenerateGuidedPlan: vi.fn(),
+  isAuthTransitioning: vi.fn(() => false),
+}));
+
+import * as firebaseSync from '@salt/firebase-sync';
+import {
+  guidedPlan,
+  getGuidedPlanSnapshot,
+  initGuidedPlanSync,
+  generateGuidedPlan,
+  saveGuidedPlan,
+} from '../src/lib/guidedPlanService.js';
+
+const fs = firebaseSync as Mocked<typeof firebaseSync>;
+
+const RECIPE_ID = 'recipe-1';
+// Old enough that any real wall-clock stamp the service writes is newer.
+const OLD = '2020-01-01T00:00:00.000Z';
+
+function makeRecipe(updatedAt: string): Recipe {
+  return { ...emptyRecipe(RECIPE_ID, OLD), title: 'Ragù', updatedAt };
+}
+
+function makePlan(overrides: Partial<GuidedPlanDoc> = {}): GuidedPlanDoc {
+  return {
+    id: RECIPE_ID,
+    schemaVersion: 1,
+    recipeId: RECIPE_ID,
+    recipeUpdatedAtAtSave: OLD,
+    prep: [],
+    stepNotes: [],
+    createdAt: OLD,
+    updatedAt: OLD,
+    ...overrides,
+  };
+}
+
+// Drive the subscription callbacks the adapter would have called.
+function emit(plan: GuidedPlanDoc | null): void {
+  const onPlan = fs.subscribeGuidedPlan.mock.calls[0]?.[1];
+  onPlan?.(plan);
+}
+function emitError(err: DomainError, raw?: unknown): void {
+  const onError = fs.subscribeGuidedPlan.mock.calls[0]?.[2];
+  onError?.(err, raw);
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  fs.saveGuidedPlan.mockResolvedValue({ kind: 'ok', value: undefined });
+});
+
+describe('initGuidedPlanSync — the three-state store', () => {
+  it('starts NOT-LOADED (undefined), not empty (null)', () => {
+    // Load-bearing: the editor's whole empty state is a "Write the plan" prompt,
+    // and without a distinct not-loaded state it flashes over every plan that
+    // exists, one frame before the plan arrives.
+    initGuidedPlanSync(RECIPE_ID);
+    expect(get(guidedPlan)).toBeUndefined();
+  });
+
+  it('resolves to null when no plan has been written', () => {
+    initGuidedPlanSync(RECIPE_ID);
+    emit(null);
+    expect(get(guidedPlan)).toBeNull();
+  });
+
+  it('resolves to the plan and exposes it synchronously', () => {
+    initGuidedPlanSync(RECIPE_ID);
+    const plan = makePlan();
+    emit(plan);
+    expect(get(guidedPlan)).toEqual(plan);
+    expect(getGuidedPlanSnapshot()).toEqual(plan);
+  });
+
+  it('resets to not-loaded when re-subscribed, so another recipe never shows this plan', () => {
+    initGuidedPlanSync(RECIPE_ID);
+    emit(makePlan());
+    initGuidedPlanSync('recipe-2');
+    expect(get(guidedPlan)).toBeUndefined();
+  });
+
+  it('leaves the store alone on a corrupt/failed read, and reports it', () => {
+    initGuidedPlanSync(RECIPE_ID);
+    const plan = makePlan();
+    emit(plan);
+    emitError({ kind: 'StorageError', reason: 'corruption' });
+    expect(get(guidedPlan)).toEqual(plan);
+    expect(reportSpy).toHaveBeenCalled();
+  });
+
+  it('ignores a stale snapshot echo older than the local edit', async () => {
+    initGuidedPlanSync(RECIPE_ID);
+    emit(makePlan());
+    await saveGuidedPlan(makePlan({ prep: [] }), makeRecipe('2026-08-02T00:00:00.000Z'));
+    const saved = get(guidedPlan) as GuidedPlanDoc;
+    emit(makePlan({ updatedAt: OLD }));
+    expect(get(guidedPlan)).toEqual(saved);
+  });
+});
+
+describe('generateGuidedPlan', () => {
+  it('mints prep ids, flags the plan unreviewed and stamps it against the recipe', async () => {
+    fs.callGenerateGuidedPlan.mockResolvedValue({
+      kind: 'ok',
+      value: {
+        prep: [{ text: 'Dice the onion', container: 'small bowl', ingredientIds: ['ing-1'] }],
+        stepNotes: [
+          { stepId: 'step-1', container: null, setup: null, cue: 'a gentle sizzle', checkIns: [] },
+        ],
+      },
+    });
+    initGuidedPlanSync(RECIPE_ID);
+    emit(null);
+
+    const result = await generateGuidedPlan(makeRecipe('2026-08-02T00:00:00.000Z'));
+
+    expect(result.kind).toBe('ok');
+    const written = fs.saveGuidedPlan.mock.calls[0]![0];
+    expect(written.id).toBe(RECIPE_ID);
+    expect(written.recipeUpdatedAtAtSave).toBe('2026-08-02T00:00:00.000Z');
+    // Nobody has read it yet. This is the ONLY place the flag is ever set.
+    expect(written.needs_approval).toBe(true);
+    expect(written.prep).toHaveLength(1);
+    expect(written.prep[0]!.id).toBeTruthy();
+    expect(written.prep[0]!.text).toBe('Dice the onion');
+  });
+
+  it('carries createdAt across a re-run — the plan for this recipe is not new', async () => {
+    fs.callGenerateGuidedPlan.mockResolvedValue({
+      kind: 'ok',
+      value: { prep: [], stepNotes: [] },
+    });
+    initGuidedPlanSync(RECIPE_ID);
+    emit(makePlan({ createdAt: '2026-07-01T00:00:00.000Z' }));
+
+    await generateGuidedPlan(makeRecipe('2026-08-02T00:00:00.000Z'));
+
+    expect(fs.saveGuidedPlan.mock.calls[0]![0].createdAt).toBe('2026-07-01T00:00:00.000Z');
+  });
+
+  it('writes nothing when the callable fails, and reports it', async () => {
+    fs.callGenerateGuidedPlan.mockResolvedValue({
+      kind: 'err',
+      error: { kind: 'AuthError', reason: 'forbidden' },
+    });
+    initGuidedPlanSync(RECIPE_ID);
+    emit(null);
+
+    const result = await generateGuidedPlan(makeRecipe('2026-08-02T00:00:00.000Z'));
+
+    expect(result.kind).toBe('err');
+    expect(fs.saveGuidedPlan).not.toHaveBeenCalled();
+    expect(reportSpy).toHaveBeenCalled();
+  });
+});
+
+describe('saveGuidedPlan — the save IS the review', () => {
+  it('DROPS needs_approval entirely rather than writing false', async () => {
+    initGuidedPlanSync(RECIPE_ID);
+    const plan = makePlan({ needs_approval: true });
+    emit(plan);
+
+    await saveGuidedPlan(plan, makeRecipe(OLD));
+
+    const written = fs.saveGuidedPlan.mock.calls[0]![0];
+    expect('needs_approval' in written).toBe(false);
+  });
+
+  it('re-stamps recipeUpdatedAtAtSave, so hand-reconciling clears the stale banner', async () => {
+    // Without this the only way out of "the recipe has changed" would be a re-run,
+    // which destroys every hand-corrected line.
+    initGuidedPlanSync(RECIPE_ID);
+    const plan = makePlan({ recipeUpdatedAtAtSave: OLD });
+    emit(plan);
+
+    await saveGuidedPlan(plan, makeRecipe('2026-08-05T00:00:00.000Z'));
+
+    expect(fs.saveGuidedPlan.mock.calls[0]![0].recipeUpdatedAtAtSave).toBe(
+      '2026-08-05T00:00:00.000Z',
+    );
+  });
+
+  it('stamps updatedAt and updates the store optimistically', async () => {
+    initGuidedPlanSync(RECIPE_ID);
+    const plan = makePlan();
+    emit(plan);
+
+    await saveGuidedPlan(plan, makeRecipe(OLD));
+
+    const written = fs.saveGuidedPlan.mock.calls[0]![0];
+    expect(written.updatedAt > OLD).toBe(true);
+    expect(get(guidedPlan)).toEqual(written);
+  });
+
+  it('keeps the optimistic copy when the write fails, and reports it', async () => {
+    // A transient error must not cost the user their edits.
+    fs.saveGuidedPlan.mockResolvedValue({
+      kind: 'err',
+      error: { kind: 'StorageError', reason: 'unavailable' },
+    });
+    initGuidedPlanSync(RECIPE_ID);
+    emit(makePlan());
+
+    const edited = makePlan({
+      prep: [{ id: 'p1', text: 'Dice the onion', container: null, ingredientIds: [] }],
+    });
+    const result = await saveGuidedPlan(edited, makeRecipe(OLD));
+
+    expect(result.kind).toBe('err');
+    expect((get(guidedPlan) as GuidedPlanDoc).prep).toHaveLength(1);
+    expect(reportSpy).toHaveBeenCalled();
+  });
+
+  it('does not let an absence blank the plan while a write is in flight', async () => {
+    // An absence queued before the write reached the local cache would otherwise
+    // present the editor's "Write the plan" button over work that exists.
+    let resolveWrite: (v: { kind: 'ok'; value: undefined }) => void = () => {};
+    fs.saveGuidedPlan.mockReturnValue(
+      new Promise((resolve) => {
+        resolveWrite = resolve;
+      }),
+    );
+    initGuidedPlanSync(RECIPE_ID);
+    emit(makePlan());
+
+    const pending = saveGuidedPlan(makePlan(), makeRecipe(OLD));
+    emit(null);
+    expect(get(guidedPlan)).not.toBeNull();
+
+    resolveWrite({ kind: 'ok', value: undefined });
+    await pending;
+  });
+});

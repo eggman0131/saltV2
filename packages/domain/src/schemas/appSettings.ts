@@ -43,6 +43,12 @@ export const AI_FLOW_ROLES = {
   // Same tier as the URL import — accuracy over creativity, and the same model
   // family reads both, so a model change moves the two together.
   extractRecipeFromPhoto: 'fast',
+  // `pro`, deliberately (issue #751). Cue quality IS the feature: a wrong sensory
+  // cue tells the cook to wait for something that will never happen, which is
+  // worse than no cue at all — and the volume is a handful of recipes ever, so the
+  // cost argument that puts the import flows on `fast` does not apply. chefChat is
+  // the precedent: long-form judgement about a whole dish.
+  generateGuidedPlan: 'pro',
   generateCanonIcon: 'image',
   generateRecipeImage: 'image',
   generateChatTitle: 'lite',

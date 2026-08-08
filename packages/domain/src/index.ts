@@ -264,6 +264,7 @@ export {
   isPlannable,
   findProducingRecipes,
   diffRecipe,
+  hasRecipeChanged,
   pickPlaceholder,
   PLACEHOLDER_MOODS,
   PLACEHOLDER_CONDITION_TAGS,
@@ -289,8 +290,10 @@ export { weatherSeverity, mostSignificantWeatherCode, weatherIcon } from './weat
 export type { WeatherIconId } from './weather/index.js';
 
 // Cook-session module — pure cook-mode session state: mise ticking, step
-// completion, timers, recipe-drift comparison, clock formatting (issue #556).
-// Immutable producers, and every timestamp is injected (never read from a clock).
+// completion, timers, clock formatting (issue #556). Immutable producers, and
+// every timestamp is injected (never read from a clock). The recipe-drift
+// comparison it used to own now lives in the recipe module (`hasRecipeChanged`),
+// which the guided plan (#751) shares.
 export {
   makeFreshSession,
   withStepDone,
@@ -302,7 +305,6 @@ export {
   firstUseByStep,
   firstIncompleteStepId,
   miseProgress,
-  hasRecipeChanged,
   formatClock,
   timerProgress,
 } from './cookSession/index.js';

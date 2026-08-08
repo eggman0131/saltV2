@@ -32,6 +32,9 @@
 //
 // Both constants slot in as bullets of each prompt's field list, so they start with
 // `- ` / mid-bullet text respectively and use matching two-space indentation.
+//
+// The guided-plan rules (issue #751) live at the bottom of this file for the same
+// no-forking reason — see the section header there.
 
 export const STEP_RULES = `- steps: numbered method steps, in order. Each step:
   text: the instruction — British terms, temperatures in °C only, never Fahrenheit.
@@ -46,3 +49,34 @@ export const STEP_RULES = `- steps: numbered method steps, in order. Each step:
 // because it is the other half of the no-quantities rule (see above) — the two are
 // only correct together.
 export const FIRST_USE_ORDINAL_RULE = `firstUsedInStepOrdinal (0-based index into the steps array for the first step that uses this ingredient). Set it for EVERY ingredient that a step uses: while cooking, an ingredient with no ordinal is listed once at mise en place and never shown again, so its amount is unreachable at the moment it is needed. Use null ONLY when no step uses the ingredient at all.`;
+
+// ─── The GUIDED layer (issue #751) ───────────────────────────────────────────
+//
+// The two constants below govern the guided PLAN — a separate document that adds
+// lines UNDERNEATH a recipe without touching a word of it. They live in this file
+// because they are step policy: they decide what a cook is told at each step, and
+// the moment they drift from STEP_RULES the plan starts contradicting the method
+// it annotates (a plan that re-times a step, or re-states its quantities, undoes
+// the two rules above at exactly the point the cook is reading).
+//
+// GUIDED_PREP_RULES carries the same trap FIRST_USE_ORDINAL_RULE was written to
+// close, one layer up. In guided mode the prep list REPLACES the ingredient
+// checklist, so an ingredient named in no prep entry is one the cook never sees —
+// the same silent disappearance, arrived at a different way. "Exactly once" is
+// therefore not tidiness: once is a full account of the ingredient list, and it is
+// also what stops the same 400g of passata being weighed into two bowls.
+//
+// Both slot in as bullets of the plan prompt's field list, so they start with `- `
+// and use the same two-space indentation as STEP_RULES.
+
+export const GUIDED_PREP_RULES = `- prep: the mise en place, as a list of JOBS to do before cooking starts. Each job:
+  text: ONE instruction, in the imperative ("Dice the carrots, onion and celery into 5mm pieces"). Say the size, shape or state the method depends on. Ingredients that are used together in the same step are prepped TOGETHER as one job, into one container — that is the point of the list. NO QUANTITIES, exactly as in the method: the amounts are already shown beside the job. Never restate a method step here: prep is what happens before the heat goes on.
+  container: what the result is set aside IN ("small bowl", "jug", "plate"), whenever the job produces something that waits. null when nothing is set aside — "Open the tin of tomatoes", "Take the butter out of the fridge".
+  ingredientIds: the ids of the recipe ingredients this job prepares. EVERY ingredient id in the recipe must appear EXACTLY ONCE across the whole prep list — including ones that need no knife work at all (a tin, a jar, a splash of oil), which get a job of their own or join a related one. An ingredient named in no job is one the cook NEVER SEES: the prep list replaces the ingredient checklist, so a missing id silently removes the ingredient from the cook's world. An id in two jobs prepares the same thing twice.`;
+
+export const GUIDED_STEP_NOTE_RULES = `- stepNotes: what to add UNDERNEATH the recipe's existing steps. NEVER rewrite, reword, re-time, split or merge a step — the step text is not yours to touch; you only add lines below it. Emit an entry only for a step that genuinely needs one, and leave any field you have nothing true to say in as null. Each entry:
+  stepId: the id of the step, copied exactly from the step list you were given. Never invent one.
+  container: the prepped container this step reaches for, named with the SAME words the prep job used ("the small bowl"). null when the step needs nothing from the prep list.
+  setup: how the station is set, when the recipe assumes it — "small hob burner, medium-low", "oven shelf in the middle", "pan wide enough that the pieces don't touch". null when there is nothing to set.
+  cue: the SENSORY test that says it is going right — what the cook should hear, see, smell or feel ("you should hear a very gentle sizzle, not a crackle"; "the edges should look lacy and set before you turn it"). null WHENEVER THERE IS NO GENUINE TEST. A made-up cue is worse than no cue: it is a confident instruction to wait for something that will never happen. Most steps have no cue; do not manufacture one to fill the field.
+  checkIns: extra reminders partway through a step, ONLY on a step that already carries a timer, and only when something must actually be done mid-way ("stir it, or the bottom will catch"). atMinutes is minutes from the start of that step's timer and MUST BE LESS than the timer's own duration — a check-in at or after the end is the end, and the timer already covers it. Empty for almost every step.`;

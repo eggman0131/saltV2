@@ -946,7 +946,9 @@
 
   // ─── Recipe-changed banner ─────────────────────────────────────────────────────
   // The live recipe drifted from the snapshot taken when the session started.
-  const recipeChanged = $derived(hasRecipeChanged($cookSession, recipe?.updatedAt ?? null));
+  const recipeChanged = $derived(
+    hasRecipeChanged($cookSession?.recipeUpdatedAtAtStart ?? null, recipe?.updatedAt ?? null),
+  );
 
   // Restart: discard the current session and start a fresh one against the CURRENT
   // recipe (new baseline, cleared ticks), staying on the cook page so the user

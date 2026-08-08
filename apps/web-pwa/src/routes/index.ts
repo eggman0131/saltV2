@@ -66,6 +66,9 @@ export const routes: RouteDefinition = new Map<
   ['/recipes/new/:kind', lazy(() => import('./recipes/RecipeEditPage.svelte'))],
   ['/recipes/:id/edit', lazy(() => import('./recipes/RecipeEditPage.svelte'))],
   ['/recipes/:id/cook', lazy(() => import('./recipes/CookModePage.svelte'))],
+  // The guided-plan editor (issue #751). An ordinary shell route — desk work, not
+  // a hands-full mode — so it gets no entry in ./fullViewport.ts.
+  ['/recipes/:id/guided', lazy(() => import('./recipes/GuidedPlanPage.svelte'))],
   ['/recipes/:id', lazy(() => import('./recipes/RecipeViewPage.svelte'))],
   ['/settings', SettingsPage],
   // Operator area (issues #155, #157). All routes are guarded client-side by

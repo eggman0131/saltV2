@@ -199,6 +199,29 @@ export type { MessageDoc, ChatSessionDoc } from './chatSession.js';
 export { CookActiveTimerSchema, CookSessionSchema } from './cookSession.js';
 export type { CookActiveTimerDoc, CookSessionDoc } from './cookSession.js';
 
+// Guided plan (issue #751) — the per-recipe prep list + step notes, stored in
+// its own family-shared collection and deliberately NOT on RecipeSchema.
+export {
+  GuidedCheckInSchema,
+  GuidedPrepEntryContentSchema,
+  GuidedStepNoteContentSchema,
+  GuidedPrepEntrySchema,
+  GuidedStepNoteSchema,
+  GuidedPlanSchema,
+  GenerateGuidedPlanInputSchema,
+  GenerateGuidedPlanAIOutputSchema,
+  GenerateGuidedPlanOutputSchema,
+} from './guidedPlan.js';
+export type {
+  GuidedCheckInDoc,
+  GuidedPrepEntryDoc,
+  GuidedStepNoteDoc,
+  GuidedPlanDoc,
+  GenerateGuidedPlanInput,
+  GenerateGuidedPlanAIOutput,
+  GenerateGuidedPlanOutput,
+} from './guidedPlan.js';
+
 export { EmailOtpRequestSchema, EmailOtpVerifySchema, PendingEmailOtpSchema } from './emailOtp.js';
 export type { EmailOtpRequest, EmailOtpVerify, PendingEmailOtp } from './emailOtp.js';
 

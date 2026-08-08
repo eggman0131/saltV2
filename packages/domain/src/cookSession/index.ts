@@ -22,6 +22,8 @@ export { firstUseByStep } from './firstUseByStep.js';
 export { firstIncompleteStepId } from './firstIncompleteStepId.js';
 export { miseProgress } from './miseProgress.js';
 export type { MiseProgress } from './miseProgress.js';
-export { hasRecipeChanged } from './hasRecipeChanged.js';
+// `hasRecipeChanged` used to live here. It now takes two timestamps rather than a
+// session (issue #751 needed the same comparison for a guided plan's own stamp),
+// so it belongs to the recipe module — see recipe/queries/hasRecipeChanged.ts.
 export { formatClock } from './formatClock.js';
 export { timerProgress } from './timerProgress.js';

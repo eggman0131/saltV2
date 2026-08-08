@@ -85,6 +85,21 @@ service cloud.firestore {
     match /recipes/{recipeId} {
       allow read, write: if request.auth != null;
     }
+    // Guided plans (issue #751) — one doc per recipe at guidedPlans/{recipeId},
+    // holding the prep list and the notes that sit under the recipe's steps.
+    // FAMILY-SHARED like the recipe it belongs to, and mirroring the `recipes`
+    // block above deliberately: a plan is a rendering of a family-shared dish, not
+    // personal state, so it carries NO ownerUid and is NOT a fourth per-user
+    // collection. Either member may write, re-run or hand-correct the other's
+    // plan, exactly as either may edit the other's recipe.
+    //
+    // Unlike cookSessions the deterministic id needs no `resource == null` clause:
+    // this rule never dereferences `resource.data`, so reading or deleting a plan
+    // that does not exist yet — which the editor does on every first visit — is
+    // evaluated and allowed on the strength of `request.auth` alone.
+    match /guidedPlans/{recipeId} {
+      allow read, write: if request.auth != null;
+    }
     // Development settings (issue #238) — per-environment operator switches
     // (e.g. the canon-icon generation kill-switch). Any signed-in user may read
     // (the CF trigger uses the Admin SDK and bypasses rules anyway); only admins

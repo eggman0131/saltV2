@@ -30,7 +30,7 @@ const CALLABLE_FACTORY = /(onCallGenkit|onCall)\s*\(/g;
 // Floor for the number of call sites found. A scanner that silently matches
 // nothing is the classic false-green, so an empty (or suspiciously small) sweep
 // must fail rather than pass. Raise this when callables are added.
-const MIN_EXPECTED_CALL_SITES = 14;
+const MIN_EXPECTED_CALL_SITES = 15;
 
 // The two App Check constants a callable may spread. Enforcement is the default;
 // the exemption is the sign-in pair only (#718 Phase 4).

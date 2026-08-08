@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { STEP_RULES, FIRST_USE_ORDINAL_RULE } from '../../src/flows/stepRules.js';
+import {
+  STEP_RULES,
+  FIRST_USE_ORDINAL_RULE,
+  GUIDED_PREP_RULES,
+  GUIDED_STEP_NOTE_RULES,
+} from '../../src/flows/stepRules.js';
 
 // These are prompt FRAGMENTS, not whole prompts: each one is interpolated into the
 // middle of a markdown field list in two different prompts (authorRecipe's
@@ -57,5 +62,63 @@ describe('FIRST_USE_ORDINAL_RULE', () => {
     expect(STEP_RULES).toContain('NO QUANTITIES');
     expect(FIRST_USE_ORDINAL_RULE).toContain('Set it for EVERY ingredient that a step uses');
     expect(FIRST_USE_ORDINAL_RULE).toContain('Use null ONLY when no step uses the ingredient');
+  });
+});
+
+describe('GUIDED_PREP_RULES', () => {
+  it('opens the prep bullet of a field list', () => {
+    expect(GUIDED_PREP_RULES.startsWith('- prep:')).toBe(true);
+  });
+
+  it('demands ONE instruction per job and a container whenever something is set aside', () => {
+    expect(GUIDED_PREP_RULES).toContain('ONE instruction');
+    expect(GUIDED_PREP_RULES).toContain('what the result is set aside IN');
+    // ...and says what null means, so "no container" is a choice rather than a gap.
+    expect(GUIDED_PREP_RULES).toContain('null when nothing is set aside');
+  });
+
+  it('binds every ingredient id to exactly one prep entry — the disappearing-ingredient trap', () => {
+    // The same trap FIRST_USE_ORDINAL_RULE closes for the method, one layer up: in
+    // guided mode the prep list REPLACES the ingredient checklist, so an id named
+    // nowhere is an ingredient the cook is never shown. "Exactly once" is what
+    // makes the list a full account of the ingredients (and stops the same 400g of
+    // passata being weighed into two bowls).
+    expect(GUIDED_PREP_RULES).toContain('EXACTLY ONCE');
+    expect(GUIDED_PREP_RULES).toContain('NEVER SEES');
+  });
+
+  it('carries the no-quantities rule into the prep list too', () => {
+    // Amounts reach the cook beside the job, exactly as they reach them beside the
+    // step. Restating them here would undo STEP_RULES at the point the cook reads.
+    expect(STEP_RULES).toContain('NO QUANTITIES');
+    expect(GUIDED_PREP_RULES).toContain('NO QUANTITIES');
+  });
+});
+
+describe('GUIDED_STEP_NOTE_RULES', () => {
+  it('opens the stepNotes bullet of a field list', () => {
+    expect(GUIDED_STEP_NOTE_RULES.startsWith('- stepNotes:')).toBe(true);
+  });
+
+  it('forbids touching the step text at all', () => {
+    // The whole premise of the guided layer: it only ever ADDS lines underneath.
+    // A model that "improves" a step silently rewrites a recipe nobody asked it to.
+    expect(GUIDED_STEP_NOTE_RULES).toContain(
+      'NEVER rewrite, reword, re-time, split or merge a step',
+    );
+  });
+
+  it('refuses an invented cue — null is the correct answer for most steps', () => {
+    // A made-up cue is worse than no cue: it is a confident instruction to wait for
+    // something that will never happen.
+    expect(GUIDED_STEP_NOTE_RULES).toContain('A made-up cue is worse than no cue');
+    expect(GUIDED_STEP_NOTE_RULES).toContain('null WHENEVER THERE IS NO GENUINE TEST');
+  });
+
+  it('confines check-ins to timed steps, strictly inside the timer', () => {
+    // Phase 3 arms these off the step's own timer, so a check-in at or past the end
+    // is a reminder that can never fire.
+    expect(GUIDED_STEP_NOTE_RULES).toContain('ONLY on a step that already carries a timer');
+    expect(GUIDED_STEP_NOTE_RULES).toContain('MUST BE LESS than the timer');
   });
 });
