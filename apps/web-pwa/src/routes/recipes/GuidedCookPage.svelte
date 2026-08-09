@@ -1643,9 +1643,17 @@
                             class="mt-1 shrink-0 text-muted-foreground"
                             ariaLabel="Check in"
                           />
-                          <span class="whitespace-pre-wrap text-lg">
+                          <!-- `whitespace-pre-wrap` sits on the AUTHORED TEXT alone,
+                             never on a span that also holds markup. This row is the
+                             only note built from more than one interpolation, and
+                             with the class on the outer span the source's own newline
+                             and indentation between "—" and the text were preserved
+                             verbatim — a line break and a 28-space indent on screen.
+                             The other rows are a single `{...}`, so nothing of the
+                             source can leak into them; this one had to be split. -->
+                          <span class="text-lg">
                             <span class="text-muted-foreground">{checkIn.atMinutes} min in</span> —
-                            {checkIn.text}
+                            <span class="whitespace-pre-wrap">{checkIn.text}</span>
                           </span>
                         </li>
                       {/each}
