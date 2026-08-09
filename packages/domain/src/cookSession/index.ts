@@ -57,6 +57,11 @@ export type {
   DuplicateContainerName,
   DanglingContainerName,
 } from './guidedContainerProblems.js';
+// What is coming (issue #769) — the plan's answer to the question plain cook mode
+// can only answer by fading in the next step's raw first clause, plus the part of
+// that step which has to be started before you get to it.
+export { nextStepLookahead } from './nextStepLookahead.js';
+export type { NextStepLookahead } from './nextStepLookahead.js';
 // A "Get out" STAGE (issue #761, Phase 3) used to live here — `containerGetOutList`,
 // `guidedGetOutProgress` and `withContainerChecked`, a screen of every vessel the
 // plan names, dismissed before the first cut. Issue #767 deleted all three: the

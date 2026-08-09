@@ -7,6 +7,8 @@ import {
   chooseLandingStop,
   sectionMinHeight,
   fadeHeightFor,
+  fadeFitsLookahead,
+  LOOKAHEAD_MIN_PX,
   PEEK_PX,
   PEEK_MAX_PX,
   FADE_MIN_PX,
@@ -228,6 +230,38 @@ describe('the fade over the peeking next step', () => {
   it('lands on whole pixels', () => {
     expect(fadeHeightFor(150.4)).toBe(150);
     expect(fadeHeightFor(150.6)).toBe(151);
+  });
+});
+
+describe('room for the guided look-ahead panel', () => {
+  // Issue #769: guided mode spends this same gap on what the plan says about the
+  // next step instead of on the next step's own faded text. The panel needs room
+  // the gap does not always have, and the rule for that is here rather than in the
+  // page so it can be stated against the fade's own floor and cap.
+
+  it('takes a full peek', () => {
+    expect(fadeFitsLookahead(fadeHeightFor(PEEK_MAX_PX))).toBe(true);
+  });
+
+  it('refuses the fade floor — a step that fills the screen is one still being read', () => {
+    // FADE_MIN_PX exists for a step with no peek to give up. Writing a panel into
+    // it would put two lines of "what's next" over the last two lines of what the
+    // cook is doing now.
+    expect(fadeFitsLookahead(fadeHeightFor(-120))).toBe(false);
+    expect(fadeFitsLookahead(FADE_MIN_PX)).toBe(false);
+  });
+
+  it('sits above the fade floor and below the peek cap, so both cases exist', () => {
+    // A threshold at or beyond either end would make one of the two branches
+    // unreachable — the panel would be permanent, or never appear at all.
+    expect(LOOKAHEAD_MIN_PX).toBeGreaterThan(FADE_MIN_PX);
+    expect(LOOKAHEAD_MIN_PX).toBeLessThan(PEEK_MAX_PX);
+  });
+
+  it('is a floor, not a window — every taller gap still qualifies', () => {
+    for (const gap of [LOOKAHEAD_MIN_PX, 150, 223, PEEK_MAX_PX, 900]) {
+      expect(fadeFitsLookahead(fadeHeightFor(gap))).toBe(true);
+    }
   });
 });
 

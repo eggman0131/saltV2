@@ -83,6 +83,8 @@
     setup: string;
     cue: string;
     checkIns: CheckInDraft[];
+    lookahead: string;
+    getAhead: string;
   }
   interface PrepDraft {
     id: string;
@@ -122,6 +124,8 @@
         atMinutes: String(c.atMinutes),
         text: c.text,
       })),
+      lookahead: n.lookahead ?? '',
+      getAhead: n.getAhead ?? '',
     }));
     dirty = false;
     seededStamp = stampOf(plan);
@@ -226,6 +230,8 @@
         setup: '',
         cue: '',
         checkIns: [],
+        lookahead: '',
+        getAhead: '',
       }
     );
   }
@@ -371,11 +377,18 @@
             checkIns: n.checkIns
               .filter((c) => c.atMinutes.trim() !== '')
               .map((c) => ({ atMinutes: Number(c.atMinutes), text: c.text.trim() })),
+            lookahead: n.lookahead.trim() || null,
+            getAhead: n.getAhead.trim() || null,
           }))
           // An empty note carries nothing. Dropping them keeps the document to what
           // was actually said, and stops a step that was merely tapped on from
-          // leaving a husk behind.
-          .filter((n) => n.container || n.setup || n.cue || n.checkIns.length > 0),
+          // leaving a husk behind. EVERY authored field has to be listed here — one
+          // left out is one silently discarded on save, and the cook would never
+          // learn which.
+          .filter(
+            (n) =>
+              n.container || n.setup || n.cue || n.lookahead || n.getAhead || n.checkIns.length > 0,
+          ),
       },
       recipe,
     );
@@ -694,6 +707,24 @@
                     value={note.cue}
                     onValueChange={(v) => updateNote(step.id, { cue: v })}
                     data-testid="guided-plan-note-cue"
+                  />
+                  <!-- The two fields read a step EARLY (issue #769). They are edited
+                       here, against the step they describe, and shown to the cook on
+                       the step BEFORE — so the labels have to say so, or they read as
+                       two more things to print underneath. -->
+                  <TextField
+                    label="Coming up"
+                    placeholder="the sauce reduces by half — shown while they're still on the step before"
+                    value={note.lookahead}
+                    onValueChange={(v) => updateNote(step.id, { lookahead: v })}
+                    data-testid="guided-plan-note-lookahead"
+                  />
+                  <TextField
+                    label="Get ahead"
+                    placeholder="preheat the oven to 200°C — only if it has to start during the previous step"
+                    value={note.getAhead}
+                    onValueChange={(v) => updateNote(step.id, { getAhead: v })}
+                    data-testid="guided-plan-note-get-ahead"
                   />
                   {#if step.timer}
                     {#each note.checkIns as ci (ci.key)}

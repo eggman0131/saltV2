@@ -28,7 +28,12 @@
   } from '../../lib/shoppingListService.svelte.js';
   import { tick as hapticTick } from '../../lib/haptics.js';
   import { createDeck } from '../../lib/deck.svelte.js';
-  import { sectionMinHeight, fadeHeightFor, PEEK_MAX_PX } from '../../lib/cookDeck.js';
+  import {
+    sectionMinHeight,
+    fadeHeightFor,
+    fadeFitsLookahead,
+    PEEK_MAX_PX,
+  } from '../../lib/cookDeck.js';
   import IngredientText from './IngredientText.svelte';
   import CookTimerSheet from './CookTimerSheet.svelte';
   import {
@@ -45,6 +50,7 @@
     prepEntryForContainer,
     prepEntryIngredients,
     looseIngredientsForStep,
+    nextStepLookahead,
     hasRecipeChanged,
     formatClock,
     timerProgress,
@@ -464,6 +470,22 @@
     nextIncompleteStep && recipe
       ? recipe.steps.findIndex((s) => s.id === nextIncompleteStep.id) + 1
       : 0,
+  );
+
+  // What the plan says about the step BELOW this one (issue #769) — the caption on
+  // the gap at the bottom of the screen, in place of plain cook mode's faded first
+  // clause of the next step.
+  //
+  // Off `currentStep`, which tracks `visibleStepId` but has an answer before the
+  // first probe has run. Reading the raw id instead would leave the panel absent
+  // for a frame on entry and then pop in, which on a deck that also springs is a
+  // second piece of movement saying nothing.
+  //
+  // Null whenever the plan says nothing about the next step — and null all the way
+  // down for a plan written before these fields existed, which is exactly today's
+  // faded peek, unchanged.
+  const lookahead = $derived(
+    recipe ? nextStepLookahead(recipe, plan?.stepNotes ?? [], currentStep?.id ?? null) : null,
   );
 
   // ─── Advancing ─────────────────────────────────────────────────────────────────
@@ -1746,11 +1768,61 @@
             </section>
           {/each}
         </div>
-        <div
-          class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-background to-transparent"
-          style="height: {fadeHeight}px"
-          aria-hidden="true"
-        ></div>
+        <!-- THE GAP BELOW THE STEP, captioned (issue #769).
+
+           Plain cook mode spends this space on the top of the next step's own text,
+           fading out — the best answer available when there is no plan. A guided
+           plan can say what that step DOES in one line, and, far more usefully, which
+           part of it has to be started now: an oven that needs fifteen minutes to
+           come up is a next-step instruction that has to happen during this one, and
+           a fading first clause will never say so.
+
+           Same box, same measured height, still `pointer-events-none` — the deck owns
+           every gesture in this area and nothing here may intercept one. The gradient
+           is opaque for its lower half so the next step's text is genuinely veiled
+           rather than half-legible underneath the words replacing it.
+
+           Falls back to precisely the old fade in both of the cases where the panel
+           would be wrong: no lookahead authored, and a step whose own text runs so
+           far down the screen that a panel would cover the lines still being read
+           (`fadeFitsLookahead` — the geometry rule, tested with the rest of the deck
+           arithmetic rather than guessed at here). -->
+        {#if lookahead && fadeFitsLookahead(fadeHeight)}
+          <div
+            class="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col justify-end gap-1 bg-gradient-to-t from-background from-55% to-transparent px-4 pb-3"
+            style="height: {fadeHeight}px"
+            data-testid="guided-step-lookahead"
+          >
+            <div class="mx-auto flex w-full max-w-2xl flex-col gap-1">
+              {#if lookahead.getAhead}
+                <!-- The one line here that is an INSTRUCTION, so it is the one line
+                   that gets a colour and an icon. It is also deliberately above the
+                   summary: if the cook reads one thing in this gap, it is this. -->
+                <p
+                  class="flex items-start gap-2 text-sm font-medium text-primary"
+                  data-testid="guided-step-get-ahead"
+                >
+                  <Icon name="Hourglass" size={16} class="mt-0.5 shrink-0" />
+                  <span class="min-w-0 flex-1">{lookahead.getAhead}</span>
+                </p>
+              {/if}
+              {#if lookahead.lookahead}
+                <p class="flex items-baseline gap-2 text-sm text-muted-foreground">
+                  <span class="shrink-0 text-xs font-semibold uppercase tracking-wide">
+                    Next · {lookahead.number}
+                  </span>
+                  <span class="min-w-0 flex-1 truncate">{lookahead.lookahead}</span>
+                </p>
+              {/if}
+            </div>
+          </div>
+        {:else}
+          <div
+            class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-background to-transparent"
+            style="height: {fadeHeight}px"
+            aria-hidden="true"
+          ></div>
+        {/if}
       </main>
     {/if}
 

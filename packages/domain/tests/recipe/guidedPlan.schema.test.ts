@@ -34,6 +34,8 @@ const PLAN = {
       setup: 'small hob burner, medium-low',
       cue: 'a very gentle sizzle, not a crackle',
       checkIns: [{ atMinutes: 5, text: 'give it a stir' }],
+      lookahead: 'the sauce reduces by half',
+      getAhead: 'preheat the oven to 200°C',
     },
   ],
   createdAt: '2026-08-01T09:00:00.000Z',
@@ -87,12 +89,31 @@ describe('GuidedPrepEntrySchema', () => {
 });
 
 describe('GuidedStepNoteSchema', () => {
-  it('defaults all three additions to null and check-ins to []', () => {
+  it('defaults every addition to null and check-ins to []', () => {
     const parsed = GuidedStepNoteSchema.parse({ stepId: 'step-9' });
     expect(parsed.container).toBeNull();
     expect(parsed.setup).toBeNull();
     expect(parsed.cue).toBeNull();
     expect(parsed.checkIns).toEqual([]);
+    expect(parsed.lookahead).toBeNull();
+    expect(parsed.getAhead).toBeNull();
+  });
+
+  it('BACK-COMPAT: a note written before the look-ahead fields reads as null, not undefined', () => {
+    // Issue #769 added `lookahead`/`getAhead` to a document that was already in
+    // Firestore. Every plan written before it is in exactly this state, and the
+    // cook page's fallback ("no look-ahead → the plain fade") is a null check —
+    // so an `undefined` leaking through would be a different branch entirely.
+    const parsed = GuidedStepNoteSchema.parse({
+      stepId: 'step-1',
+      container: 'small bowl',
+      setup: null,
+      cue: null,
+      checkIns: [],
+    });
+    expect(parsed.lookahead).toBeNull();
+    expect(parsed.getAhead).toBeNull();
+    expect(parsed.container).toBe('small bowl');
   });
 });
 
@@ -119,7 +140,17 @@ describe('generateGuidedPlan flow schemas', () => {
   it('returns CONTENT only — no ids, no control fields', () => {
     const parsed = GenerateGuidedPlanAIOutputSchema.parse({
       prep: [{ text: 'Weigh 400g passata', container: 'jug', ingredientIds: ['ing-4'] }],
-      stepNotes: [{ stepId: 'step-1', container: null, setup: null, cue: null, checkIns: [] }],
+      stepNotes: [
+        {
+          stepId: 'step-1',
+          container: null,
+          setup: null,
+          cue: null,
+          checkIns: [],
+          lookahead: 'the sauce reduces by half',
+          getAhead: null,
+        },
+      ],
     });
     expect(parsed.prep[0]).not.toHaveProperty('id');
     expect(parsed).not.toHaveProperty('needs_approval');

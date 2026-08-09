@@ -240,6 +240,8 @@ function makePlan(over: Partial<GuidedPlanDoc> = {}): GuidedPlanDoc {
         setup: 'Small hob burner, medium-low',
         cue: 'A very gentle sizzle, not a crackle',
         checkIns: [],
+        lookahead: null,
+        getAhead: null,
       },
       // A note that says nothing EXCEPT "check in partway" — the case a note-guard
       // written for the other three lines would hide. It sits on step-2 because
@@ -254,6 +256,8 @@ function makePlan(over: Partial<GuidedPlanDoc> = {}): GuidedPlanDoc {
           { atMinutes: 5, text: 'Give it a stir' },
           { atMinutes: 15, text: "Check it isn't drying out" },
         ],
+        lookahead: null,
+        getAhead: null,
       },
     ],
     createdAt: RECIPE_UPDATED_AT,
@@ -800,6 +804,144 @@ describe('GuidedCookPage — the steps carry the plan-s notes', () => {
     // cook mode writes it. (Its check-ins ride alongside — see the suites below.)
     await waitFor(() => expect(mainTimer()).toBeDefined());
     expect(mainTimer()).toMatchObject({ id: 'step-2', stepId: 'step-2', durationMinutes: 20 });
+  });
+});
+
+// ─── The look-ahead panel (issue #769) ─────────────────────────────────────────
+//
+// THE ONE PLACE THIS FILE FAKES A MEASUREMENT, and it is worth saying why. The rule
+// at the top holds everywhere else: jsdom measures every box as 0, so nothing that
+// depends on layout is asserted here. But this panel exists ONLY in a measurement —
+// it is written into the gap the current step leaves below itself, and a gap of
+// zero is exactly the case where it must NOT appear, so with the real jsdom rects
+// there is no state in which it renders at all.
+//
+// So the two rects the probe actually reads are stubbed, and nothing else is. Every
+// rule being stubbed for is stated and tested without a DOM elsewhere —
+// `fadeHeightFor` and `fadeFitsLookahead` in cookDeck.test.ts, `nextStepLookahead`
+// in @salt/domain. What is checked here is only the wiring between them.
+
+type Rect = { top: number; bottom: number };
+
+function domRect({ top, bottom }: Rect): DOMRect {
+  const r = { x: 0, y: top, top, bottom, left: 0, right: 0, width: 0, height: bottom - top };
+  return { ...r, toJSON: () => r } as DOMRect;
+}
+
+/**
+ * `visible` is the step parked at the top of the scroller; `bottom` is where its
+ * section ends, so `800 - bottom` is the gap the panel is written into.
+ */
+function stubStepGeometry({ visible, bottom }: { visible: string; bottom: number }) {
+  return vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
+    this: Element,
+  ): DOMRect {
+    const el = this as HTMLElement;
+    if (el.dataset?.testid === 'cook-steps-view') return domRect({ top: 0, bottom: 800 });
+    const stepId = el.dataset?.stepId;
+    if (stepId === undefined) return domRect({ top: 0, bottom: 0 });
+    // The visible step starts at the top of the scroller; everything else is
+    // stacked below it, out of the probe's way.
+    return stepId === visible
+      ? domRect({ top: 0, bottom })
+      : domRect({ top: bottom, bottom: bottom + 600 });
+  });
+}
+
+describe('GuidedCookPage — what the plan says is coming', () => {
+  let geometry: ReturnType<typeof stubStepGeometry> | null = null;
+
+  afterEach(() => {
+    geometry?.mockRestore();
+    geometry = null;
+  });
+
+  /** A plan whose step-2 note carries the two look-ahead lines. */
+  function planWithLookahead(over: Record<string, unknown> = {}) {
+    return makePlan({
+      stepNotes: [
+        {
+          stepId: 'step-2',
+          container: null,
+          setup: null,
+          cue: null,
+          checkIns: [],
+          lookahead: 'the sauce reduces by half',
+          getAhead: null,
+          ...over,
+        },
+      ],
+    } as Partial<GuidedPlanDoc>);
+  }
+
+  it('captions the gap with the NEXT step-s line, and numbers it', async () => {
+    mockGuidedPlan._set(planWithLookahead());
+    geometry = stubStepGeometry({ visible: 'step-1', bottom: 500 });
+    renderGuidedCook();
+    await enterSteps();
+
+    const panel = await screen.findByTestId('guided-step-lookahead');
+    expect(panel).toHaveTextContent('the sauce reduces by half');
+    // Step 2 of 2 — the step BELOW the one on screen, not the one on it.
+    expect(panel).toHaveTextContent('Next · 2');
+    expect(panel).not.toHaveTextContent('Soften the onions');
+  });
+
+  it('calls out the part of the next step that has to start now', async () => {
+    mockGuidedPlan._set(planWithLookahead({ getAhead: 'Preheat the oven to 200°C' }));
+    geometry = stubStepGeometry({ visible: 'step-1', bottom: 500 });
+    renderGuidedCook();
+    await enterSteps();
+
+    expect(await screen.findByTestId('guided-step-get-ahead')).toHaveTextContent(
+      'Preheat the oven to 200°C',
+    );
+  });
+
+  it('shows a bare get-ahead with no summary beside it', async () => {
+    // The case the panel is really for: nothing to say about the next step except
+    // that a piece of it cannot wait until you reach it.
+    mockGuidedPlan._set(
+      planWithLookahead({ lookahead: null, getAhead: 'Take the steak out of the fridge' }),
+    );
+    geometry = stubStepGeometry({ visible: 'step-1', bottom: 500 });
+    renderGuidedCook();
+    await enterSteps();
+
+    const panel = await screen.findByTestId('guided-step-lookahead');
+    expect(panel).toHaveTextContent('Take the steak out of the fridge');
+    expect(panel).not.toHaveTextContent('Next ·');
+  });
+
+  it('leaves the plain fade for a plan that says nothing about the next step', async () => {
+    // Every plan written before #769 is in this state, and it must look exactly as
+    // it did — an empty panel would be a new, worse answer than the old fade.
+    mockGuidedPlan._set(makePlan());
+    geometry = stubStepGeometry({ visible: 'step-1', bottom: 500 });
+    renderGuidedCook();
+    await enterSteps();
+
+    expect(screen.queryByTestId('guided-step-lookahead')).toBeNull();
+  });
+
+  it('says nothing below the last step', async () => {
+    mockGuidedPlan._set(planWithLookahead());
+    geometry = stubStepGeometry({ visible: 'step-2', bottom: 500 });
+    renderGuidedCook();
+    await enterSteps();
+
+    expect(screen.queryByTestId('guided-step-lookahead')).toBeNull();
+  });
+
+  it('gives the room back when the step-s own words fill the screen', async () => {
+    // A step running to the bottom of the viewport leaves only the fade floor, and
+    // those last lines are what the cook is reading right now. The panel yields.
+    mockGuidedPlan._set(planWithLookahead());
+    geometry = stubStepGeometry({ visible: 'step-1', bottom: 790 });
+    renderGuidedCook();
+    await enterSteps();
+
+    expect(screen.queryByTestId('guided-step-lookahead')).toBeNull();
   });
 });
 

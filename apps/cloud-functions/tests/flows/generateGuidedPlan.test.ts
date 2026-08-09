@@ -101,6 +101,8 @@ const AI_OUTPUT = {
       setup: 'small hob burner, medium-low',
       cue: 'a very gentle sizzle, not a crackle',
       checkIns: [{ atMinutes: 5, text: 'give it a stir' }],
+      lookahead: 'the onions soften',
+      getAhead: null,
     },
   ],
 };
@@ -179,7 +181,15 @@ describe('generateGuidedPlan', () => {
         ...AI_OUTPUT,
         stepNotes: [
           ...AI_OUTPUT.stepNotes,
-          { stepId: 'step-99', container: null, setup: null, cue: 'invented', checkIns: [] },
+          {
+            stepId: 'step-99',
+            container: null,
+            setup: null,
+            cue: 'invented',
+            checkIns: [],
+            lookahead: 'invented too',
+            getAhead: null,
+          },
         ],
       },
     });

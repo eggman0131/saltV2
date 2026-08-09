@@ -559,6 +559,83 @@ describe('GuidedPlanPage — drift and save', () => {
     expect(saved.stepNotes[0]!.stepId).toBe('step-2');
   });
 
+  it('round-trips the two look-ahead lines through the editor', async () => {
+    // Issue #769. They are edited against the step they DESCRIBE and shown to the
+    // cook on the step before, so what has to be true here is only that a plan
+    // carrying them arrives in the fields and leaves through the save unchanged.
+    const { getByTestId, getAllByTestId } = renderPage();
+    mockPlan._set(
+      makePlan({
+        stepNotes: [
+          {
+            stepId: 'step-1',
+            container: null,
+            setup: null,
+            cue: null,
+            checkIns: [],
+            lookahead: 'the sauce reduces by half',
+            getAhead: 'preheat the oven to 200°C',
+          },
+        ],
+      }),
+    );
+    await waitFor(() => expect(getByTestId('guided-plan-editor')).toBeTruthy());
+
+    // One pair of fields per step in the recipe; the plan annotates the first.
+    expect((getAllByTestId('guided-plan-note-lookahead')[0] as HTMLInputElement).value).toBe(
+      'the sauce reduces by half',
+    );
+    await fireEvent.input(getAllByTestId('guided-plan-note-get-ahead')[0]!, {
+      target: { value: 'take the steak out of the fridge' },
+    });
+    await fireEvent.click(getByTestId('guided-plan-save-button'));
+
+    await waitFor(() => expect(saveGuidedPlan).toHaveBeenCalledTimes(1));
+    const [saved] = vi.mocked(saveGuidedPlan).mock.calls[0]!;
+    expect(saved.stepNotes[0]!.lookahead).toBe('the sauce reduces by half');
+    expect(saved.stepNotes[0]!.getAhead).toBe('take the steak out of the fridge');
+  });
+
+  it('keeps a note whose ONLY content is a look-ahead', async () => {
+    // The husk filter drops a note that says nothing, and after #769 most notes say
+    // nothing except this. A filter that had not learned the new fields would throw
+    // away almost every look-ahead on the first save, silently.
+    const { getByTestId } = renderPage();
+    mockPlan._set(
+      makePlan({
+        stepNotes: [
+          {
+            stepId: 'step-1',
+            container: '',
+            setup: '',
+            cue: '',
+            checkIns: [],
+            lookahead: 'the onions soften',
+            getAhead: null,
+          },
+          {
+            stepId: 'step-2',
+            container: '',
+            setup: '',
+            cue: '',
+            checkIns: [],
+            lookahead: null,
+            getAhead: 'put the oven on',
+          },
+        ],
+      }),
+    );
+    await waitFor(() => expect(getByTestId('guided-plan-editor')).toBeTruthy());
+
+    await fireEvent.click(getByTestId('guided-plan-save-button'));
+
+    await waitFor(() => expect(saveGuidedPlan).toHaveBeenCalledTimes(1));
+    const [saved] = vi.mocked(saveGuidedPlan).mock.calls[0]!;
+    expect(saved.stepNotes).toHaveLength(2);
+    expect(saved.stepNotes[0]!.lookahead).toBe('the onions soften');
+    expect(saved.stepNotes[1]!.getAhead).toBe('put the oven on');
+  });
+
   it('blocks the save while a check-in cannot fire inside its timer', async () => {
     // The schema cannot see the timer — it holds no recipe — so this cross-check
     // lives here, and it blocks rather than warns: a reminder set at or past the
