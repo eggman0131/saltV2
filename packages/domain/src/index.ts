@@ -190,7 +190,7 @@ export {
 } from './shoppingList/index.js';
 
 // Members module — published surface (issue #155).
-export type { Member, CreateMemberInput, UpdateMemberPatch } from './members/index.js';
+export type { Member, CookMode, CreateMemberInput, UpdateMemberPatch } from './members/index.js';
 export {
   normaliseMemberEmail,
   createMember,

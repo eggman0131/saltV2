@@ -7,6 +7,8 @@
  *   - only an admin member may WRITE (create/update/delete) members
  *   - a non-admin member is denied writes even though the client UI is bypassed
  *   - an unauthenticated caller is denied reads
+ *   - EXCEPT: a member may update their own `cookMode` and nothing else (#776),
+ *     which is the one place a non-admin may write this collection at all
  *
  * Admin-ness is resolved by the rules via get(/members/$(token.email)), so the
  * caller's token email must equal an admin member doc id.
@@ -50,7 +52,7 @@ async function firestoreEmulatorReachable(): Promise<boolean> {
   }
 }
 
-function memberDoc(email: string, admin: boolean) {
+function memberDoc(email: string, admin: boolean, over: Record<string, unknown> = {}) {
   return {
     id: email,
     schemaVersion: 1,
@@ -59,7 +61,9 @@ function memberDoc(email: string, admin: boolean) {
     admin,
     sortOrder: 0,
     icon: null,
+    cookMode: 'standard',
     updatedAt: '2026-06-07T00:00:00.000Z',
+    ...over,
   };
 }
 
@@ -142,6 +146,102 @@ describe.skipIf(!reachable)('firestore.rules — members allowlist', () => {
     // can read (any signed-in user) but cannot write (not an admin member)
     await assertSucceeds(getDoc(doc(db, 'members', 'admin@e.org')));
     await assertFails(setDoc(doc(db, 'members', 'x@e.org'), memberDoc('x@e.org', false)));
+  });
+
+  // ─── The self-serve cook-mode exception (issue #776) ───────────────────────
+  //
+  // A member may update their OWN doc, but only to change `cookMode`. This doc
+  // carries the `admin` flag, so the denials below are the point of the feature's
+  // security review — the permitted case is one line and the ways to abuse it are
+  // the rest. Everything here runs as `kid`, a NON-admin.
+
+  it('lets a member set their own cook mode', async () => {
+    const db = kidCtx().firestore();
+    await assertSucceeds(
+      setDoc(
+        doc(db, 'members', 'kid@e.org'),
+        memberDoc('kid@e.org', false, { cookMode: 'guided' }),
+      ),
+    );
+  });
+
+  it('lets a member set it back', async () => {
+    const db = kidCtx().firestore();
+    await assertSucceeds(
+      updateDoc(doc(db, 'members', 'kid@e.org'), { cookMode: 'guided', updatedAt: 'x' }),
+    );
+    await assertSucceeds(
+      updateDoc(doc(db, 'members', 'kid@e.org'), { cookMode: 'standard', updatedAt: 'y' }),
+    );
+  });
+
+  it('DENIES making yourself an admin while changing your cook mode', async () => {
+    // The attack the pinning exists for. Both fields move in one write, which is
+    // exactly what an attacker would send.
+    const db = kidCtx().firestore();
+    await assertFails(
+      setDoc(doc(db, 'members', 'kid@e.org'), memberDoc('kid@e.org', true, { cookMode: 'guided' })),
+    );
+  });
+
+  it('DENIES making yourself an admin on its own', async () => {
+    const db = kidCtx().firestore();
+    await assertFails(updateDoc(doc(db, 'members', 'kid@e.org'), { admin: true }));
+  });
+
+  it('DENIES changing anything else about yourself', async () => {
+    // Not a security hole so much as a scope one: the exception is for a cooking
+    // preference, and a member editing their own name or sort order is the admin
+    // screen's job.
+    const db = kidCtx().firestore();
+    await assertFails(updateDoc(doc(db, 'members', 'kid@e.org'), { name: 'Renamed' }));
+    await assertFails(updateDoc(doc(db, 'members', 'kid@e.org'), { sortOrder: 99 }));
+    await assertFails(updateDoc(doc(db, 'members', 'kid@e.org'), { email: 'other@e.org' }));
+  });
+
+  it("DENIES setting someone ELSE's cook mode", async () => {
+    const db = kidCtx().firestore();
+    await assertFails(
+      updateDoc(doc(db, 'members', 'admin@e.org'), { cookMode: 'guided', updatedAt: 'x' }),
+    );
+  });
+
+  it('DENIES a cook mode that is not one of the two the schema allows', async () => {
+    // The doc is family-readable, so an unconstrained string here is a place to
+    // park arbitrary data on someone else's screen.
+    const db = kidCtx().firestore();
+    await assertFails(
+      updateDoc(doc(db, 'members', 'kid@e.org'), { cookMode: 'anything', updatedAt: 'x' }),
+    );
+  });
+
+  it('DENIES creating or deleting your own member doc', async () => {
+    // The exception is an UPDATE exception. A member who could delete themselves
+    // could then be re-created by the blocking function with a fresh doc.
+    const db = kidCtx().firestore();
+    await assertFails(deleteDoc(doc(db, 'members', 'kid@e.org')));
+    await assertFails(
+      setDoc(
+        doc(db, 'members', 'kid2@e.org'),
+        memberDoc('kid2@e.org', false, { cookMode: 'guided' }),
+      ),
+    );
+  });
+
+  it('lets a member on a doc written before `icon` existed still set their cook mode', async () => {
+    // `icon` carries `.default(null)`, so the oldest member docs have no such key.
+    // A rule that pinned fields by comparing them one by one would read a missing
+    // key here and deny — working everywhere except on the longest-standing
+    // accounts, which is precisely the failure that ships green.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      const { icon: _icon, cookMode: _cookMode, ...legacy } = memberDoc('old@e.org', false);
+      await setDoc(doc(db, 'members', 'old@e.org'), legacy);
+    });
+    const db = testEnv.authenticatedContext('uid-old', { email: 'old@e.org' }).firestore();
+    await assertSucceeds(
+      updateDoc(doc(db, 'members', 'old@e.org'), { cookMode: 'guided', updatedAt: 'x' }),
+    );
   });
 });
 

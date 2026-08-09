@@ -5,6 +5,7 @@ import {
   sortMembers,
   normaliseMemberEmail,
   type Member,
+  type CookMode,
   type UpdateMemberPatch,
 } from '@salt/domain';
 import { failure, type DomainError, type ReadResult } from '@salt/shared-types';
@@ -121,6 +122,21 @@ export async function updateMemberEntry(
 
 export async function deleteMemberEntry(id: string): Promise<ReadResult<void, DomainError>> {
   return deleteMember(id);
+}
+
+// The one member write a NON-ADMIN may make, and only ever about themselves
+// (issue #776). Its own function rather than a call to `updateMemberEntry` so the
+// id cannot be supplied by a caller: this reads the signed-in member and writes
+// that doc, which is precisely what firestore.rules will allow and nothing else.
+//
+// A no-op when nothing would change, so opening Settings and leaving cannot write
+// — and when there is no member doc yet, which is a signed-in-but-not-on-the-roster
+// state the rules would refuse anyway.
+export async function setMyCookMode(mode: CookMode): Promise<ReadResult<void, DomainError>> {
+  const me = get(currentMember);
+  if (!me) return failure({ kind: 'StorageError', reason: 'unavailable' });
+  if (me.cookMode === mode) return { kind: 'ok', value: undefined };
+  return upsertMember(updateMember(me, { cookMode: mode }, new Date().toISOString()));
 }
 
 // Drag-and-drop reorder: reassign sortOrder to the new sequential position and

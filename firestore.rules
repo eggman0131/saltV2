@@ -14,12 +14,48 @@ service cloud.firestore {
 
     // Members allowlist — any signed-in user may read the roster (and the app
     // reads it to resolve admin-ness for the operator UI); only admins may
-    // create/update/delete members. Off-list accounts never get created in the
-    // first place (beforeMemberCreated blocking function), so "signed in" here
-    // already means "an allowlisted member".
+    // create/delete a member, or edit anyone's. Off-list accounts never get
+    // created in the first place (beforeMemberCreated blocking function), so
+    // "signed in" here already means "an allowlisted member".
+    //
+    // THE ONE EXCEPTION (issue #776): a member may update their OWN doc to
+    // change `cookMode`, the preference deciding which cook mode their Cook
+    // button opens. It is set in Settings by the person it describes, because it
+    // is a preference about how they like to cook rather than an administrative
+    // fact about the household.
+    //
+    // This doc carries the `admin` flag, so that exception is the whole security
+    // surface of the feature: without pinning, "let me change my cooking
+    // preference" is also "let me make myself an admin". The client writes the
+    // WHOLE document (`upsertMember` does a full setDoc), so the guard is stated
+    // as "which keys actually differ" rather than as a list of things to hold
+    // equal — `diff().affectedKeys().hasOnly(...)` covers every field the doc has
+    // now AND every field added to it later, which an enumeration would not.
+    //
+    // Written this way for a second reason: `icon` carries `.default(null)`, so
+    // member docs written before it existed have no such key at all. Comparing
+    // `request.resource.data.icon == resource.data.icon` on one of those reads a
+    // missing key and denies the write — a rule that works everywhere except on
+    // the oldest accounts, which is the kind of thing that ships green.
+    //
+    // `updatedAt` is in the allowed set because the domain command re-stamps it
+    // on every patch. `cookMode` is additionally constrained to the two values
+    // the schema allows: a rule that let a member write any string here would let
+    // them store arbitrary data on a family-readable document.
+    function isSelf(email) {
+      return request.auth != null
+        && request.auth.token.email != null
+        && request.auth.token.email == email;
+    }
+    function onlyCookModeChanged() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['cookMode', 'updatedAt'])
+        && request.resource.data.cookMode in ['standard', 'guided'];
+    }
     match /members/{email} {
       allow read: if request.auth != null;
-      allow write: if isAdmin();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (isSelf(email) && onlyCookModeChanged());
     }
 
     // Canon items — shared ingredient canon; any authenticated user can read and write.

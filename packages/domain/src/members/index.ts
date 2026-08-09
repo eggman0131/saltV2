@@ -3,6 +3,10 @@
 // import from members. Anything not re-exported here is private.
 
 export type { Member } from './entities/Member.js';
+// The cook-mode preference (issue #776) is defined with the wire schema and
+// re-exported here, so a consumer of the members module never has to reach into
+// `@salt/domain/schemas` for the type of a field on `Member`.
+export type { CookMode } from '../schemas/member.js';
 
 export { normaliseMemberEmail } from './commands/normaliseMemberEmail.js';
 export { createMember } from './commands/createMember.js';

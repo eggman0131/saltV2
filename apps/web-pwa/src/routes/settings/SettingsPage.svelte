@@ -11,9 +11,14 @@
     TextArea,
     Button,
     Switch,
+    RadioGroup,
+    RadioGroupItem,
   } from '@salt/ui-components';
   import { callListPushoverDevices } from '@salt/firebase-sync';
   import { auth } from '../../lib/auth.svelte.js';
+  import { currentMember, setMyCookMode } from '../../lib/membersService.js';
+  import { addToast } from '../../lib/toastStore.js';
+  import type { CookMode } from '@salt/domain';
   import { submitFeedback } from '../../lib/observability.js';
   import { push } from '../../lib/push.svelte.js';
   import { install } from '../../lib/install.svelte.js';
@@ -27,6 +32,22 @@
     if (!uid) return;
     if (next) await push.enable(uid);
     else await push.disable(uid);
+  }
+
+  // Which cook mode the Cook button opens (issue #776). A PER-PERSON preference
+  // on this member's own doc — the one field a non-admin may write about
+  // themselves, and firestore.rules pins every other field of that document
+  // precisely because `admin` is one of them.
+  //
+  // Optimistic in neither direction: the control reads straight off the member
+  // store, so it shows what is actually saved and reverts by itself if the write
+  // is refused. A failure gets a toast because this is a deliberate choice the
+  // person just made, not background housekeeping.
+  const cookMode = $derived($currentMember?.cookMode ?? 'standard');
+
+  async function onCookModeChange(next: string): Promise<void> {
+    const result = await setMyCookMode(next as CookMode);
+    if (result.kind !== 'ok') addToast("Couldn't save that preference.", 'destructive');
   }
 
   // Pushover delivery readout (issue #680). Timers are ALSO sent through
@@ -96,6 +117,34 @@
   </FormPage>
 
   <AddToHomeScreen />
+
+  <!-- Only shown to someone the roster actually knows. A signed-in user with no
+       member doc has nothing to write to, and firestore.rules would refuse the
+       write anyway — offering the control would be offering a button that fails. -->
+  {#if $currentMember}
+    <Card>
+      <CardHeader>
+        <CardTitle>When I cook</CardTitle>
+        <CardDescription>
+          Which mode the Cook button opens. Whichever you pick, the other one is still a tap away on
+          the same button.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div data-testid="settings-cook-mode">
+          <RadioGroup
+            label="Cook mode"
+            value={cookMode}
+            onValueChange={onCookModeChange}
+            orientation="vertical"
+          >
+            <RadioGroupItem value="standard" label="Standard — the recipe as written" />
+            <RadioGroupItem value="guided" label="Guided, when there's a plan for the recipe" />
+          </RadioGroup>
+        </div>
+      </CardContent>
+    </Card>
+  {/if}
 
   <Card>
     <CardHeader>

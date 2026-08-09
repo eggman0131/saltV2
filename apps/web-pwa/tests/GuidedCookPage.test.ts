@@ -864,6 +864,41 @@ function stubStepGeometry({ visible, bottom }: { visible: string; bottom: number
   });
 }
 
+describe('GuidedCookPage — the recipe has no plan', () => {
+  // No longer an edge case (issue #776). Someone whose default is guided is
+  // offered this door on every recipe without a plan, so the screen has to answer
+  // "then write me one" rather than pointing at a page and leaving them to find it.
+  beforeEach(() => {
+    mockGuidedPlan._set(null);
+  });
+
+  it('offers to write the plan', async () => {
+    renderGuidedCook();
+    await screen.findByTestId('guided-cook-no-plan');
+
+    await userEvent.click(screen.getByTestId('guided-cook-write-plan'));
+    expect(push).toHaveBeenCalledWith(`/recipes/${RECIPE_ID}/guided`);
+  });
+
+  it('still offers to cook it the ordinary way', async () => {
+    renderGuidedCook();
+    await screen.findByTestId('guided-cook-no-plan');
+
+    await userEvent.click(screen.getByTestId('guided-cook-fallback'));
+    expect(push).toHaveBeenCalledWith(`/recipes/${RECIPE_ID}/cook`);
+  });
+
+  it('is never an error — the session is untouched either way', () => {
+    // Plain cook mode works on the very same session, so nothing already ticked or
+    // done is lost by arriving here. Nothing is written on the way through.
+    mockCookSession._set(makeCookSession({ completedStepIds: ['step-1'] }));
+    renderGuidedCook();
+
+    expect(screen.getByTestId('guided-cook-no-plan')).toBeTruthy();
+    expect(vi.mocked(persistCookSession)).not.toHaveBeenCalled();
+  });
+});
+
 describe('GuidedCookPage — what the plan says is coming', () => {
   let geometry: ReturnType<typeof stubStepGeometry> | null = null;
 
