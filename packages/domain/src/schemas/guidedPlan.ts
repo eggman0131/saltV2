@@ -70,21 +70,26 @@ export const GuidedStepNoteContentSchema = z.object({
   // cue is worse than no cue, so the prompt is explicit about leaving it out.
   cue: z.string().nullable(),
   checkIns: z.array(GuidedCheckInSchema),
-  // ─── Read from the step BEFORE this one (issue #769) ───────────────────────
+  // ─── Read WHILE ON this step, about what comes after it (issue #769) ───────
   //
-  // Both of these describe THIS step and are shown while the cook is still on the
-  // previous one, where plain cook mode fades in the top of the next step's raw
-  // text. They live on the step they describe rather than on the step that renders
-  // them, so re-ordering the method carries them along, the last step simply has
-  // no reader, and the rendering rule stays one sentence: a step shows the NEXT
-  // step's lookahead.
+  // Both of these are shown at the bottom of THIS step's screen, where plain cook
+  // mode fades in the top of the next step's raw text. They are written on the
+  // step the cook is standing on, NOT on the step they describe.
   //
-  // One clause saying what this step does. Null is allowed and renders as the
+  // That direction was originally the other way round and it shipped wrong: the
+  // reader took the NEXT step's note and numbered it correctly, so the cook got
+  // "Next · 5" over a description of step 6, all the way down the recipe. The
+  // model had been authoring them this way all along, and this way is right —
+  // `getAhead` is about the spare time in the step you are ON, and what it gets
+  // ahead of may be several steps away ("preheat the oven" belongs on the
+  // ten-minute sauté, not one step before the oven is used).
+  //
+  // One clause on what the NEXT step does. Null is allowed and renders as the
   // plain fade — every plan written before this existed is in that state.
   lookahead: z.string().nullable(),
-  // The part of this step that has to START during the previous one: an oven that
-  // needs fifteen minutes to come up, a steak that needs half an hour out of the
-  // fridge. Null on almost every step — a step with no lead time has nothing to
+  // Something from a LATER step to start during this one: an oven that needs
+  // fifteen minutes to come up, a steak that needs half an hour out of the fridge.
+  // Null on almost every step — a step with nothing waiting on it has nothing to
   // say here, and the prompt is as explicit about that as it is for `cue`.
   getAhead: z.string().nullable(),
 });

@@ -187,31 +187,57 @@ describe('GUIDED_STEP_NOTE_RULES', () => {
     expect(GUIDED_STEP_NOTE_RULES).toContain('MUST BE LESS than the timer');
   });
 
-  it('asks for a look-ahead on EVERY step, unlike every other field here', () => {
+  it('asks for a look-ahead on EVERY step that has one after it', () => {
     // Issue #769. The rest of this bullet list is "leave it null unless the recipe
     // left something unsaid"; `lookahead` inverts that, because it is not filling a
-    // gap — it is the step announcing itself to the step before. The opening clause
-    // had to change with it, and the two must not drift back apart: an entry emitted
-    // "only for a step that genuinely needs one" is a plan where most steps preview
-    // as nothing.
+    // gap — it is the step handing over to the next one. The opening clause had to
+    // change with it, and the two must not drift back apart: an entry emitted "only
+    // for a step that genuinely needs one" is a plan where most steps preview as
+    // nothing.
     expect(GUIDED_STEP_NOTE_RULES).toContain('Emit an entry for EVERY step');
-    expect(GUIDED_STEP_NOTE_RULES).toContain('Fill this in for EVERY step you write an entry for');
+    expect(GUIDED_STEP_NOTE_RULES).toContain(
+      'Fill this in for EVERY step that HAS a step after it',
+    );
     expect(GUIDED_STEP_NOTE_RULES).toContain('ONE SHORT CLAUSE');
   });
 
+  it('states the DIRECTION of the look-ahead unmistakably', () => {
+    // The one that shipped wrong. It is written on the step the cook is STANDING ON
+    // and describes the step AFTER it. When the reader and the prompt disagreed
+    // about this, the cook got a correct step number over the wrong sentence, the
+    // whole way down a recipe — which reads as authoritative and is worse than no
+    // panel at all.
+    expect(GUIDED_STEP_NOTE_RULES).toContain('saying what the NEXT step does');
+    expect(GUIDED_STEP_NOTE_RULES).toContain('READ THE DIRECTION CAREFULLY');
+    expect(GUIDED_STEP_NOTE_RULES).toContain('the entry for step 3 previews step 4');
+  });
+
+  it('refuses a look-ahead on the last step', () => {
+    // Asking for one on every step invites "everything is ready" on the final one,
+    // which previews nothing — there is no step for it to be about. Observed in the
+    // first plan written against this prompt.
+    expect(GUIDED_STEP_NOTE_RULES).toContain('null on the LAST step');
+  });
+
   it('keeps the look-ahead a heads-up rather than a second copy of the step', () => {
-    // It is read while the cook is still on the PREVIOUS step and the step's own
-    // words follow moments later, so a preview that restates the step in full is the
-    // step, delivered at the wrong time.
-    expect(GUIDED_STEP_NOTE_RULES).toContain('while they are still on the PREVIOUS step');
-    expect(GUIDED_STEP_NOTE_RULES).toContain('Do NOT copy the step text');
+    expect(GUIDED_STEP_NOTE_RULES).toContain('it is a heads-up, not an instruction');
+    expect(GUIDED_STEP_NOTE_RULES).toContain("Do NOT copy the next step's text");
+  });
+
+  it('hangs get-ahead on the step whose spare time it uses, not on the one before', () => {
+    // Why this direction is the right one rather than merely the one the model
+    // picked: an oven wanted at step 5 has to go on the ten-minute sauté at step 1.
+    // Written one step before the one that needs it, a fifteen-minute preheat is
+    // already late — the other arrangement could not express this at all.
+    expect(GUIDED_STEP_NOTE_RULES).toContain('should be started NOW, during this one');
+    expect(GUIDED_STEP_NOTE_RULES).toContain('the step whose SPARE TIME it uses');
+    expect(GUIDED_STEP_NOTE_RULES).toContain('belongs on the ten-minute sauté at step 1');
   });
 
   it('confines get-ahead to a genuine lead time', () => {
     // The field earns the panel only when the answer is real: something that takes
     // minutes to come good on its own. A manufactured one sends the cook away from a
     // pan they are supposed to be watching, which is worse than saying nothing.
-    expect(GUIDED_STEP_NOTE_RULES).toContain('must be STARTED EARLIER');
     expect(GUIDED_STEP_NOTE_RULES).toContain('genuine LEAD TIME');
     expect(GUIDED_STEP_NOTE_RULES).toContain('null for almost every step');
   });

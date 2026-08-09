@@ -872,12 +872,13 @@ describe('GuidedCookPage — what the plan says is coming', () => {
     geometry = null;
   });
 
-  /** A plan whose step-2 note carries the two look-ahead lines. */
+  /** A plan whose STEP-1 note carries the look-ahead lines — a look-ahead is
+   *  written on the step it is read from, and describes the step after it. */
   function planWithLookahead(over: Record<string, unknown> = {}) {
     return makePlan({
       stepNotes: [
         {
-          stepId: 'step-2',
+          stepId: 'step-1',
           container: null,
           setup: null,
           cue: null,
@@ -901,6 +902,45 @@ describe('GuidedCookPage — what the plan says is coming', () => {
     // Step 2 of 2 — the step BELOW the one on screen, not the one on it.
     expect(panel).toHaveTextContent('Next · 2');
     expect(panel).not.toHaveTextContent('Soften the onions');
+  });
+
+  it('takes the words from the step on screen, and the number from the one below', () => {
+    // THE BUG, at the page. Both steps are annotated; standing on step 1 the panel
+    // must read step 1's note (which previews step 2) under the heading "Next · 2".
+    // It used to read step 2's note — a correct number over a sentence about a step
+    // further down, which is worse than no panel because it reads as authoritative.
+    mockGuidedPlan._set(
+      makePlan({
+        stepNotes: [
+          {
+            stepId: 'step-1',
+            container: null,
+            setup: null,
+            cue: null,
+            checkIns: [],
+            lookahead: 'the sauce reduces by half',
+            getAhead: null,
+          },
+          {
+            stepId: 'step-2',
+            container: null,
+            setup: null,
+            cue: null,
+            checkIns: [],
+            lookahead: 'a line about a step that does not exist yet',
+            getAhead: null,
+          },
+        ],
+      } as Partial<GuidedPlanDoc>),
+    );
+    geometry = stubStepGeometry({ visible: 'step-1', bottom: 500 });
+    renderGuidedCook();
+    return enterSteps().then(async () => {
+      const panel = await screen.findByTestId('guided-step-lookahead');
+      expect(panel).toHaveTextContent('Next · 2');
+      expect(panel).toHaveTextContent('the sauce reduces by half');
+      expect(panel).not.toHaveTextContent('does not exist yet');
+    });
   });
 
   it('calls out the part of the next step that has to start now', async () => {
@@ -940,8 +980,24 @@ describe('GuidedCookPage — what the plan says is coming', () => {
     expect(screen.queryByTestId('guided-step-lookahead')).toBeNull();
   });
 
-  it('says nothing below the last step', async () => {
-    mockGuidedPlan._set(planWithLookahead());
+  it('says nothing below the last step, even when the plan wrote it a line', async () => {
+    // Not hypothetical: the prompt asks for a look-ahead on every step, and the
+    // first plan written against it put "everything is ready" on the final one.
+    mockGuidedPlan._set(
+      makePlan({
+        stepNotes: [
+          {
+            stepId: 'step-2',
+            container: null,
+            setup: null,
+            cue: null,
+            checkIns: [],
+            lookahead: 'everything is ready',
+            getAhead: null,
+          },
+        ],
+      } as Partial<GuidedPlanDoc>),
+    );
     geometry = stubStepGeometry({ visible: 'step-2', bottom: 500 });
     renderGuidedCook();
     await enterSteps();

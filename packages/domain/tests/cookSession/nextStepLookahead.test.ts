@@ -6,11 +6,12 @@ import type { GuidedStepNoteDoc, StepDoc } from '@salt/domain/schemas';
 // What the plan says about the step BELOW the one on screen (issue #769), in place
 // of plain cook mode's faded first clause of the next step.
 //
-// The whole point of the shape is that a look-ahead is stored on the step it
-// DESCRIBES and read from the step before, so the tests below are mostly about the
-// off-by-one that arrangement makes possible, and about the four ways there is
-// nothing to say — each of which has to come back as one null, because the caller's
-// fallback to the plain fade is a single branch.
+// The shape that matters: a look-ahead is written on the step it is READ FROM and
+// describes the one after it. The first shipping had that backwards — it took the
+// NEXT step's note and numbered it correctly, so the cook saw "Next · 5" over a
+// description of step 6, consistently, the whole way down a recipe. Most of what
+// follows pins that direction, plus the ways there is nothing to say, each of which
+// has to come back as one null because the caller's fallback is a single branch.
 
 function step(id: string, text = `do ${id}`): StepDoc {
   return { id, text, timer: null, note: null };
@@ -57,30 +58,47 @@ function note(stepId: string, over: Partial<GuidedStepNoteDoc> = {}): GuidedStep
 const THREE = recipe([step('s1'), step('s2'), step('s3')]);
 
 describe('nextStepLookahead', () => {
-  it('reads the NEXT step’s note, not the current one’s', () => {
+  it('reads the CURRENT step’s note — that is where a look-ahead is written', () => {
+    // The bug, stated as a test. Standing on s1 with both steps annotated, the
+    // panel must show what s1's note says (which is about s2), never s2's note
+    // (which would be about s3) under a heading numbered 2.
     const result = nextStepLookahead(
       THREE,
       [
-        note('s1', { lookahead: 'this is the step you are on' }),
-        note('s2', { lookahead: 'the sauce reduces by half' }),
+        note('s1', { lookahead: 'the sauce reduces by half' }),
+        note('s2', { lookahead: 'it comes out of the oven' }),
       ],
       's1',
     );
     expect(result?.lookahead).toBe('the sauce reduces by half');
     expect(result?.stepId).toBe('s2');
+    expect(result?.number).toBe(2);
   });
 
-  it('numbers the next step as the cook sees it — 1-based, and its own position', () => {
-    // Step 2 of 3 is on screen, so the preview is of step 3. A test worth having
-    // because the index this is computed from is the CURRENT step's.
-    const result = nextStepLookahead(THREE, [note('s3', { lookahead: 'it rests' })], 's2');
+  it('numbers the step it is DESCRIBING, so the number and the words agree', () => {
+    // The two halves used to come from different steps: a correct number over the
+    // wrong sentence is worse than no panel, because it reads as authoritative.
+    const result = nextStepLookahead(
+      THREE,
+      [note('s2', { lookahead: 'it rests' }), note('s3', { lookahead: 'never shown' })],
+      's2',
+    );
+    expect(result?.number).toBe(3);
+    expect(result?.lookahead).toBe('it rests');
+  });
+
+  it('is 1-based — step 2 on screen previews step 3, not step 2', () => {
+    const result = nextStepLookahead(THREE, [note('s2', { lookahead: 'it rests' })], 's2');
     expect(result?.number).toBe(3);
   });
 
   it('carries the get-ahead line, which is the reason the panel earns its space', () => {
+    // And it comes off the CURRENT step, because it is about the spare time in the
+    // step the cook is standing in — which is what lets it reach further than one
+    // step forward. An oven wanted at s3 can be started during s1.
     const result = nextStepLookahead(
       THREE,
-      [note('s2', { lookahead: 'it goes in the oven', getAhead: 'preheat the oven to 200°C' })],
+      [note('s1', { lookahead: 'it goes in the oven', getAhead: 'preheat the oven to 200°C' })],
       's1',
     );
     expect(result?.getAhead).toBe('preheat the oven to 200°C');
@@ -90,7 +108,7 @@ describe('nextStepLookahead', () => {
   it('answers on a get-ahead ALONE — a bare "start the oven now" is the whole point', () => {
     const result = nextStepLookahead(
       THREE,
-      [note('s2', { getAhead: 'take the steak out of the fridge' })],
+      [note('s1', { getAhead: 'take the steak out of the fridge' })],
       's1',
     );
     expect(result).not.toBeNull();
@@ -102,7 +120,7 @@ describe('nextStepLookahead', () => {
     // Completion is not an input here on purpose: this describes what is physically
     // below the step on screen, and ticking things off in an odd order moves the
     // cook, never the method.
-    const result = nextStepLookahead(THREE, [note('s2', { lookahead: 'it simmers' })], 's1');
+    const result = nextStepLookahead(THREE, [note('s1', { lookahead: 'it simmers' })], 's1');
     expect(result?.stepId).toBe('s2');
   });
 
@@ -115,21 +133,26 @@ describe('nextStepLookahead', () => {
       expect(nextStepLookahead(THREE, [note('s2', { lookahead: 'x' })], 'deleted')).toBeNull();
     });
 
-    it('the last step — there is nothing below it', () => {
-      expect(nextStepLookahead(THREE, [note('s3', { lookahead: 'x' })], 's3')).toBeNull();
+    it('the LAST step, even when the plan wrote it a look-ahead anyway', () => {
+      // Not hypothetical: the prompt asks for one on every step, and a model given
+      // that instruction writes "everything is ready" on the final step. There is
+      // no step for it to be about, so the panel does not appear.
+      expect(
+        nextStepLookahead(THREE, [note('s3', { lookahead: 'everything is ready' })], 's3'),
+      ).toBeNull();
     });
 
-    it('a next step with no note at all', () => {
+    it('a current step with no note at all', () => {
       expect(nextStepLookahead(THREE, [], 's1')).toBeNull();
     });
 
-    it('a next step whose note says everything EXCEPT a look-ahead', () => {
+    it('a note that says everything EXCEPT a look-ahead', () => {
       // The common case for a while: a plan written before #769 has containers,
       // setups and cues and neither of these two fields. It must read as the plain
       // fade rather than as an empty panel.
       const result = nextStepLookahead(
         THREE,
-        [note('s2', { container: 'onion bowl', setup: 'medium-low', cue: 'a gentle sizzle' })],
+        [note('s1', { container: 'onion bowl', setup: 'medium-low', cue: 'a gentle sizzle' })],
         's1',
       );
       expect(result).toBeNull();
@@ -143,15 +166,15 @@ describe('nextStepLookahead', () => {
       // An empty panel covering the next step is strictly worse than the fade it
       // replaced, so blank has to mean the same as null here rather than one line
       // down in the markup.
-      expect(nextStepLookahead(THREE, [note('s2', { lookahead: '   ' })], 's1')).toBeNull();
-      expect(nextStepLookahead(THREE, [note('s2', { lookahead: '' })], 's1')).toBeNull();
+      expect(nextStepLookahead(THREE, [note('s1', { lookahead: '   ' })], 's1')).toBeNull();
+      expect(nextStepLookahead(THREE, [note('s1', { lookahead: '' })], 's1')).toBeNull();
     });
 
     it('a note that predates the fields entirely, carrying neither key', () => {
       // A parsed document always reads back `string | null`. A note arriving from
       // anywhere else — a hand-edited doc, a draft, a fixture — can be missing the
       // keys outright, and `undefined === null` is false.
-      const legacy = { stepId: 's2', container: null, setup: null, cue: null, checkIns: [] };
+      const legacy = { stepId: 's1', container: null, setup: null, cue: null, checkIns: [] };
       expect(nextStepLookahead(THREE, [legacy as GuidedStepNoteDoc], 's1')).toBeNull();
     });
   });
@@ -159,7 +182,7 @@ describe('nextStepLookahead', () => {
   it('drops a blank half of an otherwise real answer', () => {
     const result = nextStepLookahead(
       THREE,
-      [note('s2', { lookahead: '  ', getAhead: 'boil the kettle' })],
+      [note('s1', { lookahead: '  ', getAhead: 'boil the kettle' })],
       's1',
     );
     expect(result?.lookahead).toBeNull();
@@ -167,7 +190,7 @@ describe('nextStepLookahead', () => {
   });
 
   it('is pure — it reads the notes and mutates nothing', () => {
-    const notes = [note('s2', { lookahead: 'it simmers', getAhead: 'boil the kettle' })];
+    const notes = [note('s1', { lookahead: 'it simmers', getAhead: 'boil the kettle' })];
     const before = JSON.parse(JSON.stringify(notes)) as unknown;
     nextStepLookahead(THREE, notes, 's1');
     expect(notes).toEqual(before);

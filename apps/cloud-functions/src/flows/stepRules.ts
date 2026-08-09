@@ -79,13 +79,22 @@ export const FIRST_USE_ORDINAL_RULE = `firstUsedInStepOrdinal (0-based index int
 // constants have to AGREE for the same reason — an illustration that quietly adds
 // an article is the drift, taught by the prompt itself. Pinned by stepRules.test.ts.
 //
-// Two of the step-note fields are read a step EARLY (issue #769): `lookahead` and
-// `getAhead` are shown while the cook is still on the PREVIOUS step, where plain
-// cook mode fades in the next step's raw opening clause. They are written onto the
-// step they describe, so the prompt never has to reason about ordering — which is
-// also why `lookahead` is the one step-note field asked for on every entry rather
-// than only where the recipe left something unsaid: it is not filling a gap, it is
-// the step announcing itself.
+// Two of the step-note fields look FORWARD (issue #769): `lookahead` and `getAhead`
+// are shown at the bottom of the screen for the step they are written on, where
+// plain cook mode fades in the next step's raw opening clause. They are written on
+// the step the cook is STANDING ON and describe what comes after it.
+//
+// That direction is stated three times below because it shipped wrong once. The
+// reader originally took the NEXT step's note and numbered it correctly, so the
+// cook was shown "Next · 5" over a description of step 6 — consistently, the whole
+// way down a recipe. The model had been authoring them the other way all along,
+// and the model was right: `getAhead` is about the SPARE TIME IN THE CURRENT STEP,
+// and what it gets ahead of may be several steps away, which the other arrangement
+// could never express. Do not "tidy" the direction back.
+//
+// `lookahead` is the one step-note field asked for on every entry rather than only
+// where the recipe left something unsaid: it is not filling a gap, it is the step
+// handing over to the next one.
 //
 // Both slot in as bullets of the plan prompt's field list, so they start with `- `
 // and use the same two-space indentation as STEP_RULES.
@@ -101,5 +110,5 @@ export const GUIDED_STEP_NOTE_RULES = `- stepNotes: what to add UNDERNEATH the r
   setup: how the station is set, when the recipe assumes it — "small hob burner, medium-low", "oven shelf in the middle", "pan wide enough that the pieces don't touch". null when there is nothing to set.
   cue: the SENSORY test that says it is going right — what the cook should hear, see, smell or feel ("you should hear a very gentle sizzle, not a crackle"; "the edges should look lacy and set before you turn it"). null WHENEVER THERE IS NO GENUINE TEST. A made-up cue is worse than no cue: it is a confident instruction to wait for something that will never happen. Most steps have no cue; do not manufacture one to fill the field.
   checkIns: extra reminders partway through a step, ONLY on a step that already carries a timer, and only when something must actually be done mid-way ("stir it, or the bottom will catch"). atMinutes is minutes from the start of that step's timer and MUST BE LESS than the timer's own duration — a check-in at or after the end is the end, and the timer already covers it. Empty for almost every step.
-  lookahead: ONE SHORT CLAUSE saying what this step does, shown to the cook while they are still on the PREVIOUS step ("the sauce reduces by half", "everything goes in the oven"). Write it for someone who has not read this step yet: no quantities, no method detail, no imperative — it is a heads-up, not an instruction, and the step's own words follow a moment later. Under ten words. Do NOT copy the step text: a preview that repeats the step in full is the step, and it is being read at the wrong time. Fill this in for EVERY step you write an entry for — unlike the fields above it is not reserved for the exceptional case.
-  getAhead: the part of this step that must be STARTED EARLIER, during the previous step, or the cook will be waiting on it ("preheat the oven to 200°C", "take the steak out of the fridge to come to room temperature"). Only for a genuine LEAD TIME — something that takes minutes to come good on its own while the cook does something else. null for almost every step: a step you can simply begin when you reach it has nothing to get ahead of, and a manufactured one sends the cook away from the pan they are watching. Never restate the whole step here.`;
+  lookahead: ONE SHORT CLAUSE saying what the NEXT step does, shown at the bottom of THIS step's screen ("the sauce reduces by half", "everything goes in the oven"). READ THE DIRECTION CAREFULLY: this field is written on the step the cook is standing on and describes the one AFTER it, so the entry for step 3 previews step 4. Write it for someone who has not read that step yet: no quantities, no method detail, no imperative — it is a heads-up, not an instruction, and that step's own words follow a moment later. Under ten words. Do NOT copy the next step's text: a preview that repeats a step in full is the step, delivered early. Fill this in for EVERY step that HAS a step after it — unlike the fields above it is not reserved for the exceptional case. null on the LAST step: there is nothing after it, and "everything is ready" is not a preview, it is padding.
+  getAhead: something from a LATER step that should be started NOW, during this one, or the cook will be left waiting on it ("preheat the oven to 200°C", "take the steak out of the fridge to come to room temperature"). Written on the step whose SPARE TIME it uses, which is not always the step before the one that needs it — an oven wanted at step 5 belongs on the ten-minute sauté at step 1, not on step 4. Only for a genuine LEAD TIME: something that takes minutes to come good on its own while the cook does something else. null for almost every step — a step with nothing waiting on it has nothing to get ahead of, and a manufactured one sends the cook away from the pan they are watching. Never restate a whole step here.`;
