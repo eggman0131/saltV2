@@ -1514,7 +1514,9 @@
                     <!-- THE RECIPE'S OWN WORDS, verbatim and first. The plan adds
                        lines underneath; it never overrides, rewords or reorders
                        one. -->
-                    <p class="text-xl leading-relaxed sm:text-2xl">{step.text}</p>
+                    <p class="text-xl font-semibold leading-relaxed tracking-tight sm:text-2xl">
+                      {step.text}
+                    </p>
                   </div>
 
                   <!-- The recipe's own step note, still the recipe speaking, so it
@@ -1548,17 +1550,21 @@
                      "everything guided mode adds under this step" rather than
                      "everything the plan authored". -->
                   {#if loose.length > 0 || (note && (note.container || note.setup || note.cue || checkIns.length > 0))}
-                    <ul class="flex flex-col gap-3" data-testid="guided-step-notes">
+                    <ul
+                      class="flex flex-col gap-2.5 border-l-2 border-secondary/40 pl-4"
+                      data-testid="guided-step-notes"
+                    >
                       {#if note?.container}
                         <li class="flex flex-col gap-2" data-testid="guided-step-note-container">
                           <span class="flex items-start gap-3">
-                            <Icon
-                              name="Soup"
-                              size={22}
-                              class="mt-1 shrink-0 text-muted-foreground"
-                              ariaLabel="Use"
-                            />
-                            <span class="whitespace-pre-wrap text-lg">{note.container}</span>
+                            <span
+                              class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-secondary/10 text-secondary"
+                            >
+                              <Icon name="Soup" size={17} ariaLabel="Use" />
+                            </span>
+                            <span class="whitespace-pre-wrap text-base text-muted-foreground"
+                              >{note.container}</span
+                            >
                           </span>
                           <!-- What is actually in it. Nested UNDER the bowl's name
                              rather than beside it: the name is the handle the cook
@@ -1567,7 +1573,7 @@
                              fills this name, in which case the row above is all
                              there is — the pre-#761 rendering, unchanged. -->
                           {#if containerContents.length > 0}
-                            <ul class="ml-9 flex flex-col gap-1.5">
+                            <ul class="ml-10 flex flex-col gap-1.5">
                               {#each containerContents as ingredient (ingredient.id)}
                                 <li
                                   class="flex items-center gap-2"
@@ -1596,56 +1602,67 @@
                          not a warning. -->
                       {#each loose as ingredient (ingredient.id)}
                         <li class="flex items-center gap-3" data-testid="guided-step-loose">
-                          <Icon
-                            name="Plus"
-                            size={22}
-                            class="shrink-0 text-muted-foreground"
-                            ariaLabel="Also"
-                          />
+                          <span
+                            class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-secondary/10 text-secondary"
+                          >
+                            <Icon name="Plus" size={17} ariaLabel="Also" />
+                          </span>
                           <CanonIcon
                             thumbnail={thumbnailFor(ingredient.canonId)}
                             name={ingredientLabel(ingredient)}
                             version={iconVersionFor(ingredient.canonId)}
                             size={32}
                           />
-                          <span class="min-w-0 flex-1 text-lg">
+                          <span class="min-w-0 flex-1 text-base">
                             <IngredientText {ingredient} />
                           </span>
                         </li>
                       {/each}
                       {#if note?.setup}
                         <li class="flex items-start gap-3" data-testid="guided-step-note-setup">
-                          <Icon
-                            name="Flame"
-                            size={22}
-                            class="mt-1 shrink-0 text-muted-foreground"
-                            ariaLabel="Setup"
-                          />
-                          <span class="whitespace-pre-wrap text-lg">{note.setup}</span>
+                          <span
+                            class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-tertiary-variant/10 text-tertiary-variant"
+                          >
+                            <Icon name="Flame" size={17} ariaLabel="Setup" />
+                          </span>
+                          <span class="whitespace-pre-wrap text-base text-muted-foreground"
+                            >{note.setup}</span
+                          >
                         </li>
                       {/if}
                       {#if note?.cue}
                         <li class="flex items-start gap-3" data-testid="guided-step-note-cue">
-                          <Icon
-                            name="Ear"
-                            size={22}
-                            class="mt-1 shrink-0 text-muted-foreground"
-                            ariaLabel="Cue"
-                          />
-                          <span class="whitespace-pre-wrap text-lg">{note.cue}</span>
+                          <span
+                            class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"
+                          >
+                            <Icon name="Ear" size={17} ariaLabel="Cue" />
+                          </span>
+                          <span class="whitespace-pre-wrap text-base text-muted-foreground"
+                            >{note.cue}</span
+                          >
                         </li>
                       {/if}
                       {#each checkIns as checkIn, ci (ci)}
                         <li class="flex items-start gap-3" data-testid="guided-step-check-in">
-                          <Icon
-                            name="Bell"
-                            size={22}
-                            class="mt-1 shrink-0 text-muted-foreground"
-                            ariaLabel="Check in"
-                          />
-                          <span class="whitespace-pre-wrap text-lg">
-                            <span class="text-muted-foreground">{checkIn.atMinutes} min in</span> —
-                            {checkIn.text}
+                          <span
+                            class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-secondary/10 text-secondary"
+                          >
+                            <Icon name="Bell" size={17} ariaLabel="Check in" />
+                          </span>
+                          <!-- `whitespace-pre-wrap` sits on the AUTHORED TEXT alone,
+                             never on a span that also holds markup. This row is the
+                             only note built from more than one interpolation, and
+                             with the class on the outer span the source's own newline
+                             and indentation between "—" and the text were preserved
+                             verbatim — a line break and a 28-space indent on screen.
+                             The other rows are a single `{...}`, so nothing of the
+                             source can leak into them; this one had to be split. -->
+                          <span class="text-base text-muted-foreground">
+                            <span class="font-medium text-foreground"
+                              >{checkIn.atMinutes} min in</span
+                            >
+                            —
+                            <span class="whitespace-pre-wrap">{checkIn.text}</span>
                           </span>
                         </li>
                       {/each}

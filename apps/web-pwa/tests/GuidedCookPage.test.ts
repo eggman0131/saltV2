@@ -766,6 +766,22 @@ describe('GuidedCookPage — the steps carry the plan-s notes', () => {
     expect(rows[1]).toHaveTextContent("Check it isn't drying out");
   });
 
+  it('reads as one line — no source indentation leaking through pre-wrap', () => {
+    // A check-in is the only note built from more than ONE interpolation, so it is
+    // the only one where the component's own source whitespace sits inside the span.
+    // With `whitespace-pre-wrap` on that span it was rendered verbatim: a line break
+    // and a 28-space indent between the dash and the text, on screen.
+    //
+    // Asserted on RAW textContent. `toHaveTextContent` collapses whitespace before
+    // comparing, so every assertion above this one passed throughout the bug.
+    renderGuidedCook();
+    return enterSteps().then(() => {
+      const raw = screen.getAllByTestId('guided-step-check-in')[0]!.textContent ?? '';
+      expect(raw).not.toMatch(/\n\s{4,}/);
+      expect(raw.replace(/\s+/g, ' ').trim()).toBe('5 min in — Give it a stir');
+    });
+  });
+
   it('shows no check-in on a step whose timer the recipe has since dropped', async () => {
     // Nothing to hang them off, so they are neither shown nor armed — a reminder
     // promised and never delivered is worse than one never promised.
