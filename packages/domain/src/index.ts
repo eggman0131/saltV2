@@ -293,12 +293,18 @@ export type { WeatherIconId } from './weather/index.js';
 // completion, timers, clock formatting (issue #556). Immutable producers, and
 // every timestamp is injected (never read from a clock). The recipe-drift
 // comparison it used to own now lives in the recipe module (`hasRecipeChanged`),
-// which the guided plan (#751) shares.
+// which the guided plan (#751) shares. The four container/amount queries below
+// are what keeps guided mode from ever showing less than plain cook mode (#761),
+// and `guidedContainerProblems` is that same join read backwards, so the editor
+// can warn about a name that will not resolve before anyone cooks from it.
+// `containerGetOutList` reads it a third way — the vessels to fetch before any
+// chopping starts, which is the Get-out stage's whole content.
 export {
   makeFreshSession,
   withStepDone,
   withIngredientChecked,
   withPrepChecked,
+  withContainerChecked,
   withAllIngredientsChecked,
   withGroupChecked,
   withTimerStarted,
@@ -311,10 +317,24 @@ export {
   miseProgress,
   guidedMiseProgress,
   unpreppedIngredients,
+  normaliseContainerName,
+  prepEntryForContainer,
+  prepEntryIngredients,
+  looseIngredientsForStep,
+  guidedContainerProblems,
+  containerGetOutList,
+  guidedGetOutProgress,
   formatClock,
   timerProgress,
 } from './cookSession/index.js';
-export type { MakeFreshSessionArgs, MiseProgress } from './cookSession/index.js';
+export type {
+  MakeFreshSessionArgs,
+  MiseProgress,
+  GuidedContainerProblems,
+  DuplicateContainerName,
+  DanglingContainerName,
+  ContainerGetOutRow,
+} from './cookSession/index.js';
 
 // Shopping-day module (issue #629) — pure helpers over `shoppingDays/{date}`:
 // the planner's pre-shop shading predicate, the reminder's "tomorrow in zone"

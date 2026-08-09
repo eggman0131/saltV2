@@ -14,6 +14,12 @@ import type { GuidedPlanDoc } from '@salt/domain/schemas';
 //     reconciled by hand escapes the stale banner without a destructive re-run;
 //   • a note whose step no longer exists renders as NOTHING — never an error, and
 //     never against the wrong step.
+//
+// Plus, from issue #761: a container name used twice, or wanted by a step and
+// filled by no job, is WARNED about and never blocked. The name is the plan's only
+// join between its halves, so both faults cost a step its contents — but a plan
+// carrying either still cooks, and a save that refuses would strand the hand-edits
+// made alongside it. `hasCheckInError` remains the one deliberately blocking check.
 
 const { mockRecipes, mockIsLoadingRecipes, mockPlan } = vi.hoisted(() => {
   function makeStore<T>(initial: T) {
@@ -124,14 +130,23 @@ function makePlan(overrides: Partial<GuidedPlanDoc> = {}): GuidedPlanDoc {
     schemaVersion: 1,
     recipeId: RECIPE_ID,
     recipeUpdatedAtAtSave: WRITTEN_AT,
+    // A CORRECT plan: two bowls named apart, and the note copying one of those
+    // names character for character. The container name is the plan's only join
+    // between its halves (issue #761), so a fixture that shares a name or adds an
+    // article would model a plan whose steps cannot show their contents.
     prep: [
-      { id: 'prep-1', text: 'Dice the onion', container: 'small bowl', ingredientIds: ['ing-1'] },
-      { id: 'prep-2', text: 'Dice the carrots', container: 'small bowl', ingredientIds: ['ing-2'] },
+      { id: 'prep-1', text: 'Dice the onion', container: 'onion bowl', ingredientIds: ['ing-1'] },
+      {
+        id: 'prep-2',
+        text: 'Dice the carrots',
+        container: 'carrot bowl',
+        ingredientIds: ['ing-2'],
+      },
     ],
     stepNotes: [
       {
         stepId: 'step-1',
-        container: 'the small bowl',
+        container: 'onion bowl',
         setup: 'small hob burner, medium-low',
         cue: 'a very gentle sizzle',
         checkIns: [],
@@ -251,7 +266,7 @@ describe('GuidedPlanPage — the unassigned-ingredient warning', () => {
           {
             id: 'prep-1',
             text: 'Dice the onion',
-            container: 'small bowl',
+            container: 'onion bowl',
             ingredientIds: ['ing-1'],
           },
         ],
@@ -270,7 +285,7 @@ describe('GuidedPlanPage — the unassigned-ingredient warning', () => {
           {
             id: 'prep-1',
             text: 'Dice the onion',
-            container: 'small bowl',
+            container: 'onion bowl',
             ingredientIds: ['ing-1'],
           },
         ],
@@ -288,6 +303,199 @@ describe('GuidedPlanPage — the unassigned-ingredient warning', () => {
       expect(getByTestId('guided-plan-unassigned-warning').textContent).toContain('1 onion'),
     );
     expect(queryByTestId('guided-plan-prep-ingredient-chip')).toBeNull();
+  });
+});
+
+describe('GuidedPlanPage — the duplicate-container warning', () => {
+  // The container name is the plan's only join between its two halves (issue #761),
+  // and Phase 1 made it load-bearing: a step reaching for a name two jobs used gets
+  // the FIRST one's contents, silently and possibly wrongly. Warned about, never
+  // blocked — the plan still cooks.
+  it('stays quiet when every bowl is named apart', async () => {
+    const { getByTestId, queryByTestId } = renderPage();
+    mockPlan._set(makePlan());
+
+    await waitFor(() => expect(getByTestId('guided-plan-editor')).toBeTruthy());
+    expect(queryByTestId('guided-plan-duplicate-container-warning')).toBeNull();
+  });
+
+  it('warns when two prep steps set aside into the same-named bowl', async () => {
+    const { getByTestId } = renderPage();
+    mockPlan._set(
+      makePlan({
+        prep: [
+          {
+            id: 'prep-1',
+            text: 'Dice the onion',
+            container: 'small bowl',
+            ingredientIds: ['ing-1'],
+          },
+          {
+            id: 'prep-2',
+            text: 'Dice the carrots',
+            container: 'small bowl',
+            ingredientIds: ['ing-2'],
+          },
+        ],
+        stepNotes: [],
+      }),
+    );
+
+    const warning = await waitFor(() => getByTestId('guided-plan-duplicate-container-warning'));
+    // Actionable: it names the clash and points at the rows holding it.
+    expect(warning.textContent).toContain('small bowl');
+    expect(warning.textContent).toContain('1, 2');
+  });
+
+  it('clears once one of the two bowls is renamed', async () => {
+    const { getByTestId, getAllByTestId, queryByTestId } = renderPage();
+    mockPlan._set(
+      makePlan({
+        prep: [
+          {
+            id: 'prep-1',
+            text: 'Dice the onion',
+            container: 'small bowl',
+            ingredientIds: ['ing-1'],
+          },
+          {
+            id: 'prep-2',
+            text: 'Dice the carrots',
+            container: 'small bowl',
+            ingredientIds: ['ing-2'],
+          },
+        ],
+        stepNotes: [],
+      }),
+    );
+    await waitFor(() =>
+      expect(getByTestId('guided-plan-duplicate-container-warning')).toBeTruthy(),
+    );
+
+    // Off the LIVE draft, so it clears as the name is typed — no save needed.
+    const containers = getAllByTestId('guided-plan-prep-container') as HTMLInputElement[];
+    await fireEvent.input(containers[1]!, { target: { value: 'carrot bowl' } });
+
+    await waitFor(() =>
+      expect(queryByTestId('guided-plan-duplicate-container-warning')).toBeNull(),
+    );
+  });
+
+  it('still lets the plan be saved while the warning shows', async () => {
+    // A warning is a warning. Unlike an unfirable check-in, a shared bowl name costs
+    // one line of guidance from a plan that is otherwise correct — refusing the save
+    // would strand every hand-edit made alongside it.
+    const { getByTestId } = renderPage();
+    mockPlan._set(
+      makePlan({
+        prep: [
+          {
+            id: 'prep-1',
+            text: 'Dice the onion',
+            container: 'small bowl',
+            ingredientIds: ['ing-1'],
+          },
+          {
+            id: 'prep-2',
+            text: 'Dice the carrots',
+            container: 'small bowl',
+            ingredientIds: ['ing-2'],
+          },
+        ],
+        stepNotes: [],
+      }),
+    );
+    await waitFor(() =>
+      expect(getByTestId('guided-plan-duplicate-container-warning')).toBeTruthy(),
+    );
+
+    const save = getByTestId('guided-plan-save-button') as HTMLButtonElement;
+    expect(save.disabled).toBe(false);
+    await fireEvent.click(save);
+    await waitFor(() => expect(saveGuidedPlan).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe('GuidedPlanPage — the dangling-container warning', () => {
+  it('stays quiet when the step copies a prep step-s container name', async () => {
+    const { getByTestId, queryByTestId } = renderPage();
+    mockPlan._set(makePlan());
+
+    await waitFor(() => expect(getByTestId('guided-plan-editor')).toBeTruthy());
+    expect(queryByTestId('guided-plan-dangling-container-warning')).toBeNull();
+  });
+
+  it('warns when a step wants a container no prep step fills', async () => {
+    // Including the near-miss the old prompt example taught: "the onion bowl" is a
+    // word away from "onion bowl" and the matcher deliberately will not bridge it.
+    const { getByTestId } = renderPage();
+    mockPlan._set(
+      makePlan({
+        stepNotes: [
+          {
+            stepId: 'step-2',
+            container: 'the onion bowl',
+            setup: null,
+            cue: null,
+            checkIns: [],
+          },
+        ],
+      }),
+    );
+
+    const warning = await waitFor(() => getByTestId('guided-plan-dangling-container-warning'));
+    expect(warning.textContent).toContain('the onion bowl');
+    expect(warning.textContent).toContain('Step 2');
+  });
+
+  it('clears when the name is corrected to one a prep step fills', async () => {
+    const { getByTestId, getAllByTestId, queryByTestId } = renderPage();
+    mockPlan._set(
+      makePlan({
+        stepNotes: [
+          { stepId: 'step-2', container: 'the onion bowl', setup: null, cue: null, checkIns: [] },
+        ],
+      }),
+    );
+    await waitFor(() => expect(getByTestId('guided-plan-dangling-container-warning')).toBeTruthy());
+
+    const wants = getAllByTestId('guided-plan-note-container') as HTMLInputElement[];
+    await fireEvent.input(wants[1]!, { target: { value: 'onion bowl' } });
+
+    await waitFor(() => expect(queryByTestId('guided-plan-dangling-container-warning')).toBeNull());
+  });
+
+  it('says nothing about a note whose step is gone — it cannot be fixed here', async () => {
+    // Same reasoning as the check-in gate: a row the editor does not render is a row
+    // nobody can act on, so warning about it would be a dead end.
+    const { getByTestId, queryByTestId } = renderPage();
+    mockPlan._set(
+      makePlan({
+        stepNotes: [
+          { stepId: 'step-deleted', container: 'the tureen', setup: null, cue: null, checkIns: [] },
+        ],
+      }),
+    );
+
+    await waitFor(() => expect(getByTestId('guided-plan-editor')).toBeTruthy());
+    expect(queryByTestId('guided-plan-dangling-container-warning')).toBeNull();
+  });
+
+  it('still lets the plan be saved while the warning shows', async () => {
+    const { getByTestId } = renderPage();
+    mockPlan._set(
+      makePlan({
+        stepNotes: [
+          { stepId: 'step-2', container: 'the tureen', setup: null, cue: null, checkIns: [] },
+        ],
+      }),
+    );
+    await waitFor(() => expect(getByTestId('guided-plan-dangling-container-warning')).toBeTruthy());
+
+    const save = getByTestId('guided-plan-save-button') as HTMLButtonElement;
+    expect(save.disabled).toBe(false);
+    await fireEvent.click(save);
+    await waitFor(() => expect(saveGuidedPlan).toHaveBeenCalledTimes(1));
   });
 });
 

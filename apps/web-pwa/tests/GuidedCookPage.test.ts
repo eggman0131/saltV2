@@ -17,12 +17,13 @@ import type {
 // measures every box as 0, so `visibleStepId` never resolves from a probe and the
 // deck's stops are always `[0]` — the tests are written to work WITH that.
 //
-// What this file is FOR, over and above the cook-mode suite: the two things that
-// differ. The prep list in place of the ingredient checklist (its own tick field,
-// its own progress, and the "Also get out" remainder that keeps plan drift from
-// hiding an ingredient), and the plan's notes under each step's unmodified words.
-// Everything shared with plain cook mode — the pager, the timers, the wake lock,
-// the bootstrap — is covered there and is the same code path.
+// What this file is FOR, over and above the cook-mode suite: the things that
+// differ. The Get-out stage ahead of any knife work (issue #761), the prep list in
+// place of the ingredient checklist (its own tick field, its own progress, and the
+// "Also get out" remainder that keeps plan drift from hiding an ingredient), and
+// the plan's notes under each step's unmodified words. Everything shared with plain
+// cook mode — the pager, the timers, the wake lock, the bootstrap — is covered
+// there and is the same code path.
 
 const {
   mockAuth,
@@ -197,6 +198,7 @@ function makeCookSession(over: Partial<CookSessionDoc> = {}): CookSessionDoc {
     recipeUpdatedAtAtStart: RECIPE_UPDATED_AT,
     checkedIngredientIds: [],
     checkedPrepIds: [],
+    checkedContainerNames: [],
     completedStepIds: [],
     activeTimers: [],
     createdAt: '2026-08-01T11:00:00.000Z',
@@ -324,12 +326,19 @@ async function enterSteps() {
   await screen.findByTestId('cook-steps-view');
 }
 
+/** The one container the stock plan names, as the get-out list keys it. */
+const STOCK_VESSEL = 'small bowl';
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockAuth.user = { uid: UID };
   mockRecipes._set([makeRecipe()]);
   mockIsLoadingRecipes._set(false);
-  mockCookSession._set(makeCookSession());
+  // The stock session is a cook who has ALREADY fetched their vessels, so every
+  // suite below opens where it was written — on the prep list. Get out is a stage
+  // ahead of prep (issue #761) and has its own suite, which starts from an
+  // untouched session.
+  mockCookSession._set(makeCookSession({ checkedContainerNames: [STOCK_VESSEL] }));
   mockCookSessionEnded._set(false);
   mockIsLoadingCookSession._set(false);
   mockGuidedPlan._set(makePlan());
@@ -387,6 +396,169 @@ describe('GuidedCookPage — the plan it cooks from', () => {
 
     expect(vi.mocked(push)).toHaveBeenCalledWith(`/recipes/${RECIPE_ID}`);
     expect(vi.mocked(removeCookSession)).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Get out (issue #761, Phase 3) ─────────────────────────────────────────────
+//
+// The stage before the prep list: every vessel the plan names, fetched before the
+// first cut rather than discovered halfway through it. Everything below starts
+// from an UNTOUCHED session — a cook opening this recipe for the first time —
+// because that is the only state the stage is the opening screen for.
+
+describe('GuidedCookPage — Get out', () => {
+  /** A plan whose jobs name four vessels, one of them twice. */
+  function benchPlan(): GuidedPlanDoc {
+    return makePlan({
+      prep: [
+        {
+          id: 'prep-1',
+          text: 'Dice the onions',
+          container: 'onion bowl',
+          ingredientIds: ['ing-1'],
+        },
+        { id: 'prep-2', text: 'Measure the sugar', container: 'sugar bowl', ingredientIds: [] },
+        { id: 'prep-3', text: 'Crush the garlic', container: 'Garlic Bowl', ingredientIds: [] },
+        { id: 'prep-4', text: 'Mix the stock', container: 'jug', ingredientIds: ['ing-2'] },
+        // The same bowl, typed again — a hand-edit, or an older plan.
+        {
+          id: 'prep-5',
+          text: 'Chop the parsley',
+          container: '  garlic   bowl ',
+          ingredientIds: [],
+        },
+      ],
+    });
+  }
+
+  function freshCook() {
+    mockCookSession._set(makeCookSession());
+    return renderGuidedCook();
+  }
+
+  it('opens on Get out, before any prep job is visible', () => {
+    freshCook();
+
+    expect(screen.getByTestId('guided-get-out-list')).toBeInTheDocument();
+    expect(screen.queryByTestId('guided-prep-row')).toBeNull();
+    expect(screen.queryByTestId('cook-steps-view')).toBeNull();
+  });
+
+  it('gives every container the plan names a row — so counting them is the answer', () => {
+    mockGuidedPlan._set(benchPlan());
+    freshCook();
+
+    const rows = screen.getAllByTestId('guided-get-out-row');
+    expect(rows).toHaveLength(4);
+    expect(rows.map((r) => r.textContent?.trim())).toEqual([
+      'onion bowl',
+      'sugar bowl',
+      // Two jobs share this one, so the row says how many bowls it stands for
+      // rather than quietly counting them as one.
+      '2 × Garlic Bowl',
+      'jug',
+    ]);
+    expect(screen.getByTestId('guided-get-out-progress')).toHaveTextContent('0/4');
+  });
+
+  it('records a tick by the container-s normalised name, and nothing else', async () => {
+    mockGuidedPlan._set(benchPlan());
+    freshCook();
+
+    await userEvent.click(screen.getAllByTestId('guided-get-out-row')[2]!);
+    await waitFor(() => expect(lastPersisted().checkedContainerNames).toEqual(['garlic bowl']));
+    // The other two tick lists are different facts and must not have moved.
+    expect(lastPersisted().checkedPrepIds).toEqual([]);
+    expect(lastPersisted().checkedIngredientIds).toEqual([]);
+  });
+
+  it('moves on to prep when the cook says everything is out', async () => {
+    freshCook();
+
+    await userEvent.click(screen.getByTestId('guided-get-out-next'));
+    expect(await screen.findByTestId('guided-prep-list')).toBeInTheDocument();
+    expect(screen.queryByTestId('guided-get-out-list')).toBeNull();
+    // And prep can go back to the bench, the way the steps can go back to prep.
+    await userEvent.click(screen.getByTestId('guided-get-out-back'));
+    expect(await screen.findByTestId('guided-get-out-list')).toBeInTheDocument();
+  });
+
+  it('never advances on its own — the last tick is not the confirmation', async () => {
+    freshCook();
+
+    await userEvent.click(screen.getAllByTestId('guided-get-out-row')[0]!);
+    await waitFor(() =>
+      expect(screen.getByTestId('guided-get-out-progress')).toHaveTextContent('1/1'),
+    );
+    expect(screen.getByTestId('guided-get-out-list')).toBeInTheDocument();
+  });
+
+  it('restores the ticks on return, alongside everything else', () => {
+    // Half-gathered: the cook was interrupted at the cupboard.
+    mockGuidedPlan._set(benchPlan());
+    mockCookSession._set(makeCookSession({ checkedContainerNames: ['sugar bowl', 'jug'] }));
+    renderGuidedCook();
+
+    const rows = screen.getAllByTestId('guided-get-out-row');
+    expect(rows.map((r) => r.getAttribute('aria-pressed'))).toEqual([
+      'false',
+      'true',
+      'false',
+      'true',
+    ]);
+    expect(screen.getByTestId('guided-get-out-progress')).toHaveTextContent('2/4');
+  });
+
+  it('is not confused by a tick left behind for a bowl the plan has renamed', () => {
+    mockCookSession._set(makeCookSession({ checkedContainerNames: ['the tureen'] }));
+    renderGuidedCook();
+
+    // Counted over the rows on screen, so a stale name cannot make an unfinished
+    // bench read as gathered — nor push the cook past a stage they never finished.
+    expect(screen.getByTestId('guided-get-out-progress')).toHaveTextContent('0/1');
+    expect(screen.getByTestId('guided-get-out-list')).toBeInTheDocument();
+  });
+
+  it('skips the stage entirely when the plan names no containers', () => {
+    mockGuidedPlan._set(
+      makePlan({
+        prep: [
+          { id: 'prep-1', text: 'Open the tin', container: null, ingredientIds: ['ing-2'] },
+          { id: 'prep-2', text: 'Take the butter out', container: '   ', ingredientIds: [] },
+        ],
+      }),
+    );
+    freshCook();
+
+    // Not an empty screen, and not a screen to dismiss: the cook opens on prep.
+    expect(screen.queryByTestId('guided-get-out-list')).toBeNull();
+    expect(screen.getByTestId('guided-prep-list')).toBeInTheDocument();
+    // And there is nothing to go back to.
+    expect(screen.queryByTestId('guided-get-out-back')).toBeNull();
+  });
+
+  it('does not send a cook already past the bench back to it', () => {
+    // Nothing ticked here, but the chopping has started — the bowls are plainly
+    // already out, and re-ticking them is not work.
+    mockCookSession._set(makeCookSession({ checkedPrepIds: ['prep-1'] }));
+    renderGuidedCook();
+
+    expect(screen.queryByTestId('guided-get-out-list')).toBeNull();
+    expect(screen.getByTestId('guided-prep-list')).toBeInTheDocument();
+  });
+
+  it('resumes straight into the steps, past both earlier stages', () => {
+    mockCookSession._set(makeCookSession({ completedStepIds: ['step-1'] }));
+    renderGuidedCook();
+
+    expect(screen.getByTestId('cook-steps-view')).toBeInTheDocument();
+    expect(screen.queryByTestId('guided-get-out-list')).toBeNull();
+  });
+
+  it('has no accessibility violations on the get-out list', async () => {
+    const { container } = freshCook();
+    await screen.findByTestId('guided-get-out-list');
+    expect(await axe(container)).toHaveNoViolations();
   });
 });
 
@@ -552,8 +724,15 @@ describe('GuidedCookPage — the steps carry the plan-s notes', () => {
     );
     renderGuidedCook();
     await enterSteps();
-    // Step 2 is annotated by nothing at all, so it renders no block whatsoever.
-    expect(screen.getAllByTestId('guided-step-notes')).toHaveLength(1);
+    // Asserted on the PLAN-AUTHORED rows, not on the `guided-step-notes` <ul>.
+    // Since #761 that list also carries the loose ingredients a step introduces
+    // from no bowl, which exist whether or not the plan said anything — so its
+    // presence no longer means "the plan annotated this step". Exactly one step is
+    // annotated, and none of the other three row kinds appears anywhere.
+    expect(screen.getAllByTestId('guided-step-note-container')).toHaveLength(1);
+    expect(screen.queryByTestId('guided-step-note-setup')).toBeNull();
+    expect(screen.queryByTestId('guided-step-note-cue')).toBeNull();
+    expect(screen.queryByTestId('guided-step-check-in')).toBeNull();
   });
 
   it('omits a line the plan left null rather than inventing one', async () => {
@@ -589,7 +768,12 @@ describe('GuidedCookPage — the steps carry the plan-s notes', () => {
     renderGuidedCook();
     await enterSteps();
 
-    expect(screen.queryByTestId('guided-step-notes')).toBeNull();
+    // Asserted on the plan-authored rows rather than on the `guided-step-notes`
+    // <ul>: since #761 that list is "what guided mode adds under this step", and
+    // the loose ingredients in it come from the RECIPE, not the plan. What this
+    // test is about is that the orphaned note contributes NOTHING — no row, no
+    // text, and no re-attachment to a neighbouring step.
+    expect(screen.queryByTestId('guided-step-note-container')).toBeNull();
     expect(screen.queryByText('A bowl that is not there')).toBeNull();
   });
 
@@ -642,6 +826,144 @@ describe('GuidedCookPage — the steps carry the plan-s notes', () => {
     // cook mode writes it. (Its check-ins ride alongside — see the suites below.)
     await waitFor(() => expect(mainTimer()).toBeDefined());
     expect(mainTimer()).toMatchObject({ id: 'step-2', stepId: 'step-2', durationMinutes: 20 });
+  });
+});
+
+// ─── Amounts (issue #761, Phase 1) ─────────────────────────────────────────────
+//
+// The governing rule: guided mode never shows less than plain cook mode. Plain
+// mode prints an amount on the mise checklist AND again beside the step that first
+// uses it; guided mode printed it nowhere. Everything below asserts the amount is
+// now on screen — under the prep job that prepares it, inside the bowl a step
+// names, or beside a step that uses it out of no bowl at all.
+
+describe('GuidedCookPage — a prep job says how much it prepares', () => {
+  it('lists the recipe amounts under the job-s own words', () => {
+    renderGuidedCook();
+
+    const lines = screen.getAllByTestId('guided-prep-ingredient');
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toHaveTextContent('2 onions');
+    expect(lines[1]).toHaveTextContent('400g tinned tomatoes');
+    // The job's sentence is untouched — the amount is added, never spliced in.
+    expect(screen.getAllByTestId('guided-prep-row')[0]).toHaveTextContent(
+      'Dice the onions into 5mm pieces',
+    );
+  });
+
+  it('shows nothing extra for a job that names no ingredients', () => {
+    mockGuidedPlan._set(
+      makePlan({
+        prep: [{ id: 'prep-1', text: 'Get a big pan out', container: null, ingredientIds: [] }],
+      }),
+    );
+    renderGuidedCook();
+
+    expect(screen.queryByTestId('guided-prep-ingredient')).toBeNull();
+  });
+
+  it('drops an id for an ingredient the recipe no longer has, rather than erroring', () => {
+    mockGuidedPlan._set(
+      makePlan({
+        prep: [
+          {
+            id: 'prep-1',
+            text: 'Dice the onions',
+            container: 'small bowl',
+            ingredientIds: ['ing-1', 'ing-gone'],
+          },
+        ],
+      }),
+    );
+    renderGuidedCook();
+
+    const lines = screen.getAllByTestId('guided-prep-ingredient');
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toHaveTextContent('2 onions');
+  });
+});
+
+describe('GuidedCookPage — a step says what is in the bowl, and what is not', () => {
+  /** step-1 reaches for the bowl prep-1 filled; step-2 for nothing. */
+  function matchedPlan(): GuidedPlanDoc {
+    return makePlan({
+      stepNotes: [
+        // Typed with different case and spacing from the prep job's "small bowl",
+        // which is exactly how a hand-edited plan drifts.
+        { stepId: 'step-1', container: 'Small  Bowl', setup: null, cue: null, checkIns: [] },
+      ],
+    });
+  }
+
+  it('lists what is in the bowl the step names, with amounts', async () => {
+    mockGuidedPlan._set(matchedPlan());
+    renderGuidedCook();
+    await enterSteps();
+
+    const contents = screen.getAllByTestId('guided-step-container-contents');
+    expect(contents).toHaveLength(1);
+    expect(contents[0]).toHaveTextContent('2 onions');
+    // Under the bowl's own name, which is still the row the plan authored.
+    expect(screen.getByTestId('guided-step-note-container')).toHaveTextContent('Small Bowl');
+  });
+
+  it('does not reprint an ingredient already shown inside the bowl', async () => {
+    mockGuidedPlan._set(matchedPlan());
+    renderGuidedCook();
+    await enterSteps();
+
+    // ing-1 is in the bowl step 1 names, so it is not ALSO loose on step 1. ing-2
+    // is prepped by a `container: null` job ("open the tin"), so it is still
+    // printed at step 2 — being prepped is not the same as being visible.
+    const loose = screen.getAllByTestId('guided-step-loose');
+    expect(loose).toHaveLength(1);
+    expect(loose[0]).toHaveTextContent('400g tinned tomatoes');
+  });
+
+  it('renders the container line unchanged when no job fills that name', async () => {
+    // The stock fixture's step-1 asks for "The small bowl — onion" and the prep
+    // job filled "small bowl". Graceful fallback: the line the plan wrote, and no
+    // contents beneath it — never an error.
+    renderGuidedCook();
+    await enterSteps();
+
+    expect(screen.getByTestId('guided-step-note-container')).toHaveTextContent(
+      'The small bowl — onion',
+    );
+    expect(screen.queryByTestId('guided-step-container-contents')).toBeNull();
+  });
+
+  it('lists a step-s loose ingredients even when the plan annotates it not at all', async () => {
+    mockGuidedPlan._set(makePlan({ stepNotes: [] }));
+    renderGuidedCook();
+    await enterSteps();
+
+    const loose = screen.getAllByTestId('guided-step-loose');
+    expect(loose).toHaveLength(2);
+    expect(loose[0]).toHaveTextContent('2 onions');
+    expect(loose[1]).toHaveTextContent('400g tinned tomatoes');
+    expect(screen.queryByTestId('guided-step-note-container')).toBeNull();
+  });
+
+  it('shows nothing loose for a step that introduces nothing', async () => {
+    mockRecipes._set([
+      makeRecipe({
+        ingredients: [
+          {
+            id: 'group-1',
+            name: null,
+            items: [
+              makeIngredient({ id: 'ing-1', firstUsedInStepId: null }),
+              makeIngredient({ id: 'ing-2', firstUsedInStepId: null }),
+            ],
+          },
+        ],
+      }),
+    ]);
+    renderGuidedCook();
+    await enterSteps();
+
+    expect(screen.queryByTestId('guided-step-loose')).toBeNull();
   });
 });
 
