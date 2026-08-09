@@ -21,6 +21,7 @@ vi.mock('@salt/firebase-sync', () => ({
 }));
 
 import * as firebaseSync from '@salt/firebase-sync';
+import { trackUsageEvent } from '@salt/observability';
 import { claimRecipe, createChatSession, sessions } from '../src/lib/chatService.js';
 
 const fs = firebaseSync as Mocked<typeof firebaseSync>;
@@ -53,6 +54,65 @@ describe('createChatSession — seed title', () => {
 
     expect(saved()[0]!.title).toBe('New chat');
     expect(saved()[0]!.recipeId).toBeNull();
+  });
+
+  it('names a variation chat after the dish it starts from', async () => {
+    await createChatSession('uid-1', null, 'Chorizo & Red Pepper Pilaf', 'recipe-1');
+
+    expect(saved()[0]!.title).toBe('Chorizo & Red Pepper Pilaf variation');
+  });
+
+  it('falls back to neutral wording when the base dish has no title to hand', async () => {
+    await createChatSession('uid-1', null, undefined, 'recipe-1');
+
+    expect(saved()[0]!.title).toBe('Recipe variation');
+  });
+});
+
+// A variation chat (issue #763) STARTS FROM a recipe without BELONGING to one.
+// Keeping the two fields apart is what makes the journey work: it does not show
+// in the base recipe's chat list, it keeps the ordinary 14-day expiry until it
+// produces something, and when it does, it claims the NEW dish.
+describe('createChatSession — a variation is not an attached chat', () => {
+  it('records the base recipe without attaching the session to it', async () => {
+    await createChatSession('uid-1', null, 'Chorizo & Red Pepper Pilaf', 'recipe-1');
+
+    expect(saved()[0]!.basedOnRecipeId).toBe('recipe-1');
+    expect(saved()[0]!.recipeId).toBeNull();
+  });
+
+  it('leaves an ordinary chat with no base recipe', async () => {
+    await createChatSession('uid-1', null);
+    await createChatSession('uid-1', 'recipe-1', 'Cauliflower Steaks');
+
+    expect(saved()[0]!.basedOnRecipeId).toBeNull();
+    expect(saved()[1]!.basedOnRecipeId).toBeNull();
+  });
+
+  it('claims the new recipe on save and keeps pointing at the original', async () => {
+    const created = await createChatSession('uid-1', null, 'Pilaf', 'original');
+    const id = created.kind === 'ok' ? created.value.id : '';
+    fs.saveChatSession.mockClear();
+
+    await claimRecipe(id, 'the-prawn-version');
+
+    const session = get(sessions).find((s) => s.id === id)!;
+    expect(session.recipeId).toBe('the-prawn-version');
+    expect(session.basedOnRecipeId).toBe('original');
+  });
+});
+
+describe('createChatSession — chat_context', () => {
+  it('tells the three journeys apart', async () => {
+    await createChatSession('uid-1', null);
+    await createChatSession('uid-1', 'recipe-1', 'Cauliflower Steaks');
+    await createChatSession('uid-1', null, 'Pilaf', 'recipe-2');
+
+    const contexts = vi
+      .mocked(trackUsageEvent)
+      .mock.calls.filter(([name]) => name === 'chat.started')
+      .map(([, props]) => (props as { chat_context: string }).chat_context);
+    expect(contexts).toEqual(['blank', 'recipe', 'variation']);
   });
 });
 

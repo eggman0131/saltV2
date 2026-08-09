@@ -30,6 +30,16 @@
   // recipe — not the chat list — is the right door when there is no history).
   const backTo = $derived(session?.recipeId ? `/recipes/${session.recipeId}` : '/chat');
 
+  // The dish a variation chat started from (issue #763) — resolved for the chip
+  // and nothing else. A miss is the ordinary outcome for a base recipe that has
+  // since been deleted, and simply drops the chip: the conversation carries on as
+  // an ordinary chat and still saves.
+  const basedOnRecipe = $derived(
+    session?.basedOnRecipeId
+      ? ($recipes.find((r) => r.id === session.basedOnRecipeId) ?? null)
+      : null,
+  );
+
   // Save as recipe — calls the librarian flow and navigates to the new recipe.
   let isSavingRecipe = $state(false);
 
@@ -37,7 +47,16 @@
     if (!session || isSavingRecipe) return;
     isSavingRecipe = true;
     const existingTags = [...new Set($recipes.flatMap((r) => r.metadata.tags))];
-    const result = await authorRecipeTraced({ messages: session.messages, existingTags });
+    // `basedOnRecipeId` grounds the librarian on the dish this conversation
+    // started from, so a variation carries forward everything the chat never
+    // mentioned. It stays the CREATE path: the flow assembles with no base
+    // recipe, so the new dish gets its own title, its own hero image and no
+    // "makes" link, and the original is untouched (issue #763).
+    const result = await authorRecipeTraced({
+      messages: session.messages,
+      existingTags,
+      basedOnRecipeId: session.basedOnRecipeId,
+    });
     if (result.kind !== 'ok') {
       isSavingRecipe = false;
       addToast('Failed to generate recipe.', 'destructive');
@@ -201,7 +220,31 @@
       {/if}
     {/snippet}
 
-    <ChatThread {session} {thread} layout="page" emptyText="Ask me anything about cooking." />
+    <!-- "Based on: <dish>" (issue #763). The whole of what a variation chat needs to
+         say about its origin: the recipe itself rides on the session and is read
+         server-side, so the transcript stays a conversation instead of opening with a
+         wall of pasted recipe text. A link, because the obvious next thing to want is
+         to look at the dish you are varying. -->
+    {#if basedOnRecipe}
+      <button
+        type="button"
+        class="mb-3 inline-flex items-center gap-1.5 rounded bg-muted px-2 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+        onclick={() => push(`/recipes/${basedOnRecipe.id}`)}
+        data-testid="chat-based-on-chip"
+      >
+        <Icon name="Sparkles" size={12} />
+        Based on: {basedOnRecipe.title}
+      </button>
+    {/if}
+
+    <ChatThread
+      {session}
+      {thread}
+      layout="page"
+      emptyText={basedOnRecipe
+        ? `What would you change about ${basedOnRecipe.title}?`
+        : 'Ask me anything about cooking.'}
+    />
   </DetailPage>
 
   <!-- Review-and-approve gate for the pending AI edit (Phase 2) -->

@@ -12,6 +12,18 @@ export const ChatSessionSchema = z.object({
   schemaVersion: z.literal(1),
   ownerUid: z.string(),
   recipeId: z.string().nullable(),
+  // The recipe this conversation STARTED FROM (issue #763), as distinct from
+  // `recipeId`, the recipe it belongs to. A "Make a variation" chat is seeded
+  // with a dish it is not attached to: the flows read it server-side to ground
+  // the chef and the librarian, and on "Save as recipe" the session claims the
+  // NEW recipe, leaving this pointing at the original.
+  //
+  // `.default(null)` rather than a required field, and it is load-bearing:
+  // `chatSessions` holds live documents and the realtime subscription SKIPS docs
+  // that fail validation, so a required field would make every chat written
+  // before this change vanish from the list. Same reason `RecipeSchema.kind`
+  // carries `.default('recipe')`.
+  basedOnRecipeId: z.string().nullable().default(null),
   title: z.string(),
   messages: z.array(MessageSchema),
   createdAt: z.string(),

@@ -59,6 +59,7 @@ function makeSession(overrides: Partial<ChatSessionDoc> = {}): ChatSessionDoc {
     schemaVersion: 1,
     ownerUid: 'uid-1',
     recipeId: null,
+    basedOnRecipeId: null,
     title: 'New chat',
     messages: [
       { id: 'm1', role: 'user', text: 'hello', createdAt: '2026-01-01T00:00:00.000Z' },
@@ -136,5 +137,68 @@ describe('ChatSessionPage — save as recipe', () => {
 
     await waitFor(() => expect(authorRecipeTraced).toHaveBeenCalled());
     expect(claimRecipe).not.toHaveBeenCalled();
+  });
+});
+
+// A variation chat (issue #763): started from a dish it is not attached to. Two
+// things carry the journey on this page — the chip that says which dish, and the
+// base id reaching the librarian so the new recipe carries forward everything the
+// conversation never mentioned.
+describe('ChatSessionPage — a variation chat', () => {
+  function pilaf(): Recipe {
+    return { id: 'pilaf', title: 'Chorizo & Red Pepper Pilaf', metadata: { tags: [] } } as Recipe;
+  }
+
+  it('shows the Based on chip, and taps through to the dish it started from', async () => {
+    mockRecipes._set([pilaf()]);
+    mockSessions._set([makeSession({ basedOnRecipeId: 'pilaf' })]);
+    const { getByTestId } = renderPage();
+
+    const chip = getByTestId('chat-based-on-chip');
+    expect(chip.textContent).toContain('Based on: Chorizo & Red Pepper Pilaf');
+
+    await fireEvent.click(chip);
+    expect(push).toHaveBeenCalledWith('/recipes/pilaf');
+  });
+
+  it('shows no chip on an ordinary chat', () => {
+    mockRecipes._set([pilaf()]);
+    mockSessions._set([makeSession()]);
+    const { queryByTestId } = renderPage();
+
+    expect(queryByTestId('chat-based-on-chip')).toBeNull();
+  });
+
+  it('drops the chip when the base recipe has been deleted, and still offers Save', () => {
+    // Rule 10 on the client side: the base going away degrades the variation to
+    // an ordinary chat rather than breaking the page or blocking the save.
+    mockRecipes._set([]);
+    mockSessions._set([makeSession({ basedOnRecipeId: 'pilaf' })]);
+    const { queryByTestId, getByTestId } = renderPage();
+
+    expect(queryByTestId('chat-based-on-chip')).toBeNull();
+    expect(getByTestId('chat-save-recipe-btn')).toBeInTheDocument();
+  });
+
+  it('grounds the librarian on the base without handing it a recipe to edit', async () => {
+    // `basedOnRecipeId` set, `recipeId` NOT — which is what keeps this on the
+    // create path: a new dish with its own name, its own hero and no "makes"
+    // link, and the original left untouched.
+    mockRecipes._set([pilaf()]);
+    mockSessions._set([makeSession({ basedOnRecipeId: 'pilaf' })]);
+    vi.mocked(authorRecipeTraced).mockResolvedValue({
+      kind: 'ok',
+      value: { id: 'recipe-new', kind: 'recipe', metadata: { tags: [] } },
+    } as Awaited<ReturnType<typeof authorRecipeTraced>>);
+    const { getByTestId } = renderPage();
+
+    await fireEvent.click(getByTestId('chat-save-recipe-btn'));
+
+    await waitFor(() => expect(authorRecipeTraced).toHaveBeenCalled());
+    const input = vi.mocked(authorRecipeTraced).mock.calls[0]![0];
+    expect(input.basedOnRecipeId).toBe('pilaf');
+    expect(input.recipeId).toBeUndefined();
+    // The conversation ends up on the NEW dish, not the one it started from.
+    await waitFor(() => expect(claimRecipe).toHaveBeenCalledWith('session-1', 'recipe-new'));
   });
 });

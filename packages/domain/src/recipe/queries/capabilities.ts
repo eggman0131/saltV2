@@ -1,13 +1,13 @@
 import type { RecipeKind } from '../entities/Recipe.js';
 
-// What a kind of entry can do (issue #637). These three predicates are the ONLY
+// What a kind of entry can do (issue #637). These predicates are the ONLY
 // place a `RecipeKind` is ever inspected: no call site outside packages/domain
 // branches on the kind itself, so adding a fourth kind is a one-file change here
 // and every screen inherits the right behaviour.
 //
 // The table is a `Record<RecipeKind, …>` rather than a chain of comparisons on
-// purpose: a new member of the enum fails to compile until it has answered all
-// three questions, instead of silently inheriting whatever `!== 'outing'` said.
+// purpose: a new member of the enum fails to compile until it has answered every
+// question, instead of silently inheriting whatever `!== 'outing'` said.
 //
 // They take a `RecipeKind`, not a `Recipe`, because the kind is all they need
 // and callers do not always hold a whole recipe — the planner picker filters
@@ -28,16 +28,37 @@ interface Capabilities {
   // placeholder (issue #652) is not offered either, but does occupy a slot —
   // it is attached on its own when a day is planned in a sentence, never chosen.
   readonly isPlannable: boolean;
+  // Whether the LIBRARIAN can produce this kind: gates every path where the AI
+  // authors a whole entry from a conversation — chat → "Save as recipe" and, on
+  // top of it, ⋮ → "Make a variation" (issue #763).
+  //
+  // Read the `false` rows as "not yet", never as "by design". The constraint is
+  // not about any one feature: `assembleRecipeDraft` hardcodes
+  // `kind: baseRecipe?.kind ?? 'recipe'`, so no AI authoring path can currently
+  // emit anything but a `recipe` — a cocktail authored by the librarian would
+  // land in the dinner list permanently, because `kind` is immutable. The day
+  // the librarian carries `kind` through, flipping the `cocktail` row here is
+  // the only change needed and every consumer lights up with no edit of its own.
+  //
+  // `outing` and `placeholder` stay `false` on their own merits: an outing is a
+  // hand-written night off with nothing to author, and a placeholder is a
+  // photograph and a title.
+  readonly isAuthorable: boolean;
 }
 
 const CAPABILITIES: Record<RecipeKind, Capabilities> = {
-  recipe: { takesIngredients: true, isCookable: true, isPlannable: true },
-  outing: { takesIngredients: false, isCookable: false, isPlannable: true },
-  cocktail: { takesIngredients: true, isCookable: true, isPlannable: false },
+  recipe: { takesIngredients: true, isCookable: true, isPlannable: true, isAuthorable: true },
+  outing: { takesIngredients: false, isCookable: false, isPlannable: true, isAuthorable: false },
+  cocktail: { takesIngredients: true, isCookable: true, isPlannable: false, isAuthorable: false },
   // A placeholder is a photograph and a title, nothing else: nothing to buy,
-  // nothing to cook, and never offered in the picker. Every downstream question
-  // answers itself from this row.
-  placeholder: { takesIngredients: false, isCookable: false, isPlannable: false },
+  // nothing to cook, never offered in the picker, and nothing for the librarian
+  // to write. Every downstream question answers itself from this row.
+  placeholder: {
+    takesIngredients: false,
+    isCookable: false,
+    isPlannable: false,
+    isAuthorable: false,
+  },
 };
 
 export function takesIngredients(kind: RecipeKind): boolean {
@@ -50,4 +71,8 @@ export function isCookable(kind: RecipeKind): boolean {
 
 export function isPlannable(kind: RecipeKind): boolean {
   return CAPABILITIES[kind].isPlannable;
+}
+
+export function isAuthorable(kind: RecipeKind): boolean {
+  return CAPABILITIES[kind].isAuthorable;
 }

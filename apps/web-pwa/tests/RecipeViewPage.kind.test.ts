@@ -60,7 +60,11 @@ const {
 
 vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
 vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
-vi.mock('../src/lib/auth.svelte.js', () => ({ auth: { user: { email: 'cook@test' } } }));
+// `uid` as well as `email`: "Make a variation" opens a chat session, which is
+// owner-scoped, so the handler returns early without one.
+vi.mock('../src/lib/auth.svelte.js', () => ({
+  auth: { user: { uid: 'uid-1', email: 'cook@test' } },
+}));
 vi.mock('../src/lib/canonService.js', () => ({ canonItems: mockCanonItems }));
 // The guided-plan store (issue #751). `null` is its LOADED-AND-EMPTY state — the
 // one that keeps the "Cook, guided" half of the Cook button off a recipe nobody
@@ -106,6 +110,7 @@ vi.mock('../src/lib/recipeService.js', () => ({
 }));
 
 import { push } from 'svelte-spa-router';
+import { createChatSession } from '../src/lib/chatService.js';
 import { persistRecipe, stashImportedDraft } from '../src/lib/recipeService.js';
 import RecipeViewPage from '../src/routes/recipes/RecipeViewPage.svelte';
 
@@ -476,4 +481,55 @@ describe('RecipeViewPage — duplicate', () => {
       expect(vi.mocked(stashImportedDraft).mock.calls[0]![0].kind).toBe(kind);
     },
   );
+});
+
+// "Make a variation" (issue #763). Gated on `isAuthorable` — "can the librarian
+// WRITE this kind?" — which is a different question from `isCookable`, and the
+// distinction is the whole reason the predicate exists. A cocktail is cookable
+// and still cannot be varied, because no AI authoring path can emit a cocktail
+// yet; the day one can, the row flips in `capabilities.ts` and this page needs no
+// edit at all. That is what the per-kind case below is protecting.
+describe('RecipeViewPage — make a variation', () => {
+  beforeEach(() => {
+    vi.mocked(createChatSession).mockResolvedValue({
+      kind: 'ok',
+      value: { id: 'session-9' },
+    } as never);
+  });
+
+  it('opens a new chat that holds this dish as its base, and leaves for it', async () => {
+    mockRecipes._set([makeEntry()]);
+    renderPage();
+
+    await openOverflowMenu();
+    await fireEvent.click(screen.getByTestId('recipe-make-variation-menu-item'));
+
+    // A chat that STARTS FROM this recipe without BELONGING to it: `recipeId`
+    // null, base id fourth. That is what keeps it off this page's chat list.
+    await waitFor(() =>
+      expect(createChatSession).toHaveBeenCalledWith('uid-1', null, 'Test Recipe', RECIPE_ID),
+    );
+    // Away to the chat, because the conversation is about a different dish.
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/chat/session-9'));
+    // Nothing is written to the recipe collection on the way out.
+    expect(persistRecipe).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['recipe', true],
+    ['cocktail', false],
+    ['outing', false],
+    ['placeholder', false],
+  ] as const)('is offered for a %s: %s', async (kind, offered) => {
+    mockRecipes._set([makeEntry({ kind })]);
+    renderPage();
+
+    await openOverflowMenu();
+
+    if (offered) {
+      expect(screen.getByTestId('recipe-make-variation-menu-item')).toBeInTheDocument();
+    } else {
+      expect(screen.queryByTestId('recipe-make-variation-menu-item')).toBeNull();
+    }
+  });
 });

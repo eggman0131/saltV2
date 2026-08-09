@@ -53,6 +53,7 @@
     diffRecipe,
     duplicateRecipe,
     hasLiveCanonMatch,
+    isAuthorable,
     isCookable,
     isPlannable,
     takesIngredients,
@@ -137,6 +138,11 @@ Finish with a short note on what you changed and why, so I can read the gist her
   // cocktail is not dinner and a placeholder is attached, never chosen; neither
   // gets the button here, exactly as neither appears in the picker there.
   const showPlanning = $derived(recipe !== null && isPlannable(kindOf(recipe)));
+  // "Make a variation" hands this dish to the librarian as the starting point for
+  // a new one (issue #763), so the question is whether the librarian can WRITE
+  // this kind — not whether variations are somehow inappropriate for it. When
+  // `isAuthorable` gains a kind, the item appears there with no edit here.
+  const showVariation = $derived(recipe !== null && isAuthorable(kindOf(recipe)));
 
   // ─── Does this recipe have a guided plan? (issue #751, Phase 2) ──────────────
   // Subscribed here so the action row can offer "Cook, guided" only where there is
@@ -394,6 +400,28 @@ Finish with a short note on what you changed and why, so I can read the gist her
     if (!recipe) return;
     stashImportedDraft(duplicateRecipe(recipe, crypto.randomUUID(), new Date().toISOString()));
     push('/recipes/new');
+  }
+
+  // "Make a variation" in the ⋮ menu (issue #763). Opens a NEW chat that holds
+  // this recipe as its starting point and navigates AWAY to it, which is the
+  // honest destination: the conversation is about a different dish, it is not
+  // attached to this one, and so it deliberately does not appear in this page's
+  // own chat list. Only the session document is written — no recipe and no image
+  // generation until "Save as recipe".
+  let variationBusy = $state(false);
+
+  async function handleMakeVariation(): Promise<void> {
+    if (!recipe || variationBusy) return;
+    const uid = auth.user?.uid;
+    if (!uid) return;
+    variationBusy = true;
+    const result = await createChatSession(uid, null, recipe.title, recipe.id);
+    variationBusy = false;
+    if (result.kind !== 'ok') {
+      addToast('Failed to start a variation.', 'destructive');
+      return;
+    }
+    push(`/chat/${result.value.id}`);
   }
 
   // The transcript, the composer, the auto-scroll and the send path are all
@@ -866,7 +894,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
         </Button>
       {/if}
       <!-- Overflow (⋮), at every width since #735: Chat, Optimise, Guided plan,
-           Duplicate, Edit and Delete. Cook, Shop and Plan are never in here — they stay inline,
+           Make a variation, Duplicate, Edit and Delete. Cook, Shop and Plan are never in here — they stay inline,
            which is the whole point of ranking them, and neither is "Cook, guided",
            which is a way of pressing Cook. Duplicate, Edit and Delete are
            unconditional: every kind of entry can be copied, edited and deleted
@@ -937,6 +965,26 @@ Finish with a short note on what you changed and why, so I can read the gist her
             >
               <Icon name="ListChecks" size={14} />
               Guided plan
+            </button>
+          {/if}
+          {#if showVariation}
+            <!-- Beside Duplicate because they answer the same impulse — "I want this
+                 dish, but different" — and are the two honest answers to it: a literal
+                 copy you hand-edit, or a conversation that works the changes out with
+                 you. Above it, because talking it through is the one you reach for
+                 more often now it exists. -->
+            <button
+              type="button"
+              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
+              onclick={() => {
+                overflowMenuOpen = false;
+                void handleMakeVariation();
+              }}
+              disabled={variationBusy}
+              data-testid="recipe-make-variation-menu-item"
+            >
+              <Icon name="Sparkles" size={14} />
+              Make a variation
             </button>
           {/if}
           <button
