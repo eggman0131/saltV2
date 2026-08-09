@@ -61,7 +61,16 @@ function prep(
 }
 
 function note(over: Partial<GuidedStepNoteDoc> = {}): GuidedStepNoteDoc {
-  return { stepId: 's1', container: null, setup: null, cue: null, checkIns: [], ...over };
+  return {
+    stepId: 's1',
+    container: null,
+    setup: null,
+    cue: null,
+    checkIns: [],
+    lookahead: null,
+    getAhead: null,
+    ...over,
+  };
 }
 
 describe('normaliseContainerName', () => {

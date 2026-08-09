@@ -16,10 +16,12 @@ import { z } from 'zod';
 //  1. `prep` — mise en place as a list of JOBS, each with the container the
 //     result goes into ("dice the carrots, onion and celery → small bowl").
 //     Things used together are prepped together into one named container.
-//  2. `stepNotes` — additions UNDERNEATH the recipe's existing steps. The step
-//     text itself is never touched: a note may say which prepped container the
-//     step wants, how the hob is set, what the cook should hear or see, and —
-//     on a step that already carries a timer — reminders partway through.
+//  2. `stepNotes` — additions AROUND the recipe's existing steps. The step text
+//     itself is never touched: a note may say which prepped container the step
+//     wants, how the hob is set, what the cook should hear or see, and — on a step
+//     that already carries a timer — reminders partway through. Two of its fields
+//     (`lookahead`, `getAhead`) are read a step EARLY rather than underneath; see
+//     them below.
 
 // One reminder partway through a step that already has a timer. Phase 3 owns the
 // runtime side (arming, notifying); Phase 1 only stores and edits these.
@@ -68,6 +70,23 @@ export const GuidedStepNoteContentSchema = z.object({
   // cue is worse than no cue, so the prompt is explicit about leaving it out.
   cue: z.string().nullable(),
   checkIns: z.array(GuidedCheckInSchema),
+  // ─── Read from the step BEFORE this one (issue #769) ───────────────────────
+  //
+  // Both of these describe THIS step and are shown while the cook is still on the
+  // previous one, where plain cook mode fades in the top of the next step's raw
+  // text. They live on the step they describe rather than on the step that renders
+  // them, so re-ordering the method carries them along, the last step simply has
+  // no reader, and the rendering rule stays one sentence: a step shows the NEXT
+  // step's lookahead.
+  //
+  // One clause saying what this step does. Null is allowed and renders as the
+  // plain fade — every plan written before this existed is in that state.
+  lookahead: z.string().nullable(),
+  // The part of this step that has to START during the previous one: an oven that
+  // needs fifteen minutes to come up, a steak that needs half an hour out of the
+  // fridge. Null on almost every step — a step with no lead time has nothing to
+  // say here, and the prompt is as explicit about that as it is for `cue`.
+  getAhead: z.string().nullable(),
 });
 
 // ─── The stored document ──────────────────────────────────────────────────────
@@ -90,6 +109,8 @@ export const GuidedStepNoteSchema = GuidedStepNoteContentSchema.extend({
   setup: z.string().nullable().default(null),
   cue: z.string().nullable().default(null),
   checkIns: z.array(GuidedCheckInSchema).default([]),
+  lookahead: z.string().nullable().default(null),
+  getAhead: z.string().nullable().default(null),
 });
 
 export const GuidedPlanSchema = z.object({

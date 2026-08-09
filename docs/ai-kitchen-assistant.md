@@ -15,26 +15,34 @@ foundation (#179).
 2. **Equipment is ambient context, never a tool.** The user's kit is small enough to
    drop straight into the chef's system prompt ("here's the equipment available —
    draw on it when it genuinely helps, ignore it otherwise"). No retrieval tool,
-   nothing the model feels obliged to call. The assistant must never be *bound* to
+   nothing the model feels obliged to call. The assistant must never be _bound_ to
    the user's equipment.
 3. **Pro-tier model for the chef.** Conversation quality is the whole point — use a
    Pro-tier Gemini for the chef, not Flash. The librarian (structured extraction)
    stays on Flash + `temperature: 0`, consistent with the other parse flows.
 4. **One agent, not three.** The user's "creative chef / kitchen engineer /
-   librarian" roles survive as *intentions*, not as a forced pipeline. The
+   librarian" roles survive as _intentions_, not as a forced pipeline. The
    "engineer" is just the user asking ("how do I make the most of my kit here?") —
    the equipment context is already present, so the same agent answers. Only the
    librarian is a genuinely separate (non-conversational) component.
 5. **Guided cook mode never shows less than plain cook mode** (#761). Guidance is
    added on top of what the recipe already says — it never replaces or withholds it,
    so every amount plain cook mode prints must be on the guided screen too.
+   The one thing guided mode is allowed to _replace_ is the **faded peek at the next
+   step** (#769), and only because that peek is not content: it is the top few lines
+   of the next step, cut off at whatever height the layout leaves and unreadable by
+   design. The plan's authored look-ahead says more in the same space, and says the
+   one thing the raw text structurally cannot — which part of the next step has to be
+   _started now_ (an oven that needs fifteen minutes, a steak that needs half an hour
+   out of the fridge). Nothing is withheld: the step's own words arrive in full a
+   moment later, unchanged, and a plan with no look-ahead falls back to the fade.
 
 ## Scope boundaries
 
 - "Contents of my kitchen" means **equipment + accessories only**. There is no
   pantry/fridge inventory module and this feature does not add one. The household
   favourites the chef sees (issue #726) are **not** an inventory: they are a
-  purchase *history* — what got ticked off at the shop, over time — and say
+  purchase _history_ — what got ticked off at the shop, over time — and say
   nothing about what is in the house right now. Do not let them grow into one.
 - A saved recipe **must canon-match** its ingredients (reuse the existing canon
   pipeline). Adding to the shopping list or meal planner stays a **manual** action
@@ -141,7 +149,7 @@ chat session doc (Firestore)         ← owned by web-pwa + firebase-sync (clien
   assembles the final `RecipeDoc` and persists with the existing `saveRecipe`.
 - **The librarian only ever authors cookable kinds** (#637). A fresh draft is
   written as `kind: 'recipe'` — ingredients and a method are the entire output, so
-  there is nothing for it to produce that is not one. On an *amend* it carries the
+  there is nothing for it to produce that is not one. On an _amend_ it carries the
   base recipe's own kind through unchanged, so re-running the librarian against an
   existing entry can never silently re-type it (`kind` is immutable by design).
   A "When you CBA" outing is hand-written and has nothing to author, and the
@@ -190,8 +198,9 @@ chat session doc (Firestore)         ← owned by web-pwa + firebase-sync (clien
   `cloud-functions`, adapter/store in `firebase-sync` + `web-pwa`, UI primitives via
   `@salt/ui-components`.
 - Recipe schema now holds live production data (module shipped to all members
-  in #240, 2026-06-17) — recipe schema changes need back-compat on read or a
-  migration, like any other production collection. Chat schema is brand-new
-  (no back-compat burden yet).
+in #240, 2026-06-17) — recipe schema changes need back-compat on read or a
+migration, like any other production collection. Chat schema is brand-new
+(no back-compat burden yet).
 </content>
+
 </invoke>

@@ -54,6 +54,8 @@ const PLAN: GuidedPlanDoc = {
       setup: 'small hob burner, medium-low',
       cue: 'a very gentle sizzle',
       checkIns: [],
+      lookahead: 'the onions soften',
+      getAhead: null,
     },
   ],
   createdAt: '2026-08-01T09:00:00.000Z',

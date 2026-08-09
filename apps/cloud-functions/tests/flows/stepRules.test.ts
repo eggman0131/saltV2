@@ -186,4 +186,33 @@ describe('GUIDED_STEP_NOTE_RULES', () => {
     expect(GUIDED_STEP_NOTE_RULES).toContain('ONLY on a step that already carries a timer');
     expect(GUIDED_STEP_NOTE_RULES).toContain('MUST BE LESS than the timer');
   });
+
+  it('asks for a look-ahead on EVERY step, unlike every other field here', () => {
+    // Issue #769. The rest of this bullet list is "leave it null unless the recipe
+    // left something unsaid"; `lookahead` inverts that, because it is not filling a
+    // gap — it is the step announcing itself to the step before. The opening clause
+    // had to change with it, and the two must not drift back apart: an entry emitted
+    // "only for a step that genuinely needs one" is a plan where most steps preview
+    // as nothing.
+    expect(GUIDED_STEP_NOTE_RULES).toContain('Emit an entry for EVERY step');
+    expect(GUIDED_STEP_NOTE_RULES).toContain('Fill this in for EVERY step you write an entry for');
+    expect(GUIDED_STEP_NOTE_RULES).toContain('ONE SHORT CLAUSE');
+  });
+
+  it('keeps the look-ahead a heads-up rather than a second copy of the step', () => {
+    // It is read while the cook is still on the PREVIOUS step and the step's own
+    // words follow moments later, so a preview that restates the step in full is the
+    // step, delivered at the wrong time.
+    expect(GUIDED_STEP_NOTE_RULES).toContain('while they are still on the PREVIOUS step');
+    expect(GUIDED_STEP_NOTE_RULES).toContain('Do NOT copy the step text');
+  });
+
+  it('confines get-ahead to a genuine lead time', () => {
+    // The field earns the panel only when the answer is real: something that takes
+    // minutes to come good on its own. A manufactured one sends the cook away from a
+    // pan they are supposed to be watching, which is worse than saying nothing.
+    expect(GUIDED_STEP_NOTE_RULES).toContain('must be STARTED EARLIER');
+    expect(GUIDED_STEP_NOTE_RULES).toContain('genuine LEAD TIME');
+    expect(GUIDED_STEP_NOTE_RULES).toContain('null for almost every step');
+  });
 });

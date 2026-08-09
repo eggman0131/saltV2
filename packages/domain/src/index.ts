@@ -300,7 +300,9 @@ export type { WeatherIconId } from './weather/index.js';
 // can warn about a name that will not resolve before anyone cooks from it.
 // `guidedPrepBoard` reads it a third way — as the shape of the prep screen itself
 // (issue #767), where the container leads a card and the ingredients under it are
-// what the cook ticks.
+// what the cook ticks. `nextStepLookahead` is what the plan says about the step
+// BELOW the one on screen (issue #769), in place of plain cook mode's faded first
+// clause.
 export {
   makeFreshSession,
   withStepDone,
@@ -325,6 +327,7 @@ export {
   prepEntryIngredients,
   looseIngredientsForStep,
   guidedContainerProblems,
+  nextStepLookahead,
   formatClock,
   timerProgress,
 } from './cookSession/index.js';
@@ -338,6 +341,7 @@ export type {
   GuidedPrepCard,
   GuidedPrepJob,
   GuidedPrepTickRow,
+  NextStepLookahead,
 } from './cookSession/index.js';
 
 // Shopping-day module (issue #629) — pure helpers over `shoppingDays/{date}`:
