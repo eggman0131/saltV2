@@ -24,6 +24,10 @@ export function createMember(input: CreateMemberInput): Member {
     admin: input.admin,
     sortOrder: input.sortOrder,
     icon: input.icon ?? null,
+    // Not an input: a new member starts where everyone already is (issue #776),
+    // and changes it themselves in Settings. The admin screen that calls this has
+    // no business choosing how someone likes to cook.
+    cookMode: 'standard',
     updatedAt: input.now,
   };
 }

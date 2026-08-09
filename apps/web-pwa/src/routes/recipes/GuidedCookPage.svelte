@@ -865,9 +865,14 @@
       <p class="text-sm text-muted-foreground">Loading the plan…</p>
     </div>
   {:else if plan === null}
-    <!-- Reachable only by typing the URL, or by the plan being deleted from another
-       device mid-cook. Never an error: plain cook mode is right there, and it works
-       on the very same session, so nothing already ticked or done is lost. -->
+    <!-- Never an error: plain cook mode is right there, and it works on the very
+       same session, so nothing already ticked or done is lost.
+
+       No longer an edge case (issue #776). It used to be reachable only by typing
+       the URL or by the plan being deleted from another device mid-cook; now
+       someone whose default IS guided is offered this door on every recipe that
+       has no plan, so the screen has to answer "then write me one" rather than
+       pointing at a page and leaving them to find it. -->
     <div
       class="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center"
       data-testid="guided-cook-no-plan"
@@ -875,19 +880,29 @@
       <Icon name="ListChecks" size={28} class="text-muted-foreground" />
       <div class="flex flex-col gap-1">
         <p class="text-base font-semibold">There's no guided plan for this recipe</p>
-        <p class="text-sm text-muted-foreground">
-          Write one from the recipe page, or cook it the ordinary way.
-        </p>
+        <p class="text-sm text-muted-foreground">Write one now, or cook it the ordinary way.</p>
       </div>
       <div class="flex flex-wrap items-center justify-center gap-2">
+        <!-- Writing the plan leads first, because it is the thing the cook came
+             here for. The editor is an ordinary shell route, so this leaves the
+             full-viewport cook mode — which is right: writing a plan is desk work,
+             not something you do with your hands full. -->
         <Button
+          onclick={() => push(`/recipes/${params.id}/guided`)}
+          data-testid="guided-cook-write-plan"
+        >
+          {#snippet leading()}<Icon name="ListChecks" size={16} />{/snippet}
+          Write the plan
+        </Button>
+        <Button
+          variant="outline"
           onclick={() => push(`/recipes/${params.id}/cook`)}
           data-testid="guided-cook-fallback"
         >
           {#snippet leading()}<Icon name="CookingPot" size={16} />{/snippet}
           Cook it anyway
         </Button>
-        <Button variant="outline" onclick={handleClose} data-testid="guided-cook-no-plan-back">
+        <Button variant="ghost" onclick={handleClose} data-testid="guided-cook-no-plan-back">
           {#snippet leading()}<Icon name="ArrowLeft" size={16} />{/snippet}
           Back
         </Button>

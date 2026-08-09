@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { MemberSchema } from '@salt/domain/schemas';
 import {
   createMember,
   updateMember,
@@ -19,6 +20,7 @@ function makeMember(overrides: Partial<Member> & { id: string }): Member {
     admin: false,
     sortOrder: 0,
     icon: null,
+    cookMode: 'standard',
     updatedAt: NOW,
     ...overrides,
   };
@@ -197,5 +199,93 @@ describe('sortMembers', () => {
     ];
     sortMembers(members);
     expect(members[0]!.name).toBe('B');
+  });
+});
+
+// ─── The cook-mode preference (issue #776) ───────────────────────────────────
+//
+// A field on the member doc rather than a fourth owner-scoped collection: a
+// member doc IS the per-person record, so this does not touch the family-shared
+// rule. WHO may change it is a question for firestore.rules — proved in
+// firebase-sync/tests/firestoreRules.emulator.test.ts, where the pinning that
+// stops "edit my cooking preference" also meaning "make myself an admin" lives.
+
+describe('cookMode', () => {
+  it('BACK-COMPAT: a member doc written before the field reads as standard', () => {
+    // Every member doc in production is in this state, so the default is what
+    // decides that shipping this changes nothing for anyone until they choose.
+    const parsed = MemberSchema.parse({
+      id: 'a@e.org',
+      schemaVersion: 1,
+      name: 'A',
+      email: 'a@e.org',
+      admin: false,
+      sortOrder: 0,
+      updatedAt: NOW,
+    });
+    expect(parsed.cookMode).toBe('standard');
+  });
+
+  it('round-trips a stored preference', () => {
+    const parsed = MemberSchema.parse({
+      id: 'a@e.org',
+      schemaVersion: 1,
+      name: 'A',
+      email: 'a@e.org',
+      admin: false,
+      sortOrder: 0,
+      icon: null,
+      cookMode: 'guided',
+      updatedAt: NOW,
+    });
+    expect(parsed.cookMode).toBe('guided');
+  });
+
+  it('refuses a mode that is not one of the two', () => {
+    // Mirrored in the rules, which constrain the same two values — the doc is
+    // family-readable, so an unconstrained string here is a place to park
+    // arbitrary data on someone else's screen.
+    const result = MemberSchema.safeParse({
+      id: 'a@e.org',
+      schemaVersion: 1,
+      name: 'A',
+      email: 'a@e.org',
+      admin: false,
+      sortOrder: 0,
+      icon: null,
+      cookMode: 'anything',
+      updatedAt: NOW,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('starts a new member on standard, and the admin screen cannot choose', () => {
+    // `createMember` takes no cookMode input on purpose: the admin adding someone
+    // to the roster has no business deciding how they like to cook.
+    const created = createMember({
+      name: 'New',
+      email: 'New@E.org',
+      admin: false,
+      sortOrder: 3,
+      now: NOW,
+    });
+    expect(created.cookMode).toBe('standard');
+  });
+
+  it('is patched like any other field, and leaves the rest alone', () => {
+    const before = makeMember({ id: 'a@e.org', name: 'A', admin: true, cookMode: 'standard' });
+    const after = updateMember(before, { cookMode: 'guided' }, '2026-08-09T12:00:00.000Z');
+    expect(after.cookMode).toBe('guided');
+    // Nothing else moves — the command is a plain patch, and it is firestore.rules
+    // that decides a self-update may carry only this one.
+    expect(after.admin).toBe(true);
+    expect(after.name).toBe('A');
+    expect(after.email).toBe(before.email);
+  });
+
+  it('leaves the preference alone when a patch does not mention it', () => {
+    const before = makeMember({ id: 'a@e.org', cookMode: 'guided' });
+    const after = updateMember(before, { name: 'Renamed' }, '2026-08-09T12:00:00.000Z');
+    expect(after.cookMode).toBe('guided');
   });
 });

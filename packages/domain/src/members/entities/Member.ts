@@ -1,3 +1,5 @@
+import type { CookMode } from '../../schemas/member.js';
+
 // Member entity: a person on the Salt allowlist (issue #155).
 // Lives in members/entities — internal to the members module. Other modules
 // access it only via the published index (re-exported as a type).
@@ -18,5 +20,10 @@ export interface Member {
   // Reserved for richer avatars later (#155 ships initials only). null = render
   // initials derived from `name`. No image upload/generation in this module.
   readonly icon: string | null;
+  // Which cook mode this person's Cook button opens (issue #776). The ONLY field
+  // on this entity a non-admin may change about themselves — see firestore.rules,
+  // where every other field is pinned on a self-update precisely because `admin`
+  // is one of them.
+  readonly cookMode: CookMode;
   readonly updatedAt: string; // ISO-8601, stamped by domain commands on mutation
 }

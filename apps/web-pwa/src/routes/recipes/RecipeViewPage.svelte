@@ -65,6 +65,7 @@
   import type { ChatSessionDoc, RecipeDiff } from '@salt/domain/schemas';
   import type { DomainError, ReadResult } from '@salt/shared-types';
   import { guidedPlan, initGuidedPlanSync } from '../../lib/guidedPlanService.js';
+  import { currentMember } from '../../lib/membersService.js';
   import { defaultListId } from '../../lib/shoppingListService.svelte.js';
   import { addToast } from '../../lib/toastStore.js';
   import { auth } from '../../lib/auth.svelte.js';
@@ -164,6 +165,32 @@ Finish with a short note on what you changed and why, so I can read the gist her
   // Used-but-flagged, never a gate (guidedPlan.ts): the plan is fully live either
   // way, and this only records that no human has read it. Absent means reviewed.
   const guidedPlanUnread = $derived($guidedPlan?.needs_approval === true);
+
+  // ─── Which half of the Cook control is the primary one (issue #776) ─────────
+  //
+  // A per-person preference off this member's own doc, defaulting to `standard`
+  // for everyone who has never set it — which is every member today, so nothing
+  // changes for anyone until they choose.
+  //
+  // The control keeps its shape either way: the wide labelled half is your
+  // default and the icon half is the other mode. That is what keeps the promise
+  // that standard cook mode is always one tap away, whichever way this is set.
+  const prefersGuided = $derived($currentMember?.cookMode === 'guided');
+  // Guided leads only when there is a plan to be guided BY. On a recipe nobody has
+  // written one for, the wide button is standard cook mode — a default should not
+  // put a dead end where the obvious action was.
+  const guidedIsPrimary = $derived(prefersGuided && hasGuidedPlan);
+  // The second half appears when there is a plan (as before) AND, new here, when
+  // guided is your default but this recipe has none: that is exactly the person
+  // who wants to be offered the plan, and the screen it leads to now offers to
+  // write one.
+  const showGuidedHalf = $derived(hasGuidedPlan || prefersGuided);
+  const primaryCookHref = $derived(
+    guidedIsPrimary ? `/recipes/${params.id}/cook/guided` : `/recipes/${params.id}/cook`,
+  );
+  const secondaryCookHref = $derived(
+    guidedIsPrimary ? `/recipes/${params.id}/cook` : `/recipes/${params.id}/cook/guided`,
+  );
 
   function timeParts(): string[] {
     if (!recipe) return [];
@@ -822,36 +849,55 @@ Finish with a short note on what you changed and why, so I can read the gist her
 
            Three of the inline ones are capability-gated (issue #637) — things that
            don't apply simply aren't offered, so a takeaway shows Plan and the menu
-           and nothing else. Guided rides on the same gate as Cook and adds one of
-           its own: there must actually be a plan. -->
+           and nothing else. Guided rides on the same gate as Cook.
+
+           WHICH HALF IS WHICH follows the cook's own preference (issue #776). The
+           wide labelled half is their default and the icon half is the other mode,
+           so standard cook mode is one tap away whichever way it is set — and the
+           control's shape, its testids and its unreviewed dot are the same object
+           either way. Only the destinations swap. -->
       {#if showCooking}
-        <div class="flex items-center" data-testid="recipe-cook-actions">
+        <div
+          class="flex items-center"
+          data-testid="recipe-cook-actions"
+          data-primary={guidedIsPrimary ? 'guided' : 'standard'}
+        >
           <Button
             size="sm"
-            class={hasGuidedPlan ? 'rounded-r-none' : ''}
-            onclick={() => push(`/recipes/${recipe.id}/cook`)}
+            class={showGuidedHalf ? 'rounded-r-none' : ''}
+            onclick={() => push(primaryCookHref)}
             data-testid="recipe-cook-button"
           >
-            {#snippet leading()}<Icon name="CookingPot" size={16} />{/snippet}
+            {#snippet leading()}
+              <Icon name={guidedIsPrimary ? 'ListChecks' : 'CookingPot'} size={16} />
+            {/snippet}
             Cook
           </Button>
-          {#if hasGuidedPlan}
+          {#if showGuidedHalf}
             <!-- The right half. Icon-only because it is the second press of a
                  control the left half has already named; its accessible name says
                  the whole thing, and the divider is what makes the two read as one
-                 object rather than as two buttons that happen to touch. -->
+                 object rather than as two buttons that happen to touch.
+
+                 Present with no plan too, but only for someone whose default is
+                 guided — the person who most wants to be offered one. It leads to
+                 the no-plan screen, which offers to write it. -->
             <Button
               size="sm"
               class="rounded-l-none border-l border-primary-foreground/30 px-2"
-              onclick={() => push(`/recipes/${recipe.id}/cook/guided`)}
-              ariaLabel={guidedPlanUnread
-                ? 'Cook, guided — the plan is written by AI and not checked yet'
-                : 'Cook, guided'}
-              title={guidedPlanUnread
-                ? 'Cook, guided — written by AI, not checked yet'
-                : 'Cook, guided'}
+              onclick={() => push(secondaryCookHref)}
+              ariaLabel={guidedIsPrimary
+                ? 'Cook, standard'
+                : guidedPlanUnread
+                  ? 'Cook, guided — the plan is written by AI and not checked yet'
+                  : 'Cook, guided'}
+              title={guidedIsPrimary
+                ? 'Cook, standard'
+                : guidedPlanUnread
+                  ? 'Cook, guided — written by AI, not checked yet'
+                  : 'Cook, guided'}
               data-testid="recipe-cook-guided-button"
-              data-unreviewed={guidedPlanUnread}
+              data-unreviewed={guidedPlanUnread && !guidedIsPrimary}
             >
               {#snippet leading()}
                 <!-- "Not checked yet" as an amber dot on the corner of the icon,
@@ -863,8 +909,8 @@ Finish with a short note on what you changed and why, so I can read the gist her
                      the accessible name and the tooltip; the full chip lives on
                      the plan editor, which is where you act on it. -->
                 <span class="relative inline-flex">
-                  <Icon name="ListChecks" size={16} />
-                  {#if guidedPlanUnread}
+                  <Icon name={guidedIsPrimary ? 'CookingPot' : 'ListChecks'} size={16} />
+                  {#if guidedPlanUnread && !guidedIsPrimary}
                     <span
                       class="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-400 ring-1 ring-primary"
                       aria-hidden="true"
