@@ -32,6 +32,7 @@
     sectionMinHeight,
     fadeHeightFor,
     fadeFitsLookahead,
+    LOOKAHEAD_VEIL_PX,
     PEEK_MAX_PX,
   } from '../../lib/cookDeck.js';
   import IngredientText from './IngredientText.svelte';
@@ -1797,9 +1798,21 @@
            a fading first clause will never say so.
 
            Same box, same measured height, still `pointer-events-none` — the deck owns
-           every gesture in this area and nothing here may intercept one. The gradient
-           is opaque for its lower half so the next step's text is genuinely veiled
-           rather than half-legible underneath the words replacing it.
+           every gesture in this area and nothing here may intercept one.
+
+           THE GAP IS PAINTED OUT, not faded over. A gradient that reaches transparent
+           part-way up leaves the next step's opening line legible above the words
+           replacing it, which is the worst of both: two previews of the same step, one
+           of them half-erased. So the panel is a SOLID ground with a short soft edge
+           along its top — `LOOKAHEAD_VEIL_PX` — which is there only to keep the join
+           from reading as a rule across the screen.
+
+           Two stacked boxes rather than one multi-stop gradient because the stops are
+           in PIXELS, not percentages: the gap varies from ~96px to 224px, so a
+           percentage stop would make the soft edge grow and shrink with it. Utilities
+           only for the same reason `--color-background` cannot be named here — the
+           theme inlines it, so an inline gradient would have to reach past the token
+           layer to the `--salt-*` primitive.
 
            Falls back to precisely the old fade in both of the cases where the panel
            would be wrong: no lookahead authored, and a step whose own text runs so
@@ -1808,31 +1821,38 @@
            arithmetic rather than guessed at here). -->
         {#if lookahead && fadeFitsLookahead(fadeHeight)}
           <div
-            class="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col justify-end gap-1 bg-gradient-to-t from-background from-55% to-transparent px-4 pb-3"
+            class="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col"
             style="height: {fadeHeight}px"
             data-testid="guided-step-lookahead"
           >
-            <div class="mx-auto flex w-full max-w-2xl flex-col gap-1">
-              {#if lookahead.getAhead}
-                <!-- The one line here that is an INSTRUCTION, so it is the one line
+            <div
+              class="shrink-0 bg-gradient-to-t from-background to-transparent"
+              style="height: {LOOKAHEAD_VEIL_PX}px"
+              aria-hidden="true"
+            ></div>
+            <div class="flex flex-1 flex-col justify-end gap-1 bg-background px-4 pb-3">
+              <div class="mx-auto flex w-full max-w-2xl flex-col gap-1">
+                {#if lookahead.getAhead}
+                  <!-- The one line here that is an INSTRUCTION, so it is the one line
                    that gets a colour and an icon. It is also deliberately above the
                    summary: if the cook reads one thing in this gap, it is this. -->
-                <p
-                  class="flex items-start gap-2 text-sm font-medium text-primary"
-                  data-testid="guided-step-get-ahead"
-                >
-                  <Icon name="Hourglass" size={16} class="mt-0.5 shrink-0" />
-                  <span class="min-w-0 flex-1">{lookahead.getAhead}</span>
-                </p>
-              {/if}
-              {#if lookahead.lookahead}
-                <p class="flex items-baseline gap-2 text-sm text-muted-foreground">
-                  <span class="shrink-0 text-xs font-semibold uppercase tracking-wide">
-                    Next · {lookahead.number}
-                  </span>
-                  <span class="min-w-0 flex-1 truncate">{lookahead.lookahead}</span>
-                </p>
-              {/if}
+                  <p
+                    class="flex items-start gap-2 text-sm font-medium text-primary"
+                    data-testid="guided-step-get-ahead"
+                  >
+                    <Icon name="Hourglass" size={16} class="mt-0.5 shrink-0" />
+                    <span class="min-w-0 flex-1">{lookahead.getAhead}</span>
+                  </p>
+                {/if}
+                {#if lookahead.lookahead}
+                  <p class="flex items-baseline gap-2 text-sm text-muted-foreground">
+                    <span class="shrink-0 text-xs font-semibold uppercase tracking-wide">
+                      Next · {lookahead.number}
+                    </span>
+                    <span class="min-w-0 flex-1 truncate">{lookahead.lookahead}</span>
+                  </p>
+                {/if}
+              </div>
             </div>
           </div>
         {:else}

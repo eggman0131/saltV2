@@ -9,6 +9,7 @@ import {
   fadeHeightFor,
   fadeFitsLookahead,
   LOOKAHEAD_MIN_PX,
+  LOOKAHEAD_VEIL_PX,
   PEEK_PX,
   PEEK_MAX_PX,
   FADE_MIN_PX,
@@ -262,6 +263,14 @@ describe('room for the guided look-ahead panel', () => {
     for (const gap of [LOOKAHEAD_MIN_PX, 150, 223, PEEK_MAX_PX, 900]) {
       expect(fadeFitsLookahead(fadeHeightFor(gap))).toBe(true);
     }
+  });
+
+  it('leaves room for the panel-s words under its soft top edge', () => {
+    // The panel paints the gap OUT rather than fading over it, so only the top
+    // `LOOKAHEAD_VEIL_PX` is a gradient and the rest is solid ground the words sit
+    // on. A veil that ate most of the smallest qualifying gap would clip them —
+    // two lines and their bottom padding need roughly 52px.
+    expect(LOOKAHEAD_MIN_PX - LOOKAHEAD_VEIL_PX).toBeGreaterThanOrEqual(64);
   });
 });
 

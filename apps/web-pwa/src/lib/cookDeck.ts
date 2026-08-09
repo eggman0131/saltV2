@@ -230,6 +230,18 @@ export function fadeHeightFor(gapBelowStep: number): number {
 export const LOOKAHEAD_MIN_PX = 96;
 
 /**
+ * The soft top edge of that panel: how far its solid ground fades out before the step
+ * above it. Everything below this strip is PAINTED OUT — the panel replaces the next
+ * step's own text rather than fading over it, and a gradient that reached transparent
+ * part-way up would leave that text legible above the words replacing it.
+ *
+ * A pixel height, not a percentage of the panel, because the gap it sits in varies by
+ * more than twice over (`LOOKAHEAD_MIN_PX` to `PEEK_MAX_PX`) and a soft edge that grew
+ * with it would read as a different treatment on a short step and a long one.
+ */
+export const LOOKAHEAD_VEIL_PX = 24;
+
+/**
  * Whether the gap below the current step can carry the look-ahead panel rather than a
  * plain fade. Guided mode only: plain cook mode has no plan to preview from, and fades in
  * the next step's own first lines instead.
