@@ -35,14 +35,12 @@
     makeFreshSession as buildFreshSession,
     withStepDone,
     withPrepChecked,
-    withContainerChecked,
     withTimerStarted,
     withTimerDismissed,
     firstIncompleteStepId,
     firstUseByStep,
     guidedMiseProgress,
-    containerGetOutList,
-    guidedGetOutProgress,
+    guidedPrepBoard,
     unpreppedIngredients,
     prepEntryForContainer,
     prepEntryIngredients,
@@ -75,12 +73,22 @@
   //  2. Each step carries the plan's notes UNDER the recipe's own words. The step
   //     text is never touched, never reworded, never reordered.
   //
-  //  3. It opens on GET OUT (issue #761): every vessel the plan names, fetched
-  //     before the first cut. Its own stage rather than a summary card over the
-  //     prep list, because "set the bench" and "start chopping" are two tasks, and
-  //     this mode exists for a cook served by one thing per screen with a confirmed
-  //     end. It ticks into `checkedContainerNames`, a third list — a bowl on the
-  //     bench is not a job done.
+  // THE PREP STAGE IS A BENCH OF BOWLS (issue #767), grouped by `guidedPrepBoard`:
+  // one card per container, the container's name leading it, the jobs that fill it
+  // underneath, and each job's amounts under its own words. It reads the way the
+  // work happens — get this bowl, chop these things into it — where a flat job list
+  // with the container trailing at the bottom read as a footnote on the chopping.
+  //
+  // What is TICKED is an ingredient, never a job or a bowl: a job that dices three
+  // things is three ticks, done when its last one lands, and a card is done when
+  // every job in it is. A job that prepares no ingredient at all keeps its own tick,
+  // because it has nothing else to tick. Nothing about a finished job or a finished
+  // bowl is stored — both are derived, so neither can disagree with the ticks.
+  //
+  // There WAS a stage before this one: GET OUT (issue #761), every vessel the plan
+  // names, fetched before the first cut. With a card per bowl the count it existed
+  // to give is legible here, so it was a screen to dismiss before the work rather
+  // than a screen of work. Removed with its tick list in #767.
   //
   // A SIBLING PAGE rather than a mode flag on CookModePage, deliberately. What
   // differs is not a slot but the whole mise stage — its data model, its tick
@@ -207,24 +215,21 @@
   const checkedPrepIds = $derived(new Set($cookSession?.checkedPrepIds ?? []));
   const prepEntries = $derived(plan?.prep ?? []);
   const alsoGetOut = $derived.by(() => (recipe && plan ? unpreppedIngredients(recipe, plan) : []));
+  // The bench: one card per container, in the order the plan first names each
+  // (issue #767). Every question the screen asks — what to draw, what a tick means,
+  // whether a job or a bowl is finished — is asked of this one answer.
+  const prepBoard = $derived.by(() => (recipe ? guidedPrepBoard(recipe, prepEntries) : []));
   // Counted over what is ON SCREEN, never over the session's id list — same
   // direction, and same reason, as `miseProgress`.
-  const mise = $derived(guidedMiseProgress(prepEntries, alsoGetOut, checkedPrepIds));
+  const mise = $derived(guidedMiseProgress(prepBoard, alsoGetOut, checkedPrepIds));
 
-  // ─── Get out (issue #761) ──────────────────────────────────────────────────────
-  // The bench, before any knife work. The plan already knows how many bowls it
-  // needs — every prep job names the container its result goes into — it has simply
-  // never said so anywhere the cook could count them, so they found out halfway
-  // through chopping. One row per container, and counting the rows IS the answer.
-  //
-  // Ticked by NORMALISED NAME (`row.key`), which is what the grouping is by and
-  // what the session stores: a container has no id, and a case or whitespace edit
-  // to the plan must not strand a tick nobody can then clear.
-  const checkedContainerNames = $derived(new Set($cookSession?.checkedContainerNames ?? []));
-  const getOutRows = $derived(containerGetOutList(prepEntries));
-  // Counted over the rows on screen, never over the session's list — the same
-  // direction, and same reason, as `mise` above.
-  const getOut = $derived(guidedGetOutProgress(getOutRows, checkedContainerNames));
+  // Done-ness, derived at every level from the ONE stored fact — which ingredient
+  // ids are ticked. A job is done when everything it prepares is; a bowl is done
+  // when every job that fills it is. Storing either would be storing something that
+  // could disagree with the ticks.
+  function allTicked(ids: readonly string[]): boolean {
+    return ids.length > 0 && ids.every((id) => checkedPrepIds.has(id));
+  }
 
   // ─── The tick ──────────────────────────────────────────────────────────────────
   // The same beat plain cook mode and the shopping list give a check-off: a haptic
@@ -263,41 +268,28 @@
     void persistCookSession(withPrepChecked(s, id));
   }
 
-  // The same beat and the same rules for a get-out row, on its own tick list.
-  function toggleContainer(key: string): void {
-    const s = getCookSessionSnapshot();
-    if (!s) return;
-    celebrateTick(key, !checkedContainerNames.has(key));
-    void persistCookSession(withContainerChecked(s, key));
-  }
-
   // ─── Stages ────────────────────────────────────────────────────────────────────
-  // What the cook last chose...
-  let stageChoice = $state<'getOut' | 'mise' | 'steps'>('getOut');
-  // ...and what is actually on screen. A plan naming no containers has no bench to
-  // set, so Get out is not an empty screen to dismiss — it does not exist, and the
-  // cook opens on the prep list. Derived rather than corrected in the resume effect
-  // so it holds however the stage was arrived at, including a plan edited from
-  // another device mid-cook.
-  const stage = $derived(
-    stageChoice === 'getOut' && getOutRows.length === 0 ? 'mise' : stageChoice,
-  );
+  let stage = $state<'mise' | 'steps'>('mise');
 
-  // One-shot resume. Plain cook mode's rule — step progress opens straight into the
-  // steps — extended down the new stage: coming back to a cook already past the
-  // bench must not dump the cook back on Get out to re-tick bowls that are already
-  // sitting there. "Past the bench" is any of three things: steps done, every
-  // vessel out, or prep already under way. Waits for the plan as well as the
-  // session, because until the plan lands there are no rows to be finished with.
+  // One-shot resume — plain cook mode's rule, unchanged: a cook that has already
+  // done a step opens straight back into the steps rather than onto the prep list
+  // it finished with. Waits for the session before reading it, and does its work
+  // exactly once so a later write never yanks the cook off the screen they are on.
   let stageInitialised = false;
   $effect(() => {
     if (stageInitialised) return;
     const s = $cookSession;
-    if (!s || plan === undefined) return;
+    if (!s) return;
     stageInitialised = true;
-    if (s.completedStepIds.length > 0) stageChoice = 'steps';
-    else if (getOut.allChecked || s.checkedPrepIds.length > 0) stageChoice = 'mise';
+    if (s.completedStepIds.length > 0) stage = 'steps';
   });
+
+  // A finished bowl folds down to one line, so the bench clears as the cook works
+  // through it — with the same peek this page's step deck uses for a done step:
+  // tapping the folded line opens it back up, and only the open card carries the
+  // ticks that could untick it. One card at a time, because it is a way of looking
+  // back at one thing rather than a second layout.
+  let peekedGroupKey = $state<string | null>(null);
 
   const completedStepIds = $derived(new Set($cookSession?.completedStepIds ?? []));
   const totalSteps = $derived(recipe?.steps.length ?? 0);
@@ -544,19 +536,11 @@
   });
 
   function goToSteps(): void {
-    stageChoice = 'steps';
+    stage = 'steps';
   }
   function goToMise(): void {
-    stageChoice = 'mise';
+    stage = 'mise';
   }
-  function goToGetOut(): void {
-    stageChoice = 'getOut';
-  }
-
-  // Whether the footer carries a way BACK a stage. There is none from Get out (it
-  // is the first) and none from prep when the plan named no containers, in which
-  // case prep is the first.
-  const showStageBack = $derived(stage === 'steps' || (stage === 'mise' && getOutRows.length > 0));
 
   // ─── Step timers ───────────────────────────────────────────────────────────────
   // Carried unchanged from plain cook mode, because they are the same timers on the
@@ -912,12 +896,7 @@
         <span class="truncate text-base font-semibold" data-testid="cook-mode-title">
           {recipe.title}
         </span>
-        {#if stage === 'getOut'}
-          <!-- The count the stage exists for, said before a single cut. -->
-          <span class="text-xs text-muted-foreground" data-testid="guided-get-out-progress">
-            Get out · {getOut.checked}/{getOut.total} done
-          </span>
-        {:else if stage === 'mise'}
+        {#if stage === 'mise'}
           <span class="text-xs text-muted-foreground" data-testid="guided-prep-progress">
             Prep · {mise.checked}/{mise.total} done
           </span>
@@ -1120,157 +1099,210 @@
       </div>
     {/if}
 
-    <!-- Stage 1: the vessels / Stage 2: the prep list / Stage 3: the steps with
-       their notes -->
-    {#if stage === 'getOut'}
+    <!-- ONE tickable ingredient, wherever the prep screen shows one: inside a bowl's
+       card, and under "Also get out". The same row in both places because it is the
+       same act — this ingredient is prepped — recorded in the same list by the same
+       id. Borderless: it sits inside a card that already has the border, and its own
+       would draw a box round every carrot.
+
+       Long-press adds it to the shopping list (issue #714). It reaches every
+       ingredient on this screen now that each is its own button; before #767 a whole
+       prep job was one button, so the gesture had nothing per-ingredient to hang off
+       and lived only on the remainder rows. -->
+    {#snippet prepIngredientRow(ingredient: IngredientDoc, testid: string)}
+      {@const checked = checkedPrepIds.has(ingredient.id)}
+      {@const popping = checked && justTicked.isExiting(ingredient.id)}
+      <button
+        type="button"
+        class="flex w-full items-center gap-3 rounded-lg px-1 py-2 text-left transition-colors hover:bg-muted/50 active:bg-muted {popping
+          ? 'salt-tick-row motion-reduce:animate-none'
+          : ''}"
+        onclick={() => togglePrep(ingredient.id)}
+        use:longpress={{
+          onLongPress: () => void addIngredientToShoppingList(ingredient),
+        }}
+        aria-pressed={checked}
+        data-testid={testid}
+      >
+        <span
+          class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border {checked
+            ? 'border-primary bg-primary text-primary-foreground'
+            : 'border-input'} {popping ? 'salt-check-pop motion-reduce:animate-none' : ''}"
+        >
+          {#if checked}<Icon name="Check" size={18} />{/if}
+        </span>
+        <CanonIcon
+          thumbnail={thumbnailFor(ingredient.canonId)}
+          name={ingredientLabel(ingredient)}
+          version={iconVersionFor(ingredient.canonId)}
+          dimmed={checked}
+          size={40}
+        />
+        <span
+          class="min-w-0 flex-1 text-base {checked ? 'text-muted-foreground line-through' : ''}"
+        >
+          <IngredientText {ingredient} />
+        </span>
+      </button>
+    {/snippet}
+
+    <!-- Stage 1: the bench, as cards / Stage 2: the steps with their notes -->
+    {#if stage === 'mise'}
       <main class="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         <div class="mx-auto flex max-w-2xl flex-col gap-6">
-          <!-- One row per container the plan names, so counting the rows answers
-             "how many bowls?" before the first cut rather than halfway through it.
-             Never rendered empty: a plan naming no containers has no such stage at
-             all (see `stage` above). -->
-          <ul class="flex flex-col gap-2" data-testid="guided-get-out-list">
-            {#each getOutRows as row (row.key)}
-              {@const checked = checkedContainerNames.has(row.key)}
-              {@const popping = checked && justTicked.isExiting(row.key)}
-              <li>
-                <button
-                  type="button"
-                  class="flex w-full items-center gap-3 rounded-lg border px-4 py-4 text-left transition-colors active:bg-muted {checked
-                    ? 'border-primary/40 bg-primary/5'
-                    : 'bg-card hover:bg-muted/50'} {popping
-                    ? 'salt-tick-row motion-reduce:animate-none'
-                    : ''}"
-                  onclick={() => toggleContainer(row.key)}
-                  aria-pressed={checked}
-                  data-testid="guided-get-out-row"
-                  data-container-key={row.key}
-                >
-                  <span
-                    class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border {checked
-                      ? 'border-primary bg-primary text-primary-foreground'
-                      : 'border-input'} {popping
-                      ? 'salt-check-pop motion-reduce:animate-none'
-                      : ''}"
-                  >
-                    {#if checked}<Icon name="Check" size={18} />{/if}
-                  </span>
-                  <Icon name="Soup" size={22} class="shrink-0 text-muted-foreground" />
-                  <span
-                    class="min-w-0 flex-1 text-base {checked
-                      ? 'text-muted-foreground line-through'
-                      : ''}"
-                  >
-                    <!-- "2 × small bowl" only when a plan really does name one
-                       container twice (an older plan, a hand-edit). Every row of a
-                       well-formed plan reads as its bare name, and the grouping is
-                       invisible — but when it is not, the count is still right. -->
-                    {row.count > 1 ? `${row.count} × ${row.name}` : row.name}
-                  </span>
-                </button>
-              </li>
-            {/each}
-          </ul>
-        </div>
-      </main>
-    {:else if stage === 'mise'}
-      <main class="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        <div class="mx-auto flex max-w-2xl flex-col gap-6">
-          {#if prepEntries.length === 0 && alsoGetOut.length === 0}
+          {#if prepBoard.length === 0 && alsoGetOut.length === 0}
             <p class="text-sm text-muted-foreground" data-testid="guided-prep-empty">
               This plan has no prep — everything happens in the steps.
             </p>
           {/if}
 
-          {#if prepEntries.length > 0}
-            <!-- A FLAT list, deliberately. A recipe's ingredients come in sections
-               ("For the sauce") and cook mode folds them away as they are gathered;
-               a prep list has no such structure — it is a sequence of jobs, each of
-               which ends with something in a named bowl, and folding half of them
-               away would hide work rather than tidy a list. -->
-            <ul class="flex flex-col gap-2" data-testid="guided-prep-list">
-              {#each prepEntries as entry (entry.id)}
-                {@const checked = checkedPrepIds.has(entry.id)}
-                {@const popping = checked && justTicked.isExiting(entry.id)}
-                {@const prepared = prepEntryIngredients(recipe, entry)}
-                <li>
-                  <button
-                    type="button"
-                    class="flex w-full items-start gap-3 rounded-lg border px-4 py-4 text-left transition-colors active:bg-muted {checked
-                      ? 'border-primary/40 bg-primary/5'
-                      : 'bg-card hover:bg-muted/50'} {popping
-                      ? 'salt-tick-row motion-reduce:animate-none'
-                      : ''}"
-                    onclick={() => togglePrep(entry.id)}
-                    aria-pressed={checked}
-                    data-testid="guided-prep-row"
-                    data-prep-id={entry.id}
-                  >
-                    <span
-                      class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border {checked
-                        ? 'border-primary bg-primary text-primary-foreground'
-                        : 'border-input'} {popping
-                        ? 'salt-check-pop motion-reduce:animate-none'
-                        : ''}"
-                      data-testid="guided-prep-check"
+          {#if prepBoard.length > 0}
+            <!-- ONE CARD PER BOWL, in the order the plan first names each (issue
+               #767). The container leads the card because it leads the work: fetch
+               the bowl, then chop into it. Jobs that set nothing aside have no bowl
+               to lead them and share one unheaded card, which is what they are —
+               the prep that goes nowhere in particular.
+
+               A FLAT list of cards, deliberately. A recipe's ingredients come in
+               sections ("For the sauce") and cook mode folds them away as they are
+               gathered; the bench has no such structure — it is a set of bowls, and
+               the only folding that means anything here is a bowl being finished. -->
+            <ul class="flex flex-col gap-3" data-testid="guided-prep-list">
+              {#each prepBoard as group (group.key)}
+                {@const groupChecked = group.tickIds.filter((id) => checkedPrepIds.has(id)).length}
+                {@const groupDone = allTicked(group.tickIds)}
+                <!-- A finished bowl folds down to its name. Only a NAMED one: there
+                   is nothing to fold the unheaded card to but words the plan never
+                   said, so it stays open and simply reads as done. -->
+                {@const folded = groupDone && group.name !== null && peekedGroupKey !== group.key}
+                <li
+                  class="overflow-hidden rounded-lg border {groupDone
+                    ? 'border-primary/40 bg-primary/5'
+                    : 'bg-card'}"
+                  data-testid="guided-prep-group"
+                  data-container-key={group.key}
+                  data-complete={groupDone}
+                >
+                  {#if folded}
+                    <button
+                      type="button"
+                      class="flex w-full items-center gap-3 px-4 py-3 text-left"
+                      onclick={() => (peekedGroupKey = group.key)}
+                      aria-expanded="false"
+                      data-testid="guided-prep-group-folded"
                     >
-                      {#if checked}<Icon name="Check" size={18} />{/if}
-                    </span>
-                    <span class="flex min-w-0 flex-1 flex-col gap-1">
-                      <span class="text-base {checked ? 'text-muted-foreground line-through' : ''}">
-                        {entry.text}
+                      <span
+                        class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-primary bg-primary text-primary-foreground"
+                      >
+                        <Icon name="Check" size={18} />
                       </span>
-                      <!-- HOW MUCH (issue #761). The job's sentence carries no
-                         quantities by design, so without these the cook is told to
-                         finely slice "the red onion" and never told there is one of
-                         them. Indented under the instruction they belong to, and
-                         between it and the container line, so the row reads
-                         top-to-bottom as do this / to this much / into that.
-                         NON-INTERACTIVE: the whole row is already a <button>, so
-                         these are plain text inside it. Deliberately NOT
-                         long-press-to-shopping-list — that gesture stays on the
-                         "Also get out" rows, which are their own buttons. -->
-                      {#if prepared.length > 0}
-                        <span class="mt-0.5 flex flex-col gap-1.5">
-                          {#each prepared as ingredient (ingredient.id)}
-                            <span
-                              class="flex items-center gap-2"
-                              data-testid="guided-prep-ingredient"
+                      <span
+                        class="min-w-0 flex-1 truncate text-base text-muted-foreground line-through"
+                      >
+                        {group.name}
+                      </span>
+                    </button>
+                  {:else}
+                    {#if group.name}
+                      {#snippet lead()}
+                        <Icon name="Soup" size={22} class="shrink-0 text-muted-foreground" />
+                        <span class="min-w-0 flex-1 text-base font-semibold">{group.name}</span>
+                        <span
+                          class="shrink-0 text-xs tabular-nums text-muted-foreground"
+                          data-testid="guided-prep-group-progress"
+                        >
+                          {groupChecked}/{group.tickIds.length}
+                        </span>
+                      {/snippet}
+                      <!-- A done card is only open because the cook opened it, so its
+                         lead is the way back down — the same tap that unfolded it,
+                         reversed. A card still being worked has nothing to fold away
+                         and stays a plain heading. -->
+                      {#if groupDone}
+                        <button
+                          type="button"
+                          class="flex w-full items-center gap-3 border-b px-4 py-3 text-left"
+                          onclick={() => (peekedGroupKey = null)}
+                          aria-expanded="true"
+                          data-testid="guided-prep-group-lead"
+                        >
+                          {@render lead()}
+                        </button>
+                      {:else}
+                        <div
+                          class="flex items-center gap-3 border-b px-4 py-3"
+                          data-testid="guided-prep-group-lead"
+                        >
+                          {@render lead()}
+                        </div>
+                      {/if}
+                    {/if}
+                    <ul class="flex flex-col gap-4 px-3 py-3">
+                      {#each group.jobs as job (job.entry.id)}
+                        {@const jobDone = allTicked(job.tickIds)}
+                        <li
+                          class="flex flex-col gap-1"
+                          data-testid="guided-prep-job"
+                          data-prep-id={job.entry.id}
+                          data-complete={jobDone}
+                        >
+                          {#if job.ingredients.length > 0}
+                            <!-- The instruction, then the amounts it applies to. NOT
+                               a tick target itself: the cook does these one at a
+                               time, and the job is finished when its last ingredient
+                               is (`jobDone`, derived — never stored). -->
+                            <p
+                              class="px-1 text-base {jobDone
+                                ? 'text-muted-foreground line-through'
+                                : ''}"
+                              data-testid="guided-prep-job-text"
                             >
-                              <CanonIcon
-                                thumbnail={thumbnailFor(ingredient.canonId)}
-                                name={ingredientLabel(ingredient)}
-                                version={iconVersionFor(ingredient.canonId)}
-                                dimmed={checked}
-                                size={32}
-                              />
+                              {job.entry.text}
+                            </p>
+                            <ul class="flex flex-col">
+                              {#each job.ingredients as ingredient (ingredient.id)}
+                                <li>
+                                  {@render prepIngredientRow(ingredient, 'guided-prep-ingredient')}
+                                </li>
+                              {/each}
+                            </ul>
+                          {:else}
+                            <!-- A job that prepares no ingredient ("warm the
+                               plates") has nothing to tick but itself, which is the
+                               one place a prep ENTRY's own id is still the tick. -->
+                            {@const checked = checkedPrepIds.has(job.entry.id)}
+                            {@const popping = checked && justTicked.isExiting(job.entry.id)}
+                            <button
+                              type="button"
+                              class="flex w-full items-center gap-3 rounded-lg px-1 py-2 text-left transition-colors hover:bg-muted/50 active:bg-muted {popping
+                                ? 'salt-tick-row motion-reduce:animate-none'
+                                : ''}"
+                              onclick={() => togglePrep(job.entry.id)}
+                              aria-pressed={checked}
+                              data-testid="guided-prep-job-tick"
+                            >
+                              <span
+                                class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border {checked
+                                  ? 'border-primary bg-primary text-primary-foreground'
+                                  : 'border-input'} {popping
+                                  ? 'salt-check-pop motion-reduce:animate-none'
+                                  : ''}"
+                              >
+                                {#if checked}<Icon name="Check" size={18} />{/if}
+                              </span>
                               <span
                                 class="min-w-0 flex-1 text-base {checked
                                   ? 'text-muted-foreground line-through'
                                   : ''}"
                               >
-                                <IngredientText {ingredient} />
+                                {job.entry.text}
                               </span>
-                            </span>
-                          {/each}
-                        </span>
-                      {/if}
-                      <!-- The destination. A job with somewhere to put the result is
-                         the whole point of a prep list — when the last row is
-                         ticked, everything the recipe needs is in a bowl with a
-                         name, and the step notes below refer to those names. Null
-                         when there is nothing to set aside ("open the tin"). -->
-                      {#if entry.container}
-                        <span
-                          class="inline-flex items-center gap-1.5 text-sm text-muted-foreground"
-                          data-testid="guided-prep-container"
-                        >
-                          <Icon name="Soup" size={14} ariaLabel="Into" />
-                          {entry.container}
-                        </span>
-                      {/if}
-                    </span>
-                  </button>
+                            </button>
+                          {/if}
+                        </li>
+                      {/each}
+                    </ul>
+                  {/if}
                 </li>
               {/each}
             </ul>
@@ -1278,61 +1310,25 @@
 
           {#if alsoGetOut.length > 0}
             <!-- The remainder: ingredients this plan names in no job. Almost always
-               because the recipe gained them after the plan was written. Ticked into
-               the SAME list as a prep job, by ingredient id — they are rows on this
-               screen and the cook should not have to care which kind they are. -->
-            <section class="flex flex-col gap-2" data-testid="guided-also-get-out">
-              <div class="flex flex-col gap-1 border-b py-2">
+               because the recipe gained them after the plan was written. A card like
+               any other, headed by what it is rather than by a bowl — they belong to
+               none — and ticked into the SAME list by ingredient id, because they are
+               rows on this screen and the cook should not have to care which kind
+               they are. -->
+            <section
+              class="overflow-hidden rounded-lg border bg-card"
+              data-testid="guided-also-get-out"
+            >
+              <div class="flex flex-col gap-1 border-b px-4 py-3">
                 <h2 class="text-base font-semibold text-foreground">Also get out</h2>
                 <p class="text-sm text-muted-foreground">
                   The plan doesn't mention these — it was probably written before they were part of
                   the recipe.
                 </p>
               </div>
-              <ul class="flex flex-col gap-2">
+              <ul class="flex flex-col px-3 py-3">
                 {#each alsoGetOut as ingredient (ingredient.id)}
-                  {@const checked = checkedPrepIds.has(ingredient.id)}
-                  {@const popping = checked && justTicked.isExiting(ingredient.id)}
-                  <li>
-                    <button
-                      type="button"
-                      class="flex w-full items-center gap-3 rounded-lg border px-4 py-4 text-left transition-colors active:bg-muted {checked
-                        ? 'border-primary/40 bg-primary/5'
-                        : 'bg-card hover:bg-muted/50'} {popping
-                        ? 'salt-tick-row motion-reduce:animate-none'
-                        : ''}"
-                      onclick={() => togglePrep(ingredient.id)}
-                      use:longpress={{
-                        onLongPress: () => void addIngredientToShoppingList(ingredient),
-                      }}
-                      aria-pressed={checked}
-                      data-testid="guided-also-get-out-row"
-                    >
-                      <span
-                        class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border {checked
-                          ? 'border-primary bg-primary text-primary-foreground'
-                          : 'border-input'} {popping
-                          ? 'salt-check-pop motion-reduce:animate-none'
-                          : ''}"
-                      >
-                        {#if checked}<Icon name="Check" size={18} />{/if}
-                      </span>
-                      <CanonIcon
-                        thumbnail={thumbnailFor(ingredient.canonId)}
-                        name={ingredientLabel(ingredient)}
-                        version={iconVersionFor(ingredient.canonId)}
-                        dimmed={checked}
-                        size={40}
-                      />
-                      <span
-                        class="min-w-0 flex-1 text-base {checked
-                          ? 'text-muted-foreground line-through'
-                          : ''}"
-                      >
-                        <IngredientText {ingredient} />
-                      </span>
-                    </button>
-                  </li>
+                  <li>{@render prepIngredientRow(ingredient, 'guided-also-get-out-row')}</li>
                 {/each}
               </ul>
             </section>
@@ -1725,28 +1721,15 @@
     {/if}
 
     <!-- Footer. Exactly one primary action, always in the same place, and — the
-       page's only stage chrome besides the header line — the way back one stage on
-       the left. Neither the get-out list nor the prep list has a bulk tick: they are
-       work you actually did, not a shelf you can declare gathered in one tap. -->
+       page's only stage chrome besides the header line — the way back to prep on the
+       left once cooking has started. The prep list has no bulk tick: it is work you
+       actually did, not a shelf you can declare gathered in one tap. -->
     <footer
-      class="flex shrink-0 items-center gap-3 border-t px-4 py-3 {showStageBack
+      class="flex shrink-0 items-center gap-3 border-t px-4 py-3 {stage === 'steps'
         ? 'justify-between'
         : 'justify-end'}"
     >
-      {#if stage === 'getOut'}
-        <!-- A confirmed end to the gathering, never an auto-advance on the last
-           tick: one thing per screen, finished when the cook says so. -->
-        <Button size="lg" onclick={goToMise} data-testid="guided-get-out-next">
-          Everything's out
-          {#snippet trailing()}<Icon name="ArrowRight" size={16} />{/snippet}
-        </Button>
-      {:else if stage === 'mise'}
-        {#if showStageBack}
-          <Button variant="ghost" onclick={goToGetOut} data-testid="guided-get-out-back">
-            {#snippet leading()}<Icon name="ArrowLeft" size={16} />{/snippet}
-            Get out
-          </Button>
-        {/if}
+      {#if stage === 'mise'}
         <Button size="lg" onclick={goToSteps} data-testid="cook-stage-toggle">
           {completedStepCount > 0 ? 'Continue cooking' : 'Start cooking'}
           {#snippet trailing()}<Icon name="ArrowRight" size={16} />{/snippet}

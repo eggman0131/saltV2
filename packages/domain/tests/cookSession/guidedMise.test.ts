@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { guidedMiseProgress, unpreppedIngredients } from '@salt/domain';
+import { guidedMiseProgress, guidedPrepBoard, unpreppedIngredients } from '@salt/domain';
 import type { Recipe } from '@salt/domain';
 import type { GuidedPlanDoc, GuidedPrepEntryDoc, IngredientDoc } from '@salt/domain/schemas';
 
-// The two pure questions guided mise asks (issue #751, Phase 2): what the plan
-// accounts for nowhere ("Also get out"), and how much of the resulting screen is
-// ticked.
+// The pure questions guided mise asks: what the plan accounts for nowhere ("Also
+// get out", issue #751 Phase 2), how the bench is laid out (`guidedPrepBoard`,
+// issue #767), and how much of the resulting screen is ticked.
 
 function ingredient(id: string, over: Partial<IngredientDoc> = {}): IngredientDoc {
   return {
@@ -47,8 +47,12 @@ function recipe(
   };
 }
 
-function prep(id: string, ingredientIds: string[]): GuidedPrepEntryDoc {
-  return { id, text: `do ${id}`, container: 'small bowl', ingredientIds };
+function prep(
+  id: string,
+  ingredientIds: string[],
+  container: string | null = 'small bowl',
+): GuidedPrepEntryDoc {
+  return { id, text: `do ${id}`, container, ingredientIds };
 }
 
 function plan(entries: GuidedPrepEntryDoc[]): GuidedPlanDoc {
@@ -113,34 +117,120 @@ describe('unpreppedIngredients', () => {
   });
 });
 
-describe('guidedMiseProgress', () => {
-  const PREP = [prep('p1', ['i1']), prep('p2', ['i2'])];
-  const REMAINDER = [ingredient('i3')];
+describe('guidedPrepBoard', () => {
+  const R = recipe([
+    { id: 'g1', name: null, items: [ingredient('i1'), ingredient('i2'), ingredient('i3')] },
+  ]);
 
-  it('counts prep jobs and the remainder as one list', () => {
-    expect(guidedMiseProgress(PREP, REMAINDER, new Set(['p1']))).toEqual({
-      total: 3,
+  it('gives one card per container, in the order the plan first names each', () => {
+    const board = guidedPrepBoard(R, [
+      prep('p1', ['i1'], 'jug'),
+      prep('p2', ['i2'], 'small bowl'),
+      prep('p3', ['i3'], 'jug'),
+    ]);
+    expect(board.map((g) => g.name)).toEqual(['jug', 'small bowl']);
+    expect(board[0]!.jobs.map((j) => j.entry.id)).toEqual(['p1', 'p3']);
+  });
+
+  it('groups two spellings of the same bowl into one card, under the name as authored', () => {
+    const board = guidedPrepBoard(R, [
+      prep('p1', ['i1'], 'Onion  Bowl'),
+      prep('p2', ['i2'], 'onion bowl'),
+    ]);
+    expect(board).toHaveLength(1);
+    expect(board[0]!.key).toBe('onion bowl');
+    // The words the plan says, from the job that said them first — never the
+    // normalised form, which is a matching key and not a label.
+    expect(board[0]!.name).toBe('Onion  Bowl');
+  });
+
+  it('collects every job that sets nothing aside into ONE unheaded card', () => {
+    const board = guidedPrepBoard(R, [
+      prep('p1', ['i1'], null),
+      prep('p2', ['i2'], 'jug'),
+      prep('p3', ['i3'], '   '),
+    ]);
+    expect(board.map((g) => g.key)).toEqual(['', 'jug']);
+    expect(board[0]!.name).toBeNull();
+    expect(board[0]!.jobs.map((j) => j.entry.id)).toEqual(['p1', 'p3']);
+  });
+
+  it('ticks a job by its INGREDIENTS, in recipe order, with the recipe-s amounts', () => {
+    const board = guidedPrepBoard(R, [prep('p1', ['i3', 'i1'])]);
+    const job = board[0]!.jobs[0]!;
+    expect(job.ingredients.map((i) => i.id)).toEqual(['i1', 'i3']);
+    expect(job.tickIds).toEqual(['i1', 'i3']);
+  });
+
+  it('ticks a job that prepares nothing by its own id — it has nothing else', () => {
+    const board = guidedPrepBoard(R, [prep('p1', [])]);
+    expect(board[0]!.jobs[0]!.ingredients).toEqual([]);
+    expect(board[0]!.jobs[0]!.tickIds).toEqual(['p1']);
+  });
+
+  it('falls back to the job-s own id when every id it holds is for a lost ingredient', () => {
+    // Otherwise the job would have no tick at all and could never be cleared.
+    const board = guidedPrepBoard(R, [prep('p1', ['i-gone'])]);
+    expect(board[0]!.jobs[0]!.tickIds).toEqual(['p1']);
+  });
+
+  it('drops an id the recipe no longer has, keeping the ones it still does', () => {
+    const board = guidedPrepBoard(R, [prep('p1', ['i1', 'i-gone'])]);
+    expect(board[0]!.jobs[0]!.tickIds).toEqual(['i1']);
+  });
+
+  it('flattens the card-s ticks, which is what "is this bowl done?" is asked of', () => {
+    const board = guidedPrepBoard(R, [prep('p1', ['i1'], 'jug'), prep('p2', ['i2', 'i3'], 'jug')]);
+    expect(board[0]!.tickIds).toEqual(['i1', 'i2', 'i3']);
+  });
+
+  it('is empty for a plan with no prep at all', () => {
+    expect(guidedPrepBoard(R, [])).toEqual([]);
+  });
+
+  it('is pure — reads its inputs and writes nothing', () => {
+    const entries = [prep('p1', ['i1'])];
+    guidedPrepBoard(R, entries);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.ingredientIds).toEqual(['i1']);
+  });
+});
+
+describe('guidedMiseProgress', () => {
+  const R = recipe([
+    {
+      id: 'g1',
+      name: null,
+      items: [ingredient('i1'), ingredient('i2'), ingredient('i3'), ingredient('i4')],
+    },
+  ]);
+  const BOARD = guidedPrepBoard(R, [prep('p1', ['i1', 'i2']), prep('p2', [])]);
+  const REMAINDER = [ingredient('i4')];
+
+  it('counts TICK ROWS — a job that dices two things is two of them', () => {
+    expect(guidedMiseProgress(BOARD, REMAINDER, new Set(['i1']))).toEqual({
+      total: 4,
       checked: 1,
       allChecked: false,
     });
   });
 
   it('is allChecked only when every row on the screen is ticked', () => {
-    expect(guidedMiseProgress(PREP, REMAINDER, new Set(['p1', 'p2']))).toMatchObject({
-      checked: 2,
+    expect(guidedMiseProgress(BOARD, REMAINDER, new Set(['i1', 'i2', 'p2']))).toMatchObject({
+      checked: 3,
       allChecked: false,
     });
-    expect(guidedMiseProgress(PREP, REMAINDER, new Set(['p1', 'p2', 'i3']))).toEqual({
-      total: 3,
-      checked: 3,
+    expect(guidedMiseProgress(BOARD, REMAINDER, new Set(['i1', 'i2', 'p2', 'i4']))).toEqual({
+      total: 4,
+      checked: 4,
       allChecked: true,
     });
   });
 
   it('a plan in sync has no remainder and can still finish', () => {
-    expect(guidedMiseProgress(PREP, [], new Set(['p1', 'p2']))).toEqual({
-      total: 2,
-      checked: 2,
+    expect(guidedMiseProgress(BOARD, [], new Set(['i1', 'i2', 'p2']))).toEqual({
+      total: 3,
+      checked: 3,
       allChecked: true,
     });
   });
@@ -161,18 +251,18 @@ describe('guidedMiseProgress', () => {
     });
   });
 
-  it('counts over the plan, not over the tick list — stale ids never inflate it', () => {
-    expect(guidedMiseProgress(PREP, [], new Set(['p1', 'p-gone', 'i-gone']))).toEqual({
-      total: 2,
+  it('counts over the bench, not over the tick list — stale ids never inflate it', () => {
+    expect(guidedMiseProgress(BOARD, [], new Set(['i1', 'p-gone', 'i-gone']))).toEqual({
+      total: 3,
       checked: 1,
       allChecked: false,
     });
   });
 
   it('is pure — reads its inputs and writes nothing', () => {
-    const checked = new Set(['p1']);
-    guidedMiseProgress(PREP, REMAINDER, checked);
-    expect([...checked]).toEqual(['p1']);
-    expect(PREP.map((p) => p.id)).toEqual(['p1', 'p2']);
+    const checked = new Set(['i1']);
+    guidedMiseProgress(BOARD, REMAINDER, checked);
+    expect([...checked]).toEqual(['i1']);
+    expect(BOARD.map((g) => g.key)).toEqual(['small bowl']);
   });
 });

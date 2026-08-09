@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/svelte';
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'vitest-axe';
 import { checkInTimerId, isCheckInOf } from '@salt/domain';
@@ -18,10 +18,11 @@ import type {
 // deck's stops are always `[0]` — the tests are written to work WITH that.
 //
 // What this file is FOR, over and above the cook-mode suite: the things that
-// differ. The Get-out stage ahead of any knife work (issue #761), the prep list in
-// place of the ingredient checklist (its own tick field, its own progress, and the
-// "Also get out" remainder that keeps plan drift from hiding an ingredient), and
-// the plan's notes under each step's unmodified words. Everything shared with plain
+// differ. The bench of container cards in place of the ingredient checklist (its
+// own tick field, its own progress, its per-ingredient ticks and derived
+// completion — issue #767 — and the "Also get out" remainder that keeps plan drift
+// from hiding an ingredient), and the plan's notes under each step's unmodified
+// words. Everything shared with plain
 // cook mode — the pager, the timers, the wake lock, the bootstrap — is covered
 // there and is the same code path.
 
@@ -198,7 +199,6 @@ function makeCookSession(over: Partial<CookSessionDoc> = {}): CookSessionDoc {
     recipeUpdatedAtAtStart: RECIPE_UPDATED_AT,
     checkedIngredientIds: [],
     checkedPrepIds: [],
-    checkedContainerNames: [],
     completedStepIds: [],
     activeTimers: [],
     createdAt: '2026-08-01T11:00:00.000Z',
@@ -255,6 +255,13 @@ function makePlan(over: Partial<GuidedPlanDoc> = {}): GuidedPlanDoc {
 // ─── Harness ───────────────────────────────────────────────────────────────────
 function renderGuidedCook() {
   return render(GuidedCookPage, { props: { params: { id: RECIPE_ID } } });
+}
+
+/** The session as it was handed to the most recent write, or null if nothing was
+ *  ever written — which is how "that tap changed no state" is asserted. */
+function lastPersistedOrNull(): CookSessionDoc | null {
+  const calls = vi.mocked(persistCookSession).mock.calls;
+  return calls.length === 0 ? null : calls[calls.length - 1]![0];
 }
 
 /** The session as it was handed to the most recent write. */
@@ -326,19 +333,12 @@ async function enterSteps() {
   await screen.findByTestId('cook-steps-view');
 }
 
-/** The one container the stock plan names, as the get-out list keys it. */
-const STOCK_VESSEL = 'small bowl';
-
 beforeEach(() => {
   vi.clearAllMocks();
   mockAuth.user = { uid: UID };
   mockRecipes._set([makeRecipe()]);
   mockIsLoadingRecipes._set(false);
-  // The stock session is a cook who has ALREADY fetched their vessels, so every
-  // suite below opens where it was written — on the prep list. Get out is a stage
-  // ahead of prep (issue #761) and has its own suite, which starts from an
-  // untouched session.
-  mockCookSession._set(makeCookSession({ checkedContainerNames: [STOCK_VESSEL] }));
+  mockCookSession._set(makeCookSession());
   mockCookSessionEnded._set(false);
   mockIsLoadingCookSession._set(false);
   mockGuidedPlan._set(makePlan());
@@ -399,15 +399,14 @@ describe('GuidedCookPage — the plan it cooks from', () => {
   });
 });
 
-// ─── Get out (issue #761, Phase 3) ─────────────────────────────────────────────
+// ─── The bench (issue #767) ────────────────────────────────────────────────────
 //
-// The stage before the prep list: every vessel the plan names, fetched before the
-// first cut rather than discovered halfway through it. Everything below starts
-// from an UNTOUCHED session — a cook opening this recipe for the first time —
-// because that is the only state the stage is the opening screen for.
+// The prep stage: one card per container, the container leading it, the jobs that
+// fill it underneath, and a tick on every ingredient rather than on the job.
 
-describe('GuidedCookPage — Get out', () => {
-  /** A plan whose jobs name four vessels, one of them twice. */
+describe('GuidedCookPage — the bench of container cards', () => {
+  /** A plan whose five jobs fill three bowls — one of them named twice — plus one
+   *  job that sets nothing aside. */
   function benchPlan(): GuidedPlanDoc {
     return makePlan({
       prep: [
@@ -418,214 +417,185 @@ describe('GuidedCookPage — Get out', () => {
           ingredientIds: ['ing-1'],
         },
         { id: 'prep-2', text: 'Measure the sugar', container: 'sugar bowl', ingredientIds: [] },
-        { id: 'prep-3', text: 'Crush the garlic', container: 'Garlic Bowl', ingredientIds: [] },
-        { id: 'prep-4', text: 'Mix the stock', container: 'jug', ingredientIds: ['ing-2'] },
-        // The same bowl, typed again — a hand-edit, or an older plan.
-        {
-          id: 'prep-5',
-          text: 'Chop the parsley',
-          container: '  garlic   bowl ',
-          ingredientIds: [],
-        },
+        { id: 'prep-3', text: 'Open the tin', container: null, ingredientIds: ['ing-2'] },
+        // The same bowl as prep-1, typed again — a hand-edit, or an older plan.
+        { id: 'prep-4', text: 'Chop the parsley', container: '  Onion   Bowl ', ingredientIds: [] },
       ],
     });
   }
 
-  function freshCook() {
-    mockCookSession._set(makeCookSession());
-    return renderGuidedCook();
-  }
-
-  it('opens on Get out, before any prep job is visible', () => {
-    freshCook();
-
-    expect(screen.getByTestId('guided-get-out-list')).toBeInTheDocument();
-    expect(screen.queryByTestId('guided-prep-row')).toBeNull();
-    expect(screen.queryByTestId('cook-steps-view')).toBeNull();
-  });
-
-  it('gives every container the plan names a row — so counting them is the answer', () => {
+  it('leads each card with the bowl, and puts the jobs that fill it underneath', () => {
     mockGuidedPlan._set(benchPlan());
-    freshCook();
-
-    const rows = screen.getAllByTestId('guided-get-out-row');
-    expect(rows).toHaveLength(4);
-    expect(rows.map((r) => r.textContent?.trim())).toEqual([
-      'onion bowl',
-      'sugar bowl',
-      // Two jobs share this one, so the row says how many bowls it stands for
-      // rather than quietly counting them as one.
-      '2 × Garlic Bowl',
-      'jug',
-    ]);
-    expect(screen.getByTestId('guided-get-out-progress')).toHaveTextContent('0/4');
-  });
-
-  it('records a tick by the container-s normalised name, and nothing else', async () => {
-    mockGuidedPlan._set(benchPlan());
-    freshCook();
-
-    await userEvent.click(screen.getAllByTestId('guided-get-out-row')[2]!);
-    await waitFor(() => expect(lastPersisted().checkedContainerNames).toEqual(['garlic bowl']));
-    // The other two tick lists are different facts and must not have moved.
-    expect(lastPersisted().checkedPrepIds).toEqual([]);
-    expect(lastPersisted().checkedIngredientIds).toEqual([]);
-  });
-
-  it('moves on to prep when the cook says everything is out', async () => {
-    freshCook();
-
-    await userEvent.click(screen.getByTestId('guided-get-out-next'));
-    expect(await screen.findByTestId('guided-prep-list')).toBeInTheDocument();
-    expect(screen.queryByTestId('guided-get-out-list')).toBeNull();
-    // And prep can go back to the bench, the way the steps can go back to prep.
-    await userEvent.click(screen.getByTestId('guided-get-out-back'));
-    expect(await screen.findByTestId('guided-get-out-list')).toBeInTheDocument();
-  });
-
-  it('never advances on its own — the last tick is not the confirmation', async () => {
-    freshCook();
-
-    await userEvent.click(screen.getAllByTestId('guided-get-out-row')[0]!);
-    await waitFor(() =>
-      expect(screen.getByTestId('guided-get-out-progress')).toHaveTextContent('1/1'),
-    );
-    expect(screen.getByTestId('guided-get-out-list')).toBeInTheDocument();
-  });
-
-  it('restores the ticks on return, alongside everything else', () => {
-    // Half-gathered: the cook was interrupted at the cupboard.
-    mockGuidedPlan._set(benchPlan());
-    mockCookSession._set(makeCookSession({ checkedContainerNames: ['sugar bowl', 'jug'] }));
     renderGuidedCook();
 
-    const rows = screen.getAllByTestId('guided-get-out-row');
-    expect(rows.map((r) => r.getAttribute('aria-pressed'))).toEqual([
-      'false',
-      'true',
-      'false',
-      'true',
-    ]);
-    expect(screen.getByTestId('guided-get-out-progress')).toHaveTextContent('2/4');
+    const cards = screen.getAllByTestId('guided-prep-group');
+    // Three cards: two named bowls, then the one that holds every job with no bowl.
+    expect(cards.map((c) => c.dataset['containerKey'])).toEqual(['onion bowl', 'sugar bowl', '']);
+    const leads = screen.getAllByTestId('guided-prep-group-lead');
+    // The name AS AUTHORED, from the job that named it first.
+    expect(leads[0]).toHaveTextContent('onion bowl');
+    expect(leads[1]).toHaveTextContent('sugar bowl');
+    // The unheaded card has no bowl to lead it — and no invented one either.
+    expect(leads).toHaveLength(2);
+
+    // Both jobs that name the onion bowl are inside its card, in plan order.
+    const onionJobs = within(cards[0]!).getAllByTestId('guided-prep-job');
+    expect(onionJobs.map((j) => j.dataset['prepId'])).toEqual(['prep-1', 'prep-4']);
   });
 
-  it('is not confused by a tick left behind for a bowl the plan has renamed', () => {
-    mockCookSession._set(makeCookSession({ checkedContainerNames: ['the tureen'] }));
-    renderGuidedCook();
-
-    // Counted over the rows on screen, so a stale name cannot make an unfinished
-    // bench read as gathered — nor push the cook past a stage they never finished.
-    expect(screen.getByTestId('guided-get-out-progress')).toHaveTextContent('0/1');
-    expect(screen.getByTestId('guided-get-out-list')).toBeInTheDocument();
-  });
-
-  it('skips the stage entirely when the plan names no containers', () => {
-    mockGuidedPlan._set(
-      makePlan({
-        prep: [
-          { id: 'prep-1', text: 'Open the tin', container: null, ingredientIds: ['ing-2'] },
-          { id: 'prep-2', text: 'Take the butter out', container: '   ', ingredientIds: [] },
-        ],
-      }),
-    );
-    freshCook();
-
-    // Not an empty screen, and not a screen to dismiss: the cook opens on prep.
-    expect(screen.queryByTestId('guided-get-out-list')).toBeNull();
-    expect(screen.getByTestId('guided-prep-list')).toBeInTheDocument();
-    // And there is nothing to go back to.
-    expect(screen.queryByTestId('guided-get-out-back')).toBeNull();
-  });
-
-  it('does not send a cook already past the bench back to it', () => {
-    // Nothing ticked here, but the chopping has started — the bowls are plainly
-    // already out, and re-ticking them is not work.
-    mockCookSession._set(makeCookSession({ checkedPrepIds: ['prep-1'] }));
-    renderGuidedCook();
-
-    expect(screen.queryByTestId('guided-get-out-list')).toBeNull();
-    expect(screen.getByTestId('guided-prep-list')).toBeInTheDocument();
-  });
-
-  it('resumes straight into the steps, past both earlier stages', () => {
-    mockCookSession._set(makeCookSession({ completedStepIds: ['step-1'] }));
-    renderGuidedCook();
-
-    expect(screen.getByTestId('cook-steps-view')).toBeInTheDocument();
-    expect(screen.queryByTestId('guided-get-out-list')).toBeNull();
-  });
-
-  it('has no accessibility violations on the get-out list', async () => {
-    const { container } = freshCook();
-    await screen.findByTestId('guided-get-out-list');
-    expect(await axe(container)).toHaveNoViolations();
-  });
-});
-
-describe('GuidedCookPage — the prep list replaces mise en place', () => {
-  it('lists the plan-s jobs, with the container each one fills', () => {
-    renderGuidedCook();
-
-    const rows = screen.getAllByTestId('guided-prep-row');
-    expect(rows).toHaveLength(2);
-    expect(rows[0]).toHaveTextContent('Dice the onions into 5mm pieces');
-    expect(rows[0]).toHaveTextContent('small bowl');
-    // A job with nothing to set aside renders no destination at all.
-    expect(screen.getAllByTestId('guided-prep-container')).toHaveLength(1);
-  });
-
-  it('never shows the ingredient checklist — the prep list IS the list', () => {
+  it('never shows the ingredient checklist — the bench IS the list', () => {
     renderGuidedCook();
     expect(screen.queryByTestId('cook-mise-row')).toBeNull();
-    // And there is no bulk tick: a prep list is work you did, not a shelf you can
-    // declare gathered in one tap.
+    // And there is no bulk tick: prep is work you did, not a shelf you can declare
+    // gathered in one tap.
     expect(screen.queryByTestId('cook-mise-check-all')).toBeNull();
   });
 
-  it('counts progress over the prep list, not over the ingredients', async () => {
+  it('ticks an INGREDIENT, not the job it sits under', async () => {
     renderGuidedCook();
-    expect(screen.getByTestId('guided-prep-progress')).toHaveTextContent('0/2');
+    await userEvent.click(screen.getAllByTestId('guided-prep-ingredient')[0]!);
 
-    mockCookSession._set(makeCookSession({ checkedPrepIds: ['prep-1'] }));
-    await waitFor(() =>
-      expect(screen.getByTestId('guided-prep-progress')).toHaveTextContent('1/2'),
-    );
-  });
-
-  it('records the prep job that was ticked, and nothing else', async () => {
-    renderGuidedCook();
-    await userEvent.click(screen.getAllByTestId('guided-prep-row')[0]!);
-
-    await waitFor(() => expect(lastPersisted().checkedPrepIds).toEqual(['prep-1']));
-    // The ingredient tick list is a DIFFERENT fact and must not have moved.
+    await waitFor(() => expect(lastPersisted().checkedPrepIds).toEqual(['ing-1']));
+    // The mise tick list is a DIFFERENT fact and must not have moved.
     expect(lastPersisted().checkedIngredientIds).toEqual([]);
   });
 
-  it('clears a job ticked a second time', async () => {
-    mockCookSession._set(makeCookSession({ checkedPrepIds: ['prep-1'] }));
+  it('clears an ingredient ticked a second time', async () => {
+    mockCookSession._set(makeCookSession({ checkedPrepIds: ['ing-2'] }));
     renderGuidedCook();
 
-    await userEvent.click(screen.getAllByTestId('guided-prep-row')[0]!);
+    // The tin's job is the second card's, and that card has no bowl to fold to —
+    // so the row that was ticked is still there to untick.
+    await userEvent.click(screen.getAllByTestId('guided-prep-ingredient')[1]!);
     await waitFor(() => expect(lastPersisted().checkedPrepIds).toEqual([]));
   });
 
-  it('reads its ticks back from the session, so a reload resumes where it stopped', () => {
-    mockCookSession._set(makeCookSession({ checkedPrepIds: ['prep-2'] }));
+  it('ticks a job that prepares nothing by itself — it has nothing else to tick', async () => {
+    mockGuidedPlan._set(benchPlan());
     renderGuidedCook();
 
-    const rows = screen.getAllByTestId('guided-prep-row');
+    const ticks = screen.getAllByTestId('guided-prep-job-tick');
+    // prep-2 (measure the sugar) and prep-4 (chop the parsley) name no ingredient.
+    // In CARD order rather than plan order: prep-4 shares the onion bowl, so its
+    // row is in the first card, above the sugar bowl's.
+    expect(ticks).toHaveLength(2);
+    await userEvent.click(ticks[0]!);
+    await waitFor(() => expect(lastPersisted().checkedPrepIds).toEqual(['prep-4']));
+  });
+
+  it('finishes a job when its LAST ingredient is ticked, and never before', async () => {
+    mockGuidedPlan._set(
+      makePlan({
+        prep: [
+          {
+            id: 'prep-1',
+            text: 'Dice the onions and open the tin',
+            container: 'small bowl',
+            ingredientIds: ['ing-1', 'ing-2'],
+          },
+          // A second job in the same bowl, so the card stays open through all of
+          // this and the job's own state is what is being read.
+          { id: 'prep-2', text: 'Warm the plates', container: 'small bowl', ingredientIds: [] },
+        ],
+      }),
+    );
+    mockCookSession._set(makeCookSession({ checkedPrepIds: ['ing-1'] }));
+    renderGuidedCook();
+
+    const job = () => screen.getAllByTestId('guided-prep-job')[0]!;
+    expect(job()).toHaveAttribute('data-complete', 'false');
+    mockCookSession._set(makeCookSession({ checkedPrepIds: ['ing-1', 'ing-2'] }));
+    await waitFor(() => expect(job()).toHaveAttribute('data-complete', 'true'));
+    // The CARD is not done, though — one of its jobs is still outstanding.
+    expect(screen.getByTestId('guided-prep-group')).toHaveAttribute('data-complete', 'false');
+  });
+
+  it('folds a bowl away once every job that fills it is done, and opens it again on a tap', async () => {
+    // One bowl, one job — so what is on screen is only ever that card.
+    mockGuidedPlan._set(
+      makePlan({
+        prep: [
+          {
+            id: 'prep-1',
+            text: 'Dice the onions',
+            container: 'small bowl',
+            ingredientIds: ['ing-1'],
+          },
+        ],
+      }),
+    );
+    mockRecipes._set([
+      makeRecipe({
+        ingredients: [{ id: 'group-1', name: null, items: [makeIngredient({ id: 'ing-1' })] }],
+      }),
+    ]);
+    mockCookSession._set(makeCookSession({ checkedPrepIds: ['ing-1'] }));
+    renderGuidedCook();
+
+    // The onion bowl's one job is finished, so the card is down to its name.
+    const folded = screen.getByTestId('guided-prep-group-folded');
+    expect(folded).toHaveTextContent('small bowl');
+    expect(screen.queryByTestId('guided-prep-ingredient')).toBeNull();
+
+    // Tapping it is a way of LOOKING BACK, never a way of unticking by accident —
+    // the tick that could clear it is only inside the open card.
+    await userEvent.click(folded);
+    expect(await screen.findByTestId('guided-prep-ingredient')).toBeInTheDocument();
+    expect(lastPersistedOrNull()).toBeNull();
+
+    // And the lead it opened into folds it back down again.
+    await userEvent.click(screen.getByTestId('guided-prep-group-lead'));
+    expect(await screen.findByTestId('guided-prep-group-folded')).toBeInTheDocument();
+    expect(lastPersistedOrNull()).toBeNull();
+  });
+
+  it('leaves the bowl-less card open when it is done — there is nothing to fold it to', async () => {
+    mockGuidedPlan._set(
+      makePlan({
+        prep: [{ id: 'prep-1', text: 'Open the tin', container: null, ingredientIds: ['ing-2'] }],
+      }),
+    );
+    mockCookSession._set(makeCookSession({ checkedPrepIds: ['ing-2'] }));
+    renderGuidedCook();
+
+    expect(screen.getByTestId('guided-prep-group')).toHaveAttribute('data-complete', 'true');
+    expect(screen.queryByTestId('guided-prep-group-folded')).toBeNull();
+    expect(screen.getByTestId('guided-prep-ingredient')).toBeInTheDocument();
+  });
+
+  it('counts progress in tick rows, and says how far each bowl is through its own', async () => {
+    mockGuidedPlan._set(benchPlan());
+    renderGuidedCook();
+
+    // ing-1 and ing-2 under their jobs, plus prep-2 and prep-4 which prepare
+    // nothing — four rows, not four jobs by accident.
+    expect(screen.getByTestId('guided-prep-progress')).toHaveTextContent('0/4');
+    expect(screen.getAllByTestId('guided-prep-group-progress')[0]).toHaveTextContent('0/2');
+
+    mockCookSession._set(makeCookSession({ checkedPrepIds: ['ing-1'] }));
+    await waitFor(() =>
+      expect(screen.getByTestId('guided-prep-progress')).toHaveTextContent('1/4'),
+    );
+    expect(screen.getAllByTestId('guided-prep-group-progress')[0]).toHaveTextContent('1/2');
+  });
+
+  it('reads its ticks back from the session, so a reload resumes where it stopped', () => {
+    mockCookSession._set(makeCookSession({ checkedPrepIds: ['ing-2'] }));
+    renderGuidedCook();
+
+    const rows = screen.getAllByTestId('guided-prep-ingredient');
     expect(rows[0]).toHaveAttribute('aria-pressed', 'false');
     expect(rows[1]).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('is not confused by a tick left behind for a job the plan has dropped', async () => {
-    mockCookSession._set(makeCookSession({ checkedPrepIds: ['prep-gone'] }));
+  it('is not confused by a tick left behind for an ingredient the recipe has dropped', async () => {
+    mockCookSession._set(makeCookSession({ checkedPrepIds: ['ing-gone'] }));
     renderGuidedCook();
 
     expect(screen.getByTestId('guided-prep-progress')).toHaveTextContent('0/2');
     // And ticking still appends rather than replacing — the stale id survives.
-    await userEvent.click(screen.getAllByTestId('guided-prep-row')[0]!);
-    await waitFor(() => expect(lastPersisted().checkedPrepIds).toEqual(['prep-gone', 'prep-1']));
+    await userEvent.click(screen.getAllByTestId('guided-prep-ingredient')[0]!);
+    await waitFor(() => expect(lastPersisted().checkedPrepIds).toEqual(['ing-gone', 'ing-1']));
   });
 
   it('says so when the plan has no prep at all', () => {
@@ -636,6 +606,18 @@ describe('GuidedCookPage — the prep list replaces mise en place', () => {
     renderGuidedCook();
 
     expect(screen.getByTestId('guided-prep-empty')).toBeInTheDocument();
+  });
+
+  it('opens on the bench, and resumes straight into the steps once one is done', () => {
+    expect(screen.queryByTestId('cook-steps-view')).toBeNull();
+    renderGuidedCook();
+    expect(screen.getByTestId('guided-prep-list')).toBeInTheDocument();
+    cleanup();
+
+    mockCookSession._set(makeCookSession({ completedStepIds: ['step-1'] }));
+    renderGuidedCook();
+    expect(screen.getByTestId('cook-steps-view')).toBeInTheDocument();
+    expect(screen.queryByTestId('guided-prep-list')).toBeNull();
   });
 });
 
@@ -846,7 +828,7 @@ describe('GuidedCookPage — a prep job says how much it prepares', () => {
     expect(lines[0]).toHaveTextContent('2 onions');
     expect(lines[1]).toHaveTextContent('400g tinned tomatoes');
     // The job's sentence is untouched — the amount is added, never spliced in.
-    expect(screen.getAllByTestId('guided-prep-row')[0]).toHaveTextContent(
+    expect(screen.getAllByTestId('guided-prep-job-text')[0]).toHaveTextContent(
       'Dice the onions into 5mm pieces',
     );
   });

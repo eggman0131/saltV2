@@ -119,7 +119,6 @@ function session(recipeId: string) {
     completedStepIds: [],
     checkedIngredientIds: [],
     checkedPrepIds: [],
-    checkedContainerNames: [],
   };
 }
 

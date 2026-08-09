@@ -122,11 +122,11 @@ describe('CookSessionSchema.checkedPrepIds', () => {
   });
 });
 
-describe('CookSessionSchema.checkedContainerNames', () => {
-  // Get out (issue #761, Phase 3). The THIRD tick list, and the same back-compat
-  // obligation as the other two: cookSessions have no TTL and a cook can span days,
-  // so every session in Firestore today predates the field and must still parse —
-  // otherwise a cook in progress dies on a deploy.
+describe('CookSessionSchema — the tick list that was removed', () => {
+  // `checkedContainerNames` was the Get-out stage's ticks (issue #761, Phase 3),
+  // removed with the stage in #767. cookSessions have no TTL and a cook can span
+  // days, so sessions written before that removal are still in Firestore carrying
+  // the field — and one of them must not die on the deploy that dropped it.
   const base = {
     id: 'r1_u1',
     schemaVersion: 1,
@@ -137,33 +137,20 @@ describe('CookSessionSchema.checkedContainerNames', () => {
     updatedAt: '2026-08-08T18:30:00.000Z',
   };
 
-  it('BACK-COMPAT: defaults to [] when the field is absent', () => {
-    const result = CookSessionSchema.safeParse(base);
-    expect(result.success).toBe(true);
-    expect(result.success && result.data.checkedContainerNames).toEqual([]);
-  });
-
-  it('BACK-COMPAT: a mid-cook guided session written before #761 parses intact', () => {
-    const result = CookSessionSchema.safeParse({
-      ...base,
-      checkedPrepIds: ['prep-1'],
-      completedStepIds: ['step-1'],
-    });
-    expect(result.success && result.data.checkedPrepIds).toEqual(['prep-1']);
-    expect(result.success && result.data.completedStepIds).toEqual(['step-1']);
-    expect(result.success && result.data.checkedContainerNames).toEqual([]);
-  });
-
-  it('parses normalised container names, alongside the other two tick lists', () => {
+  it('BACK-COMPAT: a session still carrying the dropped field parses, minus the field', () => {
     const result = CookSessionSchema.safeParse({
       ...base,
       checkedIngredientIds: ['ing-1'],
       checkedPrepIds: ['prep-1'],
+      completedStepIds: ['step-1'],
       checkedContainerNames: ['onion bowl', 'jug'],
     });
-    expect(result.success && result.data.checkedContainerNames).toEqual(['onion bowl', 'jug']);
-    // Three lists, three separate facts; none of them leaks into another.
+    expect(result.success).toBe(true);
+    // Stripped by zod, so the next whole-document write drops it for good — no
+    // migration, and nothing the cook was doing is lost on the way.
+    expect(result.success && 'checkedContainerNames' in result.data).toBe(false);
     expect(result.success && result.data.checkedPrepIds).toEqual(['prep-1']);
     expect(result.success && result.data.checkedIngredientIds).toEqual(['ing-1']);
+    expect(result.success && result.data.completedStepIds).toEqual(['step-1']);
   });
 });

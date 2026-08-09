@@ -15,7 +15,6 @@ export type { MakeFreshSessionArgs } from './makeFreshSession.js';
 export { withStepDone } from './withStepDone.js';
 export { withIngredientChecked } from './withIngredientChecked.js';
 export { withPrepChecked } from './withPrepChecked.js';
-export { withContainerChecked } from './withContainerChecked.js';
 export { withAllIngredientsChecked } from './withAllIngredientsChecked.js';
 export { withGroupChecked } from './withGroupChecked.js';
 export { withTimerStarted } from './withTimerStarted.js';
@@ -50,13 +49,13 @@ export type {
   DuplicateContainerName,
   DanglingContainerName,
 } from './guidedContainerProblems.js';
-// Get out (issue #761, Phase 3) — the same container-name join read a third way:
-// as the vessels to fetch BEFORE any chopping, so counting the rows answers "how
-// many bowls?" before the first cut. Grouped by the one normaliser, so a plan that
-// repeats a name still reports the right number.
-export { containerGetOutList } from './containerGetOutList.js';
-export type { ContainerGetOutRow } from './containerGetOutList.js';
-export { guidedGetOutProgress } from './guidedGetOutProgress.js';
+// The bench (issue #767) — the same container-name join read a third way: as the
+// CARDS the prep screen is made of, one per bowl, each holding the jobs that fill
+// it and the amounts that go in. Replaces the Get-out stage's own list (#761,
+// Phase 3): with a card per vessel, the bowl count is legible from the prep screen
+// itself, so there is no separate screen of vessels to dismiss first.
+export { guidedPrepBoard } from './guidedPrepBoard.js';
+export type { GuidedPrepGroup, GuidedPrepJob } from './guidedPrepBoard.js';
 // `hasRecipeChanged` used to live here. It now takes two timestamps rather than a
 // session (issue #751 needed the same comparison for a guided plan's own stamp),
 // so it belongs to the recipe module — see recipe/queries/hasRecipeChanged.ts.
