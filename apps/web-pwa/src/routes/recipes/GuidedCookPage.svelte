@@ -1148,7 +1148,11 @@
 
     <!-- Stage 1: the bench, as cards / Stage 2: the steps with their notes -->
     {#if stage === 'mise'}
-      <main class="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      <!-- A DEEPER GROUND than the rest of the app (issue #767). The bench is a set
+         of white cards and nothing else, so the page behind them is tinted a step
+         down from `--background` — otherwise white-on-near-white leaves the cards
+         with no edge to lift off once their borders go. -->
+      <main class="min-h-0 flex-1 overflow-y-auto bg-muted/40 px-4 py-4">
         <div class="mx-auto flex max-w-2xl flex-col gap-6">
           {#if prepBoard.length === 0 && alsoGetOut.length === 0}
             <p class="text-sm text-muted-foreground" data-testid="guided-prep-empty">
@@ -1175,9 +1179,13 @@
                    is nothing to fold the unheaded card to but words the plan never
                    said, so it stays open and simply reads as done. -->
                 {@const folded = groupDone && group.name !== null && peekedGroupKey !== group.key}
+                <!-- Lifted, not boxed: a soft ambient shadow instead of an outline,
+                   and a quiet sage edge down the left so the eye finds where each
+                   bowl starts without a rule round all four sides. Done fades to
+                   sage — the colour a finished thing goes everywhere else in Salt. -->
                 <li
-                  class="overflow-hidden rounded-lg border {groupDone
-                    ? 'border-primary/40 bg-primary/5'
+                  class="overflow-hidden rounded-xl border-l-[3px] border-l-secondary/60 shadow-ambient {groupDone
+                    ? 'bg-secondary/5'
                     : 'bg-card'}"
                   data-testid="guided-prep-group"
                   data-container-key={group.key}
@@ -1205,7 +1213,14 @@
                   {:else}
                     {#if group.name}
                       {#snippet lead()}
-                        <Icon name="Soup" size={22} class="shrink-0 text-muted-foreground" />
+                        <!-- The bowl on a tile of its own, in sage: one small point
+                           of colour per header, so a wall of cards still reads as a
+                           list of separate vessels. -->
+                        <span
+                          class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-secondary/10 text-secondary"
+                        >
+                          <Icon name="Soup" size={18} />
+                        </span>
                         <span class="min-w-0 flex-1 text-base font-semibold">{group.name}</span>
                         <span
                           class="shrink-0 text-xs tabular-nums text-muted-foreground"
@@ -1221,7 +1236,7 @@
                       {#if groupDone}
                         <button
                           type="button"
-                          class="flex w-full items-center gap-3 border-b px-4 py-3 text-left"
+                          class="flex w-full items-center gap-3 border-b border-border/50 px-4 py-3.5 text-left"
                           onclick={() => (peekedGroupKey = null)}
                           aria-expanded="true"
                           data-testid="guided-prep-group-lead"
@@ -1230,14 +1245,14 @@
                         </button>
                       {:else}
                         <div
-                          class="flex items-center gap-3 border-b px-4 py-3"
+                          class="flex items-center gap-3 border-b border-border/50 px-4 py-3.5"
                           data-testid="guided-prep-group-lead"
                         >
                           {@render lead()}
                         </div>
                       {/if}
                     {/if}
-                    <ul class="flex flex-col gap-4 px-3 py-3">
+                    <ul class="flex flex-col gap-4 px-3 py-4">
                       {#each group.jobs as job (job.entry.id)}
                         {@const jobDone = allTicked(job.tickIds)}
                         <li
@@ -1316,17 +1331,17 @@
                rows on this screen and the cook should not have to care which kind
                they are. -->
             <section
-              class="overflow-hidden rounded-lg border bg-card"
+              class="overflow-hidden rounded-xl border-l-[3px] border-l-secondary/60 bg-card shadow-ambient"
               data-testid="guided-also-get-out"
             >
-              <div class="flex flex-col gap-1 border-b px-4 py-3">
+              <div class="flex flex-col gap-1 border-b border-border/50 px-4 py-3.5">
                 <h2 class="text-base font-semibold text-foreground">Also get out</h2>
                 <p class="text-sm text-muted-foreground">
                   The plan doesn't mention these — it was probably written before they were part of
                   the recipe.
                 </p>
               </div>
-              <ul class="flex flex-col px-3 py-3">
+              <ul class="flex flex-col px-3 py-4">
                 {#each alsoGetOut as ingredient (ingredient.id)}
                   <li>{@render prepIngredientRow(ingredient, 'guided-also-get-out-row')}</li>
                 {/each}
@@ -1400,9 +1415,13 @@
               style="min-height: {collapsed ? 0 : sectionMinHeight(deck.viewportHeight)}px"
             >
               {#if collapsed}
+                <!-- A DONE step recedes into sage, so the live step is the only
+                   black-on-white thing on the deck. Sage rather than the teal
+                   primary because that is what a finished thing goes everywhere else
+                   in Salt — the shopping list floods a ticked row with it. -->
                 <button
                   type="button"
-                  class="mx-auto flex w-full max-w-2xl items-center gap-3 rounded-lg border border-primary/40 bg-primary/5 px-4 py-3 text-left"
+                  class="mx-auto flex w-full max-w-2xl items-center gap-3 rounded-lg border border-secondary/30 bg-secondary/5 px-4 py-3 text-left"
                   onclick={() => peekStep(step.id)}
                   aria-expanded="false"
                   data-testid="cook-step-collapsed"
@@ -1413,7 +1432,7 @@
                     <Icon name="Check" size={18} />
                   </span>
                   <span
-                    class="shrink-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                    class="shrink-0 text-xs font-semibold uppercase tracking-wide text-secondary"
                   >
                     Step {i + 1}
                   </span>
