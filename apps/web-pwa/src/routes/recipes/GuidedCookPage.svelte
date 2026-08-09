@@ -1114,7 +1114,11 @@
 
     <!-- Stage 1: the prep board / Stage 2: the steps with their notes -->
     {#if stage === 'mise'}
-      <main class="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      <!-- A DEEPER GROUND than the rest of the app. The bench is a set of white
+         cards and nothing else, so the page behind them is tinted a step down from
+         `--background` — otherwise white-on-near-white leaves the cards with no
+         edge to lift off once their outlines go. -->
+      <main class="min-h-0 flex-1 overflow-y-auto bg-muted/40 px-4 py-4">
         <div class="mx-auto flex max-w-2xl flex-col gap-6">
           {#if board.cards.length === 0 && board.alsoGetOut.length === 0}
             <p class="text-sm text-muted-foreground" data-testid="guided-prep-empty">
@@ -1145,9 +1149,13 @@
                 {@const celebrating = card.tickIds.some((id) => justTicked.isExiting(id))}
                 {@const collapsed =
                   cardProgress.allChecked && !celebrating && peekedCardKey !== card.key}
+                <!-- Lifted, not boxed: a soft ambient shadow instead of an outline,
+                   and a quiet sage edge down the left so the eye finds where each
+                   bowl starts without a rule round all four sides. Done fades to
+                   sage — the colour a finished thing goes everywhere else in Salt. -->
                 <li
-                  class="overflow-hidden rounded-lg border {cardProgress.allChecked
-                    ? 'border-primary/40 bg-primary/5'
+                  class="overflow-hidden rounded-xl border-l-[3px] border-l-secondary/60 shadow-ambient {cardProgress.allChecked
+                    ? 'bg-secondary/5'
                     : 'bg-card'}"
                   data-testid="guided-prep-card"
                   data-container-key={card.key}
@@ -1176,7 +1184,14 @@
                     {#if card.name !== null || cardProgress.allChecked}
                       {#snippet cardHeading()}
                         {#if card.name !== null}
-                          <Icon name="Soup" size={20} class="shrink-0 text-muted-foreground" />
+                          <!-- The bowl on a tile of its own, in sage: one small
+                             point of colour per header, so a wall of cards still
+                             reads as a list of separate vessels. -->
+                          <span
+                            class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-secondary/10 text-secondary"
+                          >
+                            <Icon name="Soup" size={18} />
+                          </span>
                         {/if}
                         <span
                           class="min-w-0 flex-1 truncate text-base font-semibold"
@@ -1194,7 +1209,7 @@
                       {#if cardProgress.allChecked}
                         <button
                           type="button"
-                          class="flex w-full items-center gap-2.5 border-b px-4 py-3 text-left transition-colors hover:bg-muted/50 active:bg-muted"
+                          class="flex w-full items-center gap-2.5 border-b border-border/50 px-4 py-3.5 text-left transition-colors hover:bg-muted/50 active:bg-muted"
                           onclick={() => toggleCardPeek(card.key, false)}
                           data-testid="guided-prep-card-header"
                         >
@@ -1203,7 +1218,7 @@
                         </button>
                       {:else}
                         <div
-                          class="flex w-full items-center gap-2.5 border-b px-4 py-3"
+                          class="flex w-full items-center gap-2.5 border-b border-border/50 px-4 py-3.5"
                           data-testid="guided-prep-card-header"
                         >
                           {@render cardHeading()}
@@ -1211,7 +1226,7 @@
                       {/if}
                     {/if}
 
-                    <ul class="flex flex-col gap-2 px-3 py-3">
+                    <ul class="flex flex-col gap-2 px-3 py-4">
                       {#each card.jobs as job (job.id)}
                         {@const jobDone = job.rows.every((r) => checkedPrepIds.has(r.id))}
                         <!-- A job naming no ingredient ("open the tin") has nothing
@@ -1456,9 +1471,13 @@
               style="min-height: {collapsed ? 0 : sectionMinHeight(deck.viewportHeight)}px"
             >
               {#if collapsed}
+                <!-- A DONE step recedes into sage, so the live step is the only
+                   black-on-white thing on the deck. Sage rather than the teal
+                   primary because that is what a finished thing goes everywhere
+                   else in Salt — the shopping list floods a ticked row with it. -->
                 <button
                   type="button"
-                  class="mx-auto flex w-full max-w-2xl items-center gap-3 rounded-lg border border-primary/40 bg-primary/5 px-4 py-3 text-left"
+                  class="mx-auto flex w-full max-w-2xl items-center gap-3 rounded-lg border border-secondary/30 bg-secondary/5 px-4 py-3 text-left"
                   onclick={() => peekStep(step.id)}
                   aria-expanded="false"
                   data-testid="cook-step-collapsed"
@@ -1469,7 +1488,7 @@
                     <Icon name="Check" size={18} />
                   </span>
                   <span
-                    class="shrink-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                    class="shrink-0 text-xs font-semibold uppercase tracking-wide text-secondary"
                   >
                     Step {i + 1}
                   </span>
