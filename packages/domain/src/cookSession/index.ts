@@ -15,7 +15,6 @@ export type { MakeFreshSessionArgs } from './makeFreshSession.js';
 export { withStepDone } from './withStepDone.js';
 export { withIngredientChecked } from './withIngredientChecked.js';
 export { withPrepChecked } from './withPrepChecked.js';
-export { withContainerChecked } from './withContainerChecked.js';
 export { withAllIngredientsChecked } from './withAllIngredientsChecked.js';
 export { withGroupChecked } from './withGroupChecked.js';
 export { withTimerStarted } from './withTimerStarted.js';
@@ -29,8 +28,16 @@ export { firstIncompleteStepId } from './firstIncompleteStepId.js';
 export { miseProgress } from './miseProgress.js';
 export type { MiseProgress } from './miseProgress.js';
 // Guided cook (issue #751, Phase 2) — the same two questions asked of a guided
-// prep list rather than of the recipe's ingredient checklist.
-export { guidedMiseProgress } from './guidedMiseProgress.js';
+// prep list rather than of the recipe's ingredient checklist. Both are now asked
+// of the BOARD (issue #767), which is the whole of what the prep screen shows.
+export { guidedPrepBoard } from './guidedPrepBoard.js';
+export type {
+  GuidedPrepBoard,
+  GuidedPrepCard,
+  GuidedPrepJob,
+  GuidedPrepTickRow,
+} from './guidedPrepBoard.js';
+export { guidedMiseProgress, guidedPrepCardProgress } from './guidedMiseProgress.js';
 export { unpreppedIngredients } from './unpreppedIngredients.js';
 // Guided cook amounts (issue #761, Phase 1) — guided mode never shows less than
 // plain cook mode, so a prep job says how much it prepares, a named bowl says
@@ -50,13 +57,13 @@ export type {
   DuplicateContainerName,
   DanglingContainerName,
 } from './guidedContainerProblems.js';
-// Get out (issue #761, Phase 3) — the same container-name join read a third way:
-// as the vessels to fetch BEFORE any chopping, so counting the rows answers "how
-// many bowls?" before the first cut. Grouped by the one normaliser, so a plan that
-// repeats a name still reports the right number.
-export { containerGetOutList } from './containerGetOutList.js';
-export type { ContainerGetOutRow } from './containerGetOutList.js';
-export { guidedGetOutProgress } from './guidedGetOutProgress.js';
+// A "Get out" STAGE (issue #761, Phase 3) used to live here — `containerGetOutList`,
+// `guidedGetOutProgress` and `withContainerChecked`, a screen of every vessel the
+// plan names, dismissed before the first cut. Issue #767 deleted all three: the
+// container now LEADS each prep card, so one card per bowl is countable on the prep
+// screen itself and a separate screen to dismiss first was a tap that bought
+// nothing. The grouping it did survives in `guidedPrepBoard`.
+//
 // `hasRecipeChanged` used to live here. It now takes two timestamps rather than a
 // session (issue #751 needed the same comparison for a guided plan's own stamp),
 // so it belongs to the recipe module — see recipe/queries/hasRecipeChanged.ts.

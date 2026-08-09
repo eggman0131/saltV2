@@ -9,12 +9,10 @@ import { z } from 'zod';
 // MORE THAN ONE PHASE NUMBERING MEETS IN THIS FILE, and they are not one scheme.
 // "Phase 1/2/3" below are COOK MODE's own phases (issue #556) — the order the
 // mise/steps/timers surfaces shipped in. `checkedPrepIds` at the bottom belongs to
-// the GUIDED COOK phases (issue #751), where it is Phase 2, and
-// `checkedContainerNames` beside it to the GUIDED AMOUNTS phases (issue #761),
-// where it is Phase 3. Read each tick list against its OWN issue; none of them
-// continues the #556 sequence. In particular, do not add a #751 or #761 field to
-// the #556 forward-looking list: that list is specifically "in the shape now,
-// written by nobody yet", which none of these are.
+// the GUIDED COOK phases (issue #751), where it is Phase 2. Read each tick list
+// against its OWN issue; neither continues the #556 sequence. In particular, do
+// not add a #751 field to the #556 forward-looking list: that list is specifically
+// "in the shape now, written by nobody yet", which `checkedPrepIds` is not.
 //
 // Cook-mode Phase 1 writes only `checkedIngredientIds` (the mise-en-place tick
 // state). The forward-looking fields — `completedStepIds` (Phase 2, guided steps)
@@ -98,23 +96,13 @@ export const CookSessionSchema = z.object({
   // `.default([])`: cookSessions have no TTL and a cook can span days, so every
   // session already in Firestore predates this field and must still parse.
   checkedPrepIds: z.array(z.string()).default([]),
-  // Get-out tick state (issue #761, Phase 3) — a THIRD tick list, for the stage
-  // that comes before any knife work: every container the plan names, fetched from
-  // the cupboard before the first cut rather than halfway through it. Separate from
-  // `checkedPrepIds` for the same reason that one is separate from
-  // `checkedIngredientIds`: "the onion bowl is on the bench" and "the onions are
-  // diced into it" are different facts, and one must never be read as the other.
-  //
-  // NAMES, not ids, because a container has no id — it is free text on a prep job,
-  // and several jobs may name the same bowl. The entries are the NORMALISED name
-  // (`normaliseContainerName`), which is the identity the get-out list groups by,
-  // so a later case or whitespace edit to the plan does not strand the tick. As
-  // with `checkedPrepIds`, an entry is only ever looked up against the rows
-  // currently on screen, so a name the plan has since dropped is inert.
-  //
-  // `.default([])`: cookSessions have no TTL and a cook can span days, so every
-  // session already in Firestore predates this field and must still parse.
-  checkedContainerNames: z.array(z.string()).default([]),
+  // A THIRD tick list, `checkedContainerNames`, sat here between #761 and #767: one
+  // entry per vessel gathered on a "Get out" stage before any knife work. Issue
+  // #767 removed both the stage and the field — the container now leads each prep
+  // card, so the bowls are countable on the prep screen itself. Removing it is free
+  // on read: zod strips an unknown key, so a session written mid-cook under #761
+  // still parses, and its stale ticks simply go nowhere. Do not reintroduce the
+  // name for anything else.
   createdAt: z.string(),
   updatedAt: z.string(),
 });

@@ -199,7 +199,6 @@ function makeCookSession(over: Partial<CookSessionDoc> = {}): CookSessionDoc {
     // normal cook mode is exercised against the document shape it will actually
     // meet — it writes neither, and must not read either as its own.
     checkedPrepIds: [],
-    checkedContainerNames: [],
     completedStepIds: [],
     activeTimers: [],
     createdAt: '2026-07-01T11:00:00.000Z',

@@ -1,6 +1,6 @@
 import { flattenIngredients } from '../recipe/index.js';
 import type { Ingredient, Recipe } from '../recipe/index.js';
-import type { GuidedPlanDoc } from '../schemas/index.js';
+import type { GuidedPrepEntryDoc } from '../schemas/index.js';
 
 // The ingredients a guided plan accounts for NOWHERE (issue #751, Phase 2) — what
 // the guided prep screen lists under "Also get out".
@@ -28,7 +28,14 @@ import type { GuidedPlanDoc } from '../schemas/index.js';
 // it stays the cook's call, as it is on every other surface.
 //
 // Order is the recipe's own, so the remainder reads down the ingredient list.
-export function unpreppedIngredients(recipe: Recipe, plan: GuidedPlanDoc): readonly Ingredient[] {
-  const accountedFor = new Set(plan.prep.flatMap((entry) => entry.ingredientIds));
+//
+// Takes the PREP LIST rather than the whole plan (issue #767): the step notes were
+// never consulted, and `guidedPrepBoard` — which now owns this remainder as part
+// of the screen it describes — is handed the prep list alone.
+export function unpreppedIngredients(
+  recipe: Recipe,
+  prep: readonly GuidedPrepEntryDoc[],
+): readonly Ingredient[] {
+  const accountedFor = new Set(prep.flatMap((entry) => entry.ingredientIds));
   return flattenIngredients(recipe).filter((ingredient) => !accountedFor.has(ingredient.id));
 }
