@@ -84,8 +84,9 @@ export const GuidedStepNoteContentSchema = z.object({
   // ahead of may be several steps away ("preheat the oven" belongs on the
   // ten-minute sauté, not one step before the oven is used).
   //
-  // One clause on what the NEXT step does. Null is allowed and renders as the
-  // plain fade — every plan written before this existed is in that state.
+  // One clause on what the NEXT step does. Null renders as the plain fade, which
+  // is the honest answer for a plan whose author had nothing to say here — not a
+  // legacy state to be tolerated.
   lookahead: z.string().nullable(),
   // Something from a LATER step to start during this one: an oven that needs
   // fifteen minutes to come up, a steak that needs half an hour out of the fridge.
@@ -98,8 +99,16 @@ export const GuidedStepNoteContentSchema = z.object({
 //
 // Every field a plan might not carry is `.default(null)` / `.default([])` rather
 // than `.optional()`, following the `producesCanonId` idiom on RecipeSchema:
-// readers see a concrete `string | null` / array, never `undefined`, and a
-// document written before a field existed still parses (back-compat on read).
+// READERS SEE A CONCRETE `string | null` / array, never `undefined`. That is the
+// whole reason, and it is worth stating without the usual second one: guided mode
+// has never shipped past staging, so `guidedPlans` is greenfield and this document
+// carries no installed base to be backward-compatible WITH. It is absent from
+// CLAUDE.md's production-data list for the same reason.
+//
+// So changing the shape of a plan is free — re-run it. Do not add migration notes,
+// tolerance for old shapes, or "existing plans read as null" reasoning here; the
+// defaults exist to spare every reader an `undefined` check, not to protect data
+// that does not exist.
 
 export const GuidedPrepEntrySchema = GuidedPrepEntryContentSchema.extend({
   // Local to this document, minted when the entry is created (the AI does not

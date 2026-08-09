@@ -482,9 +482,10 @@
   // for a frame on entry and then pop in, which on a deck that also springs is a
   // second piece of movement saying nothing.
   //
-  // Null whenever the plan says nothing about the next step — and null all the way
-  // down for a plan written before these fields existed, which is exactly today's
-  // faded peek, unchanged.
+  // Null whenever the plan says nothing about the next step, which falls back to
+  // the plain faded peek. That is the honest answer for a plan whose author had
+  // nothing to say here, not a legacy shape being tolerated — guided mode has
+  // never shipped past staging, so there is no installed base of plans.
   const lookahead = $derived(
     recipe ? nextStepLookahead(recipe, plan?.stepNotes ?? [], currentStep?.id ?? null) : null,
   );
