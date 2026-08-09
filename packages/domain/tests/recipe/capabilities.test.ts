@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { takesIngredients, isCookable, isPlannable } from '@salt/domain';
+import { takesIngredients, isCookable, isPlannable, isAuthorable } from '@salt/domain';
 import type { RecipeKind } from '@salt/domain';
 
 // The capability table (issue #637), pinned cell by cell. This is the contract
@@ -11,18 +11,44 @@ describe('recipe kind capabilities', () => {
     takesIngredients: boolean;
     isCookable: boolean;
     isPlannable: boolean;
+    isAuthorable: boolean;
   }> = [
-    { kind: 'recipe', takesIngredients: true, isCookable: true, isPlannable: true },
-    { kind: 'outing', takesIngredients: false, isCookable: false, isPlannable: true },
-    { kind: 'cocktail', takesIngredients: true, isCookable: true, isPlannable: false },
-    { kind: 'placeholder', takesIngredients: false, isCookable: false, isPlannable: false },
+    {
+      kind: 'recipe',
+      takesIngredients: true,
+      isCookable: true,
+      isPlannable: true,
+      isAuthorable: true,
+    },
+    {
+      kind: 'outing',
+      takesIngredients: false,
+      isCookable: false,
+      isPlannable: true,
+      isAuthorable: false,
+    },
+    {
+      kind: 'cocktail',
+      takesIngredients: true,
+      isCookable: true,
+      isPlannable: false,
+      isAuthorable: false,
+    },
+    {
+      kind: 'placeholder',
+      takesIngredients: false,
+      isCookable: false,
+      isPlannable: false,
+      isAuthorable: false,
+    },
   ];
 
   for (const row of table) {
-    it(`${row.kind}: ingredients ${row.takesIngredients}, cookable ${row.isCookable}, plannable ${row.isPlannable}`, () => {
+    it(`${row.kind}: ingredients ${row.takesIngredients}, cookable ${row.isCookable}, plannable ${row.isPlannable}, authorable ${row.isAuthorable}`, () => {
       expect(takesIngredients(row.kind)).toBe(row.takesIngredients);
       expect(isCookable(row.kind)).toBe(row.isCookable);
       expect(isPlannable(row.kind)).toBe(row.isPlannable);
+      expect(isAuthorable(row.kind)).toBe(row.isAuthorable);
     });
   }
 
@@ -32,6 +58,29 @@ describe('recipe kind capabilities', () => {
     expect(isPlannable('outing')).toBe(true);
     expect(takesIngredients('outing')).toBe(false);
     expect(isCookable('outing')).toBe(false);
+  });
+
+  it('a recipe is the only kind the librarian can author — for now (issue #763)', () => {
+    // Named separately because the three `false`s here mean "not yet", not "by
+    // design", and the distinction is the whole reason the predicate is called
+    // `isAuthorable` rather than something named after a feature. No AI authoring
+    // path can emit a non-`recipe` kind today (assembleRecipeDraft hardcodes it),
+    // so a cocktail authored from a chat would land in the dinner list forever —
+    // `kind` is immutable. The day the librarian carries `kind` through, the
+    // cocktail row flips here and every consumer inherits it untouched.
+    expect(isAuthorable('recipe')).toBe(true);
+    expect(isAuthorable('cocktail')).toBe(false);
+    // These two are false on their own merits and stay false: an outing is a
+    // hand-written night off, a placeholder is a photograph and a title.
+    expect(isAuthorable('outing')).toBe(false);
+    expect(isAuthorable('placeholder')).toBe(false);
+  });
+
+  it('authorable is not the same question as cookable', () => {
+    // The trap this predicate exists to avoid: a cocktail IS cookable, so gating
+    // "Make a variation" on `isCookable` would have offered it there.
+    expect(isCookable('cocktail')).toBe(true);
+    expect(isAuthorable('cocktail')).toBe(false);
   });
 
   it('a cocktail is made like a recipe but is never dinner', () => {

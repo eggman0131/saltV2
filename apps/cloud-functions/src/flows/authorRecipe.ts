@@ -1,5 +1,4 @@
 import { z } from 'genkit';
-import { googleAI } from '@genkit-ai/google-genai';
 import { getFirestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
 import { AuthorRecipeInputSchema, LibrarianOutputSchema, RecipeSchema } from '@salt/domain/schemas';
@@ -8,7 +7,7 @@ import { setActiveSpanName } from '@salt/observability/server';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 import { assembleRecipeDraft } from './assembleRecipeDraft.js';
-import { resolveModel } from '../ai/resolveModel.js';
+import { flowModel } from '../ai/fakeModel.js';
 import { CATEGORY_TAG_RULES } from './categoryTags.js';
 import { INGREDIENT_SUBSTITUTION_RULES } from './ingredientConversions.js';
 import { STEP_RULES, FIRST_USE_ORDINAL_RULE } from './stepRules.js';
@@ -43,22 +42,39 @@ export const authorRecipeFlow = ai.defineFlow(
     // them (see equipmentContext.ts — it must never pick equipment itself).
     // Without it, "sear it in the Pizzaiolo at 400 °C" gets flattened back to
     // "bake in the oven" on the way into the saved recipe.
+    //
+    // Variation mode (issue #763) is a THIRD composition and deliberately not a
+    // shade of edit mode: the conversation is about a new dish that starts from
+    // an existing one. It grounds the PROSE on the base recipe — so the draft
+    // carries forward every ingredient, step and timing the chat never mentioned
+    // — while `assembleRecipeDraft` is still called with `baseRecipe: null`, so
+    // the draft never inherits the base's identity (its `producesCanonId`, its
+    // image, or its title). Edit mode wins when both ids are set.
     const db = getFirestore();
-    const [baseRecipe, equipmentContext] = await Promise.all([
+    const [baseRecipe, variationBase, equipmentContext] = await Promise.all([
       input.recipeId ? readBaseRecipe(db, input.recipeId) : Promise.resolve(null),
+      !input.recipeId && input.basedOnRecipeId
+        ? readBaseRecipe(db, input.basedOnRecipeId)
+        : Promise.resolve(null),
       readEquipmentContext(db, 'authorRecipe'),
     ]);
     const closing = baseRecipe
       ? editModeSection(formatRecipeForPrompt(baseRecipe))
-      : CREATE_MODE_CLOSING;
+      : variationBase
+        ? variationModeSection(formatRecipeForPrompt(variationBase))
+        : CREATE_MODE_CLOSING;
     const equipmentSection = equipmentSectionForLibrarian(equipmentContext);
     const systemPrompt = `${LIBRARIAN_SYSTEM}\n\n${closing}${tagVocab}${
       equipmentSection ? `\n\n${equipmentSection}` : ''
     }`;
 
     // Flash + temperature:0 for the librarian — accuracy over creativity (issue #206).
-    const modelId = await resolveModel('fast', 'authorRecipe');
-    const model = googleAI.model(modelId);
+    // `flowModel` rather than `resolveModel` so the librarian can be stubbed under
+    // FUNCTIONS_AI_FAKE (issue #763): "Save as recipe" had no e2e coverage at all
+    // because the one flow it runs was the last leg still reaching a live model.
+    // Byte-for-byte the production path when the flag is off — see fakeModel.ts,
+    // which already names authorRecipe as a structured-output flow.
+    const model = await flowModel('fast', 'authorRecipe');
     const result = await withAiTimeout(
       'authorRecipe',
       () =>
@@ -83,6 +99,9 @@ export const authorRecipeFlow = ai.defineFlow(
     // only known after the librarian generates, so name it here.
     setActiveSpanName(`Author recipe: ${parsed.data.title}`);
 
+    // `baseRecipe` is null in BOTH create and variation mode — that is what makes
+    // a variation an independent dish rather than a second copy of the original.
+    // Do not pass `variationBase` here (issue #763).
     return assembleRecipeDraft(parsed.data, { source: { type: 'manual' }, baseRecipe });
   },
 );
@@ -131,6 +150,33 @@ Integrate additions (e.g. a new ingredient) into the appropriate group and refer
 from the relevant steps.
 
 ### Current recipe
+${baseRecipe}`;
+}
+
+// Variation mode (issue #763): the conversation is about a NEW dish that starts
+// from an existing one. It sits between the other two closings and needs both
+// halves of them — carry the base forward like edit mode, because a chat that
+// only says "prawns instead of chorizo" would otherwise author a recipe made of
+// prawns and nothing else; but author it as a new dish like create mode, with
+// its own name, rather than returning the original under the original's title.
+function variationModeSection(baseRecipe: string): string {
+  return `## Writing a variation on an existing recipe
+The user is creating a NEW recipe that starts from the one below. The original will NOT be \
+changed and must not be described as changed. The conversation says how the new dish differs \
+from it.
+
+Build the new recipe on the original: start from its full content and apply the changes \
+discussed in the conversation, along with everything those changes imply — an ingredient that \
+replaces another usually brings its own quantities, its own place in the method and its own \
+timings with it. Keep every ingredient, step, time, serving count and detail the conversation \
+does not change, keeping the original wording (rawText) of unchanged ingredients verbatim. Do \
+not drop anything that was not discussed.
+
+Give it a title of its own that says what the dish actually IS now. Do NOT reuse the original's \
+title, and do not append the word "variation" — a prawn version of a chorizo pilaf is a prawn \
+pilaf, not "Chorizo Pilaf variation". Write the description for the new dish too.
+
+### The recipe it starts from
 ${baseRecipe}`;
 }
 

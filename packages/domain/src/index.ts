@@ -262,6 +262,7 @@ export {
   takesIngredients,
   isCookable,
   isPlannable,
+  isAuthorable,
   findProducingRecipes,
   diffRecipe,
   hasRecipeChanged,

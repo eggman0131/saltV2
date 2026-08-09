@@ -86,15 +86,27 @@ function now(): string {
 // it. "Cauliflower Steaks chat" beats "Recipe chat" for the same reason the list
 // on the recipe page exists at all: several conversations about one dish are only
 // tellable apart by what they say.
-function seedTitle(recipeId: string | null, recipeTitle?: string): string {
-  if (!recipeId) return 'New chat';
-  return recipeTitle?.trim() ? `${recipeTitle.trim()} chat` : 'Recipe chat';
+// A variation chat is seeded from its base dish too (issue #763), but as
+// "<dish> variation" rather than "<dish> chat" — the two are told apart in the
+// list by what they are for, not just by the dish they mention. Like the recipe
+// seed, it lasts only until the chef retitles the conversation.
+function seedTitle(
+  recipeId: string | null,
+  recipeTitle: string | undefined,
+  basedOnRecipeId: string | null,
+): string {
+  if (recipeId) return recipeTitle?.trim() ? `${recipeTitle.trim()} chat` : 'Recipe chat';
+  if (basedOnRecipeId) {
+    return recipeTitle?.trim() ? `${recipeTitle.trim()} variation` : 'Recipe variation';
+  }
+  return 'New chat';
 }
 
 function newSession(
   ownerUid: string,
   recipeId: string | null,
-  recipeTitle?: string,
+  recipeTitle: string | undefined,
+  basedOnRecipeId: string | null,
 ): ChatSessionDoc {
   const ts = now();
   return {
@@ -102,7 +114,8 @@ function newSession(
     schemaVersion: 1,
     ownerUid,
     recipeId,
-    title: seedTitle(recipeId, recipeTitle),
+    basedOnRecipeId,
+    title: seedTitle(recipeId, recipeTitle, basedOnRecipeId),
     messages: [],
     createdAt: ts,
     updatedAt: ts,
@@ -110,12 +123,18 @@ function newSession(
   };
 }
 
+// `basedOnRecipeId` is the dish a variation chat STARTS FROM, and is deliberately
+// independent of `recipeId`, the dish it belongs to: a variation belongs to
+// nothing until "Save as recipe" claims the recipe it produced. That also means
+// it keeps the ordinary 14-day expiry until then, which is the right fate for a
+// variation nobody saved.
 export async function createChatSession(
   ownerUid: string,
   recipeId: string | null = null,
   recipeTitle?: string,
+  basedOnRecipeId: string | null = null,
 ): Promise<ReadResult<ChatSessionDoc, DomainError>> {
-  const session = newSession(ownerUid, recipeId, recipeTitle);
+  const session = newSession(ownerUid, recipeId, recipeTitle, basedOnRecipeId);
   const stamped = { ...session, updatedAt: now() };
   latestLocalEdit.set(stamped.id, stamped.updatedAt);
   _sessions.set([...get(_sessions), stamped]);
@@ -124,7 +143,9 @@ export async function createChatSession(
     reportWriteError(getErrorReporter(), result.error);
     return result;
   }
-  trackUsageEvent('chat.started', { chat_context: recipeId ? 'recipe' : 'blank' });
+  trackUsageEvent('chat.started', {
+    chat_context: recipeId ? 'recipe' : basedOnRecipeId ? 'variation' : 'blank',
+  });
   return success(stamped);
 }
 
@@ -197,7 +218,12 @@ export async function sendMessage(
   _sessions.set([...others, stampedUser]);
 
   const streamResult = await streamChefChat(
-    { messages: session.messages, newMessage: text, recipeId: session.recipeId },
+    {
+      messages: session.messages,
+      newMessage: text,
+      recipeId: session.recipeId,
+      basedOnRecipeId: session.basedOnRecipeId,
+    },
     onChunk,
   );
 

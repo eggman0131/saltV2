@@ -48,7 +48,11 @@ export interface UsageEventMap {
     canon_name: string | null;
     item_source: 'manual' | 'recipe';
   };
-  'chat.started': { chat_context: 'blank' | 'recipe' };
+  // `variation` (issue #763) is a chat that starts from an existing dish without
+  // being attached to it — a distinct journey from `blank`, which it would
+  // otherwise be counted as, and the only way to tell how often a new recipe is
+  // born from an old one.
+  'chat.started': { chat_context: 'blank' | 'recipe' | 'variation' };
   'chat.message_sent': Record<string, never>;
 }
 

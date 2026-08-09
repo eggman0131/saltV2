@@ -11,6 +11,14 @@ export const AuthorRecipeInputSchema = z.object({
   // conversation's changes applied. Omitted/null = author a fresh recipe from
   // the conversation alone (create mode).
   recipeId: z.string().nullable().optional(),
+  // Variation mode (issue #763): the recipe this conversation started from. The
+  // flow reads it to GROUND the prose — so the draft carries forward everything
+  // the conversation never mentioned — but still assembles in create mode, so
+  // the new recipe gets its own identity: no `producesCanonId` carried, no image
+  // shared with the original, and a title authored from the conversation rather
+  // than force-preserved. `recipeId` wins if both are somehow set; a variation
+  // chat has no `recipeId` until it claims the recipe it produced.
+  basedOnRecipeId: z.string().nullable().optional(),
 });
 
 export type AuthorRecipeInput = z.infer<typeof AuthorRecipeInputSchema>;

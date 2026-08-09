@@ -281,6 +281,131 @@ describe('authorRecipe — edit-mode grounding', () => {
   });
 });
 
+// ─── variation-mode grounding (issue #763) ──────────────────────────────────────
+
+// Variation mode is the third prompt composition and the one that is easiest to
+// get subtly wrong: it has to ground the librarian on the base recipe as firmly
+// as edit mode does, while assembling the draft in CREATE mode so the new dish
+// gets its own identity. Both halves are pinned here, because either one alone
+// looks like it works — a variation with no grounding saves a recipe made of
+// half a conversation, and a variation assembled from the base is just a
+// duplicate with a new name.
+describe('authorRecipe — variation-mode grounding', () => {
+  beforeEach(() => {
+    mockGenerate.mockResolvedValue({ output: librarianOutput() });
+    mockParseFlow.mockResolvedValue([]);
+  });
+
+  function systemPromptFrom(): string {
+    return (mockGenerate.mock.calls[0]![0] as { system: string }).system;
+  }
+
+  it('grounds the librarian on the base recipe when basedOnRecipeId is provided', async () => {
+    mockGet.mockResolvedValue({ exists: true, data: () => baseRecipeDoc() });
+
+    await (authorRecipeFlow as Function)({
+      messages: [
+        { id: 'm1', role: 'user', text: 'with prawns', createdAt: '2026-08-09T00:00:00.000Z' },
+      ],
+      existingTags: [],
+      basedOnRecipeId: 'r1',
+    });
+
+    const system = systemPromptFrom();
+    // Variation-mode instructions present…
+    expect(system).toContain('Writing a variation on an existing recipe');
+    expect(system).toContain('The original will NOT be changed');
+    expect(system).toContain('Give it a title of its own');
+    // …the base recipe is injected verbatim, so nothing the chat never mentioned
+    // is dropped from the new dish…
+    expect(system).toContain('Çoban Salatası');
+    expect(system).toContain('2 cucumbers, diced');
+    expect(system).toContain('3 tomatoes, diced');
+    // …and neither of the other two closings is in play.
+    expect(system).not.toContain('Editing an existing recipe');
+    expect(system).not.toContain('Extract only what is present in the conversation');
+  });
+
+  it('does not grant the draft the base recipe identity', async () => {
+    // The load-bearing assertion of the whole feature: the base grounds the
+    // PROSE, and `assembleRecipeDraft` is still called with `baseRecipe: null`.
+    // A base carrying a "makes" link is used deliberately — edit mode would
+    // carry `producesCanonId` straight through, and a variation must not.
+    mockGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ ...baseRecipeDoc(), producesCanonId: 'canon-shepherd-salad' }),
+    });
+
+    const draft = await (authorRecipeFlow as Function)({
+      messages: [
+        { id: 'm1', role: 'user', text: 'with prawns', createdAt: '2026-08-09T00:00:00.000Z' },
+      ],
+      existingTags: [],
+      basedOnRecipeId: 'r1',
+    });
+
+    // Its own id, its own name, no "makes" link and no image shared with the
+    // original — so the hero-image trigger generates one from the new content.
+    expect(draft.id).not.toBe('r1');
+    expect(draft.title).toBe('Garlic Pasta');
+    expect(draft.producesCanonId).toBe(null);
+    expect(draft.image).toBe(null);
+    expect(draft.source).toEqual({ type: 'manual' });
+  });
+
+  it('prefers edit mode when both recipeId and basedOnRecipeId are set', async () => {
+    mockGet.mockResolvedValue({ exists: true, data: () => baseRecipeDoc() });
+
+    await (authorRecipeFlow as Function)({
+      messages: [],
+      existingTags: [],
+      recipeId: 'r1',
+      basedOnRecipeId: 'r2',
+    });
+
+    const system = systemPromptFrom();
+    expect(system).toContain('Editing an existing recipe');
+    expect(system).not.toContain('Writing a variation on an existing recipe');
+  });
+
+  it('never reads a base recipe when basedOnRecipeId is absent', async () => {
+    await (authorRecipeFlow as Function)({ messages: [], existingTags: [] });
+
+    expect(systemPromptFrom()).toContain('Extract only what is present in the conversation');
+    expect(mockGet).not.toHaveBeenCalled();
+  });
+
+  it('degrades to create mode when the base recipe was deleted mid-conversation', async () => {
+    // Rule 10: the read returns null rather than throwing, so the variation
+    // becomes an ordinary chat and still saves.
+    mockGet.mockResolvedValue({ exists: false });
+
+    await (authorRecipeFlow as Function)({
+      messages: [],
+      existingTags: [],
+      basedOnRecipeId: 'deleted',
+    });
+
+    const system = systemPromptFrom();
+    expect(system).toContain('Extract only what is present in the conversation');
+    expect(system).not.toContain('Writing a variation on an existing recipe');
+  });
+
+  it('degrades to create mode when the base recipe fails validation', async () => {
+    mockGet.mockResolvedValue({ exists: true, data: () => ({ id: 'r1', schemaVersion: 99 }) });
+
+    await (authorRecipeFlow as Function)({
+      messages: [],
+      existingTags: [],
+      basedOnRecipeId: 'r1',
+    });
+
+    const system = systemPromptFrom();
+    expect(system).toContain('Extract only what is present in the conversation');
+    expect(system).not.toContain('Writing a variation on an existing recipe');
+  });
+});
+
 // ─── step rules ─────────────────────────────────────────────────────────────────
 
 // The one-operation + no-quantities rules are shared with the URL-import prompt, so

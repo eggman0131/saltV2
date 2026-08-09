@@ -32,7 +32,7 @@ export {
 } from './commands/builders.js';
 export { clearIngredientMatch } from './commands/clearIngredientMatch.js';
 export { flattenIngredients } from './queries/ingredients.js';
-export { takesIngredients, isCookable, isPlannable } from './queries/capabilities.js';
+export { takesIngredients, isCookable, isPlannable, isAuthorable } from './queries/capabilities.js';
 // Recipe-drift comparison, shared by everything that snapshots a recipe's
 // `updatedAt`: the cook session (#556) and the guided plan (#751).
 export { hasRecipeChanged } from './queries/hasRecipeChanged.js';

@@ -75,11 +75,21 @@ chat session doc (Firestore)         ← owned by web-pwa + firebase-sync (clien
 
 - Schema in `@salt/domain/schemas/chatSession.ts`, exported via the schemas index.
 - One doc per session at `chatSessions/{id}`:
-  `{ id, ownerUid, recipeId: string | null, title, messages: Message[],
-     createdAt, updatedAt, expiresAt }`.
+  `{ id, ownerUid, recipeId: string | null, basedOnRecipeId: string | null, title,
+     messages: Message[], createdAt, updatedAt, expiresAt }`.
   `Message = { id, role: 'user' | 'assistant', text, createdAt }`.
 - `recipeId` set ⇒ the session is **attached to a recipe** (the "open chat alongside
   a recipe" mode). `null` ⇒ general kitchen-assistant chat.
+- `basedOnRecipeId` (issue #763) is a **different question**: the dish this chat
+  STARTED FROM, for a "Make a variation" conversation, as against the dish it
+  BELONGS to. A variation has the second and not the first, so it does not appear
+  on the base recipe's chat list and keeps the ordinary 14-day expiry until it
+  produces something; on "Save as recipe" it claims the NEW recipe, ending up with
+  both fields set and pointing at two different dishes. Both flows read the base
+  server-side, so the transcript never carries pasted recipe text. It is
+  `.nullable().default(null)` and that is load-bearing, not stylistic: the
+  realtime subscription skips docs that fail validation, so a required field would
+  have made every pre-existing chat vanish from the list rather than error.
 - Messages are an **array in the session doc** (not a subcollection): simpler store,
   TTL, and optimistic updates. A cooking chat will not approach the 1 MB doc ceiling;
   note the bound. Per-token streaming is **not** persisted — the client holds the
@@ -137,6 +147,23 @@ chat session doc (Firestore)         ← owned by web-pwa + firebase-sync (clien
   A "When you CBA" outing is hand-written and has nothing to author, and the
   Ask / amend affordance is capability-gated off its view page, so the librarian is
   simply unreachable for one.
+- **Which kinds it may author is now a named predicate** — `isAuthorable` in
+  `packages/domain/src/recipe/queries/capabilities.ts` (#763). Only `recipe` is
+  `true`, and the `false` on `cocktail` means **not yet**: `assembleRecipeDraft`
+  hardcodes `kind: baseRecipe?.kind ?? 'recipe'`, so no AI path can emit a cocktail
+  and one authored by chat would be stuck in the dinner list forever. That is a bug
+  in its own right, with no issue yet. When it is fixed, flipping that one row is
+  the whole change — every consumer (the ⋮ entry point, the flows, the chip)
+  inherits it untouched.
+- **Three prompt closings, not two.** `CREATE_MODE_CLOSING` (the conversation is
+  the only source of truth), `editModeSection` (return the COMPLETE updated recipe)
+  and `variationModeSection` (#763 — build on the base, but give it a name of its
+  own). Variation mode grounds the PROSE on the base recipe while still calling
+  `assembleRecipeDraft` with `baseRecipe: null`, which is what makes a variation an
+  independent dish: no `producesCanonId` carried, no image shared with the original
+  (the doc-id-keyed orphan sweep makes a shared image a data-loss bug — see
+  [recipe-module.md](recipe-module.md) § "Duplicating a recipe"), and a hero
+  generated from the new content. Edit mode wins if both ids somehow arrive.
 
 ## Surfaces (web-pwa)
 
@@ -144,6 +171,12 @@ chat session doc (Firestore)         ← owned by web-pwa + firebase-sync (clien
 - Recipe-attached chat — opened alongside an existing recipe; same chat engine with
   `recipeId` set; "apply changes" re-runs the librarian against the recipe.
 - "Save as recipe" action on a general chat → librarian → new recipe.
+- Variation chat (#763) — ⋮ → **Make a variation** on a recipe opens a NEW chat at
+  `/chat/:id` carrying `basedOnRecipeId`, with a *Based on: …* chip and an empty
+  transcript. It navigates AWAY from the recipe deliberately: you are leaving that
+  dish to make a different one. Nothing is written but the session doc until "Save
+  as recipe", which is the same button a general chat already has — there is no
+  new exit from the recipe-amend review gate, and Duplicate is untouched.
 - My Kitchen (`/mine`) — a "Recent chats" footer linking straight back into the last
   few conversations. Read-only and free: it projects the app-wide subscription
   started at auth, so it is a shortcut into chat, not a second place chat lives.

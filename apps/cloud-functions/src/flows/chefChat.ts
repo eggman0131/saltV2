@@ -136,10 +136,29 @@ unrelated answer towards or away from this list.
 Never mention this list, quote it back, or tell the user what they buy. It is background \
 knowledge, not a talking point.`;
 
+// A variation chat is grounded on a recipe it is NOT amending (issue #763). The
+// heading has to say so: under the "Current recipe" wording above, the chef
+// answers as though the user were editing that dish and starts talking about
+// what "we" will change, when the original is about to be left exactly as it is.
+const VARIATION_FRAMING = `## Starting point for a NEW dish
+The user is not editing the recipe below and it will not be changed. They are using it as the \
+starting point for a NEW dish of their own, and want to talk through how to take it somewhere \
+else — a different protein, a different cuisine, a different occasion.
+
+Treat it as a well-understood baseline: you know its ingredients, its method and its timings, so \
+when they ask for a change, work out everything that has to follow from it. A swapped ingredient \
+usually drags more with it than the line it replaces — fat that something else was providing, \
+seasoning that has to be rebalanced, a stage that now belongs at a different point in the method. \
+Say so, specifically, rather than only answering the question as asked.
+
+Talk about the new dish as a new dish. Never describe the change as an edit to the recipe below, \
+and do not tell the user to update or re-save the original.`;
+
 function buildSystemPrompt(
   equipmentContext: string,
   recipeContext: string,
   favouritesContext: string,
+  variationContext: string,
 ): string {
   const sections: string[] = [CHEF_SYSTEM_BASE];
 
@@ -152,6 +171,14 @@ function buildSystemPrompt(
     sections.push(
       `## Current recipe\nThe user is asking about this recipe. Use it as context for the conversation.\n\n${recipeContext}`,
     );
+  }
+
+  // Mutually exclusive with the section above in practice — a session is either
+  // attached to a recipe or based on one, never both — but ordered after it so a
+  // session that somehow carried both still reads as an amendment, matching the
+  // librarian's precedence.
+  if (variationContext) {
+    sections.push(`${VARIATION_FRAMING}\n\n${variationContext}`);
   }
 
   return sections.join('\n\n');
@@ -167,14 +194,27 @@ export const chefChatFlow = ai.defineFlow(
   async (input, streamingCallback) => {
     try {
       const db = getFirestore();
-      const [equipmentContext, recipeContext, favouritesContext] = await Promise.all([
-        readEquipmentContext(db, 'chefChat'),
-        input.recipeId ? readRecipeContext(db, input.recipeId) : Promise.resolve(''),
-        // Joins the existing Promise.all rather than adding a serial round-trip.
-        readFavouritesContext(db),
-      ]);
+      const [equipmentContext, recipeContext, favouritesContext, variationContext] =
+        await Promise.all([
+          readEquipmentContext(db, 'chefChat'),
+          input.recipeId ? readRecipeContext(db, input.recipeId) : Promise.resolve(''),
+          // Joins the existing Promise.all rather than adding a serial round-trip.
+          readFavouritesContext(db),
+          // The base recipe of a variation chat (issue #763). Reuses the same
+          // reader, which returns '' for a deleted or corrupt doc — so a variation
+          // whose base disappears mid-conversation quietly becomes an ordinary
+          // chat instead of failing the turn (Rule 10).
+          input.basedOnRecipeId
+            ? readRecipeContext(db, input.basedOnRecipeId)
+            : Promise.resolve(''),
+        ]);
 
-      const systemPrompt = buildSystemPrompt(equipmentContext, recipeContext, favouritesContext);
+      const systemPrompt = buildSystemPrompt(
+        equipmentContext,
+        recipeContext,
+        favouritesContext,
+        variationContext,
+      );
 
       // Convert Message[] history to Genkit MessageData format. Our domain role is
       // 'user' | 'assistant'; Genkit/Gemini uses 'user' | 'model', so the assistant
