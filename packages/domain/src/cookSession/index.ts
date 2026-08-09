@@ -56,6 +56,11 @@ export type {
 // itself, so there is no separate screen of vessels to dismiss first.
 export { guidedPrepBoard } from './guidedPrepBoard.js';
 export type { GuidedPrepGroup, GuidedPrepJob } from './guidedPrepBoard.js';
+// What is coming (issue #769) — the plan's answer to the question plain cook mode
+// can only answer by fading in the next step's raw first clause, plus the part of
+// that step which has to be started before you get to it.
+export { nextStepLookahead } from './nextStepLookahead.js';
+export type { NextStepLookahead } from './nextStepLookahead.js';
 // `hasRecipeChanged` used to live here. It now takes two timestamps rather than a
 // session (issue #751 needed the same comparison for a guided plan's own stamp),
 // so it belongs to the recipe module — see recipe/queries/hasRecipeChanged.ts.

@@ -218,3 +218,26 @@ export function sectionMinHeight(viewportHeight: number): number {
 export function fadeHeightFor(gapBelowStep: number): number {
   return Math.min(PEEK_MAX_PX, Math.max(FADE_MIN_PX, Math.round(gapBelowStep)));
 }
+
+/**
+ * The least fade a guided look-ahead panel can be written into (issue #769): a label line,
+ * one line of summary, and the padding round them. Below this the panel would either clip
+ * its own second line or sit on top of the step the cook is still reading.
+ *
+ * Above `FADE_MIN_PX` on purpose — the fade's floor exists for a step that has NO room to
+ * spare, and that is exactly the step whose last lines must not be covered by a panel.
+ */
+export const LOOKAHEAD_MIN_PX = 96;
+
+/**
+ * Whether the gap below the current step can carry the look-ahead panel rather than a
+ * plain fade. Guided mode only: plain cook mode has no plan to preview from, and fades in
+ * the next step's own first lines instead.
+ *
+ * Takes the fade height rather than the raw gap so the answer is about the space actually
+ * being painted — `fadeHeightFor` owns the floor and the cap, and this must not disagree
+ * with it about how tall the box is.
+ */
+export function fadeFitsLookahead(fadeHeight: number): boolean {
+  return fadeHeight >= LOOKAHEAD_MIN_PX;
+}

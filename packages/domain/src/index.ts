@@ -299,6 +299,8 @@ export type { WeatherIconId } from './weather/index.js';
 // can warn about a name that will not resolve before anyone cooks from it.
 // `guidedPrepBoard` reads it a third way — as the cards the guided prep screen is
 // made of, one per bowl, each holding the jobs that fill it (issue #767).
+// `nextStepLookahead` is what the plan says about the step BELOW the one on screen
+// (issue #769), in place of plain cook mode's faded first clause.
 export {
   makeFreshSession,
   withStepDone,
@@ -322,6 +324,7 @@ export {
   looseIngredientsForStep,
   guidedContainerProblems,
   guidedPrepBoard,
+  nextStepLookahead,
   formatClock,
   timerProgress,
 } from './cookSession/index.js';
@@ -333,6 +336,7 @@ export type {
   DanglingContainerName,
   GuidedPrepGroup,
   GuidedPrepJob,
+  NextStepLookahead,
 } from './cookSession/index.js';
 
 // Shopping-day module (issue #629) — pure helpers over `shoppingDays/{date}`:
