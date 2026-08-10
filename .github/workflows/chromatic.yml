@@ -64,7 +64,7 @@ jobs:
           fi
 
       # Setup below is identical to the `ci` job in ci.yml (checkout@v7 /
-      # pnpm/action-setup@v6.0.9 10.33.0 / setup-node@v6 node 22 / frozen install),
+      # pnpm/action-setup@v6.0.10 10.33.0 / setup-node@v6 node 22 / frozen install),
       # except for the mandatory fetch-depth: 0. Node 22 (not the Node-20 deploy
       # pin) — Chromatic has no firebase-tools/WIF dependency.
       - uses: actions/checkout@v7
@@ -72,7 +72,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: pnpm/action-setup@v6.0.9
+      - uses: pnpm/action-setup@v6.0.10
         if: steps.token.outputs.present == 'true'
         with:
           version: '10.33.0'
