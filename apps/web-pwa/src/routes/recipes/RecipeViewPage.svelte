@@ -34,7 +34,6 @@
     matchIngredient,
     persistRecipe,
     stashImportedDraft,
-    authorRecipeTraced,
     regenerateRecipeImage,
     reviseRecipeSceneBrief,
     startOverRecipeSceneBrief,
@@ -46,11 +45,15 @@
   import RecipeChatList from './RecipeChatList.svelte';
   import RecipeChatDrawer from './RecipeChatDrawer.svelte';
   import { chatsForRecipe } from './recipeChats.js';
+  import {
+    proposeRecipeAmendment,
+    applyRecipeAmendment,
+    type RecipeAmendment,
+  } from '../../lib/recipeAmend.js';
   import IngredientText from './IngredientText.svelte';
   import { canonItems } from '../../lib/canonService.js';
   import {
     appendCacheBuster,
-    diffRecipe,
     duplicateRecipe,
     hasLiveCanonMatch,
     isAuthorable,
@@ -62,7 +65,7 @@
     type Recipe,
   } from '@salt/domain';
   import { kindOf } from './recipeKind.js';
-  import type { ChatSessionDoc, RecipeDiff } from '@salt/domain/schemas';
+  import type { ChatSessionDoc } from '@salt/domain/schemas';
   import type { DomainError, ReadResult } from '@salt/shared-types';
   import { guidedPlan, initGuidedPlanSync } from '../../lib/guidedPlanService.js';
   import { currentMember } from '../../lib/membersService.js';
@@ -73,7 +76,6 @@
   import ChatThread from '../chat/ChatThread.svelte';
   import { createChatThread } from '../chat/chatThreadState.svelte.js';
   import { equipment } from '../../lib/equipmentService.js';
-  import { saveRecipe as saveRecipeDoc } from '@salt/firebase-sync';
   import {
     clipboardImageReadSupported,
     readClipboardImage,
@@ -486,77 +488,48 @@ Finish with a short note on what you changed and why, so I can read the gist her
     optimiseBusy = false;
   }
 
-  // Review-and-approve gate (Phase 2). "Update recipe" now generates a PENDING
-  // proposal and opens a diff summary; nothing is written until "Apply changes".
-  // `sidebarIsProposing` guards the AI call; `sidebarIsApplying` guards the save.
+  // Review-and-approve gate. "Update recipe" generates a PENDING proposal and
+  // opens a diff summary; nothing is written until "Apply changes". What the
+  // proposal contains and what the save writes live in `recipeAmend` and are
+  // shared with the full `/chat/:id` page (issue #764) — this page holds only
+  // its own busy/open state and its toasts. `sidebarIsProposing` guards the AI
+  // call; `sidebarIsApplying` guards the save.
   let sidebarIsProposing = $state(false);
   let sidebarIsApplying = $state(false);
   let sidebarSummaryOpen = $state(false);
-  let sidebarPendingUpdate = $state<Recipe | null>(null);
-  let sidebarPendingDiff = $state<RecipeDiff | null>(null);
+  let sidebarPending = $state<RecipeAmendment | null>(null);
 
   async function handleSidebarReviewChanges(): Promise<void> {
     if (!activeSession || !recipe || sidebarIsProposing) return;
     sidebarIsProposing = true;
     const existingTags = [...new Set($recipes.flatMap((r) => r.metadata.tags))];
-    const result = await authorRecipeTraced(
-      {
-        messages: activeSession.messages,
-        existingTags,
-        recipeId: recipe.id,
-      },
-      recipe.title,
-    );
+    const result = await proposeRecipeAmendment(recipe, activeSession.messages, existingTags);
+    sidebarIsProposing = false;
     if (result.kind !== 'ok') {
-      sidebarIsProposing = false;
       addToast('Failed to generate recipe update.', 'destructive');
       return;
     }
-    const now = new Date().toISOString();
-    const ai = result.value;
-    const updated = {
-      ...ai,
-      id: recipe.id,
-      createdAt: recipe.createdAt,
-      updatedAt: now,
-      // Preserve fields the AI always returns as null/empty (it only extracts from conversation)
-      image: recipe.image,
-      source: recipe.source,
-      metadata: {
-        servings: ai.metadata.servings ?? recipe.metadata.servings,
-        totalTimeMinutes: ai.metadata.totalTimeMinutes ?? recipe.metadata.totalTimeMinutes,
-        prepTimeMinutes: ai.metadata.prepTimeMinutes ?? recipe.metadata.prepTimeMinutes,
-        cookTimeMinutes: ai.metadata.cookTimeMinutes ?? recipe.metadata.cookTimeMinutes,
-        tags: ai.metadata.tags.length > 0 ? ai.metadata.tags : recipe.metadata.tags,
-      },
-    };
-    // Diff the merged result against the existing recipe (post-merge, so the
-    // preserved-metadata fallbacks don't show as spurious "changed to null").
-    sidebarPendingDiff = diffRecipe(recipe, updated);
-    sidebarPendingUpdate = updated;
-    sidebarIsProposing = false;
+    sidebarPending = result.value;
     sidebarSummaryOpen = true;
   }
 
   async function handleSidebarApplyChanges(): Promise<void> {
-    if (!sidebarPendingUpdate || sidebarIsApplying) return;
+    if (!sidebarPending || sidebarIsApplying) return;
     sidebarIsApplying = true;
-    const saveResult = await saveRecipeDoc(sidebarPendingUpdate);
+    const saveResult = await applyRecipeAmendment(sidebarPending);
     sidebarIsApplying = false;
     if (saveResult.kind !== 'ok') {
       addToast('Failed to save recipe update.', 'destructive');
       return;
     }
     sidebarSummaryOpen = false;
-    sidebarPendingUpdate = null;
-    sidebarPendingDiff = null;
+    sidebarPending = null;
     addToast('Recipe updated!', 'success');
   }
 
   function handleSidebarDiscardChanges(): void {
     sidebarSummaryOpen = false;
-    sidebarPendingUpdate = null;
-    sidebarPendingDiff = null;
+    sidebarPending = null;
   }
 
   // ─── Delete ─────────────────────────────────────────────────────────────────
@@ -1523,7 +1496,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
 
 <!-- Review-and-approve gate for the pending AI edit (Phase 2) -->
 <RecipeChangeSummary
-  diff={sidebarPendingDiff}
+  diff={sidebarPending?.diff ?? null}
   bind:open={sidebarSummaryOpen}
   applying={sidebarIsApplying}
   onApply={handleSidebarApplyChanges}
