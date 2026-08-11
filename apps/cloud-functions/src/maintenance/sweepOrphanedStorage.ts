@@ -6,7 +6,7 @@ import { logger } from 'firebase-functions';
 import { flushServerObservability } from '@salt/observability/server';
 import { reportServerError } from '../observability/reportServerError.js';
 
-// Weekly sweep of Storage objects whose Firestore doc is gone (issue #620).
+// Weekly sweep of artefacts whose owning Firestore doc is gone (issues #620, #789).
 //
 // WHY THIS EXISTS — nothing else in this codebase deletes a Storage object.
 // `canon-icons/{canonId}.webp` and `recipe-images/{recipeId}.webp` are both keyed
@@ -17,9 +17,15 @@ import { reportServerError } from '../observability/reportServerError.js';
 // A GCS lifecycle rule cannot express this — orphan-ness depends on Firestore,
 // not on object age — so the join has to be code.
 //
-// COST SHAPE — per prefix: one bucket list, plus one id-only collection scan
-// (`.select()` fetches no field data). No per-object `get`. At Salt's scale this
-// is a few hundred names a week.
+// The same split that strands an icon strands the canon item's embedding vector
+// in `canonEmbeddings/{canonId}` (#789), and there the client cannot possibly
+// clean up after itself: `firestore.rules` denies it read AND write. So the
+// sweep also runs one Firestore→Firestore pass, sharing every guard below.
+//
+// COST SHAPE — per pass: one candidate listing (a bucket list, or an id-only
+// collection scan), plus one id-only scan of the owning collection (`.select()`
+// fetches no field data). No per-candidate `get`. At Salt's scale this is a few
+// hundred names a week.
 const posthogApiKey = defineSecret('POSTHOG_API_KEY');
 
 /** Object age below which an orphan is left alone. See selectOrphanedObjects. */
@@ -33,13 +39,13 @@ const SWEEPS = [
   { prefix: 'recipe-images/', collection: 'recipes' },
 ] as const;
 
-/** A candidate object, reduced to just what the decision needs. */
+/** A candidate artefact, reduced to just what the decision needs. */
 export interface SweepCandidate {
-  /** Full object path, e.g. `canon-icons/abc.webp`. */
+  /** Full path, e.g. `canon-icons/abc.webp` or `canonEmbeddings/abc`. */
   path: string;
-  /** The doc id the path encodes — the object's basename without extension. */
+  /** The doc id the path is keyed by. */
   id: string;
-  /** Object creation time in epoch ms (GCS `timeCreated`). */
+  /** When the artefact last came into being, in epoch ms. */
   createdAt: number;
 }
 
@@ -129,6 +135,75 @@ async function sweepPrefix(prefix: string, collection: string, now: number): Pro
   });
 }
 
+/**
+ * `canonEmbeddings/{canonId}` → sweep candidate. Null when the doc carries no
+ * usable timestamp, which leaves it alone forever rather than guessing its age.
+ *
+ * `updatedAt` is `.optional()` on `CanonEmbeddingSchema` — rows written before
+ * it was added have none — so "undated" is a real state, not a corruption, and
+ * the safe reading of an unknown age is "too young to touch". The count is
+ * logged so a permanently unsweepable row is visible rather than silent.
+ */
+export function embeddingCandidate(id: string, updatedAt: unknown): SweepCandidate | null {
+  // Both writers (`onCanonItemWritten` and the #410 migration) write an ISO
+  // string; anything else is not a timestamp we are entitled to interpret.
+  if (typeof updatedAt !== 'string') return null;
+  const createdAt = Date.parse(updatedAt);
+  if (Number.isNaN(createdAt)) return null;
+  return { path: `canonEmbeddings/${id}`, id, createdAt };
+}
+
+/**
+ * The Firestore twin of `sweepPrefix` (issue #789): same join, same guards,
+ * different storage. A vector is keyed by canon id exactly as an icon is, so
+ * deleting or splitting a canon item strands it identically — but a vector is
+ * more expensive to recreate than an icon (a Gemini embedding call), so the
+ * grace and the cap earn their keep here more, not less.
+ *
+ * A regenerated embedding restarts the grace via `updatedAt`, which — exactly as
+ * with a Storage overwrite — only ever delays a deletion.
+ */
+async function sweepCanonEmbeddings(now: number): Promise<void> {
+  const db = getFirestore();
+
+  // `.select('updatedAt')` projects the one field the age guard needs; the
+  // ~3072-float vectors stay on the server, unread. The `canonItems` scan is the
+  // same id-only scan the `canon-icons/` pass performs, repeated rather than
+  // shared so that pass keeps its own self-contained join.
+  const [embeddingSnap, liveSnap] = await Promise.all([
+    db.collection('canonEmbeddings').select('updatedAt').get(),
+    db.collection('canonItems').select().get(),
+  ]);
+
+  const liveIds = new Set(liveSnap.docs.map((d) => d.id));
+
+  const candidates = embeddingSnap.docs.flatMap((doc) => {
+    const candidate = embeddingCandidate(doc.id, doc.get('updatedAt'));
+    return candidate === null ? [] : [candidate];
+  });
+
+  const doomed = selectOrphanedObjects({ candidates, liveIds, now });
+
+  for (const orphan of doomed) {
+    await db.doc(orphan.path).delete();
+    logger.info('sweepOrphanedStorage: deleted orphan', {
+      path: orphan.path,
+      ageDays: Math.floor((now - orphan.createdAt) / 86_400_000),
+    });
+  }
+
+  logger.info('sweepOrphanedStorage: swept collection', {
+    collection: 'canonEmbeddings',
+    objects: candidates.length,
+    liveDocs: liveIds.size,
+    deleted: doomed.length,
+    // Surfaces the cap actually biting, rather than a silent truncation.
+    capped: doomed.length === MAX_DELETIONS_PER_RUN,
+    // Docs with no usable `updatedAt`: scanned, never sweepable, otherwise unseen.
+    undated: embeddingSnap.size - candidates.length,
+  });
+}
+
 export const sweepOrphanedStorage = onSchedule(
   {
     // Sunday 03:00 — well clear of any waking usage.
@@ -140,17 +215,23 @@ export const sweepOrphanedStorage = onSchedule(
     // The sweep is idempotent and weekly; a retry storm on a broken run buys
     // nothing that next Sunday would not.
     retryCount: 0,
-    // Listing two prefixes plus two collection scans, then serial deletes.
+    // Listing two prefixes and one collection, four id-only scans, then serial
+    // deletes. The export name stays `sweepOrphanedStorage` after #789 widened
+    // its remit: renaming it would tear down and recreate the schedule.
     timeoutSeconds: 540,
   },
   async () => {
     const now = Date.now();
     try {
-      // Serial, not parallel: the two prefixes are independent and there is no
+      // Serial, not parallel: the passes are independent and there is no
       // deadline pressure, so this keeps memory and Storage QPS flat.
       for (const { prefix, collection } of SWEEPS) {
         await sweepPrefix(prefix, collection, now);
       }
+      // Not a SWEEPS row: that table is prefix→collection, and this pass has no
+      // prefix, no bucket and a different deleter. It shares what actually
+      // matters — the schedule, the guards, and this never-throw handler.
+      await sweepCanonEmbeddings(now);
     } catch (err) {
       // Never throw out of a scheduled handler: it is a StorageError/SyncError
       // class of failure with no caller to surface to, and Scheduler would just
