@@ -28,7 +28,7 @@
     "@salt/domain": "workspace:*",
     "@salt/observability": "workspace:*",
     "@salt/shared-types": "workspace:*",
-    "firebase-admin": "^13.10.0",
+    "firebase-admin": "^14.2.0",
     "firebase-functions": "^7.3.2",
     "genkit": "^1.40.1",
     "resend": "^6.18.1",
