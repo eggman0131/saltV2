@@ -79,10 +79,10 @@ importers:
     dependencies:
       '@genkit-ai/firebase':
         specifier: ^1.40.1
-        version: 1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.0)(genkit@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.0))
+        version: 1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.1)(genkit@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.1))
       '@genkit-ai/google-genai':
         specifier: ^1.40.1
-        version: 1.40.1(genkit@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.0))
+        version: 1.40.1(genkit@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.1))
       '@opentelemetry/sdk-trace-node':
         specifier: ^1.30.1
         version: 1.30.1(@opentelemetry/api@1.9.0)
@@ -103,7 +103,7 @@ importers:
         version: 7.3.2(firebase-admin@13.10.0)
       genkit:
         specifier: ^1.40.1
-        version: 1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.0)
+        version: 1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.1)
       resend:
         specifier: ^6.18.1
         version: 6.18.1(@react-email/render@1.1.2(react-dom@19.2.8(react@19.2.7))(react@19.2.7))
@@ -137,8 +137,8 @@ importers:
         version: 5.56.8(@typescript-eslint/types@8.66.0)
     devDependencies:
       '@lucide/svelte':
-        specifier: ^1.28.0
-        version: 1.28.0(svelte@5.56.8(@typescript-eslint/types@8.66.0))
+        specifier: ^1.30.0
+        version: 1.30.0(svelte@5.56.8(@typescript-eslint/types@8.66.0))
       '@storybook/addon-a11y':
         specifier: ^10.5.7
         version: 10.5.7(storybook@10.5.7(prettier@3.9.6)(react@19.2.7))
@@ -173,8 +173,8 @@ importers:
   apps/web-pwa:
     dependencies:
       '@lucide/svelte':
-        specifier: ^1.28.0
-        version: 1.28.0(svelte@5.56.8(@typescript-eslint/types@8.66.0))
+        specifier: ^1.30.0
+        version: 1.30.0(svelte@5.56.8(@typescript-eslint/types@8.66.0))
       '@salt/domain':
         specifier: workspace:*
         version: link:../../packages/domain
@@ -267,12 +267,12 @@ importers:
         specifier: workspace:*
         version: link:../../shared-types
       firebase:
-        specifier: ^12.17.0
-        version: 12.17.0
+        specifier: ^12.17.1
+        version: 12.17.1
     devDependencies:
       '@firebase/rules-unit-testing':
         specifier: ^5.0.1
-        version: 5.0.1(firebase@12.17.0)
+        version: 5.0.1(firebase@12.17.1)
 
   packages/adapters/observability:
     dependencies:
@@ -295,11 +295,11 @@ importers:
         specifier: workspace:*
         version: link:../../shared-types
       posthog-js:
-        specifier: ^1.409.5
-        version: 1.409.5
+        specifier: ^1.414.0
+        version: 1.414.0
       posthog-node:
-        specifier: ^5.47.3
-        version: 5.47.3
+        specifier: ^5.48.1
+        version: 5.48.1
 
   packages/domain:
     dependencies:
@@ -333,8 +333,8 @@ importers:
         specifier: ^5.3.0
         version: 5.3.0
       '@lucide/svelte':
-        specifier: ^1.28.0
-        version: 1.28.0(svelte@5.56.8(@typescript-eslint/types@8.66.0))
+        specifier: ^1.30.0
+        version: 1.30.0(svelte@5.56.8(@typescript-eslint/types@8.66.0))
       bits-ui:
         specifier: ^2.18.1
         version: 2.18.1(@internationalized/date@3.12.1)(svelte@5.56.8(@typescript-eslint/types@8.66.0))
@@ -348,8 +348,8 @@ importers:
         specifier: ^5.56.8
         version: 5.56.8(@typescript-eslint/types@8.66.0)
       svelte-dnd-action:
-        specifier: ^0.9.77
-        version: 0.9.77(svelte@5.56.8(@typescript-eslint/types@8.66.0))
+        specifier: ^0.9.78
+        version: 0.9.78(svelte@5.56.8(@typescript-eslint/types@8.66.0))
       svelte-easy-crop:
         specifier: ^5.0.1
         version: 5.0.1(svelte@5.56.8(@typescript-eslint/types@8.66.0))
@@ -1550,8 +1550,8 @@ packages:
     resolution: {integrity: sha512-tLpOaaCol9ugUIYp2R3CbWPPA8Ajg/papX/XHEy8U52b/QXH3BbX8tTJX9aShDCjp+9sMAxMLD94i7lresdugQ==}
     engines: {node: '>=20.0.0'}
 
-  '@firebase/data-connect@0.7.2':
-    resolution: {integrity: sha512-Z64TRTp5KsvZtuCS1BhEg0H63TTDIi6k7idGG+z1ImAnP2qHv+xt0S5rzAONpiO7Z1geldWhpu1iY/ju+l3a3w==}
+  '@firebase/data-connect@0.7.3':
+    resolution: {integrity: sha512-nHBFk3Ntl+NZCRIUG2d5j7I69P0otjyQ/duhVKLbw4+5cNke/F6RK1pdE5Jnf831/QOTs2Bd00LlxlZ+jNsb9w==}
     peerDependencies:
       '@firebase/app': 0.x
 
@@ -1559,8 +1559,8 @@ packages:
     resolution: {integrity: sha512-3pK35F1MAgmqFJQlf2nhQl44vtAXQO1uaCaQOEUI9kCRtLFqi7N+QRKR7lFZPg+xIZIyubgxQaxY69YgfZRZWg==}
     engines: {node: '>=20.0.0'}
 
-  '@firebase/database-compat@2.1.5':
-    resolution: {integrity: sha512-m2KZDNXrg8DBzXWQNbbrjOhsJnM+ctsSFaDYKrqj1gEetQ8BSAwRuMUdeWLM9a6qPBgOvOA+o09j1BSEzdFqOg==}
+  '@firebase/database-compat@2.1.6':
+    resolution: {integrity: sha512-mu7S/75UIajB1A5M9Vfojk69LttW55uABp9nHEtWrV/mIaSEwvoaIe9GySsEzS2EKFK5/3f5okcAuUbihhYeJg==}
     engines: {node: '>=20.0.0'}
     peerDependencies:
       '@firebase/app': 0.x
@@ -2255,8 +2255,8 @@ packages:
     peerDependencies:
       jsep: ^0.4.0||^1.0.0
 
-  '@lucide/svelte@1.28.0':
-    resolution: {integrity: sha512-C1Ge84KW2z4q44/WDIEo/2KC2jby5u6mSlta7q+p6g7u0ld8sC/w1fMBiSswF+4bxAl9jlzzaVTpp79qqkiy5g==}
+  '@lucide/svelte@1.30.0':
+    resolution: {integrity: sha512-KtVrqWT3BD41kf1CPaP4QTAyofw0xm5hw/JGwd76+wMk1l0ZcXskA2Wi9ANVWCsk7mGrpFo2SqL3Hl29xTkV3w==}
     peerDependencies:
       svelte: ^5
 
@@ -3017,14 +3017,14 @@ packages:
     resolution: {integrity: sha512-//0sR/cow/s4ICQaYoAobOl4aU8cjU6x/V24V7XkKotb9+O+3zySIYp146vpaobYHnxa4pZX8NkV54Z5AwbDKA==}
     engines: {node: '>=12'}
 
-  '@posthog/browser-common@0.3.1':
-    resolution: {integrity: sha512-1nhMVY1wnHADTg8tR9yvm+lPAz5ROxznfQlBtLzB2FFo4lp/LU8lk9KyFPsARDkBxCfYachsJfvRjocL1G/AJQ==}
+  '@posthog/browser-common@0.4.0':
+    resolution: {integrity: sha512-W9DCGVks15docUMPvJ2nd8NS16Gn74bsGWuaeg31beEKFSjdW8wvnQ1ETY6WSql5pYxZb3GdJmEUZVVstKSrBQ==}
 
-  '@posthog/core@1.46.6':
-    resolution: {integrity: sha512-m7iLFU7Cx4IjsUG6wQE3AJRzCFW/tUDCMIWhifvogLCxRAD6pELnqWHqshUB83KcTpxKnFACOQVMxmzzeO98dg==}
+  '@posthog/core@1.47.0':
+    resolution: {integrity: sha512-LW62V+9yx7G7mLd+EYpwW0PiaPZI8XRJ1tLuhw+9fXHpugLp8XQD5JuCQ2kIXvoUfyx1DpKfGQY3dUnzMOIn7Q==}
 
-  '@posthog/types@1.400.1':
-    resolution: {integrity: sha512-m8tNZ9ZlJ+6BUxtCDW4YJficpTQbIheRs0Ff2y6xuErHzhp9/vXlRnjcPvvT3jfsc6S7L5oM/jr4OuNaILiRYQ==}
+  '@posthog/types@1.402.2':
+    resolution: {integrity: sha512-ZZTiS4dLwF4/D0YTzS3gGSLFnhuNOY5yu4d9VGS9trGe5GW6FjIXo20p18K5BPW2RZSYSld8sdnSAY3AUXleUQ==}
 
   '@protobufjs/aspromise@1.1.2':
     resolution: {integrity: sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ==}
@@ -4499,8 +4499,8 @@ packages:
     resolution: {integrity: sha512-XGpFGbMLHwSt74YLTKho7Ib242qi6O8MSX+sRokV4oz7iKXvQWGYZthjIhjRGMxjzVkAubBO512dKGYcefmX3Q==}
     engines: {node: '>=6.4.0'}
 
-  core-js@3.49.0:
-    resolution: {integrity: sha512-es1U2+YTtzpwkxVLwAFdSpaIMyQaq0PBgm3YD1W3Qpsn1NAmO3KSgZfu+oGSWVu6NvLHoHCV/aYcsE5wiB7ALg==}
+  core-js@3.50.0:
+    resolution: {integrity: sha512-BRWgOLKkFeCgRudR6zrs8p9XJZcE14grzKMMssoYrk6krtuEZ7MTKPIY5RzOnqsEKIR9kst7wNzphttraT+Yqw==}
 
   core-util-is@1.0.3:
     resolution: {integrity: sha512-ZQBvi1DcpJ4GDqanjucZ2Hj3wEO5pZDS89BWbkcrvdxksJorwUDDZamX9ldFkp9aw2lmBDLgkObEA4DWNJ9FYQ==}
@@ -4774,8 +4774,8 @@ packages:
     engines: {node: '>=0.10.0'}
     hasBin: true
 
-  electron-to-chromium@1.5.403:
-    resolution: {integrity: sha512-MQsYmdaLzvaCX5j+ZZBr5Fm6uCCnPQcRtlvmvRlWqrXy+BH2O4ffXIAScF+JQznQWB9brWp4lSD9Z4yNmaf2BA==}
+  electron-to-chromium@1.5.404:
+    resolution: {integrity: sha512-3WJtd7/lVq2Jnuz6wed1l9+1ZD2u2Tet1/1NBc4Iedkmgbu+I7YuAqdAQ8T+VZtnwysMsAf3IqSq9D1gyZjA2g==}
 
   emoji-regex@10.6.0:
     resolution: {integrity: sha512-toUI84YS5YmxW219erniWD0CIVOo46xGKColeNQRgOzDorgBi1v4D71/OFzgD9GO2UGKIv1C3Sp8DAn0+j5w7A==}
@@ -5187,8 +5187,8 @@ packages:
     engines: {node: '>=20.0.0 || >=22.0.0 || >=24.0.0'}
     hasBin: true
 
-  firebase@12.17.0:
-    resolution: {integrity: sha512-8iENFg2/k7asnybijN3ZrmTag0BuyiihUXrRZkX+yCW+YocknpzPZ4DUkdbyA/rdrdaCssBqHH8zpdDliv+4ng==}
+  firebase@12.17.1:
+    resolution: {integrity: sha512-dhp41ye9jMQvhx5FwjMkf/hjDHJApl7gXmvzOZGvP0M7c/GZGUnQ4qvsvlOBkF0Pa7wAwHMdcpL0ON2pXCQ4Sw==}
 
   flat-cache@4.0.1:
     resolution: {integrity: sha512-f7ccFPK3SXFHpx15UIGyRJ/FJQctuKZ0zVuN3frBo4HnK3cay9VEW0R6yPYFHC0AgqhukPzKjq22t5DmAyqGyw==}
@@ -6975,11 +6975,11 @@ packages:
     resolution: {integrity: sha512-9ZhXKM/rw350N1ovuWHbGxnGh/SNJ4cnxHiM0rxE4VN41wsg8P8zWn9hv/buK00RP4WvlOyr/RBDiptyxVbkZQ==}
     engines: {node: '>=0.10.0'}
 
-  posthog-js@1.409.5:
-    resolution: {integrity: sha512-s1iJz+vq0YAluUD4OwLjUFIJt/9pqiiB6MITvHWIS16a7pqTJqbSLXsd5/8kJcIgfrOSZHe+mdYAXLYcJCS4LQ==}
+  posthog-js@1.414.0:
+    resolution: {integrity: sha512-dtZd4asdskr8lNyltAEX6zyn48uO1pO0EMvx6AXJU65PFhu6yn2LPbKtQcyLysjcN57FJPNT9QYL6St5SBJHqw==}
 
-  posthog-node@5.47.3:
-    resolution: {integrity: sha512-mhKaZOGLgD5aKKTj6xNRE2K9vRJnRIj4FNZeguDNnCR0k8RKJh71KO78+UqVdOONBsMzoqb01AD/B+TtsK7YSw==}
+  posthog-node@5.48.1:
+    resolution: {integrity: sha512-BxLX2SqGEQhPqCPTalpyo0RRv1NMbf7UaN7q9d/ED77ksD6XOmE7ko2vIKO8F0zPL1NtKxIi+DYXap9lvR0RaA==}
     engines: {node: ^20.20.0 || >=22.22.0}
     peerDependencies:
       rxjs: ^7.0.0
@@ -7669,8 +7669,8 @@ packages:
       svelte: ^4.0.0 || ^5.0.0-next.0
       typescript: ^5.0.0 || ^6.0.0
 
-  svelte-dnd-action@0.9.77:
-    resolution: {integrity: sha512-HEd4gH1OKKH/MzO5HTGldNpergAU4LyhqLvP4lrcmDpzKAGWbeb0FHB+ie1H+LJ1ZRbbjBHU6T/vYQzM80HSug==}
+  svelte-dnd-action@0.9.78:
+    resolution: {integrity: sha512-qov+j3A9Umo1Ng2b2PaQ/nTDBo1sogAw19DF1KZ35Pcx/9yJtlmnKYKVHjCz9iqUH+g1sk4XuCstxPZFFPEa/Q==}
     peerDependencies:
       svelte: '>=3.23.0 || ^5.0.0-next.0'
 
@@ -8239,6 +8239,9 @@ packages:
 
   web-vitals@5.3.0:
     resolution: {integrity: sha512-q6LWsLatGYZp5VGBIOvbTj6JBV2nOmC8KvWztXBmwJcfFAzhwKwbOxhUH306XY3CcaZDUlSmSuNPBsCn0bFu+g==}
+
+  web-vitals@6.0.0:
+    resolution: {integrity: sha512-Guaibvy/+uNtL6Bsu4jmMJGzuSl91oeRH5iO9pPRbYftnFUr3yqT1TUNX/OE4o9HexuEMU3Kb/Wg7iKhlffZUA==}
 
   webidl-conversions@3.0.1:
     resolution: {integrity: sha512-2JAn3z8AR6rjK8Sm8orRC0h/bcl/DqL7tRPdGZ4I1CjdF+EaMLmYxBHyXuKL849eucPFhvBoxMsflfOb8kxaeQ==}
@@ -9743,7 +9746,7 @@ snapshots:
       '@firebase/util': 1.15.2
       tslib: 2.8.1
 
-  '@firebase/data-connect@0.7.2(@firebase/app@0.16.0)':
+  '@firebase/data-connect@0.7.3(@firebase/app@0.16.0)':
     dependencies:
       '@firebase/app': 0.16.0
       '@firebase/auth-interop-types': 0.2.5
@@ -9761,7 +9764,7 @@ snapshots:
       '@firebase/util': 1.15.1
       tslib: 2.8.1
 
-  '@firebase/database-compat@2.1.5(@firebase/app-compat@0.5.16)(@firebase/app@0.16.0)':
+  '@firebase/database-compat@2.1.6(@firebase/app-compat@0.5.16)(@firebase/app@0.16.0)':
     dependencies:
       '@firebase/component': 0.7.4
       '@firebase/database': 1.1.4
@@ -9948,9 +9951,9 @@ snapshots:
       '@firebase/util': 1.15.2
       tslib: 2.8.1
 
-  '@firebase/rules-unit-testing@5.0.1(firebase@12.17.0)':
+  '@firebase/rules-unit-testing@5.0.1(firebase@12.17.1)':
     dependencies:
-      firebase: 12.17.0
+      firebase: 12.17.1
 
   '@firebase/storage-compat@0.4.4(@firebase/app-compat@0.5.16)(@firebase/app-types@0.9.5)(@firebase/app@0.16.0)':
     dependencies:
@@ -10005,9 +10008,9 @@ snapshots:
 
   '@fontsource-variable/inter@5.3.0': {}
 
-  '@genkit-ai/ai@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.0)(genkit@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.0))':
+  '@genkit-ai/ai@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.1)(genkit@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.1))':
     dependencies:
-      '@genkit-ai/core': 1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.0)(genkit@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.0))
+      '@genkit-ai/core': 1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.1)(genkit@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.1))
       '@opentelemetry/api': 1.9.0
       '@types/node': 20.19.43
       colorette: 2.0.20
@@ -10028,7 +10031,7 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@genkit-ai/core@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.0)(genkit@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.0))':
+  '@genkit-ai/core@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.1)(genkit@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.1))':
     dependencies:
       '@opentelemetry/api': 1.9.0
       '@opentelemetry/api-logs': 0.52.1
@@ -10052,7 +10055,7 @@ snapshots:
       zod-to-json-schema: 3.25.2(zod@3.25.76)
     optionalDependencies:
       '@cfworker/json-schema': 4.1.1
-      '@genkit-ai/firebase': 1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.0)(genkit@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.0))
+      '@genkit-ai/firebase': 1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.1)(genkit@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.1))
     transitivePeerDependencies:
       - '@google-cloud/firestore'
       - bufferutil
@@ -10063,19 +10066,19 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@genkit-ai/firebase@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.0)(genkit@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.0))':
+  '@genkit-ai/firebase@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.1)(genkit@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.1))':
     dependencies:
-      '@genkit-ai/google-cloud': 1.40.1(genkit@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.0))
+      '@genkit-ai/google-cloud': 1.40.1(genkit@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.1))
       '@google-cloud/firestore': 7.11.6
       firebase-admin: 13.10.0
-      genkit: 1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.0)
+      genkit: 1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.1)
     optionalDependencies:
-      firebase: 12.17.0
+      firebase: 12.17.1
     transitivePeerDependencies:
       - encoding
       - supports-color
 
-  '@genkit-ai/google-cloud@1.40.1(genkit@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.0))':
+  '@genkit-ai/google-cloud@1.40.1(genkit@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.1))':
     dependencies:
       '@google-cloud/firestore': 7.11.6
       '@google-cloud/logging-winston': 6.0.2(winston@3.19.0)
@@ -10093,7 +10096,7 @@ snapshots:
       '@opentelemetry/sdk-metrics': 1.25.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-node': 0.52.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-trace-base': 1.25.1(@opentelemetry/api@1.9.0)
-      genkit: 1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.0)
+      genkit: 1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.1)
       google-auth-library: 9.15.1
       node-fetch: 3.3.2
       winston: 3.19.0
@@ -10101,9 +10104,9 @@ snapshots:
       - encoding
       - supports-color
 
-  '@genkit-ai/google-genai@1.40.1(genkit@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.0))':
+  '@genkit-ai/google-genai@1.40.1(genkit@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.1))':
     dependencies:
-      genkit: 1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.0)
+      genkit: 1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.1)
       google-auth-library: 9.15.1
       jsonpath-plus: 10.4.0
     transitivePeerDependencies:
@@ -10681,7 +10684,7 @@ snapshots:
     dependencies:
       jsep: 1.4.0
 
-  '@lucide/svelte@1.28.0(svelte@5.56.8(@typescript-eslint/types@8.66.0))':
+  '@lucide/svelte@1.30.0(svelte@5.56.8(@typescript-eslint/types@8.66.0))':
     dependencies:
       svelte: 5.56.8(@typescript-eslint/types@8.66.0)
 
@@ -11533,16 +11536,16 @@ snapshots:
       '@pnpm/network.ca-file': 1.0.2
       config-chain: 1.1.13
 
-  '@posthog/browser-common@0.3.1':
+  '@posthog/browser-common@0.4.0':
     dependencies:
-      '@posthog/core': 1.46.6
-      '@posthog/types': 1.400.1
+      '@posthog/core': 1.47.0
+      '@posthog/types': 1.402.2
 
-  '@posthog/core@1.46.6':
+  '@posthog/core@1.47.0':
     dependencies:
-      '@posthog/types': 1.400.1
+      '@posthog/types': 1.402.2
 
-  '@posthog/types@1.400.1': {}
+  '@posthog/types@1.402.2': {}
 
   '@protobufjs/aspromise@1.1.2': {}
 
@@ -12683,7 +12686,7 @@ snapshots:
     dependencies:
       baseline-browser-mapping: 2.11.13
       caniuse-lite: 1.0.30001809
-      electron-to-chromium: 1.5.403
+      electron-to-chromium: 1.5.404
       node-releases: 2.0.53
       update-browserslist-db: 1.3.1(browserslist@4.28.8)
 
@@ -12967,7 +12970,7 @@ snapshots:
     dependencies:
       browserslist: 4.28.8
 
-  core-js@3.49.0: {}
+  core-js@3.50.0: {}
 
   core-util-is@1.0.3: {}
 
@@ -13229,7 +13232,7 @@ snapshots:
     dependencies:
       jake: 10.9.4
 
-  electron-to-chromium@1.5.403: {}
+  electron-to-chromium@1.5.404: {}
 
   emoji-regex@10.6.0: {}
 
@@ -13939,7 +13942,7 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  firebase@12.17.0:
+  firebase@12.17.1:
     dependencies:
       '@firebase/ai': 2.14.0(@firebase/app-types@0.9.5)(@firebase/app@0.16.0)
       '@firebase/analytics': 0.10.23(@firebase/app@0.16.0)
@@ -13951,9 +13954,9 @@ snapshots:
       '@firebase/app-types': 0.9.5
       '@firebase/auth': 1.13.4(@firebase/app@0.16.0)
       '@firebase/auth-compat': 0.6.9(@firebase/app-compat@0.5.16)(@firebase/app-types@0.9.5)(@firebase/app@0.16.0)
-      '@firebase/data-connect': 0.7.2(@firebase/app@0.16.0)
+      '@firebase/data-connect': 0.7.3(@firebase/app@0.16.0)
       '@firebase/database': 1.1.4
-      '@firebase/database-compat': 2.1.5(@firebase/app-compat@0.5.16)(@firebase/app@0.16.0)
+      '@firebase/database-compat': 2.1.6(@firebase/app-compat@0.5.16)(@firebase/app@0.16.0)
       '@firebase/firestore': 4.17.0(@firebase/app@0.16.0)
       '@firebase/firestore-compat': 0.4.12(@firebase/app-compat@0.5.16)(@firebase/app-types@0.9.5)(@firebase/app@0.16.0)
       '@firebase/functions': 0.13.6(@firebase/app@0.16.0)
@@ -14140,10 +14143,10 @@ snapshots:
       - utf-8-validate
       - zod
 
-  genkit@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.0):
+  genkit@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.1):
     dependencies:
-      '@genkit-ai/ai': 1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.0)(genkit@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.0))
-      '@genkit-ai/core': 1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.0)(genkit@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.0))
+      '@genkit-ai/ai': 1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.1)(genkit@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.1))
+      '@genkit-ai/core': 1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.1)(genkit@1.40.1(@google-cloud/firestore@7.11.6)(firebase-admin@13.10.0)(firebase@12.17.1))
       uuid: 10.0.0
     transitivePeerDependencies:
       - '@google-cloud/firestore'
@@ -16014,23 +16017,24 @@ snapshots:
     dependencies:
       xtend: 4.0.2
 
-  posthog-js@1.409.5:
+  posthog-js@1.414.0:
     dependencies:
-      '@posthog/browser-common': 0.3.1
-      '@posthog/core': 1.46.6
-      '@posthog/types': 1.400.1
-      core-js: 3.49.0
+      '@posthog/browser-common': 0.4.0
+      '@posthog/core': 1.47.0
+      '@posthog/types': 1.402.2
+      core-js: 3.50.0
       dompurify: 3.4.13
       fflate: 0.4.9
       preact: 10.29.8
       query-selector-shadow-dom: 1.0.1
       web-vitals: 5.3.0
+      web-vitals-soft-navs: web-vitals@6.0.0
     transitivePeerDependencies:
       - preact-render-to-string
 
-  posthog-node@5.47.3:
+  posthog-node@5.48.1:
     dependencies:
-      '@posthog/core': 1.46.6
+      '@posthog/core': 1.47.0
 
   preact@10.29.8: {}
 
@@ -16945,7 +16949,7 @@ snapshots:
     transitivePeerDependencies:
       - picomatch
 
-  svelte-dnd-action@0.9.77(svelte@5.56.8(@typescript-eslint/types@8.66.0)):
+  svelte-dnd-action@0.9.78(svelte@5.56.8(@typescript-eslint/types@8.66.0)):
     dependencies:
       svelte: 5.56.8(@typescript-eslint/types@8.66.0)
 
@@ -17530,6 +17534,8 @@ snapshots:
   web-vitals@4.2.4: {}
 
   web-vitals@5.3.0: {}
+
+  web-vitals@6.0.0: {}
 
   webidl-conversions@3.0.1: {}
 
