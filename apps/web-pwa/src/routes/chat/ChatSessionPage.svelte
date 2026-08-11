@@ -7,8 +7,12 @@
   import { addToast } from '../../lib/toastStore.js';
   import { saveRecipe as saveRecipeDoc } from '@salt/firebase-sync';
   import { recipes, authorRecipeTraced } from '../../lib/recipeService.js';
-  import { diffRecipe, type Recipe } from '@salt/domain';
-  import type { ChatSessionDoc, RecipeDiff } from '@salt/domain/schemas';
+  import {
+    proposeRecipeAmendment,
+    applyRecipeAmendment,
+    type RecipeAmendment,
+  } from '../../lib/recipeAmend.js';
+  import type { ChatSessionDoc } from '@salt/domain/schemas';
   import RecipeChangeSummary from '../recipes/RecipeChangeSummary.svelte';
   import ChatThread from './ChatThread.svelte';
   import { createChatThread } from './chatThreadState.svelte.js';
@@ -85,16 +89,16 @@
     push(`/recipes/${stamped.id}`);
   }
 
-  // Review changes — re-runs the librarian against the conversation and shows a
-  // diff summary (Phase 2 review gate). The AI draft becomes a PENDING proposal;
-  // nothing is written until "Apply changes" in the summary sheet. `isProposing`
-  // guards the AI call; `isApplying` guards the eventual save.
+  // Review changes — the review gate. Everything about what gets proposed and
+  // what gets written lives in `recipeAmend` and is shared with the recipe
+  // page's sidebar/drawer (issue #764); this page holds only its own busy/open
+  // state, its toasts and where it goes afterwards. `isProposing` guards the AI
+  // call; `isApplying` guards the eventual save.
   let isProposing = $state(false);
   let isApplying = $state(false);
   let summaryOpen = $state(false);
   // The pending proposal: the merged recipe ready to save + its diff for display.
-  let pendingUpdate = $state<Recipe | null>(null);
-  let pendingDiff = $state<RecipeDiff | null>(null);
+  let pending = $state<RecipeAmendment | null>(null);
 
   async function handleReviewChanges(): Promise<void> {
     if (!session?.recipeId || isProposing) return;
@@ -105,53 +109,29 @@
     }
     isProposing = true;
     const existingTags = [...new Set($recipes.flatMap((r) => r.metadata.tags))];
-    const result = await authorRecipeTraced(
-      {
-        messages: session.messages,
-        existingTags,
-        recipeId: session.recipeId,
-      },
-      existing.title,
-    );
+    const result = await proposeRecipeAmendment(existing, session.messages, existingTags);
+    isProposing = false;
     if (result.kind !== 'ok') {
-      isProposing = false;
       addToast('Failed to generate recipe update.', 'destructive');
       return;
     }
-    const draft = result.value;
-    const now = new Date().toISOString();
-    // Preserve the existing recipe's id and createdAt; bump updatedAt. The
-    // librarian never returns an image or source (always null / manual), so
-    // carry those over from the existing recipe too.
-    const updated = {
-      ...draft,
-      id: existing.id,
-      createdAt: existing.createdAt,
-      updatedAt: now,
-      image: existing.image,
-      source: existing.source,
-    };
-    // Diff on human-signal fields (machine-derived fields ignored by diffRecipe).
-    pendingDiff = diffRecipe(existing, updated);
-    pendingUpdate = updated;
-    isProposing = false;
+    pending = result.value;
     summaryOpen = true;
   }
 
   // Apply changes — commit the pending proposal (the review gate's confirm).
   async function handleApplyChanges(): Promise<void> {
-    if (!pendingUpdate || isApplying) return;
+    if (!pending || isApplying) return;
     isApplying = true;
-    const saveResult = await saveRecipeDoc(pendingUpdate);
+    const recipeId = pending.updated.id;
+    const saveResult = await applyRecipeAmendment(pending);
     isApplying = false;
     if (saveResult.kind !== 'ok') {
       addToast('Failed to save recipe update.', 'destructive');
       return;
     }
-    const recipeId = pendingUpdate.id;
     summaryOpen = false;
-    pendingUpdate = null;
-    pendingDiff = null;
+    pending = null;
     addToast('Recipe updated!', 'success');
     push(`/recipes/${recipeId}`);
   }
@@ -159,8 +139,7 @@
   // Discard / keep chatting — drop the proposal, write nothing.
   function handleDiscardChanges(): void {
     summaryOpen = false;
-    pendingUpdate = null;
-    pendingDiff = null;
+    pending = null;
   }
 </script>
 
@@ -249,7 +228,7 @@
 
   <!-- Review-and-approve gate for the pending AI edit (Phase 2) -->
   <RecipeChangeSummary
-    diff={pendingDiff}
+    diff={pending?.diff ?? null}
     bind:open={summaryOpen}
     applying={isApplying}
     onApply={handleApplyChanges}
