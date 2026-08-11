@@ -102,6 +102,19 @@ The discriminator, if you ever see it again: `globalSetup` output says whether t
 fresh Vite or *reused an identity-matched pid*. Killing `:5174` before the run forces the spawn
 path.
 
+**Both test stacks are host singletons, and the guard refuses them in a worktree.** The `:5174`
+sentinel above, the `test-emulators` and `salt-vitest-emulators` compose projects, and their fixed
+host ports (8081/9100/5002/4402 and 8082/9101) are all host-global — there is exactly one of each
+on this machine, which is why two stacks never run concurrently. Two agents running e2e from two
+linked worktrees therefore do not merely queue: the identity mismatch in the reuse contract makes
+each one kill and respawn the other's Vite, and a `down -v` wipes a stack out from under a run in
+progress. Both surface as plausible-looking test reds rather than as an obvious conflict. So
+`e2e`, `e2e:ui`, `e2e:coverage` and `test:emulator` are prefixed with `scripts/host-guard.mjs`
+(issue #759), which refuses them outright in a linked worktree — before anything is killed or
+wiped — and names `SALT_TAKE_HOST=1` as the deliberate override once Daniel has agreed. None of the
+contracts on this page change; the guard only refuses earlier. See **Worktree rules** in
+[CLAUDE.md](../CLAUDE.md) for the three positions (main tree, linked worktree, cloud VM).
+
 ## Lifecycle, reuse & teardown
 
 `globalSetup.ts` builds the Cloud Functions bundle (`pnpm --filter @salt/cloud-functions build`)

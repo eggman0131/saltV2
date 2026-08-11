@@ -12,11 +12,11 @@
     "icons:generate": "node --experimental-strip-types scripts/generate-icons.ts",
     "preview": "vite preview",
     "test": "vitest run",
-    "e2e": "playwright test",
-    "e2e:coverage": "playwright test && node --experimental-strip-types scripts/process-e2e-coverage.ts",
+    "e2e": "node ../../scripts/host-guard.mjs e2e && playwright test",
+    "e2e:coverage": "node ../../scripts/host-guard.mjs e2e:coverage && playwright test && node --experimental-strip-types scripts/process-e2e-coverage.ts",
     "e2e:coverage:report": "node --experimental-strip-types scripts/process-e2e-coverage.ts",
     "e2e:install": "playwright install --with-deps chromium",
-    "e2e:ui": "playwright test --ui"
+    "e2e:ui": "node ../../scripts/host-guard.mjs e2e:ui && playwright test --ui"
   },
   "dependencies": {
     "@lucide/svelte": "^1.30.0",

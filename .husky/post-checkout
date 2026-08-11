@@ -1,0 +1,53 @@
+#!/usr/bin/env sh
+# Bootstrap a newly created LINKED WORKTREE into a working checkout.
+#
+# WHY — `git worktree add` leaves behind a checkout with no node_modules, no
+# gitignored dev env files, and no `.husky/_`, so `core.hooksPath` points at a
+# directory that does not exist there and pre-commit / commit-msg / pre-push all
+# SILENTLY do nothing. An agent can commit straight past every local gate and
+# nobody finds out until CI. Git has no worktree-created hook; post-checkout is
+# the one that actually fires, and the `pnpm install` it triggers is also what
+# restores `.husky/_` and brings the gates back to life.
+#
+# Fires only when BOTH hold:
+#   * $1 (the previous HEAD) is all-zeros — a brand-new checkout, not an
+#     ordinary `git switch`, which passes a real sha here.
+#   * this tree is a LINKED worktree — the all-zeros check alone also matches
+#     `git clone`, where an unattended cold-store install would be a
+#     minutes-long surprise. A clone is covered instead by the SessionStart hook
+#     in `.claude/settings.json`, where the install is expected.
+#
+# Runs under `sh -e` via husky's loader, so every step is guarded and the hook
+# always ends with `exit 0`: a failed bootstrap is a warning, never a blocked
+# `git worktree add`.
+
+[ -n "$1" ] || exit 0
+case "$1" in
+	*[!0]*) exit 0 ;;
+esac
+
+git_dir="$(git rev-parse --path-format=absolute --git-dir 2>/dev/null || true)"
+common_dir="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+if [ -z "$git_dir" ] || [ "$git_dir" = "$common_dir" ]; then
+	exit 0
+fi
+
+# Resolve pnpm from PATH so the hook is portable across machines/shells
+# (macOS, Linux, WSL). Falls back to corepack if pnpm isn't on PATH.
+pnpm_bin="$(command -v pnpm || true)"
+if [ -z "$pnpm_bin" ]; then
+	pnpm_bin="corepack pnpm"
+fi
+
+root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
+# The hook body resolves out of the MAIN tree's `.husky/_` (a relative
+# core.hooksPath is resolved against the invoking tree), so this hook runs even
+# for a worktree checked out at a commit that predates the script. Say nothing
+# and leave rather than spraying a MODULE_NOT_FOUND stack trace over
+# `git worktree add`.
+[ -f "$root/scripts/ensure-checkout.mjs" ] || exit 0
+
+SALT_PNPM_BIN="$pnpm_bin" node "$root/scripts/ensure-checkout.mjs" || true
+
+exit 0

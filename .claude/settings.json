@@ -12,5 +12,17 @@
   },
   "enabledPlugins": {
     "ponytail@ponytail": true
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/ensure-checkout.mjs"
+          }
+        ]
+      }
+    ]
   }
 }

@@ -197,6 +197,19 @@ export default [
       '**/.svelte-kit/**',
       '**/__boundary_tests__/**',
       '**/.boundary-tests/**',
+      // Linked worktrees are duplicate checkouts of this same repo — linting
+      // them is pure waste AND actively harmful. Measured on 2026-08-11 (eslint
+      // 10.8.0): 6340 of 7542 files linted came from here, 84% of every run,
+      // 30s vs 10s scoped. Worse, a stale worktree whose node_modules no longer
+      // resolves a plugin fails `pnpm lint` on a clean main with errors like
+      // "Definition for rule 'playwright/no-wait-for-timeout' was not found",
+      // pointing at code the author never touched — a deterministic local-only
+      // red that CI (which checks out fresh) never reproduces.
+      // NB: this regressed with eslint 10's flat-config CLI glob resolution —
+      // a leading dot used not to be matched by `**`, which is why the
+      // identically-shaped `format:check` prettier glob still surfaces nothing
+      // from here and needs no equivalent entry.
+      '**/.claude/worktrees/**',
     ],
   },
 
