@@ -55,6 +55,21 @@ storybook                  →  ui-components                 # dev-only Storybo
 - **New dependencies pin to the current latest.** Never write a version range from memory — model training data lags the registry by a long way. Check what is actually published (`npm view <pkg> version`, or `pnpm add <pkg>` which resolves latest for you) and use that major. An older major is allowed only for a stated reason (a peer-dep ceiling, a known-broken release, an upstream pin — e.g. the OTel 1.x pin held by `@genkit-ai/google-cloud`), and that reason goes in the PR description. Precedent: `resend` was added as `^4.0.0` in #585 (2026-07-24) when 6.x had been out for a year, and Dependabot flagged it within days.
 - **Production data back-compat.** Canon, Aisles, Equipment, Shopping List, Meal Planner, and Recipes collections hold real production data — schema changes must be backward-compatible on read, or require a one-off migration. (Recipes lost their greenfield status when the module shipped to all members in #240, 2026-06-17; treat recipe schema changes like any other production collection from here on.) See also: Zod schema conventions below.
 
+### Worktree rules — where am I running?
+
+Some commands seize resources that belong to the whole machine rather than to a checkout. Three positions, and the answer to "may I run this?" differs in each:
+
+| Position | Owns | Guarded commands |
+| --- | --- | --- |
+| **Main working tree** (`/Users/daniel/Projects/salt-vscode`) | the host stacks | run freely — it is the owner |
+| **Linked worktree on this host** (`.claude/worktrees/**`) | nothing | **refused** — ask before taking the host over |
+| **Cloud VM** (a Claude Code cloud session, including a worktree inside one) | the whole VM | run freely — there is nobody to ask |
+
+- **Safe anywhere, no permission needed:** `lint`, `typecheck`, `check`, `test`, `depcruise`, `boundary:test`, `format`, `format:check`, and `pnpm -r build` (there is no root `build` script — building is per-package). This is how you validate your work in a worktree, and it covers everything short of e2e. Use it and you will never meet the guard.
+- **Guarded:** `dev`, `dev:genkit`, `dev:emulators`, `stop:emulators`, `test:emulator`, and `@salt/web-pwa`'s `e2e` / `e2e:ui` / `e2e:coverage`. They grab host-global singletons — fixed ports, the `test-emulators` / `salt-vitest-emulators` compose projects, `.emulator-data`, the host-global `:5174` Vite — and they grab them bluntly, so from a worktree they kill the dev session Daniel is sitting in or corrupt another agent's e2e run into a red that looks like a real defect. `scripts/host-guard.mjs` refuses them in a linked worktree and kills nothing. **Ask Daniel first**, then re-run with `SALT_TAKE_HOST=1`.
+- **The guard must never fire in a cloud session.** A cloud VM belongs entirely to that session, so refusing there would skip validation for no reason and tell you to ask someone who is not present. A cloud session is a fresh clone, so the guard already no-ops — but the harness can create a linked worktree inside the VM, which would trip it. One-time setup: set `SALT_TAKE_HOST=1` in the cloud environment's **environment variables**. Deliberately not detected in code: Remote Control sessions are "remote" while driving Daniel's actual machine, and those must stay guarded.
+- **A cloud session is deliberately AI-key-less.** Cloud environments have no secrets store, `apps/cloud-functions/.secret.local` exists only on the Mac, and environment variables there are readable by anyone using the environment. `apps/web-pwa/.env.development` is tracked and its Firebase browser keys are public by design, so build / typecheck / check / unit tests need zero configuration. Anything needing Gemini goes through the `FUNCTIONS_AI_FAKE` seam or does not run at all. Do not go hunting for keys you will never find.
+
 ## Zod schema conventions
 
 - **Schemas live in `@salt/domain/schemas`.** All zod schemas are defined under `packages/domain/src/schemas/` and exported via the `@salt/domain/schemas` subpath. Do not define schemas in adapters, apps, or `@salt/shared-types`.
