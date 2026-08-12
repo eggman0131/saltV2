@@ -26,6 +26,18 @@
 // SessionStart fires on every start *and* resume, so the warm path below —
 // installed already, lockfile unchanged — is what keeps it free to run always.
 //
+// THE 600-SECOND HOOK TIMEOUT IS LOAD-BEARING, and this is where its reason
+// lives: `.claude/settings.json` is strict JSON — Claude Code rejects comments
+// there ("Invalid or malformed JSON"), so the number sits beside the command
+// with nothing next to it to explain itself. Claude Code's default is 60 s.
+// That is ample for the warm path and far too short for the cold one this
+// script exists to serve: a fresh clone in a cloud VM installs against a cold
+// pnpm store, which takes minutes. Killed part-way, the failure is silent and
+// self-perpetuating — no stamp is written, so every later session start repeats
+// the whole install, and `.husky/_` (which husky's `prepare` writes at the END
+// of the install) may never appear at all. That leaves the commit gates dead in
+// precisely the case this hook was added to fix.
+//
 // BEST-EFFORT BY CONTRACT: every step is guarded, every failure is a warning on
 // stderr, and the exit code is ALWAYS 0. A failed bootstrap must never block a
 // `git worktree add` or a session start; you just get a warning and a checkout

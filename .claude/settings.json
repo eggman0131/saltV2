@@ -19,7 +19,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/ensure-checkout.mjs"
+            "command": "node scripts/ensure-checkout.mjs",
+            "timeout": 600
           }
         ]
       }
