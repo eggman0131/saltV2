@@ -46,6 +46,7 @@ vi.mock('../../src/flows/canonicaliseRecipeIngredients.js', () => ({
 
 const { extractRecipeFromPhotoFlow, PhotoImportError } =
   await import('../../src/flows/extractRecipeFromPhoto.js');
+const { recipeFieldRules } = await import('../../src/flows/recipeFieldRules.js');
 
 const invoke = (input: unknown) => (extractRecipeFromPhotoFlow as unknown as Function)(input);
 
@@ -117,6 +118,17 @@ describe('extractRecipeFromPhoto — the pages reach the model as images', () =>
     const system = mockGenerate.mock.calls[0]![0].system as string;
     expect(system).toContain('Metric only');
     expect(system).toContain('British spelling');
+  });
+
+  it('interpolates the shared field rules verbatim, as a DOCUMENT source (#785)', async () => {
+    await invoke({ images: [PAGE_ONE] });
+
+    // Whole-block, not a phrase: this is what fails if someone hand-rolls a second
+    // field list here, and 'metricate' is what fails if a printed recipe's cups
+    // ever stop being converted. A cookbook page is someone else's units — the
+    // conversion is the entire point of the import.
+    const system = mockGenerate.mock.calls[0]![0].system as string;
+    expect(system).toContain(recipeFieldRules({ measures: 'metricate' }));
   });
 
   it('runs at temperature 0 — accuracy over creativity', async () => {
