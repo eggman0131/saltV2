@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, cleanup, waitFor } from '@testing-library/svelte';
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'vitest-axe';
 import { checkInTimerId } from '@salt/domain';
@@ -1262,9 +1262,28 @@ describe('CookModePage — adjusting a timer, and setting your own (#748)', () =
     return screen.getByTestId('cook-timer-sheet-minutes') as HTMLInputElement;
   }
 
+  // Put a whole value into one of the sheet's fields in a single `input` event.
+  //
+  // NOT `userEvent.type`, which delivers one keystroke at a time. These are
+  // CONTROLLED inputs — `TextField` renders `value={value}` and writes back from
+  // `oninput` — and per-keystroke typing intermittently loses the LAST character
+  // on the way to the component's state: the field reads "Rice" in the DOM while
+  // `label`, and so the persisted timer, holds "Ric". Measured under #793 on this
+  // file: "Rice" persisted as "Ric" and `setMinutes('45')` persisted as `4`.
+  //
+  // No wait can rescue it. The sheet persists exactly once, on confirm, so the
+  // truncated value is final — `:1412`'s assertion is already inside its `waitFor`
+  // and still failed with `4` for `45` after the full budget. One `input` event
+  // carries the entire value and cannot interleave with a pending Svelte flush,
+  // which is the same reason `MealPlanWeekPage.test.ts:440-449` prefers `fireEvent`
+  // for the recipe picker. What a real keystroke stream does to this field belongs
+  // to Playwright, not jsdom.
+  async function setField(el: HTMLInputElement, value: string): Promise<void> {
+    await fireEvent.input(el, { target: { value } });
+  }
+
   async function setMinutes(value: string): Promise<void> {
-    await userEvent.clear(sheetMinutes());
-    await userEvent.type(sheetMinutes(), value);
+    await setField(sheetMinutes(), value);
   }
 
   function runningTimer(over: Partial<CookSessionDoc['activeTimers'][number]> = {}) {
@@ -1350,8 +1369,7 @@ describe('CookModePage — adjusting a timer, and setting your own (#748)', () =
 
     await userEvent.click(screen.getByTestId('cook-mode-timer'));
     await screen.findByTestId('cook-timer-sheet-name');
-    await userEvent.clear(sheetName());
-    await userEvent.type(sheetName(), 'Rice');
+    await setField(sheetName(), 'Rice');
     await setMinutes('12');
     await userEvent.click(screen.getByTestId('cook-timer-sheet-confirm'));
 

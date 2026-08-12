@@ -50,6 +50,17 @@ export default defineConfig({
     // not globally, and never by reaching for `isolate: false`, which DOES leak
     // module state between files and fails 3 files in this suite today.
     pool: 'threads',
+    // Raised from the 5000ms default purely to stay above the 5000ms
+    // `asyncUtilTimeout` set in `tests/setup.ts` (issue #793). At the default the
+    // two were equal, so a single expiring `waitFor` would trip the vitest timeout
+    // at the same moment and report "test timed out" instead of the `waitFor`
+    // failure that says which condition never held. A handful of tests here chain
+    // three or four sequential waits, so the ceiling has to clear several budgets,
+    // not one. This costs a passing test nothing — it only bounds how long a
+    // genuinely hung test takes to report. `hookTimeout` is deliberately left at
+    // its default: one hook in this suite is async (`wakeLock.test.ts`) and no hook
+    // uses a Testing Library wait, so nothing here spends that budget.
+    testTimeout: 20_000,
     environment: 'jsdom',
     include: ['tests/**/*.test.ts'],
     setupFiles: ['./tests/setup.ts'],

@@ -1,7 +1,33 @@
 import '@testing-library/jest-dom/vitest';
+import { configure } from '@testing-library/svelte';
 import { afterAll, afterEach, expect } from 'vitest';
 import * as matchers from 'vitest-axe/matchers';
 expect.extend(matchers);
+
+// How long an unqualified `waitFor` / `findBy*` may wait for its condition.
+//
+// `@testing-library/dom` defaults this to 1000ms and nothing here ever set it, so
+// every async wait in this suite ran on a budget nobody chose. That budget is a
+// REAL-CLOCK one, and this project runs ~nCPU jsdom worker threads (`pool:
+// 'threads'`), so on a loaded machine a correct wait loses the CPU for long enough
+// to expire before the state it is waiting for can be observed. Measured on
+// 2026-08-11 at load average 9.4: victims died at 1048ms, 1064ms, 1100ms and
+// 1105ms — the default expiring, almost to the millisecond — and every one of them
+// passed on its own immediately afterwards. It reached CI too (PR #792's Unit job,
+// 1105ms), which is why this belongs in shared setup and not a local override.
+//
+// This is a scheduling-jitter allowance, NOT a retry. A retry re-runs a failed test
+// and calls the second result the answer; this only lets a correct wait observe the
+// state it was always waiting for. `waitFor` polls and resolves the instant its
+// predicate holds, so a passing test is not one millisecond slower — the only cost
+// is that a genuinely failing wait takes longer to report. Nothing here rescues a
+// wait whose predicate does not gate what the test then asserts; that is a test bug
+// and gets fixed as one (see `CookModePage.test.ts`'s ad-hoc timer test).
+//
+// Keep this comfortably below `testTimeout` in `vitest.config.ts`, or a test with
+// several sequential waits reports a vitest timeout instead of the far more useful
+// `waitFor` failure. See issue #793.
+configure({ asyncUtilTimeout: 5_000 });
 
 // Dialog/AlertDialog primitives (bits-ui) make the page inert while open by
 // setting `pointer-events: none` on <body>, and restore it in a close-time

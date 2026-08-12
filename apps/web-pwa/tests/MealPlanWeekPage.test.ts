@@ -454,8 +454,16 @@ async function attachRecipe(date: string, title: string | RegExp): Promise<void>
 
 // Open a day's picker without choosing anything, so the offered options can be
 // inspected.
+//
+// `fireEvent`, for the reason given above `attachRecipe`: `userEvent.click`'s
+// focus-on-pointerdown can blur the input and close the combobox before the click
+// lands, and the listbox then never appears — so `findAllByRole('option')` burns
+// its whole budget and fails. That presents as a slow timeout but is not one, which
+// is why raising the wait budget does not fix it (#793). This helper was the odd one
+// out: `attachRecipe` has always used `fireEvent`, and these three tests are the ones
+// that failed in CI on PR #792.
 async function openPicker(date: string): Promise<void> {
-  await userEvent.click(screen.getByTestId(`day-${date}-recipe-picker`));
+  await fireEvent.click(screen.getByTestId(`day-${date}-recipe-picker`));
   await screen.findAllByRole('option');
 }
 
