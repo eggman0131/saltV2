@@ -50,6 +50,7 @@
     applyRecipeAmendment,
     type RecipeAmendment,
   } from '../../lib/recipeAmend.js';
+  import { authorRecipeFromChat } from '../../lib/chatRecipeAuthor.js';
   import IngredientText from './IngredientText.svelte';
   import { canonItems } from '../../lib/canonService.js';
   import {
@@ -530,6 +531,38 @@ Finish with a short note on what you changed and why, so I can read the gist her
   function handleSidebarDiscardChanges(): void {
     sidebarSummaryOpen = false;
     sidebarPending = null;
+  }
+
+  // "Save as new recipe" (issue #798) — the other thing a conversation beside a
+  // dish can produce. You asked what would go with the lamb, the chef wrote out a
+  // salad, and this keeps the salad as a recipe of its own.
+  //
+  // The dish on this page is NOT written to: what gets authored and saved lives in
+  // `chatRecipeAuthor` and is shared with the full `/chat/:id` page, and it only
+  // ever takes the create path. No `basedOnRecipeId` — an accompaniment is not
+  // derived from what it accompanies, and variation mode would drag this recipe's
+  // ingredients into it. No claim either: the conversation stays listed here.
+  let sidebarIsSavingNew = $state(false);
+
+  async function handleSaveAsNewRecipe(): Promise<void> {
+    if (!activeSession || sidebarIsSavingNew) return;
+    sidebarIsSavingNew = true;
+    const existingTags = [...new Set($recipes.flatMap((r) => r.metadata.tags))];
+    const result = await authorRecipeFromChat({
+      messages: activeSession.messages,
+      existingTags,
+      basedOnRecipeId: null,
+    });
+    sidebarIsSavingNew = false;
+    if (result.kind !== 'ok') {
+      addToast(
+        result.error.stage === 'author' ? 'Failed to generate recipe.' : 'Failed to save recipe.',
+        'destructive',
+      );
+      return;
+    }
+    addToast('New recipe saved!', 'success');
+    push(`/recipes/${result.value.id}`);
   }
 
   // ─── Delete ─────────────────────────────────────────────────────────────────
@@ -1471,15 +1504,40 @@ Finish with a short note on what you changed and why, so I can read the gist her
   {/if}
 {/snippet}
 
+<!-- Its counterpart (issue #798). Same gate — an empty conversation has nothing to
+     author either — and deliberately the same shape, because the pair is the whole
+     point: one folds what was said into THIS dish, the other makes it a different
+     one. No `border-t`: it sits directly under "Review changes" inside the one
+     footer that button opens, and a second rule would read as a second region. -->
+{#snippet saveAsNewRecipeAction(testid: string)}
+  {#if activeSession?.messages.some((m) => m.role === 'assistant')}
+    <div class="shrink-0 px-3 pt-2">
+      <Button
+        variant="outline"
+        class="w-full"
+        onclick={handleSaveAsNewRecipe}
+        loading={sidebarIsSavingNew}
+        disabled={sidebarIsSavingNew || chat.isSending}
+        data-testid={testid}
+      >
+        {#snippet leading()}<Icon name="BookOpen" size={14} />{/snippet}
+        Save as new recipe
+      </Button>
+    </div>
+  {/if}
+{/snippet}
+
 <!-- The two surfaces are separate DOM nodes and both can be mounted at once (the column
      is merely `hidden` below `lg`), so they carry distinct testids — one ambiguous
      selector is a worse trap than two names for one button. -->
 {#snippet sidebarReviewChanges()}
   {@render reviewChangesAction('sidebar-apply-changes-btn')}
+  {@render saveAsNewRecipeAction('sidebar-save-new-recipe-btn')}
 {/snippet}
 
 {#snippet drawerReviewChanges()}
   {@render reviewChangesAction('drawer-apply-changes-btn')}
+  {@render saveAsNewRecipeAction('drawer-save-new-recipe-btn')}
 {/snippet}
 
 <!-- The chef over the live recipe (issue #696). Only below the seam: above it the same
