@@ -170,8 +170,15 @@ test.describe('recipes — save a recipe chat as a new recipe', () => {
     await expect(page.getByTestId('sidebar-apply-changes-btn')).toBeVisible();
 
     // ── Save as new recipe → a brand new dish ─────────────────────────────────
+    // The wait must exclude the recipe we are ALREADY on. This journey, unlike the
+    // ones it is modelled on, presses its button from a `/recipes/:id` page — so a
+    // plain "is on a recipe" pattern matches before the librarian has even been
+    // called, and reads the original's id straight back. The id we are leaving is
+    // the one thing the pattern has to refuse.
     await page.getByTestId('sidebar-save-new-recipe-btn').click();
-    await expect(page).toHaveURL(/#\/recipes\/(?!new)[a-z0-9-]+$/, { timeout: 60_000 });
+    await expect(page).toHaveURL(new RegExp(`#/recipes/(?!${originalId}$)[a-z0-9-]+$`), {
+      timeout: 60_000,
+    });
     const saladId = page.url().match(/#\/recipes\/([a-z0-9-]+)/)?.[1];
 
     // A SECOND document, with its own name and its own content.
