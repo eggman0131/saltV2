@@ -50,6 +50,22 @@ export default defineConfig({
     // not globally, and never by reaching for `isolate: false`, which DOES leak
     // module state between files and fails 3 files in this suite today.
     pool: 'threads',
+    // Both numbers below are measured, not guessed. `pnpm soak` runs the full
+    // 8-project suite back to back with 12 spinner processes saturating the CPU
+    // (`scripts/soak-unit-tests.mjs`). Three soaks on 2026-08-13, same load:
+    //
+    //   1000ms (the library default nobody chose)   2/6  green, load 14–28
+    //   5000ms                                     12/15 green, load 35–56
+    //   5000ms + the Class-A fixes below           20/20 green, load 27–47
+    //
+    // The middle row is what settled the value: at 5000ms every remaining failure
+    // burned the budget EXACTLY, which is the signature of a wait whose condition
+    // never becomes true, not one that needs longer — so the answer was to fix two
+    // tests (`MealPlanWeekPage.test.ts`, keystrokes swallowed by a Sheet's focus
+    // trap), not to raise the number again. 5000ms is therefore the smallest budget
+    // that absorbs real scheduling jitter here, not the largest one that hides bugs.
+    // Re-measure with `pnpm soak` before changing either number.
+    //
     // Raised from the 5000ms default purely to stay above the 5000ms
     // `asyncUtilTimeout` set in `tests/setup.ts` (issue #793). At the default the
     // two were equal, so a single expiring `waitFor` would trip the vitest timeout
