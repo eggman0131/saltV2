@@ -12,7 +12,7 @@ import { extractRecipeJsonLd, type JsonLdRecipe } from '../adapters/jsonLdRecipe
 import { assembleRecipeDraft } from './assembleRecipeDraft.js';
 import { persistImportedRecipe } from './persistImportedRecipe.js';
 import { resolveModel } from '../ai/resolveModel.js';
-import { CONVERSION_RULES, FIELD_RULES } from './recipeExtractionRules.js';
+import { recipeFieldRules } from './recipeFieldRules.js';
 
 // SSRF-hardened URL import (recipe URL import epic, Phases 1 & 3).
 //
@@ -261,9 +261,12 @@ function buildHtmlPrompt(html: string, sourceUrl: string): { system: string; pro
   };
 }
 
-// CONVERSION_RULES / FIELD_RULES now live in ./recipeExtractionRules.js — the
-// photo import (issue #649) needs the identical wording, and a second copy is one
-// edit away from the two import paths converting differently.
+// The conversion + field rules live in ./recipeFieldRules.js — the photo import
+// (issue #649) and the librarian (issue #785) need the identical wording, and a
+// second copy is one edit away from the authoring paths disagreeing. A URL is a
+// DOCUMENT source: converting someone else's units is the entire point of an
+// import, hence `measures: 'metricate'` on both prompts below.
+const IMPORT_RULES = recipeFieldRules({ measures: 'metricate' });
 
 const EXTRACT_SYSTEM = `You are a precise recipe extraction assistant. You are given the raw HTML \
 of a web page and its source URL. Extract a single complete recipe from the page and convert it \
@@ -274,9 +277,7 @@ fully to UK conventions.
 cooking recipe at all (e.g. a news article, a product listing, a 404). If a recipe is present, \
 isRecipe=true.
 
-${CONVERSION_RULES}
-
-${FIELD_RULES}
+${IMPORT_RULES}
 
 Extract only what is present on the page. Do not invent ingredients or steps — though splitting one \
 of the page's own instructions across consecutive steps, per the one-operation rule above, invents \
@@ -298,6 +299,4 @@ present in the data.
 the one-operation rule below. That re-divides the given instructions; it does not add, drop or reorder \
 content, so it is not a breach of the rule above. Never MERGE two source steps into one.
 
-${CONVERSION_RULES}
-
-${FIELD_RULES}`;
+${IMPORT_RULES}`;

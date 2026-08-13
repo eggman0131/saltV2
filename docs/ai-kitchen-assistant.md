@@ -178,13 +178,36 @@ chat session doc (Firestore)         ← owned by web-pwa + firebase-sync (clien
 - `/chat` — general kitchen-assistant chat (message list, streaming render).
 - Recipe-attached chat — opened alongside an existing recipe; same chat engine with
   `recipeId` set; "apply changes" re-runs the librarian against the recipe.
-- "Save as recipe" action on a general chat → librarian → new recipe.
+- Authoring a NEW recipe out of a conversation — one leg, `src/lib/chatRecipeAuthor.ts`,
+  three buttons (#798). It is always the CREATE path (`recipeId` never sent), it stamps
+  the clock, saves, and fires one `recipe.created` with `recipe_method: 'chat'`; the
+  page owns its busy state, its toasts, its navigation and whether the conversation
+  goes on to claim what it produced. The three:
+  - **"Save as recipe"** on a general chat (`chat-save-recipe-btn`) — passes the
+    session's `basedOnRecipeId` through, so a variation chat is grounded on the dish
+    it started from, and CLAIMS the session for the recipe it invented.
+  - **"Save as new recipe"** on a chat attached to a recipe — in the full page's
+    header (`chat-save-new-recipe-btn`) and in the recipe page's docked chat column
+    and drawer (`sidebar-save-new-recipe-btn` / `drawer-save-new-recipe-btn`), both
+    rendered from one `saveAsNewRecipeAction` snippet. Same gate as "Review changes":
+    at least one assistant turn. It passes `basedOnRecipeId: null` **even on a session
+    that has one**, and does NOT claim — an accompaniment is not derived from the dish
+    it accompanies, and the conversation stays listed on the dish it is attached to,
+    so the new recipe has no origin chat. The dish on screen is never written to.
+  - The pair on an attached chat is the whole distinction: **Review changes** folds
+    the conversation into THIS dish behind a diff; **Save as new recipe** makes it a
+    different dish and leaves this one alone. Everything saved this way is
+    `kind: 'recipe'` — see `isAuthorable` above; that is the pre-existing librarian
+    limitation, not something the button introduces.
 - Variation chat (#763) — ⋮ → **Make a variation** on a recipe opens a NEW chat at
   `/chat/:id` carrying `basedOnRecipeId`, with a *Based on: …* chip and an empty
   transcript. It navigates AWAY from the recipe deliberately: you are leaving that
   dish to make a different one. Nothing is written but the session doc until "Save
   as recipe", which is the same button a general chat already has — there is no
-  new exit from the recipe-amend review gate, and Duplicate is untouched.
+  new exit from the recipe-amend review gate, and Duplicate is untouched. Note the
+  difference from "Save as new recipe" (#798): a variation is *this dish, but
+  different* and carries `basedOnRecipeId`; an accompaniment is *a different dish*
+  and carries nothing.
 - My Kitchen (`/mine`) — a "Recent chats" footer linking straight back into the last
   few conversations. Read-only and free: it projects the app-wide subscription
   started at auth, so it is a shortcut into chat, not a second place chat lives.
@@ -201,6 +224,3 @@ chat session doc (Firestore)         ← owned by web-pwa + firebase-sync (clien
 in #240, 2026-06-17) — recipe schema changes need back-compat on read or a
 migration, like any other production collection. Chat schema is brand-new
 (no back-compat burden yet).
-</content>
-
-</invoke>

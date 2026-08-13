@@ -86,6 +86,7 @@ Check the work, not just the report — a self-report is a claim, `git diff` is 
 
 - `git status --short` and `git diff --stat`: does the changed-file set match "Technical deliverables", and does it stay clear of "Must not touch"? Read the diff wherever the answer isn't obvious from the paths.
 - Run the mechanical gates that the changed files actually implicate: `pnpm lint`, `pnpm typecheck`, `pnpm check` (Svelte templates), `pnpm test`, and `pnpm depcruise` for anything touching the import graph. Fix or delegate fixes until they're green — do not commit red.
+- That list stops where it does on purpose: e2e and the emulator integration suite seize host-global singletons (see CLAUDE.md → *Worktree rules*), so they are **not** run here. They run in CI, at step 8.
 - `UX_DELTA` against the phase's user-testable outcome(s), and `CONCERNS` against the standing rules.
 
 Deliverables missing, or must-not-touch violated → do not commit. Comment on the issue describing the gap, stop, wait for me.
@@ -122,7 +123,33 @@ Refs #ISSUE_NUMBER
 
 `Refs #ISSUE_NUMBER` on every phase commit including the last — the PR closes the issue, not the commits. No `#N` anywhere but that footer, and nothing after it.
 
-### 6. Handoff comment
+### 6. Push, and start CI
+
+The two heavy suites — `E2E (Playwright)` and `Vitest integration (emulator)` — exist only in CI. They are exactly what step 3's local list cannot cover, and CI is the only place they run without taking the host stacks off me.
+
+```
+git fetch --no-tags origin main
+git rebase origin/main    # no-op when already current
+git push -u origin <type>/<slug>-ISSUE_NUMBER
+```
+
+**Rebase every phase, before pushing.** CI skips both heavy suites when the branch is behind `origin/main` — the "Main" ruleset is strict, so a behind-branch must rebase before it can merge anyway, and that rebase re-triggers CI. Push while behind and you get a green tick for suites that never ran (step 8). Add `--force-with-lease` only when the rebase actually rewrote commits.
+
+**Phase 1 only — open the PR, as a draft.** CI triggers on `pull_request` and on pushes to `main`, and on nothing else: **a pushed branch with no PR runs no CI at all.** The PR exists from phase 1 so every later phase gets a real signal; it stays draft until the final phase.
+
+```
+gh pr create --draft --base main --head <type>/<slug>-ISSUE_NUMBER \
+  --title "type(scope): short description" \
+  --body "Closes #ISSUE_NUMBER
+
+WIP — phases land as commits. Full summary on the final phase."
+```
+
+If this PR is one of several for the issue, append ` (#ISSUE_NUMBER)` to the title and use `Refs` instead of `Closes`.
+
+Then go straight to step 7 — **do not wait here.** CI takes 5–10 minutes; the handoff comment gets written while it runs.
+
+### 7. Handoff comment
 
 Comment on issue #ISSUE_NUMBER. This is the audit trail and the brief for the AI PR reviewers — keep every heading, drop any line that would be filler:
 
@@ -147,17 +174,33 @@ Comment on issue #ISSUE_NUMBER. This is the audit trail and the brief for the AI
 - [file or module now locked]
 ```
 
-### 7. Continue or conclude
+### 8. Read CI — and check the heavy suites actually ran
+
+`gh pr checks --watch`.
+
+**A green tick is not proof a suite ran.** `E2E (Playwright)` and `Vitest integration (emulator)` are required checks, and a *skipped* required check reports as **passing** — deliberately, since that is how a docs-only PR merges. The e2e aggregator asserts "did not fail", not "succeeded". So read the job conclusions, not the check summary:
+
+```
+gh run list --branch <type>/<slug>-ISSUE_NUMBER --limit 1 --json databaseId --jq '.[0].databaseId'
+gh run view <run-id> --json jobs \
+  --jq '.jobs[] | select(.name | test("E2E|integration")) | "\(.name): \(.conclusion)"'
+```
+
+- `success` → verified.
+- `skipped` → **not verified.** Either the branch was behind `origin/main` (rebase, push, re-read) or the phase touched only `docs/`, `*.md`, `.github/`, `.claude/`, `.vscode/` and the meta dotfiles — in which case the skip is correct and the phase simply has no e2e signal. Say which in the handoff comment. Never report it as green.
+- `cancelled` → a later push superseded that run (PR runs cancel in progress). Not a defect — read the newer run.
+- `failure` → get the failing log, diagnose and fix on the issue branch (delegate the triage if the log is large), commit, push. Can't resolve it → stop and tell me.
+
+Note the blind spot: a phase editing the e2e or integration job setup **inside `.github/workflows/ci.yml`** skips those very suites, so it cannot be validated green by its own run. Flag it and validate on a follow-up that also touches app code.
+
+### 9. Continue or conclude
 
 More phases → straight into N+1 at step 1.
 
-Final phase done:
-1. `git push -u origin <type>/<slug>-ISSUE_NUMBER`
-2. Open the PR — do **not** merge it:
+Final phase done, CI green and the heavy suites confirmed run:
+1. Fill in the PR body:
    ```
-   gh pr create --base main --head <type>/<slug>-ISSUE_NUMBER \
-     --title "type(scope): short description" \
-     --body "<see below>"
+   gh pr edit --body "<see below>"
    ```
    ```
    Closes #ISSUE_NUMBER
@@ -172,10 +215,9 @@ Final phase done:
    ## For reviewers
    [key decisions and anything intentionally out of scope]
    ```
-   If this PR is one of several for the issue, append ` (#ISSUE_NUMBER)` to the title and use `Refs` instead of `Closes`.
-3. Watch CI (`gh pr checks --watch`). Red → get the failing log, diagnose and fix on the issue branch (delegate the triage if the log is large), commit, push. Can't resolve it → stop and tell me.
-4. Comment on the issue summarising all phases and linking the PR.
-5. Report done with the PR URL. Leave the PR open for me to review and merge — never merge it yourself.
+2. `gh pr ready` — take it out of draft. Do **not** merge it.
+3. Comment on the issue summarising all phases and linking the PR.
+4. Report done with the PR URL. Leave the PR open for me to review and merge — never merge it yourself.
 
 ---
 

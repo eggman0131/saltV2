@@ -363,6 +363,41 @@ export {
 export { upcomingChefDays } from './personalView/index.js';
 export type { ChefNight } from './personalView/index.js';
 
+// Formula module (issue #782, epic #778) — composition as ratios against a
+// declared basis, and the bidirectional yield solve. Headless: nothing renders it
+// and nothing stores it yet, but the surface is what phase 01 is built against.
+export {
+  DENSITY_G_PER_ML,
+  DEFAULT_DENSITY_CLASS,
+  gramsFromMillilitres,
+  GRAM_DECIMAL_THRESHOLD,
+  PERCENT_DECIMALS,
+  roundGrams,
+  roundPercent,
+  amountFromQuantity,
+  gramsFromParsed,
+  deriveFormula,
+  solveFormula,
+  BASIS_PERCENT_TOLERANCE,
+  UNIT_SHAPE_PRESETS,
+  unitShapePreset,
+  unitShapeFromPreset,
+  targetYield,
+  basisYield,
+} from './formula/index.js';
+export type {
+  DeriveFormulaInput,
+  DeriveFormulaResult,
+  FormulaComponentInput,
+  FormulaSolution,
+  SolveFormulaResult,
+  SolvedComponent,
+  SolvedUnits,
+  BoundViolation,
+  FormulaFailure,
+  UnitShapePreset,
+} from './formula/index.js';
+
 // URL module — pure display-time cache-buster for regenerated image URLs (#460).
 export { appendCacheBuster } from './url/index.js';
 

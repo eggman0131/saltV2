@@ -363,3 +363,21 @@ export type {
   TagsDiff,
   RecipeDiff,
 } from './recipeDiff.js';
+
+// Formula module (issue #782) — composition as ratios against a declared basis.
+// Nothing writes `formulas/{recipeId}` yet; the schema lands with the pure
+// arithmetic that is typed against it.
+export {
+  DensityClassSchema,
+  FormulaComponentSchema,
+  UnitShapeSchema,
+  ReferenceYieldSchema,
+  FormulaSchema,
+} from './formula.js';
+export type {
+  DensityClass,
+  FormulaComponent,
+  UnitShape,
+  ReferenceYield,
+  Formula,
+} from './formula.js';
