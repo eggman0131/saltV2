@@ -67,7 +67,12 @@ export {
 // family-shared doc keyed by the recipe id, plus the callable that authors one.
 // See guidedPlanSubscription.ts for why a corrupt plan is an error rather than
 // "no plan yet" — unlike a cook session, a human wrote it.
-export { subscribeGuidedPlan, loadGuidedPlan, saveGuidedPlan } from './guidedPlanSubscription.js';
+export {
+  subscribeGuidedPlan,
+  loadGuidedPlan,
+  saveGuidedPlan,
+  deleteGuidedPlan,
+} from './guidedPlanSubscription.js';
 export { callGenerateGuidedPlan } from './guidedPlanCallables.js';
 export { savePushSubscription, deletePushSubscription } from './pushSubscriptionSync.js';
 export { streamChefChat, callGenerateChatTitle } from './chatCallables.js';

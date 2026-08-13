@@ -1,14 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockUnsubscribe, mockOnSnapshot, mockSetDoc, mockGetDoc, mockDoc, mockGetFirestore } =
-  vi.hoisted(() => ({
-    mockUnsubscribe: vi.fn(),
-    mockOnSnapshot: vi.fn(),
-    mockSetDoc: vi.fn(),
-    mockGetDoc: vi.fn(),
-    mockDoc: vi.fn(() => 'mock-doc-ref'),
-    mockGetFirestore: vi.fn(() => 'mock-db'),
-  }));
+const {
+  mockUnsubscribe,
+  mockOnSnapshot,
+  mockSetDoc,
+  mockGetDoc,
+  mockDeleteDoc,
+  mockDoc,
+  mockGetFirestore,
+} = vi.hoisted(() => ({
+  mockUnsubscribe: vi.fn(),
+  mockOnSnapshot: vi.fn(),
+  mockSetDoc: vi.fn(),
+  mockGetDoc: vi.fn(),
+  mockDeleteDoc: vi.fn(),
+  mockDoc: vi.fn(() => 'mock-doc-ref'),
+  mockGetFirestore: vi.fn(() => 'mock-db'),
+}));
 
 vi.mock('firebase/app', () => ({
   getApp: vi.fn(() => ({})),
@@ -20,12 +28,14 @@ vi.mock('firebase/firestore', () => ({
   onSnapshot: mockOnSnapshot,
   setDoc: mockSetDoc,
   getDoc: mockGetDoc,
+  deleteDoc: mockDeleteDoc,
 }));
 
 import {
   subscribeGuidedPlan,
   loadGuidedPlan,
   saveGuidedPlan,
+  deleteGuidedPlan,
 } from '../src/guidedPlanSubscription.js';
 import type { GuidedPlanDoc } from '@salt/domain/schemas';
 
@@ -70,6 +80,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockOnSnapshot.mockReturnValue(mockUnsubscribe);
   mockSetDoc.mockResolvedValue(undefined);
+  mockDeleteDoc.mockResolvedValue(undefined);
   vi.stubGlobal('navigator', { onLine: true });
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -163,5 +174,23 @@ describe('saveGuidedPlan', () => {
       kind: 'err',
       error: { kind: 'AuthError', reason: 'forbidden' },
     });
+  });
+});
+
+// Delete means delete (issue #784): no soft-delete and no tombstone, the same
+// shape as `deleteRecipe`. An applied Refresh re-mints the recipe's step ids, so
+// the plan's `stepNotes` no longer resolve and the document is discarded whole.
+describe('deleteGuidedPlan', () => {
+  it('deletes guidedPlans/{recipeId}', async () => {
+    const result = await deleteGuidedPlan('recipe-1');
+    expect(mockDoc).toHaveBeenCalledWith('mock-db', 'guidedPlans', 'recipe-1');
+    expect(mockDeleteDoc).toHaveBeenCalledWith('mock-doc-ref');
+    expect(result).toEqual({ kind: 'ok', value: undefined });
+  });
+
+  it('returns failure (never throws) on a Firestore error', async () => {
+    mockDeleteDoc.mockRejectedValue(Object.assign(new Error('e'), { code: 'unavailable' }));
+    const result = await deleteGuidedPlan('recipe-1');
+    expect(result.kind).toBe('err');
   });
 });

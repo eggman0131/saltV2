@@ -48,6 +48,7 @@
   import { chatsForRecipe } from './recipeChats.js';
   import {
     proposeRecipeAmendment,
+    proposeRecipeRefresh,
     applyRecipeAmendment,
     type RecipeAmendment,
   } from '../../lib/recipeAmend.js';
@@ -69,7 +70,11 @@
   import { kindOf } from './recipeKind.js';
   import type { ChatSessionDoc } from '@salt/domain/schemas';
   import type { DomainError, ReadResult } from '@salt/shared-types';
-  import { guidedPlan, initGuidedPlanSync } from '../../lib/guidedPlanService.js';
+  import {
+    guidedPlan,
+    initGuidedPlanSync,
+    discardGuidedPlan,
+  } from '../../lib/guidedPlanService.js';
   import { currentMember } from '../../lib/membersService.js';
   import { defaultListId } from '../../lib/shoppingListService.svelte.js';
   import { addToast } from '../../lib/toastStore.js';
@@ -143,11 +148,15 @@ Finish with a short note on what you changed and why, so I can read the gist her
   // cocktail is not dinner and a placeholder is attached, never chosen; neither
   // gets the button here, exactly as neither appears in the picker there.
   const showPlanning = $derived(recipe !== null && isPlannable(kindOf(recipe)));
-  // "Make a variation" hands this dish to the librarian as the starting point for
-  // a new one (issue #763), so the question is whether the librarian can WRITE
-  // this kind — not whether variations are somehow inappropriate for it. When
-  // `isAuthorable` gains a kind, the item appears there with no edit here.
-  const showVariation = $derived(recipe !== null && isAuthorable(kindOf(recipe)));
+  // TWO ⋮ items ask this one question, in two different groups: "Make a
+  // variation" hands the dish to the librarian as the starting point for a new
+  // one (issue #763), and "Refresh" hands it over to be re-transcribed (issue
+  // #784). Neither is asking whether the action suits the kind — both are asking
+  // whether the librarian can WRITE this kind at all, which is exactly
+  // `isAuthorable`. Hence one predicate and no fifth capability: when
+  // `isAuthorable` gains a kind (cocktails, #765) both items appear there with
+  // no edit here.
+  const canAuthor = $derived(recipe !== null && isAuthorable(kindOf(recipe)));
 
   // ─── Does this recipe have a guided plan? (issue #751, Phase 2) ──────────────
   // Subscribed here so the action row can offer "Cook, guided" only where there is
@@ -500,6 +509,12 @@ Finish with a short note on what you changed and why, so I can read the gist her
   let sidebarIsApplying = $state(false);
   let sidebarSummaryOpen = $state(false);
   let sidebarPending = $state<RecipeAmendment | null>(null);
+  // Whether the pending proposal came from Refresh rather than from the chat
+  // (issue #784). It decides ONE thing — whether applying also discards the
+  // guided plan — and it is state rather than a second apply handler because
+  // there is only one diff sheet and `onApply` binds to one function. Reset by
+  // both entry points, so a discard-then-chat-amend cannot inherit it.
+  let sidebarPendingIsRefresh = $state(false);
 
   async function handleSidebarReviewChanges(): Promise<void> {
     if (!activeSession || !recipe || sidebarIsProposing) return;
@@ -512,13 +527,25 @@ Finish with a short note on what you changed and why, so I can read the gist her
       return;
     }
     sidebarPending = result.value;
+    sidebarPendingIsRefresh = false;
     sidebarSummaryOpen = true;
   }
 
   async function handleSidebarApplyChanges(): Promise<void> {
     if (!sidebarPending || sidebarIsApplying) return;
+    const wasRefresh = sidebarPendingIsRefresh;
+    const refreshedId = sidebarPending.updated.id;
     sidebarIsApplying = true;
     const saveResult = await applyRecipeAmendment(sidebarPending);
+    // A refresh re-mints every step id, so the guided plan's `stepId`
+    // references no longer resolve (issue #784). Discard it here and the next
+    // visit to guided mode writes a fresh one against the refreshed method;
+    // leave it and guided mode is silently wrong. Only after the save succeeds —
+    // throwing away the plan for a write that never landed would be a plain
+    // loss. Best-effort: a failed delete leaves a stale plan, which is the
+    // situation we were already in, so it must not turn a successful save into
+    // an error the user has to interpret.
+    if (saveResult.kind === 'ok' && wasRefresh) await discardGuidedPlan(refreshedId);
     sidebarIsApplying = false;
     if (saveResult.kind !== 'ok') {
       addToast('Failed to save recipe update.', 'destructive');
@@ -526,12 +553,43 @@ Finish with a short note on what you changed and why, so I can read the gist her
     }
     sidebarSummaryOpen = false;
     sidebarPending = null;
+    sidebarPendingIsRefresh = false;
     addToast('Recipe updated!', 'success');
   }
 
   function handleSidebarDiscardChanges(): void {
     sidebarSummaryOpen = false;
     sidebarPending = null;
+    sidebarPendingIsRefresh = false;
+  }
+
+  // ─── Refresh (issue #784) ───────────────────────────────────────────────────
+  // Re-runs the librarian over THIS dish with today's house writing rules and
+  // shows what it would change in the same review gate a chat amendment uses.
+  // Nothing is written until Apply; Discard leaves the recipe exactly as it was.
+  //
+  // It is not Optimise, which sits beside it: Optimise reworks the METHOD around
+  // the kit the household owns, and deliberately knows what that kit is. Refresh
+  // deliberately does not — it re-applies the WRITING rules and leaves the
+  // cooking alone. Two different questions, two menu items.
+  //
+  // No chat session is created and no transcript is written: this goes straight
+  // from the menu item into the diff, because there is no conversation to have.
+  let refreshBusy = $state(false);
+
+  async function handleRefresh(): Promise<void> {
+    if (!recipe || refreshBusy || sidebarIsProposing) return;
+    refreshBusy = true;
+    const existingTags = [...new Set($recipes.flatMap((r) => r.metadata.tags))];
+    const result = await proposeRecipeRefresh(recipe, existingTags);
+    refreshBusy = false;
+    if (result.kind !== 'ok') {
+      addToast('Failed to refresh recipe.', 'destructive');
+      return;
+    }
+    sidebarPending = result.value;
+    sidebarPendingIsRefresh = true;
+    sidebarSummaryOpen = true;
   }
 
   // "Save as new recipe" (issue #798) — the other thing a conversation beside a
@@ -956,7 +1014,8 @@ Finish with a short note on what you changed and why, so I can read the gist her
            dividers are the whole of that change — nothing renamed, nothing removed,
            nothing moved behind a second tap, relative order untouched.
 
-             Chat · Optimise · Guided plan   work on THIS dish, in place
+             Chat · Optimise · Refresh ·     work on THIS dish, in place
+             Guided plan
              ─────
              Make a variation · Duplicate    produce a SECOND recipe, leaving this
                                              one alone — the two honest answers to
@@ -970,10 +1029,14 @@ Finish with a short note on what you changed and why, so I can read the gist her
            the trigger never opens onto nothing, whatever the gates say above.
 
            That is also why only the FIRST divider is gated. Group one is empty on
-           anything that isn't cookable (a takeaway, a placeholder), and a divider
-           with nothing above it is a rule across the top of a menu; groups two and
-           three always render at least Duplicate and Edit, so the second divider is
-           unconditional and can never lead or trail. -->
+           anything that is neither cookable nor authorable (a takeaway, a
+           placeholder), and a divider with nothing above it is a rule across the
+           top of a menu; groups two and three always render at least Duplicate and
+           Edit, so the second divider is unconditional and can never lead or
+           trail. The gate names BOTH predicates rather than leaning on the fact
+           that everything authorable happens to be cookable today — the day
+           cocktails become authorable (#765) that coincidence is what would
+           quietly break. -->
       <Popover bind:open={overflowMenuOpen}>
         <PopoverTrigger>
           {#snippet children()}
@@ -1018,6 +1081,28 @@ Finish with a short note on what you changed and why, so I can read the gist her
               Optimise
             </button>
           {/if}
+          {#if canAuthor}
+            <!-- Refresh (issue #784). Beside Optimise because both re-run a model
+                 over THIS dish in place, and they are the two halves of a pair:
+                 Optimise reworks the method around the household's kit, Refresh
+                 re-applies the house WRITING rules and leaves the cooking alone.
+                 Gated on `isAuthorable` rather than `isCookable` — the question
+                 is whether the librarian can write this kind, which is why an
+                 outing and a placeholder never offer it. -->
+            <button
+              type="button"
+              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
+              onclick={() => {
+                overflowMenuOpen = false;
+                void handleRefresh();
+              }}
+              disabled={refreshBusy}
+              data-testid="recipe-refresh-menu-item"
+            >
+              <Icon name="RefreshCw" size={14} />
+              Refresh
+            </button>
+          {/if}
           {#if showCooking}
             <!-- The plan EDITOR (issue #751). In the overflow, not inline: writing
                  or reading the plan is preparation you do BEFORE you cook, at a
@@ -1040,10 +1125,10 @@ Finish with a short note on what you changed and why, so I can read the gist her
               Guided plan
             </button>
           {/if}
-          {#if showCooking}
+          {#if showCooking || canAuthor}
             <Divider class="my-1" />
           {/if}
-          {#if showVariation}
+          {#if canAuthor}
             <!-- Beside Duplicate because they answer the same impulse — "I want this
                  dish, but different" — and are the two honest answers to it: a literal
                  copy you hand-edit, or a conversation that works the changes out with

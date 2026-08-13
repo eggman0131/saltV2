@@ -296,6 +296,10 @@ describe('RecipeViewPage — a recipe keeps everything', () => {
     expect(overflowMenuLayout()).toEqual([
       'recipe-ask-amend-menu-item',
       'recipe-optimise-kitchen-menu-item',
+      // Refresh sits beside Optimise (#784): both re-run a model over this dish
+      // in place, and they are the two halves of the pair — Optimise reworks the
+      // method around the kit, Refresh re-applies the writing rules.
+      'recipe-refresh-menu-item',
       'recipe-guided-plan-menu-item',
       'separator',
       'recipe-make-variation-menu-item',

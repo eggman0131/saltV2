@@ -19,6 +19,24 @@ export const AuthorRecipeInputSchema = z.object({
   // than force-preserved. `recipeId` wins if both are somehow set; a variation
   // chat has no `recipeId` until it claims the recipe it produced.
   basedOnRecipeId: z.string().nullable().optional(),
+  // Refresh mode (issue #784): re-run the librarian over the recipe named by
+  // `recipeId` with today's house writing rules, and return it re-transcribed —
+  // same dish, same ingredients, same method, expressed the way the librarian
+  // would write it now. A re-transcription, never a re-invention.
+  //
+  // It needs a flag of its own because it cannot be INFERRED: refresh carries
+  // `recipeId` exactly as edit mode does, and the two want opposite things from
+  // the same input — edit changes only what the conversation discussed, refresh
+  // re-applies every rule to a document with no conversation at all. A boolean
+  // rather than a `mode` enum keeps it additive: absent or false, the existing
+  // recipeId/basedOnRecipeId inference is untouched.
+  //
+  // `.optional()` and NOT `.optional().default(false)`, which the issue floated:
+  // `z.infer` gives the schema's OUTPUT type, so a default makes the field
+  // REQUIRED on every object literal that builds this input, and the two sibling
+  // mode fields above would then be the odd ones out. Absent reads the same as
+  // false at the only place that asks.
+  refresh: z.boolean().optional(),
 });
 
 export type AuthorRecipeInput = z.infer<typeof AuthorRecipeInputSchema>;

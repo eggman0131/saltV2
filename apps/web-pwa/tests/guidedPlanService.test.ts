@@ -27,6 +27,7 @@ vi.mock('@salt/observability', async () => {
 vi.mock('@salt/firebase-sync', () => ({
   subscribeGuidedPlan: vi.fn(() => vi.fn()),
   saveGuidedPlan: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  deleteGuidedPlan: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   callGenerateGuidedPlan: vi.fn(),
   isAuthTransitioning: vi.fn(() => false),
 }));
@@ -38,6 +39,7 @@ import {
   initGuidedPlanSync,
   generateGuidedPlan,
   saveGuidedPlan,
+  discardGuidedPlan,
 } from '../src/lib/guidedPlanService.js';
 
 const fs = firebaseSync as Mocked<typeof firebaseSync>;
@@ -77,6 +79,7 @@ function emitError(err: DomainError, raw?: unknown): void {
 beforeEach(() => {
   vi.clearAllMocks();
   fs.saveGuidedPlan.mockResolvedValue({ kind: 'ok', value: undefined });
+  fs.deleteGuidedPlan.mockResolvedValue({ kind: 'ok', value: undefined });
 });
 
 describe('initGuidedPlanSync — the three-state store', () => {
@@ -259,5 +262,60 @@ describe('saveGuidedPlan — the save IS the review', () => {
 
     resolveWrite({ kind: 'ok', value: undefined });
     await pending;
+  });
+});
+
+// Discard (issue #784). Called when an applied Refresh re-mints the recipe's step
+// ids and the plan's `stepNotes` stop resolving — a surviving plan would be
+// silently WRONG rather than merely stale, and the stale-recipe banner cannot
+// help with references that no longer exist.
+describe('discardGuidedPlan', () => {
+  it('deletes the document and leaves the store loaded-and-empty', async () => {
+    initGuidedPlanSync(RECIPE_ID);
+    emit(makePlan());
+
+    const result = await discardGuidedPlan(RECIPE_ID);
+
+    expect(result.kind).toBe('ok');
+    expect(fs.deleteGuidedPlan).toHaveBeenCalledWith(RECIPE_ID);
+    // `null`, not `undefined`: the page must render the "Write the plan" empty
+    // state rather than sit on a loading state waiting for a doc that is gone.
+    expect(get(guidedPlan)).toBeNull();
+  });
+
+  it('clears the stale-echo guard, so the next plan written is not rejected as old', async () => {
+    // The reason the discard touches `latestLocalEdit` at all. The guard holds the
+    // newest `updatedAt` we applied locally; leaving a deleted plan's stamp behind
+    // would make the FRESH plan the next visit writes — legitimately older than
+    // that stamp if it lands out of order — look like a stale echo and be dropped,
+    // putting the editor back on an empty state it can never leave.
+    initGuidedPlanSync(RECIPE_ID);
+    emit(makePlan());
+    await saveGuidedPlan(makePlan(), makeRecipe('2026-08-02T00:00:00.000Z'));
+
+    await discardGuidedPlan(RECIPE_ID);
+    const replacement = makePlan({ updatedAt: OLD });
+    emit(replacement);
+
+    expect(get(guidedPlan)).toEqual(replacement);
+  });
+
+  it('keeps the plan on screen when the delete fails, and reports it', async () => {
+    // Rule 10 all the way through: the failure crosses as a Failure, and the user
+    // is left in the situation they were already in (a stale plan) rather than
+    // looking at an empty editor for a document that still exists.
+    fs.deleteGuidedPlan.mockResolvedValue({
+      kind: 'err',
+      error: { kind: 'StorageError', reason: 'corruption' },
+    });
+    initGuidedPlanSync(RECIPE_ID);
+    const plan = makePlan();
+    emit(plan);
+
+    const result = await discardGuidedPlan(RECIPE_ID);
+
+    expect(result.kind).toBe('err');
+    expect(get(guidedPlan)).toEqual(plan);
+    expect(reportSpy).toHaveBeenCalled();
   });
 });

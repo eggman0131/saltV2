@@ -407,6 +407,202 @@ describe('authorRecipe — variation-mode grounding', () => {
   });
 });
 
+// ─── refresh-mode grounding (issue #784) ────────────────────────────────────────
+
+// Refresh is the FOURTH prompt composition, and the only one that cannot be read
+// off the input's ids: it carries `recipeId` exactly as edit mode does, so
+// everything below turns on the explicit `refresh` flag. The mode exists to
+// answer "how would we write this dish down today", which is the opposite of edit
+// mode's "change only what was discussed" — so what is pinned here is that the
+// two compositions really are different, in all four of the ways that matter.
+describe('authorRecipe — refresh-mode grounding', () => {
+  beforeEach(() => {
+    mockGenerate.mockResolvedValue({ output: librarianOutput() });
+    mockParseFlow.mockResolvedValue([]);
+    mockGet.mockResolvedValue({ exists: true, data: () => baseRecipeDoc() });
+  });
+
+  function systemPromptFrom(): string {
+    return (mockGenerate.mock.calls[0]![0] as { system: string }).system;
+  }
+
+  /** A refresh of `r1` — the whole input, since a refresh has no conversation. */
+  async function runRefresh(recipeId = 'r1') {
+    return (authorRecipeFlow as Function)({
+      messages: [],
+      existingTags: [],
+      recipeId,
+      refresh: true,
+    });
+  }
+
+  it('re-transcribes rather than edits, and says the cooking must not change', async () => {
+    await runRefresh();
+
+    const system = systemPromptFrom();
+    expect(system).toContain('Re-transcribing an existing recipe');
+    expect(system).toContain('There is no conversation: nobody has asked for a change');
+    // The guardrail that makes this safe to run on a dish you cook and trust: a
+    // model handed a page of writing rules will happily "improve" the food too.
+    expect(system).toContain('This is a re-transcription, not a re-invention');
+    // The base recipe is injected verbatim, as in the other grounded modes…
+    expect(system).toContain('Çoban Salatası');
+    expect(system).toContain('2 cucumbers, diced');
+    // …and NONE of the other three closings is in play. Edit mode is the one that
+    // matters: it instructs "apply ONLY the changes discussed", and there are no
+    // changes discussed, so a refresh that fell through to it would be told to
+    // return the document untouched.
+    expect(system).not.toContain('Editing an existing recipe');
+    expect(system).not.toContain('Writing a variation on an existing recipe');
+    expect(system).not.toContain('Extract only what is present in the conversation');
+  });
+
+  // THE assertion of this file, and the #785 dependency made concrete. A refresh
+  // reads a finished recipe DOCUMENT, which is structurally the import case, so
+  // it asks the SHARED field-rule module for 'metricate' — the same rendering the
+  // two import flows get. Without it a refresh would DE-metricate a URL-imported
+  // recipe the extraction prompt had already converted, i.e. the feature would
+  // actively undo work every time it ran. Asserted as the WHOLE rendered block,
+  // not a paraphrase, because a hand-rolled twin is exactly what #785 removed.
+  it('asks for METRIC conversion, unlike every conversation-driven mode', async () => {
+    await runRefresh();
+
+    const system = systemPromptFrom();
+    expect(system).toContain(recipeFieldRules({ measures: 'metricate' }));
+    // The one bullet that distinguishes the two renderings — the rest of the
+    // block is identical, so this is what a drift would actually show up as.
+    expect(system).toContain('Metric only: convert all quantities to metric');
+    expect(system).not.toContain('preserve the original wording and any tsp/tbsp/cup measures');
+  });
+
+  it('leaves a chat edit on the preserve policy — the flag is the only thing that switches it', async () => {
+    // Same recipe, same id, no flag: the chef's "a teaspoon of cumin" must still
+    // survive an edit turn intact. The pairing of source and measure policy is a
+    // single parameter deliberately; this is the other half of it.
+    await (authorRecipeFlow as Function)({ messages: [], existingTags: [], recipeId: 'r1' });
+
+    const system = systemPromptFrom();
+    expect(system).toContain(recipeFieldRules({ measures: 'preserve' }));
+    expect(system).not.toContain('Metric only');
+  });
+
+  it("carries the household's own notes into the prompt and demands them back verbatim", async () => {
+    // `Step.note` survives a round-trip ONLY because the model echoes it back —
+    // it is a field on the librarian's output schema, not something the assembler
+    // restores — so a refresh that neither showed the note nor asked for it would
+    // silently delete every hand-written step note in the collection.
+    mockGet.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        ...baseRecipeDoc(),
+        notes: 'Sumac, not lemon, if we have it.',
+        steps: [
+          { id: 's1', text: 'Dice the vegetables.', timer: null, note: 'Keep the dice coarse.' },
+        ],
+      }),
+    });
+
+    await runRefresh();
+
+    const system = systemPromptFrom();
+    // Shown (via formatRecipeForPrompt)…
+    expect(system).toContain('Notes: Sumac, not lemon, if we have it.');
+    expect(system).toContain('(note: Keep the dice coarse.)');
+    // …and explicitly exempted from every rule above them.
+    expect(system).toContain("The household's own words are not yours to rewrite");
+    expect(system).toContain('reproduce every per-step note');
+  });
+
+  it('carries no equipment section, where an edit of the same recipe does', async () => {
+    // The manifest's framing is written entirely around what "the conversation
+    // established", and a refresh has no conversation — it would be asking the
+    // model to preserve the appliances of a transcript that does not exist. The
+    // appliance names are already in the recipe text, and the re-invention
+    // guardrail covers them by name.
+    mockEquipmentGet.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        schemaVersion: 1,
+        updatedAt: '2026-07-01T00:00:00.000Z',
+        items: [
+          {
+            id: 'eq1',
+            schemaVersion: 1,
+            name: 'Sage the Smart Oven Pizzaiolo SPZ820',
+            accessories: [],
+            rules: [],
+            updatedAt: '2026-07-01T00:00:00.000Z',
+          },
+        ],
+      }),
+    });
+
+    await runRefresh();
+    expect(systemPromptFrom()).not.toContain('RECOGNITION ONLY');
+    // The named appliance is still protected, just by the closing rather than the
+    // manifest — otherwise this omission would be a regression, not a decision.
+    expect(systemPromptFrom()).toContain('if a step says "Pizzaiolo" it still says "Pizzaiolo"');
+
+    // The SAME manifest, one flag away: edit mode still carries the section, so
+    // the absence above is refresh-specific and not a broken equipment read.
+    mockGenerate.mockClear();
+    await (authorRecipeFlow as Function)({ messages: [], existingTags: [], recipeId: 'r1' });
+    expect(systemPromptFrom()).toContain('RECOGNITION ONLY');
+  });
+
+  // A refresh whose recipe could not be read is REFUSED, where every other mode
+  // degrades to create. Degrading is harmless when a conversation is driving; here
+  // it would hand an EMPTY transcript to the create closing and return whatever
+  // the model invents from nothing — which the review gate would then offer as a
+  // proposal to overwrite the real dish. Failing loudly is the only safe direction.
+  it.each([
+    ['the recipe does not exist', { exists: false }],
+    [
+      'the recipe fails validation',
+      { exists: true, data: () => ({ id: 'r1', schemaVersion: 99 }) },
+    ],
+  ])('refuses rather than degrading to create mode when %s', async (_label, snapshot) => {
+    mockGet.mockResolvedValue(snapshot);
+
+    await expect(runRefresh('gone')).rejects.toThrow(
+      'Cannot refresh recipe gone: recipe not found',
+    );
+    // And no model call was made at all — refusing after generating would have
+    // spent the quota and still had nothing usable to show.
+    expect(mockGenerate).not.toHaveBeenCalled();
+  });
+
+  it('refuses a refresh that names no recipe at all', async () => {
+    await expect(
+      (authorRecipeFlow as Function)({ messages: [], existingTags: [], refresh: true }),
+    ).rejects.toThrow('Cannot refresh recipe (none): recipe not found');
+  });
+
+  it('leaves create, edit and variation dispatch exactly as they were', async () => {
+    // `refresh` is additive: absent or false, the three existing modes are chosen
+    // by the ids alone, precisely as before.
+    for (const [input, expected] of [
+      [{ messages: [], existingTags: [] }, 'Extract only what is present in the conversation'],
+      [{ messages: [], existingTags: [], refresh: false }, 'Extract only what is present'],
+      [{ messages: [], existingTags: [], recipeId: 'r1' }, 'Editing an existing recipe'],
+      [
+        { messages: [], existingTags: [], recipeId: 'r1', refresh: false },
+        'Editing an existing recipe',
+      ],
+      [
+        { messages: [], existingTags: [], basedOnRecipeId: 'r1', refresh: false },
+        'Writing a variation on an existing recipe',
+      ],
+    ] as const) {
+      mockGenerate.mockClear();
+      await (authorRecipeFlow as Function)(input);
+      const system = systemPromptFrom();
+      expect(system).toContain(expected);
+      expect(system).not.toContain('Re-transcribing an existing recipe');
+    }
+  });
+});
+
 // ─── step rules ─────────────────────────────────────────────────────────────────
 
 // The one-operation + no-quantities rules are shared with the URL-import prompt, so

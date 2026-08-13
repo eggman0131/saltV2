@@ -1,6 +1,7 @@
 import {
   subscribeGuidedPlan,
   saveGuidedPlan as saveGuidedPlanDoc,
+  deleteGuidedPlan as deleteGuidedPlanDoc,
   callGenerateGuidedPlan,
 } from '@salt/firebase-sync';
 import { createObservabilityErrorReportingAdapter } from '@salt/observability';
@@ -175,4 +176,30 @@ export async function saveGuidedPlan(
 ): Promise<ReadResult<GuidedPlanDoc, DomainError>> {
   const { needs_approval: _wasUnreviewed, ...reviewed } = plan;
   return persist({ ...reviewed, recipeUpdatedAtAtSave: recipe.updatedAt });
+}
+
+/**
+ * Discard a recipe's plan entirely (issue #784).
+ *
+ * Called when an applied Refresh re-mints the recipe's step ids: the plan's
+ * `stepNotes` point at `stepId`s that no longer exist, which makes a surviving
+ * plan silently WRONG rather than merely stale — the stale-recipe banner cannot
+ * help with references that no longer resolve. Deleting is cheap (a plan is one
+ * flow call to rewrite, and guided plans are greenfield), and the next visit to
+ * guided mode writes a fresh one against the refreshed method.
+ *
+ * Clears the local store optimistically so the page does not keep rendering a
+ * plan whose steps are gone, and clears `latestLocalEdit` with it — otherwise
+ * the guard would treat the delete's own absence snapshot as stale and put the
+ * deleted plan straight back.
+ */
+export async function discardGuidedPlan(recipeId: string): Promise<ReadResult<void, DomainError>> {
+  const result = await deleteGuidedPlanDoc(recipeId);
+  if (result.kind !== 'ok') {
+    reportIfFailed(getErrorReporter(), result, 'guidedPlanService.discardGuidedPlan');
+    return result;
+  }
+  latestLocalEdit = null;
+  _plan.set(null);
+  return success(undefined);
 }
