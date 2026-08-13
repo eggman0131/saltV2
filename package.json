@@ -29,7 +29,8 @@
     "stop:emulators": "node scripts/host-guard.mjs stop:emulators && node scripts/stop-emulators.mjs",
     "test:emulator": "node scripts/host-guard.mjs test:emulator && node scripts/test-emulator.mjs",
     "deploy:dev": "bash scripts/deploy-dev.sh",
-    "probe": "pnpm --filter @salt/cloud-functions probe"
+    "probe": "pnpm --filter @salt/cloud-functions probe",
+    "soak": "node scripts/soak-unit-tests.mjs"
   },
   "lint-staged": {
     "*.{ts,js,svelte}": [

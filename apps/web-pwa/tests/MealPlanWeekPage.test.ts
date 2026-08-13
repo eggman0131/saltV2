@@ -454,8 +454,16 @@ async function attachRecipe(date: string, title: string | RegExp): Promise<void>
 
 // Open a day's picker without choosing anything, so the offered options can be
 // inspected.
+//
+// `fireEvent`, for the reason given above `attachRecipe`: `userEvent.click`'s
+// focus-on-pointerdown can blur the input and close the combobox before the click
+// lands, and the listbox then never appears — so `findAllByRole('option')` burns
+// its whole budget and fails. That presents as a slow timeout but is not one, which
+// is why raising the wait budget does not fix it (#793). This helper was the odd one
+// out: `attachRecipe` has always used `fireEvent`, and these three tests are the ones
+// that failed in CI on PR #792.
 async function openPicker(date: string): Promise<void> {
-  await userEvent.click(screen.getByTestId(`day-${date}-recipe-picker`));
+  await fireEvent.click(screen.getByTestId(`day-${date}-recipe-picker`));
   await screen.findAllByRole('option');
 }
 
@@ -495,8 +503,12 @@ describe('MealPlanWeekPage', () => {
   it('edits a meal note through the service after expanding the day', async () => {
     render(MealPlanWeekPage);
     await openDay('2026-06-08');
-    const noteInput = screen.getByTestId('day-2026-06-08-note');
-    await userEvent.type(noteInput, 'Pasta');
+    // Same atomic-input reason as the next-week sibling below (#793): the Sheet's
+    // focus trap can swallow a keystroke stream whole. Fixed here too rather than
+    // waiting for the soak to catch this copy — it is one defect, not two.
+    await fireEvent.input(screen.getByTestId('day-2026-06-08-note'), {
+      target: { value: 'Pasta' },
+    });
     await waitFor(() => expect(vi.mocked(setWeekDayNote)).toHaveBeenCalled());
     expect(vi.mocked(setWeekDayNote).mock.calls[0]![0]).toBe('2026-06-08');
   });
@@ -1440,7 +1452,20 @@ describe('MealPlanWeekPage — next week appears from Tuesday (#639, Phase 6)', 
 
     const nextDay = weekDates(next)[2]!;
     await openDay(nextDay);
-    await userEvent.type(screen.getByTestId(`day-${nextDay}-note`), 'Roast');
+    // One atomic `input`, not a keystroke stream (#793). The day opens in a Sheet,
+    // and bits-ui traps focus into the dialog in an effect. `userEvent.type` focuses
+    // the textarea by clicking it and then types into whatever is focused *now*, so
+    // when that trap lands between the click and the first keystroke — which is what
+    // a loaded machine makes likely — every character goes to the dialog container
+    // and NOT ONE `input` event reaches the textarea. `setWeekDayNote` is called
+    // straight from `oninput` with no debounce and no readiness gate, so zero events
+    // means the wait below can never come true and burns the whole budget: it failed
+    // at ~1095ms on a 1000ms budget and ~5105ms on a 5000ms one, the signature of a
+    // condition that never holds rather than one that needs longer. `fireEvent.input`
+    // depends on no focus at all, and this test is about where the edit is ROUTED.
+    await fireEvent.input(screen.getByTestId(`day-${nextDay}-note`), {
+      target: { value: 'Roast' },
+    });
 
     // The date key IS the routing (Phase 5): no week argument, and never this
     // week's date for a day that belongs to next week.
