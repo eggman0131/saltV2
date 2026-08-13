@@ -1,4 +1,4 @@
-import { getFirestore, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, getDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success, failure } from '@salt/shared-types';
@@ -88,6 +88,26 @@ export async function saveGuidedPlan(plan: GuidedPlanDoc): Promise<ReadResult<vo
   try {
     const db = getFirestore(getApp());
     await setDoc(doc(db, COLLECTION, plan.id), { ...plan });
+    return success(undefined);
+  } catch (err) {
+    return failure(classifyFirestoreError(err));
+  }
+}
+
+/**
+ * Delete a recipe's guided plan. A real delete, not a flag — Firestore is the
+ * master and there are no tombstones in this codebase.
+ *
+ * Deleting a plan that was never written is a SUCCESS, not an error: Firestore's
+ * `deleteDoc` is idempotent on an absent document, and the caller (issue #784's
+ * refresh, which invalidates a plan whose step ids it just re-minted) has no
+ * business knowing whether one existed. It would otherwise have to read before
+ * writing purely to decide which result to report.
+ */
+export async function deleteGuidedPlan(recipeId: string): Promise<ReadResult<void, DomainError>> {
+  try {
+    const db = getFirestore(getApp());
+    await deleteDoc(doc(db, COLLECTION, recipeId));
     return success(undefined);
   } catch (err) {
     return failure(classifyFirestoreError(err));

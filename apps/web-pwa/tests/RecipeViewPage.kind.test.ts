@@ -219,6 +219,21 @@ async function openOverflowMenu(): Promise<void> {
   await waitFor(() => expect(screen.getByTestId('recipe-edit-menu-item')).toBeInTheDocument());
 }
 
+// The ⋮ menu read top to bottom: each item by its test id, each divider as
+// 'separator'. Grouping is a fact about ORDER and ADJACENCY, which a
+// getByTestId-per-item assertion cannot see — it would pass just as happily
+// against the flat list this replaced, or against a menu whose dividers had
+// drifted a row (issue #784).
+function overflowMenuLayout(): string[] {
+  const menu = screen.getByTestId('recipe-edit-menu-item').parentElement;
+  expect(menu).not.toBeNull();
+  return [...menu!.children].map((el) =>
+    el.getAttribute('role') === 'separator'
+      ? 'separator'
+      : (el.getAttribute('data-testid') ?? el.tagName.toLowerCase()),
+  );
+}
+
 describe('RecipeViewPage — a recipe keeps everything', () => {
   beforeEach(() => {
     mockRecipes._set([makeEntry()]);
@@ -267,6 +282,32 @@ describe('RecipeViewPage — a recipe keeps everything', () => {
     // And the trigger itself is never width-gated — Duplicate must be reachable
     // on a laptop, which is the whole reason the menu was promoted.
     expect(screen.getByTestId('recipe-actions-overflow').className).not.toContain('hidden');
+  });
+
+  // The second half of that ranking, one level down (#784): inside the ⋮ the
+  // items are grouped by what they DO to the dish — work on it, make a second
+  // one from it, manage the document — and the dividers are the only thing
+  // saying so. Pinned as markup for the same reason the row above is: a comment
+  // cannot fail.
+  it('groups the ⋮ menu into work-on-it / make-something-new / manage, with dividers', async () => {
+    renderPage();
+    await openOverflowMenu();
+
+    expect(overflowMenuLayout()).toEqual([
+      'recipe-ask-amend-menu-item',
+      'recipe-optimise-kitchen-menu-item',
+      // Refresh sits beside Optimise (#784): both re-run a model over this dish
+      // in place, and they are the two halves of the pair — Optimise reworks the
+      // method around the kit, Refresh re-applies the writing rules.
+      'recipe-refresh-menu-item',
+      'recipe-guided-plan-menu-item',
+      'separator',
+      'recipe-make-variation-menu-item',
+      'recipe-duplicate-menu-item',
+      'separator',
+      'recipe-edit-menu-item',
+      'recipe-delete-menu-item',
+    ]);
   });
 
   // ─── "Cook, guided" (issue #751, Phase 2) ────────────────────────────────────
@@ -405,6 +446,21 @@ describe('RecipeViewPage — an outing offers only what applies', () => {
     // be copied, edited or deleted.
     expect(screen.getByTestId('recipe-duplicate-menu-item')).toBeInTheDocument();
     expect(screen.getByTestId('recipe-delete-menu-item')).toBeInTheDocument();
+  });
+
+  // An outing empties the ⋮ menu's whole first group, so the divider that would
+  // have followed it must go too — otherwise the menu opens with a rule across
+  // the top, separating nothing from everything (#784).
+  it('opens with an item, not a divider, when the first group is empty', async () => {
+    renderPage();
+    await openOverflowMenu();
+
+    expect(overflowMenuLayout()).toEqual([
+      'recipe-duplicate-menu-item',
+      'separator',
+      'recipe-edit-menu-item',
+      'recipe-delete-menu-item',
+    ]);
   });
 
   it('keeps the hero, its description and the Regenerate control', () => {
