@@ -13,6 +13,7 @@
     DialogFooter,
     DialogHeader,
     DialogTitle,
+    Divider,
     Icon,
     ImageCropper,
     Markdown,
@@ -945,14 +946,34 @@ Finish with a short note on what you changed and why, so I can read the gist her
           Plan
         </Button>
       {/if}
-      <!-- Overflow (⋮), at every width since #735: Chat, Optimise, Guided plan,
-           Make a variation, Duplicate, Edit and Delete. Cook, Shop and Plan are never in here — they stay inline,
-           which is the whole point of ranking them, and neither is "Cook, guided",
-           which is a way of pressing Cook. Duplicate, Edit and Delete are
-           unconditional: every kind of entry can be copied, edited and deleted
-           (deciding that from `kind` is exactly what the capability predicates
-           exist to prevent), so the menu is never empty and the trigger never
-           opens onto nothing, whatever the gates say about the two items above. -->
+      <!-- Overflow (⋮), at every width since #735. Cook, Shop and Plan are never in
+           here — they stay inline, which is the whole point of ranking them, and
+           neither is "Cook, guided", which is a way of pressing Cook.
+
+           GROUPED, not flat (issue #784). The order below was already right, but as
+           one undivided list it read as a pile: three genuinely different intents
+           with nothing to tell them apart, and the list only gets longer. The
+           dividers are the whole of that change — nothing renamed, nothing removed,
+           nothing moved behind a second tap, relative order untouched.
+
+             Chat · Optimise · Guided plan   work on THIS dish, in place
+             ─────
+             Make a variation · Duplicate    produce a SECOND recipe, leaving this
+                                             one alone — the two honest answers to
+                                             "I want this dish, but different"
+             ─────
+             Edit · Delete                   the document, not the food
+
+           Duplicate, Edit and Delete are unconditional: every kind of entry can be
+           copied, edited and deleted (deciding that from `kind` is exactly what the
+           capability predicates exist to prevent), so the menu is never empty and
+           the trigger never opens onto nothing, whatever the gates say above.
+
+           That is also why only the FIRST divider is gated. Group one is empty on
+           anything that isn't cookable (a takeaway, a placeholder), and a divider
+           with nothing above it is a rule across the top of a menu; groups two and
+           three always render at least Duplicate and Edit, so the second divider is
+           unconditional and can never lead or trail. -->
       <Popover bind:open={overflowMenuOpen}>
         <PopoverTrigger>
           {#snippet children()}
@@ -1019,6 +1040,9 @@ Finish with a short note on what you changed and why, so I can read the gist her
               Guided plan
             </button>
           {/if}
+          {#if showCooking}
+            <Divider class="my-1" />
+          {/if}
           {#if showVariation}
             <!-- Beside Duplicate because they answer the same impulse — "I want this
                  dish, but different" — and are the two honest answers to it: a literal
@@ -1051,6 +1075,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
             <Icon name="Copy" size={14} />
             Duplicate
           </button>
+          <Divider class="my-1" />
           <button
             type="button"
             class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
