@@ -2,16 +2,16 @@
   import { Button, DetailPage, Icon, Spinner } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
   import { goBack } from '../../lib/nav.js';
-  import { trackUsageEvent } from '@salt/observability';
   import { sessions, isLoadingSessions, claimRecipe } from '../../lib/chatService.js';
   import { addToast } from '../../lib/toastStore.js';
-  import { saveRecipe as saveRecipeDoc } from '@salt/firebase-sync';
-  import { recipes, authorRecipeTraced } from '../../lib/recipeService.js';
+  import { recipes } from '../../lib/recipeService.js';
+  import { authorRecipeFromChat } from '../../lib/chatRecipeAuthor.js';
   import {
     proposeRecipeAmendment,
     applyRecipeAmendment,
     type RecipeAmendment,
   } from '../../lib/recipeAmend.js';
+  import type { Recipe } from '@salt/domain';
   import type { ChatSessionDoc } from '@salt/domain/schemas';
   import RecipeChangeSummary from '../recipes/RecipeChangeSummary.svelte';
   import ChatThread from './ChatThread.svelte';
@@ -44,49 +44,74 @@
       : null,
   );
 
-  // Save as recipe — calls the librarian flow and navigates to the new recipe.
+  // Authoring a new recipe out of this conversation. What gets written lives in
+  // `chatRecipeAuthor` and is shared with the recipe page's chat column and
+  // drawer (issue #798); this page holds only its busy state, its toasts, where
+  // it navigates and whether the conversation claims what it produced.
+  //
+  // One busy flag for both buttons: they are mutually exclusive — one shows only
+  // on a general chat, the other only on an attached one.
   let isSavingRecipe = $state(false);
 
-  async function handleSaveAsRecipe(): Promise<void> {
-    if (!session || isSavingRecipe) return;
+  /** The shared leg: author, save, toast a failure. `null` means it did not land. */
+  async function runSave(
+    transcript: ChatSessionDoc,
+    basedOnRecipeId: string | null,
+  ): Promise<Recipe | null> {
     isSavingRecipe = true;
     const existingTags = [...new Set($recipes.flatMap((r) => r.metadata.tags))];
+    const result = await authorRecipeFromChat({
+      messages: transcript.messages,
+      existingTags,
+      basedOnRecipeId,
+    });
+    isSavingRecipe = false;
+    if (result.kind !== 'ok') {
+      addToast(
+        result.error.stage === 'author' ? 'Failed to generate recipe.' : 'Failed to save recipe.',
+        'destructive',
+      );
+      return null;
+    }
+    return result.value;
+  }
+
+  // Save as recipe — the general-chat button. The conversation invented this dish,
+  // so it goes on to belong to it.
+  async function handleSaveAsRecipe(): Promise<void> {
+    if (!session || isSavingRecipe) return;
     // `basedOnRecipeId` grounds the librarian on the dish this conversation
     // started from, so a variation carries forward everything the chat never
     // mentioned. It stays the CREATE path: the flow assembles with no base
     // recipe, so the new dish gets its own title, its own hero image and no
     // "makes" link, and the original is untouched (issue #763).
-    const result = await authorRecipeTraced({
-      messages: session.messages,
-      existingTags,
-      basedOnRecipeId: session.basedOnRecipeId,
-    });
-    if (result.kind !== 'ok') {
-      isSavingRecipe = false;
-      addToast('Failed to generate recipe.', 'destructive');
-      return;
-    }
-    const recipe = result.value;
-    const now = new Date().toISOString();
-    const stamped = { ...recipe, id: recipe.id, createdAt: now, updatedAt: now };
-    const saveResult = await saveRecipeDoc(stamped);
-    isSavingRecipe = false;
-    if (saveResult.kind !== 'ok') {
-      addToast('Failed to save recipe.', 'destructive');
-      return;
-    }
-    trackUsageEvent('recipe.created', {
-      recipe_id: stamped.id,
-      recipe_kind: stamped.kind,
-      recipe_method: 'chat',
-    });
+    const saved = await runSave(session, session.basedOnRecipeId);
+    if (!saved) return;
     // The conversation now belongs to the dish it produced, so it is listed on
     // that recipe and stops being swept away after a fortnight (issue #696).
     // Best-effort: the recipe is already saved and a failed claim must not read
     // as a failed save.
-    await claimRecipe(session.id, stamped.id);
+    await claimRecipe(session.id, saved.id);
     addToast('Recipe saved!', 'success');
-    push(`/recipes/${stamped.id}`);
+    push(`/recipes/${saved.id}`);
+  }
+
+  // Save as new recipe — the attached-chat counterpart (issue #798). You asked
+  // what would go with the dish and want to keep the answer as its own recipe.
+  //
+  // `null` for the base, deliberately, even on a chat that started as a variation:
+  // passing one switches the librarian into variation mode, which would carry the
+  // base dish's ingredients and steps into an accompaniment.
+  //
+  // No `claimRecipe` either: the conversation belongs to the dish it is attached
+  // to and stays listed there. The new recipe has no origin chat, which is right —
+  // the chat is not about it, it merely produced it.
+  async function handleSaveAsNewRecipe(): Promise<void> {
+    if (!session || isSavingRecipe) return;
+    const saved = await runSave(session, null);
+    if (!saved) return;
+    addToast('New recipe saved!', 'success');
+    push(`/recipes/${saved.id}`);
   }
 
   // Review changes — the review gate. Everything about what gets proposed and
@@ -185,6 +210,19 @@
         >
           {#snippet leading()}<Icon name="BookOpen" size={16} />{/snippet}
           View recipe
+        </Button>
+        <!-- The other half of the pair (issue #798): "Review changes" folds the
+             conversation into THIS dish, this one makes it a different one. -->
+        <Button
+          size="sm"
+          variant="outline"
+          onclick={handleSaveAsNewRecipe}
+          loading={isSavingRecipe}
+          disabled={isSavingRecipe || thread.isSending}
+          data-testid="chat-save-new-recipe-btn"
+        >
+          {#snippet leading()}<Icon name="BookOpen" size={16} />{/snippet}
+          Save as new recipe
         </Button>
         <Button
           size="sm"
