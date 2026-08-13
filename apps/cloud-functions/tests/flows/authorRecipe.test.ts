@@ -54,6 +54,7 @@ vi.stubGlobal('crypto', { randomUUID: mockUUID });
 
 const { authorRecipeFlow } = await import('../../src/flows/authorRecipe.js');
 const { STEP_RULES, FIRST_USE_ORDINAL_RULE } = await import('../../src/flows/stepRules.js');
+const { recipeFieldRules } = await import('../../src/flows/recipeFieldRules.js');
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -448,6 +449,51 @@ describe('authorRecipe — step rules', () => {
     // ingredient with no ordinal loses its quantity everywhere but mise en place —
     // "null if no obvious first step" is exactly the licence that must not return.
     expect(systemPromptFrom()).not.toContain('null if the ingredient has no obvious first step');
+  });
+});
+
+// ─── shared field rules (issue #785) ────────────────────────────────────────────
+
+// The librarian used to carry a hand-rolled TWIN of the import prompts' field list:
+// four of its five top-level bullets were byte-identical, and the rest had drifted
+// in both directions. It is now built on the same recipeFieldRules module the two
+// import flows use, so this asserts the WHOLE rendered block — a paraphrase check
+// would pass again the moment someone re-hand-rolls it.
+describe('authorRecipe — shared field rules', () => {
+  beforeEach(() => {
+    mockGenerate.mockResolvedValue({ output: librarianOutput() });
+    mockParseFlow.mockResolvedValue([]);
+  });
+
+  function systemPromptFrom(): string {
+    return (mockGenerate.mock.calls[0]![0] as { system: string }).system;
+  }
+
+  it('interpolates the shared field rules verbatim, in every mode', async () => {
+    // Edit and variation mode both re-author the COMPLETE recipe, so the rules have
+    // to survive all three prompt assemblies, not just the create one.
+    mockGet.mockResolvedValue({ exists: true, data: () => baseRecipeDoc() });
+
+    for (const input of [
+      { messages: [], existingTags: [] },
+      { messages: [], existingTags: [], recipeId: 'r1' },
+      { messages: [], existingTags: [], basedOnRecipeId: 'r1' },
+    ]) {
+      mockGenerate.mockClear();
+      await (authorRecipeFlow as Function)(input);
+      expect(systemPromptFrom()).toContain(recipeFieldRules({ measures: 'preserve' }));
+    }
+  });
+
+  it("preserves the chef's own measures rather than metricating mid-conversation", async () => {
+    await (authorRecipeFlow as Function)({ messages: [], existingTags: [] });
+
+    // The one axis on which this prompt differs from the two import prompts.
+    // Metricating "a teaspoon of cumin" to 5g inside the same turn makes the saved
+    // recipe stop matching the conversation the user is looking at.
+    const system = systemPromptFrom();
+    expect(system).toContain('preserve the original wording and any tsp/tbsp/cup measures');
+    expect(system).not.toContain('Metric only');
   });
 });
 

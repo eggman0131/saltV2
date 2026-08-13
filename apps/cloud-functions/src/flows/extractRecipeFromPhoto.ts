@@ -17,7 +17,7 @@ import { ai } from '../genkit.js';
 import { assembleRecipeDraft } from './assembleRecipeDraft.js';
 import { persistImportedRecipe } from './persistImportedRecipe.js';
 import { resolveModel } from '../ai/resolveModel.js';
-import { CONVERSION_RULES, FIELD_RULES } from './recipeExtractionRules.js';
+import { recipeFieldRules } from './recipeFieldRules.js';
 
 // Import a recipe from photographs of a cookbook page (issue #649, Phase 3).
 //
@@ -206,6 +206,9 @@ function buildPhotoPrompt(images: RecipePagePhoto[]): PromptPart[] {
 const EXTRACT_INSTRUCTION = `Extract the single recipe shown on these pages and convert it fully to \
 UK conventions, following the rules you were given.`;
 
+// A cookbook page is a DOCUMENT source — a finished recipe in someone else's
+// units — so the shared field rules are asked for with `measures: 'metricate'`,
+// exactly as the URL import asks for them (issue #785).
 const EXTRACT_SYSTEM = `You are a precise recipe extraction assistant. You are given photographs of \
 the pages of a cookbook, magazine or recipe card. Read them and extract a single complete recipe, \
 converting it fully to UK conventions.
@@ -234,9 +237,7 @@ set any part you cannot read to null, and set book itself to null when none of i
 guess or infer a book title, author or page number from the recipe's style, contents or your own \
 knowledge — an invented provenance is worse than a missing one.
 
-${CONVERSION_RULES}
-
-${FIELD_RULES}
+${recipeFieldRules({ measures: 'metricate' })}
 
 Extract only what the pages show. Do not invent ingredients or steps — though splitting one of the \
 book's own instructions across consecutive steps, per the one-operation rule above, invents nothing. \

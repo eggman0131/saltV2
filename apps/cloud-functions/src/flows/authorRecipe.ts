@@ -8,9 +8,7 @@ import { withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 import { assembleRecipeDraft } from './assembleRecipeDraft.js';
 import { flowModel } from '../ai/fakeModel.js';
-import { CATEGORY_TAG_RULES } from './categoryTags.js';
-import { INGREDIENT_SUBSTITUTION_RULES } from './ingredientConversions.js';
-import { STEP_RULES, FIRST_USE_ORDINAL_RULE } from './stepRules.js';
+import { recipeFieldRules } from './recipeFieldRules.js';
 import { readEquipmentContext, equipmentSectionForLibrarian } from './equipmentContext.js';
 
 const OutputSchema = z.custom<RecipeDoc>();
@@ -106,27 +104,17 @@ export const authorRecipeFlow = ai.defineFlow(
   },
 );
 
+// The librarian is a CONVERSATION source: the chef just said "a teaspoon of
+// cumin", and metricating that to 5g inside the same turn makes the saved recipe
+// stop matching the words the user is looking at. Hence `measures: 'preserve'` —
+// the one axis on which this prompt differs from the two import prompts, which
+// ask the SAME module for `'metricate'` (issue #785). Everything else — tags,
+// step policy, ingredient hygiene, British names and spelling — is shared, so a
+// rule improved for one authoring path reaches all three.
 const LIBRARIAN_SYSTEM = `You are a precise recipe extraction assistant. \
-Given a cooking conversation between a user and a chef, extract and structure a complete recipe. \
+Given a cooking conversation between a user and a chef, extract and structure a complete recipe.
 
-## Rules
-- title: clear, concise recipe name.
-- description: 1–2 sentence summary, or null.
-- servings: integer portions, or null if not stated.
-- totalTimeMinutes/prepTimeMinutes/cookTimeMinutes: integers in minutes, or null.
-${CATEGORY_TAG_RULES}
-${INGREDIENT_SUBSTITUTION_RULES}
-- ingredientGroups: group ingredients by course/stage (null name = default group).
-  Each ingredient: rawText (preserve the original wording and any tsp/tbsp/cup measures the chef
-  used, EXCEPT where the ingredient rules above take precedence — always use the British ingredient
-  NAMES (e.g. "double cream" not "heavy cream"), commit to a single ingredient rather than an
-  either-or choice, and split any line that combines two distinct ingredients into two separate
-  ingredients ("Salt and freshly ground black pepper" → two ingredients). These override "preserve
-  the original wording"),
-  isOptional (true only if explicitly optional),
-  ${FIRST_USE_ORDINAL_RULE}
-${STEP_RULES}
-- notes: chef's overall notes or tips, or null.`;
+${recipeFieldRules({ measures: 'preserve' })}`;
 
 // Create mode: the conversation is the only source of truth.
 const CREATE_MODE_CLOSING = `Extract only what is present in the conversation. \
