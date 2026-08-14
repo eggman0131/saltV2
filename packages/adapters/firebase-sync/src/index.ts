@@ -80,6 +80,12 @@ export { callGenerateGuidedPlan } from './guidedPlanCallables.js';
 // formula is an error, never "no formula yet". No delete: nothing removes one.
 export { subscribeFormula, loadFormula, saveFormula } from './formulaSubscription.js';
 export { callExtractProcessStages } from './formulaCallables.js';
+// Batches (issue #812, epic #778): one document per RUN of a formula, with the
+// quantities and the schedule frozen at start. A random id and many per recipe, so
+// unlike the two above this is a collection subscription as well as a doc one — see
+// batchSync.ts for why the list read skips a corrupt document while the single-doc
+// read refuses it.
+export { subscribeBatches, subscribeBatch, saveBatch } from './batchSync.js';
 export { savePushSubscription, deletePushSubscription } from './pushSubscriptionSync.js';
 export { streamChefChat, callGenerateChatTitle } from './chatCallables.js';
 export { callAuthorRecipe } from './authorRecipeCallable.js';

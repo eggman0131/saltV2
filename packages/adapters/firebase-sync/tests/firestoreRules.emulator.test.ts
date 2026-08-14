@@ -933,3 +933,100 @@ describe.skipIf(!reachable)('firestore.rules — formulas (issue #806)', () => {
     await assertFails(deleteDoc(doc(db, 'formulas', FORMULA_RECIPE)));
   });
 });
+
+describe.skipIf(!reachable)('firestore.rules — batches (issue #812)', () => {
+  let testEnv: RulesTestEnvironment;
+
+  beforeAll(async () => {
+    testEnv = await initializeTestEnvironment({
+      projectId: PROJECT_ID,
+      firestore: {
+        host: HOST,
+        port: PORT,
+        rules: readFileSync(RULES_PATH, 'utf8'),
+      },
+    });
+  });
+
+  afterAll(async () => {
+    await testEnv?.cleanup();
+  });
+
+  beforeEach(async () => {
+    await testEnv.clearFirestore();
+  });
+
+  // A random UUID, not a recipe id: a recipe has many runs.
+  const BATCH_ID = 'batch-8f21c0d4';
+  // One run of the overnight white tin, scaled to twelve rolls and back-solved so
+  // the bake ends at 07:30.
+  const batch = () => ({
+    id: BATCH_ID,
+    schemaVersion: 1,
+    recipeId: 'recipe-1',
+    recipeTitle: 'Overnight white tin',
+    state: 'running',
+    quantities: [
+      { ingredientId: 'ing-flour', label: '500g strong white flour', percent: 100, grams: 841 },
+    ],
+    totals: { basisGrams: 841, totalGrams: 1483, usableGrams: 1440, units: null },
+    stages: [
+      {
+        id: 'bake',
+        label: 'Bake',
+        kind: 'active',
+        environment: null,
+        duration: { kind: 'fixed', minutes: 45 },
+        until: null,
+        stepId: null,
+        plannedStartAt: '2026-08-15T06:45:00.000Z',
+        plannedEndAt: '2026-08-15T07:30:00.000Z',
+        actualStartAt: null,
+        actualEndAt: null,
+      },
+    ],
+    rationale: null,
+    createdAt: '2026-08-14T21:00:00.000Z',
+    updatedAt: '2026-08-14T21:00:00.000Z',
+  });
+
+  function userCtx(uid: string) {
+    return testEnv.authenticatedContext(uid, { email: `${uid}@e.org` }).firestore();
+  }
+
+  it('lets any signed-in user write, read and clear a batch', async () => {
+    const db = userCtx('uid-a');
+    await assertSucceeds(setDoc(doc(db, 'batches', BATCH_ID), batch()));
+    await assertSucceeds(getDoc(doc(db, 'batches', BATCH_ID)));
+    await assertSucceeds(deleteDoc(doc(db, 'batches', BATCH_ID)));
+  });
+
+  // The load-bearing property, and here it is a household behaviour rather than a
+  // symmetry: either partner may glance at the crock, mark the prove done and take
+  // the loaf out. A batch carries NO ownerUid and is not per-user state.
+  it('lets another member advance a batch someone else started', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'batches', BATCH_ID), batch());
+    });
+    const db = userCtx('uid-b');
+    await assertSucceeds(setDoc(doc(db, 'batches', BATCH_ID), batch()));
+    await assertSucceeds(getDoc(doc(db, 'batches', BATCH_ID)));
+    // And the whole collection, which is what the in-flight surface subscribes to.
+    await assertSucceeds(getDocs(collection(db, 'batches')));
+  });
+
+  // Unlike guidedPlans and formulas the id is random, so nobody subscribes to a
+  // batch that was never written — but this rule dereferences no `resource.data`
+  // either way, and pinning the behaviour costs one line.
+  it('lets a signed-in user read a batch id that does not exist yet', async () => {
+    await assertSucceeds(getDoc(doc(userCtx('uid-a'), 'batches', 'batch-never-started')));
+  });
+
+  it('denies an unauthenticated caller entirely', async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, 'batches', BATCH_ID)));
+    await assertFails(getDocs(collection(db, 'batches')));
+    await assertFails(setDoc(doc(db, 'batches', BATCH_ID), batch()));
+    await assertFails(deleteDoc(doc(db, 'batches', BATCH_ID)));
+  });
+});

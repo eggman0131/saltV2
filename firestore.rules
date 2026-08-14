@@ -151,6 +151,19 @@ service cloud.firestore {
     match /formulas/{recipeId} {
       allow read, write: if request.auth != null;
     }
+    // Batches (issue #812, epic #778) — one doc per RUN at batches/{batchId},
+    // holding the quantities, totals and schedule frozen at the moment it started.
+    // FAMILY-SHARED, and here that is not merely consistency: either partner may
+    // glance at the crock, mark the prove done and take the loaf out. The id is a
+    // random UUID rather than a recipe id — a recipe has many runs — so this is a
+    // collection the in-flight surface queries, not a doc it looks up.
+    //
+    // Follows guidedPlans and formulas, NOT cookSessions: no ownerUid, no pinning,
+    // and no `resource == null` clause, because this rule never dereferences
+    // `resource.data`.
+    match /batches/{batchId} {
+      allow read, write: if request.auth != null;
+    }
     // Development settings (issue #238) — per-environment operator switches
     // (e.g. the canon-icon generation kill-switch). Any signed-in user may read
     // (the CF trigger uses the Admin SDK and bypasses rules anyway); only admins

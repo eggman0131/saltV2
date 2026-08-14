@@ -404,17 +404,30 @@ export type {
   UnitShapePreset,
 } from './formula/index.js';
 
-// Process module (issue #806) — ordering and total duration over a formula's
-// stages. No clock, no scheduling, no diff; see the module header for why each is
-// absent rather than merely unwritten.
+// Process module (issues #806, #812) — ordering, total duration, and the
+// bidirectional schedule that places an ordered process on a clock from either end.
+// Still no clock of its own: the anchor is injected. No `diffProcess` yet; see the
+// module header for why it is absent rather than merely unwritten.
 export {
   withStageAdded,
   withStageRemoved,
   withStageUpdated,
   withStageMoved,
   totalDurationMinutes,
+  resolveSchedule,
 } from './process/index.js';
 export type { DurationRange } from './process/index.js';
+export type {
+  ScheduleAnchor,
+  StageSchedule,
+  ScheduleFailure,
+  ResolveScheduleResult,
+} from './process/index.js';
+
+// Batch module (issue #812, epic #778) — one run of a formula: the freeze that
+// starts it, and the producers that move it along. Pure; every instant injected.
+export { freezeBatch, currentStage, withStageAdvanced, withBatchAbandoned } from './batch/index.js';
+export type { FreezeBatchInput, FreezeBatchResult, FreezeBatchFailure } from './batch/index.js';
 
 // URL module — pure display-time cache-buster for regenerated image URLs (#460).
 export { appendCacheBuster } from './url/index.js';

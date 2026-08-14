@@ -21,6 +21,7 @@ const {
   mockRecipes,
   mockCanonItems,
   mockGuidedPlan,
+  mockFormula,
   mockIsLoading,
   mockDefaultListId,
   mockSessions,
@@ -47,6 +48,7 @@ const {
     mockRecipes: makeStore<readonly Recipe[]>([]),
     mockCanonItems: makeStore<readonly { id: string }[]>([]),
     mockGuidedPlan: makeStore<unknown>(null),
+    mockFormula: makeStore<unknown>(null),
     mockIsLoading: makeStore<boolean>(false),
     mockDefaultListId: makeStore<string | null>('list-1'),
     mockSessions: makeStore<readonly unknown[]>([]),
@@ -74,6 +76,15 @@ vi.mock('../src/lib/canonService.js', () => ({ canonItems: mockCanonItems }));
 vi.mock('../src/lib/guidedPlanService.js', () => ({
   guidedPlan: mockGuidedPlan,
   initGuidedPlanSync: vi.fn(() => () => {}),
+}));
+// The formula store (issue #812). `null` is its LOADED-AND-EMPTY state, which is
+// what nearly every recipe in Salt is, and it keeps both bread-scaling entries out
+// of the ⋮ menu. Settable here — unlike the other suites, this file is where the
+// presence gate itself is proved, so it has to be able to put a formula on a
+// recipe without changing the recipe's `kind`.
+vi.mock('../src/lib/formulaService.js', () => ({
+  formula: mockFormula,
+  initFormulaSync: vi.fn(() => () => {}),
 }));
 vi.mock('../src/lib/shoppingListService.svelte.js', () => ({ defaultListId: mockDefaultListId }));
 vi.mock('@salt/firebase-sync', () => ({
@@ -185,6 +196,9 @@ beforeEach(() => {
   // Loaded, and there is no plan — the default a recipe has until someone writes
   // one. Reset per test so a suite that sets a plan cannot leak it into the next.
   mockGuidedPlan._set(null);
+  // Same three-state store, same reason (issue #812): loaded, and there is no
+  // formula. Nearly every recipe in Salt is this.
+  mockFormula._set(null);
 });
 
 const RECIPE_UPDATED_AT = '2026-08-01T09:00:00.000Z';
@@ -587,5 +601,145 @@ describe('RecipeViewPage — make a variation', () => {
     } else {
       expect(screen.queryByTestId('recipe-make-variation-menu-item')).toBeNull();
     }
+  });
+});
+
+// ─── Bread scaling: PRESENCE, not kind (issue #812, phase 1 of epic #778) ───────
+//
+// This suite lives in the kind file on purpose: the whole file is about what an
+// entry offers and why, and these two entries are the one pair here that is NOT
+// decided by the kind. There is no `bread` kind and there will not be one
+// (docs/formulas-schedules-batches.md) — a loaf is an ordinary `recipe` — so what
+// turns them on is the FORMULA DOCUMENT existing, and nothing else.
+//
+// The sharpest evidence is the pair below: the same recipe, the same `kind`, the
+// store flipping from `null` to a formula, and the menu changing with it. If either
+// entry were ever re-gated on the kind, the second test goes red while the first
+// stays green.
+describe('RecipeViewPage — bread scaling is gated on the formula, never the kind', () => {
+  /** The overnight tin's formula, as the store would hold it. */
+  function makeFormula() {
+    return {
+      recipeId: RECIPE_ID,
+      schemaVersion: 1,
+      components: [{ ingredientId: 'ing-1', percent: 100, inBasis: true }],
+      referenceYield: {
+        kind: 'target',
+        shape: { label: '900 g tin loaf', count: 1, unitDoughGrams: 900, bakeLossPercent: 12 },
+      },
+      handlingLossPercent: 3,
+    };
+  }
+
+  it('offers neither entry on a recipe with no formula', async () => {
+    mockRecipes._set([makeEntry()]);
+    renderPage();
+
+    await openOverflowMenu();
+
+    expect(screen.queryByTestId('recipe-bake-batch-menu-item')).toBeNull();
+    expect(screen.queryByTestId('recipe-formula-menu-item')).toBeNull();
+  });
+
+  it('offers neither while the formula is still loading', async () => {
+    // `undefined` is not-loaded, and it must read as "no" rather than as "yes": an
+    // entry that appears and then vanishes is worse than one that arrives late.
+    mockFormula._set(undefined);
+    mockRecipes._set([makeEntry()]);
+    renderPage();
+
+    await openOverflowMenu();
+
+    expect(screen.queryByTestId('recipe-bake-batch-menu-item')).toBeNull();
+    expect(screen.queryByTestId('recipe-formula-menu-item')).toBeNull();
+  });
+
+  it('offers both once the recipe has one, with the kind untouched', async () => {
+    mockFormula._set(makeFormula());
+    mockRecipes._set([makeEntry()]);
+    renderPage();
+
+    await openOverflowMenu();
+
+    expect(screen.getByTestId('recipe-bake-batch-menu-item')).toBeInTheDocument();
+    // The formula screen shipped in #806 with no entry point anywhere. This is it.
+    expect(screen.getByTestId('recipe-formula-menu-item')).toBeInTheDocument();
+  });
+
+  it('puts both in group one, after the guided plan and above the first divider', async () => {
+    mockFormula._set(makeFormula());
+    mockRecipes._set([makeEntry()]);
+    renderPage();
+
+    await openOverflowMenu();
+
+    // Adjacency, not mere presence: group one is "work on THIS dish", and starting a
+    // run is desk work of the same kind as writing the guided plan — not a way of
+    // producing a second recipe (group two) or of editing the document (group
+    // three). Frequency orders the pair: the bake is weekly, the formula monthly.
+    expect(overflowMenuLayout()).toEqual([
+      'recipe-ask-amend-menu-item',
+      'recipe-optimise-kitchen-menu-item',
+      'recipe-refresh-menu-item',
+      'recipe-guided-plan-menu-item',
+      'recipe-bake-batch-menu-item',
+      'recipe-formula-menu-item',
+      'separator',
+      'recipe-make-variation-menu-item',
+      'recipe-duplicate-menu-item',
+      'separator',
+      'recipe-edit-menu-item',
+      'recipe-delete-menu-item',
+    ]);
+  });
+
+  it('offers them on an entry no capability would allow, and keeps the divider honest', async () => {
+    // An outing is neither cookable nor authorable, so group one is empty on one
+    // today — and a divider with nothing above it is a rule across the top of the
+    // menu. A formula is presence rather than a capability, so it can fill that
+    // group on its own, which is exactly why the divider's gate had to learn about
+    // it. (Nobody will write a formula for a takeaway; the point is that the gate
+    // asks about the DOCUMENT, and the outing is the cleanest way to prove it.)
+    mockFormula._set(makeFormula());
+    mockRecipes._set([makeOuting()]);
+    renderPage();
+
+    await openOverflowMenu();
+
+    expect(overflowMenuLayout()).toEqual([
+      'recipe-bake-batch-menu-item',
+      'recipe-formula-menu-item',
+      'separator',
+      'recipe-duplicate-menu-item',
+      'separator',
+      'recipe-edit-menu-item',
+      'recipe-delete-menu-item',
+    ]);
+  });
+
+  it('sends the formula entry to the formula screen', async () => {
+    mockFormula._set(makeFormula());
+    mockRecipes._set([makeEntry()]);
+    renderPage();
+
+    await openOverflowMenu();
+    await fireEvent.click(screen.getByTestId('recipe-formula-menu-item'));
+
+    expect(push).toHaveBeenCalledWith(`/recipes/${RECIPE_ID}/formula`);
+  });
+
+  it('opens the scale sheet rather than navigating, and writes nothing', async () => {
+    // The sheet is the one place a scaled number appears before a batch exists, and
+    // it must not touch the recipe: closing it leaves the dish exactly as it was.
+    mockFormula._set(makeFormula());
+    mockRecipes._set([makeEntry()]);
+    renderPage();
+
+    await openOverflowMenu();
+    await fireEvent.click(screen.getByTestId('recipe-bake-batch-menu-item'));
+
+    await waitFor(() => expect(screen.getByTestId('bake-batch-sheet')).toBeInTheDocument());
+    expect(push).not.toHaveBeenCalled();
+    expect(persistRecipe).not.toHaveBeenCalled();
   });
 });

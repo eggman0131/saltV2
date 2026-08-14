@@ -1,25 +1,30 @@
 # Formulas, schedules and batches
 
-**Status: phase 00 and most of phase 01 are built; everything else is still
-contract.** Epic #778. Built so far: the pure `formula` module (#782); on top of
-it, `formulas/{recipeId}` with its rules, adapter, service and mapping screen at
-`/recipes/:id/formula` (#806 phase 1); and the process half of that screen —
-`schemas/process.ts`, the pure `process` module, the `extractProcessStages`
-callable, and stage review on the formula screen (#806 phase 2). Still no
-scaling, no batches, and **no entry point in the app**: the route is reachable by
-URL only.
+**Status: phases 00 and 01 are built, and phase 02 is landing; ferments, cures
+and cultures are still contract.** Epic #778. Built so far: the pure `formula`
+module (#782); on top of it, `formulas/{recipeId}` with its rules, adapter,
+service and mapping screen at `/recipes/:id/formula` (#806 phase 1); the process
+half of that screen — `schemas/process.ts`, the pure `process` module, the
+`extractProcessStages` callable, and stage review on the formula screen (#806
+phase 2); and, from #812 phase 1, **scaling and the batch**: `resolveSchedule`
+(bidirectional, in `process/`), the `batch` module, `batches/{batchId}` with its
+rules and adapter, `batchService` as the single write path, the in-flight surface
+at `/batches`, and **the entry point the feature had been missing** — "Bake a
+batch" and a formula link on the recipe page, both gated on `formula != null`.
 
-Two things about what `process/` holds today, because they are deliberate
-absences rather than gaps: it has **ordering and total duration only** — no
-schedule, no clock, no `diffProcess`, all of which belong with the batch in phase
-02 — and a stage carries **no additions or removals** yet, because nothing
-produces or consumes them. What this doc requires is that the shape not preclude
-them, and a flat ordered array of stages with stable ids on an optional field of a
-greenfield collection does not. Phases 03/04 own that addition.
+A formula screen for a recipe that has never had one is still reachable by URL
+only, and that is deliberate: an "add a formula" item on every recipe would put
+baker's percentages in front of every weeknight curry to serve the three loaves.
 
-Everything below about batches, cultures and `proposeSchedule` is still the
-contract the remaining phases are built against, not a description of code that
-exists. Read it before designing any part of bread scaling, ferments or cures.
+One thing about what `process/` holds today is a deliberate absence rather than a
+gap: a stage carries **no additions or removals** yet, because nothing produces or
+consumes them. What this doc requires is that the shape not preclude them, and a
+flat ordered array of stages with stable ids on an optional field of a greenfield
+collection does not. Phases 03/04 own that addition.
+
+Everything below about cultures, ferments, cures and `proposeSchedule` is still
+the contract the remaining phases are built against, not a description of code
+that exists. Read it before designing any part of ferments or cures.
 
 Three hobbies — bread, fermented vegetables, cured meats — look like three
 features and are one. All three express quantities as a **percentage of a

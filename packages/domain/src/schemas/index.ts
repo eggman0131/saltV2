@@ -408,3 +408,25 @@ export type {
   ExtractProcessStagesAIOutput,
   ExtractProcessStagesOutput,
 } from './process.js';
+
+// Batch (issue #812, phase 1) — ONE RUN at `batches/{batchId}`, family-shared with
+// a random id. Everything on it is FROZEN at start: resolved grams AND their
+// labels, the resolved totals, and the resolved schedule. Read batch.ts's header
+// before adding a field — the reason the document repeats what the recipe and the
+// formula already say is the whole point of it.
+export {
+  BatchStateSchema,
+  BatchQuantitySchema,
+  BatchUnitsSchema,
+  BatchTotalsSchema,
+  BatchStageSchema,
+  BatchSchema,
+} from './batch.js';
+export type {
+  BatchState,
+  BatchQuantityDoc,
+  BatchUnitsDoc,
+  BatchTotalsDoc,
+  BatchStageDoc,
+  BatchDoc,
+} from './batch.js';
