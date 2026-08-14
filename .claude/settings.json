@@ -10,9 +10,6 @@
       "Bash(git diff:*)"
     ]
   },
-  "enabledPlugins": {
-    "ponytail@ponytail": true
-  },
   "hooks": {
     "SessionStart": [
       {
@@ -24,5 +21,9 @@
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "ponytail@ponytail": true,
+    "claude-security@claude-plugins-official": true
   }
 }
