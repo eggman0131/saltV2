@@ -601,6 +601,12 @@ export { onCanonItemWritten };
 export { onRecipeWritten };
 export { onCookTimerWrite } from './triggers/onCookTimerWrite.js';
 export { onCookTimerDispatch } from './triggers/onCookTimerDispatch.js';
+// Batch stage reminders (issue #812) — the cook-timer Cloud Tasks pair, mirrored
+// for a run that lasts hours or weeks. NOTE for deploys: `onBatchStageDispatch` is
+// a NEW task queue, so the deployer service account needs the Cloud Tasks
+// permissions before it will provision (see the cook timer's own history).
+export { onBatchWritten } from './triggers/onBatchWritten.js';
+export { onBatchStageDispatch } from './triggers/onBatchStageDispatch.js';
 export { regenerateCanonIcon } from './callables/regenerateCanonIcon.js';
 export { regenerateRecipeImage } from './callables/regenerateRecipeImage.js';
 export { setRecipeImageUpload } from './callables/setRecipeImageUpload.js';

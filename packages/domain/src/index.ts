@@ -409,8 +409,9 @@ export type {
 
 // Process module (issues #806, #812) — ordering, total duration, the bidirectional
 // schedule that places an ordered process on a clock from either end, and the diff
-// that makes a proposed restructure reviewable. Still no clock of its own: the
-// anchor is injected, and `diffProcess` takes both sides as arguments.
+// that makes a proposed restructure reviewable, plus which stages earn a reminder.
+// Still no clock of its own: the anchor is injected, `diffProcess` takes both sides
+// as arguments, and `remindableStages` reads only the shape of the process.
 export {
   withStageAdded,
   withStageRemoved,
@@ -419,6 +420,7 @@ export {
   totalDurationMinutes,
   resolveSchedule,
   diffProcess,
+  remindableStages,
 } from './process/index.js';
 export type { DurationRange } from './process/index.js';
 export type {

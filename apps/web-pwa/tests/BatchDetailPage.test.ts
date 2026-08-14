@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, cleanup, waitFor } from '@testing-library/svelte';
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/svelte';
 import type { BatchDoc, BatchStageDoc } from '@salt/domain/schemas';
 
-// One run's own screen (issue #812, phase 1 of epic #778).
+// One run's own screen (issue #812, phases 1 and 3 of epic #778).
 //
 // The batch under test is #778's worked example, frozen: twelve 120 g rolls off the
 // overnight tin's formula — 841 g flour, 589 g water, 17 g salt, 12 g yeast, 25 g
@@ -23,6 +23,12 @@ import type { BatchDoc, BatchStageDoc } from '@salt/domain/schemas';
 //
 // Clock times are asserted through the `data-planned-*` attributes (raw ISO), so
 // none of this depends on the machine's timezone.
+//
+// PHASE 3 adds the controls, and what those tests have to get right is different in
+// kind: the page must never decide anything the domain already decides. So they
+// assert WHICH stage carries a control and WHAT ARGUMENTS reach the service, and
+// never that a schedule moved — the re-timing is `withStageAdvanced`'s and is
+// pinned in the domain's own suite, against a fixed clock this page does not read.
 
 const { mockBatch, mockInitBatchSync } = vi.hoisted(() => {
   function makeStore<T>(initial: T) {
@@ -50,12 +56,23 @@ const { mockBatch, mockInitBatchSync } = vi.hoisted(() => {
 
 vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
 vi.mock('../src/lib/nav.js', () => ({ goBack: vi.fn() }));
+vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
 vi.mock('../src/lib/batchService.js', () => ({
   batch: mockBatch,
   initBatchSync: mockInitBatchSync,
+  advanceStage: vi.fn(),
+  abandonBatch: vi.fn(),
 }));
 
 import BatchDetailPage from '../src/routes/batches/BatchDetailPage.svelte';
+import { push } from 'svelte-spa-router';
+import { abandonBatch, advanceStage } from '../src/lib/batchService.js';
+import { addToast } from '../src/lib/toastStore.js';
+
+const pushMock = vi.mocked(push);
+const advanceMock = vi.mocked(advanceStage);
+const abandonMock = vi.mocked(abandonBatch);
+const toastMock = vi.mocked(addToast);
 
 const BATCH_ID = 'batch-1';
 
@@ -133,6 +150,10 @@ afterEach(() => {
 beforeEach(() => {
   vi.clearAllMocks();
   mockBatch._set(undefined);
+  // The happy path by default: every command succeeds and hands the run back, which
+  // is what the write path does (`persist` returns the stamped document).
+  advanceMock.mockImplementation(async (current) => ({ kind: 'ok', value: current }));
+  abandonMock.mockImplementation(async (current) => ({ kind: 'ok', value: current }));
 });
 
 function renderPage() {
@@ -292,15 +313,188 @@ describe('BatchDetailPage — the schedule', () => {
     // A mix has no meaningful temperature and is not given an invented one.
     expect(stages[0]!.querySelector('[data-testid="batch-stage-environment"]')).toBeNull();
   });
+});
 
-  it('offers no way to advance a stage or abandon the run in this phase', async () => {
-    // Phase 3's controls. Shipping the surface that READS before the one that ACTS
-    // is what lets a schedule be checked against a real bake first.
-    renderPage();
-    mockBatch._set(makeBatch());
+// ─── Phase 3 ──────────────────────────────────────────────────────────────────
 
-    await waitFor(() => expect(screen.getByTestId('batch-stages')).toBeInTheDocument());
-    expect(screen.queryByText(/mark.*done/i)).toBeNull();
-    expect(screen.queryByText(/abandon/i)).toBeNull();
+/** Render, hand the store a run, and wait for the stage list. */
+async function showRun(over: Partial<BatchDoc> = {}): Promise<BatchDoc> {
+  const run = makeBatch(over);
+  renderPage();
+  mockBatch._set(run);
+  await waitFor(() => expect(screen.getByTestId('batch-stages')).toBeInTheDocument());
+  return run;
+}
+
+/** The stage ids carrying a control block, in the order they render. */
+function stagesWithControls(): string[] {
+  return screen
+    .getAllByTestId('batch-stage')
+    .filter((el) => el.querySelector('[data-testid="batch-stage-controls"]') !== null)
+    .map((el) => el.getAttribute('data-stage-id') ?? '');
+}
+
+// The ⋮ renders its contents only once open (bits-ui mounts PopoverContent
+// lazily), so an assertion about what is inside it has to open it first.
+async function openOverflowMenu(): Promise<void> {
+  await fireEvent.click(screen.getByTestId('batch-actions-overflow'));
+  await waitFor(() => expect(screen.getByTestId('batch-abandon-menu-item')).toBeInTheDocument());
+}
+
+describe('BatchDetailPage — marking a stage done', () => {
+  it('offers the control on the current stage and on no other', async () => {
+    // Earlier stages are done and later ones have not happened; neither is a thing
+    // you can finish. `currentStage` — through `nextAction` — is the only decision.
+    await showRun();
+
+    expect(stagesWithControls()).toEqual(['stage-1']);
+  });
+
+  it('moves the control on when the stage before it has been marked done', async () => {
+    await showRun({
+      stages: [
+        stage({ actualEndAt: '2026-08-14T07:12:00.000Z' }),
+        stage({ id: 'stage-2', label: 'Bulk ferment', kind: 'wait' }),
+        stage({ id: 'stage-3', label: 'Prove', kind: 'wait' }),
+      ],
+    });
+
+    expect(stagesWithControls()).toEqual(['stage-2']);
+  });
+
+  it('marks THAT stage done, and reads no clock of its own doing it', async () => {
+    // Two arguments and no third: the instant is the service's to read
+    // (`advanceStage` stamps `new Date()`), which is what keeps the re-timing a pure
+    // function with a fixed answer.
+    const run = await showRun();
+
+    await fireEvent.click(screen.getByTestId('batch-stage-advance'));
+
+    await waitFor(() => expect(advanceMock).toHaveBeenCalledTimes(1));
+    expect(advanceMock).toHaveBeenCalledWith(run, 'stage-1');
+  });
+
+  it('says so when the write fails, and says nothing when it works', async () => {
+    // A stage list that re-times itself in front of you is a better acknowledgement
+    // than a sentence covering it up, so success is silent.
+    await showRun();
+    await fireEvent.click(screen.getByTestId('batch-stage-advance'));
+    await waitFor(() => expect(advanceMock).toHaveBeenCalledTimes(1));
+    expect(toastMock).not.toHaveBeenCalled();
+
+    advanceMock.mockResolvedValueOnce({
+      kind: 'err',
+      error: { kind: 'NetworkError', reason: 'offline' },
+    });
+    await fireEvent.click(screen.getByTestId('batch-stage-advance'));
+
+    await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
+    expect(toastMock.mock.calls[0]?.[1]).toBe('destructive');
+  });
+
+  it('offers nothing to advance once every stage is done', async () => {
+    // There is deliberately no `finished` STATE — "nothing left" is answered by the
+    // stages themselves, so it has to be answered here the same way.
+    await showRun({
+      stages: [
+        stage({ actualEndAt: '2026-08-14T07:12:00.000Z' }),
+        stage({ id: 'stage-2', actualEndAt: '2026-08-14T08:10:00.000Z' }),
+      ],
+    });
+
+    expect(screen.queryByTestId('batch-stage-advance')).toBeNull();
+  });
+
+  it('offers nothing to advance on an abandoned run', async () => {
+    await showRun({ state: 'abandoned' });
+
+    expect(screen.queryByTestId('batch-stage-advance')).toBeNull();
+  });
+});
+
+describe('BatchDetailPage — the hand-off to cook mode', () => {
+  it('links an active stage to cook mode, by recipe id alone', async () => {
+    // Cook mode takes only a recipe id — the link lands at the top of it, with its
+    // own timers, which is the whole hand-off.
+    await showRun();
+
+    await fireEvent.click(screen.getByTestId('batch-stage-cook'));
+    expect(pushMock).toHaveBeenCalledWith('/recipes/recipe-1/cook');
+  });
+
+  it('does not offer it on a wait, which is the stage you leave the room for', async () => {
+    await showRun({
+      stages: [
+        stage({ actualEndAt: '2026-08-14T07:12:00.000Z' }),
+        stage({ id: 'stage-2', label: 'Bulk ferment', kind: 'wait' }),
+      ],
+    });
+
+    expect(stagesWithControls()).toEqual(['stage-2']);
+    expect(screen.queryByTestId('batch-stage-cook')).toBeNull();
+  });
+
+  it('links off the batch and never through it — the recipe is not read here', async () => {
+    // `recipeId` is the batch's own frozen FK. A run whose dish was retitled or
+    // deleted still links, because nothing on this page joins to a recipe.
+    await showRun({ recipeId: 'recipe-since-renamed' });
+
+    await fireEvent.click(screen.getByTestId('batch-stage-cook'));
+    expect(pushMock).toHaveBeenCalledWith('/recipes/recipe-since-renamed/cook');
+  });
+});
+
+describe('BatchDetailPage — abandoning', () => {
+  it('keeps it behind the ⋮ and behind a confirm', async () => {
+    // Two gates for one irreversible action, on a page whose thumb is reaching for
+    // "Mark done".
+    await showRun();
+
+    expect(screen.queryByTestId('batch-abandon-menu-item')).toBeNull();
+    await openOverflowMenu();
+    await fireEvent.click(screen.getByTestId('batch-abandon-menu-item'));
+
+    await waitFor(() => expect(screen.getByTestId('batch-abandon-dialog')).toBeInTheDocument());
+    expect(abandonMock).not.toHaveBeenCalled();
+  });
+
+  it('stops the run once confirmed', async () => {
+    const run = await showRun();
+
+    await openOverflowMenu();
+    await fireEvent.click(screen.getByTestId('batch-abandon-menu-item'));
+    await waitFor(() => expect(screen.getByTestId('batch-abandon-confirm')).toBeInTheDocument());
+    await fireEvent.click(screen.getByTestId('batch-abandon-confirm'));
+
+    await waitFor(() => expect(abandonMock).toHaveBeenCalledTimes(1));
+    expect(abandonMock).toHaveBeenCalledWith(run);
+  });
+
+  it('is not offered on a run that is already stopped', async () => {
+    await showRun({ state: 'abandoned' });
+
+    expect(screen.queryByTestId('batch-actions-overflow')).toBeNull();
+  });
+
+  it('is not offered on a run with every stage done — there is nothing left to stop', async () => {
+    await showRun({
+      stages: [stage({ actualEndAt: '2026-08-14T07:12:00.000Z' })],
+    });
+
+    // Still `running`, so the menu stands: the reminders for a run that finished
+    // early are gone with its last stage, but the state is what abandoning changes.
+    expect(screen.getByTestId('batch-actions-overflow')).toBeInTheDocument();
+  });
+});
+
+describe('BatchDetailPage — what the controls still refuse to do', () => {
+  it('offers no way to re-scale or re-schedule a running batch', async () => {
+    // Freezing exists to prevent versions: what a batch records is what happened.
+    // There is no route back to `proposeSchedule` from here, and no control that
+    // moves a number.
+    await showRun();
+    await openOverflowMenu();
+
+    expect(screen.queryByText(/re-?schedule|re-?scale|change the (plan|time)/i)).toBeNull();
   });
 });

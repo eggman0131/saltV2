@@ -30,3 +30,8 @@ export type {
   ResolveScheduleResult,
 } from './resolveSchedule.js';
 export { diffProcess } from './diffProcess.js';
+// Which stages are worth a notification (#812 phase 3). Here rather than in
+// `batch/` for the same reason `resolveSchedule` is: it is a fact about the shape
+// of a PROCESS — where the unattended periods end — and the batch is only its
+// first customer. No clock, no schema field, and nothing about elapsed time.
+export { remindableStages } from './remindableStages.js';

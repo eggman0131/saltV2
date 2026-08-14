@@ -87,6 +87,15 @@ const SHOPPING = {
   renotify: false,
 };
 
+const BATCH_STAGE = {
+  type: 'batch-stage',
+  tag: 'batch::batch-1::shape',
+  url: '/#/batches/batch-1',
+  title: 'Shape into the tin',
+  body: 'Overnight white tin',
+  renotify: true,
+};
+
 const FOCUSED_CLIENT: FakeClient = { focused: true, visibilityState: 'visible' };
 
 beforeEach(() => {
@@ -143,6 +152,38 @@ describe('push-sw — push', () => {
     expect(cookOpts.renotify).toBe(true);
   });
 
+  it('still shows a batch stage reminder while a window is focused', async () => {
+    // #812: nobody is staring at the batch page waiting for the retard to end, so
+    // there is no in-app alert for the notification to duplicate. Suppressing it on
+    // focus alone would lose the one ping that matters at 06:45.
+    const { listeners, showNotification } = loadSw([FOCUSED_CLIENT]);
+    const { event, settle } = pushEvent(BATCH_STAGE);
+    listeners.get('push')!(event);
+    await settle();
+    expect(showNotification).toHaveBeenCalledTimes(1);
+    const [title, opts] = showNotification.mock.calls[0] as unknown as [
+      string,
+      { tag: string; renotify: boolean; data: { url: string | null } },
+    ];
+    expect(title).toBe('Shape into the tin');
+    // Per batch AND per stage, so the preheat reminder cannot silently replace the
+    // shape reminder eight hours earlier.
+    expect(opts.tag).toBe('batch::batch-1::shape');
+    // Re-buzzes, unlike the shopping nudge: a timed call to act, deduped server-side.
+    expect(opts.renotify).toBe(true);
+    expect(opts.data.url).toBe('/#/batches/batch-1');
+  });
+
+  it('falls back to BATCH copy, not cook-timer copy, for a batch push with no title', async () => {
+    // A batch reminder that lost its stage name must not announce itself as a
+    // finished cook timer, which is what a single shared default produced.
+    const { listeners, showNotification } = loadSw([]);
+    const { event, settle } = pushEvent({ type: 'batch-stage', url: '/#/batches/batch-1' });
+    listeners.get('push')!(event);
+    await settle();
+    expect(showNotification.mock.calls[0]?.[0]).toBe('A batch stage is due');
+  });
+
   it('falls back to the cook-timer copy on an unparseable payload', async () => {
     const { listeners, showNotification } = loadSw([]);
     const pending: Promise<unknown>[] = [];
@@ -179,6 +220,16 @@ describe('push-sw — notificationclick', () => {
     listeners.get('notificationclick')!(event);
     await settle();
     expect(navigate).toHaveBeenCalledWith('/#/recipes/recipe-1/cook');
+  });
+
+  it('routes a batch reminder by its explicit url, never by slicing an id', async () => {
+    const navigate = vi.fn(async () => undefined);
+    const client: FakeClient = { focus: vi.fn(async () => undefined), navigate };
+    const { listeners } = loadSw([client]);
+    const { event, settle } = clickEvent({ sessionId: null, url: '/#/batches/batch-1' });
+    listeners.get('notificationclick')!(event);
+    await settle();
+    expect(navigate).toHaveBeenCalledWith('/#/batches/batch-1');
   });
 
   it('opens a new window at the deep link when nothing is open', async () => {

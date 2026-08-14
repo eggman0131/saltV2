@@ -26,8 +26,10 @@
   //
   // An ordinary AppShell list page: no `fill` (nothing here owns its own scrolling —
   // ui-spec-v05 §1.5), no selection mode, no bulk actions. Nothing on this screen
-  // WRITES: advancing a stage and abandoning a run are phase 3's controls, and this
-  // phase deliberately ships the surface that reads before the surface that acts.
+  // WRITES, and that stayed true when phase 3 added the controls: marking a stage
+  // done and abandoning a run live on the run's OWN page, next to the stage list
+  // they act on. A card here is a glance and a way in, never a place to finish
+  // something you cannot see.
 
   // The collection, for as long as the surface is open. `undefined` is the
   // not-loaded state; an empty array is loaded-and-nothing-running, which is a

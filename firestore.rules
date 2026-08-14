@@ -280,10 +280,16 @@ service cloud.firestore {
         && request.resource.data.ownerUid == resource.data.ownerUid;
     }
     // Server-owned exactly-once delivery ledger (issue #544). Written and read
-    // only by the onCookTimerDispatch sender (Admin SDK) to dedupe Cloud Tasks
-    // retries + duplicate enqueues. Deliberately a SEPARATE doc from cookSessions
-    // (never a write-back onto the client-owned session — full-doc setDoc LWW
-    // would clobber it). No client ever touches it.
+    // only by the Admin SDK senders, to dedupe Cloud Tasks retries + duplicate
+    // enqueues. Deliberately a SEPARATE doc from whatever caused the send (never
+    // a write-back onto a client-owned document — full-doc setDoc LWW would
+    // clobber it). No client ever touches it.
+    //
+    // TWO PRODUCERS, ONE COLLECTION (issue #812): onCookTimerDispatch keys
+    // `${sessionId}_${timerId}_${endsAtMs}`, onBatchStageDispatch keys
+    // `batch_${batchId}_${stageId}_${plannedStartAtMs}`. Same rules, same kind,
+    // same purpose — a twin collection would be duplication, so this block covers
+    // both and needs no change to do it.
     match /timerDeliveries/{deliveryId} {
       allow read, write: if false;
     }
