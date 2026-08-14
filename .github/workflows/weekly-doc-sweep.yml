@@ -1,0 +1,200 @@
+name: Weekly Doc Sweep
+
+# The semantic half of docs-map hygiene: "is this doc still TRUE?" — the one
+# question in this area that is judgement rather than arithmetic.
+#
+# The mechanical half deliberately does NOT live here. "Does this row's file
+# exist" and "does this glob match any real path" are file-system facts, so
+# `scripts/check-docs-map.mjs` answers them in ci.yml's `static` job — instantly,
+# for free, deterministically, and on every PR that touches CLAUDE.md or docs/
+# rather than up to a week later. Spending model turns on arithmetic is the same
+# category of waste as the nightly batching that pr-doc-review.yml replaced.
+#
+# What is left for this job is the thing a diff cannot show: a doc that is
+# internally coherent and correctly linked, but describes a world the code left
+# behind. That only becomes visible from whole-repo state.
+#
+# It is silent unless something is wrong, raises AT MOST ONE issue, does not
+# re-raise while its previous issue is still open, and never fails — same rule
+# as pr-doc-review.yml: a red run means the workflow itself is broken.
+
+on:
+  schedule:
+    # Mondays, 04:00 UTC — after the week's merges have settled, and clear of
+    # any nightly slot.
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  id-token: write # required by claude-code-action for OIDC token exchange
+
+concurrency:
+  group: weekly-doc-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    name: Doc sweep
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Dedupe before spending anything. A weekly job that re-raises the same
+      # finding every Monday teaches you to filter it out, which is the same
+      # failure as commenting on every PR.
+      - name: Skip if the last sweep's issue is still open
+        id: dedupe
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          open=$(gh issue list --state open --search 'weekly-doc-sweep in:body' --json number --jq 'length')
+          if [ "$open" != "0" ]; then
+            echo "An earlier sweep's issue is still open — staying quiet this week."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "### Weekly Doc Sweep — skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "A previous sweep's issue is still open; resolve it and the next sweep will look again." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Sweep the docs for statements that are no longer true
+        id: sweep
+        if: ${{ steps.dedupe.outputs.run == 'true' }}
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: >-
+            --max-turns 60
+            --max-budget-usd 3
+            --model sonnet
+            --allowed-tools "Read,Write,Grep,Glob,Bash(git:*)"
+          prompt: |
+            You are doing a weekly hygiene sweep of the Salt 2.0 monorepo's
+            documentation. You are read-only: you do NOT edit any doc, you do NOT
+            commit, and you do NOT post anything. Your entire output is one
+            optional file, described at the end.
+
+            ## What is already covered — do not spend turns on it
+
+            `scripts/check-docs-map.mjs` runs on every PR and already proves,
+            deterministically:
+              - every doc the Docs map links to exists;
+              - every map row still routes (at least one Tracks glob matches a
+                real tracked file);
+              - every file under `docs/**` is mentioned somewhere in the map.
+
+            So do NOT check for missing files, dead links, dead globs, or docs
+            absent from the map. Those are settled. If you find yourself running
+            `ls` to see whether a path exists, you are doing the wrong job.
+
+            ## What you are actually looking for
+
+            One question, applied to the docs themselves: **is this still true?**
+
+            A doc can be perfectly well-linked and still describe a world the code
+            has moved on from. That is invisible in any single PR diff — each
+            change was fine on its own; the accumulation is what drifted. Whole-
+            repo state is the only place it shows up, which is why this job exists.
+
+            Concretely, look for:
+              - A doc describing a mechanism, file layout, or contract that the
+                code no longer implements that way.
+              - A doc naming a function, flag, script, collection or route that no
+                longer exists under that name.
+              - A stated invariant that the code now contradicts.
+              - A doc whose subject was removed entirely, so the doc survives with
+                nothing behind it.
+              - A doc that has become pure restatement of what a header comment
+                next to the code already says. "A doc earns its place by holding
+                what code cannot say" — decisions, gotchas, external setup,
+                contracts. Duplication is what the map exists to prevent.
+
+            Read `CLAUDE.md`'s "Docs map" section for what each doc is supposed to
+            cover, then sample the docs against the code they track. You will not
+            get through everything in your budget — that is expected and fine.
+            Prefer going deep on a few docs over skimming all of them; a shallow
+            pass produces confident, wrong findings.
+
+            Two standing contracts you must respect:
+              - The ui-specs (`docs/design/ui-spec-vXX.md`) are **cumulative, never
+                superseding**. v0.2 holds the foundations and stays in force; each
+                later spec only adds components. Never report an older spec as
+                obsolete, and name the spec that actually owns a component rather
+                than assuming the highest-numbered file.
+              - Never cite a section number from memory — `docs/salt-architecture.md`
+                has been renumbered before. Confirm any number by reading its
+                heading first.
+
+            Hold a high bar. "Could be phrased better", "is a bit thin", and "might
+            want an example" are NOT findings. A finding is a specific statement in
+            a specific doc that is now false, with the evidence from the code that
+            makes it false.
+
+            ## Output
+
+            If you found nothing that meets that bar — which is the expected
+            outcome most weeks — write no file at all and say so. Silence is the
+            correct result.
+
+            Only if you have at least one real finding, write `.doc-sweep/issue.md`:
+              - First line exactly: `TITLE: <one-line summary>`
+              - Then, for each finding: which doc and which statement in it, the
+                file and line of the code that contradicts it, and whether you
+                think the doc or the code should change.
+              - Order by confidence, most certain first.
+
+      # Same never-fail rule as pr-doc-review.yml. Anything other than a clean
+      # "success" means the sweep was cut short, so a silent run this week is not
+      # evidence the docs are healthy — say so in the summary rather than letting
+      # quiet be misread as clean.
+      - name: Report and raise at most one issue
+        if: ${{ steps.dedupe.outputs.run == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EXECUTION_FILE: ${{ steps.sweep.outputs.execution_file }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          subtype=""
+          if [ -n "${EXECUTION_FILE:-}" ] && [ -f "$EXECUTION_FILE" ]; then
+            subtype=$(jq -r 'if type == "array" then . else [.] end | map(select(.type == "result")) | last | .subtype' "$EXECUTION_FILE" 2>/dev/null || true)
+          fi
+          case "$subtype" in '' | null) subtype="unknown" ;; esac
+          echo "Sweep result subtype: $subtype"
+
+          file=".doc-sweep/issue.md"
+          if [ ! -s "$file" ]; then
+            echo "### Weekly Doc Sweep — nothing to report" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$subtype" != "success" ]; then
+              echo "Note: the sweep was cut short (\`$subtype\`), so this silence is **not** evidence the docs are healthy." >> "$GITHUB_STEP_SUMMARY"
+            fi
+            exit 0
+          fi
+
+          title=$(head -n 1 "$file" | sed 's/^TITLE:[[:space:]]*//')
+          [ -n "$title" ] || title="docs: weekly sweep found statements that are no longer true"
+
+          {
+            tail -n +2 "$file"
+            echo ""
+            if [ "$subtype" != "success" ]; then
+              echo "> ⚠️ The sweep was cut short (\`$subtype\`), so these findings are partial."
+              echo ""
+            fi
+            # The marker the dedupe step searches for. Keep it in the body: it is
+            # what stops this job re-raising the same finding every Monday.
+            echo "<!-- weekly-doc-sweep -->"
+            echo "_Raised by [Weekly Doc Sweep](${RUN_URL}). Close this issue and the next sweep will look again._"
+          } > .doc-sweep/issue-body.md
+
+          # Labels are best-effort — losing the finding over a renamed label would
+          # be the worst possible trade.
+          gh issue create --title "$title" --label "documentation" --body-file .doc-sweep/issue-body.md \
+            || gh issue create --title "$title" --body-file .doc-sweep/issue-body.md
