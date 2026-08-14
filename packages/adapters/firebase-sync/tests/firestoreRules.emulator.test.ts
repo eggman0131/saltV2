@@ -854,3 +854,82 @@ describe.skipIf(!reachable)('firestore.rules — guidedPlans (issue #751)', () =
     await assertFails(deleteDoc(doc(db, 'guidedPlans', PLAN_RECIPE)));
   });
 });
+
+describe.skipIf(!reachable)('firestore.rules — formulas (issue #806)', () => {
+  let testEnv: RulesTestEnvironment;
+
+  beforeAll(async () => {
+    testEnv = await initializeTestEnvironment({
+      projectId: PROJECT_ID,
+      firestore: {
+        host: HOST,
+        port: PORT,
+        rules: readFileSync(RULES_PATH, 'utf8'),
+      },
+    });
+  });
+
+  afterAll(async () => {
+    await testEnv?.cleanup();
+  });
+
+  beforeEach(async () => {
+    await testEnv.clearFirestore();
+  });
+
+  const FORMULA_RECIPE = 'recipe-1';
+  // The overnight white tin as baker's percentages against its flour.
+  const formula = () => ({
+    recipeId: FORMULA_RECIPE,
+    schemaVersion: 1,
+    components: [
+      { ingredientId: 'ing-flour', percent: 100, inBasis: true },
+      { ingredientId: 'ing-water', percent: 70, inBasis: false },
+    ],
+    referenceYield: {
+      kind: 'target',
+      shape: { label: '900 g tin loaf', count: 1, unitDoughGrams: 900, bakeLossPercent: 12 },
+    },
+    handlingLossPercent: 0,
+  });
+
+  function userCtx(uid: string) {
+    return testEnv.authenticatedContext(uid, { email: `${uid}@e.org` }).firestore();
+  }
+
+  it('lets any signed-in user write, read and clear a formula', async () => {
+    const db = userCtx('uid-a');
+    await assertSucceeds(setDoc(doc(db, 'formulas', FORMULA_RECIPE), formula()));
+    await assertSucceeds(getDoc(doc(db, 'formulas', FORMULA_RECIPE)));
+    await assertSucceeds(deleteDoc(doc(db, 'formulas', FORMULA_RECIPE)));
+  });
+
+  // The load-bearing property: a formula is FAMILY-SHARED, like the recipe it
+  // describes, and carries no ownerUid. Either member may re-map or correct the
+  // other's — this is deliberately NOT a per-user collection.
+  it('lets another member overwrite a formula someone else wrote', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'formulas', FORMULA_RECIPE), formula());
+    });
+    const db = userCtx('uid-b');
+    await assertSucceeds(setDoc(doc(db, 'formulas', FORMULA_RECIPE), formula()));
+    await assertSucceeds(getDoc(doc(db, 'formulas', FORMULA_RECIPE)));
+  });
+
+  // The deterministic id means the screen subscribes to the formula for a recipe
+  // that has none — on EVERY first visit, since deriving the guess is what the
+  // page opens with. Unlike cookSessions this needs no `resource == null` clause,
+  // because the rule never dereferences resource.data — but the BEHAVIOUR is what
+  // matters, so it is pinned here rather than assumed.
+  it('lets a signed-in user read a formula id that does not exist yet', async () => {
+    await assertSucceeds(getDoc(doc(userCtx('uid-a'), 'formulas', 'recipe-never-mapped')));
+  });
+
+  it('denies an unauthenticated caller entirely', async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, 'formulas', FORMULA_RECIPE)));
+    await assertFails(getDocs(collection(db, 'formulas')));
+    await assertFails(setDoc(doc(db, 'formulas', FORMULA_RECIPE), formula()));
+    await assertFails(deleteDoc(doc(db, 'formulas', FORMULA_RECIPE)));
+  });
+});

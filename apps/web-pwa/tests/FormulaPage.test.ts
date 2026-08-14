@@ -1,0 +1,499 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { render, cleanup, fireEvent, waitFor } from '@testing-library/svelte';
+import type { CanonItem, Recipe } from '@salt/domain';
+import type { Formula } from '@salt/domain/schemas';
+
+// The formula screen (issue #806, phase 1 of epic #778), against a real bread
+// shape: the overnight white tin as Salt holds it, plus a two-flour variant, a
+// count-based line and a range.
+//
+// The five things this page has to get right:
+//
+//   • it derives percentages against a GUESSED flour basis, so 500 g of strong
+//     white flour reads 100% without anyone touching anything;
+//   • moving a second flour into the basis moves EVERY other percentage, at once —
+//     `deriveFormula` is the only maths, so there is one path to get wrong;
+//   • "2 eggs" has no weight the machine can know: it asks, and it can be left out;
+//   • a range is disclosed on screen, because saving is when the range dies;
+//   • the declaration is required, and it is shown next to the recipe's own dough
+//     total so re-anchoring the formula is visible rather than silent.
+//
+// Round-trip is the acceptance bar: what comes back from a stored document is the
+// same basis, the same inclusions, the same percentages and the same shape — with
+// the gram boxes repopulated in the RECIPE's own scale, never a scaled yield.
+
+const { mockRecipes, mockIsLoadingRecipes, mockFormula, mockCanonItems } = vi.hoisted(() => {
+  function makeStore<T>(initial: T) {
+    let value = initial;
+    const subs = new Set<(v: T) => void>();
+    return {
+      subscribe(fn: (v: T) => void) {
+        subs.add(fn);
+        fn(value);
+        return () => {
+          subs.delete(fn);
+        };
+      },
+      _set(v: T) {
+        value = v;
+        subs.forEach((fn) => fn(v));
+      },
+    };
+  }
+  return {
+    mockRecipes: makeStore<readonly Recipe[]>([]),
+    mockIsLoadingRecipes: makeStore<boolean>(false),
+    mockFormula: makeStore<Formula | null | undefined>(undefined),
+    mockCanonItems: makeStore<readonly CanonItem[]>([]),
+  };
+});
+
+vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
+vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
+vi.mock('../src/lib/nav.js', () => ({ goBack: vi.fn() }));
+vi.mock('../src/lib/recipeService.js', () => ({
+  recipes: mockRecipes,
+  isLoadingRecipes: mockIsLoadingRecipes,
+}));
+vi.mock('../src/lib/canonService.js', () => ({ canonItems: mockCanonItems }));
+vi.mock('../src/lib/formulaService.js', () => ({
+  formula: mockFormula,
+  initFormulaSync: vi.fn(() => vi.fn()),
+  saveFormula: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+}));
+
+import FormulaPage from '../src/routes/recipes/FormulaPage.svelte';
+import { saveFormula } from '../src/lib/formulaService.js';
+
+const RECIPE_ID = 'recipe-1';
+const WRITTEN_AT = '2026-08-01T09:00:00.000Z';
+
+type IngredientSpec = {
+  id: string;
+  rawText: string;
+  canonId?: string | null;
+  grams?: number;
+  range?: [number, number];
+  count?: number;
+};
+
+function ingredient(spec: IngredientSpec) {
+  const parsed =
+    spec.count !== undefined
+      ? {
+          // Count-based: no unit at all, which is exactly what gramsFromParsed
+          // refuses to guess a weight for.
+          quantity: { type: 'single' as const, value: spec.count },
+          unit: null,
+          item: spec.rawText,
+          preparation: null,
+          notes: null,
+          displayText: spec.rawText,
+        }
+      : spec.range !== undefined
+        ? {
+            quantity: { type: 'range' as const, min: spec.range[0], max: spec.range[1] },
+            unit: 'ml' as const,
+            item: spec.rawText,
+            preparation: null,
+            notes: null,
+            displayText: spec.rawText,
+          }
+        : spec.grams !== undefined
+          ? {
+              quantity: { type: 'single' as const, value: spec.grams },
+              unit: 'g' as const,
+              item: spec.rawText,
+              preparation: null,
+              notes: null,
+              displayText: spec.rawText,
+            }
+          : null;
+  return {
+    id: spec.id,
+    rawText: spec.rawText,
+    parsed,
+    canonId: spec.canonId ?? null,
+    matchState: 'matched' as const,
+    isOptional: false,
+    firstUsedInStepId: null,
+  };
+}
+
+// The overnight white tin as it exists in Salt today.
+const LOAF: IngredientSpec[] = [
+  { id: 'ing-flour', rawText: '500 g strong white flour', canonId: 'canon-flour', grams: 500 },
+  { id: 'ing-water', rawText: '350 g water', canonId: 'canon-water', grams: 350 },
+  { id: 'ing-salt', rawText: '10 g salt', canonId: 'canon-salt', grams: 10 },
+  { id: 'ing-yeast', rawText: '7 g instant yeast', canonId: 'canon-yeast', grams: 7 },
+];
+
+function makeRecipe(specs: IngredientSpec[] = LOAF, overrides: Partial<Recipe> = {}): Recipe {
+  return {
+    id: RECIPE_ID,
+    schemaVersion: 1,
+    kind: 'recipe',
+    title: 'Overnight white tin',
+    description: null,
+    ingredients: [{ id: 'grp-1', name: null, items: specs.map(ingredient) }],
+    steps: [{ id: 'step-1', text: 'Mix.', timer: null, note: null }],
+    metadata: {
+      servings: null,
+      prepTimeMinutes: null,
+      cookTimeMinutes: null,
+      totalTimeMinutes: null,
+      tags: [],
+    },
+    source: null,
+    notes: null,
+    image: null,
+    createdAt: WRITTEN_AT,
+    updatedAt: WRITTEN_AT,
+    ...overrides,
+  } as Recipe;
+}
+
+function canon(id: string, name: string): CanonItem {
+  return {
+    id,
+    schemaVersion: 5,
+    name,
+    synonyms: [],
+    aisleId: null,
+    thumbnail: null,
+    needs_approval: false,
+    shoppingBehavior: 'needed',
+    updatedAt: WRITTEN_AT,
+  } as CanonItem;
+}
+
+const CANON = [
+  canon('canon-flour', 'strong white flour'),
+  canon('canon-wholemeal', 'wholemeal flour'),
+  canon('canon-water', 'water'),
+  canon('canon-salt', 'salt'),
+  canon('canon-yeast', 'instant yeast'),
+  canon('canon-egg', 'egg'),
+  canon('canon-oil', 'olive oil'),
+];
+
+afterEach(() => {
+  cleanup();
+  document.body.innerHTML = '';
+});
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockIsLoadingRecipes._set(false);
+  mockRecipes._set([makeRecipe()]);
+  mockCanonItems._set(CANON);
+  mockFormula._set(undefined);
+});
+
+function renderPage() {
+  return render(FormulaPage, { props: { params: { id: RECIPE_ID } } });
+}
+
+/** The percentage shown against a row, by the row's ingredient id. */
+function percentsOf(container: HTMLElement): string[] {
+  return [...container.querySelectorAll('[data-testid="formula-row-percent"]')].map(
+    (el) => el.textContent?.trim() ?? '',
+  );
+}
+
+function gramsInputs(container: HTMLElement): HTMLInputElement[] {
+  return [...container.querySelectorAll('input[data-testid="formula-row-grams"]')].map(
+    (el) => el as HTMLInputElement,
+  );
+}
+
+function basisBoxes(container: HTMLElement): HTMLElement[] {
+  return [...container.querySelectorAll('[data-testid="formula-row-basis"] [role="checkbox"]')].map(
+    (el) => el as HTMLElement,
+  );
+}
+
+function includeBoxes(container: HTMLElement): HTMLElement[] {
+  return [
+    ...container.querySelectorAll('[data-testid="formula-row-include"] [role="checkbox"]'),
+  ].map((el) => el as HTMLElement);
+}
+
+describe('FormulaPage — the derive', () => {
+  it('shows nothing but a loader while the formula is still resolving', () => {
+    // `undefined` is NOT `null`. Without the distinction a freshly-derived guess
+    // flashes over the stored formula, one frame before it arrives.
+    const { queryByTestId } = renderPage();
+    expect(queryByTestId('formula-editor')).toBeNull();
+  });
+
+  it('reads 500 g of strong white flour as 100% once we know there is no formula', async () => {
+    const { getByTestId, container } = renderPage();
+    mockFormula._set(null);
+    await waitFor(() => expect(getByTestId('formula-editor')).toBeTruthy());
+    // Flour 100%, water 70%, salt 2%, yeast 1.4% — checkable by hand.
+    expect(percentsOf(container)).toEqual(['100%', '70%', '2%', '1.4%']);
+  });
+
+  it('guesses the flour into the basis and leaves everything else out of it', async () => {
+    const { getByTestId, container } = renderPage();
+    mockFormula._set(null);
+    await waitFor(() => expect(getByTestId('formula-editor')).toBeTruthy());
+    expect(basisBoxes(container).map((b) => b.getAttribute('data-state'))).toEqual([
+      'checked',
+      'unchecked',
+      'unchecked',
+      'unchecked',
+    ]);
+  });
+});
+
+describe('FormulaPage — the basis toggle', () => {
+  it('moves EVERY percentage when a second flour joins the basis', async () => {
+    // 400 g white + 100 g wholemeal + 350 g water. Against the white alone the
+    // water is 87.5%; against both flours it is 70%. Nothing else changed.
+    mockRecipes._set([
+      makeRecipe([
+        {
+          id: 'ing-white',
+          rawText: '400 g strong white flour',
+          canonId: 'canon-flour',
+          grams: 400,
+        },
+        {
+          id: 'ing-wholemeal',
+          rawText: '100 g wholemeal flour',
+          canonId: 'canon-wholemeal',
+          grams: 100,
+        },
+        { id: 'ing-water', rawText: '350 g water', canonId: 'canon-water', grams: 350 },
+      ]),
+    ]);
+    const { getByTestId, container } = renderPage();
+    mockFormula._set(null);
+    await waitFor(() => expect(getByTestId('formula-editor')).toBeTruthy());
+
+    // Both flours are guessed in, so take the wholemeal OUT and put it back — the
+    // toggle is the interaction under test in both directions.
+    await fireEvent.click(basisBoxes(container)[1]!);
+    await waitFor(() => expect(percentsOf(container)[2]).toBe('87.5%'));
+    expect(percentsOf(container)).toEqual(['100%', '25%', '87.5%']);
+
+    await fireEvent.click(basisBoxes(container)[1]!);
+    await waitFor(() => expect(percentsOf(container)[2]).toBe('70%'));
+    expect(percentsOf(container)).toEqual(['80%', '20%', '70%']);
+  });
+});
+
+describe('FormulaPage — what the machine cannot know', () => {
+  it('asks for grams on a count-based line and leaves it out until it gets them', async () => {
+    mockRecipes._set([
+      makeRecipe([...LOAF, { id: 'ing-egg', rawText: '2 eggs', canonId: 'canon-egg', count: 2 }]),
+    ]);
+    const { getByTestId, container } = renderPage();
+    mockFormula._set(null);
+    await waitFor(() => expect(getByTestId('formula-editor')).toBeTruthy());
+
+    // Out of the formula, box empty, and told why.
+    expect(getByTestId('formula-row-needs-grams')).toBeTruthy();
+    expect(gramsInputs(container)[4]!.value).toBe('');
+    expect(percentsOf(container)[4]).toBe('—');
+
+    // fireEvent, never userEvent.type (issue #793).
+    await fireEvent.input(gramsInputs(container)[4]!, { target: { value: '100' } });
+    await waitFor(() => expect(percentsOf(container)[4]).toBe('20%'));
+
+    // And it can be left out again by clearing the box.
+    await fireEvent.input(gramsInputs(container)[4]!, { target: { value: '' } });
+    await waitFor(() => expect(percentsOf(container)[4]).toBe('—'));
+  });
+
+  it('says on screen that a range was taken at its midpoint', async () => {
+    // "2–3 tbsp olive oil", parsed to 30–45 ml. The midpoint is 37.5.
+    mockRecipes._set([
+      makeRecipe([
+        ...LOAF,
+        { id: 'ing-oil', rawText: '2–3 tbsp olive oil', canonId: 'canon-oil', range: [30, 45] },
+      ]),
+    ]);
+    const { getByTestId } = renderPage();
+    mockFormula._set(null);
+    await waitFor(() => expect(getByTestId('formula-editor')).toBeTruthy());
+
+    const disclosure = getByTestId('formula-range-disclosure');
+    expect(disclosure.textContent).toContain('midpoint');
+    expect(disclosure.textContent).toContain('2–3 tbsp olive oil');
+    // The figure itself, not just the word: this is the only moment anyone can
+    // object, and objecting needs the number. 30–45 ml → 37.5 ml at water-like
+    // density → 38 g through the one rounding authority (whole grams at or above
+    // 10 — what a domestic scale can actually weigh).
+    expect(disclosure.textContent).toContain('38 g');
+  });
+
+  it('excludes a weighed ingredient outright and rebases the rest', async () => {
+    const { getByTestId, container } = renderPage();
+    mockFormula._set(null);
+    await waitFor(() => expect(getByTestId('formula-editor')).toBeTruthy());
+
+    await fireEvent.click(includeBoxes(container)[3]!); // the yeast
+    await waitFor(() => expect(percentsOf(container)[3]).toBe('—'));
+    // The basis did not move, so nothing else did either.
+    expect(percentsOf(container).slice(0, 3)).toEqual(['100%', '70%', '2%']);
+  });
+});
+
+describe('FormulaPage — the declaration', () => {
+  it('will not save until the recipe says what it makes', async () => {
+    const { getByTestId } = renderPage();
+    mockFormula._set(null);
+    await waitFor(() => expect(getByTestId('formula-editor')).toBeTruthy());
+
+    expect(getByTestId('formula-save-button').hasAttribute('disabled')).toBe(true);
+    expect(getByTestId('formula-blocked-reason').textContent).toContain('what this makes');
+  });
+
+  it('states the recipe’s own dough total next to the one just declared', async () => {
+    const { getByTestId } = renderPage();
+    mockFormula._set(null);
+    await waitFor(() => expect(getByTestId('formula-editor')).toBeTruthy());
+
+    // 500 + 350 + 10 + 7 = 867 g of dough as written. Neither figure is a scaled
+    // quantity: the first is the sum of the weights already on the page, the
+    // second is what the user just said.
+    expect(getByTestId('formula-dough-total').textContent).toContain('867 g');
+  });
+
+  it('saves the declared shape and the derived percentages', async () => {
+    const { getByTestId, container } = renderPage();
+    mockFormula._set(null);
+    await waitFor(() => expect(getByTestId('formula-editor')).toBeTruthy());
+
+    const select = container.querySelector('[data-testid="formula-shape-select"]')!;
+    await fireEvent.click(select);
+    await waitFor(() => expect(document.querySelector('[role="option"]')).toBeTruthy());
+    const options = [...document.querySelectorAll('[role="option"]')];
+    const tin = options.find((o) => o.textContent?.includes('900 g tin loaf'))!;
+    await fireEvent.click(tin);
+
+    await waitFor(() =>
+      expect(getByTestId('formula-save-button').hasAttribute('disabled')).toBe(false),
+    );
+    await fireEvent.click(getByTestId('formula-save-button'));
+
+    await waitFor(() => expect(saveFormula).toHaveBeenCalledTimes(1));
+    const written = vi.mocked(saveFormula).mock.calls[0]![0];
+    expect(written.recipeId).toBe(RECIPE_ID);
+    expect(written.schemaVersion).toBe(1);
+    expect(written.referenceYield).toEqual({
+      kind: 'target',
+      shape: { label: '900 g tin loaf', count: 1, unitDoughGrams: 900, bakeLossPercent: 12 },
+    });
+    expect(written.components).toEqual([
+      { ingredientId: 'ing-flour', percent: 100, inBasis: true },
+      { ingredientId: 'ing-water', percent: 70, inBasis: false },
+      { ingredientId: 'ing-salt', percent: 2, inBasis: false },
+      { ingredientId: 'ing-yeast', percent: 1.4, inBasis: false },
+    ]);
+  });
+});
+
+describe('FormulaPage — the round trip', () => {
+  // The acceptance bar: a stored formula comes back as the same basis, the same
+  // inclusions, the same percentages and the same shape — with the gram boxes
+  // repopulated in the RECIPE's own scale. The document holds no grams at all, so
+  // this is the anchor recovery doing its job.
+  const STORED: Formula = {
+    recipeId: RECIPE_ID,
+    components: [
+      { ingredientId: 'ing-flour', percent: 100, inBasis: true },
+      { ingredientId: 'ing-water', percent: 70, inBasis: false },
+      // Salt was deliberately left out of this formula: no component, so no row.
+      { ingredientId: 'ing-yeast', percent: 1.4, inBasis: false },
+      // Hand-entered: the recipe says "2 eggs" and knows nothing about 100 g.
+      { ingredientId: 'ing-egg', percent: 20, inBasis: false },
+    ],
+    referenceYield: {
+      kind: 'target',
+      shape: { label: '120 g roll', count: 8, unitDoughGrams: 120, bakeLossPercent: 10 },
+    },
+    handlingLossPercent: 0,
+    schemaVersion: 1,
+  };
+
+  beforeEach(() => {
+    mockRecipes._set([
+      makeRecipe([...LOAF, { id: 'ing-egg', rawText: '2 eggs', canonId: 'canon-egg', count: 2 }]),
+    ]);
+  });
+
+  it('restores the percentages, the basis, the exclusions and the hand-typed grams', async () => {
+    const { getByTestId, container } = renderPage();
+    mockFormula._set(STORED);
+    await waitFor(() => expect(getByTestId('formula-editor')).toBeTruthy());
+
+    expect(percentsOf(container)).toEqual(['100%', '70%', '—', '1.4%', '20%']);
+    expect(basisBoxes(container).map((b) => b.getAttribute('data-state'))).toEqual([
+      'checked',
+      'unchecked',
+      'unchecked',
+      'unchecked',
+      'unchecked',
+    ]);
+    // Recovered against the recipe's OWN scale — 500 g of flour, not the 960 g of
+    // dough the stored shape declares. No surface in this phase shows a scaled
+    // quantity.
+    expect(gramsInputs(container).map((i) => i.value)).toEqual([
+      '500',
+      '350',
+      '10',
+      '7',
+      '100', // 20% of a 500 g basis — the hand-typed egg weight, back again
+    ]);
+  });
+
+  it('restores the declared shape and its count', async () => {
+    const { getByTestId } = renderPage();
+    mockFormula._set(STORED);
+    await waitFor(() => expect(getByTestId('formula-editor')).toBeTruthy());
+
+    expect((getByTestId('formula-count') as HTMLInputElement).value).toBe('8');
+    expect(getByTestId('formula-shape-select').textContent).toContain('120 g roll');
+  });
+
+  it('re-saves the stored formula unchanged', async () => {
+    // The strongest form of the bar: reload, touch nothing, save — and the
+    // document that goes back is the one that came out.
+    const { getByTestId } = renderPage();
+    mockFormula._set(STORED);
+    await waitFor(() => expect(getByTestId('formula-editor')).toBeTruthy());
+
+    await fireEvent.click(getByTestId('formula-save-button'));
+    await waitFor(() => expect(saveFormula).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(saveFormula).mock.calls[0]![0]).toEqual(STORED);
+  });
+
+  it('does not blow away unsaved work when a snapshot lands', async () => {
+    const { getByTestId, container } = renderPage();
+    mockFormula._set(STORED);
+    await waitFor(() => expect(getByTestId('formula-editor')).toBeTruthy());
+
+    await fireEvent.click(basisBoxes(container)[1]!); // water into the basis
+    // Basis is now 850 g: flour 58.8%, water 41.2%.
+    await waitFor(() => expect(percentsOf(container)[0]).toBe('58.8%'));
+
+    // Another member saves the original over the top. LWW settles the document;
+    // the DRAFT is not touched while it holds edits.
+    mockFormula._set({ ...STORED });
+    await waitFor(() => expect(percentsOf(container)[1]).toBe('41.2%'));
+  });
+});
+
+describe('FormulaPage — what it refuses', () => {
+  it('offers nothing to weigh on an entry that takes no ingredients', async () => {
+    mockRecipes._set([makeRecipe([], { kind: 'outing', title: 'Friday takeaway' })]);
+    const { queryByTestId, getByText } = renderPage();
+    mockFormula._set(null);
+    await waitFor(() => expect(getByText('Nothing to weigh here')).toBeTruthy());
+    expect(queryByTestId('formula-editor')).toBeNull();
+  });
+});

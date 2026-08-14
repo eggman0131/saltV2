@@ -10,9 +10,14 @@ import { z } from 'zod';
 // formula's reference yield" (docs/formulas-schedules-batches.md). Storing both
 // would let them drift.
 //
-// Nothing writes this document yet: phase 00 is headless and there is no
-// `formulas/{recipeId}` collection. The schema lands now because the pure
-// functions in `packages/domain/src/formula/` are typed against it.
+// Stored at `formulas/{recipeId}` since issue #806 (family-shared, deterministic
+// id, no ownerUid), written by exactly one path — `formulaService.saveFormula` in
+// the PWA. The SHAPE is unchanged from #782, which landed it headless because the
+// pure functions in `packages/domain/src/formula/` are typed against it.
+//
+// Deliberately no `createdAt`/`updatedAt`: there is no ordering token here and
+// nothing needs one. Document-level LWW is the whole conflict story, exactly as
+// it is for `mealPlans/{startDate}`.
 
 // How an ml figure became grams, recorded on the component that needed the
 // conversion rather than looked up per environment. Named classes (not a raw

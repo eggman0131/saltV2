@@ -1,8 +1,13 @@
 # Formulas, schedules and batches
 
-**Status: architecture agreed, nothing built.** Epic #778. This document is
-the contract the phases are built against; it is not a description of code that
-exists. Read it before designing any part of bread scaling, ferments or cures.
+**Status: phase 00 and the first half of phase 01 are built; everything else is
+still contract.** Epic #778. Built so far: the pure `formula` module (#782) and,
+on top of it, `formulas/{recipeId}` with its rules, adapter, service and mapping
+screen at `/recipes/:id/formula` (#806 phase 1 — no AI, no process, no scaling,
+and no entry point in the app; the route is reachable by URL only). Everything
+below about process, batches, cultures and the two AI flows is still the contract
+the remaining phases are built against, not a description of code that exists.
+Read it before designing any part of bread scaling, ferments or cures.
 
 Three hobbies — bread, fermented vegetables, cured meats — look like three
 features and are one. All three express quantities as a **percentage of a

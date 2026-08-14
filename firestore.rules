@@ -136,6 +136,21 @@ service cloud.firestore {
     match /guidedPlans/{recipeId} {
       allow read, write: if request.auth != null;
     }
+    // Formulas (issue #806, epic #778) — one doc per recipe at
+    // formulas/{recipeId}, holding the composition as baker's percentages against
+    // a declared basis. FAMILY-SHARED like the recipe it describes and like the
+    // guidedPlans block above: a formula is a reading of a family-shared dish, not
+    // personal state, so it carries NO ownerUid and is not a per-user collection.
+    // Either member may map, re-map or correct the other's formula.
+    //
+    // Follows guidedPlans, NOT cookSessions: the deterministic id needs no
+    // `resource == null` clause because this rule never dereferences
+    // `resource.data`, so reading a formula that does not exist yet — which the
+    // formula screen does on every first visit — is evaluated and allowed on the
+    // strength of `request.auth` alone.
+    match /formulas/{recipeId} {
+      allow read, write: if request.auth != null;
+    }
     // Development settings (issue #238) — per-environment operator switches
     // (e.g. the canon-icon generation kill-switch). Any signed-in user may read
     // (the CF trigger uses the Admin SDK and bypasses rules anyway); only admins

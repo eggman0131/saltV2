@@ -377,6 +377,8 @@ export {
   amountFromQuantity,
   gramsFromParsed,
   deriveFormula,
+  BASIS_KEYWORDS,
+  guessBasisIngredientIds,
   solveFormula,
   BASIS_PERCENT_TOLERANCE,
   UNIT_SHAPE_PRESETS,
@@ -386,6 +388,7 @@ export {
   basisYield,
 } from './formula/index.js';
 export type {
+  BasisGuessEntry,
   DeriveFormulaInput,
   DeriveFormulaResult,
   FormulaComponentInput,
