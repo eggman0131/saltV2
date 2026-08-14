@@ -131,6 +131,11 @@ export const ErrorCode = {
   // full-document replace under LWW, so it would blow away the week's other
   // days (issue #639).
   WEEK_NOT_LOADED: 'WEEK_NOT_LOADED',
+  // A run that could not be frozen (issue #812): the recipe has no stages to run,
+  // the formula will not resolve into weights, or the time asked for is not a
+  // time. Ordinary flow — somebody typed the percentages — so it crosses as a
+  // ValidationError and is deliberately not reported.
+  BATCH_NOT_STARTABLE: 'BATCH_NOT_STARTABLE',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

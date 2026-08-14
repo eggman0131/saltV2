@@ -1,25 +1,37 @@
 # Formulas, schedules and batches
 
-**Status: phase 00 and most of phase 01 are built; everything else is still
-contract.** Epic #778. Built so far: the pure `formula` module (#782); on top of
-it, `formulas/{recipeId}` with its rules, adapter, service and mapping screen at
-`/recipes/:id/formula` (#806 phase 1); and the process half of that screen —
-`schemas/process.ts`, the pure `process` module, the `extractProcessStages`
-callable, and stage review on the formula screen (#806 phase 2). Still no
-scaling, no batches, and **no entry point in the app**: the route is reachable by
-URL only.
+**Status: phases 00 and 01 are built, and phase 02 is landing; ferments, cures
+and cultures are still contract.** Epic #778. Built so far: the pure `formula`
+module (#782); on top of it, `formulas/{recipeId}` with its rules, adapter,
+service and mapping screen at `/recipes/:id/formula` (#806 phase 1); the process
+half of that screen — `schemas/process.ts`, the pure `process` module, the
+`extractProcessStages` callable, and stage review on the formula screen (#806
+phase 2); and, from #812 phase 1, **scaling and the batch**: `resolveSchedule`
+(bidirectional, in `process/`), the `batch` module, `batches/{batchId}` with its
+rules and adapter, `batchService` as the single write path, the in-flight surface
+at `/batches`, and **the entry point the feature had been missing** — "Bake a
+batch" and a formula link on the recipe page, both gated on `formula != null`.
 
-Two things about what `process/` holds today, because they are deliberate
-absences rather than gaps: it has **ordering and total duration only** — no
-schedule, no clock, no `diffProcess`, all of which belong with the batch in phase
-02 — and a stage carries **no additions or removals** yet, because nothing
-produces or consumes them. What this doc requires is that the shape not preclude
-them, and a flat ordered array of stages with stable ids on an optional field of a
-greenfield collection does not. Phases 03/04 own that addition.
+A formula screen for a recipe that has never had one is still reachable by URL
+only, and that is deliberate: an "add a formula" item on every recipe would put
+baker's percentages in front of every weeknight curry to serve the three loaves.
 
-Everything below about batches, cultures and `proposeSchedule` is still the
-contract the remaining phases are built against, not a description of code that
-exists. Read it before designing any part of bread scaling, ferments or cures.
+One thing about what `process/` holds today is a deliberate absence rather than a
+gap: a stage carries **no additions or removals** yet, because nothing produces or
+consumes them. What this doc requires is that the shape not preclude them, and a
+flat ordered array of stages with stable ids on an optional field of a greenfield
+collection does not. Phases 03/04 own that addition.
+
+From #812 phase 2, the **proposal tier exists too**: `proposeSchedule` (the
+`pro`-tier callable that restructures a process to land at a target time, emitting
+neither timestamps nor grams), the pure `diffProcess` behind the review, and
+`withComponentPercentScaled` — the generic seam that turns the flow's leavening
+opinion into a percentage through the bounds rail `solveFormula` has enforced
+since #782.
+
+Everything below about cultures, ferments and cures is still the contract the
+remaining phases are built against, not a description of code that exists. Read it
+before designing any part of ferments or cures.
 
 Three hobbies — bread, fermented vegetables, cured meats — look like three
 features and are one. All three express quantities as a **percentage of a
@@ -354,12 +366,23 @@ them.
 - **Who writes the resolved ingredient list** — the client on formula save (one
   owner, simple) or an `onFormulaWritten` trigger (consistent, but contends with
   client `setDoc` under LWW). Leaning client.
-- **Observations: array field or subcollection.** Append-only over weeks, and two
-  people logging a weight on the same day must not clobber each other under
-  document-level LWW. Leaning subcollection — but it would be Salt's first.
-- **The Cloud Tasks scheduling horizon.** A 90-day dry may exceed the maximum
-  schedule-ahead time, in which case reminders need a re-enqueue chain or a
-  scheduled sweep. Cheap to check now, painful at phase 04.
+- ~~**Observations: array field or subcollection.**~~ **SETTLED — subcollection**
+  (issue #812, the observation log). Append-only over weeks, and two people logging
+  a weight on the same day must not clobber each other under document-level LWW, so
+  an array field would have meant the second phone to sync erasing the first
+  partner's reading. `batches/{batchId}/observations/{id}`, family-shared, ordered
+  by when a reading was **observed** rather than when it arrived — Salt's first
+  purpose-built subcollection, following `shoppingLists/{listId}/items`. There is
+  deliberately no domain producer for the append: an entry is its own document, so
+  "add to the log" is a write, not a decision.
+- ~~**The Cloud Tasks scheduling horizon.**~~ **ANSWERED — 30 days** (issue #812,
+  the reminder path). Cloud Tasks accepts a `scheduleTime` at most 30 days ahead.
+  Bread's eighteen hours is nowhere near it, so nothing in phases 00–02 was
+  affected — but the guard was added anyway (`CLOUD_TASKS_HORIZON_DAYS` in
+  `apps/cloud-functions/src/triggers/batchStageTypes.ts`), and a stage beyond the
+  horizon is skipped with a logged warning rather than silently dropped. A 90-day
+  dry **will** exceed it, so phase 04 still owes a re-enqueue chain or a scheduled
+  sweep — it now finds a guard and a warning rather than a surprise.
 - **Does a culture reuse `process`.** A maintenance rhythm is a repeating single
   stage, so it either reuses the model or is a simpler thing of its own. Decide
   when cultures land.

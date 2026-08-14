@@ -31,4 +31,16 @@ describe('navItems', () => {
     expect(navItems.map((i) => i.id)).not.toContain('chat');
     expect(overflowNavItems.map((i) => i.id)).toContain('chat');
   });
+
+  it('puts the in-flight surface in the overflow, not in the primary four', () => {
+    // Issue #812. A run is something you glance at once a morning, and the primary
+    // four are full — a fifth tab is a spec change, not an addition. It is also
+    // deliberately NOT folded into "Kitchen": batches are family-shared, and that
+    // tab is a per-user projection.
+    expect(overflowNavItems.find((i) => i.id === 'batches')).toMatchObject({
+      label: 'Batches',
+      href: '#/batches',
+    });
+    expect(navItems.map((i) => i.id)).not.toContain('batches');
+  });
 });

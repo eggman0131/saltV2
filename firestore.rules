@@ -151,6 +151,34 @@ service cloud.firestore {
     match /formulas/{recipeId} {
       allow read, write: if request.auth != null;
     }
+    // Batches (issue #812, epic #778) — one doc per RUN at batches/{batchId},
+    // holding the quantities, totals and schedule frozen at the moment it started.
+    // FAMILY-SHARED, and here that is not merely consistency: either partner may
+    // glance at the crock, mark the prove done and take the loaf out. The id is a
+    // random UUID rather than a recipe id — a recipe has many runs — so this is a
+    // collection the in-flight surface queries, not a doc it looks up.
+    //
+    // Follows guidedPlans and formulas, NOT cookSessions: no ownerUid, no pinning,
+    // and no `resource == null` clause, because this rule never dereferences
+    // `resource.data`.
+    //
+    // The observation log is a SUBCOLLECTION under the run, and the nesting is what
+    // the rule mirrors: shoppingLists/{listId}/items above is the only precedent,
+    // and it gates the child exactly as it gates the parent. Same signed-in gate
+    // here, and for the same family-shared reason — one of them weighs the coppa,
+    // the other reads what it weighed. A subcollection rather than an array field
+    // because the log is append-only over weeks and two people logging a weight on
+    // the same day must not clobber each other under document-level LWW.
+    //
+    // Photos are NOT written from here: the client sends bytes to the
+    // setObservationImageUpload callable and the Admin SDK writes the object, so
+    // storage.rules stay `write: if false` (see storage.rules).
+    match /batches/{batchId} {
+      allow read, write: if request.auth != null;
+      match /observations/{observationId} {
+        allow read, write: if request.auth != null;
+      }
+    }
     // Development settings (issue #238) — per-environment operator switches
     // (e.g. the canon-icon generation kill-switch). Any signed-in user may read
     // (the CF trigger uses the Admin SDK and bypasses rules anyway); only admins
@@ -267,10 +295,16 @@ service cloud.firestore {
         && request.resource.data.ownerUid == resource.data.ownerUid;
     }
     // Server-owned exactly-once delivery ledger (issue #544). Written and read
-    // only by the onCookTimerDispatch sender (Admin SDK) to dedupe Cloud Tasks
-    // retries + duplicate enqueues. Deliberately a SEPARATE doc from cookSessions
-    // (never a write-back onto the client-owned session — full-doc setDoc LWW
-    // would clobber it). No client ever touches it.
+    // only by the Admin SDK senders, to dedupe Cloud Tasks retries + duplicate
+    // enqueues. Deliberately a SEPARATE doc from whatever caused the send (never
+    // a write-back onto a client-owned document — full-doc setDoc LWW would
+    // clobber it). No client ever touches it.
+    //
+    // TWO PRODUCERS, ONE COLLECTION (issue #812): onCookTimerDispatch keys
+    // `${sessionId}_${timerId}_${endsAtMs}`, onBatchStageDispatch keys
+    // `batch_${batchId}_${stageId}_${plannedStartAtMs}`. Same rules, same kind,
+    // same purpose — a twin collection would be duplication, so this block covers
+    // both and needs no change to do it.
     match /timerDeliveries/{deliveryId} {
       allow read, write: if false;
     }

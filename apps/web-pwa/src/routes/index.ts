@@ -76,10 +76,21 @@ export const routes: RouteDefinition = new Map<
   // work, not a hands-full mode — so it gets no entry in ./fullViewport.ts.
   ['/recipes/:id/guided', lazy(() => import('./recipes/GuidedPlanPage.svelte'))],
   // The formula screen (issue #806, phase 1 of epic #778). Also an ordinary shell
-  // route — desk work, once a month — so no entry in ./fullViewport.ts. Reachable
-  // BY URL ONLY in this phase: the recipe page offers nothing, on purpose.
+  // route — desk work, once a month — so no entry in ./fullViewport.ts. It shipped
+  // reachable BY URL ONLY; #812 gave it an entry point on the recipe page, but only
+  // for a recipe that ALREADY HAS a formula. Typing the URL is still how the first
+  // one gets made — an "add a formula" item on every recipe would put baker's
+  // percentages in front of every weeknight curry to serve the three loaves.
   ['/recipes/:id/formula', lazy(() => import('./recipes/FormulaPage.svelte'))],
   ['/recipes/:id', lazy(() => import('./recipes/RecipeViewPage.svelte'))],
+  // Batches (issue #812, phase 1 of epic #778) — the in-flight surface and one
+  // run's own screen. Static before parameterised, as everything above. ORDINARY
+  // shell routes, so no entry in ./fullViewport.ts: a batch is desk work at the
+  // bench, and the list is a thing you glance at with the nav still under it.
+  // Lazy-loaded (#411) on the same argument as the recipe module — a
+  // module-specific screen most sessions never open.
+  ['/batches', lazy(() => import('./batches/BatchListPage.svelte'))],
+  ['/batches/:id', lazy(() => import('./batches/BatchDetailPage.svelte'))],
   ['/settings', SettingsPage],
   // Operator area (issues #155, #157). All routes are guarded client-side by
   // AdminGuard; the real boundary is server-side (rules + CF admin checks).

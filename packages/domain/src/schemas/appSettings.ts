@@ -47,9 +47,17 @@ export const AI_FLOW_ROLES = {
   // the timers already parsed onto it is MECHANICAL — no judgement, the answer is
   // in the words in front of it — which is the same posture as
   // parseRecipeIngredients. The epic's contract names this the "extraction (cheap
-  // tier)" half deliberately; the "proposal (better tier)" half is a separate flow
-  // that does not exist yet.
+  // tier)" half deliberately; the "proposal (better tier)" half is the separate
+  // flow immediately below.
   extractProcessStages: 'lite',
+  // `pro`, and it is the other half of the pair above (issue #812, epic #778).
+  // The epic's contract says "two flows, two tiers; not one flow doing both":
+  // extraction is transcription, this is JUDGEMENT — restructuring a process so a
+  // loaf lands at 07:30 without anyone getting up at 03:00, and having an opinion
+  // about what a longer, colder ferment does to the yeast. The spike measured it
+  // on the pro tier at 65–108 s uncapped, which is why this flow carries its own
+  // timeout constants rather than the house text-flow values.
+  proposeSchedule: 'pro',
   // `pro`, deliberately (issue #751). Cue quality IS the feature: a wrong sensory
   // cue tells the cook to wait for something that will never happen, which is
   // worse than no cue at all — and the volume is a handful of recipes ever, so the

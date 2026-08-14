@@ -13,6 +13,7 @@ import {
   PopulateEquipmentEntryWireInputSchema,
   RefreshWeatherForecastWireInputSchema,
   PHOTO_IMPORT_TIMEOUT_SECONDS,
+  PROPOSE_SCHEDULE_TIMEOUT_SECONDS,
 } from '@salt/domain/schemas';
 import { enableFirebaseTelemetry } from '@genkit-ai/firebase';
 import {
@@ -49,6 +50,7 @@ import {
 import { generateChatTitleFlow } from './flows/generateChatTitle.js';
 import { generateGuidedPlanFlow } from './flows/generateGuidedPlan.js';
 import { extractProcessStagesFlow } from './flows/extractProcessStages.js';
+import { proposeScheduleFlow } from './flows/proposeSchedule.js';
 import { onShoppingListItemWrite } from './triggers/onShoppingListItemWrite.js';
 import { onCanonItemWritten } from './triggers/onCanonItemWritten.js';
 import { onRecipeWritten } from './triggers/onRecipeWritten.js';
@@ -371,6 +373,36 @@ export const extractProcessStages = onCallGenkit(
   extractProcessStagesFlow,
 );
 
+// The schedule (issue #812, phase 2 of epic #778): read the recipe and its formula
+// → return the process RESTRUCTURED to land at the time asked for, plus the words
+// explaining what moved and why. Ids and a wall clock in, stages and prose out — no
+// timestamps and no weights, because `resolveSchedule` computes the clock and
+// `solveFormula` computes the grams. PERSISTS NOTHING: the proposal is reviewed as
+// a diff and the user's Start is what freezes a batch.
+//
+// Plain onCallGenkit, same as its sibling above: one call from one tap, nothing to
+// unify across invocations, so `makeTracedCallable` would buy only a wire envelope
+// to maintain (apps/cloud-functions/CLAUDE.md, "New callable flows that don't need
+// this nesting can use onCallGenkit").
+//
+// THE THREE TIMEOUTS ARE ONE SET OF CONSTANTS, in @salt/domain/schemas, shared with
+// the firebase-sync wrapper: AI budget 150 s < callable client 170 s < this
+// function 180 s. The spike measured this flow at 65–108 s uncapped, so the
+// callable client's 70 s default would abandon a perfectly healthy call — which is
+// why the wrapper passes an explicit timeout and why these cannot be allowed to
+// drift apart.
+//
+// `pro` (see the flow): judgement, not transcription.
+export const proposeSchedule = onCallGenkit(
+  {
+    ...APP_CHECK_ENFORCEMENT,
+    secrets: [geminiApiKey, posthogApiKey],
+    authPolicy: isSignedIn(),
+    timeoutSeconds: PROPOSE_SCHEDULE_TIMEOUT_SECONDS,
+  },
+  proposeScheduleFlow,
+);
+
 // SSRF-hardened URL import (recipe URL import epic). A custom onError maps the
 // flow's UrlImportError taxonomy to specific HttpsError codes with user-safe copy
 // (no internal SSRF detail leaked). The flow does outbound DNS + a network fetch
@@ -569,9 +601,21 @@ export { onCanonItemWritten };
 export { onRecipeWritten };
 export { onCookTimerWrite } from './triggers/onCookTimerWrite.js';
 export { onCookTimerDispatch } from './triggers/onCookTimerDispatch.js';
+// Batch stage reminders (issue #812) — the cook-timer Cloud Tasks pair, mirrored
+// for a run that lasts hours or weeks. NOTE for deploys: `onBatchStageDispatch` is
+// a NEW task queue, so the deployer service account needs the Cloud Tasks
+// permissions before it will provision (see the cook timer's own history).
+export { onBatchWritten } from './triggers/onBatchWritten.js';
+export { onBatchStageDispatch } from './triggers/onBatchStageDispatch.js';
 export { regenerateCanonIcon } from './callables/regenerateCanonIcon.js';
 export { regenerateRecipeImage } from './callables/regenerateRecipeImage.js';
 export { setRecipeImageUpload } from './callables/setRecipeImageUpload.js';
+// The observation photo (issue #812, phase 4) — the same auth-gated upload one
+// level deeper, writing `batch-images/{batchId}/{observationId}.webp` and stamping
+// the URL onto the observation with a partial update. NOTE for deploys: it writes a
+// NEW Storage prefix, which storage.rules must be deployed for before the log will
+// render a photo.
+export { setObservationImageUpload } from './callables/setObservationImageUpload.js';
 export { listPushoverDevices } from './callables/listPushoverDevices.js';
 export { beforeMemberCreated } from './auth/beforeMemberCreated.js';
 export { sweepOrphanedStorage } from './maintenance/sweepOrphanedStorage.js';

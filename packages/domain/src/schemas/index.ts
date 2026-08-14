@@ -110,6 +110,11 @@ export type { RegenerateRecipeImageInput } from './regenerateRecipeImage.js';
 export { SetRecipeImageUploadInputSchema } from './setRecipeImageUpload.js';
 export type { SetRecipeImageUploadInput } from './setRecipeImageUpload.js';
 
+// The observation photo (issue #812, phase 4) — the same shape one level deeper:
+// two ids, because the object lives at `batch-images/{batchId}/{observationId}`.
+export { SetObservationImageUploadInputSchema } from './setObservationImageUpload.js';
+export type { SetObservationImageUploadInput } from './setObservationImageUpload.js';
+
 export { CanonItemSchema, PendingCanonChangeSchema } from './canonItem.js';
 export type { CanonItemDoc, PendingCanonChangeDoc } from './canonItem.js';
 
@@ -408,3 +413,85 @@ export type {
   ExtractProcessStagesAIOutput,
   ExtractProcessStagesOutput,
 } from './process.js';
+
+// proposeSchedule (issue #812, phase 2) — the PROPOSAL tier. Restructures a
+// formula's reference process to land at a target time and says why, in words. It
+// emits NO timestamps and NO grams: `resolveSchedule` computes the clock and
+// `solveFormula` computes the weights, and the leavening opinion crosses as a
+// multiplicative factor rather than a number. The three timeout constants are
+// shared with the CF and the callable wrapper so they cannot drift.
+export {
+  PROPOSE_SCHEDULE_TIMEOUT_SECONDS,
+  PROPOSE_SCHEDULE_CLIENT_TIMEOUT_MS,
+  PROPOSE_SCHEDULE_AI_TIMEOUT_MS,
+  DEFAULT_QUIET_HOURS,
+  QuietHoursSchema,
+  ProposeScheduleInputSchema,
+  ProposedStageSchema,
+  ComponentAdjustmentSchema,
+  ProposeScheduleAIOutputSchema,
+  ProposeScheduleOutputSchema,
+} from './proposeSchedule.js';
+export type {
+  QuietHours,
+  ProposeScheduleInput,
+  ProposedStage,
+  ComponentAdjustment,
+  ProposeScheduleAIOutput,
+  ProposeScheduleOutput,
+} from './proposeSchedule.js';
+
+// Process diff (issue #812, phase 2) — the render contract for reviewing a
+// proposed restructure. NEVER persisted, so there is no back-compat surface, and
+// there is deliberately no `split`: one stage becoming two is a removal plus two
+// additions. `recipeDiff` is the precedent.
+export {
+  StageTextChangeSchema,
+  StageNullableTextChangeSchema,
+  StageKindChangeSchema,
+  StageEnvironmentChangeSchema,
+  StageDurationChangeSchema,
+  ProcessStageDiffEntrySchema,
+  ProcessStageChangeSchema,
+  ProcessDiffSchema,
+} from './processDiff.js';
+export type {
+  StageTextChange,
+  StageNullableTextChange,
+  StageKindChange,
+  StageEnvironmentChange,
+  StageDurationChange,
+  ProcessStageDiffEntry,
+  ProcessStageChange,
+  ProcessDiff,
+} from './processDiff.js';
+
+// Batch (issue #812, phase 1) — ONE RUN at `batches/{batchId}`, family-shared with
+// a random id. Everything on it is FROZEN at start: resolved grams AND their
+// labels, the resolved totals, and the resolved schedule. Read batch.ts's header
+// before adding a field — the reason the document repeats what the recipe and the
+// formula already say is the whole point of it.
+export {
+  BatchStateSchema,
+  BatchQuantitySchema,
+  BatchUnitsSchema,
+  BatchTotalsSchema,
+  BatchStageSchema,
+  BatchSchema,
+  // The observation log (phase 4) — a SIBLING schema, because observations are a
+  // subcollection under the run rather than a field on it: append-only over weeks,
+  // and two people logging a weight on the same day must not clobber each other
+  // under document-level LWW.
+  BatchObservationImageSchema,
+  BatchObservationSchema,
+} from './batch.js';
+export type {
+  BatchState,
+  BatchQuantityDoc,
+  BatchUnitsDoc,
+  BatchTotalsDoc,
+  BatchStageDoc,
+  BatchDoc,
+  BatchObservationImage,
+  BatchObservationDoc,
+} from './batch.js';

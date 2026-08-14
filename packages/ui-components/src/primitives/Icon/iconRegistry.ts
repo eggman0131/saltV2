@@ -38,6 +38,7 @@ import ChevronRight from '@lucide/svelte/icons/chevron-right';
 import ChevronUp from '@lucide/svelte/icons/chevron-up';
 import Circle from '@lucide/svelte/icons/circle';
 import CircleCheck from '@lucide/svelte/icons/circle-check';
+import CircleSlash from '@lucide/svelte/icons/circle-slash';
 import CircleX from '@lucide/svelte/icons/circle-x';
 import Clipboard from '@lucide/svelte/icons/clipboard';
 import Clock from '@lucide/svelte/icons/clock';
@@ -66,6 +67,7 @@ import Martini from '@lucide/svelte/icons/martini';
 import Merge from '@lucide/svelte/icons/merge';
 import Minus from '@lucide/svelte/icons/minus';
 import Pencil from '@lucide/svelte/icons/pencil';
+import Percent from '@lucide/svelte/icons/percent';
 import Plus from '@lucide/svelte/icons/plus';
 import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 import Search from '@lucide/svelte/icons/search';
@@ -78,6 +80,7 @@ import Sparkles from '@lucide/svelte/icons/sparkles';
 import Split from '@lucide/svelte/icons/split';
 import SquarePlus from '@lucide/svelte/icons/square-plus';
 import StickyNote from '@lucide/svelte/icons/sticky-note';
+import Thermometer from '@lucide/svelte/icons/thermometer';
 import Timer from '@lucide/svelte/icons/timer';
 import Trash2 from '@lucide/svelte/icons/trash-2';
 import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
@@ -110,6 +113,7 @@ export const iconRegistry = {
   ChevronUp,
   Circle,
   CircleCheck,
+  CircleSlash,
   CircleX,
   Clipboard,
   Clock,
@@ -138,6 +142,7 @@ export const iconRegistry = {
   Merge,
   Minus,
   Pencil,
+  Percent,
   Plus,
   RefreshCw,
   Search,
@@ -150,6 +155,7 @@ export const iconRegistry = {
   Split,
   SquarePlus,
   StickyNote,
+  Thermometer,
   Timer,
   Trash2,
   TriangleAlert,
