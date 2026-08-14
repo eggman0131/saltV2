@@ -373,10 +373,12 @@ jobs:
           set -euo pipefail
           git config user.name "${APP_SLUG}[bot]"
           git config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
-          # --no-verify: `pnpm install` installs husky's hooks in other jobs and
-          # the hook set is checked in, so a plain commit could fire lint-staged
-          # + typecheck + dependency-cruiser here. Doc review must never gate on
-          # those; ci.yml runs them as required checks on the pushed commit.
+          # --no-verify: this job deliberately never runs `pnpm install`, so
+          # husky has not pointed core.hooksPath at the checked-in .husky/ and
+          # nothing should fire — but if that ever changes, a plain commit would
+          # run lint-staged + typecheck + depcruise here and could ABORT the doc
+          # commit over a failure elsewhere in the PR. Doc review must never gate
+          # on those; ci.yml runs them as required checks on the pushed commit.
           git commit --no-verify -m "docs: update documentation for this PR's changes"
           # No --force: if the branch advanced meanwhile the push is rejected,
           # and the comment step below is skipped with it, so no false claim.
