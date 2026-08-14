@@ -127,6 +127,91 @@ describe('mergeAisles', () => {
     expect(canonStore.items.find((i) => i.id === 'c2')?.aisleId).toBe('target');
   });
 
+  // Issue #193, Phase 2: the flag the user caused themselves. Without this the
+  // item sits in the review queue looking like an AI decision.
+  describe('pending change record', () => {
+    it("records aisle_cleared with origin 'aisle_merge' on the unassign path", async () => {
+      const aisleStore = makeAisleStore(AISLES);
+      const canonStore = makeCanonStore([canonItem({ id: 'c1', name: 'Apple', aisleId: 'src1' })]);
+      await mergeAisles(
+        {
+          targetId: 'target',
+          sourceIds: ['src1'],
+          perItemChoices: [{ canonItemId: 'c1', choice: 'unassign' }],
+        },
+        aisleStore,
+        canonStore,
+      );
+      expect(canonStore.items.find((i) => i.id === 'c1')?.pendingChanges).toEqual([
+        { kind: 'aisle_cleared', fromAisleId: 'src1', origin: 'aisle_merge' },
+      ]);
+    });
+
+    it("records nothing on the 'move' path — a filed item needs no review", async () => {
+      const aisleStore = makeAisleStore(AISLES);
+      const canonStore = makeCanonStore([canonItem({ id: 'c1', name: 'Apple', aisleId: 'src1' })]);
+      await mergeAisles(
+        {
+          targetId: 'target',
+          sourceIds: ['src1'],
+          perItemChoices: [{ canonItemId: 'c1', choice: 'move' }],
+        },
+        aisleStore,
+        canonStore,
+      );
+      expect(canonStore.items.find((i) => i.id === 'c1')?.pendingChanges).toBeUndefined();
+    });
+
+    it("records on the default (no choice given) path too — it is an 'unassign'", async () => {
+      const aisleStore = makeAisleStore(AISLES);
+      const canonStore = makeCanonStore([canonItem({ id: 'c1', name: 'Apple', aisleId: 'src2' })]);
+      await mergeAisles(
+        { targetId: 'target', sourceIds: ['src2'], perItemChoices: [] },
+        aisleStore,
+        canonStore,
+      );
+      expect(canonStore.items.find((i) => i.id === 'c1')?.pendingChanges).toEqual([
+        { kind: 'aisle_cleared', fromAisleId: 'src2', origin: 'aisle_merge' },
+      ]);
+    });
+
+    it('appends to changes already waiting, most recent last', async () => {
+      const aisleStore = makeAisleStore(AISLES);
+      const canonStore = makeCanonStore([
+        canonItem({
+          id: 'c1',
+          name: 'Apple',
+          aisleId: 'src1',
+          needs_approval: true,
+          pendingChanges: [{ kind: 'synonym_added', synonym: 'braeburn' }],
+        }),
+      ]);
+      await mergeAisles(
+        { targetId: 'target', sourceIds: ['src1'], perItemChoices: [] },
+        aisleStore,
+        canonStore,
+      );
+      expect(canonStore.items.find((i) => i.id === 'c1')?.pendingChanges).toEqual([
+        { kind: 'synonym_added', synonym: 'braeburn' },
+        { kind: 'aisle_cleared', fromAisleId: 'src1', origin: 'aisle_merge' },
+      ]);
+    });
+
+    it('leaves items in other aisles with no record at all', async () => {
+      const aisleStore = makeAisleStore(AISLES);
+      const canonStore = makeCanonStore([
+        canonItem({ id: 'c1', name: 'Apple', aisleId: 'src1' }),
+        canonItem({ id: 'c2', name: 'Milk', aisleId: 'target' }),
+      ]);
+      await mergeAisles(
+        { targetId: 'target', sourceIds: ['src1'], perItemChoices: [] },
+        aisleStore,
+        canonStore,
+      );
+      expect(canonStore.items.find((i) => i.id === 'c2')?.pendingChanges).toBeUndefined();
+    });
+  });
+
   it('propagates canon store list failure', async () => {
     const aisleStore = makeAisleStore(AISLES);
     const canonStore: CanonLocalStorePort = {

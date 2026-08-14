@@ -155,6 +155,24 @@ A non-empty shortlist means at least one item scored above `aiThreshold` (0.60) 
 
 `needs_approval` is the universal "human should look at this" signal. `appendCanonSynonym` sets it whenever a synonym is added; the AI-fallback path inherits it that way. When AI arbitration returns a `'match'` or `'new'` response that includes a `reasoning` string, `appendCanonSynonym` (or the item-creation path) also stores that string as `CanonItem.reasoning` — it surfaces in the canon review UI alongside `needs_approval` items for auditing why the AI made a given decision. When arbitration is invoked during new-item creation (empty-shortlist or `forceCreate` paths) but fails to produce a canonical name, a sentinel string is written instead: `ARBITRATION_FAILED_REASONING` when the adapter returned an error, or `ARBITRATION_NO_MATCH_REASONING` when the AI ran but returned no match. This lets the review queue distinguish the two failure modes while still creating the item with raw input and flagging `needs_approval`. The canon list page is the review queue: items with `needs_approval` are highlighted, promoted to the top, and support multi-select bulk-approve. The canon nav menu item carries a count badge of `needs_approval === true` items so the queue is visible from anywhere in the app.
 
+### What changed: the `pendingChanges` record (issue #193)
+
+`needs_approval` says *look at this*; `reasoning` says *why the AI decided what it did*, and only when arbitration ran. Neither says **what actually changed on the item** — and one of the flags is not the pipeline's doing at all. `CanonItem.pendingChanges` closes that gap: an optional, additive array of structured records written at the pure-domain set-sites of `needs_approval`, cleared on approve.
+
+| Kind | Recorded by | Says |
+| --- | --- | --- |
+| `synonym_added` | `appendCanonSynonym` | the normalised `synonym` it appended, plus the `rawInput` it came from when the two differ |
+| `created` | `createCanonItem` (only when the new item needs approval) | the item was newly minted, plus its `rawInput` |
+| `aisle_cleared` | `mergeAisles` / `deleteAisles`, **unassign path only** | the item lost its aisle to the user's own aisle admin — `origin` (`aisle_merge` \| `aisle_delete`) is what lets the UI attribute it to a human action rather than an AI one. `fromAisleId` is provenance only: that aisle has just been merged away or deleted, so it never resolves to a name and is never displayed |
+
+Properties worth not rediscovering:
+
+- **Entries accumulate**, most recent last. Several changes can land before anyone reviews, so the detail page lists them all and the queue row shows the most recent plus "and N more". Rendering caps; the stored array never does.
+- **No timestamp on an entry.** The domain is pure and has no clock port — array order is the sequence, the doc's own `updatedAt` is the when.
+- **Absent means "not recorded", never "nothing changed".** Every canon doc written before this shipped lacks the field; the field stays `.optional()` and an absent array renders nothing at all.
+- **Approve omits the key** rather than writing `[]`, so absent has exactly one meaning. `setCanonItemSynonyms` additionally prunes `synonym_added` records whose synonym no longer survives.
+- **The words live in the components.** `describePendingCanonChange` returns structured data (`kind`, `synonym`, `rawInput`, `origin`), never a formatted string, so the queue row and the detail panel can each phrase it in the shape that fits.
+
 The canon item detail page also exposes a **split** action: take the most-recently-added synonym off the current item and promote it into a new canon item (flagged `needs_approval`). This is the corrective path when the pipeline added a synonym to the wrong canonical item.
 
 ---

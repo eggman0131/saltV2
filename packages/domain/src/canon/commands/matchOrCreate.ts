@@ -380,7 +380,8 @@ async function applyClassification(
       const hit = findSnapshotMatch(c.name, snapshot);
       if (hit) return resolveMatch(store, hit, c.name, 'matched', c.commitLog);
     }
-    return persistNew(store, ids, c.name, c.aisleId, c.commitLog);
+    // create_no_ai: the raw entry IS the name, so the omission rule drops it.
+    return persistNew(store, ids, c.name, c.aisleId, c.commitLog, c.name);
   }
 
   // kind === 'needs_ai'
@@ -423,6 +424,7 @@ async function applyClassification(
           decision.canonName,
           selectedAisleId ?? decision.aisleId ?? null,
           commitLog,
+          rawName,
           extrasFromNew(decision),
         );
       }
@@ -439,7 +441,7 @@ async function applyClassification(
       const currentItem = snapshot.get(fallback.item.id) ?? fallback.item;
       return resolveMatch(store, currentItem, rawName, 'ai_arbitrated', commitLog);
     }
-    return persistNew(store, ids, rawName, selectedAisleId ?? null, commitLog);
+    return persistNew(store, ids, rawName, selectedAisleId ?? null, commitLog, rawName);
   }
 
   // Empty shortlist: new-item creation with AI name/aisle suggestion
@@ -463,7 +465,7 @@ async function applyClassification(
     return resolveMatch(store, canonNameHit, rawName, 'ai_arbitrated', commitLog);
   }
 
-  return persistNew(store, ids, createName, finalAisleId, commitLog, newExtras);
+  return persistNew(store, ids, createName, finalAisleId, commitLog, rawName, newExtras);
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -587,12 +589,18 @@ async function persistNew(
   name: string,
   aisleId: string | null,
   commitLog: CommitLog,
+  // The raw entry this item is being minted from (issue #193), recorded on the
+  // seeded `created` pending change. On the arbitration paths that is `rawName`
+  // — where the value actually is, since the AI may have renamed it; on
+  // create_no_ai it is the name itself and the omission rule drops it.
+  rawInput: string,
   extras?: ArbitrationExtras,
 ): Promise<ReadResult<MatchOrCreateResult, DomainError>> {
   const result = createCanonItem(
     {
       name,
       aisleId,
+      rawInput,
       ...(extras?.shoppingBehavior !== undefined
         ? { shoppingBehavior: extras.shoppingBehavior }
         : {}),

@@ -17,6 +17,7 @@
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
   import type { Aisle, CanonItem, CanonItemUnit, ShoppingBehavior } from '@salt/domain';
+  import { describePendingCanonChange } from '@salt/domain';
   import {
     updateCanonItemAisle,
     updateCanonItemShoppingBehavior,
@@ -38,6 +39,15 @@
     // renders the checkbox only when a handler is present.
     onToggleSelect?: (() => void) | undefined;
   } = $props();
+
+  // The most recent pending change (issue #193), plus how many older ones are
+  // waiting. Absent on items flagged before this shipped — nothing renders,
+  // because "not recorded" is not "nothing changed".
+  const pending = $derived(item.pendingChanges ?? []);
+  const latest = $derived(
+    pending.length > 0 ? describePendingCanonChange(pending[pending.length - 1]!) : null,
+  );
+  const olderCount = $derived(Math.max(pending.length - 1, 0));
 
   const aisleItems = $derived([
     { value: '', label: 'No aisle' },
@@ -85,6 +95,25 @@
   };
 </script>
 
+<!-- One line of words, shared by both layouts so they cannot diverge. -->
+{#snippet pendingSummary()}
+  {#if latest?.kind === 'synonym_added'}
+    + synonym “{latest.synonym}”
+  {:else if latest?.kind === 'aisle_cleared'}
+    <!-- Attributed to the user's own aisle admin, not to the AI. -->
+    {#if latest.origin === 'aisle_merge'}
+      − aisle cleared by your merge
+    {:else}
+      − aisle cleared by your delete
+    {/if}
+  {:else}
+    + new item
+  {/if}
+  {#if olderCount > 0}
+    and {olderCount} more
+  {/if}
+{/snippet}
+
 <EditableRow {selected} shaded={item.needs_approval} {onToggleSelect}>
   {#snippet narrow()}
     <div class="flex min-w-0 items-center gap-2">
@@ -108,6 +137,16 @@
         {/if}
       </button>
     </div>
+    {#if item.needs_approval && latest}
+      <!-- Distinct testid from the wide snippet: EditableRow renders BOTH into
+           the DOM and hides one with CSS, so a shared id resolves twice. -->
+      <p
+        class="mt-0.5 truncate pl-12 text-xs text-amber-800 dark:text-amber-300"
+        data-testid="canon-list-row-pending-narrow"
+      >
+        {@render pendingSummary()}
+      </p>
+    {/if}
   {/snippet}
 
   {#snippet wide()}
@@ -129,6 +168,14 @@
         class="shrink-0 rounded-full bg-amber-200 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-800 dark:text-amber-200"
       >
         Review
+      </span>
+    {/if}
+    {#if item.needs_approval && latest}
+      <span
+        class="min-w-0 shrink truncate text-xs text-amber-800 dark:text-amber-300"
+        data-testid="canon-list-row-pending"
+      >
+        {@render pendingSummary()}
       </span>
     {/if}
 
