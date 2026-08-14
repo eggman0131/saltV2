@@ -436,6 +436,22 @@ describe('authorRecipe — refresh-mode grounding', () => {
     });
   }
 
+  // The bug that made Refresh fail outright on staging: a refresh's transcript is
+  // empty by definition, so the generate call went out with empty user content and
+  // Gemini rejected the whole request — 400 INVALID_ARGUMENT, "GenerateContentRequest
+  // .contents: contents is not specified" — before the model saw a word of the
+  // system prompt. The user never got a proposal, only "Failed to refresh recipe".
+  // Every other assertion in this file reads `system` and so was blind to it.
+  it('sends a non-empty user turn, which an empty transcript does not supply', async () => {
+    await runRefresh();
+
+    const { prompt } = mockGenerate.mock.calls[0]![0] as { prompt: string };
+    expect(prompt.trim()).not.toBe('');
+    // And it says only what the closing already says — it is a user turn, not a
+    // second place where refresh behaviour is specified.
+    expect(prompt).toContain('Re-transcribe');
+  });
+
   it('re-transcribes rather than edits, and says the cooking must not change', async () => {
     await runRefresh();
 
