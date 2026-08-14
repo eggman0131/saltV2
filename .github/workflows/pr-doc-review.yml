@@ -41,6 +41,18 @@ name: PR Doc Review
 #   comment saying so. From here on, a red PR Doc Review means the WORKFLOW is
 #   broken — which is the only thing you can act on.
 #
+# KNOWN BLIND SPOT — this workflow cannot review the PR that edits it:
+#   claude-code-action refuses to run unless this file is byte-identical to the
+#   copy on the default branch (an anti-exfiltration guard: otherwise a PR could
+#   rewrite the prompt and walk off with the secrets). So any PR touching this
+#   file gets a SKIPPED review, including the PR that introduced it — it starts
+#   working on the first PR after merge. The `degrade` step below tells that
+#   state apart from a real review and stays silent on the PR rather than
+#   claiming either "cut short" or, by silence, "checked and clean".
+#   This is the same shape as the blind spot ci.yml documents for changes to its
+#   own e2e/integration job setup, and it has the same remedy: validate on a
+#   follow-up PR that does not touch the workflow.
+#
 # Why the workflow, not the model, does the writing:
 #   Claude only edits doc files in the working tree and leaves its report in
 #   .doc-review/. The push, the PR comment and any tracking issue are done by
@@ -305,31 +317,62 @@ jobs:
             it here, the comment alone is the right artefact and no issue is
             needed. Remember its `TITLE:` first line.
 
-      # The other half of the never-fail rule. claude-code-action writes a JSON
-      # transcript whose final `result` message carries the subtype; anything
-      # other than "success" means the run was cut short (error_max_turns is what
-      # killed the nightly three times) and whatever findings exist are partial.
-      - name: Detect a cut-short review
+      # The other half of the never-fail rule. There are THREE outcomes to tell
+      # apart, and conflating any two of them produces a false claim on the PR:
+      #
+      #   ran + finished   — execution_file's final `result` message has
+      #                      subtype "success". Trust whatever the model left
+      #                      behind in .doc-review/.
+      #   ran + cut short  — the step failed (continue-on-error caught it), or
+      #                      the subtype is an error (`error_max_turns` is what
+      #                      killed the nightly three times). Findings, if any,
+      #                      are partial and must be labelled as such.
+      #   never ran        — the step reports success but produced no
+      #                      execution_file, because claude-code-action skipped
+      #                      itself. Say nothing on the PR: "cut short" would be
+      #                      false, and silence-as-usual would imply the docs
+      #                      were checked and found fine. Job summary only.
+      #
+      # That third state is not hypothetical. The action refuses to run when the
+      # workflow file differs from the copy on the default branch — an
+      # anti-exfiltration guard — so ANY PR that edits this file gets a skipped
+      # review. Its own introducing PR included; it starts working once merged.
+      # Same shape as the blind spot ci.yml documents for its own job setup.
+      - name: Classify how the review ended
         id: degrade
         if: ${{ steps.scope.outputs.review == 'true' }}
         env:
           EXECUTION_FILE: ${{ steps.review.outputs.execution_file }}
+          STEP_OUTCOME: ${{ steps.review.outcome }}
         run: |
           set -euo pipefail
           subtype=""
+          ran="false"
           if [ -n "${EXECUTION_FILE:-}" ] && [ -f "$EXECUTION_FILE" ]; then
+            ran="true"
             subtype=$(jq -r 'if type == "array" then . else [.] end | map(select(.type == "result")) | last | .subtype' "$EXECUTION_FILE" 2>/dev/null || true)
           fi
-          # Anything unreadable degrades to "not success", which is the safe
-          # direction: it reports the review as cut short rather than clean.
-          case "$subtype" in '' | null) subtype="unknown" ;; esac
-          echo "Review result subtype: $subtype (step outcome: ${{ steps.review.outcome }})"
-          if [ "$subtype" = "success" ]; then
-            echo "truncated=false" >> "$GITHUB_OUTPUT"
+          case "$subtype" in null) subtype="" ;; esac
+
+          if [ "$STEP_OUTCOME" != "success" ]; then
+            # A hard failure is a genuine cut-short even if no transcript survived.
+            ran="true"
+            state="truncated"
+            detail="${subtype:-the review step failed}"
+          elif [ "$ran" != "true" ]; then
+            state="skipped"
+            detail="claude-code-action did not run (most likely because this PR edits the workflow file)"
+          elif [ -n "$subtype" ] && [ "$subtype" != "success" ]; then
+            state="truncated"
+            detail="$subtype"
           else
-            echo "truncated=true" >> "$GITHUB_OUTPUT"
+            state="complete"
+            detail="${subtype:-success}"
           fi
-          echo "subtype=$subtype" >> "$GITHUB_OUTPUT"
+
+          echo "Review ended: $state ($detail; step outcome: $STEP_OUTCOME)"
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+          echo "detail=$detail" >> "$GITHUB_OUTPUT"
 
       # Mechanical backstop for the two never-auto-edit rules, so they do not
       # rest on the prompt alone: docs/design/design.md is reverted outright
@@ -391,13 +434,25 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR: ${{ github.event.pull_request.number }}
-          TRUNCATED: ${{ steps.degrade.outputs.truncated }}
-          SUBTYPE: ${{ steps.degrade.outputs.subtype }}
+          STATE: ${{ steps.degrade.outputs.state }}
+          SUBTYPE: ${{ steps.degrade.outputs.detail }}
         run: |
           set -euo pipefail
           body=".doc-review/comment.md"
 
-          if [ "$TRUNCATED" = "true" ]; then
+          # The review never happened. Anything posted here would be a claim
+          # about work that was not done — including silence, which on this
+          # workflow means "checked, nothing to say".
+          if [ "$STATE" = "skipped" ]; then
+            {
+              echo "### PR Doc Review — did not run"
+              echo ""
+              echo "$SUBTYPE. This PR has **no** documentation-review signal; that is not the same as being clean."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [ "$STATE" = "truncated" ]; then
             # Partial findings are still worth posting; a silent cut-short run is
             # how the nightly's three failures went unnoticed for a week.
             if [ -s "$body" ]; then
@@ -438,9 +493,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
+          STATE: ${{ steps.degrade.outputs.state }}
         run: |
           set -euo pipefail
           file=".doc-review/issue.md"
+          if [ "${STATE:-}" = "skipped" ]; then
+            echo "Review did not run — nothing to raise."
+            exit 0
+          fi
           if [ ! -s "$file" ]; then
             echo "No out-of-scope follow-up — no issue raised."
             exit 0
