@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { recordPendingCanonChange, describePendingCanonChange } from '@salt/domain';
-import type { CanonItem } from '@salt/domain';
+import type { CanonItem, PendingCanonChange } from '@salt/domain';
 
 const base: CanonItem = {
   id: 'item-1',
@@ -60,6 +60,7 @@ describe('describePendingCanonChange', () => {
       kind: 'synonym_added',
       synonym: 'tin chopped tom',
       rawInput: '2 tins chopped toms',
+      origin: null,
     });
   });
 
@@ -68,6 +69,7 @@ describe('describePendingCanonChange', () => {
       kind: 'synonym_added',
       synonym: 'passata',
       rawInput: null,
+      origin: null,
     });
   });
 
@@ -76,6 +78,57 @@ describe('describePendingCanonChange', () => {
       kind: 'created',
       synonym: null,
       rawInput: 'a jar of sugo',
+      origin: null,
     });
+  });
+
+  it('carries origin for aisle_cleared — the difference between merge and delete', () => {
+    expect(
+      describePendingCanonChange({
+        kind: 'aisle_cleared',
+        fromAisleId: 'a1',
+        origin: 'aisle_merge',
+      }),
+    ).toEqual({ kind: 'aisle_cleared', synonym: null, rawInput: null, origin: 'aisle_merge' });
+
+    expect(
+      describePendingCanonChange({
+        kind: 'aisle_cleared',
+        fromAisleId: null,
+        origin: 'aisle_delete',
+      }),
+    ).toEqual({ kind: 'aisle_cleared', synonym: null, rawInput: null, origin: 'aisle_delete' });
+  });
+
+  it('nulls origin for every other kind', () => {
+    expect(describePendingCanonChange({ kind: 'synonym_added', synonym: 'passata' }).origin).toBe(
+      null,
+    );
+    expect(describePendingCanonChange({ kind: 'created' }).origin).toBe(null);
+  });
+
+  it('does NOT surface fromAisleId — that aisle is gone and can never be named', () => {
+    const described = describePendingCanonChange({
+      kind: 'aisle_cleared',
+      fromAisleId: 'a1',
+      origin: 'aisle_delete',
+    });
+    expect(Object.keys(described).sort()).toEqual(['kind', 'origin', 'rawInput', 'synonym']);
+  });
+
+  it('describes an accumulated run of mixed kinds, most recent last', () => {
+    const item = [
+      { kind: 'created', rawInput: '2 tins chopped toms' },
+      { kind: 'synonym_added', synonym: 'passata' },
+      { kind: 'aisle_cleared', fromAisleId: 'a1', origin: 'aisle_merge' },
+    ].reduce(
+      (acc, change) => recordPendingCanonChange(acc, change as PendingCanonChange),
+      base as CanonItem,
+    );
+    expect((item.pendingChanges ?? []).map(describePendingCanonChange)).toEqual([
+      { kind: 'created', synonym: null, rawInput: '2 tins chopped toms', origin: null },
+      { kind: 'synonym_added', synonym: 'passata', rawInput: null, origin: null },
+      { kind: 'aisle_cleared', synonym: null, rawInput: null, origin: 'aisle_merge' },
+    ]);
   });
 });

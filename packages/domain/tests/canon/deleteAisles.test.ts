@@ -74,6 +74,48 @@ describe('deleteAisles', () => {
     expect(milk.needs_approval).toBe(false);
   });
 
+  // Issue #193, Phase 2: the flag the user caused themselves. Without this the
+  // item sits in the review queue looking like an AI decision.
+  describe('pending change record', () => {
+    it("records aisle_cleared with origin 'aisle_delete' on the affected item", async () => {
+      const aisleStore = makeAisleStore([{ id: 'a1', name: 'Produce', order: 0 }]);
+      const canonStore = makeCanonStore([canonItem({ id: 'c1', name: 'Tomato', aisleId: 'a1' })]);
+      await deleteAisles({ ids: ['a1'] }, aisleStore, canonStore);
+      expect(canonStore.items.find((i) => i.id === 'c1')?.pendingChanges).toEqual([
+        { kind: 'aisle_cleared', fromAisleId: 'a1', origin: 'aisle_delete' },
+      ]);
+    });
+
+    it('records nothing on items filed elsewhere', async () => {
+      const aisleStore = makeAisleStore([{ id: 'a1', name: 'Produce', order: 0 }]);
+      const canonStore = makeCanonStore([canonItem({ id: 'c2', name: 'Milk', aisleId: 'a2' })]);
+      await deleteAisles({ ids: ['a1'] }, aisleStore, canonStore);
+      expect(canonStore.items.find((i) => i.id === 'c2')?.pendingChanges).toBeUndefined();
+    });
+
+    it('accumulates behind changes already waiting, most recent last', async () => {
+      const aisleStore = makeAisleStore([{ id: 'a1', name: 'Produce', order: 0 }]);
+      const canonStore = makeCanonStore([
+        canonItem({
+          id: 'c1',
+          name: 'Tomato',
+          aisleId: 'a1',
+          needs_approval: true,
+          pendingChanges: [
+            { kind: 'created', rawInput: '2 tins chopped toms' },
+            { kind: 'synonym_added', synonym: 'passata' },
+          ],
+        }),
+      ]);
+      await deleteAisles({ ids: ['a1'] }, aisleStore, canonStore);
+      expect(canonStore.items.find((i) => i.id === 'c1')?.pendingChanges).toEqual([
+        { kind: 'created', rawInput: '2 tins chopped toms' },
+        { kind: 'synonym_added', synonym: 'passata' },
+        { kind: 'aisle_cleared', fromAisleId: 'a1', origin: 'aisle_delete' },
+      ]);
+    });
+  });
+
   it('propagates aisle store load failure', async () => {
     const store: AisleLocalStorePort = {
       load: async () => ({ kind: 'err', error: { kind: 'StorageError', reason: 'unavailable' } }),

@@ -105,11 +105,68 @@ describe('CanonItem schema', () => {
     });
 
     it('rejects an unknown change kind (the union is closed)', () => {
+      // Must be a kind the union does NOT carry. `aisle_cleared` was the
+      // fixture until Phase 2 made it real — pick something still unknown.
       const result = CanonItemSchema.safeParse({
         ...baseDoc,
-        pendingChanges: [{ kind: 'aisle_cleared' }],
+        pendingChanges: [{ kind: 'aisle_reassigned' }],
       });
       expect(result.success).toBe(false);
+    });
+
+    // Aisle admin (issue #193, Phase 2): the flag the user caused themselves.
+    it('parses an aisle_cleared entry from a merge', () => {
+      const result = CanonItemSchema.safeParse({
+        ...baseDoc,
+        pendingChanges: [{ kind: 'aisle_cleared', fromAisleId: 'a1', origin: 'aisle_merge' }],
+      });
+      expect(result.success).toBe(true);
+      expect(result.success && result.data.pendingChanges).toEqual([
+        { kind: 'aisle_cleared', fromAisleId: 'a1', origin: 'aisle_merge' },
+      ]);
+    });
+
+    it('parses an aisle_cleared entry with a null fromAisleId', () => {
+      const result = CanonItemSchema.safeParse({
+        ...baseDoc,
+        pendingChanges: [{ kind: 'aisle_cleared', fromAisleId: null, origin: 'aisle_delete' }],
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects an aisle_cleared entry with an unknown origin', () => {
+      const result = CanonItemSchema.safeParse({
+        ...baseDoc,
+        pendingChanges: [{ kind: 'aisle_cleared', fromAisleId: 'a1', origin: 'ai_decided' }],
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('rejects an aisle_cleared entry with no origin', () => {
+      const result = CanonItemSchema.safeParse({
+        ...baseDoc,
+        pendingChanges: [{ kind: 'aisle_cleared', fromAisleId: 'a1' }],
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('parses a doc carrying several changes of different kinds, in order', () => {
+      const pendingChanges = [
+        { kind: 'created', rawInput: '2 tins chopped toms' },
+        { kind: 'synonym_added', synonym: 'passata' },
+        { kind: 'aisle_cleared', fromAisleId: 'a1', origin: 'aisle_merge' },
+      ];
+      const result = CanonItemSchema.safeParse({ ...baseDoc, pendingChanges });
+      expect(result.success).toBe(true);
+      expect(result.success && result.data.pendingChanges).toEqual(pendingChanges);
+    });
+
+    it('keeps schemaVersion at the literal 5 — a third union member must not bump it', () => {
+      const result = CanonItemSchema.safeParse({
+        ...baseDoc,
+        pendingChanges: [{ kind: 'aisle_cleared', fromAisleId: 'a1', origin: 'aisle_delete' }],
+      });
+      expect(result.success && result.data.schemaVersion).toBe(5);
     });
 
     it('rejects a synonym_added entry with no synonym', () => {

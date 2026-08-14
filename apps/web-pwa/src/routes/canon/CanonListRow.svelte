@@ -99,6 +99,13 @@
 {#snippet pendingSummary()}
   {#if latest?.kind === 'synonym_added'}
     + synonym “{latest.synonym}”
+  {:else if latest?.kind === 'aisle_cleared'}
+    <!-- Attributed to the user's own aisle admin, not to the AI. -->
+    {#if latest.origin === 'aisle_merge'}
+      − aisle cleared by your merge
+    {:else}
+      − aisle cleared by your delete
+    {/if}
   {:else}
     + new item
   {/if}

@@ -1,13 +1,15 @@
 import { z } from 'zod';
 
-// What the matching pipeline changed on this item since it was last approved
-// (issue #193, Phase 1). Unlike RecipeDiffSchema — which is a pure render
-// contract, built on demand and never stored — this one IS PERSISTED, as an
-// array on the canon doc, so it carries a real back-compat surface.
+// What changed on this item since it was last approved — by the matching
+// pipeline, or (Phase 2) by the user's own aisle admin (issue #193). Unlike
+// RecipeDiffSchema — which is a pure render contract, built on demand and never
+// stored — this one IS PERSISTED, as an array on the canon doc, so it carries a
+// real back-compat surface.
 //
 // Written by the pure domain set-sites (appendCanonSynonym records
 // `synonym_added`; createCanonItem seeds `created` when the new item needs
-// approval), by BOTH the client fast path and the CF pipeline, since both go
+// approval; mergeAisles/deleteAisles record `aisle_cleared` on the unassign
+// path), by BOTH the client fast path and the CF pipeline, since both go
 // through the same commands. Cleared by approveCanonItem, which OMITS the key
 // rather than writing `[]` — the record is about the pending change, not a
 // permanent history.
@@ -29,6 +31,20 @@ export const PendingCanonChangeSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('created'),
     rawInput: z.string().optional(),
+  }),
+  // The item lost its aisle because an aisle it lived in was merged away or
+  // deleted, and the admin chose to unassign rather than move (issue #193,
+  // Phase 2). NOT an AI decision — `origin` exists so the copy can say so.
+  //
+  // `fromAisleId` is PROVENANCE ONLY: the aisle it names has just been merged
+  // away or deleted, so it will never resolve to a name. Do not add a lookup to
+  // make it resolve — the rendered words stand on their own without the aisle.
+  // Nullable to match `CanonItem.aisleId`, though both set-sites are guarded on
+  // a non-null aisle and so always record a real id.
+  z.object({
+    kind: z.literal('aisle_cleared'),
+    fromAisleId: z.string().nullable(),
+    origin: z.enum(['aisle_merge', 'aisle_delete']),
   }),
 ]);
 

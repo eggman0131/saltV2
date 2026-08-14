@@ -430,9 +430,10 @@
                 Review before approving
               </h2>
 
-              <!-- What the pipeline changed (issue #193). Absent on items
-                   flagged before this shipped — that means "not recorded", so
-                   nothing renders rather than "nothing changed". -->
+              <!-- What changed (issue #193). Absent on items flagged before
+                   this shipped — that means "not recorded", so nothing renders
+                   rather than "nothing changed". Every entry is listed, oldest
+                   first: several changes can land before anyone reviews. -->
               {#if pendingChanges.length > 0}
                 <ul
                   class="flex flex-col gap-2 text-sm text-amber-900 dark:text-amber-200"
@@ -442,6 +443,15 @@
                     <li>
                       {#if change.kind === 'synonym_added'}
                         Added synonym “{change.synonym}”
+                      {:else if change.kind === 'aisle_cleared'}
+                        <!-- Say WHO did it: this flag is the user's own aisle
+                             admin, not an AI decision. The cleared aisle is
+                             gone, so it is never named. -->
+                        {#if change.origin === 'aisle_merge'}
+                          Aisle cleared — you merged its aisle away
+                        {:else}
+                          Aisle cleared — you deleted its aisle
+                        {/if}
                       {:else}
                         Created from the shopping list
                       {/if}
