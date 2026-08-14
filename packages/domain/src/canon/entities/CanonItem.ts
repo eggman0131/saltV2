@@ -2,7 +2,12 @@
 // Lives in canon/entities — internal to the canon module.
 // Other modules access it only via the published index (re-exported as a type).
 import type { ShoppingBehavior, CanonItemUnit } from '@salt/shared-types';
+import type { PendingCanonChangeDoc } from '../../schemas/canonItem.js';
 export type { ShoppingBehavior, CanonItemUnit };
+
+/** One thing the matching pipeline changed, pending review. See
+ *  PendingCanonChangeSchema for the persistence contract. */
+export type PendingCanonChange = PendingCanonChangeDoc;
 
 export interface CanonItem {
   readonly id: string;
@@ -24,6 +29,10 @@ export interface CanonItem {
   readonly largeQuantityThreshold?: number;
   readonly unit?: CanonItemUnit;
   readonly reasoning?: string;
+  // What the pipeline changed, pending review (issue #193). Optional: absent
+  // means "not recorded" (a doc written before this shipped, or an item nobody
+  // flagged), never "nothing changed". Cleared — key omitted — on approve.
+  readonly pendingChanges?: readonly PendingCanonChange[];
   // Sync fields — stamped server-side by the onCanonItemWritten CF trigger.
   readonly updatedAt: string; // ISO-8601
 }

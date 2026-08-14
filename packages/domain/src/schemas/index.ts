@@ -110,8 +110,8 @@ export type { RegenerateRecipeImageInput } from './regenerateRecipeImage.js';
 export { SetRecipeImageUploadInputSchema } from './setRecipeImageUpload.js';
 export type { SetRecipeImageUploadInput } from './setRecipeImageUpload.js';
 
-export { CanonItemSchema } from './canonItem.js';
-export type { CanonItemDoc } from './canonItem.js';
+export { CanonItemSchema, PendingCanonChangeSchema } from './canonItem.js';
+export type { CanonItemDoc, PendingCanonChangeDoc } from './canonItem.js';
 
 export { ProductFormSchema } from './productForm.js';
 export type { ProductFormDoc } from './productForm.js';

@@ -349,11 +349,19 @@ export async function splitMostRecentSynonym(
   }
   const synonym = item.synonyms[item.synonyms.length - 1]!;
   const created = createCanonItem(
-    { name: synonym, needs_approval: true },
+    // rawInput is the promoted synonym. Identical to the name today, so the
+    // omission rule drops it — kept because it is self-documenting and stays
+    // correct if split ever mints a differently-named item.
+    { name: synonym, needs_approval: true, rawInput: synonym },
     { newCanonId: () => crypto.randomUUID(), newAisleId: () => crypto.randomUUID() },
   );
   if (created.kind !== 'ok') return created;
-  const trimmed: CanonItem = { ...item, synonyms: item.synonyms.slice(0, -1) };
+  // Route the trimmed item through the command, not a hand-spread: it also
+  // drops the now-stale `synonym_added` record for the synonym we just promoted
+  // away (issue #193).
+  const trimmedResult = setCanonItemSynonyms(item, item.synonyms.slice(0, -1));
+  if (trimmedResult.kind !== 'ok') return trimmedResult;
+  const trimmed = trimmedResult.value;
   await upsertCanonItem(created.value);
   await upsertCanonItem(trimmed);
   return created;

@@ -114,6 +114,9 @@ describe('batch parity — single batch vs sequential batches-of-one', () => {
     id?: string;
     synonyms?: readonly string[];
     needs_approval?: boolean;
+    // Issue #193: the pending-change record is written on the same commands the
+    // two paths share, so it must not drift between them either.
+    pendingChanges?: readonly unknown[] | undefined;
   };
 
   function shape(results: Awaited<ReturnType<typeof matchOrCreateBatch>>): Shape[] {
@@ -125,6 +128,7 @@ describe('batch parity — single batch vs sequential batches-of-one', () => {
             id: r.value.item.id,
             synonyms: r.value.item.synonyms,
             needs_approval: r.value.item.needs_approval,
+            pendingChanges: r.value.item.pendingChanges,
           }
         : { kind: 'err' },
     );
