@@ -3,7 +3,12 @@
 // to import from canon. Anything not re-exported here is private to canon by
 // design.
 
-export type { CanonItem, ShoppingBehavior, CanonItemUnit } from './entities/CanonItem.js';
+export type {
+  CanonItem,
+  ShoppingBehavior,
+  CanonItemUnit,
+  PendingCanonChange,
+} from './entities/CanonItem.js';
 export type { Aisle } from './entities/Aisle.js';
 export type { AislesDocument } from './entities/AislesDocument.js';
 export type { CanonLocalStorePort } from './ports/CanonLocalStorePort.js';
@@ -34,6 +39,7 @@ export type {
 } from './ports/CanonArbitrationPort.js';
 export { matchOrCreate, matchOrCreateBatch } from './commands/matchOrCreate.js';
 export { appendCanonSynonym } from './commands/appendCanonSynonym.js';
+export { recordPendingCanonChange } from './commands/recordPendingCanonChange.js';
 export type {
   MatchOrCreateInput,
   MatchOrCreatePorts,
@@ -69,4 +75,6 @@ export { normaliseName } from './queries/normaliseName.js';
 export { CANON_ICON_HIDDEN, isCanonIconRenderable } from './queries/canonIcon.js';
 export { summarizeMatchLog } from './queries/summarizeMatchLog.js';
 export type { MatchLogSummary } from './queries/summarizeMatchLog.js';
+export { describePendingCanonChange } from './queries/describePendingCanonChange.js';
+export type { PendingCanonChangeDescription } from './queries/describePendingCanonChange.js';
 export { hasLiveCanonMatch, isResolvedMatchState } from './queries/hasLiveCanonMatch.js';

@@ -1,5 +1,39 @@
 import { z } from 'zod';
 
+// What the matching pipeline changed on this item since it was last approved
+// (issue #193, Phase 1). Unlike RecipeDiffSchema — which is a pure render
+// contract, built on demand and never stored — this one IS PERSISTED, as an
+// array on the canon doc, so it carries a real back-compat surface.
+//
+// Written by the pure domain set-sites (appendCanonSynonym records
+// `synonym_added`; createCanonItem seeds `created` when the new item needs
+// approval), by BOTH the client fast path and the CF pipeline, since both go
+// through the same commands. Cleared by approveCanonItem, which OMITS the key
+// rather than writing `[]` — the record is about the pending change, not a
+// permanent history.
+//
+// NO TIMESTAMP on an entry, deliberately: the domain is pure (no clock port),
+// array order records the sequence, and the doc's own `updatedAt` records when.
+//
+// `rawInput` is the entry the change came from, carried only when it differs
+// from the value it produced (a literal compare — see the set-sites), so the UI
+// can answer "why on earth is THAT a synonym for Tomatoes" without a trip to
+// the shopping list.
+export const PendingCanonChangeSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('synonym_added'),
+    // The normalised synonym that was appended.
+    synonym: z.string(),
+    rawInput: z.string().optional(),
+  }),
+  z.object({
+    kind: z.literal('created'),
+    rawInput: z.string().optional(),
+  }),
+]);
+
+export type PendingCanonChangeDoc = z.infer<typeof PendingCanonChangeSchema>;
+
 export const CanonItemSchema = z.object({
   id: z.string(),
   schemaVersion: z.literal(5),
@@ -43,6 +77,13 @@ export const CanonItemSchema = z.object({
   // (they key off thumbnail/iconRequestedAt/embedding, never this field), so
   // stamping it cannot loop the trigger.
   traceContext: z.string().optional(),
+  // What the pipeline changed, pending review (issue #193). OPTIONAL and
+  // additive — every canon doc in production predates it and must stay valid on
+  // read, or canonSubscription would silently skip the whole collection. An
+  // ABSENT field means "not recorded", NEVER "nothing changed": items flagged
+  // before this shipped carry no record and must keep today's appearance.
+  // Additive, so schemaVersion stays at 5.
+  pendingChanges: z.array(PendingCanonChangeSchema).optional(),
 });
 
 export type CanonItemDoc = z.infer<typeof CanonItemSchema>;

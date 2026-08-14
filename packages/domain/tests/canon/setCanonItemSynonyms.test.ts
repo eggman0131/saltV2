@@ -53,4 +53,57 @@ describe('setCanonItemSynonyms', () => {
       expect(result.value.aisleId).toBe(original.aisleId);
     }
   });
+
+  // Issue #193 — editing the synonyms is how you disagree with a recorded
+  // `synonym_added`; there is no reject action. A record whose synonym is gone
+  // must go with it, or the panel claims credit for a synonym that isn't there.
+  describe('stale pendingChanges pruning', () => {
+    const flagged = item({
+      synonyms: ['passata', 'sugo'],
+      needs_approval: true,
+      pendingChanges: [
+        { kind: 'created' },
+        { kind: 'synonym_added', synonym: 'passata' },
+        { kind: 'synonym_added', synonym: 'sugo', rawInput: '1 jar sugo' },
+      ],
+    });
+
+    it('drops the record for a synonym that was removed', () => {
+      const result = setCanonItemSynonyms(flagged, ['passata']);
+      if (result.kind !== 'ok') return;
+      expect(result.value.pendingChanges).toEqual([
+        { kind: 'created' },
+        { kind: 'synonym_added', synonym: 'passata' },
+      ]);
+    });
+
+    it('keeps a record whose synonym survives under a different spelling', () => {
+      // The compare is normalised, so re-typed casing/plurality still matches.
+      const result = setCanonItemSynonyms(flagged, ['Passata', 'Sugos']);
+      if (result.kind !== 'ok') return;
+      expect(result.value.pendingChanges).toHaveLength(3);
+    });
+
+    it('never touches a created record — it names no synonym', () => {
+      const result = setCanonItemSynonyms(flagged, []);
+      if (result.kind !== 'ok') return;
+      expect(result.value.pendingChanges).toEqual([{ kind: 'created' }]);
+    });
+
+    it('omits the key when nothing survives, rather than writing an empty array', () => {
+      const onlySynonyms = item({
+        synonyms: ['passata'],
+        pendingChanges: [{ kind: 'synonym_added', synonym: 'passata' }],
+      });
+      const result = setCanonItemSynonyms(onlySynonyms, []);
+      if (result.kind !== 'ok') return;
+      expect(result.value).not.toHaveProperty('pendingChanges');
+    });
+
+    it('leaves an item with no record untouched (back-compat)', () => {
+      const result = setCanonItemSynonyms(item({ synonyms: ['passata'] }), ['passata']);
+      if (result.kind !== 'ok') return;
+      expect(result.value).not.toHaveProperty('pendingChanges');
+    });
+  });
 });

@@ -26,7 +26,48 @@ describe('createCanonItem', () => {
       embedding: null,
       needs_approval: true,
       shoppingBehavior: 'needed',
+      // Seeded because the item lands flagged (issue #193). No rawInput: none
+      // was supplied, so there is nothing that differs from the name.
+      pendingChanges: [{ kind: 'created' }],
       updatedAt: '',
+    });
+  });
+
+  // Issue #193 — "this item is brand new" must be recorded, and distinguishable
+  // from an existing item that merely gained a synonym.
+  describe('pendingChanges seeding', () => {
+    it('seeds a created entry when the item lands flagged', () => {
+      const result = createCanonItem({ name: 'Tomatoes' }, counterIds());
+      expect(result.kind === 'ok' && result.value.pendingChanges).toEqual([{ kind: 'created' }]);
+    });
+
+    it('seeds NO entry when the item is created already-approved', () => {
+      const result = createCanonItem({ name: 'Tomatoes', needs_approval: false }, counterIds());
+      expect(result.kind).toBe('ok');
+      if (result.kind !== 'ok') return;
+      // Key omitted entirely — never an empty array.
+      expect(result.value.pendingChanges).toBeUndefined();
+      expect('pendingChanges' in result.value).toBe(false);
+    });
+
+    it('carries rawInput when the raw entry differs from the name', () => {
+      const result = createCanonItem(
+        { name: 'Tomatoes', rawInput: '2 tins chopped toms' },
+        counterIds(),
+      );
+      expect(result.kind === 'ok' && result.value.pendingChanges).toEqual([
+        { kind: 'created', rawInput: '2 tins chopped toms' },
+      ]);
+    });
+
+    it('omits rawInput when it is literally the name', () => {
+      const result = createCanonItem({ name: 'Tomatoes', rawInput: 'Tomatoes' }, counterIds());
+      expect(result.kind === 'ok' && result.value.pendingChanges).toEqual([{ kind: 'created' }]);
+    });
+
+    it('omits rawInput when it differs only by surrounding whitespace', () => {
+      const result = createCanonItem({ name: '  Tomatoes ', rawInput: 'Tomatoes  ' }, counterIds());
+      expect(result.kind === 'ok' && result.value.pendingChanges).toEqual([{ kind: 'created' }]);
     });
   });
 

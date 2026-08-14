@@ -74,4 +74,37 @@ describe('approveCanonItem', () => {
     if (result.kind !== 'ok') return;
     expect(result.value.largeQuantityThreshold).toBe(100);
   });
+
+  // Issue #193 — approving clears the record along with the flag. The panel is
+  // about the pending change, not a permanent history.
+  describe('pendingChanges clearing', () => {
+    const flagged: CanonItem = {
+      ...base,
+      pendingChanges: [
+        { kind: 'created' },
+        { kind: 'synonym_added', synonym: 'passata', rawInput: '2 tins passata' },
+      ],
+    };
+
+    it('drops the pendingChanges KEY entirely (never writes an empty array)', () => {
+      const result = approveCanonItem(flagged);
+      if (result.kind !== 'ok') return;
+      expect(result.value.pendingChanges).toBeUndefined();
+      expect(result.value).not.toHaveProperty('pendingChanges');
+    });
+
+    it('clears alongside overrides', () => {
+      const result = approveCanonItem(flagged, { shoppingBehavior: 'stocked' });
+      if (result.kind !== 'ok') return;
+      expect(result.value).not.toHaveProperty('pendingChanges');
+      expect(result.value.shoppingBehavior).toBe('stocked');
+      expect(result.value.needs_approval).toBe(false);
+    });
+
+    it('is a no-op on an item that never had a record (back-compat)', () => {
+      const result = approveCanonItem(base);
+      if (result.kind !== 'ok') return;
+      expect(result.value).not.toHaveProperty('pendingChanges');
+    });
+  });
 });

@@ -46,13 +46,17 @@
   import { aisles } from '../../lib/aisleService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { titleCase } from '../../lib/titleCase.js';
-  import { CANON_ICON_HIDDEN } from '@salt/domain';
+  import { CANON_ICON_HIDDEN, describePendingCanonChange } from '@salt/domain';
   import type { ShoppingBehavior, CanonItemUnit } from '@salt/shared-types';
   import AdminGuard from '../admin/AdminGuard.svelte';
 
   let { params }: { params: Record<string, string> } = $props();
 
   let item = $derived($canonItems.find((c) => c.id === params.id));
+  // Pending changes flattened for rendering (issue #193): the domain hands back
+  // a structured description, this page owns the words. Oldest first — the order
+  // they happened in.
+  let pendingChanges = $derived((item?.pendingChanges ?? []).map(describePendingCanonChange));
 
   let _initedId = $state('');
 
@@ -425,6 +429,30 @@
               <h2 class="text-sm font-semibold text-amber-800 dark:text-amber-300">
                 Review before approving
               </h2>
+
+              <!-- What the pipeline changed (issue #193). Absent on items
+                   flagged before this shipped — that means "not recorded", so
+                   nothing renders rather than "nothing changed". -->
+              {#if pendingChanges.length > 0}
+                <ul
+                  class="flex flex-col gap-2 text-sm text-amber-900 dark:text-amber-200"
+                  data-testid="canon-detail-pending-changes"
+                >
+                  {#each pendingChanges as change, i (i)}
+                    <li>
+                      {#if change.kind === 'synonym_added'}
+                        Added synonym “{change.synonym}”
+                      {:else}
+                        Created from the shopping list
+                      {/if}
+                      {#if change.rawInput}
+                        <br />
+                        <span class="opacity-80">from “{change.rawInput}”</span>
+                      {/if}
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
 
               {#if item.reasoning}
                 <p
