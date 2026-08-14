@@ -36,6 +36,9 @@ export { default as ErrorState } from './primitives/ErrorState/ErrorState.svelte
 export { default as Grid } from './primitives/Grid/Grid.svelte';
 export { default as Heading } from './primitives/Heading/Heading.svelte';
 export { default as Icon } from './primitives/Icon/Icon.svelte';
+// The registered icon names, for gallery-style consumers (Storybook). Derived
+// from the registry, so no consumer keeps its own list of names to drift.
+export { iconNames } from './primitives/Icon/iconRegistry';
 export { default as ImageCropper } from './primitives/ImageCropper/ImageCropper.svelte';
 export { default as Inline } from './primitives/Inline/Inline.svelte';
 export { default as Markdown } from './primitives/Markdown/Markdown.svelte';
@@ -128,6 +131,7 @@ export type { ErrorStateProps } from './primitives/ErrorState/ErrorState.types';
 export type { GridProps } from './primitives/Grid/Grid.types';
 export type { HeadingProps } from './primitives/Heading/Heading.types';
 export type { IconProps } from './primitives/Icon/Icon.types';
+export type { IconName } from './primitives/Icon/iconRegistry';
 export type {
   ImageCropperProps,
   ImageCropperHandle,

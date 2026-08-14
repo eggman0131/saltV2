@@ -1,8 +1,8 @@
-// spec: SPEC.md §8.12 v0.2.3
-import type { icons } from '@lucide/svelte';
+// spec: SPEC.md §8.12 v0.2.10
+import type { IconName } from './iconRegistry';
 
 export type IconProps = {
-  name: keyof typeof icons;
+  name: IconName;
   size?: number;
   ariaLabel?: string;
   class?: string;

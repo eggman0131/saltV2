@@ -1,4 +1,4 @@
-# Salt 2.0 — UI Primitives Specification (v0.2.10)
+# Salt 2.0 — UI Primitives Specification (v0.2.11)
 
 **Status:** Authoritative
 **Audience:** AI code generators + human contributors
@@ -55,7 +55,7 @@ Generators must not implement v0.3 primitives until the v0.3 spec exists.
 | Headless      | bits-ui ≥ 1.0.0; melt-ui ≥ 1.0.0-svelte5 (fallback only)                           |
 | Variants      | class-variance-authority (CVA)                                                     |
 | Class merging | tailwind-merge + clsx via `cn()`                                                   |
-| Icons         | @lucide/svelte (typed as `keyof typeof import('@lucide/svelte').icons`)            |
+| Icons         | @lucide/svelte, via the curated registry in `src/primitives/Icon/iconRegistry.ts` (typed as `keyof typeof iconRegistry`) |
 | Testing       | Vitest + @testing-library/svelte + user-event + axe-core                           |
 | TS            | strict: true                                                                       |
 
@@ -146,7 +146,7 @@ No deep imports. No side-effect imports in any barrel.
 
 ## 1.5 Spec Versioning & Amendment Rule
 
-The spec is versioned `vMAJOR.MINOR.PATCH` (currently v0.2.9).
+The spec is versioned `vMAJOR.MINOR.PATCH` (currently v0.2.11).
 
 - **PATCH** (v0.2.1 → v0.2.2): clarifications, typo fixes, tightened class matrices. No breaking change to generated code.
 - **MINOR** (v0.2.x → v0.3.0): new primitives, new props, new tokens.
@@ -1662,10 +1662,22 @@ Note: `as` is constrained to a union — **not** an arbitrary string — to keep
 
 | Name        | Type                                   | Default      |
 | ----------- | -------------------------------------- | ------------ |
-| `name`      | `keyof typeof import('@lucide/svelte').icons` | — (required) |
+| `name`      | `IconName` — `keyof typeof iconRegistry` | — (required) |
 | `size`      | `number`                               | `16`         |
 | `ariaLabel` | `string \| undefined`                  | —            |
 | `class`     | `string \| undefined`                  | —            |
+
+### Icon registry
+
+`name` is keyed off a **curated registry**, not the whole Lucide library. `src/primitives/Icon/iconRegistry.ts` imports each icon it offers from that icon's own `@lucide/svelte/icons/<kebab-name>` subpath and re-exports them as one record; `Icon.svelte` indexes that record. The `icons` namespace barrel must not be imported: it is a namespace object, so nothing tree-shakes and all 1,764 icon modules ship (633 kB / 109 kB gzipped in Salt's boot payload, for ~70 icons drawn — issue #813).
+
+The registry is hand-maintained and its surface is deliberately closed:
+
+- Adding an icon is one import plus one record entry, both alphabetical.
+- `IconName` narrows to the registry's keys, so an unregistered name is a `pnpm check` / `pnpm typecheck` failure naming the missing key. **That compile error is the maintenance mechanism** — there is no generator and no CI staleness check, because no icon name crosses Firestore, a URL, or any other serialization boundary: every one is a static TS literal the compiler already proves.
+- `iconNames` (the keys, derived via `Object.keys`) is exported from the package surface so a gallery consumer renders the real set instead of keeping a second list to drift.
+
+A **direct named import** (`import Check from '@lucide/svelte/icons/check'`, or `import { Check } from '@lucide/svelte'`) is unaffected by this and stays the right call inside a primitive that always draws the same icon — it already tree-shakes. The registry exists only for `Icon`'s string-keyed indirection.
 
 ### Accessibility
 
@@ -1793,6 +1805,7 @@ Numeric transform (allowed by §2.3): determinate indicator uses `style="transfo
 
 | Date       | Version | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ---------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-08-14 | v0.2.11 | §8.12 Icon + §1.1 Icons row: `name` is keyed off a **curated registry** (`src/primitives/Icon/iconRegistry.ts`) instead of `keyof typeof import('@lucide/svelte').icons`. The `icons` barrel is a namespace object, so nothing tree-shook and all 1,764 icon modules shipped — **632.75 kB (108.75 kB gzipped), the single largest item in the PWA's boot payload**, to draw the ~70 icons Salt actually uses. The registry imports each icon from its own `@lucide/svelte/icons/<kebab-name>` subpath, so only registered icons ship. New §8.12 "Icon registry" records that it is hand-maintained, that the narrowed `IconName` union turns an unregistered name into a `pnpm check` failure (the whole maintenance mechanism — no generator, no CI staleness check, because no icon name crosses a serialization boundary), and that direct named imports inside single-icon primitives are unaffected and stay correct. `iconNames` joins the package surface (§1.3) so Storybook's gallery renders the real set rather than a second hand-list. Contract change — `Icon.svelte`, `Icon.types.ts` re-stamped; `ListPage.types.ts`'s `BulkActionIcon` re-pointed. Issue #813 Phase 1. **v0.2.10 is absent from this table on purpose:** #691 bumped the header to it without adding a row, so the number is already spent — pre-existing doc drift, not amended here. |
 | 2026-08-02 | v0.2.9  | §8.6 Dialog + §4.4 Dialog Size Scale: the content base gains `w-full`, a mobile `max-w-[calc(100%-2rem)]` clamp, and `max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain`; the size scale becomes an `sm:`-and-up ceiling. The base stated no width at all, so a `position: fixed` panel with `left: 50%` and no `right` was shrink-to-fit against `100vw - left` — **every dialog was capped at roughly half the viewport width** (the photo-import dialog of #676 measured 221px on a 393px phone), with `max-w-*` powerless to correct it — a ceiling the panel was already under. The `sm:` modifiers keep the mobile clamp alive through tailwind-merge. Height is capped so a panel taller than the viewport scrolls rather than putting its footer out of reach. Behavioural amendment — `Dialog.variants.ts` re-stamped. |
 | 2026-07-28 | v0.2.8  | §4.6 **Press Pulse**: specs the `salt-press-pulse` CSS utility as a public, consumer-facing extension point alongside `salt-focus-ring` (§4.2) — what it supplies (depth only: `scale(0.94)` + the `0s` press-in), what the call site retains (its own `transition-property` list including `transform`, its own per-property durations, `ease-standard`, `motion-reduce:transition-none`), why the pressed rule is `:active`-scoped (specificity, not source order), and the `no-preference` gate. Records that `.salt-button` writes the same treatment longhand rather than pulling the utility in — the duplication is deliberate (the Button owns its own `transition-*`) and any change to the press scale must land in both places. Shipped unrecorded in #583 alongside the v0.2.7 Button press system; no code change. Resolves doc/code drift issue #588. |
 | 2026-07-24 | v0.2.7  | §8.1 Button: recorded the system-wide **press feedback** contract — `scale(0.94)`, instant press-in / 180ms (`--duration-base`, `--ease-standard`) release, a 120ms (`--duration-fast`) JS minimum-hold floor so a too-quick click is still visible, `disabled` **and** `loading` excluded, reduced motion = shade only (no movement), no haptics. Adds the `data-pressed` attribute and the pointer/keyboard wiring behind it. **Both halves are now implemented:** the scale, and the per-variant **pressed fill** — each variant one perceptual step deeper than its own hover, as longhand `color-mix(in oklab, …)` (solid/destructive/outline 80% toward black, ghost 90% because `--color-muted` is near-white, link a 12% tint since it has no hover fill to deepen). Values, resolved hexes, and computed light-theme contrast ratios (5.56:1 – 10.85:1, all AA) recorded in §8.1. The fill rules sit **outside** the `prefers-reduced-motion: no-preference` gate that holds the transform, so a shade survives the preference; correspondingly the JS floor (`PRESS_FLOOR_MS`) **no longer skips under reduced motion** — it holds `data-pressed`, which now renders something, so skipping it would let a sub-frame tap flash colour invisibly. `Button.headless.svelte.ts` no longer reads `prefers-reduced-motion` at all. Ratifies the press-in that shipped unrecorded in #573 (retuned from `scale(0.97)`, symmetric 120ms) and fixes the loading-button exclusion it missed. §1.5 gains the rationale for amending on the v0.2.x line (v0.3.0 collides with `ui-spec-v03.md`); §8.1 Styling's two stale `tailwind-preset.ts` references corrected to `salt.css`. Issue #579; approved mock: _Button press (system-wide mock)_ in `Salt.dc.html`, Claude Design project "Salt — Culinary Modernist" (mock not in-repo). |
