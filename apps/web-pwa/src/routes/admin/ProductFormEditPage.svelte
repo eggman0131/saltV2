@@ -219,7 +219,7 @@
 
           <TextField
             label="Label"
-            description="How this form reads, e.g. “freshly squeezed lime juice”."
+            description="How this form reads, e.g. “lime juice”. Recipes are matched against it, so you don’t need to repeat it below."
             value={label}
             onValueChange={(v) => (label = v)}
             placeholder="e.g. freshly squeezed lime juice"
@@ -228,7 +228,7 @@
 
           <TextField
             label="Matchers"
-            description="Comma-separated phrases that identify this form, e.g. “lime juice”."
+            description="Comma-separated EXTRA phrasings a recipe might use, e.g. “dark meat, drumsticks”. Plurals and quantities are ignored when matching."
             value={matchersText}
             onValueChange={(v) => (matchersText = v)}
             placeholder="e.g. lime juice, fresh lime juice"

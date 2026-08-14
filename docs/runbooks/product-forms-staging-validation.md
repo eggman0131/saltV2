@@ -63,8 +63,16 @@ which under-bought whenever two recipes wanted the same form (the Lime case belo
 
 Pipeline (in `apps/cloud-functions/src/flows/canonicaliseRecipeIngredients.ts`),
 per ingredient, in order:
-1. **Tier 1 — resolve** against the `productForms` table (substring matcher, longest
-   wins). A hit binds straight to the parent canon. No AI.
+1. **Tier 1 — resolve** against the `productForms` table. A form is identified by
+   its **`label` as well as its `matchers`**, competing on equal terms; every
+   phrase and the ingredient text are folded with canon's `normaliseName` (case,
+   punctuation, accents, quantity tokens and plurals all disappear), and a phrase
+   must land on **whole-token boundaries** — `oat` matches "rolled oats" but not
+   "goat cheese". Longest phrase wins, measured on the normalised phrase. A hit
+   binds straight to the parent canon. No AI. (Issue #818 — before it, matching
+   was raw-substring over `matchers` only, so `chicken breast` missed a form whose
+   only matcher was `chicken breasts`, and a form labelled "Chicken Legs" could
+   never be found by that name.)
 2. **Tier 2 — arbitrate** (`arbitrateProductForm`): only runs **if there is ≥1
    existing buyable canon item** to offer as a candidate parent. Decides whether the
    ingredient is a `component` (→ form, minting the parent if needed) vs an
@@ -347,8 +355,9 @@ observed as documented on 2026-07-17.
 
   > **How the direct line is stored** (observed 2026-07-17, worth knowing because it
   > reads oddly): `1 whole chicken` parses to `quantity:1, unit:null` with the gram
-  > estimate demoted to `displayText:"about 1500g"` (#515), matches **no** form matcher
-  > — "whole chicken" isn't a substring of "chicken breast"/"chicken thigh" — and so is
+  > estimate demoted to `displayText:"about 1500g"` (#515), matches **no** form
+  > — "whole chicken" contains neither "chicken breast" nor "chicken thigh", by label
+  > or by matcher (#818 widened the match; it did not widen it this far) — and so is
   > written as a list item with **no `unit` and no `formDemand`**. That absence is the
   > signature of a whole/direct row, and it is what makes it sum rather than max. The
   > add-to-list sheet shows it as a SEPARATE row (`Whole Chicken (2 count)` and
