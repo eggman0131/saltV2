@@ -381,3 +381,30 @@ export type {
   ReferenceYield,
   Formula,
 } from './formula.js';
+
+// Process (issue #806, phase 2) — the ordered stages hanging off a formula, and
+// the extraction flow that authors them. `active` vs `wait` is DEFINED in
+// process.ts's field docs and repeated verbatim in the flow's prompt; read it
+// before changing either.
+export {
+  ProcessStageKindSchema,
+  StageEnvironmentSchema,
+  StageDurationSchema,
+  ProcessStageContentSchema,
+  ProcessStageSchema,
+  ProcessSchema,
+  ExtractProcessStagesInputSchema,
+  ExtractProcessStagesAIOutputSchema,
+  ExtractProcessStagesOutputSchema,
+} from './process.js';
+export type {
+  ProcessStageKind,
+  StageEnvironment,
+  StageDuration,
+  ProcessStageContent,
+  ProcessStage,
+  Process,
+  ExtractProcessStagesInput,
+  ExtractProcessStagesAIOutput,
+  ExtractProcessStagesOutput,
+} from './process.js';

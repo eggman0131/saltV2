@@ -43,6 +43,13 @@ export const AI_FLOW_ROLES = {
   // Same tier as the URL import — accuracy over creativity, and the same model
   // family reads both, so a model change moves the two together.
   extractRecipeFromPhoto: 'fast',
+  // `lite` (issue #806, epic #778). Pulling the wait stages out of step text and
+  // the timers already parsed onto it is MECHANICAL — no judgement, the answer is
+  // in the words in front of it — which is the same posture as
+  // parseRecipeIngredients. The epic's contract names this the "extraction (cheap
+  // tier)" half deliberately; the "proposal (better tier)" half is a separate flow
+  // that does not exist yet.
+  extractProcessStages: 'lite',
   // `pro`, deliberately (issue #751). Cue quality IS the feature: a wrong sensory
   // cue tells the cook to wait for something that will never happen, which is
   // worse than no cue at all — and the volume is a handful of recipes ever, so the

@@ -401,6 +401,18 @@ export type {
   UnitShapePreset,
 } from './formula/index.js';
 
+// Process module (issue #806) — ordering and total duration over a formula's
+// stages. No clock, no scheduling, no diff; see the module header for why each is
+// absent rather than merely unwritten.
+export {
+  withStageAdded,
+  withStageRemoved,
+  withStageUpdated,
+  withStageMoved,
+  totalDurationMinutes,
+} from './process/index.js';
+export type { DurationRange } from './process/index.js';
+
 // URL module — pure display-time cache-buster for regenerated image URLs (#460).
 export { appendCacheBuster } from './url/index.js';
 

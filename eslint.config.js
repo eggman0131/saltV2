@@ -98,10 +98,18 @@ const NODE_BUILTIN_PKGS = [
   'net',
   'zlib',
   'events',
-  'process',
 ];
 const DOMAIN_NODE_MESSAGE =
   '@salt/domain is pure — no Node built-ins or I/O. Move platform code into an adapter.';
+// Node built-ins restricted by EXACT NAME rather than by pattern, because a
+// pattern would also match a relative import (a `group` is matched with
+// gitignore semantics, so a bare segment matches ANYWHERE in the specifier).
+// `process` is the one that bites: `packages/domain/src/process/` is a real
+// domain module (the stage model, issue #806), and as a pattern `'process'`
+// rejected `./process/index.js` with a message about Node built-ins. `paths`
+// means "this exact specifier", which is what "the Node builtin" actually is.
+// `node:process` is still covered by the `node:*` pattern above.
+const NODE_BUILTIN_NAMES = [{ name: 'process', message: DOMAIN_NODE_MESSAGE }];
 const DOMAIN_BROWSER_GLOBALS = [
   'window',
   'document',
@@ -307,7 +315,10 @@ export default [
   {
     files: ['packages/domain/**/*.ts'],
     rules: {
-      'no-restricted-imports': ['error', { patterns: DOMAIN_BASE_PATTERNS }],
+      'no-restricted-imports': [
+        'error',
+        { paths: NODE_BUILTIN_NAMES, patterns: DOMAIN_BASE_PATTERNS },
+      ],
       'no-restricted-globals': ['error', ...DOMAIN_RESTRICTED_GLOBALS],
     },
   },
@@ -321,6 +332,7 @@ export default [
       'no-restricted-imports': [
         'error',
         {
+          paths: NODE_BUILTIN_NAMES,
           patterns: [
             ...DOMAIN_BASE_PATTERNS,
             ...forbidGroup(
@@ -345,6 +357,7 @@ export default [
       'no-restricted-imports': [
         'error',
         {
+          paths: NODE_BUILTIN_NAMES,
           patterns: [
             ...DOMAIN_BASE_PATTERNS,
             ...forbidGroup(
@@ -477,6 +490,7 @@ export default [
       'no-restricted-imports': [
         'error',
         {
+          paths: NODE_BUILTIN_NAMES,
           patterns: [
             ...forbidGroup(
               FIREBASE_PKGS,

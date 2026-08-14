@@ -48,6 +48,7 @@ import {
 } from './flows/extractRecipeFromPhoto.js';
 import { generateChatTitleFlow } from './flows/generateChatTitle.js';
 import { generateGuidedPlanFlow } from './flows/generateGuidedPlan.js';
+import { extractProcessStagesFlow } from './flows/extractProcessStages.js';
 import { onShoppingListItemWrite } from './triggers/onShoppingListItemWrite.js';
 import { onCanonItemWritten } from './triggers/onCanonItemWritten.js';
 import { onRecipeWritten } from './triggers/onRecipeWritten.js';
@@ -346,6 +347,28 @@ export const generateGuidedPlan = onCallGenkit(
     timeoutSeconds: 90,
   },
   generateGuidedPlanFlow,
+);
+
+// Process stages (issue #806, phase 2 of epic #778): read the recipe → return the
+// ordered stages its method describes, each labelled `active` or `wait`. Takes only
+// a recipe id, for the same reason the guided plan does. PERSISTS NOTHING — the
+// stages land on the formula screen for review, and the user's Save is what writes
+// them onto `formulas/{recipeId}`.
+//
+// Plain onCallGenkit, same call as generateGuidedPlan and for the same reason: one
+// call from one tap, no cross-invocation pair to unify, so the traced factory would
+// buy only a wire envelope to maintain. 90s for the flow's 55s withAiTimeout,
+// inside the callable client's 70s default.
+//
+// `lite` (see the flow): mechanical extraction, not judgement.
+export const extractProcessStages = onCallGenkit(
+  {
+    ...APP_CHECK_ENFORCEMENT,
+    secrets: [geminiApiKey, posthogApiKey],
+    authPolicy: isSignedIn(),
+    timeoutSeconds: 90,
+  },
+  extractProcessStagesFlow,
 );
 
 // SSRF-hardened URL import (recipe URL import epic). A custom onError maps the

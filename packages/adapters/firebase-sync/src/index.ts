@@ -79,6 +79,7 @@ export { callGenerateGuidedPlan } from './guidedPlanCallables.js';
 // family-shared doc keyed by the recipe id — and same read contract: a corrupt
 // formula is an error, never "no formula yet". No delete: nothing removes one.
 export { subscribeFormula, loadFormula, saveFormula } from './formulaSubscription.js';
+export { callExtractProcessStages } from './formulaCallables.js';
 export { savePushSubscription, deletePushSubscription } from './pushSubscriptionSync.js';
 export { streamChefChat, callGenerateChatTitle } from './chatCallables.js';
 export { callAuthorRecipe } from './authorRecipeCallable.js';

@@ -1,6 +1,10 @@
-import { subscribeFormula, saveFormula as saveFormulaDoc } from '@salt/firebase-sync';
+import {
+  subscribeFormula,
+  saveFormula as saveFormulaDoc,
+  callExtractProcessStages,
+} from '@salt/firebase-sync';
 import { createObservabilityErrorReportingAdapter } from '@salt/observability';
-import type { Formula } from '@salt/domain/schemas';
+import type { Formula, ProcessStage } from '@salt/domain/schemas';
 import { reportIfFailed, reportSubscriptionError } from './errorReporting.js';
 import { success, type DomainError, type ReadResult } from '@salt/shared-types';
 import { writable, get } from 'svelte/store';
@@ -94,6 +98,31 @@ export function initFormulaSync(recipeId: string): () => void {
  * if the write fails, so a dropped connection never silently reverts the mapping
  * on screen. Whole-document LWW — a re-map replaces, it does not merge.
  */
+/**
+ * Ask the AI for the stages a recipe's method describes (issue #806, phase 2).
+ *
+ * WRITES NOTHING, deliberately. The stages come back to the formula screen, which
+ * shows them for review and marks itself dirty; the existing Save button is the one
+ * write path, so nothing reaches Firestore until the user has seen it. That also
+ * means a re-run costs nothing but the call — the previous stages are only replaced
+ * once someone saves over them.
+ *
+ * A recipe whose method has nothing to wait for comes back with an EMPTY list. That
+ * is the flow refusing to invent a proof, not a failure.
+ */
+export async function extractProcessStages(
+  recipeId: string,
+): Promise<ReadResult<ProcessStage[], DomainError>> {
+  const authored = await callExtractProcessStages({ recipeId });
+  if (authored.kind !== 'ok') return reportIfFailed(getErrorReporter(), authored);
+  // Ids are minted HERE, not by the model: they are document-local identity, and
+  // the review surface needs them the moment the list renders (they key the rows).
+  // Same split, and the same reason, as guidedPlanService minting prep-entry ids.
+  return success(
+    authored.value.stages.map((stage): ProcessStage => ({ ...stage, id: crypto.randomUUID() })),
+  );
+}
+
 export async function saveFormula(next: Formula): Promise<ReadResult<Formula, DomainError>> {
   _formula.set(next);
   pendingWrites += 1;
