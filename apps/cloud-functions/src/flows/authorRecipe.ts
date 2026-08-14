@@ -100,7 +100,15 @@ export const authorRecipeFlow = ai.defineFlow(
         ai.generate({
           model,
           system: systemPrompt,
-          prompt: conversationText,
+          // A refresh has no conversation, so `conversationText` is empty — and a
+          // generate call whose user content is empty is rejected outright by
+          // Gemini (400 INVALID_ARGUMENT, "contents is not specified"), which is
+          // what made every staging refresh fail with no proposal at all. The
+          // system prompt is not contents. So refresh supplies the one user turn
+          // it does have: the instruction to do the thing. It deliberately says
+          // nothing the closing above does not already say — refresh behaviour is
+          // specified in `refreshModeSection` and must not acquire a second home.
+          prompt: refreshing ? REFRESH_USER_TURN : conversationText,
           output: { schema: LibrarianOutputSchema },
           config: { temperature: 0 },
         }),
@@ -243,6 +251,12 @@ ${baseRecipe}`;
 // the model to preserve the equipment specifics of a transcript that does not
 // exist. The appliance names are already IN the recipe text, and rule 1 below
 // covers them explicitly — which is the protection that actually matters here.
+// The user turn for a refresh — see the `prompt` at the generate call for why one
+// has to exist at all. Kept beside the section it stands in for so the two are
+// read together.
+const REFRESH_USER_TURN =
+  'Re-transcribe the recipe above under the current rules. Return the complete recipe.';
+
 function refreshModeSection(baseRecipe: string): string {
   return `## Re-transcribing an existing recipe
 The recipe below already exists and is being RE-TRANSCRIBED under the current house rules. \
