@@ -74,6 +74,12 @@ export {
   deleteGuidedPlan,
 } from './guidedPlanSubscription.js';
 export { callGenerateGuidedPlan } from './guidedPlanCallables.js';
+// Formula (issue #806, epic #778): the per-recipe composition as baker's
+// percentages against a declared basis. Same shape as the guided plan above — one
+// family-shared doc keyed by the recipe id — and same read contract: a corrupt
+// formula is an error, never "no formula yet". No delete: nothing removes one.
+export { subscribeFormula, loadFormula, saveFormula } from './formulaSubscription.js';
+export { callExtractProcessStages } from './formulaCallables.js';
 export { savePushSubscription, deletePushSubscription } from './pushSubscriptionSync.js';
 export { streamChefChat, callGenerateChatTitle } from './chatCallables.js';
 export { callAuthorRecipe } from './authorRecipeCallable.js';

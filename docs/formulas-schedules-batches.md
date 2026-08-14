@@ -1,7 +1,24 @@
 # Formulas, schedules and batches
 
-**Status: architecture agreed, nothing built.** Epic #778. This document is
-the contract the phases are built against; it is not a description of code that
+**Status: phase 00 and most of phase 01 are built; everything else is still
+contract.** Epic #778. Built so far: the pure `formula` module (#782); on top of
+it, `formulas/{recipeId}` with its rules, adapter, service and mapping screen at
+`/recipes/:id/formula` (#806 phase 1); and the process half of that screen —
+`schemas/process.ts`, the pure `process` module, the `extractProcessStages`
+callable, and stage review on the formula screen (#806 phase 2). Still no
+scaling, no batches, and **no entry point in the app**: the route is reachable by
+URL only.
+
+Two things about what `process/` holds today, because they are deliberate
+absences rather than gaps: it has **ordering and total duration only** — no
+schedule, no clock, no `diffProcess`, all of which belong with the batch in phase
+02 — and a stage carries **no additions or removals** yet, because nothing
+produces or consumes them. What this doc requires is that the shape not preclude
+them, and a flat ordered array of stages with stable ids on an optional field of a
+greenfield collection does not. Phases 03/04 own that addition.
+
+Everything below about batches, cultures and `proposeSchedule` is still the
+contract the remaining phases are built against, not a description of code that
 exists. Read it before designing any part of bread scaling, ferments or cures.
 
 Three hobbies — bread, fermented vegetables, cured meats — look like three
@@ -78,7 +95,24 @@ from the start:
 **A stage's link to a recipe step is optional and one-way.** An AI-added fridge
 retard corresponds to no step; the bake stage points at the bake step so it can
 hand off to cook mode. Required, and added stages have nowhere to live; two-way,
-and the batch starts writing back into the recipe.
+and the batch starts writing back into the recipe. In practice this also decides
+what extraction does with a hallucinated step id: it drops the **citation**, not
+the stage — a bulk ferment is still a bulk ferment without one. (`generateGuidedPlan`
+drops the whole note, correctly, because a note with no step is nothing at all.)
+
+**`active` versus `wait` is defined once and quoted, not paraphrased.** A `wait`
+is unattended change — the dough, the ferment or the oven changes on its own and
+the cook can leave the room. An `active` stage is one the cook carries out and is
+present for. **The bake is `active`; the preheat is `wait`.** The definition lives
+in `ProcessStageKindSchema`'s field docs and verbatim in the extraction prompt,
+with a test pinning the two together, because the spike labelled the bake
+differently on each of three bread recipes purely for want of that sentence.
+
+**A recipe with no waits extracts to nothing.** The flow returns the full ordered
+list — actives included, because a schedule needs the active time between the
+waits — but only for a method that has something to wait for. This is enforced in
+the flow rather than asked for in the prompt: a model told to list stages will
+always find some, and an invented proof is worse than no process at all.
 
 ### Batch — the run
 

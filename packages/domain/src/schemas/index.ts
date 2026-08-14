@@ -365,8 +365,8 @@ export type {
 } from './recipeDiff.js';
 
 // Formula module (issue #782) — composition as ratios against a declared basis.
-// Nothing writes `formulas/{recipeId}` yet; the schema lands with the pure
-// arithmetic that is typed against it.
+// Written to `formulas/{recipeId}` since issue #806; the shape is unchanged from
+// #782, which landed the schema alongside the pure arithmetic typed against it.
 export {
   DensityClassSchema,
   FormulaComponentSchema,
@@ -381,3 +381,30 @@ export type {
   ReferenceYield,
   Formula,
 } from './formula.js';
+
+// Process (issue #806, phase 2) — the ordered stages hanging off a formula, and
+// the extraction flow that authors them. `active` vs `wait` is DEFINED in
+// process.ts's field docs and repeated verbatim in the flow's prompt; read it
+// before changing either.
+export {
+  ProcessStageKindSchema,
+  StageEnvironmentSchema,
+  StageDurationSchema,
+  ProcessStageContentSchema,
+  ProcessStageSchema,
+  ProcessSchema,
+  ExtractProcessStagesInputSchema,
+  ExtractProcessStagesAIOutputSchema,
+  ExtractProcessStagesOutputSchema,
+} from './process.js';
+export type {
+  ProcessStageKind,
+  StageEnvironment,
+  StageDuration,
+  ProcessStageContent,
+  ProcessStage,
+  Process,
+  ExtractProcessStagesInput,
+  ExtractProcessStagesAIOutput,
+  ExtractProcessStagesOutput,
+} from './process.js';

@@ -380,6 +380,8 @@ export {
   amountFromQuantity,
   gramsFromParsed,
   deriveFormula,
+  BASIS_KEYWORDS,
+  guessBasisIngredientIds,
   solveFormula,
   BASIS_PERCENT_TOLERANCE,
   UNIT_SHAPE_PRESETS,
@@ -389,6 +391,7 @@ export {
   basisYield,
 } from './formula/index.js';
 export type {
+  BasisGuessEntry,
   DeriveFormulaInput,
   DeriveFormulaResult,
   FormulaComponentInput,
@@ -400,6 +403,18 @@ export type {
   FormulaFailure,
   UnitShapePreset,
 } from './formula/index.js';
+
+// Process module (issue #806) — ordering and total duration over a formula's
+// stages. No clock, no scheduling, no diff; see the module header for why each is
+// absent rather than merely unwritten.
+export {
+  withStageAdded,
+  withStageRemoved,
+  withStageUpdated,
+  withStageMoved,
+  totalDurationMinutes,
+} from './process/index.js';
+export type { DurationRange } from './process/index.js';
 
 // URL module — pure display-time cache-buster for regenerated image URLs (#460).
 export { appendCacheBuster } from './url/index.js';

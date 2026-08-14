@@ -75,6 +75,10 @@ export const routes: RouteDefinition = new Map<
   // The guided-plan EDITOR (issue #751, Phase 1). An ordinary shell route — desk
   // work, not a hands-full mode — so it gets no entry in ./fullViewport.ts.
   ['/recipes/:id/guided', lazy(() => import('./recipes/GuidedPlanPage.svelte'))],
+  // The formula screen (issue #806, phase 1 of epic #778). Also an ordinary shell
+  // route — desk work, once a month — so no entry in ./fullViewport.ts. Reachable
+  // BY URL ONLY in this phase: the recipe page offers nothing, on purpose.
+  ['/recipes/:id/formula', lazy(() => import('./recipes/FormulaPage.svelte'))],
   ['/recipes/:id', lazy(() => import('./recipes/RecipeViewPage.svelte'))],
   ['/settings', SettingsPage],
   // Operator area (issues #155, #157). All routes are guarded client-side by

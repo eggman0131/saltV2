@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ProcessSchema } from './process.js';
 
 // Formula document shape (issue #782, epic #778) — composition as ratios against
 // a declared basis. Baker's percentage is the general case: the basis is the set
@@ -10,9 +11,14 @@ import { z } from 'zod';
 // formula's reference yield" (docs/formulas-schedules-batches.md). Storing both
 // would let them drift.
 //
-// Nothing writes this document yet: phase 00 is headless and there is no
-// `formulas/{recipeId}` collection. The schema lands now because the pure
-// functions in `packages/domain/src/formula/` are typed against it.
+// Stored at `formulas/{recipeId}` since issue #806 (family-shared, deterministic
+// id, no ownerUid), written by exactly one path — `formulaService.saveFormula` in
+// the PWA. The SHAPE is unchanged from #782, which landed it headless because the
+// pure functions in `packages/domain/src/formula/` are typed against it.
+//
+// Deliberately no `createdAt`/`updatedAt`: there is no ordering token here and
+// nothing needs one. Document-level LWW is the whole conflict story, exactly as
+// it is for `mealPlans/{startDate}`.
 
 // How an ml figure became grams, recorded on the component that needed the
 // conversion rather than looked up per environment. Named classes (not a raw
@@ -68,6 +74,20 @@ export const FormulaSchema = z.object({
   // direction, and note the two solve directions are exact inverses of each other
   // under it.
   handlingLossPercent: z.number().min(0).max(100).default(0),
+  // The REFERENCE process (issue #806, phase 2) — the ordered stages this dough
+  // goes through, each with a temperature and a duration. OPTIONAL: a formula with
+  // no process (a fresh sausage, a cocktail) carries no empty scaffolding, and the
+  // same argument that keeps `formulas` out of `recipes` applies one level down.
+  //
+  // `schemaVersion` STAYS AT 1. `formulas` is greenfield — the collection shipped
+  // in phase 1 of this same issue and holds no production data — so an added
+  // optional field needs no version bump and no migration. Documents written
+  // before it parse unchanged either way.
+  //
+  // A REFERENCE, not a template: a phase-02 schedule may restructure it (ninety
+  // minutes on the counter becoming twenty on the counter and eight in the fridge),
+  // and what lands on the batch is the resolved schedule, never this.
+  process: ProcessSchema.optional(),
   schemaVersion: z.literal(1).default(1),
 });
 
