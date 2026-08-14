@@ -153,6 +153,92 @@ describe('remapGenkitSpan', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// gen_ai.flow — which flow spent the call (#817).
+//
+// The `genkit:path` strings below are VERBATIM output from @genkit-ai/core
+// 1.40.1's own runInNewSpan, captured by driving it with an in-memory OTel
+// processor over the two real shapes seen in production. Do not "tidy" them —
+// they are the contract this parser is written against.
+// ---------------------------------------------------------------------------
+const CHEF_CHAT_PATH =
+  '/{chefChat,t:flow}/{generate,t:helper}/{googleai/gemini-pro-latest,t:action}';
+const PRODUCT_FORM_PATH =
+  '/{authorRecipe,t:flow}/{canonicaliseRecipeIngredients,t:flow}/{arbitrateProductForm,t:flow}' +
+  '/{generate,t:helper}/{googleai/gemini-flash-lite-latest,t:action}';
+
+function modelSpanWithPath(path?: string): ReadableSpanLike {
+  return fakeSpan({
+    attributes: {
+      'genkit:type': 'action',
+      'genkit:metadata:subtype': 'model',
+      'genkit:name': 'googleai/gemini-pro-latest',
+      ...(path === undefined ? {} : { 'genkit:path': path }),
+    },
+  });
+}
+
+describe('remapGenkitSpan — gen_ai.flow', () => {
+  it('reads the enclosing flow from genkit:path on a model span', () => {
+    expect(attr(remapGenkitSpan(modelSpanWithPath(CHEF_CHAT_PATH))!, 'gen_ai.flow')).toBe(
+      'chefChat',
+    );
+  });
+
+  it('takes the INNERMOST flow, not the trace root, when flows nest', () => {
+    // The whole point of the fix: one recipe import nests several
+    // arbitrateProductForm generations under an authorRecipe root, and
+    // attributing them to the root would be a confidently wrong answer.
+    expect(attr(remapGenkitSpan(modelSpanWithPath(PRODUCT_FORM_PATH))!, 'gen_ai.flow')).toBe(
+      'arbitrateProductForm',
+    );
+  });
+
+  it('attributes an embedder span too (embeddings are the highest-volume call)', () => {
+    const out = remapGenkitSpan(
+      fakeSpan({
+        attributes: {
+          'genkit:type': 'action',
+          'genkit:metadata:subtype': 'embedder',
+          'genkit:name': 'googleai/gemini-embedding-001',
+          'genkit:path':
+            '/{embedText,t:flow}/{embed,t:helper}/{googleai/gemini-embedding-001,t:action}',
+        },
+      }),
+    )!;
+    expect(attr(out, 'gen_ai.operation.name')).toBe('embeddings');
+    expect(attr(out, 'gen_ai.flow')).toBe('embedText');
+  });
+
+  it('keeps a model id containing a slash out of the flow name', () => {
+    // Names may contain `/` and `:` (model ids do); only `,` and `}` delimit.
+    expect(attr(remapGenkitSpan(modelSpanWithPath(CHEF_CHAT_PATH))!, 'gen_ai.flow')).not.toContain(
+      '/',
+    );
+  });
+
+  it('omits the attribute rather than guessing when there is no flow to name', () => {
+    // Additive and best-effort (Rule 10): a missing, malformed or flow-less path
+    // must leave the event unattributed, never throw and never invent a value.
+    for (const path of [undefined, '', 'not-a-path', '/{generate,t:helper}']) {
+      expect(attr(remapGenkitSpan(modelSpanWithPath(path))!, 'gen_ai.flow')).toBeUndefined();
+    }
+    expect(attr(remapGenkitSpan(modelSpanWithPath(42 as unknown as string))!, 'gen_ai.flow')).toBe(
+      undefined,
+    );
+  });
+
+  it('is stateless across calls (the /g literal must not carry lastIndex)', () => {
+    // A shared /g regex is a classic lastIndex trap; matchAll clones it, and this
+    // asserts that stays true — the second call must not come back undefined.
+    for (let i = 0; i < 3; i += 1) {
+      expect(attr(remapGenkitSpan(modelSpanWithPath(PRODUCT_FORM_PATH))!, 'gen_ai.flow')).toBe(
+        'arbitrateProductForm',
+      );
+    }
+  });
+});
+
 describe('aiOtlpSpanProcessor', () => {
   const prevKey = process.env['POSTHOG_API_KEY'];
   afterEach(() => {

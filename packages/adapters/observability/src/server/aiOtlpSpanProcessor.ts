@@ -70,6 +70,55 @@ function servedModel(attrs: Readonly<Record<string, unknown>>, fallback: string)
   return typeof served === 'string' && served ? served : fallback;
 }
 
+// Which FLOW spent this call (#817). A `$ai_generation` is named after the model
+// — correct, it IS the model call — which left cost attributable to a model but
+// not to the code that spent it: `AI_FLOW_ROLES` puts five flows on `fast`, five
+// on `lite` and two on `pro`, so a model breakdown cannot answer "is
+// generateGuidedPlan costing more than chefChat?".
+//
+// Genkit stamps `genkit:path` on every span, encoding the full ancestry as
+// `/{name,t:type}` segments (built from Genkit's own span metadata, so
+// setActiveSpanName's `updateName()` never disturbs it). The INNERMOST `t:flow`
+// segment is the flow that actually spent the money — not the outermost, which is
+// merely the entry point:
+//
+//   /{chefChat,t:flow}/{generate,t:helper}/{googleai/…,t:action}
+//     → chefChat
+//   /{authorRecipe,t:flow}/{canonicaliseRecipeIngredients,t:flow}/{arbitrateProductForm,t:flow}/…
+//     → arbitrateProductForm, NOT authorRecipe
+//
+// That distinction is the whole point: one recipe import nests seven
+// `arbitrateProductForm` generations under an `authorRecipe` root, so attributing
+// by trace root — the only thing a query-side join can cheaply reach — would
+// label every one of them `authorRecipe`. Entry-point attribution stays available
+// query-side as a single join from a generation to its `$ai_trace` root on
+// `$ai_trace_id`, which is why one attribute is enough here.
+//
+// Emitted verbatim as the unmapped attribute `gen_ai.flow`; PostHog passes
+// attributes it doesn't recognise straight through as event properties, which is
+// how `gen_ai.state` (set below) is already queryable on `$ai_generation`.
+//
+// The name is reported honestly even when it is not an `AI_FLOW_ROLES` key —
+// several spending flows (`arbitrateProductForm`, the orchestrators) call
+// `resolveModel` directly rather than `flowModel`, and dropping those would
+// mislabel real spend as unattributed rather than reveal it.
+//
+// The segment grammar is Genkit's own (`\{([^\,}]+),[^\}]+\}` in
+// tracing/instrumentation.ts): a name containing no `,` or `}`. `/` and `:` are
+// fine, which matters because model ids look like `googleai/gemini-pro-latest`.
+const FLOW_SEGMENT = /\{([^,}]+),t:flow(?:,[^}]*)?\}/g;
+
+function spendingFlow(attrs: Readonly<Record<string, unknown>>): string | undefined {
+  const path = attrs['genkit:path'];
+  if (typeof path !== 'string') return undefined;
+  let flow: string | undefined;
+  // Last match wins — the innermost flow. `matchAll` needs the /g flag, which
+  // carries `lastIndex` state on the shared literal; it is reset per call because
+  // matchAll operates on an internal clone of the regex.
+  for (const m of path.matchAll(FLOW_SEGMENT)) flow = m[1];
+  return flow;
+}
+
 // Content-forwarding policy (#356, per maintainer decision): forward full
 // prompt + completion for generations (data is family-shared; the prompt/output
 // IS the debug value), but cap each message so a pathological prompt (e.g. a full
@@ -191,6 +240,10 @@ function readUsage(attrs: Readonly<Record<string, unknown>>): {
  *  - a span with NO `genkit:*` attribute (canon structural span, infra spans)
  *      → dropped (`null`)
  *
+ * Model and embedder spans also carry `gen_ai.flow` — the innermost enclosing
+ * Genkit flow, read from `genkit:path` (see spendingFlow above) — so spend is
+ * attributable to the code that caused it and not merely to the model (#817).
+ *
  * Content: generations forward the full prompt + completion (capped per message;
  * media → `[media]`, never base64); embeddings forward only a short input preview
  * (see the content-forwarding policy above). The OTLP span name is the canonical
@@ -235,6 +288,8 @@ export function remapGenkitSpan(span: ReadableSpanLike): OtlpSpan | null {
     if (outputTokens !== undefined)
       attributes.push(intAttr('gen_ai.usage.output_tokens', outputTokens));
     if (state) attributes.push(strAttr('gen_ai.state', state));
+    const flow = spendingFlow(attrs);
+    if (flow) attributes.push(strAttr('gen_ai.flow', flow));
     // Forward the prompt + completion (PostHog $ai_input / $ai_output_choices).
     const inMsgs = inputMessages(attrs);
     if (inMsgs.length) attributes.push(strAttr('gen_ai.input.messages', JSON.stringify(inMsgs)));
@@ -253,6 +308,10 @@ export function remapGenkitSpan(span: ReadableSpanLike): OtlpSpan | null {
     if (inputTokens !== undefined)
       attributes.push(intAttr('gen_ai.usage.input_tokens', inputTokens));
     if (state) attributes.push(strAttr('gen_ai.state', state));
+    // Embedder spans carry the same `genkit:path`, so `$ai_embedding` gets flow
+    // attribution for free — it is the highest-volume AI call in the app.
+    const flow = spendingFlow(attrs);
+    if (flow) attributes.push(strAttr('gen_ai.flow', flow));
     // Embeddings forward only a short preview of what was embedded.
     const preview = embedInputPreview(attrs);
     if (preview) {
