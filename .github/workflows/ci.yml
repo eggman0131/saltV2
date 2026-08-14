@@ -203,12 +203,45 @@ jobs:
       - name: Test
         run: pnpm test
 
+  # The only PRODUCTION BUILD in CI (issue #813). Two things it catches, neither
+  # of which anything else here can:
+  #
+  # 1. A boot-payload regression. #813 took what the PWA downloads before first
+  #    paint from 599 kB gzipped to 479 kB by getting the Lucide barrel and the
+  #    browser OTel SDK out of it, and by making Leaflet load on demand. Each of
+  #    those comes back via a one-line change with NO visible symptom — the app
+  #    just opens slower, on every first load and after every PWA update. The
+  #    script's header documents the three rules and how to move a ceiling.
+  # 2. A broken `vite build`. Nothing else in CI builds the app, so until now a
+  #    build break could only surface at deploy time.
+  #
+  # Its OWN JOB rather than a step in `static`: a build is ~2 min of work that has
+  # no reason to sit in front of the cheap checks, and the aggregator below gates
+  # on it either way. That keeps the ruleset's three required contexts at three —
+  # the constraint the `static` comment is really about.
+  #
+  # Production mode on purpose: it is what ships, and `.env.production` is tracked
+  # (the Firebase browser keys in it are public by design), so this needs no
+  # secrets and runs on forks.
+  boot-payload:
+    name: Boot payload
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/workspace
+
+      - name: Build web-pwa (production)
+        run: pnpm --filter @salt/web-pwa build
+
+      - name: Check boot payload
+        run: node scripts/check-boot-payload.mjs
+
   # Aggregator — see the comment on `static`. MUST stay named
   # "Lint, typecheck, test, boundary" to satisfy the branch ruleset.
   ci:
     name: Lint, typecheck, test, boundary
     runs-on: ubuntu-latest
-    needs: [static, types, unit]
+    needs: [static, types, unit, boot-payload]
     # `always()` because a plain `needs` would SKIP this job when a dependency
     # fails — and GitHub counts a skipped required check as PASSING, which would
     # turn the ruleset into a rubber stamp. It runs unconditionally and asserts

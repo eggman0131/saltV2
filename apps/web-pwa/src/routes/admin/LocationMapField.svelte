@@ -1,9 +1,14 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import * as L from 'leaflet';
-  import 'leaflet/dist/leaflet.css';
+  // Type-only, so it is fully erased: Leaflet (155 kB, plus a 15 kB CSS chunk) is
+  // pulled in by the `await import()` in onMount below, NOT at module scope
+  // (issue #813). #411 moved it off the boot path; this makes it on-demand, so
+  // AppSettingsPage no longer carries the whole library whether or not the picker
+  // is rendered. `L.icon(...)` therefore has to be built inside onMount too.
+  import type * as L from 'leaflet';
   // Leaflet's default marker images are resolved via a runtime path that breaks
   // under a bundler, so we import the asset URLs explicitly and build an icon.
+  // These stay STATIC: they compile to URL strings, not bytes.
   import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
   import markerIcon from 'leaflet/dist/images/marker-icon.png';
   import markerShadow from 'leaflet/dist/images/marker-shadow.png';
@@ -22,16 +27,6 @@
   }
   let { latitude, longitude, onChange, testid }: Props = $props();
 
-  const icon = L.icon({
-    iconUrl: markerIcon,
-    iconRetinaUrl: markerIcon2x,
-    shadowUrl: markerShadow,
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
-    popupAnchor: [1, -34],
-    shadowSize: [41, 41],
-  });
-
   // Round to ~0.1m so the readout and saved doc stay tidy (6 dp is plenty).
   const round = (n: number): number => Math.round(n * 1e6) / 1e6;
 
@@ -40,26 +35,48 @@
   let marker: L.Marker | undefined;
 
   onMount(() => {
-    map = L.map(container).setView([latitude, longitude], 13);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors',
-      maxZoom: 19,
-    }).addTo(map);
+    // Set by the teardown below if the component unmounts before Leaflet lands,
+    // so a slow load can't attach a map to a detached container.
+    let disposed = false;
 
-    marker = L.marker([latitude, longitude], { draggable: true, icon }).addTo(map);
-    marker.on('dragend', () => {
-      const { lat, lng } = marker!.getLatLng();
-      onChange(round(lat), round(lng));
-    });
-    map.on('click', (e: L.LeafletMouseEvent) => {
-      onChange(round(e.latlng.lat), round(e.latlng.lng));
-    });
+    void (async () => {
+      const [leaflet] = await Promise.all([import('leaflet'), import('leaflet/dist/leaflet.css')]);
+      if (disposed) return;
 
-    // The map is mounted inside a flex column; nudge Leaflet to measure its real
-    // size once layout settles, otherwise tiles render into a 0-height box.
-    requestAnimationFrame(() => map?.invalidateSize());
+      const icon = leaflet.icon({
+        iconUrl: markerIcon,
+        iconRetinaUrl: markerIcon2x,
+        shadowUrl: markerShadow,
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41],
+      });
+
+      map = leaflet.map(container).setView([latitude, longitude], 13);
+      leaflet
+        .tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; OpenStreetMap contributors',
+          maxZoom: 19,
+        })
+        .addTo(map);
+
+      marker = leaflet.marker([latitude, longitude], { draggable: true, icon }).addTo(map);
+      marker.on('dragend', () => {
+        const { lat, lng } = marker!.getLatLng();
+        onChange(round(lat), round(lng));
+      });
+      map.on('click', (e: L.LeafletMouseEvent) => {
+        onChange(round(e.latlng.lat), round(e.latlng.lng));
+      });
+
+      // The map is mounted inside a flex column; nudge Leaflet to measure its real
+      // size once layout settles, otherwise tiles render into a 0-height box.
+      requestAnimationFrame(() => map?.invalidateSize());
+    })();
 
     return () => {
+      disposed = true;
       map?.remove();
       map = undefined;
       marker = undefined;

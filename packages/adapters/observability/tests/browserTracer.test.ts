@@ -4,7 +4,11 @@ import {
   isBrowserTracingReady,
   initBrowserTracing,
   toBrowserOtlpSpan,
-} from '../src/browserTracer.js';
+  // The IMPLEMENTATION module, not the facade (issue #813). These assertions are
+  // synchronous — going through the facade would test its loader, not the tracer,
+  // and the facade must never be given a way to load the SDK eagerly just to suit
+  // a test. The facade's own seam is covered in browserTracerFacade.test.ts.
+} from '../src/browserTracerImpl.js';
 import { buildOtlpBody, type OtlpSpan } from '../src/shared/otlpWire.js';
 import type { ReadableSpan } from '@opentelemetry/sdk-trace-web';
 
