@@ -1,0 +1,663 @@
+<script lang="ts">
+  import {
+    Button,
+    Icon,
+    RadioGroup,
+    RadioGroupItem,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    Sheet,
+    SheetContent,
+    SheetFooter,
+    SheetHeader,
+    SheetTitle,
+    Spinner,
+    TextField,
+  } from '@salt/ui-components';
+  import { push } from 'svelte-spa-router';
+  import {
+    LEAVENING_PERCENT_BOUNDS,
+    UNIT_SHAPE_PRESETS,
+    diffProcess,
+    flattenIngredients,
+    solveFormula,
+    targetYield,
+    unitShapeFromPreset,
+    unitShapePreset,
+    withComponentPercentScaled,
+    type Recipe,
+    type ScheduleAnchor,
+  } from '@salt/domain';
+  import type { Formula, ProposeScheduleOutput } from '@salt/domain/schemas';
+  import { proposeSchedule, startBatch } from '../../lib/batchService.js';
+  import { reviewRows, type ProposalStageRow } from './scheduleProposal.js';
+  import { addToast } from '../../lib/toastStore.js';
+
+  // "Bake a batch" (issue #812, phases 1 and 2 of epic #778) — the scale sheet.
+  //
+  // Two questions and nothing else: WHAT are you making this time, and WHEN. Answering
+  // them freezes a run and opens it.
+  //
+  // ─── THE ONE PLACE A SCALED NUMBER APPEARS BEFORE THE BATCH EXISTS ────────────
+  //
+  // docs/formulas-schedules-batches.md is emphatic: the recipe never shows scaled
+  // numbers, and scaled quantities live on the batch. This sheet is the sanctioned
+  // exception, because you cannot ask for twelve rolls without being shown what
+  // twelve rolls weigh out to. Two rules keep the exception from spreading:
+  //
+  //   • IT WRITES NOTHING TO THE RECIPE, and nothing to the formula either. Closing
+  //     it leaves both documents exactly as they were, so the weekly loaf can never
+  //     silently become twelve rolls. A PROPOSAL DOES NOT CHANGE THIS: a restructured
+  //     process and an adjusted leavening percentage live in this component's state
+  //     and are handed to the freeze, never to `saveFormula`.
+  //   • THE PREVIEW IS THE SAME ARITHMETIC THE FREEZE WILL DO. It calls the same
+  //     `solveFormula` with the same yield on the same formula it will pass to
+  //     `startBatch` — including the adjusted one, when a leavening opinion has been
+  //     applied — so what is on screen is what lands on the document.
+  //
+  // ─── THE TWO HALVES OF `ScheduleAnchor`, AND WHY THEY BEHAVE DIFFERENTLY ──────
+  //
+  // "I'm starting at" is ARITHMETIC. The reference process is timed forward from the
+  // instant given, offline and instantly, and there is nothing to review.
+  //
+  // "Out of the oven at" is a QUESTION, because a finish time is only useful once
+  // something can RESTRUCTURE the process to hit it — ninety minutes on the counter
+  // becoming twenty on the counter and eight in the fridge. So it asks
+  // `proposeSchedule`, and what comes back is REVIEWED AS A DIFF before anything is
+  // created. Declining creates nothing at all.
+  //
+  // ─── THE MODEL AUTHORS ONCE, AND IS NEVER IN THE HOT PATH ─────────────────────
+  //
+  // One call, before the batch exists. `diffProcess` renders the answer already in
+  // hand — re-rendering the review never re-asks — and once Start is pressed the
+  // schedule is frozen onto the document and there is no way back to this sheet for
+  // that run. Freezing is what prevents versions; see `freezeBatch`.
+  //
+  // Nothing here computes a clock time and nothing here computes a gram. The target
+  // is back-solved by `resolveSchedule` inside the freeze, which lands on the minute
+  // asked for BY CONSTRUCTION, and every weight comes from `solveFormula`. The
+  // proposal itself emits neither, deliberately (see `schemas/proposeSchedule.ts`).
+  //
+  // The time uses a native `datetime-local` input rather than a hand-rolled picker.
+  // `RecipeAddToPlannerSheet` rejected the native control for its calendar and was
+  // right to: a month grid has to start on the household's own first day of the
+  // week, which no OS control knows. An instant carries no such convention — it is a
+  // date and a time and nothing else — so the native control is simply correct here,
+  // and it is one control fewer to maintain.
+
+  interface Props {
+    recipe: Recipe;
+    formula: Formula;
+    open: boolean;
+  }
+  let { recipe, formula, open = $bindable() }: Props = $props();
+
+  // ─── When ─────────────────────────────────────────────────────────────────────
+
+  /** Which end of the process the person is nailing down. */
+  type AnchorMode = 'startAt' | 'endAt';
+
+  function pad(value: number): string {
+    return String(value).padStart(2, '0');
+  }
+
+  /** Now, in the `YYYY-MM-DDTHH:mm` local form a `datetime-local` input wants. */
+  function localNow(): string {
+    const at = new Date();
+    return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}T${pad(at.getHours())}:${pad(at.getMinutes())}`;
+  }
+
+  let mode = $state<AnchorMode>('startAt');
+  // ONE field for both modes. A start and a finish are the same kind of fact and
+  // the same control answers for both; only the label and what happens next differ.
+  let whenLocal = $state(localNow());
+
+  // A `datetime-local` value has no offset, so it is read as LOCAL time — which is
+  // what the person typing it means. `null` while the box is empty or half-typed.
+  const whenIso = $derived.by(() => {
+    const ms = new Date(whenLocal).getTime();
+    return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+  });
+
+  // ─── What ─────────────────────────────────────────────────────────────────────
+
+  let presetId = $state('');
+  let countText = $state('1');
+  let busy = $state(false);
+  // Why the run could not be started, in the service's own words. Rendered rather
+  // than toasted: every one of these is a sentence that tells you where to go next,
+  // and a toast that vanishes is the wrong home for an instruction.
+  let startError = $state<string | null>(null);
+
+  // ─── The proposal ─────────────────────────────────────────────────────────────
+
+  let proposing = $state(false);
+  let proposal = $state<ProposeScheduleOutput | null>(null);
+  // The question this proposal answers, as a key. A proposal is an answer to ONE
+  // ask — this process, out of the oven at this minute — so moving the target
+  // silently retires it rather than leaving a stale diff on screen claiming to
+  // describe a time nobody asked for. It also does the in-flight race guard for
+  // free: an answer that arrives after the target moved simply never matches.
+  let proposalFor = $state<string | null>(null);
+  let proposeError = $state<string | null>(null);
+
+  const askKey = $derived(`${mode}|${whenLocal}`);
+  const activeProposal = $derived(proposalFor === askKey ? proposal : null);
+
+  /**
+   * Seed from the formula's OWN reference yield — "the recipe as written" is the
+   * answer most runs want, and it should be sitting in the boxes rather than waiting
+   * to be typed.
+   *
+   * A shape the preset list does not recognise leaves the picker empty, which is not
+   * a failure state: an empty picker means "as written", and the solve falls back to
+   * `formula.referenceYield` for exactly the same answer.
+   */
+  function seed(): void {
+    mode = 'startAt';
+    whenLocal = localNow();
+    startError = null;
+    discardProposal();
+    if (formula.referenceYield.kind === 'target') {
+      const shape = formula.referenceYield.shape;
+      const preset = UNIT_SHAPE_PRESETS.find(
+        (p) => p.label === shape.label && p.unitDoughGrams === shape.unitDoughGrams,
+      );
+      presetId = preset?.id ?? '';
+      countText = String(shape.count);
+    } else {
+      presetId = '';
+      countText = '1';
+    }
+  }
+
+  // Re-seed on each open: a sheet reopened this evening must not still be offering
+  // this morning's start time, last run's count, or last night's proposal.
+  let wasOpen = false;
+  $effect(() => {
+    if (open && !wasOpen) seed();
+    wasOpen = open;
+  });
+
+  const selectedPreset = $derived(presetId ? unitShapePreset(presetId) : null);
+  const count = $derived.by(() => {
+    const value = Number(countText.trim());
+    return Number.isInteger(value) && value > 0 ? value : null;
+  });
+  const shape = $derived(
+    selectedPreset && count !== null ? unitShapeFromPreset(selectedPreset, count) : null,
+  );
+  // Omitted, never invented: no shape means the formula's own reference yield, which
+  // is precisely what `startBatch` does with an absent `atYield`.
+  const atYield = $derived(shape === null ? null : targetYield(shape));
+
+  // ─── The leavening opinion, priced by the domain ──────────────────────────────
+  //
+  // The proposal says "longer and colder, so I'd take the yeast down to roughly
+  // two-thirds" and hands over a FACTOR. Everything numeric after that is the
+  // domain's: `withComponentPercentScaled` turns the factor into a percentage
+  // through the one rounding authority, and `solveFormula` turns the percentage into
+  // grams through the same rounding every other component gets. No figure on this
+  // screen was authored by a model.
+  //
+  // AND THE BOUNDS RAIL IS THE SAME ONE. `withComponentPercentScaled` stamps
+  // LEAVENING_PERCENT_BOUNDS onto the component it touched and `solveFormula`
+  // refuses if the result is outside them (#782). That refusal is consulted HERE,
+  // where the gram figure would otherwise be printed — so an absurd suggestion is
+  // never displayed, and there is no second check anywhere that could disagree with
+  // the first.
+
+  const adjustedFormula = $derived.by(() => {
+    const adjustment = activeProposal?.adjustment ?? null;
+    if (adjustment === null) return null;
+    return withComponentPercentScaled(formula, adjustment, LEAVENING_PERCENT_BOUNDS);
+  });
+
+  const solvedYield = $derived(atYield ?? formula.referenceYield);
+  const baseSolved = $derived(solveFormula(formula, solvedYield));
+  const adjustedSolved = $derived(
+    adjustedFormula === null ? null : solveFormula(adjustedFormula, solvedYield),
+  );
+  const adjustmentApplies = $derived(adjustedSolved !== null && adjustedSolved.ok);
+
+  // The formula this run will actually be frozen from, and the solve behind every
+  // number on screen. An adjustment the rail refused is simply not applied — an
+  // opinion that cannot be honoured is dropped, never fatal, exactly as
+  // `withComponentPercentScaled` drops one it cannot apply.
+  const effectiveFormula = $derived(
+    adjustmentApplies && adjustedFormula !== null ? adjustedFormula : formula,
+  );
+  const solved = $derived(
+    adjustmentApplies && adjustedSolved !== null && adjustedSolved.ok ? adjustedSolved : baseSolved,
+  );
+
+  // ─── The preview ──────────────────────────────────────────────────────────────
+
+  // The recipe's own `rawText`, keyed by ingredient id — the same join `startBatch`
+  // makes when it freezes the labels onto the run, so the preview and the document
+  // read identically.
+  const labelById = $derived(
+    new Map(flattenIngredients(recipe).map((ingredient) => [ingredient.id, ingredient.rawText])),
+  );
+
+  const unsolvable = $derived.by(() => {
+    if (solved.ok) return null;
+    switch (solved.reason.kind) {
+      case 'emptyFormula':
+        return 'This formula has nothing in it yet.';
+      case 'noBasis':
+        return 'This formula has no basis — nothing is marked as the 100%.';
+      case 'basisNotNormalised':
+        return "This formula's basis doesn't add up to 100%.";
+      default:
+        return "This formula doesn't resolve into weights.";
+    }
+  });
+
+  function formatGrams(grams: number): string {
+    return `${grams} g`;
+  }
+
+  // ─── The review ───────────────────────────────────────────────────────────────
+
+  const referenceProcess = $derived(formula.process ?? []);
+  const diff = $derived(
+    activeProposal === null ? null : diffProcess(referenceProcess, activeProposal.stages),
+  );
+  const review = $derived(
+    activeProposal === null || diff === null
+      ? null
+      : reviewRows(diff, referenceProcess, activeProposal.stages),
+  );
+
+  type Leavening =
+    { kind: 'applied'; reason: string; label: string; text: string } | { kind: 'refused' };
+
+  const leavening = $derived.by((): Leavening | null => {
+    const adjustment = activeProposal?.adjustment ?? null;
+    if (adjustment === null) return null;
+    if (adjustedSolved === null) return null;
+    if (!adjustedSolved.ok) return { kind: 'refused' };
+    const before = baseSolved.ok
+      ? baseSolved.solution.components.find((c) => c.ingredientId === adjustment.ingredientId)
+      : undefined;
+    const after = adjustedSolved.solution.components.find(
+      (c) => c.ingredientId === adjustment.ingredientId,
+    );
+    // An id the formula does not hold: `withComponentPercentScaled` returned the
+    // formula untouched, so there is nothing to show and nothing was changed.
+    if (before === undefined || after === undefined) return null;
+    return {
+      kind: 'applied',
+      reason: adjustment.reason,
+      label: labelById.get(adjustment.ingredientId) ?? '',
+      text: `${before.percent}% → ${after.percent}%, ${formatGrams(before.grams)} → ${formatGrams(after.grams)}`,
+    };
+  });
+
+  // ─── Asking ───────────────────────────────────────────────────────────────────
+
+  function discardProposal(): void {
+    proposal = null;
+    proposalFor = null;
+    proposeError = null;
+  }
+
+  const canPropose = $derived(!proposing && !busy && solved.ok && whenIso !== null);
+
+  async function handlePropose(): Promise<void> {
+    if (!canPropose) return;
+    proposing = true;
+    discardProposal();
+    const askedFor = askKey;
+    // Sliced to `YYYY-MM-DDTHH:mm` because that is exactly what the wire schema
+    // accepts, and a browser that decided to hand back seconds must not turn a good
+    // ask into an invalid-argument. The ISO instant is kept on this side for
+    // `resolveSchedule`: one representation each, for the one job each is right for.
+    const result = await proposeSchedule({
+      recipeId: recipe.id,
+      targetEndAtLocal: whenLocal.slice(0, 16),
+    });
+    proposing = false;
+    if (result.kind !== 'ok') {
+      // Neither an offline call nor a rejected one is reported to PostHog
+      // (docs/salt-architecture.md §7.6); both are a sentence and a retry.
+      proposeError =
+        result.error.kind === 'AuthError'
+          ? 'You need to be signed in to plan a schedule.'
+          : "Couldn't work out a schedule just now. Check your connection and try again.";
+      return;
+    }
+    proposal = result.value;
+    proposalFor = askedFor;
+  }
+
+  // ─── Start ────────────────────────────────────────────────────────────────────
+
+  // In `endAt` mode the proposal is a GATE, not a garnish: a finish time is a
+  // request to restructure, and starting without having read what was restructured
+  // would freeze a schedule nobody reviewed.
+  const canStart = $derived(
+    !busy &&
+      !proposing &&
+      solved.ok &&
+      whenIso !== null &&
+      (mode === 'startAt' || activeProposal !== null),
+  );
+
+  async function handleStart(): Promise<void> {
+    if (!canStart || whenIso === null) return;
+    busy = true;
+    startError = null;
+    const accepted = activeProposal;
+    const anchor: ScheduleAnchor =
+      mode === 'endAt' ? { kind: 'endAt', at: whenIso } : { kind: 'startAt', at: whenIso };
+    const result = await startBatch({
+      recipe,
+      formula: effectiveFormula,
+      ...(atYield === null ? {} : { atYield }),
+      anchor,
+      ...(accepted === null
+        ? {}
+        : { proposedStages: accepted.stages, rationale: accepted.rationale }),
+    });
+    busy = false;
+    if (result.kind !== 'ok') {
+      // BATCH_NOT_STARTABLE carries a human sentence and is deliberately NOT
+      // reported to PostHog — somebody typed the percentages, or the formula has no
+      // stages yet, and both are ordinary flow with an obvious next step. Anything
+      // else has already been reported by the service on its way through.
+      startError =
+        result.error.kind === 'ValidationError' && result.error.message
+          ? result.error.message
+          : "Couldn't start this batch. Try again.";
+      return;
+    }
+    open = false;
+    addToast('Batch started.', 'success');
+    push(`/batches/${result.value.id}`);
+  }
+</script>
+
+{#snippet diffGroup(title: string, kind: string, rows: ProposalStageRow[])}
+  {#if rows.length > 0}
+    <div class="flex flex-col gap-1">
+      <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">{title}</p>
+      <ul class="flex flex-col gap-1">
+        {#each rows as row (row.key)}
+          <li class="text-sm" data-testid="bake-batch-diff-row" data-diff-kind={kind}>
+            <span class="font-medium">{row.label}</span>
+            {#if row.details.length > 0}
+              <span class="text-muted-foreground"> — {row.details.join(' · ')}</span>
+            {/if}
+          </li>
+        {/each}
+      </ul>
+    </div>
+  {/if}
+{/snippet}
+
+<Sheet
+  bind:open
+  side="bottom"
+  onOpenChange={(v) => {
+    if (!v) busy = false;
+  }}
+>
+  <SheetContent class="flex max-h-[85vh] flex-col gap-4 p-4 pb-8">
+    <SheetHeader>
+      <SheetTitle>Bake a batch</SheetTitle>
+    </SheetHeader>
+
+    <p class="-mt-2 truncate text-sm text-muted-foreground" data-testid="bake-batch-recipe-title">
+      {recipe.title}
+    </p>
+
+    <div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto" data-testid="bake-batch-sheet">
+      <!-- ─── What are you making this time? ──────────────────────────────────── -->
+      <div class="flex flex-wrap items-end gap-3">
+        <TextField
+          label="How many"
+          inputmode="numeric"
+          class="w-28"
+          value={countText}
+          onValueChange={(v) => (countText = v)}
+          data-autofocus
+          data-testid="bake-batch-count"
+        />
+        <!-- No `portal` prop: SheetContent publishes itself as the portal container,
+             so the listbox opens inside the sheet rather than behind the modal's
+             pointer-events barrier (ui-spec-v03 §5; issues #674/#640). -->
+        <Select value={presetId} onValueChange={(v) => (presetId = v)}>
+          <SelectTrigger
+            class="w-56"
+            aria-label="What are you making"
+            data-testid="bake-batch-shape"
+          >
+            {selectedPreset?.label ?? 'As written'}
+          </SelectTrigger>
+          <SelectContent>
+            {#each UNIT_SHAPE_PRESETS as preset (preset.id)}
+              <SelectItem value={preset.id}>{preset.label}</SelectItem>
+            {/each}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <!-- ─── What that weighs out to ─────────────────────────────────────────── -->
+      {#if solved.ok}
+        <ul class="flex flex-col gap-1" data-testid="bake-batch-preview">
+          {#each solved.solution.components as component (component.ingredientId)}
+            <li
+              class="flex items-baseline justify-between gap-3 text-sm"
+              data-testid="bake-batch-preview-row"
+              data-ingredient-id={component.ingredientId}
+            >
+              <span class="min-w-0 flex-1 truncate">
+                {labelById.get(component.ingredientId) ?? ''}
+              </span>
+              <span
+                class="shrink-0 font-medium tabular-nums"
+                data-testid="bake-batch-preview-grams"
+              >
+                {formatGrams(component.grams)}
+              </span>
+            </li>
+          {/each}
+        </ul>
+
+        <div class="flex flex-col gap-0.5 text-sm" data-testid="bake-batch-totals">
+          <p>
+            <span class="font-medium tabular-nums" data-testid="bake-batch-total-grams">
+              {formatGrams(solved.solution.totalGrams)}
+            </span>
+            in the bowl{#if formula.handlingLossPercent > 0}, including {formula.handlingLossPercent}%
+              for what stays in it{/if}.
+          </p>
+          {#if solved.solution.units !== null}
+            <p class="text-muted-foreground" data-testid="bake-batch-baked-each">
+              {solved.solution.units.count} × {solved.solution.units.label} — about {formatGrams(
+                solved.solution.units.bakedUnitGrams,
+              )} each once baked.
+            </p>
+          {/if}
+        </div>
+      {:else}
+        <p class="text-sm text-muted-foreground" data-testid="bake-batch-unsolvable">
+          {unsolvable} Open the formula screen to sort it out.
+        </p>
+      {/if}
+
+      <!-- ─── When? ───────────────────────────────────────────────────────────── -->
+      <div class="flex flex-col gap-2">
+        <RadioGroup
+          label="When"
+          value={mode}
+          onValueChange={(v) => {
+            mode = v as AnchorMode;
+          }}
+        >
+          <RadioGroupItem value="startAt" label="I'm starting at…" />
+          <RadioGroupItem value="endAt" label="Out of the oven at…" />
+        </RadioGroup>
+
+        <label class="flex flex-col gap-1 text-sm">
+          <span class="font-medium">
+            {mode === 'endAt' ? 'Out of the oven at' : 'Starting'}
+          </span>
+          <input
+            type="datetime-local"
+            class="salt-focus-ring w-full rounded border border-input bg-background px-3 py-2 text-sm"
+            bind:value={whenLocal}
+            data-testid="bake-batch-when"
+          />
+        </label>
+
+        {#if mode === 'startAt'}
+          <div>
+            <Button
+              size="sm"
+              variant="ghost"
+              onclick={() => (whenLocal = localNow())}
+              data-testid="bake-batch-start-now"
+            >
+              {#snippet leading()}<Icon name="Clock" size={14} />{/snippet}
+              Now
+            </Button>
+          </div>
+          <p class="text-xs text-muted-foreground">
+            Every stage is timed forward from here. Marking one done later moves the rest with it.
+          </p>
+        {:else}
+          <p class="text-xs text-muted-foreground">
+            We'll work out a schedule that lands on this minute — moving the waits about if it has
+            to — and show you what changed before anything is started.
+          </p>
+        {/if}
+      </div>
+
+      <!-- ─── The proposal ────────────────────────────────────────────────────── -->
+      {#if mode === 'endAt'}
+        {#if proposing}
+          <!-- Honest in-flight copy rather than a bare button spinner: this call
+               reads the whole method and reasons about a night's worth of ferment,
+               and the spike measured it well past a minute. A fake percentage would
+               be a lie about progress nobody can measure. -->
+          <div
+            class="flex flex-col items-center gap-3 rounded-md border border-border bg-muted/40 px-4 py-8 text-center"
+            data-testid="bake-batch-proposing"
+          >
+            <Spinner />
+            <p class="text-sm font-medium text-foreground">Working out a schedule…</p>
+            <p class="text-xs text-muted-foreground">
+              This can take a minute or two — it's reading the method and deciding which waits to
+              move. Nothing is started until you've seen what it did.
+            </p>
+          </div>
+        {:else if proposeError !== null}
+          <p class="text-sm text-destructive" data-testid="bake-batch-propose-error">
+            {proposeError}
+          </p>
+        {/if}
+
+        {#if activeProposal !== null && diff !== null && review !== null}
+          <div
+            class="flex flex-col gap-3 rounded-md border border-border p-3"
+            data-testid="bake-batch-proposal"
+          >
+            <p class="text-sm" data-testid="bake-batch-rationale">{activeProposal.rationale}</p>
+
+            {#if diff.hasChanges}
+              <!-- One stage becoming two reads as a removal plus additions, because
+                   that is what it is: there is no honest way to say which half
+                   inherited the original. See `diffProcess`. -->
+              {@render diffGroup('Changed', 'changed', review.changed)}
+              {@render diffGroup('Added', 'added', review.added)}
+              {@render diffGroup('Removed', 'removed', review.removed)}
+            {:else}
+              <!-- A real answer, not an empty state: it read the method, looked at
+                   the time you asked for and said the process already gets there. -->
+              <p class="text-sm text-muted-foreground" data-testid="bake-batch-no-changes">
+                Nothing needs moving — the stages as written already land where you asked. They'll
+                just be timed backwards from it.
+              </p>
+            {/if}
+
+            {#if leavening !== null}
+              {#if leavening.kind === 'applied'}
+                <div
+                  class="flex flex-col gap-1 rounded-md bg-muted/40 p-2"
+                  data-testid="bake-batch-leavening"
+                >
+                  <p class="text-sm">{leavening.reason}</p>
+                  <p class="flex flex-wrap items-baseline gap-x-2 text-sm">
+                    <span class="min-w-0 truncate">{leavening.label}</span>
+                    <span class="font-medium tabular-nums" data-testid="bake-batch-leavening-figure"
+                      >{leavening.text}</span
+                    >
+                  </p>
+                  <p class="text-xs text-muted-foreground">
+                    The suggestion is the words; the percentage and the grams are worked out here,
+                    the same way every other weight on this sheet is.
+                  </p>
+                </div>
+              {:else}
+                <p class="text-sm text-muted-foreground" data-testid="bake-batch-leavening-refused">
+                  It also wanted to change the leavening, by more than the {LEAVENING_PERCENT_BOUNDS.minPercent}%–{LEAVENING_PERCENT_BOUNDS.maxPercent}%
+                  of the basis a leavening can work in. That part has been left alone — the schedule
+                  above still stands.
+                </p>
+              {/if}
+            {/if}
+          </div>
+        {/if}
+      {/if}
+
+      {#if startError !== null}
+        <p class="text-sm text-destructive" data-testid="bake-batch-error">{startError}</p>
+      {/if}
+    </div>
+
+    <SheetFooter class="flex justify-end gap-2">
+      <Button variant="ghost" size="sm" onclick={() => (open = false)} disabled={busy}
+        >Cancel</Button
+      >
+      {#if mode === 'endAt' && activeProposal === null}
+        <Button
+          size="sm"
+          onclick={handlePropose}
+          loading={proposing}
+          disabled={!canPropose}
+          data-testid="bake-batch-propose"
+        >
+          Work out a schedule
+        </Button>
+      {:else}
+        {#if activeProposal !== null}
+          <!-- Declining creates NOTHING. It puts the ask back the way it was; no
+               batch exists, and nothing was written on the way here. -->
+          <Button
+            variant="ghost"
+            size="sm"
+            onclick={discardProposal}
+            disabled={busy}
+            data-testid="bake-batch-decline"
+          >
+            No thanks
+          </Button>
+        {/if}
+        <Button
+          size="sm"
+          onclick={handleStart}
+          loading={busy}
+          disabled={!canStart}
+          data-testid="bake-batch-confirm"
+        >
+          Start
+        </Button>
+      {/if}
+    </SheetFooter>
+  </SheetContent>
+</Sheet>

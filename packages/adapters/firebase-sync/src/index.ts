@@ -80,6 +80,23 @@ export { callGenerateGuidedPlan } from './guidedPlanCallables.js';
 // formula is an error, never "no formula yet". No delete: nothing removes one.
 export { subscribeFormula, loadFormula, saveFormula } from './formulaSubscription.js';
 export { callExtractProcessStages } from './formulaCallables.js';
+// Batches (issue #812, epic #778): one document per RUN of a formula, with the
+// quantities and the schedule frozen at start. A random id and many per recipe, so
+// unlike the two above this is a collection subscription as well as a doc one — see
+// batchSync.ts for why the list read skips a corrupt document while the single-doc
+// read refuses it.
+export { subscribeBatches, subscribeBatch, saveBatch } from './batchSync.js';
+// The schedule proposal (issue #812, phase 2) — a callable, not a subscription:
+// nothing it returns is a document. It carries an explicit client timeout because
+// the call can legitimately outlive the callable SDK's 70 s default.
+export { callProposeSchedule } from './batchCallables.js';
+// The observation log (issue #812, phase 4) — a SUBCOLLECTION under the run, so
+// unlike everything above it is read per-batch: `batches/{batchId}/observations`.
+// Append-only, ordered by when a reading was OBSERVED rather than when it arrived
+// (see batchObservationSync.ts), and no delete. The photo goes through a callable
+// because storage.rules stay `write: if false` — the client never writes Storage.
+export { subscribeBatchObservations, addBatchObservation } from './batchObservationSync.js';
+export { callSetObservationImageUpload } from './batchObservationCallables.js';
 export { savePushSubscription, deletePushSubscription } from './pushSubscriptionSync.js';
 export { streamChefChat, callGenerateChatTitle } from './chatCallables.js';
 export { callAuthorRecipe } from './authorRecipeCallable.js';

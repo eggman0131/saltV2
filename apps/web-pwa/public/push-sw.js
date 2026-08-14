@@ -5,11 +5,39 @@
 // auto-update flow (skipWaiting/clientsClaim/deferred reload); this file adds ONLY
 // the push + notificationclick listeners, so that contract is untouched.
 //
-// Two notification kinds ride this one path, distinguished by `payload.type`:
+// Three notification kinds ride this one path, distinguished by `payload.type`:
 //   - 'cook-timer'        (#544) — deep-links via `sessionId`, has an in-app equivalent
 //   - 'shopping-reminder' (#629) — deep-links via `url`, has none
+//   - 'batch-stage'       (#812) — deep-links via `url`, has none
 // Everything that differs between them is payload-driven; nothing here is
-// hard-coded per feature except the cook-timer foreground rule below.
+// hard-coded per feature except the cook-timer foreground rule below and the
+// fallback copy each kind uses when a payload arrives without any.
+
+// Fallback copy PER KIND, used only when the server sent none (or the payload could
+// not be parsed at all). It has to be per kind: a batch reminder that failed to
+// carry its stage name must not announce itself as a finished cook timer, which is
+// what a single shared default did. `type` defaults to 'cook-timer' below, so an
+// unreadable payload lands on the #544 copy exactly as it always has.
+// SALT_-prefixed because this file is importScripts'd INTO the Workbox-generated
+// service worker: its `var`s land in that worker's shared global scope, and an
+// unprefixed name could collide with Workbox's own.
+var SALT_FALLBACK_COPY = {
+  'cook-timer': {
+    title: 'Timer finished',
+    body: 'A cook timer just finished.',
+    tag: 'cook-timer',
+  },
+  'shopping-reminder': {
+    title: 'Shopping tomorrow',
+    body: 'Add anything missing to the list.',
+    tag: 'shopping-reminder',
+  },
+  'batch-stage': {
+    title: 'A batch stage is due',
+    body: 'Open the batch to see what is next.',
+    tag: 'batch-stage',
+  },
+};
 
 self.addEventListener('push', function (event) {
   // Copy is entirely server-chosen, and for a cook timer it IS user content: the
@@ -23,15 +51,19 @@ self.addEventListener('push', function (event) {
     payload = {};
   }
   var type = payload.type || 'cook-timer';
+  var fallback = SALT_FALLBACK_COPY[type] || SALT_FALLBACK_COPY['cook-timer'];
   var sessionId = payload.sessionId || null;
   var url = payload.url || null;
-  var title = payload.title || 'Timer finished';
-  var body = payload.body || 'A cook timer just finished.';
-  var tag = payload.tag || 'cook-timer';
+  var title = payload.title || fallback.title;
+  var body = payload.body || fallback.body;
+  var tag = payload.tag || fallback.tag;
   // Payload-driven (#629): a cook timer re-buzzes on every delivery, but a
   // duplicate shopping nudge must REPLACE the first silently — which, together
   // with the date-keyed tag, is what lets the reminder skip an exactly-once
-  // ledger entirely. Default true so the cook-timer path is unchanged.
+  // ledger entirely. A batch stage reminder (#812) re-buzzes like a cook timer:
+  // it is a timed call to act, hours from the last one, deduped server-side by a
+  // real ledger rather than by the tag. Default true so the cook-timer path is
+  // unchanged.
   var renotify = payload.renotify !== false;
 
   event.waitUntil(
@@ -41,6 +73,10 @@ self.addEventListener('push', function (event) {
       // chip, so the OS notification would be a duplicate. A shopping reminder
       // has NO in-app equivalent, so suppressing it with the app open would make
       // it vanish silently — gate the suppression on the type, not on focus alone.
+      // A 'batch-stage' reminder (#812) is omitted here for exactly that reason:
+      // nobody is staring at the batch page waiting for the retard to end, so
+      // there is no in-app alert for the notification to duplicate, and the app
+      // merely being open somewhere must not swallow it.
       if (type === 'cook-timer') {
         var clientsArr = await self.clients.matchAll({
           type: 'window',
@@ -78,11 +114,15 @@ self.addEventListener('notificationclick', function (event) {
   var sessionId = data.sessionId || null;
   // Two routing sources, in precedence order:
   //   1. `data.url` — an explicit deep link the server chose (#629's shopping
-  //      reminder opens the DEFAULT list, whose id only the server knows).
+  //      reminder opens the DEFAULT list, whose id only the server knows; #812's
+  //      batch reminder opens `/#/batches/{batchId}`).
   //   2. `sessionId` — the cook-timer path, unchanged. sessionId is
   //      `${recipeId}_${uid}`; recipe ids are UUIDs (hyphens, no underscore) and
   //      uids are alphanumeric, so the recipe id is everything before the final
-  //      underscore.
+  //      underscore. THIS SLICE IS A COOK-TIMER-ONLY LICENCE, granted by that
+  //      collection's composite document id — never reconstruct a route from an id
+  //      for any other kind. A batch id is an opaque UUID and its reminder carries
+  //      a whole `url` for precisely this reason.
   // Hash-routed app, so both are '/#/…' paths. Falling back to '/' opens the app.
   var recipeId = sessionId ? sessionId.substring(0, sessionId.lastIndexOf('_')) : null;
   var url = data.url || (recipeId ? '/#/recipes/' + recipeId + '/cook' : null);

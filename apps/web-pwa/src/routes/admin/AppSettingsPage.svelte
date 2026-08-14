@@ -143,6 +143,7 @@
     parseEntry: 'Entry parsing',
     parseRecipeIngredients: 'Recipe ingredient parsing',
     populateEquipmentEntry: 'Equipment entry population',
+    proposeSchedule: 'Schedule proposal (out of the oven at…)',
     serverEmbedding: 'Server embedding (canon/recipe vectors)',
   };
 

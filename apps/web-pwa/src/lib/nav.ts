@@ -3,6 +3,7 @@ import {
   BookOpen,
   CalendarDays,
   ChefHat,
+  Hourglass,
   Settings,
   Shield,
   ShoppingCart,
@@ -44,8 +45,18 @@ export const navItems: NavItem[] = [
 // four despite not being set-up-and-forget: it is the least-reached-for of the
 // daily destinations, and the primary slot it held is wanted by "Mine" (#634).
 // Still available to all members — the overflow is a demotion, not a gate.
+//
+// "Batches" (issue #812, phase 1 of epic #778) is the in-flight surface: what is
+// proving, fermenting or curing right now, and what each one wants next. It sits
+// here rather than in the primary four because the primary four are full — a fifth
+// tab is a spec change, not an addition (ui-spec-v04 §17.1) — and because a run is
+// something you glance at once a morning, not a destination you live in. It is
+// NOT part of "Kitchen": that is a per-user projection, and a batch is family-shared.
+// The hourglass is the noun, not the food: phases 03 and 04 put ferments and cures
+// on this same surface, so a loaf would have been the wrong picture.
 export const overflowNavItems: NavItem[] = [
   { id: 'chat', label: 'Chef', icon: ChefHat, href: '#/chat' },
+  { id: 'batches', label: 'Batches', icon: Hourglass, href: '#/batches' },
   { id: 'equipment', label: 'Equipment', icon: Blender, href: '#/equipment' },
   { id: 'settings', label: 'Settings', icon: Settings, href: '#/settings' },
 ];

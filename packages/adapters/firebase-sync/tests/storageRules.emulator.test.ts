@@ -102,3 +102,53 @@ describe.skipIf(!reachable)('storage.rules — canon-icons', () => {
     await assertFails(ref.getDownloadURL());
   });
 });
+
+/**
+ * Batch observation photos (issue #812, phase 4 of epic #778).
+ *
+ * Same access model as canon-icons above — public read, no client write, the Admin
+ * SDK inside setObservationImageUpload does the writing — but on a NESTED path, and
+ * that is what this block exists to pin. Objects live at
+ * `batch-images/{batchId}/{observationId}.webp`, and a `{file}` wildcard matches
+ * exactly ONE path segment: a `match /batch-images/{file}` would never fire here,
+ * the object would fall through to the catch-all, and every photo in the log would
+ * be unreadable with nothing in the code to show why.
+ */
+describe.skipIf(!reachable)('storage.rules — batch-images', () => {
+  let testEnv: RulesTestEnvironment;
+
+  const OBJECT = 'batch-images/batch-8f21c0d4/obs-3c19.webp';
+
+  beforeAll(async () => {
+    testEnv = await initializeTestEnvironment({
+      projectId: PROJECT_ID,
+      storage: {
+        host: STORAGE_HOST,
+        port: STORAGE_PORT,
+        rules: readFileSync(RULES_PATH, 'utf8'),
+      },
+    });
+  });
+
+  afterAll(async () => {
+    await testEnv?.cleanup();
+  });
+
+  // The trap: this passes only because the match has two wildcards.
+  it('allows public read of a photo at the nested object path', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const ref = ctx.storage().ref(OBJECT);
+      await ref.put(new Uint8Array([1, 2, 3]), { contentType: 'image/webp' });
+    });
+
+    const ref = testEnv.unauthenticatedContext().storage().ref(OBJECT);
+    await assertSucceeds(ref.getDownloadURL());
+  });
+
+  // Absolute: this feature introduces NO client-writable Storage path. Signing in
+  // does not change that — the bytes go through the callable.
+  it('denies client writes to batch-images even when authenticated', async () => {
+    const ref = testEnv.authenticatedContext('user-1').storage().ref(OBJECT);
+    await assertFails(ref.put(new Uint8Array([4, 5, 6]), { contentType: 'image/webp' }));
+  });
+});

@@ -933,3 +933,212 @@ describe.skipIf(!reachable)('firestore.rules — formulas (issue #806)', () => {
     await assertFails(deleteDoc(doc(db, 'formulas', FORMULA_RECIPE)));
   });
 });
+
+describe.skipIf(!reachable)('firestore.rules — batches (issue #812)', () => {
+  let testEnv: RulesTestEnvironment;
+
+  beforeAll(async () => {
+    testEnv = await initializeTestEnvironment({
+      projectId: PROJECT_ID,
+      firestore: {
+        host: HOST,
+        port: PORT,
+        rules: readFileSync(RULES_PATH, 'utf8'),
+      },
+    });
+  });
+
+  afterAll(async () => {
+    await testEnv?.cleanup();
+  });
+
+  beforeEach(async () => {
+    await testEnv.clearFirestore();
+  });
+
+  // A random UUID, not a recipe id: a recipe has many runs.
+  const BATCH_ID = 'batch-8f21c0d4';
+  // One run of the overnight white tin, scaled to twelve rolls and back-solved so
+  // the bake ends at 07:30.
+  const batch = () => ({
+    id: BATCH_ID,
+    schemaVersion: 1,
+    recipeId: 'recipe-1',
+    recipeTitle: 'Overnight white tin',
+    state: 'running',
+    quantities: [
+      { ingredientId: 'ing-flour', label: '500g strong white flour', percent: 100, grams: 841 },
+    ],
+    totals: { basisGrams: 841, totalGrams: 1483, usableGrams: 1440, units: null },
+    stages: [
+      {
+        id: 'bake',
+        label: 'Bake',
+        kind: 'active',
+        environment: null,
+        duration: { kind: 'fixed', minutes: 45 },
+        until: null,
+        stepId: null,
+        plannedStartAt: '2026-08-15T06:45:00.000Z',
+        plannedEndAt: '2026-08-15T07:30:00.000Z',
+        actualStartAt: null,
+        actualEndAt: null,
+      },
+    ],
+    rationale: null,
+    createdAt: '2026-08-14T21:00:00.000Z',
+    updatedAt: '2026-08-14T21:00:00.000Z',
+  });
+
+  function userCtx(uid: string) {
+    return testEnv.authenticatedContext(uid, { email: `${uid}@e.org` }).firestore();
+  }
+
+  it('lets any signed-in user write, read and clear a batch', async () => {
+    const db = userCtx('uid-a');
+    await assertSucceeds(setDoc(doc(db, 'batches', BATCH_ID), batch()));
+    await assertSucceeds(getDoc(doc(db, 'batches', BATCH_ID)));
+    await assertSucceeds(deleteDoc(doc(db, 'batches', BATCH_ID)));
+  });
+
+  // The load-bearing property, and here it is a household behaviour rather than a
+  // symmetry: either partner may glance at the crock, mark the prove done and take
+  // the loaf out. A batch carries NO ownerUid and is not per-user state.
+  it('lets another member advance a batch someone else started', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'batches', BATCH_ID), batch());
+    });
+    const db = userCtx('uid-b');
+    await assertSucceeds(setDoc(doc(db, 'batches', BATCH_ID), batch()));
+    await assertSucceeds(getDoc(doc(db, 'batches', BATCH_ID)));
+    // And the whole collection, which is what the in-flight surface subscribes to.
+    await assertSucceeds(getDocs(collection(db, 'batches')));
+  });
+
+  // Unlike guidedPlans and formulas the id is random, so nobody subscribes to a
+  // batch that was never written — but this rule dereferences no `resource.data`
+  // either way, and pinning the behaviour costs one line.
+  it('lets a signed-in user read a batch id that does not exist yet', async () => {
+    await assertSucceeds(getDoc(doc(userCtx('uid-a'), 'batches', 'batch-never-started')));
+  });
+
+  it('denies an unauthenticated caller entirely', async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, 'batches', BATCH_ID)));
+    await assertFails(getDocs(collection(db, 'batches')));
+    await assertFails(setDoc(doc(db, 'batches', BATCH_ID), batch()));
+    await assertFails(deleteDoc(doc(db, 'batches', BATCH_ID)));
+  });
+});
+
+/**
+ * The observation log (issue #812, phase 4 of epic #778).
+ *
+ * A SUBCOLLECTION under the run — `batches/{batchId}/observations/{id}` — because
+ * the log is append-only over weeks and two people logging a weight on the same day
+ * must not clobber each other under document-level LWW. A subcollection rule is not
+ * inherited from its parent in Firestore, so the nesting has to be written out; this
+ * block is what proves it was, and that it gates the child exactly as the parent is
+ * gated (the shoppingLists/{listId}/items precedent).
+ */
+describe.skipIf(!reachable)('firestore.rules — batch observations (issue #812)', () => {
+  let testEnv: RulesTestEnvironment;
+
+  beforeAll(async () => {
+    testEnv = await initializeTestEnvironment({
+      projectId: PROJECT_ID,
+      firestore: {
+        host: HOST,
+        port: PORT,
+        rules: readFileSync(RULES_PATH, 'utf8'),
+      },
+    });
+  });
+
+  afterAll(async () => {
+    await testEnv?.cleanup();
+  });
+
+  beforeEach(async () => {
+    await testEnv.clearFirestore();
+  });
+
+  const BATCH_ID = 'batch-8f21c0d4';
+  const OBSERVATION_ID = 'obs-3c19';
+
+  // Day nine of the coppa: 1,240 g, twelve degrees, and it smells right.
+  const observation = (id = OBSERVATION_ID) => ({
+    id,
+    schemaVersion: 1,
+    at: '2026-08-14T08:10:00.000Z',
+    weightGrams: 1240,
+    ph: null,
+    temperatureC: 12,
+    note: 'Bloom even, smells sweet.',
+    image: null,
+  });
+
+  function userCtx(uid: string) {
+    return testEnv.authenticatedContext(uid, { email: `${uid}@e.org` }).firestore();
+  }
+
+  function observationsPath(db: ReturnType<typeof userCtx>) {
+    return collection(db, 'batches', BATCH_ID, 'observations');
+  }
+
+  it('lets any signed-in user write, read and list an observation', async () => {
+    const db = userCtx('uid-a');
+    await assertSucceeds(
+      setDoc(doc(db, 'batches', BATCH_ID, 'observations', OBSERVATION_ID), observation()),
+    );
+    await assertSucceeds(getDoc(doc(db, 'batches', BATCH_ID, 'observations', OBSERVATION_ID)));
+    await assertSucceeds(getDocs(observationsPath(db)));
+  });
+
+  // The load-bearing property, and the whole reason this is a subcollection: two
+  // people logging on the same day write two documents, so neither can clobber the
+  // other's reading under LWW. Family-shared, no ownerUid, no pinning.
+  it('lets another member log against a batch someone else started', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(
+        doc(ctx.firestore(), 'batches', BATCH_ID, 'observations', OBSERVATION_ID),
+        observation(),
+      );
+    });
+    const db = userCtx('uid-b');
+    await assertSucceeds(
+      setDoc(doc(db, 'batches', BATCH_ID, 'observations', 'obs-second'), observation('obs-second')),
+    );
+    await assertSucceeds(getDoc(doc(db, 'batches', BATCH_ID, 'observations', OBSERVATION_ID)));
+    await assertSucceeds(getDocs(observationsPath(db)));
+  });
+
+  // The log screen subscribes the moment a run is opened, which is usually before
+  // anything has been logged. This rule dereferences no `resource.data`, so an empty
+  // subcollection is read and allowed on `request.auth` alone.
+  it('lets a signed-in user read a log that has nothing in it yet', async () => {
+    const db = userCtx('uid-a');
+    await assertSucceeds(getDocs(collection(db, 'batches', 'batch-never-started', 'observations')));
+    await assertSucceeds(getDoc(doc(db, 'batches', BATCH_ID, 'observations', 'obs-never-written')));
+  });
+
+  // The log is append-only by design, but the rule does not enforce that — a
+  // mis-typed weight is corrected by re-writing the same id, and a member may clear
+  // an entry outright. Salt has no soft-delete: a delete is a real delete.
+  it('lets a signed-in user correct and clear an entry', async () => {
+    const db = userCtx('uid-a');
+    const ref = doc(db, 'batches', BATCH_ID, 'observations', OBSERVATION_ID);
+    await assertSucceeds(setDoc(ref, observation()));
+    await assertSucceeds(setDoc(ref, { ...observation(), weightGrams: 1204 }));
+    await assertSucceeds(deleteDoc(ref));
+  });
+
+  it('denies an unauthenticated caller entirely', async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    const ref = doc(db, 'batches', BATCH_ID, 'observations', OBSERVATION_ID);
+    await assertFails(getDoc(ref));
+    await assertFails(getDocs(collection(db, 'batches', BATCH_ID, 'observations')));
+    await assertFails(setDoc(ref, observation()));
+    await assertFails(deleteDoc(ref));
+  });
+});

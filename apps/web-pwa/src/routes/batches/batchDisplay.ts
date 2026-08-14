@@ -1,0 +1,129 @@
+import { currentStage } from '@salt/domain';
+import type { BatchDoc, BatchStageDoc, BatchTotalsDoc } from '@salt/domain/schemas';
+import { formatMinutes, formatStatedDuration } from '../../lib/durationDisplay.js';
+
+// How a batch READS (issue #812, phase 1 of epic #778) — the words and formats the
+// two batch screens share, in one place so the list and the run's own page can
+// never disagree about what the next action is or when it lands.
+//
+// NOTHING HERE COMPUTES A QUANTITY OR A TIME. Every number a batch screen shows was
+// frozen when the run started (see `schemas/batch.ts`) and everything below only
+// chooses how to say it. The moment one of these multiplies a gram figure or adds a
+// minute, a screen has begun re-deriving what the freeze exists to pin down — which
+// is exactly how "batch nine at 78% hydration" quietly becomes batch ten.
+//
+// The clock is INJECTED, defaulting to now. That keeps "today 09:00" a fixed string
+// in a test and matches how the domain treats time everywhere in this feature.
+//
+// The duration formatters used to live here, duplicating a private helper on
+// `FormulaPage`, above a note saying a third surface was the moment they would earn
+// a home. Phase 2's proposal review was that third surface, so they moved to
+// `lib/durationDisplay.ts` and are re-exported here — the batch screens keep
+// importing one display module rather than two.
+
+export { formatMinutes, formatStatedDuration };
+
+/** A gram figure, already rounded by the domain's one rounding authority. */
+export function formatGrams(grams: number): string {
+  return `${grams} g`;
+}
+
+/** True when the stage carries no length — observational, not instantaneous. */
+export function isObservational(stage: BatchStageDoc): boolean {
+  return stage.duration === null;
+}
+
+// Whole local calendar days from `from` to `to`. Local, not UTC: "tomorrow" is a
+// fact about the kitchen's morning, not about Greenwich's.
+function calendarDaysBetween(from: Date, to: Date): number {
+  const a = new Date(from.getFullYear(), from.getMonth(), from.getDate()).getTime();
+  const b = new Date(to.getFullYear(), to.getMonth(), to.getDate()).getTime();
+  return Math.round((b - a) / 86_400_000);
+}
+
+/**
+ * An instant, as a person waiting for it would say it.
+ *
+ * A bread schedule runs overnight, so the DAY matters as much as the time — but
+ * spelling out a date for something happening in twenty minutes is noise. Today,
+ * tomorrow and yesterday get their words; anything further off gets its weekday.
+ */
+export function formatWhen(iso: string, now: Date = new Date()): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return '—';
+  const time = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' }).format(at);
+  const days = calendarDaysBetween(now, at);
+  if (days === 0) return `today ${time}`;
+  if (days === 1) return `tomorrow ${time}`;
+  if (days === -1) return `yesterday ${time}`;
+  const day = new Intl.DateTimeFormat('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  }).format(at);
+  return `${day}, ${time}`;
+}
+
+/** A calendar day in words — for "started on", where the time of day is noise. */
+export function formatDate(iso: string): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return '—';
+  return new Intl.DateTimeFormat('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  }).format(at);
+}
+
+/**
+ * What this run makes, from the frozen totals alone.
+ *
+ * `units` is null for a basis-driven solve (weigh the meat, see what you get), and
+ * then the honest headline is the weight itself.
+ */
+export function yieldSummary(totals: BatchTotalsDoc): string {
+  if (totals.units === null) return formatGrams(totals.totalGrams);
+  return `${totals.units.count} × ${totals.units.label}`;
+}
+
+// ─── The next action ────────────────────────────────────────────────────────────
+
+/**
+ * What this run wants next, which is the whole of a card on the in-flight surface.
+ *
+ * Three cases, and `currentStage` decides all of them: the stage in hand, a run
+ * whose stages are all done (there is deliberately no `finished` STATE — see
+ * `BatchStateSchema`), and one that was stopped.
+ */
+export type NextAction =
+  { kind: 'stage'; stage: BatchStageDoc } | { kind: 'done' } | { kind: 'abandoned' };
+
+export function nextAction(batch: BatchDoc): NextAction {
+  if (batch.state === 'abandoned') return { kind: 'abandoned' };
+  const stage = currentStage(batch);
+  return stage === null ? { kind: 'done' } : { kind: 'stage', stage };
+}
+
+/**
+ * The in-flight surface's order: whatever needs doing soonest, first.
+ *
+ * Explicitly NOT "newest first". A batch is a thing you are waiting on, so the only
+ * ordering that helps is by the clock it is waiting against — and a run with
+ * nothing left to do has no such clock, so those fall to the bottom, most recently
+ * started first, where they read as a log rather than as a queue.
+ *
+ * Unordered on the wire by design (see `batchSync.ts`): ordering is a rendering
+ * decision, and this is the rendering.
+ */
+export function orderBatches(batches: readonly BatchDoc[]): BatchDoc[] {
+  const pending: { batch: BatchDoc; at: string }[] = [];
+  const ended: BatchDoc[] = [];
+  for (const batch of batches) {
+    const next = nextAction(batch);
+    if (next.kind === 'stage') pending.push({ batch, at: next.stage.plannedStartAt });
+    else ended.push(batch);
+  }
+  pending.sort((a, b) => a.at.localeCompare(b.at));
+  ended.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return [...pending.map((entry) => entry.batch), ...ended];
+}

@@ -42,6 +42,7 @@
   } from '../../lib/recipeService.js';
   import RecipeAddToListSheet from './RecipeAddToListSheet.svelte';
   import RecipeAddToPlannerSheet from './RecipeAddToPlannerSheet.svelte';
+  import RecipeBakeBatchSheet from './RecipeBakeBatchSheet.svelte';
   import RecipeChangeSummary from './RecipeChangeSummary.svelte';
   import RecipeChatList from './RecipeChatList.svelte';
   import RecipeChatDrawer from './RecipeChatDrawer.svelte';
@@ -75,6 +76,7 @@
     initGuidedPlanSync,
     discardGuidedPlan,
   } from '../../lib/guidedPlanService.js';
+  import { formula, initFormulaSync } from '../../lib/formulaService.js';
   import { currentMember } from '../../lib/membersService.js';
   import { defaultListId } from '../../lib/shoppingListService.svelte.js';
   import { addToast } from '../../lib/toastStore.js';
@@ -178,6 +180,28 @@ Finish with a short note on what you changed and why, so I can read the gist her
   // Used-but-flagged, never a gate (guidedPlan.ts): the plan is fully live either
   // way, and this only records that no human has read it. Absent means reviewed.
   const guidedPlanUnread = $derived($guidedPlan?.needs_approval === true);
+
+  // ─── Does this recipe have a formula? (issue #812, phase 1 of epic #778) ─────
+  //
+  // PRESENCE, NOT KIND, and the distinction is the rule that keeps
+  // `capabilities.ts` four columns wide: capabilities answer questions about the
+  // KIND ("is this offered in the planner?"), presence answers questions about the
+  // DOCUMENT ("does this have a formula?"). A loaf is an ordinary `recipe` — there
+  // is no `bread` kind and there will not be one
+  // (docs/formulas-schedules-batches.md) — so nothing here consults `kindOf`, and
+  // nothing was added to the capability table for it.
+  //
+  // Subscribed here for the same reason the guided plan is: there is no all-formulas
+  // subscription anywhere in the app, a formula is read one recipe at a time, and
+  // this is the page that asks the question. The store's three states matter — with
+  // `undefined` folded into "has one", both entries below would flash and vanish on
+  // every recipe that has no formula, which is nearly all of them.
+  $effect(() => {
+    const id = params.id;
+    if (!id) return;
+    return initFormulaSync(id);
+  });
+  const hasFormula = $derived($formula !== null && $formula !== undefined);
 
   // ─── Which half of the Cook control is the primary one (issue #776) ─────────
   //
@@ -308,6 +332,10 @@ Finish with a short note on what you changed and why, so I can read the gist her
   // ─── Add to planner ───────────────────────────────────────────────────────
   // The picker sheet owns the calendar and the write; this page only opens it.
   let addToPlannerOpen = $state(false);
+
+  // "Bake a batch" — the scale sheet (issue #812). Opened from the overflow menu;
+  // see the placement note there.
+  let bakeBatchOpen = $state(false);
 
   // Mobile-only overflow menu (⋮) that holds the secondary header actions
   // (Ask/amend, Edit, Delete) below the `sm` breakpoint; Cook + Add to list
@@ -1033,10 +1061,13 @@ Finish with a short note on what you changed and why, so I can read the gist her
            placeholder), and a divider with nothing above it is a rule across the
            top of a menu; groups two and three always render at least Duplicate and
            Edit, so the second divider is unconditional and can never lead or
-           trail. The gate names BOTH predicates rather than leaning on the fact
-           that everything authorable happens to be cookable today — the day
-           cocktails become authorable (#765) that coincidence is what would
-           quietly break. -->
+           trail. The gate names EVERY condition that can put something in group one
+           rather than leaning on the fact that everything authorable happens to be
+           cookable today — the day cocktails become authorable (#765) that
+           coincidence is what would quietly break. Since #812 that includes
+           `hasFormula`, which is presence rather than a capability and so cannot be
+           implied by either predicate: a cocktail with a 1:1:1 formula and nothing
+           else in group one is exactly the case the third clause covers. -->
       <Popover bind:open={overflowMenuOpen}>
         <PopoverTrigger>
           {#snippet children()}
@@ -1125,7 +1156,60 @@ Finish with a short note on what you changed and why, so I can read the gist her
               Guided plan
             </button>
           {/if}
-          {#if showCooking || canAuthor}
+          {#if hasFormula}
+            <!-- Bread scaling (issue #812, phase 1 of epic #778). BOTH entries sit
+                 in group one, immediately after "Guided plan", and both are gated on
+                 the FORMULA DOCUMENT EXISTING — never on `kind`.
+
+                 WHY HERE, AND NOT INLINE. The inline row is Cook · Shop · Plan · ⋮
+                 and those three slots are the primary verbs — what you came to do
+                 with a dish, with your hands full. Neither of these is that.
+                 "Guided plan" is the exact precedent: desk work you do BEFORE you
+                 cook, at a bench, with the recipe open. Starting a run is the same
+                 act one document further along — you are deciding what to weigh out
+                 and when to mix, not cooking — and the formula screen is the once-a-
+                 month version of it. Group one is right for both because both work
+                 on THIS dish rather than producing a second recipe (group two) or
+                 editing the document itself (group three).
+
+                 WHY "Bake a batch" LEADS. It is the weekly action; the formula is
+                 the monthly one, and it is the thing you open when the batch is
+                 wrong. Frequency orders them, exactly as it does Chat before
+                 Refresh above.
+
+                 A recipe with NO formula offers neither, which means the formula
+                 screen still has no entry point for a recipe that has never had one
+                 — it is reachable by URL, as it has been since #806. That is
+                 deliberate: an "add a formula" item on all ~46 recipes would put
+                 baker's percentages in front of every weeknight curry to serve the
+                 three loaves. The first formula is still typed at a URL; every one
+                 after it is one tap away. -->
+            <button
+              type="button"
+              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+              onclick={() => {
+                overflowMenuOpen = false;
+                bakeBatchOpen = true;
+              }}
+              data-testid="recipe-bake-batch-menu-item"
+            >
+              <Icon name="Hourglass" size={14} />
+              Bake a batch
+            </button>
+            <button
+              type="button"
+              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+              onclick={() => {
+                overflowMenuOpen = false;
+                push(`/recipes/${recipe.id}/formula`);
+              }}
+              data-testid="recipe-formula-menu-item"
+            >
+              <Icon name="Percent" size={14} />
+              Formula
+            </button>
+          {/if}
+          {#if showCooking || canAuthor || hasFormula}
             <Divider class="my-1" />
           {/if}
           {#if canAuthor}
@@ -1574,6 +1658,14 @@ Finish with a short note on what you changed and why, so I can read the gist her
 <!-- Day picker for "Add to planner" -->
 {#if recipe}
   <RecipeAddToPlannerSheet {recipe} bind:open={addToPlannerOpen} />
+{/if}
+
+<!-- The scale sheet (issue #812). Mounted only where there is a formula to scale,
+     which is the same condition its menu entry is gated on — the sheet takes the
+     formula as a plain prop rather than reading the store itself, so it can never
+     render against a `null` one. -->
+{#if recipe && $formula}
+  <RecipeBakeBatchSheet {recipe} formula={$formula} bind:open={bakeBatchOpen} />
 {/if}
 
 <!-- "Review changes", wherever the conversation is being read — the docked column or the

@@ -70,6 +70,19 @@ vi.mock('../src/lib/guidedPlanService.js', () => ({
   initGuidedPlanSync: vi.fn(() => () => {}),
   discardGuidedPlan: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
 }));
+// #812: the page subscribes to the recipe's formula to decide whether to offer
+// "Bake a batch" and a link to the formula screen. `null` is loaded-and-there-is-
+// none, which is what every recipe in this file is — so neither entry appears and
+// nothing else on the page changes.
+vi.mock('../src/lib/formulaService.js', () => ({
+  formula: {
+    subscribe: (fn: (value: unknown) => void) => {
+      fn(null);
+      return () => {};
+    },
+  },
+  initFormulaSync: vi.fn(() => () => {}),
+}));
 vi.mock('../src/lib/shoppingListService.svelte.js', () => ({ defaultListId: mockDefaultListId }));
 vi.mock('@salt/firebase-sync', () => ({
   saveRecipe: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),

@@ -24,6 +24,30 @@ service firebase.storage {
       allow read: if true;
       allow write: if false;
     }
+    // Batch observation photos (issue #812, phase 4 of epic #778): a photograph of
+    // the crock, the loaf or the mould on the coppa, attached to one entry in a
+    // run's observation log. Same model again — written server-side by the
+    // setObservationImageUpload callable (Admin SDK, which bypasses these rules)
+    // and rendered client-side via <img src={publicUrl}>. Public read, no client
+    // write: this feature introduces NO client-writable Storage path.
+    //
+    // TWO SEGMENTS IN THE MATCH, and this is not decoration. Objects live at
+    // `batch-images/{batchId}/{observationId}.webp` — nested because an observation
+    // is nested — and a `{file}` wildcard matches exactly ONE path segment, so
+    // `match /batch-images/{file}` would never fire on that path: every photo would
+    // fall through to the catch-all below and be unreadable.
+    //
+    // `read: if true` matches the two prefixes above, and is the deliberate choice
+    // rather than the unconsidered one. These are the first user-TAKEN photographs
+    // in Salt (canon icons and recipe heroes are generated), so the posture is worth
+    // a second look — but a Storage download URL is unguessable in practice, the
+    // whole app is family-shared, and one prefix reading differently from its
+    // neighbours is the kind of inconsistency that gets "tidied" back later. Raised
+    // in review rather than diverged from here.
+    match /batch-images/{batchId}/{file} {
+      allow read: if true;
+      allow write: if false;
+    }
     // Everything else: locked down.
     match /{allPaths=**} {
       allow read, write: if false;
