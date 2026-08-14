@@ -1,0 +1,461 @@
+name: PR Doc Review
+
+# Reviews documentation for ONE pull request, at the moment it becomes ready
+# for review. Replaces the nightly batch job (deleted in the same commit), which
+# reviewed 24 hours of unrelated commits at 2 AM and reported the result the
+# next morning, detached from the change that caused it.
+#
+# Why `[opened, ready_for_review]` and NOT `synchronize`:
+#   `.claude/commands/run.md` opens the PR as a DRAFT at phase 1, pushes once
+#   per phase while it stays draft, and calls `gh pr ready` exactly once at the
+#   final phase. So `ready_for_review` fires exactly once per /run PR, after the
+#   last phase and before the human review — the moment the findings are still
+#   actionable. `opened` (with the draft==false guard below) covers PRs opened
+#   directly as non-draft. Adding `synchronize` would fire on every phase push,
+#   which is the batching-adjacent waste this workflow exists to avoid.
+#   The doc commit this job pushes therefore does NOT re-trigger it: no loop.
+#
+# Why plain `pull_request` and NOT `pull_request_target`:
+#   Deliberate departure from autofix.yml. That workflow needs the base-branch
+#   context only because GitHub denies Dependabot access to Actions secrets on a
+#   plain `pull_request` event. This job explicitly skips Dependabot, and every
+#   /run PR is same-repo, so plain `pull_request` gets secrets fine and avoids
+#   the known footgun of running head code in the base context. autofix.yml's
+#   same-repo guard is kept regardless.
+#
+# Why a GitHub App token for the push (copied wholesale from autofix.yml, which
+# documents every trap):
+#   The `main` ruleset uses strict required status checks. A push authored by
+#   the default GITHUB_TOKEN does NOT re-trigger workflows, so a doc commit made
+#   with it would strand the PR on a head SHA with no CI status and block the
+#   merge forever. An App installation token is a distinct identity whose push
+#   DOES re-trigger CI. `AUTOFIX_APP_ID` / `AUTOFIX_APP_PRIVATE_KEY` already
+#   exist — no new setup. Accepted cost: one extra full CI run (ci.yml's
+#   `changes` job classifies the whole base...head diff, so the heavy suites
+#   re-run) on the ~weekly PR that actually has doc drift.
+#
+# Why this job NEVER fails:
+#   A red X on advisory work is indistinguishable from a broken workflow, which
+#   is how three nightly failures went unnoticed for a week. The review step is
+#   `continue-on-error` and the degrade step turns budget/turn exhaustion into a
+#   comment saying so. From here on, a red PR Doc Review means the WORKFLOW is
+#   broken — which is the only thing you can act on.
+#
+# Why the workflow, not the model, does the writing:
+#   Claude only edits doc files in the working tree and leaves its report in
+#   .doc-review/. The push, the PR comment and any tracking issue are done by
+#   the steps below, in that fixed order, after the model has finished. A run
+#   that dies mid-flight therefore cannot leave behind a claim that no fix
+#   exists — the failure class that produced the orphaned, false issue #807.
+
+on:
+  pull_request:
+    types: [opened, ready_for_review]
+
+permissions:
+  contents: read # the doc push uses the App token below, not GITHUB_TOKEN
+  pull-requests: write # post the review comment
+  issues: write # Verdict B tracking issue (final action only)
+  id-token: write # required by claude-code-action for OIDC token exchange
+
+concurrency:
+  group: pr-doc-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  doc-review:
+    name: Doc review
+    runs-on: ubuntu-latest
+    # `ready_for_review` always carries draft == false; the guard is what makes
+    # `opened` fire only for PRs opened directly as non-draft. Same-repo head
+    # only (see autofix.yml's security note). Dependabot is skipped: its PRs
+    # bump a version, they do not change what the docs describe.
+    if: >
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]'
+
+    steps:
+      # Check out the PR HEAD BRANCH (not the merge ref) so the doc commit can
+      # be pushed straight back to it. persist-credentials: false — the default
+      # token's http.extraheader would otherwise override the App credentials
+      # embedded in the push URL and the push would 403.
+      - name: Check out the PR head branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Scope gate, mirroring ci.yml's `changes` job (the non-app allowlist
+      # there). A PR landing entirely inside that allowlist gets no review at
+      # all, which preserves the nightly prompt's rule that changes confined to
+      # docs/ are skipped — documentation changing is not evidence that
+      # documentation is stale.
+      #
+      # Known, accepted narrowing versus the nightly: the allowlist covers
+      # `.github/`, so a PR touching ONLY `deploy-*.yml` or `chromatic.yml` no
+      # longer routes to docs/releases.md or docs/visual-regression.md even
+      # though the Docs map tracks those paths. Root config (pnpm-workspace.yaml,
+      # root package.json, eslint.config.*, .dependency-cruiser.*) is NOT in the
+      # allowlist and so still passes the gate.
+      - name: Scope gate — does this PR touch anything doc-relevant?
+        id: scope
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p .doc-review
+
+          # merge-base rather than the PR's recorded base.sha: it is always
+          # reachable in this clone and stays correct across rebases.
+          git fetch --no-tags origin main
+          BASE_SHA=$(git merge-base FETCH_HEAD "$HEAD_SHA")
+          echo "Diffing $BASE_SHA...$HEAD_SHA"
+
+          git diff --name-only "$BASE_SHA...$HEAD_SHA" > .doc-review/changed-files.txt
+          echo "Changed files:"
+          cat .doc-review/changed-files.txt
+
+          # Identical classification to ci.yml: everything NOT matched here
+          # counts as app-impacting. Conservative by design.
+          non_app=$(grep -vE '^(docs/|.*\.md$|LICENSE$|\.github/|\.claude/|\.vscode/|\.editorconfig$|\.nvmrc$|\.gitignore$|\.vexpignore$)' .doc-review/changed-files.txt || true)
+
+          if [ -n "$non_app" ]; then
+            echo "Doc-relevant changes detected — running the review."
+            echo "review=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Changes are confined to docs / CI / tooling — nothing to review."
+            echo "review=false" >> "$GITHUB_OUTPUT"
+            echo "### PR Doc Review — skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "No file outside the non-app allowlist changed, so there is nothing a doc could have gone stale against." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # continue-on-error is half of the never-fail-the-job rule; the degrade
+      # step below is the other half. The tool allowlist includes Grep and Glob
+      # deliberately — the nightly omitted exactly those two, and matching the
+      # Docs map's Tracks globs against changed files without them burnt a third
+      # of the turn budget on denied calls (16-18 permission denials per run).
+      - name: Review the PR's documentation impact
+        id: review
+        if: ${{ steps.scope.outputs.review == 'true' }}
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: >-
+            --max-turns 60
+            --max-budget-usd 3
+            --model sonnet
+            --allowed-tools "Read,Edit,Write,Grep,Glob,Bash(git:*),Bash(gh:*)"
+          prompt: |
+            You are reviewing the documentation impact of ONE pull request in the
+            Salt 2.0 monorepo. You are running inside GitHub Actions on a checkout
+            of the PR's head branch.
+
+            PR #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}
+
+            The PR's stated intent is its body. Read it with:
+              gh pr view ${{ github.event.pull_request.number }} --json body --jq .body
+
+            ## How you report — read this first
+
+            You do NOT commit, you do NOT push, and you do NOT post comments or
+            create issues. The workflow does all of that for you, in a fixed
+            order, after you finish. Your job is to edit doc files in the working
+            tree and to leave your report in these two files:
+
+            - `.doc-review/comment.md` — the PR comment body. Write it for
+              Verdict A and Verdict B. Leave the file ABSENT for Verdict C.
+            - `.doc-review/issue.md` — a tracking issue body. Write it ONLY for a
+              Verdict B whose resolution is genuinely out of scope for this PR
+              (i.e. it cannot be settled by the person reviewing this diff).
+              Its first line must be `TITLE: <one-line issue title>`; everything
+              after that line is the issue body. Leave the file absent otherwise.
+
+            This ordering is deliberate. It is what makes it impossible for a run
+            that dies mid-flight to leave behind a claim about work it never did.
+
+            ## Step 1 — What changed
+
+            The PR's changed files are already listed for you in
+            `.doc-review/changed-files.txt`. Read that file. Do not recompute it.
+
+            For any file whose actual change you need to understand, inspect it on
+            demand with `git diff` against the merge base — do NOT diff everything
+            up front.
+
+            ## Step 2 — Route the changed files to docs
+
+            Read the **"Docs map"** section of `CLAUDE.md`. Its table is the single
+            source of truth for which doc covers which code: the **Tracks** column
+            holds the path globs, the **Read this** column the doc. This workflow
+            deliberately keeps NO copy of that table — if the map and this prompt
+            disagree, the map wins. Do not route from memory; read the file.
+
+            Match each changed file against the Tracks globs (use Grep and Glob —
+            they are allowed). Only proceed with the docs whose globs matched. A
+            file may match several docs; review each. If NO changed file matches
+            any glob, this is Verdict C — stop and follow the Verdict C
+            instructions below.
+
+            One addition the map does not cover:
+
+            - **Root config** (`pnpm-workspace.yaml`, root `package.json`,
+              `eslint.config.*`, `.dependency-cruiser.*`) → also review `CLAUDE.md`
+              itself (layer map, hard rules, enforcement).
+
+            Anything matching no glob is out of scope by construction.
+
+            Never cite a section number from memory — `docs/salt-architecture.md`
+            has been renumbered before. If you reference a section, confirm the
+            number by reading its heading first.
+
+            ## Step 3 — Read the routed docs
+
+            Read only the docs identified in Step 2. Read each at most once.
+
+            ## Step 4 — Classify
+
+            For each (matched bucket → doc) pair, pick exactly one verdict:
+
+            **A — Docs need a simple update.**
+            The code change is intentional and the docs just haven't caught up.
+            Examples: a new package added to the layer map; a file renamed; an
+            existing convention extended in an obvious way.
+
+            **SPECIAL CASE — UI primitives are spec, not architecture.**
+            Any change under `packages/ui-components/**` is NEVER Verdict A.
+            The `ui-spec-vXX.md` docs are a "no invention" contract that drives
+            primitive generation; auto-amending them undermines that contract. If
+            you find drift between ui-components code and a ui-spec doc, treat it
+            as Verdict B and flag it for human review.
+
+            The ui-specs are **cumulative, not superseding** (see the Docs map):
+            v0.2 holds the foundations and stays in force; each later version only
+            adds components. Name the spec that actually owns the changed component
+            — do not assume the highest-numbered file, and never describe an older
+            spec as obsolete.
+
+            `docs/design/design.md` is also never Verdict A: its frontmatter is
+            machine-consumed by `packages/ui-components/scripts/check-theme.ts`, so
+            editing it changes behaviour, not prose. (The workflow reverts any edit
+            to that file regardless, so editing it only wastes your turns.)
+
+            **B — Drift, ambiguous, or a UI-spec change.**
+            The code change might violate the intended architecture; or you can't
+            tell whether the docs or the code should change; or the change is under
+            `packages/ui-components/**`.
+
+            **C — Everything is fine.**
+            The routed docs already reflect the change accurately, or nothing
+            routed at all.
+
+            ## Step 5 — Act
+
+            **Verdict C — say nothing.**
+            Write no files at all. Print a one-paragraph summary of what you
+            reviewed and why no action is needed, and stop. Silence on the PR is
+            the correct outcome: a "nothing to do" comment on every PR trains the
+            reader to ignore doc-review comments.
+
+            **Verdict A — update the docs.**
+
+            a) Edit only the doc files identified in Step 2. Keep the same tone and
+               structure. No padding.
+
+               A doc earns its place by holding what code cannot say — decisions,
+               gotchas, external setup, contracts. If the change is already
+               explained by a header comment next to the code, do NOT restate it in
+               `docs/`; that duplication is what the map exists to prevent.
+
+               If your update adds, renames, or removes a doc, update its row in
+               the `CLAUDE.md` Docs map in the SAME edit — a doc missing from the
+               map is invisible to agents and to this job.
+
+               Only `docs/**` and `CLAUDE.md` are committed by the workflow. Edits
+               anywhere else are discarded, so do not make them.
+
+            b) Write `.doc-review/comment.md`. Open it with a `## 📝 Doc review`
+               heading, then say which docs you changed and, for each, which change
+               in this PR made the old wording wrong. Keep it short enough to read
+               alongside the code diff. State plainly that the fix is already
+               committed to this branch.
+
+            **Verdict B — flag it, change nothing.**
+
+            Do NOT edit any file under `docs/` or `CLAUDE.md`.
+
+            Write `.doc-review/comment.md` with a `## ⚠️ Possible doc/code drift`
+            heading and three sections:
+              - **What changed** — the files in this PR that triggered this, and
+                what they did.
+              - **Why this needs a human decision** — specifically what looks like
+                drift, which doc or rule it conflicts with, and why you could not
+                confidently update the docs to match. For a `packages/ui-components/**`
+                change, say explicitly that UI-spec docs are never auto-edited.
+              - **Recommendation** — what you think the right resolution is (fix
+                the code, update the docs, or investigate further) and why.
+
+            Additionally write `.doc-review/issue.md` ONLY if resolving this is
+            genuinely out of scope for this PR — i.e. it needs work that does not
+            belong in this diff. If the reviewer of this PR could reasonably settle
+            it here, the comment alone is the right artefact and no issue is
+            needed. Remember its `TITLE:` first line.
+
+      # The other half of the never-fail rule. claude-code-action writes a JSON
+      # transcript whose final `result` message carries the subtype; anything
+      # other than "success" means the run was cut short (error_max_turns is what
+      # killed the nightly three times) and whatever findings exist are partial.
+      - name: Detect a cut-short review
+        id: degrade
+        if: ${{ steps.scope.outputs.review == 'true' }}
+        env:
+          EXECUTION_FILE: ${{ steps.review.outputs.execution_file }}
+        run: |
+          set -euo pipefail
+          subtype=""
+          if [ -n "${EXECUTION_FILE:-}" ] && [ -f "$EXECUTION_FILE" ]; then
+            subtype=$(jq -r 'if type == "array" then . else [.] end | map(select(.type == "result")) | last | .subtype' "$EXECUTION_FILE" 2>/dev/null || true)
+          fi
+          # Anything unreadable degrades to "not success", which is the safe
+          # direction: it reports the review as cut short rather than clean.
+          case "$subtype" in '' | null) subtype="unknown" ;; esac
+          echo "Review result subtype: $subtype (step outcome: ${{ steps.review.outcome }})"
+          if [ "$subtype" = "success" ]; then
+            echo "truncated=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "truncated=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "subtype=$subtype" >> "$GITHUB_OUTPUT"
+
+      # Mechanical backstop for the two never-auto-edit rules, so they do not
+      # rest on the prompt alone: docs/design/design.md is reverted outright
+      # (its frontmatter is machine-consumed), and only docs/ + CLAUDE.md are
+      # ever staged, so an edit anywhere else — packages/ui-components/**
+      # included — is simply never committed.
+      - name: Stage the doc changes, if any
+        id: diff
+        if: ${{ steps.scope.outputs.review == 'true' }}
+        run: |
+          set -euo pipefail
+          git checkout -- docs/design/design.md 2>/dev/null || true
+          git add -- docs CLAUDE.md 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "No doc changes to commit."
+            echo "dirty=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Doc changes staged:"
+            git diff --cached --name-only
+            echo "dirty=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Minted late, only once a doc diff actually exists — the PR head code has
+      # finished running by this point and never sees the write token.
+      - name: Generate GitHub App token
+        if: ${{ steps.diff.outputs.dirty == 'true' }}
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.AUTOFIX_APP_ID }}
+          private-key: ${{ secrets.AUTOFIX_APP_PRIVATE_KEY }}
+
+      - name: Commit and push the doc update
+        if: ${{ steps.diff.outputs.dirty == 'true' }}
+        env:
+          TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
+          # --no-verify: `pnpm install` installs husky's hooks in other jobs and
+          # the hook set is checked in, so a plain commit could fire lint-staged
+          # + typecheck + dependency-cruiser here. Doc review must never gate on
+          # those; ci.yml runs them as required checks on the pushed commit.
+          git commit --no-verify -m "docs: update documentation for this PR's changes"
+          # No --force: if the branch advanced meanwhile the push is rejected,
+          # and the comment step below is skipped with it, so no false claim.
+          git push "https://x-access-token:${TOKEN}@github.com/${REPO}.git" "HEAD:${HEAD_REF}"
+
+      # Posted AFTER the push, so a comment claiming "the fix is committed" can
+      # only exist once it actually is.
+      - name: Post the review comment
+        if: ${{ steps.scope.outputs.review == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          TRUNCATED: ${{ steps.degrade.outputs.truncated }}
+          SUBTYPE: ${{ steps.degrade.outputs.subtype }}
+        run: |
+          set -euo pipefail
+          body=".doc-review/comment.md"
+
+          if [ "$TRUNCATED" = "true" ]; then
+            # Partial findings are still worth posting; a silent cut-short run is
+            # how the nightly's three failures went unnoticed for a week.
+            if [ -s "$body" ]; then
+              {
+                echo ""
+                echo "---"
+                echo ""
+                echo "> ⚠️ **This review was cut short** (\`$SUBTYPE\`), so the findings above are partial."
+                echo "> The job is deliberately green: a red PR Doc Review means the workflow itself is broken."
+              } >> "$body"
+            else
+              {
+                echo "## ⚠️ Doc review was cut short"
+                echo ""
+                echo "The review ran out of budget (\`$SUBTYPE\`) before it reached a verdict, so it has"
+                echo "nothing to report — treat this PR as **unreviewed** for documentation impact rather"
+                echo "than as clean."
+                echo ""
+                echo "> The job is deliberately green: a red PR Doc Review means the workflow itself is broken."
+              } > "$body"
+            fi
+          fi
+
+          if [ ! -s "$body" ]; then
+            echo "Nothing to say — staying silent."
+            echo "### PR Doc Review — nothing to report" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          gh pr comment "$PR" --body-file "$body"
+          cat "$body" >> "$GITHUB_STEP_SUMMARY"
+
+      # The FINAL action of the run, on purpose. The nightly created its tracking
+      # issue before doing the work, so a mid-flight death left a false claim
+      # behind (#807). Nothing can follow this step, so nothing can invalidate it.
+      - name: Raise a tracking issue, if the resolution is out of scope
+        if: ${{ steps.scope.outputs.review == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          set -euo pipefail
+          file=".doc-review/issue.md"
+          if [ ! -s "$file" ]; then
+            echo "No out-of-scope follow-up — no issue raised."
+            exit 0
+          fi
+          title=$(head -n 1 "$file" | sed 's/^TITLE:[[:space:]]*//')
+          if [ -z "$title" ]; then
+            title="review: possible doc/code drift"
+          fi
+          {
+            tail -n +2 "$file"
+            echo ""
+            echo "_Raised by PR Doc Review from ${PR_URL}._"
+          } > .doc-review/issue-body.md
+          # Labels are best-effort: `gh issue create` hard-fails on a label that
+          # does not exist, and losing the issue entirely over a renamed label
+          # would be the worst possible trade. (The nightly asked for a bare
+          # "needs-review"; the label is actually "status: needs-review", so its
+          # Verdict B path would have failed outright had it ever fired.)
+          gh issue create --title "$title" --label "documentation" --label "status: needs-review" --body-file .doc-review/issue-body.md \
+            || gh issue create --title "$title" --body-file .doc-review/issue-body.md

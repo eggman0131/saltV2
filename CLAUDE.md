@@ -126,10 +126,11 @@ Rule for maintaining them: a doc earns its place by holding what code cannot say
 If something is already explained in a header comment next to the code, it does
 **not** get restated here or in `docs/` — one source, no duplication.
 
-The **Tracks** column is the routing source for the nightly doc review
-([.github/workflows/nightly-doc-review.yml](.github/workflows/nightly-doc-review.yml)) —
-that job reads this table instead of keeping its own copy, so adding a row here is
-all it takes to bring a doc into nightly review. Keep the globs accurate.
+The **Tracks** column is the routing source for the PR doc review
+([.github/workflows/pr-doc-review.yml](.github/workflows/pr-doc-review.yml)), which
+runs once per pull request when it comes out of draft — that job reads this table
+instead of keeping its own copy, so adding a row here is all it takes to bring a doc
+into review. Keep the globs accurate.
 
 | Read this                                                                                              | Tracks                                                                                                                                                         | When                                                                                                                                                                                                                                                   |
 | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
