@@ -389,8 +389,11 @@ export {
   unitShapeFromPreset,
   targetYield,
   basisYield,
+  withComponentPercentScaled,
+  LEAVENING_PERCENT_BOUNDS,
 } from './formula/index.js';
 export type {
+  ComponentPercentBounds,
   BasisGuessEntry,
   DeriveFormulaInput,
   DeriveFormulaResult,
@@ -404,10 +407,10 @@ export type {
   UnitShapePreset,
 } from './formula/index.js';
 
-// Process module (issues #806, #812) — ordering, total duration, and the
-// bidirectional schedule that places an ordered process on a clock from either end.
-// Still no clock of its own: the anchor is injected. No `diffProcess` yet; see the
-// module header for why it is absent rather than merely unwritten.
+// Process module (issues #806, #812) — ordering, total duration, the bidirectional
+// schedule that places an ordered process on a clock from either end, and the diff
+// that makes a proposed restructure reviewable. Still no clock of its own: the
+// anchor is injected, and `diffProcess` takes both sides as arguments.
 export {
   withStageAdded,
   withStageRemoved,
@@ -415,6 +418,7 @@ export {
   withStageMoved,
   totalDurationMinutes,
   resolveSchedule,
+  diffProcess,
 } from './process/index.js';
 export type { DurationRange } from './process/index.js';
 export type {

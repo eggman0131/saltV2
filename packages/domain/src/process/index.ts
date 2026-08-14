@@ -14,9 +14,11 @@
 // anchor is passed in, from either end, exactly as the contract doc's placement
 // table has it ("forward + backward schedule — pure; 'now' injected").
 //
-// STILL DELIBERATELY ABSENT: `diffProcess`. There is nothing yet to diff a process
-// AGAINST — the proposal flow that restructures one does not exist. It arrives with
-// its consumer, in phase 2 of #812.
+// `diffProcess` HAS NOW ARRIVED TOO, with its consumer exactly as promised: the
+// proposal flow (#812 phase 2) restructures a process, and a restructure is only
+// reviewable as a diff. It is pure in the strictest sense — BOTH sides are
+// arguments, so it can never reach for "the current process" — and it produces the
+// never-persisted render contract in `schemas/processDiff.ts`.
 export { withStageAdded, withStageRemoved, withStageUpdated, withStageMoved } from './stages.js';
 export { totalDurationMinutes } from './totalDuration.js';
 export type { DurationRange } from './totalDuration.js';
@@ -27,3 +29,4 @@ export type {
   ScheduleFailure,
   ResolveScheduleResult,
 } from './resolveSchedule.js';
+export { diffProcess } from './diffProcess.js';

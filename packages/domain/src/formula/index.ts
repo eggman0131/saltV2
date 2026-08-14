@@ -45,3 +45,8 @@ export {
   basisYield,
 } from './unitShapes.js';
 export type { UnitShapePreset } from './unitShapes.js';
+// The proposal's leavening opinion, applied (issue #812 phase 2). Generic: bounds
+// in, no ingredient names in the logic. The rail it declares is the one
+// `solveFormula` has enforced since #782 — there is no second bounds check.
+export { withComponentPercentScaled, LEAVENING_PERCENT_BOUNDS } from './adjustComponent.js';
+export type { ComponentPercentBounds } from './adjustComponent.js';

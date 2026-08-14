@@ -86,6 +86,10 @@ export { callExtractProcessStages } from './formulaCallables.js';
 // batchSync.ts for why the list read skips a corrupt document while the single-doc
 // read refuses it.
 export { subscribeBatches, subscribeBatch, saveBatch } from './batchSync.js';
+// The schedule proposal (issue #812, phase 2) — a callable, not a subscription:
+// nothing it returns is a document. It carries an explicit client timeout because
+// the call can legitimately outlive the callable SDK's 70 s default.
+export { callProposeSchedule } from './batchCallables.js';
 export { savePushSubscription, deletePushSubscription } from './pushSubscriptionSync.js';
 export { streamChefChat, callGenerateChatTitle } from './chatCallables.js';
 export { callAuthorRecipe } from './authorRecipeCallable.js';

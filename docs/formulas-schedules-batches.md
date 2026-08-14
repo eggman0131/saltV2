@@ -22,9 +22,16 @@ consumes them. What this doc requires is that the shape not preclude them, and a
 flat ordered array of stages with stable ids on an optional field of a greenfield
 collection does not. Phases 03/04 own that addition.
 
-Everything below about cultures, ferments, cures and `proposeSchedule` is still
-the contract the remaining phases are built against, not a description of code
-that exists. Read it before designing any part of ferments or cures.
+From #812 phase 2, the **proposal tier exists too**: `proposeSchedule` (the
+`pro`-tier callable that restructures a process to land at a target time, emitting
+neither timestamps nor grams), the pure `diffProcess` behind the review, and
+`withComponentPercentScaled` — the generic seam that turns the flow's leavening
+opinion into a percentage through the bounds rail `solveFormula` has enforced
+since #782.
+
+Everything below about cultures, ferments and cures is still the contract the
+remaining phases are built against, not a description of code that exists. Read it
+before designing any part of ferments or cures.
 
 Three hobbies — bread, fermented vegetables, cured meats — look like three
 features and are one. All three express quantities as a **percentage of a

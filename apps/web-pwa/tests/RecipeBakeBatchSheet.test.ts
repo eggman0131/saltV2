@@ -20,14 +20,18 @@ import type { Formula } from '@salt/domain/schemas';
 //   • a run that cannot be started says why, in the words the service chose, and
 //     stays put instead of navigating.
 
-const { mockStartBatch, mockAddToast } = vi.hoisted(() => ({
+const { mockStartBatch, mockProposeSchedule, mockAddToast } = vi.hoisted(() => ({
   mockStartBatch: vi.fn(),
+  mockProposeSchedule: vi.fn(),
   mockAddToast: vi.fn(),
 }));
 
 vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
 vi.mock('../src/lib/toastStore.js', () => ({ addToast: mockAddToast }));
-vi.mock('../src/lib/batchService.js', () => ({ startBatch: mockStartBatch }));
+vi.mock('../src/lib/batchService.js', () => ({
+  startBatch: mockStartBatch,
+  proposeSchedule: mockProposeSchedule,
+}));
 
 import { push } from 'svelte-spa-router';
 import RecipeBakeBatchSheet from '../src/routes/recipes/RecipeBakeBatchSheet.svelte';
@@ -195,10 +199,11 @@ describe('RecipeBakeBatchSheet — starting the run', () => {
       kind: 'target',
       shape: { label: '120 g roll', count: 12, unitDoughGrams: 120, bakeLossPercent: 10 },
     });
-    // Phase 1 is `startAt`: you say when you are mixing and everything is timed
-    // forward from it. A target FINISH time needs the proposal flow (phase 2), and
-    // there is deliberately no input for one here.
+    // The sheet opens on `startAt`: you say when you are mixing and everything is
+    // timed forward from it, by arithmetic, with no model anywhere near it. The
+    // other half of the anchor is opt-in and is covered in the phase-2 suite.
     expect(input.anchor.kind).toBe('startAt');
+    expect(mockProposeSchedule).not.toHaveBeenCalled();
     // Seeded from now, to the minute the picker offers.
     expect(Math.abs(Date.parse(input.anchor.at) - NOW.getTime())).toBeLessThan(60_000);
   });

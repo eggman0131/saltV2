@@ -1,5 +1,6 @@
 import { currentStage } from '@salt/domain';
-import type { BatchDoc, BatchStageDoc, BatchTotalsDoc, StageDuration } from '@salt/domain/schemas';
+import type { BatchDoc, BatchStageDoc, BatchTotalsDoc } from '@salt/domain/schemas';
+import { formatMinutes, formatStatedDuration } from '../../lib/durationDisplay.js';
 
 // How a batch READS (issue #812, phase 1 of epic #778) — the words and formats the
 // two batch screens share, in one place so the list and the run's own page can
@@ -14,41 +15,17 @@ import type { BatchDoc, BatchStageDoc, BatchTotalsDoc, StageDuration } from '@sa
 // The clock is INJECTED, defaulting to now. That keeps "today 09:00" a fixed string
 // in a test and matches how the domain treats time everywhere in this feature.
 //
-// `formatMinutes` deliberately duplicates the small private helper on
-// `FormulaPage`: promoting a five-line formatter into a shared module so two route
-// folders can reach it would buy a dependency between them for nothing. If a third
-// surface wants it, that is the moment it earns a home.
+// The duration formatters used to live here, duplicating a private helper on
+// `FormulaPage`, above a note saying a third surface was the moment they would earn
+// a home. Phase 2's proposal review was that third surface, so they moved to
+// `lib/durationDisplay.ts` and are re-exported here — the batch screens keep
+// importing one display module rather than two.
+
+export { formatMinutes, formatStatedDuration };
 
 /** A gram figure, already rounded by the domain's one rounding authority. */
 export function formatGrams(grams: number): string {
   return `${grams} g`;
-}
-
-export function formatMinutes(minutes: number): string {
-  const hours = Math.floor(minutes / 60);
-  const rest = Math.round(minutes % 60);
-  if (hours === 0) return `${rest} min`;
-  return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`;
-}
-
-/**
- * What the recipe ACTUALLY SAID this stage takes — never the single number the
- * schedule had to commit to.
- *
- * A range stays a range ("45–60 min"). `resolveSchedule` places it at its long end
- * and the frozen stage keeps the whole `duration` precisely so a screen can show
- * both; collapsing it here would throw away the honesty the schema went out of its
- * way to preserve.
- *
- * `null` for a stage with no duration at all — "until doubled" has no length, and
- * the caller says so in words rather than printing an invented figure.
- */
-export function formatStatedDuration(duration: StageDuration | null): string | null {
-  if (duration === null) return null;
-  if (duration.kind === 'fixed') return formatMinutes(duration.minutes);
-  const low = Math.min(duration.minMinutes, duration.maxMinutes);
-  const high = Math.max(duration.minMinutes, duration.maxMinutes);
-  return low === high ? formatMinutes(low) : `${formatMinutes(low)} – ${formatMinutes(high)}`;
 }
 
 /** True when the stage carries no length — observational, not instantaneous. */

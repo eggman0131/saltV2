@@ -409,6 +409,58 @@ export type {
   ExtractProcessStagesOutput,
 } from './process.js';
 
+// proposeSchedule (issue #812, phase 2) — the PROPOSAL tier. Restructures a
+// formula's reference process to land at a target time and says why, in words. It
+// emits NO timestamps and NO grams: `resolveSchedule` computes the clock and
+// `solveFormula` computes the weights, and the leavening opinion crosses as a
+// multiplicative factor rather than a number. The three timeout constants are
+// shared with the CF and the callable wrapper so they cannot drift.
+export {
+  PROPOSE_SCHEDULE_TIMEOUT_SECONDS,
+  PROPOSE_SCHEDULE_CLIENT_TIMEOUT_MS,
+  PROPOSE_SCHEDULE_AI_TIMEOUT_MS,
+  DEFAULT_QUIET_HOURS,
+  QuietHoursSchema,
+  ProposeScheduleInputSchema,
+  ProposedStageSchema,
+  ComponentAdjustmentSchema,
+  ProposeScheduleAIOutputSchema,
+  ProposeScheduleOutputSchema,
+} from './proposeSchedule.js';
+export type {
+  QuietHours,
+  ProposeScheduleInput,
+  ProposedStage,
+  ComponentAdjustment,
+  ProposeScheduleAIOutput,
+  ProposeScheduleOutput,
+} from './proposeSchedule.js';
+
+// Process diff (issue #812, phase 2) — the render contract for reviewing a
+// proposed restructure. NEVER persisted, so there is no back-compat surface, and
+// there is deliberately no `split`: one stage becoming two is a removal plus two
+// additions. `recipeDiff` is the precedent.
+export {
+  StageTextChangeSchema,
+  StageNullableTextChangeSchema,
+  StageKindChangeSchema,
+  StageEnvironmentChangeSchema,
+  StageDurationChangeSchema,
+  ProcessStageDiffEntrySchema,
+  ProcessStageChangeSchema,
+  ProcessDiffSchema,
+} from './processDiff.js';
+export type {
+  StageTextChange,
+  StageNullableTextChange,
+  StageKindChange,
+  StageEnvironmentChange,
+  StageDurationChange,
+  ProcessStageDiffEntry,
+  ProcessStageChange,
+  ProcessDiff,
+} from './processDiff.js';
+
 // Batch (issue #812, phase 1) — ONE RUN at `batches/{batchId}`, family-shared with
 // a random id. Everything on it is FROZEN at start: resolved grams AND their
 // labels, the resolved totals, and the resolved schedule. Read batch.ts's header
