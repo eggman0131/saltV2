@@ -31,8 +31,11 @@ export interface FormDemand {
 export interface ProductForm {
   readonly id: string;
   readonly schemaVersion: 1;
+  // EXTRA phrasings a recipe might use, beyond the label itself.
   readonly matchers: readonly string[];
   readonly parentCanonId: string;
+  // Human-facing name — and matching input. `resolveProductForm` matches the
+  // label on equal terms with `matchers`; it is not display-only (issue #818).
   readonly label: string;
   readonly yield: ProductFormYield;
   // Sync field — parity with canon; empty string is the pre-sync sentinel.

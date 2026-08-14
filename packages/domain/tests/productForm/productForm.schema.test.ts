@@ -97,18 +97,25 @@ describe('updateProductForm', () => {
 });
 
 describe('resolveProductForm', () => {
+  // Fixture note (#818): `label` is matching input, competing with `matchers` on
+  // equal terms — pf2 is reachable by its label alone, which no matcher spells.
+  // The matching rules themselves are covered in resolveProductForm.test.ts.
   const forms: ProductForm[] = [
     { ...baseDoc, id: 'pf1', matchers: ['lime juice'] },
-    { ...baseDoc, id: 'pf2', matchers: ['juice'], label: 'generic juice' },
+    { ...baseDoc, id: 'pf2', matchers: ['juice'], label: 'bottled juice' },
   ];
 
-  it('matches on a normalised substring', () => {
+  it('matches on a normalised phrase', () => {
     expect(resolveProductForm('Fresh Lime Juice', forms)?.id).toBe('pf1');
   });
 
-  it('longest matcher wins when several match', () => {
-    // both "juice" and "lime juice" match "lime juice"; longest wins
+  it('longest phrase wins when several match', () => {
+    // both "juice" (pf2) and "lime juice" (pf1) match "lime juice"; longest wins
     expect(resolveProductForm('lime juice', forms)?.id).toBe('pf1');
+  });
+
+  it('matches a form by its label', () => {
+    expect(resolveProductForm('300 ml bottled juice', forms)?.id).toBe('pf2');
   });
 
   it('returns null when nothing matches', () => {

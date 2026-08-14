@@ -7,11 +7,15 @@ import { z } from 'zod';
 export const ProductFormSchema = z.object({
   id: z.string(),
   schemaVersion: z.literal(1),
-  // Matcher strings that identify this form in an ingredient name, e.g. "lime juice".
+  // EXTRA phrasings that identify this form in an ingredient name, beyond the
+  // label itself, e.g. "dark meat" on a form labelled "Chicken Legs". Saved
+  // verbatim as typed; folding happens at match time (`resolveProductForm`).
   matchers: z.array(z.string()),
   // The canonical parent this form resolves to — a CanonItem id.
   parentCanonId: z.string(),
   // Human-facing label for the form, e.g. "freshly squeezed lime juice".
+  // NOT display-only: `resolveProductForm` matches the label on equal terms with
+  // `matchers`, so a form never needs to repeat its own name there (issue #818).
   label: z.string(),
   // Yield: how much of `formUnit` a single parent produces. e.g. one lime yields
   // 30 ml of lime juice → { formUnit: 'ml', amountPerParent: 30 }.
