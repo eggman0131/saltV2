@@ -1,4 +1,4 @@
-// spec: SPEC.md §8.12 v0.2.10
+// spec: SPEC.md §8.12 v0.2.11
 // Curated static registry of the Lucide icons Salt actually renders (issue #813).
 //
 // Icon.svelte used to index @lucide/svelte's `icons` barrel. That barrel is a
