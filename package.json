@@ -18,6 +18,7 @@
     "depcruise": "depcruise --config .dependency-cruiser.cjs packages apps",
     "provenance:check": "pnpm --filter @salt/ui-components provenance:check",
     "theme:check": "pnpm --filter @salt/ui-components theme:check",
+    "docsmap:check": "node scripts/check-docs-map.mjs",
     "release": "bash scripts/cut-release.sh",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",

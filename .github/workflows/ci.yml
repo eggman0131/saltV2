@@ -161,6 +161,16 @@ jobs:
       - name: Theme check
         run: pnpm theme:check
 
+      # Docs map hygiene. `docs/` is not auto-loaded, so CLAUDE.md's Docs map is
+      # the ONLY index of it — a doc missing from the map is invisible to every
+      # agent, and a row whose glob has gone dead reads as covered while routing
+      # nothing. Both are whole-repo facts that per-PR doc review structurally
+      # cannot see. Deterministic and free, so it runs here rather than costing
+      # model turns. A step in `static`, never a new job: the ruleset's three
+      # required contexts must stay three.
+      - name: Docs map check
+        run: pnpm docsmap:check
+
   types:
     name: Types
     runs-on: ubuntu-latest
