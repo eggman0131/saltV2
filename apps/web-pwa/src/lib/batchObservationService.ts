@@ -1,0 +1,162 @@
+import {
+  subscribeBatchObservations,
+  addBatchObservation,
+  callSetObservationImageUpload,
+} from '@salt/firebase-sync';
+import { createObservabilityErrorReportingAdapter } from '@salt/observability';
+import type { BatchObservationDoc } from '@salt/domain/schemas';
+import { reportIfFailed, reportSubscriptionError } from './errorReporting.js';
+import { success, type DomainError, type ReadResult } from '@salt/shared-types';
+import { writable } from 'svelte/store';
+import type { Readable } from 'svelte/store';
+
+// The observation log (issue #812, phase 4 of epic #778) — the store over
+// `batches/{batchId}/observations` and the ONE WRITE PATH into it.
+//
+// Its own service rather than four more exports on `batchService`, for the reason
+// the log is its own subcollection: a batch document and its log have different
+// lifetimes and different write shapes. A run is one document rewritten whole under
+// LWW; the log is many documents, each written once by whoever was holding the
+// scale. Keeping them apart means the log's subscription can be opened, closed and
+// reasoned about without going anywhere near the run's optimistic-write guards —
+// which exist to stop a stale snapshot un-marking a stage and have nothing to say
+// about an append-only list.
+//
+// It mints the same two things `batchService` mints, for the same reason (CLAUDE.md
+// Rule 1 — the domain mints neither):
+//
+//   • THE ID. `crypto.randomUUID()`, once, here. It is also the document id, which
+//     is what makes correcting an entry a re-write of the same id rather than a
+//     delete-and-re-add (there is no delete — see `batchObservationSync.ts`).
+//   • THE INSTANT. `at` is WHEN THE READING WAS TAKEN, and the log is ordered by it.
+//     Today the screen has no back-fill control, so "observed" and "typed" are the
+//     same moment and the clock is read here — the only place in this feature that
+//     reads one, exactly as `batchService` is for the run itself.
+//
+// ─── THE ORDER OF THE TWO WRITES IS NOT A DETAIL ───────────────────────────────
+//
+// The entry is written FIRST and the photo attached SECOND, because the callable
+// finishes with a PARTIAL update (so a photo cannot clobber the note it belongs to)
+// and a partial update of an absent document fails. That ordering also decides what
+// a failure costs: once the entry has landed, the reading is safe, and a photo that
+// will not upload costs the photo alone. `logObservation` says so in its return
+// type rather than leaving the caller to guess — a failed upload is a `photo:
+// failed` inside a SUCCESSFUL result, never an error that implies the weight was
+// lost.
+
+// ─── Reactive store ─────────────────────────────────────────────────────────────
+
+// One run's log. TWO states only (`undefined` = not loaded, then an array): an empty
+// log IS the loaded-and-nothing-recorded state, which is what most runs are, so
+// there is no third case to distinguish.
+//
+// OLDEST FIRST, exactly as the adapter delivers it — `orderBy('at', 'asc')`, over
+// the observed instant and never over arrival. Ordering is not re-done here and must
+// not be: a screen that wants newest-first reverses a list it knows is sorted.
+const _observations = writable<BatchObservationDoc[] | undefined>(undefined);
+export const observations: Readable<BatchObservationDoc[] | undefined> = _observations;
+
+// ─── Error reporting ────────────────────────────────────────────────────────────
+
+let _errorReporter: ReturnType<typeof createObservabilityErrorReportingAdapter> | null = null;
+function getErrorReporter() {
+  if (!_errorReporter) _errorReporter = createObservabilityErrorReportingAdapter();
+  return _errorReporter;
+}
+
+// ─── Init / cleanup ─────────────────────────────────────────────────────────────
+
+/**
+ * Subscribe to ONE run's log. Returns the unsub.
+ *
+ * Resets the store to the not-loaded state first, so moving between runs can never
+ * show the previous one's readings — the same reset `initBatchSync` does, and for
+ * the same reason.
+ */
+export function initBatchObservationsSync(batchId: string): () => void {
+  _observations.set(undefined);
+  const errors = getErrorReporter();
+  return subscribeBatchObservations(
+    batchId,
+    (incoming) => _observations.set(incoming),
+    (err, rawError) => reportSubscriptionError(errors, err, rawError),
+  );
+}
+
+// ─── Commands ─────────────────────────────────────────────────────────────────
+
+/** What the log screen collects. Everything is optional except which run it is. */
+export interface LogObservationInput {
+  batchId: string;
+  /** Grams on the scale, or null when the entry is a note or a photo. */
+  weightGrams: number | null;
+  /** Free text. `''` is "none" — the schema spells the absent state that way. */
+  note: string;
+  /**
+   * The photo, bare base64 straight from `ImageCropper.getCroppedBase64()` (WebP,
+   * no `data:` prefix). Omitted or null → no photo, and no callable is called.
+   */
+  photoBase64?: string | null;
+}
+
+/**
+ * What became of the photo. Only ever read on a SUCCESSFUL log — the reading is
+ * already saved by the time any of these is decided.
+ */
+export type PhotoOutcome =
+  { kind: 'none' } | { kind: 'attached' } | { kind: 'failed'; error: DomainError };
+
+/**
+ * Append one reading to a run's log. THE ONLY PLACE AN OBSERVATION IS WRITTEN.
+ *
+ * Two writes, in the one order that works (see the header). The result is the
+ * READING's: `err` means nothing was recorded and the user still has everything
+ * they typed; `ok` means the entry is on the document, and `photo` says separately
+ * whether the picture made it.
+ *
+ * `ph` and `temperatureC` are written null. The schema carries both and this screen
+ * offers neither — bread is weighed, and the pH strip and the chamber probe belong
+ * to the cure phase that made the log a subcollection in the first place
+ * (docs/formulas-schedules-batches.md, phase 04). Null is what "not measured" is,
+ * so nothing here has to be revisited when a screen does ask.
+ */
+export async function logObservation(
+  input: LogObservationInput,
+): Promise<ReadResult<{ observationId: string; photo: PhotoOutcome }, DomainError>> {
+  const observation: BatchObservationDoc = {
+    id: crypto.randomUUID(),
+    schemaVersion: 1,
+    at: new Date().toISOString(),
+    weightGrams: input.weightGrams,
+    ph: null,
+    temperatureC: null,
+    note: input.note,
+    // Null on the way in, always. The callable stamps the URL on afterwards with a
+    // partial update; the bytes never travel through the document.
+    image: null,
+  };
+
+  const written = reportIfFailed(
+    getErrorReporter(),
+    await addBatchObservation(input.batchId, observation),
+  );
+  if (written.kind !== 'ok') return written;
+
+  const photo = input.photoBase64;
+  if (photo === undefined || photo === null || photo === '') {
+    return success({ observationId: observation.id, photo: { kind: 'none' } });
+  }
+
+  // `image/webp` is not a guess: the cropper's canvas path IS the encoder, and it
+  // emits WebP. The callable auto-detects the real format from the bytes anyway —
+  // this is a hint, not a contract (see `SetObservationImageUploadInputSchema`).
+  const uploaded = reportIfFailed(
+    getErrorReporter(),
+    await callSetObservationImageUpload(input.batchId, observation.id, photo, 'image/webp'),
+  );
+  return success({
+    observationId: observation.id,
+    photo:
+      uploaded.kind === 'ok' ? { kind: 'attached' } : { kind: 'failed', error: uploaded.error },
+  });
+}

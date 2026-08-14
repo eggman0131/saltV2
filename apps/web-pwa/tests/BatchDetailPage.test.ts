@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/svelte';
-import type { BatchDoc, BatchStageDoc } from '@salt/domain/schemas';
+import type { BatchDoc, BatchObservationDoc, BatchStageDoc } from '@salt/domain/schemas';
 
 // One run's own screen (issue #812, phases 1 and 3 of epic #778).
 //
@@ -30,29 +30,33 @@ import type { BatchDoc, BatchStageDoc } from '@salt/domain/schemas';
 // never that a schedule moved — the re-timing is `withStageAdvanced`'s and is
 // pinned in the domain's own suite, against a fixed clock this page does not read.
 
-const { mockBatch, mockInitBatchSync } = vi.hoisted(() => {
-  function makeStore<T>(initial: T) {
-    let value = initial;
-    const subs = new Set<(v: T) => void>();
+const { mockBatch, mockInitBatchSync, mockObservations, mockInitObservationsSync } = vi.hoisted(
+  () => {
+    function makeStore<T>(initial: T) {
+      let value = initial;
+      const subs = new Set<(v: T) => void>();
+      return {
+        subscribe(fn: (v: T) => void) {
+          subs.add(fn);
+          fn(value);
+          return () => {
+            subs.delete(fn);
+          };
+        },
+        _set(v: T) {
+          value = v;
+          subs.forEach((fn) => fn(v));
+        },
+      };
+    }
     return {
-      subscribe(fn: (v: T) => void) {
-        subs.add(fn);
-        fn(value);
-        return () => {
-          subs.delete(fn);
-        };
-      },
-      _set(v: T) {
-        value = v;
-        subs.forEach((fn) => fn(v));
-      },
+      mockBatch: makeStore<BatchDoc | null | undefined>(undefined),
+      mockInitBatchSync: vi.fn(() => () => {}),
+      mockObservations: makeStore<BatchObservationDoc[] | undefined>(undefined),
+      mockInitObservationsSync: vi.fn(() => () => {}),
     };
-  }
-  return {
-    mockBatch: makeStore<BatchDoc | null | undefined>(undefined),
-    mockInitBatchSync: vi.fn(() => () => {}),
-  };
-});
+  },
+);
 
 vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
 vi.mock('../src/lib/nav.js', () => ({ goBack: vi.fn() }));
@@ -62,6 +66,11 @@ vi.mock('../src/lib/batchService.js', () => ({
   initBatchSync: mockInitBatchSync,
   advanceStage: vi.fn(),
   abandonBatch: vi.fn(),
+}));
+vi.mock('../src/lib/batchObservationService.js', () => ({
+  observations: mockObservations,
+  initBatchObservationsSync: mockInitObservationsSync,
+  logObservation: vi.fn(),
 }));
 
 import BatchDetailPage from '../src/routes/batches/BatchDetailPage.svelte';
@@ -150,6 +159,10 @@ afterEach(() => {
 beforeEach(() => {
   vi.clearAllMocks();
   mockBatch._set(undefined);
+  // Loaded and empty is the ordinary state of a run's log, and it is a DIFFERENT
+  // state from not-loaded: the end-of-run invitation must not flash before the
+  // subscription has said whether anything was ever written.
+  mockObservations._set([]);
   // The happy path by default: every command succeeds and hands the run back, which
   // is what the write path does (`persist` returns the stamped document).
   advanceMock.mockImplementation(async (current) => ({ kind: 'ok', value: current }));
@@ -496,5 +509,226 @@ describe('BatchDetailPage — what the controls still refuse to do', () => {
     await openOverflowMenu();
 
     expect(screen.queryByText(/re-?schedule|re-?scale|change the (plan|time)/i)).toBeNull();
+  });
+});
+
+// ─── Phase 4 — the observation log ────────────────────────────────────────────
+//
+// What these have to get right is, again, different in kind. The subcollection is
+// what makes two people logging on the same day safe, so the page's whole job is
+// not to defeat it: it renders the list the adapter delivered, in the order the
+// adapter delivered it (reversed for reading), and it never gathers entries back
+// into one value it could overwrite. And "finished" is still not a state — the
+// invitation is driven by `nextAction`, exactly as the controls above are.
+
+const OBSERVED_AT = '2026-08-14T09:00:00.000Z';
+
+function observation(over: Partial<BatchObservationDoc> = {}): BatchObservationDoc {
+  return {
+    id: 'obs-1',
+    schemaVersion: 1,
+    at: OBSERVED_AT,
+    weightGrams: null,
+    ph: null,
+    temperatureC: null,
+    note: '',
+    image: null,
+    ...over,
+  };
+}
+
+/** A run with every stage behind it — `nextAction` reads `'done'`. */
+const DONE_STAGES = [
+  stage({ actualEndAt: '2026-08-14T07:12:00.000Z' }),
+  stage({ id: 'stage-2', actualEndAt: '2026-08-14T08:10:00.000Z' }),
+];
+
+function loggedIds(): string[] {
+  return screen
+    .queryAllByTestId('batch-log-entry')
+    .map((el) => el.getAttribute('data-observation-id') ?? '');
+}
+
+describe('BatchDetailPage — the log on the batch', () => {
+  it('subscribes to the run’s own log and disposes it on teardown', () => {
+    const unsub = vi.fn();
+    mockInitObservationsSync.mockReturnValue(unsub);
+    const { unmount } = renderPage();
+
+    expect(mockInitObservationsSync).toHaveBeenCalledWith(BATCH_ID);
+    unmount();
+    expect(unsub).toHaveBeenCalledTimes(1);
+  });
+
+  it('says the log is empty rather than hiding it, so the door is always visible', async () => {
+    await showRun();
+
+    expect(screen.getByTestId('batch-log-empty')).toBeInTheDocument();
+    expect(screen.getByTestId('batch-log-add')).toBeInTheDocument();
+  });
+
+  it('renders every entry as its own row — two people, one day, both kept', async () => {
+    // The subcollection guarantees this; the page's job is not to defeat it by
+    // collapsing the log into one value. Same instant, two documents, two rows.
+    await showRun();
+    mockObservations._set([
+      observation({ id: 'obs-hers', weightGrams: 1440, note: 'weighed after shaping' }),
+      observation({ id: 'obs-his', weightGrams: 1438, note: 'weighed it again' }),
+    ]);
+
+    await waitFor(() => expect(loggedIds()).toHaveLength(2));
+    expect(loggedIds().sort()).toEqual(['obs-hers', 'obs-his']);
+    expect(screen.getByTestId('batch-log')).toHaveTextContent('weighed after shaping');
+    expect(screen.getByTestId('batch-log')).toHaveTextContent('weighed it again');
+  });
+
+  it('reads newest first, by reversing the adapter’s order and never re-sorting', async () => {
+    // The adapter orders by `at` ASCENDING — when the reading was TAKEN. A
+    // back-filled Tuesday entry therefore arrives before Thursday's however late it
+    // was typed, and this page must show it as the older of the two.
+    await showRun();
+    mockObservations._set([
+      observation({ id: 'obs-tuesday', at: '2026-08-11T08:00:00.000Z' }),
+      observation({ id: 'obs-thursday', at: '2026-08-13T08:00:00.000Z' }),
+    ]);
+
+    await waitFor(() => expect(loggedIds()).toHaveLength(2));
+    expect(loggedIds()).toEqual(['obs-thursday', 'obs-tuesday']);
+  });
+
+  it('shows a weight, a note and a photo, and prints nothing it does not have', async () => {
+    await showRun();
+    mockObservations._set([
+      observation({
+        weightGrams: 1440,
+        note: 'open crumb',
+        image: { url: 'https://storage.example/batch-images/batch-1/obs-1.webp', source: 'upload' },
+      }),
+    ]);
+
+    await waitFor(() => expect(screen.getByTestId('batch-log-entry')).toBeInTheDocument());
+    expect(screen.getByTestId('batch-log-entry-weight')).toHaveTextContent('1440 g');
+    expect(screen.getByTestId('batch-log-entry-note')).toHaveTextContent('open crumb');
+    // The Storage URL the callable stamped on — the bytes never went through
+    // Firestore, and no client-writable Storage path exists in this feature.
+    expect(screen.getByTestId('batch-log-entry-photo')).toHaveAttribute(
+      'src',
+      'https://storage.example/batch-images/batch-1/obs-1.webp',
+    );
+    // An entry with no pH and no temperature invents neither.
+    expect(screen.queryByTestId('batch-log-entry-ph')).toBeNull();
+    expect(screen.queryByTestId('batch-log-entry-temp')).toBeNull();
+  });
+
+  it('shows a reading it did not collect, when the document carries one', async () => {
+    // No screen writes `ph` or `temperatureC` yet; rendering one that exists costs
+    // nothing and is the honest thing to do with a document that has it.
+    await showRun();
+    mockObservations._set([observation({ ph: 4.2, temperatureC: 12 })]);
+
+    await waitFor(() => expect(screen.getByTestId('batch-log-entry')).toBeInTheDocument());
+    expect(screen.getByTestId('batch-log-entry-ph')).toHaveTextContent('4.2');
+    expect(screen.getByTestId('batch-log-entry-temp')).toHaveTextContent('12');
+  });
+
+  it('keeps the log readable on a run that was abandoned months ago', async () => {
+    // What it got to is the entire reason abandoning is a state and not a delete.
+    await showRun({ state: 'abandoned', stages: DONE_STAGES });
+    mockObservations._set([observation({ note: 'stopped, mould on the casing' })]);
+
+    await waitFor(() => expect(screen.getByTestId('batch-log-entry')).toBeInTheDocument());
+    expect(screen.getByTestId('batch-quantities')).toBeInTheDocument();
+    expect(screen.getByTestId('batch-stages')).toBeInTheDocument();
+  });
+});
+
+describe('BatchDetailPage — the invitation at the end of a run', () => {
+  it('offers it once every stage is done, without adding a state to say so', async () => {
+    await showRun({ stages: DONE_STAGES });
+
+    expect(screen.getByTestId('batch-log-prompt')).toBeInTheDocument();
+  });
+
+  it('does not offer it while there is still a stage in hand', async () => {
+    await showRun();
+
+    expect(screen.queryByTestId('batch-log-prompt')).toBeNull();
+    // …but logging is still possible, because a cure is weighed on day 12.
+    expect(screen.getByTestId('batch-log-add')).toBeInTheDocument();
+  });
+
+  it('takes one tap to skip, and does not block anything on the way past', async () => {
+    await showRun({ stages: DONE_STAGES });
+
+    await fireEvent.click(screen.getByTestId('batch-log-prompt-skip'));
+
+    await waitFor(() => expect(screen.queryByTestId('batch-log-prompt')).toBeNull());
+    // Skipping costs nothing: the page is intact and the log is still reachable.
+    expect(screen.getByTestId('batch-log-add')).toBeInTheDocument();
+    expect(toastMock).not.toHaveBeenCalled();
+  });
+
+  it('stops asking once the log has an answer', async () => {
+    await showRun({ stages: DONE_STAGES });
+    expect(screen.getByTestId('batch-log-prompt')).toBeInTheDocument();
+
+    mockObservations._set([observation({ weightGrams: 1440 })]);
+
+    await waitFor(() => expect(screen.queryByTestId('batch-log-prompt')).toBeNull());
+  });
+
+  it('does not offer it before the log has loaded', async () => {
+    // Not-loaded is not "nothing was ever written". Flashing the invitation at a run
+    // that has six weeks of readings would be a confident lie.
+    mockObservations._set(undefined);
+    await showRun({ stages: DONE_STAGES });
+
+    expect(screen.queryByTestId('batch-log-prompt')).toBeNull();
+  });
+
+  it('offers the screen the moment the last stage is marked done', async () => {
+    // The invitation arrives at the moment it is worth asking, read off the document
+    // the write returned — `nextAction` again, never a second guess at "finished".
+    await showRun({
+      stages: [stage({ actualEndAt: '2026-08-14T07:12:00.000Z' }), stage({ id: 'stage-2' })],
+    });
+    advanceMock.mockResolvedValueOnce({
+      kind: 'ok',
+      value: makeBatch({ stages: DONE_STAGES }),
+    });
+
+    await fireEvent.click(screen.getByTestId('batch-stage-advance'));
+
+    await waitFor(() => expect(screen.getByTestId('batch-log-sheet')).toBeInTheDocument());
+  });
+
+  it('does not open the screen when a mid-run stage is marked done', async () => {
+    await showRun();
+
+    await fireEvent.click(screen.getByTestId('batch-stage-advance'));
+
+    await waitFor(() => expect(advanceMock).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId('batch-log-sheet')).toBeNull();
+  });
+});
+
+describe('BatchDetailPage — where the log affordance lives', () => {
+  it('keeps it out of the ⋮, so a stopped run can still be written on', async () => {
+    // Phase 3 gates the WHOLE menu on `canAbandon` so its trigger can never open on
+    // an empty popover. An always-available item inside that gate would vanish on an
+    // abandoned run — the one surface whose point is that it keeps what it recorded.
+    await showRun({ state: 'abandoned' });
+
+    expect(screen.queryByTestId('batch-actions-overflow')).toBeNull();
+    expect(screen.getByTestId('batch-log-add')).toBeInTheDocument();
+  });
+
+  it('offers no way to delete an entry — the log is append-only', async () => {
+    await showRun();
+    mockObservations._set([observation({ note: 'open crumb' })]);
+
+    await waitFor(() => expect(screen.getByTestId('batch-log-entry')).toBeInTheDocument());
+    const entry = screen.getByTestId('batch-log-entry');
+    expect(entry.querySelector('button')).toBeNull();
   });
 });

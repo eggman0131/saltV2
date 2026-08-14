@@ -610,6 +610,12 @@ export { onBatchStageDispatch } from './triggers/onBatchStageDispatch.js';
 export { regenerateCanonIcon } from './callables/regenerateCanonIcon.js';
 export { regenerateRecipeImage } from './callables/regenerateRecipeImage.js';
 export { setRecipeImageUpload } from './callables/setRecipeImageUpload.js';
+// The observation photo (issue #812, phase 4) — the same auth-gated upload one
+// level deeper, writing `batch-images/{batchId}/{observationId}.webp` and stamping
+// the URL onto the observation with a partial update. NOTE for deploys: it writes a
+// NEW Storage prefix, which storage.rules must be deployed for before the log will
+// render a photo.
+export { setObservationImageUpload } from './callables/setObservationImageUpload.js';
 export { listPushoverDevices } from './callables/listPushoverDevices.js';
 export { beforeMemberCreated } from './auth/beforeMemberCreated.js';
 export { sweepOrphanedStorage } from './maintenance/sweepOrphanedStorage.js';

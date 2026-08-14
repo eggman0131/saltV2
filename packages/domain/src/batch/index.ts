@@ -22,10 +22,25 @@
 //     re-anchors a running batch, and that is the feature: freezing exists to stop
 //     a run growing versions, and a batch you can rescale no longer records what
 //     you did.
-//   • Observations — weight, pH, a photo, a note (phase 04) — and the `finished`
-//     state that a cure's weight-loss criterion would decide. Both are named in the
-//     contract doc; neither has a producer or a consumer today, and the shapes here
-//     preclude neither.
+//   • A producer for OBSERVATIONS, which phase 04 has now built — and deliberately
+//     built without one. An observation is a document in a subcollection
+//     (`batches/{batchId}/observations/{id}`, see BatchObservationSchema), so there
+//     is no batch document to return a new version of, and the only candidate
+//     producer — "append this entry to the log I am holding" — is `[...log, entry]`
+//     with a domain import in front of it. docs/domain-implementation.md is explicit
+//     that a module earns its place by holding a DECISION; appending to an array is
+//     not one. The one real decision in the neighbourhood is what ORDER the log is
+//     in, and that is answered where the log is read: `subscribeBatchObservations`
+//     orders by `at` — WHEN IT WAS OBSERVED, never when it arrived — with a Firestore
+//     `orderBy`, which costs nothing, needs no index, and cannot be bypassed by a
+//     caller that forgets to sort. Ordering arithmetic over the log (weight loss
+//     against the green weight, say) would be a real domain function; it is not this
+//     phase's, and nothing here precludes it.
+//   • The `finished` state a cure's weight-loss criterion would decide. Named in the
+//     contract doc, still with nothing to set it: `BatchStateSchema` stays
+//     `running | abandoned`, and widening it would mean revisiting every reader of
+//     `state` — `currentStage` here, and the "can this be abandoned / what happens
+//     next" derivations on both batch surfaces.
 //   • Any fermentation model. What a longer retard does to a dough is an opinion,
 //     and the contract doc's "what not to build" says so outright. The maths here
 //     is addition and subtraction of minutes.

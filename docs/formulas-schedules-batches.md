@@ -366,12 +366,23 @@ them.
 - **Who writes the resolved ingredient list** — the client on formula save (one
   owner, simple) or an `onFormulaWritten` trigger (consistent, but contends with
   client `setDoc` under LWW). Leaning client.
-- **Observations: array field or subcollection.** Append-only over weeks, and two
-  people logging a weight on the same day must not clobber each other under
-  document-level LWW. Leaning subcollection — but it would be Salt's first.
-- **The Cloud Tasks scheduling horizon.** A 90-day dry may exceed the maximum
-  schedule-ahead time, in which case reminders need a re-enqueue chain or a
-  scheduled sweep. Cheap to check now, painful at phase 04.
+- ~~**Observations: array field or subcollection.**~~ **SETTLED — subcollection**
+  (issue #812, the observation log). Append-only over weeks, and two people logging
+  a weight on the same day must not clobber each other under document-level LWW, so
+  an array field would have meant the second phone to sync erasing the first
+  partner's reading. `batches/{batchId}/observations/{id}`, family-shared, ordered
+  by when a reading was **observed** rather than when it arrived — Salt's first
+  purpose-built subcollection, following `shoppingLists/{listId}/items`. There is
+  deliberately no domain producer for the append: an entry is its own document, so
+  "add to the log" is a write, not a decision.
+- ~~**The Cloud Tasks scheduling horizon.**~~ **ANSWERED — 30 days** (issue #812,
+  the reminder path). Cloud Tasks accepts a `scheduleTime` at most 30 days ahead.
+  Bread's eighteen hours is nowhere near it, so nothing in phases 00–02 was
+  affected — but the guard was added anyway (`CLOUD_TASKS_HORIZON_DAYS` in
+  `apps/cloud-functions/src/triggers/batchStageTypes.ts`), and a stage beyond the
+  horizon is skipped with a logged warning rather than silently dropped. A 90-day
+  dry **will** exceed it, so phase 04 still owes a re-enqueue chain or a scheduled
+  sweep — it now finds a guard and a warning rather than a surprise.
 - **Does a culture reuse `process`.** A maintenance rhythm is a repeating single
   stage, so it either reuses the model or is a simpler thing of its own. Decide
   when cultures land.

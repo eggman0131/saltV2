@@ -110,6 +110,11 @@ export type { RegenerateRecipeImageInput } from './regenerateRecipeImage.js';
 export { SetRecipeImageUploadInputSchema } from './setRecipeImageUpload.js';
 export type { SetRecipeImageUploadInput } from './setRecipeImageUpload.js';
 
+// The observation photo (issue #812, phase 4) — the same shape one level deeper:
+// two ids, because the object lives at `batch-images/{batchId}/{observationId}`.
+export { SetObservationImageUploadInputSchema } from './setObservationImageUpload.js';
+export type { SetObservationImageUploadInput } from './setObservationImageUpload.js';
+
 export { CanonItemSchema, PendingCanonChangeSchema } from './canonItem.js';
 export type { CanonItemDoc, PendingCanonChangeDoc } from './canonItem.js';
 
@@ -473,6 +478,12 @@ export {
   BatchTotalsSchema,
   BatchStageSchema,
   BatchSchema,
+  // The observation log (phase 4) — a SIBLING schema, because observations are a
+  // subcollection under the run rather than a field on it: append-only over weeks,
+  // and two people logging a weight on the same day must not clobber each other
+  // under document-level LWW.
+  BatchObservationImageSchema,
+  BatchObservationSchema,
 } from './batch.js';
 export type {
   BatchState,
@@ -481,4 +492,6 @@ export type {
   BatchTotalsDoc,
   BatchStageDoc,
   BatchDoc,
+  BatchObservationImage,
+  BatchObservationDoc,
 } from './batch.js';

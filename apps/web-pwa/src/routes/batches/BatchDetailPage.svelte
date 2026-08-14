@@ -23,7 +23,9 @@
   import type { DomainError } from '@salt/shared-types';
   import { goBack } from '../../lib/nav.js';
   import { abandonBatch, advanceStage, batch, initBatchSync } from '../../lib/batchService.js';
+  import { observations, initBatchObservationsSync } from '../../lib/batchObservationService.js';
   import { addToast } from '../../lib/toastStore.js';
+  import BatchObservationSheet from './BatchObservationSheet.svelte';
   import {
     formatDate,
     formatGrams,
@@ -34,7 +36,7 @@
     yieldSummary,
   } from './batchDisplay.js';
 
-  // One run (issue #812, phases 1 and 3 of epic #778) — `/batches/:id`.
+  // One run (issue #812, phases 1, 3 and 4 of epic #778) — `/batches/:id`.
   //
   // An ordinary AppShell route: desk work at the bench, not a hands-full mode, so no
   // entry in ./fullViewport.ts. No `fill` either — this page is simply tall and
@@ -78,16 +80,52 @@
   // have not happened, and neither has a control. An abandoned or fully-done run has
   // no current stage at all and so shows none.
   //
+  // ─── THE LOG (issue #812, phase 4) ────────────────────────────────────────────
+  //
+  // A run's readings live in their OWN SUBCOLLECTION, one document per entry, and
+  // this page reads them through their own subscription. Nothing about them is held
+  // on the batch document: two people weighing the same coppa on the same day would,
+  // under last-write-wins on one document, mean the second phone silently erasing
+  // the first partner's reading — on exactly the record the feature exists to keep.
+  // Separate documents make that collision impossible, so the rule for this screen
+  // is simply never to gather them back up: the log is rendered from the list the
+  // adapter delivers, and written to one entry at a time.
+  //
+  // THE ORDER IS THE ADAPTER'S. `orderBy('at', 'asc')` sorts by when a reading was
+  // TAKEN, so a back-filled Tuesday weight sits before Thursday's however late it
+  // was typed. This page reverses that list to read newest-first and does not re-sort
+  // it — sorting by arrival would quietly make a cure's curve wrong.
+  //
+  // ─── "FINISHING" A BATCH, WHICH IS NOT A STATE ────────────────────────────────
+  //
+  // There is still no `finished` state and phase 4 did not add one: "every stage is
+  // done" is already answerable from the stages, and `nextAction` is where it is
+  // answered — the same function the in-flight list and the controls above read. So
+  // when a run reaches `'done'` this page OFFERS the log screen: an invitation with
+  // a one-tap Skip, never a gate, and never the only door. A cure is weighed on day
+  // 12, so "Log a reading" sits on the log itself and is available the whole way
+  // through, and on an abandoned run too — what it got to is the reason abandoning
+  // is a state rather than a delete.
+  //
+  // The invitation is dismissed IN MEMORY and nowhere else (CLAUDE.md Rule 3 — no
+  // browser storage). It does not need to persist: once the log has an entry the
+  // question has been answered and the prompt stops asking by itself, which covers
+  // every case except reopening a done-and-unlogged run, where being asked again is
+  // the correct behaviour anyway.
+  //
   // ─── STILL NOT HERE, AND NOT BY OVERSIGHT ─────────────────────────────────────
   //
   // No re-scaling, no re-scheduling, and no route back to `proposeSchedule` from a
   // running batch. Freezing is what stops a batch growing versions: what a batch
   // records is what happened, so the only thing that ever moves on this screen is
-  // the clock, and only as a consequence of a stage being marked done. Observations,
-  // photos and a finished state are phase 4.
+  // the clock, and only as a consequence of a stage being marked done. NOR is there
+  // a way to delete an entry: the log is append-only, which is the whole noun (a
+  // mis-typed reading is corrected by re-writing the same id, and no screen offers
+  // that yet).
   //
-  // The clock is NOT read here. `advanceStage` reads it in the service, which is why
-  // every re-timing this screen triggers is a pure function with a fixed answer.
+  // The clock is NOT read here. `advanceStage` reads it in the service, and
+  // `logObservation` reads it for a reading's `at`, which is why every re-timing
+  // this screen triggers is a pure function with a fixed answer.
 
   let { params }: { params?: { id?: string } } = $props();
 
@@ -98,6 +136,14 @@
   $effect(() => {
     if (!batchId) return;
     return initBatchSync(batchId);
+  });
+
+  // The log rides on its own subscription, disposed with the page. Two listeners
+  // rather than one because they are two collections: the run is a document that is
+  // rewritten whole, its readings are documents that are each written once.
+  $effect(() => {
+    if (!batchId) return;
+    return initBatchObservationsSync(batchId);
   });
 
   // Three states, and they are all different sentences: `undefined` is still
@@ -136,6 +182,22 @@
     return error.kind === 'ValidationError' && error.message ? error.message : fallback;
   }
 
+  // ─── The log ──────────────────────────────────────────────────────────────────
+  //
+  // Newest first, by REVERSING the ascending list the adapter guarantees — not by
+  // re-sorting it. `undefined` is still loading; an empty array is the ordinary
+  // loaded state of most runs and gets a sentence rather than a spinner.
+  const log = $derived($observations);
+  const logEntries = $derived(log === undefined ? [] : [...log].reverse());
+
+  let logOpen = $state(false);
+  // Dismissal of the end-of-run invitation, for this visit only. In memory by
+  // requirement (Rule 3) and by preference: once anything is logged the prompt has
+  // its answer and stops asking regardless.
+  let promptDismissed = $state(false);
+  const wantsPrompt = $derived(log !== undefined && log.length === 0 && !promptDismissed);
+  const showPrompt = $derived(next?.kind === 'done' && wantsPrompt);
+
   // ─── Mark a stage done ────────────────────────────────────────────────────────
 
   // Which stage is in flight, rather than a bare boolean: the button that was tapped
@@ -156,7 +218,14 @@
         failureMessage(result.error, "Couldn't mark that stage done. Try again."),
         'destructive',
       );
+      return;
     }
+    // Marking the LAST stage done is the moment "how did it go?" is worth asking, so
+    // the offer arrives then rather than waiting to be found. The decision is read
+    // off the document the write returned — `nextAction` again, never a second guess
+    // at what "finished" means — and it is skipped when the log already has an entry
+    // or the prompt has been dismissed, so it can only ever appear once.
+    if (nextAction(result.value).kind === 'done' && wantsPrompt) logOpen = true;
   }
 
   // ─── Abandon ──────────────────────────────────────────────────────────────────
@@ -245,6 +314,47 @@
         Started {formatDate(run.createdAt)}{#if run.state === 'abandoned'}
           · abandoned{/if}
       </p>
+
+      <!-- ─── The invitation ────────────────────────────────────────────────────
+           Shown when every stage is done and nothing has been written yet — an
+           INLINE card, not a modal, so it can sit there being ignored. Skip is
+           one tap and dismisses it for this visit; logging anything at all
+           dismisses it for good, because the question has then been answered. -->
+      {#if showPrompt}
+        <Card>
+          <CardContent class="pt-6">
+            <div class="flex flex-col gap-3" data-testid="batch-log-prompt">
+              <div>
+                <p class="font-medium">That's every stage done. How did it go?</p>
+                <p class="text-sm text-muted-foreground">
+                  A weight, a note, a photo — whatever you want to remember next time. Entirely
+                  optional.
+                </p>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  onclick={() => (logOpen = true)}
+                  data-testid="batch-log-prompt-open"
+                >
+                  {#snippet leading()}
+                    <Icon name="StickyNote" size={16} />
+                  {/snippet}
+                  Log how it went
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onclick={() => (promptDismissed = true)}
+                  data-testid="batch-log-prompt-skip"
+                >
+                  Skip
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      {/if}
 
       <!-- ─── The scaled ingredient list ────────────────────────────────────────
            The frozen `label` is the recipe's own `rawText`, so it carries the
@@ -457,9 +567,113 @@
           </ol>
         </CardContent>
       </Card>
+
+      <!-- ─── The log ───────────────────────────────────────────────────────────
+           OUTSIDE the ⋮, and outside `canAbandon` with it. Phase 3 gated that whole
+           menu on the run being `running` so its trigger could never open onto an
+           empty popover, and an always-available item put inside it would vanish
+           the moment a run was stopped — on precisely the surface whose reason for
+           existing is that an abandoned run keeps what it recorded. Here it is a
+           control on the thing it acts on: the log has a button, the button says
+           what it does, and it stands whatever state the run is in.
+
+           It is also the door that is open the whole way through. A cure is weighed
+           on day 12, not only at the end, so the end-of-run invitation above is an
+           extra prompt and never the only route to this. -->
+      <Card>
+        <CardHeader class="flex-row items-center justify-between gap-3">
+          <CardTitle>How it went</CardTitle>
+          <Button
+            variant="outline"
+            size="sm"
+            onclick={() => (logOpen = true)}
+            data-testid="batch-log-add"
+          >
+            {#snippet leading()}
+              <Icon name="Plus" size={16} />
+            {/snippet}
+            Log a reading
+          </Button>
+        </CardHeader>
+        <CardContent class="flex flex-col gap-3">
+          {#if log === undefined}
+            <!-- Still loading. Nothing is said, because "nothing recorded yet" would
+                 be a claim about six weeks of a cure's log that we have not read. -->
+            <Spinner />
+          {:else if logEntries.length === 0}
+            <p class="text-sm text-muted-foreground" data-testid="batch-log-empty">
+              Nothing recorded yet. A weight, a note or a photo — it stays on this batch.
+            </p>
+          {:else}
+            <!-- Newest first: the reverse of the ascending list the adapter sorted
+                 by `at`, never a re-sort of our own. -->
+            <ul class="flex flex-col gap-3" data-testid="batch-log">
+              {#each logEntries as entry (entry.id)}
+                <li
+                  class="flex flex-col gap-1 border-b border-border pb-3 last:border-0 last:pb-0"
+                  data-testid="batch-log-entry"
+                  data-observation-id={entry.id}
+                  data-at={entry.at}
+                >
+                  <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <span class="text-sm text-muted-foreground" data-testid="batch-log-entry-when">
+                      {formatWhen(entry.at)}
+                    </span>
+                    {#if entry.weightGrams !== null}
+                      <span class="font-medium tabular-nums" data-testid="batch-log-entry-weight">
+                        {formatGrams(entry.weightGrams)}
+                      </span>
+                    {/if}
+                    <!-- Neither of these has a control on this screen (the service
+                         writes them null and says why). They are RENDERED anyway
+                         because the document may carry them — from a later screen,
+                         or from a hand-written correction — and showing a reading
+                         that exists costs nothing. -->
+                    {#if entry.ph !== null}
+                      <span class="text-sm tabular-nums" data-testid="batch-log-entry-ph">
+                        pH {entry.ph}
+                      </span>
+                    {/if}
+                    {#if entry.temperatureC !== null}
+                      <span
+                        class="flex items-center gap-1 text-sm tabular-nums"
+                        data-testid="batch-log-entry-temp"
+                      >
+                        <Icon name="Thermometer" size={12} />
+                        {entry.temperatureC} °C
+                      </span>
+                    {/if}
+                  </div>
+                  {#if entry.note !== ''}
+                    <p class="whitespace-pre-wrap text-sm" data-testid="batch-log-entry-note">
+                      {entry.note}
+                    </p>
+                  {/if}
+                  {#if entry.image !== null}
+                    <!-- The Storage URL the callable stamped on. The bytes never went
+                         through Firestore and there is no client-writable Storage
+                         path anywhere in this feature. -->
+                    <img
+                      src={entry.image.url}
+                      alt="How the batch looked on {formatWhen(entry.at)}"
+                      loading="lazy"
+                      class="mt-1 max-w-sm rounded border border-border object-cover"
+                      data-testid="batch-log-entry-photo"
+                    />
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </CardContent>
+      </Card>
     </div>
   </DetailPage>
 {/if}
+
+<!-- Outside the `{#if}` for the reason the abandon confirm is: a sheet must not be
+     torn out from under itself if the run's snapshot changes while it is open. -->
+<BatchObservationSheet bind:open={logOpen} {batchId} onLogged={() => (promptDismissed = true)} />
 
 <!-- ─── Abandon confirm ──────────────────────────────────────────────────────────
      Outside the `{#if}` so the dialog is not torn out from under itself if the
