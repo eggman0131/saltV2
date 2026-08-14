@@ -3,7 +3,7 @@
 // differing only by endpoint path and service.name:
 //   • server AI leg          → /i/v0/ai/otel   (aiOtlpSpanProcessor.ts)
 //   • server distributed leg → /i/v1/traces    (distributedSpanProcessor.ts)
-//   • browser distributed leg→ /i/v1/traces    (browserTracer.ts)
+//   • browser distributed leg→ /i/v1/traces    (browserTracerImpl.ts)
 // This module is the SINGLE source of that shape so the wire schema cannot drift
 // between fast-path (server) and the browser-rooted traces (issue #362, Phase 4).
 // It lives in src/shared/ precisely so BOTH the default (browser) subpath and the

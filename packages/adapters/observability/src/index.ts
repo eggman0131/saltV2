@@ -19,7 +19,15 @@ export type { ObservabilityOptions, ObservabilitySpan, SupportFeedbackTraits } f
 // surface for instrumented user actions: start a ROOT span, get its W3C
 // traceparent for the firebase-sync callable wrappers, capture client-side timing.
 // initBrowserTracing is wired by initObservability; web-pwa uses startUserActionSpan.
-export { startUserActionSpan, isBrowserTracingReady, toBrowserOtlpSpan } from './browserTracer.js';
+//
+// VALUES COME FROM THE FACADE ONLY (issue #813). browserTracer.js is free of
+// `@opentelemetry/*` and loads the SDK dynamically; re-exporting any value from
+// browserTracerImpl.js here would restore a static edge from this barrel — which
+// web-pwa imports — and put the whole SDK back in the boot graph with no visible
+// symptom. `toBrowserOtlpSpan` was such a value and is no longer re-exported:
+// nothing outside the package used it, and its unit test imports the
+// implementation module directly. Types are erased and remain safe to re-export.
+export { startUserActionSpan, isBrowserTracingReady } from './browserTracer.js';
 export type { UserActionSpan, UserActionChildSpan } from './browserTracer.js';
 export {
   createPosthogMatchLoggingAdapter as createObservabilityMatchLoggingAdapter,

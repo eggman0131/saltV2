@@ -1,10 +1,10 @@
 // spec: ui-spec-v04.md §9 v0.4; ui-spec-v05.md §1 v0.5 (fill)
 import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
-import type { icons } from '@lucide/svelte';
+import type { IconName } from '../../primitives/Icon/iconRegistry';
 
-/** Name of a Lucide icon, matching the {@link Icon} primitive's `name` prop. */
-export type BulkActionIcon = keyof typeof icons;
+/** Name of a registered Lucide icon, matching the {@link Icon} primitive's `name` prop. */
+export type BulkActionIcon = IconName;
 
 /**
  * A single entry in the contextual bottom action bar (selection mode).
