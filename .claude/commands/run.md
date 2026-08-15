@@ -1,12 +1,22 @@
+---
+description: Execute a phased GitHub issue end to end — branch, then per phase implement, validate, commit, push, CI — landing as a draft PR. Owns the git history; never merges.
+argument-hint: <issue number>
+disable-model-invocation: true
+---
+
 # Run Issue
 
 Argument: $ARGUMENTS → ISSUE_NUMBER
 
+No argument given? If the current branch ends in `-<digits>`, that is the issue — say which and carry on. Otherwise ask which issue and stop until I answer; there is nothing safe to guess here.
+
 You own two things end to end: the **spec contract** (the issue's phases are the scope — nothing more, nothing less) and the **git history** (branch, commits, PR). Everything else is yours to delegate or do directly as the work warrants.
 
-Delegate breadth — codebase sweeps, independent implementation work, CI-log triage — and keep judgment: validation against the real diff, the git operations, and every decision the issue's audit trail depends on. Search and mechanical fan-out can run on a cheaper model; implementation and validation should not.
+Delegate breadth — codebase sweeps, independent implementation work, CI-log triage — and keep judgment: validation against the real diff, the git operations, and every decision the issue's audit trail depends on. Search and mechanical fan-out can run on a cheaper model — `Agent(…, model: "haiku")`, or `"sonnet"` where the sweep has to reason about what it finds. Implementation and validation should not.
 
 GitHub through the `gh` CLI throughout (`gh issue view`, `gh issue comment`, `gh pr create`). There is no GitHub MCP server in this repo.
+
+Two things dominate what a run costs: re-deriving context the issue already holds, and waiting serially on things that could overlap. The loop below is ordered so neither happens — the ordering *is* the optimisation, so keep it.
 
 ## Standing rules
 
@@ -20,12 +30,27 @@ GitHub through the `gh` CLI throughout (`gh issue view`, `gh issue comment`, `gh
 ## Setup (once)
 
 `gh issue view ISSUE_NUMBER --comments`. Read it in full and hold:
-- **Intended Experience** verbatim — the UX baseline you validate every phase against
-- the phase list: names, scopes, must-not-touch lists, user-testable outcomes, and which phase is last
+- the **baseline section** verbatim — the standard you validate every phase against. `/spec` issues call it **Intended Experience**; `/defect` issues, **Observed vs Expected** plus **Root Cause**; `/refactor-spec` issues, **Behavior Contract**.
+- the phase list: names, scopes, must-not-touch lists, outcomes, and which phase is last
 
-A phase may carry more than one user-testable outcome; all of them are in scope for that phase and all of them get validated. Do not split a phase into extra loop iterations of your own, and do not collapse two.
+**The outcome field is named for the issue's kind.** A feature phase carries **User-testable outcome(s)**, a defect phase **Verifiable outcome(s)**, a refactor phase **Behavior-preserving check**. Wherever this command says "the phase's outcome(s)", read whichever one your issue actually uses — they are the same contract under three names, and looking for the feature spelling on a defect issue is how a run starts improvising.
+
+A refactor phase carries a sixth field, **Safe to stop here?**. A `No` means the codebase is mid-migration and genuinely not shippable at that boundary: commit and push it as normal, but say so plainly in the handoff comment rather than implying a resting point that doesn't exist.
+
+A phase may carry more than one outcome; all of them are in scope for that phase and all of them get validated. Do not split a phase into extra loop iterations of your own, and do not collapse two.
+
+If the phase blocks are missing the fields this loop consumes — no scope, no outcome, no must-not-touch — stop and tell me. Filling them in yourself converts a spec contract into your own guess at one, which is precisely what this command exists to prevent.
 
 Your held copy is authoritative. Don't re-read the issue mid-run and drift.
+
+### Resume, don't restart
+
+A multi-phase run outlives a session. Before touching anything, work out what has already landed — the comments you just fetched hold it:
+
+- each `## Phase N complete` comment is a landed phase. Take its **Handoff contract** as your input for the next one, exactly as if you had written it this session;
+- cross-check against `git log --oneline origin/main..HEAD` on the issue branch. A handoff comment with no commit behind it, or a phase commit with no comment, means something broke mid-phase — say which and ask before building on top of it.
+
+Announce where you're picking up ("phases 1–2 landed, resuming at 3") and start there. Re-implementing a landed phase on top of itself is the worst outcome available in this loop.
 
 ### Working branch
 
@@ -36,7 +61,7 @@ git checkout -b <type>/<slug>-ISSUE_NUMBER
 - `<type>`: `feat`, `fix`, `chore`, `docs`, or `perf` per the change's nature.
 - `<slug>`: ≤4 kebab-case words from the issue title. Issue #261 "Add meal-planner drag reorder" → `feat/meal-planner-drag-reorder-261`.
 
-If the current branch is already dedicated to this issue (it ends in `-ISSUE_NUMBER`), reuse it rather than nesting. Never run phases on `main`.
+If the current branch is already dedicated to this issue (it ends in `-ISSUE_NUMBER`), reuse it rather than nesting. If a branch for this issue exists on the remote, check that out instead of starting a second one, and look for its draft PR (`gh pr list --head <branch> --state open`) — reuse that too, so a resumed run doesn't try to open a second PR against the same branch at step 6. Never run phases on `main`.
 
 All phase commits land on this branch; hold its name for the PR.
 
@@ -46,9 +71,17 @@ All phase commits land on this branch; hold its name for the PR.
 
 ### 1. Context
 
-Get whatever you actually need to implement Phase N well: CLAUDE.md, the docs its **Docs map** routes you to, and the files the phase's deliverables name. Delegate to Explore when the surface is wide or unknown; read directly when it's a known module. Skip this entirely for a phase whose ground you already covered in phase N-1.
+**The phase's Context pointers are your context.** Read the files they name and the doc sections they cite; for most phases that is the whole of this step. CLAUDE.md is already in your context — don't re-read it. Skip the step entirely for a phase whose ground you already covered in phase N-1.
 
-When you delegate it, the report is restricted to exactly these three, and nothing else:
+Delegate an Explore only when one of these holds, and say which:
+
+- the phase has no Context pointers, or they don't reach the deliverables it names;
+- an earlier phase moved the ground under them;
+- the deliverables name files the issue never located.
+
+That gate matters because the sweep is not cheap and the issue was written to make it unnecessary — an Explore run out of habit re-buys what `/spec` already paid for.
+
+When you do delegate it, the report is restricted to exactly these three, and nothing else:
 
 > 1. **Layers in play** — which packages the phase touches, and any layer-map boundary it crosses.
 > 2. **Binding constraints** — the CLAUDE.md rules and doc contracts that bound *this* phase, each named (rule number, `docs/…` section) rather than paraphrased.
@@ -76,7 +109,7 @@ And instruct it:
 > Return:
 >   BUILT: [what was implemented]
 >   DECISIONS: [any choice not specified in scope, and why]
->   UX_DELTA: [anything differing from the phase's user-testable outcome(s) — or NONE]
+>   UX_DELTA: [anything differing from the phase's stated outcome(s) — or NONE]
 >   FLAGS: [anything the next phase must know that isn't in the scope — or NONE]
 >   CONCERNS: [any rule the scope pushed against, or a simpler/more maintainable shape you'd recommend — or NONE]
 
@@ -85,9 +118,17 @@ And instruct it:
 Check the work, not just the report — a self-report is a claim, `git diff` is evidence.
 
 - `git status --short` and `git diff --stat`: does the changed-file set match "Technical deliverables", and does it stay clear of "Must not touch"? Read the diff wherever the answer isn't obvious from the paths.
-- Run the mechanical gates that the changed files actually implicate: `pnpm lint`, `pnpm typecheck`, `pnpm check` (Svelte templates), `pnpm test`, and `pnpm depcruise` for anything touching the import graph. Fix or delegate fixes until they're green — do not commit red.
-- That list stops where it does on purpose: e2e and the emulator integration suite seize host-global singletons (see CLAUDE.md → *Worktree rules*), so they are **not** run here. They run in CI, at step 8.
-- `UX_DELTA` against the phase's user-testable outcome(s), and `CONCERNS` against the standing rules.
+- **Run the whole mechanical set concurrently, in one message.** This is exactly what CI blocks on, minus the two heavy suites:
+
+  `pnpm format:check` · `pnpm lint` · `pnpm typecheck` · `pnpm check` (Svelte templates) · `pnpm test` · `pnpm depcruise` · `pnpm boundary:test` · `pnpm docsmap:check` · `pnpm theme:check` · `pnpm provenance:check`
+
+  Every package exports `./src/*.ts`, so nothing waits on a build. `test` and `check` are the only long poles and the other eight finish inside them, so the whole set concurrently costs roughly what `pnpm test` costs alone — against ~80s for even the core five run one after another. Don't spend thought on which gates the change "implicates": that judgment costs more than the run, and getting it wrong costs a red CI five minutes later.
+
+  The four beyond the obvious six are there because they are the ones a phase trips *without noticing*: a new file under `docs/` fails `docsmap:check` unless CLAUDE.md's Docs map gained a row, any `packages/ui-components` edit can fail `theme:check` or `provenance:check`, and an `eslint.config.*` or `.dependency-cruiser.*` change fails `boundary:test`.
+- **Add a production build when the phase touches `apps/web-pwa`'s entry, dependencies or asset pipeline:** `pnpm --filter @salt/web-pwa build`. CI's `boot-payload` job blocks on it, and it catches the class of failure `tsc` structurally cannot see — a bare specifier inside a CSS `url()`, a dynamic import that doesn't resolve. This one *is* conditional, because unlike the rest it is slow.
+- On a failure, fix it and re-run **only** the gate that failed; run the full set once more before committing. Do not commit red. A red `format:check` is not a thinking problem — `pnpm format` fixes it, and hand-editing whitespace the pre-commit hook would have rewritten anyway is pure waste.
+- The set stops short of e2e and the emulator integration suite on purpose: those seize host-global singletons (see CLAUDE.md → *Worktree rules*), so they are **not** run here. They run in CI, at step 8.
+- `UX_DELTA` against the phase's outcome(s), and `CONCERNS` against the standing rules.
 
 Deliverables missing, or must-not-touch violated → do not commit. Comment on the issue describing the gap, stop, wait for me.
 `UX_DELTA` non-empty → step 4 next, and pause there before committing anything.
@@ -100,7 +141,7 @@ A comment of its own:
 ```
 ## ⚠️ UX deviation — Phase N
 
-**Spec said:** [quote from Intended Experience or the user-testable outcome(s)]
+**Spec said:** [quote from the baseline section or the phase's outcome(s)]
 **What was built:** [from UX_DELTA]
 **Impact:** [user-visible effect; whether future phases are affected]
 **Recommended path:** [continue / adjust spec / fix in next phase]
@@ -121,11 +162,17 @@ Phase N. [1-2 sentences on what this phase delivers and why.]
 Refs #ISSUE_NUMBER
 ```
 
-`Refs #ISSUE_NUMBER` on every phase commit including the last — the PR closes the issue, not the commits. No `#N` anywhere but that footer, and nothing after it.
+`Refs #ISSUE_NUMBER` on every phase commit including the last — the PR closes the issue, not the commits. No `#N` anywhere but that footer, and nothing after it. **That includes the `Co-Authored-By` trailer the harness appends by default:** this repo's history carries none, and this command deliberately overrides that default. One convention per history.
 
-### 6. Push, and start CI
+The pre-commit hook is not a formality — it runs `lint-staged` (prettier `--write`, then eslint), and then `pnpm typecheck` and `pnpm depcruise` all over again. Three things follow:
 
-The two heavy suites — `E2E (Playwright)` and `Vitest integration (emulator)` — exist only in CI. They are exactly what step 3's local list cannot cover, and CI is the only place they run without taking the host stacks off me.
+- give the commit a generous Bash timeout. 40–60s is normal, and a commit that looks hung usually isn't.
+- prettier **rewrites files during the commit**, so what lands can differ from what you validated a moment ago. Check `git status --short` afterwards and amend if the hook left anything behind.
+- the overlap with step 3 is deliberate belt-and-braces, not licence to skip those gates earlier. By the time the hook catches something you have already written the commit message twice.
+
+### 6. Push, and start CI in the background
+
+The two heavy suites — `E2E (Playwright)` and `Vitest integration (emulator)` — exist only in CI. They are exactly what step 3's gates cannot cover, and CI is the only place they run without taking the host stacks off me.
 
 ```
 git fetch --no-tags origin main
@@ -147,7 +194,19 @@ WIP — phases land as commits. Full summary on the final phase."
 
 If this PR is one of several for the issue, append ` (#ISSUE_NUMBER)` to the title and use `Refs` instead of `Closes`.
 
-Then go straight to step 7 — **do not wait here.** CI takes 5–10 minutes; the handoff comment gets written while it runs.
+Then start the watch **in the background** and move on:
+
+```
+sleep 20 && gh pr checks --watch --fail-fast      # Bash tool, run_in_background: true
+```
+
+`--fail-fast` returns on the first failing check instead of waiting out the suites that are still green. On a broken phase that is four or five minutes you get back, and there is nothing you'd have done differently had you waited for the rest.
+
+The `sleep` is not padding: GitHub takes a few seconds to register the run, and `gh pr checks` exits straight away with *"no checks reported"* if none exist yet — which arrives looking exactly like a finished CI. If the watch does return within seconds, that is what happened; re-issue it rather than reading it as a result.
+
+A run takes 5–7 minutes and you are re-invoked when the watch exits, so blocking here is the single largest waste in a multi-phase run. Do step 7 while it runs, then step 1 of phase N+1 if there is one — a context read is cheap and CI cannot invalidate it.
+
+Stop there. **Do not start implementing N+1 until you have read phase N's CI result** (step 8): building on a red phase turns one rework into two.
 
 ### 7. Handoff comment
 
@@ -174,9 +233,11 @@ Comment on issue #ISSUE_NUMBER. This is the audit trail and the brief for the AI
 - [file or module now locked]
 ```
 
+For a single-phase issue there is no phase N+1, so drop **Handoff contract** and **Settled** entirely. Writing a contract for an audience that does not exist is exactly the filler this section tells you to cut.
+
 ### 8. Read CI — and check the heavy suites actually ran
 
-`gh pr checks --watch`.
+Picks up when the backgrounded watch from step 6 returns.
 
 **A green tick is not proof a suite ran.** `E2E (Playwright)` and `Vitest integration (emulator)` are required checks, and a *skipped* required check reports as **passing** — deliberately, since that is how a docs-only PR merges. The e2e aggregator asserts "did not fail", not "succeeded". So read the job conclusions, not the check summary:
 
@@ -189,13 +250,13 @@ gh run view <run-id> --json jobs \
 - `success` → verified.
 - `skipped` → **not verified.** Either the branch was behind `origin/main` (rebase, push, re-read) or the phase touched only `docs/`, `*.md`, `.github/`, `.claude/`, `.vscode/` and the meta dotfiles — in which case the skip is correct and the phase simply has no e2e signal. Say which in the handoff comment. Never report it as green.
 - `cancelled` → a later push superseded that run (PR runs cancel in progress). Not a defect — read the newer run.
-- `failure` → get the failing log, diagnose and fix on the issue branch (delegate the triage if the log is large), commit, push. Can't resolve it → stop and tell me.
+- `failure` → `gh run view <run-id> --log-failed` gives you the failing steps alone; the full log runs to tens of thousands of lines you have no use for. Diagnose and fix on the issue branch (delegate the triage if even that is large), commit, push. Can't resolve it → stop and tell me.
 
 Note the blind spot: a phase editing the e2e or integration job setup **inside `.github/workflows/ci.yml`** skips those very suites, so it cannot be validated green by its own run. Flag it and validate on a follow-up that also touches app code.
 
 ### 9. Continue or conclude
 
-More phases → straight into N+1 at step 1.
+More phases → straight into N+1. Its step 1 is already done if you overlapped it during the CI wait; pick up at step 2.
 
 Final phase done, CI green and the heavy suites confirmed run:
 1. Fill in the PR body:
@@ -216,7 +277,7 @@ Final phase done, CI green and the heavy suites confirmed run:
    [key decisions and anything intentionally out of scope]
    ```
 2. `gh pr ready` — take it out of draft. Do **not** merge it.
-3. Comment on the issue summarising all phases and linking the PR.
+3. One comment on the issue: the PR URL and a line per phase. The per-phase handoff comments already hold the detail — restating it just makes the thread longer to read.
 4. Report done with the PR URL. Leave the PR open for me to review and merge — never merge it yourself.
 
 ---
@@ -227,6 +288,9 @@ Final phase done, CI green and the heavy suites confirmed run:
 - A UX deviation (step 4) — always, before the commit and the next phase
 - The phase can only be built by breaking a CLAUDE.md rule, or only by a bodge
 - Phase scope is ambiguous in a way that changes what gets built
+- The issue's phase blocks are missing the fields this loop consumes (Setup)
+- A rebase conflict against `origin/main` in code this run didn't author (step 6) — resolving someone else's concurrent change is not in this run's scope
+- The resume check found a handoff comment and a phase commit disagreeing about what landed (Setup)
 - CI failure you can't resolve
 
 Otherwise: make the call, record it in `DECISIONS`/`FLAGS` or the handoff comment, continue.

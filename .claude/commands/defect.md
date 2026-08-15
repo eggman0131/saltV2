@@ -1,6 +1,14 @@
+---
+description: Investigate a defect to its root cause and post it as a phased GitHub issue that /run can execute. Reproduce, trace, decide the forks — no fix.
+argument-hint: <the defect or symptom>
+disable-model-invocation: true
+---
+
 # Defect Spec
 
 I want to investigate and fix: $ARGUMENTS
+
+If `$ARGUMENTS` is empty, ask what is broken and stop here.
 
 You are investigating and specifying, not fixing. The deliverable is a GitHub issue. Do not write the fix.
 
@@ -43,6 +51,8 @@ Verify the root cause empirically where you can (a probe, or a test that pinpoin
 > 4. **Blast radius** — what else this mechanism affects, and whether live data is already wrong.
 >
 > No preamble, no restating the symptom, no fix proposal yet.
+
+**Keep the `file:line` as you go.** This investigation gets spent twice: once writing the issue, and once by `/run`, which otherwise re-derives it per phase — re-tracing a root cause that is already known. Record it against the phases in **Context pointers**.
 
 ## Step 3 — Clarify with user
 
@@ -111,12 +121,17 @@ None of those apply? One phase.]
 **Scope:** [What gets changed — precise, not vague]
 **Verifiable outcome(s):** [What proves it is fixed — ideally a regression test that fails before the change and passes after]
 **Technical deliverables:** [Files, functions, tests]
+**Context pointers:** [What Step 2 already learned about *this* phase, so `/run` reads rather than re-investigates:
+`file:line` for the faulty mechanism and the tests around it, and the named rules and `docs/…` sections
+that bound the fix. Written for an agent arriving with no context — thin here buys a fresh Explore sweep
+there, re-tracing a root cause you already found.]
 **Must not touch:** [Explicitly out of scope; the preserved behavior]
 
 ### Phase 2: [Name]
 **Scope:** [...]
 **Verifiable outcome(s):** [...]
 **Technical deliverables:** [...]
+**Context pointers:** [...]
 **Must not touch:** [...]
 
 [...continue through Phase N...]
@@ -126,4 +141,12 @@ None of those apply? One phase.]
 preserved behavior stays green; no schema/data regressions.]
 ---
 
-After posting: share the issue URL and ask me to confirm the **Root Cause and Fix Approach** before any implementation starts.
+## Step 5 — Verify the issue is runnable
+
+`/run` consumes this issue by exact heading, and nothing else checks that coupling. Read the posted body
+back with `gh issue view <n>` and confirm the top-level headings are spelled exactly as above, that every
+phase block carries all five fields, and that the paths in **Context pointers** actually exist — check
+them. A `file:line` written from memory is worse than no pointer, because `/run` will trust it and go
+re-investigate a root cause you already found. Fix anything wrong with `gh issue edit`.
+
+Then share the issue URL and ask me to confirm the **Root Cause and Fix Approach** before any implementation starts.

@@ -1,6 +1,14 @@
+---
+description: Design a behavior-preserving refactor and post it as a phased GitHub issue that /run can execute. Target shape, verification strategy, safe stopping points — no code.
+argument-hint: <what you want to refactor>
+disable-model-invocation: true
+---
+
 # Refactor Spec
 
 I want to refactor: $ARGUMENTS
+
+If `$ARGUMENTS` is empty, ask what I want restructured and stop here.
 
 You are designing, not building. The deliverable is a GitHub issue. Do not write code.
 
@@ -32,6 +40,8 @@ Scope the output to five things and no others:
 > 5. **Riskiest cut points** — where this could go wrong mid-migration.
 >
 > No walkthrough of how the code works, no target-shape proposal yet.
+
+**Keep the `file:line` as you go.** This read gets spent twice: once writing the issue, and once by `/run`, which otherwise re-derives it once per phase. The call-site inventory in particular is the most expensive thing you will produce here and the thing every phase needs — record it against the phases in **Context pointers** and no one has to find those call sites again.
 
 ## Step 2 — Clarify with user
 
@@ -100,6 +110,10 @@ Do not split a single atomic move that has no safe midpoint — say so in **Safe
 **Scope:** [What gets restructured — precise, not vague]
 **Behavior-preserving check:** [How this phase proves behavior is unchanged — which tests, which parity check]
 **Technical deliverables:** [Files moved/split/renamed, new boundaries, exported functions/types]
+**Context pointers:** [What Step 1 already learned about *this* phase, so `/run` reads rather than re-sweeps:
+the `file:line` call sites it must update, the tests that cover them, and the named rules and `docs/…`
+sections that bound the target shape. Written for an agent arriving with no context — thin here buys a
+fresh Explore sweep there, and on a refactor that sweep is the expensive one.]
 **Must not touch:** [Explicitly out of scope]
 **Safe to stop here?:** [Yes/No — is the codebase in a shippable, consistent state after this phase, or is this a point of no return mid-migration?]
 
@@ -107,6 +121,7 @@ Do not split a single atomic move that has no safe midpoint — say so in **Safe
 **Scope:** [...]
 **Behavior-preserving check:** [...]
 **Technical deliverables:** [...]
+**Context pointers:** [...]
 **Must not touch:** [...]
 **Safe to stop here?:** [...]
 
@@ -117,5 +132,13 @@ Do not split a single atomic move that has no safe midpoint — say so in **Safe
 (tests/types/lint/depcruise) green. Any dead code from the old structure removed or explicitly scheduled.]
 ---
 
-After posting: share the issue URL and ask me to confirm the **Behavior Contract** before any
-implementation starts.
+## Step 4 — Verify the issue is runnable
+
+`/run` consumes this issue by exact heading, and nothing else checks that coupling. Read the posted body
+back with `gh issue view <n>` and confirm the top-level headings are spelled exactly as above, that every
+phase block carries all six fields — **Safe to stop here?** included, since `/run` reads a `No` there as
+"not shippable at this boundary" — and that the call sites listed in **Context pointers** actually exist.
+Check them. That inventory is the most expensive thing Step 1 produced and the thing every phase needs;
+a path written from memory sends `/run` to find them all again. Fix anything wrong with `gh issue edit`.
+
+Then share the issue URL and ask me to confirm the **Behavior Contract** before any implementation starts.
