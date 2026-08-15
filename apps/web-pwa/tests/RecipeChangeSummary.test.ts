@@ -193,6 +193,84 @@ describe('RecipeChangeSummary — a card says what kind of change it is', () => 
   });
 });
 
+describe('RecipeChangeSummary — two columns from the fold up', () => {
+  // The seam is the `split:` Tailwind variant and nothing else — no matchMedia,
+  // no width in script — so what these pin is the CLASS CONTRACT: the element is
+  // in the DOM at every width and CSS alone decides whether it is seen. jsdom
+  // loads no stylesheet, so asserting the variant is the honest way to say "this
+  // is gated on the app's one layout breakpoint and not on a re-derived one".
+  // Whether 700px is the right number is settled in `app.css`; that it is the
+  // number used here is what would silently rot.
+
+  it('shows the column headings only above the seam, pinned to the top of the list', () => {
+    open({ title: { from: 'Pilaf', to: 'Chorizo Pilaf' } });
+
+    const row = screen.getByText('Now').parentElement!;
+    expect(row).toContainElement(screen.getByText('Proposed'));
+    // Never on a phone: on 390px the headings would eat a line and explain
+    // nothing, because there is only one column under them.
+    expect(row).toHaveClass('hidden', 'split:grid', 'split:grid-cols-2');
+    // Pinned inside the scroller, not stacked above it — the question they
+    // answer has to survive scrolling past the first card.
+    expect(row).toHaveClass('sticky', 'top-0');
+  });
+
+  it('names the empty side of an addition instead of leaving a blank column', () => {
+    open({
+      ingredients: { added: [{ id: 'i1', rawText: '2 tbsp capers' }], removed: [], changed: [] },
+    });
+
+    const card = onlyCard();
+    // An empty Now cell reads as missing data; "Not in the recipe yet" reads as
+    // an addition. Below the seam it is display:none, so the phone rendering
+    // still shows the value alone.
+    expect(within(card).getByText('Not in the recipe yet')).toHaveClass('hidden', 'split:block');
+  });
+
+  it('names the empty side of a removal, without offering it as a proposed value', () => {
+    open({
+      ingredients: { added: [], removed: [{ id: 'i1', rawText: '2 tbsp capers' }], changed: [] },
+    });
+
+    const card = onlyCard();
+    const empty = within(card).getByText('Removed');
+    expect(empty).toHaveClass('hidden', 'split:block');
+    // It fills the column; it is not a value Apply is going to write, so it must
+    // stay out of the id specs read the proposed side by.
+    expect(empty).not.toHaveAttribute('data-testid');
+    expect(within(card).queryByTestId('recipe-change-proposed')).toBeNull();
+  });
+
+  it('turns a two-sided card into the two cells, and drops the arrow with them', () => {
+    open({ metadata: { servings: { from: 4, to: 6 } } });
+
+    const card = onlyCard();
+    expect(within(card).getByTestId('recipe-change-proposed').parentElement).toHaveClass(
+      'split:grid',
+      'split:grid-cols-2',
+    );
+    // `old → new` is how one line reads; two columns under headings say it
+    // already, and a stray arrow between them would be read as a third cell.
+    expect(within(card).getByText('→')).toHaveClass('split:hidden');
+  });
+
+  it('lets an interleaved rendering span both columns rather than tearing it in half', () => {
+    // The inline rendering has no two sides by construction — old and new are in
+    // one sentence. Splitting it would mean abandoning the highlight, which is
+    // the whole reason it exists.
+    open({
+      steps: {
+        added: [],
+        removed: [],
+        changed: [{ id: 's1', position: 2, text: { from: ORIGINAL_STEP, to: ADJUSTED_STEP } }],
+      },
+    });
+
+    const inline = within(onlyCard()).getByTestId('recipe-change-inline');
+    expect(inline.className).not.toContain('split:grid');
+  });
+});
+
 describe('RecipeChangeSummary — the sheet contract is unchanged', () => {
   it('renders no section at all for a group with nothing in it', () => {
     // The absence check both e2e specs read as "the chef proposed no change

@@ -32,6 +32,12 @@
   //
   // HOW a change is drawn is derived from the change itself and never chosen per
   // field — there are exactly three renderings, picked by `makeCard` below.
+  //
+  // From the fold up (the `split:` seam) each card lays its two sides out as
+  // Now | Proposed columns under one sticky heading row, so a long list can be
+  // skimmed down a single column. That is layout and nothing else: the seam is
+  // the CSS variant, no JS media query, and the three renderings above are
+  // unchanged by it.
   interface Props {
     diff: RecipeDiff | null;
     open: boolean;
@@ -251,6 +257,23 @@
   const ADDED = 'rounded-sm bg-secondary-container px-1 text-secondary-container-foreground';
   const REMOVED = 'rounded-sm bg-destructive-container px-1 text-destructive-container-foreground';
   const CHIP = 'rounded-sm px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wider';
+  const HEADING = 'text-xs font-semibold uppercase tracking-wider text-muted-foreground';
+
+  // ── The seam ───────────────────────────────────────────────────────────────
+  // `split:` is the app's one page-layout breakpoint (`src/app.css`), and it is
+  // used here as a Tailwind variant rather than read in script on purpose: no
+  // behaviour hangs off the width, only the card's grid template, and the query
+  // string is already duplicated in two places that must move together — a third
+  // copy would be a maintenance trap for a layout that CSS can express on its own.
+  //
+  // Applied to the two renderings that HAVE two sides. The inline one does not:
+  // its whole point is that old and new are interleaved in place, so it spans
+  // both columns instead of being torn in half to fit them.
+  const COLUMNS = 'split:grid split:grid-cols-2 split:items-start split:gap-x-4';
+
+  // What a card puts in the column it is not changing. An added row with a blank
+  // Now cell reads as missing data rather than as an addition, so each says so.
+  const EMPTY_SIDE = 'hidden split:block text-muted-foreground';
 
   function chipLabel(card: ChangeCard): string {
     if (card.kind !== 'edit') return card.kind;
@@ -282,14 +305,22 @@
     </div>
 
     {#if card.mode === 'value'}
-      <p class="flex flex-wrap items-baseline gap-x-1.5 gap-y-1">
+      <!--
+        Stacked, this is `old → new` on one line. Above the seam the arrow goes
+        (the columns say which way it reads) and the two sides become the two
+        cells. A `display:none` child occupies no grid cell, so the arrow and
+        whichever empty-side line is inert simply drop out of the template.
+      -->
+      <p class={`flex flex-wrap items-baseline gap-x-1.5 gap-y-1 ${COLUMNS}`}>
         {#if card.from !== null}
           <span class={card.kind === 'gone' ? `${REMOVED} line-through` : 'text-muted-foreground'}>
             {card.from}
           </span>
+        {:else}
+          <span class={EMPTY_SIDE}>Not in the recipe yet</span>
         {/if}
         {#if card.from !== null && card.to !== null}
-          <span class="text-muted-foreground">→</span>
+          <span class="split:hidden text-muted-foreground">→</span>
         {/if}
         {#if card.to !== null}
           <span
@@ -298,6 +329,8 @@
           >
             {card.to}
           </span>
+        {:else}
+          <span class={EMPTY_SIDE}>Removed</span>
         {/if}
       </p>
     {:else if card.mode === 'inline'}
@@ -309,15 +342,17 @@
         {/each}
       </p>
     {:else}
-      <p class={`${REMOVED} line-through`}>{card.from}</p>
-      <p data-testid="recipe-change-proposed">{card.to}</p>
+      <div class={`flex flex-col gap-1.5 ${COLUMNS}`}>
+        <p class={`${REMOVED} line-through`}>{card.from}</p>
+        <p data-testid="recipe-change-proposed">{card.to}</p>
+      </div>
     {/if}
   </li>
 {/snippet}
 
 {#snippet group(testid: string, heading: string, cards: ChangeCard[])}
   <section class="flex flex-col gap-1.5" data-testid={testid}>
-    <h3 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{heading}</h3>
+    <h3 class={HEADING}>{heading}</h3>
     <ul class="flex flex-col gap-2">
       {#each cards as card (card.key)}
         {@render changeCard(card)}
@@ -345,6 +380,25 @@
           No changes.
         </p>
       {:else}
+        <!--
+          The column headings, above the seam only. They sit inside the scroller
+          rather than above it so they pin to the top of the list while it moves —
+          the answer to "which column am I reading?" has to survive scrolling past
+          the first card. `px-2.5` matches a card's padding so the two labels line
+          up with the cells beneath them.
+
+          aria-hidden: this is orientation for the eye. Every card already names
+          its own kind in a chip, so a screen reader loses nothing, and a loose
+          "Now Proposed" landing between the description and the first section
+          would be noise in the reading order.
+        -->
+        <div
+          class={`sticky top-0 z-10 hidden gap-x-4 border-b border-border bg-background px-2.5 pb-1.5 split:grid split:grid-cols-2 ${HEADING}`}
+          aria-hidden="true"
+        >
+          <span>Now</span>
+          <span>Proposed</span>
+        </div>
         {#if hasBasics}
           {@render group('recipe-change-group-basics', 'Overview', basicsCards)}
         {/if}
