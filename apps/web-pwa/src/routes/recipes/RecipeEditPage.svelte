@@ -928,7 +928,7 @@
           {/each}
           <input
             type="text"
-            class="min-w-24 flex-1 bg-transparent py-0.5 text-sm outline-none placeholder:text-muted-foreground"
+            class="min-w-24 flex-1 bg-transparent py-0.5 text-sm outline-none"
             placeholder={draft.metadata.tags.length === 0 ? 'Add tags…' : ''}
             bind:value={tagInput}
             onkeydown={handleTagKeydown}

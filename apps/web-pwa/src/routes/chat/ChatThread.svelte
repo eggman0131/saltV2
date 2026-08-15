@@ -157,7 +157,7 @@
     >
       <textarea
         bind:this={inputEl}
-        class="flex-1 resize-none bg-transparent py-2 outline-none placeholder:text-muted-foreground"
+        class="flex-1 resize-none bg-transparent py-2 outline-none"
         rows={panel ? 2 : 3}
         placeholder="Message the chef…"
         value={inputText}

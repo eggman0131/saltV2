@@ -567,7 +567,7 @@
           class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
         />
         <input
-          class="w-full rounded border border-input bg-background py-2 pl-9 pr-3 text-sm placeholder:text-muted-foreground"
+          class="w-full rounded border border-input bg-background py-2 pl-9 pr-3 text-sm"
           placeholder="Search recipes…"
           type="search"
           bind:value={searchText}
