@@ -279,7 +279,11 @@ describe('RecipeViewPage — optimise for my kitchen', () => {
     // Every composer on the page — the drawer's and the column's — stays empty.
     await waitFor(() =>
       expect(
-        getAllByPlaceholderText('Message the chef…').map((el) => (el as HTMLTextAreaElement).value),
+        // Matched loosely: the composer's placeholder also advertises `/remember`
+        // (issue #816), and this assertion is about what is IN the boxes.
+        getAllByPlaceholderText(/^Message the chef…/).map(
+          (el) => (el as HTMLTextAreaElement).value,
+        ),
       ).not.toContain(expect.stringContaining('re-work it')),
     );
   });

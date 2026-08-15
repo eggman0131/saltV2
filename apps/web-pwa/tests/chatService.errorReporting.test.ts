@@ -31,6 +31,29 @@ vi.mock('@salt/firebase-sync', () => ({
   isAuthTransitioning: vi.fn(() => false),
 }));
 
+// chatService reaches the kitchen-memory service for `/remember` (issue #816), and
+// the real one drags in membersService → auth.svelte.ts → firebase.ts, which calls
+// initFirebase() at module load. Mocked HERE rather than by widening the
+// @salt/firebase-sync mock above: this suite is about the report/suppress gate, and
+// the narrower seam keeps it that way. The note service does its own reporting
+// through the same helpers, tested where it lives.
+vi.mock('../src/lib/kitchenMemoryService.js', () => ({
+  rememberNote: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+}));
+
+// chatService now reads the signed-in member's display NAME, to tell the chef who
+// it is talking to (issue #816, phase 2). Mocked at the same seam and for the same
+// reason as kitchenMemoryService above: the real module reaches auth.svelte.ts →
+// firebase.ts, which calls initFirebase() at module load.
+vi.mock('../src/lib/membersService.js', () => ({
+  currentMember: {
+    subscribe(fn: (m: unknown) => void) {
+      fn({ id: 'm1', name: 'Kate', email: 'kate@example.com' });
+      return () => {};
+    },
+  },
+}));
+
 import * as firebaseSync from '@salt/firebase-sync';
 import {
   createChatSession,

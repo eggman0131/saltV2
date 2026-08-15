@@ -47,6 +47,12 @@ foundation (#179).
 - A saved recipe **must canon-match** its ingredients (reuse the existing canon
   pipeline). Adding to the shopping list or meal planner stays a **manual** action
   (shopping-list add already exists).
+- **The librarians never read kitchen memory notes.** `authorRecipe`,
+  `extractRecipeFromUrl`, `extractRecipeFromPhoto` and `generateGuidedPlan` are
+  temperature-0 transcribers; handing one a preference like "we hate coriander"
+  licenses it to quietly rewrite an imported recipe. A note shapes what the chef
+  *suggests* in conversation — it must never touch what a recipe *says*. Only
+  `chefChat` reads `kitchenMemories` (see Components, below).
 
 ## Per-user data — a deliberate first
 
@@ -75,8 +81,13 @@ family-shared with no `userId` anywhere; this is an intentional, recorded depart
 ```
 chat session doc (Firestore)         ← owned by web-pwa + firebase-sync (client writes)
   └─ chef flow (CF, Genkit, streaming, plain text)   ← reads equipmentManifest, returns reply
+                                                         + kitchenMemories (issue #816)
   └─ librarian flow (CF, Genkit, structured)         ← conversation → RecipeDoc draft
         └─ reuses canonicaliseRecipeIngredients       ← canon-matches ingredients
+
+kitchenMemories/{id} (Firestore, family-shared)      ← owned by web-pwa + firebase-sync
+  └─ captured by `/remember <text>` — parsed, not classified (no AI, no flow)
+  └─ read server-side into the chef's system prompt, grouped by author
 ```
 
 ### 1. Chat session (data + persistence)
@@ -173,9 +184,44 @@ chat session doc (Firestore)         ← owned by web-pwa + firebase-sync (clien
   [recipe-module.md](recipe-module.md) § "Duplicating a recipe"), and a hero
   generated from the new content. Edit mode wins if both ids somehow arrive.
 
+### 4. Kitchen memory (the household's own notes for the chef)
+
+- Issue #816. `/remember <text>` in the chat composer, on any conversation,
+  saves a standing note; `parseChatCommand` (`@salt/domain`) recognises the
+  command by reading characters, case-insensitively — no classifier, no flow,
+  no per-turn cost. The command branch runs ahead of the usage event, the
+  stream and the title-generation call, so a `/remember` as the first line of
+  a chat triggers no AI at all.
+- Schema in `@salt/domain/schemas/kitchenMemory.ts`. `kitchenMemories/{id}` —
+  **a collection, one document per note**, family-shared like everything
+  except the three per-user collections (no `ownerUid`). A singleton doc with
+  an entries array was rejected: whole-document LWW with no merge logic means
+  two notes added in the same moment would silently lose one; one doc per
+  note makes an add independent and a delete a plain `deleteDoc`. `author` is
+  a display name denormalised at write time, never a uid.
+  Greenfield collection, no back-compat burden.
+- `firebase-sync`'s `kitchenMemorySubscription.ts` follows the **list read**
+  contract (skip-and-log a corrupt note, deliver the rest), unlike
+  `guidedPlanSubscription`'s single-doc refuse-on-corrupt — a note is one
+  sentence, not a reviewed artefact.
+- `/chat/remembered` ("What I remember", `ChatMemoryPage.svelte`) lists every
+  note grouped by author, and can add or delete one. An ordinary shell route
+  (not full-viewport) — reading and tidying notes is not a hands-full mode.
+- **Phase 2 — the chef reads them.** `apps/cloud-functions/src/flows/kitchenMemoryContext.ts`
+  reads `kitchenMemories` server-side (Admin SDK, like the equipment
+  manifest) and renders them into `chefChat`'s system prompt, grouped by
+  author. Framed as *preferences, not rules* — the conversation always wins,
+  and the chef may raise a note only once, only when it belongs to someone
+  **other** than the person it is talking to. Degrades to no section at all
+  on an empty, missing or unreadable collection (Rule 10) and never lists the
+  notes back or opens with them.
+- The librarians never read this collection — see Scope boundaries, above.
+
 ## Surfaces (web-pwa)
 
 - `/chat` — general kitchen-assistant chat (message list, streaming render).
+- `/chat/remembered` — "What I remember" (issue #816), listed and static so it
+  precedes the parameterised `/chat/:id` route; see Components §4 above.
 - Recipe-attached chat — opened alongside an existing recipe; same chat engine with
   `recipeId` set; "apply changes" re-runs the librarian against the recipe.
 - Authoring a NEW recipe out of a conversation — one leg, `src/lib/chatRecipeAuthor.ts`,

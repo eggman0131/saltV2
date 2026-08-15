@@ -69,6 +69,20 @@
   class="p-4 sm:p-6"
 >
   {#snippet actions()}
+    <!--
+      The way in to "What I remember" (issue #816). It belongs beside the chats
+      rather than in the app nav: the notes exist to shape what the chef says, so
+      the place you go to check them is the place you go to talk to it.
+    -->
+    <Button
+      size="sm"
+      variant="outline"
+      onclick={() => push('/chat/remembered')}
+      data-testid="chat-memory-btn"
+    >
+      {#snippet leading()}<Icon name="StickyNote" size={14} />{/snippet}
+      What I remember
+    </Button>
     <Button
       size="sm"
       onclick={handleNew}

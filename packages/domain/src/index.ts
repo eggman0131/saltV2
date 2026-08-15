@@ -366,6 +366,11 @@ export {
 export { upcomingChefDays } from './personalView/index.js';
 export type { ChefNight } from './personalView/index.js';
 
+// Kitchen-memory module (issue #816) — reading a composer line as the one chat
+// command the app has. Pure string work by design: capture involves no AI at all.
+export { parseChatCommand } from './memory/index.js';
+export type { ChatCommand } from './memory/index.js';
+
 // Formula module (issue #782, epic #778) — composition as ratios against a
 // declared basis, and the bidirectional yield solve. Headless: nothing renders it
 // and nothing stores it yet, but the surface is what phase 01 is built against.

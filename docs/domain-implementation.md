@@ -412,6 +412,17 @@ injected, and the helper iterates each week's **stored** date keys rather than t
 seven its start implies, so a document written before `firstDayOfWeek` moved
 cannot produce holes.
 
+The `memory` module is a lightweight variant like the four above: one file,
+`parseChatCommand`, which reads a chat composer line as the app's one chat
+command — `/remember <text>` — by string comparison, not a classifier, so
+capture is free, instant and costs no model call. No `entities/`, `ports/`,
+`commands/` or `queries/` subfolders, matching the `weather` pattern.
+Deliberately not a general slash-command registry: a registry would be
+scaffolding kept warm for commands nobody has asked for, and there is exactly
+one. The feature it serves — the household's standing notes for the chef,
+`kitchenMemories/{id}` — is documented in
+[ai-kitchen-assistant.md](ai-kitchen-assistant.md) (issue #816).
+
 The general rule this illustrates: a domain module earns its place by holding a
 *decision*. When the decision collapses into reading a field that is already on
 the document, the module is indirection, and the honest move is to delete it
