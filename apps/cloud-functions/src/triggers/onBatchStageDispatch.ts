@@ -19,7 +19,11 @@ import { BATCH_STAGE_REGION, type BatchStageTaskPayload } from './batchStageType
 //
 // Defined locally (not imported from index.ts) to avoid a circular import; the
 // Firebase CLI aggregates same-named defineSecret calls across files at deploy.
-// VAPID keypair signs the push; the PostHog key powers error reporting.
+// VAPID keypair signs the push; the PostHog key powers error reporting and
+// telemetry — and ONLY those. Nothing here asks PostHog whether a feature is on:
+// since #831 the audience is frozen into the task at enqueue time (see
+// `notifyUids`), precisely so a PostHog outage cannot cost a reminder that is due
+// this minute.
 const vapidPrivateKey = defineSecret('VAPID_PRIVATE_KEY');
 const vapidPublicKey = defineSecret('VAPID_PUBLIC_KEY');
 const posthogApiKey = defineSecret('POSTHOG_API_KEY');
@@ -44,6 +48,13 @@ const FALLBACK_TITLE = 'A batch stage is due';
 // proves as time-critical as a pan on a hob, Pushover is a separate decision to
 // take then, on evidence, not a line to copy across now.
 //
+// Since #831 that broadcast is NARROWED by the task's `notifyUids` — the people who
+// had the `bread` feature flag when the reminder was scheduled. That is not a
+// reversal of the paragraph above: the batch still has no owner, and this handler
+// still resolves nobody. It reads a list that was decided upstream, at enqueue,
+// where a slow flag lookup costs nothing. An ABSENT list still means broadcast (a
+// task queued before #831); an EMPTY one means nobody.
+//
 // ─── TTL STAYS AT sendWebPush's EXISTING 3600 ───────────────────────────────────
 //
 // A one-hour relevance window is not merely tolerable for a stage reminder, it is
@@ -66,7 +77,7 @@ export const onBatchStageDispatch = onTaskDispatched<BatchStageTaskPayload>(
     rateLimits: { maxConcurrentDispatches: 6 },
   },
   async (req) => {
-    const { batchId, stageId, plannedStartAt } = req.data;
+    const { batchId, stageId, plannedStartAt, notifyUids } = req.data;
     const db = getFirestore();
 
     try {
@@ -165,13 +176,25 @@ export const onBatchStageDispatch = onTaskDispatched<BatchStageTaskPayload>(
 
       // (h) BROADCAST — every device in `pushSubscriptions`, not one member's. See
       // the header: a batch has no owner, so it has no one to notify in particular.
+      // Narrowed only by the frozen `notifyUids` below.
       const subsSnap = await db.collection('pushSubscriptions').get();
+      // ABSENT means BROADCAST — a task enqueued before #831 carries no list, and
+      // reading that as "nobody" would silently strand every already-queued
+      // reminder. An EMPTY array is the opposite instruction and is honoured.
+      const audience = notifyUids === undefined ? null : new Set(notifyUids);
       let sent = 0;
       let pruned = 0;
+      let withheld = 0;
       for (const subDoc of subsSnap.docs) {
         const parsedSub = PushSubscriptionSchema.safeParse(subDoc.data());
         // Skip-invalid: one bad doc must not stop the broadcast.
         if (!parsedSub.success) continue;
+        // AFTER the parse, so the uid tested is the validated one. Counted rather
+        // than dropped silently: a blackout must be diagnosable from the log line.
+        if (audience !== null && !audience.has(parsedSub.data.ownerUid)) {
+          withheld += 1;
+          continue;
+        }
         const result = await sendWebPush(
           { subject, publicKey, privateKey },
           { endpoint: parsedSub.data.endpoint, keys: parsedSub.data.keys },
@@ -189,7 +212,7 @@ export const onBatchStageDispatch = onTaskDispatched<BatchStageTaskPayload>(
         }
       }
 
-      logger.info('onBatchStageDispatch: reminded', { batchId, stageId, sent, pruned });
+      logger.info('onBatchStageDispatch: reminded', { batchId, stageId, sent, pruned, withheld });
     } catch (err) {
       // Never throw out of the handler (Rule 10) — a permanent error would otherwise
       // make Cloud Tasks retry to exhaustion. Report and return.

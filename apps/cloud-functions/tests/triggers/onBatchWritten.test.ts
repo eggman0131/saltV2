@@ -1,14 +1,22 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { BatchDoc, BatchStageDoc } from '@salt/domain/schemas';
+import type { BatchDoc, BatchStageDoc, PushSubscriptionDoc } from '@salt/domain/schemas';
 
 // Unit-level (mock-based, no emulator) coverage of the batch stage-reminder ENQUEUE
 // trigger (issue #812, phase 3 of epic #778): work out which stages earn a
 // notification, diff them against the prior write, and enqueue one Cloud Task each.
 // BatchSchema and `remindableStages` are kept REAL, so the parse guard and the
 // reminder rule are both genuinely exercised here as well as in the domain suite.
+//
+// Since #831 it also FREEZES THE AUDIENCE into each task: which uids had the `bread`
+// flag at the moment the reminder was scheduled. PushSubscriptionSchema is kept real
+// too, so the skip-invalid path in that resolution is genuinely exercised.
 
 vi.mock('firebase-functions/v2/firestore', () => ({
   onDocumentWritten: (_opts: unknown, handler: unknown) => handler,
+}));
+
+vi.mock('firebase-functions/params', () => ({
+  defineSecret: () => ({ value: () => 'test-posthog-key' }),
 }));
 
 vi.mock('firebase-functions', () => ({
@@ -21,10 +29,43 @@ vi.mock('firebase-admin/functions', () => ({
   getFunctions: () => ({ taskQueue: mockTaskQueue }),
 }));
 
+// The audience resolution reads `pushSubscriptions` unfiltered (Admin SDK, bypassing
+// the owner-scoped rules) and batch-resolves uid → email through Auth. State is
+// mock-prefixed so the hoisted vi.mock factories may reference it.
+let mockSubsDocs: Array<{ data: () => unknown }> = [];
+let mockSubsQueried = false;
+const mockSubsGet = vi.fn(async () => {
+  mockSubsQueried = true;
+  return { docs: mockSubsDocs };
+});
+vi.mock('firebase-admin/firestore', () => ({
+  getFirestore: () => ({ collection: () => ({ get: mockSubsGet }) }),
+}));
+
+// uid → email. A uid missing from here has no email at all, which cannot match an
+// email-targeted release condition.
+let mockEmails: Record<string, string> = {};
+const mockGetUsers = vi.fn(async (identifiers: Array<{ uid: string }>) => ({
+  users: identifiers
+    .filter(({ uid }) => uid in mockEmails)
+    .map(({ uid }) => ({ uid, email: mockEmails[uid] })),
+}));
+vi.mock('firebase-admin/auth', () => ({
+  getAuth: () => ({ getUsers: mockGetUsers }),
+}));
+
 const mockReport = vi.fn();
 const mockFlush = vi.fn().mockResolvedValue(undefined);
+// Which uids the `bread` flag is on for. The adapter's own semantics (unconfigured
+// ⇒ true, every failure ⇒ false) are pinned in the observability suite; here the
+// read is a seam.
+let mockFlaggedUids: string[] = [];
+const mockFeatureEnabled = vi.fn(async (_key: string, distinctId: string) =>
+  mockFlaggedUids.includes(distinctId),
+);
 vi.mock('@salt/observability/server', () => ({
   flushServerObservability: mockFlush,
+  isServerFeatureEnabled: mockFeatureEnabled,
   // reportServerError.js constructs this at module load — it must exist on the mock.
   createServerObservabilityErrorReportingAdapter: vi.fn(() => ({ report: mockReport })),
 }));
@@ -99,13 +140,45 @@ function event(before: unknown, after: unknown, batchId = BATCH_ID) {
   return { data: { before, after }, params: { batchId } };
 }
 
+// One device per person by default; `dev-a2` is Ada's second handset, so the
+// resolution has a duplicate uid to collapse before it asks Auth or PostHog.
+function makeSub(id: string, ownerUid: string): PushSubscriptionDoc {
+  return {
+    id,
+    schemaVersion: 1,
+    ownerUid,
+    endpoint: `https://fcm.googleapis.com/fcm/send/${id}`,
+    keys: { p256dh: `p256-${id}`, auth: `auth-${id}` },
+    createdAt: '2026-08-01T00:00:00.000Z',
+    updatedAt: '2026-08-01T00:00:00.000Z',
+  };
+}
+
+const subDoc = (sub: PushSubscriptionDoc) => ({ data: () => sub });
+
 const enqueuedStageIds = () =>
   mockEnqueue.mock.calls.map((call) => (call as unknown as [{ stageId: string }])[0].stageId);
+
+const enqueuedNotifyUids = () =>
+  (mockEnqueue.mock.calls[0] as unknown as [{ notifyUids: readonly string[] }])[0].notifyUids;
 
 beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
+  // Two people, three devices. Ada has the flag; Bram does not.
+  mockSubsDocs = [
+    subDoc(makeSub('dev-a1', 'uid-ada')),
+    subDoc(makeSub('dev-a2', 'uid-ada')),
+    subDoc(makeSub('dev-b1', 'uid-bram')),
+  ];
+  mockEmails = { 'uid-ada': 'ada@example.test', 'uid-bram': 'bram@example.test' };
+  mockFlaggedUids = ['uid-ada'];
+  mockSubsQueried = false;
+  mockSubsGet.mockImplementation(async () => {
+    mockSubsQueried = true;
+    return { docs: mockSubsDocs };
+  });
 });
 
 afterEach(() => {
@@ -136,9 +209,10 @@ describe('onBatchWritten — which stages get a task', () => {
   it('carries IDS ONLY in the task payload, scheduled at the planned start', async () => {
     await (onBatchWritten as unknown as Function)(event(deleted, snap(makeBatch())));
 
+    // `notifyUids` is ids too, so the rule holds: no recipe title, no stage label.
     expect(mockEnqueue).toHaveBeenNthCalledWith(
       1,
-      { batchId: BATCH_ID, stageId: 'mix', plannedStartAt: at(60) },
+      { batchId: BATCH_ID, stageId: 'mix', plannedStartAt: at(60), notifyUids: ['uid-ada'] },
       { scheduleTime: new Date(at(60)) },
     );
   });
@@ -191,7 +265,7 @@ describe('onBatchWritten — the diff', () => {
 
     expect(enqueuedStageIds()).toEqual(['bake']);
     expect(mockEnqueue).toHaveBeenCalledWith(
-      { batchId: BATCH_ID, stageId: 'bake', plannedStartAt: at(800) },
+      { batchId: BATCH_ID, stageId: 'bake', plannedStartAt: at(800), notifyUids: ['uid-ada'] },
       { scheduleTime: new Date(at(800)) },
     );
   });
@@ -265,6 +339,102 @@ describe('onBatchWritten — the clock guards', () => {
     await (onBatchWritten as unknown as Function)(event(deleted, snap(batch)));
 
     expect(enqueuedStageIds()).toEqual(['rub', 'slice']);
+  });
+});
+
+describe('onBatchWritten — the frozen audience', () => {
+  it('carries ONLY the uids the flag is on for', async () => {
+    // The whole point of #831 here: Ada started the batch and is testing bread; Bram
+    // shares the household, the data and the push subscriptions, and must not be
+    // woken at 06:45 by a feature he cannot see.
+    await (onBatchWritten as unknown as Function)(event(deleted, snap(makeBatch())));
+
+    expect(enqueuedNotifyUids()).toEqual(['uid-ada']);
+  });
+
+  it('asks once per PERSON, not once per device', async () => {
+    // Ada has two handsets. Two flag evaluations for one person would be two `/flags`
+    // round trips on a path that already runs on every stage advance.
+    await (onBatchWritten as unknown as Function)(event(deleted, snap(makeBatch())));
+
+    expect(mockFeatureEnabled).toHaveBeenCalledTimes(2);
+    expect(mockGetUsers).toHaveBeenCalledTimes(1);
+    expect(mockGetUsers).toHaveBeenCalledWith([{ uid: 'uid-ada' }, { uid: 'uid-bram' }]);
+  });
+
+  it('evaluates the flag as the browser does — uid as distinct id, email as a person property', async () => {
+    // The release condition targets an email while the person is identified by uid.
+    // Ask it any other way and the condition never matches.
+    await (onBatchWritten as unknown as Function)(event(deleted, snap(makeBatch())));
+
+    expect(mockFeatureEnabled).toHaveBeenCalledWith('bread', 'uid-ada', {
+      email: 'ada@example.test',
+    });
+  });
+
+  it('does not pass a uid with no email — it cannot match the condition', async () => {
+    mockEmails = { 'uid-bram': 'bram@example.test' };
+    mockFlaggedUids = ['uid-ada', 'uid-bram'];
+
+    await (onBatchWritten as unknown as Function)(event(deleted, snap(makeBatch())));
+
+    expect(enqueuedNotifyUids()).toEqual(['uid-bram']);
+    expect(mockFeatureEnabled).not.toHaveBeenCalledWith('bread', 'uid-ada', expect.anything());
+  });
+
+  it('skips a subscription that fails validation without losing the rest', async () => {
+    mockSubsDocs = [{ data: () => ({ id: 'junk' }) }, subDoc(makeSub('dev-a1', 'uid-ada'))];
+
+    await (onBatchWritten as unknown as Function)(event(deleted, snap(makeBatch())));
+
+    expect(enqueuedNotifyUids()).toEqual(['uid-ada']);
+  });
+
+  it('freezes an EMPTY audience when nobody has the flag — never a broadcast', async () => {
+    // Empty is a real instruction, not an absence: dispatch honours it and wakes
+    // nobody. With the flag off for everyone, starting a batch produces no pushes.
+    mockFlaggedUids = [];
+
+    await (onBatchWritten as unknown as Function)(event(deleted, snap(makeBatch())));
+
+    expect(enqueuedNotifyUids()).toEqual([]);
+  });
+
+  it('resolves NOTHING when no stage is due', async () => {
+    // The early-out comes first on purpose: the overwhelming majority of batch writes
+    // enqueue nothing, and must cost no subscription read, no Auth lookup and no flag
+    // evaluation.
+    const batch = makeBatch();
+
+    await (onBatchWritten as unknown as Function)(
+      event(snap(batch), snap({ ...batch, updatedAt: '2026-08-14T17:30:00.000Z' })),
+    );
+
+    expect(mockSubsQueried).toBe(false);
+    expect(mockGetUsers).not.toHaveBeenCalled();
+    expect(mockFeatureEnabled).not.toHaveBeenCalled();
+  });
+
+  it('FAILS CLOSED and reports when the Auth lookup blows up', async () => {
+    // Not a broadcast. A notification reaching someone who did nothing to ask for it
+    // is the harm this exists to prevent — and a silent blackout must be visible.
+    mockGetUsers.mockRejectedValueOnce(new Error('auth unavailable'));
+
+    await expect(
+      (onBatchWritten as unknown as Function)(event(deleted, snap(makeBatch()))),
+    ).resolves.toBeUndefined();
+
+    expect(enqueuedNotifyUids()).toEqual([]);
+    expect(mockReport).toHaveBeenCalledTimes(1);
+  });
+
+  it('FAILS CLOSED and reports when the subscription read blows up', async () => {
+    mockSubsGet.mockRejectedValueOnce(new Error('firestore down'));
+
+    await (onBatchWritten as unknown as Function)(event(deleted, snap(makeBatch())));
+
+    expect(enqueuedNotifyUids()).toEqual([]);
+    expect(mockReport).toHaveBeenCalledTimes(1);
   });
 });
 
