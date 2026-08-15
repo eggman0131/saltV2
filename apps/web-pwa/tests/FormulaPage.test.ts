@@ -482,6 +482,147 @@ describe('FormulaPage — the round trip', () => {
   });
 });
 
+describe('FormulaPage — a shape the list does not hold', () => {
+  // The escape hatch. The preset table is shape FAMILIES, not a catalogue, so
+  // "1 kg sourdough boule" has to be sayable without waiting for someone to add
+  // it to `@salt/domain` — and it has to survive a reload, which is the part a
+  // custom shape could quietly lose.
+
+  /** Open the picker and click the option whose text contains `text`. */
+  async function pickShape(container: HTMLElement, text: string): Promise<void> {
+    await fireEvent.click(container.querySelector('[data-testid="formula-shape-select"]')!);
+    await waitFor(() => expect(document.querySelector('[role="option"]')).toBeTruthy());
+    const option = [...document.querySelectorAll('[role="option"]')].find((o) =>
+      o.textContent?.includes(text),
+    )!;
+    await fireEvent.click(option);
+  }
+
+  const CUSTOM = {
+    label: '1 kg sourdough boule',
+    count: 2,
+    unitDoughGrams: 1000,
+    bakeLossPercent: 14,
+  };
+
+  it('saves a hand-typed shape, bake loss and all', async () => {
+    const { getByTestId, container } = renderPage();
+    mockFormula._set(null);
+    await waitFor(() => expect(getByTestId('formula-editor')).toBeTruthy());
+
+    await pickShape(container, 'Something else');
+    await fireEvent.input(getByTestId('formula-custom-label'), {
+      target: { value: CUSTOM.label },
+    });
+    await fireEvent.input(getByTestId('formula-custom-grams'), { target: { value: '1000' } });
+    await fireEvent.input(getByTestId('formula-custom-loss'), { target: { value: '14' } });
+    await fireEvent.input(getByTestId('formula-count'), { target: { value: '2' } });
+
+    await waitFor(() =>
+      expect(getByTestId('formula-save-button').hasAttribute('disabled')).toBe(false),
+    );
+    await fireEvent.click(getByTestId('formula-save-button'));
+
+    await waitFor(() => expect(saveFormula).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(saveFormula).mock.calls[0]![0]!.referenceYield).toEqual({
+      kind: 'target',
+      shape: CUSTOM,
+    });
+  });
+
+  it('will not save half a shape', async () => {
+    const { getByTestId, container } = renderPage();
+    mockFormula._set(null);
+    await waitFor(() => expect(getByTestId('formula-editor')).toBeTruthy());
+
+    // A name and no weight is not a lenient shape with a default in the gap —
+    // it is no declaration yet, and Save stays shut.
+    await pickShape(container, 'Something else');
+    await fireEvent.input(getByTestId('formula-custom-label'), { target: { value: 'A boule' } });
+    await waitFor(() =>
+      expect(getByTestId('formula-save-button').hasAttribute('disabled')).toBe(true),
+    );
+
+    // Nor does a bake loss the schema would refuse.
+    await fireEvent.input(getByTestId('formula-custom-grams'), { target: { value: '1000' } });
+    await fireEvent.input(getByTestId('formula-custom-loss'), { target: { value: '140' } });
+    await waitFor(() =>
+      expect(getByTestId('formula-save-button').hasAttribute('disabled')).toBe(true),
+    );
+  });
+
+  it('shows what one comes out of the oven weighing', async () => {
+    const { getByTestId, container } = renderPage();
+    mockFormula._set(null);
+    await waitFor(() => expect(getByTestId('formula-editor')).toBeTruthy());
+
+    await pickShape(container, 'Something else');
+    await fireEvent.input(getByTestId('formula-custom-label'), { target: { value: 'Boule' } });
+    await fireEvent.input(getByTestId('formula-custom-grams'), { target: { value: '1000' } });
+    await fireEvent.input(getByTestId('formula-custom-loss'), { target: { value: '14' } });
+
+    // The echo is the only reading anyone gets on a bake loss they typed.
+    await waitFor(() => expect(getByTestId('formula-dough-total').textContent).toContain('860 g'));
+  });
+
+  it('brings a stored custom shape back into its boxes, and re-saves it unchanged', async () => {
+    const stored: Formula = {
+      recipeId: RECIPE_ID,
+      components: [
+        { ingredientId: 'ing-flour', percent: 100, inBasis: true },
+        { ingredientId: 'ing-water', percent: 70, inBasis: false },
+        { ingredientId: 'ing-salt', percent: 2, inBasis: false },
+        { ingredientId: 'ing-yeast', percent: 1.4, inBasis: false },
+      ],
+      referenceYield: { kind: 'target', shape: CUSTOM },
+      handlingLossPercent: 0,
+      schemaVersion: 1,
+    };
+    const { getByTestId } = renderPage();
+    mockFormula._set(stored);
+    await waitFor(() => expect(getByTestId('formula-editor')).toBeTruthy());
+
+    expect((getByTestId('formula-custom-label') as HTMLInputElement).value).toBe(CUSTOM.label);
+    expect((getByTestId('formula-custom-grams') as HTMLInputElement).value).toBe('1000');
+    expect((getByTestId('formula-custom-loss') as HTMLInputElement).value).toBe('14');
+    expect((getByTestId('formula-count') as HTMLInputElement).value).toBe('2');
+
+    await fireEvent.click(getByTestId('formula-save-button'));
+    await waitFor(() => expect(saveFormula).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(saveFormula).mock.calls[0]![0]).toEqual(stored);
+  });
+
+  it('treats a hand-corrected bake loss as its own shape, not the preset it is named after', async () => {
+    // "900 g tin loaf" at 15% is NOT the 12% preset. Folding it back onto one
+    // would discard the correction on the next save — silently, and only for the
+    // person who bothered to weigh a real bake.
+    const corrected = {
+      label: '900 g tin loaf',
+      count: 1,
+      unitDoughGrams: 900,
+      bakeLossPercent: 15,
+    };
+    const { getByTestId } = renderPage();
+    mockFormula._set({
+      recipeId: RECIPE_ID,
+      components: [{ ingredientId: 'ing-flour', percent: 100, inBasis: true }],
+      referenceYield: { kind: 'target', shape: corrected },
+      handlingLossPercent: 0,
+      schemaVersion: 1,
+    });
+    await waitFor(() => expect(getByTestId('formula-editor')).toBeTruthy());
+
+    expect((getByTestId('formula-custom-loss') as HTMLInputElement).value).toBe('15');
+
+    await fireEvent.click(getByTestId('formula-save-button'));
+    await waitFor(() => expect(saveFormula).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(saveFormula).mock.calls[0]![0]!.referenceYield).toEqual({
+      kind: 'target',
+      shape: corrected,
+    });
+  });
+});
+
 describe('FormulaPage — what it refuses', () => {
   it('offers nothing to weigh on an entry that takes no ingredients', async () => {
     mockRecipes._set([makeRecipe([], { kind: 'outing', title: 'Friday takeaway' })]);

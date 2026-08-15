@@ -34,7 +34,9 @@
     extractProcessStages,
   } from '../../lib/formulaService.js';
   import {
+    DEFAULT_BAKE_LOSS_PERCENT,
     UNIT_SHAPE_PRESETS,
+    bakedUnitGrams,
     deriveFormula,
     flattenIngredients,
     gramsFromParsed,
@@ -157,10 +159,23 @@
     maxMinutesText: string;
   }
 
+  // The picker's one non-preset value. A shape typed by hand is still a `UnitShape`
+  // — the document has never known what a preset is — so this id lives on the
+  // screen and nowhere else. Chosen to be something no preset id could collide
+  // with, since `unitShapePreset` returning null is what the code branches on.
+  const CUSTOM_SHAPE_ID = 'custom';
+
   let rows = $state<Row[]>([]);
   let stageRows = $state<StageRow[]>([]);
   let presetId = $state('');
   let countText = $state('1');
+  // The hand-entered shape, held as raw strings for the same reason `gramsText` is.
+  // Only read when `presetId` is `CUSTOM_SHAPE_ID`; kept rather than cleared when
+  // the picker moves back to a preset, so changing your mind twice does not cost
+  // you the number you typed.
+  let customLabel = $state('');
+  let customGramsText = $state('');
+  let customLossText = $state(String(DEFAULT_BAKE_LOSS_PERCENT));
   // Whether the working model holds changes the stored document does not. Guards
   // the re-seed below: an incoming snapshot never overwrites work in progress.
   let dirty = $state(false);
@@ -175,6 +190,18 @@
 
   function gramsOf(row: Row): number | null {
     return parseGrams(row.gramsText);
+  }
+
+  // Bake loss may legitimately be zero and is a percentage, so it is neither
+  // `parseGrams` (which rejects zero) nor `parseCelsius` (which has no ceiling).
+  // `UnitShapeSchema` bounds it 0–100 and this is the boundary that honours them:
+  // a figure outside that range yields no shape at all, which is what keeps Save
+  // disabled rather than letting a document be built that the schema would refuse.
+  function parseBakeLoss(text: string): number | null {
+    const trimmed = text.trim();
+    if (trimmed === '') return null;
+    const value = Number(trimmed);
+    return Number.isFinite(value) && value >= 0 && value <= 100 ? value : null;
   }
 
   // Temperatures, unlike weights, may be zero or below — a freezer is a legitimate
@@ -306,16 +333,34 @@
       };
     });
 
+    // Recovering the declaration. The match is on ALL THREE of a preset's fields,
+    // not just label and weight: a stored "900 g tin loaf" whose bake loss was
+    // corrected to 15% after a real bake is NOT the preset, and folding it back
+    // onto one would silently discard that correction on the next save. Anything
+    // the list does not hold exactly comes back in the custom boxes, which is what
+    // makes a hand-typed shape survive a reload.
+    presetId = '';
+    countText = '1';
+    customLabel = '';
+    customGramsText = '';
+    customLossText = String(DEFAULT_BAKE_LOSS_PERCENT);
     if (stored?.referenceYield.kind === 'target') {
-      const shape = stored.referenceYield.shape;
+      const declared = stored.referenceYield.shape;
       const preset = UNIT_SHAPE_PRESETS.find(
-        (p) => p.label === shape.label && p.unitDoughGrams === shape.unitDoughGrams,
+        (p) =>
+          p.label === declared.label &&
+          p.unitDoughGrams === declared.unitDoughGrams &&
+          p.bakeLossPercent === declared.bakeLossPercent,
       );
-      presetId = preset?.id ?? '';
-      countText = String(shape.count);
-    } else {
-      presetId = '';
-      countText = '1';
+      countText = String(declared.count);
+      if (preset) {
+        presetId = preset.id;
+      } else {
+        presetId = CUSTOM_SHAPE_ID;
+        customLabel = declared.label;
+        customGramsText = String(declared.unitDoughGrams);
+        customLossText = String(declared.bakeLossPercent);
+      }
     }
 
     // A formula with no process is a formula with no stages — an empty review
@@ -494,13 +539,34 @@
   );
 
   const selectedPreset = $derived(presetId ? unitShapePreset(presetId) : null);
+  const isCustomShape = $derived(presetId === CUSTOM_SHAPE_ID);
   const count = $derived.by(() => {
     const value = Number(countText.trim());
     return Number.isInteger(value) && value > 0 ? value : null;
   });
-  const shape = $derived(
-    selectedPreset && count !== null ? unitShapeFromPreset(selectedPreset, count) : null,
-  );
+
+  // All three fields or nothing. A half-typed custom shape is not a lenient shape
+  // with a default in the gap — it is no declaration yet, and the same `shape ===
+  // null` that has always disabled Save covers it without a second rule.
+  const customShape = $derived.by(() => {
+    const label = customLabel.trim();
+    const unitDoughGrams = parseGrams(customGramsText);
+    const bakeLossPercent = parseBakeLoss(customLossText);
+    return label !== '' && unitDoughGrams !== null && bakeLossPercent !== null
+      ? { label, unitDoughGrams, bakeLossPercent }
+      : null;
+  });
+
+  const shape = $derived.by(() => {
+    if (count === null) return null;
+    if (isCustomShape) return customShape === null ? null : { ...customShape, count };
+    return selectedPreset === null ? null : unitShapeFromPreset(selectedPreset, count);
+  });
+
+  const shapeTriggerText = $derived.by(() => {
+    if (isCustomShape) return customLabel.trim() === '' ? 'Something else' : customLabel.trim();
+    return selectedPreset?.label ?? 'Pick a shape…';
+  });
 
   // Recalculated on EVERY change — a basis toggle, a typed gram, an exclusion. That
   // is the point of holding grams rather than percentages: there is one function,
@@ -578,7 +644,11 @@
   const canSave = $derived(shape !== null && derivation.ok && !saving);
 
   const blockedReason = $derived.by(() => {
-    if (shape === null) return 'Say what this makes before saving.';
+    if (shape === null) {
+      return isCustomShape
+        ? 'Finish the shape — it needs a name, a dough weight and a bake loss.'
+        : 'Say what this makes before saving.';
+    }
     if (!derivation.ok) {
       switch (derivation.reason.kind) {
         case 'emptyFormula':
@@ -775,9 +845,12 @@
                   }}
                   data-testid="formula-count"
                 />
-                <!-- Presets only, no free-text shape: a custom shape would also need a
-                   bake loss, and nobody can be asked for a figure they have no way
-                   to know. The list is domain data and can grow there. -->
+                <!-- The presets are shape FAMILIES, not a catalogue, and the last
+                     option is the escape hatch. The original objection to a typed
+                     shape was bake loss — nobody can be asked for a figure they have
+                     no way to know — and it is answered by defaulting the number and
+                     showing what it implies below, rather than by refusing every
+                     shape the list happens not to hold. -->
                 <Select
                   value={presetId}
                   onValueChange={(v) => {
@@ -790,15 +863,59 @@
                     aria-label="What this makes"
                     data-testid="formula-shape-select"
                   >
-                    {selectedPreset?.label ?? 'Pick a shape…'}
+                    {shapeTriggerText}
                   </SelectTrigger>
                   <SelectContent>
                     {#each UNIT_SHAPE_PRESETS as preset (preset.id)}
                       <SelectItem value={preset.id}>{preset.label}</SelectItem>
                     {/each}
+                    <SelectItem value={CUSTOM_SHAPE_ID}>Something else…</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+
+              {#if isCustomShape}
+                <div class="flex flex-wrap items-end gap-3" data-testid="formula-custom-shape">
+                  <TextField
+                    label="Called"
+                    placeholder="1 kg sourdough boule"
+                    class="w-56"
+                    value={customLabel}
+                    onValueChange={(v) => {
+                      customLabel = v;
+                      touch();
+                    }}
+                    data-testid="formula-custom-label"
+                  />
+                  <TextField
+                    label="Dough each (g)"
+                    inputmode="numeric"
+                    class="w-32"
+                    value={customGramsText}
+                    onValueChange={(v) => {
+                      customGramsText = v;
+                      touch();
+                    }}
+                    data-testid="formula-custom-grams"
+                  />
+                  <TextField
+                    label="Bake loss (%)"
+                    inputmode="numeric"
+                    class="w-32"
+                    value={customLossText}
+                    onValueChange={(v) => {
+                      customLossText = v;
+                      touch();
+                    }}
+                    data-testid="formula-custom-loss"
+                  />
+                </div>
+                <p class="text-muted-foreground text-sm">
+                  Bake loss is what the oven takes off. {DEFAULT_BAKE_LOSS_PERCENT}% is a fair start
+                  for a tinned loaf; a crusty free-standing one is nearer 15%, a boiled bagel nearer
+                  8%. Correct it once you have weighed a real bake.
+                </p>
+              {/if}
 
               <!-- DISCLOSURE TWO. The recipe's own dough total sits next to the one
                  just declared, so re-anchoring the formula is visible rather than
@@ -811,9 +928,16 @@
                   <span class="font-medium">{formatGrams(asWrittenDoughGrams)}</span> of dough.
                 </p>
                 {#if declaredDoughGrams !== null && shape !== null}
+                  <!-- The baked figure sits next to the dough figure because
+                       "120 g roll" means DOUGH, and a 108 g roll out of the oven
+                       should not be a surprise (UnitShapeSchema says as much). It
+                       earns its keep twice over now that bake loss can be typed:
+                       it is the only reading anyone gets on the number entered. -->
                   <p>
                     You've declared {shape.count} × {shape.label} —
-                    <span class="font-medium">{formatGrams(declaredDoughGrams)}</span>.
+                    <span class="font-medium">{formatGrams(declaredDoughGrams)}</span> of dough,
+                    about
+                    <span class="font-medium">{formatGrams(bakedUnitGrams(shape))}</span> each baked.
                   </p>
                   {#if declarationDriftPercent !== null && Math.abs(declarationDriftPercent) >= 0.5}
                     <p class="text-muted-foreground" data-testid="formula-declaration-drift">
