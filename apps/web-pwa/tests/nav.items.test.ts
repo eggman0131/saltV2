@@ -12,13 +12,13 @@ describe('navItems', () => {
   it('is four primary destinations, no more', () => {
     // BottomNav splits a fixed bar into five equal columns — these four plus
     // "More" — so a fifth tab is a spec change, not an addition (ui-spec-v04 §17.1).
-    expect(navItems.map((i) => i.id)).toEqual(['shopping', 'mealplan', 'recipes', 'mine']);
+    expect(navItems.map((i) => i.id)).toEqual(['shopping', 'mealplan', 'recipes', 'chat']);
   });
 
-  it('labels the personal view "Kitchen", leaving its id and route alone', () => {
-    // Renamed from "Mine" in #755. Everything keys off `id`/`href`; only the word
-    // on the tab moved, so the route, the badge and the tests all still find it.
-    expect(navItems[3]).toMatchObject({ id: 'mine', label: 'Kitchen', href: '#/mine' });
+  it('gives the fourth slot back to Chef', () => {
+    // #828. Chef held this slot until #634 lent it to the personal view; it is the
+    // one destination reached for mid-task, so it is worth a tap from anywhere.
+    expect(navItems[3]).toMatchObject({ id: 'chat', label: 'Chef', href: '#/chat' });
   });
 
   it('keeps every tab label to one word — BottomNav never truncates', () => {
@@ -27,9 +27,14 @@ describe('navItems', () => {
     }
   });
 
-  it('leaves Chef in the overflow — a link from elsewhere is not a promotion', () => {
-    expect(navItems.map((i) => i.id)).not.toContain('chat');
-    expect(overflowNavItems.map((i) => i.id)).toContain('chat');
+  it('keeps Kitchen out of BOTH lists — the header is its only entry point', () => {
+    // #828 moved the personal view into the TopBar. It is absent from the overflow
+    // as well as the primary four on purpose: the desktop SideNav renders both
+    // lists inline, so a nav entry would give desktop two routes to one page.
+    expect(navItems.map((i) => i.id)).not.toContain('mine');
+    expect(overflowNavItems.map((i) => i.id)).not.toContain('mine');
+    // ...and Chef is no longer folded away behind "More".
+    expect(overflowNavItems.map((i) => i.id)).not.toContain('chat');
   });
 
   it('puts the in-flight surface in the overflow, not in the primary four', () => {

@@ -257,7 +257,8 @@ kitchenMemories/{id} (Firestore, family-shared)      ← owned by web-pwa + fire
 - My Kitchen (`/mine`) — a "Recent chats" footer linking straight back into the last
   few conversations. Read-only and free: it projects the app-wide subscription
   started at auth, so it is a shortcut into chat, not a second place chat lives.
-  Chef stays in the nav overflow regardless (#634) — this link is not a promotion.
+  Chef is the fourth primary nav tab again as of #828, which returned it the slot
+  it lent the personal view in #634 — but that is the nav's doing, not this link's.
 
 ## Constraints inherited from the architecture
 
