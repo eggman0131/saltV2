@@ -13,6 +13,7 @@ export const tertiaryForeground = 'hsl(var(--salt-tertiary-foreground))';
 export const tertiaryVariant = 'hsl(var(--salt-on-tertiary-fixed-variant))';
 export const muted = 'hsl(var(--salt-muted))';
 export const mutedForeground = 'hsl(var(--salt-muted-foreground))';
+export const placeholder = 'hsl(var(--salt-placeholder))';
 export const accent = 'hsl(var(--salt-accent))';
 export const accentForeground = 'hsl(var(--salt-accent-foreground))';
 export const destructive = 'hsl(var(--salt-destructive))';

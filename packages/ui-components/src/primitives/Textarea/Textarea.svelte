@@ -1,4 +1,4 @@
-<!-- spec: SPEC.md §8.3 v0.2.3 -->
+<!-- spec: SPEC.md §8.3 v0.2.12 -->
 <script lang="ts">
   import { untrack } from 'svelte';
   import { cn } from '../../lib/cn';
@@ -88,7 +88,7 @@
       aria-required={required ? 'true' : undefined}
       aria-invalid={fieldState.hasError ? 'true' : undefined}
       aria-describedby={fieldState.describedBy}
-      class="flex-1 appearance-none border-0 bg-transparent outline-none resize-none py-2 placeholder:text-muted-foreground"
+      class="flex-1 appearance-none border-0 bg-transparent outline-none resize-none py-2"
       oninput={handleInput}
       {onfocus}
       {onblur}

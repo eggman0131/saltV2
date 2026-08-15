@@ -35,6 +35,20 @@ type Story = StoryObj<typeof meta>;
 // Live playground: the Controls panel drives real TextField props.
 export const Playground: Story = {};
 
+// Empty vs filled, snapshotted as a named pair (#821). The placeholder treatment
+// — italic, `--salt-placeholder` — is the only thing telling a reviewer which
+// fields on a long form still need filling in, and it lives in a single
+// ::placeholder base rule far from this component, so it needs a baseline of its
+// own. `Playground` renders the same empty state but is a controls surface, not
+// a pinned one.
+export const Placeholder: Story = {
+  args: { label: 'Email', value: '' },
+};
+
+export const Filled: Story = {
+  args: { label: 'Email', value: 'jane@example.com' },
+};
+
 // Error state: aria-invalid + role="alert" message.
 export const WithError: Story = {
   args: {

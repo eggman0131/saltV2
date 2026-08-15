@@ -41,6 +41,18 @@ type Story = StoryObj<typeof meta>;
 // Live playground: the Controls panel drives real TextArea props.
 export const Playground: Story = {};
 
+// Empty vs filled, snapshotted as a named pair (#821) — see TextField.stories.ts.
+// The multi-line case is the one that motivated the change: a guided-plan prep
+// step is a Textarea, and its example text used to be indistinguishable from a
+// real instruction someone had written.
+export const Placeholder: Story = {
+  args: { label: 'Notes', value: '' },
+};
+
+export const Filled: Story = {
+  args: { label: 'Notes', value: 'Dice the carrots, onion and celery into 5mm pieces.' },
+};
+
 // Grows to fit its content instead of scrolling.
 export const Autoresize: Story = {
   args: {

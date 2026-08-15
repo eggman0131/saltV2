@@ -48,6 +48,7 @@ colors:
   background: '#f8fafa'
   on-background: '#191c1d'
   surface-variant: '#e1e3e3'
+  placeholder: '#677174'
 typography:
   display:
     fontFamily: Epilogue
