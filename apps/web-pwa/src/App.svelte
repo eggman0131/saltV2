@@ -11,6 +11,7 @@
     ToastViewport,
   } from '@salt/ui-components';
   import AuthGate from './components/AuthGate.svelte';
+  import KitchenLink from './components/KitchenLink.svelte';
   import { auth } from './lib/auth.svelte.js';
   import { navItems, overflowNavItems, adminNavItem } from './lib/nav.js';
   import { routes } from './routes/index.js';
@@ -30,7 +31,6 @@
   import { initWeatherSync } from './lib/weatherService.js';
   import { initCookTimerAlerts } from './lib/cookTimerAlerts.js';
   import { initMyCookSessionsSync } from './lib/cookSessionService.js';
-  import { mineOpenCount } from './lib/personalViewService.js';
   import { runPendingShareImport } from './lib/shareTarget.js';
   import { envBanner } from './lib/environment.js';
   import SessionOverlay from './lib/dev/SessionOverlay.svelte';
@@ -93,23 +93,6 @@
   // this used to do inline; the personal view needs it too, so it lives there now.
   const isAdmin = $derived($currentMember?.admin === true);
 
-  // "Mine" carries a count of what is OPEN right now — my open cooks plus the
-  // timers that have fired and nobody has dismissed (issues #634, #682).
-  // Deliberately not "changed since you last looked": that needs a per-user
-  // lastSeenAt, which means browser storage (Rule 3) or a fourth per-user
-  // collection, and it lies across devices. A live count needs no memory,
-  // self-clears when you fix the thing, and is honest on a cold launch. The
-  // needs-review queue is excluded — it is a standing queue, so counting it would
-  // pin a permanent number to the tab. A timer still counting down is excluded
-  // too: it is running to plan and wants no hand.
-  //
-  // Shown to every member since #682 — see lib/nav.ts for what changed.
-  const decoratedNavItems = $derived(
-    navItems.map((item) =>
-      item.id === 'mine' && $mineOpenCount > 0 ? { ...item, badge: $mineOpenCount } : item,
-    ),
-  );
-
   // Canon management now lives behind the operator area (#157), so its
   // needs-approval backlog count rides on the Admin nav entry — visible only to
   // admins, who are the ones who action the review queue. Product-form proposals
@@ -137,7 +120,7 @@
 <AuthGate>
   <ToastProvider>
     <AppShell
-      navItems={decoratedNavItems}
+      {navItems}
       overflowNavItems={decoratedOverflowNavItems}
       currentPath={router.location}
       chrome={showChrome}
@@ -146,7 +129,14 @@
       envClass={envBanner?.barClass}
     >
       {#snippet actions()}
-        <span class="hidden text-sm text-muted-foreground sm:inline">{auth.user?.email ?? ''}</span>
+        <!--
+          The header's right-hand side is the way into Kitchen (#828), which is in
+          neither nav list — see lib/nav.ts. It replaced a span showing the
+          signed-in email address, hidden below `sm` and of no use to anyone at any
+          width: nobody needs an app they are signed in to to tell them who they
+          signed in as.
+        -->
+        <KitchenLink />
         <Button variant="outline" size="sm" onclick={() => void auth.signOut()}>Sign out</Button>
       {/snippet}
       <Router {routes} />

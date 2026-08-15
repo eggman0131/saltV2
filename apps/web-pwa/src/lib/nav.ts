@@ -7,7 +7,6 @@ import {
   Settings,
   Shield,
   ShoppingCart,
-  UserRound,
 } from '@lucide/svelte';
 import type { NavItem } from '@salt/ui-components';
 import { pop, push } from 'svelte-spa-router';
@@ -16,35 +15,31 @@ import { pop, push } from 'svelte-spa-router';
 // its active-indicator pill; everything else goes in `overflowNavItems`. The
 // desktop SideNav shows both lists inline (see AppShell).
 //
-// The fourth slot is the personal view ("Kitchen", issue #634), which took the slot
-// Chef vacated to the overflow. Its live "what's open now" badge is attached in
-// App.svelte, where the stores it counts are subscribed.
+// The fourth slot is Chef (the AI Kitchen Assistant, issue #206), returned to the
+// primary four by #828. It is the one destination reached for mid-task, hands
+// occupied, so one tap from anywhere is most of what it is worth; it held this
+// slot until #634 handed it to the personal view and spent the interval folded
+// into the overflow.
 //
-// The tab was shown to admins only until #682, while the view was still deciding
-// what it was for. It now answers exactly one question — what of mine is running
-// right now, and what needs a look — so it is fit for the whole household and
-// the filter is gone. Every member sees four primary tabs.
+// The personal view ("Kitchen", #634/#682/#755) is deliberately in NEITHER list.
+// #828 moved it into the TopBar's actions area, where it reads as the signed-in
+// member's own name ("Daniel's Kitchen") at every width and carries the live
+// "what's open now" count that used to hang off this tab — see App.svelte, where
+// the stores it counts are subscribed. Keeping a nav entry as well would give the
+// desktop SideNav (which renders both lists inline) two competing routes to one
+// destination, so the header is its single entry point at every breakpoint.
 //
-// It was labelled "Mine" until #755, which renamed it "Kitchen" — the room, not a
-// possessive, since what it shows is the state of the kitchen you share. The id,
-// href and route are unchanged: only the word on the tab moved. One word by
-// necessity — BottomNav gives each of five columns an equal slice of a fixed bar
-// and never truncates (ui-spec-v04 §17.2), and "Kitchen" is no wider than the
-// "Recipes" and "Planner" already sitting beside it.
+// One word per label by necessity — BottomNav gives each of five columns an equal
+// slice of a fixed bar and never truncates (ui-spec-v04 §17.2).
 export const navItems: NavItem[] = [
   { id: 'shopping', label: 'Shop', icon: ShoppingCart, href: '#/shopping' },
   { id: 'mealplan', label: 'Planner', icon: CalendarDays, href: '#/mealplan' },
   { id: 'recipes', label: 'Recipes', icon: BookOpen, href: '#/recipes' },
-  { id: 'mine', label: 'Kitchen', icon: UserRound, href: '#/mine' },
+  { id: 'chat', label: 'Chef', icon: ChefHat, href: '#/chat' },
 ];
 
 // Set-up-and-forget destinations: folded behind the BottomNav's "More" tab on
 // mobile. `adminNavItem` is appended here (admins only) in App.svelte.
-//
-// Chef (the AI Kitchen Assistant, issue #206) sits here rather than in the primary
-// four despite not being set-up-and-forget: it is the least-reached-for of the
-// daily destinations, and the primary slot it held is wanted by "Mine" (#634).
-// Still available to all members — the overflow is a demotion, not a gate.
 //
 // "Batches" (issue #812, phase 1 of epic #778) is the in-flight surface: what is
 // proving, fermenting or curing right now, and what each one wants next. It sits
@@ -55,7 +50,6 @@ export const navItems: NavItem[] = [
 // The hourglass is the noun, not the food: phases 03 and 04 put ferments and cures
 // on this same surface, so a loaf would have been the wrong picture.
 export const overflowNavItems: NavItem[] = [
-  { id: 'chat', label: 'Chef', icon: ChefHat, href: '#/chat' },
   { id: 'batches', label: 'Batches', icon: Hourglass, href: '#/batches' },
   { id: 'equipment', label: 'Equipment', icon: Blender, href: '#/equipment' },
   { id: 'settings', label: 'Settings', icon: Settings, href: '#/settings' },
