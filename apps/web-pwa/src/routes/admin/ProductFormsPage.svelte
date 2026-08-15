@@ -113,7 +113,7 @@
     {#snippet children()}
       <div class="mb-4">
         <input
-          class="w-full rounded border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground"
+          class="w-full rounded border border-input bg-background px-3 py-2 text-sm"
           placeholder="Filter forms…"
           type="search"
           bind:value={filterText}

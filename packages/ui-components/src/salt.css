@@ -49,7 +49,7 @@
  *   • fontsource's index.css pulls all 7 Inter + 3 Epilogue subsets (~298 KB).
  *     Browsers would only ever fetch latin, but Workbox precaches by glob, so
  *     every user would download cyrillic/greek/vietnamese up front. Naming the
- *     latin + latin-ext files explicitly keeps the precache at ~202 KB.
+ *     latin + latin-ext files explicitly keeps the precache at ~254 KB.
  * A glyph outside these ranges falls back per-glyph to the platform sans — the
  * normal unicode-range behaviour, not a failure.
  *
@@ -60,9 +60,14 @@
  * links a dependency declared in THIS package's package.json.
  *
  * ONE variable file per family covers the whole 400/500/600/700 range the scale
- * uses (`font-weight: 100 900`). No italic file is shipped: the codebase has two
- * incidental italic uses, and synthesized oblique is fine for both.
- * `font-display: swap` — text is never invisible while a font loads. */
+ * uses (`font-weight: 100 900`). Inter additionally ships a real ITALIC face
+ * (issue #821): italic is the second, non-colour channel that makes placeholder
+ * text read as an example rather than a value (WCAG 1.4.1 — see the ::placeholder
+ * rule in @layer base), and at that prominence — every empty field in the app —
+ * a synthesized oblique is too crude. It is LATIN ONLY, unlike the normal faces:
+ * 51.8 kB, where latin-ext would add a further 91.9 kB to set English hint copy.
+ * Epilogue gets no italic; it is the display face and never carries placeholder
+ * text. `font-display: swap` — text is never invisible while a font loads. */
 @font-face {
   font-family: 'Epilogue';
   font-style: normal;
@@ -109,6 +114,17 @@
     U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
     U+A720-A7FF;
 }
+@font-face {
+  font-family: 'Inter';
+  font-style: italic;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('../node_modules/@fontsource-variable/inter/files/inter-latin-wght-italic.woff2')
+    format('woff2-variations');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
 
 /* ── Semantic color + radius tokens ──────────────────────────────────────────
  * `@theme inline` because these reference the `--salt-*` primitives (defined in
@@ -131,6 +147,7 @@
   --color-tertiary-variant: hsl(var(--salt-on-tertiary-fixed-variant));
   --color-muted: hsl(var(--salt-muted));
   --color-muted-foreground: hsl(var(--salt-muted-foreground));
+  --color-placeholder: hsl(var(--salt-placeholder));
   --color-accent: hsl(var(--salt-accent));
   --color-accent-foreground: hsl(var(--salt-accent-foreground));
   --color-destructive: hsl(var(--salt-destructive));
@@ -289,6 +306,13 @@
   --salt-on-tertiary-fixed-variant: 13 82% 28%; /* #83260e  burnt terracotta */
   --salt-muted: 180 6% 93%; /* #eceeee  surface-container */
   --salt-muted-foreground: 195 6% 27%; /* #42484a  on-surface-variant */
+  /* Example text, and nothing else (issue #821). Its job is to be legible AND
+   * unmistakably not a value: 4.79:1 on the background (AA, with margin) but
+   * 3.38:1 against --salt-foreground, where muted-foreground managed only
+   * 1.79:1 and made an empty field look filled. Deliberately NOT the `outline`
+   * role (#73787a) despite that already being a design.md key — it measures
+   * 4.27:1 and fails AA. */
+  --salt-placeholder: 195 6% 43%; /* #677174  example text */
   --salt-accent: 94 47% 82%; /* secondary-container */
   --salt-accent-foreground: 99 19% 35%; /* on-secondary-container */
   --salt-destructive: 0 75% 42%; /* #ba1a1a  error */
@@ -356,6 +380,14 @@
   --salt-on-tertiary-fixed-variant: 13 82% 28%;
   --salt-muted: 180 3% 24%;
   --salt-muted-foreground: 195 5% 58%;
+  /* Dark is arithmetically squeezed: at 4.92:1 this FIXES a pre-existing AA
+   * failure against the background (muted-foreground was 4.35:1), but its
+   * separation from value text falls to 2.32:1, so in dark mode the italic is
+   * carrying the differentiation on its own. Every AA-passing dark value has
+   * worse value-text separation than today's — the root cause is
+   * --salt-background not being dark enough for a three-way split, which is a
+   * palette question and not this token's to answer (issue #821). */
+  --salt-placeholder: 195 5% 62%;
   --salt-accent: 98 20% 33%;
   --salt-accent-foreground: 0 0% 100%;
   --salt-destructive: 0 75% 42%;
@@ -424,6 +456,32 @@
   :focus-visible {
     outline: 2px solid hsl(var(--salt-border));
     outline-offset: 0px;
+  }
+
+  /* Example text is not a value (issue #821). THE one place in the codebase that
+   * decides what placeholder text looks like — deliberately a base rule rather
+   * than a class on each input, because the previous arrangement was twelve
+   * declarations across three mechanisms and had already drifted (two inputs
+   * styled nothing at all and got the browser default). A base rule cannot
+   * drift, reaches hand-rolled `<input>`s in the apps, and reaches inputs not
+   * yet written. Legal under ui-spec-v02 §2.3 — salt.css IS the preset.
+   *
+   * Colour AND italic, not colour alone: WCAG 1.4.1, and ui-spec-v04 §17.5
+   * forbids buying the difference by fading the hint out (--salt-placeholder
+   * holds 4.79:1 on the background — it is quieter, not fainter).
+   *
+   * `opacity: 1` overrides Firefox's own placeholder opacity, which would
+   * otherwise wash the tuned colour out.
+   *
+   * ONE escape: SelectTrigger renders its placeholder into a <span>, not a
+   * pseudo-element, so no rule here can reach it — it carries the same
+   * treatment as explicit classes (ui-spec-v03 §3.4). A Tailwind
+   * `placeholder:*` utility on an input still beats this rule; that is the
+   * mechanism, not a bug, but it means adding one re-opens the drift. */
+  ::placeholder {
+    color: hsl(var(--salt-placeholder));
+    font-style: italic;
+    opacity: 1;
   }
 }
 
@@ -608,7 +666,7 @@
   /* Combobox variant: direct <input>; focus ring lives on the ComboboxField
    * wrapper so it surrounds input + trigger, not just the input. */
   .salt-input--combobox {
-    @apply outline-none h-10 w-full px-3 py-2 text-sm placeholder:text-muted-foreground;
+    @apply outline-none h-10 w-full px-3 py-2 text-sm;
   }
 
   /* ─ Trigger (SelectTrigger) ──────────────────────────────────────────── */

@@ -1,4 +1,4 @@
-# Salt 2.0 — UI Primitives Specification (v0.2.11)
+# Salt 2.0 — UI Primitives Specification (v0.2.12)
 
 **Status:** Authoritative
 **Audience:** AI code generators + human contributors
@@ -146,7 +146,7 @@ No deep imports. No side-effect imports in any barrel.
 
 ## 1.5 Spec Versioning & Amendment Rule
 
-The spec is versioned `vMAJOR.MINOR.PATCH` (currently v0.2.11).
+The spec is versioned `vMAJOR.MINOR.PATCH` (currently v0.2.12).
 
 - **PATCH** (v0.2.1 → v0.2.2): clarifications, typo fixes, tightened class matrices. No breaking change to generated code.
 - **MINOR** (v0.2.x → v0.3.0): new primitives, new props, new tokens.
@@ -698,6 +698,13 @@ Salt adopts the shadcn token scheme, emitted as CSS variables on `:root` and `.d
 - `card`, `card-foreground`
 - `popover`, `popover-foreground`
 - `border`, `input`, `ring`
+- `placeholder` — example text, and nothing else
+
+**`placeholder` is a role, not a shade of `muted-foreground`.** Its job is to be legible *and* unmistakably not a value, and those pull in opposite directions: it must clear **4.5:1 against the background** (never bought back by fading — ui-spec-v04 §17.5) while sitting far enough off `foreground` that a filled field and an empty one are told apart without clicking in. `muted-foreground` satisfies only the first (8.88:1 on the background, but **1.79:1** off value text — no separation at all), which is why this is its own token rather than a reuse.
+
+Light `#677174` (`hsl(195 6% 43%)`) — 4.79:1 / 3.38:1. Dark `#99a1a3` (`hsl(195 5% 62%)`) — 4.92:1 / 2.32:1. Dark trades value-text separation for an AA pass it did not previously have; every AA-passing dark value does, because `--salt-background` is not dark enough for a three-way split. In dark mode the italic below carries the differentiation alone.
+
+**Colour is never the only channel.** Placeholder text is also `font-style: italic` (WCAG 1.4.1). Both halves are declared in **one `::placeholder` rule in `salt.css`'s `@layer base`** — not per-primitive classes. A base rule reaches hand-rolled `<input>`s in the apps and inputs not yet written, and cannot drift; the per-primitive arrangement it replaced had already drifted to twelve declarations across three mechanisms, two of which styled nothing. `SelectTrigger` is the sole exception and is specified in ui-spec-v03 §3.4: it renders placeholder text into a `<span>`, which no pseudo-element rule can reach. A Tailwind `placeholder:*` utility on an input still beats `@layer base` — do not add one.
 
 ### Radius
 
@@ -1252,13 +1259,15 @@ frame base: 'salt-focus-ring-within flex items-center gap-2 rounded-md border bo
 frame size: sm='h-8 px-3 text-sm' | md='h-9 px-4 text-sm' | lg='h-10 px-6 text-base'
 frame error: 'border-destructive focus-within:ring-destructive'
 frame disabled: 'opacity-50 pointer-events-none'
-input: 'flex-1 bg-transparent outline-none placeholder:text-muted-foreground'
+input: 'flex-1 bg-transparent outline-none'
 label: 'text-sm font-medium text-foreground'
 description: 'text-sm text-muted-foreground'
 error text: 'text-sm text-destructive'
 ```
 
 Focus ring is applied to the **frame** via `focus-within:`, not to the raw `<input>`.
+
+Placeholder styling is **not** declared here — see §4.1. The `::placeholder` base rule owns it, and a `placeholder:*` utility on this element would override it.
 
 ### Error-message rendering
 
@@ -1309,8 +1318,10 @@ than growing a bespoke prop per such need.
 ```
 frame base: same as TextField, but h-auto min-h-[calc(theme(spacing.9))]
 frame size: sm='px-3 text-sm min-h-[theme(spacing.8)]' | md='px-4 text-sm min-h-[theme(spacing.9)]' | lg='px-6 text-base min-h-[theme(spacing.10)]'
-textarea: 'flex-1 bg-transparent outline-none resize-none py-2 placeholder:text-muted-foreground'
+textarea: 'flex-1 bg-transparent outline-none resize-none py-2'
 ```
+
+Placeholder styling is **not** declared here — see §4.1. The `::placeholder` base rule owns it, and a `placeholder:*` utility on this element would override it.
 
 ### Autoresize
 
@@ -1805,6 +1816,7 @@ Numeric transform (allowed by §2.3): determinate indicator uses `style="transfo
 
 | Date       | Version | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ---------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-08-15 | v0.2.12 | §4.1 Tokens: new semantic colour role **`placeholder`** (light `#677174`, dark `#99a1a3`) plus the rule that example text is styled by **one `::placeholder` rule in `salt.css`'s `@layer base`**, in colour **and** `font-style: italic`, never per-primitive. The old arrangement was `placeholder:text-muted-foreground` copied across twelve sites in three mechanisms, two of which styled nothing and fell back to the browser default — and `muted-foreground` sits **1.79:1** from value text, so an empty field looked filled and a long form could only be reviewed by clicking into every field. The new role holds 4.79:1 on the background (AA with margin, so the difference is never bought by fading — ui-spec-v04 §17.5) at 3.38:1 off value text; italic is the second, non-colour channel WCAG 1.4.1 requires and ships as a real `@fontsource-variable/inter` italic face, latin subset only (51.8 kB). §8.2 and §8.3 accordingly drop `placeholder:text-muted-foreground` from their class matrices and gain a pointer to §4.1. A base rule reaches hand-rolled inputs and inputs not yet written, which is why the drift cannot recur — but a `placeholder:*` utility still beats `@layer base`, so adding one reopens it. `SelectTrigger` is the one thing no such rule can reach (its placeholder is a `<span>`) and is specified in ui-spec-v03 §3.4. Contract change — `TextField.svelte`, `Textarea.svelte` re-stamped. Issue #821 Phase 1. |
 | 2026-08-14 | v0.2.11 | §8.12 Icon + §1.1 Icons row: `name` is keyed off a **curated registry** (`src/primitives/Icon/iconRegistry.ts`) instead of `keyof typeof import('@lucide/svelte').icons`. The `icons` barrel is a namespace object, so nothing tree-shook and all 1,764 icon modules shipped — **632.75 kB (108.75 kB gzipped), the single largest item in the PWA's boot payload**, to draw the ~70 icons Salt actually uses. The registry imports each icon from its own `@lucide/svelte/icons/<kebab-name>` subpath, so only registered icons ship. New §8.12 "Icon registry" records that it is hand-maintained, that the narrowed `IconName` union turns an unregistered name into a `pnpm check` failure (the whole maintenance mechanism — no generator, no CI staleness check, because no icon name crosses a serialization boundary), and that direct named imports inside single-icon primitives are unaffected and stay correct. `iconNames` joins the package surface (§1.3) so Storybook's gallery renders the real set rather than a second hand-list. Contract change — `Icon.svelte`, `Icon.types.ts` re-stamped; `ListPage.types.ts`'s `BulkActionIcon` re-pointed. Issue #813 Phase 1. **v0.2.10 is absent from this table on purpose:** #691 bumped the header to it without adding a row, so the number is already spent — pre-existing doc drift, not amended here. |
 | 2026-08-02 | v0.2.9  | §8.6 Dialog + §4.4 Dialog Size Scale: the content base gains `w-full`, a mobile `max-w-[calc(100%-2rem)]` clamp, and `max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain`; the size scale becomes an `sm:`-and-up ceiling. The base stated no width at all, so a `position: fixed` panel with `left: 50%` and no `right` was shrink-to-fit against `100vw - left` — **every dialog was capped at roughly half the viewport width** (the photo-import dialog of #676 measured 221px on a 393px phone), with `max-w-*` powerless to correct it — a ceiling the panel was already under. The `sm:` modifiers keep the mobile clamp alive through tailwind-merge. Height is capped so a panel taller than the viewport scrolls rather than putting its footer out of reach. Behavioural amendment — `Dialog.variants.ts` re-stamped. |
 | 2026-07-28 | v0.2.8  | §4.6 **Press Pulse**: specs the `salt-press-pulse` CSS utility as a public, consumer-facing extension point alongside `salt-focus-ring` (§4.2) — what it supplies (depth only: `scale(0.94)` + the `0s` press-in), what the call site retains (its own `transition-property` list including `transform`, its own per-property durations, `ease-standard`, `motion-reduce:transition-none`), why the pressed rule is `:active`-scoped (specificity, not source order), and the `no-preference` gate. Records that `.salt-button` writes the same treatment longhand rather than pulling the utility in — the duplication is deliberate (the Button owns its own `transition-*`) and any change to the press scale must land in both places. Shipped unrecorded in #583 alongside the v0.2.7 Button press system; no code change. Resolves doc/code drift issue #588. |

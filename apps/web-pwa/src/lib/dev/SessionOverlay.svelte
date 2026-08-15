@@ -153,10 +153,6 @@
     box-sizing: border-box;
   }
 
-  .session-overlay__input::placeholder {
-    color: #888;
-  }
-
   .session-overlay__btn {
     border: none;
     border-radius: 4px;

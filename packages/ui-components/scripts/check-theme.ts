@@ -110,6 +110,7 @@ const COLOR_MAP: Record<string, string> = {
   error: '--salt-destructive',
   'on-error': '--salt-destructive-foreground',
   'outline-variant': '--salt-border',
+  placeholder: '--salt-placeholder',
 };
 
 /** design.md rounded key → CSS var name.

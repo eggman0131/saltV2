@@ -216,7 +216,7 @@
     <div class="flex shrink-0 items-center gap-1">
       <input
         type="number"
-        class="h-7 w-16 rounded border border-input bg-background px-2 text-xs placeholder:text-muted-foreground salt-focus-ring"
+        class="h-7 w-16 rounded border border-input bg-background px-2 text-xs salt-focus-ring"
         placeholder="Qty"
         min="0"
         step="1"

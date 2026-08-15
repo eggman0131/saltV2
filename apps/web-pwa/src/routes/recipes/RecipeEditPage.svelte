@@ -553,7 +553,7 @@
             </p>
             <TextArea
               label="Ingredient list"
-              placeholder="1 cup plain flour, sifted&#10;2 eggs&#10;&#10;For the sauce:&#10;2 cloves garlic, crushed"
+              placeholder="e.g. 1 cup plain flour, sifted&#10;2 eggs&#10;&#10;For the sauce:&#10;2 cloves garlic, crushed"
               value={pasteText}
               onValueChange={(v) => (pasteText = v)}
               rows={6}
@@ -928,7 +928,7 @@
           {/each}
           <input
             type="text"
-            class="min-w-24 flex-1 bg-transparent py-0.5 text-sm outline-none placeholder:text-muted-foreground"
+            class="min-w-24 flex-1 bg-transparent py-0.5 text-sm outline-none"
             placeholder={draft.metadata.tags.length === 0 ? 'Add tags…' : ''}
             bind:value={tagInput}
             onkeydown={handleTagKeydown}

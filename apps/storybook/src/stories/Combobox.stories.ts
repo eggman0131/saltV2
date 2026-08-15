@@ -18,12 +18,14 @@ const meta = {
     allowCustom: false,
     empty: false,
     placeholder: 'Search ingredients…',
+    value: '',
   },
   argTypes: {
     open: { control: 'boolean' },
     allowCustom: { control: 'boolean' },
     empty: { control: 'boolean' },
     placeholder: { control: 'text' },
+    value: { control: 'select', options: ['', 'tomato', 'onion', 'garlic', 'basil'] },
   },
 } satisfies Meta<typeof ComboboxDemo>;
 
@@ -41,3 +43,11 @@ export const AllowCustom: Story = { args: { open: true, allowCustom: true } };
 
 // No matching items: the ComboboxEmpty fallback is shown.
 export const Empty: Story = { args: { open: true, empty: true } };
+
+// Empty vs filled, as a named pair (#821). `Searchable` above renders the same
+// empty field but is named for the closed/open axis; these two are the pinned
+// baseline for the placeholder treatment, which is what tells a reviewer the
+// difference between a Combobox nobody has answered and one holding "Tomato".
+export const Placeholder: Story = { args: { open: false, value: '' } };
+
+export const Filled: Story = { args: { open: false, value: 'tomato' } };

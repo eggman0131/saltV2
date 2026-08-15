@@ -1,4 +1,4 @@
-# Salt 2.0 — UI Primitives Specification (v0.3.3, Draft for Planning)
+# Salt 2.0 — UI Primitives Specification (v0.3.4, Draft for Planning)
 
 **Status:** Planning  
 **Scope:** `@salt/ui-components` — new primitives only  
@@ -155,6 +155,17 @@ Not a native `<select>`.
 - `class?: string`
 - `children?: Snippet`
 - Any attribute valid on `<button>` is accepted and spread onto the underlying `<button>` element (e.g. `data-*`, `aria-*`, `tabindex`). The component owns `role`, `aria-haspopup`, `aria-expanded`, and `aria-controls` — passing these manually will be overwritten.
+
+**Default label rendering (when no `children` snippet is supplied).** The trigger renders a single `<span>` holding `displayLabel ?? placeholder ?? 'Select…'`, followed by the chevron. The `'Select…'` literal is the last-resort fallback for a Select given no `placeholder`; it is not configurable, and a caller wanting different words passes `placeholder`.
+
+That span is styled by the value, not by the words:
+
+```
+value set:   'text-foreground'
+no value:    'text-placeholder italic'
+```
+
+**Why the empty branch is written out here rather than left to the base rule.** Every other field in Salt gets its placeholder treatment from the single `::placeholder` rule in `salt.css` `@layer base` (ui-spec-v02 §4.1). This one cannot: the text is real content in a `<span>`, not a `::placeholder` pseudo-element, so no such rule can reach it. `SelectTrigger` therefore carries the identical pair of channels — the `placeholder` colour role **and** italic — by hand, so an unset Select reads exactly like an empty TextField beside it. Keep the two in step: a change to §4.1's treatment is a change here.
 
 ### 3.5 Events
 
@@ -453,6 +464,7 @@ Amendments follow the v0.2 procedure (ui-spec-v02 §1.5): bump the version in th
 
 | Date       | Version | Summary                                                                                                                                                                                                                                                                                                                                                               |
 | ---------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-08-15 | v0.3.4  | §3.4 Select: specified `SelectTrigger`'s **default label rendering** — the single `<span>`, the `displayLabel ?? placeholder ?? 'Select…'` precedence and that the `'Select…'` literal is a non-configurable last resort, and the empty-vs-filled styling (`text-foreground` / `text-placeholder italic`). All of it shipped undocumented; a second undocumented state was not worth leaving behind while amending the same line. The empty branch is the **one** placeholder in Salt written by hand: its text is a `<span>`, not a `::placeholder` pseudo-element, so the base rule that now styles every other field (ui-spec-v02 §4.1) cannot reach it — the two must be kept in step. Re-stamped `SelectTrigger.svelte` (§3 → §3.4). Issue #821 Phase 1. **v0.3.3 is absent from this table on purpose:** the header was bumped to it without a row being added, so the number is already spent — pre-existing doc drift, not amended here. |
 | 2026-07-28 | v0.3.2  | §5.3.1 Sheet: recorded the shared `SheetPartProps` shape (`class?`, `children?`) carried by every non-root part, and why `SheetTrigger`'s `class` is load-bearing rather than cosmetic — `BottomNav`'s overflow ("More") tab is a `SheetTrigger`, and ui-spec-v04 §13.2 requires every tab column's interactive element to be `flex flex-1`. Ratifies the `class` prop shipped in #605. Re-stamped `SheetTrigger.svelte` provenance (the only part whose contract changed; `SheetPartProps` itself is unchanged). Resolves part of doc/code drift issue #608. |
 | 2026-07-23 | v0.3.1  | §6.3/§6.7 Toast: added opt-in `showCountdown` prop — a circular ring that drains over `duration`, pauses with the dismiss timer on hover, hidden under reduced motion. Drives the deferred-delete "Undo" snackbar's visible window. No colour/anchoring change. Re-stamped `Toast.svelte` + `Toast.types.ts` provenance to v0.3.1 (the parts whose contract changed). |
 

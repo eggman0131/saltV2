@@ -1,4 +1,4 @@
-<!-- spec: SPEC.md §3 v0.3 -->
+<!-- spec: SPEC.md §3.4 v0.3.4 -->
 <script lang="ts">
   import { ChevronDown } from '@lucide/svelte';
   import { cn } from '../../lib/cn';
@@ -44,7 +44,11 @@
   {#if children}
     {@render children()}
   {:else}
-    <span class={ctx.value ? 'text-foreground' : 'text-muted-foreground'}>
+    <!-- The one input in the app the ::placeholder base rule cannot reach: this
+         is real text in a <span>, not a pseudo-element. It therefore carries the
+         same treatment by hand so an unset Select reads like every other empty
+         field (ui-spec-v03 §3.4, issue #821). -->
+    <span class={ctx.value ? 'text-foreground' : 'text-placeholder italic'}>
       {ctx.displayLabel ?? ctx.placeholder ?? 'Select…'}
     </span>
     <ChevronDown class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />

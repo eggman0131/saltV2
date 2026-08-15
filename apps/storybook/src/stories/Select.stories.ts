@@ -36,5 +36,14 @@ export const Open: Story = { args: { open: true } };
 // A pre-selected value shows in the trigger instead of the placeholder.
 export const WithValue: Story = { args: { value: 'dairy' } };
 
+// Named for the value axis, where `Closed` above is named for the open axis —
+// the two coincide here, but `Closed` belongs to the open/closed convention
+// shared with Dialog, Sheet and Popover, and renaming it would break that.
+// This one is the pinned baseline for the placeholder treatment (#821), which
+// SelectTrigger is alone in having to apply by hand: its placeholder is real
+// text in a <span>, so the ::placeholder base rule that styles every other
+// field in the app cannot reach it (ui-spec-v03 §3.4).
+export const Placeholder: Story = { args: { open: false, value: '' } };
+
 // Disabled trigger.
 export const Disabled: Story = { args: { disabled: true } };

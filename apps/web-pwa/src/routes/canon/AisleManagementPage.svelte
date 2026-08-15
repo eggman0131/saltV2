@@ -258,7 +258,7 @@
         <div class="mb-4 flex flex-wrap items-end gap-2">
           <div class="flex-1">
             <input
-              class="w-full rounded border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground"
+              class="w-full rounded border border-input bg-background px-3 py-2 text-sm"
               placeholder="Filter aisles…"
               type="search"
               bind:value={filterText}
@@ -351,7 +351,7 @@
           <TextArea
             label="Aisle name(s)"
             description="Enter one per line to add multiple at once."
-            placeholder="Produce&#10;Dairy&#10;Bakery"
+            placeholder="e.g. Produce&#10;Dairy&#10;Bakery"
             rows={4}
             bind:value={addText}
             onkeydown={handleAddKeydown}

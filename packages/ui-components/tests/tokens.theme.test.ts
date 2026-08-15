@@ -82,6 +82,44 @@ describe('salt.css design-system entry', () => {
       expect(css).toMatch(/--salt-background:\s*[^;]+;\s*\/\*\s*#f8fafa/);
     });
 
+    it('pins --salt-placeholder to the measured AA value in both themes (#821)', () => {
+      // Both halves are load-bearing and neither is guessable from the other:
+      // light #677174 is 4.79:1 on the background and 3.38:1 off value text;
+      // dark #99a1a3 is the value that fixes a pre-existing 4.35:1 AA failure.
+      expect(css).toMatch(/--salt-placeholder:\s*195 6% 43%/);
+      expect(css).toMatch(/--salt-placeholder:\s*195 5% 62%/);
+    });
+
+    it('styles placeholder text in exactly one place, by colour AND italic (#821)', () => {
+      // The whole point of the change: one base rule, not a class per input, so
+      // it reaches hand-rolled inputs and cannot drift back apart. Italic is
+      // required independently — WCAG 1.4.1 forbids colour as the only channel
+      // (ui-spec-v04 §17.5), which is also why the colour must not go faint.
+      const rule = css.match(/::placeholder\s*\{([\s\S]*?)\}/)?.[1];
+      expect(rule).toBeDefined();
+      expect(rule).toMatch(/color:\s*hsl\(var\(--salt-placeholder\)\)/);
+      expect(rule).toMatch(/font-style:\s*italic/);
+      // No Tailwind `placeholder:*` utility anywhere in the preset — one would
+      // beat the base rule and reopen the drift this rule exists to close.
+      expect(css).not.toMatch(/placeholder:text-/);
+    });
+
+    it('ships a real Inter italic face, latin subset only (#821)', () => {
+      // Synthesized oblique is too crude at this prominence, and latin-ext would
+      // add 91.9 kB to set English hint copy. The url must stay RELATIVE: Vite
+      // does not resolve bare specifiers inside url() and would ship a 404.
+      const face = css
+        .match(/@font-face\s*\{[^}]*\}/g)
+        ?.find((b) => b.includes('inter-latin-wght-italic.woff2'));
+      expect(face).toBeDefined();
+      expect(face).toMatch(/font-family:\s*'Inter'/);
+      expect(face).toMatch(/font-style:\s*italic/);
+      expect(face).toMatch(
+        /url\('\.\.\/node_modules\/@fontsource-variable\/inter\/files\/inter-latin-wght-italic\.woff2'\)/,
+      );
+      expect(css).not.toMatch(/inter-latin-ext-wght-italic/);
+    });
+
     it('defines the radius + control-size primitives', () => {
       expect(css).toMatch(/--salt-radius-sm:\s*0\.25rem/);
       expect(css).toMatch(/--salt-radius-default:\s*0\.5rem/);
@@ -152,9 +190,15 @@ describe('token constants', () => {
     it('primaryForeground is a CSS var reference string', () => {
       expect(colors.primaryForeground).toBe('hsl(var(--salt-primary-foreground))');
     });
-    it('exports all 24 semantic color constants', () => {
+    it('exports all 25 semantic color constants', () => {
       const keys = Object.keys(colors);
-      expect(keys.length).toBe(24);
+      expect(keys.length).toBe(25);
+    });
+    it('exposes the placeholder role that keeps example text off value text (#821)', () => {
+      // A role of its own rather than a reuse of muted-foreground: the point is
+      // separation FROM value text (3.38:1, up from 1.79:1) while still clearing
+      // AA against the background, which no existing token did.
+      expect(colors.placeholder).toBe('hsl(var(--salt-placeholder))');
     });
     it('exposes the burnt-terracotta variant used to mark next week (#639)', () => {
       // A hue shift at the same weight, not a lighter tint — the planner already

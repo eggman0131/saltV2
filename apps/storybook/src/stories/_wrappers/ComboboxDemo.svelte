@@ -27,11 +27,13 @@
     allowCustom = false,
     empty = false,
     placeholder = 'Search ingredients…',
+    value = '',
   }: {
     open?: boolean;
     allowCustom?: boolean;
     empty?: boolean;
     placeholder?: string;
+    value?: string;
   } = $props();
 
   const allItems: ComboboxItemType[] = [
@@ -45,7 +47,9 @@
 </script>
 
 <div class="relative w-64">
-  <Combobox {items} {open} {allowCustom} {placeholder} portal={false}>
+  <!-- `value` is spread conditionally, like SelectDemo does: passing an explicit
+       undefined would still count as controlled and pin the field empty. -->
+  <Combobox {items} {open} {allowCustom} {placeholder} portal={false} {...value ? { value } : {}}>
     <ComboboxField>
       <ComboboxInput />
       <ComboboxTrigger />

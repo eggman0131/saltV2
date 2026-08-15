@@ -240,10 +240,15 @@
         <label class="text-sm font-medium" for="equipment-confirmed-name">
           {candidates.length > 0 ? 'Or type a custom name:' : 'Name:'}
         </label>
+        <!-- Framed, not bare (#821). This placeholder is not an example — leaving
+             the field empty really does keep `rawName` (see handleConfirm), so
+             echoing the name back with no words around it read as a value the
+             page had already set on your behalf. Now it says what it is: the
+             default you have not overridden. -->
         <TextField
           id="equipment-confirmed-name"
           bind:value={confirmedName}
-          placeholder={rawName}
+          placeholder={`Keep “${rawName}”`}
           disabled={populateBusy}
           data-testid="equipment-confirmed-name-input"
         />
