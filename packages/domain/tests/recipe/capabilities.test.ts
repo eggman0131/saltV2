@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { takesIngredients, isCookable, isPlannable, isAuthorable } from '@salt/domain';
+import {
+  takesIngredients,
+  isCookable,
+  isPlannable,
+  isAuthorable,
+  takesComponents,
+} from '@salt/domain';
 import type { RecipeKind } from '@salt/domain';
 
 // The capability table (issue #637), pinned cell by cell. This is the contract
@@ -12,6 +18,7 @@ describe('recipe kind capabilities', () => {
     isCookable: boolean;
     isPlannable: boolean;
     isAuthorable: boolean;
+    takesComponents: boolean;
   }> = [
     {
       kind: 'recipe',
@@ -19,6 +26,7 @@ describe('recipe kind capabilities', () => {
       isCookable: true,
       isPlannable: true,
       isAuthorable: true,
+      takesComponents: true,
     },
     {
       kind: 'outing',
@@ -26,6 +34,7 @@ describe('recipe kind capabilities', () => {
       isCookable: false,
       isPlannable: true,
       isAuthorable: false,
+      takesComponents: false,
     },
     {
       kind: 'cocktail',
@@ -33,6 +42,7 @@ describe('recipe kind capabilities', () => {
       isCookable: true,
       isPlannable: false,
       isAuthorable: false,
+      takesComponents: true,
     },
     {
       kind: 'placeholder',
@@ -40,15 +50,17 @@ describe('recipe kind capabilities', () => {
       isCookable: false,
       isPlannable: false,
       isAuthorable: false,
+      takesComponents: false,
     },
   ];
 
   for (const row of table) {
-    it(`${row.kind}: ingredients ${row.takesIngredients}, cookable ${row.isCookable}, plannable ${row.isPlannable}, authorable ${row.isAuthorable}`, () => {
+    it(`${row.kind}: ingredients ${row.takesIngredients}, cookable ${row.isCookable}, plannable ${row.isPlannable}, authorable ${row.isAuthorable}, components ${row.takesComponents}`, () => {
       expect(takesIngredients(row.kind)).toBe(row.takesIngredients);
       expect(isCookable(row.kind)).toBe(row.isCookable);
       expect(isPlannable(row.kind)).toBe(row.isPlannable);
       expect(isAuthorable(row.kind)).toBe(row.isAuthorable);
+      expect(takesComponents(row.kind)).toBe(row.takesComponents);
     });
   }
 
@@ -97,5 +109,29 @@ describe('recipe kind capabilities', () => {
     expect(takesIngredients('placeholder')).toBe(false);
     expect(isCookable('placeholder')).toBe(false);
     expect(isPlannable('placeholder')).toBe(false);
+    expect(takesComponents('placeholder')).toBe(false);
+  });
+
+  it('the two kinds you can build a meal out of are exactly the two you can make (issue #752)', () => {
+    // Named separately because the list page leans on it: every entry in the Meals
+    // section is a `recipe` or a `cocktail`, and both of those take ingredients —
+    // which is what makes `sectionTakesIngredients(MEAL_SECTION)` unconditionally
+    // true rather than a guess. A meal's ingredients are its OWN; nothing is
+    // aggregated from its components.
+    expect(takesComponents('recipe')).toBe(true);
+    expect(takesComponents('cocktail')).toBe(true);
+    expect(takesComponents('outing')).toBe(false);
+    expect(takesComponents('placeholder')).toBe(false);
+    for (const kind of ['recipe', 'cocktail'] as const) {
+      expect(takesIngredients(kind)).toBe(true);
+    }
+  });
+
+  it('a cocktail takes components — it can point at its own syrup recipe', () => {
+    // The row that reads oddly until you know why: a cocktail is never dinner, but
+    // it is a dish you MAKE, and a Negroni built on a house syrup is the same
+    // relationship a roast has with its gravy.
+    expect(isPlannable('cocktail')).toBe(false);
+    expect(takesComponents('cocktail')).toBe(true);
   });
 });

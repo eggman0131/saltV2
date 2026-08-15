@@ -9,6 +9,7 @@ import {
   type MealPlanConfig,
   type MealPlanTemplate,
   type MealPlanWeek,
+  type Recipe,
 } from '@salt/domain';
 
 vi.mock('@salt/firebase-sync', () => ({
@@ -94,6 +95,34 @@ function wireSubscriptions() {
 // A week whose Monday carries `note`, stamped at `updatedAt`.
 function weekWithNote(start: string, note: string, updatedAt: string): MealPlanWeek {
   return { ...setDayNote(emptyWeek(start), start, note), updatedAt };
+}
+
+// A recipe, or — with `componentRecipeIds` — a MEAL (#752). `addRecipeToDay`
+// takes the whole document because the expansion is a pure function of it.
+function recipe(id: string, componentRecipeIds: string[] = []): Recipe {
+  return {
+    id,
+    schemaVersion: 1,
+    kind: 'recipe',
+    title: id,
+    description: null,
+    ingredients: [],
+    steps: [],
+    metadata: {
+      servings: null,
+      totalTimeMinutes: null,
+      prepTimeMinutes: null,
+      cookTimeMinutes: null,
+      tags: [],
+    },
+    source: null,
+    notes: null,
+    producesCanonId: null,
+    componentRecipeIds,
+    image: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
 }
 
 beforeEach(() => {
@@ -419,7 +448,7 @@ describe('mealPlanService — addRecipeToDay', () => {
   it('appends to a day of the week already on screen, without a read', async () => {
     seedMealPlanWeek(setDayRecipes(emptyWeek('2026-06-08'), '2026-06-10', ['pie']));
 
-    await expect(addRecipeToDay('2026-06-10', 'roast')).resolves.toEqual({
+    await expect(addRecipeToDay('2026-06-10', recipe('roast'))).resolves.toEqual({
       kind: 'ok',
       value: 'added',
     });
@@ -435,7 +464,7 @@ describe('mealPlanService — addRecipeToDay', () => {
       value: weekWithNote('2026-06-29', 'pie', '2026-06-29T10:00:00.000Z'),
     });
 
-    await addRecipeToDay('2026-07-01', 'roast'); // a Wednesday, three weeks out
+    await addRecipeToDay('2026-07-01', recipe('roast')); // a Wednesday, three weeks out
 
     expect(fs.loadMealPlanWeek).toHaveBeenCalledWith('2026-06-29'); // its Monday
     const saved = fs.saveMealPlanWeek.mock.calls.at(-1)![0]!;
@@ -448,8 +477,8 @@ describe('mealPlanService — addRecipeToDay', () => {
   it('does not cache a week it only read, so a later write re-reads it', async () => {
     fs.loadMealPlanWeek.mockResolvedValue({ kind: 'ok', value: null });
 
-    await addRecipeToDay('2026-07-01', 'roast');
-    await addRecipeToDay('2026-07-01', 'pie');
+    await addRecipeToDay('2026-07-01', recipe('roast'));
+    await addRecipeToDay('2026-07-01', recipe('pie'));
 
     expect(fs.loadMealPlanWeek).toHaveBeenCalledTimes(2);
     // Second write is built on the re-read, not on the first write's leftovers.
@@ -463,7 +492,7 @@ describe('mealPlanService — addRecipeToDay', () => {
       error: { kind: 'NetworkError', reason: 'offline' },
     });
 
-    const result = await addRecipeToDay('2026-07-01', 'roast');
+    const result = await addRecipeToDay('2026-07-01', recipe('roast'));
 
     expect(result.kind).toBe('err');
     expect(fs.saveMealPlanWeek).not.toHaveBeenCalled();
@@ -472,11 +501,49 @@ describe('mealPlanService — addRecipeToDay', () => {
   it('is idempotent — a dish already on the day is reported, not duplicated', async () => {
     seedMealPlanWeek(setDayRecipes(emptyWeek('2026-06-08'), '2026-06-10', ['roast']));
 
-    await expect(addRecipeToDay('2026-06-10', 'roast')).resolves.toEqual({
+    await expect(addRecipeToDay('2026-06-10', recipe('roast'))).resolves.toEqual({
       kind: 'ok',
       value: 'already-there',
     });
     expect(fs.saveMealPlanWeek).not.toHaveBeenCalled();
+  });
+
+  it('plans a MEAL as the whole dinner, meal first, then its dishes', async () => {
+    // Meal-first is what makes the day's note read "roast" and the day's card
+    // wear the roast's photograph — neither mechanic knows meals exist (#752).
+    seedMealPlanWeek(emptyWeek('2026-06-08'));
+
+    await expect(
+      addRecipeToDay('2026-06-10', recipe('roast', ['chicken', 'potatoes', 'gravy'])),
+    ).resolves.toEqual({ kind: 'ok', value: 'added' });
+
+    const saved = fs.saveMealPlanWeek.mock.calls.at(-1)![0]!;
+    expect(saved.days['2026-06-10']!.recipeIds).toEqual(['roast', 'chicken', 'potatoes', 'gravy']);
+  });
+
+  it('reports a whole meal already on the night rather than duplicating it', async () => {
+    seedMealPlanWeek(
+      setDayRecipes(emptyWeek('2026-06-08'), '2026-06-10', ['roast', 'chicken', 'gravy']),
+    );
+
+    await expect(
+      addRecipeToDay('2026-06-10', recipe('roast', ['chicken', 'gravy'])),
+    ).resolves.toEqual({ kind: 'ok', value: 'already-there' });
+    expect(fs.saveMealPlanWeek).not.toHaveBeenCalled();
+  });
+
+  it('lands only the missing dish when the meal itself is already there', async () => {
+    // The partial case, and why `'already-there'` had to be redefined as "nothing
+    // new landed": the meal is on the night, the gravy is not, so something DID
+    // happen and the caller must not be told otherwise.
+    seedMealPlanWeek(setDayRecipes(emptyWeek('2026-06-08'), '2026-06-10', ['roast', 'chicken']));
+
+    await expect(
+      addRecipeToDay('2026-06-10', recipe('roast', ['chicken', 'gravy'])),
+    ).resolves.toEqual({ kind: 'ok', value: 'added' });
+
+    const saved = fs.saveMealPlanWeek.mock.calls.at(-1)![0]!;
+    expect(saved.days['2026-06-10']!.recipeIds).toEqual(['roast', 'chicken', 'gravy']);
   });
 
   it('seeds a day the stored week has no key for (firstDayOfWeek moved since)', async () => {
@@ -484,7 +551,7 @@ describe('mealPlanService — addRecipeToDay', () => {
     // Monday: the target date is inside the Monday week but absent from the doc.
     fs.loadMealPlanWeek.mockResolvedValue({ kind: 'ok', value: emptyWeek('2026-06-28') });
 
-    await addRecipeToDay('2026-07-05', 'roast');
+    await addRecipeToDay('2026-07-05', recipe('roast'));
 
     const saved = fs.saveMealPlanWeek.mock.calls.at(-1)![0]!;
     expect(saved.days['2026-07-05']).toMatchObject({ recipeIds: ['roast'], attendees: [] });
@@ -632,7 +699,7 @@ describe('mealPlanService — kitchen weeks', () => {
     subscribeKitchenWeeks();
     emitWeekFor(THIS_WEEK, weekWithNote(THIS_WEEK, 'roast', '2026-06-08T10:00:00.000Z'));
 
-    await addRecipeToDay('2026-06-11', 'pie');
+    await addRecipeToDay('2026-06-11', recipe('pie'));
 
     expect(fs.loadMealPlanWeek).not.toHaveBeenCalled();
     const saved = fs.saveMealPlanWeek.mock.calls.at(-1)![0]!;

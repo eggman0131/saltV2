@@ -21,6 +21,10 @@ export {
   WEEKDAY_INDEX,
 } from './queries/weekdays.js';
 
+// Meals (issue #752) — the plan's answer to "when is dinner tonight?", which is
+// what a meal's cook plan defaults its serve time to.
+export { latestHomeTimeFor } from './queries/latestHomeTimeFor.js';
+
 export { emptyDay, emptyWeek, emptyTemplate } from './commands/emptyDay.js';
 export { instantiateWeek } from './commands/instantiateWeek.js';
 export {

@@ -1,10 +1,11 @@
 <script lang="ts">
   import { Button, DetailPage, Icon, Spinner } from '@salt/ui-components';
-  import { push } from 'svelte-spa-router';
+  import { push, router } from 'svelte-spa-router';
   import { goBack } from '../../lib/nav.js';
   import { sessions, isLoadingSessions, claimRecipe } from '../../lib/chatService.js';
   import { addToast } from '../../lib/toastStore.js';
-  import { recipes } from '../../lib/recipeService.js';
+  import { recipes, attachComponentToMeal } from '../../lib/recipeService.js';
+  import { readMealParam } from '../../lib/mealReturn.js';
   import { authorRecipeFromChat } from '../../lib/chatRecipeAuthor.js';
   import {
     proposeRecipeAmendment,
@@ -53,6 +54,35 @@
   // on a general chat, the other only on an attached one.
   let isSavingRecipe = $state(false);
 
+  // The meal this conversation was started FROM, if any (issue #752, Phase 3).
+  // Carried in the querystring across both chat hops — /chat then /chat/{id} —
+  // and read live off the router, so a reload mid-conversation keeps it. See
+  // lib/mealReturn.ts for why it lives in the URL and nowhere else.
+  const mealReturnId = $derived(readMealParam(router.querystring));
+
+  /**
+   * If a meal sent us here, hang the new dish off it and go back to the meal.
+   * Returns true when it has taken responsibility for the navigation.
+   *
+   * The attach is idempotent and gated purely on the param — same contract as
+   * the editor's save path, so the two doors behave identically. A meal that has
+   * been deleted meanwhile must not cost the user the recipe they just made:
+   * say so, and land them on what was written.
+   */
+  async function returnToMeal(saved: Recipe): Promise<boolean> {
+    const mealId = mealReturnId;
+    if (mealId === null) return false;
+    const attached = await attachComponentToMeal(mealId, saved.id);
+    if (attached.kind !== 'ok') {
+      addToast('Saved — but that meal is no longer in the library.', 'destructive');
+      push(`/recipes/${saved.id}`);
+      return true;
+    }
+    addToast(`${saved.title} added to the meal.`, 'success');
+    push(`/recipes/${mealId}`);
+    return true;
+  }
+
   /** The shared leg: author, save, toast a failure. `null` means it did not land. */
   async function runSave(
     transcript: ChatSessionDoc,
@@ -92,6 +122,7 @@
     // Best-effort: the recipe is already saved and a failed claim must not read
     // as a failed save.
     await claimRecipe(session.id, saved.id);
+    if (await returnToMeal(saved)) return;
     addToast('Recipe saved!', 'success');
     push(`/recipes/${saved.id}`);
   }
@@ -110,6 +141,7 @@
     if (!session || isSavingRecipe) return;
     const saved = await runSave(session, null);
     if (!saved) return;
+    if (await returnToMeal(saved)) return;
     addToast('New recipe saved!', 'success');
     push(`/recipes/${saved.id}`);
   }

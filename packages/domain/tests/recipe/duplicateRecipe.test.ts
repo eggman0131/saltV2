@@ -54,6 +54,7 @@ function fullRecipe(overrides: Partial<Recipe> = {}): Recipe {
     source: { type: 'book', book: { title: 'River Cafe', author: 'Gray', page: 112 } },
     notes: 'Rest before slicing.',
     producesCanonId: 'canon-lasagne',
+    componentRecipeIds: ['comp-chicken', 'comp-potatoes'],
     image: { url: 'https://example.test/recipe-images/original-id.webp', source: 'ai' },
     imageBrief: 'A deep dish of lasagne, late afternoon light.',
     imageHint: 'more browning',
@@ -151,6 +152,26 @@ describe('duplicateRecipe', () => {
       const link = copy.ingredients[0]!.items[0]!.firstUsedInStepId;
       expect(link).toBe('step-1');
       expect(copy.steps.map((s) => s.id)).toContain(link);
+    });
+
+    it('carries the components — a copy of a Sunday roast is still a Sunday roast', () => {
+      // Issue #752. The opposite of `producesCanonId` above, and deliberately so:
+      // two copies of a roast pointing at the same gravy is simply true, whereas
+      // two recipes both claiming to produce Chicken Stock is a contradiction.
+      const source = fullRecipe();
+      expect(duplicateRecipe(source, 'new-id', NOW).componentRecipeIds).toEqual([
+        'comp-chicken',
+        'comp-potatoes',
+      ]);
+    });
+
+    it('value-clones the components rather than aliasing the original array', () => {
+      // The component RECIPES are separate documents and are not duplicated — the
+      // copy points at the same dishes — but the array of ids must be its own, so
+      // editing the copy's running order cannot reach into the original.
+      const source = fullRecipe();
+      const copy = duplicateRecipe(source, 'new-id', NOW);
+      expect(copy.componentRecipeIds).not.toBe(source.componentRecipeIds);
     });
 
     it('keeps existing canon resolutions, so the copy costs no re-canonicalisation', () => {

@@ -11,22 +11,29 @@
     DetailPage,
     Icon,
     Markdown,
+    SortableList,
     Switch,
     TextArea,
     TextField,
     type ComboboxItemType,
   } from '@salt/ui-components';
-  import { push } from 'svelte-spa-router';
+  import { push, router } from 'svelte-spa-router';
   import { goBack } from '../../lib/nav.js';
+  import { readMealParam } from '../../lib/mealReturn.js';
   import { trackUsageEvent } from '@salt/observability';
   import {
+    appendCacheBuster,
     emptyRecipe,
     emptyIngredientGroup,
     newIngredient,
     newStep,
+    canBeComponentOf,
     clearIngredientMatch,
     hasLiveCanonMatch,
+    insertComponentByCookTime,
     isCookable,
+    resolveComponents,
+    takesComponents,
     takesIngredients,
     type Recipe,
     type RecipeKind,
@@ -37,6 +44,7 @@
   } from '@salt/domain';
   import {
     recipes,
+    attachComponentToMeal,
     persistRecipe,
     parseIngredients,
     matchIngredient,
@@ -56,6 +64,11 @@
   let { params }: Props = $props();
 
   const editingId = $derived(params?.id ?? null);
+
+  // The meal this editor was opened FROM, if any (issue #752, Phase 3). Carried
+  // in the querystring — `?meal=<id>` — and read live off the router, so a reload
+  // mid-edit keeps it. See lib/mealReturn.ts for why it lives nowhere else.
+  const mealReturnId = $derived(readMealParam(router.querystring));
 
   // The kind arrives as a raw URL segment, so it is user input: validate it and
   // fall back rather than persisting whatever was typed. /recipes/new/pudding
@@ -115,6 +128,10 @@
   const draftKind = $derived(kindOf(draft));
   const showIngredients = $derived(takesIngredients(draftKind));
   const showCooking = $derived(isCookable(draftKind));
+  // Whether other dishes can be hung off this one (issue #752). A capability, so
+  // it asks the domain: a recipe or a cocktail can be built from components, an
+  // outing and a placeholder cannot.
+  const showComponents = $derived(takesComponents(draftKind));
 
   // Hydrate the draft from the store in edit mode. Depends on `$recipes` so a
   // cold deep-link (store not yet hydrated) populates once the subscription
@@ -150,6 +167,9 @@
       ingredients: r.ingredients.map((g) => ({ ...g, items: g.items.map((i) => ({ ...i })) })),
       steps: r.steps.map((s) => ({ ...s, timer: s.timer ? { ...s.timer } : null })),
       metadata: { ...r.metadata, tags: [...r.metadata.tags] },
+      // Value-cloned like `metadata.tags`: the draft's component order is edited
+      // here and must never reach into the store's copy of the recipe.
+      componentRecipeIds: [...r.componentRecipeIds],
     };
   }
 
@@ -235,6 +255,71 @@
   }
   function clearProduces(): void {
     draft = { ...draft, producesCanonId: null };
+  }
+
+  // ─── Components: the dishes this dinner is made of (issue #752) ──────────────
+  // A meal is an ordinary recipe that points at other recipes, so all of this
+  // mutates the DRAFT and nothing else — it is saved by the page's existing save
+  // path, with the page's existing dirty tracking, and there is no second write.
+  //
+  // Candidates: anything that is not this recipe (`canBeComponentOf` — a dish
+  // inside itself is the one meaningless relationship), not already attached, and
+  // COOKABLE. A component is a dish you make, which is exactly `recipe` and
+  // `cocktail`; an outing is eaten and a placeholder is a photograph, so neither
+  // has anything to contribute to a dinner.
+  const componentPickerItems: ComboboxItemType[] = $derived(
+    $recipes
+      .filter(
+        (r) =>
+          canBeComponentOf(draft.id, r.id) &&
+          !draft.componentRecipeIds.includes(r.id) &&
+          isCookable(kindOf(r)),
+      )
+      .map((r) => ({ value: r.id, label: r.title })),
+  );
+
+  function componentFilter(input: string, item: ComboboxItemType): boolean {
+    return item.label.toLowerCase().includes(input.trim().toLowerCase());
+  }
+
+  // Remount key: bumped after each attach so the Combobox input clears — it only
+  // syncs its label from `value` at mount, exactly as the produces picker above
+  // and the planner's recipe picker both handle it.
+  let componentPickerKey = $state(0);
+
+  // The attached dishes, resolved for display. An id whose recipe was deleted
+  // elsewhere resolves to nothing and is skipped, so the row never breaks; one
+  // level only, so a component's own components are neither shown nor read.
+  const componentRecipes = $derived(resolveComponents(draft, $recipes));
+
+  function addComponent(id: string): void {
+    if (!id) return;
+    // Position is domain policy — longest-cooking-first, with the self-reference
+    // and already-attached guards folded in — so the page never computes an index.
+    draft = {
+      ...draft,
+      componentRecipeIds: insertComponentByCookTime(
+        draft.id,
+        draft.componentRecipeIds,
+        id,
+        $recipes,
+      ),
+    };
+    componentPickerKey += 1;
+  }
+
+  function removeComponent(id: string): void {
+    draft = {
+      ...draft,
+      componentRecipeIds: draft.componentRecipeIds.filter((c) => c !== id),
+    };
+  }
+
+  // The drag order IS the stored order — the cook's own running order, which no
+  // later attach re-sorts. `SortableList` hands back the new id order directly,
+  // and it is taken verbatim.
+  function reorderComponents(orderedIds: string[]): void {
+    draft = { ...draft, componentRecipeIds: orderedIds };
   }
 
   // ─── Ingredient-group helpers ─────────────────────────────────────────────────
@@ -449,19 +534,49 @@
     saving = true;
     const toSave: Recipe = pruneDraft(draft);
     const result = await persistRecipe(toSave);
-    saving = false;
     if (result.kind !== 'ok') {
+      saving = false;
       addToast('Failed to save recipe.', 'destructive');
       return;
     }
     // Creation is a route-level fact (/recipes/new[/:kind] has no id) —
-    // persistRecipe is a blind upsert and cannot tell create from edit.
+    // persistRecipe is a blind upsert and cannot tell create from edit. Meals
+    // deliberately do NOT change this: "created by hand" still means the manual
+    // route, whoever sent the user down it.
     if (editingId === null)
       trackUsageEvent('recipe.created', {
         recipe_id: toSave.id,
         recipe_kind: draftKind,
         recipe_method: 'manual',
       });
+
+    // Came here from a meal? Then finishing this dish means hanging it off that
+    // meal and going back to it (issue #752, Phase 3).
+    //
+    // Gated on the PARAM, never on `editingId === null`. Two of the four create
+    // paths — URL import and photo import — persist server-side first and arrive
+    // at `/recipes/{id}/edit?meal=…`, an EDIT route, so a first-save gate would
+    // silently skip half the feature. Presence of the param IS the intent, and
+    // `attachComponentToMeal` is idempotent, so re-saving the same editor
+    // attaches once and costs nothing.
+    const mealId = mealReturnId;
+    if (mealId !== null) {
+      const attached = await attachComponentToMeal(mealId, toSave.id);
+      saving = false;
+      if (attached.kind !== 'ok') {
+        // The meal was deleted while the user was away writing the dish. The
+        // dish itself is saved — that must not be lost to a failed attach — so
+        // say what happened and land them on what they just wrote.
+        addToast('Saved — but that meal is no longer in the library.', 'destructive');
+        push(`/recipes/${toSave.id}`);
+        return;
+      }
+      addToast(`${toSave.title} added to the meal.`, 'success');
+      push(`/recipes/${mealId}`);
+      return;
+    }
+
+    saving = false;
     const copy = KIND_COPY[draftKind];
     addToast(editingId === null ? copy.createdToast : copy.savedToast, 'success');
     push(`/recipes/${toSave.id}`);
@@ -512,6 +627,112 @@
         data-testid="recipe-description-input"
       />
     </section>
+
+    <!-- Made from (issue #752). Above Ingredients, mirroring the view page: what a
+         Sunday roast is built from is the headline fact about it, and the
+         ingredients below are the roast's own. Attaching a dish here is what turns
+         an ordinary recipe into a meal — there is no "new meal" and no kind to
+         pick, which is why this section is the whole of the feature's way in. -->
+    {#if showComponents}
+      <section class="flex flex-col gap-3" data-testid="recipe-components-editor">
+        <div class="flex flex-col gap-1">
+          <p class="text-sm font-medium">Made from</p>
+          <p class="text-xs text-muted-foreground">
+            Build a dinner out of dishes you already have — a roast is chicken, potatoes and gravy.
+            They arrive longest-cooking first; drag to set your own running order. Each dish keeps
+            its own ingredients and method.
+          </p>
+        </div>
+
+        {#if componentRecipes.length > 0}
+          <SortableList
+            items={componentRecipes}
+            getId={(r) => r.id}
+            onReorder={reorderComponents}
+            class="divide-y divide-border rounded border"
+          >
+            {#snippet row(component)}
+              <div
+                class="flex items-center gap-3 px-3 py-2"
+                data-testid="recipe-component-row"
+                data-recipe-id={component.id}
+              >
+                <span
+                  class="cursor-grab text-muted-foreground"
+                  data-testid={`recipe-component-drag-handle-${component.id}`}
+                >
+                  <Icon name="GripVertical" size={16} />
+                </span>
+                <span
+                  class="h-10 w-10 shrink-0 overflow-hidden rounded bg-muted text-muted-foreground/60"
+                >
+                  {#if component.image?.url}
+                    <img
+                      src={appendCacheBuster(
+                        component.image.url,
+                        component.imageRequestedAt ?? component.updatedAt,
+                      )}
+                      alt=""
+                      loading="lazy"
+                      class="h-full w-full object-cover"
+                    />
+                  {:else}
+                    <span class="flex h-full w-full items-center justify-center">
+                      <!-- The kind's own placeholder icon, as on the view page. -->
+                      <Icon name={KIND_COPY[kindOf(component)].thumbIcon} size={16} />
+                    </span>
+                  {/if}
+                </span>
+                <span class="flex min-w-0 flex-1 flex-col">
+                  <span class="truncate text-sm font-medium">{component.title}</span>
+                  {#if component.metadata.cookTimeMinutes !== null}
+                    <span class="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                      <Icon name="Clock" size={12} />
+                      {component.metadata.cookTimeMinutes} min
+                    </span>
+                  {/if}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onclick={() => removeComponent(component.id)}
+                  aria-label={`Remove ${component.title}`}
+                  data-testid={`recipe-component-remove-${component.id}`}
+                >
+                  <Icon name="X" size={16} />
+                </Button>
+              </div>
+            {/snippet}
+          </SortableList>
+        {/if}
+
+        {#key componentPickerKey}
+          <Combobox
+            items={componentPickerItems}
+            value=""
+            filterFn={componentFilter}
+            restrict
+            placeholder="Add a dish…"
+            onValueChange={addComponent}
+          >
+            <ComboboxField>
+              <ComboboxInput data-testid="recipe-component-picker" />
+              <ComboboxTrigger />
+            </ComboboxField>
+            <ComboboxContent>
+              {#snippet children({ filteredItems })}
+                {#each filteredItems as item, i (item.value)}
+                  <ComboboxItem {item} index={i} />
+                {/each}
+                {#if filteredItems.length === 0}
+                  <ComboboxEmpty>Nothing found</ComboboxEmpty>
+                {/if}
+              {/snippet}
+            </ComboboxContent>
+          </Combobox>
+        {/key}
+      </section>
+    {/if}
 
     <!-- Ingredient groups. Absent entirely for a kind that takes no ingredients
          (a takeaway has none to list) — an empty section you can add rows to

@@ -10,8 +10,9 @@
     DialogDescription,
     DialogFooter,
   } from '@salt/ui-components';
-  import { push } from 'svelte-spa-router';
+  import { push, router } from 'svelte-spa-router';
   import { auth } from '../../lib/auth.svelte.js';
+  import { readMealParam, withMealParam } from '../../lib/mealReturn.js';
   import {
     sessions,
     isLoadingSessions,
@@ -21,6 +22,12 @@
   import { addToast } from '../../lib/toastStore.js';
 
   const sorted = $derived([...$sessions].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
+
+  // This list is a WAYPOINT when a meal sent you here to invent a dish (issue
+  // #752, Phase 3): "Chat with AI" lands on /chat, and the session it makes is
+  // the second hop. The meal rides the URL through both, so a reload on either
+  // one still knows where it is going back to.
+  const mealReturnId = $derived(readMealParam(router.querystring));
 
   let creating = $state(false);
 
@@ -34,7 +41,7 @@
       addToast('Failed to create chat.', 'destructive');
       return;
     }
-    push(`/chat/${result.value.id}`);
+    push(withMealParam(`/chat/${result.value.id}`, mealReturnId));
   }
 
   let deleteId = $state<string | null>(null);

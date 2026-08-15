@@ -29,6 +29,7 @@ export function emptyRecipe(id: string, now: string, kind: RecipeKind = 'recipe'
     source: null,
     notes: null,
     producesCanonId: null,
+    componentRecipeIds: [],
     image: null,
     createdAt: now,
     updatedAt: '',
@@ -45,6 +46,15 @@ export function emptyRecipe(id: string, now: string, kind: RecipeKind = 'recipe'
 // copying it), `description`, the whole ingredient tree, the steps, `metadata`,
 // `source`, `notes`, and `needs_approval` — that flag means "AI-authored, not yet
 // read by a human", and copying something is not reading it.
+//
+// `componentRecipeIds` carries too (issue #752), value-cloned like
+// `metadata.tags`: a copy of a Sunday roast is still a Sunday roast, so it is
+// still built from roast chicken, roast potatoes and onion gravy. The components
+// themselves are separate documents and are NOT duplicated — the copy points at
+// the same three dishes, which is the whole reason a meal stores ids rather than
+// dishes. It is not the `producesCanonId` case: two copies of a roast pointing at
+// the same gravy is simply true, whereas two recipes claiming to produce the same
+// grocery item is a contradiction.
 //
 // Ingredient / group / step ids are deliberately NOT re-minted. They are
 // document-local, and `Ingredient.firstUsedInStepId` points at a step id inside
@@ -106,6 +116,7 @@ export function duplicateRecipe(source: Recipe, newId: string, now: string): Rec
     // explicit `undefined` on the document.
     ...(source.needs_approval === undefined ? {} : { needs_approval: source.needs_approval }),
     producesCanonId: null,
+    componentRecipeIds: [...source.componentRecipeIds],
     image: null,
     createdAt: now,
     // Blank until `persistRecipe` stamps it on save, exactly as `emptyRecipe` leaves it.

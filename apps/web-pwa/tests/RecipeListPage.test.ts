@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
-import { render, screen, cleanup, within, waitFor } from '@testing-library/svelte';
+import { render, screen, cleanup, fireEvent, within, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import type { Recipe, RecipeKind } from '@salt/domain';
 import { setNextCrop } from './fixtures/cropStub.js';
@@ -59,7 +59,12 @@ vi.mock('@salt/ui-components', async () => {
 });
 
 import RecipeListPage from '../src/routes/recipes/RecipeListPage.svelte';
-import { importRecipeFromPhoto, stashImportedDraft } from '../src/lib/recipeService.js';
+import {
+  importRecipeFromPhoto,
+  importRecipeFromUrl,
+  stashImportedDraft,
+  takePendingImportUrl,
+} from '../src/lib/recipeService.js';
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -75,6 +80,7 @@ function makeRecipe(over: {
   imageRequestedAt?: number;
   createdAt: string;
   kind?: RecipeKind;
+  componentRecipeIds?: string[];
 }): Recipe {
   return {
     id: over.id,
@@ -107,6 +113,10 @@ function makeRecipe(over: {
     },
     source: null,
     notes: null,
+    producesCanonId: null,
+    // Empty unless a test is building a MEAL (issue #752) — the Meals section is
+    // derived from this array being non-empty, never from a kind.
+    componentRecipeIds: over.componentRecipeIds ?? [],
     image: over.image,
     ...(over.imageHidden !== undefined ? { imageHidden: over.imageHidden } : {}),
     ...(over.imageRequestedAt !== undefined ? { imageRequestedAt: over.imageRequestedAt } : {}),
@@ -380,6 +390,34 @@ const NEGRONI = makeRecipe({
   createdAt: '2026-06-03T00:00:00.000Z',
 });
 
+// Meals (issue #752). Both of these are ordinary documents of an ordinary kind —
+// what makes them meals is `componentRecipeIds`, and nothing else. The cocktail
+// one is the point of the fifth capability column: a drink built on a house syrup
+// is the same relationship a roast has with its gravy.
+const SUNDAY_ROAST = makeRecipe({
+  id: 'roast',
+  title: 'Sunday roast',
+  tags: ['sunday'],
+  totalTimeMinutes: 120,
+  servings: 4,
+  ingredientCount: 4,
+  image: null,
+  createdAt: '2026-07-01T00:00:00.000Z',
+  componentRecipeIds: ['chicken', 'potatoes', 'gravy'],
+});
+const NEGRONI_WITH_SYRUP = makeRecipe({
+  id: 'negroni-syrup',
+  kind: 'cocktail',
+  title: 'Negroni with house syrup',
+  tags: ['aperitivo'],
+  totalTimeMinutes: 5,
+  servings: 1,
+  ingredientCount: 3,
+  image: null,
+  createdAt: '2026-07-02T00:00:00.000Z',
+  componentRecipeIds: ['syrup'],
+});
+
 function queryKindChip(kind: string): HTMLElement | undefined {
   const row = screen.getByTestId('recipe-kind-filters');
   return within(row)
@@ -402,18 +440,22 @@ async function pickKind(user: ReturnType<typeof userEvent.setup>, kind: string):
 }
 
 describe('RecipeListPage — sections', () => {
-  it('shows only recipes by default, behind the two primary section chips', () => {
+  it('shows only recipes by default, behind the three primary section chips', () => {
     seed([APPLE, TAKEAWAY, PICNIC]);
     render(RecipeListPage);
 
     expect(cardTitles()).toEqual(['Apple Pie']);
     expect(kindChip('recipe')).toHaveAttribute('aria-pressed', 'true');
+    // Meals joined the primary row in #752, second after Recipes: it has no
+    // New-menu entry of its own, so the chip is the only thing that says the
+    // shelf exists.
+    expect(kindChip('meal')).toHaveAttribute('aria-pressed', 'false');
     expect(kindChip('cocktail')).toHaveAttribute('aria-pressed', 'false');
     // The other two are not gone, just folded away — the row leads with the
     // sections you browse and counts the rest, exactly as the tag row does.
     expect(queryKindChip('outing')).toBeUndefined();
     expect(queryKindChip('placeholder')).toBeUndefined();
-    expect(screen.getAllByTestId('recipe-kind-filter')).toHaveLength(2);
+    expect(screen.getAllByTestId('recipe-kind-filter')).toHaveLength(3);
     expect(normalized(screen.getByTestId('recipe-kind-show-all'))).toBe('+2 more');
   });
 
@@ -424,17 +466,18 @@ describe('RecipeListPage — sections', () => {
 
     await user.click(screen.getByTestId('recipe-kind-show-all'));
 
-    // All four sections, and only four — a chip row you STAND in, so a fifth
-    // would be a kind that shipped a section without anyone deciding to. The
-    // fourth (issue #652) was decided: you need somewhere to open Regenerate
-    // from, and that is the view page you reach from this grid.
-    expect(screen.getAllByTestId('recipe-kind-filter')).toHaveLength(4);
+    // All five sections, and only five — a chip row you STAND in, so a sixth
+    // would be a section that shipped without anyone deciding to. The fourth
+    // (issue #652) was decided: you need somewhere to open Regenerate from, and
+    // that is the view page you reach from this grid. The fifth is Meals (#752),
+    // which is a section and NOT a kind — you cannot create one.
+    expect(screen.getAllByTestId('recipe-kind-filter')).toHaveLength(5);
     expect(kindChip('outing')).toHaveAttribute('aria-pressed', 'false');
     expect(kindChip('placeholder')).toHaveAttribute('aria-pressed', 'false');
     expect(screen.queryByTestId('recipe-kind-show-all')).toBeNull();
 
     await user.click(screen.getByTestId('recipe-kind-show-less'));
-    expect(screen.getAllByTestId('recipe-kind-filter')).toHaveLength(2);
+    expect(screen.getAllByTestId('recipe-kind-filter')).toHaveLength(3);
   });
 
   it('pins the section you are standing in when the row folds back up', async () => {
@@ -630,6 +673,80 @@ describe('RecipeListPage — sections', () => {
 
     expect(push).toHaveBeenCalledWith('/recipes/new/cocktail');
   });
+
+  // ─── Meals (issue #752) ────────────────────────────────────────────────────
+  // A section that is NOT a kind. A Sunday roast is an ordinary recipe document
+  // that has gained `componentRecipeIds`; "is this a meal?" is derived from that
+  // array being non-empty, so nothing is stored, nothing is created, and one
+  // entry stands on exactly one shelf.
+
+  it('puts a recipe with components under Meals and takes it out of Recipes', async () => {
+    const user = userEvent.setup();
+    seed([APPLE, SUNDAY_ROAST]);
+    render(RecipeListPage);
+
+    // The single membership rule: the roast is gone from the section its KIND
+    // would put it in, and it is the only thing under Meals.
+    expect(cardTitles()).toEqual(['Apple Pie']);
+
+    await pickKind(user, 'meal');
+
+    expect(cardTitles()).toEqual(['Sunday roast']);
+    expect(kindChip('meal')).toHaveAttribute('aria-pressed', 'true');
+    expect(normalized(screen.getByTestId('recipe-result-count'))).toContain('1 meal');
+  });
+
+  it('collects meals of any kind — a cocktail with components is a meal too', async () => {
+    const user = userEvent.setup();
+    seed([APPLE, SUNDAY_ROAST, NEGRONI_WITH_SYRUP]);
+    render(RecipeListPage);
+
+    await pickKind(user, 'meal');
+    expect(cardTitles()).toEqual(['Negroni with house syrup', 'Sunday roast']);
+
+    // ...and it has left Cocktails, exactly as the roast left Recipes.
+    await user.click(kindChip('cocktail'));
+    expect(screen.queryByTestId('recipe-list')).toBeNull();
+  });
+
+  it('keeps the ingredient count on a meal card — a meal has its OWN ingredients', async () => {
+    const user = userEvent.setup();
+    seed([APPLE, SUNDAY_ROAST]);
+    render(RecipeListPage);
+
+    await pickKind(user, 'meal');
+
+    // Nothing is aggregated from the components: the 4 here is the roast's own
+    // ingredient list, and the count means what it means on every other card.
+    expect(screen.getByTestId('recipe-list-item').textContent).toContain('4');
+  });
+
+  it('offers an empty Meals section rather than hiding it', async () => {
+    const user = userEvent.setup();
+    seed([APPLE, BANANA]);
+    render(RecipeListPage);
+
+    await pickKind(user, 'meal');
+
+    expect(screen.queryByTestId('recipe-list')).toBeNull();
+    expect(normalized(screen.getByTestId('recipe-kind-empty'))).toContain('No meals yet');
+    expect(normalized(screen.getByTestId('recipe-result-count'))).toContain('0 meals');
+  });
+
+  it('offers no way to create a meal — a recipe BECOMES one', async () => {
+    const user = userEvent.setup();
+    seed([APPLE]);
+    render(RecipeListPage);
+
+    await user.click(screen.getByTestId('recipe-new-btn'));
+
+    // The New menu is still derived from the creatable KINDS, which Meals is not.
+    // An empty meal would just be a recipe under another name.
+    expect(screen.queryByTestId('recipe-new-meal')).toBeNull();
+    expect(screen.getByTestId('recipe-new-outing')).toBeInTheDocument();
+    expect(screen.getByTestId('recipe-new-cocktail')).toBeInTheDocument();
+    expect(screen.getByTestId('recipe-new-placeholder')).toBeInTheDocument();
+  });
 });
 
 // ─── Import from photo (issue #649) ───────────────────────────────────────────
@@ -690,5 +807,103 @@ describe('RecipeListPage — import from photo', () => {
     // (issue #616), so this opens THAT recipe's editor — never /recipes/new.
     await waitFor(() => expect(stashImportedDraft).toHaveBeenCalledWith(draft));
     expect(push).toHaveBeenCalledWith('/recipes/imported-9/edit');
+  });
+});
+
+// ─── Import from URL (issue #616; extracted to its own dialog in #752) ────────
+// The form used to be inline here, twice — once in the empty state and once
+// above the grid. It now lives in RecipeImportUrlDialog, which the meal page
+// mounts too; this page still owns the ways IN and the landing, exactly as it
+// does for photo import. The testids are unchanged on purpose: what moved is
+// where the markup lives, not what any of it is called.
+
+describe('RecipeListPage — import from URL', () => {
+  beforeEach(() => {
+    vi.mocked(takePendingImportUrl).mockReturnValue(null);
+  });
+
+  it('opens the import dialog from the New menu', async () => {
+    const user = userEvent.setup();
+    seed([APPLE]);
+    render(RecipeListPage);
+
+    expect(screen.queryByTestId('recipe-import-url-area')).toBeNull();
+
+    await user.click(screen.getByTestId('recipe-new-btn'));
+    await user.click(screen.getByTestId('recipe-new-import'));
+
+    expect(await screen.findByTestId('recipe-import-url-area')).toBeInTheDocument();
+    expect(screen.getByTestId('recipe-import-url-input')).toBeInTheDocument();
+    expect(screen.getByTestId('recipe-import-url-btn')).toBeInTheDocument();
+  });
+
+  it('opens the same dialog from the empty state', async () => {
+    const user = userEvent.setup();
+    seed([]);
+    render(RecipeListPage);
+
+    await user.click(screen.getByTestId('recipe-import-url-toggle-empty'));
+
+    // One dialog, one piece of state — the two entry points can no longer drift.
+    expect(await screen.findByTestId('recipe-import-url-area')).toBeInTheDocument();
+  });
+
+  it('stashes the draft and opens the saved recipe’s editor on success', async () => {
+    const user = userEvent.setup();
+    const { push } = await import('svelte-spa-router');
+    const draft = { ...APPLE, id: 'imported-7' };
+    vi.mocked(importRecipeFromUrl).mockResolvedValue({ kind: 'ok', value: draft });
+    seed([APPLE]);
+    render(RecipeListPage);
+
+    await user.click(screen.getByTestId('recipe-new-btn'));
+    await user.click(screen.getByTestId('recipe-new-import'));
+    // `fireEvent` for the typing: bits-ui focus traps inside a Dialog eat
+    // `userEvent` keystrokes in these suites.
+    await fireEvent.input(await screen.findByTestId('recipe-import-url-input'), {
+      target: { value: 'https://example.com/pie' },
+    });
+    await user.click(screen.getByTestId('recipe-import-url-btn'));
+
+    expect(importRecipeFromUrl).toHaveBeenCalledWith('https://example.com/pie');
+    await waitFor(() => expect(stashImportedDraft).toHaveBeenCalledWith(draft));
+    // No meal in play here, so the landing is the plain editor.
+    expect(push).toHaveBeenCalledWith('/recipes/imported-7/edit');
+  });
+
+  it('offers the way back in — not a toast — when the session has died', async () => {
+    const user = userEvent.setup();
+    vi.mocked(importRecipeFromUrl).mockResolvedValue({
+      kind: 'err',
+      error: { kind: 'AuthError', reason: 'unauthenticated' },
+    });
+    seed([APPLE]);
+    render(RecipeListPage);
+
+    await user.click(screen.getByTestId('recipe-new-btn'));
+    await user.click(screen.getByTestId('recipe-new-import'));
+    await fireEvent.input(await screen.findByTestId('recipe-import-url-input'), {
+      target: { value: 'https://example.com/pie' },
+    });
+    await user.click(screen.getByTestId('recipe-import-url-btn'));
+
+    // Issue #740's recovery survived the extraction intact: the message and the
+    // route out are in the sheet, where they can be acted on.
+    expect(await screen.findByTestId('recipe-import-signed-out')).toBeInTheDocument();
+    expect(screen.getByTestId('recipe-import-sign-in-btn')).toBeInTheDocument();
+  });
+
+  it('reopens pre-filled with a URL rescued from a signed-out import', async () => {
+    // The other half of #740, and the one the extraction could most easily have
+    // dropped: the stash is drained by THIS page at init and handed to the dialog
+    // as its initial value, so signing back in costs the user nothing. It is also
+    // where the share target lands (shareTarget.ts).
+    vi.mocked(takePendingImportUrl).mockReturnValue('https://example.com/rescued');
+    seed([APPLE]);
+    render(RecipeListPage);
+
+    expect(await screen.findByTestId('recipe-import-url-input')).toHaveValue(
+      'https://example.com/rescued',
+    );
   });
 });

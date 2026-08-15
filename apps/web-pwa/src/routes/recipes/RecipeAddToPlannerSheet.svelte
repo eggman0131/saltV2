@@ -101,7 +101,7 @@
 
   async function handleConfirm(): Promise<void> {
     busy = true;
-    const result = await addRecipeToDay(selected, recipe.id);
+    const result = await addRecipeToDay(selected, recipe);
     busy = false;
     if (result.kind !== 'ok') {
       addToast('Failed to add to the planner.', 'destructive');

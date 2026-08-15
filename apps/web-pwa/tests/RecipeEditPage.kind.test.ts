@@ -36,7 +36,12 @@ const { mockRecipes, mockCanonItems } = vi.hoisted(() => {
   };
 });
 
-vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
+vi.mock('svelte-spa-router', () => ({
+  push: vi.fn(),
+  // The editor reads '?meal=' off the live router (issue #752, Phase 3); nothing
+  // sent us here from a meal, so the querystring is empty.
+  router: { querystring: undefined },
+}));
 vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
 vi.mock('../src/lib/recipeService.js', () => ({
   recipes: mockRecipes,
@@ -70,6 +75,7 @@ function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
     },
     source: null,
     notes: null,
+    componentRecipeIds: [],
     image: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',

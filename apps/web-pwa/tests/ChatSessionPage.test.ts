@@ -6,7 +6,7 @@ import type { Recipe } from '@salt/domain';
 // Back goes where you came from, and "Save as recipe" leaves the conversation
 // attached to the dish it produced (issue #696).
 
-const { mockSessions, mockIsLoading, mockRecipes } = vi.hoisted(() => {
+const { mockSessions, mockIsLoading, mockRecipes, mockRouter } = vi.hoisted(() => {
   function makeStore<T>(initial: T) {
     let value = initial;
     const subs = new Set<(v: T) => void>();
@@ -28,10 +28,14 @@ const { mockSessions, mockIsLoading, mockRecipes } = vi.hoisted(() => {
     mockSessions: makeStore<readonly ChatSessionDoc[]>([]),
     mockIsLoading: makeStore<boolean>(false),
     mockRecipes: makeStore<readonly Recipe[]>([]),
+    // Stands in for the address bar. Setting it is how this suite says "a meal
+    // sent you here" (issue #752, Phase 3) — there is nowhere else the id could
+    // come from, which is the whole point of the phase.
+    mockRouter: { querystring: undefined as string | undefined },
   };
 });
 
-vi.mock('svelte-spa-router', () => ({ push: vi.fn(), pop: vi.fn() }));
+vi.mock('svelte-spa-router', () => ({ push: vi.fn(), pop: vi.fn(), router: mockRouter }));
 vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
 vi.mock('@salt/observability', () => ({ trackUsageEvent: vi.fn() }));
 vi.mock('@salt/firebase-sync', () => ({
@@ -46,11 +50,13 @@ vi.mock('../src/lib/chatService.js', () => ({
 vi.mock('../src/lib/recipeService.js', () => ({
   recipes: mockRecipes,
   authorRecipeTraced: vi.fn(),
+  attachComponentToMeal: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
 }));
 
 import ChatSessionPage from '../src/routes/chat/ChatSessionPage.svelte';
 import { claimRecipe } from '../src/lib/chatService.js';
-import { authorRecipeTraced } from '../src/lib/recipeService.js';
+import { attachComponentToMeal, authorRecipeTraced } from '../src/lib/recipeService.js';
+import { addToast } from '../src/lib/toastStore.js';
 import { push } from 'svelte-spa-router';
 
 function makeSession(overrides: Partial<ChatSessionDoc> = {}): ChatSessionDoc {
@@ -81,6 +87,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockIsLoading._set(false);
   mockRecipes._set([]);
+  mockRouter.querystring = undefined;
+  vi.mocked(attachComponentToMeal).mockResolvedValue({ kind: 'ok', value: undefined });
   // No in-app history behind the current entry, so `goBack` takes its fallback
   // route (what these tests assert). See src/lib/nav.ts.
   window.history.replaceState(null, '', '#/');
@@ -261,5 +269,76 @@ describe('ChatSessionPage — a variation chat', () => {
     expect(input.recipeId).toBeUndefined();
     // The conversation ends up on the NEW dish, not the one it started from.
     await waitFor(() => expect(claimRecipe).toHaveBeenCalledWith('session-1', 'recipe-new'));
+  });
+});
+
+// ─── A dish invented for a meal (issue #752, Phase 3) ────────────────────────
+// The chat path into a meal is TWO hops — /chat, then /chat/{id} — so the meal's
+// id has to survive a navigation. It rides the querystring, which is why a reload
+// on either hop keeps it, and why nothing here holds it in module memory.
+//
+// Both save buttons take the same door: whichever one produced the dish, if a
+// meal sent us here the dish is hung off it and the meal is where we land.
+
+describe('ChatSessionPage — saving a dish back onto a meal', () => {
+  const SAVED = {
+    kind: 'ok',
+    value: { id: 'recipe-new', kind: 'recipe', title: 'Onion gravy', metadata: { tags: [] } },
+  } as Awaited<ReturnType<typeof authorRecipeTraced>>;
+
+  it('attaches the dish to the meal and lands back on the meal', async () => {
+    mockRouter.querystring = 'meal=roast';
+    mockSessions._set([makeSession({ recipeId: null })]);
+    vi.mocked(authorRecipeTraced).mockResolvedValue(SAVED);
+    const { getByTestId } = renderPage();
+
+    await fireEvent.click(getByTestId('chat-save-recipe-btn'));
+
+    await waitFor(() => expect(attachComponentToMeal).toHaveBeenCalledWith('roast', 'recipe-new'));
+    // The claim is untouched — the conversation still belongs to the dish it
+    // produced, exactly as it does without a meal.
+    expect(claimRecipe).toHaveBeenCalledWith('session-1', 'recipe-new');
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/recipes/roast'));
+    expect(push).not.toHaveBeenCalledWith('/recipes/recipe-new');
+  });
+
+  it('does the same from "Save as new recipe" on an attached chat', async () => {
+    mockRouter.querystring = 'meal=roast';
+    mockSessions._set([makeSession({ recipeId: 'lamb' })]);
+    vi.mocked(authorRecipeTraced).mockResolvedValue(SAVED);
+    const { getByTestId } = renderPage();
+
+    await fireEvent.click(getByTestId('chat-save-new-recipe-btn'));
+
+    await waitFor(() => expect(attachComponentToMeal).toHaveBeenCalledWith('roast', 'recipe-new'));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/recipes/roast'));
+  });
+
+  it('keeps the recipe, and says so, when the meal has been deleted meanwhile', async () => {
+    mockRouter.querystring = 'meal=roast';
+    vi.mocked(attachComponentToMeal).mockResolvedValue({
+      kind: 'err',
+      error: { kind: 'NotFound', resource: 'recipe', id: 'roast' },
+    });
+    mockSessions._set([makeSession({ recipeId: null })]);
+    vi.mocked(authorRecipeTraced).mockResolvedValue(SAVED);
+    const { getByTestId } = renderPage();
+
+    await fireEvent.click(getByTestId('chat-save-recipe-btn'));
+
+    // The dish was written and must not be lost to a failed attach.
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/recipes/recipe-new'));
+    expect(addToast).toHaveBeenCalledWith(expect.stringMatching(/no longer/i), 'destructive');
+  });
+
+  it('behaves exactly as before when no meal sent us here', async () => {
+    mockSessions._set([makeSession({ recipeId: null })]);
+    vi.mocked(authorRecipeTraced).mockResolvedValue(SAVED);
+    const { getByTestId } = renderPage();
+
+    await fireEvent.click(getByTestId('chat-save-recipe-btn'));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/recipes/recipe-new'));
+    expect(attachComponentToMeal).not.toHaveBeenCalled();
   });
 });

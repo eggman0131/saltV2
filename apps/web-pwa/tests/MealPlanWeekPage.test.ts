@@ -20,6 +20,7 @@ const RECIPE: Recipe = {
   title: 'Spaghetti Bolognese',
   metadata: { servings: 2 },
   ingredients: [],
+  componentRecipeIds: [],
 } as unknown as Recipe;
 
 // The other two kinds (#637). Neither carries ingredients or steps: what the
@@ -33,6 +34,7 @@ const OUTING: Recipe = {
   kind: 'outing',
   metadata: { servings: 2 },
   ingredients: [],
+  componentRecipeIds: [],
 } as unknown as Recipe;
 
 const COCKTAIL: Recipe = {
@@ -41,6 +43,7 @@ const COCKTAIL: Recipe = {
   kind: 'cocktail',
   metadata: { servings: 1 },
   ingredients: [],
+  componentRecipeIds: [],
 } as unknown as Recipe;
 
 // ─── Hoisted reactive stubs ────────────────────────────────────────────────
@@ -102,7 +105,7 @@ const {
     mockExtensionStart: extensionStart,
     mockSetExtensionWeek: vi.fn((start: string | null) => extensionStart._set(start ?? '')),
     mockRecipes: makeStore<readonly Recipe[]>([
-      { id: 'r1', title: 'Spaghetti Bolognese' } as unknown as Recipe,
+      { id: 'r1', title: 'Spaghetti Bolognese', componentRecipeIds: [] } as unknown as Recipe,
     ]),
     mockCanonItems: makeStore<unknown[]>([]),
     mockDefaultListId: makeStore<string | null>('list-1'),
@@ -1628,6 +1631,7 @@ describe('MealPlanWeekPage — shop the week (#724, Phase 1)', () => {
     title: 'Chilli con carne',
     metadata: { servings: 4 },
     ingredients: [],
+    componentRecipeIds: [],
   } as unknown as Recipe;
 
   /** A week whose days carry the given recipe ids. */
@@ -1687,6 +1691,7 @@ describe('MealPlanWeekPage — shop the week (#724, Phase 1)', () => {
       kind: 'placeholder',
       metadata: { servings: null },
       ingredients: [],
+      componentRecipeIds: [],
     } as unknown as Recipe;
     mockRecipes._set([RECIPE, OUTING, PLACEHOLDER]);
     const start = weekAroundToday(2);
@@ -1881,6 +1886,7 @@ describe('MealPlanWeekPage — shop the week, in sequence (#724, Phase 2)', () =
     title: 'Chilli con carne',
     metadata: { servings: 4 },
     ingredients: [],
+    componentRecipeIds: [],
   } as unknown as Recipe;
 
   function planned(start: string, plan: Record<string, Day>): MealPlanWeek {

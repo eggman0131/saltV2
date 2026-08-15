@@ -3,28 +3,32 @@
     Button,
     ListPage,
     Icon,
-    TextField,
     Popover,
     PopoverContent,
     PopoverTrigger,
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
   import { trackUsageEvent } from '@salt/observability';
-  import { appendCacheBuster, takesIngredients, type Recipe, type RecipeKind } from '@salt/domain';
+  import { appendCacheBuster, type Recipe } from '@salt/domain';
   import {
     recipes,
     isLoadingRecipes,
-    importRecipeFromUrl,
-    urlImportMessage,
-    isSignedOutFailure,
     stashImportedDraft,
-    stashPendingImportUrl,
     takePendingImportUrl,
   } from '../../lib/recipeService.js';
   import { addToast } from '../../lib/toastStore.js';
-  import { auth } from '../../lib/auth.svelte.js';
-  import { KIND_COPY, KIND_SECTIONS, PRIMARY_KIND_SECTIONS, kindOf } from './recipeKind.js';
+  import {
+    KIND_COPY,
+    KIND_SECTIONS,
+    LIST_SECTIONS,
+    PRIMARY_LIST_SECTIONS,
+    SECTION_COPY,
+    sectionOf,
+    sectionTakesIngredients,
+    type ListSection,
+  } from './recipeKind.js';
   import RecipeImportPhotoDialog from './RecipeImportPhotoDialog.svelte';
+  import RecipeImportUrlDialog from './RecipeImportUrlDialog.svelte';
 
   function ingredientCount(recipe: Recipe): number {
     return recipe.ingredients.reduce((n, g) => n + g.items.length, 0);
@@ -57,22 +61,24 @@
   let sortBy = $state<SortBy>('title');
   let activeTags = $state<string[]>([]);
 
-  // ─── Section (kind) ───────────────────────────────────────────────────────────
+  // ─── Section ──────────────────────────────────────────────────────────────────
   // Which SECTION of the library you are looking at (issue #637) — deliberately
   // not a filter. It is single-select, it always has exactly one value, and it
   // is never cleared: "Clear filters" drops your search and tags but leaves you
   // exactly where you were standing. The default keeps the page as it was —
   // Recipes, and only recipes.
   //
-  // This is one of the two places allowed to compare a kind directly: which
-  // section an entry belongs to is an identity question, not a capability one.
-  let kindFilter = $state<RecipeKind>('recipe');
+  // A section is not the same thing as a kind (issue #752): Meals is a shelf for
+  // entries that have gained components, whatever kind they are. `sectionOf` owns
+  // that mapping — which shelf an entry stands on is an identity question, not a
+  // capability one, which is what makes it a sanctioned direct comparison.
+  let sectionFilter = $state<ListSection>('recipe');
 
-  const kindCopy = $derived(KIND_COPY[kindFilter]);
+  const sectionCopy = $derived(SECTION_COPY[sectionFilter]);
 
-  function selectKind(kind: RecipeKind): void {
-    if (kind === kindFilter) return;
-    kindFilter = kind;
+  function selectSection(section: ListSection): void {
+    if (section === sectionFilter) return;
+    sectionFilter = section;
     // Tags are per-section vocabulary: "baking" means nothing among takeaways,
     // and carrying it across would land you on an empty page you did not ask
     // for. The search box is different — a word you typed is still what you are
@@ -86,19 +92,19 @@
   let newMenuOpen = $state(false);
   let sortMenuOpen = $state(false);
   let showAllTags = $state(false);
-  let showAllKinds = $state(false);
+  let showAllSections = $state(false);
 
   // Collapsed, the row offers the primary sections only; the rest sit behind a
   // "+N more" chip in the tag row's idiom. The section you are STANDING in is
   // pinned in regardless — collapsing must never hide the chip that says where
   // you are, and single-select means there is always exactly one to pin.
-  const shownKinds = $derived.by(() => {
-    if (showAllKinds) return KIND_SECTIONS;
-    const primary = KIND_SECTIONS.filter((k) => PRIMARY_KIND_SECTIONS.includes(k));
-    return primary.includes(kindFilter) ? primary : [...primary, kindFilter];
+  const shownSections = $derived.by(() => {
+    if (showAllSections) return LIST_SECTIONS;
+    const primary = LIST_SECTIONS.filter((s) => PRIMARY_LIST_SECTIONS.includes(s));
+    return primary.includes(sectionFilter) ? primary : [...primary, sectionFilter];
   });
 
-  const hiddenKindCount = $derived(KIND_SECTIONS.length - shownKinds.length);
+  const hiddenSectionCount = $derived(LIST_SECTIONS.length - shownSections.length);
 
   const query = $derived(searchText.trim().toLowerCase());
 
@@ -116,11 +122,11 @@
   }
 
   // Section first, deliberately: `rankedTags` counts over `visible`, so putting
-  // the kind ahead of the other predicates re-facets the tag chips to the
+  // the section ahead of the other predicates re-facets the tag chips to the
   // current section for free — no second pass, no separate per-section index.
   const visible = $derived(
     $recipes
-      .filter((r) => kindOf(r) === kindFilter && matchesSearch(r) && matchesTags(r))
+      .filter((r) => sectionOf(r) === sectionFilter && matchesSearch(r) && matchesTags(r))
       .sort((a, b) => {
         switch (sortBy) {
           case 'recent':
@@ -144,8 +150,8 @@
   const hasFilters = $derived(query !== '' || activeTags.length > 0);
 
   // Ingredients are a capability, so this asks the domain rather than the kind.
-  // Every card in `visible` shares `kindFilter`, so one answer covers the grid.
-  const showIngredientCount = $derived(takesIngredients(kindFilter));
+  // Every card in `visible` shares `sectionFilter`, so one answer covers the grid.
+  const showIngredientCount = $derived(sectionTakesIngredients(sectionFilter));
 
   // Tags offered as filter chips: those present on the currently displayed
   // recipes, so the choices narrow as you filter (a faceted drill-down) rather
@@ -190,52 +196,20 @@
   }
 
   // ─── Import from URL ──────────────────────────────────────────────────────────
+  // The field, the call and the signed-out recovery all live in
+  // RecipeImportUrlDialog (issue #752, Phase 3) — this page owns only the way in
+  // and the way out, exactly as it does for photo import below.
   let showImport = $state(false);
-  let importUrl = $state('');
-  let importing = $state(false);
-
-  // Set when the import failed because the session had died (issue #740). Held in
-  // the sheet rather than shown as a toast: the recovery is an ACTION (go and
-  // sign in), and a toast that counts down and vanishes is a bad place to put the
-  // only route out. Every other failure keeps its existing toast.
-  let signedOut = $state(false);
 
   // A URL rescued from an import that died on a signed-out session — see
   // stashPendingImportUrl. Reading it here reopens the sheet with the link
-  // already in place, so signing back in costs the user nothing.
+  // already in place, so signing back in costs the user nothing. Stays on THIS
+  // page: the stash is single-use module state and the page that owns the way in
+  // is the page that drains it. Also the share-target's landing (shareTarget.ts).
   const rescuedUrl = takePendingImportUrl();
-  if (rescuedUrl !== null) {
-    importUrl = rescuedUrl;
-    showImport = true;
-  }
+  if (rescuedUrl !== null) showImport = true;
 
-  // Clear the stale client session so AuthGate falls through to the sign-in
-  // screen. The URL is stashed FIRST: sign-out remounts the tree and takes this
-  // component's state with it.
-  async function handleSignInAgain(): Promise<void> {
-    stashPendingImportUrl(importUrl);
-    await auth.signOut();
-  }
-
-  async function handleImport(): Promise<void> {
-    const url = importUrl.trim();
-    if (importing || url === '') return;
-    importing = true;
-    signedOut = false;
-    const result = await importRecipeFromUrl(url);
-    importing = false;
-    if (result.kind !== 'ok') {
-      if (isSignedOutFailure(result.error)) {
-        // No toast: the inline block below carries both the message and the way
-        // out, and the pasted URL stays in the field for the retry.
-        signedOut = true;
-        return;
-      }
-      // Friendly, specific message; the input stays open so the user can fix the
-      // URL and retry, or fall back to manual/chat.
-      addToast(urlImportMessage(result.error), 'destructive');
-      return;
-    }
+  function handleUrlImported(recipe: Recipe): void {
     // The callable already persisted the recipe (issue #616), flagged as not yet
     // reviewed — so this routes into the EXISTING recipe's editor, not
     // /recipes/new. The draft is still stashed so the editor paints immediately
@@ -243,15 +217,14 @@
     // just wrote. If navigation itself fails, surface it rather than silently
     // closing the form: the recipe exists either way, so the user isn't stranded.
     trackUsageEvent('recipe.created', {
-      recipe_id: result.value.id,
-      recipe_kind: result.value.kind,
+      recipe_id: recipe.id,
+      recipe_kind: recipe.kind,
       recipe_method: 'url',
     });
-    stashImportedDraft(result.value);
+    stashImportedDraft(recipe);
     try {
-      push(`/recipes/${result.value.id}/edit`);
+      push(`/recipes/${recipe.id}/edit`);
       showImport = false;
-      importUrl = '';
     } catch {
       addToast('Could not open the editor — please try again.', 'destructive');
     }
@@ -282,33 +255,6 @@
     }
   }
 </script>
-
-<!--
-  The signed-out recovery (issue #740). Rendered inside BOTH import areas (the
-  empty state's and the list's) so the two cannot drift; declared here at the
-  component's top level, which is what puts it in scope inside ListPage's
-  snippets. Deliberately says nothing about the recipe site — being signed out
-  is not that page's fault, and claiming it was is the whole defect.
--->
-{#snippet signedOutNotice()}
-  {#if signedOut}
-    <div
-      class="flex flex-col gap-2 rounded border border-destructive/40 bg-destructive/10 p-2 text-sm sm:flex-row sm:items-center sm:justify-between"
-      data-testid="recipe-import-signed-out"
-      role="alert"
-    >
-      <span>You've been signed out — sign in and try again.</span>
-      <Button
-        size="sm"
-        variant="outline"
-        onclick={handleSignInAgain}
-        data-testid="recipe-import-sign-in-btn"
-      >
-        Sign in
-      </Button>
-    </div>
-  {/if}
-{/snippet}
 
 <ListPage
   title="Recipes"
@@ -413,7 +359,7 @@
         <Button
           variant="outline"
           size="sm"
-          onclick={() => (showImport = !showImport)}
+          onclick={() => (showImport = true)}
           data-testid="recipe-import-url-toggle-empty"
         >
           {#snippet leading()}<Icon name="Link" size={16} />{/snippet}
@@ -433,124 +379,54 @@
         </Button>
         <Button size="sm" onclick={() => push('/recipes/new')}>Create your first recipe</Button>
       </div>
-      {#if showImport}
-        <div
-          class="mt-2 flex w-full max-w-md flex-col gap-2 rounded border border-border bg-muted/50 p-3 text-left"
-          data-testid="recipe-import-url-area"
-        >
-          <div class="flex items-end gap-2">
-            <TextField
-              label="Recipe URL"
-              placeholder="https://example.com/recipe"
-              value={importUrl}
-              onValueChange={(v) => (importUrl = v)}
-              class="flex-1"
-              data-testid="recipe-import-url-input"
-            />
-            <Button
-              size="sm"
-              onclick={handleImport}
-              loading={importing}
-              disabled={importUrl.trim() === '' || importing}
-              data-testid="recipe-import-url-btn"
-            >
-              Import
-            </Button>
-          </div>
-          {@render signedOutNotice()}
-        </div>
-      {/if}
     </div>
   {/snippet}
 
   {#snippet children()}
-    {#if showImport}
-      <div
-        class="mb-3 flex flex-col gap-2 rounded border border-border bg-muted/50 p-3"
-        data-testid="recipe-import-url-area"
-      >
-        <p class="text-sm text-muted-foreground">
-          Paste a recipe link. We'll read the page and convert it to metric and British terms — then
-          drop you into the editor to review and save.
-        </p>
-        <div class="flex items-end gap-2">
-          <TextField
-            label="Recipe URL"
-            placeholder="https://example.com/recipe"
-            value={importUrl}
-            onValueChange={(v) => (importUrl = v)}
-            class="flex-1"
-            data-testid="recipe-import-url-input"
-          />
-          <Button
-            size="sm"
-            onclick={handleImport}
-            loading={importing}
-            disabled={importUrl.trim() === '' || importing}
-            data-testid="recipe-import-url-btn"
-          >
-            Import
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onclick={() => {
-              showImport = false;
-              importUrl = '';
-              signedOut = false;
-            }}
-            disabled={importing}
-          >
-            Cancel
-          </Button>
-        </div>
-        {@render signedOutNotice()}
-      </div>
-    {/if}
-
-    <!-- Section chips (issue #637). Every section is always offered, including
-         an empty one: you have to be able to walk into "When you CBA" and SEE
-         that there is nothing there yet, otherwise the only signal that the
-         section exists is a New-menu entry. Hand-rolled in the same idiom as the
-         tag chips below (there is no chip primitive in @salt/ui-components),
-         adapted to single-select — exactly one is pressed at all times.
-         Collapsed to the primary sections by default and expanded by the same
-         "+N more" chip the tags use: still offered, just not all at once. -->
+    <!-- Section chips (issues #637, #752). Every section is always offered,
+         including an empty one: you have to be able to walk into "When you CBA"
+         and SEE that there is nothing there yet, otherwise the only signal that
+         the section exists is a New-menu entry — and Meals has no New-menu entry
+         at all, so its chip is the only thing that says the shelf is there.
+         Hand-rolled in the same idiom as the tag chips below (there is no chip
+         primitive in @salt/ui-components), adapted to single-select — exactly one
+         is pressed at all times. Collapsed to the primary sections by default and
+         expanded by the same "+N more" chip the tags use. -->
     <div
       class="mb-3 flex flex-wrap gap-1.5"
       role="group"
       aria-label="Section"
       data-testid="recipe-kind-filters"
     >
-      {#each shownKinds as kind (kind)}
-        {@const active = kind === kindFilter}
+      {#each shownSections as section (section)}
+        {@const active = section === sectionFilter}
         <button
           type="button"
           class="rounded-full border px-3 py-1 text-xs font-medium transition-colors {active
             ? 'border-primary bg-primary text-primary-foreground'
             : 'border-border bg-background text-muted-foreground hover:bg-muted'}"
           aria-pressed={active}
-          onclick={() => selectKind(kind)}
+          onclick={() => selectSection(section)}
           data-testid="recipe-kind-filter"
-          data-kind={kind}
+          data-kind={section}
         >
-          {KIND_COPY[kind].label}
+          {SECTION_COPY[section].label}
         </button>
       {/each}
-      {#if hiddenKindCount > 0}
+      {#if hiddenSectionCount > 0}
         <button
           type="button"
           class="rounded-full border border-dashed border-border px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted"
-          onclick={() => (showAllKinds = true)}
+          onclick={() => (showAllSections = true)}
           data-testid="recipe-kind-show-all"
         >
-          +{hiddenKindCount} more
+          +{hiddenSectionCount} more
         </button>
-      {:else if showAllKinds}
+      {:else if showAllSections}
         <button
           type="button"
           class="rounded-full border border-dashed border-border px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted"
-          onclick={() => (showAllKinds = false)}
+          onclick={() => (showAllSections = false)}
           data-testid="recipe-kind-show-less"
         >
           Show less
@@ -656,7 +532,7 @@
     <div class="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
       <span data-testid="recipe-result-count">
         {visible.length}
-        {visible.length === 1 ? kindCopy.one : kindCopy.many}
+        {visible.length === 1 ? sectionCopy.one : sectionCopy.many}
         {#if hasFilters}<span class="text-muted-foreground/70">· filtered</span>{/if}
       </span>
       {#if hasFilters}
@@ -677,7 +553,7 @@
         data-testid="recipe-no-matches"
       >
         <Icon name="Search" size={24} class="text-muted-foreground" />
-        <p class="text-sm text-muted-foreground">{kindCopy.noMatchText}</p>
+        <p class="text-sm text-muted-foreground">{sectionCopy.noMatchText}</p>
         <Button variant="outline" size="sm" onclick={clearFilters}>Clear filters</Button>
       </div>
     {:else if visible.length === 0}
@@ -687,8 +563,8 @@
         class="flex flex-col items-center gap-2 py-12 text-center"
         data-testid="recipe-kind-empty"
       >
-        <Icon name={kindCopy.thumbIcon} size={24} class="text-muted-foreground" />
-        <p class="text-sm text-muted-foreground">{kindCopy.emptyText}</p>
+        <Icon name={sectionCopy.thumbIcon} size={24} class="text-muted-foreground" />
+        <p class="text-sm text-muted-foreground">{sectionCopy.emptyText}</p>
       </div>
     {:else}
       <ul class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid="recipe-list">
@@ -730,7 +606,7 @@
                     class="flex h-full w-full items-center justify-center bg-gradient-to-br from-muted to-muted/40 text-muted-foreground/60"
                     data-testid="recipe-list-thumb-fallback"
                   >
-                    <Icon name={kindCopy.thumbIcon} size={32} />
+                    <Icon name={sectionCopy.thumbIcon} size={32} />
                   </div>
                 {/if}
               </div>
@@ -786,6 +662,12 @@
   {/snippet}
 </ListPage>
 
-<!-- Reachable from both the New menu and the empty state, so it is mounted
-     outside ListPage's snippets — one dialog, one piece of state. -->
+<!-- Both are reachable from the New menu and from the empty state, so they are
+     mounted outside ListPage's snippets — one dialog each, one piece of state
+     each, and no second copy of the form for the two entry points to drift. -->
+<RecipeImportUrlDialog
+  bind:open={showImport}
+  initialUrl={rescuedUrl ?? ''}
+  onImported={handleUrlImported}
+/>
 <RecipeImportPhotoDialog bind:open={showPhotoImport} onImported={handlePhotoImported} />

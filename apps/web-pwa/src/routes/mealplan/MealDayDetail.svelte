@@ -19,8 +19,10 @@
   import { push } from 'svelte-spa-router';
   import {
     appendCacheBuster,
+    expandForPlanner,
     isPlannable,
     memberInitials,
+    mergePlannerRecipeIds,
     pickPlaceholder,
     takesIngredients,
     type Day,
@@ -150,9 +152,23 @@
     // Guard on `day.note` AT ATTACH TIME: `onNoteChange` is fire-and-forget and
     // `day.note` only updates once the store re-emits, so a non-empty note is
     // never overwritten and the first attached recipe wins.
-    const title = recipes.find((r) => r.id === id)?.title;
-    if (title && !day.note.trim()) onNoteChange?.(title);
-    onRecipesChange?.([...day.recipeIds, id]);
+    //
+    // Picking a MEAL attaches the whole dinner (#752, Phase 2): the meal, then
+    // its component dishes, deduped against what the night already carries. The
+    // meal leads, which is what makes the note above read "Sunday roast" and the
+    // day's card wear the meal's photograph — both mechanics are untouched.
+    // Frozen here: editing the meal later never rewrites this night.
+    //
+    // An ordinary recipe expands to just itself, so there is no meal branch and
+    // nothing changed for a night planned one dish at a time.
+    //
+    // The picker's own options are built FROM `recipes` and it is `restrict`ed,
+    // so an id that resolves to nothing cannot come from here; bailing is simply
+    // the honest answer to a value we cannot expand.
+    const picked = recipes.find((r) => r.id === id);
+    if (!picked) return;
+    if (!day.note.trim()) onNoteChange?.(picked.title);
+    onRecipesChange?.(mergePlannerRecipeIds(day.recipeIds, expandForPlanner(picked)));
     recipePickerKey += 1;
   }
   function removeRecipe(id: string): void {

@@ -26,7 +26,9 @@
     type ImageCropperHandle,
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
+  import { trackUsageEvent } from '@salt/observability';
   import { goBack } from '../../lib/nav.js';
+  import { withMealParam } from '../../lib/mealReturn.js';
   import {
     recipes,
     isLoadingRecipes,
@@ -40,6 +42,8 @@
     startOverRecipeSceneBrief,
     setRecipeImageUpload,
   } from '../../lib/recipeService.js';
+  import RecipeImportPhotoDialog from './RecipeImportPhotoDialog.svelte';
+  import RecipeImportUrlDialog from './RecipeImportUrlDialog.svelte';
   import RecipeAddToListSheet from './RecipeAddToListSheet.svelte';
   import RecipeAddToPlannerSheet from './RecipeAddToPlannerSheet.svelte';
   import RecipeBakeBatchSheet from './RecipeBakeBatchSheet.svelte';
@@ -59,16 +63,18 @@
   import {
     appendCacheBuster,
     duplicateRecipe,
+    hasComponents,
     hasLiveCanonMatch,
     isAuthorable,
     isCookable,
     isPlannable,
+    resolveComponents,
     takesIngredients,
     type IngredientGroup,
     type Ingredient,
     type Recipe,
   } from '@salt/domain';
-  import { kindOf } from './recipeKind.js';
+  import { KIND_COPY, kindOf } from './recipeKind.js';
   import type { ChatSessionDoc } from '@salt/domain/schemas';
   import type { DomainError, ReadResult } from '@salt/shared-types';
   import {
@@ -159,6 +165,70 @@ Finish with a short note on what you changed and why, so I can read the gist her
   // `isAuthorable` gains a kind (cocktails, #765) both items appear there with
   // no edit here.
   const canAuthor = $derived(recipe !== null && isAuthorable(kindOf(recipe)));
+
+  // ─── The dishes this dinner is made of (issue #752) ─────────────────────────
+  // Display only — attaching, reordering and removing all live in the editor,
+  // because they are edits to the document and belong with every other one.
+  //
+  // Resolved against the same in-memory `recipes` store the rest of the page
+  // reads, so an id whose recipe has been deleted elsewhere simply produces one
+  // card fewer: `resolveComponents` skips what it cannot find rather than
+  // rendering a row nobody can act on. ONE LEVEL ONLY — a component's own
+  // components are not shown and are not read, which is what makes a cycle inert.
+  const components = $derived(recipe === null ? [] : resolveComponents(recipe, $recipes));
+  // The section appears for a MEAL, not for anything that could become one, and
+  // the question is asked of the document rather than of the resolved list: a meal
+  // all of whose components have been deleted still says it is a meal, and saying
+  // so with an empty list is more honest than pretending the field is not there.
+  const showComponents = $derived(recipe !== null && hasComponents(recipe));
+
+  // ─── Adding another dish to this meal (issue #752, Phase 3) ─────────────────
+  // All four ways of making a recipe, offered FROM the meal: import a link,
+  // photograph a page, chat one up, or write it out. Each carries this meal's id
+  // in the URL it navigates to (`?meal=<id>`, see lib/mealReturn.ts), and the
+  // save at the far end attaches what it produced and comes back here.
+  //
+  // Gated on `showComponents` with the card, deliberately: this surface adds
+  // ANOTHER dish to something that is already a meal. Turning an ordinary recipe
+  // into one in the first place stays in the editor's "Made from" picker, where
+  // Phase 1 put it.
+  //
+  // It lives on the VIEW page and not the editor for two reasons: leaving the
+  // editor mid-flow would silently bin an unsaved draft of the meal, and "land
+  // back on the meal" means this page — so the round trip starts and ends in the
+  // same place.
+  let componentMenuOpen = $state(false);
+  let showComponentUrlImport = $state(false);
+  let showComponentPhotoImport = $state(false);
+
+  // Both imports are already PERSISTED by their callable (issue #616), flagged
+  // unreviewed, so the hand-off is exactly the list page's: stash the draft so
+  // the editor paints without waiting for the Firestore listener, then open that
+  // recipe's editor — carrying the meal, which is the only difference.
+  function openComponentEditor(imported: Recipe, method: 'url' | 'photo'): void {
+    if (recipe === null) return;
+    trackUsageEvent('recipe.created', {
+      recipe_id: imported.id,
+      recipe_kind: imported.kind,
+      recipe_method: method,
+    });
+    stashImportedDraft(imported);
+    showComponentUrlImport = false;
+    showComponentPhotoImport = false;
+    // If navigation itself fails, surface it rather than silently closing: the
+    // recipe exists either way, so the user isn't stranded. Same as the list page.
+    try {
+      push(withMealParam(`/recipes/${imported.id}/edit`, recipe.id));
+    } catch {
+      addToast('Could not open the editor — please try again.', 'destructive');
+    }
+  }
+
+  function startComponent(path: string): void {
+    if (recipe === null) return;
+    componentMenuOpen = false;
+    push(withMealParam(path, recipe.id));
+  }
 
   // ─── Does this recipe have a guided plan? (issue #751, Phase 2) ──────────────
   // Subscribed here so the action row can offer "Cook, guided" only where there is
@@ -1043,7 +1113,8 @@ Finish with a short note on what you changed and why, so I can read the gist her
            nothing moved behind a second tap, relative order untouched.
 
              Chat · Optimise · Refresh ·     work on THIS dish, in place
-             Guided plan
+             Guided plan · Cook plan ·
+             Bake a batch · Formula
              ─────
              Make a variation · Duplicate    produce a SECOND recipe, leaving this
                                              one alone — the two honest answers to
@@ -1067,7 +1138,10 @@ Finish with a short note on what you changed and why, so I can read the gist her
            coincidence is what would quietly break. Since #812 that includes
            `hasFormula`, which is presence rather than a capability and so cannot be
            implied by either predicate: a cocktail with a 1:1:1 formula and nothing
-           else in group one is exactly the case the third clause covers. -->
+           else in group one is exactly the case the third clause covers. #752
+           adds `showComponents` on the same footing: also presence rather than a
+           capability, so it gets its own clause rather than riding on the kinds
+           that happen to be able to take components today. -->
       <Popover bind:open={overflowMenuOpen}>
         <PopoverTrigger>
           {#snippet children()}
@@ -1156,6 +1230,26 @@ Finish with a short note on what you changed and why, so I can read the gist her
               Guided plan
             </button>
           {/if}
+          {#if showComponents}
+            <!-- The cook plan (issue #752, phase 4). Beside "Guided plan" and for
+                 exactly the same reason: it is what you open BEFORE you cook, to
+                 decide when each dish goes on — the inline row is the hands-full
+                 verbs. Gated on the DOCUMENT having components, like the "Made
+                 from" card below: a dish with nothing hanging off it has no
+                 running order to schedule, and there is no meal `kind` to ask. -->
+            <button
+              type="button"
+              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+              onclick={() => {
+                overflowMenuOpen = false;
+                push(`/recipes/${recipe.id}/cook-plan`);
+              }}
+              data-testid="recipe-cook-plan-menu-item"
+            >
+              <Icon name="Clock" size={14} />
+              Cook plan
+            </button>
+          {/if}
           {#if hasFormula}
             <!-- Bread scaling (issue #812, phase 1 of epic #778). BOTH entries sit
                  in group one, immediately after "Guided plan", and both are gated on
@@ -1209,7 +1303,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
               Formula
             </button>
           {/if}
-          {#if showCooking || canAuthor || hasFormula}
+          {#if showCooking || canAuthor || hasFormula || showComponents}
             <Divider class="my-1" />
           {/if}
           {#if canAuthor}
@@ -1433,6 +1527,152 @@ Finish with a short note on what you changed and why, so I can read the gist her
              left above the chat should hold what the chef is talking about, not the
              hero photograph. -->
         <div bind:this={bodyAnchorEl} class="scroll-mt-4"></div>
+
+        <!-- Made from (issue #752). A meal's components lead, above its own
+             ingredients: what a Sunday roast IS — chicken, potatoes, gravy — is
+             the headline fact about it, and the ingredient list below belongs to
+             the roast itself, not to the three dishes. Nothing is aggregated.
+             The card is gated on the DOCUMENT having components, in the same
+             idiom as Ingredients above: when the concept applies the card is
+             there, and the inner guard covers the case where every component has
+             since been deleted. Each card is a link to that dish, one level deep;
+             a component's own components are neither shown nor read. -->
+        {#if showComponents}
+          <Card>
+            <CardHeader class="px-4 pt-4 pb-0">
+              <div class="flex items-center justify-between gap-2">
+                <CardTitle class="text-sm">Made from</CardTitle>
+                <!-- The same four ways in the recipe list's New menu offers, in
+                     the same order and the same idiom — a dish for a meal is
+                     made exactly like any other dish. Each entry only says where
+                     to start; `startComponent` is what pins the meal to the URL
+                     so the far end knows where to come back to. -->
+                <Popover bind:open={componentMenuOpen}>
+                  <PopoverTrigger>
+                    {#snippet children()}
+                      <button
+                        type="button"
+                        class="inline-flex h-8 items-center gap-1 rounded-md border border-input bg-background px-2 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+                        data-testid="meal-component-new-btn"
+                        aria-label="Add a dish to this meal"
+                      >
+                        <Icon name="Plus" size={14} />
+                        New
+                        <Icon name="ChevronDown" size={12} class="opacity-80" />
+                      </button>
+                    {/snippet}
+                  </PopoverTrigger>
+                  <PopoverContent align="end" class="min-w-48 p-1">
+                    <button
+                      type="button"
+                      class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                      onclick={() => {
+                        componentMenuOpen = false;
+                        showComponentUrlImport = true;
+                      }}
+                      data-testid="meal-component-new-import"
+                    >
+                      <Icon name="Link" size={14} />
+                      Import URL
+                    </button>
+                    <button
+                      type="button"
+                      class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                      onclick={() => {
+                        componentMenuOpen = false;
+                        showComponentPhotoImport = true;
+                      }}
+                      data-testid="meal-component-new-import-photo"
+                    >
+                      <Icon name="Camera" size={14} />
+                      Import from photo
+                    </button>
+                    <button
+                      type="button"
+                      class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                      onclick={() => startComponent('/chat')}
+                      data-testid="meal-component-new-chat"
+                    >
+                      <Icon name="Sparkles" size={14} />
+                      Chat with AI
+                    </button>
+                    <button
+                      type="button"
+                      class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                      onclick={() => startComponent('/recipes/new')}
+                      data-testid="meal-component-new-manual"
+                    >
+                      <Icon name="Pencil" size={14} />
+                      Manual
+                    </button>
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </CardHeader>
+            <CardContent class="px-4 pb-4 pt-3">
+              {#if components.length === 0}
+                <p class="text-sm text-muted-foreground">
+                  The dishes this was built from are no longer in the library.
+                </p>
+              {:else}
+                <ul class="grid grid-cols-1 gap-2 sm:grid-cols-2" data-testid="recipe-components">
+                  {#each components as component (component.id)}
+                    <li>
+                      <button
+                        type="button"
+                        class="group flex w-full items-center gap-3 overflow-hidden rounded-lg border border-border bg-card p-2 text-left transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        onclick={() => push(`/recipes/${component.id}`)}
+                        data-testid="recipe-component-card"
+                        data-recipe-id={component.id}
+                      >
+                        <span
+                          class="h-14 w-14 shrink-0 overflow-hidden rounded bg-muted text-muted-foreground/60"
+                        >
+                          {#if component.image?.url}
+                            <img
+                              src={appendCacheBuster(
+                                component.image.url,
+                                component.imageRequestedAt ?? component.updatedAt,
+                              )}
+                              alt=""
+                              loading="lazy"
+                              class="h-full w-full object-cover"
+                              data-testid="recipe-component-thumb"
+                            />
+                          {:else}
+                            <span
+                              class="flex h-full w-full items-center justify-center"
+                              data-testid="recipe-component-thumb-fallback"
+                            >
+                              <!-- The kind's own placeholder icon, not a fixed
+                                   pot: a cocktail component wears a martini glass
+                                   here exactly as it does on the list and in the
+                                   week's shop sheet. Which picture a kind wears is
+                                   COPY, which is what `KIND_COPY` is for. -->
+                              <Icon name={KIND_COPY[kindOf(component)].thumbIcon} size={20} />
+                            </span>
+                          {/if}
+                        </span>
+                        <span class="flex min-w-0 flex-1 flex-col gap-0.5">
+                          <span class="truncate text-sm font-medium">{component.title}</span>
+                          {#if component.metadata.cookTimeMinutes !== null}
+                            <span
+                              class="inline-flex items-center gap-1 text-xs text-muted-foreground"
+                              data-testid="recipe-component-cook-time"
+                            >
+                              <Icon name="Clock" size={12} />
+                              {component.metadata.cookTimeMinutes} min
+                            </span>
+                          {/if}
+                        </span>
+                      </button>
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+            </CardContent>
+          </Card>
+        {/if}
 
         <!-- Ingredients. The whole CARD goes when the concept doesn't apply
              (issue #637), not just its contents: a card headed "Ingredients"
@@ -1658,6 +1898,21 @@ Finish with a short note on what you changed and why, so I can read the gist her
 <!-- Day picker for "Add to planner" -->
 {#if recipe}
   <RecipeAddToPlannerSheet {recipe} bind:open={addToPlannerOpen} />
+{/if}
+
+<!-- The two import dialogs, for the meal's "New" menu (issue #752, Phase 3).
+     The very same components the recipe list mounts — neither navigates, so the
+     landing is ours to choose, and ours carries the meal. Mounted only on a meal,
+     alongside the menu that is their only way in here. -->
+{#if showComponents}
+  <RecipeImportUrlDialog
+    bind:open={showComponentUrlImport}
+    onImported={(imported) => openComponentEditor(imported, 'url')}
+  />
+  <RecipeImportPhotoDialog
+    bind:open={showComponentPhotoImport}
+    onImported={(imported) => openComponentEditor(imported, 'photo')}
+  />
 {/if}
 
 <!-- The scale sheet (issue #812). Mounted only where there is a formula to scale,
