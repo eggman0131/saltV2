@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Icon, ListPage } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
+  import FeatureGuard from '../../components/FeatureGuard.svelte';
   import { batches, initBatchesSync } from '../../lib/batchService.js';
   import {
     formatGrams,
@@ -39,79 +40,88 @@
   const ordered = $derived(orderBatches($batches ?? []));
 </script>
 
-<ListPage
-  title="Batches"
-  description="What's on the go, and what each one wants next."
-  isLoading={$batches === undefined}
-  isEmpty={ordered.length === 0}
-  class="p-4 sm:p-6"
-  data-testid="batch-list-page"
->
-  {#snippet empty()}
-    <div class="flex flex-col items-center gap-2 py-12 text-center" data-testid="batch-list-empty">
-      <p class="text-sm text-muted-foreground">Nothing on the go.</p>
-      <p class="max-w-sm text-sm text-muted-foreground">
-        Open a recipe you've written a formula for and tap "Bake a batch" — the run turns up here
-        with its next step and the time it lands.
-      </p>
-    </div>
-  {/snippet}
+<!-- Bread is still being built (issue #831): everyone outside the test group is
+     redirected home and sees nothing at all — no denial copy, because a message
+     would announce a feature they are not meant to know exists yet. Cosmetic only;
+     the boundary is not here (see lib/featureGate.ts). -->
+<FeatureGuard feature="bread">
+  <ListPage
+    title="Batches"
+    description="What's on the go, and what each one wants next."
+    isLoading={$batches === undefined}
+    isEmpty={ordered.length === 0}
+    class="p-4 sm:p-6"
+    data-testid="batch-list-page"
+  >
+    {#snippet empty()}
+      <div
+        class="flex flex-col items-center gap-2 py-12 text-center"
+        data-testid="batch-list-empty"
+      >
+        <p class="text-sm text-muted-foreground">Nothing on the go.</p>
+        <p class="max-w-sm text-sm text-muted-foreground">
+          Open a recipe you've written a formula for and tap "Bake a batch" — the run turns up here
+          with its next step and the time it lands.
+        </p>
+      </div>
+    {/snippet}
 
-  {#snippet children()}
-    <ul class="flex flex-col gap-2" data-testid="batch-list">
-      {#each ordered as batch (batch.id)}
-        {@const next = nextAction(batch)}
-        <li>
-          <!-- The whole card is the target. A run has exactly one thing you can do
+    {#snippet children()}
+      <ul class="flex flex-col gap-2" data-testid="batch-list">
+        {#each ordered as batch (batch.id)}
+          {@const next = nextAction(batch)}
+          <li>
+            <!-- The whole card is the target. A run has exactly one thing you can do
                with it from here — open it — so a row with a separate affordance
                would be a smaller tap area for no additional choice. -->
-          <button
-            type="button"
-            class="flex w-full flex-col gap-1 rounded border border-border bg-card px-3 py-3 text-left transition-colors hover:bg-accent"
-            class:opacity-60={next.kind !== 'stage'}
-            onclick={() => push(`/batches/${batch.id}`)}
-            data-testid="batch-card"
-            data-batch-id={batch.id}
-            data-next-at={next.kind === 'stage' ? next.stage.plannedStartAt : ''}
-          >
-            <span class="flex items-baseline justify-between gap-3">
-              <span class="min-w-0 flex-1 truncate font-medium" data-testid="batch-card-title">
-                {batch.recipeTitle}
-              </span>
-              <span class="shrink-0 text-xs text-muted-foreground" data-testid="batch-card-yield">
-                {yieldSummary(batch.totals)}
-              </span>
-            </span>
-
-            <!-- THE LINE THIS SCREEN EXISTS FOR. A run with nothing left to do says
-                 so plainly rather than borrowing the shape of one that is waiting on
-                 you: an empty "next" reads as a bug, and "all done" reads as a log. -->
-            {#if next.kind === 'stage'}
-              <span class="flex items-center gap-2 text-sm" data-testid="batch-card-next">
-                <Icon name="Hourglass" size={14} class="text-muted-foreground" />
-                <span class="min-w-0 flex-1 truncate">{next.stage.label}</span>
-                <span class="shrink-0 tabular-nums text-muted-foreground">
-                  {formatWhen(next.stage.plannedStartAt)}
+            <button
+              type="button"
+              class="flex w-full flex-col gap-1 rounded border border-border bg-card px-3 py-3 text-left transition-colors hover:bg-accent"
+              class:opacity-60={next.kind !== 'stage'}
+              onclick={() => push(`/batches/${batch.id}`)}
+              data-testid="batch-card"
+              data-batch-id={batch.id}
+              data-next-at={next.kind === 'stage' ? next.stage.plannedStartAt : ''}
+            >
+              <span class="flex items-baseline justify-between gap-3">
+                <span class="min-w-0 flex-1 truncate font-medium" data-testid="batch-card-title">
+                  {batch.recipeTitle}
+                </span>
+                <span class="shrink-0 text-xs text-muted-foreground" data-testid="batch-card-yield">
+                  {yieldSummary(batch.totals)}
                 </span>
               </span>
-            {:else if next.kind === 'done'}
-              <span class="flex items-center gap-2 text-sm" data-testid="batch-card-next">
-                <Icon name="Check" size={14} class="text-muted-foreground" />
-                <span>Every stage done.</span>
-              </span>
-            {:else}
-              <span class="flex items-center gap-2 text-sm" data-testid="batch-card-next">
-                <Icon name="CircleSlash" size={14} class="text-muted-foreground" />
-                <span>Abandoned.</span>
-              </span>
-            {/if}
 
-            <span class="text-xs text-muted-foreground">
-              {formatGrams(batch.totals.totalGrams)} in total
-            </span>
-          </button>
-        </li>
-      {/each}
-    </ul>
-  {/snippet}
-</ListPage>
+              <!-- THE LINE THIS SCREEN EXISTS FOR. A run with nothing left to do says
+                 so plainly rather than borrowing the shape of one that is waiting on
+                 you: an empty "next" reads as a bug, and "all done" reads as a log. -->
+              {#if next.kind === 'stage'}
+                <span class="flex items-center gap-2 text-sm" data-testid="batch-card-next">
+                  <Icon name="Hourglass" size={14} class="text-muted-foreground" />
+                  <span class="min-w-0 flex-1 truncate">{next.stage.label}</span>
+                  <span class="shrink-0 tabular-nums text-muted-foreground">
+                    {formatWhen(next.stage.plannedStartAt)}
+                  </span>
+                </span>
+              {:else if next.kind === 'done'}
+                <span class="flex items-center gap-2 text-sm" data-testid="batch-card-next">
+                  <Icon name="Check" size={14} class="text-muted-foreground" />
+                  <span>Every stage done.</span>
+                </span>
+              {:else}
+                <span class="flex items-center gap-2 text-sm" data-testid="batch-card-next">
+                  <Icon name="CircleSlash" size={14} class="text-muted-foreground" />
+                  <span>Abandoned.</span>
+                </span>
+              {/if}
+
+              <span class="text-xs text-muted-foreground">
+                {formatGrams(batch.totals.totalGrams)} in total
+              </span>
+            </button>
+          </li>
+        {/each}
+      </ul>
+    {/snippet}
+  </ListPage>
+</FeatureGuard>

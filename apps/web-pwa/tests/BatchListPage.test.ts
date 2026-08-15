@@ -19,7 +19,7 @@ import type { BatchDoc, BatchStageDoc } from '@salt/domain/schemas';
 // the ordering assertions say nothing about the machine's timezone. The rendered
 // wording is checked separately and loosely, for the same reason.
 
-const { mockBatches, mockInitBatchesSync } = vi.hoisted(() => {
+const { mockBatches, mockInitBatchesSync, mockBreadGate } = vi.hoisted(() => {
   function makeStore<T>(initial: T) {
     let value = initial;
     const subs = new Set<(v: T) => void>();
@@ -40,6 +40,10 @@ const { mockBatches, mockInitBatchesSync } = vi.hoisted(() => {
   return {
     mockBatches: makeStore<BatchDoc[] | undefined>(undefined),
     mockInitBatchesSync: vi.fn(() => () => {}),
+    mockBreadGate: makeStore<{ enabled: boolean; settled: boolean }>({
+      enabled: true,
+      settled: true,
+    }),
   };
 });
 
@@ -47,6 +51,14 @@ vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
 vi.mock('../src/lib/batchService.js', () => ({
   batches: mockBatches,
   initBatchesSync: mockInitBatchesSync,
+}));
+// The bread gate this page now sits behind (issue #831). The real module reads
+// uninitialised observability and so always says "on" — which is why every
+// assertion below needed no change; only the gated case has to say otherwise.
+vi.mock('../src/lib/featureGate.js', () => ({
+  breadGate: mockBreadGate,
+  featureGate: () => mockBreadGate,
+  isFeatureEnabled: () => true,
 }));
 
 import { push } from 'svelte-spa-router';
@@ -99,6 +111,7 @@ afterEach(() => {
 beforeEach(() => {
   vi.clearAllMocks();
   mockBatches._set(undefined);
+  mockBreadGate._set({ enabled: true, settled: true });
 });
 
 function cards(): HTMLElement[] {
@@ -226,5 +239,31 @@ describe('BatchListPage — the next action and when', () => {
     await fireEvent.click(cards()[0]!);
 
     expect(push).toHaveBeenCalledWith('/batches/batch-9');
+  });
+});
+
+describe('BatchListPage — gated (issue #831)', () => {
+  // Bread is still being built, so /batches must not exist for anyone outside the
+  // test group — including for someone who types the URL. Nothing renders and no
+  // message explains why: a "you don't have access" would announce the feature.
+  it('renders nothing and sends a gated visitor home', async () => {
+    mockBreadGate._set({ enabled: false, settled: true });
+    render(BatchListPage);
+    mockBatches._set([makeBatch()]);
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/'));
+    expect(screen.queryByTestId('batch-list-page')).toBeNull();
+    expect(screen.queryByTestId('batch-list-empty')).toBeNull();
+    expect(cards()).toHaveLength(0);
+  });
+
+  it('waits for the flag payload before bouncing anyone', async () => {
+    // The window that matters: "in flight" must not read as "off", or the flagged
+    // user is thrown off their own page a beat before PostHog says they may have it.
+    mockBreadGate._set({ enabled: false, settled: false });
+    render(BatchListPage);
+
+    expect(screen.getByTestId('feature-guard-loading')).toBeInTheDocument();
+    expect(push).not.toHaveBeenCalled();
   });
 });

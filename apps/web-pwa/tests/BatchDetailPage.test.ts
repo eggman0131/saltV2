@@ -30,8 +30,8 @@ import type { BatchDoc, BatchObservationDoc, BatchStageDoc } from '@salt/domain/
 // never that a schedule moved — the re-timing is `withStageAdvanced`'s and is
 // pinned in the domain's own suite, against a fixed clock this page does not read.
 
-const { mockBatch, mockInitBatchSync, mockObservations, mockInitObservationsSync } = vi.hoisted(
-  () => {
+const { mockBatch, mockInitBatchSync, mockObservations, mockInitObservationsSync, mockBreadGate } =
+  vi.hoisted(() => {
     function makeStore<T>(initial: T) {
       let value = initial;
       const subs = new Set<(v: T) => void>();
@@ -54,9 +54,12 @@ const { mockBatch, mockInitBatchSync, mockObservations, mockInitObservationsSync
       mockInitBatchSync: vi.fn(() => () => {}),
       mockObservations: makeStore<BatchObservationDoc[] | undefined>(undefined),
       mockInitObservationsSync: vi.fn(() => () => {}),
+      mockBreadGate: makeStore<{ enabled: boolean; settled: boolean }>({
+        enabled: true,
+        settled: true,
+      }),
     };
-  },
-);
+  });
 
 vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
 vi.mock('../src/lib/nav.js', () => ({ goBack: vi.fn() }));
@@ -71,6 +74,14 @@ vi.mock('../src/lib/batchObservationService.js', () => ({
   observations: mockObservations,
   initBatchObservationsSync: mockInitObservationsSync,
   logObservation: vi.fn(),
+}));
+// The bread gate this page now sits behind (issue #831). The real module reads
+// uninitialised observability and so always says "on" — which is why every
+// assertion below needed no change; only the gated case has to say otherwise.
+vi.mock('../src/lib/featureGate.js', () => ({
+  breadGate: mockBreadGate,
+  featureGate: () => mockBreadGate,
+  isFeatureEnabled: () => true,
 }));
 
 import BatchDetailPage from '../src/routes/batches/BatchDetailPage.svelte';
@@ -158,6 +169,7 @@ afterEach(() => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockBreadGate._set({ enabled: true, settled: true });
   mockBatch._set(undefined);
   // Loaded and empty is the ordinary state of a run's log, and it is a DIFFERENT
   // state from not-loaded: the end-of-run invitation must not flash before the
@@ -730,5 +742,28 @@ describe('BatchDetailPage — where the log affordance lives', () => {
     await waitFor(() => expect(screen.getByTestId('batch-log-entry')).toBeInTheDocument());
     const entry = screen.getByTestId('batch-log-entry');
     expect(entry.querySelector('button')).toBeNull();
+  });
+});
+
+describe('BatchDetailPage — gated (issue #831)', () => {
+  // A typed `#/batches/:id` must not render for anyone outside the test group while
+  // bread is being built. Nothing is shown and nothing explains the absence — a
+  // denial message would announce the very feature the gate is hiding.
+  it('renders nothing and sends a gated visitor home', async () => {
+    mockBreadGate._set({ enabled: false, settled: true });
+    renderPage();
+    mockBatch._set(makeBatch());
+
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/'));
+    expect(screen.queryByTestId('batch-stages')).toBeNull();
+    expect(screen.queryByTestId('batch-actions-overflow')).toBeNull();
+  });
+
+  it('waits for the flag payload before bouncing anyone', async () => {
+    mockBreadGate._set({ enabled: false, settled: false });
+    renderPage();
+
+    expect(screen.getByTestId('feature-guard-loading')).toBeInTheDocument();
+    expect(pushMock).not.toHaveBeenCalled();
   });
 });

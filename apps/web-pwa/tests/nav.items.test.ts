@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('svelte-spa-router', () => ({ push: vi.fn(), pop: vi.fn() }));
 
-const { navItems, overflowNavItems } = await import('../src/lib/nav.js');
+const { navItems, overflowNavItems, overflowNavItemsFor } = await import('../src/lib/nav.js');
 
 describe('navItems', () => {
   it('is four primary destinations, no more', () => {
@@ -47,5 +47,40 @@ describe('navItems', () => {
       href: '#/batches',
     });
     expect(navItems.map((i) => i.id)).not.toContain('batches');
+  });
+});
+
+describe('overflowNavItemsFor', () => {
+  // Issue #831. Bread is being built in the open, so the household must not see a
+  // door to it. What matters here is that the entry is ABSENT rather than present
+  // and disabled — nothing may hint that a feature is being withheld.
+
+  it('keeps Batches when bread is on for this person', () => {
+    expect(overflowNavItemsFor({ bread: true }).map((i) => i.id)).toEqual(
+      overflowNavItems.map((i) => i.id),
+    );
+  });
+
+  it('removes Batches entirely when bread is gated', () => {
+    const ids = overflowNavItemsFor({ bread: false }).map((i) => i.id);
+
+    expect(ids).not.toContain('batches');
+  });
+
+  it('leaves every other destination alone either way', () => {
+    // The filter is narrow on purpose: an unfinished feature disappears, the
+    // set-up-and-forget destinations do not move.
+    const untouched = overflowNavItems.filter((i) => i.id !== 'batches');
+
+    expect(overflowNavItemsFor({ bread: false })).toEqual(untouched);
+    expect(overflowNavItemsFor({ bread: true })).toEqual(overflowNavItems);
+  });
+
+  it('never mutates the list it filters', () => {
+    // App.svelte spreads the result into a fresh array every time the flag or the
+    // admin badge changes; a filter that edited the source would empty the nav.
+    overflowNavItemsFor({ bread: false });
+
+    expect(overflowNavItems.map((i) => i.id)).toContain('batches');
   });
 });

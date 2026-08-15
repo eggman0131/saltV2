@@ -28,6 +28,7 @@
   import { push } from 'svelte-spa-router';
   import { trackUsageEvent } from '@salt/observability';
   import { goBack } from '../../lib/nav.js';
+  import { breadGate } from '../../lib/featureGate.js';
   import { withMealParam } from '../../lib/mealReturn.js';
   import {
     recipes,
@@ -268,12 +269,19 @@ Finish with a short note on what you changed and why, so I can read the gist her
   // this is the page that asks the question. The store's three states matter — with
   // `undefined` folded into "has one", both entries below would flash and vanish on
   // every recipe that has no formula, which is nearly all of them.
+  //
+  // GATED WHILE THE FEATURE IS BEING BUILT (issue #831). The gate sits on the
+  // subscription rather than only on the two menu entries, so someone outside the
+  // test group never reads `formulas/*` at all — the flag is cosmetic, but there
+  // is no reason to spend a listener on an answer that can only be discarded.
+  const breadEnabled = $derived($breadGate.enabled);
   $effect(() => {
+    if (!breadEnabled) return;
     const id = params.id;
     if (!id) return;
     return initFormulaSync(id);
   });
-  const hasFormula = $derived($formula !== null && $formula !== undefined);
+  const hasFormula = $derived(breadEnabled && $formula !== null && $formula !== undefined);
 
   // ─── Could this recipe HAVE one? (issue #823) ────────────────────────────────
   //
@@ -307,7 +315,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
   );
   // Mutually exclusive with the pair above by construction: the moment a formula
   // is saved this goes false and "Bake a batch" / "Formula" take the slot.
-  const showMakeScalable = $derived(!hasFormula && couldHaveFormula);
+  const showMakeScalable = $derived(breadEnabled && !hasFormula && couldHaveFormula);
 
   // ─── Which half of the Cook control is the primary one (issue #776) ─────────
   //
@@ -1988,7 +1996,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
      which is the same condition its menu entry is gated on — the sheet takes the
      formula as a plain prop rather than reading the store itself, so it can never
      render against a `null` one. -->
-{#if recipe && $formula}
+{#if recipe && breadEnabled && $formula}
   <RecipeBakeBatchSheet {recipe} formula={$formula} bind:open={bakeBatchOpen} />
 {/if}
 

@@ -13,7 +13,8 @@
   import AuthGate from './components/AuthGate.svelte';
   import KitchenLink from './components/KitchenLink.svelte';
   import { auth } from './lib/auth.svelte.js';
-  import { navItems, overflowNavItems, adminNavItem } from './lib/nav.js';
+  import { navItems, overflowNavItemsFor, adminNavItem } from './lib/nav.js';
+  import { breadGate } from './lib/featureGate.js';
   import { routes } from './routes/index.js';
   import { isFullViewportRoute } from './routes/fullViewport.js';
   import { toasts, dismissToast } from './lib/toastStore.js';
@@ -111,8 +112,12 @@
   // leave mid-cook by accident.
   const showChrome = $derived(!isFullViewportRoute(router.location));
 
+  // Two cosmetic filters over one list, and they are different in kind. The admin
+  // append hides an area you may not enter; `overflowNavItemsFor` hides a feature
+  // that is still being built (issue #831), which nobody outside the test group is
+  // meant to know exists — hence a filter rather than a disabled entry.
   const decoratedOverflowNavItems = $derived([
-    ...overflowNavItems,
+    ...overflowNavItemsFor({ bread: $breadGate.enabled }),
     ...(isAdmin ? [reviewCount > 0 ? { ...adminNavItem, badge: reviewCount } : adminNavItem] : []),
   ]);
 </script>
