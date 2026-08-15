@@ -81,10 +81,12 @@ export const routes: RouteDefinition = new Map<
   ['/recipes/:id/guided', lazy(() => import('./recipes/GuidedPlanPage.svelte'))],
   // The formula screen (issue #806, phase 1 of epic #778). Also an ordinary shell
   // route — desk work, once a month — so no entry in ./fullViewport.ts. It shipped
-  // reachable BY URL ONLY; #812 gave it an entry point on the recipe page, but only
-  // for a recipe that ALREADY HAS a formula. Typing the URL is still how the first
-  // one gets made — an "add a formula" item on every recipe would put baker's
-  // percentages in front of every weeknight curry to serve the three loaves.
+  // reachable BY URL ONLY; #812 gave it an entry point on the recipe page for a
+  // recipe that ALREADY HAS a formula, and #823 gave it one for a recipe that has
+  // never had a formula but LOOKS like it could ("Make it scalable", gated on the
+  // domain's basis guess — an item on every recipe would put baker's percentages in
+  // front of every weeknight curry to serve the three loaves). The URL stays as the
+  // escape hatch for a loaf that guess misses; it is no longer the only way in.
   ['/recipes/:id/formula', lazy(() => import('./recipes/FormulaPage.svelte'))],
   // A meal's cook plan (issue #752, phase 4) — the dashboard for the evening: the
   // meal and its component dishes in running order, each with a start time counted

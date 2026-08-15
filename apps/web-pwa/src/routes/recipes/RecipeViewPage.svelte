@@ -63,11 +63,13 @@
   import {
     appendCacheBuster,
     duplicateRecipe,
+    flattenIngredients,
     hasComponents,
     hasLiveCanonMatch,
     isAuthorable,
     isCookable,
     isPlannable,
+    looksScalable,
     resolveComponents,
     takesIngredients,
     type IngredientGroup,
@@ -272,6 +274,40 @@ Finish with a short note on what you changed and why, so I can read the gist her
     return initFormulaSync(id);
   });
   const hasFormula = $derived($formula !== null && $formula !== undefined);
+
+  // ─── Could this recipe HAVE one? (issue #823) ────────────────────────────────
+  //
+  // Presence-and-shape again, one notch softer than `hasFormula`: not "does this
+  // have a formula" but "does this look like something that could". The answer is
+  // the domain's own basis guess asked as a yes/no — the same decision the formula
+  // screen makes when it opens, so the offer can never lead somewhere the screen
+  // then disagrees with. Still nothing about `kind` anywhere near it: a loaf is an
+  // ordinary `recipe`, and there is no `bread` kind.
+  //
+  // An empty guess means "not offered" here, where the mapping screen reads it as
+  // "you pick". That is the whole cost of the gate and it is bounded: a loaf whose
+  // only flour line the keyword list has never heard of loses a menu item, not
+  // access — `/recipes/:id/formula` is still typed-URL reachable.
+  //
+  // Canon LEADS and lands after first paint, so this is asked again as it arrives.
+  // Every loaf in the library says "flour" in its own line too, so in practice the
+  // item is there immediately; a recipe that reads as flour ONLY through its canon
+  // name would see it appear a beat late, which is the accepted price of adding no
+  // read here (the formula subscription above is the only one this costs).
+  const canonNameById = $derived(new Map($canonItems.map((c) => [c.id, c.name])));
+  const couldHaveFormula = $derived(
+    recipe !== null &&
+      looksScalable(
+        flattenIngredients(recipe).map((ing) => ({
+          ingredientId: ing.id,
+          canonName: (ing.canonId ? canonNameById.get(ing.canonId) : null) ?? null,
+          rawText: ing.rawText,
+        })),
+      ),
+  );
+  // Mutually exclusive with the pair above by construction: the moment a formula
+  // is saved this goes false and "Bake a batch" / "Formula" take the slot.
+  const showMakeScalable = $derived(!hasFormula && couldHaveFormula);
 
   // ─── Which half of the Cook control is the primary one (issue #776) ─────────
   //
@@ -1141,7 +1177,9 @@ Finish with a short note on what you changed and why, so I can read the gist her
            else in group one is exactly the case the third clause covers. #752
            adds `showComponents` on the same footing: also presence rather than a
            capability, so it gets its own clause rather than riding on the kinds
-           that happen to be able to take components today. -->
+           that happen to be able to take components today. #823 adds
+           `showMakeScalable` for the same reason once more — shape rather than
+           kind, and the one clause that can be true when `hasFormula` is false. -->
       <Popover bind:open={overflowMenuOpen}>
         <PopoverTrigger>
           {#snippet children()}
@@ -1271,13 +1309,16 @@ Finish with a short note on what you changed and why, so I can read the gist her
                  wrong. Frequency orders them, exactly as it does Chat before
                  Refresh above.
 
-                 A recipe with NO formula offers neither, which means the formula
-                 screen still has no entry point for a recipe that has never had one
-                 — it is reachable by URL, as it has been since #806. That is
-                 deliberate: an "add a formula" item on all ~46 recipes would put
-                 baker's percentages in front of every weeknight curry to serve the
-                 three loaves. The first formula is still typed at a URL; every one
-                 after it is one tap away. -->
+                 A recipe with NO formula offers neither — there is no batch to
+                 start and nothing to open — and until #823 that left the screen
+                 with no entry point at all for a recipe that had never had one.
+                 What #812 actually objected to was an "add a formula" item on all
+                 ~46 recipes, putting baker's percentages in front of every
+                 weeknight curry to serve the three loaves; the item below answers
+                 that by gating on the basis guess instead of offering it
+                 unconditionally. The typed URL stays as the escape hatch for a loaf
+                 the guess misses — it stopped being the ONLY way in, not a way
+                 in. -->
             <button
               type="button"
               class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
@@ -1303,7 +1344,35 @@ Finish with a short note on what you changed and why, so I can read the gist her
               Formula
             </button>
           {/if}
-          {#if showCooking || canAuthor || hasFormula || showComponents}
+          {#if showMakeScalable}
+            <!-- The FIRST formula (issue #823). The mutually-exclusive twin of the
+                 pair above, in the same slot and carrying the same icon: this is
+                 the item you tap once in a recipe's life, and from the moment the
+                 formula is saved those two take its place and this one is gone.
+                 Nothing else on the page changes — it leads to the screen #806
+                 already shipped, which has always handled the no-formula-yet case.
+
+                 Gated on the domain's basis guess, never on `kind` — the
+                 `couldHaveFormula` derivation above says why, and what an empty
+                 guess costs. Group one for the same reason as the pair it replaces:
+                 it works on THIS dish, and mapping a formula is desk work rather
+                 than one of the hands-full verbs the inline row is for. "Guided
+                 plan" is again the precedent, and this is the once-in-a-recipe's-
+                 life version of it. -->
+            <button
+              type="button"
+              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+              onclick={() => {
+                overflowMenuOpen = false;
+                push(`/recipes/${recipe.id}/formula`);
+              }}
+              data-testid="recipe-make-scalable-menu-item"
+            >
+              <Icon name="Percent" size={14} />
+              Make it scalable
+            </button>
+          {/if}
+          {#if showCooking || canAuthor || hasFormula || showMakeScalable || showComponents}
             <Divider class="my-1" />
           {/if}
           {#if canAuthor}
