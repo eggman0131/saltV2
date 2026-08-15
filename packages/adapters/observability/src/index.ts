@@ -13,6 +13,11 @@ export {
   sendSupportFeedback,
   startSpan,
   extractTraceHeaders,
+  // Feature flags (issue #831) — the cosmetic gate web-pwa reads to hide an
+  // unfinished feature from everyone but the people testing it.
+  isObservabilityFeatureEnabled,
+  areObservabilityFeatureFlagsSettled,
+  onObservabilityFeatureFlags,
 } from './init.js';
 export type { ObservabilityOptions, ObservabilitySpan, SupportFeedbackTraits } from './init.js';
 // Browser-rooted distributed tracing (issue #362, Phase 4). The real OTel tracer

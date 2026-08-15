@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { logger } from 'firebase-functions';
 import type { BatchDoc, BatchStageDoc, PushSubscriptionDoc } from '@salt/domain/schemas';
 
 // Unit-level (mock-based, no emulator) coverage of the batch stage-reminder DISPATCH
@@ -121,11 +122,11 @@ function makeBatch(overrides: Partial<BatchDoc> = {}): BatchDoc {
   };
 }
 
-function makeSub(id: string): PushSubscriptionDoc {
+function makeSub(id: string, ownerUid = `uid-${id}`): PushSubscriptionDoc {
   return {
     id,
     schemaVersion: 1,
-    ownerUid: `uid-${id}`,
+    ownerUid,
     endpoint: `https://fcm.googleapis.com/fcm/send/${id}`,
     keys: { p256dh: `p256-${id}`, auth: `auth-${id}` },
     createdAt: '2026-08-01T00:00:00.000Z',
@@ -137,11 +138,22 @@ function subDoc(sub: PushSubscriptionDoc) {
   return { data: () => sub, ref: { delete: vi.fn(async () => undefined) } };
 }
 
-function req(overrides: Partial<Record<'stageId' | 'plannedStartAt', string>> = {}) {
+function req(
+  overrides: Partial<{
+    stageId: string;
+    plannedStartAt: string;
+    notifyUids: readonly string[];
+  }> = {},
+) {
   return {
     data: { batchId: BATCH_ID, stageId: STAGE_ID, plannedStartAt: PLANNED_START, ...overrides },
   };
 }
+
+const sentEndpoints = () =>
+  mockSendWebPush.mock.calls.map(
+    (call) => (call as unknown as [unknown, { endpoint: string }])[1].endpoint,
+  );
 
 const lastPayload = () => mockSendWebPush.mock.calls[0]![2] as Record<string, unknown>;
 
@@ -328,5 +340,83 @@ describe('onBatchStageDispatch — the push', () => {
 
     expect(mockReport).toHaveBeenCalledTimes(1);
     expect(mockFlush).toHaveBeenCalled();
+  });
+});
+
+describe('onBatchStageDispatch — the frozen audience (#831)', () => {
+  // The batch still has no owner and this handler still resolves nobody: it reads a
+  // list decided upstream at enqueue, so a PostHog outage at 06:45 cannot cost the
+  // preheat. Nothing here calls PostHog.
+
+  it('BROADCASTS when the task carries NO list — a task queued before #831', async () => {
+    // The back-compat case, and the one a reader gets wrong: absent is not "nobody",
+    // it is today's behaviour. Reading it the other way would silently strand every
+    // reminder already sitting in the queue.
+    mockSubsDocs = [subDoc(makeSub('dev-1')), subDoc(makeSub('dev-2'))];
+
+    await (onBatchStageDispatch as unknown as Function)(req());
+
+    expect(mockSendWebPush).toHaveBeenCalledTimes(2);
+  });
+
+  it('sends to NOBODY when the list is empty', async () => {
+    // The opposite instruction to an absent field, and it must be honoured: nobody
+    // passed the flag, so nobody is woken.
+    mockSubsDocs = [subDoc(makeSub('dev-1')), subDoc(makeSub('dev-2'))];
+
+    await (onBatchStageDispatch as unknown as Function)(req({ notifyUids: [] }));
+
+    expect(mockSendWebPush).not.toHaveBeenCalled();
+  });
+
+  it('sends only to the devices of the uids on the list', async () => {
+    // Ada has the flag and two handsets; Bram shares the household and hears nothing.
+    mockSubsDocs = [
+      subDoc(makeSub('ada-1', 'uid-ada')),
+      subDoc(makeSub('ada-2', 'uid-ada')),
+      subDoc(makeSub('bram-1', 'uid-bram')),
+    ];
+
+    await (onBatchStageDispatch as unknown as Function)(req({ notifyUids: ['uid-ada'] }));
+
+    expect(sentEndpoints()).toEqual([
+      'https://fcm.googleapis.com/fcm/send/ada-1',
+      'https://fcm.googleapis.com/fcm/send/ada-2',
+    ]);
+  });
+
+  it('still prunes a dead subscription that IS on the list', async () => {
+    // The filter sits AFTER the parse and BEFORE the send, so pruning is untouched
+    // for everyone still being sent to.
+    const doc = subDoc(makeSub('ada-dead', 'uid-ada'));
+    mockSubsDocs = [doc];
+    mockSendWebPush.mockResolvedValue('gone' as const);
+
+    await (onBatchStageDispatch as unknown as Function)(req({ notifyUids: ['uid-ada'] }));
+
+    expect(doc.ref.delete).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT prune a live subscription merely withheld from this reminder', async () => {
+    // Withholding is per-reminder; the device is perfectly healthy and still wants
+    // its shopping reminders.
+    const doc = subDoc(makeSub('bram-1', 'uid-bram'));
+    mockSubsDocs = [doc];
+
+    await (onBatchStageDispatch as unknown as Function)(req({ notifyUids: ['uid-ada'] }));
+
+    expect(mockSendWebPush).not.toHaveBeenCalled();
+    expect(doc.ref.delete).not.toHaveBeenCalled();
+  });
+
+  it('counts the withheld in the log line, so a blackout is diagnosable', async () => {
+    mockSubsDocs = [subDoc(makeSub('ada-1', 'uid-ada')), subDoc(makeSub('bram-1', 'uid-bram'))];
+
+    await (onBatchStageDispatch as unknown as Function)(req({ notifyUids: ['uid-ada'] }));
+
+    expect(logger.info).toHaveBeenCalledWith(
+      'onBatchStageDispatch: reminded',
+      expect.objectContaining({ sent: 1, withheld: 1 }),
+    );
   });
 });

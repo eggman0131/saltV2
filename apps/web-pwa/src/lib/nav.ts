@@ -55,6 +55,19 @@ export const overflowNavItems: NavItem[] = [
   { id: 'settings', label: 'Settings', icon: Settings, href: '#/settings' },
 ];
 
+/**
+ * The overflow list minus entries whose feature is still gated (issue #831).
+ *
+ * A plain boolean in, a list out — this module deliberately does NOT import
+ * `featureGate.js`. The vocabulary of features lives there, the live answer is
+ * read at the call site (App.svelte, beside the admin append), and this stays a
+ * pure function of its argument so the filtering itself is testable without a
+ * PostHog stand-in.
+ */
+export function overflowNavItemsFor(features: { bread: boolean }): NavItem[] {
+  return overflowNavItems.filter((item) => item.id !== 'batches' || features.bread);
+}
+
 // Operator-area entry (issues #155, #157). Appended to the nav only for admins —
 // see App.svelte, which also hangs the canon needs-approval badge here now that
 // canon management lives behind the operator area. Cosmetic gating only; the

@@ -8,6 +8,18 @@ const DEFAULT_POSTHOG_HOST = 'https://eu.i.posthog.com';
 
 let ready = false;
 
+// True once PostHog has delivered a flag payload at least once — or has
+// definitively failed to. See `areObservabilityFeatureFlagsSettled` for why the
+// distinction between "not yet" and "false" is the whole point of this bit.
+let flagsSettled = false;
+
+// True once initObservability was called WITH a key — i.e. this build is meant to
+// have live PostHog, whether or not the SDK then came up. Deliberately NOT the
+// same bit as `ready`, which cannot tell "no telemetry configured" apart from
+// "telemetry configured and broken". Only the feature-flag gate needs to tell them
+// apart, and it must: see `isObservabilityFeatureEnabled` (issue #831).
+let configured = false;
+
 export interface ObservabilityOptions {
   // When set, session replay is NOT auto-started even in production. e2e and
   // automated runs pass this so they don't record every page. Mirrors the LD
@@ -47,12 +59,73 @@ export function safePosthog(fn: (ph: typeof posthog) => void): void {
   }
 }
 
+// ── Feature flags (issue #831) ───────────────────────────────────────────────
+// PostHog's flag evaluation, wrapped in the same never-throws posture as every
+// other entrypoint here (CLAUDE.md Rule 10). Three functions because a caller
+// gating a whole screen needs all three: the answer, whether the answer has
+// arrived, and a way to be told when it changes.
+
+// Whether `key` is on for the person PostHog currently believes it is talking to.
+//
+// UNCONFIGURED MEANS UNGATED, and that is deliberate rather than a convenience.
+// Live PostHog is the only thing that can say "yes" here, so where there is no key
+// at all the honest reading is not "everything is off" but "nothing is being
+// gated" — which is what an empty VITE_PUBLIC_POSTHOG_KEY means in the e2e build
+// and in every unit test. Fail-closed there would switch off half the app in the
+// suites that exist to exercise it, for a gate that is cosmetic in the first place.
+//
+// A CONFIGURED-BUT-BROKEN SDK IS NOT THAT CASE, and the two must not be conflated:
+// a key was supplied and posthog.init threw (misconfig, an ad blocker, a blocked
+// network), which is a failure, and failures fail closed. `ready` alone cannot tell
+// the two apart — hence `configured`.
+//
+// Every other path fails closed too. Note posthog.isFeatureEnabled returns
+// `boolean | undefined` — undefined while the payload is still in flight — so the
+// `=== true` is what makes "not yet loaded" read as off rather than as on.
+export function isObservabilityFeatureEnabled(key: string): boolean {
+  if (!configured) return true; // no PostHog in this build — nothing is gated
+  if (!ready) return false; // PostHog was meant to be here and isn't — fail closed
+  try {
+    return posthog.isFeatureEnabled(key) === true;
+  } catch {
+    return false;
+  }
+}
+
+// Whether the flag answer above is final. A route guard needs this: without it,
+// "in flight" and "off" are the same `false`, and the flagged user gets bounced
+// off their own page on first paint, a beat before the payload lands.
+//
+// Not-ready is settled by definition — no payload is coming, so the answer will
+// never change. That covers BOTH of the cases the function above separates: with
+// no key the answer is a settled "ungated", and with a broken SDK it is a settled
+// "off". Either way the guard must act rather than spin forever.
+export function areObservabilityFeatureFlagsSettled(): boolean {
+  return !ready || flagsSettled;
+}
+
+// Subscribe to flag payloads. Returns an unsubscribe; callers must call it.
+// Inert (and still returning a no-op unsubscribe, so callers need no branch) when
+// observability never came up.
+export function onObservabilityFeatureFlags(cb: () => void): () => void {
+  if (!ready) return () => {};
+  try {
+    return posthog.onFeatureFlags(() => cb());
+  } catch {
+    return () => {};
+  }
+}
+
 // Wires PostHog for the browser. No-ops entirely when `key` is empty (the e2e
 // build empties VITE_PUBLIC_POSTHOG_KEY exactly as it empties the LD id today),
 // so posthog.init is never called and every adapter method silently no-ops.
 export function initObservability(key: string, opts?: ObservabilityOptions): void {
   if (ready) return;
   if (!key) return; // inert when the key is absent
+  // A key was supplied, so this build is MEANT to have live PostHog. Recorded
+  // before the init attempt precisely so a failed attempt still counts as
+  // configured — see isObservabilityFeatureEnabled.
+  configured = true;
 
   // Session replay runs only in production builds (import.meta.env.PROD), and
   // even then is held back when manualStart is requested (e2e/automated runs).
@@ -88,6 +161,19 @@ export function initObservability(key: string, opts?: ObservabilityOptions): voi
     // than crash the app at startup.
     ready = false;
   }
+
+  // Flip the "the answer has arrived" bit the first time PostHog delivers a flag
+  // payload (issue #831). Registered through safePosthog so it no-ops when init
+  // above failed and can never throw at startup. PostHog fires this callback even
+  // when the payload errored (`{ errorsLoading }`), which is exactly what is
+  // wanted: settled means the answer arrived OR definitively failed, and a failed
+  // load leaves every flag false — fail closed, but without hanging a route guard
+  // on a spinner forever.
+  safePosthog((ph) =>
+    ph.onFeatureFlags(() => {
+      flagsSettled = true;
+    }),
+  );
 
   // Register environment + app version as super properties so they persist in the
   // SDK and ride on every subsequent event. Guarded via safePosthog so a register

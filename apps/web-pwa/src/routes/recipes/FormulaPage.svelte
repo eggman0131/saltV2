@@ -24,6 +24,7 @@
     TextField,
   } from '@salt/ui-components';
   import { goBack } from '../../lib/nav.js';
+  import FeatureGuard from '../../components/FeatureGuard.svelte';
   import { recipes, isLoadingRecipes } from '../../lib/recipeService.js';
   import { canonItems } from '../../lib/canonService.js';
   import {
@@ -615,414 +616,424 @@
   const loading = $derived($isLoadingRecipes || $storedFormula === undefined);
 </script>
 
-{#if loading}
-  <div class="flex justify-center p-8"><Spinner /></div>
-{:else if !recipe}
-  <div class="p-6">
-    <EmptyState title="Recipe not found" description="It may have been deleted." />
-  </div>
-{:else if !takesIngredients(kindOf(recipe))}
-  <!-- Capability-gated, never kind-gated (CLAUDE.md): a formula is composition, so
+<!-- Bread is still being built (issue #831): everyone outside the test group is
+     redirected home and sees nothing at all — no denial copy, because a message
+     would announce a feature they are not meant to know exists yet. Cosmetic only;
+     the boundary is not here (see lib/featureGate.ts). -->
+<FeatureGuard feature="bread">
+  {#if loading}
+    <div class="flex justify-center p-8"><Spinner /></div>
+  {:else if !recipe}
+    <div class="p-6">
+      <EmptyState title="Recipe not found" description="It may have been deleted." />
+    </div>
+  {:else if !takesIngredients(kindOf(recipe))}
+    <!-- Capability-gated, never kind-gated (CLAUDE.md): a formula is composition, so
        an entry with no ingredients has no composition to express. Reachable only by
        typing the URL — nothing in the app offers this route. -->
-  <div class="p-6">
-    <EmptyState
-      title="Nothing to weigh here"
-      description="A formula is a recipe's ingredients as percentages, and this entry doesn't have any."
-    />
-  </div>
-{:else}
-  <DetailPage
-    title="Formula"
-    subtitle={recipe.title}
-    onBack={() => goBack(`/recipes/${recipe.id}`)}
-    backLabel="Back"
-    class="p-4 sm:p-6"
-  >
-    {#snippet actions()}
-      <Button
-        size="sm"
-        onclick={handleSave}
-        loading={saving}
-        disabled={!canSave}
-        data-testid="formula-save-button"
-      >
-        {#snippet leading()}<Icon name="Check" size={16} />{/snippet}
-        Save
-      </Button>
-    {/snippet}
+    <div class="p-6">
+      <EmptyState
+        title="Nothing to weigh here"
+        description="A formula is a recipe's ingredients as percentages, and this entry doesn't have any."
+      />
+    </div>
+  {:else}
+    <DetailPage
+      title="Formula"
+      subtitle={recipe.title}
+      onBack={() => goBack(`/recipes/${recipe.id}`)}
+      backLabel="Back"
+      class="p-4 sm:p-6"
+    >
+      {#snippet actions()}
+        <Button
+          size="sm"
+          onclick={handleSave}
+          loading={saving}
+          disabled={!canSave}
+          data-testid="formula-save-button"
+        >
+          {#snippet leading()}<Icon name="Check" size={16} />{/snippet}
+          Save
+        </Button>
+      {/snippet}
 
-    <div class="flex flex-col gap-4" data-testid="formula-editor">
-      {#if ingredients.length === 0}
-        <EmptyState
-          title="No ingredients yet"
-          description="Add the ingredients to the recipe and they'll show up here to weigh."
-        />
-      {:else}
-        <!-- ─── The basis and the percentages ──────────────────────────────── -->
-        <Card>
-          <CardHeader>
-            <CardTitle>Ingredients</CardTitle>
-          </CardHeader>
-          <CardContent class="flex flex-col gap-3">
-            <p class="text-sm text-muted-foreground">
-              The basis is the 100%. For bread that's the flours: everything else is a percentage of
-              them.
-            </p>
-            {#each rows as row (row.ingredientId)}
-              <div
-                role="group"
-                aria-label={row.rawText}
-                class="flex flex-col gap-2 rounded border p-3"
-                class:opacity-60={!row.included}
-                data-testid="formula-row"
-              >
-                <div class="flex items-start justify-between gap-3">
-                  <span class="flex-1 text-sm">{row.rawText}</span>
-                  <span
-                    class="text-sm font-medium tabular-nums"
-                    class:text-muted-foreground={!row.inBasis}
-                    data-testid="formula-row-percent"
-                  >
-                    {formatPercent(percentById.get(row.ingredientId))}
-                  </span>
-                </div>
-                <div class="flex flex-wrap items-center gap-4">
-                  <TextField
-                    label="Weight (g)"
-                    inputmode="decimal"
-                    class="w-32"
-                    placeholder={row.recipeGrams === null ? 'e.g. 100' : ''}
-                    value={row.gramsText}
-                    onValueChange={(v) => setGrams(row.ingredientId, v)}
-                    data-testid="formula-row-grams"
-                  />
-                  <Checkbox
-                    label="In the basis"
-                    checked={row.inBasis}
-                    disabled={!row.included}
-                    onCheckedChange={(v) => setInBasis(row.ingredientId, v === true)}
-                    data-testid="formula-row-basis"
-                  />
-                  <Checkbox
-                    label="Include"
-                    checked={row.included}
-                    disabled={gramsOf(row) === null}
-                    onCheckedChange={(v) => setIncluded(row.ingredientId, v === true)}
-                    data-testid="formula-row-include"
-                  />
-                </div>
-                {#if row.recipeGrams === null}
-                  <!-- Count-based ("2 eggs") or no amount at all ("a pinch"). Domain
+      <div class="flex flex-col gap-4" data-testid="formula-editor">
+        {#if ingredients.length === 0}
+          <EmptyState
+            title="No ingredients yet"
+            description="Add the ingredients to the recipe and they'll show up here to weigh."
+          />
+        {:else}
+          <!-- ─── The basis and the percentages ──────────────────────────────── -->
+          <Card>
+            <CardHeader>
+              <CardTitle>Ingredients</CardTitle>
+            </CardHeader>
+            <CardContent class="flex flex-col gap-3">
+              <p class="text-sm text-muted-foreground">
+                The basis is the 100%. For bread that's the flours: everything else is a percentage
+                of them.
+              </p>
+              {#each rows as row (row.ingredientId)}
+                <div
+                  role="group"
+                  aria-label={row.rawText}
+                  class="flex flex-col gap-2 rounded border p-3"
+                  class:opacity-60={!row.included}
+                  data-testid="formula-row"
+                >
+                  <div class="flex items-start justify-between gap-3">
+                    <span class="flex-1 text-sm">{row.rawText}</span>
+                    <span
+                      class="text-sm font-medium tabular-nums"
+                      class:text-muted-foreground={!row.inBasis}
+                      data-testid="formula-row-percent"
+                    >
+                      {formatPercent(percentById.get(row.ingredientId))}
+                    </span>
+                  </div>
+                  <div class="flex flex-wrap items-center gap-4">
+                    <TextField
+                      label="Weight (g)"
+                      inputmode="decimal"
+                      class="w-32"
+                      placeholder={row.recipeGrams === null ? 'e.g. 100' : ''}
+                      value={row.gramsText}
+                      onValueChange={(v) => setGrams(row.ingredientId, v)}
+                      data-testid="formula-row-grams"
+                    />
+                    <Checkbox
+                      label="In the basis"
+                      checked={row.inBasis}
+                      disabled={!row.included}
+                      onCheckedChange={(v) => setInBasis(row.ingredientId, v === true)}
+                      data-testid="formula-row-basis"
+                    />
+                    <Checkbox
+                      label="Include"
+                      checked={row.included}
+                      disabled={gramsOf(row) === null}
+                      onCheckedChange={(v) => setIncluded(row.ingredientId, v === true)}
+                      data-testid="formula-row-include"
+                    />
+                  </div>
+                  {#if row.recipeGrams === null}
+                    <!-- Count-based ("2 eggs") or no amount at all ("a pinch"). Domain
                        will not guess what an egg weighs — that would be a second
                        scaling mechanism hidden behind a constant — so the weight is
                        asked for here, or the line is left out of the formula. -->
-                  <p class="text-xs text-muted-foreground" data-testid="formula-row-needs-grams">
-                    The recipe doesn't weigh this one. Give it a weight in grams, or leave it out.
-                  </p>
-                {/if}
-              </div>
-            {/each}
-          </CardContent>
-        </Card>
+                    <p class="text-xs text-muted-foreground" data-testid="formula-row-needs-grams">
+                      The recipe doesn't weigh this one. Give it a weight in grams, or leave it out.
+                    </p>
+                  {/if}
+                </div>
+              {/each}
+            </CardContent>
+          </Card>
 
-        {#if rangeRows.length > 0}
-          <!-- DISCLOSURE ONE. A range becomes a point value the moment it becomes a
+          {#if rangeRows.length > 0}
+            <!-- DISCLOSURE ONE. A range becomes a point value the moment it becomes a
                percentage, and a batch will later print a confident figure the recipe
                never gave. This is the only moment anyone can object. -->
-          <div
-            class="flex flex-col gap-1 rounded border border-amber-300 bg-amber-50 px-3 py-3"
-            data-testid="formula-range-disclosure"
-          >
-            <p class="text-sm text-amber-900">
-              {rangeRows.length === 1 ? 'One ingredient is' : `${rangeRows.length} ingredients are`}
-              given as a range. The midpoint is what the formula keeps — the range itself is gone once
-              this is saved.
-            </p>
-            {#each rangeRows as row (row.ingredientId)}
-              {@const grams = gramsOf(row)}
+            <div
+              class="flex flex-col gap-1 rounded border border-amber-300 bg-amber-50 px-3 py-3"
+              data-testid="formula-range-disclosure"
+            >
               <p class="text-sm text-amber-900">
-                <span class="font-medium">{row.rawText}</span>
-                — taken as {grams === null ? 'its midpoint' : formatGrams(grams)}
+                {rangeRows.length === 1
+                  ? 'One ingredient is'
+                  : `${rangeRows.length} ingredients are`}
+                given as a range. The midpoint is what the formula keeps — the range itself is gone once
+                this is saved.
               </p>
-            {/each}
-          </div>
-        {/if}
+              {#each rangeRows as row (row.ingredientId)}
+                {@const grams = gramsOf(row)}
+                <p class="text-sm text-amber-900">
+                  <span class="font-medium">{row.rawText}</span>
+                  — taken as {grams === null ? 'its midpoint' : formatGrams(grams)}
+                </p>
+              {/each}
+            </div>
+          {/if}
 
-        <!-- ─── What it makes ──────────────────────────────────────────────── -->
-        <Card>
-          <CardHeader>
-            <CardTitle>What this makes</CardTitle>
-          </CardHeader>
-          <CardContent class="flex flex-col gap-3">
-            <div class="flex flex-wrap items-end gap-3">
-              <TextField
-                label="How many"
-                inputmode="numeric"
-                class="w-28"
-                value={countText}
-                onValueChange={(v) => {
-                  countText = v;
-                  touch();
-                }}
-                data-testid="formula-count"
-              />
-              <!-- Presets only, no free-text shape: a custom shape would also need a
+          <!-- ─── What it makes ──────────────────────────────────────────────── -->
+          <Card>
+            <CardHeader>
+              <CardTitle>What this makes</CardTitle>
+            </CardHeader>
+            <CardContent class="flex flex-col gap-3">
+              <div class="flex flex-wrap items-end gap-3">
+                <TextField
+                  label="How many"
+                  inputmode="numeric"
+                  class="w-28"
+                  value={countText}
+                  onValueChange={(v) => {
+                    countText = v;
+                    touch();
+                  }}
+                  data-testid="formula-count"
+                />
+                <!-- Presets only, no free-text shape: a custom shape would also need a
                    bake loss, and nobody can be asked for a figure they have no way
                    to know. The list is domain data and can grow there. -->
-              <Select
-                value={presetId}
-                onValueChange={(v) => {
-                  presetId = v;
-                  touch();
-                }}
-              >
-                <SelectTrigger
-                  class="w-56"
-                  aria-label="What this makes"
-                  data-testid="formula-shape-select"
+                <Select
+                  value={presetId}
+                  onValueChange={(v) => {
+                    presetId = v;
+                    touch();
+                  }}
                 >
-                  {selectedPreset?.label ?? 'Pick a shape…'}
-                </SelectTrigger>
-                <SelectContent>
-                  {#each UNIT_SHAPE_PRESETS as preset (preset.id)}
-                    <SelectItem value={preset.id}>{preset.label}</SelectItem>
-                  {/each}
-                </SelectContent>
-              </Select>
-            </div>
+                  <SelectTrigger
+                    class="w-56"
+                    aria-label="What this makes"
+                    data-testid="formula-shape-select"
+                  >
+                    {selectedPreset?.label ?? 'Pick a shape…'}
+                  </SelectTrigger>
+                  <SelectContent>
+                    {#each UNIT_SHAPE_PRESETS as preset (preset.id)}
+                      <SelectItem value={preset.id}>{preset.label}</SelectItem>
+                    {/each}
+                  </SelectContent>
+                </Select>
+              </div>
 
-            <!-- DISCLOSURE TWO. The recipe's own dough total sits next to the one
+              <!-- DISCLOSURE TWO. The recipe's own dough total sits next to the one
                  just declared, so re-anchoring the formula is visible rather than
                  silent. Neither number is a scaled quantity: the first is the sum of
                  the weights on this page and the second is what the user just said.
                  -->
-            <div class="text-sm" data-testid="formula-dough-total">
-              <p>
-                As written, this weighs
-                <span class="font-medium">{formatGrams(asWrittenDoughGrams)}</span> of dough.
-              </p>
-              {#if declaredDoughGrams !== null && shape !== null}
+              <div class="text-sm" data-testid="formula-dough-total">
                 <p>
-                  You've declared {shape.count} × {shape.label} —
-                  <span class="font-medium">{formatGrams(declaredDoughGrams)}</span>.
+                  As written, this weighs
+                  <span class="font-medium">{formatGrams(asWrittenDoughGrams)}</span> of dough.
                 </p>
-                {#if declarationDriftPercent !== null && Math.abs(declarationDriftPercent) >= 0.5}
-                  <p class="text-muted-foreground" data-testid="formula-declaration-drift">
-                    That re-anchors the formula by {declarationDriftPercent > 0
-                      ? '+'
-                      : ''}{declarationDriftPercent.toFixed(1)}%. The percentages don't change; what
-                    a batch weighs out does.
+                {#if declaredDoughGrams !== null && shape !== null}
+                  <p>
+                    You've declared {shape.count} × {shape.label} —
+                    <span class="font-medium">{formatGrams(declaredDoughGrams)}</span>.
+                  </p>
+                  {#if declarationDriftPercent !== null && Math.abs(declarationDriftPercent) >= 0.5}
+                    <p class="text-muted-foreground" data-testid="formula-declaration-drift">
+                      That re-anchors the formula by {declarationDriftPercent > 0
+                        ? '+'
+                        : ''}{declarationDriftPercent.toFixed(1)}%. The percentages don't change;
+                      what a batch weighs out does.
+                    </p>
+                  {/if}
+                {/if}
+              </div>
+            </CardContent>
+          </Card>
+
+          <!-- ─── The stages ─────────────────────────────────────────────────── -->
+          <Card>
+            <CardHeader>
+              <CardTitle>Stages</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div class="flex flex-col gap-3" data-testid="formula-stages">
+                <p class="text-sm text-muted-foreground">
+                  What the dough goes through, in order. A <span class="font-medium">wait</span> is
+                  unattended — the dough or the oven changes on its own and you can leave the room.
+                  An
+                  <span class="font-medium">active</span> stage is one you're there for, and that includes
+                  the bake itself.
+                </p>
+
+                {#if stageRows.length === 0}
+                  <p class="text-sm text-muted-foreground" data-testid="formula-stages-empty">
+                    No stages yet. Read them off the method, or add one yourself.
+                  </p>
+                {:else}
+                  {#each stageRows as stage, index (stage.id)}
+                    <div
+                      role="group"
+                      aria-label={stage.label || 'New stage'}
+                      class="flex flex-col gap-2 rounded border p-3"
+                      data-testid="formula-stage-row"
+                    >
+                      <div class="flex flex-wrap items-end gap-3">
+                        <TextField
+                          label="Stage"
+                          class="min-w-40 flex-1"
+                          value={stage.label}
+                          onValueChange={(v) => patchStage(stage.id, { label: v })}
+                          data-testid="formula-stage-label"
+                        />
+                        <Select
+                          value={stage.kind}
+                          onValueChange={(v) =>
+                            patchStage(stage.id, { kind: v as ProcessStageKind })}
+                        >
+                          <SelectTrigger
+                            class="w-32"
+                            aria-label={`Is ${stage.label || 'this stage'} active or a wait?`}
+                            data-testid="formula-stage-kind"
+                          >
+                            {stage.kind === 'wait' ? 'Wait' : 'Active'}
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="wait">Wait</SelectItem>
+                            <SelectItem value="active">Active</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div class="flex flex-wrap items-end gap-3">
+                        <TextField
+                          label="Temperature (°C)"
+                          inputmode="decimal"
+                          class="w-32"
+                          placeholder="—"
+                          value={stage.celsiusText}
+                          onValueChange={(v) => patchStage(stage.id, { celsiusText: v })}
+                          data-testid="formula-stage-celsius"
+                        />
+                        <!-- Two boxes, not one: a range typed as a range stays a range.
+                         Leaving the second empty is what makes a duration fixed. -->
+                        <TextField
+                          label="Minutes"
+                          inputmode="numeric"
+                          class="w-28"
+                          placeholder="—"
+                          value={stage.minutesText}
+                          onValueChange={(v) => patchStage(stage.id, { minutesText: v })}
+                          data-testid="formula-stage-minutes"
+                        />
+                        <TextField
+                          label="…up to"
+                          inputmode="numeric"
+                          class="w-28"
+                          placeholder="optional"
+                          value={stage.maxMinutesText}
+                          onValueChange={(v) => patchStage(stage.id, { maxMinutesText: v })}
+                          data-testid="formula-stage-max-minutes"
+                        />
+                        <TextField
+                          label="Until"
+                          class="min-w-40 flex-1"
+                          placeholder="e.g. until doubled"
+                          value={stage.until ?? ''}
+                          onValueChange={(v) => patchStage(stage.id, { until: v })}
+                          data-testid="formula-stage-until"
+                        />
+                      </div>
+
+                      <div class="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          aria-label={`Move ${stage.label || 'this stage'} earlier`}
+                          disabled={index === 0}
+                          onclick={() => moveStage(stage.id, 'up')}
+                          data-testid="formula-stage-up"
+                        >
+                          {#snippet leading()}<Icon name="ChevronUp" size={16} />{/snippet}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          aria-label={`Move ${stage.label || 'this stage'} later`}
+                          disabled={index === stageRows.length - 1}
+                          onclick={() => moveStage(stage.id, 'down')}
+                          data-testid="formula-stage-down"
+                        >
+                          {#snippet leading()}<Icon name="ChevronDown" size={16} />{/snippet}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          aria-label={`Remove ${stage.label || 'this stage'}`}
+                          onclick={() => removeStage(stage.id)}
+                          data-testid="formula-stage-remove"
+                        >
+                          {#snippet leading()}<Icon name="Trash2" size={16} />{/snippet}
+                        </Button>
+                      </div>
+                    </div>
+                  {/each}
+
+                  <p class="text-sm" data-testid="formula-stages-total">
+                    Timed stages come to <span class="font-medium">{totalDurationText}</span>.
+                    {#if untimedStageCount > 0}
+                      {untimedStageCount === 1
+                        ? 'One stage has no time on it'
+                        : `${untimedStageCount} stages have no time on them`}, so the real answer is
+                      longer.
+                    {/if}
                   </p>
                 {/if}
-              {/if}
-            </div>
-          </CardContent>
-        </Card>
 
-        <!-- ─── The stages ─────────────────────────────────────────────────── -->
-        <Card>
-          <CardHeader>
-            <CardTitle>Stages</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div class="flex flex-col gap-3" data-testid="formula-stages">
-              <p class="text-sm text-muted-foreground">
-                What the dough goes through, in order. A <span class="font-medium">wait</span> is
-                unattended — the dough or the oven changes on its own and you can leave the room. An
-                <span class="font-medium">active</span> stage is one you're there for, and that includes
-                the bake itself.
-              </p>
-
-              {#if stageRows.length === 0}
-                <p class="text-sm text-muted-foreground" data-testid="formula-stages-empty">
-                  No stages yet. Read them off the method, or add one yourself.
-                </p>
-              {:else}
-                {#each stageRows as stage, index (stage.id)}
-                  <div
-                    role="group"
-                    aria-label={stage.label || 'New stage'}
-                    class="flex flex-col gap-2 rounded border p-3"
-                    data-testid="formula-stage-row"
+                <div class="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onclick={handleExtract}
+                    loading={extracting}
+                    disabled={extracting}
+                    data-testid="formula-stages-extract"
                   >
-                    <div class="flex flex-wrap items-end gap-3">
-                      <TextField
-                        label="Stage"
-                        class="min-w-40 flex-1"
-                        value={stage.label}
-                        onValueChange={(v) => patchStage(stage.id, { label: v })}
-                        data-testid="formula-stage-label"
-                      />
-                      <Select
-                        value={stage.kind}
-                        onValueChange={(v) => patchStage(stage.id, { kind: v as ProcessStageKind })}
-                      >
-                        <SelectTrigger
-                          class="w-32"
-                          aria-label={`Is ${stage.label || 'this stage'} active or a wait?`}
-                          data-testid="formula-stage-kind"
-                        >
-                          {stage.kind === 'wait' ? 'Wait' : 'Active'}
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="wait">Wait</SelectItem>
-                          <SelectItem value="active">Active</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div class="flex flex-wrap items-end gap-3">
-                      <TextField
-                        label="Temperature (°C)"
-                        inputmode="decimal"
-                        class="w-32"
-                        placeholder="—"
-                        value={stage.celsiusText}
-                        onValueChange={(v) => patchStage(stage.id, { celsiusText: v })}
-                        data-testid="formula-stage-celsius"
-                      />
-                      <!-- Two boxes, not one: a range typed as a range stays a range.
-                         Leaving the second empty is what makes a duration fixed. -->
-                      <TextField
-                        label="Minutes"
-                        inputmode="numeric"
-                        class="w-28"
-                        placeholder="—"
-                        value={stage.minutesText}
-                        onValueChange={(v) => patchStage(stage.id, { minutesText: v })}
-                        data-testid="formula-stage-minutes"
-                      />
-                      <TextField
-                        label="…up to"
-                        inputmode="numeric"
-                        class="w-28"
-                        placeholder="optional"
-                        value={stage.maxMinutesText}
-                        onValueChange={(v) => patchStage(stage.id, { maxMinutesText: v })}
-                        data-testid="formula-stage-max-minutes"
-                      />
-                      <TextField
-                        label="Until"
-                        class="min-w-40 flex-1"
-                        placeholder="e.g. until doubled"
-                        value={stage.until ?? ''}
-                        onValueChange={(v) => patchStage(stage.id, { until: v })}
-                        data-testid="formula-stage-until"
-                      />
-                    </div>
-
-                    <div class="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        aria-label={`Move ${stage.label || 'this stage'} earlier`}
-                        disabled={index === 0}
-                        onclick={() => moveStage(stage.id, 'up')}
-                        data-testid="formula-stage-up"
-                      >
-                        {#snippet leading()}<Icon name="ChevronUp" size={16} />{/snippet}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        aria-label={`Move ${stage.label || 'this stage'} later`}
-                        disabled={index === stageRows.length - 1}
-                        onclick={() => moveStage(stage.id, 'down')}
-                        data-testid="formula-stage-down"
-                      >
-                        {#snippet leading()}<Icon name="ChevronDown" size={16} />{/snippet}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        aria-label={`Remove ${stage.label || 'this stage'}`}
-                        onclick={() => removeStage(stage.id)}
-                        data-testid="formula-stage-remove"
-                      >
-                        {#snippet leading()}<Icon name="Trash2" size={16} />{/snippet}
-                      </Button>
-                    </div>
-                  </div>
-                {/each}
-
-                <p class="text-sm" data-testid="formula-stages-total">
-                  Timed stages come to <span class="font-medium">{totalDurationText}</span>.
-                  {#if untimedStageCount > 0}
-                    {untimedStageCount === 1
-                      ? 'One stage has no time on it'
-                      : `${untimedStageCount} stages have no time on them`}, so the real answer is
-                    longer.
-                  {/if}
-                </p>
-              {/if}
-
-              <div class="flex flex-wrap items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onclick={handleExtract}
-                  loading={extracting}
-                  disabled={extracting}
-                  data-testid="formula-stages-extract"
-                >
-                  {#snippet leading()}<Icon name="Sparkles" size={16} />{/snippet}
-                  {stageRows.length === 0 ? 'Read them off the method' : 'Read them again'}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onclick={addStage}
-                  disabled={extracting}
-                  data-testid="formula-stages-add"
-                >
-                  {#snippet leading()}<Icon name="Plus" size={16} />{/snippet}
-                  Add a stage
-                </Button>
+                    {#snippet leading()}<Icon name="Sparkles" size={16} />{/snippet}
+                    {stageRows.length === 0 ? 'Read them off the method' : 'Read them again'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onclick={addStage}
+                    disabled={extracting}
+                    data-testid="formula-stages-add"
+                  >
+                    {#snippet leading()}<Icon name="Plus" size={16} />{/snippet}
+                    Add a stage
+                  </Button>
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        {#if blockedReason}
-          <p class="text-sm text-muted-foreground" data-testid="formula-blocked-reason">
-            {blockedReason}
-          </p>
+          {#if blockedReason}
+            <p class="text-sm text-muted-foreground" data-testid="formula-blocked-reason">
+              {blockedReason}
+            </p>
+          {/if}
         {/if}
-      {/if}
-    </div>
-  </DetailPage>
+      </div>
+    </DetailPage>
 
-  <!-- Re-running extraction REPLACES the stages: whole-document LWW, no merge, and
+    <!-- Re-running extraction REPLACES the stages: whole-document LWW, no merge, and
        half of a new reading mixed into hand-corrected stages is a process neither
        the model nor the human wrote. The confirmation exists because the damage is
        invisible until it is done — the button looks the same whether there are
        corrections behind it or not. -->
-  <Dialog bind:open={replaceOpen}>
-    <DialogContent>
-      <div class="flex flex-col gap-4" data-testid="formula-stages-replace-dialog">
-        <DialogHeader>
-          <DialogTitle>Read the stages again?</DialogTitle>
-          <DialogDescription>
-            This replaces the {stageRows.length} stage{stageRows.length === 1 ? '' : 's'} below with a
-            fresh reading of the method. Anything you've corrected by hand — a temperature, a rest you
-            added yourself — goes with them.
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button variant="outline" onclick={() => (replaceOpen = false)} disabled={extracting}>
-            Cancel
-          </Button>
-          <Button
-            onclick={runExtract}
-            loading={extracting}
-            disabled={extracting}
-            data-testid="formula-stages-replace-confirm"
-          >
-            Replace them
-          </Button>
-        </DialogFooter>
-      </div>
-    </DialogContent>
-  </Dialog>
-{/if}
+    <Dialog bind:open={replaceOpen}>
+      <DialogContent>
+        <div class="flex flex-col gap-4" data-testid="formula-stages-replace-dialog">
+          <DialogHeader>
+            <DialogTitle>Read the stages again?</DialogTitle>
+            <DialogDescription>
+              This replaces the {stageRows.length} stage{stageRows.length === 1 ? '' : 's'} below with
+              a fresh reading of the method. Anything you've corrected by hand — a temperature, a rest
+              you added yourself — goes with them.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onclick={() => (replaceOpen = false)} disabled={extracting}>
+              Cancel
+            </Button>
+            <Button
+              onclick={runExtract}
+              loading={extracting}
+              disabled={extracting}
+              data-testid="formula-stages-replace-confirm"
+            >
+              Replace them
+            </Button>
+          </DialogFooter>
+        </div>
+      </DialogContent>
+    </Dialog>
+  {/if}
+</FeatureGuard>

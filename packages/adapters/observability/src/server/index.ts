@@ -19,6 +19,9 @@ export {
   captureServerEvent,
   captureServerException,
   safePosthog,
+  // Server-side feature-flag read (issue #831). Async — unlike everything else
+  // here it is a network round trip — and never throws.
+  isServerFeatureEnabled,
 } from './init.js';
 export type { ObservabilitySpan, StartSpanOptions } from './init.js';
 

@@ -23,6 +23,7 @@ const {
   mockDefaultListId,
   mockSessions,
   mockEquipment,
+  mockBreadGate,
 } = vi.hoisted(() => {
   function makeStore<T>(initial: T) {
     let value = initial;
@@ -50,6 +51,10 @@ const {
     mockDefaultListId: makeStore<string | null>('list-1'),
     mockSessions: makeStore<readonly unknown[]>([]),
     mockEquipment: makeStore<{ items: readonly { name: string }[] } | null>({ items: [] }),
+    mockBreadGate: makeStore<{ enabled: boolean; settled: boolean }>({
+      enabled: true,
+      settled: true,
+    }),
   };
 });
 
@@ -66,6 +71,15 @@ vi.mock('../src/lib/guidedPlanService.js', () => ({
 vi.mock('../src/lib/formulaService.js', () => ({
   formula: mockFormula,
   initFormulaSync: vi.fn(() => () => {}),
+}));
+// The bread gate (issue #831). Mocked rather than left to the real module because
+// the real one reads uninitialised observability and therefore always says "on" —
+// which is what keeps every OTHER bread suite passing untouched, and exactly why
+// the gated case has to say so explicitly.
+vi.mock('../src/lib/featureGate.js', () => ({
+  breadGate: mockBreadGate,
+  featureGate: () => mockBreadGate,
+  isFeatureEnabled: () => true,
 }));
 vi.mock('../src/lib/shoppingListService.svelte.js', () => ({ defaultListId: mockDefaultListId }));
 vi.mock('@salt/firebase-sync', () => ({
@@ -108,6 +122,7 @@ vi.mock('../src/lib/recipeService.js', () => ({
 }));
 
 import { push } from 'svelte-spa-router';
+import { initFormulaSync } from '../src/lib/formulaService.js';
 import RecipeViewPage from '../src/routes/recipes/RecipeViewPage.svelte';
 
 const RECIPE_ID = 'loaf';
@@ -186,6 +201,7 @@ beforeEach(() => {
   mockGuidedPlan._set(null);
   mockFormula._set(null);
   mockRecipes._set([LOAF]);
+  mockBreadGate._set({ enabled: true, settled: true });
 });
 
 afterEach(() => {
@@ -250,6 +266,21 @@ describe('RecipeViewPage — an entry point for the first formula', () => {
     expect(await screen.findByTestId('recipe-bake-batch-menu-item')).toBeInTheDocument();
     expect(screen.getByTestId('recipe-formula-menu-item')).toBeInTheDocument();
     expect(screen.queryByTestId('recipe-make-scalable-menu-item')).toBeNull();
+  });
+
+  it('offers none of the three when bread is gated, and reads no formula at all', async () => {
+    // Issue #831. Bread is still being built, so for anyone outside the test group
+    // the recipe's ⋮ is the menu it was before #812 — not a greyed-out entry, not a
+    // "coming soon", just absent. The subscription is gated too: a person who can
+    // never open a formula has no reason to spend a listener reading `formulas/*`.
+    mockBreadGate._set({ enabled: false, settled: true });
+    mockFormula._set({ recipeId: RECIPE_ID, components: [] });
+    await openOverflow();
+
+    expect(screen.queryByTestId('recipe-bake-batch-menu-item')).toBeNull();
+    expect(screen.queryByTestId('recipe-formula-menu-item')).toBeNull();
+    expect(screen.queryByTestId('recipe-make-scalable-menu-item')).toBeNull();
+    expect(initFormulaSync).not.toHaveBeenCalled();
   });
 
   it('never offers it on an entry with no ingredients', async () => {

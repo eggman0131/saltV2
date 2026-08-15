@@ -22,6 +22,7 @@
   import { push } from 'svelte-spa-router';
   import type { DomainError } from '@salt/shared-types';
   import { goBack } from '../../lib/nav.js';
+  import FeatureGuard from '../../components/FeatureGuard.svelte';
   import { abandonBatch, advanceStage, batch, initBatchSync } from '../../lib/batchService.js';
   import { observations, initBatchObservationsSync } from '../../lib/batchObservationService.js';
   import { addToast } from '../../lib/toastStore.js';
@@ -256,262 +257,270 @@
   }
 </script>
 
-{#if run === undefined}
-  <div class="flex justify-center p-8"><Spinner /></div>
-{:else if run === null}
-  <div class="p-6">
-    <EmptyState title="Batch not found" description="It may have been deleted." />
-  </div>
-{:else}
-  <DetailPage
-    title={run.recipeTitle}
-    subtitle={yieldSummary(run.totals)}
-    onBack={() => goBack('/batches')}
-    backLabel="Back"
-    class="p-4 sm:p-6"
-  >
-    <!-- ─── The ⋮ ──────────────────────────────────────────────────────────────
+<!-- Bread is still being built (issue #831): everyone outside the test group is
+     redirected home and sees nothing at all — no denial copy, because a message
+     would announce a feature they are not meant to know exists yet. Cosmetic only;
+     the boundary is not here (see lib/featureGate.ts). -->
+<FeatureGuard feature="bread">
+  {#if run === undefined}
+    <div class="flex justify-center p-8"><Spinner /></div>
+  {:else if run === null}
+    <div class="p-6">
+      <EmptyState title="Batch not found" description="It may have been deleted." />
+    </div>
+  {:else}
+    <DetailPage
+      title={run.recipeTitle}
+      subtitle={yieldSummary(run.totals)}
+      onBack={() => goBack('/batches')}
+      backLabel="Back"
+      class="p-4 sm:p-6"
+    >
+      <!-- ─── The ⋮ ──────────────────────────────────────────────────────────────
          One item, and deliberately so. A destructive, one-way action does not get
          a top-level slot beside the thing you came here to tap, and the header is
          where this page's precedent puts it (RecipeViewPage's Delete). The gate is
          on the whole menu rather than on the item, so the trigger can never open
          onto an empty popover — the rule the recipe view's menu keeps too. -->
-    {#snippet actions()}
-      {#if canAbandon}
-        <Popover bind:open={overflowOpen}>
-          <PopoverTrigger>
-            {#snippet children()}
+      {#snippet actions()}
+        {#if canAbandon}
+          <Popover bind:open={overflowOpen}>
+            <PopoverTrigger>
+              {#snippet children()}
+                <button
+                  type="button"
+                  class="inline-flex h-8 w-8 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  aria-label="More actions"
+                  data-testid="batch-actions-overflow"
+                >
+                  <Icon name="EllipsisVertical" size={20} />
+                </button>
+              {/snippet}
+            </PopoverTrigger>
+            <PopoverContent align="end" class="min-w-44 p-1">
               <button
                 type="button"
-                class="inline-flex h-8 w-8 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                aria-label="More actions"
-                data-testid="batch-actions-overflow"
+                class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-destructive/10"
+                onclick={() => {
+                  overflowOpen = false;
+                  abandonOpen = true;
+                }}
+                data-testid="batch-abandon-menu-item"
               >
-                <Icon name="EllipsisVertical" size={20} />
+                <Icon name="CircleSlash" size={14} />
+                Abandon
               </button>
-            {/snippet}
-          </PopoverTrigger>
-          <PopoverContent align="end" class="min-w-44 p-1">
-            <button
-              type="button"
-              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-destructive/10"
-              onclick={() => {
-                overflowOpen = false;
-                abandonOpen = true;
-              }}
-              data-testid="batch-abandon-menu-item"
-            >
-              <Icon name="CircleSlash" size={14} />
-              Abandon
-            </button>
-          </PopoverContent>
-        </Popover>
-      {/if}
-    {/snippet}
+            </PopoverContent>
+          </Popover>
+        {/if}
+      {/snippet}
 
-    <div class="flex flex-col gap-4" data-testid="batch-detail">
-      <p class="text-sm text-muted-foreground" data-testid="batch-detail-started">
-        Started {formatDate(run.createdAt)}{#if run.state === 'abandoned'}
-          · abandoned{/if}
-      </p>
+      <div class="flex flex-col gap-4" data-testid="batch-detail">
+        <p class="text-sm text-muted-foreground" data-testid="batch-detail-started">
+          Started {formatDate(run.createdAt)}{#if run.state === 'abandoned'}
+            · abandoned{/if}
+        </p>
 
-      <!-- ─── The invitation ────────────────────────────────────────────────────
+        <!-- ─── The invitation ────────────────────────────────────────────────────
            Shown when every stage is done and nothing has been written yet — an
            INLINE card, not a modal, so it can sit there being ignored. Skip is
            one tap and dismisses it for this visit; logging anything at all
            dismisses it for good, because the question has then been answered. -->
-      {#if showPrompt}
-        <Card>
-          <CardContent class="pt-6">
-            <div class="flex flex-col gap-3" data-testid="batch-log-prompt">
-              <div>
-                <p class="font-medium">That's every stage done. How did it go?</p>
-                <p class="text-sm text-muted-foreground">
-                  A weight, a note, a photo — whatever you want to remember next time. Entirely
-                  optional.
-                </p>
+        {#if showPrompt}
+          <Card>
+            <CardContent class="pt-6">
+              <div class="flex flex-col gap-3" data-testid="batch-log-prompt">
+                <div>
+                  <p class="font-medium">That's every stage done. How did it go?</p>
+                  <p class="text-sm text-muted-foreground">
+                    A weight, a note, a photo — whatever you want to remember next time. Entirely
+                    optional.
+                  </p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    onclick={() => (logOpen = true)}
+                    data-testid="batch-log-prompt-open"
+                  >
+                    {#snippet leading()}
+                      <Icon name="StickyNote" size={16} />
+                    {/snippet}
+                    Log how it went
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onclick={() => (promptDismissed = true)}
+                    data-testid="batch-log-prompt-skip"
+                  >
+                    Skip
+                  </Button>
+                </div>
               </div>
-              <div class="flex flex-wrap items-center gap-2">
-                <Button
-                  size="sm"
-                  onclick={() => (logOpen = true)}
-                  data-testid="batch-log-prompt-open"
-                >
-                  {#snippet leading()}
-                    <Icon name="StickyNote" size={16} />
-                  {/snippet}
-                  Log how it went
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onclick={() => (promptDismissed = true)}
-                  data-testid="batch-log-prompt-skip"
-                >
-                  Skip
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      {/if}
+            </CardContent>
+          </Card>
+        {/if}
 
-      <!-- ─── The scaled ingredient list ────────────────────────────────────────
+        <!-- ─── The scaled ingredient list ────────────────────────────────────────
            The frozen `label` is the recipe's own `rawText`, so it carries the
            recipe's as-written amount ("500 g strong white flour"). That is left
            alone rather than tidied: it is the line this run came from, and the
            figure you actually weigh is the one in the right-hand column, which is
            where the eye goes. -->
-      <Card>
-        <CardHeader>
-          <CardTitle>Weigh out</CardTitle>
-        </CardHeader>
-        <CardContent class="flex flex-col gap-2">
-          <ul class="flex flex-col gap-2" data-testid="batch-quantities">
-            {#each run.quantities as quantity (quantity.ingredientId)}
-              <li
-                class="flex items-baseline justify-between gap-3 border-b border-border pb-2 last:border-0 last:pb-0"
-                data-testid="batch-quantity"
-                data-ingredient-id={quantity.ingredientId}
-              >
-                <span class="min-w-0 flex-1 text-sm">
-                  {#if quantity.label === ''}
-                    <!-- An empty label means the ingredient had already left the
+        <Card>
+          <CardHeader>
+            <CardTitle>Weigh out</CardTitle>
+          </CardHeader>
+          <CardContent class="flex flex-col gap-2">
+            <ul class="flex flex-col gap-2" data-testid="batch-quantities">
+              {#each run.quantities as quantity (quantity.ingredientId)}
+                <li
+                  class="flex items-baseline justify-between gap-3 border-b border-border pb-2 last:border-0 last:pb-0"
+                  data-testid="batch-quantity"
+                  data-ingredient-id={quantity.ingredientId}
+                >
+                  <span class="min-w-0 flex-1 text-sm">
+                    {#if quantity.label === ''}
+                      <!-- An empty label means the ingredient had already left the
                          recipe when this run started. A blank reads as "we no longer
                          know what this was", which is true; an id reads as gibberish
                          and a guess reads as a fact. -->
-                    <span class="italic text-muted-foreground">no longer in the recipe</span>
-                  {:else}
-                    {quantity.label}
-                  {/if}
-                </span>
-                <span class="shrink-0 text-right">
-                  <span class="block font-medium tabular-nums" data-testid="batch-quantity-grams">
-                    {formatGrams(quantity.grams)}
+                      <span class="italic text-muted-foreground">no longer in the recipe</span>
+                    {:else}
+                      {quantity.label}
+                    {/if}
                   </span>
-                  <span class="block text-xs tabular-nums text-muted-foreground">
-                    {quantity.percent}%
+                  <span class="shrink-0 text-right">
+                    <span class="block font-medium tabular-nums" data-testid="batch-quantity-grams">
+                      {formatGrams(quantity.grams)}
+                    </span>
+                    <span class="block text-xs tabular-nums text-muted-foreground">
+                      {quantity.percent}%
+                    </span>
                   </span>
-                </span>
-              </li>
-            {/each}
-          </ul>
+                </li>
+              {/each}
+            </ul>
 
-          <dl class="flex flex-col gap-1 pt-2 text-sm" data-testid="batch-totals">
-            <div class="flex justify-between gap-3">
-              <dt class="text-muted-foreground">In the bowl</dt>
-              <dd class="tabular-nums" data-testid="batch-total-grams">
-                {formatGrams(run.totals.totalGrams)}
-              </dd>
-            </div>
-            <div class="flex justify-between gap-3">
-              <dt class="text-muted-foreground">Off the bench</dt>
-              <dd class="tabular-nums" data-testid="batch-usable-grams">
-                {formatGrams(run.totals.usableGrams)}
-              </dd>
-            </div>
-            {#if run.totals.units !== null}
+            <dl class="flex flex-col gap-1 pt-2 text-sm" data-testid="batch-totals">
               <div class="flex justify-between gap-3">
-                <dt class="text-muted-foreground">Baked, each</dt>
-                <dd class="tabular-nums" data-testid="batch-baked-each">
-                  about {formatGrams(run.totals.units.bakedUnitGrams)}
+                <dt class="text-muted-foreground">In the bowl</dt>
+                <dd class="tabular-nums" data-testid="batch-total-grams">
+                  {formatGrams(run.totals.totalGrams)}
                 </dd>
               </div>
-            {/if}
-          </dl>
-
-          <p class="text-xs text-muted-foreground" data-testid="batch-frozen-note">
-            These were worked out when the batch started. Editing the recipe or its formula
-            afterwards won't change a number here.
-          </p>
-        </CardContent>
-      </Card>
-
-      <!-- ─── The schedule ─────────────────────────────────────────────────────── -->
-      <Card>
-        <CardHeader>
-          <CardTitle>The plan</CardTitle>
-        </CardHeader>
-        <CardContent class="flex flex-col gap-3">
-          {#if startsAt !== null && endsAt !== null}
-            <p class="text-sm text-muted-foreground" data-testid="batch-schedule-span">
-              From {formatWhen(startsAt)} to {formatWhen(endsAt)}.
-            </p>
-          {/if}
-
-          <ol class="flex flex-col gap-2" data-testid="batch-stages">
-            {#each run.stages as stage (stage.id)}
-              {@const stated = formatStatedDuration(stage.duration)}
-              {@const isCurrent = stage.id === currentStageId}
-              <li
-                class="flex flex-col gap-1 rounded border border-border p-3"
-                class:opacity-60={stage.actualEndAt !== null}
-                class:border-primary={isCurrent}
-                data-testid="batch-stage"
-                data-stage-id={stage.id}
-                data-current={isCurrent ? 'true' : null}
-                data-planned-start={stage.plannedStartAt}
-                data-planned-end={stage.plannedEndAt}
-              >
-                <div class="flex items-baseline justify-between gap-3">
-                  <span class="min-w-0 flex-1 font-medium" data-testid="batch-stage-label">
-                    {stage.label}
-                  </span>
-                  <span class="shrink-0 text-xs uppercase tracking-wide text-muted-foreground">
-                    {stage.kind === 'wait' ? 'wait' : 'active'}
-                  </span>
+              <div class="flex justify-between gap-3">
+                <dt class="text-muted-foreground">Off the bench</dt>
+                <dd class="tabular-nums" data-testid="batch-usable-grams">
+                  {formatGrams(run.totals.usableGrams)}
+                </dd>
+              </div>
+              {#if run.totals.units !== null}
+                <div class="flex justify-between gap-3">
+                  <dt class="text-muted-foreground">Baked, each</dt>
+                  <dd class="tabular-nums" data-testid="batch-baked-each">
+                    about {formatGrams(run.totals.units.bakedUnitGrams)}
+                  </dd>
                 </div>
+              {/if}
+            </dl>
 
-                <div class="flex flex-col gap-0.5 text-sm">
-                  <span class="tabular-nums" data-testid="batch-stage-start">
-                    Starts {formatWhen(stage.plannedStartAt)}
-                  </span>
-                  {#if isObservational(stage)}
-                    <!-- A stage with no duration is scheduled at ZERO elapsed time —
+            <p class="text-xs text-muted-foreground" data-testid="batch-frozen-note">
+              These were worked out when the batch started. Editing the recipe or its formula
+              afterwards won't change a number here.
+            </p>
+          </CardContent>
+        </Card>
+
+        <!-- ─── The schedule ─────────────────────────────────────────────────────── -->
+        <Card>
+          <CardHeader>
+            <CardTitle>The plan</CardTitle>
+          </CardHeader>
+          <CardContent class="flex flex-col gap-3">
+            {#if startsAt !== null && endsAt !== null}
+              <p class="text-sm text-muted-foreground" data-testid="batch-schedule-span">
+                From {formatWhen(startsAt)} to {formatWhen(endsAt)}.
+              </p>
+            {/if}
+
+            <ol class="flex flex-col gap-2" data-testid="batch-stages">
+              {#each run.stages as stage (stage.id)}
+                {@const stated = formatStatedDuration(stage.duration)}
+                {@const isCurrent = stage.id === currentStageId}
+                <li
+                  class="flex flex-col gap-1 rounded border border-border p-3"
+                  class:opacity-60={stage.actualEndAt !== null}
+                  class:border-primary={isCurrent}
+                  data-testid="batch-stage"
+                  data-stage-id={stage.id}
+                  data-current={isCurrent ? 'true' : null}
+                  data-planned-start={stage.plannedStartAt}
+                  data-planned-end={stage.plannedEndAt}
+                >
+                  <div class="flex items-baseline justify-between gap-3">
+                    <span class="min-w-0 flex-1 font-medium" data-testid="batch-stage-label">
+                      {stage.label}
+                    </span>
+                    <span class="shrink-0 text-xs uppercase tracking-wide text-muted-foreground">
+                      {stage.kind === 'wait' ? 'wait' : 'active'}
+                    </span>
+                  </div>
+
+                  <div class="flex flex-col gap-0.5 text-sm">
+                    <span class="tabular-nums" data-testid="batch-stage-start">
+                      Starts {formatWhen(stage.plannedStartAt)}
+                    </span>
+                    {#if isObservational(stage)}
+                      <!-- A stage with no duration is scheduled at ZERO elapsed time —
                          `plannedEndAt` equals `plannedStartAt`. Printing that as a
                          span would read as an instant event, which is the one thing
                          it is not: the length is not zero and it is not infinite, it
                          is UNKNOWN (see `resolveSchedule`'s header). So it says so,
                          and says what everything after it therefore is. -->
-                    <span class="text-muted-foreground" data-testid="batch-stage-observational">
-                      No fixed time — you decide when it's ready, and the times below are the plan
-                      as if this took none.
-                    </span>
-                  {:else}
-                    <span class="tabular-nums text-muted-foreground" data-testid="batch-stage-end">
-                      Ends {formatWhen(stage.plannedEndAt)}
-                    </span>
-                  {/if}
-                </div>
+                      <span class="text-muted-foreground" data-testid="batch-stage-observational">
+                        No fixed time — you decide when it's ready, and the times below are the plan
+                        as if this took none.
+                      </span>
+                    {:else}
+                      <span
+                        class="tabular-nums text-muted-foreground"
+                        data-testid="batch-stage-end"
+                      >
+                        Ends {formatWhen(stage.plannedEndAt)}
+                      </span>
+                    {/if}
+                  </div>
 
-                {#if stated !== null || stage.environment !== null || stage.until !== null}
-                  <div
-                    class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"
-                  >
-                    {#if stated !== null}
-                      <!-- What the RECIPE said, beside the single time the schedule
+                  {#if stated !== null || stage.environment !== null || stage.until !== null}
+                    <div
+                      class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"
+                    >
+                      {#if stated !== null}
+                        <!-- What the RECIPE said, beside the single time the schedule
                            had to commit to. A range is scheduled at its long end and
                            keeps its whole span here, so "45–60 min" is still readable
                            against a clock that says 60. -->
-                      <span data-testid="batch-stage-stated">
-                        Recipe says {stated}{#if stage.duration?.kind === 'range'}, planned at the
-                          long end{/if}
-                      </span>
-                    {/if}
-                    {#if stage.environment !== null}
-                      <span class="flex items-center gap-1" data-testid="batch-stage-environment">
-                        <Icon name="Thermometer" size={12} />
-                        {stage.environment.celsius} °C{#if stage.environment.relativeHumidityPercent !== undefined}
-                          · {stage.environment.relativeHumidityPercent}% RH{/if}
-                      </span>
-                    {/if}
-                    {#if stage.until !== null}
-                      <span data-testid="batch-stage-until">{stage.until}</span>
-                    {/if}
-                  </div>
-                {/if}
+                        <span data-testid="batch-stage-stated">
+                          Recipe says {stated}{#if stage.duration?.kind === 'range'}, planned at the
+                            long end{/if}
+                        </span>
+                      {/if}
+                      {#if stage.environment !== null}
+                        <span class="flex items-center gap-1" data-testid="batch-stage-environment">
+                          <Icon name="Thermometer" size={12} />
+                          {stage.environment.celsius} °C{#if stage.environment.relativeHumidityPercent !== undefined}
+                            · {stage.environment.relativeHumidityPercent}% RH{/if}
+                        </span>
+                      {/if}
+                      {#if stage.until !== null}
+                        <span data-testid="batch-stage-until">{stage.until}</span>
+                      {/if}
+                    </div>
+                  {/if}
 
-                <!-- ─── The controls, on the stage in hand and nowhere else ─────
+                  <!-- ─── The controls, on the stage in hand and nowhere else ─────
                      "Done" is the write the whole reminder engine hangs off, so it
                      is the primary and it is tapped WHEN THE STAGE IS ACTUALLY
                      DONE, not when the clock says it should have been: early and
@@ -530,45 +539,45 @@
                      cook mode with its own timers, which is the whole hand-off (see
                      docs/formulas-schedules-batches.md) and needs no new machinery
                      at the sharp end. -->
-                {#if isCurrent}
-                  <div
-                    class="flex flex-wrap items-center gap-2 pt-2"
-                    data-testid="batch-stage-controls"
-                  >
-                    <Button
-                      size="sm"
-                      onclick={() => void handleAdvance(stage.id)}
-                      loading={advancingStageId === stage.id}
-                      disabled={advancingStageId !== null}
-                      data-testid="batch-stage-advance"
+                  {#if isCurrent}
+                    <div
+                      class="flex flex-wrap items-center gap-2 pt-2"
+                      data-testid="batch-stage-controls"
                     >
-                      {#snippet leading()}
-                        <Icon name="Check" size={16} />
-                      {/snippet}
-                      Mark done
-                    </Button>
-                    {#if stage.kind === 'active'}
                       <Button
                         size="sm"
-                        variant="outline"
-                        onclick={() => push(`/recipes/${run.recipeId}/cook`)}
-                        data-testid="batch-stage-cook"
+                        onclick={() => void handleAdvance(stage.id)}
+                        loading={advancingStageId === stage.id}
+                        disabled={advancingStageId !== null}
+                        data-testid="batch-stage-advance"
                       >
                         {#snippet leading()}
-                          <Icon name="CookingPot" size={16} />
+                          <Icon name="Check" size={16} />
                         {/snippet}
-                        Cook mode
+                        Mark done
                       </Button>
-                    {/if}
-                  </div>
-                {/if}
-              </li>
-            {/each}
-          </ol>
-        </CardContent>
-      </Card>
+                      {#if stage.kind === 'active'}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onclick={() => push(`/recipes/${run.recipeId}/cook`)}
+                          data-testid="batch-stage-cook"
+                        >
+                          {#snippet leading()}
+                            <Icon name="CookingPot" size={16} />
+                          {/snippet}
+                          Cook mode
+                        </Button>
+                      {/if}
+                    </div>
+                  {/if}
+                </li>
+              {/each}
+            </ol>
+          </CardContent>
+        </Card>
 
-      <!-- ─── The log ───────────────────────────────────────────────────────────
+        <!-- ─── The log ───────────────────────────────────────────────────────────
            OUTSIDE the ⋮, and outside `canAbandon` with it. Phase 3 gated that whole
            menu on the run being `running` so its trigger could never open onto an
            empty popover, and an always-available item put inside it would vanish
@@ -580,136 +589,140 @@
            It is also the door that is open the whole way through. A cure is weighed
            on day 12, not only at the end, so the end-of-run invitation above is an
            extra prompt and never the only route to this. -->
-      <Card>
-        <CardHeader class="flex-row items-center justify-between gap-3">
-          <CardTitle>How it went</CardTitle>
-          <Button
-            variant="outline"
-            size="sm"
-            onclick={() => (logOpen = true)}
-            data-testid="batch-log-add"
-          >
-            {#snippet leading()}
-              <Icon name="Plus" size={16} />
-            {/snippet}
-            Log a reading
-          </Button>
-        </CardHeader>
-        <CardContent class="flex flex-col gap-3">
-          {#if log === undefined}
-            <!-- Still loading. Nothing is said, because "nothing recorded yet" would
+        <Card>
+          <CardHeader class="flex-row items-center justify-between gap-3">
+            <CardTitle>How it went</CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              onclick={() => (logOpen = true)}
+              data-testid="batch-log-add"
+            >
+              {#snippet leading()}
+                <Icon name="Plus" size={16} />
+              {/snippet}
+              Log a reading
+            </Button>
+          </CardHeader>
+          <CardContent class="flex flex-col gap-3">
+            {#if log === undefined}
+              <!-- Still loading. Nothing is said, because "nothing recorded yet" would
                  be a claim about six weeks of a cure's log that we have not read. -->
-            <Spinner />
-          {:else if logEntries.length === 0}
-            <p class="text-sm text-muted-foreground" data-testid="batch-log-empty">
-              Nothing recorded yet. A weight, a note or a photo — it stays on this batch.
-            </p>
-          {:else}
-            <!-- Newest first: the reverse of the ascending list the adapter sorted
+              <Spinner />
+            {:else if logEntries.length === 0}
+              <p class="text-sm text-muted-foreground" data-testid="batch-log-empty">
+                Nothing recorded yet. A weight, a note or a photo — it stays on this batch.
+              </p>
+            {:else}
+              <!-- Newest first: the reverse of the ascending list the adapter sorted
                  by `at`, never a re-sort of our own. -->
-            <ul class="flex flex-col gap-3" data-testid="batch-log">
-              {#each logEntries as entry (entry.id)}
-                <li
-                  class="flex flex-col gap-1 border-b border-border pb-3 last:border-0 last:pb-0"
-                  data-testid="batch-log-entry"
-                  data-observation-id={entry.id}
-                  data-at={entry.at}
-                >
-                  <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                    <span class="text-sm text-muted-foreground" data-testid="batch-log-entry-when">
-                      {formatWhen(entry.at)}
-                    </span>
-                    {#if entry.weightGrams !== null}
-                      <span class="font-medium tabular-nums" data-testid="batch-log-entry-weight">
-                        {formatGrams(entry.weightGrams)}
+              <ul class="flex flex-col gap-3" data-testid="batch-log">
+                {#each logEntries as entry (entry.id)}
+                  <li
+                    class="flex flex-col gap-1 border-b border-border pb-3 last:border-0 last:pb-0"
+                    data-testid="batch-log-entry"
+                    data-observation-id={entry.id}
+                    data-at={entry.at}
+                  >
+                    <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                      <span
+                        class="text-sm text-muted-foreground"
+                        data-testid="batch-log-entry-when"
+                      >
+                        {formatWhen(entry.at)}
                       </span>
-                    {/if}
-                    <!-- Neither of these has a control on this screen (the service
+                      {#if entry.weightGrams !== null}
+                        <span class="font-medium tabular-nums" data-testid="batch-log-entry-weight">
+                          {formatGrams(entry.weightGrams)}
+                        </span>
+                      {/if}
+                      <!-- Neither of these has a control on this screen (the service
                          writes them null and says why). They are RENDERED anyway
                          because the document may carry them — from a later screen,
                          or from a hand-written correction — and showing a reading
                          that exists costs nothing. -->
-                    {#if entry.ph !== null}
-                      <span class="text-sm tabular-nums" data-testid="batch-log-entry-ph">
-                        pH {entry.ph}
-                      </span>
+                      {#if entry.ph !== null}
+                        <span class="text-sm tabular-nums" data-testid="batch-log-entry-ph">
+                          pH {entry.ph}
+                        </span>
+                      {/if}
+                      {#if entry.temperatureC !== null}
+                        <span
+                          class="flex items-center gap-1 text-sm tabular-nums"
+                          data-testid="batch-log-entry-temp"
+                        >
+                          <Icon name="Thermometer" size={12} />
+                          {entry.temperatureC} °C
+                        </span>
+                      {/if}
+                    </div>
+                    {#if entry.note !== ''}
+                      <p class="whitespace-pre-wrap text-sm" data-testid="batch-log-entry-note">
+                        {entry.note}
+                      </p>
                     {/if}
-                    {#if entry.temperatureC !== null}
-                      <span
-                        class="flex items-center gap-1 text-sm tabular-nums"
-                        data-testid="batch-log-entry-temp"
-                      >
-                        <Icon name="Thermometer" size={12} />
-                        {entry.temperatureC} °C
-                      </span>
-                    {/if}
-                  </div>
-                  {#if entry.note !== ''}
-                    <p class="whitespace-pre-wrap text-sm" data-testid="batch-log-entry-note">
-                      {entry.note}
-                    </p>
-                  {/if}
-                  {#if entry.image !== null}
-                    <!-- The Storage URL the callable stamped on. The bytes never went
+                    {#if entry.image !== null}
+                      <!-- The Storage URL the callable stamped on. The bytes never went
                          through Firestore and there is no client-writable Storage
                          path anywhere in this feature. -->
-                    <img
-                      src={entry.image.url}
-                      alt="How the batch looked on {formatWhen(entry.at)}"
-                      loading="lazy"
-                      class="mt-1 max-w-sm rounded border border-border object-cover"
-                      data-testid="batch-log-entry-photo"
-                    />
-                  {/if}
-                </li>
-              {/each}
-            </ul>
-          {/if}
-        </CardContent>
-      </Card>
-    </div>
-  </DetailPage>
-{/if}
+                      <img
+                        src={entry.image.url}
+                        alt="How the batch looked on {formatWhen(entry.at)}"
+                        loading="lazy"
+                        class="mt-1 max-w-sm rounded border border-border object-cover"
+                        data-testid="batch-log-entry-photo"
+                      />
+                    {/if}
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+          </CardContent>
+        </Card>
+      </div>
+    </DetailPage>
+  {/if}
 
-<!-- Outside the `{#if}` for the reason the abandon confirm is: a sheet must not be
+  <!-- Outside the `{#if}` for the reason the abandon confirm is: a sheet must not be
      torn out from under itself if the run's snapshot changes while it is open. -->
-<BatchObservationSheet bind:open={logOpen} {batchId} onLogged={() => (promptDismissed = true)} />
+  <BatchObservationSheet bind:open={logOpen} {batchId} onLogged={() => (promptDismissed = true)} />
 
-<!-- ─── Abandon confirm ──────────────────────────────────────────────────────────
+  <!-- ─── Abandon confirm ──────────────────────────────────────────────────────────
      Outside the `{#if}` so the dialog is not torn out from under itself if the
      write lands before the animation finishes. It says what abandoning does and
      what it does not: the run stops and its reminders stop with it, and the log of
      how far it got stays exactly where it is — which is the difference between this
      and a delete, and the reason there is no way back. -->
-<Dialog
-  bind:open={abandonOpen}
-  onOpenChange={(v) => {
-    if (!v) abandoning = false;
-  }}
->
-  <DialogContent>
-    <div class="flex flex-col gap-4" data-testid="batch-abandon-dialog">
-      <DialogHeader>
-        <DialogTitle>Abandon this batch?</DialogTitle>
-        <DialogDescription>
-          Its reminders stop. What it recorded stays — you just won't be asked about it again, and
-          there's no way back.
-        </DialogDescription>
-      </DialogHeader>
-      <DialogFooter>
-        <Button variant="outline" onclick={() => (abandonOpen = false)} disabled={abandoning}>
-          Keep going
-        </Button>
-        <Button
-          variant="destructive"
-          onclick={() => void handleAbandon()}
-          loading={abandoning}
-          disabled={abandoning}
-          data-testid="batch-abandon-confirm"
-        >
-          Abandon
-        </Button>
-      </DialogFooter>
-    </div>
-  </DialogContent>
-</Dialog>
+  <Dialog
+    bind:open={abandonOpen}
+    onOpenChange={(v) => {
+      if (!v) abandoning = false;
+    }}
+  >
+    <DialogContent>
+      <div class="flex flex-col gap-4" data-testid="batch-abandon-dialog">
+        <DialogHeader>
+          <DialogTitle>Abandon this batch?</DialogTitle>
+          <DialogDescription>
+            Its reminders stop. What it recorded stays — you just won't be asked about it again, and
+            there's no way back.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onclick={() => (abandonOpen = false)} disabled={abandoning}>
+            Keep going
+          </Button>
+          <Button
+            variant="destructive"
+            onclick={() => void handleAbandon()}
+            loading={abandoning}
+            disabled={abandoning}
+            data-testid="batch-abandon-confirm"
+          >
+            Abandon
+          </Button>
+        </DialogFooter>
+      </div>
+    </DialogContent>
+  </Dialog>
+</FeatureGuard>

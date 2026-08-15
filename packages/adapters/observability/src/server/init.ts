@@ -28,6 +28,15 @@ const SERVER_DISTINCT_ID = 'salt-cloud-functions';
 
 let client: PostHog | null = null;
 
+// True once initServerObservability was called WITH a key — i.e. this deployment is
+// meant to have live PostHog, whether or not the client then came up. Deliberately
+// NOT the same bit as `client !== null`, which cannot tell "no telemetry
+// configured" apart from "telemetry configured and broken". Only the feature-flag
+// read needs to tell them apart, and it must: see `isServerFeatureEnabled` (issue
+// #831). The browser side carries the identical bit for the identical reason
+// (src/init.ts).
+let configured = false;
+
 // Deployment environment ('production' | 'staging' | 'development') is recorded at
 // init and attached to every server event under the OTel-standard
 // `deployment.environment` property (the same key the span resources + browser
@@ -59,6 +68,10 @@ export function isServerObservabilityInitialised(): boolean {
 export function initServerObservability(key: string, environment?: string): void {
   if (client) return;
   if (!key) return; // inert when the key is absent
+  // A key was supplied, so this deployment is MEANT to have live PostHog. Recorded
+  // before the constructor attempt precisely so a failed attempt still counts as
+  // configured — see isServerFeatureEnabled.
+  configured = true;
 
   const host = process.env['POSTHOG_HOST'] || DEFAULT_POSTHOG_HOST;
 
@@ -91,6 +104,64 @@ export function safePosthog(fn: (ph: PostHog) => void): void {
     fn(client);
   } catch {
     // Swallow — observability must never surface failures to callers.
+  }
+}
+
+// ── Feature flags (issue #831) ───────────────────────────────────────────────
+// The server twin of the browser side's `isObservabilityFeatureEnabled`, with the
+// SAME asymmetry between "unconfigured" and "broken" and the same never-throws
+// posture (CLAUDE.md Rule 10). It cannot reuse `safePosthog` above: that guard is
+// synchronous and void-returning, and a server flag read is a network round trip.
+//
+// Whether `key` is on for the person identified by `distinctId`. The browser
+// identifies people by their Firebase uid with `email` as a person property, so the
+// server must ask the same question the same way — uid as the distinct id,
+// `personProperties: { email }` so an email-targeted release condition can be
+// evaluated for a person this process has never seen.
+//
+// UNCONFIGURED MEANS UNGATED, and that is deliberate rather than a convenience.
+// Live PostHog is the only thing that can say "yes" here, so where there is no
+// POSTHOG_API_KEY at all — an emulator run, every CF unit suite — the honest
+// reading is not "everything is off" but "nothing is being gated". Fail-closed
+// there would silently delete existing coverage.
+//
+// A CONFIGURED-BUT-BROKEN CLIENT IS NOT THAT CASE, and the two must not be
+// conflated: a key was supplied and the constructor threw, which is a failure, and
+// failures fail closed. `client` alone cannot tell the two apart — hence
+// `configured`.
+export async function isServerFeatureEnabled(
+  key: string,
+  distinctId: string,
+  personProperties?: Record<string, string>,
+): Promise<boolean> {
+  if (!configured) return true; // no PostHog in this deployment — nothing is gated
+  if (!client) return false; // PostHog was meant to be here and isn't — fail closed
+  try {
+    // getFeatureFlagResult, NOT the deprecated isFeatureEnabled(key, distinctId, …)
+    // and NOT evaluateFlags(…).isEnabled(key). It is the only non-deprecated read
+    // that is BOTH scoped to a single flag and able to suppress the
+    // `$feature_flag_called` event: `evaluateFlags` takes `AllFlagsOptions`, which
+    // has no `sendFeatureFlagEvents` (posthog-node 5.48.1) and whose snapshot fires
+    // the event on every `isEnabled` access.
+    //
+    // Suppressing that event is the point: the caller (`onBatchWritten`) runs on
+    // EVERY batch write — every stage advance — and asks this once per household
+    // member, so leaving it on would emit `$feature_flag_called` per person per
+    // write for no analytic value. `flushAt: 1` would make each one its own POST.
+    const result = await client.getFeatureFlagResult(key, distinctId, {
+      // Spread rather than assigned: under exactOptionalPropertyTypes the SDK's
+      // optional `personProperties` will not take an explicit undefined, so an
+      // absent bag is omitted from the call instead of passed as one.
+      ...(personProperties ? { personProperties } : {}),
+      sendFeatureFlagEvents: false,
+    });
+    // Undefined = the flag does not exist / was not returned. Off, like every other
+    // uncertain answer here.
+    return result?.enabled === true;
+  } catch {
+    // A `/flags` timeout, a network failure, a quota limit — all fail closed, and
+    // none of them reach the caller (Rule 10).
+    return false;
   }
 }
 

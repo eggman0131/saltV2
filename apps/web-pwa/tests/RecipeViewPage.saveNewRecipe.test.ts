@@ -73,7 +73,16 @@ vi.mock('../src/lib/shoppingListService.svelte.js', () => ({ defaultListId: mock
 vi.mock('@salt/firebase-sync', () => ({
   saveRecipe: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
 }));
-vi.mock('@salt/observability', () => ({ trackUsageEvent: vi.fn() }));
+// The feature-flag reads are here because this suite stubs the whole adapter and
+// the page now reads the bread gate (issue #831). "Never initialised" is what the
+// real adapter reports under vitest, so these stubs say the same thing: nothing is
+// gated, and this suite's subject is unaffected.
+vi.mock('@salt/observability', () => ({
+  trackUsageEvent: vi.fn(),
+  isObservabilityFeatureEnabled: () => true,
+  areObservabilityFeatureFlagsSettled: () => true,
+  onObservabilityFeatureFlags: () => () => {},
+}));
 vi.mock('../src/lib/chatService.js', () => ({
   sessions: mockSessions,
   createChatSession: vi.fn(),

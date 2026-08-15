@@ -51,4 +51,24 @@ export interface BatchStageTaskPayload {
   // task match nothing and no-op. That is the whole cancellation-free design — no
   // task is ever deleted, because a stale one costs a single Firestore read.
   readonly plannedStartAt: string;
+  // The notification audience, FROZEN AT ENQUEUE TIME (issue #831): the uids that
+  // passed the `bread` feature flag when the reminder was scheduled. It rides HERE,
+  // on the task, and never as a field on the batch document — the client rewrites
+  // that document wholesale with `setDoc`, so an audience stored on it would be
+  // clobbered under LWW by the very stage advance that scheduled the reminder.
+  //
+  // Freezing it also keeps PostHog off the critical path of a time-sensitive
+  // reminder: dispatch reads this list, it never asks. A PostHog outage at 06:45
+  // cannot cost the preheat.
+  //
+  // Uids are IDS, so this respects the module rule above — no recipe title, no stage
+  // label, nothing that could announce copy edited hours ago.
+  //
+  // OPTIONAL ON PURPOSE, and this is the whole back-compat story. ABSENT means
+  // BROADCAST — a task enqueued before this change carries no field, and dispatch
+  // must read that absence as today's behaviour rather than as "nobody", or every
+  // already-queued reminder goes silent. An EMPTY ARRAY means the opposite and must
+  // be honoured: nobody passed the flag, so nobody is woken. That distinction is the
+  // one thing a reader will get wrong.
+  readonly notifyUids?: readonly string[];
 }
