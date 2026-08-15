@@ -2,7 +2,11 @@ import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'fi
 import { getApp } from 'firebase/app';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success, failure } from '@salt/shared-types';
-import { KitchenMemorySchema, type KitchenMemoryDoc } from '@salt/domain/schemas';
+import {
+  KitchenMemorySchema,
+  KITCHEN_MEMORY_COLLECTION,
+  type KitchenMemoryDoc,
+} from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
 
 // Kitchen memories (issue #816) — the notes the household wrote for the chef. One
@@ -30,7 +34,10 @@ import { classifyFirestoreError } from './firestoreErrors.js';
 // Failure<DomainError> (Rule 10). This adapter must not import @salt/observability
 // (Rule 4).
 
-const COLLECTION = 'kitchenMemories';
+// Named alongside the schema (issue #816, phase 2) because the chef's Cloud
+// Function now reads the same collection through the Admin SDK — one name, two
+// runtimes, no second literal to fall out of step.
+const COLLECTION = KITCHEN_MEMORY_COLLECTION;
 
 /**
  * Subscribe to every kitchen memory. Both members see the same set, live — a note

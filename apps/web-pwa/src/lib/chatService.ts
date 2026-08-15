@@ -9,6 +9,7 @@ import { createObservabilityErrorReportingAdapter, trackUsageEvent } from '@salt
 import { parseChatCommand } from '@salt/domain';
 import { reportIfFailed, reportSubscriptionError, reportWriteError } from './errorReporting.js';
 import { rememberNote } from './kitchenMemoryService.js';
+import { currentMember } from './membersService.js';
 import type { ChatSessionDoc } from '@salt/domain/schemas';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success } from '@salt/shared-types';
@@ -268,12 +269,35 @@ export async function sendMessage(
   const others = prevSessions.filter((s) => s.id !== stampedUser.id);
   _sessions.set([...others, stampedUser]);
 
+  // Who the chef is talking to (issue #816, phase 2). The same source the note's
+  // `author` is denormalised from, so the name the chef compares a note's author
+  // against is the name written on the notes.
+  //
+  // OMITTED, never defaulted, when it does not resolve. `exactOptionalPropertyTypes`
+  // means `speaker: undefined` is not the same as no `speaker`, and the difference
+  // matters: sending the 'Someone' fallback would tell the chef it is talking to a
+  // person by that name, and every note would then belong to "someone other than
+  // the person you are talking to". Absent, the prompt drops its attribution line
+  // and the chef stays quiet about all of them — the safe end of the range.
+  const speaker = get(currentMember)?.name;
+
   const streamResult = await streamChefChat(
     {
-      messages: session.messages,
+      // The stored `/remember …` lines are NOT sent to the model. The note itself
+      // is already in the system prompt, attributed to its author, so the raw
+      // command line adds nothing on the wire — and left in, it invites the chef to
+      // acknowledge a save it played no part in ("noted!"), which is exactly the
+      // listing-notes-back behaviour this phase exists to prevent. They stay in the
+      // stored transcript and keep rendering as chips; only what is sent changes.
+      // The predicate mirrors ChatThread's chip test, so the two cannot disagree
+      // about which lines are notes.
+      messages: session.messages.filter(
+        (m) => !(m.role === 'user' && parseChatCommand(m.text) !== null),
+      ),
       newMessage: text,
       recipeId: session.recipeId,
       basedOnRecipeId: session.basedOnRecipeId,
+      ...(speaker ? { speaker } : {}),
     },
     onChunk,
   );

@@ -17,6 +17,13 @@ import { z } from 'zod';
 // the person who happened to type it.
 //
 // Greenfield collection → no back-compat constraint.
+
+// Named here because TWO layers now address this collection: the browser adapter
+// (`kitchenMemorySubscription`) and the Cloud Function that reads the notes into
+// the chef's prompt via the Admin SDK. A string literal in each is a rename waiting
+// to go half-done, so the name lives with the schema that describes the documents.
+export const KITCHEN_MEMORY_COLLECTION = 'kitchenMemories';
+
 export const KitchenMemorySchema = z.object({
   id: z.string(),
   schemaVersion: z.literal(1).default(1),

@@ -151,7 +151,7 @@ export type { ShoppingListsConfigDoc } from './shoppingListsConfig.js';
 export { ShoppingSlotSchema, ShoppingDaySchema } from './shoppingDay.js';
 export type { ShoppingSlot, ShoppingDayDoc } from './shoppingDay.js';
 
-export { KitchenMemorySchema } from './kitchenMemory.js';
+export { KitchenMemorySchema, KITCHEN_MEMORY_COLLECTION } from './kitchenMemory.js';
 export type { KitchenMemoryDoc } from './kitchenMemory.js';
 
 export { DevSettingsSchema } from './devSettings.js';

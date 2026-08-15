@@ -27,6 +27,19 @@ vi.mock('../src/lib/kitchenMemoryService.js', () => ({
   rememberNote: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
 }));
 
+// chatService now reads the signed-in member's display NAME, to tell the chef who
+// it is talking to (issue #816, phase 2). Mocked at the same seam and for the same
+// reason as kitchenMemoryService above: the real module reaches auth.svelte.ts →
+// firebase.ts, which calls initFirebase() at module load.
+vi.mock('../src/lib/membersService.js', () => ({
+  currentMember: {
+    subscribe(fn: (m: unknown) => void) {
+      fn({ id: 'm1', name: 'Kate', email: 'kate@example.com' });
+      return () => {};
+    },
+  },
+}));
+
 import * as firebaseSync from '@salt/firebase-sync';
 import { trackUsageEvent } from '@salt/observability';
 import { rememberNote } from '../src/lib/kitchenMemoryService.js';
@@ -108,6 +121,53 @@ describe('sendMessage — /remember never reaches the chef', () => {
     expect(result.kind).toBe('err');
     expect(fs.saveChatSession).not.toHaveBeenCalled();
     expect(fs.streamChefChat).not.toHaveBeenCalled();
+  });
+});
+
+describe('sendMessage — what the chef is actually sent (phase 2)', () => {
+  function turn(role: 'user' | 'assistant', text: string) {
+    return { id: `msg-${text}`, role, text, createdAt: '2026-08-15T09:00:00.000Z' };
+  }
+
+  it('names the speaker, so the chef knows whose notes are whose', async () => {
+    await sendMessage(makeSession(), 'what shall we have tonight?', () => {});
+
+    const [input] = fs.streamChefChat.mock.calls[0]!;
+    expect(input.speaker).toBe('Kate');
+  });
+
+  it('withholds the stored /remember lines from the history it sends', async () => {
+    const session: ChatSessionDoc = {
+      ...makeSession(),
+      messages: [
+        turn('user', '/remember we hate coriander'),
+        turn('user', 'what shall we have tonight?'),
+        turn('assistant', 'How about a pilaf?'),
+      ],
+    };
+
+    await sendMessage(session, 'and for pudding?', () => {});
+
+    // The note is already in the system prompt, attributed to its author. Left on
+    // the wire it only invites the chef to acknowledge a save it played no part in.
+    const [input] = fs.streamChefChat.mock.calls[0]!;
+    expect(input.messages.map((m) => m.text)).toEqual([
+      'what shall we have tonight?',
+      'How about a pilaf?',
+    ]);
+  });
+
+  it('keeps the /remember lines in the stored transcript', async () => {
+    const session: ChatSessionDoc = {
+      ...makeSession(),
+      messages: [turn('user', '/remember we hate coriander')],
+    };
+
+    await sendMessage(session, 'ideas for tonight?', () => {});
+
+    // Only what is SENT changes — the chip still renders from the transcript.
+    const saved = fs.saveChatSession.mock.calls.at(-1)?.[0] as ChatSessionDoc;
+    expect(saved.messages.map((m) => m.text)).toContain('/remember we hate coriander');
   });
 });
 

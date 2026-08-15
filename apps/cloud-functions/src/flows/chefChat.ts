@@ -10,6 +10,7 @@ import { flowModel } from '../ai/fakeModel.js';
 import { reportFlowError } from '../observability/reportServerError.js';
 import { UK_INGREDIENT_PRINCIPLE } from './ingredientConversions.js';
 import { readEquipmentContext, equipmentSectionForChef } from './equipmentContext.js';
+import { readKitchenMemoryContext, kitchenMemorySectionForChef } from './kitchenMemoryContext.js';
 
 async function readRecipeContext(
   db: ReturnType<typeof getFirestore>,
@@ -159,6 +160,8 @@ function buildSystemPrompt(
   recipeContext: string,
   favouritesContext: string,
   variationContext: string,
+  memoryContext: string,
+  speaker: string | undefined,
 ): string {
   const sections: string[] = [CHEF_SYSTEM_BASE];
 
@@ -166,6 +169,19 @@ function buildSystemPrompt(
   if (equipmentSection) sections.push(equipmentSection);
 
   if (favouritesContext) sections.push(favouritesContext);
+
+  // AFTER the favourites and BEFORE the dish, deliberately. The two taste signals
+  // belong together — one inferred from what gets ticked off at the shop, the other
+  // the household's own words — and the explicit one goes second so it reads as the
+  // correction to the inferred one rather than the other way round. Both sit ahead
+  // of the recipe so the dish under discussion stays the last, most specific thing
+  // the chef reads; a preference nearer the end of the prompt than the task is how
+  // "never open with them" turns into opening with them.
+  //
+  // Absent entirely when there are no notes, so a household with none gets exactly
+  // today's prompt, byte for byte.
+  const memorySection = kitchenMemorySectionForChef(memoryContext, speaker);
+  if (memorySection) sections.push(memorySection);
 
   if (recipeContext) {
     sections.push(
@@ -194,7 +210,7 @@ export const chefChatFlow = ai.defineFlow(
   async (input, streamingCallback) => {
     try {
       const db = getFirestore();
-      const [equipmentContext, recipeContext, favouritesContext, variationContext] =
+      const [equipmentContext, recipeContext, favouritesContext, variationContext, memoryContext] =
         await Promise.all([
           readEquipmentContext(db, 'chefChat'),
           input.recipeId ? readRecipeContext(db, input.recipeId) : Promise.resolve(''),
@@ -207,6 +223,10 @@ export const chefChatFlow = ai.defineFlow(
           input.basedOnRecipeId
             ? readRecipeContext(db, input.basedOnRecipeId)
             : Promise.resolve(''),
+          // The household's notes (issue #816). Joins the existing Promise.all
+          // rather than adding a serial round-trip — it is one small collection
+          // read, and it costs the turn nothing it was not already waiting on.
+          readKitchenMemoryContext(db, 'chefChat'),
         ]);
 
       const systemPrompt = buildSystemPrompt(
@@ -214,6 +234,8 @@ export const chefChatFlow = ai.defineFlow(
         recipeContext,
         favouritesContext,
         variationContext,
+        memoryContext,
+        input.speaker,
       );
 
       // Convert Message[] history to Genkit MessageData format. Our domain role is
