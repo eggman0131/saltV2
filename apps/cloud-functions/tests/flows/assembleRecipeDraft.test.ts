@@ -321,6 +321,7 @@ describe('assembleRecipeDraft — edit mode', () => {
       source: { type: 'manual' },
       notes: null,
       producesCanonId: 'canon-sauce',
+      componentRecipeIds: ['comp-a', 'comp-b'],
       image: null,
       createdAt: '2026-06-01T00:00:00.000Z',
       updatedAt: '2026-06-01T00:00:00.000Z',
@@ -382,11 +383,25 @@ describe('assembleRecipeDraft — edit mode', () => {
     expect(doc.producesCanonId).toBe('canon-sauce');
   });
 
-  it('defaults to a fresh recipe with no makes-link when there is no base', async () => {
+  it("carries the base recipe's components through the amend (issue #752)", async () => {
+    // Load-bearing, not cosmetic. `mergeAmendedRecipe` spreads this draft over the
+    // stored recipe, so a draft that dropped `componentRecipeIds` would silently
+    // erase a meal's dishes on every chat amend and every ⋮ → Refresh. The
+    // librarian neither reads nor writes them, so the base value is the answer.
+    const doc = await assembleRecipeDraft(rawOutput(), {
+      source: MANUAL,
+      baseRecipe: baseRecipe(),
+    });
+
+    expect(doc.componentRecipeIds).toEqual(['comp-a', 'comp-b']);
+  });
+
+  it('defaults to a fresh recipe with no makes-link and no components when there is no base', async () => {
     const doc = await assembleRecipeDraft(rawOutput(), { source: MANUAL });
 
     expect(doc.kind).toBe('recipe');
     expect(doc.producesCanonId).toBeNull();
+    expect(doc.componentRecipeIds).toEqual([]);
   });
 });
 

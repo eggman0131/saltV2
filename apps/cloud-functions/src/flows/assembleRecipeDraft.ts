@@ -230,6 +230,11 @@ export async function assembleRecipeDraft(
     // Neither the librarian nor the extractor touches it, so carry the base value
     // straight through.
     producesCanonId: baseRecipe?.producesCanonId ?? null,
+    // Same carry-through, for the same reason (issue #752): neither the librarian
+    // nor the extractor knows what a meal is, so an edit-mode amend or a refresh
+    // must hand the base recipe's components straight back. Without this line
+    // `mergeAmendedRecipe`'s spread would erase them on every amend.
+    componentRecipeIds: baseRecipe?.componentRecipeIds ?? [],
     // Spread, not `needs_approval: needsApproval` — the field is optional and
     // absent means reviewed, so the un-flagged path must omit it entirely rather
     // than write an explicit false.

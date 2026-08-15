@@ -10,7 +10,7 @@
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
   import { trackUsageEvent } from '@salt/observability';
-  import { appendCacheBuster, takesIngredients, type Recipe, type RecipeKind } from '@salt/domain';
+  import { appendCacheBuster, type Recipe } from '@salt/domain';
   import {
     recipes,
     isLoadingRecipes,
@@ -23,7 +23,16 @@
   } from '../../lib/recipeService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { auth } from '../../lib/auth.svelte.js';
-  import { KIND_COPY, KIND_SECTIONS, PRIMARY_KIND_SECTIONS, kindOf } from './recipeKind.js';
+  import {
+    KIND_COPY,
+    KIND_SECTIONS,
+    LIST_SECTIONS,
+    PRIMARY_LIST_SECTIONS,
+    SECTION_COPY,
+    sectionOf,
+    sectionTakesIngredients,
+    type ListSection,
+  } from './recipeKind.js';
   import RecipeImportPhotoDialog from './RecipeImportPhotoDialog.svelte';
 
   function ingredientCount(recipe: Recipe): number {
@@ -57,22 +66,24 @@
   let sortBy = $state<SortBy>('title');
   let activeTags = $state<string[]>([]);
 
-  // ─── Section (kind) ───────────────────────────────────────────────────────────
+  // ─── Section ──────────────────────────────────────────────────────────────────
   // Which SECTION of the library you are looking at (issue #637) — deliberately
   // not a filter. It is single-select, it always has exactly one value, and it
   // is never cleared: "Clear filters" drops your search and tags but leaves you
   // exactly where you were standing. The default keeps the page as it was —
   // Recipes, and only recipes.
   //
-  // This is one of the two places allowed to compare a kind directly: which
-  // section an entry belongs to is an identity question, not a capability one.
-  let kindFilter = $state<RecipeKind>('recipe');
+  // A section is not the same thing as a kind (issue #752): Meals is a shelf for
+  // entries that have gained components, whatever kind they are. `sectionOf` owns
+  // that mapping — which shelf an entry stands on is an identity question, not a
+  // capability one, which is what makes it a sanctioned direct comparison.
+  let sectionFilter = $state<ListSection>('recipe');
 
-  const kindCopy = $derived(KIND_COPY[kindFilter]);
+  const sectionCopy = $derived(SECTION_COPY[sectionFilter]);
 
-  function selectKind(kind: RecipeKind): void {
-    if (kind === kindFilter) return;
-    kindFilter = kind;
+  function selectSection(section: ListSection): void {
+    if (section === sectionFilter) return;
+    sectionFilter = section;
     // Tags are per-section vocabulary: "baking" means nothing among takeaways,
     // and carrying it across would land you on an empty page you did not ask
     // for. The search box is different — a word you typed is still what you are
@@ -86,19 +97,19 @@
   let newMenuOpen = $state(false);
   let sortMenuOpen = $state(false);
   let showAllTags = $state(false);
-  let showAllKinds = $state(false);
+  let showAllSections = $state(false);
 
   // Collapsed, the row offers the primary sections only; the rest sit behind a
   // "+N more" chip in the tag row's idiom. The section you are STANDING in is
   // pinned in regardless — collapsing must never hide the chip that says where
   // you are, and single-select means there is always exactly one to pin.
-  const shownKinds = $derived.by(() => {
-    if (showAllKinds) return KIND_SECTIONS;
-    const primary = KIND_SECTIONS.filter((k) => PRIMARY_KIND_SECTIONS.includes(k));
-    return primary.includes(kindFilter) ? primary : [...primary, kindFilter];
+  const shownSections = $derived.by(() => {
+    if (showAllSections) return LIST_SECTIONS;
+    const primary = LIST_SECTIONS.filter((s) => PRIMARY_LIST_SECTIONS.includes(s));
+    return primary.includes(sectionFilter) ? primary : [...primary, sectionFilter];
   });
 
-  const hiddenKindCount = $derived(KIND_SECTIONS.length - shownKinds.length);
+  const hiddenSectionCount = $derived(LIST_SECTIONS.length - shownSections.length);
 
   const query = $derived(searchText.trim().toLowerCase());
 
@@ -116,11 +127,11 @@
   }
 
   // Section first, deliberately: `rankedTags` counts over `visible`, so putting
-  // the kind ahead of the other predicates re-facets the tag chips to the
+  // the section ahead of the other predicates re-facets the tag chips to the
   // current section for free — no second pass, no separate per-section index.
   const visible = $derived(
     $recipes
-      .filter((r) => kindOf(r) === kindFilter && matchesSearch(r) && matchesTags(r))
+      .filter((r) => sectionOf(r) === sectionFilter && matchesSearch(r) && matchesTags(r))
       .sort((a, b) => {
         switch (sortBy) {
           case 'recent':
@@ -144,8 +155,8 @@
   const hasFilters = $derived(query !== '' || activeTags.length > 0);
 
   // Ingredients are a capability, so this asks the domain rather than the kind.
-  // Every card in `visible` shares `kindFilter`, so one answer covers the grid.
-  const showIngredientCount = $derived(takesIngredients(kindFilter));
+  // Every card in `visible` shares `sectionFilter`, so one answer covers the grid.
+  const showIngredientCount = $derived(sectionTakesIngredients(sectionFilter));
 
   // Tags offered as filter chips: those present on the currently displayed
   // recipes, so the choices narrow as you filter (a faceted drill-down) rather
@@ -508,49 +519,50 @@
       </div>
     {/if}
 
-    <!-- Section chips (issue #637). Every section is always offered, including
-         an empty one: you have to be able to walk into "When you CBA" and SEE
-         that there is nothing there yet, otherwise the only signal that the
-         section exists is a New-menu entry. Hand-rolled in the same idiom as the
-         tag chips below (there is no chip primitive in @salt/ui-components),
-         adapted to single-select — exactly one is pressed at all times.
-         Collapsed to the primary sections by default and expanded by the same
-         "+N more" chip the tags use: still offered, just not all at once. -->
+    <!-- Section chips (issues #637, #752). Every section is always offered,
+         including an empty one: you have to be able to walk into "When you CBA"
+         and SEE that there is nothing there yet, otherwise the only signal that
+         the section exists is a New-menu entry — and Meals has no New-menu entry
+         at all, so its chip is the only thing that says the shelf is there.
+         Hand-rolled in the same idiom as the tag chips below (there is no chip
+         primitive in @salt/ui-components), adapted to single-select — exactly one
+         is pressed at all times. Collapsed to the primary sections by default and
+         expanded by the same "+N more" chip the tags use. -->
     <div
       class="mb-3 flex flex-wrap gap-1.5"
       role="group"
       aria-label="Section"
       data-testid="recipe-kind-filters"
     >
-      {#each shownKinds as kind (kind)}
-        {@const active = kind === kindFilter}
+      {#each shownSections as section (section)}
+        {@const active = section === sectionFilter}
         <button
           type="button"
           class="rounded-full border px-3 py-1 text-xs font-medium transition-colors {active
             ? 'border-primary bg-primary text-primary-foreground'
             : 'border-border bg-background text-muted-foreground hover:bg-muted'}"
           aria-pressed={active}
-          onclick={() => selectKind(kind)}
+          onclick={() => selectSection(section)}
           data-testid="recipe-kind-filter"
-          data-kind={kind}
+          data-kind={section}
         >
-          {KIND_COPY[kind].label}
+          {SECTION_COPY[section].label}
         </button>
       {/each}
-      {#if hiddenKindCount > 0}
+      {#if hiddenSectionCount > 0}
         <button
           type="button"
           class="rounded-full border border-dashed border-border px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted"
-          onclick={() => (showAllKinds = true)}
+          onclick={() => (showAllSections = true)}
           data-testid="recipe-kind-show-all"
         >
-          +{hiddenKindCount} more
+          +{hiddenSectionCount} more
         </button>
-      {:else if showAllKinds}
+      {:else if showAllSections}
         <button
           type="button"
           class="rounded-full border border-dashed border-border px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted"
-          onclick={() => (showAllKinds = false)}
+          onclick={() => (showAllSections = false)}
           data-testid="recipe-kind-show-less"
         >
           Show less
@@ -656,7 +668,7 @@
     <div class="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
       <span data-testid="recipe-result-count">
         {visible.length}
-        {visible.length === 1 ? kindCopy.one : kindCopy.many}
+        {visible.length === 1 ? sectionCopy.one : sectionCopy.many}
         {#if hasFilters}<span class="text-muted-foreground/70">· filtered</span>{/if}
       </span>
       {#if hasFilters}
@@ -677,7 +689,7 @@
         data-testid="recipe-no-matches"
       >
         <Icon name="Search" size={24} class="text-muted-foreground" />
-        <p class="text-sm text-muted-foreground">{kindCopy.noMatchText}</p>
+        <p class="text-sm text-muted-foreground">{sectionCopy.noMatchText}</p>
         <Button variant="outline" size="sm" onclick={clearFilters}>Clear filters</Button>
       </div>
     {:else if visible.length === 0}
@@ -687,8 +699,8 @@
         class="flex flex-col items-center gap-2 py-12 text-center"
         data-testid="recipe-kind-empty"
       >
-        <Icon name={kindCopy.thumbIcon} size={24} class="text-muted-foreground" />
-        <p class="text-sm text-muted-foreground">{kindCopy.emptyText}</p>
+        <Icon name={sectionCopy.thumbIcon} size={24} class="text-muted-foreground" />
+        <p class="text-sm text-muted-foreground">{sectionCopy.emptyText}</p>
       </div>
     {:else}
       <ul class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid="recipe-list">
@@ -730,7 +742,7 @@
                     class="flex h-full w-full items-center justify-center bg-gradient-to-br from-muted to-muted/40 text-muted-foreground/60"
                     data-testid="recipe-list-thumb-fallback"
                   >
-                    <Icon name={kindCopy.thumbIcon} size={32} />
+                    <Icon name={sectionCopy.thumbIcon} size={32} />
                   </div>
                 {/if}
               </div>

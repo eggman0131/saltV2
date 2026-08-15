@@ -32,7 +32,21 @@ export {
 } from './commands/builders.js';
 export { clearIngredientMatch } from './commands/clearIngredientMatch.js';
 export { flattenIngredients } from './queries/ingredients.js';
-export { takesIngredients, isCookable, isPlannable, isAuthorable } from './queries/capabilities.js';
+export {
+  takesIngredients,
+  isCookable,
+  isPlannable,
+  isAuthorable,
+  takesComponents,
+} from './queries/capabilities.js';
+// Meals — a recipe built from several other recipes (issue #752). One level deep,
+// nothing aggregated; see the module header.
+export {
+  hasComponents,
+  resolveComponents,
+  canBeComponentOf,
+  insertComponentByCookTime,
+} from './queries/components.js';
 // Recipe-drift comparison, shared by everything that snapshots a recipe's
 // `updatedAt`: the cook session (#556) and the guided plan (#751).
 export { hasRecipeChanged } from './queries/hasRecipeChanged.js';

@@ -116,6 +116,7 @@ function buildRecipe(steps: readonly StepSpec[], ingredients: readonly Ingredien
     source: null,
     notes: null,
     producesCanonId: null,
+    componentRecipeIds: [],
     image: null,
     createdAt: SEED_TIME,
     updatedAt: SEED_TIME,

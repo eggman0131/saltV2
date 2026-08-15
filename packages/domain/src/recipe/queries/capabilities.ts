@@ -44,20 +44,49 @@ interface Capabilities {
   // hand-written night off with nothing to author, and a placeholder is a
   // photograph and a title.
   readonly isAuthorable: boolean;
+  // Whether other dishes can be hung off this entry as its components (issue
+  // #752): gates the editor's component picker and, with it, whether this entry
+  // can ever become a meal. A meal is not a kind — a Sunday roast is an ordinary
+  // recipe that happens to point at three others — so this asks the same question
+  // `isCookable` asks and answers it separately on purpose: what it gates is a
+  // COMPOSITION affordance, not a method to follow. A cocktail is `true` because
+  // it can point at its own syrup recipe; an outing has nothing to compose (there
+  // is no dish), and a placeholder is a photograph and a title.
+  readonly takesComponents: boolean;
 }
 
 const CAPABILITIES: Record<RecipeKind, Capabilities> = {
-  recipe: { takesIngredients: true, isCookable: true, isPlannable: true, isAuthorable: true },
-  outing: { takesIngredients: false, isCookable: false, isPlannable: true, isAuthorable: false },
-  cocktail: { takesIngredients: true, isCookable: true, isPlannable: false, isAuthorable: false },
+  recipe: {
+    takesIngredients: true,
+    isCookable: true,
+    isPlannable: true,
+    isAuthorable: true,
+    takesComponents: true,
+  },
+  outing: {
+    takesIngredients: false,
+    isCookable: false,
+    isPlannable: true,
+    isAuthorable: false,
+    takesComponents: false,
+  },
+  cocktail: {
+    takesIngredients: true,
+    isCookable: true,
+    isPlannable: false,
+    isAuthorable: false,
+    takesComponents: true,
+  },
   // A placeholder is a photograph and a title, nothing else: nothing to buy,
-  // nothing to cook, never offered in the picker, and nothing for the librarian
-  // to write. Every downstream question answers itself from this row.
+  // nothing to cook, never offered in the picker, nothing for the librarian
+  // to write, and nothing to build out of other dishes. Every downstream question
+  // answers itself from this row.
   placeholder: {
     takesIngredients: false,
     isCookable: false,
     isPlannable: false,
     isAuthorable: false,
+    takesComponents: false,
   },
 };
 
@@ -75,4 +104,8 @@ export function isPlannable(kind: RecipeKind): boolean {
 
 export function isAuthorable(kind: RecipeKind): boolean {
   return CAPABILITIES[kind].isAuthorable;
+}
+
+export function takesComponents(kind: RecipeKind): boolean {
+  return CAPABILITIES[kind].takesComponents;
 }

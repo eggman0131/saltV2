@@ -161,6 +161,20 @@ export const RecipeSchema = z.object({
   // the recipe. `.optional()` (mirroring ProductFormSchema) so the production
   // recipes collection parses unchanged on read — absent means reviewed (#240).
   needs_approval: z.boolean().optional(),
+  // The dishes this entry is built from (issue #752). A Sunday roast is one
+  // recipe document that points at roast chicken, roast potatoes and onion gravy;
+  // "is this a meal?" is DERIVED from this array being non-empty, never declared,
+  // so there is no fifth `kind` and no second collection. The recipe keeps its
+  // own ingredients, steps and notes — nothing aggregates and nothing recurses:
+  // components resolve exactly one level deep for display, which is what makes a
+  // reference cycle inert and the whole feature O(1). A dangling id (component
+  // deleted elsewhere) is skipped silently on read; there is no cascade and no
+  // tombstone. `.default([])` (NOT `.optional()`) for both reasons that made
+  // `producesCanonId` two fields above take the same shape: the realtime
+  // subscription skips documents that fail validation, so a required field would
+  // make every recipe already in production (#240) silently vanish from the list,
+  // and defaulted, every reader sees a concrete `string[]` rather than `undefined`.
+  componentRecipeIds: z.array(z.string()).default([]),
   // The photoreal "arty" hero image (Tier-2, issue #148). `null` = none yet: the
   // onRecipeWritten trigger generates one from the title + description on create.
   // A non-null `{ url, source }` is rendered; the trigger skips it (already
