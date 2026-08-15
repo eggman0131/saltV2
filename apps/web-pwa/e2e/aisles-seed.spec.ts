@@ -30,7 +30,8 @@ test('aisles already in Firestore render on /admin/aisles from the first snapsho
 
   await page.goto('/');
   await signIn(page, email, { admin: true });
-  await expect(page.getByText(email)).toBeVisible();
+  // Signed-in gate. The header's Kitchen link replaced the email span in #828.
+  await expect(page.getByTestId('kitchen-link')).toBeVisible();
 
   await page.goto('/#/admin/aisles');
 

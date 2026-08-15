@@ -72,7 +72,19 @@ vi.mock('../src/lib/personalViewService.js', () => ({
   timerNowMs: mockTimerNowMs,
   upcomingChefNights: mockUpcomingNights,
 }));
-vi.mock('../src/lib/membersService.js', () => ({ currentMember: mockCurrentMember }));
+// Since #828 the page's heading and the header's link read ONE derivation of the
+// name, so mirror it here over the same mocked member rather than stubbing a
+// string — the heading tests below still drive it from `currentMember`.
+vi.mock('../src/lib/membersService.js', async () => {
+  const { derived } = await import('svelte/store');
+  return {
+    currentMember: mockCurrentMember,
+    kitchenLabel: derived(mockCurrentMember, ($m) => {
+      const name = ($m as Member | null)?.name;
+      return name ? `${name.split(' ')[0]}'s Kitchen` : 'My Kitchen';
+    }),
+  };
+});
 // The page owns the meal-plan week subscriptions "Cooking soon" projects over.
 vi.mock('../src/lib/mealPlanService.js', () => ({
   subscribeKitchenWeeks: mockSubscribeKitchenWeeks,

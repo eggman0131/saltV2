@@ -67,6 +67,23 @@ export const currentMember: Readable<Member | null> = derived(
   },
 );
 
+// How the signed-in member's own space is named, wherever it is named: the header
+// link in App.svelte and the `/mine` page heading both read this, so the link and
+// the page it opens can never disagree about what you are called (issue #828).
+//
+// `'My Kitchen'` is a real state, not a defensive fallback. There is no
+// `displayName` on the auth user (`domain/src/auth/entities/User.ts` is `{ uid,
+// email }`), so the name only exists once `initMembersSync` has resolved — every
+// cold launch shows it for a moment — and a sign-in whose email is not on the
+// roster shows it for good.
+//
+// Presentation, not policy, which is why `split(' ')[0]` lives here and not in
+// `@salt/domain`: taking the first word of a display string is a rendering
+// choice about a header, and the domain layer owns no opinion about it.
+export const kitchenLabel: Readable<string> = derived(currentMember, ($member) =>
+  $member ? `${$member.name.split(' ')[0]}'s Kitchen` : 'My Kitchen',
+);
+
 // Non-reactive snapshot: find the member matching an email (normalised). Used
 // by the route guard. Components compute admin reactively from the `members`
 // store + auth.user instead.

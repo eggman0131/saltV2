@@ -3,7 +3,7 @@
   import { onMount } from 'svelte';
   import { push } from 'svelte-spa-router';
   import { formatClock, timerProgress, withTimerDismissed, type Recipe } from '@salt/domain';
-  import { currentMember } from '../../lib/membersService.js';
+  import { kitchenLabel } from '../../lib/membersService.js';
   import {
     liveCooks,
     myTimers,
@@ -148,7 +148,7 @@
 <section class="flex flex-col gap-4 p-4 sm:p-6" data-testid="mine-page">
   <header class="flex flex-col gap-1">
     <h1 class="text-xl font-semibold tracking-tight text-foreground">
-      {$currentMember ? `${$currentMember.name.split(' ')[0]}'s Kitchen` : 'My Kitchen'}
+      {$kitchenLabel}
     </h1>
     <p class="text-sm text-muted-foreground">What's running, and what needs a look.</p>
   </header>
