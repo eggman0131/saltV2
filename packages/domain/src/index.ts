@@ -397,6 +397,7 @@ export {
   deriveFormula,
   BASIS_KEYWORDS,
   guessBasisIngredientIds,
+  looksScalable,
   solveFormula,
   BASIS_PERCENT_TOLERANCE,
   UNIT_SHAPE_PRESETS,

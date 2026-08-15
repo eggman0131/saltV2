@@ -12,9 +12,13 @@ rules and adapter, `batchService` as the single write path, the in-flight surfac
 at `/batches`, and **the entry point the feature had been missing** — "Bake a
 batch" and a formula link on the recipe page, both gated on `formula != null`.
 
-A formula screen for a recipe that has never had one is still reachable by URL
-only, and that is deliberate: an "add a formula" item on every recipe would put
-baker's percentages in front of every weeknight curry to serve the three loaves.
+A formula screen for a recipe that has never had one was reachable by URL only
+through #812; #823 gave it a menu entry point too — "Make it scalable", gated on
+the domain's basis guess (`looksScalable`, `formula/guessBasis.ts`) so it only
+offers itself on a recipe that looks like it has one. The gate, not the entry
+point, is what stops an "add a formula" item putting baker's percentages in
+front of every weeknight curry to serve the three loaves. The typed URL remains
+the escape hatch for a loaf the guess misses.
 
 One thing about what `process/` holds today is a deliberate absence rather than a
 gap: a stage carries **no additions or removals** yet, because nothing produces or

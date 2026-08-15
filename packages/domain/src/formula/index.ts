@@ -22,7 +22,7 @@ export { DENSITY_G_PER_ML, DEFAULT_DENSITY_CLASS, gramsFromMillilitres } from '.
 export { GRAM_DECIMAL_THRESHOLD, PERCENT_DECIMALS, roundGrams, roundPercent } from './rounding.js';
 export { amountFromQuantity, gramsFromParsed } from './gramsFromParsed.js';
 export { deriveFormula } from './deriveFormula.js';
-export { BASIS_KEYWORDS, guessBasisIngredientIds } from './guessBasis.js';
+export { BASIS_KEYWORDS, guessBasisIngredientIds, looksScalable } from './guessBasis.js';
 export type { BasisGuessEntry } from './guessBasis.js';
 export type {
   DeriveFormulaInput,
