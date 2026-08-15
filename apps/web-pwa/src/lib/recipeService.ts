@@ -19,6 +19,7 @@ import {
   addItem,
   recipeItemAddDefault,
   findProducingRecipes,
+  insertComponentByCookTime,
   resolveProductForm,
   formParentCount,
   convertYield,
@@ -138,6 +139,45 @@ export async function persistRecipe(recipe: Recipe): Promise<ReadResult<void, Do
   const others = get(_recipes).filter((r) => r.id !== stamped.id);
   _recipes.set([...others, stamped]);
   return reportIfFailed(getErrorReporter(), await saveRecipeDoc(stamped));
+}
+
+// Hang a dish off a meal (issue #752, Phase 3). The one write behind "start a
+// recipe FROM a meal": whichever of the four create paths produced `componentId`,
+// this is what makes it part of the dinner.
+//
+// The meal is read from the IN-MEMORY store — it is subscribed app-wide, so this
+// costs no extra Firestore read and needs no `getDoc`. A miss is the honest
+// outcome, not an assertion failure: the meal can have been deleted on another
+// device while the user was off writing the dish. It crosses as `NotFound` rather
+// than throwing (Rule 10), and the caller's job is to keep the saved recipe —
+// which is already safe on the server — rather than to strand it.
+//
+// Ordering and the self/duplicate guards belong to the domain, so the new array
+// comes from `insertComponentByCookTime` rather than a push: the dish lands where
+// the cook would start it (longest-cooking first), attaching a meal to itself is
+// refused, and a second attach of the same dish is a no-op. That last property is
+// what makes this IDEMPOTENT BY CONSTRUCTION — re-saving an editor that still
+// carries `?meal=` attaches once, so the save path needs no "have I already done
+// this" flag.
+//
+// Persisted through `persistRecipe`, i.e. a whole-document write under LWW —
+// the established contract for every recipe write in the app.
+export async function attachComponentToMeal(
+  mealId: string,
+  componentId: string,
+): Promise<ReadResult<void, DomainError>> {
+  const all = get(_recipes);
+  const meal = all.find((r) => r.id === mealId);
+  if (meal === undefined) return failure({ kind: 'NotFound', resource: 'recipe', id: mealId });
+  return persistRecipe({
+    ...meal,
+    componentRecipeIds: insertComponentByCookTime(
+      mealId,
+      meal.componentRecipeIds,
+      componentId,
+      all,
+    ),
+  });
 }
 
 export async function parseIngredients(

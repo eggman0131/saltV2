@@ -17,8 +17,9 @@
     TextField,
     type ComboboxItemType,
   } from '@salt/ui-components';
-  import { push } from 'svelte-spa-router';
+  import { push, router } from 'svelte-spa-router';
   import { goBack } from '../../lib/nav.js';
+  import { readMealParam } from '../../lib/mealReturn.js';
   import { trackUsageEvent } from '@salt/observability';
   import {
     appendCacheBuster,
@@ -43,6 +44,7 @@
   } from '@salt/domain';
   import {
     recipes,
+    attachComponentToMeal,
     persistRecipe,
     parseIngredients,
     matchIngredient,
@@ -62,6 +64,11 @@
   let { params }: Props = $props();
 
   const editingId = $derived(params?.id ?? null);
+
+  // The meal this editor was opened FROM, if any (issue #752, Phase 3). Carried
+  // in the querystring — `?meal=<id>` — and read live off the router, so a reload
+  // mid-edit keeps it. See lib/mealReturn.ts for why it lives nowhere else.
+  const mealReturnId = $derived(readMealParam(router.querystring));
 
   // The kind arrives as a raw URL segment, so it is user input: validate it and
   // fall back rather than persisting whatever was typed. /recipes/new/pudding
@@ -527,19 +534,49 @@
     saving = true;
     const toSave: Recipe = pruneDraft(draft);
     const result = await persistRecipe(toSave);
-    saving = false;
     if (result.kind !== 'ok') {
+      saving = false;
       addToast('Failed to save recipe.', 'destructive');
       return;
     }
     // Creation is a route-level fact (/recipes/new[/:kind] has no id) —
-    // persistRecipe is a blind upsert and cannot tell create from edit.
+    // persistRecipe is a blind upsert and cannot tell create from edit. Meals
+    // deliberately do NOT change this: "created by hand" still means the manual
+    // route, whoever sent the user down it.
     if (editingId === null)
       trackUsageEvent('recipe.created', {
         recipe_id: toSave.id,
         recipe_kind: draftKind,
         recipe_method: 'manual',
       });
+
+    // Came here from a meal? Then finishing this dish means hanging it off that
+    // meal and going back to it (issue #752, Phase 3).
+    //
+    // Gated on the PARAM, never on `editingId === null`. Two of the four create
+    // paths — URL import and photo import — persist server-side first and arrive
+    // at `/recipes/{id}/edit?meal=…`, an EDIT route, so a first-save gate would
+    // silently skip half the feature. Presence of the param IS the intent, and
+    // `attachComponentToMeal` is idempotent, so re-saving the same editor
+    // attaches once and costs nothing.
+    const mealId = mealReturnId;
+    if (mealId !== null) {
+      const attached = await attachComponentToMeal(mealId, toSave.id);
+      saving = false;
+      if (attached.kind !== 'ok') {
+        // The meal was deleted while the user was away writing the dish. The
+        // dish itself is saved — that must not be lost to a failed attach — so
+        // say what happened and land them on what they just wrote.
+        addToast('Saved — but that meal is no longer in the library.', 'destructive');
+        push(`/recipes/${toSave.id}`);
+        return;
+      }
+      addToast(`${toSave.title} added to the meal.`, 'success');
+      push(`/recipes/${mealId}`);
+      return;
+    }
+
+    saving = false;
     const copy = KIND_COPY[draftKind];
     addToast(editingId === null ? copy.createdToast : copy.savedToast, 'success');
     push(`/recipes/${toSave.id}`);

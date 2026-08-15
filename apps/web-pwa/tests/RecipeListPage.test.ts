@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
-import { render, screen, cleanup, within, waitFor } from '@testing-library/svelte';
+import { render, screen, cleanup, fireEvent, within, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import type { Recipe, RecipeKind } from '@salt/domain';
 import { setNextCrop } from './fixtures/cropStub.js';
@@ -59,7 +59,12 @@ vi.mock('@salt/ui-components', async () => {
 });
 
 import RecipeListPage from '../src/routes/recipes/RecipeListPage.svelte';
-import { importRecipeFromPhoto, stashImportedDraft } from '../src/lib/recipeService.js';
+import {
+  importRecipeFromPhoto,
+  importRecipeFromUrl,
+  stashImportedDraft,
+  takePendingImportUrl,
+} from '../src/lib/recipeService.js';
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -802,5 +807,103 @@ describe('RecipeListPage — import from photo', () => {
     // (issue #616), so this opens THAT recipe's editor — never /recipes/new.
     await waitFor(() => expect(stashImportedDraft).toHaveBeenCalledWith(draft));
     expect(push).toHaveBeenCalledWith('/recipes/imported-9/edit');
+  });
+});
+
+// ─── Import from URL (issue #616; extracted to its own dialog in #752) ────────
+// The form used to be inline here, twice — once in the empty state and once
+// above the grid. It now lives in RecipeImportUrlDialog, which the meal page
+// mounts too; this page still owns the ways IN and the landing, exactly as it
+// does for photo import. The testids are unchanged on purpose: what moved is
+// where the markup lives, not what any of it is called.
+
+describe('RecipeListPage — import from URL', () => {
+  beforeEach(() => {
+    vi.mocked(takePendingImportUrl).mockReturnValue(null);
+  });
+
+  it('opens the import dialog from the New menu', async () => {
+    const user = userEvent.setup();
+    seed([APPLE]);
+    render(RecipeListPage);
+
+    expect(screen.queryByTestId('recipe-import-url-area')).toBeNull();
+
+    await user.click(screen.getByTestId('recipe-new-btn'));
+    await user.click(screen.getByTestId('recipe-new-import'));
+
+    expect(await screen.findByTestId('recipe-import-url-area')).toBeInTheDocument();
+    expect(screen.getByTestId('recipe-import-url-input')).toBeInTheDocument();
+    expect(screen.getByTestId('recipe-import-url-btn')).toBeInTheDocument();
+  });
+
+  it('opens the same dialog from the empty state', async () => {
+    const user = userEvent.setup();
+    seed([]);
+    render(RecipeListPage);
+
+    await user.click(screen.getByTestId('recipe-import-url-toggle-empty'));
+
+    // One dialog, one piece of state — the two entry points can no longer drift.
+    expect(await screen.findByTestId('recipe-import-url-area')).toBeInTheDocument();
+  });
+
+  it('stashes the draft and opens the saved recipe’s editor on success', async () => {
+    const user = userEvent.setup();
+    const { push } = await import('svelte-spa-router');
+    const draft = { ...APPLE, id: 'imported-7' };
+    vi.mocked(importRecipeFromUrl).mockResolvedValue({ kind: 'ok', value: draft });
+    seed([APPLE]);
+    render(RecipeListPage);
+
+    await user.click(screen.getByTestId('recipe-new-btn'));
+    await user.click(screen.getByTestId('recipe-new-import'));
+    // `fireEvent` for the typing: bits-ui focus traps inside a Dialog eat
+    // `userEvent` keystrokes in these suites.
+    await fireEvent.input(await screen.findByTestId('recipe-import-url-input'), {
+      target: { value: 'https://example.com/pie' },
+    });
+    await user.click(screen.getByTestId('recipe-import-url-btn'));
+
+    expect(importRecipeFromUrl).toHaveBeenCalledWith('https://example.com/pie');
+    await waitFor(() => expect(stashImportedDraft).toHaveBeenCalledWith(draft));
+    // No meal in play here, so the landing is the plain editor.
+    expect(push).toHaveBeenCalledWith('/recipes/imported-7/edit');
+  });
+
+  it('offers the way back in — not a toast — when the session has died', async () => {
+    const user = userEvent.setup();
+    vi.mocked(importRecipeFromUrl).mockResolvedValue({
+      kind: 'err',
+      error: { kind: 'AuthError', reason: 'unauthenticated' },
+    });
+    seed([APPLE]);
+    render(RecipeListPage);
+
+    await user.click(screen.getByTestId('recipe-new-btn'));
+    await user.click(screen.getByTestId('recipe-new-import'));
+    await fireEvent.input(await screen.findByTestId('recipe-import-url-input'), {
+      target: { value: 'https://example.com/pie' },
+    });
+    await user.click(screen.getByTestId('recipe-import-url-btn'));
+
+    // Issue #740's recovery survived the extraction intact: the message and the
+    // route out are in the sheet, where they can be acted on.
+    expect(await screen.findByTestId('recipe-import-signed-out')).toBeInTheDocument();
+    expect(screen.getByTestId('recipe-import-sign-in-btn')).toBeInTheDocument();
+  });
+
+  it('reopens pre-filled with a URL rescued from a signed-out import', async () => {
+    // The other half of #740, and the one the extraction could most easily have
+    // dropped: the stash is drained by THIS page at init and handed to the dialog
+    // as its initial value, so signing back in costs the user nothing. It is also
+    // where the share target lands (shareTarget.ts).
+    vi.mocked(takePendingImportUrl).mockReturnValue('https://example.com/rescued');
+    seed([APPLE]);
+    render(RecipeListPage);
+
+    expect(await screen.findByTestId('recipe-import-url-input')).toHaveValue(
+      'https://example.com/rescued',
+    );
   });
 });

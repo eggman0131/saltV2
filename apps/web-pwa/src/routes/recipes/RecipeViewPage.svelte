@@ -26,7 +26,9 @@
     type ImageCropperHandle,
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
+  import { trackUsageEvent } from '@salt/observability';
   import { goBack } from '../../lib/nav.js';
+  import { withMealParam } from '../../lib/mealReturn.js';
   import {
     recipes,
     isLoadingRecipes,
@@ -40,6 +42,8 @@
     startOverRecipeSceneBrief,
     setRecipeImageUpload,
   } from '../../lib/recipeService.js';
+  import RecipeImportPhotoDialog from './RecipeImportPhotoDialog.svelte';
+  import RecipeImportUrlDialog from './RecipeImportUrlDialog.svelte';
   import RecipeAddToListSheet from './RecipeAddToListSheet.svelte';
   import RecipeAddToPlannerSheet from './RecipeAddToPlannerSheet.svelte';
   import RecipeBakeBatchSheet from './RecipeBakeBatchSheet.svelte';
@@ -177,6 +181,54 @@ Finish with a short note on what you changed and why, so I can read the gist her
   // all of whose components have been deleted still says it is a meal, and saying
   // so with an empty list is more honest than pretending the field is not there.
   const showComponents = $derived(recipe !== null && hasComponents(recipe));
+
+  // ─── Adding another dish to this meal (issue #752, Phase 3) ─────────────────
+  // All four ways of making a recipe, offered FROM the meal: import a link,
+  // photograph a page, chat one up, or write it out. Each carries this meal's id
+  // in the URL it navigates to (`?meal=<id>`, see lib/mealReturn.ts), and the
+  // save at the far end attaches what it produced and comes back here.
+  //
+  // Gated on `showComponents` with the card, deliberately: this surface adds
+  // ANOTHER dish to something that is already a meal. Turning an ordinary recipe
+  // into one in the first place stays in the editor's "Made from" picker, where
+  // Phase 1 put it.
+  //
+  // It lives on the VIEW page and not the editor for two reasons: leaving the
+  // editor mid-flow would silently bin an unsaved draft of the meal, and "land
+  // back on the meal" means this page — so the round trip starts and ends in the
+  // same place.
+  let componentMenuOpen = $state(false);
+  let showComponentUrlImport = $state(false);
+  let showComponentPhotoImport = $state(false);
+
+  // Both imports are already PERSISTED by their callable (issue #616), flagged
+  // unreviewed, so the hand-off is exactly the list page's: stash the draft so
+  // the editor paints without waiting for the Firestore listener, then open that
+  // recipe's editor — carrying the meal, which is the only difference.
+  function openComponentEditor(imported: Recipe, method: 'url' | 'photo'): void {
+    if (recipe === null) return;
+    trackUsageEvent('recipe.created', {
+      recipe_id: imported.id,
+      recipe_kind: imported.kind,
+      recipe_method: method,
+    });
+    stashImportedDraft(imported);
+    showComponentUrlImport = false;
+    showComponentPhotoImport = false;
+    // If navigation itself fails, surface it rather than silently closing: the
+    // recipe exists either way, so the user isn't stranded. Same as the list page.
+    try {
+      push(withMealParam(`/recipes/${imported.id}/edit`, recipe.id));
+    } catch {
+      addToast('Could not open the editor — please try again.', 'destructive');
+    }
+  }
+
+  function startComponent(path: string): void {
+    if (recipe === null) return;
+    componentMenuOpen = false;
+    push(withMealParam(path, recipe.id));
+  }
 
   // ─── Does this recipe have a guided plan? (issue #751, Phase 2) ──────────────
   // Subscribed here so the action row can offer "Cook, guided" only where there is
@@ -1464,7 +1516,74 @@ Finish with a short note on what you changed and why, so I can read the gist her
         {#if showComponents}
           <Card>
             <CardHeader class="px-4 pt-4 pb-0">
-              <CardTitle class="text-sm">Made from</CardTitle>
+              <div class="flex items-center justify-between gap-2">
+                <CardTitle class="text-sm">Made from</CardTitle>
+                <!-- The same four ways in the recipe list's New menu offers, in
+                     the same order and the same idiom — a dish for a meal is
+                     made exactly like any other dish. Each entry only says where
+                     to start; `startComponent` is what pins the meal to the URL
+                     so the far end knows where to come back to. -->
+                <Popover bind:open={componentMenuOpen}>
+                  <PopoverTrigger>
+                    {#snippet children()}
+                      <button
+                        type="button"
+                        class="inline-flex h-8 items-center gap-1 rounded-md border border-input bg-background px-2 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+                        data-testid="meal-component-new-btn"
+                        aria-label="Add a dish to this meal"
+                      >
+                        <Icon name="Plus" size={14} />
+                        New
+                        <Icon name="ChevronDown" size={12} class="opacity-80" />
+                      </button>
+                    {/snippet}
+                  </PopoverTrigger>
+                  <PopoverContent align="end" class="min-w-48 p-1">
+                    <button
+                      type="button"
+                      class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                      onclick={() => {
+                        componentMenuOpen = false;
+                        showComponentUrlImport = true;
+                      }}
+                      data-testid="meal-component-new-import"
+                    >
+                      <Icon name="Link" size={14} />
+                      Import URL
+                    </button>
+                    <button
+                      type="button"
+                      class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                      onclick={() => {
+                        componentMenuOpen = false;
+                        showComponentPhotoImport = true;
+                      }}
+                      data-testid="meal-component-new-import-photo"
+                    >
+                      <Icon name="Camera" size={14} />
+                      Import from photo
+                    </button>
+                    <button
+                      type="button"
+                      class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                      onclick={() => startComponent('/chat')}
+                      data-testid="meal-component-new-chat"
+                    >
+                      <Icon name="Sparkles" size={14} />
+                      Chat with AI
+                    </button>
+                    <button
+                      type="button"
+                      class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                      onclick={() => startComponent('/recipes/new')}
+                      data-testid="meal-component-new-manual"
+                    >
+                      <Icon name="Pencil" size={14} />
+                      Manual
+                    </button>
+                  </PopoverContent>
+                </Popover>
+              </div>
             </CardHeader>
             <CardContent class="px-4 pb-4 pt-3">
               {#if components.length === 0}
@@ -1755,6 +1874,21 @@ Finish with a short note on what you changed and why, so I can read the gist her
 <!-- Day picker for "Add to planner" -->
 {#if recipe}
   <RecipeAddToPlannerSheet {recipe} bind:open={addToPlannerOpen} />
+{/if}
+
+<!-- The two import dialogs, for the meal's "New" menu (issue #752, Phase 3).
+     The very same components the recipe list mounts — neither navigates, so the
+     landing is ours to choose, and ours carries the meal. Mounted only on a meal,
+     alongside the menu that is their only way in here. -->
+{#if showComponents}
+  <RecipeImportUrlDialog
+    bind:open={showComponentUrlImport}
+    onImported={(imported) => openComponentEditor(imported, 'url')}
+  />
+  <RecipeImportPhotoDialog
+    bind:open={showComponentPhotoImport}
+    onImported={(imported) => openComponentEditor(imported, 'photo')}
+  />
 {/if}
 
 <!-- The scale sheet (issue #812). Mounted only where there is a formula to scale,

@@ -27,7 +27,12 @@ const { mockRecipes } = vi.hoisted(() => {
   return { mockRecipes: makeStore<readonly Recipe[]>([]) };
 });
 
-vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
+vi.mock('svelte-spa-router', () => ({
+  push: vi.fn(),
+  // The editor reads '?meal=' off the live router (issue #752, Phase 3); nothing
+  // sent us here from a meal, so the querystring is empty.
+  router: { querystring: undefined },
+}));
 vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
 // RecipeEditPage is wrapped in AdminGuard (#179); seed an admin context so the
 // guard renders the form under test.

@@ -3,7 +3,6 @@
     Button,
     ListPage,
     Icon,
-    TextField,
     Popover,
     PopoverContent,
     PopoverTrigger,
@@ -14,15 +13,10 @@
   import {
     recipes,
     isLoadingRecipes,
-    importRecipeFromUrl,
-    urlImportMessage,
-    isSignedOutFailure,
     stashImportedDraft,
-    stashPendingImportUrl,
     takePendingImportUrl,
   } from '../../lib/recipeService.js';
   import { addToast } from '../../lib/toastStore.js';
-  import { auth } from '../../lib/auth.svelte.js';
   import {
     KIND_COPY,
     KIND_SECTIONS,
@@ -34,6 +28,7 @@
     type ListSection,
   } from './recipeKind.js';
   import RecipeImportPhotoDialog from './RecipeImportPhotoDialog.svelte';
+  import RecipeImportUrlDialog from './RecipeImportUrlDialog.svelte';
 
   function ingredientCount(recipe: Recipe): number {
     return recipe.ingredients.reduce((n, g) => n + g.items.length, 0);
@@ -201,52 +196,20 @@
   }
 
   // ─── Import from URL ──────────────────────────────────────────────────────────
+  // The field, the call and the signed-out recovery all live in
+  // RecipeImportUrlDialog (issue #752, Phase 3) — this page owns only the way in
+  // and the way out, exactly as it does for photo import below.
   let showImport = $state(false);
-  let importUrl = $state('');
-  let importing = $state(false);
-
-  // Set when the import failed because the session had died (issue #740). Held in
-  // the sheet rather than shown as a toast: the recovery is an ACTION (go and
-  // sign in), and a toast that counts down and vanishes is a bad place to put the
-  // only route out. Every other failure keeps its existing toast.
-  let signedOut = $state(false);
 
   // A URL rescued from an import that died on a signed-out session — see
   // stashPendingImportUrl. Reading it here reopens the sheet with the link
-  // already in place, so signing back in costs the user nothing.
+  // already in place, so signing back in costs the user nothing. Stays on THIS
+  // page: the stash is single-use module state and the page that owns the way in
+  // is the page that drains it. Also the share-target's landing (shareTarget.ts).
   const rescuedUrl = takePendingImportUrl();
-  if (rescuedUrl !== null) {
-    importUrl = rescuedUrl;
-    showImport = true;
-  }
+  if (rescuedUrl !== null) showImport = true;
 
-  // Clear the stale client session so AuthGate falls through to the sign-in
-  // screen. The URL is stashed FIRST: sign-out remounts the tree and takes this
-  // component's state with it.
-  async function handleSignInAgain(): Promise<void> {
-    stashPendingImportUrl(importUrl);
-    await auth.signOut();
-  }
-
-  async function handleImport(): Promise<void> {
-    const url = importUrl.trim();
-    if (importing || url === '') return;
-    importing = true;
-    signedOut = false;
-    const result = await importRecipeFromUrl(url);
-    importing = false;
-    if (result.kind !== 'ok') {
-      if (isSignedOutFailure(result.error)) {
-        // No toast: the inline block below carries both the message and the way
-        // out, and the pasted URL stays in the field for the retry.
-        signedOut = true;
-        return;
-      }
-      // Friendly, specific message; the input stays open so the user can fix the
-      // URL and retry, or fall back to manual/chat.
-      addToast(urlImportMessage(result.error), 'destructive');
-      return;
-    }
+  function handleUrlImported(recipe: Recipe): void {
     // The callable already persisted the recipe (issue #616), flagged as not yet
     // reviewed — so this routes into the EXISTING recipe's editor, not
     // /recipes/new. The draft is still stashed so the editor paints immediately
@@ -254,15 +217,14 @@
     // just wrote. If navigation itself fails, surface it rather than silently
     // closing the form: the recipe exists either way, so the user isn't stranded.
     trackUsageEvent('recipe.created', {
-      recipe_id: result.value.id,
-      recipe_kind: result.value.kind,
+      recipe_id: recipe.id,
+      recipe_kind: recipe.kind,
       recipe_method: 'url',
     });
-    stashImportedDraft(result.value);
+    stashImportedDraft(recipe);
     try {
-      push(`/recipes/${result.value.id}/edit`);
+      push(`/recipes/${recipe.id}/edit`);
       showImport = false;
-      importUrl = '';
     } catch {
       addToast('Could not open the editor — please try again.', 'destructive');
     }
@@ -293,33 +255,6 @@
     }
   }
 </script>
-
-<!--
-  The signed-out recovery (issue #740). Rendered inside BOTH import areas (the
-  empty state's and the list's) so the two cannot drift; declared here at the
-  component's top level, which is what puts it in scope inside ListPage's
-  snippets. Deliberately says nothing about the recipe site — being signed out
-  is not that page's fault, and claiming it was is the whole defect.
--->
-{#snippet signedOutNotice()}
-  {#if signedOut}
-    <div
-      class="flex flex-col gap-2 rounded border border-destructive/40 bg-destructive/10 p-2 text-sm sm:flex-row sm:items-center sm:justify-between"
-      data-testid="recipe-import-signed-out"
-      role="alert"
-    >
-      <span>You've been signed out — sign in and try again.</span>
-      <Button
-        size="sm"
-        variant="outline"
-        onclick={handleSignInAgain}
-        data-testid="recipe-import-sign-in-btn"
-      >
-        Sign in
-      </Button>
-    </div>
-  {/if}
-{/snippet}
 
 <ListPage
   title="Recipes"
@@ -424,7 +359,7 @@
         <Button
           variant="outline"
           size="sm"
-          onclick={() => (showImport = !showImport)}
+          onclick={() => (showImport = true)}
           data-testid="recipe-import-url-toggle-empty"
         >
           {#snippet leading()}<Icon name="Link" size={16} />{/snippet}
@@ -444,81 +379,10 @@
         </Button>
         <Button size="sm" onclick={() => push('/recipes/new')}>Create your first recipe</Button>
       </div>
-      {#if showImport}
-        <div
-          class="mt-2 flex w-full max-w-md flex-col gap-2 rounded border border-border bg-muted/50 p-3 text-left"
-          data-testid="recipe-import-url-area"
-        >
-          <div class="flex items-end gap-2">
-            <TextField
-              label="Recipe URL"
-              placeholder="https://example.com/recipe"
-              value={importUrl}
-              onValueChange={(v) => (importUrl = v)}
-              class="flex-1"
-              data-testid="recipe-import-url-input"
-            />
-            <Button
-              size="sm"
-              onclick={handleImport}
-              loading={importing}
-              disabled={importUrl.trim() === '' || importing}
-              data-testid="recipe-import-url-btn"
-            >
-              Import
-            </Button>
-          </div>
-          {@render signedOutNotice()}
-        </div>
-      {/if}
     </div>
   {/snippet}
 
   {#snippet children()}
-    {#if showImport}
-      <div
-        class="mb-3 flex flex-col gap-2 rounded border border-border bg-muted/50 p-3"
-        data-testid="recipe-import-url-area"
-      >
-        <p class="text-sm text-muted-foreground">
-          Paste a recipe link. We'll read the page and convert it to metric and British terms — then
-          drop you into the editor to review and save.
-        </p>
-        <div class="flex items-end gap-2">
-          <TextField
-            label="Recipe URL"
-            placeholder="https://example.com/recipe"
-            value={importUrl}
-            onValueChange={(v) => (importUrl = v)}
-            class="flex-1"
-            data-testid="recipe-import-url-input"
-          />
-          <Button
-            size="sm"
-            onclick={handleImport}
-            loading={importing}
-            disabled={importUrl.trim() === '' || importing}
-            data-testid="recipe-import-url-btn"
-          >
-            Import
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onclick={() => {
-              showImport = false;
-              importUrl = '';
-              signedOut = false;
-            }}
-            disabled={importing}
-          >
-            Cancel
-          </Button>
-        </div>
-        {@render signedOutNotice()}
-      </div>
-    {/if}
-
     <!-- Section chips (issues #637, #752). Every section is always offered,
          including an empty one: you have to be able to walk into "When you CBA"
          and SEE that there is nothing there yet, otherwise the only signal that
@@ -798,6 +662,12 @@
   {/snippet}
 </ListPage>
 
-<!-- Reachable from both the New menu and the empty state, so it is mounted
-     outside ListPage's snippets — one dialog, one piece of state. -->
+<!-- Both are reachable from the New menu and from the empty state, so they are
+     mounted outside ListPage's snippets — one dialog each, one piece of state
+     each, and no second copy of the form for the two entry points to drift. -->
+<RecipeImportUrlDialog
+  bind:open={showImport}
+  initialUrl={rescuedUrl ?? ''}
+  onImported={handleUrlImported}
+/>
 <RecipeImportPhotoDialog bind:open={showPhotoImport} onImported={handlePhotoImported} />
