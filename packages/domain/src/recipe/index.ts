@@ -54,6 +54,10 @@ export {
 export { hasRecipeChanged } from './queries/hasRecipeChanged.js';
 export { findProducingRecipes } from './queries/producers.js';
 export { diffRecipe } from './queries/diffRecipe.js';
+// One level below diffRecipe: what moved INSIDE a changed field, so the review
+// gate can show a reword as the words that differ (issue #825).
+export { diffWords, unchangedRatio } from './queries/diffWords.js';
+export type { DiffPart } from './queries/diffWords.js';
 export {
   pickPlaceholder,
   PLACEHOLDER_MOODS,

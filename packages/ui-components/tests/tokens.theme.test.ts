@@ -36,6 +36,14 @@ describe('salt.css design-system entry', () => {
       expect(css).toMatch(/--color-primary:\s*hsl\(var\(--salt-primary\)\)/);
       expect(css).toMatch(/--color-primary-foreground:\s*hsl\(var\(--salt-primary-foreground\)\)/);
       expect(css).toMatch(/--color-icon-tile:\s*hsl\(var\(--salt-icon-tile\)\)/);
+      // The tinted surface a removed thing sits on, symmetric with the sage
+      // secondary-container an added one gets (#825).
+      expect(css).toMatch(
+        /--color-destructive-container:\s*hsl\(var\(--salt-destructive-container\)\)/,
+      );
+      expect(css).toMatch(
+        /--color-destructive-container-foreground:\s*hsl\(var\(--salt-on-destructive-container\)\)/,
+      );
       // v4 derives opacity via color-mix, so no color token carries the v3
       // `/ <alpha-value>` placeholder (a bare mention in a comment is fine).
       expect(css).not.toMatch(/hsl\(var\(--salt-[a-z-]+\)\s*\/\s*<alpha-value>\)/);
@@ -80,6 +88,24 @@ describe('salt.css design-system entry', () => {
     it('keeps /* #rrggbb */ provenance comments on salt colour tokens', () => {
       expect(css).toMatch(/--salt-primary:\s*[^;]+;\s*\/\*\s*#35606e/);
       expect(css).toMatch(/--salt-background:\s*[^;]+;\s*\/\*\s*#f8fafa/);
+    });
+
+    it('pins the destructive container pair to design.md error-container (#825)', () => {
+      // The provenance comments are what check-theme.ts diffs against design.md,
+      // so the hexes are the assertion — nothing new was decided here, the
+      // long-standing error-container values were plumbed through.
+      expect(css).toMatch(/--salt-destructive-container:\s*6 100% 92%;\s*\/\*\s*#ffdad6/);
+      expect(css).toMatch(/--salt-on-destructive-container:\s*356 100% 29%;\s*\/\*\s*#93000a/);
+    });
+
+    it('mirrors the destructive container pair into the .dark block (#825)', () => {
+      // Every --salt-* primitive is declared in both blocks; a pair present in
+      // only one leaves the file internally inconsistent even though nothing in
+      // web-pwa applies .dark today.
+      const dark = css.match(/\.dark\s*\{[\s\S]*?\n\}/)?.[0];
+      expect(dark).toBeDefined();
+      expect(dark).toMatch(/--salt-destructive-container:\s*6 100% 92%/);
+      expect(dark).toMatch(/--salt-on-destructive-container:\s*356 100% 29%/);
     });
 
     it('pins --salt-placeholder to the measured AA value in both themes (#821)', () => {
@@ -190,9 +216,18 @@ describe('token constants', () => {
     it('primaryForeground is a CSS var reference string', () => {
       expect(colors.primaryForeground).toBe('hsl(var(--salt-primary-foreground))');
     });
-    it('exports all 25 semantic color constants', () => {
+    it('exports all 27 semantic color constants', () => {
       const keys = Object.keys(colors);
-      expect(keys.length).toBe(25);
+      expect(keys.length).toBe(27);
+    });
+    it('exposes the destructive container pair a removed row sits on (#825)', () => {
+      // Symmetric with secondaryContainer, which is what an ADDED row gets. A
+      // removal drawn only as struck-through text reads weaker than an addition
+      // on a phone, which is the wrong asymmetry for the more destructive change.
+      expect(colors.destructiveContainer).toBe('hsl(var(--salt-destructive-container))');
+      expect(colors.destructiveContainerForeground).toBe(
+        'hsl(var(--salt-on-destructive-container))',
+      );
     });
     it('exposes the placeholder role that keeps example text off value text (#821)', () => {
       // A role of its own rather than a reuse of muted-foreground: the point is

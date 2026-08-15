@@ -152,6 +152,8 @@
   --color-accent-foreground: hsl(var(--salt-accent-foreground));
   --color-destructive: hsl(var(--salt-destructive));
   --color-destructive-foreground: hsl(var(--salt-destructive-foreground));
+  --color-destructive-container: hsl(var(--salt-destructive-container));
+  --color-destructive-container-foreground: hsl(var(--salt-on-destructive-container));
   --color-card: hsl(var(--salt-card));
   --color-card-foreground: hsl(var(--salt-card-foreground));
   --color-popover: hsl(var(--salt-popover));
@@ -317,6 +319,13 @@
   --salt-accent-foreground: 99 19% 35%; /* on-secondary-container */
   --salt-destructive: 0 75% 42%; /* #ba1a1a  error */
   --salt-destructive-foreground: 0 0% 100%; /* #ffffff */
+  /* The destructive counterpart to the sage secondary-container above: a tinted
+   * surface a REMOVED thing sits on, so a removal reads as strongly as an
+   * addition rather than as faded text (issue #825). Values are design.md's
+   * long-standing error-container / on-error-container — plumbed through, not
+   * newly decided. */
+  --salt-destructive-container: 6 100% 92%; /* #ffdad6  error container */
+  --salt-on-destructive-container: 356 100% 29%; /* #93000a */
   --salt-card: 0 0% 100%; /* surface-container-lowest */
   --salt-card-foreground: 195 7% 11%; /* on-surface */
   --salt-popover: 0 0% 100%;
@@ -392,6 +401,8 @@
   --salt-accent-foreground: 0 0% 100%;
   --salt-destructive: 0 75% 42%;
   --salt-destructive-foreground: 0 0% 100%;
+  --salt-destructive-container: 6 100% 92%;
+  --salt-on-destructive-container: 356 100% 29%;
   --salt-card: 180 3% 22%;
   --salt-card-foreground: 180 7% 94%;
   --salt-popover: 180 3% 22%;

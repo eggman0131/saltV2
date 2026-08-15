@@ -109,6 +109,8 @@ const COLOR_MAP: Record<string, string> = {
   'on-surface-variant': '--salt-muted-foreground',
   error: '--salt-destructive',
   'on-error': '--salt-destructive-foreground',
+  'error-container': '--salt-destructive-container',
+  'on-error-container': '--salt-on-destructive-container',
   'outline-variant': '--salt-border',
   placeholder: '--salt-placeholder',
 };
