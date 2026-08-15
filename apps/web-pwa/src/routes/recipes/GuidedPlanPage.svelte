@@ -611,7 +611,7 @@
                     label={`Prep step ${i + 1}`}
                     rows={2}
                     autoresize
-                    placeholder="Dice the carrots, onion and celery into 5mm pieces"
+                    placeholder="e.g. Dice the carrots, onion and celery into 5mm pieces"
                     value={entry.text}
                     onValueChange={(v) => setPrepField(entry.id, 'text', v)}
                     class="flex-1"
@@ -696,7 +696,7 @@
                   />
                   <TextField
                     label="Setup"
-                    placeholder="small hob burner, medium-low"
+                    placeholder="e.g. small hob burner, medium-low"
                     value={note.setup}
                     onValueChange={(v) => updateNote(step.id, { setup: v })}
                     data-testid="guided-plan-note-setup"
@@ -741,7 +741,7 @@
                         <TextField
                           label="Reminder"
                           class="flex-1"
-                          placeholder="give it a stir, or the bottom will catch"
+                          placeholder="e.g. give it a stir, or the bottom will catch"
                           value={ci.text}
                           onValueChange={(v) => setCheckInField(step.id, ci.key, 'text', v)}
                           data-testid="guided-plan-check-in-text"

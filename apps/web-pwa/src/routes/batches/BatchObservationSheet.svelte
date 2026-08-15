@@ -207,7 +207,7 @@
       <TextArea
         label="Notes"
         rows={3}
-        placeholder="Open crumb, a bit pale on the base…"
+        placeholder="e.g. Open crumb, a bit pale on the base…"
         value={note}
         onValueChange={(v) => (note = v)}
         data-testid="batch-log-note"

@@ -275,7 +275,7 @@
         <div class="flex-1">
           <TextField
             label="Latitude"
-            placeholder="51.5085"
+            placeholder="e.g. 51.5085"
             bind:value={manualLat}
             disabled={busy}
             data-testid="app-settings-home-location-manual-lat"
@@ -284,7 +284,7 @@
         <div class="flex-1">
           <TextField
             label="Longitude"
-            placeholder="-0.1257"
+            placeholder="e.g. -0.1257"
             bind:value={manualLng}
             disabled={busy}
             data-testid="app-settings-home-location-manual-lng"
@@ -294,7 +294,7 @@
       <TextField
         label="Timezone (IANA)"
         description="Defaults to this browser's timezone if left blank."
-        placeholder="Europe/London"
+        placeholder="e.g. Europe/London"
         bind:value={manualTimezone}
         disabled={busy}
         data-testid="app-settings-home-location-manual-tz"
@@ -302,7 +302,7 @@
       <TextField
         label="Label"
         description="A friendly name for this place. Defaults to the coordinates if left blank."
-        placeholder="Home"
+        placeholder="e.g. Home"
         bind:value={manualLabel}
         disabled={busy}
         data-testid="app-settings-home-location-manual-label"

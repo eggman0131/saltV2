@@ -108,7 +108,7 @@
               bind:value={email}
               label="Email"
               type="email"
-              placeholder="you@example.com"
+              placeholder="e.g. you@example.com"
               required
             />
             {#if auth.error}
@@ -175,7 +175,7 @@
               bind:value={email}
               label="Email"
               type="email"
-              placeholder="you@example.com"
+              placeholder="e.g. you@example.com"
               required
             />
             {#if auth.error}

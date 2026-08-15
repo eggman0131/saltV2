@@ -351,7 +351,7 @@
           <TextArea
             label="Aisle name(s)"
             description="Enter one per line to add multiple at once."
-            placeholder="Produce&#10;Dairy&#10;Bakery"
+            placeholder="e.g. Produce&#10;Dairy&#10;Bakery"
             rows={4}
             bind:value={addText}
             onkeydown={handleAddKeydown}

@@ -553,7 +553,7 @@
             </p>
             <TextArea
               label="Ingredient list"
-              placeholder="1 cup plain flour, sifted&#10;2 eggs&#10;&#10;For the sauce:&#10;2 cloves garlic, crushed"
+              placeholder="e.g. 1 cup plain flour, sifted&#10;2 eggs&#10;&#10;For the sauce:&#10;2 cloves garlic, crushed"
               value={pasteText}
               onValueChange={(v) => (pasteText = v)}
               rows={6}
