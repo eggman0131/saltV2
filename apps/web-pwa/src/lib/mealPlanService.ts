@@ -22,10 +22,13 @@ import {
   setAttendeeHomeTime,
   setAttendeeNote,
   weekExtendsIntoNext,
+  expandForPlanner,
+  mergePlannerRecipeIds,
   type Attendee,
   type MealPlanConfig,
   type MealPlanTemplate,
   type MealPlanWeek,
+  type Recipe,
   type Weekday,
 } from '@salt/domain';
 import { ErrorCode, failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
@@ -516,13 +519,20 @@ export async function weekHasEdits(date: string): Promise<ReadResult<boolean, Do
  * week is READ before it is written rather than declined. A read failure stays a
  * `Failure`: the alternative is overwriting a plan we could not see.
  *
- * Appending, and idempotent on the recipe id — adding a dish a day already
- * carries is a no-op, not a second chip. It says which of the two happened
- * rather than reporting both as "added", so the caller can tell the truth.
+ * Takes the whole RECIPE, not its id (issue #752, Phase 2): a meal expands to
+ * itself plus its components, and that expansion is a pure function of the
+ * document. The only production caller already holds the recipe, so asking for it
+ * is free — and it keeps this service from acquiring a dependency on the recipes
+ * store purely to look an id back up.
+ *
+ * Idempotent, per id, on what the day already holds. `'already-there'` means
+ * NOTHING NEW LANDED — which is also the honest answer when a meal was already
+ * on the night; when only some of its dishes were, the rest are added and the
+ * answer is `'added'`, so the caller's toast can still tell the truth.
  */
 export async function addRecipeToDay(
   dateKey: string,
-  recipeId: string,
+  recipe: Recipe,
 ): Promise<ReadResult<'added' | 'already-there', DomainError>> {
   const start = weekStartFor(dateKey, firstDay());
   let week: MealPlanWeek;
@@ -541,8 +551,9 @@ export async function addRecipeToDay(
     week = { ...week, days: { ...week.days, [dateKey]: emptyDay() } };
   }
   const attached = week.days[dateKey]!.recipeIds;
-  if (attached.includes(recipeId)) return success('already-there');
-  const saved = await persistWeek(setDayRecipes(week, dateKey, [...attached, recipeId]));
+  const next = mergePlannerRecipeIds(attached, expandForPlanner(recipe));
+  if (next.length === attached.length) return success('already-there');
+  const saved = await persistWeek(setDayRecipes(week, dateKey, next));
   return saved.kind === 'ok' ? success('added') : saved;
 }
 

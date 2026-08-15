@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   canBeComponentOf,
+  expandForPlanner,
   hasComponents,
   insertComponentByCookTime,
+  mergePlannerRecipeIds,
   resolveComponents,
 } from '@salt/domain';
 import type { Recipe } from '@salt/domain';
@@ -210,5 +212,94 @@ describe('insertComponentByCookTime', () => {
     const out = insertComponentByCookTime('roast', ids, 'gravy', LIBRARY);
     expect(out).not.toBe(ids);
     expect(ids).toEqual(['chicken']);
+  });
+});
+
+describe('expandForPlanner', () => {
+  it('puts the MEAL first, then its dishes', () => {
+    // The order is load-bearing, not cosmetic: the planner seeds the night's note
+    // from the first attached recipe's title and the day's card from the first
+    // attached hero, so meal-first is what makes both of them say "Sunday roast"
+    // without either mechanic knowing meals exist.
+    const roast = makeRecipe({
+      id: 'roast',
+      title: 'Sunday roast',
+      componentRecipeIds: ['chicken', 'potatoes', 'gravy'],
+    });
+    expect(expandForPlanner(roast)).toEqual(['roast', 'chicken', 'potatoes', 'gravy']);
+  });
+
+  it('expands an ordinary recipe to just itself', () => {
+    expect(expandForPlanner(CHICKEN)).toEqual(['chicken']);
+  });
+
+  it('expands EXACTLY ONE LEVEL — a component of a component is not planned', () => {
+    const sides = makeRecipe({ id: 'sides', componentRecipeIds: ['potatoes', 'gravy'] });
+    const roast = makeRecipe({ id: 'roast', componentRecipeIds: ['chicken', 'sides'] });
+    expect(expandForPlanner(roast)).toEqual(['roast', 'chicken', 'sides']);
+  });
+
+  it('keeps a dangling id rather than filtering it out', () => {
+    // Deliberately store-free: filtering would make a planner WRITE depend on
+    // store hydration, so a half-hydrated app would silently plan fewer dishes
+    // than the user picked. A dangling id is inert — every planner consumer
+    // already skips one — and that is much the lesser failure.
+    const roast = makeRecipe({ id: 'roast', componentRecipeIds: ['deleted-elsewhere', 'gravy'] });
+    expect(expandForPlanner(roast)).toEqual(['roast', 'deleted-elsewhere', 'gravy']);
+  });
+
+  it('does not mutate the recipe it is handed', () => {
+    const roast = makeRecipe({ id: 'roast', componentRecipeIds: ['chicken'] });
+    const before = structuredClone(roast);
+    const out = expandForPlanner(roast);
+    out.push('extra');
+    expect(roast).toEqual(before);
+  });
+});
+
+describe('mergePlannerRecipeIds', () => {
+  it('appends what is new, in the order it was offered', () => {
+    expect(mergePlannerRecipeIds(['pie'], ['roast', 'chicken'])).toEqual([
+      'pie',
+      'roast',
+      'chicken',
+    ]);
+  });
+
+  it('adds only the missing part of a meal already half on the night', () => {
+    // "Remove the gravy from Tuesday, then attach the roast again": the meal and
+    // the potatoes stay where they are, the gravy comes back at the end.
+    expect(
+      mergePlannerRecipeIds(
+        ['roast', 'chicken', 'potatoes'],
+        ['roast', 'chicken', 'potatoes', 'gravy'],
+      ),
+    ).toEqual(['roast', 'chicken', 'potatoes', 'gravy']);
+  });
+
+  it('never re-sorts what is already there', () => {
+    expect(mergePlannerRecipeIds(['gravy', 'chicken'], ['chicken', 'gravy'])).toEqual([
+      'gravy',
+      'chicken',
+    ]);
+  });
+
+  it('dedupes within the additions too', () => {
+    expect(mergePlannerRecipeIds([], ['roast', 'gravy', 'roast'])).toEqual(['roast', 'gravy']);
+  });
+
+  it('handles both empty cases', () => {
+    expect(mergePlannerRecipeIds([], [])).toEqual([]);
+    expect(mergePlannerRecipeIds([], ['roast'])).toEqual(['roast']);
+    expect(mergePlannerRecipeIds(['roast'], [])).toEqual(['roast']);
+  });
+
+  it('mutates neither argument', () => {
+    const existing = ['pie'];
+    const additions = ['roast'];
+    const out = mergePlannerRecipeIds(existing, additions);
+    expect(out).not.toBe(existing);
+    expect(existing).toEqual(['pie']);
+    expect(additions).toEqual(['roast']);
   });
 });

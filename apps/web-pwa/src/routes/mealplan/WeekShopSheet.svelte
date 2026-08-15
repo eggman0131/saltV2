@@ -9,7 +9,7 @@
     SheetHeader,
     SheetTitle,
   } from '@salt/ui-components';
-  import { appendCacheBuster, type Recipe } from '@salt/domain';
+  import { appendCacheBuster, hasComponents, type Recipe } from '@salt/domain';
   import { KIND_COPY, kindOf } from '../recipes/recipeKind.js';
 
   // ─── Shop the week: which nights? (issue #724, Phase 1) ────────────────────
@@ -19,6 +19,11 @@
   // `RecipeAddToListSheet`, which the page then drives once per pick. Nothing
   // about the shopping list is decided here: this sheet returns a subset of what
   // it was given and forgets it.
+  //
+  // Meals change what a ROW is and nothing else (#752, Phase 2): a meal speaks
+  // for the dishes of its own night, so they fold under it as one line with one
+  // tick. What comes back out is still the flat list of entries it was given, in
+  // the order the rows offered them — the review queue is untouched.
   //
   // It takes the entries ready-made rather than reaching for the week itself.
   // WHICH week is a fact about where the deck is snapped to, and that belongs to
@@ -31,6 +36,15 @@
   interface Entry {
     readonly date: string;
     readonly recipe: Recipe;
+  }
+
+  // What a row actually is once meals are in play (#752, Phase 2): a lead entry,
+  // plus the entries in the SAME NIGHT that it has adopted because it names them
+  // as its components. An ordinary recipe is a group of one, which is why nothing
+  // below has a meal branch in it.
+  interface Group {
+    readonly lead: Entry;
+    readonly adopted: readonly Entry[];
   }
 
   interface Props {
@@ -54,12 +68,15 @@
   // about this glance at the planner, exactly like which day is open.
   let unticked = $state<Record<string, boolean>>({});
 
+  // A GROUP is ticked, not an entry — one meal, one tick, so a group can never
+  // end up half on the list. Keyed on the lead, which is unique within its night
+  // for the same reason a row was: the date is half of the identity.
   function keyOf(entry: Entry): string {
     return `${entry.date}::${entry.recipe.id}`;
   }
 
-  function isPicked(entry: Entry): boolean {
-    return !unticked[keyOf(entry)];
+  function isPicked(group: Group): boolean {
+    return !unticked[keyOf(group.lead)];
   }
 
   // Reset on the open transition, never on close: a sheet that cleared as it left
@@ -69,8 +86,6 @@
     if (open && !wasOpen) unticked = {};
     wasOpen = open;
   });
-
-  const picked = $derived(entries.filter(isPicked));
 
   // Rows grouped under their night. The entries arrive in day order, so this is a
   // fold rather than a sort — and a night with two recipes keeps both, in the
@@ -82,8 +97,54 @@
       if (last?.date === entry.date) last.entries.push(entry);
       else out.push({ date: entry.date, entries: [entry] });
     }
-    return out;
+    return out.map((night) => ({ date: night.date, groups: groupNight(night.entries) }));
   });
+
+  // Fold one night's entries into rows: a meal ADOPTS the entries beside it that
+  // it names, and they stop being rows of their own (#752, Phase 2).
+  //
+  // Adoption is over the WHOLE night, not just what follows the meal: a night can
+  // hold the gravy before the roast (add the gravy alone, then add the meal) and
+  // the two still belong together. It is one level, like everything else about
+  // components — a meal adopts the dishes it names, never their dishes.
+  //
+  // Three conditions, and each one is an edge case from the issue:
+  //   • already claimed → a component named by two meals in the same night
+  //     belongs to the FIRST of them, in document order, deterministically;
+  //   • a claimer is never claimed → a meal that has already adopted something
+  //     stays a row, so nothing it adopted can vanish with it;
+  //   • never itself → a self-reference is refused at the source, but a row that
+  //     swallowed itself would be worse than inert.
+  // Together they make the result a PARTITION: every entry the sheet was handed
+  // appears exactly once, as a lead or under exactly one lead.
+  function groupNight(nightEntries: readonly Entry[]): Group[] {
+    const adoptedBy = new Map<Entry, Entry[]>();
+    const claimed = new Set<Entry>();
+    for (const lead of nightEntries) {
+      if (claimed.has(lead) || !hasComponents(lead.recipe)) continue;
+      const names = new Set(lead.recipe.componentRecipeIds);
+      const adopted = nightEntries.filter(
+        (e) => e !== lead && !claimed.has(e) && !adoptedBy.has(e) && names.has(e.recipe.id),
+      );
+      if (adopted.length === 0) continue;
+      adoptedBy.set(lead, adopted);
+      for (const e of adopted) claimed.add(e);
+    }
+    return nightEntries
+      .filter((e) => !claimed.has(e))
+      .map((lead) => ({ lead, adopted: adoptedBy.get(lead) ?? [] }));
+  }
+
+  // The picks, FLAT and in the order the rows were offered — meal first, then the
+  // dishes it adopted. The page drives one review sheet per entry in this list, so
+  // the confirm button's count below is a promise about how many sheets follow;
+  // flattening here is what keeps that promise true without the queue learning
+  // anything about meals.
+  const picked = $derived(
+    nights.flatMap((night) =>
+      night.groups.filter(isPicked).flatMap((group) => [group.lead, ...group.adopted]),
+    ),
+  );
 
   // The date, named the way the planner names a day elsewhere. Formatted from the
   // UTC date, like the page's own labels — a `YYYY-MM-DD` key parsed as local time
@@ -140,7 +201,8 @@
           >
             {nightLabel(night.date)}
           </p>
-          {#each night.entries as entry (entry.recipe.id)}
+          {#each night.groups as group (group.lead.recipe.id)}
+            {@const entry = group.lead}
             {@const url = heroUrl(entry.recipe)}
             <div
               class="flex items-center gap-2 rounded border border-border px-2 py-1.5 text-sm"
@@ -156,7 +218,7 @@
                    The title is already on screen a few pixels away — pointing at
                    it is both the accessible name and the honest one. -->
               <Checkbox
-                checked={isPicked(entry)}
+                checked={isPicked(group)}
                 onCheckedChange={(v) => (unticked[keyOf(entry)] = v !== true)}
                 labelledBy={`shop-week-title-${night.date}-${entry.recipe.id}`}
                 data-testid={`shop-week-tick-${night.date}-${entry.recipe.id}`}
@@ -175,9 +237,18 @@
                   </span>
                 {/if}
               </span>
+              <!-- A meal is ONE line and one tick: its own name, then how many
+                   dishes of the night it is speaking for. The adopted dishes are
+                   deliberately not rows — the tick above covers all of them, and
+                   listing them again would offer a choice the row does not make.
+                   The suffix appears only when it says something: a meal whose
+                   dishes are planned for a different night is just a recipe here. -->
               <span
                 id={`shop-week-title-${night.date}-${entry.recipe.id}`}
-                class="min-w-0 flex-1 truncate">{entry.recipe.title}</span
+                class="min-w-0 flex-1 truncate"
+                >{entry.recipe.title}{group.adopted.length > 0
+                  ? ` · ${group.adopted.length}`
+                  : ''}</span
               >
             </div>
           {/each}

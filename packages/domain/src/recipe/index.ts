@@ -46,6 +46,8 @@ export {
   resolveComponents,
   canBeComponentOf,
   insertComponentByCookTime,
+  expandForPlanner,
+  mergePlannerRecipeIds,
 } from './queries/components.js';
 // Recipe-drift comparison, shared by everything that snapshots a recipe's
 // `updatedAt`: the cook session (#556) and the guided plan (#751).

@@ -152,7 +152,10 @@ describe('RecipeAddToPlannerSheet — committing', () => {
     );
 
     await user.click(screen.getByTestId('recipe-add-to-planner-confirm'));
-    expect(mockAddRecipeToDay).toHaveBeenCalledWith('2026-08-21', 'recipe-1');
+    // The whole RECIPE, not its id (#752): a meal expands to itself plus its
+    // components, and that expansion is a pure function of the document — so the
+    // service is handed the document rather than made to look it back up.
+    expect(mockAddRecipeToDay).toHaveBeenCalledWith('2026-08-21', RECIPE);
     await waitFor(() =>
       expect(mockAddToast).toHaveBeenCalledWith('Added to Friday 21 August.', 'success'),
     );

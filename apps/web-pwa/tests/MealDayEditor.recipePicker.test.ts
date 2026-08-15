@@ -28,8 +28,12 @@ const alex: Member = { id: 'm1', name: 'Alex' } as Member;
 const noop = () => {};
 const emptyDay: Day = { note: '', recipeIds: [], chefs: [], attendees: [], guests: 0 };
 
-const bolognese = { id: 'r1', title: 'Spaghetti Bolognese' } as unknown as Recipe;
-const roast = { id: 'r2', title: 'Sunday Roast' } as unknown as Recipe;
+const bolognese = {
+  id: 'r1',
+  title: 'Spaghetti Bolognese',
+  componentRecipeIds: [],
+} as unknown as Recipe;
+const roast = { id: 'r2', title: 'Sunday Roast', componentRecipeIds: [] } as unknown as Recipe;
 
 function baseProps(overrides: Record<string, unknown> = {}) {
   return {
@@ -117,6 +121,56 @@ describe('MealDayEditor — the recipe picker inside the day sheet (#640)', () =
     // …and an empty meal takes the recipe's title (Phase 3, #469) — unchanged
     // by the move into a sheet.
     expect(onNoteChange).toHaveBeenCalledWith('Sunday Roast');
+  });
+
+  it('attaches a MEAL as the whole dinner — the meal, then its dishes', async () => {
+    // Picking a meal plans every dish of it in one go (#752, Phase 2), meal FIRST:
+    // the note below and the day's card both read the first attached recipe, so
+    // ordering the expansion is what makes them say "Sunday lunch" and wear its
+    // photograph, without either mechanic learning what a meal is.
+    const onRecipesChange = vi.fn();
+    const onNoteChange = vi.fn();
+    const meal = {
+      id: 'm-roast',
+      title: 'Sunday lunch',
+      componentRecipeIds: ['r2', 'r1'],
+    } as unknown as Recipe;
+    render(MealDayEditor, {
+      props: baseProps({
+        onRecipesChange,
+        onNoteChange,
+        recipes: [bolognese, roast, meal],
+      }),
+    });
+    await openPicker();
+    await filterPicker('lunch');
+    await fireEvent.click(await screen.findByRole('option', { name: 'Sunday lunch' }));
+
+    expect(onRecipesChange).toHaveBeenCalledWith(['m-roast', 'r2', 'r1']);
+    expect(onNoteChange).toHaveBeenCalledWith('Sunday lunch');
+  });
+
+  it('adds only the dishes a night is missing, and leaves its order alone', async () => {
+    // The gravy was attached on its own last night; attaching the meal now must
+    // not duplicate it, and must not re-sort the night around it.
+    const onRecipesChange = vi.fn();
+    const meal = {
+      id: 'm-roast',
+      title: 'Sunday lunch',
+      componentRecipeIds: ['r1', 'r2'],
+    } as unknown as Recipe;
+    render(MealDayEditor, {
+      props: baseProps({
+        day: { ...emptyDay, note: 'Something already written', recipeIds: ['r2'] },
+        onRecipesChange,
+        recipes: [bolognese, roast, meal],
+      }),
+    });
+    await openPicker();
+    await filterPicker('lunch');
+    await fireEvent.click(await screen.findByRole('option', { name: 'Sunday lunch' }));
+
+    expect(onRecipesChange).toHaveBeenCalledWith(['r2', 'm-roast', 'r1']);
   });
 
   it('says so when nothing matches', async () => {

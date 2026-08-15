@@ -286,6 +286,41 @@ every planned night carries a photograph, a short muted line between them alread
 reads as the hole it is, and a dashed ghost card would cost ~187px of deck height
 saying nothing.
 
+### A meal plans the whole dinner, once (#752)
+
+A **meal** is an ordinary `recipes/{id}` carrying `componentRecipeIds`; there is
+no fifth kind and no second collection, and the planner has no meal branch in it.
+Attaching one writes `[mealId, ...componentRecipeIds]` into `day.recipeIds`,
+deduped against what the night already holds (`expandForPlanner` +
+`mergePlannerRecipeIds`, both pure, in `domain/src/recipe/queries/components.ts`).
+Nothing about the plan document changed to allow it: `recipeIds` was already a
+`string[]` and several recipes on a night is shipped behaviour.
+
+- **The expansion is FROZEN at attach time**, the same bargain `pickPlaceholder`
+  strikes. Edit the meal afterwards and an already-planned night is untouched.
+  That is what keeps `day.recipeIds` homogeneous — every consumer (the day sheet,
+  the week card, "Shop the week", `personalViewService`, the admin editor) goes on
+  resolving plain recipe ids against one store, with no idea meals exist.
+- **The meal id goes FIRST**, and two existing mechanics then do the right thing
+  by themselves: the day's note seeds from the first attached recipe's title, and
+  the day's card takes the first attached hero. Neither was modified.
+- **`expandForPlanner` takes no recipe store and filters nothing.** A component
+  deleted since it was attached leaves a dangling id, which every planner consumer
+  already skips silently. Filtering would make a planner *write* depend on store
+  hydration, so a half-hydrated store would plan fewer dishes than the user
+  picked — much the worse failure.
+- **Removal needs no new code.** Dropping one dish from one night is the existing
+  `day.recipeIds.filter(...)`; it touches neither the meal nor any other night.
+- **"Shop the week" groups, and only groups.** Within a night, an entry whose
+  recipe has components adopts the entries beside it that it names: one line, one
+  tick, `Sunday roast · 3`. What comes back is still the FLAT list of entries, in
+  row order, because the page drives one `RecipeAddToListSheet` per entry and the
+  confirm button's count is a promise about how many review sheets follow. A meal
+  that is a pure bundle therefore still gets its own (empty) review sheet — not
+  meal-specific, and deliberately not special-cased: any ingredient-less recipe
+  behaves the same, and the fix, if it ever bites, is one predicate in the entry
+  filter that would help all of them.
+
 Production data caveat: the planner collections hold real production data, and so
 has `recipes` since 2026-06-17 (#240). Anything added to a `Day` — or to the
 recipe documents it points at — has to be back-compatible on read or ship a

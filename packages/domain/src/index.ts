@@ -271,6 +271,8 @@ export {
   resolveComponents,
   canBeComponentOf,
   insertComponentByCookTime,
+  expandForPlanner,
+  mergePlannerRecipeIds,
   findProducingRecipes,
   diffRecipe,
   hasRecipeChanged,

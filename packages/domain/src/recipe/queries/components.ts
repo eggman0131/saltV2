@@ -86,3 +86,44 @@ export function insertComponentByCookTime(
   if (at === -1) return [...ids, newId];
   return [...ids.slice(0, at), newId, ...ids.slice(at)];
 }
+
+// What lands in a planner day when this entry is attached to it: the entry
+// itself, then its components. The expansion is FROZEN at attach time — editing
+// the meal afterwards never rewrites a night already planned — which is what
+// keeps `day.recipeIds` homogeneous: every planner consumer goes on resolving
+// plain recipe ids against one store, with no idea meals exist.
+//
+// THE MEAL GOES FIRST, and two existing mechanics then do the right thing on
+// their own: the day's note seeds from the first attached recipe's title (so it
+// reads "Sunday roast"), and the day's card takes the first attached hero (so it
+// wears the meal's photograph). Neither had to learn anything about meals.
+//
+// One level, like everything else here: a component's own components are not
+// expanded, so a night gets the dishes the meal names and nothing further down.
+//
+// NO RECIPE STORE, and no filtering to ids that resolve — deliberately. A
+// component deleted since it was attached yields a dangling id in the day, which
+// every planner consumer already skips silently; it is inert, and it is the
+// established behaviour. Filtering here would instead make a planner WRITE depend
+// on store hydration, so a half-hydrated store would silently plan fewer dishes
+// than the user picked — a far worse failure than an id that renders as nothing.
+export function expandForPlanner(recipe: Recipe): string[] {
+  return [recipe.id, ...recipe.componentRecipeIds];
+}
+
+// Fold an expansion into what a day already holds: `existing`, then every
+// addition not already there, in the order they were offered.
+//
+// Nothing is re-sorted and nothing is removed — the day's order is the order its
+// nights were built up in — and neither argument is mutated. Deduping is why a
+// meal whose gravy is already on the night adds only the rest of it.
+export function mergePlannerRecipeIds(
+  existing: readonly string[],
+  additions: readonly string[],
+): string[] {
+  const out = [...existing];
+  for (const id of additions) {
+    if (!out.includes(id)) out.push(id);
+  }
+  return out;
+}
