@@ -86,6 +86,12 @@ export const routes: RouteDefinition = new Map<
   // one gets made — an "add a formula" item on every recipe would put baker's
   // percentages in front of every weeknight curry to serve the three loaves.
   ['/recipes/:id/formula', lazy(() => import('./recipes/FormulaPage.svelte'))],
+  // A meal's cook plan (issue #752, phase 4) — the dashboard for the evening: the
+  // meal and its component dishes in running order, each with a start time counted
+  // back from one serve time. An ORDINARY shell route, and so NO entry in
+  // ./fullViewport.ts: cook mode is the modal single-task deck, and this is a hub
+  // you bounce in and out of all evening with the nav still under it.
+  ['/recipes/:id/cook-plan', lazy(() => import('./recipes/MealCookPlanPage.svelte'))],
   ['/recipes/:id', lazy(() => import('./recipes/RecipeViewPage.svelte'))],
   // Batches (issue #812, phase 1 of epic #778) — the in-flight surface and one
   // run's own screen. Static before parameterised, as everything above. ORDINARY

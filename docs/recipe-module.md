@@ -352,6 +352,52 @@ Decisions worth not relitigating:
   copies of a roast pointing at the same gravy is simply true; two recipes both
   claiming to produce Chicken Stock is a contradiction.
 
+### The cook plan (meals, issue #752 — Phase 4)
+
+`/recipes/:id/cook-plan` (`MealCookPlanPage.svelte`) is the dashboard for the
+evening: the meal and its dishes in running order, each with a start clock time
+and a live countdown, plus every timer in the meal in one cancellable list. One
+schema field carries it — `serveAt` on `CookSessionSchema` — and one pure helper
+computes it: `scheduleFor(rows, serveAtMs)` in `domain/src/cookSession/`, which is
+`start = serve − cookTimeMinutes`, per row and nothing else.
+
+Decisions worth not relitigating:
+
+- **It is NOT a merged timeline, and must not become one.** Nothing interleaves
+  the components' steps into a single sequence — that is an aggregation, and the
+  feature's invariant forbids it. Each row is a whole dish with its own cook mode
+  behind it.
+- **`serveAt` is an absolute ISO instant, never `"HH:mm"`.** `cookSessions` have
+  no TTL and a cook can span days, so a wall-clock time cannot say _which_ 19:00;
+  and the plan has to read the same on the phone as on the laptop it was set from.
+  `.default(null)` for back-compat on read, and it belongs to **neither** phase
+  scheme the schema header warns about (not #556, not #751).
+- **The reads split, and the split is the non-obvious part.** The meal's OWN
+  session gets a single-doc listener by deterministic id, because `myCookSessions`
+  is capped at the five most recently updated sessions and a serve time set in the
+  morning must not fall out of the window. The components' progress and timers are
+  filters of `liveCooks` / `myTimers` — projections over stores App.svelte already
+  holds — so they cost **zero** extra reads. No per-component subscription.
+- **Setting a serve time is what creates the meal's session; opening the page
+  writes nothing.** A session created on a mere visit would advertise the user as
+  "Cooking now" in Kitchen for having looked at a plan.
+- **Its own 1 s clock, not `timerNowMs`.** That one is armed only while a timer
+  runs (right for the nav badge); these countdowns must tick with no timer
+  anywhere in the meal. `timerNowMs`'s arming is shared and was left alone.
+- **An ordinary shell route** — no entry in `fullViewport.ts` (Rule 7). Cook mode
+  is the modal single-task deck; this is a hub you bounce in and out of all
+  evening.
+- **The meal is a row only when it has steps of its own.** A pure bundle has
+  nothing to start, and a row you cannot act on is noise.
+- **A dish with no `cookTimeMinutes` stays in the plan**, reading "start when you
+  like". Dropping it would hide a dish for the crime of an incomplete recipe.
+
+Two bounds recorded rather than fixed: the timer list inherits the
+five-session cap on `myCookSessions` (raising it is a shared personal-view
+decision), and the app-wide cook-timer alert watcher follows only the single
+session a cook page has open — so this page lists a component's timers but does
+not chime for them.
+
 ## Duplicating a recipe (issue #735)
 
 `duplicateRecipe(source, newId, now)` in

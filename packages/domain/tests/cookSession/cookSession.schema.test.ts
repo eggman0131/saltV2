@@ -153,3 +153,37 @@ describe('CookSessionSchema — the removed get-out tick list', () => {
     expect(result.success && result.data.completedStepIds).toEqual(['step-1']);
   });
 });
+
+describe('CookSessionSchema.serveAt', () => {
+  // Meals (issue #752, phase 4). The same back-compat obligation as every other
+  // field added to this document: cookSessions have no TTL and a cook can span
+  // days, so every session already in Firestore predates it.
+  const base = {
+    id: 'r1_u1',
+    schemaVersion: 1,
+    ownerUid: 'u1',
+    recipeId: 'r1',
+    recipeUpdatedAtAtStart: '2026-07-01T09:00:00.000Z',
+    createdAt: '2026-08-15T18:30:00.000Z',
+    updatedAt: '2026-08-15T18:30:00.000Z',
+  };
+
+  it('BACK-COMPAT: a session written without it parses, and reads back null', () => {
+    const result = CookSessionSchema.safeParse(base);
+    expect(result.success).toBe(true);
+    // `.default(null)`, not `.optional()` — every reader sees a concrete
+    // `string | null` and nobody has to tell "absent" from "no serve time".
+    expect(result.success && result.data.serveAt).toBeNull();
+  });
+
+  it('keeps an absolute instant verbatim — never a wall-clock "HH:mm"', () => {
+    const serveAt = '2026-08-16T18:00:00.000Z';
+    const result = CookSessionSchema.safeParse({ ...base, serveAt });
+    expect(result.success && result.data.serveAt).toBe(serveAt);
+  });
+
+  it('accepts an explicit null — the serve time cleared', () => {
+    const result = CookSessionSchema.safeParse({ ...base, serveAt: null });
+    expect(result.success && result.data.serveAt).toBeNull();
+  });
+});

@@ -321,6 +321,15 @@ Nothing about the plan document changed to allow it: `recipeIds` was already a
   behaves the same, and the fix, if it ever bites, is one predicate in the entry
   filter that would help all of them.
 
+The planner also **answers one question for the cook plan** (#752 Phase 4):
+`latestHomeTimeFor(weeks, recipeId, dateKey)` in
+`domain/src/mealPlan/queries/latestHomeTimeFor.ts` is what a meal's cook plan
+seeds its serve time from — the last attendee home on the night that dish is
+planned for. It is a **read only**, gated on the dish actually sitting in that
+day's `recipeIds`, and it returns null rather than a guess when the plan has no
+opinion; the cook plan then falls back to 19:00 on its own. Nothing in the planner
+knows the cook plan exists, and no plan document is written by it.
+
 Production data caveat: the planner collections hold real production data, and so
 has `recipes` since 2026-06-17 (#240). Anything added to a `Day` — or to the
 recipe documents it points at — has to be back-compatible on read or ship a

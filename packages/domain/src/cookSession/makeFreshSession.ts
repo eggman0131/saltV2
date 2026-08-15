@@ -29,6 +29,10 @@ export function makeFreshSession(args: MakeFreshSessionArgs): CookSessionDoc {
     checkedPrepIds: [],
     completedStepIds: [],
     activeTimers: [],
+    // No serve time until someone sets one (issue #752). A fresh session never
+    // carries one, including the meal's own — the cook plan writes it on the first
+    // set, which is also what creates the session.
+    serveAt: null,
     createdAt: args.nowIso,
     updatedAt: args.nowIso,
   };

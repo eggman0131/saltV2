@@ -235,6 +235,7 @@ export {
   removeAttendee,
   setAttendeeHomeTime,
   setAttendeeNote,
+  latestHomeTimeFor,
 } from './mealPlan/index.js';
 
 // Recipe module — published surface (issue #179).
@@ -340,8 +341,10 @@ export {
   nextStepLookahead,
   formatClock,
   timerProgress,
+  scheduleFor,
 } from './cookSession/index.js';
 export type {
+  ScheduledRow,
   MakeFreshSessionArgs,
   MiseProgress,
   GuidedContainerProblems,

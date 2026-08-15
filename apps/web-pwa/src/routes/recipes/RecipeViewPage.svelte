@@ -1113,7 +1113,8 @@ Finish with a short note on what you changed and why, so I can read the gist her
            nothing moved behind a second tap, relative order untouched.
 
              Chat · Optimise · Refresh ·     work on THIS dish, in place
-             Guided plan
+             Guided plan · Cook plan ·
+             Bake a batch · Formula
              ─────
              Make a variation · Duplicate    produce a SECOND recipe, leaving this
                                              one alone — the two honest answers to
@@ -1137,7 +1138,10 @@ Finish with a short note on what you changed and why, so I can read the gist her
            coincidence is what would quietly break. Since #812 that includes
            `hasFormula`, which is presence rather than a capability and so cannot be
            implied by either predicate: a cocktail with a 1:1:1 formula and nothing
-           else in group one is exactly the case the third clause covers. -->
+           else in group one is exactly the case the third clause covers. #752
+           adds `showComponents` on the same footing: also presence rather than a
+           capability, so it gets its own clause rather than riding on the kinds
+           that happen to be able to take components today. -->
       <Popover bind:open={overflowMenuOpen}>
         <PopoverTrigger>
           {#snippet children()}
@@ -1226,6 +1230,26 @@ Finish with a short note on what you changed and why, so I can read the gist her
               Guided plan
             </button>
           {/if}
+          {#if showComponents}
+            <!-- The cook plan (issue #752, phase 4). Beside "Guided plan" and for
+                 exactly the same reason: it is what you open BEFORE you cook, to
+                 decide when each dish goes on — the inline row is the hands-full
+                 verbs. Gated on the DOCUMENT having components, like the "Made
+                 from" card below: a dish with nothing hanging off it has no
+                 running order to schedule, and there is no meal `kind` to ask. -->
+            <button
+              type="button"
+              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+              onclick={() => {
+                overflowMenuOpen = false;
+                push(`/recipes/${recipe.id}/cook-plan`);
+              }}
+              data-testid="recipe-cook-plan-menu-item"
+            >
+              <Icon name="Clock" size={14} />
+              Cook plan
+            </button>
+          {/if}
           {#if hasFormula}
             <!-- Bread scaling (issue #812, phase 1 of epic #778). BOTH entries sit
                  in group one, immediately after "Guided plan", and both are gated on
@@ -1279,7 +1303,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
               Formula
             </button>
           {/if}
-          {#if showCooking || canAuthor || hasFormula}
+          {#if showCooking || canAuthor || hasFormula || showComponents}
             <Divider class="my-1" />
           {/if}
           {#if canAuthor}

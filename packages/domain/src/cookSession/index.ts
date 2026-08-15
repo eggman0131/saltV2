@@ -74,3 +74,9 @@ export type { NextStepLookahead } from './nextStepLookahead.js';
 // so it belongs to the recipe module — see recipe/queries/hasRecipeChanged.ts.
 export { formatClock } from './formatClock.js';
 export { timerProgress } from './timerProgress.js';
+// Meals (issue #752) — a meal's cook plan works every dish's start time backwards
+// from one serve time. It lives here rather than in the recipe module because the
+// serve time it reads is a cook-session field, and because it is the same shape as
+// everything else in here: a small pure projection with the clock passed in.
+export { scheduleFor } from './scheduleFor.js';
+export type { ScheduledRow } from './scheduleFor.js';

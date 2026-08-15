@@ -103,6 +103,25 @@ export const CookSessionSchema = z.object({
   // on read: zod strips an unknown key, so a session written mid-cook under #761
   // still parses, and its stale ticks simply go nowhere. Do not reintroduce the
   // name for anything else.
+  // When the whole dinner is meant to reach the table — set on a MEAL's session by
+  // the cook plan (`/recipes/:id/cook-plan`), which works every component's start
+  // time backwards from it. Null until somebody sets one; only the meal's own
+  // session ever carries a value, and nothing else on this document reads it.
+  //
+  // BELONGS TO NEITHER PHASE SCHEME the header above warns about — not cook mode's
+  // (#556) and not guided cook's (#751). It is issue #752, meals.
+  //
+  // AN ABSOLUTE ISO INSTANT, not a wall-clock "HH:mm", and the two reasons are the
+  // two things the field has to survive. A session has no TTL and a cook can span
+  // days, so "19:00" cannot say WHICH 19:00; and the plan has to read the same on
+  // the phone in the kitchen as on the laptop it was set from, which a bare local
+  // time cannot promise. The instant is unambiguous on both counts, and every
+  // countdown is then plain arithmetic against it.
+  //
+  // `.default(null)` rather than `.optional()`: every session already in Firestore
+  // predates this field and must still parse (back-compat on read), and a concrete
+  // `string | null` means no reader has to tell "absent" from "no serve time".
+  serveAt: z.string().nullable().default(null),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
