@@ -97,6 +97,17 @@ export { callProposeSchedule } from './batchCallables.js';
 // because storage.rules stay `write: if false` — the client never writes Storage.
 export { subscribeBatchObservations, addBatchObservation } from './batchObservationSync.js';
 export { callSetObservationImageUpload } from './batchObservationCallables.js';
+// Kitchen memories (issue #816): the household's own notes for the chef, one
+// document per note at `kitchenMemories/{id}`. Family-shared and a COLLECTION for a
+// reason — an array in one document loses a note when both members add at once
+// under document-level LWW. List-read contract: a corrupt note is skipped and
+// logged, never allowed to empty the list. No callable: writing one costs a string
+// comparison and a `setDoc`, and no AI at all.
+export {
+  subscribeKitchenMemories,
+  saveKitchenMemory,
+  deleteKitchenMemory,
+} from './kitchenMemorySubscription.js';
 export { savePushSubscription, deletePushSubscription } from './pushSubscriptionSync.js';
 export { streamChefChat, callGenerateChatTitle } from './chatCallables.js';
 export { callAuthorRecipe } from './authorRecipeCallable.js';

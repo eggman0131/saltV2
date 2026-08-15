@@ -53,6 +53,10 @@ export const routes: RouteDefinition = new Map<
   ['/mealplan/:date', MealPlanWeekPage],
   // Chat / AI Kitchen Assistant (issue #206). Lazy-loaded (#411).
   ['/chat', lazy(() => import('./chat/ChatListPage.svelte'))],
+  // "What I remember" (issue #816) — the household's standing notes for the chef.
+  // Static, so it precedes '/chat/:id' like every other pair here; an ordinary
+  // shell route, so no entry in ./fullViewport.ts.
+  ['/chat/remembered', lazy(() => import('./chat/ChatMemoryPage.svelte'))],
   ['/chat/:id', lazy(() => import('./chat/ChatSessionPage.svelte'))],
   // Recipe module (issue #179). More-specific static/edit routes precede the
   // parameterised view route. Lazy-loaded (#411).

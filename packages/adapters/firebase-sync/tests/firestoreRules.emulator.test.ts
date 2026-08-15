@@ -1142,3 +1142,68 @@ describe.skipIf(!reachable)('firestore.rules — batch observations (issue #812)
     await assertFails(deleteDoc(ref));
   });
 });
+
+describe.skipIf(!reachable)('firestore.rules — kitchenMemories (issue #816)', () => {
+  let testEnv: RulesTestEnvironment;
+
+  beforeAll(async () => {
+    testEnv = await initializeTestEnvironment({
+      projectId: PROJECT_ID,
+      firestore: {
+        host: HOST,
+        port: PORT,
+        rules: readFileSync(RULES_PATH, 'utf8'),
+      },
+    });
+  });
+
+  afterAll(async () => {
+    await testEnv?.cleanup();
+  });
+
+  beforeEach(async () => {
+    await testEnv.clearFirestore();
+  });
+
+  const MEMORY_ID = 'memory-1';
+  const memory = (author = 'Daniel') => ({
+    id: MEMORY_ID,
+    schemaVersion: 1,
+    text: 'We hate coriander.',
+    author,
+    createdAt: '2026-08-15T09:00:00.000Z',
+  });
+
+  function userCtx(uid: string) {
+    return testEnv.authenticatedContext(uid, { email: `${uid}@e.org` }).firestore();
+  }
+
+  it('lets any signed-in user write, read and clear a note', async () => {
+    const db = userCtx('uid-a');
+    await assertSucceeds(setDoc(doc(db, 'kitchenMemories', MEMORY_ID), memory()));
+    await assertSucceeds(getDoc(doc(db, 'kitchenMemories', MEMORY_ID)));
+    await assertSucceeds(getDocs(collection(db, 'kitchenMemories')));
+    await assertSucceeds(deleteDoc(doc(db, 'kitchenMemories', MEMORY_ID)));
+  });
+
+  // THE load-bearing property. A note is family-shared and carries no ownerUid:
+  // either member may correct or clear the other's, because a standing note about
+  // how this household cooks belongs to the household, not to whoever typed it.
+  it('lets another member overwrite and delete a note someone else wrote', async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'kitchenMemories', MEMORY_ID), memory('Daniel'));
+    });
+    const db = userCtx('uid-b');
+    await assertSucceeds(getDoc(doc(db, 'kitchenMemories', MEMORY_ID)));
+    await assertSucceeds(setDoc(doc(db, 'kitchenMemories', MEMORY_ID), memory('Ana')));
+    await assertSucceeds(deleteDoc(doc(db, 'kitchenMemories', MEMORY_ID)));
+  });
+
+  it('denies an unauthenticated caller entirely', async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, 'kitchenMemories', MEMORY_ID)));
+    await assertFails(getDocs(collection(db, 'kitchenMemories')));
+    await assertFails(setDoc(doc(db, 'kitchenMemories', MEMORY_ID), memory()));
+    await assertFails(deleteDoc(doc(db, 'kitchenMemories', MEMORY_ID)));
+  });
+});

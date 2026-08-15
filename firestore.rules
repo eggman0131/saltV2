@@ -179,6 +179,22 @@ service cloud.firestore {
         allow read, write: if request.auth != null;
       }
     }
+    // Kitchen memories (issue #816) — the notes the household writes for the chef
+    // ("we hate coriander", "the oven runs hot"). FAMILY-SHARED, and here that is
+    // the feature rather than a default: anyone in the household can add, see and
+    // remove any note, whoever typed it. This is a shared kitchen, and a standing
+    // note about how the two of them cook belongs to both of them.
+    //
+    // So: NO ownerUid, and this is not a fourth per-user collection. The `author`
+    // field is a display NAME denormalised at write time so a note can say who
+    // wrote it — deliberately not a uid, keeping the invariant that uids appear
+    // nowhere in the family-shared data model.
+    //
+    // Mirrors the guidedPlans block above, including its lack of a
+    // `resource == null` clause: this rule never dereferences `resource.data`.
+    match /kitchenMemories/{memoryId} {
+      allow read, write: if request.auth != null;
+    }
     // Development settings (issue #238) — per-environment operator switches
     // (e.g. the canon-icon generation kill-switch). Any signed-in user may read
     // (the CF trigger uses the Admin SDK and bypasses rules anyway); only admins

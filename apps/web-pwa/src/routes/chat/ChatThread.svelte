@@ -24,9 +24,11 @@
 -->
 <script lang="ts">
   import type { ChatSessionDoc } from '@salt/domain/schemas';
+  import { parseChatCommand } from '@salt/domain';
   import { Button, Icon, Markdown, Spinner } from '@salt/ui-components';
   import type { Snippet } from 'svelte';
 
+  import { addToast } from '../../lib/toastStore.js';
   import type { ChatThreadState } from './chatThreadState.svelte.js';
 
   interface Props {
@@ -85,6 +87,14 @@
   async function handleSend(): Promise<void> {
     const text = inputText.trim();
     if (!text || thread.isSending) return;
+    // A bare `/remember` is answered HERE and nothing is sent (issue #816). The
+    // typed line stays in the box so the fix is to keep typing, and the chef is
+    // never asked what to make of the word "/remember" on its own.
+    const command = parseChatCommand(text);
+    if (command !== null && command.text === '') {
+      addToast('Add what to remember after /remember — like "/remember we hate coriander".');
+      return;
+    }
     inputText = '';
     if (inputEl) inputEl.style.height = '';
     const ok = await thread.send(session, text);
@@ -114,22 +124,45 @@
   {/if}
 
   {#each session.messages as msg (msg.id)}
-    <div
-      class="flex {msg.role === 'user' ? 'justify-end' : 'justify-start'}"
-      data-testid="chat-message-{msg.role}"
-    >
-      <div
-        class="text-sm {panel ? 'max-w-[90%]' : 'max-w-[85%]'} {msg.role === 'user'
-          ? 'rounded-lg bg-muted px-3 py-2'
-          : ''}"
-      >
-        {#if msg.role === 'assistant'}
-          <Markdown text={msg.text} />
-        {:else}
-          {msg.text}
-        {/if}
+    <!--
+      A stored `/remember …` is an ORDINARY user message (no third role on
+      MessageSchema); what makes it a chip is re-parsing its text here. So the
+      command needs no schema change, and a transcript written before this shipped
+      renders correctly the moment the parser exists.
+    -->
+    {@const note = msg.role === 'user' ? parseChatCommand(msg.text) : null}
+    {#if note !== null && note.text !== ''}
+      <!--
+        Deliberately an ASIDE, not a speech bubble: you said it, the chef did not
+        answer, and the conversation simply carries on underneath. Small, quiet,
+        and still on the user's side of the thread so it reads as something you did.
+      -->
+      <div class="flex justify-end" data-testid="chat-message-remembered">
+        <div
+          class="flex max-w-[85%] items-center gap-1.5 rounded-full border border-border bg-muted/50 px-3 py-1 text-xs text-muted-foreground"
+        >
+          <Icon name="StickyNote" size={12} />
+          <span><span class="font-medium">Remembered</span> — {note.text}</span>
+        </div>
       </div>
-    </div>
+    {:else}
+      <div
+        class="flex {msg.role === 'user' ? 'justify-end' : 'justify-start'}"
+        data-testid="chat-message-{msg.role}"
+      >
+        <div
+          class="text-sm {panel ? 'max-w-[90%]' : 'max-w-[85%]'} {msg.role === 'user'
+            ? 'rounded-lg bg-muted px-3 py-2'
+            : ''}"
+        >
+          {#if msg.role === 'assistant'}
+            <Markdown text={msg.text} />
+          {:else}
+            {msg.text}
+          {/if}
+        </div>
+      </div>
+    {/if}
   {/each}
 
   {#if thread.isSending && thread.streamingText}
@@ -159,7 +192,7 @@
         bind:this={inputEl}
         class="flex-1 resize-none bg-transparent py-2 outline-none"
         rows={panel ? 2 : 3}
-        placeholder="Message the chef…"
+        placeholder="Message the chef… or /remember something"
         value={inputText}
         onkeydown={handleKeydown}
         oninput={handleInput}

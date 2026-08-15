@@ -6,7 +6,9 @@ import {
   callGenerateChatTitle,
 } from '@salt/firebase-sync';
 import { createObservabilityErrorReportingAdapter, trackUsageEvent } from '@salt/observability';
+import { parseChatCommand } from '@salt/domain';
 import { reportIfFailed, reportSubscriptionError, reportWriteError } from './errorReporting.js';
+import { rememberNote } from './kitchenMemoryService.js';
 import type { ChatSessionDoc } from '@salt/domain/schemas';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success } from '@salt/shared-types';
@@ -80,6 +82,50 @@ export function initChatSync(ownerUid: string): () => void {
 
 function now(): string {
   return new Date().toISOString();
+}
+
+// One user turn, ready to append. Shared by both send paths below so a `/remember`
+// is stored as an ORDINARY `role: 'user'` message carrying its raw text — no third
+// role on MessageSchema, and nothing for the CF's 'assistant' → 'model' remap to
+// trip over. The transcript re-parses that text to know it should draw a chip.
+function userTurn(text: string): ChatSessionDoc['messages'][number] {
+  return {
+    id: crypto.randomUUID(),
+    role: 'user',
+    text,
+    createdAt: now(),
+  };
+}
+
+/**
+ * `/remember …` — save the note and record the line, WITHOUT calling the chef
+ * (issue #816, phase 1).
+ *
+ * Everything this does not do is the point. No AI call, so no cost and no wait; no
+ * `chat.message_sent`, because that event measures how much the household asks the
+ * chef and a note is not a question; and no title generation, because that is an AI
+ * call too and a conversation whose first line was a note has not been started yet
+ * in any sense the title would describe.
+ *
+ * A failed note write appends nothing: the failure is returned so the composer's
+ * existing toast reports it and the typed line is handed back, rather than leaving a
+ * turn in the transcript claiming something was remembered that was not.
+ */
+async function rememberFromChat(
+  session: ChatSessionDoc,
+  rawText: string,
+  note: string,
+): Promise<ReadResult<ChatSessionDoc, DomainError>> {
+  const saved = await rememberNote(note);
+  if (saved.kind !== 'ok') return saved;
+
+  const withNote: ChatSessionDoc = {
+    ...session,
+    messages: [...session.messages, userTurn(rawText)],
+  };
+  const persisted = await persistSession(withNote);
+  if (persisted.kind !== 'ok') return persisted;
+  return success(withNote);
 }
 
 // The seed title, shown until the chef has read the first exchange and retitled
@@ -191,17 +237,22 @@ export async function sendMessage(
   text: string,
   onChunk: (chunk: string) => void,
 ): Promise<ReadResult<ChatSessionDoc, DomainError>> {
+  // The ONE chat command (issue #816), taken BEFORE anything else in this function:
+  // recognising it costs a string comparison, and everything below — the usage
+  // event, the stream, the title call — is either a cost or a claim that a note
+  // should not incur. An empty `/remember` is not a note and falls through to the
+  // chef; the composer answers that one in place before it ever gets here.
+  const command = parseChatCommand(text);
+  if (command !== null && command.text !== '') {
+    return rememberFromChat(session, text, command.text);
+  }
+
   const isFirstExchange = session.messages.length === 0;
   // Usage = the send gesture, not the round-trip: a message that then fails to
   // stream still counts as someone using chat. No content rides on the event.
   trackUsageEvent('chat.message_sent', {});
 
-  const userMsg: ChatSessionDoc['messages'][number] = {
-    id: crypto.randomUUID(),
-    role: 'user',
-    text,
-    createdAt: now(),
-  };
+  const userMsg: ChatSessionDoc['messages'][number] = userTurn(text);
 
   const sessionWithUser: ChatSessionDoc = {
     ...session,
