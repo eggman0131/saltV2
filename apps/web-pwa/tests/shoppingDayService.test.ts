@@ -87,6 +87,12 @@ type RangeCall = [
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Pin the clock inside the fixtures' own week. The lookahead window is
+  // "today → +13 days" and the service drops a shop day already gone, so an
+  // unpinned run reads SATURDAY as past from 2026-08-16 onward — the suite
+  // would go red on a date, with nothing having changed.
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-08-10T09:00:00.000Z'));
   mockSubscribeInRange.mockReturnValue(mockUnsub);
   mockSaveShoppingDay.mockResolvedValue({ kind: 'ok', value: undefined });
   mockDeleteShoppingDay.mockResolvedValue({ kind: 'ok', value: undefined });
@@ -96,6 +102,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   __resetShoppingDayServiceForTest();
 });
 
