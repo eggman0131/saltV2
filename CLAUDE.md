@@ -171,7 +171,8 @@ into review. Keep the globs accurate.
   [v04](docs/design/ui-spec-v04.md) Combobox + `ListPage` selection mode,
   [v05](docs/design/ui-spec-v05.md) `ListPage` fill mode,
   [v06](docs/design/ui-spec-v06.md) `ImageCropper` free-aspect mode,
-  [v07](docs/design/ui-spec-v07.md) `DetailPage` fill mode. Touching
+  [v07](docs/design/ui-spec-v07.md) `DetailPage` fill mode,
+  [v08](docs/design/ui-spec-v08.md) `Dial`. Touching
   `@salt/ui-components` means reading [v02](docs/design/ui-spec-v02.md) **plus**
   the spec that owns your component. The specs are binding: if something is
   missing or ambiguous, stop and extend the spec rather than inventing.

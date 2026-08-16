@@ -1,5 +1,5 @@
 // "My Kitchen" workbench preferences — which sections show, how dense the
-// layout is, and whether recipe imagery renders. Deliberately NOT persisted
+// layout is, and whether the in-progress cook's banner renders. NOT persisted
 // (CLAUDE.md Rule 3: no localStorage/sessionStorage/IndexedDB outside the two
 // narrow pre-auth exceptions in auth.svelte.ts, and this isn't one of them).
 // A module-level rune singleton, same shape as install.svelte.ts / auth.svelte.ts

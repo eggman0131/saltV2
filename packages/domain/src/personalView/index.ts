@@ -14,3 +14,6 @@
 // name over the door. See docs/domain-implementation.md §8.
 export { upcomingChefDays } from './upcomingChefDays.js';
 export type { ChefNight } from './upcomingChefDays.js';
+// What is happening on one date, for anybody (issue #843) — the quiet screen's
+// headline. Sibling of upcomingChefDays, not a special case of it: see the header.
+export { dayForDate } from './dayForDate.js';

@@ -2,6 +2,7 @@
   import {
     Button,
     Card,
+    Dial,
     Icon,
     Progress,
     RadioGroup,
@@ -19,9 +20,11 @@
   import {
     appendCacheBuster,
     formatClock,
+    timerHeat,
     timerProgress,
     withTimerDismissed,
     type Recipe,
+    type TimerHeat,
   } from '@salt/domain';
   import { kitchenLabel } from '../../lib/membersService.js';
   import {
@@ -30,6 +33,7 @@
     needsReviewRecipes,
     recentChats,
     timerNowMs,
+    tonight,
     upcomingChefNights,
     type LiveCook,
     type MineTimer,
@@ -45,8 +49,8 @@
     type KitchenSection,
   } from '../../lib/kitchenDashboardPrefs.svelte.js';
 
-  // "My Kitchen" (issues #634, #682, #755) — what of mine is running right now,
-  // what is coming at me, and what needs a look. Five sections, in that order:
+  // "My Kitchen" (issues #634, #682, #755, #843) — what of mine is running right
+  // now, what is coming at me, and what needs a look. Five sections, in order:
   //
   //   1. Timers       — running and fired-but-undismissed, in one list
   //   2. Cooking now  — my open cook sessions
@@ -57,14 +61,15 @@
   // Cooking soon is the one section that reads plan data, and it is not a
   // restatement of the planner: which nights are YOURS is a run of days forward
   // from today that does not stop at the end of a cycle, and the planner renders
-  // weeks. Nothing here restates the shopping list. Every card is a projection of
-  // a document that exists at this moment: it appears when true and disappears
-  // when resolved. No read state, no dismissals, nothing stored per user.
+  // weeks. Every card is a projection of a document that exists at this moment:
+  // it appears when true and disappears when resolved. No read state, no
+  // dismissals, nothing stored per user.
   //
-  // This is still that same page — the "workbench" below (imagery, a glance
-  // strip, and the Customize sheet) is presentation, not new content: it never
-  // reads a document the five sections above don't already read. Toggling a
-  // section off just hides it; it does not change what counts as all-clear.
+  // NOTHING on this page reads the shopping list, and nothing derived from one
+  // may be added. See the `tonight` header in personalViewService for the full
+  // argument; the short version is that a list records intent, not what is in the
+  // cupboard, so any "you have / you need" claim here would be a confident guess
+  // that poisons the sections which are actually reliable.
 
   // Cooking soon needs one or two meal-plan week documents, which nothing else
   // holds on this page's behalf. Page-owned for the reason the planner's own
@@ -73,11 +78,9 @@
   // the planner may be holding the same week (see `pruneWeekSubscriptions`).
   onMount(() => subscribeKitchenWeeks());
 
-  // ─── Workbench: imagery, density, which sections show ───────────────────────
+  // ─── Workbench ──────────────────────────────────────────────────────────────
   // In-memory only (kitchenDashboardPrefs.svelte.ts) — CLAUDE.md Rule 3 forbids
-  // persisting this to browser storage, so it resets to "everything on,
-  // comfortable" on reload. That is an accepted tradeoff for a page that is
-  // opened often and briefly, not configured once and left.
+  // persisting this to browser storage, so it resets on reload.
   let customizeOpen = $state(false);
 
   const SECTION_TOGGLES: ReadonlyArray<{
@@ -99,28 +102,56 @@
   const outerGap = $derived(kitchenPrefs.density === 'compact' ? 'gap-3' : 'gap-4');
   const listGap = $derived(kitchenPrefs.density === 'compact' ? 'gap-1.5' : 'gap-2');
   const cardPad = $derived(kitchenPrefs.density === 'compact' ? 'p-3' : 'p-4');
-  const thumbSize = $derived(kitchenPrefs.density === 'compact' ? 'h-10 w-10' : 'h-12 w-12');
 
-  // A recipe's own hero, cache-busted the same way the recipe list and detail
-  // pages do (issue #460) — never denormalised, so a card renders whatever the
-  // recipe carries right now. `undefined` covers a night with nothing attached.
-  function recipeThumb(recipe: Recipe | undefined): string | null {
-    if (!recipe?.image?.url) return null;
+  // ─── Imagery ────────────────────────────────────────────────────────────────
+  // Photography appears in exactly one place: a cook that is actually under way.
+  // Everywhere else an image is wanted, an icon does it instead. A stack of hero
+  // banners on a page opened many times a day is a lot of bytes to say very
+  // little, and a 46px thumbnail of a generated image is mostly mud — whereas the
+  // dish you are three steps into is worth looking at.
+  //
+  // Cache-busted the same way the recipe list and detail pages do (issue #460):
+  // a regenerated hero reuses the same Storage URL, so the per-regeneration nonce
+  // is what makes the new bytes visible.
+  function heroUrl(recipe: Recipe): string | null {
+    if (!recipe.image?.url) return null;
     return appendCacheBuster(recipe.image.url, recipe.imageRequestedAt ?? recipe.updatedAt);
   }
 
-  // ─── A personalised, time-of-day header ──────────────────────────────────────
-  // The greeting is a new line ABOVE the heading, never a replacement for it:
-  // issue #828 ties the page's h1 to the same `kitchenLabel` the header link
-  // reads, so the two can never say a different name for the same kitchen.
-  function timeOfDayGreeting(hour: number): string {
-    if (hour < 5) return 'Up late';
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
-    if (hour < 21) return 'Good evening';
-    return 'Winding down';
-  }
-  const greeting = timeOfDayGreeting(new Date().getHours());
+  // ─── Heat ───────────────────────────────────────────────────────────────────
+  // The word and the colour both come from the domain's single decision
+  // (`timerHeat`), so the dial's sweep, the state word and the card's tint can
+  // never disagree about what "imminent" means. Colour is NEVER the only carrier
+  // — every heat renders its word too (ui-spec-v02 §7).
+  const HEAT_WORD: Record<TimerHeat, string> = {
+    resting: 'Resting',
+    soon: 'Soon',
+    imminent: 'Imminent',
+    ringing: 'Finished',
+  };
+
+  // Mapped to CSS custom properties rather than passed into `Dial`: the primitive
+  // owns no opinion about timers (ui-spec-v08 §8.22.5), so the vocabulary stays
+  // here and the ring stays a ring.
+  //
+  // The ring and the word take DIFFERENT amber steps on purpose, because they are
+  // held to different contrast floors against the page: a stroke is a graphical
+  // object needing 3:1, where amber-600 sits comfortably, while the word is small
+  // text needing 4.5:1, which only amber-700 clears. Same state, same meaning,
+  // two shades — swapping either one for "consistency" breaks one of the two.
+  const HEAT_VAR: Record<TimerHeat, string> = {
+    resting: 'var(--color-primary)',
+    soon: 'var(--color-amber-600)',
+    imminent: 'var(--color-destructive)',
+    ringing: 'var(--color-destructive)',
+  };
+
+  const HEAT_TEXT: Record<TimerHeat, string> = {
+    resting: 'text-primary',
+    soon: 'text-amber-700',
+    imminent: 'text-destructive',
+    ringing: 'text-destructive',
+  };
 
   // ─── Cooking soon ─────────────────────────────────────────────────────────
   // "Tonight" and "Tomorrow" are worth naming; past that a weekday reads faster
@@ -139,17 +170,12 @@
     return NIGHT_FORMAT.format(new Date(`${night.date}T00:00:00.000Z`));
   }
 
-  // What is planned, in the order the day carries it — attached entries first,
-  // then the note. A night that is yours but blank still shows: that IS the
-  // useful signal, so it says so rather than being hidden.
   function nightMeal(night: UpcomingChefNight): string {
     if (night.recipes.length > 0) return night.recipes.map((r) => r.title).join(' · ');
     if (night.day.note.trim()) return night.day.note.trim();
     return 'Nothing planned yet';
   }
 
-  // The recipe when there is one, otherwise that day in the planner — which is
-  // where a note lives and the only place it can be changed.
   function openNight(night: UpcomingChefNight): void {
     const first = night.recipes[0];
     push(first ? `/recipes/${first.id}` : `/mealplan/${night.date}`);
@@ -161,7 +187,6 @@
   // exists. Same derivation and the same Cancel → Dismiss flip as cook mode's own
   // timer bar; the two surfaces must never disagree about what a timer is doing.
   const remainingMs = (t: MineTimer, now: number) => Date.parse(t.timer.endsAt) - now;
-  const hasFired = (t: MineTimer, now: number) => remainingMs(t, now) <= 0;
 
   // Cancel and Dismiss are the SAME write: `withTimerDismissed` drops the timer's
   // entry unconditionally, so the two labels are one operation seen from either
@@ -172,10 +197,6 @@
   }
 
   // ─── Cooking now ──────────────────────────────────────────────────────────
-  // Cancel abandons the session outright (the doc is deleted — no soft-delete, no
-  // tombstones). Consistent with cook mode's own Complete and Restart, which also
-  // delete without a confirmation step: an abandoned cook loses tick state, never
-  // the recipe.
   let cancellingId = $state<string | null>(null);
 
   async function cancelCook(cook: LiveCook): Promise<void> {
@@ -187,10 +208,6 @@
   }
 
   // ─── Needs review ─────────────────────────────────────────────────────────
-  // The same clear the recipe page's banner performs (issue #755), brought to the
-  // row so a queue of clean imports can be emptied without opening any of them.
-  // One id, exactly like `cancellingId`: it names the row that is mid-write so its
-  // spinner lands in the right place, and it holds the rest still meanwhile.
   let reviewingId = $state<string | null>(null);
 
   async function markReviewed(recipe: Recipe): Promise<void> {
@@ -201,8 +218,6 @@
     const current = $recipes.find((r) => r.id === recipe.id);
     if (!current) return;
     reviewingId = recipe.id;
-    // Dropped, not set false — absent means reviewed, matching the schema and the
-    // full-document setDoc persistRecipe performs.
     const { needs_approval: _wasUnreviewed, ...reviewed } = current;
     const persisted = await persistRecipe(reviewed);
     reviewingId = null;
@@ -210,16 +225,12 @@
   }
 
   // ─── Empty state ──────────────────────────────────────────────────────────
-  // Every section is conditional, so the page can be genuinely empty — and that is
-  // the usual case. It should read as an achievement, not an absence.
+  // Driven from the underlying stores, never from the workbench toggles: hiding a
+  // section you don't want to see must not paint a false "all caught up" over
+  // work that is still there.
   //
   // Recent chats is deliberately NOT in this sum: a kitchen with nothing but old
-  // conversations in it is still all-clear, and hiding "You're all caught up"
-  // behind a chat you had last Tuesday would make a shortcut look like a chore.
-  //
-  // Driven from the underlying stores, never from the workbench toggles: hiding
-  // a section you don't want to see must not paint a false "all caught up" over
-  // work that is still there.
+  // conversations in it is still all-clear.
   const allClear = $derived(
     $myTimers.length === 0 &&
       $liveCooks.length === 0 &&
@@ -227,16 +238,26 @@
       $needsReviewRecipes.length === 0,
   );
 
+  // What tonight's headline says, when there is one. Recipe-derived facts only —
+  // never a claim about what is in the kitchen.
+  const tonightTitle = $derived(
+    $tonight
+      ? $tonight.recipes.length > 0
+        ? $tonight.recipes.map((r) => r.title).join(' · ')
+        : $tonight.note
+      : '',
+  );
+  const tonightHero = $derived($tonight?.recipes.map(heroUrl).find((u) => u !== null) ?? null);
+
   // ─── Glance strip ─────────────────────────────────────────────────────────
-  // A quick-read summary of the same four sections below — never a restatement
-  // of anything outside this page. Only counts that are (a) switched on in the
-  // workbench and (b) actually non-zero get a tile, so it stays a glance, not a
-  // second copy of the empty state.
+  // A quick read of the same sections below — never a restatement of anything off
+  // this page. Each chip scrolls to the section it counts, so the strip is a table
+  // of contents rather than a second copy of the numbers.
   interface StatTile {
     readonly key: KitchenSection;
     readonly icon: IconName;
-    readonly count: number;
     readonly label: string;
+    readonly target: string;
   }
   const statTiles = $derived(
     (
@@ -251,30 +272,39 @@
       .map((t): StatTile => ({
         key: t.key,
         icon: t.icon,
-        count: t.count,
+        target: `mine-section-${t.key}`,
         label:
           t.noun === 'cooking' || t.noun === 'to review'
             ? `${t.count} ${t.noun}`
             : `${t.count} ${t.noun}${t.count === 1 ? '' : 's'}`,
       })),
   );
+
+  // Honours reduced-motion via `scroll-behavior` in CSS rather than a branch here;
+  // `focus()` moves the keyboard caret too, so the chip is a real skip-link and not
+  // just a scroll for people using a mouse.
+  function jumpTo(id: string): void {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    el.focus({ preventScroll: true });
+  }
 </script>
 
 <section class="flex flex-col {outerGap} p-4 sm:p-6" data-testid="mine-page">
-  <header
-    class="flex flex-col gap-3 rounded-xl border border-border bg-gradient-to-br from-primary/10 via-card to-card p-4"
-  >
+  <header class="flex flex-col gap-3">
     <div class="flex items-start justify-between gap-3">
-      <div class="flex flex-col gap-1">
-        <p class="text-xs font-medium uppercase tracking-wide text-primary">{greeting}</p>
+      <div class="flex min-w-0 flex-col gap-0.5">
         <h1 class="text-xl font-semibold tracking-tight text-foreground">
           {$kitchenLabel}
         </h1>
-        <p class="text-sm text-muted-foreground">
-          {allClear
-            ? "Nothing waiting on you — you're all caught up."
-            : "What's running, and what needs a look."}
-        </p>
+        <!-- The sub-line only speaks when the glance strip is silent. With chips
+             up, a count sentence says exactly what the chips already say. -->
+        {#if statTiles.length === 0}
+          <p class="text-sm text-muted-foreground" data-testid="mine-subhead">
+            {allClear ? "Nothing's waiting on you." : "What's running, and what needs a look."}
+          </p>
+        {/if}
       </div>
       <Button
         variant="ghost"
@@ -291,118 +321,113 @@
     {#if statTiles.length > 0}
       <div class="flex flex-wrap gap-2" data-testid="mine-stats">
         {#each statTiles as tile (tile.key)}
-          <div
-            class="flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/8 px-3 py-1 text-xs font-medium text-primary"
+          <button
+            type="button"
+            class="flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/5 px-3 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onclick={() => jumpTo(tile.target)}
+            data-testid="mine-stat-chip"
           >
             <Icon name={tile.icon} size={13} />
             <span>{tile.label}</span>
-          </div>
+          </button>
         {/each}
       </div>
     {/if}
   </header>
 
-  <!-- 1. Timers — running and finished together, soonest first. A finished timer
-       stays here until it is dismissed; that is the only thing that clears it. -->
+  <!-- 1. Timers — running and finished together, soonest first. The dial IS the
+       progress: no bar underneath. A finished timer stays until dismissed. -->
   {#if kitchenPrefs.sections.timers && $myTimers.length > 0}
-    <div class="flex flex-col {listGap}" data-testid="mine-timers">
+    <div
+      class="flex scroll-mt-4 flex-col {listGap}"
+      id="mine-section-timers"
+      tabindex="-1"
+      data-testid="mine-timers"
+    >
       <h2 class="text-sm font-medium text-muted-foreground">Timers</h2>
       {#each $myTimers as t (t.id)}
         {@const remaining = remainingMs(t, $timerNowMs)}
-        {@const fired = hasFired(t, $timerNowMs)}
-        {@const progress = timerProgress(t.timer, t.durationMs, $timerNowMs)}
-        <Card class={fired ? 'overflow-hidden border-primary bg-primary/10' : 'overflow-hidden'}>
-          <div class="flex flex-wrap items-center gap-x-3 gap-y-2 p-3">
-            <Icon
-              name={fired ? 'BellRing' : 'Timer'}
-              size={18}
-              class={fired ? 'text-primary' : 'text-muted-foreground'}
-            />
+        {@const heat = timerHeat(remaining)}
+        {@const fired = heat === 'ringing'}
+        {@const elapsed = timerProgress(t.timer, t.durationMs, $timerNowMs)}
+        <Card class={fired ? 'border-destructive/50 bg-destructive/5' : ''}>
+          <div class="flex items-center gap-3 {cardPad}" style="--salt-dial-heat: {HEAT_VAR[heat]}">
+            <Dial value={elapsed === null ? 0 : 1 - elapsed} size="lg" tone="heat" ariaLabel={null}>
+              <span data-testid="mine-timer-time">
+                {fired ? '—' : formatClock(remaining)}
+              </span>
+            </Dial>
             <div class="min-w-0 flex-1">
-              <p
-                class="truncate text-sm font-medium {fired ? 'text-primary' : 'text-foreground'}"
-                data-testid="mine-timer-label"
-              >
+              <p class="text-sm font-semibold text-foreground" data-testid="mine-timer-label">
                 {t.label}
               </p>
-              <p class="truncate text-xs text-muted-foreground">{t.recipe.title}</p>
+              <p class="mt-0.5 truncate text-xs text-muted-foreground">
+                <span
+                  class="font-mono text-[10px] font-semibold uppercase tracking-wider {HEAT_TEXT[
+                    heat
+                  ]}"
+                  data-testid="mine-timer-state"
+                >
+                  {HEAT_WORD[heat]}
+                </span>
+                <span aria-hidden="true"> · </span>{t.recipe.title}
+              </p>
             </div>
-            <span
-              class="shrink-0 font-mono text-base tabular-nums {fired
-                ? 'font-semibold text-primary'
-                : ''}"
-              data-testid="mine-timer-time"
-            >
-              {fired ? 'Finished' : formatClock(remaining)}
-            </span>
-            <div class="flex shrink-0 items-center gap-2">
+            <div class="flex shrink-0 items-center gap-1">
               <Button
-                size="sm"
+                size="icon"
                 variant={fired ? 'solid' : 'ghost'}
+                ariaLabel={fired ? `Dismiss ${t.label}` : `Cancel ${t.label}`}
+                title={fired ? 'Dismiss' : 'Cancel'}
                 onclick={() => dismissTimer(t)}
                 data-testid="mine-timer-dismiss"
               >
-                {fired ? 'Dismiss' : 'Cancel'}
+                <Icon name={fired ? 'Check' : 'X'} size={17} />
               </Button>
               <Button
-                size="sm"
+                size="icon"
                 variant="outline"
+                ariaLabel={`Open the cook for ${t.recipe.title}`}
+                title="Open cook"
                 onclick={() => push(`/recipes/${t.recipe.id}/cook`)}
                 data-testid="mine-timer-goto"
               >
-                Go to recipe
+                <Icon name="ArrowRight" size={17} />
               </Button>
             </div>
           </div>
-          <!-- Progress fill, flush to the card's bottom edge. Decorative: the mm:ss
-               above already carries the value. -->
-          {#if progress !== null}
-            <div class="h-1 w-full bg-muted-foreground/15" aria-hidden="true">
-              <div
-                class="h-full transition-[width] duration-1000 ease-linear motion-reduce:transition-none {fired
-                  ? 'bg-primary'
-                  : 'bg-amber-500'}"
-                style="width: {progress * 100}%"
-                data-testid="mine-timer-progress"
-              ></div>
-            </div>
-          {/if}
         </Card>
       {/each}
     </div>
   {/if}
 
-  <!-- 2. Cooking now — all of them: a two-pan dinner is two open cooks, and hiding
-       one would misreport the kitchen. Newest first. -->
+  <!-- 2. Cooking now — all of them: a two-pan dinner is two open cooks. This is
+       the ONE place photography appears, because it is the one dish actually in
+       front of you. The Progress bar here is untouched (ui-spec-v08 §8.22.2). -->
   {#if kitchenPrefs.sections.live && $liveCooks.length > 0}
-    <div class="flex flex-col {listGap}" data-testid="mine-live">
+    <div
+      class="flex scroll-mt-4 flex-col {listGap}"
+      id="mine-section-live"
+      tabindex="-1"
+      data-testid="mine-live"
+    >
       <h2 class="text-sm font-medium text-muted-foreground">
         Cooking now{$liveCooks.length > 1 ? ` · ${$liveCooks.length} on the go` : ''}
       </h2>
       {#each $liveCooks as cook (cook.session.id)}
-        <Card class="border-primary/40 bg-primary/5 {cardPad}">
-          <div class="flex items-center gap-3">
-            {#if kitchenPrefs.imagery}
-              {@const thumb = recipeThumb(cook.recipe)}
-              <div class="relative {thumbSize} shrink-0 overflow-hidden rounded-md bg-muted">
-                {#if thumb}
-                  <img
-                    src={thumb}
-                    alt=""
-                    loading="lazy"
-                    class="h-full w-full object-cover"
-                    data-testid="mine-live-thumb"
-                  />
-                {:else}
-                  <div
-                    class="flex h-full w-full items-center justify-center text-muted-foreground/60"
-                  >
-                    <Icon name="CookingPot" size={18} />
-                  </div>
-                {/if}
-              </div>
-            {/if}
-            <div class="flex min-w-0 flex-1 items-center justify-between gap-3">
+        {@const banner = kitchenPrefs.imagery ? heroUrl(cook.recipe) : null}
+        <Card class="overflow-hidden border-primary/40">
+          {#if banner}
+            <img
+              src={banner}
+              alt=""
+              loading="lazy"
+              class="h-28 w-full object-cover"
+              data-testid="mine-live-banner"
+            />
+          {/if}
+          <div class="flex flex-col gap-3 {cardPad}">
+            <div class="flex items-center justify-between gap-3">
               <div class="min-w-0">
                 <p class="truncate text-base font-semibold text-foreground">
                   {cook.recipe.title}
@@ -413,48 +438,54 @@
                     : 'Mise en place'}
                 </p>
               </div>
-              <div class="flex shrink-0 items-center gap-2">
+              <div class="flex shrink-0 items-center gap-1">
                 <Button
-                  size="sm"
+                  size="icon"
                   variant="ghost"
                   loading={cancellingId === cook.session.id}
                   disabled={cancellingId !== null}
+                  ariaLabel={`Cancel the cook for ${cook.recipe.title}`}
+                  title="Cancel cook"
                   onclick={() => cancelCook(cook)}
                   data-testid="mine-live-cancel"
                 >
-                  Cancel
+                  <Icon name="X" size={17} />
                 </Button>
                 <Button
-                  size="sm"
+                  size="icon"
+                  ariaLabel={`Go to ${cook.recipe.title}`}
+                  title="Go to cook"
                   onclick={() => push(`/recipes/${cook.recipe.id}/cook`)}
                   data-testid="mine-live-resume"
                 >
-                  Go to
+                  <Icon name="ArrowRight" size={17} />
                 </Button>
               </div>
             </div>
+            {#if cook.stepCount > 0}
+              <Progress
+                value={cook.completedCount}
+                max={cook.stepCount}
+                ariaLabel={`Cook progress: ${cook.recipe.title}`}
+              />
+            {/if}
           </div>
-          {#if cook.stepCount > 0}
-            <Progress
-              class="mt-3"
-              value={cook.completedCount}
-              max={cook.stepCount}
-              ariaLabel={`Cook progress: ${cook.recipe.title}`}
-            />
-          {/if}
         </Card>
       {/each}
     </div>
   {/if}
 
-  <!-- 3. Cooking soon — the nights from here on that are mine. One or two week
-       documents behind it (this week, plus next week's once the cycle is nearly
-       out), so the boundary is invisible: it is one run of nights, not a week. -->
+  <!-- 3. Cooking soon — icons, not photographs: a night is a date, and a 40px
+       crop of a generated hero says less than a calendar glyph. -->
   {#if kitchenPrefs.sections.upcoming && $upcomingChefNights.length > 0}
-    <div class="flex flex-col {listGap}" data-testid="mine-upcoming">
+    <div
+      class="flex scroll-mt-4 flex-col {listGap}"
+      id="mine-section-upcoming"
+      tabindex="-1"
+      data-testid="mine-upcoming"
+    >
       <h2 class="text-sm font-medium text-muted-foreground">Cooking soon</h2>
       {#each $upcomingChefNights as night (night.date)}
-        {@const thumb = kitchenPrefs.imagery ? recipeThumb(night.recipes[0]) : null}
         <Card class="overflow-hidden">
           <button
             type="button"
@@ -462,19 +493,7 @@
             onclick={() => openNight(night)}
             data-testid="mine-upcoming-open"
           >
-            {#if thumb}
-              <div class="h-10 w-10 shrink-0 overflow-hidden rounded-md bg-muted">
-                <img
-                  src={thumb}
-                  alt=""
-                  loading="lazy"
-                  class="h-full w-full object-cover"
-                  data-testid="mine-upcoming-thumb"
-                />
-              </div>
-            {:else}
-              <Icon name="CalendarDays" size={18} class="shrink-0 text-muted-foreground" />
-            {/if}
+            <Icon name="CalendarDays" size={18} class="shrink-0 text-muted-foreground" />
             <div class="min-w-0 flex-1">
               <p
                 class="truncate text-sm font-medium text-foreground"
@@ -493,11 +512,15 @@
     </div>
   {/if}
 
-  <!-- 4. Needs review — imported by AI, not read by a human yet. Standing queue,
-       no time limit. Both actions clear it: opening one to fix something and
-       saving, or marking it reviewed here when it came through clean. -->
+  <!-- 4. Needs review — imported by AI, not read by a human yet. Icons here too:
+       an unreviewed import's hero is itself unreviewed. -->
   {#if kitchenPrefs.sections.review && $needsReviewRecipes.length > 0}
-    <div class="flex flex-col {listGap}" data-testid="mine-needs-review">
+    <div
+      class="flex scroll-mt-4 flex-col {listGap}"
+      id="mine-section-review"
+      tabindex="-1"
+      data-testid="mine-needs-review"
+    >
       <h2 class="text-sm font-medium text-muted-foreground">Needs review</h2>
       <p class="text-xs text-muted-foreground" data-testid="mine-needs-review-hint">
         These were written by AI and nobody's read them yet. Open one to fix anything that's off, or
@@ -505,53 +528,37 @@
       </p>
       {#each $needsReviewRecipes as recipe (recipe.id)}
         <Card class={cardPad}>
-          <div class="flex items-start gap-3">
-            {#if kitchenPrefs.imagery}
-              {@const thumb = recipeThumb(recipe)}
-              <div class="{thumbSize} shrink-0 overflow-hidden rounded-md bg-muted">
-                {#if thumb}
-                  <img
-                    src={thumb}
-                    alt=""
-                    loading="lazy"
-                    class="h-full w-full object-cover"
-                    data-testid="mine-needs-review-thumb"
-                  />
-                {:else}
-                  <div class="flex h-full w-full items-center justify-center text-primary/60">
-                    <Icon name="Sparkles" size={18} />
-                  </div>
-                {/if}
-              </div>
-            {/if}
-            <div class="flex min-w-0 flex-1 items-start justify-between gap-3">
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex min-w-0 items-center gap-2.5">
+              <Icon name="Sparkles" size={18} class="shrink-0 text-primary" />
               <div class="min-w-0">
-                <p class="flex items-center gap-1.5 text-sm font-medium text-foreground">
-                  <Icon name="Sparkles" size={14} class="text-primary" />
-                  <span class="truncate">{recipe.title}</span>
-                </p>
+                <p class="truncate text-sm font-medium text-foreground">{recipe.title}</p>
                 <p class="text-xs text-muted-foreground">Not reviewed yet</p>
               </div>
-              <div class="flex shrink-0 items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  loading={reviewingId === recipe.id}
-                  disabled={reviewingId !== null}
-                  onclick={() => markReviewed(recipe)}
-                  data-testid="mine-needs-review-clear"
-                >
-                  Mark reviewed
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onclick={() => push(`/recipes/${recipe.id}`)}
-                  data-testid="mine-needs-review-open"
-                >
-                  Open
-                </Button>
-              </div>
+            </div>
+            <div class="flex shrink-0 items-center gap-1">
+              <Button
+                size="icon"
+                variant="ghost"
+                loading={reviewingId === recipe.id}
+                disabled={reviewingId !== null}
+                ariaLabel={`Mark ${recipe.title} as reviewed`}
+                title="Mark reviewed"
+                onclick={() => markReviewed(recipe)}
+                data-testid="mine-needs-review-clear"
+              >
+                <Icon name="Check" size={17} />
+              </Button>
+              <Button
+                size="icon"
+                variant="outline"
+                ariaLabel={`Open ${recipe.title}`}
+                title="Open"
+                onclick={() => push(`/recipes/${recipe.id}`)}
+                data-testid="mine-needs-review-open"
+              >
+                <Icon name="ArrowRight" size={17} />
+              </Button>
             </div>
           </div>
         </Card>
@@ -559,26 +566,81 @@
     </div>
   {/if}
 
+  <!-- The quiet screen. Most visits land here, so it is the page's main view
+       rather than its fallback: when there is a dinner tonight it says so, large,
+       and when there is not it says you are caught up. Everything on it comes
+       from the plan and the recipe — never the shopping list. -->
   {#if allClear}
-    <Card class="p-4">
-      <div class="flex items-center gap-3" data-testid="mine-empty">
-        <Icon name="CircleCheck" size={20} class="text-primary" />
-        <div>
-          <p class="text-sm font-medium text-foreground">You're all caught up</p>
-          <p class="text-xs text-muted-foreground">
-            No timers, no cook on the go, no nights of yours coming up, nothing to review.
+    {#if $tonight}
+      <Card class="relative overflow-hidden">
+        {#if tonightHero}
+          <img src={tonightHero} alt="" class="absolute inset-0 h-full w-full object-cover" />
+          <div
+            class="absolute inset-0 bg-gradient-to-t from-black/85 via-black/55 to-black/20"
+            aria-hidden="true"
+          ></div>
+        {/if}
+        <div
+          class="relative flex flex-col gap-3 p-5 {tonightHero ? 'pt-28' : ''}"
+          data-testid="mine-tonight"
+        >
+          <p
+            class="text-[11px] font-semibold uppercase tracking-widest {tonightHero
+              ? 'text-white/85'
+              : 'text-primary'}"
+            data-testid="mine-tonight-kicker"
+          >
+            {$tonight.isMine ? "Tonight · you're cooking" : 'Tonight'}
           </p>
+          <p
+            class="text-xl font-semibold leading-tight tracking-tight {tonightHero
+              ? 'text-white'
+              : 'text-foreground'}"
+            data-testid="mine-tonight-title"
+          >
+            {tonightTitle}
+          </p>
+          {#if $tonight.recipes.length > 0 && $tonight.note}
+            <p class={tonightHero ? 'text-sm text-white/80' : 'text-sm text-muted-foreground'}>
+              {$tonight.note}
+            </p>
+          {/if}
+          <div class="flex flex-wrap gap-2">
+            {#if $tonight.recipes[0]}
+              <Button
+                onclick={() => push(`/recipes/${$tonight?.recipes[0]?.id}/cook`)}
+                data-testid="mine-tonight-cook"
+              >
+                Start cooking
+              </Button>
+            {/if}
+            <Button
+              variant="outline"
+              onclick={() => push(`/mealplan/${$tonight?.date}`)}
+              data-testid="mine-tonight-plan"
+            >
+              See the plan
+            </Button>
+          </div>
         </div>
-      </div>
-    </Card>
+      </Card>
+    {:else}
+      <Card class="p-4">
+        <div class="flex items-center gap-3" data-testid="mine-empty">
+          <Icon name="CircleCheck" size={20} class="text-primary" />
+          <div>
+            <p class="text-sm font-medium text-foreground">You're all caught up</p>
+            <p class="text-xs text-muted-foreground">
+              No timers, no cook on the go, no nights of yours coming up, nothing to review.
+            </p>
+          </div>
+        </div>
+      </Card>
+    {/if}
   {/if}
 
-  <!-- 5. Recent chats — last, after the empty state, because it is a shortcut back
-       into a conversation rather than something waiting on you. Read-only: the
-       subscription is already running app-wide, and a chat is deleted or expires
-       from its own page, never from here. Titles are a raw slice of the first
-       message until the chef retitles them, so the row has to survive an ugly one:
-       truncated on one line, and the row itself is the target. -->
+  <!-- 5. Recent chats — last, because it is a shortcut back into a conversation
+       rather than something waiting on you. -->
   {#if kitchenPrefs.sections.chats && $recentChats.length > 0}
     <div class="flex flex-col {listGap}" data-testid="mine-chats">
       <h2 class="text-sm font-medium text-muted-foreground">Recent chats</h2>
@@ -605,10 +667,6 @@
   {/if}
 </section>
 
-<!-- The workbench: tune which sections show, how dense they render, and whether
-     recipe imagery draws. Bottom sheet, matching every other on-page settings
-     surface in this app (WeekShopSheet, CookTimerSheet, …). Nothing here is
-     wired to a Firestore write — see kitchenDashboardPrefs.svelte.ts. -->
 <Sheet bind:open={customizeOpen} side="bottom">
   <SheetContent class="flex max-h-[85vh] flex-col gap-4 overflow-y-auto p-4 pb-8">
     <SheetHeader>
@@ -635,8 +693,8 @@
         <Switch
           checked={kitchenPrefs.imagery}
           onCheckedChange={(v) => kitchenPrefs.setImagery(v)}
-          label="Show recipe photos"
-          description="Thumbnails on cooking-now, cooking-soon, and review cards."
+          label="Show the dish you're cooking"
+          description="A photo on any cook that's under way. Nothing else on the page uses one."
         />
       </div>
     </div>

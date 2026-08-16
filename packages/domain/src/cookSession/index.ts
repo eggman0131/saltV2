@@ -74,6 +74,11 @@ export type { NextStepLookahead } from './nextStepLookahead.js';
 // so it belongs to the recipe module — see recipe/queries/hasRecipeChanged.ts.
 export { formatClock } from './formatClock.js';
 export { timerProgress } from './timerProgress.js';
+// How hot a timer is (issue #843). The four states a countdown passes through,
+// decided once so the dial's sweep, the card's stripe and the state word cannot
+// disagree about what "imminent" means.
+export { timerHeat, heatWantsAttention } from './timerHeat.js';
+export type { TimerHeat } from './timerHeat.js';
 // Meals (issue #752) — a meal's cook plan works every dish's start time backwards
 // from one serve time. It lives here rather than in the recipe module because the
 // serve time it reads is a cook-session field, and because it is the same shape as

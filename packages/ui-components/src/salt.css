@@ -764,6 +764,83 @@
     @apply opacity-50 pointer-events-none cursor-not-allowed;
   }
 
+  /* ─ Dial (§8.22) ──────────────────────────────────────────────────────────
+   * A ring that reads as a countdown at a glance and survives shrinking to a
+   * badge — which a 4px horizontal bar does not, it becomes a dash. The label
+   * sits in the middle of the ring, so the clock and its own progress are one
+   * object rather than two things to reconcile.
+   *
+   * The sweep's colour is deliberately NOT a variant list of timer states: this
+   * primitive owns no opinion about heat. `--salt-dial-heat` is read from
+   * whatever ancestor sets it, so the app maps `TimerHeat` → colour in one place
+   * and the ring stays a ring. Falls back to primary when nobody sets it, which
+   * is exactly what `tone="neutral"` wants anyway. */
+  .salt-dial-wrap {
+    @apply relative inline-grid shrink-0 place-items-center;
+  }
+  .salt-dial {
+    @apply block;
+  }
+  .salt-dial__track {
+    stroke: var(--color-muted);
+  }
+  .salt-dial__sweep {
+    /* Only the sweep animates, and only its length — the offset is the whole of
+     * the countdown, so there is nothing else to tween.
+     *
+     * 1000ms literal, NOT a `--duration-*` token: this is not a design beat, it
+     * is the tick interval of the clock driving it (personalViewService's
+     * one-second `timerNowMs`). Any shorter and the sweep lands early then
+     * waits, which reads as a stutter; the two numbers have to be the same
+     * number, so tokenising it would invite them to drift apart. */
+    transition: stroke-dashoffset 1000ms linear;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .salt-dial__sweep {
+      transition: none;
+    }
+  }
+  .salt-dial--neutral .salt-dial__sweep {
+    stroke: var(--color-primary);
+  }
+  .salt-dial--heat .salt-dial__sweep {
+    stroke: var(--salt-dial-heat, var(--color-primary));
+  }
+  .salt-dial--sm {
+    @apply h-[34px] w-[34px];
+  }
+  /* Stroke thickens as the ring shrinks, so a badge-sized dial still reads as a
+   * ring rather than a hairline circle. */
+  .salt-dial--sm .salt-dial__track,
+  .salt-dial--sm .salt-dial__sweep {
+    stroke-width: 7;
+  }
+  .salt-dial--md {
+    @apply h-11 w-11;
+  }
+  .salt-dial--md .salt-dial__track,
+  .salt-dial--md .salt-dial__sweep {
+    stroke-width: 5;
+  }
+  .salt-dial--lg {
+    @apply h-[60px] w-[60px];
+  }
+  .salt-dial--lg .salt-dial__track,
+  .salt-dial--lg .salt-dial__sweep {
+    stroke-width: 4;
+  }
+  .salt-dial__label {
+    @apply pointer-events-none absolute font-mono font-semibold tabular-nums text-foreground;
+    font-size: 0.75rem;
+    letter-spacing: -0.03em;
+  }
+  .salt-dial--lg ~ .salt-dial__label {
+    font-size: 0.8125rem;
+  }
+  .salt-dial--sm ~ .salt-dial__label {
+    font-size: 0.625rem;
+  }
+
   /* ─ Typography component classes ─────────────────────────────────────── */
   .text-display {
     font-family: 'Epilogue', sans-serif;

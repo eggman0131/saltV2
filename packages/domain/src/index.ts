@@ -345,9 +345,12 @@ export {
   nextStepLookahead,
   formatClock,
   timerProgress,
+  timerHeat,
+  heatWantsAttention,
   scheduleFor,
 } from './cookSession/index.js';
 export type {
+  TimerHeat,
   ScheduledRow,
   MakeFreshSessionArgs,
   MiseProgress,
@@ -377,7 +380,7 @@ export {
 // "Kitchen": which nights from today onward are yours to cook, across however
 // many week documents the caller is holding. Pure, no per-user storage and no
 // clock.
-export { upcomingChefDays } from './personalView/index.js';
+export { upcomingChefDays, dayForDate } from './personalView/index.js';
 export type { ChefNight } from './personalView/index.js';
 
 // Kitchen-memory module (issue #816) — reading a composer line as the one chat
