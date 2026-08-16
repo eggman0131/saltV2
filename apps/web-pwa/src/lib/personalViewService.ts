@@ -1,7 +1,10 @@
 import {
+  dayForDate,
   daysBetween,
   firstIncompleteStepId,
+  heatWantsAttention,
   isCheckInTimerId,
+  timerHeat,
   upcomingChefDays,
   type Recipe,
 } from '@salt/domain';
@@ -158,7 +161,12 @@ export const timerNowMs: Readable<number> = readable(Date.now(), (set) => {
 /** Timers past their `endsAt` that nobody has dismissed — the things shouting. */
 export const firedTimers: Readable<readonly MineTimer[]> = derived(
   [myTimers, timerNowMs],
-  ([$timers, $now]) => $timers.filter((t) => Date.parse(t.timer.endsAt) <= $now),
+  ([$timers, $now]) =>
+    // Asked through the domain's heat scale rather than re-deriving "fired" from
+    // `endsAt` here (issue #843). The badge and the card must agree about whether
+    // a timer is shouting, and the surest way to guarantee that is for there to
+    // be exactly one function that decides it.
+    $timers.filter((t) => heatWantsAttention(timerHeat(Date.parse(t.timer.endsAt) - $now))),
 );
 
 // ─── 2. In-progress cooks ────────────────────────────────────────────────────
@@ -253,6 +261,67 @@ export const upcomingChefNights: Readable<readonly UpcomingChefNight[]> = derive
         .map((id) => $recipes.find((r) => r.id === id))
         .filter((r): r is Recipe => r !== undefined),
     })),
+);
+
+// ─── 3b. Tonight ─────────────────────────────────────────────────────────────
+
+export interface TonightPlan {
+  /** Today's `YYYY-MM-DD` key — also the planner deep link. */
+  readonly date: string;
+  /** What is attached, resolved live; a deleted entry drops out rather than 404ing. */
+  readonly recipes: readonly Recipe[];
+  /** The day's note, trimmed. Empty when there is none. */
+  readonly note: string;
+  /** Whether the signed-in member is down to cook it. */
+  readonly isMine: boolean;
+}
+
+/**
+ * What is planned for tonight — for ANYBODY, not just me.
+ *
+ * This is the quiet screen's headline (issue #843): when nothing is running, the
+ * page's job stops being "what wants a hand" and becomes "what is this evening".
+ * A kitchen with no timers going still has a dinner in it.
+ *
+ * Whose night it is changes the WORDS, never whether the card appears — see
+ * `dayForDate` for why filtering by chef would blank the screen on precisely the
+ * evenings someone else has covered.
+ *
+ * Costs nothing extra: it reads the same `kitchenWeeks` documents `upcomingChefNights`
+ * already holds while the page is mounted, so there is no second subscription.
+ *
+ * `null` when today is unplanned or no week document covers it — the common case
+ * for a week nobody has filled in, and the caller falls back to the plain
+ * all-caught-up card rather than inventing a dinner.
+ *
+ * NOTHING here reads the shopping list, and nothing derived from it may be added.
+ * A list records what somebody INTENDED to buy: it cannot see the top-up shop, the
+ * jar already in the cupboard, or the thing bought and then eaten on Tuesday. A
+ * card that says "you have everything" and is wrong sends you into a four-hour
+ * braise you cannot finish — and once it is wrong twice it taints the sections
+ * that ARE trustworthy, every one of which is a projection of a document that is
+ * true by construction.
+ */
+export const tonight: Readable<TonightPlan | null> = derived(
+  [kitchenWeeks, kitchenAnchorDate, currentMember, recipes],
+  ([$weeks, $today, $member, $recipes]) => {
+    const day = dayForDate($weeks, $today);
+    if (!day) return null;
+    const attached = day.recipeIds
+      .map((id) => $recipes.find((r) => r.id === id))
+      .filter((r): r is Recipe => r !== undefined);
+    const note = day.note.trim();
+    // An empty night is not a headline. Nothing attached and nothing written down
+    // means the plan says nothing about tonight, which the all-caught-up card
+    // already says better.
+    if (attached.length === 0 && !note) return null;
+    return {
+      date: $today,
+      recipes: attached,
+      note,
+      isMine: $member ? day.chefs.includes($member.id) : false,
+    };
+  },
 );
 
 // ─── 4. Needs review ─────────────────────────────────────────────────────────

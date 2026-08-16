@@ -164,14 +164,15 @@ into review. Keep the globs accurate.
   than inventing tokens.
   Design docs track `packages/ui-components/**` and `apps/web-pwa/src/**` styling.
 
-- **ui-spec-v02 → v07 are cumulative, never superseding.** v0.2 holds the
+- **ui-spec-v02 → v08 are cumulative, never superseding.** v0.2 holds the
   foundations (boundaries, package surface, event naming, styling rules) and stays
   in force for every later version; each later spec only adds components —
   [v03](docs/design/ui-spec-v03.md) RadioGroup/Select/Slider/Sheet/Toast,
   [v04](docs/design/ui-spec-v04.md) Combobox + `ListPage` selection mode,
   [v05](docs/design/ui-spec-v05.md) `ListPage` fill mode,
   [v06](docs/design/ui-spec-v06.md) `ImageCropper` free-aspect mode,
-  [v07](docs/design/ui-spec-v07.md) `DetailPage` fill mode. Touching
+  [v07](docs/design/ui-spec-v07.md) `DetailPage` fill mode,
+  [v08](docs/design/ui-spec-v08.md) `Dial`. Touching
   `@salt/ui-components` means reading [v02](docs/design/ui-spec-v02.md) **plus**
   the spec that owns your component. The specs are binding: if something is
   missing or ambiguous, stop and extend the spec rather than inventing.

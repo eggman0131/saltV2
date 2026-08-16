@@ -14,6 +14,7 @@ const {
   mockNeedsReview,
   mockRecentChats,
   mockUpcomingNights,
+  mockTonight,
   mockTimerNowMs,
   mockCurrentMember,
   mockPush,
@@ -49,6 +50,7 @@ const {
     mockNeedsReview: makeStore<unknown[]>([]),
     mockRecentChats: makeStore<unknown[]>([]),
     mockUpcomingNights: makeStore<unknown[]>([]),
+    mockTonight: makeStore<unknown>(null),
     mockTimerNowMs: makeStore<number>(Date.parse('2026-08-05T12:00:00.000Z')),
     mockCurrentMember: makeStore<unknown>(null),
     mockPush: vi.fn(),
@@ -70,6 +72,7 @@ vi.mock('../src/lib/personalViewService.js', () => ({
   needsReviewRecipes: mockNeedsReview,
   recentChats: mockRecentChats,
   timerNowMs: mockTimerNowMs,
+  tonight: mockTonight,
   upcomingChefNights: mockUpcomingNights,
 }));
 // Since #828 the page's heading and the header's link read ONE derivation of the
@@ -215,6 +218,7 @@ beforeEach(() => {
   mockNeedsReview._set([]);
   mockRecentChats._set([]);
   mockUpcomingNights._set([]);
+  mockTonight._set(null);
   mockRecipes._set([]);
   mockSubscribeKitchenWeeks.mockReturnValue(mockKitchenTeardown);
   mockTimerNowMs._set(NOW);
@@ -401,13 +405,18 @@ describe('MinePage — recent chats', () => {
 });
 
 describe('MinePage — timers', () => {
-  it('counts a running timer down and offers Cancel', async () => {
+  it('counts a running timer down, and names its action for screen readers', async () => {
+    // The buttons are icon-only now, so the accessible name is the ONLY name —
+    // asserting it here is what stops the icons becoming unlabelled mystery meat.
     mockMyTimers._set([mineTimer('r1', 'r1-s0', 4 * 60_000 + 500)]);
     const { getByTestId } = render(MinePage);
 
     expect(getByTestId('mine-timer-label')).toHaveTextContent('Simmer the sauce');
     expect(getByTestId('mine-timer-time')).toHaveTextContent('4:01');
-    expect(getByTestId('mine-timer-dismiss')).toHaveTextContent('Cancel');
+    expect(getByTestId('mine-timer-dismiss')).toHaveAttribute(
+      'aria-label',
+      'Cancel Simmer the sauce',
+    );
 
     // The clock is shared, not per-card: a tick moves the countdown.
     mockTimerNowMs._set(NOW + 60_000);
@@ -415,13 +424,37 @@ describe('MinePage — timers', () => {
     expect(getByTestId('mine-timer-time')).toHaveTextContent('3:01');
   });
 
+  it('says the heat in words, never in colour alone', () => {
+    // ui-spec-v02 §7: the ramp is a second encoding on top of the word, never a
+    // replacement for it.
+    // Soonest-ending first, as `myTimers` really delivers them — which floats the
+    // fired one to the top, because whatever ended earliest ended first.
+    mockMyTimers._set([
+      mineTimer('r1', 'r1-s3', -30_000, { label: 'Step 4' }),
+      mineTimer('r1', 'r1-s2', 45_000, { label: 'Step 3' }),
+      mineTimer('r1', 'r1-s1', 5 * 60_000, { label: 'Step 2' }),
+      mineTimer('r1', 'r1-s0', 40 * 60_000),
+    ]);
+    const { getAllByTestId } = render(MinePage);
+
+    expect(getAllByTestId('mine-timer-state').map((n) => n.textContent?.trim())).toEqual([
+      'Finished',
+      'Imminent',
+      'Soon',
+      'Resting',
+    ]);
+  });
+
   it('shows a fired-but-undismissed timer as Finished, and flips Cancel to Dismiss', () => {
     // The gap this closes: the doc has no `firedAt`, so "fired" is derived from the
     // clock — an expired timer sits in `activeTimers` until somebody dismisses it.
     mockMyTimers._set([mineTimer('r1', 'r1-s0', -30_000)]);
     const { getByTestId } = render(MinePage);
-    expect(getByTestId('mine-timer-time')).toHaveTextContent('Finished');
-    expect(getByTestId('mine-timer-dismiss')).toHaveTextContent('Dismiss');
+    expect(getByTestId('mine-timer-state')).toHaveTextContent('Finished');
+    expect(getByTestId('mine-timer-dismiss')).toHaveAttribute(
+      'aria-label',
+      'Dismiss Simmer the sauce',
+    );
   });
 
   it('lists both states at once, each with its own actions', () => {
@@ -431,15 +464,19 @@ describe('MinePage — timers', () => {
     ]);
     const { getAllByTestId } = render(MinePage);
 
-    expect(getAllByTestId('mine-timer-time').map((n) => n.textContent?.trim())).toEqual([
+    expect(getAllByTestId('mine-timer-state').map((n) => n.textContent?.trim())).toEqual([
       'Finished',
-      '1:30',
-    ]);
-    expect(getAllByTestId('mine-timer-dismiss').map((n) => n.textContent?.trim())).toEqual([
-      'Dismiss',
-      'Cancel',
+      'Imminent',
     ]);
     expect(getAllByTestId('mine-timer-goto')).toHaveLength(2);
+  });
+
+  it('has no progress bar under a timer — the dial is the progress', () => {
+    // The bar that used to sit flush to the card's bottom edge is gone: it was a
+    // second, differently-shaped progress language for the same number.
+    mockMyTimers._set([mineTimer('r1', 'r1-s0', 90_000)]);
+    const { queryByTestId } = render(MinePage);
+    expect(queryByTestId('mine-timer-progress')).not.toBeInTheDocument();
   });
 
   it('dismisses a timer with the same write that cancels one', async () => {
@@ -630,7 +667,7 @@ describe('MinePage — the workbench', () => {
     expect(queryByTestId('mine-empty')).not.toBeInTheDocument();
   });
 
-  it('shows a recipe thumbnail on a cooking-now card when the recipe has a hero image', () => {
+  it('banners the dish on a cook that is actually under way', () => {
     mockLiveCooks._set([
       liveCook('r2', 'Noodle Bowl', {
         recipe: recipe('r2', 'Noodle Bowl', {
@@ -640,13 +677,28 @@ describe('MinePage — the workbench', () => {
       }),
     ]);
     const { getByTestId } = render(MinePage);
-    expect(getByTestId('mine-live-thumb')).toHaveAttribute(
+    expect(getByTestId('mine-live-banner')).toHaveAttribute(
       'src',
       expect.stringContaining('https://example.test/noodles.webp'),
     );
   });
 
-  it('drops recipe imagery everywhere once the imagery switch is off, section stays', async () => {
+  it('puts a photograph nowhere else — a night and an unread import get icons', () => {
+    // Photography earns its bytes on the dish in front of you and nowhere else:
+    // a 40px crop of a generated hero says less than a calendar glyph, and an
+    // unreviewed import's image is itself unreviewed.
+    const withImage = { image: { url: 'https://example.test/x.webp', source: 'ai' } };
+    mockUpcomingNights._set([
+      chefNight('2026-08-06', 1, { recipeIds: ['r1'] }, [recipe('r1', 'Ragu', withImage)]),
+    ]);
+    mockNeedsReview._set([recipe('r9', 'Traybake', { ...withImage, needs_approval: true })]);
+
+    const { getByTestId } = render(MinePage);
+    expect(within(getByTestId('mine-upcoming')).queryByRole('img')).not.toBeInTheDocument();
+    expect(within(getByTestId('mine-needs-review')).queryByRole('img')).not.toBeInTheDocument();
+  });
+
+  it('drops the cook banner once the imagery switch is off, section stays', async () => {
     mockLiveCooks._set([
       liveCook('r2', 'Noodle Bowl', {
         recipe: recipe('r2', 'Noodle Bowl', {
@@ -655,13 +707,13 @@ describe('MinePage — the workbench', () => {
       }),
     ]);
     const { getByTestId, queryByTestId } = render(MinePage);
-    expect(getByTestId('mine-live-thumb')).toBeInTheDocument();
+    expect(getByTestId('mine-live-banner')).toBeInTheDocument();
 
     await fireEvent.click(getByTestId('mine-customize-open'));
     const imageryToggle = within(getByTestId('mine-customize-imagery')).getByRole('switch');
     await fireEvent.click(imageryToggle);
 
-    expect(queryByTestId('mine-live-thumb')).not.toBeInTheDocument();
+    expect(queryByTestId('mine-live-banner')).not.toBeInTheDocument();
     expect(getByTestId('mine-live')).toBeInTheDocument();
   });
 
@@ -688,5 +740,135 @@ describe('MinePage — the workbench', () => {
 
     await fireEvent.click(getByTestId('mine-customize-reset'));
     expect(getByTestId('mine-timers')).toBeInTheDocument();
+  });
+});
+
+describe('MinePage — the header', () => {
+  it('drops the sub-line when the chips are already saying it', () => {
+    // The chips ARE the summary; a sentence counting the same things underneath
+    // is the same information twice.
+    mockMyTimers._set([mineTimer('r1', 'r1-s0', 60_000)]);
+    const { queryByTestId, getByTestId } = render(MinePage);
+
+    expect(getByTestId('mine-stats')).toBeInTheDocument();
+    expect(queryByTestId('mine-subhead')).not.toBeInTheDocument();
+  });
+
+  it('speaks the sub-line when there are no chips to say it', () => {
+    const { getByTestId, queryByTestId } = render(MinePage);
+    expect(queryByTestId('mine-stats')).not.toBeInTheDocument();
+    expect(getByTestId('mine-subhead')).toHaveTextContent("Nothing's waiting on you.");
+  });
+
+  it('makes each chip a jump to the section it counts', async () => {
+    mockMyTimers._set([mineTimer('r1', 'r1-s0', 60_000)]);
+    mockNeedsReview._set([unreviewed('r9', 'Traybake')]);
+    const { getAllByTestId, getByTestId } = render(MinePage);
+
+    const chips = getAllByTestId('mine-stat-chip');
+    expect(chips.map((c) => c.textContent?.trim())).toEqual(['1 timer', '1 to review']);
+
+    // jsdom has no layout, so scrollIntoView is a stub — the observable contract
+    // is that the target exists, is focusable, and receives focus.
+    const target = getByTestId('mine-needs-review');
+    target.scrollIntoView = vi.fn();
+    expect(target).toHaveAttribute('id', 'mine-section-review');
+    expect(target).toHaveAttribute('tabindex', '-1');
+
+    await fireEvent.click(chips[1]!);
+    expect(target.scrollIntoView).toHaveBeenCalled();
+    expect(document.activeElement).toBe(target);
+  });
+
+  it('pluralises only the counts that read as counts', () => {
+    mockMyTimers._set([mineTimer('r1', 'r1-s0', 60_000), mineTimer('r1', 'r1-s1', 90_000)]);
+    mockLiveCooks._set([liveCook('r2', 'Noodle Bowl')]);
+    const { getAllByTestId } = render(MinePage);
+
+    expect(getAllByTestId('mine-stat-chip').map((c) => c.textContent?.trim())).toEqual([
+      '2 timers',
+      '1 cooking',
+    ]);
+  });
+});
+
+describe('MinePage — the quiet screen', () => {
+  const RAGU = { date: '2026-08-05', note: '', isMine: true, recipes: [recipe('r1', 'Beef ragù')] };
+
+  it("leads with tonight's dinner when the page is otherwise clear", () => {
+    mockTonight._set(RAGU);
+    const { getByTestId, queryByTestId } = render(MinePage);
+
+    expect(getByTestId('mine-tonight-title')).toHaveTextContent('Beef ragù');
+    expect(getByTestId('mine-tonight-kicker')).toHaveTextContent("Tonight · you're cooking");
+    // The apologetic card is replaced, not stacked on top of.
+    expect(queryByTestId('mine-empty')).not.toBeInTheDocument();
+  });
+
+  it("still shows the dinner when it is somebody else's night", () => {
+    // Filtering by chef would blank the screen on precisely the evenings someone
+    // else has it covered. Whose night it is changes the words, not the card.
+    mockTonight._set({ ...RAGU, isMine: false });
+    const { getByTestId } = render(MinePage);
+
+    expect(getByTestId('mine-tonight-kicker')).toHaveTextContent('Tonight');
+    expect(getByTestId('mine-tonight-kicker')).not.toHaveTextContent("you're cooking");
+    expect(getByTestId('mine-tonight-title')).toHaveTextContent('Beef ragù');
+  });
+
+  it('claims nothing about what is in the kitchen', () => {
+    // A shopping list records intent, not the contents of a cupboard: it cannot
+    // see the top-up shop or the jar already in there. Any "you have / you need"
+    // line here would be a confident guess, and being wrong once about a
+    // four-hour braise taints every section that IS reliable.
+    mockTonight._set(RAGU);
+    const { getByTestId } = render(MinePage);
+
+    const card = getByTestId('mine-tonight');
+    expect(card.textContent).not.toMatch(
+      /you'?ve got|you have|missing|ingredients|shopping|need to buy/i,
+    );
+  });
+
+  it('falls back to the caught-up card when tonight is unplanned', () => {
+    mockTonight._set(null);
+    const { getByTestId, queryByTestId } = render(MinePage);
+
+    expect(getByTestId('mine-empty')).toHaveTextContent("You're all caught up");
+    expect(queryByTestId('mine-tonight')).not.toBeInTheDocument();
+  });
+
+  it('stays out of the way entirely while something is still running', () => {
+    // It is the QUIET screen: a dinner tonight is not news while a timer is going.
+    mockTonight._set(RAGU);
+    mockMyTimers._set([mineTimer('r1', 'r1-s0', 60_000)]);
+    const { queryByTestId } = render(MinePage);
+
+    expect(queryByTestId('mine-tonight')).not.toBeInTheDocument();
+  });
+
+  it('offers the cook and the plan, and nothing that needs a shop', async () => {
+    mockTonight._set(RAGU);
+    const { getByTestId } = render(MinePage);
+
+    await fireEvent.click(getByTestId('mine-tonight-cook'));
+    expect(mockPush).toHaveBeenCalledWith('/recipes/r1/cook');
+
+    await fireEvent.click(getByTestId('mine-tonight-plan'));
+    expect(mockPush).toHaveBeenCalledWith('/mealplan/2026-08-05');
+  });
+
+  it('headlines a night that is only a note, with no cook button to press', () => {
+    mockTonight._set({
+      date: '2026-08-05',
+      note: 'something with the leeks',
+      isMine: true,
+      recipes: [],
+    });
+    const { getByTestId, queryByTestId } = render(MinePage);
+
+    expect(getByTestId('mine-tonight-title')).toHaveTextContent('something with the leeks');
+    expect(queryByTestId('mine-tonight-cook')).not.toBeInTheDocument();
+    expect(getByTestId('mine-tonight-plan')).toBeInTheDocument();
   });
 });

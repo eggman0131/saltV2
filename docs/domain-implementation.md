@@ -358,8 +358,12 @@ The `cookSession` module is a similar lightweight variant — pure session-state
 producers (`makeFreshSession`, `withStepDone`, `withIngredientChecked`,
 `withAllIngredientsChecked`, `withGroupChecked`, `withTimerStarted`, `withTimerDismissed`) and
 read-only queries (`firstIncompleteStepId`, `firstUseByStep`, `miseProgress`,
-`timerProgress`, `hasRecipeChanged`, `formatClock`) extracted from
-`CookModePage.svelte` so the cook-session logic is testable without a browser.
+`timerProgress`, `hasRecipeChanged`, `formatClock`, `timerHeat`, `heatWantsAttention`)
+extracted from `CookModePage.svelte` so the cook-session logic is testable
+without a browser. `timerHeat` (issue #843) is the one decision behind a
+countdown's urgency — `resting → soon → imminent → ringing`, monotonic — so
+My Kitchen's dial, stripe and state word all read the same answer instead of
+each inferring their own.
 Flat structure — no `entities/`, `ports/`, `commands/`, or `queries/`
 subfolders, matching the `weather` pattern. Every timestamp is an injected
 parameter (never read from the clock), which keeps the module pure and makes
@@ -394,7 +398,7 @@ comparison is not policy. It lives in `personalViewService` with the store that
 reads it, and the `kind` gate went with the predicate: only the import flows set
 the flag, so there is nothing to gate.
 
-Phase 3 of the same issue re-created the module for one export,
+Phase 3 of the same issue re-created the module, starting with one export,
 `upcomingChefDays(weeks, memberId, today)`. It is deliberately **not**
 `chefDaysForMember` restored — that helper was `week.days` filtered on
 `chefs.includes(memberId)`, a restatement of a week the planner already draws, and
@@ -411,6 +415,15 @@ the nights where you cook for a table you are not at. Pure by contract: `today` 
 injected, and the helper iterates each week's **stored** date keys rather than the
 seven its start implies, so a document written before `firstDayOfWeek` moved
 cannot produce holes.
+
+Issue #843 added a second export, `dayForDate(weeks, date)`, and it is a
+sibling of `upcomingChefDays`, not a special case of it: `upcomingChefDays`
+answers "which nights are mine", filtered on chef membership, while
+`dayForDate` answers "what is happening on this date" for anybody. My
+Kitchen's quiet screen leads with tonight's dinner regardless of who is
+cooking it — filtering by chef would blank the screen on exactly the
+evenings someone else has it covered. Same date-key and first-week-wins
+rules as `upcomingChefDays`, for the same reasons.
 
 The `memory` module is a lightweight variant like the four above: one file,
 `parseChatCommand`, which reads a chat composer line as the app's one chat
