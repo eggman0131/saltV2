@@ -59,6 +59,41 @@ name: PR Doc Review
 #   the steps below, in that fixed order, after the model has finished. A run
 #   that dies mid-flight therefore cannot leave behind a claim that no fix
 #   exists — the failure class that produced the orphaned, false issue #807.
+#
+# Why the bot's own edit is gated on the repo's docs-map check:
+#   On PR #844 this job committed a CLAUDE.md edit that DELETED the Docs-map
+#   pointer to a doc the same PR had just added, turning ci.yml's `Static
+#   checks` red while its comment claimed the fix was already committed. It had
+#   hit an internal inconsistency — a heading reading `v02 → v07` above a list
+#   ending at `v08` — and resolved it in the destructive direction. The Verdict
+#   A prompt now forbids that turn, but a prompt rule is not a gate: the
+#   workflow runs the repo's own check on its own staged diff, between staging
+#   and the App token, so a rejected edit never even mints a write credential.
+#   A failed check drops the whole doc commit and says so on the PR. It never
+#   reddens anything — the gate withholds a push, it does not fail the job.
+#
+#   `node scripts/check-docs-map.mjs`, not `pnpm docsmap:check`: the script
+#   imports only node builtins and shells out to `git ls-files`, so it runs with
+#   zero node_modules in well under a second. `pnpm docsmap:check` would drag in
+#   the `pnpm install` this job deliberately never does — which is also why the
+#   gate calls setup-node directly rather than reusing .github/actions/workspace.
+#
+#   Node is PINNED to 22 rather than left to the runner default, and that is not
+#   cosmetic: check-docs-map.mjs uses `path.matchesGlob`, which does not exist
+#   before Node 22. On an older default it would throw, exit non-zero, and
+#   silently gate every doc commit forever. setup-node costs ~2s, runs no
+#   install, and matches the version every other workflow here pins.
+#
+#   One check is the WHOLE gate, not an arbitrary sample. Root `format` /
+#   `format:check` glob `**/*.{ts,js,svelte,css,html}` — markdown is outside it
+#   — and lint / typecheck / depcruise cannot see a markdown-only diff. The docs
+#   map is the only static check a `docs/` + `CLAUDE.md` diff can break. Do not
+#   add the others: they would prove nothing and would need that install.
+#
+#   Warnings cannot trip it. The script exits 0 when only warnings are present
+#   and 1 only on errors, so the standing dead-glob warning for Epic #778's
+#   unbuilt `packages/domain/src/culture/**` is inert here. No warning
+#   suppression is needed and none should be added.
 
 on:
   pull_request:
@@ -287,6 +322,23 @@ jobs:
                the `CLAUDE.md` Docs map in the SAME edit — a doc missing from the
                map is invisible to agents and to this job.
 
+               NEVER delete a pointer to a doc that still exists on disk — not a
+               Docs map row, not a bullet, not a link. That is the one edit to
+               `CLAUDE.md` that can do real damage: `docs/` is not auto-loaded,
+               so removing a live doc's only pointer does not merely make it
+               harder to find, it makes it invisible to every agent.
+
+               When a heading and a list disagree, the file on disk is the truth.
+               A heading reading "v02 → v07" above a list whose last entry is v08
+               is a stale HEADING, not a spurious entry: bump the heading, do not
+               delete the entry. Resolving that inconsistency the other way is
+               exactly the mistake that broke PR #844.
+
+               Your edits are checked before they are committed. The workflow runs
+               `node scripts/check-docs-map.mjs` on your staged diff, and if it
+               fails, your entire doc commit is thrown away and the PR is told so.
+               A dropped commit is a wasted run, so get the map right first time.
+
                Only `docs/**` and `CLAUDE.md` are committed by the workflow. Edits
                anywhere else are discarded, so do not make them.
 
@@ -395,10 +447,69 @@ jobs:
             echo "dirty=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # Minted late, only once a doc diff actually exists — the PR head code has
-      # finished running by this point and never sees the write token.
-      - name: Generate GitHub App token
+      # Node 22 specifically — see the header note; the checker uses
+      # `path.matchesGlob`, which does not exist before it. No `cache: pnpm` and
+      # no install: this job has no node_modules and the checker needs none.
+      - name: Set up Node for the docs-map check
         if: ${{ steps.diff.outputs.dirty == 'true' }}
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      # THE GATE (#847). The bot's own edit has to satisfy the same docs-map
+      # rule as the PR it is reviewing. It sits between staging and the App
+      # token so a rejected edit never mints a write credential.
+      #
+      # The checker's inputs are exactly what is staged: it reads CLAUDE.md from
+      # the working tree and its file universe from `git ls-files`, which is the
+      # index — so a doc the bot created and staged is seen, and its missing map
+      # row is caught. Never fails the job; the verdict leaves as an output.
+      - name: Validate the staged doc edit against the docs map
+        id: gate
+        if: ${{ steps.diff.outputs.dirty == 'true' }}
+        run: |
+          set -uo pipefail
+          if node scripts/check-docs-map.mjs > .doc-review/docsmap.txt 2>&1; then
+            echo "docsmap-ok=true" >> "$GITHUB_OUTPUT"
+            echo "The docs map check passed on the bot's own edit."
+          else
+            echo "docsmap-ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::The doc review's own edit fails the docs map check — dropping it."
+          fi
+          cat .doc-review/docsmap.txt
+          exit 0
+
+      # The terminal backstop: an edit that fails the gate is thrown away, not
+      # repaired. Unstaging alone would leave the bad edit in the working tree
+      # for a later step to re-stage, so the files go back to their committed
+      # state outright. Anything the model CREATED stays untracked and is
+      # therefore never committed either. The rejected diff is kept first — it
+      # is what the PR comment offers you in place of a commit.
+      - name: Drop the doc changes that failed the docs map check
+        if: ${{ steps.gate.outputs.docsmap-ok == 'false' }}
+        run: |
+          set -uo pipefail
+          git diff --cached > .doc-review/rejected.diff || true
+          git diff --cached --name-only > .doc-review/rejected-files.txt || true
+          git reset --quiet || true
+          git checkout -- docs CLAUDE.md 2>/dev/null || true
+          echo "Reverted docs/ and CLAUDE.md — nothing will be committed or pushed."
+          {
+            echo "### PR Doc Review — proposed doc edits were NOT committed"
+            echo ""
+            echo "They failed \`node scripts/check-docs-map.mjs\`:"
+            echo ""
+            echo '```'
+            cat .doc-review/docsmap.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+
+      # Minted late, only once a doc diff exists AND has passed the gate above —
+      # the PR head code has finished running by this point and never sees the
+      # write token.
+      - name: Generate GitHub App token
+        if: ${{ steps.diff.outputs.dirty == 'true' && steps.gate.outputs.docsmap-ok == 'true' }}
         id: app-token
         uses: actions/create-github-app-token@v3
         with:
@@ -406,7 +517,7 @@ jobs:
           private-key: ${{ secrets.AUTOFIX_APP_PRIVATE_KEY }}
 
       - name: Commit and push the doc update
-        if: ${{ steps.diff.outputs.dirty == 'true' }}
+        if: ${{ steps.diff.outputs.dirty == 'true' && steps.gate.outputs.docsmap-ok == 'true' }}
         env:
           TOKEN: ${{ steps.app-token.outputs.token }}
           APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
@@ -436,6 +547,7 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           STATE: ${{ steps.degrade.outputs.state }}
           SUBTYPE: ${{ steps.degrade.outputs.detail }}
+          GATED: ${{ steps.gate.outputs.docsmap-ok == 'false' }}
         run: |
           set -euo pipefail
           body=".doc-review/comment.md"
@@ -450,6 +562,48 @@ jobs:
               echo "$SUBTYPE. This PR has **no** documentation-review signal; that is not the same as being clean."
             } >> "$GITHUB_STEP_SUMMARY"
             exit 0
+          fi
+
+          # The gate rejected the bot's own edit, so nothing was committed. The
+          # model's report is deliberately DISCARDED rather than posted here: a
+          # Verdict A report states in as many words that the fix is already
+          # committed to this branch, and republishing that on a run which
+          # committed nothing is the precise false claim #847 exists to end. The
+          # rejected diff plus the checker's complaint says the same thing,
+          # verifiably, and can be applied by hand in under a minute.
+          if [ "$GATED" = "true" ]; then
+            {
+              echo "## 🚧 Doc review — proposed edits were **not** committed"
+              echo ""
+              echo "The review wanted to update this branch's documentation, but its own edit fails the repo's docs-map check, so it was thrown away. **Nothing was committed and nothing was pushed** — \`Static checks\` is unaffected, and there is no doc fix on this branch."
+              echo ""
+              echo "**What the checker said** (\`node scripts/check-docs-map.mjs\`)"
+              echo ""
+              echo '```'
+              cat .doc-review/docsmap.txt 2>/dev/null || echo "(no output captured)"
+              echo '```'
+              echo ""
+              echo "**What it wanted to change**"
+              echo ""
+              sed 's/^/- `/; s/$/`/' .doc-review/rejected-files.txt 2>/dev/null || echo "- (file list unavailable)"
+              echo ""
+              echo "<details><summary>The rejected diff</summary>"
+              echo ""
+              # A four-backtick fence: the diff is of markdown files and will
+              # very often contain triple-backtick fences of its own.
+              echo '````diff'
+              head -n 200 .doc-review/rejected.diff 2>/dev/null || true
+              echo '````'
+              total=$(wc -l < .doc-review/rejected.diff 2>/dev/null || echo 0)
+              if [ "$total" -gt 200 ]; then
+                echo ""
+                echo "_Truncated — ${total} lines in full._"
+              fi
+              echo ""
+              echo "</details>"
+              echo ""
+              echo "Apply it by hand if it is right; ignore it if it is not. Either way the job stays green — a red \`PR Doc Review\` means the workflow itself is broken, never that a review found something."
+            } > "$body"
           fi
 
           if [ "$STATE" = "truncated" ]; then
