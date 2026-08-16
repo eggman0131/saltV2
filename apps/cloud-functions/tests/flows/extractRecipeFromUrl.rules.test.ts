@@ -107,13 +107,25 @@ describe('extractRecipeFromUrl — shared field rules (#785)', () => {
     expect(systemPromptFrom()).toContain(recipeFieldRules({ measures: 'metricate' }));
   });
 
-  it('asks for metric on a DOCUMENT source, never the librarian preserve policy', async () => {
+  it('asks for the rewrite policy on a DOCUMENT source, never the librarian preserve policy', async () => {
     await (extractRecipeFromUrlFlow as Function)({ url: URL });
 
-    // Converting someone else's units IS the import. If this ever flips to the
-    // conversation policy, imports silently start arriving in cups.
+    // Rewriting someone else's line IS the import.
     const system = systemPromptFrom();
-    expect(system).toContain('Metric only: convert all quantities to metric');
+    expect(system).toContain('the ingredient line rewritten in British spelling/terms');
     expect(system).not.toContain('preserve the original wording');
+  });
+
+  it("bans cups but keeps the source's tsp/tbsp for the parse stage", async () => {
+    await (extractRecipeFromUrlFlow as Function)({ url: URL });
+
+    // Converting someone else's units IS the import — but converting the SPOON
+    // measures is not, and used to be: the rawText emitted here is the only thing
+    // `parseRecipeIngredients` ever sees, so a "1 tsp" metricated at this step is
+    // a "(1 tsp)" the cook never gets in the ingredient list.
+    const system = systemPromptFrom();
+    expect(system).toContain('NEVER cups, sticks, pints, quarts, fluid ounces, ounces or pounds');
+    expect(system).toContain('leave a spoon measure EXACTLY as the source wrote it');
+    expect(system).not.toContain('tablespoons and teaspoons');
   });
 });

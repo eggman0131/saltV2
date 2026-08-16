@@ -41,12 +41,12 @@ describe('recipeFieldRules — shape', () => {
   });
 });
 
-describe('recipeFieldRules — the measure policy is the ONLY divergence', () => {
-  it('differs from the other rendering in exactly the two measure lines', () => {
+describe('recipeFieldRules — the wording policy is the ONLY divergence', () => {
+  it('differs from the other rendering in exactly the one rawText line', () => {
     // The invariant this module exists to hold. Before #785 the same field list
     // lived twice — once in recipeExtractionRules.ts and once hand-rolled inside
     // LIBRARIAN_SYSTEM — and had drifted in both directions. Anything that differs
-    // here beyond the measure policy is that drift coming back, so this test
+    // here beyond the wording policy is that drift coming back, so this test
     // deliberately compares the two renderings LINE BY LINE rather than checking
     // for a few phrases.
     const onlyIn = (a: string, b: string) =>
@@ -55,29 +55,60 @@ describe('recipeFieldRules — the measure policy is the ONLY divergence', () =>
     const preserveOnly = onlyIn(PRESERVE, METRICATE);
     const metricateOnly = onlyIn(METRICATE, PRESERVE);
 
-    // One line each: the ingredient `rawText` clause. Plus, on the metricate side
-    // only, the bullet that orders the conversion in the first place.
+    // One line each, and it is the ingredient `rawText` clause both times. The
+    // conversion bullet that used to make this 1-vs-2 is now unconditional — the
+    // UNITS no longer fork, only how freely the line may be rewritten.
     expect(preserveOnly).toHaveLength(1);
-    expect(metricateOnly).toHaveLength(2);
+    expect(metricateOnly).toHaveLength(1);
     expect(preserveOnly[0]).toContain('preserve the original wording');
-    expect(metricateOnly.join('\n')).toContain('already converted to metric');
-    expect(metricateOnly.join('\n')).toContain('Metric only: convert all quantities to metric');
+    expect(metricateOnly[0]).toContain('the ingredient line rewritten in British spelling/terms');
   });
 
-  it("metricates a document source's quantities", () => {
-    expect(METRICATE).toContain('Metric only: convert all quantities to metric');
-    expect(METRICATE).toContain('Convert cups, sticks, ounces, pounds');
+  it("rewrites a document source's line", () => {
+    expect(METRICATE).toContain('the ingredient line rewritten in British spelling/terms');
     expect(METRICATE).not.toContain('preserve the original wording');
   });
 
-  it("preserves a conversation source's measures, and says what overrides that", () => {
+  it("preserves a conversation source's wording, and says what overrides that", () => {
     // Without the precedence sentence, "preserve the original wording" reads as a
-    // licence to keep "heavy cream" and "salt and freshly ground black pepper" —
-    // the ingredient rules are unconditional and have to be seen to win.
-    expect(PRESERVE).toContain('preserve the original wording and any tsp/tbsp/cup measures');
+    // licence to keep "1 cup heavy cream" and "salt and freshly ground black
+    // pepper" — the measure and ingredient rules are unconditional and have to be
+    // seen to win.
+    expect(PRESERVE).toContain('preserve the original wording and any tsp/tbsp measures');
     expect(PRESERVE).toContain('EXCEPT where the conversion rules above take precedence');
+    expect(PRESERVE).toContain('never a cup, pint or ounce, however the chef phrased it');
     expect(PRESERVE).toContain('These override "preserve the original wording"');
-    expect(PRESERVE).not.toContain('Metric only');
+  });
+});
+
+describe('recipeFieldRules — the measure vocabulary is UNCONDITIONAL', () => {
+  // The units used to fork with the source kind, and that fork is what made
+  // imports lose their spoon measures: 'metricate' ordered tablespoons and
+  // teaspoons converted, so by the time `assembleRecipeDraft` handed the rawText
+  // to `parseRecipeIngredients` there was no spoon left to lift into displayText
+  // — parse only ever sees this rawText, never the original source line. Both
+  // renderings must now carry the same two bullets.
+  it('asks every path for grams, millilitres or a count', () => {
+    for (const rules of [PRESERVE, METRICATE]) {
+      expect(rules).toContain('Metric or count values only');
+      expect(rules).toContain('NEVER cups, sticks, pints, quarts, fluid ounces, ounces or pounds');
+    }
+  });
+
+  it('tells every path to leave tsp/tbsp alone for the parse stage', () => {
+    for (const rules of [PRESERVE, METRICATE]) {
+      expect(rules).toContain('tsp and tbsp are the ONE exception');
+      expect(rules).toContain('leave a spoon measure EXACTLY as the source wrote it');
+      expect(rules).toContain('so converting it here is what DESTROYS it');
+    }
+  });
+
+  it('never tells any path to convert tablespoons or teaspoons', () => {
+    // The exact regression: this instruction sat in the 'metricate' bullet and
+    // silently deleted every imported recipe's spoon measures.
+    for (const rules of [PRESERVE, METRICATE]) {
+      expect(rules).not.toContain('tablespoons and teaspoons');
+    }
   });
 });
 
