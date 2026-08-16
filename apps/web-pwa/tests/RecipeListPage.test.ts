@@ -9,7 +9,7 @@ import { setNextCrop } from './fixtures/cropStub.js';
 // drive the search / sort / tag-filter pipeline without Firestore. Mirrors the
 // store shim used by the RecipeEditPage tests.
 
-const { mockRecipes, mockIsLoading } = vi.hoisted(() => {
+const { mockRecipes, mockIsLoading, mockCurrentMember } = vi.hoisted(() => {
   function makeStore<T>(initial: T) {
     let value = initial;
     const subs = new Set<(v: T) => void>();
@@ -30,11 +30,16 @@ const { mockRecipes, mockIsLoading } = vi.hoisted(() => {
   return {
     mockRecipes: makeStore<readonly Recipe[]>([]),
     mockIsLoading: makeStore<boolean>(false),
+    // Who is signed in (issue #845). Null by default — nobody signed in, so the
+    // authorship row is not offered and every pre-existing test below is
+    // untouched by it.
+    mockCurrentMember: makeStore<{ name: string } | null>(null),
   };
 });
 
 vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
 vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
+vi.mock('../src/lib/membersService.js', () => ({ currentMember: mockCurrentMember }));
 vi.mock('../src/lib/recipeService.js', () => ({
   recipes: mockRecipes,
   isLoadingRecipes: mockIsLoading,
@@ -81,6 +86,10 @@ function makeRecipe(over: {
   createdAt: string;
   kind?: RecipeKind;
   componentRecipeIds?: string[];
+  // Attribution (issue #845) — a `Member.name` snapshot, never a uid. '' is the
+  // real production value for anything written before the field existed.
+  createdBy?: string;
+  lastEditedBy?: string;
 }): Recipe {
   return {
     id: over.id,
@@ -122,6 +131,8 @@ function makeRecipe(over: {
     ...(over.imageRequestedAt !== undefined ? { imageRequestedAt: over.imageRequestedAt } : {}),
     createdAt: over.createdAt,
     updatedAt: over.createdAt,
+    createdBy: over.createdBy ?? '',
+    lastEditedBy: over.lastEditedBy ?? '',
   };
 }
 
@@ -174,6 +185,7 @@ function normalized(el: HTMLElement): string {
 afterEach(() => {
   cleanup();
   seed([]);
+  mockCurrentMember._set(null);
 });
 
 // ─── Tests ──────────────────────────────────────────────────────────────────────
@@ -746,6 +758,282 @@ describe('RecipeListPage — sections', () => {
     expect(screen.getByTestId('recipe-new-outing')).toBeInTheDocument();
     expect(screen.getByTestId('recipe-new-cocktail')).toBeInTheDocument();
     expect(screen.getByTestId('recipe-new-placeholder')).toBeInTheDocument();
+  });
+});
+
+// ─── Authorship filters (issue #845) ──────────────────────────────────────────
+// Two independent toggles matching the signed-in member's `Member.name` against
+// the recipe's `createdBy` / `lastEditedBy` snapshots. A display filter and
+// nothing else: attribution gates no action anywhere in the app.
+
+const ME = 'Daniel';
+const THEM = 'Nigel';
+
+const MY_PIE = makeRecipe({
+  id: 'my-pie',
+  title: 'My Pie',
+  tags: ['dessert', 'quick'],
+  totalTimeMinutes: 40,
+  servings: 4,
+  ingredientCount: 3,
+  image: null,
+  createdAt: '2026-08-01T00:00:00.000Z',
+  createdBy: ME,
+  lastEditedBy: ME,
+});
+// Theirs end to end — the one entry neither chip can ever match.
+const THEIR_BREAD = makeRecipe({
+  id: 'their-bread',
+  title: 'Their Bread',
+  tags: ['baking'],
+  totalTimeMinutes: 180,
+  servings: 8,
+  ingredientCount: 5,
+  image: null,
+  createdAt: '2026-08-02T00:00:00.000Z',
+  createdBy: THEM,
+  lastEditedBy: THEM,
+});
+// Added by them, last touched by me: the entry that separates the two chips.
+const THEIR_SOUP = makeRecipe({
+  id: 'their-soup',
+  title: 'Their Soup',
+  tags: ['quick'],
+  totalTimeMinutes: 25,
+  servings: 2,
+  ingredientCount: 4,
+  image: null,
+  createdAt: '2026-08-03T00:00:00.000Z',
+  createdBy: THEM,
+  lastEditedBy: ME,
+});
+const MY_TAKEAWAY = makeRecipe({
+  id: 'my-takeaway',
+  kind: 'outing',
+  title: 'My Takeaway',
+  tags: ['friday'],
+  totalTimeMinutes: null,
+  servings: null,
+  ingredientCount: 0,
+  image: null,
+  createdAt: '2026-08-04T00:00:00.000Z',
+  createdBy: ME,
+  lastEditedBy: ME,
+});
+const THEIR_TAKEAWAY = makeRecipe({
+  id: 'their-takeaway',
+  kind: 'outing',
+  title: 'Their Takeaway',
+  tags: ['friday'],
+  totalTimeMinutes: null,
+  servings: null,
+  ingredientCount: 0,
+  image: null,
+  createdAt: '2026-08-05T00:00:00.000Z',
+  createdBy: THEM,
+  lastEditedBy: THEM,
+});
+
+function signedInAs(name: string | null): void {
+  mockCurrentMember._set(name === null ? null : { name });
+}
+
+function authorChip(which: 'added' | 'edited'): HTMLElement {
+  const row = screen.getByTestId('recipe-author-filters');
+  const chip = within(row)
+    .getAllByTestId('recipe-author-filter')
+    .find((b) => b.getAttribute('data-author') === which);
+  if (!chip) throw new Error(`no author chip for ${which}`);
+  return chip;
+}
+
+describe('RecipeListPage — authorship filters', () => {
+  it('does not offer the row when every recipe carries one name', () => {
+    // The state the library is in the moment the backfill finishes. A filter
+    // whose only possible answer is "everything" is dead chrome.
+    signedInAs(ME);
+    seed([MY_PIE, { ...MY_TAKEAWAY, kind: 'recipe' as const }]);
+    render(RecipeListPage);
+
+    expect(screen.queryByTestId('recipe-author-filters')).toBeNull();
+  });
+
+  it('does not offer the row when there is no name to be "me"', () => {
+    // Roster still loading, or a signed-in email that is not on it. Two names
+    // exist across the library, so the count alone would render the row — but
+    // "Added by me" with no "me" is a chip that cannot answer its own question.
+    signedInAs(null);
+    seed([MY_PIE, THEIR_BREAD]);
+    render(RecipeListPage);
+
+    expect(screen.queryByTestId('recipe-author-filters')).toBeNull();
+    expect(cardTitles()).toEqual(['My Pie', 'Their Bread']);
+  });
+
+  it('narrows to what I added, and reports the view as filtered', async () => {
+    const user = userEvent.setup();
+    signedInAs(ME);
+    seed([MY_PIE, THEIR_BREAD, THEIR_SOUP]);
+    render(RecipeListPage);
+
+    expect(normalized(screen.getByTestId('recipe-result-count'))).not.toContain('filtered');
+
+    await user.click(authorChip('added'));
+
+    expect(cardTitles()).toEqual(['My Pie']);
+    expect(authorChip('added')).toHaveAttribute('aria-pressed', 'true');
+    expect(normalized(screen.getByTestId('recipe-result-count'))).toContain('filtered');
+  });
+
+  it('separates "added" from "edited" — a dish of theirs I last touched', async () => {
+    const user = userEvent.setup();
+    signedInAs(ME);
+    seed([MY_PIE, THEIR_BREAD, THEIR_SOUP]);
+    render(RecipeListPage);
+
+    await user.click(authorChip('edited'));
+    // Their soup counts here and nowhere else: I am the last person to have
+    // edited it, and I did not add it.
+    expect(cardTitles()).toEqual(['My Pie', 'Their Soup']);
+
+    // Both on is an AND, exactly as two tags are — added AND last edited by me.
+    await user.click(authorChip('added'));
+    expect(cardTitles()).toEqual(['My Pie']);
+    expect(authorChip('added')).toHaveAttribute('aria-pressed', 'true');
+    expect(authorChip('edited')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('keeps the row on screen once the filter narrows the grid to one name', async () => {
+    const user = userEvent.setup();
+    signedInAs(ME);
+    seed([MY_PIE, THEIR_BREAD, THEIR_SOUP]);
+    render(RecipeListPage);
+
+    await user.click(authorChip('added'));
+
+    // Counted over the whole library, not the filtered subset — otherwise the
+    // row would disappear from under the finger that just used it, with no way
+    // back to the unfiltered view except "Clear".
+    expect(cardTitles()).toEqual(['My Pie']);
+    expect(screen.getByTestId('recipe-author-filters')).toBeInTheDocument();
+  });
+
+  it('combines with search and tags', async () => {
+    const user = userEvent.setup();
+    signedInAs(ME);
+    seed([MY_PIE, THEIR_BREAD, THEIR_SOUP]);
+    render(RecipeListPage);
+
+    await user.click(authorChip('edited'));
+    expect(cardTitles()).toEqual(['My Pie', 'Their Soup']);
+
+    // "quick" is on both of those; the search then picks one out of the two.
+    await user.click(
+      within(screen.getByTestId('recipe-tag-filters')).getByRole('button', { name: '#quick' }),
+    );
+    expect(cardTitles()).toEqual(['My Pie', 'Their Soup']);
+
+    await user.type(screen.getByTestId('recipe-search-input'), 'soup');
+    expect(cardTitles()).toEqual(['Their Soup']);
+  });
+
+  it('survives a section switch, while the tags still reset', async () => {
+    const user = userEvent.setup();
+    signedInAs(ME);
+    seed([MY_PIE, THEIR_BREAD, MY_TAKEAWAY, THEIR_TAKEAWAY]);
+    render(RecipeListPage);
+
+    await user.click(authorChip('added'));
+    await user.click(
+      within(screen.getByTestId('recipe-tag-filters')).getByRole('button', { name: '#quick' }),
+    );
+    expect(cardTitles()).toEqual(['My Pie']);
+
+    await pickKind(user, 'outing');
+
+    // "Mine" means the same thing on every shelf, so it carries across — unlike
+    // the tag vocabulary, which is per-section and is dropped.
+    expect(authorChip('added')).toHaveAttribute('aria-pressed', 'true');
+    expect(cardTitles()).toEqual(['My Takeaway']);
+    expect(
+      within(screen.getByTestId('recipe-tag-filters'))
+        .getAllByTestId('recipe-tag-filter')
+        .every((b) => b.getAttribute('aria-pressed') === 'false'),
+    ).toBe(true);
+  });
+
+  it('clears with "Clear filters", and leaves you where you were standing', async () => {
+    const user = userEvent.setup();
+    signedInAs(ME);
+    seed([MY_PIE, THEIR_BREAD, MY_TAKEAWAY, THEIR_TAKEAWAY]);
+    render(RecipeListPage);
+
+    await pickKind(user, 'outing');
+    await user.click(authorChip('added'));
+    expect(cardTitles()).toEqual(['My Takeaway']);
+
+    await user.click(screen.getByTestId('recipe-clear-filters'));
+
+    expect(authorChip('added')).toHaveAttribute('aria-pressed', 'false');
+    expect(cardTitles()).toEqual(['My Takeaway', 'Their Takeaway']);
+    // Clearing a filter is not a teleport back to Recipes.
+    expect(kindChip('outing')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('offers the same clear from the no-matches state', async () => {
+    const user = userEvent.setup();
+    signedInAs(ME);
+    // Nothing in this section is mine, so the filter empties the grid.
+    seed([THEIR_BREAD, THEIR_SOUP, MY_TAKEAWAY]);
+    render(RecipeListPage);
+
+    await user.click(authorChip('added'));
+
+    expect(screen.queryByTestId('recipe-list')).toBeNull();
+    expect(screen.getByTestId('recipe-no-matches')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+    expect(cardTitles()).toEqual(['Their Bread', 'Their Soup']);
+  });
+
+  it('matches on the FULL stored name, not the first name shown on screen', async () => {
+    const user = userEvent.setup();
+    // Attribution renders first names ("everyone is a Pendery") but the split is
+    // at DISPLAY time only — this filter is still a plain `===` against the
+    // verbatim `Member.name`. Two people sharing a first name is the case that
+    // proves it: only one of these is mine.
+    signedInAs('Kate Pendery');
+    seed([
+      makeRecipe({
+        id: 'hers',
+        title: 'Hers',
+        tags: [],
+        totalTimeMinutes: null,
+        servings: null,
+        ingredientCount: 1,
+        image: null,
+        createdAt: '2026-08-06T00:00:00.000Z',
+        createdBy: 'Kate Pendery',
+        lastEditedBy: 'Kate Pendery',
+      }),
+      makeRecipe({
+        id: 'the-other-kates',
+        title: 'The Other Kates',
+        tags: [],
+        totalTimeMinutes: null,
+        servings: null,
+        ingredientCount: 1,
+        image: null,
+        createdAt: '2026-08-07T00:00:00.000Z',
+        createdBy: 'Kate Ashworth',
+        lastEditedBy: 'Kate Ashworth',
+      }),
+    ]);
+    render(RecipeListPage);
+    expect(cardTitles()).toEqual(['Hers', 'The Other Kates']);
+
+    await user.click(authorChip('added'));
+    expect(cardTitles()).toEqual(['Hers']);
   });
 });
 

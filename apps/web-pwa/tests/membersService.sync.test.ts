@@ -17,6 +17,8 @@ import * as firebaseSync from '@salt/firebase-sync';
 import {
   members,
   currentMember,
+  firstName,
+  kitchenLabel,
   isLoadingMembers,
   initMembersSync,
   createMemberEntry,
@@ -134,6 +136,29 @@ describe('membersService — currentMember', () => {
 
     mockAuth.user = { email: 'ghost@e.org' };
     expect(get(currentMember)).toBeNull(); // signed in, but not on the roster
+  });
+});
+
+// The one rendering rule this service owns, and the reason it is a function
+// rather than an inline `split(' ')[0]`: the kitchen label and recipe
+// attribution (issue #845) both shorten a display name, and two copies drift.
+describe('membersService — firstName', () => {
+  it('takes the first word, and leaves a name that has only one alone', () => {
+    expect(firstName('Kate Pendery')).toBe('Kate');
+    expect(firstName('Daniel')).toBe('Daniel');
+    expect(firstName('Mary Jane Pendery')).toBe('Mary');
+  });
+
+  it('passes an empty name straight through', () => {
+    // `''` is a real state, not a bug: an unattributed recipe has no name to
+    // shorten, and the caller decides what to render instead.
+    expect(firstName('')).toBe('');
+  });
+
+  it('is what kitchenLabel shortens with', () => {
+    seedMembers([member({ id: 'kate@e.org', name: 'Kate Pendery' })]);
+    mockAuth.user = { email: 'kate@e.org' };
+    expect(get(kitchenLabel)).toBe("Kate's Kitchen");
   });
 });
 

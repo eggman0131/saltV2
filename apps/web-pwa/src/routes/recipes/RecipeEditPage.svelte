@@ -11,6 +11,10 @@
     DetailPage,
     Icon,
     Markdown,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
     SortableList,
     Switch,
     TextArea,
@@ -52,6 +56,7 @@
   } from '../../lib/recipeService.js';
   import { RecipeKindSchema } from '@salt/domain/schemas';
   import { canonItems } from '../../lib/canonService.js';
+  import { members, firstName } from '../../lib/membersService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { KIND_COPY, kindOf } from './recipeKind.js';
   import NotesFormattingToolbar from './NotesFormattingToolbar.svelte';
@@ -228,6 +233,46 @@
     const trimmed = value.trim();
     draft = { ...draft, source: trimmed === '' ? null : { type: 'url', url: trimmed } };
   }
+
+  // ─── "Added by" (issue #845) ────────────────────────────────────────────────
+  // The one attribution field a person may set. `createdBy` holds a snapshot of
+  // `Member.name` taken at write time, and every recipe that predates the field
+  // got its name from a backfill that could only GUESS — so the record can be
+  // wrong, and this is where it is put right.
+  //
+  // Offered only when EDITING an existing entry: on the create routes the author
+  // is whoever is typing, by definition, and `stampRecipeAttribution` writes it.
+  // That helper fills `createdBy` only when it is EMPTY, so a name chosen here
+  // survives the save untouched while `lastEditedBy` is re-stamped as usual.
+  //
+  // Pick-from-roster, never free text: the list's "Added by me" chip compares with
+  // `===` against `Member.name`, so a typo, a trimmed variant or a uid would
+  // silently stop matching. `lastEditedBy` deliberately gets no control at all —
+  // a field recording the last edit that you can type into contradicts itself.
+  // And none of this gates anything: attribution is a record, not a permission.
+  const rosterNames = $derived($members.map((m) => m.name));
+
+  // A `createdBy` that is not on the roster — a member since removed, a name from
+  // another environment — is carried as an extra option rather than dropped. The
+  // trigger is driven by the draft, so an unlisted value would still be shown and
+  // still be saved; listing it means the picker can also be OPENED on it without
+  // the current record vanishing from the choices, and correcting it stays a
+  // decision rather than a side effect of visiting the editor.
+  //
+  // De-duplicated because the NAME is the identity here, not the member id: two
+  // members called the same thing are one option, exactly as they are one answer
+  // to "added by me" on the list. Both the `Set` and the `{#each}` key operate on
+  // the FULL name — the option LABELS are shortened to first names for reading
+  // (a household shares a surname), but shortening the identity would collapse
+  // two genuinely different people into one option and one stored value.
+  const authorOptions = $derived([
+    ...new Set(draft.createdBy ? [...rosterNames, draft.createdBy] : rosterNames),
+  ]);
+
+  // Nothing to pick from is not a control: an empty roster (still loading, or a
+  // permission-denied stream) would otherwise render a dropdown that opens on
+  // nothing.
+  const showAddedBy = $derived(editingId !== null && authorOptions.length > 0);
 
   // ─── "This recipe makes…" (produces canon link) ─────────────────────────────
   // A searchable picker over the canon store: link this recipe to the grocery
@@ -1079,6 +1124,43 @@
         onValueChange={setSourceUrl}
         data-testid="recipe-source-input"
       />
+      <!-- Added by (issue #845). Beside Source because it is the same kind of
+           fact: where this entry came from. Edit-only, and a roster pick rather
+           than a text field — see the derivations above for why both. -->
+      {#if showAddedBy}
+        <div class="flex flex-col gap-1.5" data-testid="recipe-added-by">
+          <p class="text-sm font-medium">Added by</p>
+          <p class="text-xs text-muted-foreground">
+            Who the library records as having added this. Put it right if it is wrong — it decides
+            whose “Added by me” filter finds it, and nothing else.
+          </p>
+          <Select
+            value={draft.createdBy}
+            onValueChange={(v) => (draft = { ...draft, createdBy: v })}
+          >
+            <!-- The label is rendered here rather than left to the trigger's
+                 default, as everywhere else in the app: `SelectItem`s only exist
+                 while the listbox is open, so a closed Select has no registered
+                 item to resolve `displayLabel` from. The empty branch carries the
+                 same two channels as every other placeholder in Salt — colour and
+                 italic (ui-spec-v03 §3.4). -->
+            <SelectTrigger aria-label="Added by" data-testid="recipe-added-by-select">
+              <span class={draft.createdBy ? 'text-foreground' : 'text-placeholder italic'}>
+                {draft.createdBy ? firstName(draft.createdBy) : 'Not recorded'}
+              </span>
+              <Icon name="ChevronDown" size={16} class="text-muted-foreground" />
+            </SelectTrigger>
+            <SelectContent>
+              <!-- `value` and the key stay the VERBATIM `Member.name`; only the
+                   label is shortened. What is stored, compared and de-duplicated
+                   is the full name — see `authorOptions` above. -->
+              {#each authorOptions as name (name)}
+                <SelectItem value={name}>{firstName(name)}</SelectItem>
+              {/each}
+            </SelectContent>
+          </Select>
+        </div>
+      {/if}
       <!-- Produces: link this recipe to the grocery item it makes -->
       <div class="flex flex-col gap-1.5" data-testid="recipe-produces">
         <p class="text-sm font-medium">This recipe makes…</p>

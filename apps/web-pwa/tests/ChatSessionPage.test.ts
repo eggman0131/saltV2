@@ -51,6 +51,8 @@ vi.mock('../src/lib/recipeService.js', () => ({
   recipes: mockRecipes,
   authorRecipeTraced: vi.fn(),
   attachComponentToMeal: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  // Identity — attribution (#845) has its own suite; this one is about the page.
+  stampRecipeAttribution: <T>(recipe: T) => recipe,
 }));
 
 import ChatSessionPage from '../src/routes/chat/ChatSessionPage.svelte';

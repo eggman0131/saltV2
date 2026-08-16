@@ -33,6 +33,11 @@ export function emptyRecipe(id: string, now: string, kind: RecipeKind = 'recipe'
     image: null,
     createdAt: now,
     updatedAt: '',
+    // Blank until the service stamps them on save, exactly as `updatedAt` is:
+    // `packages/domain` reads no clock and knows no user, so attribution (#845)
+    // is the service layer's to fill in, not this constructor's.
+    createdBy: '',
+    lastEditedBy: '',
   };
 }
 
@@ -77,6 +82,11 @@ export function emptyRecipe(id: string, now: string, kind: RecipeKind = 'recipe'
 // onRecipeWritten trigger, so it would art-direct the copy as the dish it is no
 // longer. With all of them absent the copy gets its own hero, generated from what
 // was actually saved.
+//
+// Attribution (#845) is dropped too, and for a policy reason rather than a
+// mechanical one: a copy belongs to whoever copied it, so the source's creator is
+// deliberately NOT carried. Both fields go out blank and the service stamps the
+// copier on save, exactly as `updatedAt` works — this constructor knows no user.
 export function duplicateRecipe(source: Recipe, newId: string, now: string): Recipe {
   return {
     id: newId,
@@ -121,6 +131,10 @@ export function duplicateRecipe(source: Recipe, newId: string, now: string): Rec
     createdAt: now,
     // Blank until `persistRecipe` stamps it on save, exactly as `emptyRecipe` leaves it.
     updatedAt: '',
+    // Blank for the same reason, and see the what-carries note above: the copy is
+    // NOT credited to the original's creator.
+    createdBy: '',
+    lastEditedBy: '',
   };
 }
 

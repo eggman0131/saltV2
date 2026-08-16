@@ -60,6 +60,8 @@ Recipe {
                                    // No reader left anywhere — hero visibility is "is there a url"
   imageBrief?: string              // art-direction paragraph the current hero was generated from
   createdAt, updatedAt: string
+  createdBy: string                // .default(''); Member.name of whoever added it (#845). Audit only
+  lastEditedBy: string             // .default(''); Member.name of the last HUMAN edit. '' = none on record
 }
 
 IngredientGroup { id, name: string | null, items: Ingredient[] }   // "For the sauce"
@@ -398,6 +400,71 @@ decision), and the app-wide cook-timer alert watcher follows only the single
 session a cook page has open — so this page lists a component's timers but does
 not chime for them.
 
+## Attribution — who added it, who last edited it (issue #845)
+
+`createdBy` / `lastEditedBy` hold a **display name** (`Member.name`, snapshotted
+at write time), not a uid and not an email: there is no `uid → member` resolver
+anywhere in the repo (members are keyed by normalised email), so a name is what
+renders with zero joins, and it survives that member leaving the roster.
+
+**Audit only — the `shoppingDays.setBy` shape.** Recorded and displayed, never a
+gate: not checked on read, not pinned on update, never branched on for
+capability, availability or ordering. It is **not** per-user scoping and
+`firestore.rules` is untouched by it. Both fields are `z.string().default('')`
+rather than required or `.optional()`, because the realtime subscription skips
+documents that fail validation — a required field would have emptied a library
+full of recipes written before #845. `''` means "no attribution on record"; the
+chip is suppressed entirely rather than showing a placeholder.
+
+**Full name stored, first name shown.** Every member of one household shares a
+surname, so "Added by Kate Pendery" spends a word distinguishing nobody. The
+document keeps the **verbatim `Member.name`** and the split happens at RENDER —
+`firstName` in `membersService.ts` (the same helper `kitchenLabel` uses), applied
+by the view chip and the editor picker's labels only. Deliberately not at write
+time: the list's "Added by me" chip is a plain `===` against the stored value, so
+truncating on the way in would force the stamper, the filter, the picker and the
+backfill to agree on one truncation in four places, and would merge two people
+who share a first name into one identity. Every comparison — the chip's
+`createdBy !== lastEditedBy` test, the picker's dedupe and `{#each}` key, the
+list's filter — therefore stays on the full name. Lossless, and no migration.
+
+Where each field is stamped — every write path, and nothing else writes them:
+
+| Write path | `createdBy` | `lastEditedBy` |
+| --- | --- | --- |
+| `persistRecipe` (`recipeService.ts`) — editor save, ingredient re-match, review-clear, `attachComponentToMeal`, the e2e seed hook | filled if blank, never re-pointed | re-stamped on every write |
+| `authorRecipeFromChat` (`chatRecipeAuthor.ts`) — writes via `saveRecipeDoc`, not `persistRecipe` | filled (a new dish) | stamped |
+| `applyRecipeAmendment` (`recipeAmend.ts`) — confirming a chat amend or a ⋮ → Refresh IS the human edit | carried from the base recipe, untouched | stamped with the amender |
+| `duplicateRecipe` (domain) | blank — a copy belongs to whoever copied it, not to the original's author | blank |
+| `assembleRecipeDraft` (CF) | carried from `baseRecipe`, `''` on a create | carried from `baseRecipe`, `''` on a create |
+| `persistImportedRecipe` (CF, #616) | **unattributed on purpose** — the client stamps it on the save out of the editor the import drops you into | unattributed |
+| `onRecipeWritten` (CF) | never | **never** — a generated hero is not an edit |
+| The editor's "Added by" picker (`RecipeEditPage.svelte`) — the ONE user-editable path | set to the picked roster name, which then survives the save because `stampRecipeAttribution` only fills a blank | untouched by the picker; re-stamped by the save that follows, like any other edit |
+| `scripts/backfill-recipe-attribution.mjs` — the one-off #845 pass | filled if blank, by field-level `PATCH` | **never** — nobody knows who last edited a pre-#845 recipe, and inventing it is worse than silence |
+
+All three client stamps go through the one `stampRecipeAttribution` helper in
+`recipeService.ts`, which fills `createdBy` only when it is empty and rewrites
+`lastEditedBy` every time. When no name is available — the roster has not synced,
+or the signed-in email is not on it — it leaves **both** fields exactly as they
+were: a placeholder ("Unknown") reads as a person, and clobbering a real creator
+because a store had not settled is worse than recording nothing. The domain
+builders stay identity-free for the same reason they read no clock.
+
+**Correcting the record.** The backfill asserted something it could only guess at,
+so `createdBy` is editable — a roster picker in the editor, shown only when
+editing an entry that already exists (on the create routes the author is whoever
+is typing). It is a **pick, never free text**: the list's "Added by me" chip is a
+plain `===` against `Member.name`, so a typo or a uid would silently stop
+matching. A `createdBy` that is no longer on the roster is offered as an extra
+option rather than dropped, so merely opening the editor cannot erase a record.
+`lastEditedBy` gets no control at all — a field recording the last edit that you
+can type into contradicts itself.
+
+Note what a correction reads as afterwards: re-attributing a recipe to someone
+else is itself a save, so it stamps **you** as the last editor and the chip
+becomes "Added by Kate · edited by Daniel". That is the intended rendering, not a
+bug — the second half appears precisely when the last editor is not the creator.
+
 ## Duplicating a recipe (issue #735)
 
 `duplicateRecipe(source, newId, now)` in
@@ -408,8 +475,10 @@ the UI, and nothing is written to Firestore until the user hits Save. Duplicate 
 **unconditional** — every `kind` can be copied, and the copy is the same kind.
 
 What the code shows: `title` gains `" (copy)"`, `id` and `createdAt` are replaced,
-`updatedAt` is left blank for `persistRecipe`, `producesCanonId` resets, and
-everything else rides along. What the code cannot say is **why the image cannot**:
+`updatedAt` is left blank for `persistRecipe`, `producesCanonId` resets,
+`createdBy` / `lastEditedBy` go out blank (a copy belongs to whoever copied it —
+see "Attribution" above), and everything else rides along. What the code cannot
+say is **why the image cannot**:
 
 - **`image` must not carry.** `imageNeedsGeneration` in `onRecipeWritten.ts`
   returns `false` the moment `after.image !== null`, so a copied `image` leaves the

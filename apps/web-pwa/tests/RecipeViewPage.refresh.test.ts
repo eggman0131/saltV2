@@ -107,6 +107,8 @@ vi.mock('../src/lib/recipeService.js', () => ({
   persistRecipe: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   stashImportedDraft: vi.fn(),
   authorRecipeTraced: vi.fn(),
+  // Identity — attribution (#845) has its own suite; this one is about the page.
+  stampRecipeAttribution: <T>(recipe: T) => recipe,
   regenerateRecipeImage: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   reviseRecipeSceneBrief: vi.fn(),
   startOverRecipeSceneBrief: vi.fn(),
