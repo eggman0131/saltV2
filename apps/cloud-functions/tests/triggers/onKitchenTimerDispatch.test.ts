@@ -19,11 +19,14 @@ vi.mock('firebase-functions', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
+// Only the TRANSPORT is faked. `isApplePushEndpoint` is kept real, because the
+// routing assertions below are meaningless against a stubbed one — the whole
+// point is which endpoint lands in which channel — and because a hand-rolled
+// stub would be a substring check where the real one parses the hostname.
 const mockSendWebPush = vi.fn(async () => 'sent' as const);
-const mockIsApple = vi.fn((endpoint: string) => endpoint.includes('push.apple.com'));
-vi.mock('../../src/adapters/sendWebPush.js', () => ({
+vi.mock('../../src/adapters/sendWebPush.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/adapters/sendWebPush.js')>()),
   sendWebPush: mockSendWebPush,
-  isApplePushEndpoint: (e: string) => mockIsApple(e),
 }));
 
 const mockSendPushover = vi.fn(async () => 'sent' as const);
