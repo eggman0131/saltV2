@@ -607,6 +607,15 @@ export { onCookTimerDispatch } from './triggers/onCookTimerDispatch.js';
 // permissions before it will provision (see the cook timer's own history).
 export { onBatchWritten } from './triggers/onBatchWritten.js';
 export { onBatchStageDispatch } from './triggers/onBatchStageDispatch.js';
+// Standalone kitchen timers (issue #842) — the same Cloud Tasks pair again, for a
+// timer that belongs to nobody's cook. NOTE for deploys: `onKitchenTimerDispatch`
+// is a THIRD task queue. Both existing queue functions are confirmed live in
+// staging, so the deployer service account already carries the Cloud Tasks
+// permissions — but watch the first deploy, because a failed queue-create leaves
+// the function reporting "Skipped (No changes detected)" for ever with no queue
+// behind it.
+export { onKitchenTimerWrite } from './triggers/onKitchenTimerWrite.js';
+export { onKitchenTimerDispatch } from './triggers/onKitchenTimerDispatch.js';
 export { regenerateCanonIcon } from './callables/regenerateCanonIcon.js';
 export { regenerateRecipeImage } from './callables/regenerateRecipeImage.js';
 export { setRecipeImageUpload } from './callables/setRecipeImageUpload.js';
