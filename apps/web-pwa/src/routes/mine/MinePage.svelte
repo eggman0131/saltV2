@@ -22,6 +22,8 @@
     formatClock,
     timerHeat,
     timerProgress,
+    withKitchenTimerDismissed,
+    withKitchenTimerStarted,
     withTimerDismissed,
     type Recipe,
     type TimerHeat,
@@ -36,23 +38,34 @@
     tonight,
     upcomingChefNights,
     type LiveCook,
+    type MineKitchenTimer,
     type MineTimer,
     type UpcomingChefNight,
   } from '../../lib/personalViewService.js';
   import { subscribeKitchenWeeks } from '../../lib/mealPlanService.js';
   import { persistCookSession, removeCookSession } from '../../lib/cookSessionService.js';
+  import { getKitchenTimersSnapshot, persistKitchenTimers } from '../../lib/kitchenTimerService.js';
   import { persistRecipe, recipes } from '../../lib/recipeService.js';
   import { addToast } from '../../lib/toastStore.js';
+  import { primeChime } from '../../lib/chime.js';
+  import {
+    AD_HOC_TIMER_LABEL,
+    AD_HOC_TIMER_MINUTES,
+    shouldNotifyFor,
+  } from '../../lib/timerDefaults.js';
+  import CookTimerSheet from '../recipes/CookTimerSheet.svelte';
   import {
     kitchenPrefs,
     type KitchenDensity,
     type KitchenSection,
   } from '../../lib/kitchenDashboardPrefs.svelte.js';
 
-  // "My Kitchen" (issues #634, #682, #755, #843) — what of mine is running right
-  // now, what is coming at me, and what needs a look. Five sections, in order:
+  // "My Kitchen" (issues #634, #682, #755, #843, #842) — what of mine is running
+  // right now, what is coming at me, and what needs a look. Five sections, in
+  // order:
   //
-  //   1. Timers       — running and fired-but-undismissed, in one list
+  //   1. Timers       — running and fired-but-undismissed, in one list, from a
+  //                     cook or from nobody's cook at all; plus Start a timer
   //   2. Cooking now  — my open cook sessions
   //   3. Cooking soon — the nights from today onward that I am chef on
   //   4. Needs review — entries flagged `needs_approval`
@@ -88,7 +101,11 @@
     label: string;
     description: string;
   }> = [
-    { key: 'timers', label: 'Timers', description: 'Running and finished cook timers.' },
+    {
+      key: 'timers',
+      label: 'Timers',
+      description: 'Running and finished timers, and the button that starts one.',
+    },
     { key: 'live', label: 'Cooking now', description: 'Cooks you have open right now.' },
     { key: 'upcoming', label: 'Cooking soon', description: 'Nights from today you are chef on.' },
     { key: 'review', label: 'Needs review', description: "AI imports nobody's read yet." },
@@ -188,12 +205,119 @@
   // timer bar; the two surfaces must never disagree about what a timer is doing.
   const remainingMs = (t: MineTimer, now: number) => Date.parse(t.timer.endsAt) - now;
 
-  // Cancel and Dismiss are the SAME write: `withTimerDismissed` drops the timer's
-  // entry unconditionally, so the two labels are one operation seen from either
-  // side of `endsAt`. Whole-document LWW, exactly as cook mode persists it.
+  // Cancel and Dismiss are the SAME write for both kinds: the producer drops the
+  // timer's entry unconditionally, so the two labels are one operation seen from
+  // either side of `endsAt`. Whole-document LWW, exactly as cook mode persists
+  // it. Which DOCUMENT is written is the only thing the kind decides — a cook
+  // timer lives in its session, a standalone one in my kitchen-timers doc.
   async function dismissTimer(t: MineTimer): Promise<void> {
-    const result = await persistCookSession(withTimerDismissed(t.session, t.timer.id));
+    const result =
+      t.kind === 'cook'
+        ? await persistCookSession(withTimerDismissed(t.session, t.timer.id))
+        : await dismissKitchenTimer(t.timer.id);
     if (result.kind !== 'ok') addToast("Couldn't update that timer.", 'destructive');
+  }
+
+  async function dismissKitchenTimer(timerId: string) {
+    const doc = getKitchenTimersSnapshot();
+    // Signed out mid-gesture. Nothing to write and nothing to say — the page is
+    // about to go with the session.
+    if (!doc) return { kind: 'ok' as const, value: undefined };
+    return persistKitchenTimers(withKitchenTimerDismissed(doc, timerId));
+  }
+
+  // ─── Standalone timers (issue #842) ───────────────────────────────────────
+  // A timer that belongs to nobody's cook. It renders in the list above beside
+  // the cook timers and is not marked out as a different species — the only
+  // visible difference is that it has no cook to go to.
+  //
+  // The SHEET is cook mode's own (`../recipes/CookTimerSheet.svelte`), imported
+  // rather than copied: it already takes a name and a number and hands back a
+  // name and a number, knowing nothing about ids, sessions or — as it turns out
+  // — cooks. Minting the id, reading the clock and writing the document stay
+  // here, which is exactly the contract its header states.
+  interface TimerSheetTarget {
+    id: string;
+    label: string;
+    durationMinutes: number;
+    running: boolean;
+  }
+  let timerSheetOpen = $state(false);
+  let timerSheetTarget = $state<TimerSheetTarget | null>(null);
+  const timerSheetPrefill = $derived({
+    label: timerSheetTarget?.label ?? AD_HOC_TIMER_LABEL,
+    durationMinutes: timerSheetTarget?.durationMinutes ?? AD_HOC_TIMER_MINUTES,
+  });
+
+  // A brand-new timer. Its id is minted here because there is no step and no
+  // session to borrow one from.
+  function openNewTimerSheet(): void {
+    timerSheetTarget = {
+      id: crypto.randomUUID(),
+      label: AD_HOC_TIMER_LABEL,
+      durationMinutes: AD_HOC_TIMER_MINUTES,
+      running: false,
+    };
+    timerSheetOpen = true;
+  }
+
+  // One already counting down. Prefilled with what is LEFT on it, not what it was
+  // originally set for — which is the opposite of cook mode's own running-timer
+  // sheet, deliberately, because the two are re-timing different things.
+  //
+  // There, the number is a STEP's duration and the gesture is "run that step
+  // again"; here there is no step, and the gesture is "give it a bit longer".
+  // Confirming always sets `endsAt = now + minutes`, so a timer with six minutes
+  // left that is nudged to eleven has been given another five — whereas prefilling
+  // the original twenty would have turned a nudge into a jump from six minutes
+  // remaining to twenty-five.
+  //
+  // Rounded UP to the whole minute, so nudging never silently shaves seconds off.
+  // Once it has fired there is nothing left to carry over, and the length it was
+  // set for is the only sensible offer: tapping a finished timer runs it again.
+  function openRunningTimerSheet(t: MineKitchenTimer): void {
+    const remaining = Date.parse(t.timer.endsAt) - Date.now();
+    timerSheetTarget = {
+      id: t.timer.id,
+      label: t.timer.label,
+      durationMinutes: remaining > 0 ? Math.ceil(remaining / 60_000) : t.timer.durationMinutes,
+      running: true,
+    };
+    timerSheetOpen = true;
+  }
+
+  function confirmTimerSheet(next: { label: string; durationMinutes: number }): void {
+    const target = timerSheetTarget;
+    if (!target) return;
+    const doc = getKitchenTimersSnapshot();
+    if (!doc) return;
+    // Unlock the audio context on this user gesture so the app-level watcher can
+    // chime when the timer ends, even on iOS Safari (which blocks audio not tied
+    // to a gesture). Starting a timer is the only gesture guaranteed to precede
+    // a chime, which is why this sits here and the chime itself does not.
+    primeChime();
+    const now = Date.now();
+    // `endsAt` is computed HERE, never in the domain producer, which reads no
+    // clock (CLAUDE.md Rule 1). Replacing any entry with the same id is the
+    // producer's job — which is also all "re-time a running timer" is. `notify`
+    // re-derives from the duration actually being started, so one stretched over
+    // the floor gains its push backstop and one cut under it loses it.
+    void persistKitchenTimers(
+      withKitchenTimerStarted(
+        doc,
+        {
+          id: target.id,
+          // An emptied name is no name, and a standalone timer has no step to
+          // fall back to — so it falls back to the same default the sheet
+          // offered in the first place.
+          label: next.label === '' ? AD_HOC_TIMER_LABEL : next.label,
+          endsAt: new Date(now + next.durationMinutes * 60_000).toISOString(),
+          durationMinutes: next.durationMinutes,
+          notify: shouldNotifyFor(next.durationMinutes),
+        },
+        now,
+      ),
+    );
   }
 
   // ─── Cooking now ──────────────────────────────────────────────────────────
@@ -291,6 +415,24 @@
   }
 </script>
 
+<!-- The two lines inside a timer card, shared by both kinds so a standalone timer
+     is not marked out as a different species. Only the tail differs: a cook timer
+     names its recipe, a standalone one names what tapping it does. -->
+{#snippet timerBody(label: string, heat: TimerHeat, tail: string)}
+  <p class="text-sm font-semibold text-foreground" data-testid="mine-timer-label">
+    {label}
+  </p>
+  <p class="mt-0.5 truncate text-xs text-muted-foreground">
+    <span
+      class="font-mono text-[10px] font-semibold uppercase tracking-wider {HEAT_TEXT[heat]}"
+      data-testid="mine-timer-state"
+    >
+      {HEAT_WORD[heat]}
+    </span>
+    <span aria-hidden="true"> · </span>{tail}
+  </p>
+{/snippet}
+
 <section class="flex flex-col {outerGap} p-4 sm:p-6" data-testid="mine-page">
   <header class="flex flex-col gap-3">
     <div class="flex items-start justify-between gap-3">
@@ -335,16 +477,33 @@
     {/if}
   </header>
 
-  <!-- 1. Timers — running and finished together, soonest first. The dial IS the
-       progress: no bar underneath. A finished timer stays until dismissed. -->
-  {#if kitchenPrefs.sections.timers && $myTimers.length > 0}
+  <!-- 1. Timers — running and finished together, soonest first, and from a cook
+       or from nobody's cook at all. The dial IS the progress: no bar underneath.
+       A finished timer stays until dismissed.
+
+       The section renders whenever the kitchen is BUSY, not merely when a timer
+       exists, because it carries the "Start a timer" action — which has to be
+       reachable whether or not anything is running. When the kitchen is quiet
+       the quiet screen below carries the same action, larger. -->
+  {#if kitchenPrefs.sections.timers && !allClear}
     <div
       class="flex scroll-mt-4 flex-col {listGap}"
       id="mine-section-timers"
       tabindex="-1"
       data-testid="mine-timers"
     >
-      <h2 class="text-sm font-medium text-muted-foreground">Timers</h2>
+      <div class="flex items-center justify-between gap-3">
+        <h2 class="text-sm font-medium text-muted-foreground">Timers</h2>
+        <Button
+          variant="outline"
+          size="sm"
+          onclick={openNewTimerSheet}
+          data-testid="mine-timer-start"
+        >
+          {#snippet leading()}<Icon name="Timer" size={14} />{/snippet}
+          Start a timer
+        </Button>
+      </div>
       {#each $myTimers as t (t.id)}
         {@const remaining = remainingMs(t, $timerNowMs)}
         {@const heat = timerHeat(remaining)}
@@ -357,22 +516,26 @@
                 {fired ? '—' : formatClock(remaining)}
               </span>
             </Dial>
-            <div class="min-w-0 flex-1">
-              <p class="text-sm font-semibold text-foreground" data-testid="mine-timer-label">
-                {t.label}
-              </p>
-              <p class="mt-0.5 truncate text-xs text-muted-foreground">
-                <span
-                  class="font-mono text-[10px] font-semibold uppercase tracking-wider {HEAT_TEXT[
-                    heat
-                  ]}"
-                  data-testid="mine-timer-state"
-                >
-                  {HEAT_WORD[heat]}
-                </span>
-                <span aria-hidden="true"> · </span>{t.recipe.title}
-              </p>
-            </div>
+            {#if t.kind === 'cook'}
+              <div class="min-w-0 flex-1">
+                {@render timerBody(t.label, heat, t.recipe.title)}
+              </div>
+            {:else}
+              <!-- A standalone timer is adjusted by tapping it — rename it,
+                   stretch it, cut it short, while it is running. The text region
+                   IS the control: with no cook to go to there is no second
+                   button for it to compete with, and the state line has a slot
+                   free where a cook timer names its recipe. -->
+              <button
+                type="button"
+                class="min-w-0 flex-1 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onclick={() => openRunningTimerSheet(t)}
+                aria-label={`Adjust ${t.label}`}
+                data-testid="mine-timer-edit"
+              >
+                {@render timerBody(t.label, heat, 'Tap to adjust')}
+              </button>
+            {/if}
             <div class="flex shrink-0 items-center gap-1">
               <Button
                 size="icon"
@@ -384,16 +547,18 @@
               >
                 <Icon name={fired ? 'Check' : 'X'} size={17} />
               </Button>
-              <Button
-                size="icon"
-                variant="outline"
-                ariaLabel={`Open the cook for ${t.recipe.title}`}
-                title="Open cook"
-                onclick={() => push(`/recipes/${t.recipe.id}/cook`)}
-                data-testid="mine-timer-goto"
-              >
-                <Icon name="ArrowRight" size={17} />
-              </Button>
+              {#if t.kind === 'cook'}
+                <Button
+                  size="icon"
+                  variant="outline"
+                  ariaLabel={`Open the cook for ${t.recipe.title}`}
+                  title="Open cook"
+                  onclick={() => push(`/recipes/${t.recipe.id}/cook`)}
+                  data-testid="mine-timer-goto"
+                >
+                  <Icon name="ArrowRight" size={17} />
+                </Button>
+              {/if}
             </div>
           </div>
         </Card>
@@ -621,18 +786,36 @@
             >
               See the plan
             </Button>
+            <!-- Present on the quiet screen whether or not there is a dinner on
+                 it: the commonest reason to want a timer is that nothing is
+                 cooking. -->
+            <Button variant="outline" onclick={openNewTimerSheet} data-testid="mine-timer-start">
+              {#snippet leading()}<Icon name="Timer" size={16} />{/snippet}
+              Start a timer
+            </Button>
           </div>
         </div>
       </Card>
     {:else}
       <Card class="p-4">
-        <div class="flex items-center gap-3" data-testid="mine-empty">
-          <Icon name="CircleCheck" size={20} class="text-primary" />
+        <div class="flex flex-col gap-3" data-testid="mine-empty">
+          <div class="flex items-center gap-3">
+            <Icon name="CircleCheck" size={20} class="text-primary" />
+            <div>
+              <p class="text-sm font-medium text-foreground">You're all caught up</p>
+              <p class="text-xs text-muted-foreground">
+                No timers, no cook on the go, no nights of yours coming up, nothing to review.
+              </p>
+            </div>
+          </div>
+          <!-- The main offer on a genuinely quiet screen. "Boil an egg" is a
+               thing to want from a kitchen with nothing else in it, and until now
+               it needed a cook to hang itself on. -->
           <div>
-            <p class="text-sm font-medium text-foreground">You're all caught up</p>
-            <p class="text-xs text-muted-foreground">
-              No timers, no cook on the go, no nights of yours coming up, nothing to review.
-            </p>
+            <Button onclick={openNewTimerSheet} data-testid="mine-timer-start">
+              {#snippet leading()}<Icon name="Timer" size={16} />{/snippet}
+              Start a timer
+            </Button>
           </div>
         </div>
       </Card>
@@ -666,6 +849,17 @@
     </div>
   {/if}
 </section>
+
+<!-- Cook mode's own timer sheet, imported across routes rather than copied or
+     promoted to @salt/ui-components: it is app-specific domain UI, not a
+     primitive, and it already knows nothing about the session it was written
+     beside. -->
+<CookTimerSheet
+  bind:open={timerSheetOpen}
+  prefill={timerSheetPrefill}
+  running={timerSheetTarget?.running ?? false}
+  onConfirm={confirmTimerSheet}
+/>
 
 <Sheet bind:open={customizeOpen} side="bottom">
   <SheetContent class="flex max-h-[85vh] flex-col gap-4 overflow-y-auto p-4 pb-8">

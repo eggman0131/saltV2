@@ -32,6 +32,7 @@
   import { initWeatherSync } from './lib/weatherService.js';
   import { initCookTimerAlerts } from './lib/cookTimerAlerts.js';
   import { initMyCookSessionsSync } from './lib/cookSessionService.js';
+  import { initKitchenTimerSync } from './lib/kitchenTimerService.js';
   import { runPendingShareImport } from './lib/shareTarget.js';
   import { envBanner } from './lib/environment.js';
   import SessionOverlay from './lib/dev/SessionOverlay.svelte';
@@ -53,6 +54,11 @@
     // My open cook sessions (issue #634). App-wide rather than page-local: the
     // "resume a cook" card and its nav badge have to be answerable from any page.
     const unsubMyCooks = initMyCookSessionsSync(auth.user.uid);
+    // Standalone kitchen timers (issue #842). App-wide for the same two reasons
+    // as the cooks above: the nav badge counts a fired timer from any page, and
+    // the chime watcher below has to be able to ring one that finishes while the
+    // chef is somewhere else entirely.
+    const unsubKitchenTimers = initKitchenTimerSync(auth.user.uid);
     const unsubDevSettings = initDevSettingsSync();
     const unsubAppSettings = initAppSettingsSync();
     const unsubWeather = initWeatherSync();
@@ -71,6 +77,7 @@
       unsubRecipes();
       unsubChat();
       unsubMyCooks();
+      unsubKitchenTimers();
       unsubDevSettings();
       unsubAppSettings();
       unsubWeather();

@@ -364,6 +364,12 @@ export type {
   NextStepLookahead,
 } from './cookSession/index.js';
 
+// Kitchen-timer module (issue #842) — a timer that belongs to nobody's cook.
+// Its own two-line module rather than more surface on the cook-session one:
+// nothing here reads a session, and a standalone timer's whole point is that
+// there is no cook to hang it on.
+export { withKitchenTimerStarted, withKitchenTimerDismissed } from './kitchenTimer/index.js';
+
 // Shopping-day module (issue #629) — pure helpers over `shoppingDays/{date}`:
 // the planner's pre-shop shading predicate, the reminder's "tomorrow in zone"
 // projection, and the one-shop-per-week reducer. No I/O, no clock.

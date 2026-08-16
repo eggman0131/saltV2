@@ -3,10 +3,12 @@ import { push } from 'svelte-spa-router';
 import { isCheckInTimerId } from '@salt/domain';
 import type { CookSessionDoc } from '@salt/domain/schemas';
 import { cookSession } from './cookSessionService.js';
+import { kitchenTimers } from './kitchenTimerService.js';
 import { addToast } from './toastStore.js';
 import { playChime } from './chime.js';
 
-// App-level cook-timer alerts (issue #544 follow-up). The chime used to live in
+// App-level timer alerts (issue #544 follow-up; standalone timers, #842). The
+// chime used to live in
 // CookModePage, which left a hole: a timer finishing while the chef was on the
 // shopping list alerted NOWHERE. push-sw.js suppresses the OS notification
 // whenever any window client is visible, and the cook page — the only thing that
@@ -42,6 +44,24 @@ function timerKey(sessionId: string, timerId: string, endsAt: string): string {
   return `${sessionId}::${timerId}@${endsAt}`;
 }
 
+// Standalone timers key off the same builder with a reserved prefix in place of
+// a session id, so both kinds share ONE dedupe map and a timer can never be
+// alerted twice by two sets that disagree. `kitchen::` cannot collide with a
+// cook session id, which is always `${recipeId}_${uid}`.
+function kitchenTimerKey(timerId: string, endsAt: string): string {
+  return timerKey('kitchen', timerId, endsAt);
+}
+
+// Where My Kitchen lives, and whether the chef is looking at it. A standalone
+// timer's card flips to "Finished" on that page in front of them, which is the
+// same thing that earns a cook timer's chip its suppression on the cook page.
+const KITCHEN_PATH = '/mine';
+
+function viewingKitchen(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.location.hash === `#${KITCHEN_PATH}`;
+}
+
 function plainCookPath(session: CookSessionDoc): string {
   return `/recipes/${session.recipeId}/cook`;
 }
@@ -61,9 +81,11 @@ function viewedCookPath(session: CookSessionDoc): string | null {
 }
 
 export function initCookTimerAlerts(): () => void {
-  // Both sets are keyed by session + timer id + end-time, so adjusting a timer
-  // (which changes `endsAt`) is a new timer to be alerted for, and a re-armed
-  // timer on a later cook is never mistaken for one already handled.
+  // Both sets are keyed by owner (a session id, or the reserved `kitchen`) +
+  // timer id + end-time, so adjusting a timer (which changes `endsAt`) is a new
+  // timer to be alerted for, and a re-armed timer on a later cook is never
+  // mistaken for one already handled. ONE pair of sets for both kinds: a timer
+  // must be alerted once, not once per watcher.
   const observedRunning = new Set<string>();
   const alerted = new Set<string>();
   // The cook page this session was last seen on, so "Back to the cook" returns the
@@ -73,7 +95,53 @@ export function initCookTimerAlerts(): () => void {
   // second cook never inherits the first one's route.
   let lastSeenOn: { sessionId: string; path: string } | null = null;
 
+  // The one place a fire is decided, shared by both kinds of timer. Answers
+  // "should this timer alert right now?" and marks it resolved either way, so a
+  // fire discovered late stays silent rather than surfacing on some later tick.
+  // Returns false when there is nothing to announce.
+  function claimFire(key: string, endsAtMs: number, now: number): boolean {
+    if (endsAtMs > now) {
+      observedRunning.add(key);
+      return false;
+    }
+    // Never seen running — it finished before this watcher was here (a fresh
+    // load, or the timer was started on another device), so it was never ours to
+    // announce. Already alerted — nothing more to do.
+    if (!observedRunning.has(key) || alerted.has(key)) return false;
+    alerted.add(key);
+    return now - endsAtMs <= GRACE_MS;
+  }
+
   function check(): void {
+    checkCookTimers();
+    checkKitchenTimers();
+  }
+
+  // Standalone timers (issue #842) — no cook, so no session to re-read and
+  // nowhere to send the chef back to except the kitchen they started it from.
+  // A separate pass rather than more branches inside the cook one: the two share
+  // the dedupe sets and the grace window, and nothing else.
+  function checkKitchenTimers(): void {
+    const doc = get(kitchenTimers);
+    if (!doc) return;
+    const now = Date.now();
+    const onKitchen = viewingKitchen();
+    for (const timer of doc.timers) {
+      const key = kitchenTimerKey(timer.id, timer.endsAt);
+      if (!claimFire(key, new Date(timer.endsAt).getTime(), now)) continue;
+      playChime();
+      // Standing on My Kitchen, the card flips to "Finished" in front of the
+      // chef — the same visible acknowledgement that suppresses a cook timer's
+      // toast on the cook page. Anywhere else the toast carries the way back.
+      if (onKitchen) continue;
+      addToast(timer.label, 'default', {
+        duration: TOAST_MS,
+        action: { label: 'Go to the kitchen', onClick: () => push(KITCHEN_PATH) },
+      });
+    }
+  }
+
+  function checkCookTimers(): void {
     const session = get(cookSession);
     if (!session) return;
     const now = Date.now();
@@ -83,19 +151,7 @@ export function initCookTimerAlerts(): () => void {
       lastSeenOn?.sessionId === session.id ? lastSeenOn.path : plainCookPath(session);
     for (const timer of session.activeTimers) {
       const key = timerKey(session.id, timer.id, timer.endsAt);
-      const endsAtMs = new Date(timer.endsAt).getTime();
-      if (endsAtMs > now) {
-        observedRunning.add(key);
-        continue;
-      }
-      // Never seen running — it finished before this watcher was here (a fresh
-      // load, or the cook picked up on another device), so it was never ours to
-      // announce. Already alerted — nothing more to do.
-      if (!observedRunning.has(key) || alerted.has(key)) continue;
-      // Marked resolved whether or not it alerts, so a fire discovered late stays
-      // silent rather than surfacing on some later tick.
-      alerted.add(key);
-      if (now - endsAtMs > GRACE_MS) continue;
+      if (!claimFire(key, new Date(timer.endsAt).getTime(), now)) continue;
       playChime();
       // What it says on the lock screen, said here too: the timer's own name, which
       // for a guided check-in IS the reminder ("Check the heat"). Announcing every

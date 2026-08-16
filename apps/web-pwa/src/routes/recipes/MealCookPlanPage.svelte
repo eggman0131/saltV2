@@ -39,7 +39,7 @@
     liveCooks,
     myTimers,
     type LiveCook,
-    type MineTimer,
+    type MineCookTimer,
   } from '../../lib/personalViewService.js';
   import {
     kitchenAnchorDate,
@@ -244,14 +244,20 @@
   // five most recently updated sessions, so "every timer across the whole meal" is
   // bounded by that. Raising the cap is a shared personal-view decision with its own
   // blast radius, not something this page gets to do on its own.
+  //
+  // Standalone kitchen timers (issue #842) ride the same list and are filtered
+  // out here by kind: a timer that belongs to nobody's cook belongs to no meal
+  // either, and this page is a meal's timers. My Kitchen is where those live.
   const mealTimers = $derived(
-    $myTimers.filter((t) => rowRecipes.some((r) => r.id === t.recipe.id)),
+    $myTimers.filter(
+      (t): t is MineCookTimer => t.kind === 'cook' && rowRecipes.some((r) => r.id === t.recipe.id),
+    ),
   );
 
   // Cancel and Dismiss are ONE write, exactly as they are in Kitchen and in cook
   // mode's own timer bar: `withTimerDismissed` drops the entry either side of
   // `endsAt`. There is no second timer mechanism on this page.
-  async function dismissTimer(t: MineTimer): Promise<void> {
+  async function dismissTimer(t: MineCookTimer): Promise<void> {
     const result = await persistCookSession(withTimerDismissed(t.session, t.timer.id));
     if (result.kind !== 'ok') addToast("Couldn't update that timer.", 'destructive');
   }

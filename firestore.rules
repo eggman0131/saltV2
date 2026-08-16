@@ -292,7 +292,7 @@ service cloud.firestore {
     match /emailOtps/{emailHash} {
       allow read, write: if false;
     }
-    // Web-push subscriptions for cook-timer notifications (issue #544). The THIRD
+    // Web-push subscriptions for cook-timer notifications (issue #544). The third
     // owner-scoped collection (see the "Per-user exceptions" note in CLAUDE.md /
     // docs/salt-architecture.md) — one doc per device, id `${uid}_${deviceHash}`,
     // ownerUid pinned on update so a device can't be reassigned to another user.
@@ -310,17 +310,41 @@ service cloud.firestore {
         && resource.data.ownerUid == request.auth.uid
         && request.resource.data.ownerUid == resource.data.ownerUid;
     }
+    // Standalone kitchen timers (issue #842). The FOURTH owner-scoped collection
+    // (see the "Per-user exceptions" note in CLAUDE.md / docs/salt-architecture.md)
+    // — one doc per user holding an array of timers that belong to nobody's cook.
+    //
+    // NO `resource == null` CLAUSE, DELIBERATELY, and it must not be "restored".
+    // cookSessions and pushSubscriptions both need one because their ids are
+    // COMPOSITE and the client subscribes before the doc exists, so a rule that
+    // dereferenced `resource.data` on an absent document would be denied and kill
+    // the listener for good (#558). Here the document id simply IS the uid, so
+    // ownership is provable from the path and no rule below ever dereferences
+    // `resource.data` at all — the absent-document problem cannot arise. Adding
+    // the clause would be cargo-cult.
+    //
+    // The `ownerUid` FIELD is still stored and still pinned on write, because
+    // onKitchenTimerDispatch reads it off the parsed document to target
+    // pushSubscriptions — so the send target is proven by the same document that
+    // armed the timer, exactly as onCookTimerDispatch reads `session.ownerUid`.
+    match /kitchenTimers/{ownerUid} {
+      allow read, delete: if request.auth != null && ownerUid == request.auth.uid;
+      allow create, update: if request.auth != null
+        && ownerUid == request.auth.uid
+        && request.resource.data.ownerUid == request.auth.uid;
+    }
     // Server-owned exactly-once delivery ledger (issue #544). Written and read
     // only by the Admin SDK senders, to dedupe Cloud Tasks retries + duplicate
     // enqueues. Deliberately a SEPARATE doc from whatever caused the send (never
     // a write-back onto a client-owned document — full-doc setDoc LWW would
     // clobber it). No client ever touches it.
     //
-    // TWO PRODUCERS, ONE COLLECTION (issue #812): onCookTimerDispatch keys
-    // `${sessionId}_${timerId}_${endsAtMs}`, onBatchStageDispatch keys
-    // `batch_${batchId}_${stageId}_${plannedStartAtMs}`. Same rules, same kind,
-    // same purpose — a twin collection would be duplication, so this block covers
-    // both and needs no change to do it.
+    // SEVERAL PRODUCERS, ONE COLLECTION (issues #812, #842): onCookTimerDispatch
+    // keys `${sessionId}_${timerId}_${endsAtMs}`, onBatchStageDispatch keys
+    // `batch_${batchId}_${stageId}_${plannedStartAtMs}`, onKitchenTimerDispatch
+    // keys `kitchen_${uid}_${timerId}_${endsAtMs}`. Same rules, same kind, same
+    // purpose — a twin collection would be duplication, so this block covers all
+    // of them and has needed no change to do it. A fourth prefix goes here too.
     match /timerDeliveries/{deliveryId} {
       allow read, write: if false;
     }

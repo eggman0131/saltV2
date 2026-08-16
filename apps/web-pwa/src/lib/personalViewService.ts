@@ -9,11 +9,17 @@ import {
   type Recipe,
 } from '@salt/domain';
 import type { Day } from '@salt/domain';
-import type { ChatSessionDoc, CookActiveTimerDoc, CookSessionDoc } from '@salt/domain/schemas';
+import type {
+  ChatSessionDoc,
+  CookActiveTimerDoc,
+  CookSessionDoc,
+  KitchenTimerDoc,
+} from '@salt/domain/schemas';
 import { derived, readable } from 'svelte/store';
 import type { Readable } from 'svelte/store';
 import { recipes } from './recipeService.js';
 import { myCookSessions } from './cookSessionService.js';
+import { kitchenTimers } from './kitchenTimerService.js';
 import { sessions } from './chatService.js';
 import { kitchenAnchorDate, kitchenWeeks } from './mealPlanService.js';
 import { currentMember } from './membersService.js';
@@ -28,7 +34,8 @@ import { currentMember } from './membersService.js';
 // is deliberately not a restatement: WHICH NIGHTS ARE MINE, across however many
 // weeks that run of days spans, is a projection the planner cannot render,
 // because the planner renders weeks and a personal run of nights does not stop at
-// the end of one. The rest is my step timers, my open cooks, the standing queue
+// the end of one. The rest is my timers — from a cook, or from nobody's cook at
+// all (issue #842) — my open cooks, the standing queue
 // of entries flagged `needs_approval`, and — last, and out of the badge — a short
 // list of recent chats, which is a shortcut rather than something waiting on you.
 //
@@ -42,27 +49,51 @@ import { currentMember } from './membersService.js';
 // on it, so a page that is not open costs nothing.
 //
 // This module issues no writes of its own; the commands the page fires (dismiss a
-// timer, cancel a cook, mark a recipe reviewed) go through cookSessionService and
-// recipeService, which report per the observability gate
+// timer, cancel a cook, mark a recipe reviewed) go through cookSessionService,
+// kitchenTimerService and recipeService, which report per the observability gate
 // (docs/salt-architecture.md §7.6).
 
 // ─── 1. Timers ───────────────────────────────────────────────────────────────
 
-export interface MineTimer {
-  /** Stable across ticks: one live timer per timer id, per session. */
+interface MineTimerBase {
+  /** Stable across ticks, and unique across BOTH kinds — the keyed list's key. */
   readonly id: string;
-  readonly session: CookSessionDoc;
-  readonly recipe: Recipe;
-  readonly timer: CookActiveTimerDoc;
-  /** The timer's own name, falling back to the step's, then "Step N", then "Timer". */
+  /** The timer's own name, already resolved: every kind has one by the time it gets here. */
   readonly label: string;
   /**
    * The duration the timer was actually started for, for the progress fill.
-   * Falls back to the step's own duration for legacy entries that stored none;
-   * null once there is no duration to be had (the step is gone, or was never one).
+   * Falls back to the step's own duration for legacy cook entries that stored
+   * none; null once there is no duration to be had (the step is gone, or was
+   * never one). A standalone timer always has one.
    */
   readonly durationMs: number | null;
 }
+
+/** A timer belonging to a cook — it has a recipe, and somewhere to go. */
+export interface MineCookTimer extends MineTimerBase {
+  readonly kind: 'cook';
+  readonly session: CookSessionDoc;
+  readonly recipe: Recipe;
+  readonly timer: CookActiveTimerDoc;
+}
+
+/** A timer belonging to nobody's cook (issue #842) — mine, and going nowhere. */
+export interface MineKitchenTimer extends MineTimerBase {
+  readonly kind: 'kitchen';
+  readonly timer: KitchenTimerDoc;
+}
+
+/**
+ * One timer on My Kitchen, of either kind.
+ *
+ * A DISCRIMINATED UNION rather than a cook timer with its recipe fields made
+ * optional. The two kinds differ in exactly one way the page has to act on —
+ * one has a cook to open and to write back to, the other has neither — and a
+ * union makes the compiler ask about it at every branch. Optional fields would
+ * let `t.recipe.title` past the type checker and blow up at the one moment the
+ * kitchen is busiest.
+ */
+export type MineTimer = MineCookTimer | MineKitchenTimer;
 
 /**
  * Every timer I have running, soonest-ending first — including the ones that have
@@ -84,11 +115,30 @@ export interface MineTimer {
  * never does: there is nothing to confirm, nothing to dismiss, and ignoring one is
  * allowed. Listing them would put a Dismiss button on a nudge and — once fired —
  * inflate the nav badge with something nobody has to act on.
+ *
+ * STANDALONE TIMERS (issue #842) are merged in here rather than listed
+ * separately, and the merge happens at this level rather than in the page for
+ * the same reason `firedTimers` reads `timerHeat`: everything downstream — the
+ * sort, the fired filter, the nav badge — must treat the two kinds identically,
+ * and the surest way to guarantee that is to give them one list to read. A
+ * standalone timer is not a different species on screen; it simply has no cook
+ * to go to.
  */
 export const myTimers: Readable<readonly MineTimer[]> = derived(
-  [myCookSessions, recipes],
-  ([$sessions, $recipes]) => {
+  [myCookSessions, recipes, kitchenTimers],
+  ([$sessions, $recipes, $kitchen]) => {
     const out: MineTimer[] = [];
+    for (const timer of $kitchen?.timers ?? []) {
+      out.push({
+        kind: 'kitchen',
+        // Namespaced so a standalone timer's id can never collide with a cook
+        // timer's composite key, however either is minted.
+        id: `kitchen::${timer.id}`,
+        timer,
+        label: timer.label,
+        durationMs: timer.durationMinutes * 60_000,
+      });
+    }
     for (const session of $sessions) {
       const recipe = $recipes.find((r) => r.id === session.recipeId);
       if (!recipe) continue;
@@ -102,6 +152,7 @@ export const myTimers: Readable<readonly MineTimer[]> = derived(
         const step = stepIndex >= 0 ? recipe.steps[stepIndex] : undefined;
         const minutes = timer.durationMinutes ?? step?.timer?.durationMinutes;
         out.push({
+          kind: 'cook',
           id: `${session.id}::${timer.id}`,
           session,
           recipe,
@@ -122,8 +173,18 @@ export const myTimers: Readable<readonly MineTimer[]> = derived(
 // practical one: a fired check-in stays in `activeTimers` until its timer is
 // dismissed, and counting it here would leave the badge's 1s interval running for
 // hours over a cook with nothing left to show.
-const anyTimerRunning: Readable<boolean> = derived(myCookSessions, ($sessions) =>
-  $sessions.some((s) => s.activeTimers.some((t) => !isCheckInTimerId(t.id))),
+//
+// Standalone timers arm the clock too (issue #842) — without them a kitchen
+// whose only timer belongs to no cook would render a countdown that never
+// moved, which is a worse failure than no countdown at all. Derived from the
+// two source stores rather than from `myTimers` so the clock does not depend on
+// the recipe collection having loaded: a cook timer waits on its recipe to be
+// listed, but the seconds do not.
+const anyTimerRunning: Readable<boolean> = derived(
+  [myCookSessions, kitchenTimers],
+  ([$sessions, $kitchen]) =>
+    $sessions.some((s) => s.activeTimers.some((t) => !isCheckInTimerId(t.id))) ||
+    ($kitchen?.timers.length ?? 0) > 0,
 );
 
 /**

@@ -19,6 +19,11 @@
   import { addToast } from '../../lib/toastStore.js';
   import { isWakeLockSupported, createWakeLock } from '../../lib/wakeLock.js';
   import { primeChime } from '../../lib/chime.js';
+  import {
+    AD_HOC_TIMER_LABEL,
+    AD_HOC_TIMER_MINUTES,
+    shouldNotifyFor,
+  } from '../../lib/timerDefaults.js';
   import { createCheckOffHold } from '../../lib/checkOffHold.svelte.js';
   import { longpress } from '../../lib/longpress.svelte.js';
   import {
@@ -793,21 +798,6 @@
   // page owns the VISUAL half only: the chips below, which flip to "Finished" off
   // the same `now`. Do not re-add a chime here; two owners means two honks.
 
-  // Which timers get the server-side push backstop. This is a DELIVERY-PRECISION
-  // floor, not a "will the chef walk away" heuristic: a queued Cloud Task fires on
-  // best-effort scheduling, then pays a dispatch cold start and push-service
-  // delivery on top, so a notification can land some seconds late. On a 20-minute
-  // braise that is invisible; on a 45-second blanch a late "Timer finished" is
-  // actively wrong, and may arrive after the chef has already seen the chip fire.
-  // Below the floor the chef is standing at the hob and the chime has it covered.
-  //
-  // Keeping the floor low also matters the other way: every timer that fires with
-  // the app focused is a push that push-sw.js receives and deliberately shows
-  // nothing for, and `userVisibleOnly` subscriptions only tolerate so many of those
-  // before Chrome starts showing its own "updated in the background" notice. A
-  // floor at 90s keeps the swallowed ones to the genuinely-away minority.
-  const NOTIFY_MIN_MINUTES = 1.5;
-
   // The one write that starts a timer — every entry point funnels through it, so
   // a timer the cook set by hand is indistinguishable from one the recipe
   // described the moment it is running.
@@ -835,7 +825,7 @@
       withTimerStarted(s, {
         ...entry,
         endsAt,
-        notify: entry.durationMinutes >= NOTIFY_MIN_MINUTES,
+        notify: shouldNotifyFor(entry.durationMinutes),
       }),
     );
   }
@@ -880,11 +870,9 @@
   // target is captured on the way in and the sheet itself stays ignorant of steps,
   // ids and sessions.
   //
-  // The default ad-hoc timer: a name that says where it came from (it shows up on
-  // My Page beside timers from other cooks) and a round ten minutes, which is what
-  // "I need a timer" usually means before you tell it otherwise.
-  const AD_HOC_TIMER_LABEL = 'Salt Timer';
-  const AD_HOC_TIMER_MINUTES = 10;
+  // The default ad-hoc timer's name and length are shared with My Kitchen, which
+  // can start the same kind of timer without a cook to hang it on (issue #842) —
+  // one default to remember rather than two. See lib/timerDefaults.ts.
 
   interface TimerSheetTarget {
     id: string;

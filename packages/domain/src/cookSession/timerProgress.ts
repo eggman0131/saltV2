@@ -1,5 +1,3 @@
-import type { CookActiveTimerDoc } from '../schemas/index.js';
-
 // Fraction (0..1) of a timer's run that has ELAPSED, for the progress fill. A
 // countdown alone tells you what's left but not how far through you are — "4:00"
 // reads very differently on a 5-minute rest than on a 40-minute braise.
@@ -19,8 +17,15 @@ import type { CookActiveTimerDoc } from '../schemas/index.js';
 // recipe, so the caller renders the chip with no fill instead of a bogus one. A
 // zero duration is treated the same way — there is no meaningful fraction of a
 // zero-length run.
+//
+// Takes the narrowest shape it actually reads rather than a whole
+// `CookActiveTimerDoc` (issue #842). A standalone kitchen timer is the same
+// object minus `stepId`, and it needs the same fill; asking for a field this
+// function never touches would have forced either a cast at the call site or a
+// second near-identical copy of the arithmetic. Every existing caller still
+// satisfies it.
 export function timerProgress(
-  timer: CookActiveTimerDoc,
+  timer: { readonly endsAt: string },
   stepDurationMs: number | null | undefined,
   nowMs: number,
 ): number | null {

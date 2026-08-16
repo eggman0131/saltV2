@@ -63,6 +63,10 @@ export {
   saveCookSession,
   deleteCookSession,
 } from './cookSessionSubscription.js';
+// Standalone kitchen timers (issue #842): one document per user, id = uid, for
+// timers that belong to nobody's cook. A sibling of the cook-session adapter,
+// not an extension of it — nothing here reads a session.
+export { subscribeKitchenTimers, saveKitchenTimers } from './kitchenTimerSubscription.js';
 // Guided plan (issue #751): the per-recipe prep list + step notes. A single
 // family-shared doc keyed by the recipe id, plus the callable that authors one.
 // See guidedPlanSubscription.ts for why a corrupt plan is an error rather than
