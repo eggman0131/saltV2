@@ -427,6 +427,8 @@ Where each field is stamped — every write path, and nothing else writes them:
 | `assembleRecipeDraft` (CF) | carried from `baseRecipe`, `''` on a create | carried from `baseRecipe`, `''` on a create |
 | `persistImportedRecipe` (CF, #616) | **unattributed on purpose** — the client stamps it on the save out of the editor the import drops you into | unattributed |
 | `onRecipeWritten` (CF) | never | **never** — a generated hero is not an edit |
+| The editor's "Added by" picker (`RecipeEditPage.svelte`) — the ONE user-editable path | set to the picked roster name, which then survives the save because `stampRecipeAttribution` only fills a blank | untouched by the picker; re-stamped by the save that follows, like any other edit |
+| `scripts/backfill-recipe-attribution.mjs` — the one-off #845 pass | filled if blank, by field-level `PATCH` | **never** — nobody knows who last edited a pre-#845 recipe, and inventing it is worse than silence |
 
 All three client stamps go through the one `stampRecipeAttribution` helper in
 `recipeService.ts`, which fills `createdBy` only when it is empty and rewrites
@@ -435,6 +437,21 @@ or the signed-in email is not on it — it leaves **both** fields exactly as the
 were: a placeholder ("Unknown") reads as a person, and clobbering a real creator
 because a store had not settled is worse than recording nothing. The domain
 builders stay identity-free for the same reason they read no clock.
+
+**Correcting the record.** The backfill asserted something it could only guess at,
+so `createdBy` is editable — a roster picker in the editor, shown only when
+editing an entry that already exists (on the create routes the author is whoever
+is typing). It is a **pick, never free text**: the list's "Added by me" chip is a
+plain `===` against `Member.name`, so a typo or a uid would silently stop
+matching. A `createdBy` that is no longer on the roster is offered as an extra
+option rather than dropped, so merely opening the editor cannot erase a record.
+`lastEditedBy` gets no control at all — a field recording the last edit that you
+can type into contradicts itself.
+
+Note what a correction reads as afterwards: re-attributing a recipe to someone
+else is itself a save, so it stamps **you** as the last editor and the chip
+becomes "Added by Kate · edited by Daniel". That is the intended rendering, not a
+bug — the second half appears precisely when the last editor is not the creator.
 
 ## Duplicating a recipe (issue #735)
 

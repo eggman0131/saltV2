@@ -17,6 +17,7 @@
     takePendingImportUrl,
   } from '../../lib/recipeService.js';
   import { addToast } from '../../lib/toastStore.js';
+  import { currentMember } from '../../lib/membersService.js';
   import {
     KIND_COPY,
     KIND_SECTIONS,
@@ -61,6 +62,13 @@
   let sortBy = $state<SortBy>('title');
   let activeTags = $state<string[]>([]);
 
+  // ─── Authorship (issue #845) ──────────────────────────────────────────────────
+  // Two independent toggles, like tags and unlike the single-select sections: a
+  // dish you added AND last edited satisfies both at once. Attribution is audit
+  // only — this narrows what you are looking at and gates nothing.
+  let addedByMe = $state(false);
+  let editedByMe = $state(false);
+
   // ─── Section ──────────────────────────────────────────────────────────────────
   // Which SECTION of the library you are looking at (issue #637) — deliberately
   // not a filter. It is single-select, it always has exactly one value, and it
@@ -83,6 +91,11 @@
     // and carrying it across would land you on an empty page you did not ask
     // for. The search box is different — a word you typed is still what you are
     // looking for, so it survives the switch.
+    //
+    // The authorship chips (issue #845) survive it too, and for the same reason
+    // the search box does: "mine" is not per-section vocabulary — it means the
+    // same thing on every shelf, so dropping it when you walk to the next one
+    // would be a surprise rather than a tidy-up.
     activeTags = [];
     showAllTags = false;
   }
@@ -121,12 +134,48 @@
     return activeTags.every((t) => r.metadata.tags.includes(t));
   }
 
+  // What `createdBy` / `lastEditedBy` actually hold: a snapshot of `Member.name`
+  // taken at write time, never a uid — so "mine" is a name comparison and needs
+  // no resolver. Empty while the roster is still loading, and for a signed-in
+  // email that is not on it; the chips are inert in that state rather than
+  // matching every unattributed ('') recipe, and the row is not offered at all.
+  const myName = $derived($currentMember?.name ?? '');
+
+  // AND-narrowing again, and independently of each other: both chips on means a
+  // dish you added and are also the last to have touched.
+  function matchesAuthors(r: Recipe): boolean {
+    if (myName === '') return true;
+    if (addedByMe && r.createdBy !== myName) return false;
+    if (editedByMe && r.lastEditedBy !== myName) return false;
+    return true;
+  }
+
+  // Offered only when the library actually holds more than one name (issue
+  // #845). Straight after the backfill every recipe is one person's, and a
+  // filter whose only possible answer is "everything" is dead chrome. Counted
+  // over the WHOLE library rather than `visible`, or the row would vanish the
+  // moment a filter narrowed the grid to a single author — pulling the control
+  // out from under the finger that just used it.
+  const distinctAuthorCount = $derived.by(() => {
+    const names = new Set<string>();
+    for (const r of $recipes) {
+      if (r.createdBy !== '') names.add(r.createdBy);
+      if (r.lastEditedBy !== '') names.add(r.lastEditedBy);
+    }
+    return names.size;
+  });
+
+  const showAuthorFilters = $derived(myName !== '' && distinctAuthorCount > 1);
+
   // Section first, deliberately: `rankedTags` counts over `visible`, so putting
   // the section ahead of the other predicates re-facets the tag chips to the
   // current section for free — no second pass, no separate per-section index.
   const visible = $derived(
     $recipes
-      .filter((r) => sectionOf(r) === sectionFilter && matchesSearch(r) && matchesTags(r))
+      .filter(
+        (r) =>
+          sectionOf(r) === sectionFilter && matchesSearch(r) && matchesTags(r) && matchesAuthors(r),
+      )
       .sort((a, b) => {
         switch (sortBy) {
           case 'recent':
@@ -147,7 +196,7 @@
   // The section is NOT part of this. Clearing filters must not teleport you back
   // to Recipes, and "· filtered" must not appear merely because you are looking
   // at When you CBA.
-  const hasFilters = $derived(query !== '' || activeTags.length > 0);
+  const hasFilters = $derived(query !== '' || activeTags.length > 0 || addedByMe || editedByMe);
 
   // Ingredients are a capability, so this asks the domain rather than the kind.
   // Every card in `visible` shares `sectionFilter`, so one answer covers the grid.
@@ -193,6 +242,8 @@
   function clearFilters(): void {
     searchText = '';
     activeTags = [];
+    addedByMe = false;
+    editedByMe = false;
   }
 
   // ─── Import from URL ──────────────────────────────────────────────────────────
@@ -486,6 +537,45 @@
         </PopoverContent>
       </Popover>
     </div>
+
+    <!-- Authorship filter chips (issue #845). The tag row's idiom — two
+         independent toggles — sitting ABOVE the tags because these two are a
+         fixed pair while the tag vocabulary below them re-facets and can run to
+         ten chips plus an expander. Rendered only when the library holds more
+         than one name; with one author it could only ever answer "everything". -->
+    {#if showAuthorFilters}
+      <div
+        class="mb-3 flex flex-wrap gap-1.5"
+        role="group"
+        aria-label="Authorship"
+        data-testid="recipe-author-filters"
+      >
+        <button
+          type="button"
+          class="rounded-full border px-2.5 py-1 text-xs transition-colors {addedByMe
+            ? 'border-primary bg-primary text-primary-foreground'
+            : 'border-border bg-background text-muted-foreground hover:bg-muted'}"
+          aria-pressed={addedByMe}
+          onclick={() => (addedByMe = !addedByMe)}
+          data-testid="recipe-author-filter"
+          data-author="added"
+        >
+          Added by me
+        </button>
+        <button
+          type="button"
+          class="rounded-full border px-2.5 py-1 text-xs transition-colors {editedByMe
+            ? 'border-primary bg-primary text-primary-foreground'
+            : 'border-border bg-background text-muted-foreground hover:bg-muted'}"
+          aria-pressed={editedByMe}
+          onclick={() => (editedByMe = !editedByMe)}
+          data-testid="recipe-author-filter"
+          data-author="edited"
+        >
+          Edited by me
+        </button>
+      </div>
+    {/if}
 
     <!-- Tag filter chips — the current view's tags, ranked by usage: top 10 by
          default, expandable via a "+N more" chip. -->
