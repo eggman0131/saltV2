@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, cleanup, fireEvent } from '@testing-library/svelte';
+import { render, cleanup, fireEvent, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import type { Member, Recipe } from '@salt/domain';
 
@@ -99,6 +99,7 @@ vi.mock('../src/lib/recipeService.js', () => ({
 }));
 
 import MinePage from '../src/routes/mine/MinePage.svelte';
+import { kitchenPrefs } from '../src/lib/kitchenDashboardPrefs.svelte.js';
 
 const NOW = Date.parse('2026-08-05T12:00:00.000Z');
 
@@ -218,6 +219,9 @@ beforeEach(() => {
   mockSubscribeKitchenWeeks.mockReturnValue(mockKitchenTeardown);
   mockTimerNowMs._set(NOW);
   mockCurrentMember._set(alex);
+  // The workbench is a module-level singleton (in-memory only, CLAUDE.md Rule 3),
+  // so it has to be put back to defaults between tests same as any mocked store.
+  kitchenPrefs.reset();
 });
 
 afterEach(() => {
@@ -591,5 +595,98 @@ describe('MinePage — needs review', () => {
     expect(mockPersistRecipe).toHaveBeenCalledTimes(1);
 
     release?.();
+  });
+});
+
+describe('MinePage — the workbench', () => {
+  it('opens the customize sheet from the header', async () => {
+    const { getByTestId, getByText } = render(MinePage);
+    await fireEvent.click(getByTestId('mine-customize-open'));
+    expect(getByText('Customize your kitchen')).toBeInTheDocument();
+  });
+
+  it('hides a section the moment its switch is turned off, without touching the others', async () => {
+    mockMyTimers._set([mineTimer('r1', 'r1-s0', 4 * 60_000)]);
+    mockLiveCooks._set([liveCook('r2', 'Noodle Bowl')]);
+    const { getByTestId, queryByTestId } = render(MinePage);
+
+    await fireEvent.click(getByTestId('mine-customize-open'));
+    const timersToggle = within(getByTestId('mine-customize-section-timers')).getByRole('switch');
+    await fireEvent.click(timersToggle);
+
+    expect(queryByTestId('mine-timers')).not.toBeInTheDocument();
+    expect(getByTestId('mine-live')).toBeInTheDocument();
+  });
+
+  it('does not repaint a hidden section as "all caught up" — it is still there, just hidden', async () => {
+    mockLiveCooks._set([liveCook('r2', 'Noodle Bowl')]);
+    const { getByTestId, queryByTestId } = render(MinePage);
+
+    await fireEvent.click(getByTestId('mine-customize-open'));
+    const liveToggle = within(getByTestId('mine-customize-section-live')).getByRole('switch');
+    await fireEvent.click(liveToggle);
+
+    expect(queryByTestId('mine-live')).not.toBeInTheDocument();
+    expect(queryByTestId('mine-empty')).not.toBeInTheDocument();
+  });
+
+  it('shows a recipe thumbnail on a cooking-now card when the recipe has a hero image', () => {
+    mockLiveCooks._set([
+      liveCook('r2', 'Noodle Bowl', {
+        recipe: recipe('r2', 'Noodle Bowl', {
+          image: { url: 'https://example.test/noodles.webp', source: 'ai' },
+          updatedAt: '2026-08-01T11:56:00.000Z',
+        }),
+      }),
+    ]);
+    const { getByTestId } = render(MinePage);
+    expect(getByTestId('mine-live-thumb')).toHaveAttribute(
+      'src',
+      expect.stringContaining('https://example.test/noodles.webp'),
+    );
+  });
+
+  it('drops recipe imagery everywhere once the imagery switch is off, section stays', async () => {
+    mockLiveCooks._set([
+      liveCook('r2', 'Noodle Bowl', {
+        recipe: recipe('r2', 'Noodle Bowl', {
+          image: { url: 'https://example.test/noodles.webp', source: 'ai' },
+        }),
+      }),
+    ]);
+    const { getByTestId, queryByTestId } = render(MinePage);
+    expect(getByTestId('mine-live-thumb')).toBeInTheDocument();
+
+    await fireEvent.click(getByTestId('mine-customize-open'));
+    const imageryToggle = within(getByTestId('mine-customize-imagery')).getByRole('switch');
+    await fireEvent.click(imageryToggle);
+
+    expect(queryByTestId('mine-live-thumb')).not.toBeInTheDocument();
+    expect(getByTestId('mine-live')).toBeInTheDocument();
+  });
+
+  it('shows a glance tile for a switched-on, non-zero section, and drops it once switched off', async () => {
+    mockMyTimers._set([mineTimer('r1', 'r1-s0', 4 * 60_000)]);
+    const { getByTestId, queryByTestId } = render(MinePage);
+    expect(getByTestId('mine-stats')).toHaveTextContent('1 timer');
+
+    await fireEvent.click(getByTestId('mine-customize-open'));
+    const timersToggle = within(getByTestId('mine-customize-section-timers')).getByRole('switch');
+    await fireEvent.click(timersToggle);
+
+    expect(queryByTestId('mine-stats')).not.toBeInTheDocument();
+  });
+
+  it('restores every default when Reset is pressed', async () => {
+    mockMyTimers._set([mineTimer('r1', 'r1-s0', 4 * 60_000)]);
+    const { getByTestId, queryByTestId } = render(MinePage);
+
+    await fireEvent.click(getByTestId('mine-customize-open'));
+    const timersToggle = within(getByTestId('mine-customize-section-timers')).getByRole('switch');
+    await fireEvent.click(timersToggle);
+    expect(queryByTestId('mine-timers')).not.toBeInTheDocument();
+
+    await fireEvent.click(getByTestId('mine-customize-reset'));
+    expect(getByTestId('mine-timers')).toBeInTheDocument();
   });
 });
