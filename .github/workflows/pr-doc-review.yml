@@ -94,6 +94,28 @@ name: PR Doc Review
 #   and 1 only on errors, so the standing dead-glob warning for Epic #778's
 #   unbuilt `packages/domain/src/culture/**` is inert here. No warning
 #   suppression is needed and none should be added.
+#
+# Why ONE repair turn, and not zero or a loop:
+#   A gated run that just gives up hands mechanical work back to a human, and
+#   these are mechanical: the checker names the exact problem ("`docs/x.md` is
+#   not mentioned anywhere in the Docs map section"), and the fix is a row. So a
+#   failed gate gets one scoped re-invocation — the model's edits are still in
+#   the working tree, it is handed the checker's complaint, and it may repair
+#   only what was named. Then the tree is re-staged and re-gated.
+#
+#   Not a loop. A second failure means the model is not converging, and the
+#   right answer then is a human, not a third invocation on the same budget.
+#   The drop-the-commit backstop below is what makes the repair turn safe to add
+#   at all: it stays the terminal path, and it runs whenever NEITHER gate has
+#   passed — including the case where the repair reverted its own work and left
+#   nothing staged. The repair can only ever turn a dropped commit into a good
+#   one; it can never turn a dropped commit into a bad one.
+#
+#   The repair step's own exit status is deliberately NOT fed through the
+#   degrade classifier. Its outcome is judged solely by the re-run gate, which
+#   is the only thing that actually matters: an errored, budget-exhausted or
+#   skipped repair leaves the tree failing the check, the second gate says so,
+#   and the commit is dropped exactly as it would have been without it.
 
 on:
   pull_request:
@@ -474,23 +496,134 @@ jobs:
             echo "The docs map check passed on the bot's own edit."
           else
             echo "docsmap-ok=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::The doc review's own edit fails the docs map check — dropping it."
+            echo "::warning::The doc review's own edit fails the docs map check — one repair turn follows."
+            # Snapshot the rejected edit HERE rather than at drop time, so the
+            # PR comment can always show what was proposed — including when the
+            # repair below reverts its own work and leaves nothing staged.
+            git diff --cached > .doc-review/rejected.diff || true
+            git diff --cached --name-only > .doc-review/rejected-files.txt || true
           fi
           cat .doc-review/docsmap.txt
           exit 0
 
-      # The terminal backstop: an edit that fails the gate is thrown away, not
-      # repaired. Unstaging alone would leave the bad edit in the working tree
-      # for a later step to re-stage, so the files go back to their committed
-      # state outright. Anything the model CREATED stays untracked and is
-      # therefore never committed either. The rejected diff is kept first — it
-      # is what the PR comment offers you in place of a commit.
-      - name: Drop the doc changes that failed the docs map check
+      # ONE repair turn — see the header note. The model's failed edits are
+      # still in the working tree; it is handed the checker's complaint and may
+      # fix only what was named. continue-on-error and no degrade wiring: an
+      # errored or budget-exhausted repair simply leaves the tree still failing,
+      # and the re-gate below drops the commit exactly as it would have anyway.
+      - name: Repair the doc edit that failed the docs map check
+        id: repair
+        if: ${{ steps.gate.outputs.docsmap-ok == 'false' }}
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Deliberately a fraction of the review step's budget: this is one
+          # mechanical fix to a named problem, not a fresh review. No gh — the
+          # repair never reads the PR or writes to it. node is allowed so it can
+          # re-run the checker on itself before handing back.
+          claude_args: >-
+            --max-turns 15
+            --max-budget-usd 1
+            --model sonnet
+            --allowed-tools "Read,Edit,Write,Grep,Glob,Bash(git:*),Bash(node:*)"
+          prompt: |
+            You are repairing a documentation edit you have ALREADY made. You are
+            running inside GitHub Actions on a checkout of the head branch of
+            PR #${{ github.event.pull_request.number }}.
+
+            Your edits are already in the working tree. They FAILED the repo's
+            docs-map check, so they will be thrown away — and the PR told that
+            nothing was committed — unless you fix them now. You get ONE attempt.
+
+            - The checker's complaint is in `.doc-review/docsmap.txt`. Read it.
+            - What you changed: `git diff --cached`.
+            - The checker is `node scripts/check-docs-map.mjs`. You may run it
+              yourself, as many times as you need, to confirm your repair.
+
+            It asks three questions of the `## Docs map` section of `CLAUDE.md`:
+            does every doc the map links to still exist; does every row's Tracks
+            glob still match a tracked file; and does every doc on disk appear
+            somewhere in the map. It exits 0 on warnings and 1 only on errors, so
+            a standing warning is not your problem — fix only the errors.
+
+            Repair ONLY what the checker names:
+
+            - Do NOT expand scope. No new findings, no tidying, no rewording, no
+              touching a file the checker did not put you in.
+            - NEVER fix it by deleting a pointer to a doc that still exists on
+              disk. If a heading and a list disagree, the file on disk is the
+              truth: bump the heading and KEEP the entry. Deleting the entry is
+              what broke PR #844 and is the reason this step exists.
+            - Only `docs/**` and `CLAUDE.md` are ever committed. Editing anything
+              else is wasted work.
+            - If your repair changes what you claimed, rewrite
+              `.doc-review/comment.md` so it stays true. Do not mention the
+              repair itself — the PR does not need to know it happened.
+
+            If you cannot fix it without expanding scope, change nothing and
+            stop. The workflow will drop the whole doc commit, which is the
+            correct outcome and a better one than a bad commit.
+
+      # Phase 1's staging step, repeated verbatim on the repaired tree — same
+      # two mechanical rules: design.md reverted outright, only docs/ + CLAUDE.md
+      # staged. `dirty=false` here means the repair reverted its own work, which
+      # is a legitimate "I could not fix this" and falls through to the drop.
+      - name: Re-stage the repaired doc changes
+        id: restage
         if: ${{ steps.gate.outputs.docsmap-ok == 'false' }}
         run: |
+          set -euo pipefail
+          git checkout -- docs/design/design.md 2>/dev/null || true
+          git add -- docs CLAUDE.md 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "The repair left nothing staged — nothing to re-check."
+            echo "dirty=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Repaired doc changes staged:"
+            git diff --cached --name-only
+            echo "dirty=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The second and final gate. Identical logic to the first; a pass here is
+      # what lets the commit through, and it is the ONLY thing the repair step's
+      # outcome is judged by.
+      - name: Validate the repaired doc edit against the docs map
+        id: gate2
+        if: ${{ steps.restage.outputs.dirty == 'true' }}
+        run: |
           set -uo pipefail
-          git diff --cached > .doc-review/rejected.diff || true
-          git diff --cached --name-only > .doc-review/rejected-files.txt || true
+          if node scripts/check-docs-map.mjs > .doc-review/docsmap.txt 2>&1; then
+            echo "docsmap-ok=true" >> "$GITHUB_OUTPUT"
+            echo "The repair worked — the docs map check now passes."
+            {
+              echo "### PR Doc Review — the bot repaired its own doc edit"
+              echo ""
+              echo "The first attempt failed \`node scripts/check-docs-map.mjs\`; one repair turn fixed it and the commit went ahead. Nothing about this appears on the PR."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "docsmap-ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::The repair did not fix the docs map check — dropping the doc commit."
+            # Overwrite the snapshot: the post-repair diff is the one that was
+            # finally rejected, so it is the one worth showing.
+            git diff --cached > .doc-review/rejected.diff || true
+            git diff --cached --name-only > .doc-review/rejected-files.txt || true
+          fi
+          cat .doc-review/docsmap.txt
+          exit 0
+
+      # THE TERMINAL BACKSTOP. Reached when the first gate failed and the repair
+      # did not rescue it — either it produced a still-failing edit, or it left
+      # nothing staged at all (gate2 skipped, output empty). Unstaging alone
+      # would leave the bad edit in the working tree for a later step to
+      # re-stage, so the files go back to their committed state outright.
+      # Anything the model CREATED stays untracked and is therefore never
+      # committed either. The rejected diff was snapshotted by whichever gate
+      # last failed — it is what the PR comment offers you in place of a commit.
+      - name: Drop the doc changes that failed the docs map check
+        if: ${{ steps.gate.outputs.docsmap-ok == 'false' && steps.gate2.outputs.docsmap-ok != 'true' }}
+        run: |
+          set -uo pipefail
           git reset --quiet || true
           git checkout -- docs CLAUDE.md 2>/dev/null || true
           echo "Reverted docs/ and CLAUDE.md — nothing will be committed or pushed."
@@ -505,11 +638,13 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           exit 0
 
-      # Minted late, only once a doc diff exists AND has passed the gate above —
+      # Minted late, only once a doc diff exists AND some gate has passed it —
       # the PR head code has finished running by this point and never sees the
-      # write token.
+      # write token. The `dirty` clause is implied and therefore dropped: the
+      # first gate only runs when the staging step found a diff, and the second
+      # only when the re-staging step did.
       - name: Generate GitHub App token
-        if: ${{ steps.diff.outputs.dirty == 'true' && steps.gate.outputs.docsmap-ok == 'true' }}
+        if: ${{ steps.gate.outputs.docsmap-ok == 'true' || steps.gate2.outputs.docsmap-ok == 'true' }}
         id: app-token
         uses: actions/create-github-app-token@v3
         with:
@@ -517,7 +652,7 @@ jobs:
           private-key: ${{ secrets.AUTOFIX_APP_PRIVATE_KEY }}
 
       - name: Commit and push the doc update
-        if: ${{ steps.diff.outputs.dirty == 'true' && steps.gate.outputs.docsmap-ok == 'true' }}
+        if: ${{ steps.gate.outputs.docsmap-ok == 'true' || steps.gate2.outputs.docsmap-ok == 'true' }}
         env:
           TOKEN: ${{ steps.app-token.outputs.token }}
           APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
@@ -547,7 +682,9 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           STATE: ${{ steps.degrade.outputs.state }}
           SUBTYPE: ${{ steps.degrade.outputs.detail }}
-          GATED: ${{ steps.gate.outputs.docsmap-ok == 'false' }}
+          # Same condition as the drop step: the first gate failed and the
+          # repair did not rescue it. Keep the two in step.
+          GATED: ${{ steps.gate.outputs.docsmap-ok == 'false' && steps.gate2.outputs.docsmap-ok != 'true' }}
         run: |
           set -euo pipefail
           body=".doc-review/comment.md"
@@ -575,7 +712,7 @@ jobs:
             {
               echo "## 🚧 Doc review — proposed edits were **not** committed"
               echo ""
-              echo "The review wanted to update this branch's documentation, but its own edit fails the repo's docs-map check, so it was thrown away. **Nothing was committed and nothing was pushed** — \`Static checks\` is unaffected, and there is no doc fix on this branch."
+              echo "The review wanted to update this branch's documentation, but its own edit fails the repo's docs-map check — and a repair attempt did not fix it. The edit was thrown away: **nothing was committed and nothing was pushed**, so \`Static checks\` is unaffected and there is no doc fix on this branch."
               echo ""
               echo "**What the checker said** (\`node scripts/check-docs-map.mjs\`)"
               echo ""
