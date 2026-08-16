@@ -10,6 +10,7 @@ import { assembleRecipeDraft } from './assembleRecipeDraft.js';
 import { flowModel } from '../ai/fakeModel.js';
 import { recipeFieldRules, type MeasurePolicy } from './recipeFieldRules.js';
 import { readEquipmentContext, equipmentSectionForLibrarian } from './equipmentContext.js';
+import { readComponentContext, componentSectionForLibrarian } from './componentContext.js';
 
 const OutputSchema = z.custom<RecipeDoc>();
 
@@ -71,13 +72,29 @@ export const authorRecipeFlow = ai.defineFlow(
       throw new Error(`Cannot refresh recipe ${input.recipeId ?? '(none)'}: recipe not found`);
     }
 
+    // The dishes a meal is built from (issue #838). NAMES, DESCRIPTIONS AND TIMES
+    // ONLY — never a component's ingredients or steps, because this flow returns a
+    // complete RecipeDoc that is spread over the stored recipe and the planner
+    // attaches the meal AND its dishes, so a copied ingredient line is shopped
+    // twice for one dinner. See componentContext.ts for the full argument.
+    //
+    // Necessarily after the reads above: the component ids live inside the recipe
+    // document. One batched getAll, and only for a meal — a recipe with no
+    // components yields '' and the prompt is byte-for-byte what it was.
+    const componentBase = baseRecipe ?? variationBase;
+    const componentSection = componentBase
+      ? componentSectionForLibrarian(await readComponentContext(db, componentBase, 'authorRecipe'))
+      : '';
+
     const closing =
       refreshing && baseRecipe
-        ? refreshModeSection(formatRecipeForPrompt(baseRecipe))
+        ? refreshModeSection(withComponents(formatRecipeForPrompt(baseRecipe), componentSection))
         : baseRecipe
-          ? editModeSection(formatRecipeForPrompt(baseRecipe))
+          ? editModeSection(withComponents(formatRecipeForPrompt(baseRecipe), componentSection))
           : variationBase
-            ? variationModeSection(formatRecipeForPrompt(variationBase))
+            ? variationModeSection(
+                withComponents(formatRecipeForPrompt(variationBase), componentSection),
+              )
             : CREATE_MODE_CLOSING;
     // The equipment manifest is deliberately absent from a refresh — its framing
     // is written around what "the conversation established", and there is no
@@ -315,6 +332,14 @@ async function readBaseRecipe(
     logger.warn('authorRecipe: failed to read base recipe', { recipeId, err });
     return null;
   }
+}
+
+// Appends the meal's attached dishes to the rendered recipe, or leaves it exactly
+// as it was when there are none (issue #838). One place for the join so all three
+// modes put the dishes in the same position — immediately after the recipe they
+// hang off, inside the mode's own section rather than adrift at the top level.
+function withComponents(recipeText: string, componentSection: string): string {
+  return componentSection ? `${recipeText}\n\n${componentSection}` : recipeText;
 }
 
 // Renders the existing recipe as plain text for the librarian's system prompt.
