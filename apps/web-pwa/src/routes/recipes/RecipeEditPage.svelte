@@ -56,7 +56,7 @@
   } from '../../lib/recipeService.js';
   import { RecipeKindSchema } from '@salt/domain/schemas';
   import { canonItems } from '../../lib/canonService.js';
-  import { members } from '../../lib/membersService.js';
+  import { members, firstName } from '../../lib/membersService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { KIND_COPY, kindOf } from './recipeKind.js';
   import NotesFormattingToolbar from './NotesFormattingToolbar.svelte';
@@ -261,7 +261,10 @@
   //
   // De-duplicated because the NAME is the identity here, not the member id: two
   // members called the same thing are one option, exactly as they are one answer
-  // to "added by me" on the list.
+  // to "added by me" on the list. Both the `Set` and the `{#each}` key operate on
+  // the FULL name — the option LABELS are shortened to first names for reading
+  // (a household shares a surname), but shortening the identity would collapse
+  // two genuinely different people into one option and one stored value.
   const authorOptions = $derived([
     ...new Set(draft.createdBy ? [...rosterNames, draft.createdBy] : rosterNames),
   ]);
@@ -1143,13 +1146,16 @@
                  italic (ui-spec-v03 §3.4). -->
             <SelectTrigger aria-label="Added by" data-testid="recipe-added-by-select">
               <span class={draft.createdBy ? 'text-foreground' : 'text-placeholder italic'}>
-                {draft.createdBy || 'Not recorded'}
+                {draft.createdBy ? firstName(draft.createdBy) : 'Not recorded'}
               </span>
               <Icon name="ChevronDown" size={16} class="text-muted-foreground" />
             </SelectTrigger>
             <SelectContent>
+              <!-- `value` and the key stay the VERBATIM `Member.name`; only the
+                   label is shortened. What is stored, compared and de-duplicated
+                   is the full name — see `authorOptions` above. -->
               {#each authorOptions as name (name)}
-                <SelectItem value={name}>{name}</SelectItem>
+                <SelectItem value={name}>{firstName(name)}</SelectItem>
               {/each}
             </SelectContent>
           </Select>

@@ -416,6 +416,18 @@ documents that fail validation — a required field would have emptied a library
 full of recipes written before #845. `''` means "no attribution on record"; the
 chip is suppressed entirely rather than showing a placeholder.
 
+**Full name stored, first name shown.** Every member of one household shares a
+surname, so "Added by Kate Pendery" spends a word distinguishing nobody. The
+document keeps the **verbatim `Member.name`** and the split happens at RENDER —
+`firstName` in `membersService.ts` (the same helper `kitchenLabel` uses), applied
+by the view chip and the editor picker's labels only. Deliberately not at write
+time: the list's "Added by me" chip is a plain `===` against the stored value, so
+truncating on the way in would force the stamper, the filter, the picker and the
+backfill to agree on one truncation in four places, and would merge two people
+who share a first name into one identity. Every comparison — the chip's
+`createdBy !== lastEditedBy` test, the picker's dedupe and `{#each}` key, the
+list's filter — therefore stays on the full name. Lossless, and no migration.
+
 Where each field is stamped — every write path, and nothing else writes them:
 
 | Write path | `createdBy` | `lastEditedBy` |

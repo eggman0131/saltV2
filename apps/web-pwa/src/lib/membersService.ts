@@ -67,6 +67,27 @@ export const currentMember: Readable<Member | null> = derived(
   },
 );
 
+// The first word of a display name — how a member is NAMED on screen, anywhere a
+// full name would be noise. Every member of one household tends to share a
+// surname, so "Kate Pendery" adds a word that distinguishes nobody.
+//
+// Presentation, not policy, which is why this lives here and not in
+// `@salt/domain`: taking the first word of a display string is a rendering
+// choice, and the domain layer owns no opinion about it. It is a shared function
+// rather than an inline `split(' ')[0]` at each site precisely because there is
+// now more than one — the kitchen label below, and recipe attribution (issue
+// #845) — and two copies of a truncation rule drift.
+//
+// Rendering ONLY: the stored value stays the verbatim `Member.name`. Identity
+// comparisons — the recipe list's "Added by me" `===`, the editor picker's
+// dedupe — must keep reading the full name, or two people who share a first name
+// collapse into one.
+//
+// `''` in, `''` out: an unattributed record has no name to shorten.
+export function firstName(name: string): string {
+  return name.split(' ')[0] ?? name;
+}
+
 // How the signed-in member's own space is named, wherever it is named: the header
 // link in App.svelte and the `/mine` page heading both read this, so the link and
 // the page it opens can never disagree about what you are called (issue #828).
@@ -76,12 +97,8 @@ export const currentMember: Readable<Member | null> = derived(
 // email }`), so the name only exists once `initMembersSync` has resolved — every
 // cold launch shows it for a moment — and a sign-in whose email is not on the
 // roster shows it for good.
-//
-// Presentation, not policy, which is why `split(' ')[0]` lives here and not in
-// `@salt/domain`: taking the first word of a display string is a rendering
-// choice about a header, and the domain layer owns no opinion about it.
 export const kitchenLabel: Readable<string> = derived(currentMember, ($member) =>
-  $member ? `${$member.name.split(' ')[0]}'s Kitchen` : 'My Kitchen',
+  $member ? `${firstName($member.name)}'s Kitchen` : 'My Kitchen',
 );
 
 // Non-reactive snapshot: find the member matching an email (normalised). Used

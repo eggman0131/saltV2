@@ -995,6 +995,46 @@ describe('RecipeListPage — authorship filters', () => {
     await user.click(screen.getByRole('button', { name: 'Clear filters' }));
     expect(cardTitles()).toEqual(['Their Bread', 'Their Soup']);
   });
+
+  it('matches on the FULL stored name, not the first name shown on screen', async () => {
+    const user = userEvent.setup();
+    // Attribution renders first names ("everyone is a Pendery") but the split is
+    // at DISPLAY time only — this filter is still a plain `===` against the
+    // verbatim `Member.name`. Two people sharing a first name is the case that
+    // proves it: only one of these is mine.
+    signedInAs('Kate Pendery');
+    seed([
+      makeRecipe({
+        id: 'hers',
+        title: 'Hers',
+        tags: [],
+        totalTimeMinutes: null,
+        servings: null,
+        ingredientCount: 1,
+        image: null,
+        createdAt: '2026-08-06T00:00:00.000Z',
+        createdBy: 'Kate Pendery',
+        lastEditedBy: 'Kate Pendery',
+      }),
+      makeRecipe({
+        id: 'the-other-kates',
+        title: 'The Other Kates',
+        tags: [],
+        totalTimeMinutes: null,
+        servings: null,
+        ingredientCount: 1,
+        image: null,
+        createdAt: '2026-08-07T00:00:00.000Z',
+        createdBy: 'Kate Ashworth',
+        lastEditedBy: 'Kate Ashworth',
+      }),
+    ]);
+    render(RecipeListPage);
+    expect(cardTitles()).toEqual(['Hers', 'The Other Kates']);
+
+    await user.click(authorChip('added'));
+    expect(cardTitles()).toEqual(['Hers']);
+  });
 });
 
 // ─── Import from photo (issue #649) ───────────────────────────────────────────

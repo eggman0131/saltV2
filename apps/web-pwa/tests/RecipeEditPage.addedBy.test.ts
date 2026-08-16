@@ -13,8 +13,12 @@ import type { Member, Recipe } from '@salt/domain';
 // VERBATIM roster name (the list's chip compares with `===`), a name that is no
 // longer on the roster is neither dropped nor crashed on, and `lastEditedBy`
 // gets no control at all.
+//
+// A fifth since "everyone is a Pendery": the picker READS first names and STORES
+// full ones. The split is at render, so nothing about the stored value — or the
+// `===` that finds it again — changes.
 
-const { mockRecipes, mockCanonItems, mockMembers } = vi.hoisted(() => {
+const { mockRecipes, mockCanonItems } = vi.hoisted(() => {
   function makeStore<T>(initial: T) {
     let value = initial;
     const subs = new Set<(v: T) => void>();
@@ -35,7 +39,6 @@ const { mockRecipes, mockCanonItems, mockMembers } = vi.hoisted(() => {
   return {
     mockRecipes: makeStore<readonly Recipe[]>([]),
     mockCanonItems: makeStore<readonly { id: string }[]>([]),
-    mockMembers: makeStore<readonly Member[]>([]),
   };
 });
 
@@ -53,12 +56,20 @@ vi.mock('../src/lib/recipeService.js', () => ({
   attachComponentToMeal: vi.fn(),
 }));
 vi.mock('../src/lib/canonService.js', () => ({ canonItems: mockCanonItems }));
-// The roster the picker offers, already in display order — exactly what the real
-// `members` store guarantees.
-vi.mock('../src/lib/membersService.js', () => ({ members: mockMembers }));
+// The REAL members service, seeded rather than stubbed: it owns both halves of
+// what this file asserts — the roster in display order, and `firstName`, the
+// rendering rule the picker's labels go through. A hand-written stub of the
+// latter would let the truncation drift out from under the tests that pin it.
+vi.mock('@salt/firebase-sync', () => ({
+  subscribeMembers: vi.fn(),
+  upsertMember: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  deleteMember: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+}));
+vi.mock('../src/lib/auth.svelte.js', () => ({ auth: { user: null } }));
 
 import RecipeEditPage from '../src/routes/recipes/RecipeEditPage.svelte';
 import { persistRecipe } from '../src/lib/recipeService.js';
+import { seedMembers, __resetMembersServiceForTest } from '../src/lib/membersService.js';
 
 function makeMember(name: string, sortOrder: number): Member {
   return {
@@ -125,13 +136,13 @@ afterEach(() => {
   document.body.innerHTML = '';
   mockCanonItems._set([]);
   mockRecipes._set([]);
-  mockMembers._set([]);
+  __resetMembersServiceForTest();
   vi.clearAllMocks();
 });
 
 describe('RecipeEditPage — "Added by"', () => {
   it('is absent on the create routes, where the author is whoever is typing', () => {
-    mockMembers._set([makeMember('Daniel', 0), makeMember('Kate', 1)]);
+    seedMembers([makeMember('Daniel', 0), makeMember('Kate', 1)]);
 
     render(RecipeEditPage, { props: { params: undefined } });
     expect(screen.queryByTestId('recipe-added-by')).toBeNull();
@@ -142,7 +153,7 @@ describe('RecipeEditPage — "Added by"', () => {
   });
 
   it('shows the recorded name when editing, and offers the roster in display order', async () => {
-    mockMembers._set([makeMember('Daniel', 0), makeMember('Kate', 1)]);
+    seedMembers([makeMember('Daniel', 0), makeMember('Kate', 1)]);
     mockRecipes._set([makeRecipe({ createdBy: 'Daniel', lastEditedBy: 'Daniel' })]);
 
     render(RecipeEditPage, { props: { params: { id: 'entry-1' } } });
@@ -163,7 +174,7 @@ describe('RecipeEditPage — "Added by"', () => {
     // really Kate. The name must land byte-identical to `Member.name` — the
     // list's "Added by me" chip is a plain `===` against it, so anything
     // trimmed, cased differently or resolved to a uid stops matching silently.
-    mockMembers._set([makeMember('Daniel', 0), makeMember('Kate', 1)]);
+    seedMembers([makeMember('Daniel', 0), makeMember('Kate', 1)]);
     mockRecipes._set([makeRecipe({ createdBy: 'Daniel', lastEditedBy: 'Daniel' })]);
 
     render(RecipeEditPage, { props: { params: { id: 'entry-1' } } });
@@ -184,7 +195,7 @@ describe('RecipeEditPage — "Added by"', () => {
   it('records a name onto an entry that has none', async () => {
     // Every recipe written before the field existed carries ''. The trigger
     // reads as an empty field rather than naming somebody at random.
-    mockMembers._set([makeMember('Daniel', 0), makeMember('Kate', 1)]);
+    seedMembers([makeMember('Daniel', 0), makeMember('Kate', 1)]);
     mockRecipes._set([makeRecipe()]);
 
     render(RecipeEditPage, { props: { params: { id: 'entry-1' } } });
@@ -199,7 +210,7 @@ describe('RecipeEditPage — "Added by"', () => {
     // A member who has since been removed, or a library restored from another
     // environment. The stored value is shown, is one of the options, and — the
     // point — is not quietly rewritten by a visit to the editor.
-    mockMembers._set([makeMember('Daniel', 0), makeMember('Kate', 1)]);
+    seedMembers([makeMember('Daniel', 0), makeMember('Kate', 1)]);
     mockRecipes._set([makeRecipe({ createdBy: 'Sam', lastEditedBy: 'Daniel' })]);
 
     render(RecipeEditPage, { props: { params: { id: 'entry-1' } } });
@@ -220,6 +231,46 @@ describe('RecipeEditPage — "Added by"', () => {
     expect((await savedRecipe()).createdBy).toBe('Sam');
   });
 
+  it('reads first names but stores the full one', async () => {
+    // The whole of the "everyone is a Pendery" change. Both halves matter: the
+    // option and the closed trigger say "Kate", and the draft handed to
+    // `persistRecipe` still says "Kate Pendery" — the value the list's `===`
+    // filter and the next visit to this picker both depend on.
+    seedMembers([makeMember('Daniel Pendery', 0), makeMember('Kate Pendery', 1)]);
+    mockRecipes._set([makeRecipe({ createdBy: 'Daniel Pendery', lastEditedBy: 'Daniel Pendery' })]);
+
+    render(RecipeEditPage, { props: { params: { id: 'entry-1' } } });
+    await waitFor(() => expect(screen.getByTestId('recipe-added-by')).toBeInTheDocument());
+    expect(trigger()).toHaveTextContent('Daniel');
+    expect(trigger()).not.toHaveTextContent('Pendery');
+
+    await userEvent.click(trigger());
+    await screen.findByRole('listbox');
+    expect(screen.getAllByRole('option').map((o) => o.textContent?.trim())).toEqual([
+      'Daniel',
+      'Kate',
+    ]);
+
+    await userEvent.click(screen.getByRole('option', { name: 'Kate' }));
+    expect(trigger()).toHaveTextContent('Kate');
+    expect((await savedRecipe()).createdBy).toBe('Kate Pendery');
+  });
+
+  it('keeps two people who share a first name as two options', async () => {
+    // The reason the dedupe and the `{#each}` key stay on the FULL name: shorten
+    // the identity and these two collapse into one option, and picking it would
+    // store whichever of them won.
+    seedMembers([makeMember('Kate Pendery', 0), makeMember('Kate Ashworth', 1)]);
+    mockRecipes._set([makeRecipe({ createdBy: 'Kate Pendery', lastEditedBy: 'Kate Pendery' })]);
+
+    render(RecipeEditPage, { props: { params: { id: 'entry-1' } } });
+    await waitFor(() => expect(screen.getByTestId('recipe-added-by')).toBeInTheDocument());
+
+    await userEvent.click(trigger());
+    await screen.findByRole('listbox');
+    expect(screen.getAllByRole('option')).toHaveLength(2);
+  });
+
   it('offers nothing while the roster is empty', async () => {
     // Still loading, or a stream the rules refused. A dropdown that opens on
     // nothing is worse than no dropdown.
@@ -233,7 +284,7 @@ describe('RecipeEditPage — "Added by"', () => {
   it('never offers a way to edit who last touched it', async () => {
     // `lastEditedBy` is written by the save and by nothing else — a field
     // recording the last edit that a person can type into contradicts itself.
-    mockMembers._set([makeMember('Daniel', 0), makeMember('Kate', 1)]);
+    seedMembers([makeMember('Daniel', 0), makeMember('Kate', 1)]);
     mockRecipes._set([makeRecipe({ createdBy: 'Daniel', lastEditedBy: 'Kate' })]);
 
     render(RecipeEditPage, { props: { params: { id: 'entry-1' } } });

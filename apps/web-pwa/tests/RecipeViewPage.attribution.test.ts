@@ -171,6 +171,30 @@ describe('RecipeViewPage — attribution chip', () => {
     expect(getByTestId('recipe-attribution-chip').textContent).toBe('Added by Daniel');
   });
 
+  // "everyone is a Pendery": a household shares a surname, so the chip reads the
+  // first name only. The split is at RENDER — the document still holds the
+  // verbatim `Member.name`, which is what the list's "Added by me" `===` needs.
+  it('reads the first name only, on both halves', () => {
+    mockRecipes._set([makeRecipe({ createdBy: 'Kate Pendery', lastEditedBy: 'Daniel Pendery' })]);
+    const { getByTestId } = renderPage();
+
+    expect(getByTestId('recipe-attribution-chip').textContent).toBe(
+      'Added by Kate · edited by Daniel',
+    );
+  });
+
+  // The comparison that decides whether the second half appears stays on the
+  // FULL stored names. Truncate it and these two — a real possibility on any
+  // roster — would read as one person who never edited anything.
+  it('still names both when two people share a first name', () => {
+    mockRecipes._set([makeRecipe({ createdBy: 'Kate Pendery', lastEditedBy: 'Kate Ashworth' })]);
+    const { getByTestId } = renderPage();
+
+    expect(getByTestId('recipe-attribution-chip').textContent).toBe(
+      'Added by Kate · edited by Kate',
+    );
+  });
+
   // Every recipe in the library predates the field. They render exactly as
   // before, chip and all its scaffolding absent — not "Added by nobody".
   it('shows no chip at all on a recipe with no attribution on record', () => {
