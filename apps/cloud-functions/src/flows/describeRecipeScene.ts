@@ -333,19 +333,62 @@ mood, hour and season it reads as. ${SCENE_SCOPE_RULE} That holds even if the re
 
 Write ONE paragraph of plain prose, at most about 80 words. Return only the revised brief.`;
 
+// ─── MEALS (issue #838) ──────────────────────────────────────────────────────
+// A meal is a recipe that points at other recipes, and until now the art director
+// never heard about them: a Sunday roast that is nothing but chicken + potatoes +
+// gravy handed the model a TITLE and nothing else, and got back whatever a model
+// guesses a roast looks like. The dishes are the picture.
+//
+// TWO rules, not one shared clause, because `takesComponents` is true for two
+// kinds that mean opposite things by it. A recipe's components are dishes SERVED
+// ALONGSIDE it — the photograph widens to the table. A cocktail's component is a
+// part it is MADE FROM (the house syrup, an infusion); it is already in the glass,
+// and widening the shot to a second glass would be exactly wrong. One clause
+// covering both would have to be vague enough to direct neither.
+//
+// Both are APPENDED ONLY when dishes are actually listed, so a recipe that is not
+// a meal gets byte-for-byte the system prompt it got before. Outings and
+// placeholders never receive either (`takesComponents` is false for both), which
+// is structural here rather than a promise: their arms below simply ignore it.
+const MEAL_SCENE_RULE = `This recipe is a MEAL. The dishes listed above are separate recipes served together as \
+one dinner, and they are the subject: photograph the WHOLE TABLE — those dishes together, as they are set down to be \
+eaten — not a single plated portion. Let the dish that carries the meal lead and the others sit around it as a \
+spread, each recognisably itself.
+
+Any ingredients and method given above belong to the DINNER as a whole — a sauce made at the end, the timing that \
+runs the dishes together — and never to any one dish. Read them that way, and read each dish's own description for \
+what that dish actually looks like.`;
+
+const COCKTAIL_COMPONENT_SCENE_RULE = `The recipes listed above are parts this drink is MADE FROM — a house syrup, \
+an infusion, a cordial made separately and then poured in. They are already IN the glass, so let them inform its \
+colour, clarity and texture. Do NOT put them in the photograph as separate bottles, jars or a second glass: the \
+subject is still the one finished drink.`;
+
 // The kind switch. 'recipe' is the DEFAULT arm, so an absent kind (an older
 // caller, a doc written before #637) and any kind with no prompts of its own get
 // exactly today's prompts rather than nothing.
-function systemFor(kind: DescribeRecipeSceneInput['kind'], revising: boolean): string {
+//
+// `hasComponents` only ever ADDS a clause, so every existing arm is unchanged for
+// every entry that is not a meal.
+function systemFor(
+  kind: DescribeRecipeSceneInput['kind'],
+  revising: boolean,
+  hasComponents: boolean,
+): string {
+  const withRule = (system: string, rule: string): string =>
+    hasComponents ? `${system}\n\n${rule}` : system;
   switch (kind) {
     case 'outing':
       return revising ? REVISE_OUTING_SCENE_SYSTEM : DESCRIBE_OUTING_SCENE_SYSTEM;
     case 'cocktail':
-      return revising ? REVISE_COCKTAIL_SCENE_SYSTEM : DESCRIBE_COCKTAIL_SCENE_SYSTEM;
+      return withRule(
+        revising ? REVISE_COCKTAIL_SCENE_SYSTEM : DESCRIBE_COCKTAIL_SCENE_SYSTEM,
+        COCKTAIL_COMPONENT_SCENE_RULE,
+      );
     case 'placeholder':
       return revising ? REVISE_PLACEHOLDER_SCENE_SYSTEM : DESCRIBE_PLACEHOLDER_SCENE_SYSTEM;
     default:
-      return revising ? REVISE_SCENE_SYSTEM : DESCRIBE_SCENE_SYSTEM;
+      return withRule(revising ? REVISE_SCENE_SYSTEM : DESCRIBE_SCENE_SYSTEM, MEAL_SCENE_RULE);
   }
 }
 
@@ -358,7 +401,20 @@ export const describeRecipeSceneFlow = ai.defineFlow(
   // `tags` is defaulted here as well as on the schema: the schema default only
   // applies when the input is actually parsed, and a direct in-process call to
   // the flow function (which is how the whole suite drives it) skips that.
-  async ({ title, description, tags = [], ingredients, steps, currentBrief, hint, kind }) => {
+  async ({
+    title,
+    description,
+    tags = [],
+    ingredients,
+    steps,
+    // Defaulted here as well as on the schema, for the same reason `tags` is: the
+    // schema default only applies when the input is actually parsed, and a direct
+    // in-process call to the flow function skips that.
+    components = [],
+    currentBrief,
+    hint,
+    kind,
+  }) => {
     // Revision needs BOTH halves: a paragraph to revise and a steer to revise it
     // by. With either missing there is nothing to fold through anything, so we
     // author from scratch — which is also, deliberately, what "start over" sends
@@ -373,6 +429,13 @@ export const describeRecipeSceneFlow = ai.defineFlow(
       // ARE the input — there is no method below to outweigh them. Omitted when
       // empty so a tagless entry's prompt is unchanged.
       tags.length > 0 ? `Tags: ${tags.join(', ')}` : null,
+      // Above the ingredients because for a bundle-only meal these ARE the food:
+      // the meal's own ingredients and method are the coordination (a gravy, a
+      // timing plan), and the dishes are what is on the table. Omitted when empty
+      // so a recipe that is not a meal sends the prompt it always sent.
+      components.length > 0
+        ? `Dishes in this meal:\n${components.map((c) => `- ${c}`).join('\n')}`
+        : null,
       ingredients.length > 0
         ? `Ingredients:\n${ingredients.map((i) => `- ${i}`).join('\n')}`
         : null,
@@ -390,7 +453,7 @@ export const describeRecipeSceneFlow = ai.defineFlow(
       () =>
         ai.generate({
           model,
-          system: systemFor(kind, revising),
+          system: systemFor(kind, revising, components.length > 0),
           prompt: promptParts.join('\n\n'),
           output: { schema: DescribeRecipeSceneOutputSchema },
         }),

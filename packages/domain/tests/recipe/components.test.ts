@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   canBeComponentOf,
+  componentDisplayLines,
   expandForPlanner,
   hasComponents,
   insertComponentByCookTime,
@@ -16,17 +17,20 @@ import type { Recipe } from '@salt/domain';
 function makeRecipe(over: {
   id: string;
   title?: string;
+  description?: string | null;
   cookTimeMinutes?: number | null;
   componentRecipeIds?: string[];
+  ingredients?: Recipe['ingredients'];
+  steps?: Recipe['steps'];
 }): Recipe {
   return {
     id: over.id,
     schemaVersion: 1,
     kind: 'recipe',
     title: over.title ?? over.id,
-    description: null,
-    ingredients: [],
-    steps: [],
+    description: over.description ?? null,
+    ingredients: over.ingredients ?? [],
+    steps: over.steps ?? [],
     metadata: {
       servings: null,
       totalTimeMinutes: null,
@@ -118,6 +122,101 @@ describe('resolveComponents', () => {
     const before = structuredClone(roast);
     resolveComponents(roast, LIBRARY);
     expect(roast).toEqual(before);
+  });
+});
+
+// How a resolved dish reads to something OUTSIDE the app (issue #838) — today the
+// hero art director, which is handed the dishes so a Sunday roast is photographed
+// as the bird, the potatoes and the jug of gravy rather than whatever the model
+// guesses. It lives in the domain because it has two callers on opposite sides of
+// the app — the browser's brief dialog and the onRecipeWritten trigger — that must
+// describe the same dinner in the same words; what is pinned here is the shape
+// both of them are held to.
+describe('componentDisplayLines', () => {
+  it('is the title alone when a dish has no description', () => {
+    // Most dishes have none. A trailing em-dash with nothing after it would be
+    // noise in the prompt and would read to the model as a missing detail.
+    expect(componentDisplayLines([makeRecipe({ id: 'gravy', title: 'Onion gravy' })])).toEqual([
+      'Onion gravy',
+    ]);
+  });
+
+  it('joins title and description with an em-dash when there is one', () => {
+    // The description is the only thing that says what the dish LOOKS like, which
+    // is the whole reason the art director is given the dishes at all.
+    expect(
+      componentDisplayLines([
+        makeRecipe({
+          id: 'chicken',
+          title: 'Roast chicken',
+          description: 'Lemon and thyme, skin crisp and burnished.',
+        }),
+      ]),
+    ).toEqual(['Roast chicken — Lemon and thyme, skin crisp and burnished.']);
+  });
+
+  it('keeps the order it was handed', () => {
+    // `resolveComponents` preserves the user's drag order, which is roughly the
+    // running order of the dinner; re-ordering here would quietly undo it and
+    // change which dish the brief treats as leading the table.
+    const lines = componentDisplayLines([
+      makeRecipe({ id: 'chicken', title: 'Roast chicken' }),
+      makeRecipe({ id: 'potatoes', title: 'Roast potatoes' }),
+      makeRecipe({ id: 'gravy', title: 'Onion gravy' }),
+    ]);
+    expect(lines).toEqual(['Roast chicken', 'Roast potatoes', 'Onion gravy']);
+  });
+
+  it('renders nothing for a recipe that is not a meal', () => {
+    // The empty case is load-bearing rather than trivial: every caller omits the
+    // whole "Dishes in this meal" block on an empty array, so an ordinary recipe
+    // sends byte-for-byte the prompt it sent before meals existed.
+    expect(componentDisplayLines([])).toEqual([]);
+  });
+
+  it('emits NO ingredient and NO step content, however much the dish carries', () => {
+    // The invariant the meals feature rests on, seen from the prompt side: nothing
+    // aggregates. A brief describes what is on the table, not a merged recipe —
+    // and a dish's own lines reaching the meal is exactly how a dinner gets
+    // shopped twice (the planner attaches the meal AND its dishes).
+    const chicken = makeRecipe({
+      id: 'chicken',
+      title: 'Roast chicken',
+      description: 'Lemon and thyme.',
+      ingredients: [
+        {
+          id: 'g1',
+          name: null,
+          items: [
+            {
+              id: 'i1',
+              rawText: '1 whole chicken, about 1.6kg',
+              parsed: null,
+              canonId: null,
+              matchState: 'pending',
+              isOptional: false,
+              firstUsedInStepId: null,
+            },
+          ],
+        },
+      ],
+      steps: [{ id: 's1', text: 'Roast at 200°C for 90 minutes.', timer: null, note: null }],
+    });
+
+    const lines = componentDisplayLines([chicken]);
+
+    expect(lines).toEqual(['Roast chicken — Lemon and thyme.']);
+    for (const line of lines) {
+      expect(line).not.toContain('1 whole chicken');
+      expect(line).not.toContain('Roast at 200°C');
+    }
+  });
+
+  it('does not mutate the components it is handed', () => {
+    const chicken = makeRecipe({ id: 'chicken', description: 'Lemon and thyme.' });
+    const before = structuredClone(chicken);
+    componentDisplayLines([chicken]);
+    expect(chicken).toEqual(before);
   });
 });
 

@@ -39,6 +39,26 @@ export function resolveComponents(recipe: Recipe, allRecipes: readonly Recipe[])
     .filter((r): r is Recipe => r !== undefined);
 }
 
+// How a resolved component reads to something outside the app — today, the hero
+// art director (issue #838), which is handed the dishes a meal is built from so a
+// Sunday roast is photographed as the bird, the potatoes and the jug of gravy
+// rather than whatever the model guesses a roast looks like.
+//
+// TITLE AND DESCRIPTION ONLY, and never the component's ingredients or steps: a
+// brief describes what is on the table, and the invariant above says a meal never
+// takes on a dish's content. A component with no description is its title alone.
+//
+// This exists as a shared helper rather than a line inlined at each call site
+// because it has TWO callers on opposite sides of the app — the browser's brief
+// dialog, which resolves components against the in-memory recipes store, and the
+// onRecipeWritten trigger, which resolves them against Firestore. They must send
+// the flow the SAME lines for the same meal or a brief authored from the dialog
+// quietly describes a different dinner from one authored on write. Sharing the
+// rendering makes that identical by construction rather than by convention.
+export function componentDisplayLines(components: readonly Recipe[]): string[] {
+  return components.map((c) => (c.description ? `${c.title} — ${c.description}` : c.title));
+}
+
 // May `candidateId` be attached to `ownerId`? The self-reference guard, and
 // deliberately nothing more: a recipe inside itself is the one relationship that
 // is meaningless at any depth, whereas A→B→A is merely unusual and already inert

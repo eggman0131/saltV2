@@ -36,13 +36,18 @@ vi.mock('../../src/flows/canonicaliseRecipeIngredients.js', () => ({
 //   equipmentManifest/current → the kitchen kit (always)
 // so the stub must be collection-aware; a single shared get() would serve the
 // equipment doc a RecipeDoc (and vice versa) and silently cross the two reads.
+// A meal additionally batch-reads its component recipes through getAll (issue
+// #838); it is never called for a recipe with no components, which is what makes
+// a plain recipe's prompt byte-for-byte what it was.
 const mockGet = vi.fn(); // recipes/<id>
 const mockEquipmentGet = vi.fn(); // equipmentManifest/current
+const mockGetAll = vi.fn(); // recipes/<componentId>[]
 vi.mock('firebase-admin/firestore', () => ({
   getFirestore: () => ({
     collection: (name: string) => ({
-      doc: () => ({ get: name === 'recipes' ? mockGet : mockEquipmentGet }),
+      doc: (id: string) => ({ id, get: name === 'recipes' ? mockGet : mockEquipmentGet }),
     }),
+    getAll: (...refs: { id: string }[]) => mockGetAll(...refs),
   }),
 }));
 
@@ -64,6 +69,9 @@ beforeEach(() => {
   mockCanonFlow.mockResolvedValue([]);
   // Default: no equipment manifest, so the prompt degrades without a kit section.
   mockEquipmentGet.mockResolvedValue({ exists: false });
+  // Default: nothing attached. Only reached at all when the base recipe carries
+  // componentRecipeIds, so this default is a safety net rather than a code path.
+  mockGetAll.mockResolvedValue([]);
 });
 
 // ─── Fixture helpers ──────────────────────────────────────────────────────────
@@ -926,6 +934,152 @@ describe('authorRecipe — equipment context', () => {
 
     expect(doc.title).toBe('Garlic Pasta');
     expect(systemPromptFrom()).not.toContain('RECOGNITION ONLY');
+  });
+});
+
+// ─── meal components (issue #838) ─────────────────────────────────────────────
+//
+// The librarian is shown a meal's attached dishes by NAME, DESCRIPTION AND TIME
+// ONLY. It returns a complete RecipeDoc that `mergeAmendedRecipe` spreads over the
+// stored recipe, and the planner attaches the meal AND its dishes — so a component
+// ingredient line copied onto the meal is shopped twice for one dinner. Not
+// showing it the lists is the guard; these tests are the pin on that guard.
+
+describe('authorRecipe — meal components', () => {
+  const CHICKEN_INGREDIENT = '1 whole chicken, 1.6 kg';
+  const CHICKEN_STEP = 'Roast for 90 minutes, then rest for 20.';
+
+  function componentDoc() {
+    return {
+      ...baseRecipeDoc(),
+      id: 'chicken',
+      title: 'Roast chicken',
+      description: 'A whole bird, hot oven then rested.',
+      ingredients: [
+        {
+          id: 'cg1',
+          name: null,
+          items: [
+            {
+              id: 'ci1',
+              rawText: CHICKEN_INGREDIENT,
+              parsed: null,
+              canonId: null,
+              matchState: 'pending' as const,
+              isOptional: false,
+              firstUsedInStepId: null,
+            },
+          ],
+        },
+      ],
+      steps: [{ id: 'cs1', text: CHICKEN_STEP, timer: null, note: null }],
+      metadata: { ...baseRecipeDoc().metadata, cookTimeMinutes: 90, totalTimeMinutes: 125 },
+    };
+  }
+
+  function mealDoc() {
+    return { ...baseRecipeDoc(), title: 'Sunday roast', componentRecipeIds: ['chicken'] };
+  }
+
+  beforeEach(() => {
+    mockGenerate.mockResolvedValue({ output: librarianOutput() });
+    mockParseFlow.mockResolvedValue([]);
+    mockGetAll.mockResolvedValue([{ id: 'chicken', exists: true, data: () => componentDoc() }]);
+  });
+
+  function systemPromptFrom(): string {
+    return (mockGenerate.mock.calls[0]![0] as { system: string }).system;
+  }
+
+  async function author(input: Record<string, unknown>): Promise<void> {
+    await (authorRecipeFlow as Function)({
+      messages: [
+        {
+          id: 'm1',
+          role: 'user',
+          text: 'write the timings',
+          createdAt: '2026-08-01T00:00:00.000Z',
+        },
+      ],
+      existingTags: [],
+      ...input,
+    });
+  }
+
+  it('names the attached dishes in edit mode, with their times', async () => {
+    mockGet.mockResolvedValue({ exists: true, data: () => mealDoc() });
+
+    await author({ recipeId: 'r1' });
+
+    const system = systemPromptFrom();
+    expect(system).toContain('NAMES AND TIMES ONLY');
+    expect(system).toContain('Dish 1: Roast chicken');
+    expect(system).toContain('cook: 90 min');
+    // Edit-mode grounding survives alongside it.
+    expect(system).toContain('Editing an existing recipe');
+  });
+
+  it('NEVER puts a component ingredient or step in the prompt', async () => {
+    mockGet.mockResolvedValue({ exists: true, data: () => mealDoc() });
+
+    await author({ recipeId: 'r1' });
+
+    // The whole reason the librarian gets a different framing from the chef: what
+    // it cannot see, it cannot merge onto the meal and double-shop.
+    const system = systemPromptFrom();
+    expect(system).not.toContain(CHICKEN_INGREDIENT);
+    expect(system).not.toContain(CHICKEN_STEP);
+  });
+
+  it('tells the librarian a copied line is bought twice', async () => {
+    mockGet.mockResolvedValue({ exists: true, data: () => mealDoc() });
+
+    await author({ recipeId: 'r1' });
+
+    const system = systemPromptFrom();
+    expect(system).toContain('NEVER copy');
+    expect(system).toContain('bought TWICE');
+  });
+
+  it('carries the dishes into variation mode', async () => {
+    mockGet.mockResolvedValue({ exists: true, data: () => mealDoc() });
+
+    await author({ basedOnRecipeId: 'r1' });
+
+    const system = systemPromptFrom();
+    expect(system).toContain('Writing a variation on an existing recipe');
+    expect(system).toContain('Dish 1: Roast chicken');
+  });
+
+  it('carries the dishes into refresh mode', async () => {
+    mockGet.mockResolvedValue({ exists: true, data: () => mealDoc() });
+
+    await author({ recipeId: 'r1', refresh: true });
+
+    const system = systemPromptFrom();
+    expect(system).toContain('Re-transcribing an existing recipe');
+    expect(system).toContain('Dish 1: Roast chicken');
+  });
+
+  it('leaves a plain recipe untouched and reads nothing', async () => {
+    mockGet.mockResolvedValue({ exists: true, data: () => baseRecipeDoc() });
+
+    await author({ recipeId: 'r1' });
+
+    expect(systemPromptFrom()).not.toContain('NAMES AND TIMES ONLY');
+    // A recipe that is not a meal must not pay a Firestore read for meals.
+    expect(mockGetAll).not.toHaveBeenCalled();
+  });
+
+  it('still authors the recipe when the component read throws', async () => {
+    mockGet.mockResolvedValue({ exists: true, data: () => mealDoc() });
+    mockGetAll.mockRejectedValue(new Error('firestore down'));
+
+    await author({ recipeId: 'r1' });
+
+    // Rule 10: degrades to today's prompt rather than failing the save.
+    expect(systemPromptFrom()).not.toContain('NAMES AND TIMES ONLY');
+    expect(mockGenerate).toHaveBeenCalledTimes(1);
   });
 });
 

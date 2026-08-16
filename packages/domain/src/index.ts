@@ -270,6 +270,7 @@ export {
   takesComponents,
   hasComponents,
   resolveComponents,
+  componentDisplayLines,
   canBeComponentOf,
   insertComponentByCookTime,
   expandForPlanner,

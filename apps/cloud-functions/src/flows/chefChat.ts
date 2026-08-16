@@ -11,6 +11,7 @@ import { reportFlowError } from '../observability/reportServerError.js';
 import { UK_INGREDIENT_PRINCIPLE } from './ingredientConversions.js';
 import { readEquipmentContext, equipmentSectionForChef } from './equipmentContext.js';
 import { readKitchenMemoryContext, kitchenMemorySectionForChef } from './kitchenMemoryContext.js';
+import { readComponentContext, componentSectionForChef } from './componentContext.js';
 
 async function readRecipeContext(
   db: ReturnType<typeof getFirestore>,
@@ -37,6 +38,20 @@ async function readRecipeContext(
     if (r.description) parts.push(`Description: ${r.description}`);
     if (ingredientLines.length > 0) parts.push(`Ingredients:\n${ingredientLines.join('\n')}`);
     if (stepLines.length > 0) parts.push(`Method:\n${stepLines.join('\n')}`);
+
+    // The dishes a meal is built from (issue #838). Appended to the recipe body
+    // rather than pushed as its own top-level section, so it stays adjacent to the
+    // recipe it belongs to and nests correctly under whichever heading the caller
+    // puts this text under — "Current recipe" or "Starting point for a NEW dish".
+    // Both paths reach this reader, so a variation chat sees the dinner too.
+    //
+    // The read cannot join the flow's Promise.all: the component ids are inside
+    // the recipe document, so this is the one round-trip that is necessarily
+    // serial. It is a single batched getAll and only happens for a meal — a
+    // recipe with no components returns '' here and the prompt is unchanged.
+    const componentSection = componentSectionForChef(await readComponentContext(db, r, 'chefChat'));
+    if (componentSection) parts.push(componentSection);
+
     return parts.join('\n\n');
   } catch (err) {
     logger.warn('chefChat: failed to read recipe', { recipeId, err });

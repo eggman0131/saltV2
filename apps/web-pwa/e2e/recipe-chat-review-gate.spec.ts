@@ -7,8 +7,13 @@
  * preserved metadata the librarian omitted, the chat page spread the draft
  * straight through, so the same conversation came back proposing to erase
  * Serves 4, all three times and every tag. Both doors now call the one merge in
- * `src/lib/recipeAmend.ts`, and these two tests are the pin on that: same
+ * `src/lib/recipeAmend.ts`, and the first two tests are the pin on that: same
  * conversation, same seeded dish, same assertions, one per surface.
+ *
+ * A third test (issue #838) puts a MEAL through the same gate. The chef now reads
+ * a meal's attached dishes, so the gate is where "nothing aggregates" has to hold:
+ * an amend must not merge a dish's ingredients onto the meal, and must not drop
+ * the dishes. Same conversation, same stubs, one extra seeded component.
  *
  * Runs against the Firestore + Auth emulators with the MODEL faked
  * (FUNCTIONS_AI_FAKE) and every other layer live — the callable boundary, the
@@ -36,6 +41,7 @@
  */
 import { expect, test } from './fixtures/test';
 import { gotoAndSignIn, uniqueEmail } from './helpers/auth';
+import { seedRecipe } from './helpers/seed';
 import { SYNC_TIMEOUT } from './helpers/timeouts';
 import type { ChatSessionDoc } from '@salt/domain/schemas';
 import type { Recipe } from '@salt/domain';
@@ -87,6 +93,61 @@ const STUB_AUTHOR = {
   steps: [{ text: AMENDED_STEP, timerMinutes: null, timerLabel: null, note: null }],
   notes: null,
 };
+
+// ─── The meal case (issue #838) ──────────────────────────────────────────────
+//
+// The same dish, plus one attached component whose ingredient must NEVER appear
+// on the meal. The meal carries the same title, ingredient and step as the seeded
+// dish above so the one stubbed librarian answer serves both tests.
+const COMPONENT_INGREDIENT = '1 whole chicken, 1.6 kg';
+
+function recipeFixture(
+  id: string,
+  title: string,
+  opts: { rawText: string; componentRecipeIds?: string[] },
+): Recipe {
+  return {
+    id,
+    schemaVersion: 1,
+    kind: 'recipe',
+    title,
+    description: null,
+    ingredients: [
+      {
+        id: `${id}-g1`,
+        name: null,
+        items: [
+          {
+            id: `${id}-i1`,
+            rawText: opts.rawText,
+            parsed: null,
+            canonId: null,
+            matchState: 'pending',
+            isOptional: false,
+            firstUsedInStepId: null,
+          },
+        ],
+      },
+    ],
+    steps: [{ id: `${id}-s1`, text: STEP, timer: null, note: null }],
+    metadata: { ...SEEDED_METADATA },
+    source: null,
+    notes: null,
+    producesCanonId: null,
+    componentRecipeIds: opts.componentRecipeIds ?? [],
+    image: null,
+    createdAt: '2026-08-01T00:00:00.000Z',
+    updatedAt: '2026-08-01T00:00:00.000Z',
+  };
+}
+
+const COMPONENT_DISH = recipeFixture('review-gate-chicken', 'Review Gate Roast Chicken', {
+  rawText: COMPONENT_INGREDIENT,
+});
+const MEAL = recipeFixture('review-gate-roast', 'Review Gate Sunday Roast', {
+  rawText: INGREDIENT,
+  componentRecipeIds: [COMPONENT_DISH.id],
+});
 
 async function getRecipes(page: Page): Promise<Recipe[]> {
   return page.evaluate<Recipe[]>(() => window.__e2e!.getRecipes() as Recipe[]);
@@ -233,5 +294,51 @@ test.describe('recipes — the chat review gate', () => {
     expect(saved.title).toBe(AMENDED_TITLE);
     // The same expected value as the sidebar test: one merge, one outcome.
     expect(saved.metadata).toEqual(SEEDED_METADATA);
+  });
+
+  /**
+   * A meal through the same gate (issue #838).
+   *
+   * The chef now reads a meal's attached dishes, and the founding invariant of
+   * meals is that NOTHING AGGREGATES: a dish's ingredients never land on the meal.
+   * The cost of breaking it is concrete — the planner writes
+   * `[mealId, ...componentRecipeIds]` into a day, so an ingredient copied onto the
+   * meal is SHOPPED TWICE for one dinner. The librarian is structurally prevented
+   * from copying one (it is never shown the lists — see
+   * `apps/cloud-functions/src/flows/componentContext.ts`), and this is the pin on
+   * the other end of that: amend a meal by chat, apply, and the saved document
+   * still has only its own ingredient and still has its dish attached.
+   *
+   * Seeded through `seedRecipe` rather than the editor's component picker: the
+   * subject here is what the amend writes, and the attach UI has its own coverage
+   * in `meal-component-create.spec.ts`.
+   */
+  test('a meal keeps its own ingredients and its dishes: no component lines merged in', async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(120_000);
+    await gotoAndSignIn(page, uniqueEmail(testInfo.testId), '/', { admin: true });
+    await stubModel(page);
+
+    await seedRecipe(page, COMPONENT_DISH);
+    await seedRecipe(page, MEAL);
+    await page.goto(`/#/recipes/${MEAL.id}`);
+    await expect(page.getByRole('heading', { name: MEAL.title })).toBeVisible({
+      timeout: SYNC_TIMEOUT,
+    });
+
+    await talkAboutTheDish(page);
+    await page.getByTestId('sidebar-apply-changes-btn').click();
+    await expect(page.getByTestId('recipe-change-summary')).toBeVisible({ timeout: 60_000 });
+    await page.getByTestId('recipe-change-apply').click();
+
+    const saved = await savedRecipeAfterApply(page, MEAL.id);
+    // The meal's own line, and ONLY the meal's own line.
+    const rawTexts = saved.ingredients.flatMap((g) => g.items.map((i) => i.rawText));
+    expect(rawTexts).toEqual([INGREDIENT]);
+    expect(rawTexts).not.toContain(COMPONENT_INGREDIENT);
+    // And the dish is still attached — `assembleRecipeDraft`'s carry-through, which
+    // every amend would otherwise erase.
+    expect(saved.componentRecipeIds).toEqual([COMPONENT_DISH.id]);
   });
 });

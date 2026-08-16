@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { componentDisplayLines } from '@salt/domain';
 import type { RecipeDoc } from '@salt/domain/schemas';
 
 // Unit-level (mock-based, no emulator) coverage of the onRecipeWritten hero-image
@@ -30,6 +31,17 @@ vi.mock('../../src/flows/describeRecipeScene.js', () => ({
 
 const mockEncode = vi.fn(async () => Buffer.from([1, 2, 3]));
 vi.mock('../../src/imaging/encodeHeroImage.js', () => ({ encodeHeroImage: mockEncode }));
+
+// The meal's attached dishes (issue #838). Mocked at the READ, exactly as the two
+// flows above are: the Firestore fan-out has its own suite
+// (tests/flows/componentContext.test.ts), and what this file is about is what the
+// trigger does with what comes back — which is hand it to the REAL
+// `componentDisplayLines`, so the lines asserted here are the lines the browser
+// renders for the same meal.
+const mockReadComponentContext = vi.fn(async (): Promise<RecipeDoc[]> => []);
+vi.mock('../../src/flows/componentContext.js', () => ({
+  readComponentContext: mockReadComponentContext,
+}));
 
 // Firestore admin: capture the write-back and answer the devSettings read.
 const mockUpdate = vi.fn().mockResolvedValue(undefined);
@@ -104,6 +116,7 @@ beforeEach(() => {
   mockDescribeScene.mockResolvedValue({ brief: 'A blistered, golden-topped bake.' });
   mockEncode.mockResolvedValue(Buffer.from([1, 2, 3]));
   mockGet.mockResolvedValue({ exists: false });
+  mockReadComponentContext.mockResolvedValue([]);
 });
 
 describe('onRecipeWritten — hero-image branch', () => {
@@ -278,6 +291,10 @@ describe('onRecipeWritten — scene brief', () => {
       tags: [],
       ingredients: ['a handful of basil'],
       steps: ['Grill until the top is blistered and golden.'],
+      // Issue #838. Still an EXACT-shape assertion: a recipe that is not a meal
+      // sends an empty array, which is what makes the flow omit the dishes block
+      // and the meal clause entirely.
+      components: [],
     });
   });
 
@@ -425,5 +442,105 @@ describe('onRecipeWritten — entry kinds', () => {
 
     expect(mockDescribeScene).toHaveBeenCalledWith(expect.objectContaining({ kind: 'recipe' }));
     expect(mockGenerateImage).toHaveBeenCalledWith(expect.objectContaining({ kind: 'recipe' }));
+  });
+});
+
+// ─── Meals (issue #838) ──────────────────────────────────────────────────────
+// A bundle-only meal — a Sunday roast that is nothing but chicken + potatoes +
+// gravy — has no ingredients and no method of its own, so before this the art
+// director's ENTIRE input was a title. That is the case where the blindness costs
+// most, and it is a hero the user then has to keep regenerating.
+//
+// The trigger's whole job here is resolve → render → forward, and the rendering is
+// deliberately not its own: it hands the resolved dishes to `componentDisplayLines`
+// in `@salt/domain`, the same helper the browser's brief dialog uses, so a brief
+// authored on write and a brief authored from the dialog cannot describe different
+// dinners.
+describe('onRecipeWritten — meal components', () => {
+  const CHICKEN = makeRecipe('chicken', {
+    title: 'Roast chicken',
+    description: 'Lemon and thyme, skin crisp and burnished.',
+  });
+  const POTATOES = makeRecipe('potatoes', { title: 'Roast potatoes', description: null });
+
+  it('sends the art director the dishes the meal is built from', async () => {
+    mockReadComponentContext.mockResolvedValue([CHICKEN, POTATOES]);
+
+    await (onRecipeWritten as Function)(
+      makeEvent(
+        'roast',
+        makeRecipe('roast', {
+          title: 'Sunday roast',
+          description: null,
+          componentRecipeIds: ['chicken', 'potatoes'],
+        }),
+      ),
+    );
+
+    // Title and description only, in stored order, and the dish with no
+    // description is its title alone — `componentDisplayLines`' contract, not a
+    // string this trigger builds. A hand-written literal here could drift from the
+    // browser's; this cannot.
+    expect(mockDescribeScene).toHaveBeenCalledWith(
+      expect.objectContaining({
+        components: componentDisplayLines([CHICKEN, POTATOES]),
+      }),
+    );
+    expect(mockDescribeScene.mock.calls[0]![0].components).toEqual([
+      'Roast chicken — Lemon and thyme, skin crisp and burnished.',
+      'Roast potatoes',
+    ]);
+  });
+
+  it('resolves the dishes against the recipe that was actually written', async () => {
+    // The read is keyed off the after-doc, not the trigger params: a meal whose
+    // dishes were just re-arranged must be described by the NEW list.
+    const roast = makeRecipe('roast', { componentRecipeIds: ['chicken'] });
+    await (onRecipeWritten as Function)(makeEvent('roast', roast));
+
+    expect(mockReadComponentContext).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ componentRecipeIds: ['chicken'] }),
+      'onRecipeWritten',
+    );
+  });
+
+  it('passes an empty array for a recipe that is not a meal', async () => {
+    // What keeps nearly every recipe on exactly the prompt it had before: the flow
+    // omits both the dishes block and the meal clause on an empty array.
+    await (onRecipeWritten as Function)(makeEvent('r1', makeRecipe('r1')));
+
+    expect(mockDescribeScene).toHaveBeenCalledWith(expect.objectContaining({ components: [] }));
+  });
+
+  it('still authors a brief when the component read comes back empty', async () => {
+    // `readComponentContext` degrades to [] on any failure (Rule 10) — a Firestore
+    // hiccup must cost the dinner its dish list, never its hero.
+    mockReadComponentContext.mockResolvedValue([]);
+
+    await (onRecipeWritten as Function)(
+      makeEvent('roast', makeRecipe('roast', { componentRecipeIds: ['chicken'] })),
+    );
+
+    expect(mockDescribeScene).toHaveBeenCalledOnce();
+    expect(mockDescribeScene.mock.calls[0]![0].components).toEqual([]);
+    expect(mockGenerateImage).toHaveBeenCalledOnce();
+  });
+
+  it('never pays for the component read when a guard skips the brief', async () => {
+    // The read sits inside the brief step, which sits after every cheap guard — so
+    // a doc that already carries a brief costs no Firestore read either.
+    await (onRecipeWritten as Function)(
+      makeEvent(
+        'roast',
+        makeRecipe('roast', {
+          componentRecipeIds: ['chicken'],
+          imageBrief: 'A human wrote this brief.',
+        }),
+      ),
+    );
+
+    expect(mockDescribeScene).not.toHaveBeenCalled();
+    expect(mockReadComponentContext).not.toHaveBeenCalled();
   });
 });
