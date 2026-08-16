@@ -8,8 +8,9 @@ import type { CookActiveTimerDoc, CookSessionDoc } from '@salt/domain/schemas';
 // independent is the whole point — it is what lets a test move the wall clock
 // WITHOUT running a tick, which is exactly what a frozen page does and the one
 // case a fully-faked clock cannot express.
-const { mockCookSession, mockChime, mockToast, mockRouter } = vi.hoisted(() => {
+const { mockCookSession, mockKitchenTimers, mockChime, mockToast, mockRouter } = vi.hoisted(() => {
   let value: CookSessionDoc | null = null;
+  let kitchen: unknown = null;
   return {
     mockCookSession: {
       subscribe(fn: (v: CookSessionDoc | null) => void) {
@@ -20,6 +21,15 @@ const { mockCookSession, mockChime, mockToast, mockRouter } = vi.hoisted(() => {
         value = v;
       },
     },
+    mockKitchenTimers: {
+      subscribe(fn: (v: unknown) => void) {
+        fn(kitchen);
+        return () => {};
+      },
+      _set(v: unknown) {
+        kitchen = v;
+      },
+    },
     mockChime: { playChime: vi.fn(), primeChime: vi.fn() },
     mockToast: { addToast: vi.fn(), dismissToast: vi.fn() },
     mockRouter: { push: vi.fn() },
@@ -27,6 +37,7 @@ const { mockCookSession, mockChime, mockToast, mockRouter } = vi.hoisted(() => {
 });
 
 vi.mock('../src/lib/cookSessionService.js', () => ({ cookSession: mockCookSession }));
+vi.mock('../src/lib/kitchenTimerService.js', () => ({ kitchenTimers: mockKitchenTimers }));
 vi.mock('../src/lib/chime.js', () => mockChime);
 vi.mock('../src/lib/toastStore.js', () => mockToast);
 vi.mock('svelte-spa-router', () => mockRouter);
@@ -80,6 +91,7 @@ beforeEach(() => {
   clock = START;
   vi.spyOn(Date, 'now').mockImplementation(() => clock);
   mockCookSession._set(null);
+  mockKitchenTimers._set(null);
   // Somewhere else in the app — the case the watcher exists for.
   window.location.hash = '#/shopping';
 });
@@ -294,5 +306,144 @@ describe('cookTimerAlerts', () => {
     vi.advanceTimersByTime(5_000);
 
     expect(mockChime.playChime).not.toHaveBeenCalled();
+  });
+});
+
+// A timer with no cook behind it (issue #842). The watcher's second pass, which
+// shares the one dedupe map with the first — a timer is alerted once, not once
+// per kind.
+describe('cookTimerAlerts — standalone kitchen timers (#842)', () => {
+  const KITCHEN_HASH = '#/mine';
+
+  function kitchenDoc(timers: Record<string, unknown>[]) {
+    return { ownerUid: UID, timers };
+  }
+
+  function kitchenTimer(over: Record<string, unknown> = {}) {
+    return {
+      id: 'k1',
+      label: 'Eggs',
+      endsAt: iso(START + 60_000),
+      durationMinutes: 10,
+      notify: true,
+      ...over,
+    };
+  }
+
+  it('chimes and offers the way back to the kitchen when one runs out', () => {
+    mockKitchenTimers._set(kitchenDoc([kitchenTimer()]));
+    const stop = initCookTimerAlerts();
+    expect(mockChime.playChime).not.toHaveBeenCalled();
+
+    clock = START + 60_400;
+    vi.advanceTimersByTime(1_000);
+
+    expect(mockChime.playChime).toHaveBeenCalledTimes(1);
+    // The timer's own name, as it would read on the lock screen.
+    expect(mockToast.addToast).toHaveBeenCalledWith('Eggs', 'default', expect.anything());
+
+    const options = mockToast.addToast.mock.calls[0]?.[2] as {
+      action: { label: string; onClick: () => void };
+    };
+    options.action.onClick();
+    expect(mockRouter.push).toHaveBeenCalledWith('/mine');
+
+    stop();
+  });
+
+  // The card flips to "Finished" in front of them — the same visible
+  // acknowledgement that earns a cook timer its suppression on the cook page.
+  it('chimes without a toast when the chef is already looking at My Kitchen', () => {
+    window.location.hash = KITCHEN_HASH;
+    mockKitchenTimers._set(kitchenDoc([kitchenTimer()]));
+    const stop = initCookTimerAlerts();
+
+    clock = START + 60_400;
+    vi.advanceTimersByTime(1_000);
+
+    expect(mockChime.playChime).toHaveBeenCalledTimes(1);
+    expect(mockToast.addToast).not.toHaveBeenCalled();
+    stop();
+  });
+
+  it('alerts once, however many ticks pass', () => {
+    mockKitchenTimers._set(kitchenDoc([kitchenTimer()]));
+    const stop = initCookTimerAlerts();
+
+    clock = START + 60_400;
+    vi.advanceTimersByTime(1_000);
+    vi.advanceTimersByTime(1_000);
+
+    expect(mockChime.playChime).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
+  // Never seen running: it finished before the watcher was here, or was started
+  // on another device, so it was never ours to announce.
+  it('stays silent for one that had already fired when it started watching', () => {
+    mockKitchenTimers._set(kitchenDoc([kitchenTimer({ endsAt: iso(START - 60_000) })]));
+    const stop = initCookTimerAlerts();
+
+    vi.advanceTimersByTime(1_000);
+
+    expect(mockChime.playChime).not.toHaveBeenCalled();
+    stop();
+  });
+
+  // A page frozen across the end-time already got the OS notification; alerting
+  // on return would be the second alert for a timer they have been told about.
+  it('stays silent when the page was frozen across the end-time', () => {
+    mockKitchenTimers._set(kitchenDoc([kitchenTimer()]));
+    const stop = initCookTimerAlerts();
+
+    clock = START + 120_000;
+    vi.advanceTimersByTime(1_000);
+
+    expect(mockChime.playChime).not.toHaveBeenCalled();
+    stop();
+  });
+
+  // Re-timing changes `endsAt`, which makes it a new timer to be alerted for.
+  it('alerts again for a timer that was re-timed after it fired', () => {
+    mockKitchenTimers._set(kitchenDoc([kitchenTimer()]));
+    const stop = initCookTimerAlerts();
+
+    clock = START + 60_400;
+    vi.advanceTimersByTime(1_000);
+    expect(mockChime.playChime).toHaveBeenCalledTimes(1);
+
+    mockKitchenTimers._set(kitchenDoc([kitchenTimer({ endsAt: iso(START + 120_000) })]));
+    clock = START + 90_000;
+    vi.advanceTimersByTime(1_000);
+    clock = START + 120_400;
+    vi.advanceTimersByTime(1_000);
+
+    expect(mockChime.playChime).toHaveBeenCalledTimes(2);
+    stop();
+  });
+
+  it('does nothing at all for a member who has never started one', () => {
+    mockKitchenTimers._set(null);
+    const stop = initCookTimerAlerts();
+
+    clock = START + 60_400;
+    vi.advanceTimersByTime(1_000);
+
+    expect(mockChime.playChime).not.toHaveBeenCalled();
+    stop();
+  });
+
+  // Both kinds ticking at once, neither swallowing the other.
+  it('alerts a cook timer and a standalone one that finish together', () => {
+    mockCookSession._set(makeSession([runningTimer()]));
+    mockKitchenTimers._set(kitchenDoc([kitchenTimer()]));
+    const stop = initCookTimerAlerts();
+
+    clock = START + 60_400;
+    vi.advanceTimersByTime(1_000);
+
+    expect(mockChime.playChime).toHaveBeenCalledTimes(2);
+    expect(mockToast.addToast).toHaveBeenCalledTimes(2);
+    stop();
   });
 });

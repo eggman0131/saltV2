@@ -375,6 +375,23 @@ for, and every one of those — including the id — is minted by the caller. `i
 not `stepId`, is a timer's identity: it is what `withTimerStarted` replaces on
 and what `withTimerDismissed` keys on.
 
+The `kitchenTimer` module (issue #842) is a lightweight variant, a sibling of
+`cookSession` for a timer that belongs to nobody's cook: two pure producers,
+`withKitchenTimerStarted` and `withKitchenTimerDismissed`, over the per-user
+`kitchenTimers/{uid}` document's `timers[]` array. It deliberately does not
+re-export timer-shaped copies of `cookSession`'s `timerHeat`, `timerProgress` or
+`formatClock` — a standalone timer's `endsAt` and duration read exactly like a
+cook timer's, so importing those existing pure queries is what keeps the two
+surfaces from ever disagreeing about what "imminent" means, rather than giving
+drift a second copy to happen in. `withKitchenTimerStarted` also prunes: a fired
+timer rings until dismissed by design (no tombstone — CLAUDE.md's no-soft-delete
+rule applies to an array entry same as a document), but one still ringing more
+than a day later is swept on the next start, the only moment the document is
+already in hand and free to tidy. Flat structure, no `entities/`, `ports/`,
+`commands/` or `queries/` subfolders, matching the `weather` pattern. No clock
+read internally (CLAUDE.md Rule 1): `endsAt` and `nowMs` are both injected by
+the caller.
+
 The `personalView` module — the projections behind "Kitchen" — is a lightweight
 variant like the three above, and its history is the useful lesson here, because
 it has been **deleted and re-created**, and both moves were right.

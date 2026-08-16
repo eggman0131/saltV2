@@ -14,36 +14,45 @@ import type { CookActiveTimerDoc, CookSessionDoc } from '@salt/domain/schemas';
 // is a store that is already subscribed app-wide, so these tests drive fake stores
 // and assert the projection: my timers, my open cooks, and what still wants a look.
 
-const { mockRecipes, mockSessions, mockChats, mockKitchenWeeks, mockToday, mockMember } =
-  vi.hoisted(() => {
-    function makeStore<T>(initial: T) {
-      let value = initial;
-      const subs = new Set<(v: T) => void>();
-      return {
-        subscribe(fn: (v: T) => void) {
-          subs.add(fn);
-          fn(value);
-          return () => {
-            subs.delete(fn);
-          };
-        },
-        _set(v: T) {
-          value = v;
-          subs.forEach((f) => f(v));
-        },
-      };
-    }
+const {
+  mockRecipes,
+  mockSessions,
+  mockChats,
+  mockKitchenWeeks,
+  mockToday,
+  mockMember,
+  mockKitchenTimers,
+} = vi.hoisted(() => {
+  function makeStore<T>(initial: T) {
+    let value = initial;
+    const subs = new Set<(v: T) => void>();
     return {
-      mockRecipes: makeStore<unknown[]>([]),
-      mockSessions: makeStore<unknown[]>([]),
-      mockChats: makeStore<unknown[]>([]),
-      mockKitchenWeeks: makeStore<unknown[]>([]),
-      mockToday: makeStore<string>(''),
-      mockMember: makeStore<unknown>(null),
+      subscribe(fn: (v: T) => void) {
+        subs.add(fn);
+        fn(value);
+        return () => {
+          subs.delete(fn);
+        };
+      },
+      _set(v: T) {
+        value = v;
+        subs.forEach((f) => f(v));
+      },
     };
-  });
+  }
+  return {
+    mockRecipes: makeStore<unknown[]>([]),
+    mockSessions: makeStore<unknown[]>([]),
+    mockChats: makeStore<unknown[]>([]),
+    mockKitchenWeeks: makeStore<unknown[]>([]),
+    mockToday: makeStore<string>(''),
+    mockMember: makeStore<unknown>(null),
+    mockKitchenTimers: makeStore<unknown>(null),
+  };
+});
 
 vi.mock('../src/lib/recipeService.js', () => ({ recipes: mockRecipes }));
+vi.mock('../src/lib/kitchenTimerService.js', () => ({ kitchenTimers: mockKitchenTimers }));
 vi.mock('../src/lib/cookSessionService.js', () => ({ myCookSessions: mockSessions }));
 vi.mock('../src/lib/chatService.js', () => ({ sessions: mockChats }));
 vi.mock('../src/lib/mealPlanService.js', () => ({
@@ -146,6 +155,7 @@ beforeEach(() => {
   mockKitchenWeeks._set([]);
   mockToday._set('');
   mockMember._set(null);
+  mockKitchenTimers._set(null);
 });
 
 afterEach(() => {
@@ -272,6 +282,98 @@ describe('myTimers', () => {
     expect(get(mineOpenCount)).toBe(1); // the open cook, and nothing else
   });
 });
+
+// A timer that belongs to nobody's cook (issue #842). It rides the SAME list as
+// the cook timers, because everything downstream — the sort, the fired filter,
+// the nav badge — has to treat the two kinds identically, and one list is the
+// only way to guarantee that.
+describe('myTimers — standalone kitchen timers (#842)', () => {
+  const kitchenTimer = (id: string, offsetMs: number, over: Record<string, unknown> = {}) => ({
+    id,
+    label: 'Eggs',
+    endsAt: new Date(NOW + offsetMs).toISOString(),
+    durationMinutes: 10,
+    notify: true,
+    ...over,
+  });
+  const kitchenDoc = (timers: unknown[]) => ({ ownerUid: 'uid-a', timers });
+
+  it('lists one with its own name and duration, and no recipe', () => {
+    mockKitchenTimers._set(kitchenDoc([kitchenTimer('k1', 4 * 60_000)]));
+    const [t] = get(myTimers);
+    expect(t).toMatchObject({ kind: 'kitchen', label: 'Eggs', durationMs: 600_000 });
+    expect(t).not.toHaveProperty('recipe');
+    expect(t).not.toHaveProperty('session');
+  });
+
+  it('needs no cook and no recipe to appear at all', () => {
+    mockRecipes._set([]);
+    mockSessions._set([]);
+    mockKitchenTimers._set(kitchenDoc([kitchenTimer('k1', 60_000)]));
+    expect(get(myTimers)).toHaveLength(1);
+  });
+
+  it('is absent when the member has never started one', () => {
+    mockKitchenTimers._set(null);
+    expect(get(myTimers)).toEqual([]);
+  });
+
+  // Not marked out as a different species: one sort, on `endsAt` alone.
+  it('interleaves with cook timers, soonest-ending first', () => {
+    mockRecipes._set([timedRecipeFor('r1', 'Ragu')]);
+    mockSessions._set([session('r1', [], [timer('r1-s0', 5 * 60_000)])]);
+    mockKitchenTimers._set(
+      kitchenDoc([kitchenTimer('k1', 9 * 60_000), kitchenTimer('k2', 60_000)]),
+    );
+    expect(get(myTimers).map((t) => t.timer.id)).toEqual(['k2', 'r1-s0', 'k1']);
+  });
+
+  it('gives a standalone timer a row key that cannot collide with a cook timer', () => {
+    mockRecipes._set([timedRecipeFor('r1', 'Ragu')]);
+    mockSessions._set([session('r1', [], [timer('r1-s0', 60_000)])]);
+    mockKitchenTimers._set(kitchenDoc([kitchenTimer('r1-s0', 120_000)]));
+    const ids = get(myTimers).map((t) => t.id);
+    expect(new Set(ids).size).toBe(2);
+    expect(ids).toContain('kitchen::r1-s0');
+  });
+
+  it('counts a fired one toward the badge, exactly as a fired cook timer does', () => {
+    mockKitchenTimers._set(kitchenDoc([kitchenTimer('k1', -30_000), kitchenTimer('k2', 60_000)]));
+    expect(get(firedTimers).map((t) => t.timer.id)).toEqual(['k1']);
+    expect(get(mineOpenCount)).toBe(1);
+  });
+
+  // Without this the countdown on a kitchen with no cook in it would sit still —
+  // a worse failure than showing no countdown at all.
+  it('arms the one-second clock on its own, with no cook anywhere', () => {
+    const seen: number[] = [];
+    const unsub = timerNowMs.subscribe((v) => seen.push(v));
+    const before = seen.length;
+    vi.advanceTimersByTime(3000);
+    expect(seen.length).toBe(before);
+
+    mockKitchenTimers._set(kitchenDoc([kitchenTimer('k1', 60_000)]));
+    const armed = seen.length;
+    vi.advanceTimersByTime(3000);
+    expect(seen.length).toBeGreaterThan(armed);
+    unsub();
+  });
+});
+
+// Shared with the standalone-timer block above; the original lives inside the
+// `myTimers` describe, which cannot reach across.
+function timedRecipeFor(id: string, title: string) {
+  return recipe(id, title, {
+    steps: [
+      {
+        id: `${id}-s0`,
+        text: 'simmer',
+        timer: { durationMinutes: 10, description: 'Simmer the sauce' },
+        note: null,
+      },
+    ],
+  } as Partial<Recipe>);
+}
 
 describe('timerNowMs', () => {
   it('does not tick while nothing is running, and ticks every second once one is', () => {

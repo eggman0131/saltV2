@@ -5,13 +5,14 @@
 // auto-update flow (skipWaiting/clientsClaim/deferred reload); this file adds ONLY
 // the push + notificationclick listeners, so that contract is untouched.
 //
-// Three notification kinds ride this one path, distinguished by `payload.type`:
+// Four notification kinds ride this one path, distinguished by `payload.type`:
 //   - 'cook-timer'        (#544) — deep-links via `sessionId`, has an in-app equivalent
 //   - 'shopping-reminder' (#629) — deep-links via `url`, has none
 //   - 'batch-stage'       (#812) — deep-links via `url`, has none
+//   - 'kitchen-timer'     (#842) — deep-links via `url`, has an in-app equivalent
 // Everything that differs between them is payload-driven; nothing here is
-// hard-coded per feature except the cook-timer foreground rule below and the
-// fallback copy each kind uses when a payload arrives without any.
+// hard-coded per feature except the foreground rule below and the fallback copy
+// each kind uses when a payload arrives without any.
 
 // Fallback copy PER KIND, used only when the server sent none (or the payload could
 // not be parsed at all). It has to be per kind: a batch reminder that failed to
@@ -36,6 +37,11 @@ var SALT_FALLBACK_COPY = {
     title: 'A batch stage is due',
     body: 'Open the batch to see what is next.',
     tag: 'batch-stage',
+  },
+  'kitchen-timer': {
+    title: 'Timer finished',
+    body: 'A kitchen timer just finished.',
+    tag: 'kitchen-timer',
   },
 };
 
@@ -68,16 +74,20 @@ self.addEventListener('push', function (event) {
 
   event.waitUntil(
     (async function () {
-      // Foreground de-dup, COOK TIMERS ONLY: if a window client is already
-      // focused, the in-app tick (CookModePage) alerts with the chime + fired
-      // chip, so the OS notification would be a duplicate. A shopping reminder
-      // has NO in-app equivalent, so suppressing it with the app open would make
-      // it vanish silently — gate the suppression on the type, not on focus alone.
-      // A 'batch-stage' reminder (#812) is omitted here for exactly that reason:
-      // nobody is staring at the batch page waiting for the retard to end, so
-      // there is no in-app alert for the notification to duplicate, and the app
-      // merely being open somewhere must not swallow it.
-      if (type === 'cook-timer') {
+      // Foreground de-dup, FOR THE TWO KINDS THAT HAVE AN IN-APP ALERT: if a
+      // window client is already focused, `cookTimerAlerts` chimes and the chip
+      // (or, for a standalone timer, the card) flips to Finished, so the OS
+      // notification would be a duplicate. That watcher is APP-level, not
+      // page-level, and since #842 it watches the standalone timers too — which
+      // is what makes the assumption true for 'kitchen-timer' as well.
+      //
+      // A shopping reminder has NO in-app equivalent, so suppressing it with the
+      // app open would make it vanish silently — gate the suppression on the type,
+      // not on focus alone. A 'batch-stage' reminder (#812) is omitted for exactly
+      // that reason: nobody is staring at the batch page waiting for the retard to
+      // end, so there is no in-app alert for the notification to duplicate, and
+      // the app merely being open somewhere must not swallow it.
+      if (type === 'cook-timer' || type === 'kitchen-timer') {
         var clientsArr = await self.clients.matchAll({
           type: 'window',
           includeUncontrolled: true,
@@ -115,7 +125,8 @@ self.addEventListener('notificationclick', function (event) {
   // Two routing sources, in precedence order:
   //   1. `data.url` — an explicit deep link the server chose (#629's shopping
   //      reminder opens the DEFAULT list, whose id only the server knows; #812's
-  //      batch reminder opens `/#/batches/{batchId}`).
+  //      batch reminder opens `/#/batches/{batchId}`; #842's standalone kitchen
+  //      timer opens `/#/mine`, which has no id in it at all).
   //   2. `sessionId` — the cook-timer path, unchanged. sessionId is
   //      `${recipeId}_${uid}`; recipe ids are UUIDs (hyphens, no underscore) and
   //      uids are alphanumeric, so the recipe id is everything before the final

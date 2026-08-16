@@ -389,6 +389,7 @@ describe('MealCookPlanPage — every timer in the meal, in one place', () => {
   function mealTimer(recipeId: string, title: string, endsInMs: number) {
     const sessionDoc = session({ id: `${recipeId}_${UID}`, recipeId });
     return {
+      kind: 'cook',
       id: `${recipeId}_${UID}::t1`,
       session: sessionDoc,
       recipe: withCookTime(recipeId, title, 90),
@@ -448,6 +449,30 @@ describe('MealCookPlanPage — every timer in the meal, in one place', () => {
   it('leaves out a timer belonging to a dish outside this meal', () => {
     seedRoast();
     mockMyTimers._set([mealTimer('other', 'Someone else’s stew', 5 * 60_000)]);
+    const { queryByTestId } = renderPage();
+    expect(queryByTestId('cook-plan-timers')).not.toBeInTheDocument();
+  });
+
+  // A standalone kitchen timer (issue #842) rides the same `myTimers` list. It
+  // belongs to nobody's cook and therefore to no meal — My Kitchen is its
+  // surface, and this page is a meal's timers.
+  it('leaves out a standalone kitchen timer, which belongs to no meal at all', () => {
+    seedRoast();
+    mockMyTimers._set([
+      {
+        kind: 'kitchen',
+        id: 'kitchen::k1',
+        timer: {
+          id: 'k1',
+          label: 'Eggs',
+          endsAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+          durationMinutes: 10,
+          notify: true,
+        },
+        label: 'Eggs',
+        durationMs: 600_000,
+      },
+    ]);
     const { queryByTestId } = renderPage();
     expect(queryByTestId('cook-plan-timers')).not.toBeInTheDocument();
   });

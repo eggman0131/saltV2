@@ -1207,3 +1207,110 @@ describe.skipIf(!reachable)('firestore.rules — kitchenMemories (issue #816)', 
     await assertFails(deleteDoc(doc(db, 'kitchenMemories', MEMORY_ID)));
   });
 });
+
+// kitchenTimers is the FOURTH owner-scoped collection (issue #842), and its rule
+// is the only owner-scoped one that keys on the PATH SEGMENT rather than on a
+// stored field — the document id simply is the uid. These cover both halves of
+// that: that the path is genuinely what enforces privacy, and that the stored
+// `ownerUid` cannot be made to disagree with it (the delivery trigger reads that
+// field to decide whose phone to ring).
+//
+// The absence of a `resource == null` clause is deliberate and is asserted here
+// too, because the established pattern says otherwise and someone will otherwise
+// "restore" it: reading and deleting one's own ABSENT document must succeed, and
+// it does without the clause, because no rule below dereferences `resource.data`.
+describe.skipIf(!reachable)('firestore.rules — kitchenTimers ownerUid (issue #842)', () => {
+  let testEnv: RulesTestEnvironment;
+
+  beforeAll(async () => {
+    testEnv = await initializeTestEnvironment({
+      projectId: PROJECT_ID,
+      firestore: {
+        host: HOST,
+        port: PORT,
+        rules: readFileSync(RULES_PATH, 'utf8'),
+      },
+    });
+  });
+
+  afterAll(async () => {
+    await testEnv?.cleanup();
+  });
+
+  const timers = (ownerUid: string) => ({
+    ownerUid,
+    timers: [
+      {
+        id: 't1',
+        label: 'Eggs',
+        endsAt: '2026-08-16T18:10:00.000Z',
+        durationMinutes: 10,
+        notify: true,
+      },
+    ],
+  });
+
+  beforeEach(async () => {
+    await testEnv.clearFirestore();
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'kitchenTimers', 'uid-a'), timers('uid-a'));
+    });
+  });
+
+  function ownerDb() {
+    return testEnv.authenticatedContext('uid-a', { email: 'a@e.org' }).firestore();
+  }
+  function otherDb() {
+    return testEnv.authenticatedContext('uid-b', { email: 'b@e.org' }).firestore();
+  }
+
+  it('lets me read, rewrite and clear my own timers', async () => {
+    const db = ownerDb();
+    await assertSucceeds(getDoc(doc(db, 'kitchenTimers', 'uid-a')));
+    await assertSucceeds(setDoc(doc(db, 'kitchenTimers', 'uid-a'), timers('uid-a')));
+    await assertSucceeds(deleteDoc(doc(db, 'kitchenTimers', 'uid-a')));
+  });
+
+  // THE load-bearing property, and the reason this is a collection rather than a
+  // field: my partner does not see my egg timer, and Firestore is what says so.
+  it('denies another member reading, writing or deleting my timers', async () => {
+    const db = otherDb();
+    await assertFails(getDoc(doc(db, 'kitchenTimers', 'uid-a')));
+    await assertFails(setDoc(doc(db, 'kitchenTimers', 'uid-a'), timers('uid-a')));
+    await assertFails(updateDoc(doc(db, 'kitchenTimers', 'uid-a'), { timers: [] }));
+    await assertFails(deleteDoc(doc(db, 'kitchenTimers', 'uid-a')));
+  });
+
+  // Claiming someone else's document by putting their uid in the FIELD buys
+  // nothing — the path is checked first and independently.
+  it('denies writing to another uid’s document even with a matching ownerUid field', async () => {
+    await assertFails(setDoc(doc(otherDb(), 'kitchenTimers', 'uid-a'), timers('uid-a')));
+  });
+
+  // ...and the field cannot be made to disagree with the path either, because
+  // onKitchenTimerDispatch reads it to decide whose devices to ring.
+  it('denies writing my own document with somebody else’s ownerUid', async () => {
+    await assertFails(setDoc(doc(ownerDb(), 'kitchenTimers', 'uid-a'), timers('uid-b')));
+  });
+
+  // No `resource == null` clause needed, and none present: the id is the uid, so
+  // the rule never dereferences an absent document's data.
+  it('lets me read and delete my own document before it exists', async () => {
+    await testEnv.clearFirestore();
+    const db = ownerDb();
+    await assertSucceeds(getDoc(doc(db, 'kitchenTimers', 'uid-a')));
+    await assertSucceeds(deleteDoc(doc(db, 'kitchenTimers', 'uid-a')));
+  });
+
+  it('lets me create my document for the very first time', async () => {
+    await testEnv.clearFirestore();
+    await assertSucceeds(setDoc(doc(ownerDb(), 'kitchenTimers', 'uid-a'), timers('uid-a')));
+  });
+
+  it('denies an unauthenticated caller entirely', async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, 'kitchenTimers', 'uid-a')));
+    await assertFails(setDoc(doc(db, 'kitchenTimers', 'uid-a'), timers('uid-a')));
+    await assertFails(deleteDoc(doc(db, 'kitchenTimers', 'uid-a')));
+  });
+});
