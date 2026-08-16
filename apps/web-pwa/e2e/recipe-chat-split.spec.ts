@@ -181,6 +181,8 @@ function buildRecipe(id: string, title: string, kind: 'recipe' | 'outing'): Reci
     image: null,
     createdAt: SEED_TIME,
     updatedAt: SEED_TIME,
+    createdBy: '',
+    lastEditedBy: '',
   };
 }
 

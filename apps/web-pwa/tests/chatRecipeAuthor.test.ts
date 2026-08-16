@@ -11,7 +11,13 @@ vi.mock('@salt/firebase-sync', () => ({
   saveRecipe: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
 }));
 vi.mock('@salt/observability', () => ({ trackUsageEvent: vi.fn() }));
-vi.mock('../src/lib/recipeService.js', () => ({ authorRecipeTraced: vi.fn() }));
+// `stampRecipeAttribution` is the identity here: who saved it is the real
+// service's business (and has its own suite, #845) — what these tests pin is the
+// document, which must not change shape because a name was or wasn't available.
+vi.mock('../src/lib/recipeService.js', () => ({
+  authorRecipeTraced: vi.fn(),
+  stampRecipeAttribution: <T>(recipe: T) => recipe,
+}));
 // Not imported by the module under test — which is the point. If the create leg
 // ever grows a claim, this mock stops being unused and the last test fails.
 vi.mock('../src/lib/chatService.js', () => ({

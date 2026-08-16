@@ -17,6 +17,12 @@ const { spans } = vi.hoisted(() => ({
   spans: [] as { attributes: Record<string, unknown>; errored: boolean }[],
 }));
 
+// `recipeService` stamps recipe attribution from `currentMember` (issue #845),
+// so it now pulls in the real `membersService` — which reaches `auth.svelte.js`,
+// whose import of `firebase.ts` boots the SDK at module load. Stub the auth
+// store as the shopping-list suites do: nobody signed in, so no name is
+// available and nothing is stamped.
+vi.mock('../src/lib/auth.svelte.js', () => ({ auth: { user: null } }));
 vi.mock('@salt/observability', () => ({
   startUserActionSpan: vi.fn(() => {
     const record = { attributes: {} as Record<string, unknown>, errored: false };

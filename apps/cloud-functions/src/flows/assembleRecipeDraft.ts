@@ -235,6 +235,15 @@ export async function assembleRecipeDraft(
     // must hand the base recipe's components straight back. Without this line
     // `mergeAmendedRecipe`'s spread would erase them on every amend.
     componentRecipeIds: baseRecipe?.componentRecipeIds ?? [],
+    // Third carry-through of the same shape, and the sharpest of the three
+    // (issue #845). An edit-mode amend rebuilds the WHOLE document from
+    // `baseRecipe` and `mergeAmendedRecipe` spreads that draft over the existing
+    // recipe, so omitting these two lines would silently erase the recipe's
+    // creator every time someone amended it by chat. Neither the librarian nor
+    // the extractor knows who anyone is; on a create there is no one to credit
+    // yet, so both go out blank and the client stamps them on save.
+    createdBy: baseRecipe?.createdBy ?? '',
+    lastEditedBy: baseRecipe?.lastEditedBy ?? '',
     // Spread, not `needs_approval: needsApproval` — the field is optional and
     // absent means reviewed, so the un-flagged path must omit it entirely rather
     // than write an explicit false.

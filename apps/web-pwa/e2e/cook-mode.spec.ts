@@ -120,6 +120,8 @@ function buildRecipe(steps: readonly StepSpec[], ingredients: readonly Ingredien
     image: null,
     createdAt: SEED_TIME,
     updatedAt: SEED_TIME,
+    createdBy: '',
+    lastEditedBy: '',
   };
 }
 

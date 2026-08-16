@@ -327,6 +327,43 @@ describe('RecipeSchema', () => {
     expectTypeOf<Recipe['kind']>().toEqualTypeOf<'recipe' | 'outing' | 'cocktail'>();
   });
 
+  // --- Attribution (issue #845) ---
+
+  // The property the whole `.default('')` choice exists for: every recipe already
+  // in production predates these fields, and the realtime subscription SKIPS
+  // documents that fail validation — a required field would have emptied the
+  // library.
+  it('parses a document carrying neither attribution field, defaulting both to blank', () => {
+    const { createdBy: _c, lastEditedBy: _e, ...legacy } = messyRecipe();
+    expect('createdBy' in legacy).toBe(false);
+    expect('lastEditedBy' in legacy).toBe(false);
+    const result = RecipeSchema.safeParse(legacy);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.createdBy).toBe('');
+      expect(result.data.lastEditedBy).toBe('');
+    }
+  });
+
+  it('round-trips the two names it was given', () => {
+    const result = RecipeSchema.safeParse({
+      ...messyRecipe(),
+      createdBy: 'Daniel',
+      lastEditedBy: 'Kate',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.createdBy).toBe('Daniel');
+      expect(result.data.lastEditedBy).toBe('Kate');
+    }
+  });
+
+  it('emptyRecipe leaves both blank — the domain knows no user', () => {
+    const blank = emptyRecipe('r1', '2026-06-11T00:00:00.000Z');
+    expect(blank.createdBy).toBe('');
+    expect(blank.lastEditedBy).toBe('');
+  });
+
   it('rejects a non-numeric imageRequestedAt and a non-boolean imageHidden', () => {
     expect(RecipeSchema.safeParse({ ...messyRecipe(), imageRequestedAt: 'soon' }).success).toBe(
       false,

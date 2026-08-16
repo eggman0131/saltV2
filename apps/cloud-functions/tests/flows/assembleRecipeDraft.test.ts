@@ -325,6 +325,8 @@ describe('assembleRecipeDraft — edit mode', () => {
       image: null,
       createdAt: '2026-06-01T00:00:00.000Z',
       updatedAt: '2026-06-01T00:00:00.000Z',
+      createdBy: 'Daniel',
+      lastEditedBy: 'Kate',
     };
   }
 
@@ -396,12 +398,30 @@ describe('assembleRecipeDraft — edit mode', () => {
     expect(doc.componentRecipeIds).toEqual(['comp-a', 'comp-b']);
   });
 
-  it('defaults to a fresh recipe with no makes-link and no components when there is no base', async () => {
+  it("carries the base recipe's attribution through the amend (issue #845)", async () => {
+    // Load-bearing for the same reason as the components above: the draft is
+    // spread over the stored recipe, so dropping these would erase whoever added
+    // the dish on every chat amend and every ⋮ → Refresh. `lastEditedBy` is
+    // carried rather than cleared — the amender is stamped client-side when the
+    // proposal is applied, and until then the last human edit is still the base's.
+    const doc = await assembleRecipeDraft(rawOutput(), {
+      source: MANUAL,
+      baseRecipe: baseRecipe(),
+    });
+
+    expect(doc.createdBy).toBe('Daniel');
+    expect(doc.lastEditedBy).toBe('Kate');
+  });
+
+  it('defaults to a fresh recipe with no makes-link, no components and no attribution when there is no base', async () => {
     const doc = await assembleRecipeDraft(rawOutput(), { source: MANUAL });
 
     expect(doc.kind).toBe('recipe');
     expect(doc.producesCanonId).toBeNull();
     expect(doc.componentRecipeIds).toEqual([]);
+    // The flow knows no user; the client stamps whoever saved it.
+    expect(doc.createdBy).toBe('');
+    expect(doc.lastEditedBy).toBe('');
   });
 });
 

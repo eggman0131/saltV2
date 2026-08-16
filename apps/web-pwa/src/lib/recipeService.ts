@@ -49,6 +49,7 @@ import type {
 import { isImportError } from '@salt/domain/schemas';
 import { hasLiveCanonMatch } from '@salt/domain';
 import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
+import { currentMember } from './membersService.js';
 import { getCanonItemsSnapshot } from './canonService.js';
 import { getProductFormsSnapshot } from './productFormService.js';
 import { writable, get } from 'svelte/store';
@@ -134,9 +135,36 @@ export function initRecipeSync(): () => void {
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
 
-// Stamp updatedAt, update the store optimistically, then persist the whole doc.
+// Stamp attribution (issue #845). The ONE implementation, and exported because
+// the two chat write paths (`chatRecipeAuthor`, `recipeAmend`) go to
+// `saveRecipeDoc` directly rather than through `persistRecipe` — three surfaces
+// stamping their own would be three chances to forget one, exactly as
+// `createdAt`/`updatedAt` are stamped once per path and no more.
+//
+// `lastEditedBy` on every write, `createdBy` only when it is still blank: a
+// recipe is added once and edited forever, so `createdBy` is fill-once and is
+// never re-pointed at a later editor. This is the service layer's job because
+// `packages/domain` knows no user, and the name is a snapshot of
+// `Member.name` taken at write time — audit only, never a gate.
+//
+// No name available — the roster hasn't loaded, or the signed-in email isn't on
+// it — leaves BOTH fields exactly as they were. A placeholder ("Unknown",
+// "Someone") would be a value people read as a person; `''` already means "no
+// attribution on record", and clobbering a real creator with a placeholder
+// because a store hadn't settled is worse than recording nothing.
+export function stampRecipeAttribution(recipe: Recipe): Recipe {
+  const name = get(currentMember)?.name ?? '';
+  if (!name) return recipe;
+  return { ...recipe, createdBy: recipe.createdBy || name, lastEditedBy: name };
+}
+
+// Stamp updatedAt + attribution, update the store optimistically, then persist
+// the whole doc.
 export async function persistRecipe(recipe: Recipe): Promise<ReadResult<void, DomainError>> {
-  const stamped: Recipe = { ...recipe, updatedAt: new Date().toISOString() };
+  const stamped: Recipe = stampRecipeAttribution({
+    ...recipe,
+    updatedAt: new Date().toISOString(),
+  });
   latestLocalEdit.set(stamped.id, stamped.updatedAt);
   const others = get(_recipes).filter((r) => r.id !== stamped.id);
   _recipes.set([...others, stamped]);

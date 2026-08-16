@@ -2,7 +2,7 @@ import { diffRecipe, type Recipe } from '@salt/domain';
 import type { AuthorRecipeInput, RecipeDiff, RecipeDoc } from '@salt/domain/schemas';
 import { saveRecipe as saveRecipeDoc } from '@salt/firebase-sync';
 import { success, type DomainError, type ReadResult } from '@salt/shared-types';
-import { authorRecipeTraced } from './recipeService.js';
+import { authorRecipeTraced, stampRecipeAttribution } from './recipeService.js';
 
 // Amending a recipe by chat — propose, merge, diff, apply (issue #764).
 //
@@ -48,9 +48,12 @@ export interface RecipeAmendment {
  *
  * Everything else in the draft is authoritative: title, description, notes,
  * ingredients and steps are what the conversation was about, and an empty one of
- * those is a real edit. `kind` and `producesCanonId` need no handling here — the
- * CF already carries them across from the base recipe in edit mode
- * (`assembleRecipeDraft`), and `kind` is immutable anyway.
+ * those is a real edit. `kind`, `producesCanonId` and `createdBy` need no
+ * handling here — the CF already carries them across from the base recipe in
+ * edit mode (`assembleRecipeDraft`), and `kind` is immutable anyway.
+ * `lastEditedBy` is deliberately NOT stamped here either: this function is pure
+ * and knows no user, and the amender is stamped at `applyRecipeAmendment` so the
+ * name lands on the write rather than on a proposal that may be discarded.
  *
  * Pure: same inputs, same output, no clock and no I/O — `updatedAt` is supplied
  * by the caller so this stays directly testable.
@@ -134,9 +137,15 @@ async function propose(
  * adapter, and deliberately so: it keeps the save on the same seam as the
  * propose, so the two surfaces cannot acquire different ideas about what
  * applying means the way they did about merging.
+ *
+ * The one thing it adds is attribution (issue #845): confirming a proposal IS
+ * the human edit, so the amender is stamped here — on the write, not on a
+ * proposal that may be discarded. `createdBy` is untouched by that stamp when it
+ * already holds a name, so amending someone else's recipe by chat credits you as
+ * the editor and leaves them as the one who added it.
  */
 export async function applyRecipeAmendment(
   amendment: RecipeAmendment,
 ): Promise<ReadResult<void, DomainError>> {
-  return saveRecipeDoc(amendment.updated);
+  return saveRecipeDoc(stampRecipeAttribution(amendment.updated));
 }

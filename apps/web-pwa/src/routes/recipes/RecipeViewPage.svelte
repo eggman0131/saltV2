@@ -147,6 +147,20 @@ Finish with a short note on what you changed and why, so I can read the gist her
       : null,
   );
 
+  // "Added by X · edited by Y" chip (issue #845). Audit only: it records who did
+  // what and gates nothing. `null` — and so no chip at all, rather than a
+  // placeholder — whenever there is no attribution on record, which is every
+  // recipe written before the field existed. A `lastEditedBy` that is the creator
+  // (they added it and they are still the only one to have touched it) adds
+  // nothing to read, so only a DIFFERENT last editor earns the second half.
+  const attribution = $derived(
+    !recipe?.createdBy
+      ? null
+      : recipe.lastEditedBy && recipe.lastEditedBy !== recipe.createdBy
+        ? `Added by ${recipe.createdBy} · edited by ${recipe.lastEditedBy}`
+        : `Added by ${recipe.createdBy}`,
+  );
+
   // What this entry can do (issue #637). Everything that gates a section or an
   // action on this page reads one of these two — never the kind itself. Both are
   // false while the recipe is still loading, which is the conservative side: a
@@ -1558,13 +1572,13 @@ Finish with a short note on what you changed and why, so I can read the gist her
         {/if}
 
         <!-- Description + meta chips -->
-        {#if recipe.description || timeParts().length > 0 || recipe.metadata.tags.length > 0 || sourceUrl || producesCanonName}
+        {#if recipe.description || timeParts().length > 0 || recipe.metadata.tags.length > 0 || sourceUrl || producesCanonName || attribution}
           <Card>
             <CardContent class="flex flex-col gap-3 p-4">
               {#if recipe.description}
                 <p class="text-sm text-muted-foreground">{recipe.description}</p>
               {/if}
-              {#if timeParts().length > 0 || recipe.metadata.tags.length > 0 || producesCanonName}
+              {#if timeParts().length > 0 || recipe.metadata.tags.length > 0 || producesCanonName || attribution}
                 <div class="flex flex-wrap items-center gap-2">
                   {#if producesCanonName}
                     <span
@@ -1582,6 +1596,12 @@ Finish with a short note on what you changed and why, so I can read the gist her
                       >#{tag}</span
                     >
                   {/each}
+                  {#if attribution}
+                    <span
+                      class="rounded bg-muted px-2 py-1 text-xs text-muted-foreground"
+                      data-testid="recipe-attribution-chip">{attribution}</span
+                    >
+                  {/if}
                 </div>
               {/if}
               {#if sourceUrl}

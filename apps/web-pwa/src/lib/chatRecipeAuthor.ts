@@ -3,7 +3,7 @@ import type { AuthorRecipeInput } from '@salt/domain/schemas';
 import { saveRecipe as saveRecipeDoc } from '@salt/firebase-sync';
 import { trackUsageEvent } from '@salt/observability';
 import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
-import { authorRecipeTraced } from './recipeService.js';
+import { authorRecipeTraced, stampRecipeAttribution } from './recipeService.js';
 
 // Authoring a NEW recipe out of a conversation — the create leg (issues #696,
 // #763, #798).
@@ -79,7 +79,16 @@ export async function authorRecipeFromChat(
   if (result.kind !== 'ok') return failure({ stage: 'author', error: result.error });
 
   const now = new Date().toISOString();
-  const saved: Recipe = { ...result.value, createdAt: now, updatedAt: now };
+  // Attribution rides with the clock and for the same reason (issue #845): the
+  // librarian knows no more about who you are than it does about what time it is,
+  // and this path writes through `saveRecipeDoc` rather than `persistRecipe`, so
+  // it stamps here or not at all. A chat-authored recipe is yours — you had the
+  // conversation — so it is `createdBy` you, exactly as if you had typed it in.
+  const saved: Recipe = stampRecipeAttribution({
+    ...result.value,
+    createdAt: now,
+    updatedAt: now,
+  });
 
   const saveResult = await saveRecipeDoc(saved);
   if (saveResult.kind !== 'ok') return failure({ stage: 'save', error: saveResult.error });

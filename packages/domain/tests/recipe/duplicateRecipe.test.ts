@@ -62,6 +62,8 @@ function fullRecipe(overrides: Partial<Recipe> = {}): Recipe {
     imageHidden: false,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-02T00:00:00.000Z',
+    createdBy: 'Daniel',
+    lastEditedBy: 'Kate',
     ...overrides,
   };
 }
@@ -106,6 +108,15 @@ describe('duplicateRecipe', () => {
   describe('resets', () => {
     it('clears producesCanonId so the copy does not double the producer list', () => {
       expect(duplicateRecipe(fullRecipe(), 'new-id', NOW).producesCanonId).toBeNull();
+    });
+
+    // Issue #845, and a policy rather than an oversight: a copy belongs to
+    // whoever copied it, so the original's creator is not carried. Both fields go
+    // out blank and the service stamps the copier on save.
+    it('drops the attribution — a copy is not credited to the original author', () => {
+      const copy = duplicateRecipe(fullRecipe(), 'new-id', NOW);
+      expect(copy.createdBy).toBe('');
+      expect(copy.lastEditedBy).toBe('');
     });
   });
 

@@ -93,6 +93,8 @@ function recipe(
     image: opts.hero ? { url: opts.hero, source: 'upload' } : null,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
+    createdBy: '',
+    lastEditedBy: '',
   };
 }
 

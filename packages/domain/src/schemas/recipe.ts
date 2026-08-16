@@ -213,6 +213,30 @@ export const RecipeSchema = z.object({
   imageBrief: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  // Attribution (issue #845): the display NAME of the member who added the
+  // recipe, copied from their member document at write time. A name, not a uid
+  // and not an email — there is no `uid → member` resolver anywhere in the repo
+  // (members are keyed by normalised email), so a name is what renders with zero
+  // joins, and it survives that member leaving the roster.
+  //
+  // AUDIT ONLY, exactly like `shoppingDays.setBy`: recorded and displayed, never
+  // a gate. It is not per-user scoping and must never become one — never checked
+  // on read, never pinned on update, never branched on for capability,
+  // availability or ordering. `firestore.rules` stays untouched.
+  //
+  // `.default('')` (NOT required, NOT `.optional()`) is load-bearing for the same
+  // reason as `kind` above: the realtime subscription skips documents that fail
+  // validation, so a required field would make every recipe already in production
+  // (#240) silently vanish from the list. Defaulted, `z.infer` still yields a
+  // concrete `string`, so the compiler names every construction site rather than
+  // letting `undefined` drift onto a document. `''` means "no attribution on
+  // record" — it renders as nothing, and nothing branches on it beyond "is it
+  // empty".
+  createdBy: z.string().default(''),
+  // The last HUMAN edit, same shape and same rules as `createdBy`. Cloud Function
+  // triggers write back partially (`onRecipeWritten` stamps `image`/`imageBrief`)
+  // and deliberately do NOT touch this: a generated hero is not an edit.
+  lastEditedBy: z.string().default(''),
 });
 
 export type SingleQuantityDoc = z.infer<typeof SingleQuantitySchema>;
