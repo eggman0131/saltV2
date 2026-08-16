@@ -87,6 +87,18 @@ type RangeCall = [
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Pin the clock inside the fixtures' own week. The lookahead window is
+  // "today → +13 days" and the service drops a shop day already gone, so an
+  // unpinned run reads SATURDAY as past from 2026-08-16 onward — the suite
+  // would go red on a date, with nothing having changed.
+  vi.useFakeTimers();
+  // Every date in this file is a fixture around the week of 2026-08-10, but the
+  // lookahead re-filters against a LIVE today (see the service) — so without a
+  // pinned clock the suite silently rots the moment real time passes the
+  // fixtures. Pin it once here rather than per test; `shouldAdvanceTime` keeps
+  // the async mutation tests from waiting on a frozen clock.
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  vi.setSystemTime(new Date('2026-08-10T09:00:00.000Z'));
   mockSubscribeInRange.mockReturnValue(mockUnsub);
   mockSaveShoppingDay.mockResolvedValue({ kind: 'ok', value: undefined });
   mockDeleteShoppingDay.mockResolvedValue({ kind: 'ok', value: undefined });
@@ -96,7 +108,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   __resetShoppingDayServiceForTest();
+  vi.useRealTimers();
 });
 
 describe('initShoppingDaySync', () => {
@@ -175,13 +189,11 @@ describe('initShoppingDaySync', () => {
   it('drops a shop day that has already happened from the lookahead', () => {
     // The range is computed once at sign-in, so an app left open for days would
     // otherwise keep offering a past shop as "upcoming".
-    vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-20T09:00:00.000Z'));
     initShoppingDaySync();
     const upcomingCall = mockSubscribeInRange.mock.calls.at(-1) as RangeCall;
     upcomingCall[2]([SATURDAY]); // 2026-08-15, five days gone
     expect(get(upcomingShopDay)).toBeNull();
-    vi.useRealTimers();
   });
 
   it('tears both subscriptions down on sign-out', () => {
