@@ -116,7 +116,8 @@ describe('extractRecipeFromPhoto — the pages reach the model as images', () =>
     await invoke({ images: [PAGE_ONE] });
 
     const system = mockGenerate.mock.calls[0]![0].system as string;
-    expect(system).toContain('Metric only');
+    expect(system).toContain('Metric or count values only');
+    expect(system).toContain('tsp and tbsp are the ONE exception');
     expect(system).toContain('British spelling');
   });
 
@@ -124,9 +125,8 @@ describe('extractRecipeFromPhoto — the pages reach the model as images', () =>
     await invoke({ images: [PAGE_ONE] });
 
     // Whole-block, not a phrase: this is what fails if someone hand-rolls a second
-    // field list here, and 'metricate' is what fails if a printed recipe's cups
-    // ever stop being converted. A cookbook page is someone else's units — the
-    // conversion is the entire point of the import.
+    // field list here, and 'metricate' is what fails if a printed cookbook page's
+    // line ever stops being rewritten into the app's own wording.
     const system = mockGenerate.mock.calls[0]![0].system as string;
     expect(system).toContain(recipeFieldRules({ measures: 'metricate' }));
   });

@@ -480,26 +480,28 @@ describe('authorRecipe — refresh-mode grounding', () => {
   // recipe the extraction prompt had already converted, i.e. the feature would
   // actively undo work every time it ran. Asserted as the WHOLE rendered block,
   // not a paraphrase, because a hand-rolled twin is exactly what #785 removed.
-  it('asks for METRIC conversion, unlike every conversation-driven mode', async () => {
+  it('asks for the REWRITE policy, unlike every conversation-driven mode', async () => {
     await runRefresh();
 
     const system = systemPromptFrom();
     expect(system).toContain(recipeFieldRules({ measures: 'metricate' }));
-    // The one bullet that distinguishes the two renderings — the rest of the
+    // The one clause that distinguishes the two renderings — the rest of the
     // block is identical, so this is what a drift would actually show up as.
-    expect(system).toContain('Metric only: convert all quantities to metric');
-    expect(system).not.toContain('preserve the original wording and any tsp/tbsp/cup measures');
+    // Note it is no longer a UNIT difference: both renderings now demand metric
+    // or count values and both keep tsp/tbsp verbatim.
+    expect(system).toContain('the ingredient line rewritten in British spelling/terms');
+    expect(system).not.toContain('preserve the original wording and any tsp/tbsp measures');
   });
 
   it('leaves a chat edit on the preserve policy — the flag is the only thing that switches it', async () => {
     // Same recipe, same id, no flag: the chef's "a teaspoon of cumin" must still
-    // survive an edit turn intact. The pairing of source and measure policy is a
+    // survive an edit turn intact. The pairing of source and wording policy is a
     // single parameter deliberately; this is the other half of it.
     await (authorRecipeFlow as Function)({ messages: [], existingTags: [], recipeId: 'r1' });
 
     const system = systemPromptFrom();
     expect(system).toContain(recipeFieldRules({ measures: 'preserve' }));
-    expect(system).not.toContain('Metric only');
+    expect(system).not.toContain('the ingredient line rewritten in British spelling/terms');
   });
 
   it("carries the household's own notes into the prompt and demands them back verbatim", async () => {
@@ -697,15 +699,27 @@ describe('authorRecipe — shared field rules', () => {
     }
   });
 
-  it("preserves the chef's own measures rather than metricating mid-conversation", async () => {
+  it("preserves the chef's own wording rather than rewriting mid-conversation", async () => {
     await (authorRecipeFlow as Function)({ messages: [], existingTags: [] });
 
     // The one axis on which this prompt differs from the two import prompts.
-    // Metricating "a teaspoon of cumin" to 5g inside the same turn makes the saved
-    // recipe stop matching the conversation the user is looking at.
+    // Rewriting "a teaspoon of cumin" inside the same turn makes the saved recipe
+    // stop matching the conversation the user is looking at.
     const system = systemPromptFrom();
-    expect(system).toContain('preserve the original wording and any tsp/tbsp/cup measures');
-    expect(system).not.toContain('Metric only');
+    expect(system).toContain('preserve the original wording and any tsp/tbsp measures');
+    expect(system).not.toContain('the ingredient line rewritten in British spelling/terms');
+  });
+
+  it('still bans cups and demands metric values, exactly like the import prompts', async () => {
+    // Preserving the chef's WORDING is not a licence to keep their units. The
+    // measure rules are unconditional, so a chat-authored recipe lands in grams
+    // and millilitres like every other one.
+    await (authorRecipeFlow as Function)({ messages: [], existingTags: [] });
+
+    const system = systemPromptFrom();
+    expect(system).toContain('Metric or count values only');
+    expect(system).toContain('NEVER cups, sticks, pints, quarts, fluid ounces, ounces or pounds');
+    expect(system).toContain('tsp and tbsp are the ONE exception');
   });
 });
 

@@ -95,7 +95,12 @@ describe('parseRecipeIngredients — range quantity', () => {
 // ─── Non-metric source quantities ────────────────────────────────────────────
 
 describe('parseRecipeIngredients — non-metric source quantities', () => {
-  it('stores metric equivalent and original displayText for cup measures', async () => {
+  it('stores the metric equivalent and NO displayText for cup measures', async () => {
+    // A cup is a measure a UK kitchen cannot take, so it converts and then
+    // disappears — the prompt asks for `displayText: null` rather than a "(1½
+    // cups)" bracket the cook has no way to act on. Only tsp/tbsp and counts earn
+    // the bracket. The flow itself just threads whatever the model returns; this
+    // pins the SHAPE the prompt asks for.
     mockGenerate.mockResolvedValue({
       output: aiOutput([
         {
@@ -107,7 +112,7 @@ describe('parseRecipeIngredients — non-metric source quantities', () => {
               unit: 'g',
               item: 'plain flour',
               preparation: ['sifted'],
-              displayText: '1½ cups',
+              displayText: null,
             }),
           ],
         },
@@ -122,7 +127,7 @@ describe('parseRecipeIngredients — non-metric source quantities', () => {
     expect(ingredient.rawText).toBe('1 ½ cups plain flour, sifted');
     expect(ingredient.parsed.quantity).toEqual({ type: 'single', value: 180 });
     expect(ingredient.parsed.unit).toBe('g');
-    expect(ingredient.parsed.displayText).toBe('1½ cups');
+    expect(ingredient.parsed.displayText).toBeNull();
     expect(ingredient.parsed.preparation).toEqual(['sifted']);
   });
 
@@ -259,7 +264,7 @@ describe('parseRecipeIngredients — displayText threading', () => {
               unit: 'g',
               item: 'butter',
               preparation: ['melted'],
-              displayText: '½ cup',
+              displayText: null,
             }),
             simpleIngredient({
               rawText: '1 tbsp olive oil',
@@ -277,9 +282,12 @@ describe('parseRecipeIngredients — displayText threading', () => {
       rawText: '½ cup butter, melted\n1 tbsp olive oil',
     });
 
+    // The cup converts and loses its bracket; the tbsp converts and KEEPS one.
+    // That asymmetry is the whole display policy: the bracket is only worth
+    // showing when the cook owns the thing that measures it.
     expect(result[0].items[0].parsed.quantity).toEqual({ type: 'single', value: 113 });
     expect(result[0].items[0].parsed.unit).toBe('g');
-    expect(result[0].items[0].parsed.displayText).toBe('½ cup');
+    expect(result[0].items[0].parsed.displayText).toBeNull();
     expect(result[0].items[1].parsed.quantity).toEqual({ type: 'single', value: 15 });
     expect(result[0].items[1].parsed.unit).toBe('ml');
     expect(result[0].items[1].parsed.displayText).toBe('1 tbsp');
