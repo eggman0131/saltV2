@@ -74,6 +74,7 @@ import Search from '@lucide/svelte/icons/search';
 import SendHorizontal from '@lucide/svelte/icons/send-horizontal';
 import Share from '@lucide/svelte/icons/share';
 import ShoppingCart from '@lucide/svelte/icons/shopping-cart';
+import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 import Smartphone from '@lucide/svelte/icons/smartphone';
 import Soup from '@lucide/svelte/icons/soup';
 import Sparkles from '@lucide/svelte/icons/sparkles';
@@ -149,6 +150,7 @@ export const iconRegistry = {
   SendHorizontal,
   Share,
   ShoppingCart,
+  SlidersHorizontal,
   Smartphone,
   Soup,
   Sparkles,
