@@ -36,6 +36,18 @@ foundation (#179).
    _started now_ (an oven that needs fifteen minutes, a steak that needs half an hour
    out of the fridge). Nothing is withheld: the step's own words arrive in full a
    moment later, unchanged, and a plan with no look-ahead falls back to the fade.
+6. **The librarian never sees a meal's dish ingredients or steps** (#838). The chef
+   reads a meal's attached dishes in full — spotting what a dinner is missing and
+   working out how to run the dishes together is a reading of exactly that — but
+   the librarian, which returns a complete `RecipeDoc` that is spread over the
+   stored recipe, sees only each dish's name, description and cook/total time.
+   Showing it the lists would let a conversation amend copy a dish's ingredient
+   line onto the meal, and the planner attaches a meal alongside its own
+   components, so that line would be shopped twice for one dinner. This is
+   structural (`componentContext.ts` never renders the lists for the librarian),
+   not a prompt instruction, and must not be relaxed into one. See
+   [recipe-module.md](recipe-module.md)'s meal invariant ("nothing aggregates,
+   nothing recurses") for the storage side of the same rule.
 
 ## Scope boundaries
 
@@ -142,6 +154,11 @@ kitchenMemories/{id} (Firestore, family-shared)      ← owned by web-pwa + fire
   in. There is deliberately no mode flag, no wire field, and no chat UI for it.
   Absent or empty counts omit the section entirely, so the chef behaves exactly
   as it did before the feature existed.
+- When the chat is attached to (or based on) a recipe that is a **meal**, it also
+  reads the dishes that meal is built from (issue #838, `componentContext.ts`) and
+  renders them **in full** — ingredients and method — so the chef can judge the
+  plate as a whole and coordinate timing across dishes. One batched read, and a
+  no-op for a recipe with no components. See design principle 6, above.
 - Plain text out. **No `output` schema. No tools.** Wrap the generate call in
   `withAiTimeout`.
 
@@ -183,6 +200,13 @@ kitchenMemories/{id} (Firestore, family-shared)      ← owned by web-pwa + fire
   (the doc-id-keyed orphan sweep makes a shared image a data-loss bug — see
   [recipe-module.md](recipe-module.md) § "Duplicating a recipe"), and a hero
   generated from the new content. Edit mode wins if both ids somehow arrive.
+- **On an edit, variation or refresh of a meal, it also reads that meal's
+  components** (issue #838, `componentContext.ts`) — but sees only each dish's
+  name, description and cook/total time, never its ingredients or steps. See
+  design principle 6, above, for why that asymmetry with the chef is load-bearing.
+  `assembleRecipeDraft` carries `componentRecipeIds` through unchanged regardless
+  of what the librarian saw (see [recipe-module.md](recipe-module.md)'s meal
+  section) — the librarian never adds or removes a component.
 
 ### 4. Kitchen memory (the household's own notes for the chef)
 
