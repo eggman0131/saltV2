@@ -87,6 +87,11 @@ type RangeCall = [
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Pin the clock inside the fixtures' own week. The lookahead window is
+  // "today → +13 days" and the service drops a shop day already gone, so an
+  // unpinned run reads SATURDAY as past from 2026-08-16 onward — the suite
+  // would go red on a date, with nothing having changed.
+  vi.useFakeTimers();
   // Every date in this file is a fixture around the week of 2026-08-10, but the
   // lookahead re-filters against a LIVE today (see the service) — so without a
   // pinned clock the suite silently rots the moment real time passes the
@@ -103,6 +108,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   __resetShoppingDayServiceForTest();
   vi.useRealTimers();
 });
