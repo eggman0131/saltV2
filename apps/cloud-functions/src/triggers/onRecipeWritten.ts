@@ -4,9 +4,11 @@ import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { defineSecret } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { RecipeSchema, DevSettingsSchema, type RecipeDoc } from '@salt/domain/schemas';
+import { componentDisplayLines } from '@salt/domain';
 import { flushServerObservability } from '@salt/observability/server';
 import { generateRecipeImageFlow } from '../flows/generateRecipeImage.js';
 import { describeRecipeSceneFlow } from '../flows/describeRecipeScene.js';
+import { readComponentContext } from '../flows/componentContext.js';
 import { encodeHeroImage } from '../imaging/encodeHeroImage.js';
 import { buildStorageDownloadUrl } from '../imaging/storageDownloadUrl.js';
 import { withAiTimeout } from '../adapters/withAiTimeout.js';
@@ -198,6 +200,19 @@ async function describeSceneOrNothing(recipe: RecipeDoc): Promise<string | undef
       // dish's content, not its grouping.
       ingredients: recipe.ingredients.flatMap((g) => g.items.map((i) => i.rawText)),
       steps: recipe.steps.map((s) => s.text),
+      // The dishes a meal is built from (issue #838). A bundle-only meal has no
+      // ingredients and no method, so without these the art director's whole
+      // input is a title — the case where the blindness costs most.
+      //
+      // Resolved against Firestore because a CF has no in-memory recipes store;
+      // the browser's brief dialog resolves the same meal against that store and
+      // renders the lines with the SAME `componentDisplayLines`, so the two
+      // callers cannot describe different dinners. `readComponentContext` is a
+      // no-op read for a recipe with no components and returns [] on any failure,
+      // so this cannot cost a hero.
+      components: componentDisplayLines(
+        await readComponentContext(getFirestore(), recipe, 'onRecipeWritten'),
+      ),
     });
     const trimmed = brief.trim();
     return trimmed || undefined;

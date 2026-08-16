@@ -401,6 +401,151 @@ describe('describeRecipeScene flow — cocktails', () => {
   });
 });
 
+// ─── Meals (issue #838) ──────────────────────────────────────────────────────
+// A meal is a recipe pointing at other recipes, and the art director never heard
+// about them: a Sunday roast that is nothing but chicken + potatoes + gravy has no
+// ingredients and no method of its own, so the ENTIRE input was a title and the
+// model painted whatever it guesses a roast looks like. The dishes are the picture.
+//
+// Two things are pinned here and they are separable on purpose. The DISHES reach
+// the user prompt for any kind, because that block is built from the input alone.
+// The CLAUSE that tells the model what to do with them is per-kind, and there are
+// two of them because `takesComponents` is true for two kinds that mean opposite
+// things by it: a recipe's dishes are served ALONGSIDE it (widen to the table), a
+// cocktail's are parts it is MADE FROM (already in the glass, so widening the shot
+// would be exactly wrong).
+describe('describeRecipeScene flow — meals', () => {
+  const MEAL = {
+    title: 'Sunday roast',
+    description: null,
+    ingredients: [],
+    steps: [],
+    components: [
+      'Roast chicken — Lemon and thyme, skin crisp and burnished.',
+      'Roast potatoes',
+      'Onion gravy — Dark, glossy, made from the roasting juices.',
+    ],
+  };
+
+  const COCKTAIL_WITH_PARTS = {
+    title: 'House negroni',
+    description: 'Equal parts, stirred, big cube.',
+    ingredients: ['25ml gin', '25ml Campari', '25ml house vermouth'],
+    steps: ['Stir over ice.', 'Strain over a big cube.'],
+    components: ['House vermouth — Steeped with wormwood and orange peel, deep amber.'],
+  };
+
+  const MEAL_RULE_MARKER = 'This recipe is a MEAL.';
+  const COCKTAIL_RULE_MARKER = 'MADE FROM';
+
+  async function callFlow(input: Record<string, unknown>): Promise<{
+    system: string;
+    prompt: string;
+  }> {
+    mockGenerate.mockClear();
+    mockGenerate.mockResolvedValue({ output: { brief: 'x' } });
+    await (describeRecipeSceneFlow as Function)(input);
+    const call = mockGenerate.mock.calls[0]![0];
+    return { system: call.system as string, prompt: call.prompt as string };
+  }
+
+  it('lists the dishes in the user prompt, between the tags and the ingredients', async () => {
+    const { prompt } = await callFlow({
+      ...MEAL,
+      kind: 'recipe',
+      tags: ['comfort'],
+      ingredients: ['a jug of gravy from the juices'],
+    });
+
+    expect(prompt).toContain(
+      'Dishes in this meal:\n' +
+        '- Roast chicken — Lemon and thyme, skin crisp and burnished.\n' +
+        '- Roast potatoes\n' +
+        '- Onion gravy — Dark, glossy, made from the roasting juices.',
+    );
+    // Position is the argument, not decoration: for a bundle-only meal the dishes
+    // ARE the food, so they sit above the meal's own ingredients — which are the
+    // coordination (a gravy, a timing plan), not what is on the table.
+    expect(prompt.indexOf('Tags:')).toBeLessThan(prompt.indexOf('Dishes in this meal:'));
+    expect(prompt.indexOf('Dishes in this meal:')).toBeLessThan(prompt.indexOf('Ingredients:'));
+  });
+
+  it('tells the model to photograph the WHOLE TABLE for a recipe-kind meal', async () => {
+    const { system } = await callFlow({ ...MEAL, kind: 'recipe' });
+
+    expect(system).toContain(MEAL_RULE_MARKER);
+    expect(system).toContain('WHOLE TABLE');
+    // The meal's own lines are the dinner's coordination, never any one dish's —
+    // reading them as a dish is how a gravy becomes the subject of the picture.
+    expect(system).toContain('belong to the DINNER as a whole');
+    // Appended to the recipe prompt, not a replacement for it.
+    expect(system).toContain('especially the METHOD and the INGREDIENTS');
+    expect(system).not.toContain(COCKTAIL_RULE_MARKER);
+  });
+
+  it('says NOTHING about meals for a recipe with no dishes attached', async () => {
+    // The back-compat property the whole change rests on: every recipe that is not
+    // a meal — which is nearly all of them — sends byte-for-byte the prompt it sent
+    // before, in both halves.
+    const { system, prompt } = await callFlow(RECIPE);
+
+    expect(prompt).not.toContain('Dishes in this meal');
+    expect(system).not.toContain(MEAL_RULE_MARKER);
+    expect(system).not.toContain('WHOLE TABLE');
+    expect(system).not.toContain(COCKTAIL_RULE_MARKER);
+    // And it is the SAME system prompt an empty components array produces, so
+    // "absent" and "empty" are not two different behaviours.
+    const explicitlyEmpty = await callFlow({ ...RECIPE, components: [] });
+    expect(explicitlyEmpty.system).toBe(system);
+  });
+
+  it('keeps a cocktail in one glass — its components are parts, not a second drink', async () => {
+    const { system } = await callFlow({ ...COCKTAIL_WITH_PARTS, kind: 'cocktail' });
+
+    expect(system).toContain(COCKTAIL_RULE_MARKER);
+    expect(system).toContain('already IN the glass');
+    // The rule a shared clause could not have carried: the meal rule would widen
+    // the shot to a table, which for a Negroni made with a house vermouth means
+    // photographing the bottle next to the drink.
+    expect(system).not.toContain(MEAL_RULE_MARKER);
+    expect(system).not.toContain('WHOLE TABLE');
+    // Still the cocktail prompt underneath.
+    expect(system).toContain('glassware the serve implies');
+  });
+
+  it('leaves an outing and a placeholder untouched even when handed dishes', async () => {
+    // Neither kind can HAVE components (`takesComponents` is false for both), so
+    // this is a belt to that braces: the arms ignore the flag rather than trusting
+    // no caller ever passes one. An outing has no table to widen to and a
+    // placeholder must never be given a dish at all.
+    for (const kind of ['outing', 'placeholder']) {
+      const withDishes = await callFlow({ ...MEAL, kind, components: MEAL.components });
+      const without = await callFlow({ ...MEAL, kind, components: [] });
+
+      expect(withDishes.system).toBe(without.system);
+      expect(withDishes.system).not.toContain(MEAL_RULE_MARKER);
+      expect(withDishes.system).not.toContain(COCKTAIL_RULE_MARKER);
+    }
+  });
+
+  it('carries the meal rule through a revision too', async () => {
+    // "make it summery" on a roast must still be revising a picture of a TABLE.
+    // The rule hangs off whether dishes are present, not off which mode is running,
+    // so a hand-edited brief cannot quietly drop back to a single plated portion.
+    const { system, prompt } = await callFlow({
+      ...MEAL,
+      kind: 'recipe',
+      currentBrief: 'A single plated portion on dark wood.',
+      hint: 'make it summery',
+    });
+
+    expect(system).toContain('Fold the change THROUGH the whole brief');
+    expect(system).toContain(MEAL_RULE_MARKER);
+    expect(system).toContain('WHOLE TABLE');
+    expect(prompt).toContain('Dishes in this meal:');
+  });
+});
+
 // ─── Placeholders (issue #652) ───────────────────────────────────────────────
 // An outing lost the "read the method" premise but kept a SUBJECT — a curry, a
 // chippy tea, something the model can picture. A placeholder has neither: it

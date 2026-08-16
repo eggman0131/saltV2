@@ -20,6 +20,8 @@ import {
   recipeItemAddDefault,
   findProducingRecipes,
   insertComponentByCookTime,
+  resolveComponents,
+  componentDisplayLines,
   resolveProductForm,
   formParentCount,
   convertYield,
@@ -222,6 +224,15 @@ export async function regenerateRecipeImage(
 // a brief authored by the trigger read the SAME recipe — the ingredient groups
 // collapse to their display lines because the flow wants the dish's content, not
 // its grouping.
+//
+// A meal's components (issue #838) are the one part the two sides resolve
+// DIFFERENTLY and must still render identically: the trigger has no in-memory
+// store and reads them from Firestore, this resolves them against the store the
+// app already subscribes to (zero extra reads). Both then hand the resolved
+// recipes to the SAME `componentDisplayLines`, which is why that helper lives in
+// `@salt/domain` rather than being written out at either call site — the
+// identical-flattening property is structural, not a comment either side can
+// drift away from.
 function sceneInputFor(recipe: Recipe): DescribeRecipeSceneInput {
   return {
     title: recipe.title.trim(),
@@ -239,6 +250,10 @@ function sceneInputFor(recipe: Recipe): DescribeRecipeSceneInput {
     tags: recipe.metadata.tags,
     ingredients: recipe.ingredients.flatMap((g) => g.items.map((i) => i.rawText)),
     steps: recipe.steps.map((s) => s.text),
+    // One level, dangling ids skipped — `resolveComponents` semantics, which the
+    // trigger's Firestore reader deliberately reproduces. A recipe that is not a
+    // meal yields [] and the flow sends exactly the prompt it always sent.
+    components: componentDisplayLines(resolveComponents(recipe, get(_recipes))),
   };
 }
 

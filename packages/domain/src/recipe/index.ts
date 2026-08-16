@@ -44,6 +44,7 @@ export {
 export {
   hasComponents,
   resolveComponents,
+  componentDisplayLines,
   canBeComponentOf,
   insertComponentByCookTime,
   expandForPlanner,

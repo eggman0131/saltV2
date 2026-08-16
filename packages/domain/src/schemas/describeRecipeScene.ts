@@ -39,6 +39,24 @@ export const DescribeRecipeSceneInputSchema = z.object({
   // Method text. Carries the finished-appearance cues ("grill until blistered
   // and golden", "scatter with torn basil") that decide how the dish looks.
   steps: z.array(z.string()).optional().default([]),
+  // The dishes a MEAL is built from, as display lines (issue #838). A meal is a
+  // recipe pointing at other recipes, and a bundle-only one — a Sunday roast that
+  // is just chicken + potatoes + gravy — has no ingredients and no method of its
+  // own, so before this the art director's ENTIRE input was a title. That is the
+  // case where the blindness hurts most, and it is why #752 deferred this
+  // question rather than answering it.
+  //
+  // TITLE AND DESCRIPTION ONLY, rendered by `componentDisplayLines` in
+  // `@salt/domain` — never a component's ingredients or steps. Nothing
+  // aggregates: what is photographed is the dinner on the table, not a merged
+  // recipe. Kept as its OWN field rather than folded into `ingredients`, because
+  // a dish is not an ingredient and the prompt clause it drives is its own.
+  //
+  // OPTIONAL and defaulted exactly as `tags` above: every existing caller stays
+  // valid, and the flow adds no `Dishes:` block and no meal clause when the array
+  // is empty — so a recipe that is not a meal sends byte-for-byte the prompt it
+  // sent before.
+  components: z.array(z.string()).optional().default([]),
   // ─── Revision mode (issue #522, Phase 3) ────────────────────────────────────
   // Both OPTIONAL and ADDITIVE: omit both and the flow authors from scratch —
   // the original behaviour, and also what "start over" deliberately sends (a

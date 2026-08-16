@@ -83,6 +83,12 @@ function makeRecipe(groups: IngredientGroup[] = []): Recipe {
     },
     source: null,
     notes: null,
+    // Required on `Recipe` (`RecipeSchema` defaults it, so every document read
+    // through firebase-sync carries it) and absent from this fixture until now —
+    // `apps/web-pwa/tsconfig.json` only typechecks `src/**`, so nothing caught it.
+    // The scene-brief input resolves a meal's dishes off this field (issue #838),
+    // which turns the gap from harmless into a TypeError.
+    componentRecipeIds: [],
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
   };
