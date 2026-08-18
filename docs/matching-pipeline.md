@@ -187,16 +187,25 @@ The schema below describes the **domain `MatchLogEntry`** — the in-memory log 
 
 ### Top-level fields
 
+These are the field names on the domain object, not on the wire. Every adapter
+renames them — `id` becomes `canon_correlation_id` (PostHog) or `correlationId`
+(CF logger), `finalDecision` becomes `canon_decision` or `decision` — so read
+[Adapter serialisation](#adapter-serialisation) before writing a query against
+either destination.
+
 | Field | Type | Source |
 |---|---|---|
-| `canon.path` | `'fast' \| 'cf'` | Adapter — fast-path or CF |
-| `correlationId` | string | One per resolution |
+| `id` | string | One per resolution |
 | `rawInput` | string | Caller's `rawName` |
 | `normalizedInput` | string | `normaliseName(rawName)` |
 | `inputItemCount` | number | Size of canon snapshot considered |
 | `totalDurationMs` | number | Wall-clock for the resolution |
-| `decision` | `'matched' \| 'created' \| 'ai_arbitrated'` | Final outcome |
+| `finalDecision` | `'matched' \| 'created' \| 'ai_arbitrated'` | Final outcome |
 | `finalItemId` / `finalItemName` | string \| null | Resolved `CanonItem` |
+
+The `'fast' | 'cf'` path discriminator is **not** a field on the entry — it is a
+second argument the adapter passes alongside it, which is why the same entry can
+be emitted from either side unchanged.
 
 ### Per-stage fields (stages 1–4 — fast-path + CF parity)
 

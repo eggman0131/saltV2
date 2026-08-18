@@ -263,8 +263,10 @@ process. A cocktail could gain a 1:1:1 formula with no code change at all.
 **The rule that stops the capability table rotting:** capabilities answer
 questions about the **kind**; presence answers questions about the **document**.
 "Is this offered in the planner?" is a capability. "Does this have a formula?" is
-`formula != null`. Keep that line sharp and `capabilities.ts` stays four columns
-wide instead of growing a boolean per feature.
+`formula != null`. Keep that line sharp and `capabilities.ts` stays as wide as
+the questions it answers about a kind — five columns today (`takesIngredients`,
+`isCookable`, `isPlannable`, `isAuthorable`, `takesComponents`) — instead of
+growing a boolean per feature.
 
 ## Placement
 

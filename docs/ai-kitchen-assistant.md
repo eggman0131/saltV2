@@ -54,16 +54,23 @@ foundation (#179).
   *suggests* in conversation — it must never touch what a recipe *says*. Only
   `chefChat` reads `kitchenMemories` (see Components, below).
 
-## Per-user data — a deliberate first
+## Per-user data — a deliberate exception
 
-Chats are the **first per-user-scoped data in Salt**. Everything else is
-family-shared with no `userId` anywhere; this is an intentional, recorded departure.
+Chats were the **first** per-user-scoped data in Salt; they are no longer the only
+one. Everything else is family-shared with no `userId` anywhere, and the
+owner-scoped collections are a closed, enumerated list: `chatSessions`,
+`cookSessions`, `pushSubscriptions` and `kitchenTimers`, one owner-scoped block
+each in `firestore.rules`. CLAUDE.md's "Per-user exceptions (only four)" is the
+authoritative count and the place to argue for a fifth — not this doc.
 
 - Chat documents carry `ownerUid` (= `request.auth.uid`).
-- New `firestore.rules` pattern: a caller may read/write a chat **only if they own
-  it** (`resource.data.ownerUid == request.auth.uid`, and on create
-  `request.resource.data.ownerUid == request.auth.uid`). This is the first
-  owner-scoped rule block; all prior blocks are "any authenticated member".
+- `firestore.rules`: a caller may read/write a chat **only if they own it**
+  (`resource.data.ownerUid == request.auth.uid`, and on create
+  `request.resource.data.ownerUid == request.auth.uid`). This was the first
+  owner-scoped rule block and set the pattern the later three follow — note the
+  differences CLAUDE.md records: the deterministic-id collections additionally
+  permit `resource == null`, and `kitchenTimers` deliberately does not, because
+  its document id *is* the uid.
 - Retention ~2 weeks via an `expiresAt` timestamp + a **Firestore TTL policy**
   (configured once per project via console/gcloud — infra, not rules). Each write
   bumps `expiresAt` to now + 14 days — **except a recipe-attached chat** (`recipeId`
@@ -123,7 +130,7 @@ kitchenMemories/{id} (Firestore, family-shared)      ← owned by web-pwa + fire
 
 - Genkit flow in `apps/cloud-functions/src/flows/chefChat.ts`, exposed via
   `onCallGenkit` (gives streaming + `authPolicy: isSignedIn()` for free), region
-  `europe-west2`, `secrets: [geminiApiKey]`, App Check from the shared
+  `europe-west2`, `secrets: [geminiApiKey, posthogApiKey]`, App Check from the shared
   `APP_CHECK_ENFORCEMENT` constant like every other callable (see
   [salt-architecture.md §8.1](salt-architecture.md)).
 - **Streaming**: define the flow with a stream schema and emit chunks; the client
