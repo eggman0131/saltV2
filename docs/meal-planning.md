@@ -32,6 +32,8 @@ Day {
                                      // same reference; nothing here changes shape for it
   chefs: memberId[]                  // zero or more; a chef need NOT be an attendee
   attendees: Attendee[]
+  guests: number                     // extra, unnamed diners with no member record; counts
+                                     // towards the attending total alongside `attendees`
 }
 
 Attendee {
@@ -54,8 +56,9 @@ always keyed mon–sun, so changing the big-shop day re-maps the standard week
 onto the new day order without data migration.
 
 A week's document key is the ISO date (`YYYY-MM-DD`) of its start day. A pure
-domain function `weekStartFor(date, config)` computes the start date of the week
-containing any given date.
+domain function `weekStartFor(date, firstDayOfWeek)` computes the start date of
+the week containing any given date. It takes the `Weekday` directly, not a config
+object.
 
 ## Shop day (issue #629)
 
