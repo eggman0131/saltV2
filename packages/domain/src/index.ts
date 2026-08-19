@@ -88,6 +88,7 @@ export {
   updateProductForm,
   confirmProductForm,
   resolveProductForm,
+  findFormWithSameLabel,
   convertYield,
   formParentCount,
   maxCountWinners,

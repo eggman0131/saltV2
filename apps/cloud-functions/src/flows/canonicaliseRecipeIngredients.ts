@@ -1,7 +1,7 @@
 import { z } from 'genkit';
 import { getFirestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
-import { matchOrCreateBatch, resolveProductForm } from '@salt/domain';
+import { matchOrCreateBatch, resolveProductForm, findFormWithSameLabel } from '@salt/domain';
 import type { MatchOrCreateInput, MatchOrCreateResult, ProductForm } from '@salt/domain';
 import {
   CanonicaliseRecipeIngredientsInputSchema,
@@ -175,28 +175,52 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
         if (nowForm && (await bindToParent(i, nowForm.parentCanonId))) continue;
 
         // Idempotency: skip if any existing/in-batch form (pending or confirmed)
-        // already covers the proposed matcher — never create a duplicate.
-        if (proposal.kind === 'form' && resolveProductForm(proposal.matcher, forms) === null) {
-          // Resolve the named parent to a canon id (reuse existing / mint new). A
-          // null result (resolution failed) degrades to normal matching (Rule 10).
-          const parentCanonId = await resolveParentCanonId(proposal.parentName);
-          if (parentCanonId) {
-            const created: ProductForm = {
-              id: crypto.randomUUID(),
-              schemaVersion: 1,
-              matchers: [proposal.matcher],
-              parentCanonId,
-              label: proposal.label,
-              yield: { formUnit: proposal.formUnit, amountPerParent: proposal.amountPerParent },
-              // Written pending: used live immediately, but flagged for admin review.
-              needs_approval: true,
-              updatedAt: new Date().toISOString(),
-            };
-            // Best-effort write; on failure we simply fall through to matching.
-            const written = await productFormStore.upsert(created);
-            if (written.kind === 'ok') {
-              forms.push(created);
-              if (await bindToParent(i, parentCanonId)) continue;
+        // already covers this proposal — never create a duplicate. TWO checks,
+        // because each sees a duplicate the other structurally cannot (#854):
+        //   • matcher containment answers a proposal NARROWER than a stored
+        //     phrase — the original check, unchanged;
+        //   • normalised-label equality answers a proposal BROADER than one, the
+        //     shape actually observed in production. A "Lime juice" proposal
+        //     carrying matcher "juice" resolves to nothing against a form whose
+        //     matchers are ["lime juice","fresh lime juice"], so a second
+        //     identically-labelled form on the same parent was minted — which is
+        //     why hand-correcting a form's matchers never survived the next
+        //     recipe that mentioned juice.
+        // Checked by label rather than by parent because the parent is not known
+        // yet: `resolveParentCanonId` below MINTS canon as a side effect, so
+        // resolving it early to compare would create a canon item only to discard
+        // it.
+        if (proposal.kind === 'form') {
+          const covering =
+            resolveProductForm(proposal.matcher, forms) ??
+            findFormWithSameLabel(proposal.label, forms);
+          // Already covered: bind to what exists instead of minting beside it. A
+          // parent that no longer loads degrades to normal matching (Rule 10),
+          // exactly as every other bind here does.
+          if (covering) {
+            if (await bindToParent(i, covering.parentCanonId)) continue;
+          } else {
+            // Resolve the named parent to a canon id (reuse existing / mint new). A
+            // null result (resolution failed) degrades to normal matching (Rule 10).
+            const parentCanonId = await resolveParentCanonId(proposal.parentName);
+            if (parentCanonId) {
+              const created: ProductForm = {
+                id: crypto.randomUUID(),
+                schemaVersion: 1,
+                matchers: [proposal.matcher],
+                parentCanonId,
+                label: proposal.label,
+                yield: { formUnit: proposal.formUnit, amountPerParent: proposal.amountPerParent },
+                // Written pending: used live immediately, but flagged for admin review.
+                needs_approval: true,
+                updatedAt: new Date().toISOString(),
+              };
+              // Best-effort write; on failure we simply fall through to matching.
+              const written = await productFormStore.upsert(created);
+              if (written.kind === 'ok') {
+                forms.push(created);
+                if (await bindToParent(i, parentCanonId)) continue;
+              }
             }
           }
         }
