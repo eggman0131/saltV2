@@ -578,15 +578,15 @@ Decisions:
   (the page's `rowLabel`, unchanged).
 - **A product-form row carries the recipe's own wording** (`originalText`, #528).
   When an ingredient resolves to a _product form_ the app buys the **parent**:
-  "juice of 2 limes" becomes a "Lime ×3" row, and the collapse to one row per
+  "juice of 2 limes" becomes a "Lime ×2" row, and the collapse to one row per
   parent drops every line that justified the count — the parent name is
   deliberately far from the recipe's wording, so the shopper in the aisle can't
-  tell what three limes are for. `buildRecipeAddPlan` carries each contributing
+  tell what two limes are for. `buildRecipeAddPlan` carries each contributing
   line's unparsed `rawText` onto the surviving row (winner's line first, then
   source order, de-duplicated **on wording only** — two identically-worded lines
   still contribute two `FormDemand` entries), the commit writes it to
   `ShoppingListItemSchema.originalText`, and the list renders it beneath the
-  "Lime ×3" headline on both the single and combined rows — **as well as**, never
+  "Lime ×2" headline on both the single and combined rows — **as well as**, never
   instead of, the parent name and count. On a combined row it replaces the old
   cleaned-name wording ("Lime Juice, Zest, Limes"), falling back **per
   contributor** to that cleaned name. Present only on a product-form row;

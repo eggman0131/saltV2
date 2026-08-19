@@ -272,6 +272,93 @@ describe('canonicaliseRecipeIngredients — product-form proposals (Phase 3)', (
     expect(productFormDocs()).toHaveLength(1); // no duplicate written
   });
 
+  it('binds to an existing form with the SAME LABEL instead of minting a broader duplicate', async () => {
+    // Issue #854, the whole point of Phase 2. The stored form has been corrected
+    // by hand to narrow matchers; the proposal names the same component but with
+    // the bare generic word. `resolveProductForm('juice', forms)` is null —
+    // "juice" does not contain "lime juice" — so the old one-directional check
+    // waved it through and a SECOND "Lime juice" form on the same parent was
+    // minted, quietly re-broadening what had just been fixed. The label check
+    // sees it.
+    seed('canonItems', 'canon-lime', canonDoc('canon-lime', 'Lime'));
+    seed('productForms', 'a5a5cfd2', {
+      id: 'a5a5cfd2',
+      schemaVersion: 1,
+      matchers: ['lime juice', 'fresh lime juice'],
+      parentCanonId: 'canon-lime',
+      label: 'Lime juice',
+      yield: { formUnit: 'ml', amountPerParent: 30 },
+      needs_approval: false,
+      updatedAt: '',
+    });
+
+    mockProposal.mockResolvedValue({
+      kind: 'form',
+      parentName: 'Lime',
+      matcher: 'juice',
+      label: 'Lime juice',
+      formUnit: 'ml',
+      amountPerParent: 30,
+    });
+
+    const result = (await (canonicaliseRecipeIngredientsFlow as Function)({
+      items: [{ rawName: 'the juice of 2 limes' }],
+    })) as Array<{ kind: string; value?: { decision: string; item: { id: string } } }>;
+
+    // Arbitration DID run (the ingredient name did not resolve to the form), and
+    // its proposal was absorbed by the existing form rather than minted beside it.
+    expect(mockProposal).toHaveBeenCalledTimes(1);
+    const forms = productFormDocs();
+    expect(forms).toHaveLength(1);
+    expect(forms[0]!.id).toBe('a5a5cfd2');
+    expect(forms[0]!.matchers).toEqual(['lime juice', 'fresh lime juice']);
+    // Still approved — the needs-approval badge does not increment for a
+    // component an approved form already covers.
+    expect(forms[0]!.needs_approval).toBe(false);
+
+    // And the ingredient bound live to that form's parent.
+    expect(result[0]!.kind).toBe('ok');
+    expect(result[0]!.value!.decision).toBe('matched');
+    expect(result[0]!.value!.item.id).toBe('canon-lime');
+    // No orphan canon minted for the derivative.
+    expect(canonDocsNamed('Juice')).toHaveLength(0);
+  });
+
+  it('still mints when the proposal names a component no existing form is called', async () => {
+    // The dedupe is EQUALITY on the label, not a blanket "already have a form on
+    // this parent" — a genuinely different component of the same parent is still
+    // a new form.
+    seed('canonItems', 'canon-lime', canonDoc('canon-lime', 'Lime'));
+    seed('productForms', 'a5a5cfd2', {
+      id: 'a5a5cfd2',
+      schemaVersion: 1,
+      matchers: ['lime juice', 'fresh lime juice'],
+      parentCanonId: 'canon-lime',
+      label: 'Lime juice',
+      yield: { formUnit: 'ml', amountPerParent: 30 },
+      needs_approval: false,
+      updatedAt: '',
+    });
+
+    mockProposal.mockResolvedValue({
+      kind: 'form',
+      parentName: 'Lime',
+      matcher: 'lime zest',
+      label: 'Lime zest',
+      formUnit: 'g',
+      amountPerParent: 5,
+    });
+
+    await (canonicaliseRecipeIngredientsFlow as Function)({
+      items: [{ rawName: 'lime zest' }],
+    });
+
+    const forms = productFormDocs();
+    expect(forms).toHaveLength(2);
+    expect(forms.map((f) => f.label).sort()).toEqual(['Lime juice', 'Lime zest']);
+    expect(forms.every((f) => f.parentCanonId === 'canon-lime')).toBe(true);
+  });
+
   it('degrades to normal matching when the AI declines (kind: none)', async () => {
     mockProposal.mockResolvedValue({ kind: 'none' });
     mockArbitrateCanon.mockResolvedValue({ kind: 'no-match' });

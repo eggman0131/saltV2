@@ -111,6 +111,7 @@ function buildPrompt(req: ProductFormArbitrationRequest): string {
     `- parent_name: the NAME of the whole product you buy — e.g. "Lime" for lime juice. PREFER an exact name from the catalog list above when one fits, so the existing product is reused; otherwise name the new parent product (it will be created).`,
     `- parent_id: if the parent you named is one of the catalog candidates above, echo its id here (a hint only); otherwise null.`,
     `- matcher: the lowercase phrase identifying this form in an ingredient name, e.g. "lime juice"`,
+    `  The matcher MUST name the parent as well as the component — "lime juice", never "juice"; "lemon zest", never "zest"; "egg yolk", never "yolk". A bare component word matches every other parent's version of the same thing, so "juice" would bind orange juice to Lime.`,
     `- label: a short human label, e.g. "Lime juice"`,
     `- form_unit: "g", "ml", or "count" — the unit the component is measured in`,
     `- amount_per_parent: how much of form_unit ONE whole parent yields (e.g. one lime ≈ 30 ml juice; one lemon ≈ 5 g zest). A positive number.`,

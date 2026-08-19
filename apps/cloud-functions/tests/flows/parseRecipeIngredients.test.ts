@@ -414,6 +414,70 @@ describe('parseRecipeIngredients — displayText threading', () => {
     expect(bacon.parsed.unit).toBe('g');
   });
 
+  it('threads a citrus-component parse through unchanged (component in item, count in displayText)', async () => {
+    // Issue #854. The whole defect was upstream of this flow: the model used to
+    // return item "limes" with preparation ["juice of"], so product-form
+    // resolution — which is fed `parsed.item` and nothing else — never saw the
+    // word "juice" and fell back to scaling 130ml. The prompt now names the
+    // component; this pins that the flow threads that shape through untouched,
+    // and that a whole-fruit line keeps the fruit in item with the action in
+    // preparation.
+    mockGenerate.mockResolvedValue({
+      output: aiOutput([
+        {
+          name: null,
+          items: [
+            simpleIngredient({
+              rawText: 'Juice of 2 limes',
+              quantity: { type: 'single', value: 60 },
+              unit: 'ml',
+              item: 'lime juice',
+              displayText: '2 limes',
+            }),
+            simpleIngredient({
+              rawText: 'Zest of 1 lemon',
+              quantity: { type: 'single', value: 5 },
+              unit: 'g',
+              item: 'lemon zest',
+              displayText: '1 lemon',
+            }),
+            simpleIngredient({
+              rawText: '2 limes, halved',
+              quantity: { type: 'single', value: 130 },
+              unit: 'g',
+              item: 'limes',
+              preparation: ['halved'],
+              displayText: 'about 2 limes',
+            }),
+          ],
+        },
+      ]),
+    });
+
+    const result = await (parseRecipeIngredientsFlow as Function)({
+      rawText: 'Juice of 2 limes\nZest of 1 lemon\n2 limes, halved',
+    });
+
+    const [juice, zest, wholeFruit] = result[0].items;
+
+    expect(juice.parsed.item).toBe('lime juice');
+    expect(juice.parsed.preparation).toEqual([]);
+    expect(juice.parsed.quantity).toEqual({ type: 'single', value: 60 });
+    expect(juice.parsed.unit).toBe('ml');
+    expect(juice.parsed.displayText).toBe('2 limes');
+
+    expect(zest.parsed.item).toBe('lemon zest');
+    expect(zest.parsed.quantity).toEqual({ type: 'single', value: 5 });
+    expect(zest.parsed.unit).toBe('g');
+    expect(zest.parsed.displayText).toBe('1 lemon');
+
+    // The fruit itself is the ingredient here, so nothing about it changes.
+    expect(wholeFruit.parsed.item).toBe('limes');
+    expect(wholeFruit.parsed.preparation).toEqual(['halved']);
+    expect(wholeFruit.parsed.quantity).toEqual({ type: 'single', value: 130 });
+    expect(wholeFruit.parsed.unit).toBe('g');
+  });
+
   it('keeps quantity and unit null for genuinely unquantifiable items', async () => {
     mockGenerate.mockResolvedValue({
       output: aiOutput([
@@ -532,6 +596,48 @@ describe('parseRecipeIngredients — prompt construction', () => {
     expect(system).toContain('1 clove garlic ≈ 3g');
     // unquantifiable items stay quantity+unit null.
     expect(system).toContain('genuinely unquantifiable');
+  });
+
+  it('puts the part of a thing you use into item, not into preparation (issue #854)', async () => {
+    mockGenerate.mockResolvedValue({ output: aiOutput([{ name: null, items: [] }]) });
+
+    await (parseRecipeIngredientsFlow as Function)({ rawText: 'Juice of 2 limes' });
+
+    const { system } = mockGenerate.mock.calls[0]![0];
+    // `parsed.item` is the ONLY thing product-form resolution is handed
+    // (canonicaliseRecipeIngredients rawName / recipeService formCountFor), so a
+    // component demoted to a preparation phrase is unrecoverable downstream.
+    expect(system).toContain('NAMING — the PART of a thing you use belongs to its NAME');
+    expect(system).toContain('item "lime juice"');
+    expect(system).toContain('item "lemon zest"');
+    expect(system).toContain('item "orange juice"');
+    expect(system).toContain('Never leave "juice of" or "zest of" in preparation');
+    // The non-coverage clause: ordinary prep of a whole thing is untouched.
+    expect(system).toContain('"2 limes, halved" → item "limes", preparation ["halved"]');
+    // The count rides in displayText plainly, with no "about" hedge.
+    expect(system).toContain('CITRUS COMPONENT lines');
+    expect(system).toContain('with NO "about" prefix');
+  });
+
+  it('carries citrus-component yields separately from whole-fruit weights (issue #854)', async () => {
+    mockGenerate.mockResolvedValue({ output: aiOutput([{ name: null, items: [] }]) });
+
+    await (parseRecipeIngredientsFlow as Function)({ rawText: 'Juice of 2 limes' });
+
+    const { system } = mockGenerate.mock.calls[0]![0];
+    // Physically accurate component yields — deliberately NOT authored to match
+    // whatever the live productForms rows happen to say today (issue #854
+    // Decisions). arbitrateProductForm's own prompt already teaches 30ml/lime.
+    expect(system).toContain('juice of 1 lime ≈ 30ml');
+    expect(system).toContain('juice of 1 lemon ≈ 45ml');
+    expect(system).toContain('juice of 1 orange ≈ 70ml');
+    expect(system).toContain('zest of 1 lime / lemon / orange ≈ 5g');
+    // ml for juice, g for zest — the yield unit must agree with the product
+    // form's formUnit in BOTH directions or formParentCount returns null.
+    expect(system).toContain('unit to "ml" for juice and "g" for zest');
+    // The whole-fruit weights survive for lines where the fruit IS the ingredient.
+    expect(system).toContain('1 lemon ≈ 100g, 1 lime ≈ 65g');
+    expect(system).toContain('"2 limes, halved" is 130g of limes');
   });
 
   it('carves out bought-whole discrete proteins as count with unit null in the system prompt', async () => {
