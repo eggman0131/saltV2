@@ -593,6 +593,7 @@ describe('parseRecipeIngredients — prompt construction', () => {
     const { system } = mockGenerate.mock.calls[0]![0];
     // Ordinary count/pack ingredients (cloves, rashers, tins, etc.) still flatten to metric.
     expect(system).toContain('Convert count/item-based and pack-based ingredients to metric');
+    // The clove estimate survives, but only as displayText — see the garlic test below.
     expect(system).toContain('1 clove garlic ≈ 3g');
     // unquantifiable items stay quantity+unit null.
     expect(system).toContain('genuinely unquantifiable');
@@ -638,6 +639,31 @@ describe('parseRecipeIngredients — prompt construction', () => {
     // The whole-fruit weights survive for lines where the fruit IS the ingredient.
     expect(system).toContain('1 lemon ≈ 100g, 1 lime ≈ 65g');
     expect(system).toContain('"2 limes, halved" is 130g of limes');
+  });
+
+  it('keeps a garlic clove as a counted component of the bulb', async () => {
+    mockGenerate.mockResolvedValue({ output: aiOutput([{ name: null, items: [] }]) });
+
+    await (parseRecipeIngredientsFlow as Function)({ rawText: '2 cloves garlic, crushed' });
+
+    const { system } = mockGenerate.mock.calls[0]![0];
+    // BOTH halves are load-bearing and neither works alone. The NAME, because
+    // product-form resolution is handed `item` and nothing else, and containment
+    // is one-directional — a form phrased "garlic clove" can never be found
+    // inside an item of "garlic". The UNIT, because `formParentCount` returns
+    // null on a unit mismatch, so a count-yield form fed grams is rejected even
+    // once the name is right.
+    expect(system).toContain('a garlic clove is a COUNTED COMPONENT of the bulb');
+    expect(system).toContain('"1 clove garlic" → item "garlic clove"');
+    expect(system).toContain('"2 cloves of garlic, crushed" → item "garlic clove"');
+    expect(system).toContain('never reduce item to "garlic"');
+    expect(system).toContain('quantity 2, unit null, item "garlic clove"');
+    // The bulb-per-clove division belongs to the product form, not the parse.
+    expect(system).toContain("the product form's job, not this one's");
+    // A whole bulb is still a bulb.
+    expect(system).toContain('"1 bulb garlic, roasted" → item "garlic"');
+    // ...and cloves are no longer named among the things that flatten to grams.
+    expect(system).not.toContain('garlic cloves, onions, rashers');
   });
 
   it('carves out bought-whole discrete proteins as count with unit null in the system prompt', async () => {

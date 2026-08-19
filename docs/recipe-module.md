@@ -103,9 +103,15 @@ Key invariants:
   destroys the original ingredient line.
 - **Canon owns the name.** The recipe stores `canonId`, never an echoed canonical
   string. `parsed.item` is the cleaned pre-canon name only.
-- **`parsed.unit` is metric-or-nothing** — `'g' | 'ml' | null` (`null` for
-  count-based ingredients: cloves, rashers). The original non-metric measure is
-  not thrown away, it moves to `displayText`, so "½ tsp" still reads as "½ tsp".
+- **`parsed.unit` is metric-or-nothing** — `'g' | 'ml' | null`. `null` means the
+  amount is a COUNT, and it is far narrower than "count-based ingredient": most
+  counted things (onions, rashers, tins, bunches) are deliberately flattened to
+  grams by the parse prompt. `null` is reserved for the cases where the
+  shopper's own unit IS the count — bought-whole discrete proteins, garlic
+  cloves, and equipment-prep lines with no dish amount. The parse prompt is the
+  authority on which is which; do not infer it from the ingredient's name. The
+  original non-metric measure is not thrown away, it moves to `displayText`, so
+  "½ tsp" still reads as "½ tsp".
 
 ### Schema extensions (issue #180)
 

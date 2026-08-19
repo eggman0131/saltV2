@@ -37,7 +37,15 @@ export const QuantitySchema = z.discriminatedUnion('type', [
 
 export const ParsedIngredientSchema = z.object({
   quantity: QuantitySchema.nullable(),
-  // Metric unit only. null for count/item-based ingredients (cloves, rashers, etc.)
+  // Metric unit only. `null` means the amount is a COUNT, not a measure — and the
+  // parse prompt decides which, so read it there rather than inferring from the
+  // name of a thing. Most count/pack ingredients (onions, rashers, tins, bunches)
+  // are deliberately FLATTENED to grams; `null` is reserved for the narrow set
+  // where the shopper's own unit is the count: bought-whole discrete proteins
+  // (eggs, poultry joints, whole fish), garlic cloves, and equipment-prep lines
+  // that carry no dish amount at all. A stale version of this comment said the
+  // opposite for cloves and cost an investigation — keep it in step with
+  // `apps/cloud-functions/src/flows/parseRecipeIngredients.ts`.
   unit: z.enum(['g', 'ml']).nullable(),
   item: z.string(),
   preparation: z.array(z.string()),
