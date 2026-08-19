@@ -9,7 +9,7 @@
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
   import { trackUsageEvent } from '@salt/observability';
-  import { appendCacheBuster, type Recipe } from '@salt/domain';
+  import { appendCacheBuster, recipeMatchIssueCount, type Recipe } from '@salt/domain';
   import {
     recipes,
     isLoadingRecipes,
@@ -18,6 +18,8 @@
   } from '../../lib/recipeService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { currentMember } from '../../lib/membersService.js';
+  import { canonItems, isLoadingAisles } from '../../lib/canonService.js';
+  import { productForms, isLoadingProductForms } from '../../lib/productFormService.js';
   import {
     KIND_COPY,
     KIND_SECTIONS,
@@ -33,6 +35,35 @@
 
   function ingredientCount(recipe: Recipe): number {
     return recipe.ingredients.reduce((n, g) => n + g.items.length, 0);
+  }
+
+  // ─── Silent match problems (the card pip) ────────────────────────────────────
+  // A line matched to a canon item since deleted, or measured in ml/g against a
+  // thing sold by the count with no product form to bridge it (issue #855). Both
+  // read as perfectly matched on the recipe and buy the wrong thing, which is why
+  // they get a marker on the LIST: the whole point is knowing which recipe to
+  // open. A never-matched line is deliberately NOT counted — see the domain query.
+  //
+  // Both stores are app-wide (App.svelte), so this costs no extra read. The map is
+  // built once per canon change rather than per card, and `recipeMatchIssueCount`
+  // rejects almost every line on two field reads before it ever walks the forms.
+  const canonById = $derived(new Map($canonItems.map((c) => [c.id, c])));
+
+  // NOTHING is judged until both collections have actually landed. Canon leads
+  // and arrives after first paint, and an empty canon makes every matched line
+  // look dangling — so without this gate the whole library flashes amber on every
+  // cold load, which is exactly how a marker gets trained out of a person. The
+  // length check backs up the load flags: `isLoadingAisles` starts false, so a
+  // surface that never initialises sync (a test, a stray mount) would otherwise
+  // read "loaded" over an empty store. Product forms get the flag but NOT a
+  // length check — an empty form table is a legitimate state and precisely the
+  // one that should be lighting these pips up (issue #855).
+  const matchIssuesKnown = $derived(
+    !$isLoadingAisles && !$isLoadingProductForms && $canonItems.length > 0,
+  );
+
+  function matchIssueCount(recipe: Recipe): number {
+    return matchIssuesKnown ? recipeMatchIssueCount(recipe, canonById, $productForms) : 0;
   }
 
   function heroUrl(recipe: Recipe): string | null {
@@ -662,6 +693,7 @@
           {@const url = heroUrl(recipe)}
           {@const count = ingredientCount(recipe)}
           {@const tags = recipe.metadata.tags}
+          {@const issues = matchIssueCount(recipe)}
           <li>
             <button
               class="group flex h-full w-full flex-col overflow-hidden rounded-lg border border-border bg-card text-left transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -681,6 +713,24 @@
                     data-testid="recipe-unreviewed-badge"
                   >
                     Unreviewed
+                  </span>
+                {/if}
+                <!--
+                  Match pip (opposite corner to Unreviewed, so a recipe can carry
+                  both without them colliding). Marker only, like that chip: the
+                  card is already a button, and the fixing happens on the line
+                  itself via the ingredient match sheet.
+                -->
+                {#if issues > 0}
+                  <span
+                    class="absolute right-2 top-2 z-10 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[10px] font-semibold text-white shadow"
+                    title={`${issues} ${issues === 1 ? 'ingredient is' : 'ingredients are'} matched to the wrong thing`}
+                    data-testid="recipe-match-issue-pip"
+                  >
+                    {issues}
+                    <span class="sr-only">
+                      {issues === 1 ? 'ingredient needs' : 'ingredients need'} re-matching
+                    </span>
                   </span>
                 {/if}
                 {#if url}

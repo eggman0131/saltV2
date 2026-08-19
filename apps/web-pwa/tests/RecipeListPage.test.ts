@@ -9,7 +9,15 @@ import { setNextCrop } from './fixtures/cropStub.js';
 // drive the search / sort / tag-filter pipeline without Firestore. Mirrors the
 // store shim used by the RecipeEditPage tests.
 
-const { mockRecipes, mockIsLoading, mockCurrentMember } = vi.hoisted(() => {
+const {
+  mockRecipes,
+  mockIsLoading,
+  mockCurrentMember,
+  mockCanonItems,
+  mockProductForms,
+  mockIsLoadingAisles,
+  mockIsLoadingProductForms,
+} = vi.hoisted(() => {
   function makeStore<T>(initial: T) {
     let value = initial;
     const subs = new Set<(v: T) => void>();
@@ -34,12 +42,27 @@ const { mockRecipes, mockIsLoading, mockCurrentMember } = vi.hoisted(() => {
     // authorship row is not offered and every pre-existing test below is
     // untouched by it.
     mockCurrentMember: makeStore<{ name: string } | null>(null),
+    // The card's match pip (silent mis-matches) reads both collections. Empty by
+    // default, which with the page's own load gate means no pip — so every test
+    // written before the pip existed is untouched by it.
+    mockCanonItems: makeStore<unknown[]>([]),
+    mockProductForms: makeStore<unknown[]>([]),
+    mockIsLoadingAisles: makeStore<boolean>(false),
+    mockIsLoadingProductForms: makeStore<boolean>(false),
   };
 });
 
 vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
 vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
 vi.mock('../src/lib/membersService.js', () => ({ currentMember: mockCurrentMember }));
+vi.mock('../src/lib/canonService.js', () => ({
+  canonItems: mockCanonItems,
+  isLoadingAisles: mockIsLoadingAisles,
+}));
+vi.mock('../src/lib/productFormService.js', () => ({
+  productForms: mockProductForms,
+  isLoadingProductForms: mockIsLoadingProductForms,
+}));
 vi.mock('../src/lib/recipeService.js', () => ({
   recipes: mockRecipes,
   isLoadingRecipes: mockIsLoading,
@@ -186,6 +209,8 @@ afterEach(() => {
   cleanup();
   seed([]);
   mockCurrentMember._set(null);
+  mockCanonItems._set([]);
+  mockProductForms._set([]);
 });
 
 // ─── Tests ──────────────────────────────────────────────────────────────────────
@@ -1193,5 +1218,121 @@ describe('RecipeListPage — import from URL', () => {
     expect(await screen.findByTestId('recipe-import-url-input')).toHaveValue(
       'https://example.com/rescued',
     );
+  });
+});
+
+describe('RecipeListPage — silent match problems', () => {
+  const LIME = {
+    id: 'canon-lime',
+    schemaVersion: 5,
+    name: 'lime',
+    synonyms: [],
+    aisleId: null,
+    thumbnail: null,
+    needs_approval: false,
+    shoppingBehavior: 'needed',
+    unit: 'count',
+    updatedAt: '2026-08-19T00:00:00.000Z',
+  };
+
+  // A recipe with one citrus line already matched to Lime — the #855 shape.
+  function citrusRecipe(canonId: string | null = 'canon-lime'): Recipe {
+    const base = makeRecipe({
+      id: 'r-citrus',
+      title: 'Margarita',
+      tags: [],
+      totalTimeMinutes: null,
+      servings: null,
+      ingredientCount: 1,
+      image: null,
+      createdAt: '2026-08-19T00:00:00.000Z',
+    });
+    return {
+      ...base,
+      ingredients: [
+        {
+          id: 'g',
+          name: null,
+          items: [
+            {
+              id: 'i0',
+              rawText: 'Juice of 2 limes',
+              parsed: {
+                quantity: { type: 'single' as const, value: 60 },
+                unit: 'ml' as const,
+                item: 'lime juice',
+                preparation: [],
+                notes: null,
+                displayText: '2 limes',
+              },
+              canonId,
+              matchState: 'matched' as const,
+              isOptional: false,
+              firstUsedInStepId: null,
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  it('pips a card whose line buys millilitres of a thing sold by the count', async () => {
+    mockCanonItems._set([LIME]);
+    mockProductForms._set([]);
+    seed([citrusRecipe()]);
+    render(RecipeListPage);
+
+    const pip = await screen.findByTestId('recipe-match-issue-pip');
+    expect(pip).toHaveTextContent('1');
+  });
+
+  it('drops the pip once a product form bridges the line', async () => {
+    mockCanonItems._set([LIME]);
+    mockProductForms._set([
+      {
+        id: 'form-lime-juice',
+        schemaVersion: 1,
+        matchers: [],
+        parentCanonId: 'canon-lime',
+        label: 'Lime juice',
+        yield: { formUnit: 'ml', amountPerParent: 30 },
+        updatedAt: '2026-08-19T00:00:00.000Z',
+      },
+    ]);
+    seed([citrusRecipe()]);
+    render(RecipeListPage);
+
+    await screen.findAllByTestId('recipe-list-item');
+    expect(screen.queryByTestId('recipe-match-issue-pip')).not.toBeInTheDocument();
+  });
+
+  it('pips a line pointing at a canon item that has been deleted', async () => {
+    mockCanonItems._set([LIME]);
+    seed([citrusRecipe('canon-since-deleted')]);
+    render(RecipeListPage);
+
+    expect(await screen.findByTestId('recipe-match-issue-pip')).toHaveTextContent('1');
+  });
+
+  it('shows nothing at all before canon has landed', async () => {
+    // The flash guard: canon arrives after first paint, and an empty canon makes
+    // every matched line look dangling. Judging early would amber the library.
+    mockCanonItems._set([]);
+    seed([citrusRecipe()]);
+    render(RecipeListPage);
+
+    await screen.findAllByTestId('recipe-list-item');
+    expect(screen.queryByTestId('recipe-match-issue-pip')).not.toBeInTheDocument();
+  });
+
+  it('holds off while the product-form collection is still loading', async () => {
+    mockCanonItems._set([LIME]);
+    mockIsLoadingProductForms._set(true);
+    seed([citrusRecipe()]);
+    render(RecipeListPage);
+
+    await screen.findAllByTestId('recipe-list-item');
+    expect(screen.queryByTestId('recipe-match-issue-pip')).not.toBeInTheDocument();
+    mockIsLoadingProductForms._set(false);
   });
 });
