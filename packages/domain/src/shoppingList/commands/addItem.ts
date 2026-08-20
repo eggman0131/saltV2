@@ -28,6 +28,12 @@ export interface AddItemInput {
    * for. Display only; nothing branches on it. Omitted for every non-form add.
    */
   readonly originalText?: readonly string[];
+  /**
+   * The recipe's original non-metric measure for this line, verbatim ("6 cloves").
+   * Display only. Omitted for manual adds and for any add at scaled servings,
+   * where the frozen string would contradict the scaled amount.
+   */
+  readonly measureNote?: string;
   /** Flag this item for verification on the list (recipe-add "check" rows). Defaults false. */
   readonly needsCheck?: boolean;
 }
@@ -60,6 +66,7 @@ export function addItem(
     ...(input.unit !== undefined ? { unit: input.unit } : {}),
     ...(input.formDemand !== undefined ? { formDemand: input.formDemand } : {}),
     ...(input.originalText !== undefined ? { originalText: input.originalText } : {}),
+    ...(input.measureNote !== undefined ? { measureNote: input.measureNote } : {}),
   };
   return success([...items, newItem]);
 }

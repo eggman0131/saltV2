@@ -61,6 +61,8 @@ export type { RecipeGroup, ManualBucket, GroupedByRecipe } from './queries/group
 
 export { resolveItemDisplayName } from './queries/resolveItemDisplayName.js';
 
+export { isRecipeSourced } from './queries/isRecipeSourced.js';
+
 export { recipeItemAddDefault } from './queries/recipeItemAddDefault.js';
 export type { RecipeItemAddDefault } from './queries/recipeItemAddDefault.js';
 
