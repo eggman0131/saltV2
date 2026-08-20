@@ -42,6 +42,7 @@
   } from '@salt/domain';
   import type { ShoppingListItem, AisleRow, AmountSubtotal } from '@salt/domain';
   import { canonItems, aisles, purchaseCounts } from '../../lib/canonService.js';
+  import { recipes } from '../../lib/recipeService.js';
   import {
     lists,
     defaultListId,
@@ -729,11 +730,38 @@
     void checkItems(params.listId, ids);
   }
 
-  function describeSource(src: ShoppingListItem['sources'][number]): string {
-    if (src.kind === 'manual') return src.addedBy ? `Added by ${src.addedBy}` : 'Added manually';
-    const label = src.label ?? 'Recipe';
-    const servings = `${src.servings} serving${src.servings === 1 ? '' : 's'}`;
-    return `${label} (${servings})`;
+  // A recipe's name only becomes a tap target while the recipe is still there.
+  // `sources[].label` is a snapshot taken at add time and a shopping list
+  // routinely outlives the dish it came from, so the name has to fall back to
+  // plain text rather than link to a dead page. The check is free: `initRecipeSync()`
+  // already subscribes the `recipes` store app-wide (App.svelte), so this is one
+  // lookup and no new Firestore read.
+  const liveRecipeIds = $derived(new Set($recipes.map((r) => r.id)));
+
+  // Navigation is a `push()` on a <button>, exactly as the planner's day-sheet
+  // recipe rows do it (MealDayDetail.openRecipe). There is not a single <a href>
+  // in this app and this feature does not introduce the first one.
+  function openRecipe(id: string): void {
+    push(`/recipes/${id}`);
+  }
+
+  // Parts, not one flat string (#860): the recipe's NAME carries the tap target
+  // and its servings stay plain text beside it, so the two cannot be rendered
+  // as a single blob. The manual branch stays plain — "Added by Daniel" is a
+  // person, not a destination.
+  type SourceParts =
+    | { kind: 'manual'; text: string }
+    | { kind: 'recipe'; recipeId: string; name: string; servings: string };
+
+  function describeSource(src: ShoppingListItem['sources'][number]): SourceParts {
+    if (src.kind === 'manual')
+      return { kind: 'manual', text: src.addedBy ? `Added by ${src.addedBy}` : 'Added manually' };
+    return {
+      kind: 'recipe',
+      recipeId: src.recipeId,
+      name: src.label ?? 'Recipe',
+      servings: `(${src.servings} serving${src.servings === 1 ? '' : 's'})`,
+    };
   }
 </script>
 
@@ -1165,9 +1193,29 @@
               data-testid="shopping-recipe-group"
               data-recipe-id={recipeGroup.recipeId}
             >
-              <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
-                {recipeGroup.recipeName}
-              </p>
+              {#if liveRecipeIds.has(recipeGroup.recipeId)}
+                <!-- The heading keeps its own small-caps muted type; all it
+                     borrows from the `link` variant is the affordance — the
+                     hover underline, the press pulse and the focus ring. A
+                     shouting blue heading over every section would be a worse
+                     list than no link at all. `self-start` keeps the target the
+                     width of the words rather than the width of the section. -->
+                <Button
+                  variant="link"
+                  size="sm"
+                  class="h-auto justify-start self-start px-0 py-2 text-xs font-semibold tracking-wider text-muted-foreground uppercase"
+                  onclick={() => openRecipe(recipeGroup.recipeId)}
+                  data-testid="shopping-recipe-group-link"
+                >
+                  {recipeGroup.recipeName}
+                </Button>
+              {:else}
+                <p
+                  class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1"
+                >
+                  {recipeGroup.recipeName}
+                </p>
+              {/if}
               {#each recipeGroup.items as item (item.id)}
                 {@render itemRow(item, item.matchState === 'pending')}
               {/each}
@@ -1337,7 +1385,29 @@
           <span class="text-sm font-medium">Sources</span>
           <ul class="flex flex-col gap-1">
             {#each editingItem.sources as src, i (i)}
-              <li class="text-sm text-muted-foreground">{describeSource(src)}</li>
+              {@const source = describeSource(src)}
+              <li class="text-sm text-muted-foreground">
+                {#if source.kind === 'recipe' && liveRecipeIds.has(source.recipeId)}
+                  <!-- Name links, servings do not. The sheet has the room the
+                       list does not, so this target gets the full 44px. -->
+                  <span class="flex flex-wrap items-center gap-1.5">
+                    <Button
+                      variant="link"
+                      size="sm"
+                      class="h-auto min-h-11 px-0 text-sm font-normal"
+                      onclick={() => openRecipe(source.recipeId)}
+                      data-testid="shopping-edit-source-link"
+                    >
+                      {source.name}
+                    </Button>
+                    <span>{source.servings}</span>
+                  </span>
+                {:else if source.kind === 'recipe'}
+                  {source.name} {source.servings}
+                {:else}
+                  {source.text}
+                {/if}
+              </li>
             {/each}
           </ul>
         </div>
