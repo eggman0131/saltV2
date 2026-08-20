@@ -15,7 +15,12 @@
 <script lang="ts">
   import { CanonIcon, Icon, RowSelectCheckbox, Spinner } from '@salt/ui-components';
   import type { ListSelection } from '@salt/ui-components';
-  import { isResolvedMatchState, resolveItemDisplayName, resolveProductForm } from '@salt/domain';
+  import {
+    isRecipeSourced,
+    isResolvedMatchState,
+    resolveItemDisplayName,
+    resolveProductForm,
+  } from '@salt/domain';
   import type { ProductForm, ShoppingListItem } from '@salt/domain';
   import type { Snippet } from 'svelte';
   import type { TransitionConfig } from 'svelte/transition';
@@ -165,6 +170,7 @@
 
   const isSelected = $derived(selection.isSelected(item.id));
   const amountStr = $derived(formatAmount(item.amount, item.unit));
+  const recipeQuantity = $derived(isRecipeSourced(item) ? leadingQuantity(item) : null);
   const productForm = $derived(productFormFor(item));
 
   // A row mid-celebration reads as done even though the copy it was handed still
@@ -251,6 +257,20 @@
     return unit ? `${amount} ${unit}` : `${amount}`;
   }
 
+  // The quantity a recipe row LEADS with, formatted the way the recipe detail
+  // page writes it (`IngredientText`): tight against its unit — "400g", "1.5kg" —
+  // and the bare number when the line carried no unit ("2" eggs).
+  //
+  // null means the row keeps today's trailing "(400 g)" shape. That covers a row
+  // with no amount at all, and — deliberately — the product-form 'count'
+  // sentinel: a whole parent-count is not a measure, so a row whose form no
+  // longer resolves (and has therefore fallen past the ×N branch above) keeps its
+  // existing wording rather than reading as "3count Lime".
+  function leadingQuantity(value: ShoppingListItem): string | null {
+    if (value.amount === undefined || value.unit === 'count') return null;
+    return value.unit ? `${value.amount}${value.unit}` : String(value.amount);
+  }
+
   // A flagged item (recipe-add "check" item, #185) gets a quick confirm/drop
   // affordance instead of the check circle.
   function needsVerify(value: ShoppingListItem): boolean {
@@ -319,6 +339,28 @@
           >{resolveItemDisplayName(item)}</span
         >
       {/if}
+    {:else if recipeQuantity}
+      <!-- A recipe row reads the way the recipe detail page reads it: the
+           quantity first, tight against its unit, then the item — "1.5kg Whole
+           Chicken". Preparation is already absent by the time a line reaches the
+           list (recipeService writes the parser's clean `parsed.item` as the row's
+           rawText), and the detail page's muted "(6 cloves)" note follows it in
+           the same muted style — `parsed.displayText`, carried onto the item as
+           `measureNote` so a line the parser flattened to grams still says what
+           to reach for in the shop. That note is written only on an UNSCALED add
+           (it is a frozen string with no structure to multiply), so on a scaled
+           row it is simply absent and the amount stands alone.
+
+           A MANUALLY added row is excluded and keeps the trailing shape below:
+           what a person typed onto the list is what they should read back. The
+           test is the domain's `isRecipeSourced`, the same one that decides which
+           rows may combine, so a row can never be a recipe's for one purpose and
+           a person's for the other. -->
+      <span class="block truncate {done ? 'line-through text-muted-foreground' : ''}">
+        {recipeQuantity}{' '}{displayLabel(item)}{#if item.measureNote}<span
+            class="ml-1 text-xs text-muted-foreground">({item.measureNote})</span
+          >{/if}
+      </span>
     {:else}
       <span class="block truncate {done ? 'line-through text-muted-foreground' : ''}">
         {displayLabel(item)}{#if amountStr}{' '}<span class="text-muted-foreground"

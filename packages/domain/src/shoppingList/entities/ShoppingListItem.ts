@@ -31,6 +31,13 @@ export interface ShoppingListItem {
   // ShoppingListItemSchema (the read boundary casts the parsed doc to this type,
   // so the two must stay structurally compatible).
   readonly originalText?: readonly string[];
+  // The recipe's original non-metric measure for this line, verbatim ("6 cloves"),
+  // so a row flattened to grams still says what to reach for. Written only when
+  // the recipe was added at its own servings — the string has no structure to
+  // scale, so at any other serving count it is absent rather than wrong. DISPLAY
+  // ONLY. Mirrors ShoppingListItemSchema (the read boundary casts the parsed doc
+  // to this type, so the two must stay structurally compatible).
+  readonly measureNote?: string;
   readonly checked: boolean;
   // Flagged for verification at extraction time (issue #185): a recipe-add put
   // this on the list as a "check you need it" item (e.g. a near-threshold staple).

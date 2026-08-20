@@ -189,6 +189,7 @@ export {
   groupItemsByAisle,
   groupItemsByRecipe,
   resolveItemDisplayName,
+  isRecipeSourced,
   recipeItemAddDefault,
   parseShoppingListEntry,
 } from './shoppingList/index.js';

@@ -72,6 +72,21 @@ export const ShoppingListItemSchema = z.object({
   // item) lack it and stay valid on read — they degrade to today's display, which
   // labels the sub-line with the cleaned item name (back-compat; no migration).
   originalText: z.array(z.string()).optional(),
+  // The recipe's ORIGINAL non-metric measure for this line, verbatim — "6 cloves",
+  // "1½ cups", "2–3 tbsp". The recipe's own `parsed.displayText`, carried onto the
+  // list so a row the parser flattened to grams still says what to reach for in
+  // the shop: "18g Garlic (6 cloves)" rather than a weight nobody can eyeball.
+  //
+  // Written ONLY when the recipe was added at its own servings. The string is a
+  // frozen parse-time rendering with no structure to scale — you cannot multiply
+  // "1½ cups" or "2–3 tbsp" — so at any other serving count it would contradict
+  // the scaled amount beside it and have the shopper buy the wrong quantity. It is
+  // therefore absent rather than wrong; see `buildRecipeAddPlan`.
+  //
+  // DISPLAY ONLY — no logic may branch on it. Optional and additive: items written
+  // before this field, manual adds, and every scaled add lack it and stay valid on
+  // read (back-compat; no migration).
+  measureNote: z.string().optional(),
 });
 
 export type SourceRefDoc = z.infer<typeof SourceRefSchema>;

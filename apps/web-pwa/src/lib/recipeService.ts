@@ -783,6 +783,12 @@ export interface RecipeAddRow {
   // "Lime ×3" headline. DISPLAY ONLY — nothing branches on it. Absent on every
   // ordinary row.
   readonly originalText?: readonly string[];
+  // The recipe's ORIGINAL non-metric measure for this line, verbatim ("6 cloves",
+  // "1½ cups") — `parsed.displayText`, carried onto the shopping item so a line
+  // the parser flattened to grams still says what to reach for in the shop.
+  // Present only on an UNSCALED add; see the gate in buildRecipeAddPlan. Display
+  // only — nothing branches on it.
+  readonly measureNote?: string;
   add: boolean;
   check: boolean;
   // ─── Buy-or-make (Phase 2) ───────────────────────────────────────────────────
@@ -954,6 +960,18 @@ export function buildRecipeAddPlan(recipe: Recipe, servings: number): RecipeAddR
       const itemText = ing.parsed?.item.trim() || ing.rawText;
       const notes = ing.parsed?.notes ?? '';
 
+      // `parsed.displayText` — the line's original non-metric measure ("6 cloves")
+      // — rides onto the row so the list can read "18g Garlic (6 cloves)" the way
+      // the recipe page does, instead of a weight nobody can eyeball in the shop.
+      //
+      // ONLY at scale 1. The string is a frozen parse-time rendering with no
+      // structure to multiply ("1½ cups", "2–3 tbsp", "6 cloves"), so on a scaled
+      // add it would sit beside a rescaled amount stating a quantity that is
+      // simply untrue and have the shopper buy the wrong thing. Dropping it costs
+      // a hint; keeping it costs correctness, so it goes. The scaled metric
+      // amount/unit remains the only quantity a scaled row shows.
+      const measureNote = scale === 1 ? (ing.parsed?.displayText ?? null) : null;
+
       // Buy-or-make (Phase 2): a row is eligible when its ingredient's canon link
       // is produced by some OTHER recipe. Keyed off the ingredient's raw `canonId`
       // (not `matched`) so a producer stays offerable even if the canon doc was
@@ -974,6 +992,7 @@ export function buildRecipeAddPlan(recipe: Recipe, servings: number): RecipeAddR
         matched,
         ...(amount !== undefined ? { amount } : {}),
         ...(unit !== undefined ? { unit } : {}),
+        ...(measureNote ? { measureNote } : {}),
         add: dflt.add,
         check: dflt.check,
         producers,
@@ -1127,6 +1146,7 @@ function buildAddedItem(row: RecipeAddRow, source: SourceRef, now: string) {
       ...(row.unit !== undefined ? { unit: row.unit } : {}),
       ...(row.formDemand !== undefined ? { formDemand: row.formDemand } : {}),
       ...(row.originalText !== undefined ? { originalText: row.originalText } : {}),
+      ...(row.measureNote !== undefined ? { measureNote: row.measureNote } : {}),
     },
     _itemIds,
   );
