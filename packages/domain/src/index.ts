@@ -264,6 +264,8 @@ export {
   newStep,
   clearIngredientMatch,
   flattenIngredients,
+  ingredientMatchIssue,
+  recipeMatchIssueCount,
   takesIngredients,
   isCookable,
   isPlannable,
@@ -285,6 +287,7 @@ export {
   PLACEHOLDER_MOODS,
   PLACEHOLDER_CONDITION_TAGS,
 } from './recipe/index.js';
+export type { IngredientMatchIssue } from './recipe/index.js';
 export type { PlaceholderMood, PlaceholderCondition } from './recipe/index.js';
 export type { DiffPart } from './recipe/index.js';
 export type { ParsedImportUrl, IpClass } from './recipe/index.js';
