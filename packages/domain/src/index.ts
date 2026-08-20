@@ -94,6 +94,7 @@ export {
   maxCountWinners,
   aggregateParentCount,
   decideProductFormProposal,
+  proposalRejectionReason,
 } from './productForm/index.js';
 
 // Auth module — published surface.

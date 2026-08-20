@@ -1,7 +1,12 @@
 import { z } from 'genkit';
 import { getFirestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
-import { matchOrCreateBatch, resolveProductForm, findFormWithSameLabel } from '@salt/domain';
+import {
+  matchOrCreateBatch,
+  resolveProductForm,
+  findFormWithSameLabel,
+  proposalRejectionReason,
+} from '@salt/domain';
 import type { MatchOrCreateInput, MatchOrCreateResult, ProductForm } from '@salt/domain';
 import {
   CanonicaliseRecipeIngredientsInputSchema,
@@ -113,6 +118,29 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
       const candidates =
         canonList.kind === 'ok' ? canonList.value.map((c) => ({ id: c.id, name: c.name })) : [];
 
+      // Canon items some recipe PRODUCES — the "buy or make" set.
+      // An ingredient naming one of these must never become a product form; see
+      // `proposalRejectionReason`. Read as a PROJECTION of a single field so the
+      // recipe bodies (the largest documents in the app) never cross the wire for
+      // this. Best-effort like every other read here: a failure leaves the list
+      // empty, which disables the rule and restores today's behaviour rather than
+      // failing the batch (Rule 10).
+      const producedCanonNames = await (async (): Promise<string[]> => {
+        try {
+          const byId = new Map(candidates.map((c) => [c.id, c.name]));
+          const snapshot = await getFirestore()
+            .collection('recipes')
+            .select('producesCanonId')
+            .get();
+          return snapshot.docs
+            .map((d) => byId.get(String(d.get('producesCanonId') ?? '')))
+            .filter((name): name is string => name !== undefined);
+        } catch (err) {
+          logger.warn('canonicaliseRecipeIngredients: produced-canon read failed', { err });
+          return [];
+        }
+      })();
+
       // Fire proposals concurrently. Each is best-effort and NEVER throws (Rule 10):
       // a stall/malformed answer degrades to `{ kind: 'none' }` → normal matching.
       const proposeForm = async (i: number): Promise<ProductFormProposal> => {
@@ -191,6 +219,32 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
         // resolving it early to compare would create a canon item only to discard
         // it.
         if (proposal.kind === 'form') {
+          // Two proposals are coherent but must never be minted — a form naming
+          // its own parent, and a form for something a recipe already PRODUCES.
+          // See `proposalRejectionReason` for why each is wrong; both fall
+          // through to normal matching, which is the correct outcome (the
+          // ingredient binds to its own canon and "buy or make" takes it from
+          // there).
+          const rejection = proposalRejectionReason(proposal, producedCanonNames);
+          if (rejection !== null) {
+            logger.info('arbitrateProductForm: proposal rejected', {
+              reason: rejection,
+              label: proposal.label,
+              parentName: proposal.parentName,
+            });
+            toMatch.push({
+              index: i,
+              input: {
+                rawName: item.rawName,
+                ...(item.rawText !== undefined ? { rawText: item.rawText } : {}),
+                ...(item.selectedAisleId !== undefined
+                  ? { selectedAisleId: item.selectedAisleId }
+                  : {}),
+              },
+            });
+            continue;
+          }
+
           const covering =
             resolveProductForm(proposal.matcher, forms) ??
             findFormWithSameLabel(proposal.label, forms);
