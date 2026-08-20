@@ -23,6 +23,15 @@ const LIME: CanonItem = {
 
 const FLOUR: CanonItem = { ...LIME, id: 'canon-flour', name: 'plain flour', unit: 'g' };
 
+// Sold by the count (a bulb), which is what makes a grams line look mismatched.
+const LIME_AS_GARLIC: CanonItem = {
+  ...LIME,
+  id: 'canon-garlic',
+  name: 'Garlic',
+  synonyms: ['garlic clove'],
+  unit: 'count',
+};
+
 const LIME_JUICE: ProductForm = {
   id: 'form-lime-juice',
   schemaVersion: 1,
@@ -68,6 +77,65 @@ describe('ingredientMatchIssue', () => {
   it('does not accept a form that bridges to some other parent', () => {
     const elsewhere = { ...LIME_JUICE, parentCanonId: 'canon-lemon' };
     expect(ingredientMatchIssue(ing(), byId([LIME]), [elsewhere])).toBe('missing_form');
+  });
+
+  it('says nothing when the line names the canon item itself', () => {
+    // Observed on dev: "2 tsp garlic, finely grated" parses to 12 g of `garlic`
+    // and matches canon Garlic, which is sold by the count. That is not a missing
+    // form — garlic by weight is garlic, measured, and `arbitrateProductForm`
+    // rightly answers `modifier_kind: "none"` and mints nothing. A marker that
+    // demands what the pipeline refuses to make is a marker people stop reading.
+    const byWeight = ing({
+      canonId: 'canon-garlic',
+      rawText: '2 tsp garlic, finely grated',
+      parsed: {
+        quantity: { type: 'single', value: 12 },
+        unit: 'g',
+        item: 'garlic',
+        preparation: ['finely grated'],
+        notes: null,
+        displayText: '2 tsp',
+      },
+    });
+    expect(ingredientMatchIssue(byWeight, byId([LIME_AS_GARLIC]), [])).toBeNull();
+  });
+
+  it('is not fooled by plurals or casing when comparing the two names', () => {
+    // normaliseName folds both sides, so "Carrots" against canon "Carrot" is the
+    // same thing — the single commonest shape of the false positive above.
+    const carrots = ing({
+      rawText: '150g carrots, diced',
+      canonId: 'canon-carrot',
+      parsed: {
+        quantity: { type: 'single', value: 150 },
+        unit: 'g',
+        item: 'Carrots',
+        preparation: ['diced'],
+        notes: null,
+        displayText: null,
+      },
+    });
+    const carrot: CanonItem = { ...LIME, id: 'canon-carrot', name: 'carrot', unit: 'count' };
+    expect(ingredientMatchIssue(carrots, byId([carrot]), [])).toBeNull();
+  });
+
+  it('still flags a component that names something other than its parent', () => {
+    // The guard above must not blunt the case the marker exists for: "lime juice"
+    // is not "lime", so a form is genuinely the missing bridge (issue #855).
+    expect(ingredientMatchIssue(ing(), byId([LIME]), [])).toBe('missing_form');
+    const clove = ing({
+      rawText: '2 cloves garlic, crushed',
+      canonId: 'canon-garlic',
+      parsed: {
+        quantity: { type: 'single', value: 6 },
+        unit: 'g',
+        item: 'garlic clove',
+        preparation: ['crushed'],
+        notes: null,
+        displayText: '2 cloves',
+      },
+    });
+    expect(ingredientMatchIssue(clove, byId([LIME_AS_GARLIC]), [])).toBe('missing_form');
   });
 
   it('flags a canon item that has been deleted or merged away', () => {
