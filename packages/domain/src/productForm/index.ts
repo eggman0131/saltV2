@@ -21,3 +21,5 @@ export { maxCountWinners } from './queries/maxCountWinners.js';
 export { aggregateParentCount } from './queries/aggregateParentCount.js';
 export type { ParentCountInput } from './queries/aggregateParentCount.js';
 export { decideProductFormProposal } from './queries/decideProductFormProposal.js';
+export { proposalRejectionReason } from './queries/proposalRejectionReason.js';
+export type { ProposalRejection } from './queries/proposalRejectionReason.js';
