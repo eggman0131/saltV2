@@ -48,6 +48,7 @@
   import RecipeAddToListSheet from './RecipeAddToListSheet.svelte';
   import RecipeAddToPlannerSheet from './RecipeAddToPlannerSheet.svelte';
   import RecipeBakeBatchSheet from './RecipeBakeBatchSheet.svelte';
+  import IngredientMatchSheet from './IngredientMatchSheet.svelte';
   import RecipeChangeSummary from './RecipeChangeSummary.svelte';
   import RecipeChatList from './RecipeChatList.svelte';
   import RecipeChatDrawer from './RecipeChatDrawer.svelte';
@@ -402,23 +403,69 @@ Finish with a short note on what you changed and why, so I can read the gist her
     addToast('Ingredients matched.', 'success');
   }
 
+  // ─── Match inspector ─────────────────────────────────────────────────────────
+  // Tapping an ingredient answers "what does this line actually buy?" — the canon
+  // item it resolved to and, when one carried it there, the product form. ONE
+  // sheet for the whole list rather than one per row: a list of forty lines still
+  // mounts a single dialog.
+  //
+  // The ID is the state, NOT the ingredient object: re-matching from inside the
+  // sheet rewrites the line, and holding the value would leave the open sheet
+  // describing the match it just replaced.
+  let inspectingId = $state<string | null>(null);
+  let inspectorOpen = $state(false);
+
+  const inspecting = $derived(
+    inspectingId === null || !recipe
+      ? null
+      : (recipe.ingredients.flatMap((g) => g.items).find((i) => i.id === inspectingId) ?? null),
+  );
+
+  const inspectingGroup = $derived(
+    inspectingId === null || !recipe
+      ? null
+      : (recipe.ingredients.find((g) => g.items.some((i) => i.id === inspectingId)) ?? null),
+  );
+
+  function inspectMatch(ing: Ingredient): void {
+    inspectingId = ing.id;
+    inspectorOpen = true;
+  }
+
+  // The sheet's "Match again": the very same full-pipeline re-run the ✗ performs,
+  // reachable on a line that already looks matched. That is the whole point —
+  // deleting a product form leaves NOTHING dangling (the ingredient's canonId
+  // points at the form's PARENT canon, which is still very much alive), so the ✗
+  // never appears and the line's now-formless match is unreachable. Re-running
+  // finds no form, falls to product-form arbitration, and writes a fresh one.
+  //
+  // It toasts on success where the ✗ stays silent: from here the outcome is
+  // frequently invisible (the same canon item, now reached a different way), so
+  // an unacknowledged tap would read as a dead button.
+  async function rematchFromSheet(): Promise<void> {
+    const group = inspectingGroup;
+    const ing = inspecting;
+    if (!group || !ing) return;
+    if (await handleRematch(group, ing)) addToast('Ingredient re-matched.', 'success');
+  }
+
   // ─── Per-row rematch ─────────────────────────────────────────────────────────
   // The unmatched indicator (✗) is the trigger: tapping it parses + canon-matches
   // that single ingredient and persists the recipe. Re-derives from the current
   // store copy and discards the result if the row changed mid-flight.
   let matchingIds = $state<Record<string, boolean>>({});
 
-  async function handleRematch(group: IngredientGroup, ing: Ingredient): Promise<void> {
-    if (!recipe || matchingIds[ing.id]) return;
+  async function handleRematch(group: IngredientGroup, ing: Ingredient): Promise<boolean> {
+    if (!recipe || matchingIds[ing.id]) return false;
     matchingIds = { ...matchingIds, [ing.id]: true };
     const result = await matchIngredient(ing);
     matchingIds = { ...matchingIds, [ing.id]: false };
     if (result.kind !== 'ok') {
       addToast('Failed to match ingredient.', 'destructive');
-      return;
+      return false;
     }
     const current = $recipes.find((r) => r.id === recipe.id);
-    if (!current) return;
+    if (!current) return false;
     const updatedGroups = current.ingredients.map((g) =>
       g.id !== group.id
         ? g
@@ -432,7 +479,9 @@ Finish with a short note on what you changed and why, so I can read the gist her
     const persisted = await persistRecipe({ ...current, ingredients: updatedGroups });
     if (persisted.kind !== 'ok') {
       addToast('Failed to save match.', 'destructive');
+      return false;
     }
+    return true;
   }
 
   // ─── Review state (issue #616) ────────────────────────────────────────────
@@ -1819,19 +1868,35 @@ Finish with a short note on what you changed and why, so I can read the gist her
                   {/if}
                   <ul class="flex flex-col gap-1">
                     {#each group.items as ingredient (ingredient.id)}
-                      <li class="text-sm" data-testid="recipe-view-ingredient">
-                        <IngredientText
-                          {ingredient}
-                        />{#if !hasLiveCanonMatch(ingredient, liveCanonIds)}<button
+                      <!-- The line is a button (tap → match inspector) and the ✗ is
+                           its SIBLING, not a child: buttons cannot nest, and the two
+                           do different jobs — one explains the match, the other
+                           makes one. -->
+                      <li
+                        class="flex items-baseline gap-1 text-sm"
+                        data-testid="recipe-view-ingredient"
+                      >
+                        <button
+                          type="button"
+                          class="flex-1 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          title="See what this ingredient matched"
+                          onclick={() => inspectMatch(ingredient)}
+                          data-testid="recipe-view-ingredient-inspect"
+                        >
+                          <IngredientText {ingredient} />
+                        </button>
+                        {#if !hasLiveCanonMatch(ingredient, liveCanonIds)}
+                          <button
                             type="button"
-                            class="ml-1 text-xs text-destructive hover:underline disabled:opacity-50"
+                            class="shrink-0 text-xs text-destructive hover:underline disabled:opacity-50"
                             title="Not matched — tap to match"
                             aria-label="Not matched — tap to match"
                             onclick={() => handleRematch(group, ingredient)}
                             disabled={matchingIds[ingredient.id] ?? false}
                             data-testid="match-state-unmatched"
                             >{(matchingIds[ingredient.id] ?? false) ? '…' : '✗'}</button
-                          >{/if}
+                          >
+                        {/if}
                       </li>
                     {/each}
                   </ul>
@@ -1997,6 +2062,15 @@ Finish with a short note on what you changed and why, so I can read the gist her
 {#if recipe && $defaultListId}
   <RecipeAddToListSheet {recipe} listId={$defaultListId} bind:open={addToListOpen} />
 {/if}
+
+<!-- What one ingredient matched. Mounted unconditionally: it needs no recipe of
+     its own, only whichever ingredient was last tapped. -->
+<IngredientMatchSheet
+  ingredient={inspecting}
+  bind:open={inspectorOpen}
+  rematching={inspecting ? (matchingIds[inspecting.id] ?? false) : false}
+  onRematch={rematchFromSheet}
+/>
 
 <!-- Day picker for "Add to planner" -->
 {#if recipe}

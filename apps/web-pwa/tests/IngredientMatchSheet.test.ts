@@ -1,0 +1,250 @@
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { render, screen, cleanup, fireEvent } from '@testing-library/svelte';
+import type { Aisle, CanonItem, Ingredient, Member, ProductForm } from '@salt/domain';
+
+// The match inspector answers "what does this line actually buy?". Everything it
+// shows is DERIVED at render time — the ingredient stores only `canonId` — so the
+// cases worth pinning are the derivations: that a product form is claimed only
+// when it resolves to the ingredient's OWN canon (the guard that keeps a
+// repointed form from being reported as the route taken), and that a canonId
+// with no live canon reads as dangling rather than as a clean match.
+
+const { mockCanonItems, mockProductForms, mockAisles, mockCurrentMember } = vi.hoisted(() => {
+  function store<T>(initial: T) {
+    let value = initial;
+    const subs = new Set<(v: T) => void>();
+    return {
+      subscribe(fn: (v: T) => void) {
+        subs.add(fn);
+        fn(value);
+        return () => {
+          subs.delete(fn);
+        };
+      },
+      _set(v: T) {
+        value = v;
+        subs.forEach((fn) => fn(v));
+      },
+    };
+  }
+  return {
+    mockCanonItems: store<CanonItem[]>([]),
+    mockProductForms: store<ProductForm[]>([]),
+    mockAisles: store<Aisle[]>([]),
+    mockCurrentMember: store<Member | null>(null),
+  };
+});
+
+vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
+vi.mock('../src/lib/canonService.js', () => ({ canonItems: mockCanonItems }));
+vi.mock('../src/lib/productFormService.js', () => ({ productForms: mockProductForms }));
+vi.mock('../src/lib/aisleService.js', () => ({ aisles: mockAisles }));
+vi.mock('../src/lib/membersService.js', () => ({ currentMember: mockCurrentMember }));
+
+import IngredientMatchSheet from '../src/routes/recipes/IngredientMatchSheet.svelte';
+
+const LIME: CanonItem = {
+  id: 'canon-lime',
+  schemaVersion: 5,
+  name: 'lime',
+  synonyms: [],
+  aisleId: 'aisle-produce',
+  thumbnail: null,
+  needs_approval: false,
+  shoppingBehavior: 'needed',
+  unit: 'count',
+  updatedAt: '2026-08-19T00:00:00.000Z',
+};
+
+const LIME_JUICE_FORM: ProductForm = {
+  id: 'form-lime-juice',
+  schemaVersion: 1,
+  matchers: [],
+  parentCanonId: 'canon-lime',
+  label: 'Lime juice',
+  yield: { formUnit: 'ml', amountPerParent: 30 },
+  updatedAt: '2026-08-19T00:00:00.000Z',
+};
+
+function ingredient(over: Partial<Ingredient> = {}): Ingredient {
+  return {
+    id: 'ing-1',
+    rawText: '90ml lime juice',
+    parsed: {
+      quantity: { type: 'single', value: 90 },
+      unit: 'ml',
+      item: 'lime juice',
+      preparation: [],
+      notes: null,
+      displayText: null,
+    },
+    canonId: 'canon-lime',
+    matchState: 'matched',
+    isOptional: false,
+    firstUsedInStepId: null,
+    ...over,
+  };
+}
+
+afterEach(() => {
+  cleanup();
+  mockCanonItems._set([]);
+  mockProductForms._set([]);
+  mockAisles._set([]);
+  mockCurrentMember._set(null);
+});
+
+describe('IngredientMatchSheet', () => {
+  it('names the canon item, its aisle, and the product form that carried it there', async () => {
+    mockCanonItems._set([LIME]);
+    mockProductForms._set([LIME_JUICE_FORM]);
+    mockAisles._set([{ id: 'aisle-produce', name: 'Fruit & Veg', order: 0 }]);
+
+    render(IngredientMatchSheet, {
+      props: { ingredient: ingredient(), open: true, onRematch: () => {} },
+    });
+
+    expect(await screen.findByTestId('ingredient-match-canon-name')).toHaveTextContent('Lime');
+    expect(screen.getByText(/Fruit & Veg/)).toBeInTheDocument();
+    const form = screen.getByTestId('ingredient-match-form');
+    expect(form).toHaveTextContent('Lime juice');
+    // Yield reads in the direction a cook thinks in: one buyable → this much form.
+    expect(form).toHaveTextContent('1 Lime → 30 ml lime juice');
+  });
+
+  it('does not claim a form that resolves to a different parent', async () => {
+    mockCanonItems._set([LIME]);
+    mockProductForms._set([{ ...LIME_JUICE_FORM, parentCanonId: 'canon-lemon' }]);
+
+    render(IngredientMatchSheet, {
+      props: { ingredient: ingredient(), open: true, onRematch: () => {} },
+    });
+
+    // Not claimed — and since nothing else covers a metric line on a by-the-count
+    // canon, this lands on the missing-form hint rather than a clean direct match.
+    expect(await screen.findByTestId('ingredient-match-missing-form')).toBeInTheDocument();
+    expect(screen.queryByTestId('ingredient-match-form')).not.toBeInTheDocument();
+  });
+
+  it('reads as a clean direct match when no form is called for', async () => {
+    // Flour is bought by weight and the line is in grams: nothing to bridge.
+    mockCanonItems._set([{ ...LIME, id: 'canon-flour', name: 'plain flour', unit: 'g' }]);
+
+    render(IngredientMatchSheet, {
+      props: {
+        ingredient: ingredient({
+          rawText: '200g plain flour',
+          canonId: 'canon-flour',
+          parsed: {
+            quantity: { type: 'single', value: 200 },
+            unit: 'g',
+            item: 'plain flour',
+            preparation: [],
+            notes: null,
+            displayText: null,
+          },
+        }),
+        open: true,
+        onRematch: () => {},
+      },
+    });
+
+    expect(await screen.findByTestId('ingredient-match-direct')).toBeInTheDocument();
+    expect(screen.queryByTestId('ingredient-match-missing-form')).not.toBeInTheDocument();
+  });
+
+  it('calls out a match pointing at a canon item that no longer exists', async () => {
+    mockCanonItems._set([]);
+
+    render(IngredientMatchSheet, {
+      props: { ingredient: ingredient(), open: true, onRematch: () => {} },
+    });
+
+    expect(await screen.findByTestId('ingredient-match-dangling')).toBeInTheDocument();
+  });
+
+  it('offers the admin jump-offs only to an admin', async () => {
+    mockCanonItems._set([LIME]);
+    mockProductForms._set([LIME_JUICE_FORM]);
+
+    const { unmount } = render(IngredientMatchSheet, {
+      props: { ingredient: ingredient(), open: true, onRematch: () => {} },
+    });
+    expect(await screen.findByTestId('ingredient-match-canon-name')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Open canon item/ })).not.toBeInTheDocument();
+    unmount();
+
+    mockCurrentMember._set({
+      id: 'd@example.com',
+      schemaVersion: 1,
+      name: 'Daniel',
+      email: 'd@example.com',
+      admin: true,
+      sortOrder: 0,
+      icon: null,
+    } as Member);
+    render(IngredientMatchSheet, {
+      props: { ingredient: ingredient(), open: true, onRematch: () => {} },
+    });
+
+    expect(await screen.findByRole('button', { name: /Open canon item/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Open product form/ })).toBeInTheDocument();
+  });
+
+  it('says an unmatched line is unmatched, and on what it would match', async () => {
+    render(IngredientMatchSheet, {
+      props: {
+        ingredient: ingredient({ canonId: null, matchState: 'pending' }),
+        open: true,
+        onRematch: () => {},
+      },
+    });
+
+    const body = await screen.findByTestId('ingredient-match-unmatched');
+    expect(body).toHaveTextContent('Not matched yet.');
+    expect(body).toHaveTextContent('lime juice');
+  });
+  it('flags a metric line whose canon is bought by the count as having no form', async () => {
+    // The #855 smell and the reason a deleted product form needs naming: nothing
+    // dangles, the line just quietly shops as millilitres of a countable thing.
+    mockCanonItems._set([LIME]);
+    mockProductForms._set([]);
+
+    render(IngredientMatchSheet, {
+      props: { ingredient: ingredient(), open: true, onRematch: () => {} },
+    });
+
+    const hint = await screen.findByTestId('ingredient-match-missing-form');
+    expect(hint).toHaveTextContent('ml');
+    expect(hint).toHaveTextContent('Lime');
+    // ...and it must NOT read as a clean direct match.
+    expect(screen.queryByTestId('ingredient-match-direct')).not.toBeInTheDocument();
+  });
+
+  it('offers Match again on a line that already looks matched, ungated by admin', async () => {
+    // The whole reason the button exists: a deleted product form leaves the
+    // ingredient pointing at a live parent canon, so the ✗ never appears.
+    mockCanonItems._set([LIME]);
+    mockProductForms._set([LIME_JUICE_FORM]);
+    const onRematch = vi.fn();
+
+    render(IngredientMatchSheet, {
+      props: { ingredient: ingredient(), open: true, onRematch },
+    });
+
+    const button = await screen.findByTestId('ingredient-match-rematch');
+    await fireEvent.click(button);
+    expect(onRematch).toHaveBeenCalledOnce();
+  });
+
+  it('disables Match again while the re-run is in flight', async () => {
+    mockCanonItems._set([LIME]);
+    const onRematch = vi.fn();
+
+    render(IngredientMatchSheet, {
+      props: { ingredient: ingredient(), open: true, onRematch, rematching: true },
+    });
+
+    expect(await screen.findByTestId('ingredient-match-rematch')).toBeDisabled();
+  });
+});

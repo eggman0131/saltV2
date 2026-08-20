@@ -32,6 +32,11 @@ export {
 } from './commands/builders.js';
 export { clearIngredientMatch } from './commands/clearIngredientMatch.js';
 export { flattenIngredients } from './queries/ingredients.js';
+// Silent match problems — a line that reads as matched and buys the wrong thing
+// (or nothing). Shared by the recipe list's pip and the ingredient match sheet so
+// the two can never disagree about what counts as wrong.
+export { ingredientMatchIssue, recipeMatchIssueCount } from './queries/matchIssues.js';
+export type { IngredientMatchIssue } from './queries/matchIssues.js';
 export {
   takesIngredients,
   isCookable,
