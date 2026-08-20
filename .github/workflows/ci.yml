@@ -423,13 +423,63 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
 
+      # `install-deps` runs `apt-get update`, and that is the single most likely
+      # thing in this job to hang forever. The Azure mirror is `Ign`'d on every
+      # runner, healthy or not, so apt always falls back to archive.ubuntu.com —
+      # and some runners open that connection and never receive a byte. It stalls
+      # mid-`InRelease`, silently, with no output and no error. Unbounded, that
+      # burns the entire 20-minute job budget and surfaces as a red E2E shard,
+      # which reads as "the diff broke the tests". Three consecutive re-runs of
+      # #856 died exactly this way (run 32294942409, all three attempts, always
+      # after `Get:5 archive.ubuntu.com noble-security InRelease`), as did an
+      # unrelated PR in the same hour. GitHub declared no incident. A healthy
+      # runner finishes this in 1-2 minutes, so anything past 3 is the hang.
+      #
+      # The two branches fail differently on purpose:
+      #
+      #   cache HIT  — apt is the only thing this step does, and the runner image
+      #     already ships chromium's shared libraries. So bound each try and retry
+      #     (a fresh apt re-resolves DNS and usually lands on a different archive
+      #     IP); if all three still hang, that is a WARNING and the shard carries
+      #     on. If a library genuinely is missing, the browser launch fails within
+      #     seconds and names it — a far better red than a 20-minute timeout.
+      #
+      #   cache MISS — the same command also downloads the browsers (10m22s on run
+      #     30092606787), so the job budget has no room for a second attempt, and
+      #     without browsers nothing can run. One try, generous bound, fatal.
       - name: Install Playwright browsers
         run: |
-          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
-            pnpm --filter @salt/web-pwa exec playwright install-deps chromium
-          else
-            pnpm --filter @salt/web-pwa exec playwright install --with-deps chromium
+          set -uo pipefail
+
+          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" != "true" ]; then
+            status=0
+            timeout 840 pnpm --filter @salt/web-pwa exec playwright install --with-deps chromium || status=$?
+            if [ "$status" -ne 0 ]; then
+              if [ "$status" -eq 124 ]; then
+                echo "::error::playwright install --with-deps timed out after 840s (hung apt mirror or slow browser download)."
+              else
+                echo "::error::playwright install --with-deps failed with status $status."
+              fi
+              exit "$status"
+            fi
+            exit 0
           fi
+
+          for attempt in 1 2 3; do
+            status=0
+            timeout 180 pnpm --filter @salt/web-pwa exec playwright install-deps chromium || status=$?
+            if [ "$status" -eq 0 ]; then
+              exit 0
+            fi
+            if [ "$status" -eq 124 ]; then
+              echo "::warning::install-deps timed out after 180s (attempt $attempt/3) — apt is hung, most likely on archive.ubuntu.com."
+            else
+              echo "::warning::install-deps failed with status $status (attempt $attempt/3)."
+            fi
+            sleep 5
+          done
+
+          echo "::warning::apt never completed after 3 attempts. Continuing on the cached browsers and the runner image's preinstalled chromium libraries — if one is actually missing, the browser launch below will fail in seconds and name it."
 
       # globalSetup.ts owns the whole lifecycle (issue #84, Phase 2): it builds
       # the Cloud Functions bundle, then `docker compose ... up --wait` brings
