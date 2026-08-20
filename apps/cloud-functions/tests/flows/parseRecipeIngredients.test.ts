@@ -654,8 +654,8 @@ describe('parseRecipeIngredients — prompt construction', () => {
     // null on a unit mismatch, so a count-yield form fed grams is rejected even
     // once the name is right.
     expect(system).toContain('a garlic clove is a COUNTED COMPONENT of the bulb');
-    expect(system).toContain('"1 clove garlic" → item "garlic clove"');
-    expect(system).toContain('"2 cloves of garlic, crushed" → item "garlic clove"');
+    expect(system).toContain('"1 clove garlic" → quantity 1, item "garlic clove"');
+    expect(system).toContain('"2 cloves of garlic, crushed" → quantity 2, item "garlic clove"');
     expect(system).toContain('never reduce item to "garlic"');
     expect(system).toContain('quantity 2, unit null, item "garlic clove"');
     // The bulb-per-clove division belongs to the product form, not the parse.
@@ -664,6 +664,39 @@ describe('parseRecipeIngredients — prompt construction', () => {
     expect(system).toContain('"1 bulb garlic, roasted" → item "garlic"');
     // ...and cloves are no longer named among the things that flatten to grams.
     expect(system).not.toContain('garlic cloves, onions, rashers');
+  });
+
+  it('keeps the clove COUNT on the "N cloves of garlic" wording', async () => {
+    mockGenerate.mockResolvedValue({ output: aiOutput([{ name: null, items: [] }]) });
+
+    await (parseRecipeIngredientsFlow as Function)({
+      rawText: '3 large cloves of garlic, peeled and very finely sliced',
+    });
+
+    const { system } = mockGenerate.mock.calls[0]![0];
+    // The regression this guards: "3 large cloves of garlic" parsed to quantity
+    // NULL while "6 cloves garlic" parsed to 6, because #857 taught the clove
+    // case by hanging it off the juice/zest NAMING rule — and there the number
+    // after "of" counts the PARENT ("juice of 2 limes" → 60ml), not the thing
+    // being named. The model read "3 ... of garlic" as a parent count it had no
+    // yield for and emitted nothing. A null quantity then fails `formCountFor`'s
+    // first guard, so the line never becomes a product-form row: no count, no
+    // formDemand, no originalText — a shopping row reading "Garlic Clove" with
+    // nothing to buy. So the prompt must say, in BOTH places that discuss
+    // cloves, that the number is the clove count in every wording.
+    expect(system).toContain('The number a clove line states is ALWAYS the count of CLOVES');
+    expect(system).toContain('it counts the CLOVES, so it survives verbatim as quantity');
+    // The exact failing wording, in the unit rule and in the NAMING rule.
+    expect(system).toContain(
+      '"3 large cloves of garlic" → quantity 3, unit null, item "garlic clove"',
+    );
+    expect(system).toContain(
+      '"3 large cloves of garlic, sliced" → quantity 3, item "garlic clove"',
+    );
+    // A size word must not be read as a reason to give up on the count.
+    expect(system).toContain('a size word ("large", "small", "fat") changes nothing');
+    // An unnumbered clove line still states one.
+    expect(system).toContain('"a clove of garlic" → quantity 1, unit null, item "garlic clove"');
   });
 
   it('carves out bought-whole discrete proteins as count with unit null in the system prompt', async () => {
