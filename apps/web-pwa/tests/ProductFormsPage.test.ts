@@ -55,11 +55,12 @@ vi.mock('../src/lib/canonService.js', () => ({ canonItems: mockCanonItems }));
 vi.mock('../src/lib/productFormService.js', () => ({
   productForms: mockProductForms,
   isLoadingProductForms: mockIsLoadingProductForms,
+  confirmProductForm: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   deleteProductForm: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
 }));
 
 import ProductFormsPage from '../src/routes/admin/ProductFormsPage.svelte';
-import { deleteProductForm } from '../src/lib/productFormService.js';
+import { confirmProductForm, deleteProductForm } from '../src/lib/productFormService.js';
 import { addToast } from '../src/lib/toastStore.js';
 
 const ADMIN: Member = {
@@ -132,6 +133,58 @@ describe('ProductFormsPage', () => {
     });
     // Only the selected row is deleted — the other form is untouched.
     expect(vi.mocked(deleteProductForm)).toHaveBeenCalledWith(JUICE.id);
+  });
+
+  // Bulk Confirm (issue #872). A pending form already resolves recipes live, so
+  // confirming records the review over the form's OWN values — nothing about it
+  // changes except the flag.
+  it('confirms every selected PENDING form and skips the ones already confirmed', async () => {
+    const pendingA = form({ id: 'form-3', label: 'Aaa pending', needs_approval: true });
+    const pendingB = form({ id: 'form-4', label: 'Bbb pending', needs_approval: true });
+    mockMembers._set([ADMIN]);
+    mockCanonItems._set([{ id: 'canon-lime', name: 'Lime' }]);
+    // ZEST is confirmed already — selecting it must cost nothing.
+    mockProductForms._set([pendingA, pendingB, ZEST]);
+
+    render(ProductFormsPage);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Select' }));
+    // Select-all is the first checkbox; it takes every visible row.
+    const checkboxes = await screen.findAllByRole('checkbox');
+    await user.click(checkboxes[0]!);
+
+    await user.click(await screen.findByTestId('product-forms-bulk-confirm'));
+
+    await waitFor(() => {
+      expect(vi.mocked(confirmProductForm)).toHaveBeenCalledTimes(2);
+    });
+    expect(vi.mocked(confirmProductForm)).toHaveBeenCalledWith(
+      pendingA,
+      expect.objectContaining({ label: 'Aaa pending', matchers: pendingA.matchers }),
+    );
+    expect(vi.mocked(confirmProductForm)).toHaveBeenCalledWith(
+      pendingB,
+      expect.objectContaining({ label: 'Bbb pending' }),
+    );
+    expect(vi.mocked(confirmProductForm)).not.toHaveBeenCalledWith(ZEST, expect.anything());
+    expect(vi.mocked(addToast)).toHaveBeenCalledWith('Confirmed 2 forms', 'success');
+  });
+
+  it('leaves the confirmed forms alone when nothing selected needs review', async () => {
+    mockMembers._set([ADMIN]);
+    mockCanonItems._set([{ id: 'canon-lime', name: 'Lime' }]);
+    mockProductForms._set([ZEST, JUICE]);
+
+    render(ProductFormsPage);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Select' }));
+    const checkboxes = await screen.findAllByRole('checkbox');
+    await user.click(checkboxes[1]!);
+    await user.click(await screen.findByTestId('product-forms-bulk-confirm'));
+
+    expect(vi.mocked(confirmProductForm)).not.toHaveBeenCalled();
   });
 
   it('labels the undo toast with "form", not the generic "item"', async () => {

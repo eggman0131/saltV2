@@ -1,36 +1,38 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup, fireEvent, waitFor } from '@testing-library/svelte';
-import type { CanonItem } from '@salt/domain';
+import type { CanonItem, ProductForm } from '@salt/domain';
 
-const { mockCanonItems, mockAisles, mockMembers, mockIsLoading, mockAuth } = vi.hoisted(() => {
-  function makeStore<T>(initial: T) {
-    let value = initial;
-    const subs = new Set<(v: T) => void>();
+const { mockCanonItems, mockAisles, mockProductForms, mockMembers, mockIsLoading, mockAuth } =
+  vi.hoisted(() => {
+    function makeStore<T>(initial: T) {
+      let value = initial;
+      const subs = new Set<(v: T) => void>();
+      return {
+        subscribe(fn: (v: T) => void) {
+          subs.add(fn);
+          fn(value);
+          return () => {
+            subs.delete(fn);
+          };
+        },
+        _set(v: T) {
+          value = v;
+          subs.forEach((fn) => fn(v));
+        },
+      };
+    }
     return {
-      subscribe(fn: (v: T) => void) {
-        subs.add(fn);
-        fn(value);
-        return () => {
-          subs.delete(fn);
-        };
-      },
-      _set(v: T) {
-        value = v;
-        subs.forEach((fn) => fn(v));
-      },
+      mockCanonItems: makeStore<CanonItem[]>([]),
+      mockAisles: makeStore<{ id: string; name: string; order: number }[]>([]),
+      mockProductForms: makeStore<ProductForm[]>([]),
+      // AdminGuard (canon now lives behind /admin, #157) reads these.
+      mockMembers: makeStore<{ email: string; admin: boolean }[]>([]),
+      mockIsLoading: makeStore<boolean>(false),
+      mockAuth: { user: { email: 'admin@e.org' } as { email: string } | null },
     };
-  }
-  return {
-    mockCanonItems: makeStore<CanonItem[]>([]),
-    mockAisles: makeStore<{ id: string; name: string; order: number }[]>([]),
-    // AdminGuard (canon now lives behind /admin, #157) reads these.
-    mockMembers: makeStore<{ email: string; admin: boolean }[]>([]),
-    mockIsLoading: makeStore<boolean>(false),
-    mockAuth: { user: { email: 'admin@e.org' } as { email: string } | null },
-  };
-});
+  });
 
-vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
+vi.mock('svelte-spa-router', () => ({ push: vi.fn(), router: { querystring: '' } }));
 vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
 vi.mock('../src/lib/auth.svelte.js', () => ({ auth: mockAuth }));
 vi.mock('../src/lib/membersService.js', () => ({
@@ -54,6 +56,11 @@ vi.mock('../src/lib/canonService.js', () => ({
   regenerateCanonIcon: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   hideCanonIcon: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   unhideCanonIcon: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+}));
+vi.mock('../src/lib/productFormService.js', () => ({
+  productForms: mockProductForms,
+  editProductForm: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  confirmProductForm: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
 }));
 
 import CanonDetailPage from '../src/routes/canon/CanonDetailPage.svelte';
@@ -89,6 +96,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockAisles._set([]);
   mockCanonItems._set([]);
+  mockProductForms._set([]);
   // Pass AdminGuard: signed-in user is an admin member (#157).
   mockAuth.user = { email: 'admin@e.org' };
   mockIsLoading._set(false);

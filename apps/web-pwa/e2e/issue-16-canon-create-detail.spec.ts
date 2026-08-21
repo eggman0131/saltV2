@@ -150,11 +150,14 @@ test('detail page — delete item navigates back to canon list', async ({ page }
   await page.goto(`/#/admin/canon/${seeded.id}`);
   const ui = canonDetailPage(page);
   await ui.deleteButton.click();
-  await expect(ui.deleteDialog).toBeVisible();
-  await ui.deleteConfirm.click();
 
+  // No confirm dialog (#872): the delete is deferred behind an Undo snackbar and
+  // the page returns to the list straight away. Nothing is written until the
+  // toast lapses, so the item is still there while Undo is on offer.
+  await expect(ui.deleteUndo).toBeVisible();
   await expect(page).toHaveURL(/#\/admin\/canon$/);
 
-  const deleted = await getCanonItem(page, seeded.id);
-  expect(deleted).toBeNull();
+  // Let the snackbar lapse — that is what commits the delete.
+  await expect(ui.deleteUndo).toHaveCount(0);
+  await expect.poll(async () => await getCanonItem(page, seeded.id)).toBeNull();
 });

@@ -38,7 +38,12 @@ export type {
   ArbitrationRequest,
   ArbitrationResult,
 } from './ports/CanonArbitrationPort.js';
-export { matchOrCreate, matchOrCreateBatch } from './commands/matchOrCreate.js';
+export {
+  matchOrCreate,
+  matchOrCreateBatch,
+  ARBITRATION_FAILED_REASONING,
+  ARBITRATION_NO_MATCH_REASONING,
+} from './commands/matchOrCreate.js';
 export { appendCanonSynonym } from './commands/appendCanonSynonym.js';
 export type {
   DerivedNamePredicate,

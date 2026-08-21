@@ -1,42 +1,55 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, cleanup, waitFor } from '@testing-library/svelte';
+import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import type { CanonItem } from '@salt/domain';
+import {
+  ARBITRATION_FAILED_REASONING,
+  ARBITRATION_NO_MATCH_REASONING,
+  type CanonItem,
+  type ProductForm,
+} from '@salt/domain';
 
 // ─── Mock stores (hoisted so vi.mock factories can reference them) ─────────────
 
-const { mockCanonItems, mockAisles, mockMembers, mockIsLoading, mockAuth } = vi.hoisted(() => {
-  function makeStore<T>(initial: T) {
-    let value = initial;
-    const subs = new Set<(v: T) => void>();
+const { mockCanonItems, mockAisles, mockProductForms, mockMembers, mockIsLoading, mockAuth } =
+  vi.hoisted(() => {
+    function makeStore<T>(initial: T) {
+      let value = initial;
+      const subs = new Set<(v: T) => void>();
+      return {
+        subscribe(fn: (v: T) => void) {
+          subs.add(fn);
+          fn(value);
+          return () => {
+            subs.delete(fn);
+          };
+        },
+        _set(v: T) {
+          value = v;
+          subs.forEach((fn) => fn(v));
+        },
+      };
+    }
     return {
-      subscribe(fn: (v: T) => void) {
-        subs.add(fn);
-        fn(value);
-        return () => {
-          subs.delete(fn);
-        };
-      },
-      _set(v: T) {
-        value = v;
-        subs.forEach((fn) => fn(v));
-      },
+      mockCanonItems: makeStore<CanonItem[]>([]),
+      mockAisles: makeStore<{ id: string; name: string; position: number }[]>([]),
+      mockProductForms: makeStore<ProductForm[]>([]),
+      // AdminGuard (canon now lives behind /admin, #157) reads these.
+      mockMembers: makeStore<{ email: string; admin: boolean }[]>([]),
+      mockIsLoading: makeStore<boolean>(false),
+      mockAuth: { user: { email: 'admin@e.org' } as { email: string } | null },
     };
-  }
-  return {
-    mockCanonItems: makeStore<CanonItem[]>([]),
-    mockAisles: makeStore<{ id: string; name: string; position: number }[]>([]),
-    // AdminGuard (canon now lives behind /admin, #157) reads these.
-    mockMembers: makeStore<{ email: string; admin: boolean }[]>([]),
-    mockIsLoading: makeStore<boolean>(false),
-    mockAuth: { user: { email: 'admin@e.org' } as { email: string } | null },
-  };
-});
+  });
 
 // ─── Module mocks ──────────────────────────────────────────────────────────────
 
-vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
-vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
+vi.mock('svelte-spa-router', () => ({ push: vi.fn(), router: { querystring: '' } }));
+// Delete is deferred (#872): it only commits when the Undo toast LAPSES, via the
+// toast's own `onDismiss`. A bare vi.fn() would strand the commit, so lapse now.
+vi.mock('../src/lib/toastStore.js', () => ({
+  addToast: vi.fn((_msg: string, _variant?: string, opts?: { onDismiss?: () => void }) => {
+    opts?.onDismiss?.();
+  }),
+}));
 vi.mock('../src/lib/auth.svelte.js', () => ({ auth: mockAuth }));
 vi.mock('../src/lib/membersService.js', () => ({
   members: mockMembers,
@@ -44,14 +57,26 @@ vi.mock('../src/lib/membersService.js', () => ({
 }));
 vi.mock('../src/lib/canonService.js', () => ({
   canonItems: mockCanonItems,
-  updateCanonItemName: vi.fn(),
-  updateCanonItemAisle: vi.fn(),
-  updateCanonItemSynonyms: vi.fn(),
-  deleteCanonItem: vi.fn(),
+  updateCanonItemName: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  updateCanonItemAisle: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  updateCanonItemSynonyms: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  updateCanonItemShoppingBehavior: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  updateCanonItemThreshold: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  approveCanonItemWithOverrides: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  deleteCanonItem: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  splitMostRecentSynonym: vi.fn(),
+  regenerateCanonIcon: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  hideCanonIcon: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  unhideCanonIcon: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
 }));
 vi.mock('../src/lib/aisleService.js', () => ({
   aisles: mockAisles,
   initAisles: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('../src/lib/productFormService.js', () => ({
+  productForms: mockProductForms,
+  editProductForm: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  confirmProductForm: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
 }));
 
 import CanonDetailPage from '../src/routes/canon/CanonDetailPage.svelte';
@@ -61,6 +86,9 @@ import {
   updateCanonItemName,
   updateCanonItemAisle,
   updateCanonItemSynonyms,
+  updateCanonItemShoppingBehavior,
+  updateCanonItemThreshold,
+  approveCanonItemWithOverrides,
   deleteCanonItem,
 } from '../src/lib/canonService.js';
 
@@ -68,11 +96,25 @@ import {
 
 function canonItem(overrides: Partial<CanonItem> & { id: string; name: string }): CanonItem {
   return {
-    schemaVersion: 2,
+    schemaVersion: 5,
     synonyms: [],
     aisleId: null,
     thumbnail: null,
     embedding: null,
+    needs_approval: false,
+    shoppingBehavior: 'needed',
+    updatedAt: '',
+    ...overrides,
+  };
+}
+
+function productForm(overrides: Partial<ProductForm> & { id: string }): ProductForm {
+  return {
+    schemaVersion: 1,
+    matchers: ['olive oil spray'],
+    parentCanonId: ITEM_ID,
+    label: 'Olive oil spray',
+    yield: { formUnit: 'ml', amountPerParent: 5 },
     needs_approval: false,
     updatedAt: '',
     ...overrides,
@@ -94,6 +136,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockCanonItems._set([]);
   mockAisles._set([]);
+  mockProductForms._set([]);
   // Pass AdminGuard: signed-in user is an admin member (#157).
   mockAuth.user = { email: 'admin@e.org' };
   mockIsLoading._set(false);
@@ -104,6 +147,11 @@ beforeEach(() => {
 function setupWithItem(item = canonItem({ id: ITEM_ID, name: 'Olive Oil' })) {
   mockCanonItems._set([item]);
   return render(CanonDetailPage, { params: { id: ITEM_ID } });
+}
+
+async function openNameEditor() {
+  await fireEvent.click(screen.getByRole('button', { name: /edit name/i }));
+  return screen.getByTestId('canon-detail-name-input');
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -120,8 +168,7 @@ describe('CanonDetailPage', () => {
   describe('renders item details', () => {
     it('pre-fills the name field with the item name', async () => {
       setupWithItem();
-      await userEvent.click(screen.getByRole('button', { name: /edit name/i }));
-      const nameInput = screen.getByTestId('canon-detail-name-input');
+      const nameInput = await openNameEditor();
       expect(nameInput).toHaveValue('Olive Oil');
     });
 
@@ -129,50 +176,66 @@ describe('CanonDetailPage', () => {
       setupWithItem(
         canonItem({ id: ITEM_ID, name: 'Olive Oil', synonyms: ['EVOO', 'liquid gold'] }),
       );
-      const synonymsInput = screen.getByTestId('canon-detail-synonyms-input');
-      expect(synonymsInput).toHaveValue('EVOO, liquid gold');
+      expect(screen.getByTestId('canon-detail-synonyms-input')).toHaveValue('EVOO, liquid gold');
     });
 
     it('shows empty synonyms field when item has no synonyms', async () => {
       setupWithItem();
-      const synonymsInput = screen.getByTestId('canon-detail-synonyms-input');
-      expect(synonymsInput).toHaveValue('');
+      expect(screen.getByTestId('canon-detail-synonyms-input')).toHaveValue('');
     });
   });
 
-  describe('name editing', () => {
-    it('calls updateCanonItemName with the new trimmed value on save', async () => {
+  // The commit contract (#872): blur SAVES, Enter is a convenience, Escape reverts.
+  describe('name editing — the commit contract', () => {
+    it('saves the name on blur — clicking away must never discard the edit', async () => {
       const item = canonItem({ id: ITEM_ID, name: 'Olive Oil' });
-      vi.mocked(updateCanonItemName).mockResolvedValueOnce({
-        kind: 'ok',
-        value: { ...item, name: 'Extra Virgin Olive Oil' },
-      });
       setupWithItem(item);
 
-      await userEvent.click(screen.getByRole('button', { name: /edit name/i }));
-      const nameInput = screen.getByTestId('canon-detail-name-input');
-      await userEvent.clear(nameInput);
-      await userEvent.type(nameInput, '  Extra Virgin Olive Oil  ');
-      await userEvent.keyboard('{Enter}');
+      const nameInput = await openNameEditor();
+      await fireEvent.input(nameInput, { target: { value: '  Extra Virgin Olive Oil  ' } });
+      await fireEvent.blur(nameInput);
 
       await waitFor(() => {
         expect(vi.mocked(updateCanonItemName)).toHaveBeenCalledWith(item, 'Extra Virgin Olive Oil');
       });
     });
 
-    it('shows a name error when updateCanonItemName returns an error', async () => {
+    it('saves the name on Enter', async () => {
       const item = canonItem({ id: ITEM_ID, name: 'Olive Oil' });
+      setupWithItem(item);
+
+      const nameInput = await openNameEditor();
+      await fireEvent.input(nameInput, { target: { value: 'Extra Virgin Olive Oil' } });
+      await fireEvent.keyDown(nameInput, { key: 'Enter' });
+
+      await waitFor(() => {
+        expect(vi.mocked(updateCanonItemName)).toHaveBeenCalledWith(item, 'Extra Virgin Olive Oil');
+      });
+    });
+
+    it('reverts the name on Escape and saves nothing — not even on the blur that follows', async () => {
+      setupWithItem();
+
+      const nameInput = await openNameEditor();
+      await fireEvent.input(nameInput, { target: { value: 'Discard me' } });
+      await fireEvent.keyDown(nameInput, { key: 'Escape' });
+      await fireEvent.blur(nameInput);
+
+      expect(vi.mocked(updateCanonItemName)).not.toHaveBeenCalled();
+      // Re-opening starts from the stored value again.
+      expect(await openNameEditor()).toHaveValue('Olive Oil');
+    });
+
+    it('shows a name error when updateCanonItemName returns an error', async () => {
       vi.mocked(updateCanonItemName).mockResolvedValueOnce({
         kind: 'err',
         error: { kind: 'ValidationError', field: 'name', reason: 'empty' },
       });
-      setupWithItem(item);
+      setupWithItem();
 
-      await userEvent.click(screen.getByRole('button', { name: /edit name/i }));
-      const nameInput = screen.getByTestId('canon-detail-name-input');
-      await userEvent.clear(nameInput);
-      await userEvent.type(nameInput, 'Changed');
-      await userEvent.keyboard('{Enter}');
+      const nameInput = await openNameEditor();
+      await fireEvent.input(nameInput, { target: { value: 'Changed' } });
+      await fireEvent.keyDown(nameInput, { key: 'Enter' });
 
       await waitFor(() => {
         expect(screen.getByText(/Invalid name/i)).toBeInTheDocument();
@@ -181,36 +244,13 @@ describe('CanonDetailPage', () => {
   });
 
   describe('synonyms editing', () => {
-    it('calls updateCanonItemSynonyms with the parsed synonyms array on save', async () => {
+    it('calls updateCanonItemSynonyms with the parsed synonyms array on blur', async () => {
       const item = canonItem({ id: ITEM_ID, name: 'Olive Oil' });
-      vi.mocked(updateCanonItemSynonyms).mockResolvedValueOnce({
-        kind: 'ok',
-        value: { ...item, synonyms: ['EVOO', 'liquid gold'] },
-      });
       setupWithItem(item);
 
       const synonymsInput = screen.getByTestId('canon-detail-synonyms-input');
-      await userEvent.clear(synonymsInput);
-      await userEvent.type(synonymsInput, 'EVOO, liquid gold');
-      await userEvent.keyboard('{Enter}');
-
-      await waitFor(() => {
-        expect(vi.mocked(updateCanonItemSynonyms)).toHaveBeenCalledWith(item, [
-          'EVOO',
-          'liquid gold',
-        ]);
-      });
-    });
-
-    it('trims whitespace from each synonym before calling service', async () => {
-      const item = canonItem({ id: ITEM_ID, name: 'Olive Oil' });
-      vi.mocked(updateCanonItemSynonyms).mockResolvedValueOnce({ kind: 'ok', value: item });
-      setupWithItem(item);
-
-      const synonymsInput = screen.getByTestId('canon-detail-synonyms-input');
-      await userEvent.clear(synonymsInput);
-      await userEvent.type(synonymsInput, ' EVOO ,  liquid gold ');
-      await userEvent.keyboard('{Enter}');
+      await fireEvent.input(synonymsInput, { target: { value: ' EVOO ,  liquid gold ' } });
+      await fireEvent.blur(synonymsInput);
 
       await waitFor(() => {
         expect(vi.mocked(updateCanonItemSynonyms)).toHaveBeenCalledWith(item, [
@@ -224,7 +264,6 @@ describe('CanonDetailPage', () => {
   describe('aisle editing', () => {
     it('calls updateCanonItemAisle when a different aisle is selected', async () => {
       const item = canonItem({ id: ITEM_ID, name: 'Olive Oil', aisleId: null });
-      vi.mocked(updateCanonItemAisle).mockResolvedValueOnce({ kind: 'ok', value: item });
       mockAisles._set([{ id: 'oils', name: 'Oils & Vinegars', position: 0 }]);
       setupWithItem(item);
 
@@ -241,47 +280,190 @@ describe('CanonDetailPage', () => {
     });
   });
 
-  describe('delete', () => {
-    it('opens the delete dialog when the delete button is clicked', async () => {
+  describe('quantity threshold — no Save button', () => {
+    it('has no mid-page Save button at all', () => {
       setupWithItem();
-      await userEvent.click(screen.getByTestId('canon-detail-delete-button'));
+      expect(screen.queryByTestId('canon-detail-threshold-save')).toBeNull();
+    });
+
+    it('saves the threshold on blur', async () => {
+      const item = canonItem({ id: ITEM_ID, name: 'Olive Oil' });
+      setupWithItem(item);
+
+      const input = screen.getByTestId('canon-detail-threshold-input');
+      await fireEvent.input(input, { target: { value: '500' } });
+      await fireEvent.blur(input);
+
       await waitFor(() => {
-        expect(screen.getByTestId('canon-detail-delete-dialog')).toBeInTheDocument();
+        expect(vi.mocked(updateCanonItemThreshold)).toHaveBeenCalledWith(item, 500, 'g');
       });
     });
 
-    it('calls deleteCanonItem with the item id when confirm is clicked', async () => {
-      vi.mocked(deleteCanonItem).mockResolvedValueOnce({ kind: 'ok', value: undefined });
-      setupWithItem();
-      await userEvent.click(screen.getByTestId('canon-detail-delete-button'));
-      await waitFor(() =>
-        expect(screen.getByTestId('canon-detail-delete-dialog')).toBeInTheDocument(),
-      );
+    it('reverts the threshold on Escape and writes nothing', async () => {
+      setupWithItem(canonItem({ id: ITEM_ID, name: 'Olive Oil', largeQuantityThreshold: 200 }));
 
-      await userEvent.click(screen.getByTestId('canon-detail-delete-confirm'));
+      const input = screen.getByTestId('canon-detail-threshold-input');
+      await fireEvent.input(input, { target: { value: '999' } });
+      await fireEvent.keyDown(input, { key: 'Escape' });
+
+      expect(input).toHaveValue('200');
+      await fireEvent.blur(input);
+      expect(vi.mocked(updateCanonItemThreshold)).not.toHaveBeenCalled();
+    });
+  });
+
+  // The whole point of the rewrite: `needs_approval` contributes a strip and an
+  // action, never a second copy of the fields.
+  describe('one field stack, pending or not', () => {
+    for (const needsApproval of [false, true]) {
+      it(`renders exactly one of each field when needs_approval is ${needsApproval}`, () => {
+        setupWithItem(canonItem({ id: ITEM_ID, name: 'Olive Oil', needs_approval: needsApproval }));
+
+        expect(screen.getAllByTestId('canon-detail-synonyms-input')).toHaveLength(1);
+        expect(screen.getAllByTestId('canon-detail-aisle-select')).toHaveLength(1);
+        expect(screen.getAllByTestId('canon-detail-threshold-input')).toHaveLength(1);
+        expect(screen.getAllByRole('radiogroup')).toHaveLength(1);
+      });
+    }
+
+    it('shows the review strip and Approve only when pending', () => {
+      setupWithItem(canonItem({ id: ITEM_ID, name: 'Olive Oil', needs_approval: false }));
+      expect(screen.queryByTestId('canon-detail-approval-section')).toBeNull();
+      expect(screen.queryByTestId('canon-detail-approve-button')).toBeNull();
+    });
+
+    it('writes shopping behaviour straight through for a PENDING item', async () => {
+      const item = canonItem({ id: ITEM_ID, name: 'Olive Oil', needs_approval: true });
+      setupWithItem(item);
+
+      await userEvent.click(screen.getByRole('radio', { name: 'Stocked' }));
+
+      await waitFor(() => {
+        expect(vi.mocked(updateCanonItemShoppingBehavior)).toHaveBeenCalledWith(item, 'stocked');
+      });
+    });
+  });
+
+  describe('approving', () => {
+    it('approves with no overrides — the edits already landed', async () => {
+      const item = canonItem({ id: ITEM_ID, name: 'Olive Oil', needs_approval: true });
+      setupWithItem(item);
+
+      await fireEvent.click(screen.getByTestId('canon-detail-approve-button'));
+
+      await waitFor(() => {
+        expect(vi.mocked(approveCanonItemWithOverrides)).toHaveBeenCalledWith(item);
+      });
+    });
+
+    it('keeps the fields on screen and does not navigate away', async () => {
+      const item = canonItem({ id: ITEM_ID, name: 'Olive Oil', needs_approval: true });
+      setupWithItem(item);
+
+      await fireEvent.click(screen.getByTestId('canon-detail-approve-button'));
+      await waitFor(() => expect(vi.mocked(approveCanonItemWithOverrides)).toHaveBeenCalled());
+
+      // The live store echoes the approved item back.
+      mockCanonItems._set([{ ...item, needs_approval: false }]);
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('canon-detail-approval-section')).toBeNull();
+      });
+      expect(screen.getAllByTestId('canon-detail-synonyms-input')).toHaveLength(1);
+      expect(vi.mocked(push)).not.toHaveBeenCalled();
+    });
+  });
+
+  // The domain writes two sentinel strings into `reasoning` when arbitration
+  // could not name the item. Those are queue markers, not words for a reader.
+  describe('arbitration sentinels read as sentences', () => {
+    it('explains a failed arbitration call', () => {
+      setupWithItem(
+        canonItem({
+          id: ITEM_ID,
+          name: 'Olive Oil',
+          needs_approval: true,
+          reasoning: ARBITRATION_FAILED_REASONING,
+        }),
+      );
+      expect(screen.getByTestId('canon-detail-reasoning')).toHaveTextContent(
+        /The AI couldn't be reached, so this was kept exactly as it was typed/i,
+      );
+    });
+
+    it('explains arbitration returning no match', () => {
+      setupWithItem(
+        canonItem({
+          id: ITEM_ID,
+          name: 'Olive Oil',
+          needs_approval: true,
+          reasoning: ARBITRATION_NO_MATCH_REASONING,
+        }),
+      );
+      expect(screen.getByTestId('canon-detail-reasoning')).toHaveTextContent(
+        /The AI didn't recognise this as an existing item/i,
+      );
+    });
+
+    it('renders any other reasoning verbatim', () => {
+      setupWithItem(
+        canonItem({
+          id: ITEM_ID,
+          name: 'Olive Oil',
+          needs_approval: true,
+          reasoning: 'Matched to the existing olive oil entry.',
+        }),
+      );
+      expect(screen.getByTestId('canon-detail-reasoning')).toHaveTextContent(
+        'Matched to the existing olive oil entry.',
+      );
+    });
+  });
+
+  describe('product forms section', () => {
+    it('lists the item’s own forms and offers to add one seeded with this parent', () => {
+      mockProductForms._set([
+        productForm({ id: 'f1', label: 'Olive oil spray' }),
+        productForm({ id: 'f2', label: 'Somebody else’s', parentCanonId: 'other' }),
+      ]);
+      setupWithItem();
+
+      const rows = screen.getAllByTestId('canon-detail-form-row');
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toHaveTextContent('Olive oil spray');
+      expect(screen.getByTestId('canon-detail-add-form')).toBeInTheDocument();
+    });
+
+    it('still offers Add form when the item has no forms', async () => {
+      setupWithItem();
+      expect(screen.queryByTestId('canon-detail-form-row')).toBeNull();
+
+      await fireEvent.click(screen.getByTestId('canon-detail-add-form'));
+      expect(vi.mocked(push)).toHaveBeenCalledWith(`/admin/product-forms/new?parent=${ITEM_ID}`);
+    });
+  });
+
+  describe('delete', () => {
+    it('shows an undo toast instead of a confirm dialog', async () => {
+      setupWithItem();
+      await fireEvent.click(screen.getByTestId('canon-detail-delete-button'));
+
+      expect(screen.queryByTestId('canon-detail-delete-dialog')).toBeNull();
+      expect(vi.mocked(addToast)).toHaveBeenCalledWith(
+        '"Olive Oil" deleted',
+        'default',
+        expect.objectContaining({ action: expect.objectContaining({ label: 'Undo' }) }),
+      );
+    });
+
+    it('commits the delete when the toast lapses and returns to the list', async () => {
+      setupWithItem();
+      await fireEvent.click(screen.getByTestId('canon-detail-delete-button'));
 
       await waitFor(() => {
         expect(vi.mocked(deleteCanonItem)).toHaveBeenCalledWith(ITEM_ID);
       });
-    });
-
-    it('shows a toast and navigates to /admin/canon after successful delete', async () => {
-      vi.mocked(deleteCanonItem).mockResolvedValueOnce({ kind: 'ok', value: undefined });
-      setupWithItem();
-      await userEvent.click(screen.getByTestId('canon-detail-delete-button'));
-      await waitFor(() =>
-        expect(screen.getByTestId('canon-detail-delete-dialog')).toBeInTheDocument(),
-      );
-
-      await userEvent.click(screen.getByTestId('canon-detail-delete-confirm'));
-
-      await waitFor(() => {
-        expect(vi.mocked(addToast)).toHaveBeenCalledWith(
-          expect.stringContaining('Olive Oil'),
-          'success',
-        );
-        expect(vi.mocked(push)).toHaveBeenCalledWith('/admin/canon');
-      });
+      expect(vi.mocked(push)).toHaveBeenCalledWith('/admin/canon');
     });
   });
 });

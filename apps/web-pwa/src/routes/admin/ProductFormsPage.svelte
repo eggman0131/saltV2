@@ -11,6 +11,7 @@
   import {
     productForms,
     isLoadingProductForms,
+    confirmProductForm,
     deleteProductForm,
   } from '../../lib/productFormService.js';
   import { canonItems } from '../../lib/canonService.js';
@@ -62,7 +63,44 @@
     );
   }
 
+  // Bulk confirm (issue #872). Confirming records a review over the form's OWN
+  // current values — there is no editor open, so there is nothing else it could
+  // honestly write. Forms that are already confirmed are skipped rather than
+  // re-written, so a sloppy select-all costs nothing.
+  async function handleBulkConfirm() {
+    if (selection.count === 0) return;
+    const ids = selection.ids;
+    selectionMode = false; // exiting selection mode clears the selection
+    const targets = $productForms.filter((f) => ids.includes(f.id) && f.needs_approval);
+    if (targets.length === 0) return;
+    const results = await Promise.all(
+      targets.map((f) =>
+        confirmProductForm(f, {
+          matchers: f.matchers,
+          parentCanonId: f.parentCanonId,
+          label: f.label,
+          formUnit: f.yield.formUnit,
+          amountPerParent: f.yield.amountPerParent,
+        }),
+      ),
+    );
+    const confirmedCount = results.filter((r) => r.kind === 'ok').length;
+    if (confirmedCount > 0) {
+      addToast(`Confirmed ${confirmedCount} form${confirmedCount === 1 ? '' : 's'}`, 'success');
+    }
+    if (results.some((r) => r.kind !== 'ok')) {
+      addToast('Failed to confirm some forms.', 'destructive');
+    }
+  }
+
   const bulkActions = $derived<BulkAction[]>([
+    {
+      id: 'confirm',
+      label: 'Confirm',
+      icon: 'Check',
+      testId: 'product-forms-bulk-confirm',
+      onSelect: handleBulkConfirm,
+    },
     {
       id: 'delete',
       label: 'Delete',
