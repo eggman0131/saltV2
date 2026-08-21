@@ -425,6 +425,20 @@ async function applyClassification(
         }
         // AI returned an unknown id — fall through to fallback
       } else if (decision.kind === 'new') {
+        // The SAME failsafe the empty-shortlist path applies below, and for the
+        // same reason: the AI is asked to name the thing, and the clean name it
+        // returns is often one the catalog already holds under a rawName that
+        // failed every deterministic stage. Guarding only the empty-shortlist
+        // path left this one open, and a corpus re-match walked straight through
+        // it: "small red onion or a couple of shallots" and "warm water" each had
+        // near-miss candidates, so arbitration ran with a non-empty shortlist,
+        // answered "new", and minted a second "Red Onion" and a second "Water"
+        // beside the originals. Having candidates makes a duplicate MORE likely,
+        // not less — the near-misses are what prove the concept is already known.
+        const canonNameHit = findSnapshotMatch(decision.canonName, snapshot);
+        if (canonNameHit) {
+          return resolveMatch(ports, canonNameHit, rawName, 'ai_arbitrated', commitLog);
+        }
         return persistNew(
           store,
           ids,

@@ -1117,3 +1117,52 @@ describe('isDerivedName — a derivation never becomes a synonym', () => {
     if (result.kind === 'ok') expect(result.value.item.synonyms).toEqual(['chicken stock']);
   });
 });
+
+// ─── The AI names something the catalog already holds ────────────────────────
+//
+// Arbitration is asked to NAME the thing, and the clean name it returns is often
+// one the catalog already has under a rawName that failed every deterministic
+// stage. The empty-shortlist path has always guarded against that; the path WITH
+// candidates did not, and a corpus re-match walked straight through it —
+// "small red onion or a couple of shallots" and "warm water" each had near-miss
+// candidates, so arbitration ran with a non-empty shortlist, answered "new", and
+// minted a second "Red Onion" and a second "Water" beside the originals.
+//
+// Having candidates makes a duplicate MORE likely, not less: the near-misses are
+// what prove the concept is already known.
+describe('arbitration returning "new" for a name that already exists', () => {
+  // Two candidates tied at 0.67 token overlap — over aiThreshold, under
+  // stage2Stop, and more than one, so neither a deterministic stop nor stage 6's
+  // single-near-miss shortcut can fire. That is what actually reaches the model.
+  const shortlisted = (canonName: string) =>
+    makePipeline({
+      items: [
+        canonItem({ id: 'o1', name: 'Red Onion' }),
+        canonItem({ id: 'o2', name: 'Red Onion Soup' }),
+      ],
+      arbitration: newArbitration(canonName),
+    });
+
+  it('binds to the existing item instead of minting a duplicate', async () => {
+    const { run, store } = shortlisted('Red Onion');
+
+    const result = await run('red onion salad');
+
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.value.item.id).toBe('o1');
+      expect(result.value.decision).toBe('ai_arbitrated');
+    }
+    expect(store.items).toHaveLength(2);
+  });
+
+  it('still mints when the name really is new', async () => {
+    const { run, store } = shortlisted('Banana Shallot');
+
+    const result = await run('red onion salad');
+
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') expect(result.value.item.name).toBe('Banana Shallot');
+    expect(store.items).toHaveLength(3);
+  });
+});
