@@ -63,7 +63,26 @@ vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
 vi.mock('../src/lib/auth.svelte.js', () => ({
   auth: { user: { uid: 'uid-1', email: 'cook@test' }, signOut: vi.fn() },
 }));
-vi.mock('../src/lib/canonService.js', () => ({ canonItems: mockCanonItems }));
+// #867: the ingredient rows gate their ✗/⚠ markers on canon AND product forms
+// having landed, so both stores must read loaded here or no marker ever renders.
+vi.mock('../src/lib/canonService.js', () => ({
+  canonItems: mockCanonItems,
+  isLoadingAisles: {
+    subscribe(fn: (v: boolean) => void) {
+      fn(false);
+      return () => {};
+    },
+  },
+}));
+vi.mock('../src/lib/productFormService.js', () => {
+  const loaded = <T>(v: T) => ({
+    subscribe(fn: (x: T) => void) {
+      fn(v);
+      return () => {};
+    },
+  });
+  return { productForms: loaded([]), isLoadingProductForms: loaded(false) };
+});
 vi.mock('../src/lib/guidedPlanService.js', () => ({
   guidedPlan: mockGuidedPlan,
   initGuidedPlanSync: vi.fn(() => () => {}),

@@ -1,0 +1,324 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { render, cleanup } from '@testing-library/svelte';
+import type { CanonItem, Ingredient, ProductForm, Recipe } from '@salt/domain';
+import { recipeMatchIssueCount } from '@salt/domain';
+
+// Row match markers (issue #867). The list card counts a recipe's silently-wrong
+// lines; opening that recipe used to show you nothing, because the row asked a
+// narrower question — `hasLiveCanonMatch`, which never reads product forms — so a
+// line with a live canon and no bridging form passed it and got no marker.
+//
+// The two markers are deliberately different glyphs because the remedies differ:
+// ✗ runs the match, ⚠ opens the sheet that explains what the line actually buys.
+
+const {
+  mockRecipes,
+  mockCanonItems,
+  mockIsLoadingAisles,
+  mockProductForms,
+  mockIsLoadingProductForms,
+  mockGuidedPlan,
+  mockIsLoading,
+  mockDefaultListId,
+  mockSessions,
+  mockEquipment,
+} = vi.hoisted(() => {
+  function makeStore<T>(initial: T) {
+    let value = initial;
+    const subs = new Set<(v: T) => void>();
+    return {
+      subscribe(fn: (v: T) => void) {
+        subs.add(fn);
+        fn(value);
+        return () => {
+          subs.delete(fn);
+        };
+      },
+      _set(v: T) {
+        value = v;
+        subs.forEach((fn) => fn(v));
+      },
+    };
+  }
+  return {
+    mockRecipes: makeStore<readonly unknown[]>([]),
+    mockCanonItems: makeStore<readonly unknown[]>([]),
+    mockIsLoadingAisles: makeStore<boolean>(false),
+    mockProductForms: makeStore<readonly unknown[]>([]),
+    mockIsLoadingProductForms: makeStore<boolean>(false),
+    mockGuidedPlan: makeStore<unknown>(null),
+    mockIsLoading: makeStore<boolean>(false),
+    mockDefaultListId: makeStore<string | null>('list-1'),
+    mockSessions: makeStore<readonly unknown[]>([]),
+    mockEquipment: makeStore<unknown>(null),
+  };
+});
+
+vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
+vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
+vi.mock('../src/lib/auth.svelte.js', () => ({ auth: { user: { email: 'cook@test' } } }));
+vi.mock('../src/lib/canonService.js', () => ({
+  canonItems: mockCanonItems,
+  isLoadingAisles: mockIsLoadingAisles,
+}));
+vi.mock('../src/lib/productFormService.js', () => ({
+  productForms: mockProductForms,
+  isLoadingProductForms: mockIsLoadingProductForms,
+}));
+vi.mock('../src/lib/guidedPlanService.js', () => ({
+  guidedPlan: mockGuidedPlan,
+  initGuidedPlanSync: vi.fn(() => () => {}),
+}));
+vi.mock('../src/lib/formulaService.js', () => ({
+  formula: {
+    subscribe: (fn: (value: unknown) => void) => {
+      fn(null);
+      return () => {};
+    },
+  },
+  initFormulaSync: vi.fn(() => () => {}),
+}));
+vi.mock('../src/lib/shoppingListService.svelte.js', () => ({ defaultListId: mockDefaultListId }));
+vi.mock('@salt/firebase-sync', () => ({
+  saveRecipe: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+}));
+vi.mock('../src/lib/chatService.js', () => ({
+  sessions: mockSessions,
+  createChatSession: vi.fn(),
+  sendMessage: vi.fn(),
+}));
+vi.mock('../src/lib/equipmentService.js', () => ({ equipment: mockEquipment }));
+vi.mock('../src/lib/clipboardImage.js', () => ({
+  clipboardImageReadSupported: () => false,
+  readClipboardImage: vi.fn(),
+  imageFromClipboardData: vi.fn(),
+}));
+vi.mock('../src/lib/recipeService.js', () => ({
+  recipes: mockRecipes,
+  isLoadingRecipes: mockIsLoading,
+  removeRecipe: vi.fn(),
+  canonicaliseIngredients: vi.fn(),
+  matchIngredient: vi.fn(),
+  persistRecipe: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  stashImportedDraft: vi.fn(),
+  authorRecipeTraced: vi.fn(),
+  regenerateRecipeImage: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  reviseRecipeSceneBrief: vi.fn(),
+  startOverRecipeSceneBrief: vi.fn(),
+  setRecipeImageUpload: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  buildRecipeAddPlan: vi.fn().mockReturnValue([]),
+  buildMadeSubRows: vi.fn().mockReturnValue([]),
+  commitRecipeAddPlan: vi.fn(),
+  recipeAddPlanItemCount: vi.fn().mockReturnValue(0),
+}));
+
+import RecipeViewPage from '../src/routes/recipes/RecipeViewPage.svelte';
+
+const RECIPE_ID = 'recipe-1';
+
+// A count-sold canon carrying a form for something else: the shape that makes an
+// unbridged line genuinely wrong, and the live `Lemon` / `Lemon zest` pair.
+const LEMON: CanonItem = {
+  id: 'canon-lemon',
+  schemaVersion: 5,
+  name: 'lemon',
+  synonyms: [],
+  aisleId: null,
+  thumbnail: null,
+  needs_approval: false,
+  shoppingBehavior: 'needed',
+  unit: 'count',
+  updatedAt: '2026-08-19T00:00:00.000Z',
+};
+
+// Count-sold with no form at all — the bay-leaf class #867 silenced.
+const BAY_LEAVES: CanonItem = { ...LEMON, id: 'canon-bay', name: 'Bay Leaves' };
+
+const LEMON_ZEST: ProductForm = {
+  id: 'form-lemon-zest',
+  schemaVersion: 1,
+  matchers: [],
+  parentCanonId: 'canon-lemon',
+  label: 'Lemon zest',
+  yield: { formUnit: 'g', amountPerParent: 5 },
+  updatedAt: '2026-08-19T00:00:00.000Z',
+};
+
+function line(over: Partial<Ingredient> & { id: string }): Ingredient {
+  return {
+    rawText: '1 tbsp fresh lemon juice',
+    parsed: {
+      quantity: { type: 'single', value: 15 },
+      unit: 'ml',
+      item: 'fresh lemon juice',
+      preparation: [],
+      notes: null,
+      displayText: '1 tbsp',
+    },
+    canonId: 'canon-lemon',
+    matchState: 'matched',
+    isOptional: false,
+    firstUsedInStepId: null,
+    ...over,
+  } as Ingredient;
+}
+
+function makeRecipe(items: Ingredient[]): Recipe {
+  return {
+    id: RECIPE_ID,
+    schemaVersion: 1,
+    title: 'Lemony Thing',
+    description: null,
+    ingredients: [{ id: 'group-1', name: null, items }],
+    steps: [],
+    metadata: {
+      servings: null,
+      prepTimeMinutes: null,
+      cookTimeMinutes: null,
+      totalTimeMinutes: null,
+      tags: [],
+    },
+    source: { type: 'manual' },
+    notes: null,
+    componentRecipeIds: [],
+    image: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  } as unknown as Recipe;
+}
+
+afterEach(() => {
+  cleanup();
+  document.body.style.pointerEvents = '';
+  document.body.style.overflow = '';
+  document.body.innerHTML = '';
+});
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockRecipes._set([]);
+  mockCanonItems._set([LEMON, BAY_LEAVES]);
+  mockIsLoadingAisles._set(false);
+  mockProductForms._set([LEMON_ZEST]);
+  mockIsLoadingProductForms._set(false);
+  mockIsLoading._set(false);
+});
+
+function renderPage() {
+  return render(RecipeViewPage, { props: { params: { id: RECIPE_ID } } });
+}
+
+describe('RecipeViewPage — ingredient match markers', () => {
+  it('marks a matched-but-mis-bought line with ⚠, not the unmatched ✗', () => {
+    mockRecipes._set([makeRecipe([line({ id: 'ing-juice' })])]);
+    const { getAllByTestId, queryByTestId } = renderPage();
+
+    expect(getAllByTestId('match-state-mismatched')).toHaveLength(1);
+    expect(queryByTestId('match-state-unmatched')).toBeNull();
+  });
+
+  it('leaves a never-matched line on the ✗ — its remedy is still a match', () => {
+    mockRecipes._set([makeRecipe([line({ id: 'ing-new', canonId: null, matchState: 'pending' })])]);
+    const { getAllByTestId, queryByTestId } = renderPage();
+
+    expect(getAllByTestId('match-state-unmatched')).toHaveLength(1);
+    expect(queryByTestId('match-state-mismatched')).toBeNull();
+  });
+
+  it('leaves a dangling canon on the ✗ — nothing is matched any more', () => {
+    mockRecipes._set([makeRecipe([line({ id: 'ing-gone', canonId: 'canon-deleted' })])]);
+    const { getAllByTestId, queryByTestId } = renderPage();
+
+    expect(getAllByTestId('match-state-unmatched')).toHaveLength(1);
+    expect(queryByTestId('match-state-mismatched')).toBeNull();
+  });
+
+  it('says nothing about a line matched to a canon with no forms of its own', () => {
+    // The false positive #867 removed: bay leaf is correctly matched, and no
+    // product form for it should ever exist.
+    const bay = line({
+      id: 'ing-bay',
+      rawText: '2 bay leaves',
+      canonId: 'canon-bay',
+      parsed: {
+        quantity: { type: 'single', value: 1 },
+        unit: 'g',
+        item: 'bay leaf',
+        preparation: [],
+        notes: null,
+        displayText: '2',
+      },
+    });
+    mockRecipes._set([makeRecipe([bay])]);
+    const { queryByTestId } = renderPage();
+
+    expect(queryByTestId('match-state-mismatched')).toBeNull();
+    expect(queryByTestId('match-state-unmatched')).toBeNull();
+  });
+
+  it('marks exactly as many rows as the card counts', () => {
+    // The whole point of sharing one predicate: if the pip says N, N rows carry a
+    // marker. Two wrong lines and one clean one, counted by the same query the
+    // list card uses.
+    const clean = line({
+      id: 'ing-zest',
+      rawText: '1 tsp lemon zest',
+      parsed: {
+        quantity: { type: 'single', value: 5 },
+        unit: 'g',
+        item: 'lemon zest',
+        preparation: [],
+        notes: null,
+        displayText: '1 tsp',
+      },
+    });
+    const recipe = makeRecipe([line({ id: 'ing-a' }), line({ id: 'ing-b' }), clean]);
+    mockRecipes._set([recipe]);
+
+    const cardCount = recipeMatchIssueCount(
+      recipe,
+      new Map([
+        [LEMON.id, LEMON],
+        [BAY_LEAVES.id, BAY_LEAVES],
+      ]),
+      [LEMON_ZEST],
+    );
+    expect(cardCount).toBe(2);
+
+    const { getAllByTestId } = renderPage();
+    expect(getAllByTestId('match-state-mismatched')).toHaveLength(cardCount);
+  });
+
+  it('marks nothing at all while canon is still loading', () => {
+    mockIsLoadingAisles._set(true);
+    mockRecipes._set([
+      makeRecipe([line({ id: 'ing-juice' }), line({ id: 'ing-new', canonId: null })]),
+    ]);
+    const { queryByTestId } = renderPage();
+
+    // Not even the ✗: an empty canon makes every matched line look dangling, so an
+    // ungated row flashes a warning it takes back a moment later.
+    expect(queryByTestId('match-state-mismatched')).toBeNull();
+    expect(queryByTestId('match-state-unmatched')).toBeNull();
+  });
+
+  it('marks nothing at all while product forms are still loading', () => {
+    mockIsLoadingProductForms._set(true);
+    mockRecipes._set([makeRecipe([line({ id: 'ing-juice' })])]);
+    const { queryByTestId } = renderPage();
+
+    expect(queryByTestId('match-state-mismatched')).toBeNull();
+    expect(queryByTestId('match-state-unmatched')).toBeNull();
+  });
+
+  it('labels the ⚠ for a screen reader and leaves the row inspect target alone', () => {
+    mockRecipes._set([makeRecipe([line({ id: 'ing-juice' })])]);
+    const { getByTestId } = renderPage();
+
+    const marker = getByTestId('match-state-mismatched');
+    expect(marker.getAttribute('aria-label')).toBeTruthy();
+    // Sibling of the row button, not nested inside it.
+    expect(marker.closest('[data-testid="recipe-view-ingredient-inspect"]')).toBeNull();
+    expect(getByTestId('recipe-view-ingredient-inspect')).toBeTruthy();
+  });
+});
