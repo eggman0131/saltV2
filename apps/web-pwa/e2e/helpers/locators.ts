@@ -44,6 +44,11 @@ export function canonCreatePage(page: Page): CanonCreatePageLocators {
   };
 }
 
+/**
+ * The catalog's record editor (issue #872) — reached at `/admin/catalog/:id` or by
+ * either of the aliases. Same testids whether it renders as its own page (phone)
+ * or as the pane beside the list (`split:` and up).
+ */
 export interface CanonDetailPageLocators {
   readonly nameEditButton: Locator;
   readonly nameInput: Locator;

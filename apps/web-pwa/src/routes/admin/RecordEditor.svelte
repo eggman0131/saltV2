@@ -27,12 +27,7 @@
     Text,
     TextField,
   } from '@salt/ui-components';
-  import {
-    ARBITRATION_FAILED_REASONING,
-    ARBITRATION_NO_MATCH_REASONING,
-    CANON_ICON_HIDDEN,
-    describePendingCanonChange,
-  } from '@salt/domain';
+  import { CANON_ICON_HIDDEN, describePendingCanonChange } from '@salt/domain';
   import type { CanonItem, ProductForm } from '@salt/domain';
   import type { CanonItemUnit, ShoppingBehavior } from '@salt/shared-types';
   import {
@@ -55,6 +50,7 @@
   import { addToast } from '../../lib/toastStore.js';
   import { titleCase } from '../../lib/titleCase.js';
   import type { SavedTick } from '../../lib/savedTick.svelte.js';
+  import { reasoningSentence } from './reasoningSentence.js';
 
   /**
    * The shared catalog record editor (issue #872) — one field stack serving both
@@ -123,22 +119,6 @@
   // The domain hands back a structured description; this page owns the words
   // (issue #193). Oldest first — the order they happened in.
   const pendingChanges = $derived((canon?.pendingChanges ?? []).map(describePendingCanonChange));
-
-  /**
-   * `CanonItem.reasoning` normally holds the arbitrator's own words, which read
-   * fine as-is. Two values are not words at all but review-queue sentinels
-   * written by `matchOrCreate` — shown raw they told the reader about our
-   * pipeline rather than about their item, so those two become sentences.
-   */
-  function reasoningSentence(reasoning: string): string {
-    if (reasoning === ARBITRATION_FAILED_REASONING) {
-      return "The AI couldn't be reached, so this was kept exactly as it was typed. Check the name and aisle.";
-    }
-    if (reasoning === ARBITRATION_NO_MATCH_REASONING) {
-      return "The AI didn't recognise this as an existing item, so it was kept exactly as it was typed. Check the name and aisle.";
-    }
-    return reasoning;
-  }
 
   // A pending form's parent may itself be a freshly-minted, unconfirmed canon
   // item. No stored back-reference — derive it from the subscribed items.
@@ -447,7 +427,7 @@
               type="button"
               class="font-medium underline underline-offset-2"
               data-testid="product-form-parent-pending"
-              onclick={() => push(`/admin/canon/${form?.parentCanonId}`)}
+              onclick={() => push(`/admin/catalog/c:${form?.parentCanonId}`)}
             >
               Review the parent
             </button>
@@ -661,7 +641,7 @@
                 type="button"
                 class="w-full rounded p-2 text-left transition-colors hover:bg-muted/50"
                 data-testid="canon-detail-form-row"
-                onclick={() => push(`/admin/product-forms/${child.id}`)}
+                onclick={() => push(`/admin/catalog/f:${child.id}`)}
               >
                 <span class="font-medium text-foreground">{child.label}</span>
                 <span class="block text-sm text-muted-foreground">

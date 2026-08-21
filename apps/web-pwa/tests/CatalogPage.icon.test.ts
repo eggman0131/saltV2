@@ -32,7 +32,10 @@ const { mockCanonItems, mockAisles, mockProductForms, mockMembers, mockIsLoading
     };
   });
 
-vi.mock('svelte-spa-router', () => ({ push: vi.fn(), router: { querystring: '' } }));
+vi.mock('svelte-spa-router', () => ({
+  push: vi.fn(),
+  router: { location: '/admin/canon/c1', querystring: '' },
+}));
 vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
 vi.mock('../src/lib/auth.svelte.js', () => ({ auth: mockAuth }));
 vi.mock('../src/lib/membersService.js', () => ({
@@ -45,6 +48,8 @@ vi.mock('../src/lib/aisleService.js', () => ({
 }));
 vi.mock('../src/lib/canonService.js', () => ({
   canonItems: mockCanonItems,
+  isLoadingAisles: mockIsLoading,
+  approveCanonItems: vi.fn(),
   updateCanonItemName: vi.fn(),
   updateCanonItemAisle: vi.fn(),
   updateCanonItemSynonyms: vi.fn(),
@@ -59,11 +64,13 @@ vi.mock('../src/lib/canonService.js', () => ({
 }));
 vi.mock('../src/lib/productFormService.js', () => ({
   productForms: mockProductForms,
+  isLoadingProductForms: mockIsLoading,
+  deleteProductForm: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   editProductForm: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   confirmProductForm: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
 }));
 
-import CanonDetailPage from '../src/routes/canon/CanonDetailPage.svelte';
+import CatalogPage from '../src/routes/admin/CatalogPage.svelte';
 import { regenerateCanonIcon, hideCanonIcon, unhideCanonIcon } from '../src/lib/canonService.js';
 
 const ITEM_ID = 'c1';
@@ -103,17 +110,17 @@ beforeEach(() => {
   mockMembers._set([{ email: 'admin@e.org', admin: true }]);
 });
 
-describe('CanonDetailPage — icon escape hatch', () => {
+describe('the catalog record editor — icon escape hatch', () => {
   it('renders the icon section with the current icon', () => {
     mockCanonItems._set([canonItem()]);
-    const { getByTestId } = render(CanonDetailPage, { props: { params: { id: ITEM_ID } } });
+    const { getByTestId } = render(CatalogPage, { props: { params: { id: ITEM_ID } } });
     expect(getByTestId('canon-detail-icon-section')).toBeInTheDocument();
     expect(getByTestId('canon-icon-img')).toBeInTheDocument();
   });
 
   it('opens a dialog and regenerates with no hint on confirm', async () => {
     mockCanonItems._set([canonItem()]);
-    const { getByTestId, findByTestId } = render(CanonDetailPage, {
+    const { getByTestId, findByTestId } = render(CatalogPage, {
       props: { params: { id: ITEM_ID } },
     });
     await fireEvent.click(getByTestId('canon-detail-icon-regenerate'));
@@ -123,7 +130,7 @@ describe('CanonDetailPage — icon escape hatch', () => {
 
   it('passes the typed hint to regenerate', async () => {
     mockCanonItems._set([canonItem()]);
-    const { getByTestId, findByTestId } = render(CanonDetailPage, {
+    const { getByTestId, findByTestId } = render(CatalogPage, {
       props: { params: { id: ITEM_ID } },
     });
     await fireEvent.click(getByTestId('canon-detail-icon-regenerate'));
@@ -137,7 +144,7 @@ describe('CanonDetailPage — icon escape hatch', () => {
 
   it('shows Hide for a visible icon and hides on click', async () => {
     mockCanonItems._set([canonItem({ thumbnail: 'https://example.com/milk.webp' })]);
-    const { getByTestId, queryByTestId } = render(CanonDetailPage, {
+    const { getByTestId, queryByTestId } = render(CatalogPage, {
       props: { params: { id: ITEM_ID } },
     });
     expect(queryByTestId('canon-detail-icon-unhide')).toBeNull();
@@ -147,7 +154,7 @@ describe('CanonDetailPage — icon escape hatch', () => {
 
   it('shows Unhide for a hidden icon and unhides on click', async () => {
     mockCanonItems._set([canonItem({ thumbnail: 'hidden' })]);
-    const { getByTestId, queryByTestId } = render(CanonDetailPage, {
+    const { getByTestId, queryByTestId } = render(CatalogPage, {
       props: { params: { id: ITEM_ID } },
     });
     expect(queryByTestId('canon-detail-icon-hide')).toBeNull();

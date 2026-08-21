@@ -5,14 +5,13 @@
   import { canonItems } from '../../lib/canonService.js';
   import { productForms } from '../../lib/productFormService.js';
 
-  // Needs-review backlog counts — mirror the badge on the Admin nav entry
-  // (App.svelte) so the same numbers surface per tool tile. Canon and product
-  // forms each track their own pending queue.
+  // Needs-review backlog count — mirrors the badge on the Admin nav entry
+  // (App.svelte). Items and product forms are one queue on one tile now that they
+  // are one list (issue #872), so the two counts sum exactly as App.svelte's do.
   const needsApprovalCount = $derived($canonItems.filter((i) => i.needs_approval).length);
   const pendingFormCount = $derived($productForms.filter((f) => f.needs_approval).length);
   const tileBadge = $derived<Record<string, number>>({
-    canon: needsApprovalCount,
-    'product-forms': pendingFormCount,
+    catalog: needsApprovalCount + pendingFormCount,
   });
 
   // Operator home (issues #155, #157). Future cross-domain operator tools
@@ -26,22 +25,17 @@
       href: '/admin/members',
     },
     {
-      id: 'canon',
-      title: 'Canon items',
-      description: 'Review and curate the shared item catalog.',
-      href: '/admin/canon',
+      id: 'catalog',
+      title: 'Catalog',
+      description:
+        'Review and curate the shared items, and the product forms that stand in for them.',
+      href: '/admin/catalog',
     },
     {
       id: 'aisles',
       title: 'Aisles',
       description: 'Organise and sort the store aisles items are grouped into.',
       href: '/admin/aisles',
-    },
-    {
-      id: 'product-forms',
-      title: 'Product forms',
-      description: 'Map alternate ingredient forms to a parent item and its yield.',
-      href: '/admin/product-forms',
     },
     {
       id: 'mealplan',

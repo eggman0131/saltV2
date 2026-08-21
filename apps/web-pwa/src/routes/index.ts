@@ -26,6 +26,10 @@ import { lazy } from './lazyRoute';
 // auto-reload — an inline "couldn't load this page — retry" fallback instead of
 // hanging on the loader (issue #472, Phase 2).
 
+// One wrapper, six routes (see the admin block below): a fresh `lazy()` per entry
+// would be six wrappers around the same chunk.
+const catalogPage = lazy(() => import('./admin/CatalogPage.svelte'));
+
 // More-specific static routes must precede parameterised ones when using a Map.
 // The Map is typed with RouteDefinition's own value type: without it, `new Map`
 // infers a heterogeneous union of `Component<Props>` tuples that TS cannot unify
@@ -116,12 +120,20 @@ export const routes: RouteDefinition = new Map<
   ['/admin/dev-settings', lazy(() => import('./admin/DevSettingsPage.svelte'))],
   ['/admin/app-settings', lazy(() => import('./admin/AppSettingsPage.svelte'))],
   ['/admin/aisles', lazy(() => import('./canon/AisleManagementPage.svelte'))],
-  ['/admin/canon', lazy(() => import('./canon/CanonListPage.svelte'))],
+  // The catalog (issue #872) — one list for canon items and their product forms,
+  // in place of the two it replaced. `/admin/canon` and `/admin/product-forms`
+  // survive as ALIASES so existing bookmarks still land somewhere correct: the
+  // page reads the path it was reached by to preset the filter and to know which
+  // collection a bare `:id` belongs to. One `catalogPage` wrapper serves all six
+  // entries, so moving between them never re-fetches the chunk.
+  ['/admin/catalog', catalogPage],
+  ['/admin/catalog/:id', catalogPage],
+  ['/admin/canon', catalogPage],
   ['/admin/canon/new', lazy(() => import('./canon/CanonCreatePage.svelte'))],
-  ['/admin/canon/:id', lazy(() => import('./canon/CanonDetailPage.svelte'))],
-  ['/admin/product-forms', lazy(() => import('./admin/ProductFormsPage.svelte'))],
+  ['/admin/canon/:id', catalogPage],
+  ['/admin/product-forms', catalogPage],
   ['/admin/product-forms/new', lazy(() => import('./admin/ProductFormEditPage.svelte'))],
-  ['/admin/product-forms/:id', lazy(() => import('./admin/ProductFormEditPage.svelte'))],
+  ['/admin/product-forms/:id', catalogPage],
   ['*', NotFound],
 ]);
 

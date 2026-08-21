@@ -42,7 +42,13 @@ const { mockCanonItems, mockAisles, mockProductForms, mockMembers, mockIsLoading
 
 // ─── Module mocks ──────────────────────────────────────────────────────────────
 
-vi.mock('svelte-spa-router', () => ({ push: vi.fn(), router: { querystring: '' } }));
+// The catalog reads the path it was reached by (issue #872): `/admin/canon/:id`
+// is an alias that namespaces its id as a canon record and returns you to
+// `/admin/canon` when the record goes.
+vi.mock('svelte-spa-router', () => ({
+  push: vi.fn(),
+  router: { location: '/admin/canon/oo1', querystring: '' },
+}));
 // Delete is deferred (#872): it only commits when the Undo toast LAPSES, via the
 // toast's own `onDismiss`. A bare vi.fn() would strand the commit, so lapse now.
 vi.mock('../src/lib/toastStore.js', () => ({
@@ -57,6 +63,8 @@ vi.mock('../src/lib/membersService.js', () => ({
 }));
 vi.mock('../src/lib/canonService.js', () => ({
   canonItems: mockCanonItems,
+  isLoadingAisles: mockIsLoading,
+  approveCanonItems: vi.fn().mockResolvedValue(undefined),
   updateCanonItemName: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   updateCanonItemAisle: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   updateCanonItemSynonyms: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
@@ -75,11 +83,13 @@ vi.mock('../src/lib/aisleService.js', () => ({
 }));
 vi.mock('../src/lib/productFormService.js', () => ({
   productForms: mockProductForms,
+  isLoadingProductForms: mockIsLoading,
   editProductForm: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
   confirmProductForm: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  deleteProductForm: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
 }));
 
-import CanonDetailPage from '../src/routes/canon/CanonDetailPage.svelte';
+import CatalogPage from '../src/routes/admin/CatalogPage.svelte';
 import { push } from 'svelte-spa-router';
 import { addToast } from '../src/lib/toastStore.js';
 import {
@@ -146,7 +156,7 @@ beforeEach(() => {
 // Helper: render with a known item in the store
 function setupWithItem(item = canonItem({ id: ITEM_ID, name: 'Olive Oil' })) {
   mockCanonItems._set([item]);
-  return render(CanonDetailPage, { params: { id: ITEM_ID } });
+  return render(CatalogPage, { params: { id: ITEM_ID } });
 }
 
 async function openNameEditor() {
@@ -156,12 +166,13 @@ async function openNameEditor() {
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
-describe('CanonDetailPage', () => {
-  describe('not-found state', () => {
-    it('renders a not-found message when item is absent from the store', () => {
+describe('the catalog record editor', () => {
+  describe('an id that no longer exists', () => {
+    it('falls back to the list rather than a dead end — the bookmark still lands somewhere', () => {
       mockCanonItems._set([]);
-      render(CanonDetailPage, { params: { id: 'missing' } });
-      expect(screen.getByText(/Item not found/i)).toBeInTheDocument();
+      render(CatalogPage, { params: { id: 'missing' } });
+      expect(screen.queryByTestId('canon-detail-synonyms-input')).toBeNull();
+      expect(screen.getByRole('heading', { name: /catalog/i })).toBeInTheDocument();
     });
   });
 
