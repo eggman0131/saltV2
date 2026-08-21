@@ -1,4 +1,4 @@
-// spec: SPEC.md §8.2 v0.2.3
+// spec: SPEC.md §8.2 v0.2.13
 import type { Snippet } from 'svelte';
 import type { HTMLInputAttributes } from 'svelte/elements';
 import type { TextFieldFrameVariants } from './TextField.variants';
@@ -25,6 +25,15 @@ export type TextFieldProps = {
   name?: string;
   id?: string;
   class?: string;
+  /**
+   * Merged last onto the FRAME (the bordered box around the input), where
+   * `class` lands on the outer stack that also holds the label, description and
+   * error. It exists so a surface can reach the element that paints the field —
+   * the value chip (ui-spec-v09 §8.27.5) is the only sanctioned use today, and
+   * anything that changes how a frame looks elsewhere earns a variant on
+   * `textFieldFrameVariants` instead.
+   */
+  frameClass?: string;
   leading?: Snippet;
   trailing?: Snippet;
   onValueChange?: (value: string) => void;

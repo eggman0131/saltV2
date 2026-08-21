@@ -947,6 +947,42 @@
   @apply focus-within:outline focus-within:outline-2 focus-within:outline-border focus-within:outline-offset-0;
 }
 
+/* ─ The value chip (§8.27) ──────────────────────────────────────────────────
+ * A pill worn BY a control — a SelectTrigger, a ComboboxInput, a TextField
+ * frame — so a decision can be read at a glance and changed where it sits.
+ *
+ * `@utility`, deliberately, and NOT a `.salt-chip--value` rule beside the chip
+ * block above: every control this is pasted onto already carries a
+ * `@layer components` base class (`.salt-trigger`, `.salt-input`) that sets the
+ * same height, radius, padding and text size. Two rules in one layer are
+ * decided by source order, and `.salt-trigger` happens to come later in this
+ * file. A utility sits in the utilities layer and wins wherever those base
+ * classes are written. §8.27.3.
+ *
+ * `.salt-chip`'s treatment is restated rather than composed, for that same
+ * reason, with two differences (§8.27.7): `text-foreground` because a value
+ * chip's label IS the answer, not a category name; and `h-auto` to defeat the
+ * `h-9`/`h-10` the base class sets, so the height comes from `py-1` and the
+ * pill matches the chips beside it.
+ *
+ * No width: the control keeps the `w-full` its base class gives it and the
+ * caller sizes the wrapper (§8.27.4). A `w-auto` here would collide with any
+ * width utility on the same element, and which utility wins is Tailwind's sort
+ * order rather than anything visible in the markup. */
+@utility salt-value-chip {
+  @apply h-auto rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-foreground transition-colors;
+  /* The focus ring is restated, not inherited from the base `:focus-visible`
+   * rule. `.salt-input--combobox` sets `outline-none` and leans on
+   * `ComboboxField`'s `focus-within` ring — and a value chip drops the field
+   * (§8.27.4), so without this a keyboard user tabbing onto the aisle chip
+   * would see nothing at all. Harmless on the other two wearers: it restates
+   * exactly what the base rule already gives them. */
+  @apply focus-visible:outline focus-visible:outline-2 focus-visible:outline-border focus-visible:outline-offset-0;
+  &:hover {
+    @apply bg-muted;
+  }
+}
+
 /* transition-duration is a NUMBER-only functional utility in v4 (`duration-<n>`),
  * so the named scale (was theme.extend.transitionDuration) does not generate
  * `duration-fast` etc. from a `--duration-*` theme var. Express it as static

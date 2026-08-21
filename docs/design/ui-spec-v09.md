@@ -1,7 +1,7 @@
-# Salt 2.0 — UI Primitives Specification (v0.9)
+# Salt 2.0 — UI Primitives Specification (v0.9.1)
 
 **Status:** Planning  
-**Scope:** `@salt/ui-components` — `Chip`, `ChipGroup`, `CollapsibleSection`, `DisclosureTrigger`, `DisclosureChevron`  
+**Scope:** `@salt/ui-components` — `Chip`, `ChipGroup`, `CollapsibleSection`, `DisclosureTrigger`, `DisclosureChevron`, the value-chip surface  
 **Audience:** AI code-generation agents + human contributors
 
 > Rule: If anything is missing or ambiguous → STOP → extend this spec → regenerate.  
@@ -21,6 +21,14 @@ v0.9 introduces:
 - **`CollapsibleSection`** — a titled section whose body collapses (§8.25)
 - **`DisclosureTrigger`** and **`DisclosureChevron`** — the button that carries `aria-expanded`, and the chevron that answers it (§8.26)
 
+v0.9.1 adds one thing that is **not** a promotion:
+
+- **the value chip** — `valueChipVariants()`, a pill *surface* worn by a `Select`,
+  `Combobox` or `TextField` so a decision can be read and changed in place
+  (§8.27). §8.23.2 left a hole here ("add it to this spec before writing it");
+  this is that amendment, and it carries a `frameClass` prop onto `TextField`
+  (v0.2 §8.2) and a radius amendment to v0.2 §2.3 with it.
+
 These are **promotions, not inventions**. Every behaviour below already ships in
 `apps/web-pwa`; v0.9 gives it a name so the next list gets it right by default
 instead of copying whichever hand-roll it happened to find. It changes the
@@ -32,7 +40,9 @@ anything at all — see §8.23.4.
 
 v0.9 changes the behaviour of no existing component. In particular it does
 **not** alter `EditableRow` (v0.4 §11) — §8.26.2 says why disclosure did not
-become a second axis on it.
+become a second axis on it. v0.9.1's one addition to an existing component is
+`TextField`'s `frameClass`, which changes nothing for a caller that does not
+pass it (§8.27.5).
 
 ---
 
@@ -58,7 +68,8 @@ Consumers today: the recipe list's section, authorship and tag filters.
 | A facet that is on or off, shown alongside its siblings | `Chip` |
 | Anything that navigates, submits, opens or destroys | `Button` |
 | A one-off toggle with no row of peers — "show weather on the planner" | `Switch` (v0.2 §8.19) |
-| A read-only badge that cannot be pressed | Neither. Nothing needs one yet; add it to this spec before writing it |
+| A **current value**, shown as a pill and changeable where it sits | Not a component at all — the value-chip **surface** (§8.27) |
+| A read-only badge that cannot be pressed or changed | Neither. Nothing needs one yet; add it to this spec before writing it |
 
 ## 8.23.3 Props
 
@@ -133,6 +144,10 @@ entirely in what the page does on click — see §8.24.2.
   announce "not pressed" for a control that can never be pressed.
 - The chip's label is its text content. It needs no `ariaLabel`, and a chip with
   no text is a spec violation rather than something to paper over with one.
+- The **value chip** (§8.27) renders no `aria-pressed` either, and for a
+  stronger reason than the expander's: it is a listbox trigger, a combobox or a
+  text input, none of which has a pressed state to report. Of the three pill
+  treatments in this spec, only `variant="filter"` is ever pressed.
 - Colour is never the only carrier of the pressed state — `aria-pressed` carries
   it independently, per v0.2 §7.
 
@@ -368,3 +383,200 @@ provider, a lifetime and a failure mode to save passing one prop.
 - **`DisclosureChevron` renders no button.** It is a glyph. Putting it inside
   something clickable is the caller's job, which is what lets it sit mid-sentence
   in a row's sub-label.
+
+---
+
+# 8.27 The value chip
+
+## 8.27.1 Overview
+
+A pill that shows a decision **and lets you change it where it sits**: which
+aisle an item belongs to, how it is shopped, the quantity that counts as a lot.
+It reads as a chip and it edits like a field.
+
+It is **not a component**. It is a *surface*: one class, `salt-value-chip`,
+produced by the exported `valueChipVariants()`, worn by the control that already
+owns the interaction — a `SelectTrigger`, a `ComboboxInput`, or a `TextField`'s
+frame.
+
+Consumers today: the catalog's review row (issue #872). Under the "Needs review"
+filter every row arrives open, and the three decisions the pipeline made are
+shown as value chips so a reviewer can correct one without leaving the list.
+
+## 8.27.2 Chip, Button, value chip, or a full field?
+
+Extends the table in §8.23.2.
+
+| Use | Component |
+| --- | --- |
+| A facet that is on or off, shown alongside its siblings | `Chip` (§8.23) |
+| Anything that navigates, submits, opens or destroys | `Button` |
+| A **current value** you can read at a glance and change in place, sitting inline in a sentence or a row of its peers | the value-chip **surface**, on the control that owns the interaction (§8.27.4) |
+| A value being set as part of a form, with a label, a description and room for an error | `TextField` / `Select` / `Combobox` as they come — no surface |
+| A read-only badge that cannot be changed at all | Still neither. A value chip is *editable*; nothing needs a dead pill yet, so add it to this spec before writing it |
+
+The line between the last two is about the reader's posture. A form field is
+something you fill in; a value chip is something already decided that you may
+disagree with. That is why it carries no label and no error slot: there is
+nothing to fill in, and a rejected edit is a `Failure` the page reports its own
+way.
+
+## 8.27.3 Why a surface, and not `Chip variant="value"`
+
+Three shapes were considered and two were rejected:
+
+1. **A `value` variant on `Chip`** — rejected. `Chip` renders its own
+   `<button type="button">`. A value chip must be the control that opens the
+   picker, so a `Chip` would have to *contain* a `SelectTrigger` (a button inside
+   a button) or sit next to one and be decorative. Worse, `Chip`'s prop type
+   would then offer `variant="value"` to callers with no picker behind it — a
+   pill that looks editable and is not.
+2. **Both a `Chip` variant and a surface class** — rejected outright. Two
+   mechanisms for one look is the drift §8.23.4 exists to end, one level up.
+3. **A surface class** — chosen. The pill is applied to whichever element
+   already paints the control's border, so the control keeps its own popover
+   wiring, focus management, keyboard handling and ARIA, and the surface only
+   changes how it looks.
+
+`chipVariants` is deliberately **not** widened and stays unexported. It emits
+`.salt-chip`, a `@layer components` rule, which loses the cascade to the
+components-layer base class of every control it would be pasted onto
+(`.salt-trigger`, `.salt-input`) purely on source order in `salt.css`.
+`salt-value-chip` is declared with `@utility` instead, so it lands in the
+utilities layer and beats those base classes wherever they happen to sit in the
+file. That is a real reason the surface is its own class rather than a member of
+the chip's `variant` axis, not a formatting preference.
+
+## 8.27.4 How it is worn
+
+The surface always goes on the element that paints the border, merged last via
+`cn()` (v0.2 §2.3) — every one of these controls already does that with its
+`class` prop.
+
+A `Select` — the trigger *is* the button, so the surface goes straight on it and
+the chevron stays inside the one hit target:
+
+```svelte
+<div class="w-28">
+  <Select value={behavior} onValueChange={save}>
+    <SelectTrigger class={valueChipVariants()} aria-label="How this is shopped">
+      {label}
+    </SelectTrigger>
+    <SelectContent>…</SelectContent>
+  </Select>
+</div>
+```
+
+A `Combobox` — the surface goes on `ComboboxInput`, and `ComboboxField` /
+`ComboboxTrigger` are **dropped**. `ComboboxInput` already registers itself as
+the popup's anchor when no field wraps it (v0.4 §5.1), and a chevron button
+inside a pill this size would be a second hit target inside a 26px control:
+
+```svelte
+<div class="w-40">
+  <Combobox items={aisleItems} value={aisleId} onValueChange={save} restrict>
+    <ComboboxInput class={valueChipVariants()} aria-label="Aisle" />
+    <ComboboxContent>…</ComboboxContent>
+  </Combobox>
+</div>
+```
+
+**The surface sets no width.** The controls keep the `w-full` their own base
+classes give them and the caller sizes the wrapper, exactly as the record
+editor's unit select already does. A `w-auto` inside the utility would collide
+with any width utility the caller passes on the same element, and which of two
+utilities wins is decided by Tailwind's internal sort order rather than by
+anything a reader of the markup can see.
+
+## 8.27.5 The threshold is an input, and that is the point
+
+The three decisions are not three pickers. Aisle is a searchable `Combobox`,
+behaviour is a three-option `Select`, and the threshold is **a number typed into
+a text input** beside a unit `Select`. An input can never be a `<button>`, so any
+"a chip is a button that opens something" formulation would have left the third
+decision uncovered. A class covers all three without a special case — this is the
+strongest single argument for the surface over a component.
+
+Reaching a `TextField`'s border needs one addition: `TextField` (v0.2 §8.2) gains
+a **`frameClass`** prop, merged last via `cn()` onto the frame `<div>`. Its
+`class` prop lands on the outer stack that holds label, frame, description and
+error — styling that stack pills the wrong element. This is the same shape of
+problem as `triggerTestId` in §8.25.5: the thing that needs naming is one level
+in from where `...rest` lands.
+
+`frameClass` exists for this one purpose and is not a general styling hatch.
+Anything that wants to change how a field frame *looks* outside this surface
+earns a variant on `textFieldFrameVariants`, not a class from the page.
+
+```svelte
+<TextField
+  class="w-20"
+  frameClass={valueChipVariants()}
+  inputmode="numeric"
+  aria-label="Quantity threshold"
+  value={draft}
+  onValueChange={(v) => (draft = v)}
+  onblur={save}
+/>
+```
+
+A value chip carries no visible label, so every one of these needs an
+`aria-label` — the field's own `label` prop would render text the pill has no
+room for.
+
+## 8.27.6 Accessibility
+
+- The value chip **never carries `aria-pressed`**, in any of its forms. It is
+  not a toggle and has no on/off state: it is a listbox trigger, a combobox, or
+  a text input, and each already announces itself correctly. Extending §8.23.6:
+  of the three pill treatments in this spec, only `Chip variant="filter"` is
+  ever pressed.
+- The control keeps every attribute it had unstyled — `aria-haspopup`,
+  `aria-expanded`, `aria-controls`, `role="combobox"`, `aria-invalid`. The
+  surface adds no ARIA of its own and removes none, which is exactly what it
+  buys by not being a component.
+- Because the pill shows no label, the accessible name comes from the caller's
+  `aria-label`. A value chip with no accessible name is a spec violation.
+- **The surface carries its own focus ring**, restating the base
+  `:focus-visible` rule rather than inheriting it. `.salt-input--combobox` sets
+  `outline-none` and leans on `ComboboxField`'s `focus-within` ring, and a value
+  chip drops the field (§8.27.4) — without the restatement a keyboard user
+  tabbing onto the aisle chip would see nothing. On the select trigger and the
+  text field it changes nothing: it is the ring they already had.
+- Colour is never the only carrier of state — there is no state to carry
+  (v0.2 §7).
+
+## 8.27.7 It is a pill, which amends v0.2 §2.3
+
+v0.2 §2.3 says field frames take the base `rounded` (4px) and forbids a fourth
+radius for those surfaces without amending the rule. **This amends it, for this
+surface only:** a value chip is `rounded-full`, because round-ended is what makes
+a control read as a chip rather than as a form field the page forgot to lay out.
+The radius is the whole message. Field frames everywhere else stay on `rounded`.
+
+The rest of the treatment is `.salt-chip`'s, restated rather than inherited (see
+§8.27.3 for why it cannot be inherited): `px-3 py-1 text-xs font-medium`, a
+one-pixel `border-border`, `bg-background`, `hover:bg-muted`. Two deliberate
+differences from `Chip`:
+
+- `text-foreground`, not `text-muted-foreground`. A filter chip's label is a
+  category name; a value chip's label is *the answer*, and the answer is not
+  secondary text.
+- `h-auto`, defeating the `h-9` / `h-10` its base class sets, so the pill's
+  height comes from `py-1` and it matches the chips around it.
+
+## 8.27.8 What the value chip does not do
+
+- **No pressed, hidden, loading or error treatment.** A rejected write is
+  reported by the page (Rule 10 gives it a `Failure`, not an exception); a pill
+  that could turn red would be a second, quieter error channel next to the one
+  the page already has.
+- **No sizes.** One size, for the reason §8.23.4 gives: the row it sits in is a
+  row of chips, and a second size re-opens the drift.
+- **No component, no wrapper, no `ValueChip.svelte`.** If a future consumer finds
+  itself repeating a *composition* (say, the number-plus-unit pair below), that
+  composition earns a component and this surface stays what it is.
+- **No layout.** `ChipGroup` (§8.24) is for a row of `Chip`s; a row of value
+  chips is `flex flex-wrap items-center gap-2` owned by the page, because the
+  page is also deciding widths (§8.27.4) and interleaving units with their
+  amounts.

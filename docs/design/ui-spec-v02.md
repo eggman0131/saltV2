@@ -1231,6 +1231,14 @@ Single-line text input with label + description + error.
 | `name`         | `string \| undefined`                                           | —                                  |
 | `id`           | `string`                                                        | generated via `useId('textfield')` |
 | `class`        | `string \| undefined`                                           | —                                  |
+| `frameClass`   | `string \| undefined`                                           | —                                  |
+
+`class` lands on the outer stack (label + frame + description + error);
+`frameClass` lands on the frame itself, merged last via `cn()`. It exists so a
+*surface* can reach the element that paints the field — the value chip
+(v0.9 §8.27.5) is the only sanctioned use. It is not a general styling hatch:
+anything that changes how a frame looks elsewhere earns a variant on
+`textFieldFrameVariants`.
 
 ### Snippets
 

@@ -43,6 +43,8 @@ export {
   findExactCanonMatch,
   matchOrCreate,
   matchOrCreateBatch,
+  ARBITRATION_FAILED_REASONING,
+  ARBITRATION_NO_MATCH_REASONING,
   appendCanonSynonym,
   recordPendingCanonChange,
   describePendingCanonChange,

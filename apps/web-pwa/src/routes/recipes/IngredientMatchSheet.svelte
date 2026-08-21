@@ -226,16 +226,12 @@
             Match again
           </Button>
           {#if isAdmin && canon}
-            <Button size="sm" variant="outline" onclick={() => go(`/admin/canon/${canon.id}`)}>
+            <Button size="sm" variant="outline" onclick={() => go(`/admin/catalog/c:${canon.id}`)}>
               {#snippet leading()}<Icon name="ExternalLink" size={14} />{/snippet}
               Open canon item
             </Button>
             {#if form}
-              <Button
-                size="sm"
-                variant="outline"
-                onclick={() => go(`/admin/product-forms/${form.id}`)}
-              >
+              <Button size="sm" variant="outline" onclick={() => go(`/admin/catalog/f:${form.id}`)}>
                 {#snippet leading()}<Icon name="ExternalLink" size={14} />{/snippet}
                 Open product form
               </Button>

@@ -92,6 +92,11 @@ export { default as TooltipContent } from './primitives/Tooltip/TooltipContent.s
 export { default as TooltipProvider } from './primitives/Tooltip/TooltipProvider.svelte';
 export { default as TooltipTrigger } from './primitives/Tooltip/TooltipTrigger.svelte';
 
+// The value-chip surface (ui-spec-v09 §8.27). Exported as a class factory, not
+// a component: it is worn BY a SelectTrigger / ComboboxInput / TextField frame,
+// each of which already owns the interaction it needs.
+export { valueChipVariants } from './primitives/Chip/Chip.variants';
+
 // Helpers (re-exported from ./lib)
 export { cn } from './lib/cn';
 export { useId } from './lib/useId';

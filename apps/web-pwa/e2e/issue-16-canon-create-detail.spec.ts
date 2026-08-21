@@ -3,6 +3,13 @@ import { signIn, uniqueEmail } from './helpers/auth';
 import { seedAislesBeforeBoot, seedCanonItem, getCanonItem } from './helpers/seed';
 import { canonCreatePage, canonDetailPage } from './helpers/locators';
 
+// `/admin/canon` and `/admin/canon/:id` are ALIASES onto the catalog (issue #872):
+// the same record editor, reached by the paths existing bookmarks already hold.
+// The navigations below are unchanged on purpose — they are what the aliases are
+// for. Which SHAPE the editor takes depends on the viewport: its own page on the
+// phone projects, a pane beside the list from `split:` up. Both carry the same
+// testids, so these locators serve either.
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Type a name into the combobox and submit it as a new item. */
@@ -14,7 +21,7 @@ async function createViaCombobox(page: import('@playwright/test').Page, name: st
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
-test('create truly new item → navigates to detail page', async ({ page }, testInfo) => {
+test('create truly new item → navigates to the record editor', async ({ page }, testInfo) => {
   const email = uniqueEmail(testInfo.testId);
   await page.goto('/');
   await signIn(page, email, { admin: true });
@@ -24,7 +31,7 @@ test('create truly new item → navigates to detail page', async ({ page }, test
 
   await createViaCombobox(page, 'Garlic Powder');
 
-  // Should navigate away from /admin/canon/new to a detail page
+  // Should navigate away from /admin/canon/new to the record it just created
   await expect(page).toHaveURL(/#\/admin\/canon\/(?!new)[a-z0-9-]+$/);
   await expect(page.getByRole('heading', { name: /garlic powder/i })).toBeVisible();
 });
@@ -45,7 +52,7 @@ test('pick existing from combobox → routes to detail without creating', async 
   await ui.comboboxInput.fill('Olive');
   await page.getByRole('option', { name: 'Olive Oil' }).click();
 
-  // Navigates to the existing item's detail page, not a new one
+  // Navigates to the existing item, not a new one
   await expect(page).toHaveURL(new RegExp(`#/admin/canon/${seeded.id}$`));
   // No new item should have been created
   const fetched = await getCanonItem(page, seeded.id);
@@ -69,7 +76,7 @@ test('create matching name → routes straight to existing item', async ({ page 
   await expect(page).toHaveURL(new RegExp(`#/admin/canon/${seeded.id}$`));
 });
 
-test('detail page — rename item', async ({ page }, testInfo) => {
+test('record editor — rename item', async ({ page }, testInfo) => {
   const email = uniqueEmail(testInfo.testId);
   await page.goto('/');
   await signIn(page, email, { admin: true });
@@ -92,7 +99,7 @@ test('detail page — rename item', async ({ page }, testInfo) => {
     .toBe('Whole Milk');
 });
 
-test('detail page — edit synonyms', async ({ page }, testInfo) => {
+test('record editor — edit synonyms', async ({ page }, testInfo) => {
   const email = uniqueEmail(testInfo.testId);
   await page.goto('/');
   await signIn(page, email, { admin: true });
@@ -114,7 +121,7 @@ test('detail page — edit synonyms', async ({ page }, testInfo) => {
     .toEqual(['Cilantro', 'Chinese parsley']);
 });
 
-test('detail page — change aisle', async ({ page }, testInfo) => {
+test('record editor — change aisle', async ({ page }, testInfo) => {
   const email = uniqueEmail(testInfo.testId);
 
   // Before `page.goto` — the aisles document must exist before the app attaches
@@ -140,7 +147,7 @@ test('detail page — change aisle', async ({ page }, testInfo) => {
     .toBe(aisle!.id);
 });
 
-test('detail page — delete item navigates back to canon list', async ({ page }, testInfo) => {
+test('record editor — delete item navigates back to the list', async ({ page }, testInfo) => {
   const email = uniqueEmail(testInfo.testId);
   await page.goto('/');
   await signIn(page, email, { admin: true });
@@ -150,11 +157,14 @@ test('detail page — delete item navigates back to canon list', async ({ page }
   await page.goto(`/#/admin/canon/${seeded.id}`);
   const ui = canonDetailPage(page);
   await ui.deleteButton.click();
-  await expect(ui.deleteDialog).toBeVisible();
-  await ui.deleteConfirm.click();
 
+  // No confirm dialog (#872): the delete is deferred behind an Undo snackbar and
+  // the page returns to the list straight away. Nothing is written until the
+  // toast lapses, so the item is still there while Undo is on offer.
+  await expect(ui.deleteUndo).toBeVisible();
   await expect(page).toHaveURL(/#\/admin\/canon$/);
 
-  const deleted = await getCanonItem(page, seeded.id);
-  expect(deleted).toBeNull();
+  // Let the snackbar lapse — that is what commits the delete.
+  await expect(ui.deleteUndo).toHaveCount(0);
+  await expect.poll(async () => await getCanonItem(page, seeded.id)).toBeNull();
 });

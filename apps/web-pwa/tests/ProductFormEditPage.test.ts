@@ -1,38 +1,52 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, screen, cleanup, waitFor } from '@testing-library/svelte';
-import userEvent from '@testing-library/user-event';
+import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/svelte';
 import type { Member, ProductForm } from '@salt/domain';
 
-const { mockProductForms, mockCanonItems, mockMembers, mockIsLoadingMembers, mockAuth } =
-  vi.hoisted(() => {
-    function makeStore<T>(initial: T) {
-      let value = initial;
-      const subs = new Set<(v: T) => void>();
-      return {
-        subscribe(fn: (v: T) => void) {
-          subs.add(fn);
-          fn(value);
-          return () => {
-            subs.delete(fn);
-          };
-        },
-        _set(v: T) {
-          value = v;
-          subs.forEach((fn) => fn(v));
-        },
-      };
-    }
+const {
+  mockProductForms,
+  mockCanonItems,
+  mockMembers,
+  mockIsLoadingMembers,
+  mockAuth,
+  mockRouter,
+} = vi.hoisted(() => {
+  function makeStore<T>(initial: T) {
+    let value = initial;
+    const subs = new Set<(v: T) => void>();
     return {
-      mockProductForms: makeStore<ProductForm[]>([]),
-      mockCanonItems: makeStore<{ id: string; name: string; needs_approval?: boolean }[]>([]),
-      mockMembers: makeStore<Member[]>([]),
-      mockIsLoadingMembers: makeStore<boolean>(false),
-      mockAuth: { user: { email: 'admin@e.org' } as { email: string } | null },
+      subscribe(fn: (v: T) => void) {
+        subs.add(fn);
+        fn(value);
+        return () => {
+          subs.delete(fn);
+        };
+      },
+      _set(v: T) {
+        value = v;
+        subs.forEach((fn) => fn(v));
+      },
     };
-  });
+  }
+  return {
+    mockProductForms: makeStore<ProductForm[]>([]),
+    mockCanonItems: makeStore<{ id: string; name: string; needs_approval?: boolean }[]>([]),
+    mockMembers: makeStore<Member[]>([]),
+    mockIsLoadingMembers: makeStore<boolean>(false),
+    mockAuth: { user: { email: 'admin@e.org' } as { email: string } | null },
+    // svelte-spa-router's `router` is a rune-backed state object; the page reads
+    // `router.querystring` to seed `?parent=` on the create path (#872).
+    mockRouter: { querystring: '' as string | undefined },
+  };
+});
 
-vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
-vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
+vi.mock('svelte-spa-router', () => ({ push: vi.fn(), router: mockRouter }));
+// Delete is deferred (#872) and only commits when the Undo toast LAPSES, via the
+// toast's own `onDismiss`. A bare vi.fn() would strand the commit — lapse now.
+vi.mock('../src/lib/toastStore.js', () => ({
+  addToast: vi.fn((_msg: string, _variant?: string, opts?: { onDismiss?: () => void }) => {
+    opts?.onDismiss?.();
+  }),
+}));
 vi.mock('../src/lib/auth.svelte.js', () => ({ auth: mockAuth }));
 vi.mock('../src/lib/membersService.js', () => ({
   members: mockMembers,
@@ -41,15 +55,11 @@ vi.mock('../src/lib/membersService.js', () => ({
 vi.mock('../src/lib/canonService.js', () => ({ canonItems: mockCanonItems }));
 vi.mock('../src/lib/productFormService.js', () => ({
   productForms: mockProductForms,
-  addProductForm: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
-  editProductForm: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
-  confirmProductForm: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
-  deleteProductForm: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  addProductForm: vi.fn().mockResolvedValue({ kind: 'ok', value: { id: 'form-new' } }),
 }));
 
 import ProductFormEditPage from '../src/routes/admin/ProductFormEditPage.svelte';
-import { push } from 'svelte-spa-router';
-import { deleteProductForm } from '../src/lib/productFormService.js';
+import { addProductForm } from '../src/lib/productFormService.js';
 
 const ADMIN: Member = {
   schemaVersion: 1,
@@ -62,26 +72,19 @@ const ADMIN: Member = {
   updatedAt: '2026-07-17T00:00:00.000Z',
 };
 
-const LIME_ZEST: ProductForm = {
-  schemaVersion: 1,
-  id: 'form-1',
-  matchers: ['lime zest'],
-  parentCanonId: 'canon-lime',
-  label: 'Lime zest',
-  yield: { formUnit: 'g', amountPerParent: 5 },
-  needs_approval: false,
-  updatedAt: '2026-07-17T00:00:00.000Z',
-};
-
 afterEach(() => {
   cleanup();
   document.body.innerHTML = '';
+  document.body.style.pointerEvents = '';
   mockProductForms._set([]);
   mockCanonItems._set([]);
+  mockRouter.querystring = '';
   vi.clearAllMocks();
 });
 
-describe('ProductFormEditPage', () => {
+// Editing a form moved into the catalog (issue #872); this page CREATES and
+// nothing else. Its edit coverage lives in CatalogPage.form.test.ts.
+describe('ProductFormEditPage — create', () => {
   it('renders the add form when the router passes no params', async () => {
     // The /admin/product-forms/new route is STATIC, so svelte-spa-router mounts this
     // page with NO `params` prop at all. Dereferencing `params.id` here used to throw
@@ -98,50 +101,56 @@ describe('ProductFormEditPage', () => {
     expect(screen.queryByTestId('product-form-delete-button')).toBeNull();
   });
 
-  it('renders the edit form when the router passes an id param', async () => {
+  // Creating is a consequence, so it keeps an explicit button — there is no
+  // record to autosave into (#872, D2).
+  it('keeps an explicit create action and writes only when it is pressed', async () => {
     mockMembers._set([ADMIN]);
     mockCanonItems._set([{ id: 'canon-lime', name: 'Lime' }]);
-    mockProductForms._set([LIME_ZEST]);
 
-    render(ProductFormEditPage, { props: { params: { id: 'form-1' } } });
+    render(ProductFormEditPage);
+
+    const labelInput = await screen.findByTestId('product-form-label-input');
+    await fireEvent.input(labelInput, { target: { value: 'Lime juice' } });
+    await fireEvent.blur(labelInput);
+    expect(vi.mocked(addProductForm)).not.toHaveBeenCalled();
+
+    await fireEvent.input(screen.getByTestId('product-form-matchers-input'), {
+      target: { value: 'lime juice' },
+    });
+    await fireEvent.input(screen.getByTestId('product-form-amount-input'), {
+      target: { value: '30' },
+    });
+    await fireEvent.click(screen.getByTestId('product-form-save-button'));
 
     await waitFor(() => {
-      expect(screen.getByTestId('product-form-delete-button')).toBeTruthy();
+      expect(vi.mocked(addProductForm)).toHaveBeenCalledWith(
+        expect.objectContaining({ label: 'Lime juice', matchers: ['lime juice'] }),
+      );
     });
   });
 
-  it('reports a missing form rather than crashing on an unknown id', async () => {
-    mockMembers._set([ADMIN]);
-
-    render(ProductFormEditPage, { props: { params: { id: 'nope' } } });
-
-    await waitFor(() => {
-      expect(screen.getByText('Form not found.')).toBeTruthy();
-    });
-  });
-
-  it('returns to the list after delete, even though the form leaves the store first', async () => {
-    // The live subscription drops the deleted doc as the delete resolves, so
-    // `existing` derives to null mid-flight. Reading `existing.label` after the
-    // await then threw and skipped the push(), stranding the user on this page's
-    // own "Form not found." branch. Mimic that store update here.
+  it('seeds the parent from ?parent= so "Add form" on a canon item lands pre-filled', async () => {
     mockMembers._set([ADMIN]);
     mockCanonItems._set([{ id: 'canon-lime', name: 'Lime' }]);
-    mockProductForms._set([LIME_ZEST]);
+    mockRouter.querystring = 'parent=canon-lime';
 
-    vi.mocked(deleteProductForm).mockImplementation(async () => {
-      mockProductForms._set([]);
-      return { kind: 'ok', value: undefined };
+    render(ProductFormEditPage);
+
+    await fireEvent.input(await screen.findByTestId('product-form-label-input'), {
+      target: { value: 'Lime juice' },
     });
-
-    render(ProductFormEditPage, { props: { params: { id: 'form-1' } } });
-
-    const user = userEvent.setup();
-    await user.click(await screen.findByTestId('product-form-delete-button'));
-    await user.click(await screen.findByTestId('product-form-delete-confirm'));
+    await fireEvent.input(screen.getByTestId('product-form-matchers-input'), {
+      target: { value: 'lime juice' },
+    });
+    await fireEvent.input(screen.getByTestId('product-form-amount-input'), {
+      target: { value: '30' },
+    });
+    await fireEvent.click(screen.getByTestId('product-form-save-button'));
 
     await waitFor(() => {
-      expect(vi.mocked(push)).toHaveBeenCalledWith('/admin/product-forms');
+      expect(vi.mocked(addProductForm)).toHaveBeenCalledWith(
+        expect.objectContaining({ parentCanonId: 'canon-lime' }),
+      );
     });
   });
 });
