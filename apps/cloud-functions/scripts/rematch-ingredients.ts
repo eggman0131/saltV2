@@ -275,7 +275,7 @@ function describeQuantity(quantity: unknown): string {
   const q = quantity as Record<string, unknown>;
   if (q['type'] === 'single') return String(q['value']);
   if (q['type'] === 'range') return `${String(q['min'])}–${String(q['max'])}`;
-  if (q['type'] === 'fraction')
+  if (q['type'] === 'mixed')
     return `${String(q['whole'])} ${String(q['numerator'])}/${String(q['denominator'])}`;
   return '?';
 }
