@@ -1,6 +1,8 @@
 <script lang="ts">
   import {
     Button,
+    Chip,
+    ChipGroup,
     ListPage,
     Icon,
     Popover,
@@ -470,51 +472,40 @@
          and SEE that there is nothing there yet, otherwise the only signal that
          the section exists is a New-menu entry — and Meals has no New-menu entry
          at all, so its chip is the only thing that says the shelf is there.
-         Hand-rolled in the same idiom as the tag chips below (there is no chip
-         primitive in @salt/ui-components), adapted to single-select — exactly one
-         is pressed at all times. Collapsed to the primary sections by default and
-         expanded by the same "+N more" chip the tags use. -->
-    <div
-      class="mb-3 flex flex-wrap gap-1.5"
-      role="group"
-      aria-label="Section"
-      data-testid="recipe-kind-filters"
-    >
+         The same `Chip` the tags and authorship rows use (ui-spec-v09 §8.23),
+         adapted to single-select — exactly one is pressed at all times, which is
+         a property of what this row's click does, not of the chip (§8.24.2).
+         Collapsed to the primary sections by default and expanded by the same
+         "+N more" expander the tags use. -->
+    <ChipGroup class="mb-3" ariaLabel="Section" data-testid="recipe-kind-filters">
       {#each shownSections as section (section)}
-        {@const active = section === sectionFilter}
-        <button
-          type="button"
-          class="rounded-full border px-3 py-1 text-xs font-medium transition-colors {active
-            ? 'border-primary bg-primary text-primary-foreground'
-            : 'border-border bg-background text-muted-foreground hover:bg-muted'}"
-          aria-pressed={active}
+        <Chip
+          pressed={section === sectionFilter}
           onclick={() => selectSection(section)}
           data-testid="recipe-kind-filter"
           data-kind={section}
         >
           {SECTION_COPY[section].label}
-        </button>
+        </Chip>
       {/each}
       {#if hiddenSectionCount > 0}
-        <button
-          type="button"
-          class="rounded-full border border-dashed border-border px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted"
+        <Chip
+          variant="expander"
           onclick={() => (showAllSections = true)}
           data-testid="recipe-kind-show-all"
         >
           +{hiddenSectionCount} more
-        </button>
+        </Chip>
       {:else if showAllSections}
-        <button
-          type="button"
-          class="rounded-full border border-dashed border-border px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted"
+        <Chip
+          variant="expander"
           onclick={() => (showAllSections = false)}
           data-testid="recipe-kind-show-less"
         >
           Show less
-        </button>
+        </Chip>
       {/if}
-    </div>
+    </ChipGroup>
 
     <!-- Search + sort toolbar: search fills the row, sort collapses to an icon -->
     <div class="mb-3 flex items-center gap-2">
@@ -575,78 +566,63 @@
          ten chips plus an expander. Rendered only when the library holds more
          than one name; with one author it could only ever answer "everything". -->
     {#if showAuthorFilters}
-      <div
-        class="mb-3 flex flex-wrap gap-1.5"
-        role="group"
-        aria-label="Authorship"
-        data-testid="recipe-author-filters"
-      >
-        <button
-          type="button"
-          class="rounded-full border px-2.5 py-1 text-xs transition-colors {addedByMe
-            ? 'border-primary bg-primary text-primary-foreground'
-            : 'border-border bg-background text-muted-foreground hover:bg-muted'}"
-          aria-pressed={addedByMe}
+      <ChipGroup class="mb-3" ariaLabel="Authorship" data-testid="recipe-author-filters">
+        <Chip
+          pressed={addedByMe}
           onclick={() => (addedByMe = !addedByMe)}
           data-testid="recipe-author-filter"
           data-author="added"
         >
           Added by me
-        </button>
-        <button
-          type="button"
-          class="rounded-full border px-2.5 py-1 text-xs transition-colors {editedByMe
-            ? 'border-primary bg-primary text-primary-foreground'
-            : 'border-border bg-background text-muted-foreground hover:bg-muted'}"
-          aria-pressed={editedByMe}
+        </Chip>
+        <Chip
+          pressed={editedByMe}
           onclick={() => (editedByMe = !editedByMe)}
           data-testid="recipe-author-filter"
           data-author="edited"
         >
           Edited by me
-        </button>
-      </div>
+        </Chip>
+      </ChipGroup>
     {/if}
 
     <!-- Tag filter chips — the current view's tags, ranked by usage: top 10 by
          default, expandable via a "+N more" chip. -->
     {#if rankedTags.length > 0}
-      <div class="mb-3 flex flex-wrap gap-1.5" data-testid="recipe-tag-filters">
+      <!-- Deliberately unnamed: this row ships today with no `role` and no
+           accessible name, unlike the two above it. ui-spec-v09 §8.24.4 records
+           that gap and preserves it — naming it here would be an accessibility
+           change inside a refactor whose acceptance criterion is that nothing
+           changes. -->
+      <ChipGroup class="mb-3" data-testid="recipe-tag-filters">
         {#each shownTags as tag (tag)}
-          {@const active = activeTags.includes(tag)}
-          <button
-            type="button"
-            class="rounded-full border px-2.5 py-1 text-xs transition-colors {active
-              ? 'border-primary bg-primary text-primary-foreground'
-              : 'border-border bg-background text-muted-foreground hover:bg-muted'}"
-            aria-pressed={active}
+          <Chip
+            pressed={activeTags.includes(tag)}
             onclick={() => toggleTag(tag)}
             data-testid="recipe-tag-filter"
             data-tag={tag}
           >
             #{tag}
-          </button>
+          </Chip>
         {/each}
         {#if hiddenTagCount > 0}
-          <button
-            type="button"
-            class="rounded-full border border-dashed border-border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted"
+          <Chip
+            variant="expander"
             onclick={() => (showAllTags = true)}
             data-testid="recipe-tag-show-all"
           >
             +{hiddenTagCount} more
-          </button>
+          </Chip>
         {:else if showAllTags && rankedTags.length > TAG_LIMIT}
-          <button
-            type="button"
-            class="rounded-full border border-dashed border-border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted"
+          <Chip
+            variant="expander"
             onclick={() => (showAllTags = false)}
             data-testid="recipe-tag-show-less"
           >
             Show less
-          </button>
+          </Chip>
         {/if}
-      </div>
+      </ChipGroup>
     {/if}
 
     <!-- Result count -->

@@ -21,6 +21,9 @@ export { default as CardFooter } from './primitives/Card/CardFooter.svelte';
 export { default as CardHeader } from './primitives/Card/CardHeader.svelte';
 export { default as CardTitle } from './primitives/Card/CardTitle.svelte';
 export { default as Checkbox } from './primitives/Checkbox/Checkbox.svelte';
+export { default as Chip } from './primitives/Chip/Chip.svelte';
+export { default as ChipGroup } from './primitives/Chip/ChipGroup.svelte';
+export { default as CollapsibleSection } from './primitives/CollapsibleSection/CollapsibleSection.svelte';
 export { default as Dial } from './primitives/Dial/Dial.svelte';
 export { default as Dialog } from './primitives/Dialog/Dialog.svelte';
 export { default as DialogClose } from './primitives/Dialog/DialogClose.svelte';
@@ -30,6 +33,8 @@ export { default as DialogFooter } from './primitives/Dialog/DialogFooter.svelte
 export { default as DialogHeader } from './primitives/Dialog/DialogHeader.svelte';
 export { default as DialogTitle } from './primitives/Dialog/DialogTitle.svelte';
 export { default as DialogTrigger } from './primitives/Dialog/DialogTrigger.svelte';
+export { default as DisclosureChevron } from './primitives/Disclosure/DisclosureChevron.svelte';
+export { default as DisclosureTrigger } from './primitives/Disclosure/DisclosureTrigger.svelte';
 export { default as Divider } from './primitives/Divider/Divider.svelte';
 export { default as EditableRow } from './primitives/EditableRow/EditableRow.svelte';
 export { default as EmptyState } from './primitives/EmptyState/EmptyState.svelte';
@@ -120,12 +125,18 @@ export type {
   CardTitleProps,
 } from './primitives/Card/Card.types';
 export type { CheckboxProps, CheckedState } from './primitives/Checkbox/Checkbox.types';
+export type { ChipProps, ChipGroupProps } from './primitives/Chip/Chip.types';
+export type { CollapsibleSectionProps } from './primitives/CollapsibleSection/CollapsibleSection.types';
 export type { DialProps } from './primitives/Dial/Dial.types';
 export type {
   DialogProps,
   DialogContentProps,
   DialogPartProps,
 } from './primitives/Dialog/Dialog.types';
+export type {
+  DisclosureTriggerProps,
+  DisclosureChevronProps,
+} from './primitives/Disclosure/Disclosure.types';
 export type { DividerProps } from './primitives/Divider/Divider.types';
 export type { EditableRowProps } from './primitives/EditableRow/EditableRow.types';
 export type { EmptyStateProps } from './primitives/EmptyState/EmptyState.types';

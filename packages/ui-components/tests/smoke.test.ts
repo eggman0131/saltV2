@@ -96,6 +96,18 @@ describe('@salt/ui-components', () => {
     });
   });
 
+  describe('v0.9 exports', () => {
+    it('exports Chip and ChipGroup', () => {
+      expect(pkg.Chip).toBeDefined();
+      expect(pkg.ChipGroup).toBeDefined();
+    });
+    it('exports CollapsibleSection', () => expect(pkg.CollapsibleSection).toBeDefined());
+    it('exports the Disclosure pieces', () => {
+      expect(pkg.DisclosureTrigger).toBeDefined();
+      expect(pkg.DisclosureChevron).toBeDefined();
+    });
+  });
+
   describe('helpers and tokens', () => {
     it('exports cn helper', () => expect(pkg.cn).toBeDefined());
     it('exports useId helper', () => expect(pkg.useId).toBeDefined());

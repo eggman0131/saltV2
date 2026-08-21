@@ -9,6 +9,9 @@
     ComboboxField,
     ComboboxInput,
     ComboboxItem,
+    CollapsibleSection,
+    DisclosureChevron,
+    DisclosureTrigger,
     Icon,
     ListPage,
     SelectAllCheckbox,
@@ -1034,135 +1037,115 @@
           <!-- Aisle groups -->
           {#each grouped.aisles as aisleGroup (aisleGroup.aisleId)}
             {@const aisleCollapsed = collapsedAisles.has(aisleGroup.aisleId)}
-            <section
-              class="flex flex-col gap-1"
+            <CollapsibleSection
+              title={aisleGroup.aisleName}
+              expanded={!aisleCollapsed}
+              onToggle={() => toggleAisle(aisleGroup.aisleId)}
+              collapsedCount={aisleGroup.rows.length}
+              triggerTestId="shopping-aisle-toggle"
               data-testid="shopping-aisle-group"
               data-aisle-id={aisleGroup.aisleId}
             >
-              <button
-                type="button"
-                class="flex items-center gap-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1 hover:text-foreground"
-                onclick={() => toggleAisle(aisleGroup.aisleId)}
-                aria-expanded={!aisleCollapsed}
-                data-testid="shopping-aisle-toggle"
-              >
-                <Icon name={aisleCollapsed ? 'ChevronRight' : 'ChevronDown'} size={14} />
-                {aisleGroup.aisleName}
-                {#if aisleCollapsed}
-                  <span class="normal-case text-muted-foreground/70"
-                    >({aisleGroup.rows.length})</span
-                  >
-                {/if}
-              </button>
-
-              {#if !aisleCollapsed}
-                {#each aisleGroup.rows as row (row.key)}
-                  {@const amountStr = formatSubtotals(row.subtotals)}
-                  {#if row.combined}
-                    {@const expanded = expandedRows.has(row.key)}
-                    {@const count = countSubtotal(row)}
-                    <!-- A combined row celebrates as ONE unit — which is how it
+              {#each aisleGroup.rows as row (row.key)}
+                {@const amountStr = formatSubtotals(row.subtotals)}
+                {#if row.combined}
+                  {@const expanded = expandedRows.has(row.key)}
+                  {@const count = countSubtotal(row)}
+                  <!-- A combined row celebrates as ONE unit — which is how it
                          already behaves — so the whole aggregate is exiting once
                          any contributor is held. Same shell and same button as
                          ShoppingItemRow; only the row's own content differs. -->
-                    {@const rowExiting = row.contributors.some((c) => checkOffHold.isExiting(c.id))}
-                    <div
-                      class="salt-row-collapse motion-reduce:transition-none {rowExiting
-                        ? 'salt-row-collapse-out'
-                        : ''}"
-                    >
-                      <div class="min-h-0 overflow-hidden">
-                        <div
-                          class="flex items-center gap-3 rounded border px-3 py-2 text-sm transition-colors duration-base ease-standard motion-reduce:transition-none {rowExiting
-                            ? 'border-secondary/40 bg-secondary-container/50'
-                            : row.needsCheck
-                              ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/20'
-                              : 'border-border bg-card'}"
-                          data-testid="shopping-item-row"
-                          data-combined="true"
-                          data-canon-id={row.canonId}
-                        >
-                          <!-- A combined row always stands for a matched canon, so its
+                  {@const rowExiting = row.contributors.some((c) => checkOffHold.isExiting(c.id))}
+                  <div
+                    class="salt-row-collapse motion-reduce:transition-none {rowExiting
+                      ? 'salt-row-collapse-out'
+                      : ''}"
+                  >
+                    <div class="min-h-0 overflow-hidden">
+                      <div
+                        class="flex items-center gap-3 rounded border px-3 py-2 text-sm transition-colors duration-base ease-standard motion-reduce:transition-none {rowExiting
+                          ? 'border-secondary/40 bg-secondary-container/50'
+                          : row.needsCheck
+                            ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/20'
+                            : 'border-border bg-card'}"
+                        data-testid="shopping-item-row"
+                        data-combined="true"
+                        data-canon-id={row.canonId}
+                      >
+                        <!-- A combined row always stands for a matched canon, so its
                                bare tile reads sage too (matched); it is never itself a
                                reveal target, so no shimmer. -->
-                          <CanonIcon
-                            thumbnail={thumbnailFor(row.canonId)}
-                            name={rowLabel(row)}
-                            size={40}
-                            version={iconVersionFor(row.canonId)}
-                            matched={true}
-                          />
-                          <button
-                            type="button"
-                            class="flex-1 min-w-0 text-left"
-                            onclick={() => toggleRow(row.key)}
-                            aria-expanded={expanded}
-                            data-testid="shopping-combined-toggle"
-                          >
-                            {#if count}
-                              <span class="block truncate">
-                                {rowLabel(row)}{' '}<span class="text-muted-foreground"
-                                  >×{count.amount}</span
-                                >
-                              </span>
-                              <span
-                                class="flex items-center gap-1 text-xs text-muted-foreground/70 truncate"
+                        <CanonIcon
+                          thumbnail={thumbnailFor(row.canonId)}
+                          name={rowLabel(row)}
+                          size={40}
+                          version={iconVersionFor(row.canonId)}
+                          matched={true}
+                        />
+                        <DisclosureTrigger
+                          {expanded}
+                          class="flex-1 min-w-0 text-left"
+                          onclick={() => toggleRow(row.key)}
+                          data-testid="shopping-combined-toggle"
+                        >
+                          {#if count}
+                            <span class="block truncate">
+                              {rowLabel(row)}{' '}<span class="text-muted-foreground"
+                                >×{count.amount}</span
                               >
-                                <Icon name={expanded ? 'ChevronDown' : 'ChevronRight'} size={12} />
-                                {formWordings(row)}
-                              </span>
-                            {:else}
-                              <span class="block truncate">
-                                {rowLabel(row)}{#if amountStr}{' '}<span
-                                    class="text-muted-foreground">({amountStr})</span
-                                  >{/if}
-                              </span>
-                              <span
-                                class="flex items-center gap-1 text-xs text-muted-foreground/70"
-                              >
-                                <Icon name={expanded ? 'ChevronDown' : 'ChevronRight'} size={12} />
-                                {row.contributors.length} recipes
-                              </span>
-                            {/if}
-                          </button>
-                          {#if row.needsCheck && !rowExiting}
-                            {@render verifyControls(flaggedIds(row))}
+                            </span>
+                            <span
+                              class="flex items-center gap-1 text-xs text-muted-foreground/70 truncate"
+                            >
+                              <DisclosureChevron {expanded} size={12} />
+                              {formWordings(row)}
+                            </span>
                           {:else}
-                            <!-- Always `checked={false}`: a combined row exists only
+                            <span class="block truncate">
+                              {rowLabel(row)}{#if amountStr}{' '}<span class="text-muted-foreground"
+                                  >({amountStr})</span
+                                >{/if}
+                            </span>
+                            <span class="flex items-center gap-1 text-xs text-muted-foreground/70">
+                              <DisclosureChevron {expanded} size={12} />
+                              {row.contributors.length} recipes
+                            </span>
+                          {/if}
+                        </DisclosureTrigger>
+                        {#if row.needsCheck && !rowExiting}
+                          {@render verifyControls(flaggedIds(row))}
+                        {:else}
+                          <!-- Always `checked={false}`: a combined row exists only
                              while its contributors are unchecked — checking it
                              dissolves it into the Checked section. -->
-                            <CheckOffButton
-                              checked={false}
-                              exiting={rowExiting}
-                              onSelect={() => markRowDone(row)}
-                            />
-                          {/if}
-                        </div>
+                          <CheckOffButton
+                            checked={false}
+                            exiting={rowExiting}
+                            onSelect={() => markRowDone(row)}
+                          />
+                        {/if}
                       </div>
                     </div>
-                    {#if expanded}
-                      <div
-                        class="flex flex-col gap-1 pb-1"
-                        data-testid="shopping-combined-breakdown"
-                      >
-                        {#each row.contributors as c (c.id)}
-                          {@render itemRow(c, false, true, true)}
-                        {/each}
-                      </div>
-                    {/if}
-                  {:else}
-                    {@const single = row.contributors[0]}
-                    {#if single}
-                      <!-- A resolved aisle row is the *receive* half of the match
+                  </div>
+                  {#if expanded}
+                    <div class="flex flex-col gap-1 pb-1" data-testid="shopping-combined-breakdown">
+                      {#each row.contributors as c (c.id)}
+                        {@render itemRow(c, false, true, true)}
+                      {/each}
+                    </div>
+                  {/if}
+                {:else}
+                  {@const single = row.contributors[0]}
+                  {#if single}
+                    <!-- A resolved aisle row is the *receive* half of the match
                            reveal: when its id's match just landed (the reveal gate is
                            open), the row rises in here — otherwise it mounts as an
                            instant snap like any other row. -->
-                      {@render itemRow(single, false, false, true, 'receive')}
-                    {/if}
+                    {@render itemRow(single, false, false, true, 'receive')}
                   {/if}
-                {/each}
-              {/if}
-            </section>
+                {/if}
+              {/each}
+            </CollapsibleSection>
           {/each}
 
           <!-- Other (pending / failed / no-aisle items) -->
@@ -1235,20 +1218,19 @@
           {/if}
         {/if}
 
-        <!-- Checked items -->
+        <!-- Checked items. The same CollapsibleSection as the aisle groups above
+             (ui-spec-v09 §8.25) — it carries its count IN the title rather than
+             via `collapsedCount`, because "Checked (12)" reads at all times
+             while an aisle only names its size once folded away. -->
         {#if grouped.checked.contributors.length > 0}
-          <section class="flex flex-col gap-1" data-testid="shopping-checked">
-            <div class="flex items-center justify-between gap-2 mb-1">
-              <button
-                type="button"
-                class="flex items-center gap-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground"
-                onclick={() => (checkedCollapsed = !checkedCollapsed)}
-                aria-expanded={!checkedCollapsed}
-                data-testid="shopping-checked-toggle"
-              >
-                <Icon name={checkedCollapsed ? 'ChevronRight' : 'ChevronDown'} size={14} />
-                Checked ({grouped.checked.contributors.length})
-              </button>
+          <CollapsibleSection
+            title={`Checked (${grouped.checked.contributors.length})`}
+            expanded={!checkedCollapsed}
+            onToggle={() => (checkedCollapsed = !checkedCollapsed)}
+            triggerTestId="shopping-checked-toggle"
+            data-testid="shopping-checked"
+          >
+            {#snippet action()}
               <Button
                 variant="outline"
                 size="sm"
@@ -1257,13 +1239,11 @@
               >
                 Clear checked
               </Button>
-            </div>
-            {#if !checkedCollapsed}
-              {#each grouped.checked.contributors as item (item.id)}
-                {@render itemRow(item, false)}
-              {/each}
-            {/if}
-          </section>
+            {/snippet}
+            {#each grouped.checked.contributors as item (item.id)}
+              {@render itemRow(item, false)}
+            {/each}
+          </CollapsibleSection>
         {/if}
       </div>
     {/snippet}

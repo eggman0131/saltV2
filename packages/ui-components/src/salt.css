@@ -655,6 +655,63 @@
     @apply w-full;
   }
 
+  /* ─ Chip (§8.23) ──────────────────────────────────────────────────────────
+   * One size, deliberately: `px-3 py-1 text-xs font-medium` — `px-3` is
+   * `.salt-button--sm`'s horizontal padding and `font-medium` is
+   * `.salt-button`'s weight, so a chip row shares the rhythm of the buttons
+   * around it. §8.23.4 records the two sizes this replaced and why a size
+   * variant would only re-legitimise the drift.
+   *
+   * No press-scale here: `.salt-button`'s tap-scale is NOT inherited, because a
+   * chip already answers a tap with the fill, on the same frame. */
+  .salt-chip {
+    @apply rounded-full border px-3 py-1 text-xs font-medium transition-colors;
+  }
+  .salt-chip--filter {
+    @apply border-border bg-background text-muted-foreground;
+  }
+  /* Written as a two-class selector, and the hover as a `:not()`, so the fill
+   * beats `.salt-chip--filter:hover` on specificity. A pressed chip that
+   * lightens under the cursor reads as though the press came undone. */
+  .salt-chip--filter.salt-chip--on {
+    @apply border-primary bg-primary text-primary-foreground;
+  }
+  .salt-chip--filter:not(.salt-chip--on):hover {
+    @apply bg-muted;
+  }
+  /* Dashed says "this pill is not one of the things, it is the way to see more
+   * of them" — without it a "+3 more" reads as a fourth filter. No background:
+   * it sits on whatever the row sits on. */
+  .salt-chip--expander {
+    @apply border-dashed border-border text-muted-foreground;
+  }
+  .salt-chip--expander:hover {
+    @apply bg-muted;
+  }
+  .salt-chip-group {
+    @apply flex flex-wrap gap-1.5;
+  }
+
+  /* ─ CollapsibleSection (§8.25) ───────────────────────────────────────────
+   * The trigger takes `flex-1` so the whole header row is the hit target: a
+   * micro-label is a small thing to aim at, and a section header that only
+   * responds on its four words reads as broken. Content still packs left —
+   * there is no `justify-*` on the trigger. */
+  .salt-collapsible {
+    @apply flex flex-col gap-1;
+  }
+  .salt-collapsible__header {
+    @apply mb-1 flex items-center justify-between gap-2;
+  }
+  .salt-collapsible__trigger {
+    @apply flex flex-1 items-center gap-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground;
+  }
+  /* The collapsed-only count. `normal-case` because the header's `uppercase`
+   * would do nothing to a number but inherit down to it anyway. */
+  .salt-collapsible__count {
+    @apply normal-case text-muted-foreground/70;
+  }
+
   /* ─ Input (TextField frame + ComboboxInput) ──────────────────────────── */
   .salt-input {
     @apply flex items-center gap-2 rounded border border-input bg-background;
