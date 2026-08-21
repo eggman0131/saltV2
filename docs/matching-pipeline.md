@@ -353,6 +353,8 @@ This is the existing behaviour of `groupItemsByAisle` (a list item whose `canonI
 
 The predicate is pure domain (`packages/domain`); the canon-id set is built from the in-memory canon store by the `web-pwa` caller and passed in, so domain takes no I/O dependency on canon.
 
+**It is not the only thing a recipe row marks.** `hasLiveCanonMatch` answers "is this still matched", which is the whole question for a deleted canon and the wrong question for a line that is matched and still buys the wrong thing. That second case — live `canonId`, no product form bridging a metric amount to a count-sold item — is `ingredientMatchIssue`'s `missing_form`, and it is what the list card's amber pip counts. The recipe row shows both, split on the live match rather than on the issue kind: a dangling line keeps the red ✗ that re-runs the match, and a `missing_form` line carries a terracotta ⚠ that opens the ingredient match sheet, because its remedy is a form or a canon fix rather than another re-match (issue #867). Both are gated on canon **and** product forms having landed, so neither flashes on a cold load.
+
 **Why display-time, not write-back.** Recipe ingredients live nested at `ingredients[].items[].canonId`, which Firestore cannot index or query — a delete trigger would have to full-scan the recipes collection. And rewriting a shopping-list item back to `pending` would re-fire `onShoppingListItemWrite`, re-matching it and potentially re-creating the very canon item just deleted. Display-time derivation sidesteps both, costs nothing on the delete path, and is correct regardless of which client (or an offline one) performed the deletion. The user **sees** the item go unmatched and re-triggers matching themselves — nothing silently rewrites their data.
 
 ---

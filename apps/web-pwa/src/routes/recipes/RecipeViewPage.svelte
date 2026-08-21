@@ -61,13 +61,15 @@
   } from '../../lib/recipeAmend.js';
   import { authorRecipeFromChat } from '../../lib/chatRecipeAuthor.js';
   import IngredientText from './IngredientText.svelte';
-  import { canonItems } from '../../lib/canonService.js';
+  import { canonItems, isLoadingAisles } from '../../lib/canonService.js';
+  import { productForms, isLoadingProductForms } from '../../lib/productFormService.js';
   import {
     appendCacheBuster,
     duplicateRecipe,
     flattenIngredients,
     hasComponents,
     hasLiveCanonMatch,
+    ingredientMatchIssue,
     isAuthorable,
     isCookable,
     isPlannable,
@@ -380,6 +382,46 @@ Finish with a short note on what you changed and why, so I can read the gist her
 
   // ─── Canon live-id set (for dangling-match derivation) ───────────────────────
   const liveCanonIds = $derived(new Set($canonItems.map((c) => c.id)));
+
+  // ─── Row match markers ───────────────────────────────────────────────────────
+  // The list card counts a recipe's silently-wrong lines (issue #858); this asks
+  // the same pure query of one line, so the number on the card and the markers
+  // here cannot disagree. `IngredientMatchSheet` states that principle and this
+  // page was the one surface re-deriving it — from `hasLiveCanonMatch` alone,
+  // which never reads product forms. A `missing_form` line has a perfectly live
+  // canonId, so it passed that test and carried no marker at all: the card said
+  // three and the recipe showed you nothing (issue #867).
+  //
+  // Both stores are app-wide (App.svelte), so this costs no extra read.
+  const canonById = $derived(new Map($canonItems.map((c) => [c.id, c])));
+
+  // Nothing is judged until both collections have landed, and that gates BOTH
+  // markers rather than only the new one. Canon leads and arrives after first
+  // paint, and an empty canon makes every matched line look dangling — so an
+  // ungated row flashes a ✗ on every cold load and takes it back a moment later,
+  // which is how a marker gets trained out of a person. Mirrors the list card's
+  // gate, length check included: `isLoadingAisles` starts false, so a surface
+  // that never initialises sync would otherwise read "loaded" over an empty
+  // store. Product forms get the flag but NOT a length check — an empty form
+  // table is a legitimate state, and precisely the one these markers exist for.
+  const matchMarkersKnown = $derived(
+    !$isLoadingAisles && !$isLoadingProductForms && $canonItems.length > 0,
+  );
+
+  // Split on the LIVE match, not on the issue kind. A line whose canon has been
+  // deleted is no longer matched to anything, so its remedy is the same re-match
+  // a never-matched line needs and it keeps the ✗ it has always had; ⚠ is the
+  // case that had no marker — matched, and buying the wrong thing, which a
+  // re-match cannot be assumed to fix because the fault may be the form.
+  //
+  // A never-matched line still shows ✗ without being counted on the card. That
+  // asymmetry is deliberate and unchanged: the card exists to say which recipe to
+  // OPEN, and an unmatched line is already plain once you have.
+  function rowMarker(ing: Ingredient): 'unmatched' | 'mismatched' | null {
+    if (!matchMarkersKnown) return null;
+    if (!hasLiveCanonMatch(ing, liveCanonIds)) return 'unmatched';
+    return ingredientMatchIssue(ing, canonById, $productForms) === null ? null : 'mismatched';
+  }
 
   // ─── Canonicalise ────────────────────────────────────────────────────────────
   let canonalising = $state(false);
@@ -1868,10 +1910,12 @@ Finish with a short note on what you changed and why, so I can read the gist her
                   {/if}
                   <ul class="flex flex-col gap-1">
                     {#each group.items as ingredient (ingredient.id)}
-                      <!-- The line is a button (tap → match inspector) and the ✗ is
-                           its SIBLING, not a child: buttons cannot nest, and the two
-                           do different jobs — one explains the match, the other
-                           makes one. -->
+                      {@const marker = rowMarker(ingredient)}
+                      <!-- The line is a button (tap → match inspector) and the marker
+                           is its SIBLING, not a child: buttons cannot nest, and the
+                           two do different jobs — one explains the match, the other
+                           acts on what is wrong with it. At most one marker: a line
+                           is either unmatched or mismatched, never both. -->
                       <li
                         class="flex items-baseline gap-1 text-sm"
                         data-testid="recipe-view-ingredient"
@@ -1885,7 +1929,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
                         >
                           <IngredientText {ingredient} />
                         </button>
-                        {#if !hasLiveCanonMatch(ingredient, liveCanonIds)}
+                        {#if marker === 'unmatched'}
                           <button
                             type="button"
                             class="shrink-0 text-xs text-destructive hover:underline disabled:opacity-50"
@@ -1895,6 +1939,20 @@ Finish with a short note on what you changed and why, so I can read the gist her
                             disabled={matchingIds[ingredient.id] ?? false}
                             data-testid="match-state-unmatched"
                             >{(matchingIds[ingredient.id] ?? false) ? '…' : '✗'}</button
+                          >
+                        {:else if marker === 'mismatched'}
+                          <!-- Terracotta, the palette's warning accent (design.md),
+                               and never the ✗'s red: the two say different things and
+                               want different actions. This one opens the sheet the
+                               row already opens, because the sheet explains BOTH
+                               causes and offers the re-match — no new copy. -->
+                          <button
+                            type="button"
+                            class="shrink-0 rounded px-0.5 text-xs text-tertiary-variant hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            title="Matched, but buys the wrong thing — tap to see why"
+                            aria-label="Matched, but buys the wrong thing — tap to see why"
+                            onclick={() => inspectMatch(ingredient)}
+                            data-testid="match-state-mismatched">⚠</button
                           >
                         {/if}
                       </li>
