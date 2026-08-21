@@ -59,8 +59,6 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
       // returns undefined when no context is active (local emulators / no inbound
       // trace), and buildMatchOrCreatePorts then writes a byte-identical doc with
       // no traceContext field — degrade-never-throw (Rule 10).
-      const ports = buildMatchOrCreatePorts(batchSpan, activeTraceparent());
-
       // Product-form identity resolution (issue #500, Phase 2). Before matching,
       // consult the productForms table: an ingredient that names a known form
       // (e.g. "lime juice") binds to the form's EXISTING parent canon (the buyable
@@ -73,6 +71,15 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
       // second occurrence of the same derivative in the SAME recipe resolves via
       // the just-written form (and its idempotency check) without a second AI call.
       const forms: ProductForm[] = formsResult.kind === 'ok' ? [...formsResult.value] : [];
+
+      // Loaded BEFORE the ports so the synonym guard can be handed to the matcher.
+      // A name a product form already claims is a DERIVATION, and must never be
+      // recorded as a synonym — i.e. as another name for its own parent. Reading
+      // `forms` through the closure rather than copying it is deliberate: a form
+      // minted mid-batch below protects the very next item in the same recipe.
+      const ports = buildMatchOrCreatePorts(batchSpan, activeTraceparent(), {
+        isDerivedName: (name) => resolveProductForm(name, forms) !== null,
+      });
 
       const results: (ReadResult<MatchOrCreateResult, DomainError> | undefined)[] = new Array(
         input.items.length,

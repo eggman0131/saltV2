@@ -20,6 +20,7 @@ import {
   MatchLogBuilder,
   normaliseName,
   renameCanonItem,
+  resolveProductForm,
   setCanonItemAisle,
   setCanonItemSynonyms,
   setCanonItemShoppingBehavior,
@@ -27,6 +28,7 @@ import {
   setCanonItemThumbnail,
   CANON_ICON_HIDDEN,
 } from '@salt/domain';
+import { getProductFormsSnapshot } from './productFormService.js';
 import type {
   Aisle,
   ApproveCanonItemOverrides,
@@ -232,7 +234,15 @@ export async function addCanonItem(
       logBuilder.setInputItemCount(localItems.length);
       const local = findClosestMatch(localItems, rawName, logBuilder);
       if (local.kind === 'match') {
-        const updated = appendCanonSynonym(local.candidate.item, rawName);
+        // The fast path has no product-form step of its own — it answers from the
+        // canon list alone — so without this guard it is the one route that can
+        // still write a derivation into the identity field: type "lime zest" and
+        // a stage-3 synonym hit binds it to Lime, losing the yield. The snapshot
+        // is whatever the subscription currently holds; empty (not yet synced)
+        // means "no opinion" and the append proceeds as before.
+        const updated = appendCanonSynonym(local.candidate.item, rawName, {
+          isDerivedName: (name) => resolveProductForm(name, getProductFormsSnapshot()) !== null,
+        });
         if (updated !== local.candidate.item) await upsertCanonItem(updated);
         span.setAttribute('canon.outcome', 'matched');
         span.setAttribute('canon.path', 'fast');

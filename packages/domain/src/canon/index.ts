@@ -39,6 +39,10 @@ export type {
 } from './ports/CanonArbitrationPort.js';
 export { matchOrCreate, matchOrCreateBatch } from './commands/matchOrCreate.js';
 export { appendCanonSynonym } from './commands/appendCanonSynonym.js';
+export type {
+  DerivedNamePredicate,
+  AppendCanonSynonymOptions,
+} from './commands/appendCanonSynonym.js';
 export { recordPendingCanonChange } from './commands/recordPendingCanonChange.js';
 export type {
   MatchOrCreateInput,

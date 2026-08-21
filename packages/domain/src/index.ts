@@ -57,6 +57,8 @@ export {
   isResolvedMatchState,
 } from './canon/index.js';
 export type {
+  AppendCanonSynonymOptions,
+  DerivedNamePredicate,
   FindClosestMatchResult,
   MatchOrCreateInput,
   MatchOrCreatePorts,

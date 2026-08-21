@@ -148,6 +148,7 @@ function makePipeline(
     embedding?: EmbeddingPort;
     arbitration?: CanonArbitrationPort;
     logging?: MatchLoggingPort | null;
+    isDerivedName?: (rawName: string) => boolean;
   } = {},
 ) {
   const store = opts.store ?? makeStore(opts.items ?? []);
@@ -159,6 +160,7 @@ function makePipeline(
     arbitration: opts.arbitration ?? noMatchArbitration(),
     ids: makeIds(),
     logging: opts.logging ?? null,
+    ...(opts.isDerivedName !== undefined ? { isDerivedName: opts.isDerivedName } : {}),
   };
   const run = (rawName: string, selectedAisleId?: string | null, forceCreate?: boolean) =>
     matchOrCreate({ rawName, selectedAisleId, forceCreate }, ports);
@@ -1044,5 +1046,74 @@ describe('logging integration', () => {
     );
     expect(result.kind).toBe('ok');
     expect(writeSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Derived names are never recorded as synonyms ────────────────────────────
+//
+// A synonym asserts IDENTITY, a product form asserts DERIVATION. Production held
+// both claims about one string: `lime zest` sat in Lime's synonym list alongside
+// a product form saying zest is scraped FROM a lime. `isDerivedName` is how a
+// caller holding the forms table refuses the second write.
+//
+// Exercised THROUGH matchOrCreate rather than only against appendCanonSynonym
+// because there are seven routes to a match here and the guard is only worth
+// anything if it covers all of them — the reason resolveMatch takes the whole
+// ports bag rather than just the store.
+//
+// The fixture is the real case: "chicken stock" is a derivative, and it shares
+// two of three tokens with each stock canon (0.67 — over aiThreshold, under
+// stage2Stop, and tied), so it lands in arbitration. That is not incidental. A
+// derivative rarely clears a deterministic stage against its own parent, so the
+// AI-arbitrated route is precisely the one that binds it, and precisely the one
+// that used to write the derivative's name back as a synonym.
+describe('isDerivedName — a derivation never becomes a synonym', () => {
+  const cube = canonItem({ id: 'c1', name: 'Chicken Stock Cube' });
+  const powder = canonItem({ id: 'c2', name: 'Chicken Stock Powder' });
+
+  const pipeline = (isDerivedName?: (rawName: string) => boolean) =>
+    makePipeline({
+      items: [cube, powder],
+      arbitration: matchArbitration('c1', 'stock is made from a cube'),
+      ...(isDerivedName !== undefined ? { isDerivedName } : {}),
+    });
+
+  it('binds the match but records no synonym, and writes nothing', async () => {
+    const { run, store } = pipeline(() => true);
+
+    const result = await run('chicken stock');
+
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      // The ingredient still resolves to the cube — refusing the synonym must
+      // not cost the user their match, only the false claim about what it is.
+      expect(result.value.item.id).toBe('c1');
+      expect(result.value.decision).toBe('ai_arbitrated');
+      expect(result.value.item.synonyms).toEqual([]);
+    }
+    // No write at all: the guard returns the item by reference, so
+    // resolveMatch's `updated !== item` check skips the upsert entirely — and
+    // the canon item is not dragged into the needs_approval queue for a change
+    // that never happened.
+    expect(store.items.find((i) => i.id === 'c1')!.synonyms).toEqual([]);
+    expect(store.items.find((i) => i.id === 'c1')!.needs_approval).toBe(false);
+  });
+
+  it('still appends when the name is NOT a derivation', async () => {
+    const { run } = pipeline(() => false);
+
+    const result = await run('chicken stock');
+
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') expect(result.value.item.synonyms).toEqual(['chicken stock']);
+  });
+
+  it('omitting the port leaves the append exactly as it was', async () => {
+    const { run } = pipeline();
+
+    const result = await run('chicken stock');
+
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') expect(result.value.item.synonyms).toEqual(['chicken stock']);
   });
 });

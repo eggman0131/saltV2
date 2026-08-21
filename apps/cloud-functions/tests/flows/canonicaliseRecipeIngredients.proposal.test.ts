@@ -102,7 +102,7 @@ beforeEach(() => {
   mockArbitrateCanon.mockReset();
   mockProposal.mockReset();
   // A buyable parent already in the catalog.
-  seed('canonItems', 'canon-nutmeg', canonDoc('canon-nutmeg', 'Nutmeg'));
+  seed('canonItems', 'canon-garlic', canonDoc('canon-garlic', 'Garlic Bulb'));
 });
 
 afterEach(() => {
@@ -111,33 +111,36 @@ afterEach(() => {
 
 describe('canonicaliseRecipeIngredients — product-form proposals (Phase 3)', () => {
   it('writes a PENDING form and binds the ingredient to the named parent (reuse existing)', async () => {
-    // Parent "Nutmeg" already exists — the named parent resolves to it via
+    // Parent "Garlic Bulb" already exists — the named parent resolves to it via
     // matchOrCreateBatch (no duplicate canon), and the pending form binds to it.
+    // A clove is a genuine derivative: it has its own name for what it IS, so it
+    // clears `proposalRejectionReason`. A preparation ("grated nutmeg") would
+    // not, and deliberately so — see that function.
     mockProposal.mockResolvedValue({
       kind: 'form',
-      parentName: 'Nutmeg',
-      matcher: 'grated nutmeg',
-      label: 'Grated nutmeg',
-      formUnit: 'g',
-      amountPerParent: 12,
+      parentName: 'Garlic Bulb',
+      matcher: 'garlic clove',
+      label: 'Garlic clove',
+      formUnit: 'count',
+      amountPerParent: 10,
     });
 
     const result = (await (canonicaliseRecipeIngredientsFlow as Function)({
-      items: [{ rawName: 'grated nutmeg' }],
+      items: [{ rawName: 'garlic clove' }],
     })) as Array<{ kind: string; value?: { decision: string; item: { id: string } } }>;
 
     // Bound live to the parent in the same pass.
     expect(result[0]!.kind).toBe('ok');
     expect(result[0]!.value!.decision).toBe('matched');
-    expect(result[0]!.value!.item.id).toBe('canon-nutmeg');
+    expect(result[0]!.value!.item.id).toBe('canon-garlic');
 
     // A pending form was persisted, bound to the reused parent — no dup canon.
     const forms = productFormDocs();
     expect(forms).toHaveLength(1);
     expect(forms[0]!.needs_approval).toBe(true);
-    expect(forms[0]!.parentCanonId).toBe('canon-nutmeg');
-    expect(forms[0]!.matchers).toEqual(['grated nutmeg']);
-    expect(canonDocsNamed('Nutmeg')).toHaveLength(1);
+    expect(forms[0]!.parentCanonId).toBe('canon-garlic');
+    expect(forms[0]!.matchers).toEqual(['garlic clove']);
+    expect(canonDocsNamed('Garlic Bulb')).toHaveLength(1);
   });
 
   it('MINTS a new parent canon when the named parent is not in the catalog', async () => {
@@ -255,20 +258,20 @@ describe('canonicaliseRecipeIngredients — product-form proposals (Phase 3)', (
     seed('productForms', 'existing', {
       id: 'existing',
       schemaVersion: 1,
-      matchers: ['grated nutmeg'],
-      parentCanonId: 'canon-nutmeg',
-      label: 'Grated nutmeg',
-      yield: { formUnit: 'g', amountPerParent: 12 },
+      matchers: ['garlic clove'],
+      parentCanonId: 'canon-garlic',
+      label: 'Garlic clove',
+      yield: { formUnit: 'count', amountPerParent: 10 },
       updatedAt: '',
     });
 
     const result = (await (canonicaliseRecipeIngredientsFlow as Function)({
-      items: [{ rawName: 'freshly grated nutmeg' }],
+      items: [{ rawName: 'finely chopped garlic cloves' }],
     })) as Array<{ kind: string; value?: { item: { id: string } } }>;
 
     // Resolved through the EXISTING form; the AI proposal was never consulted.
     expect(mockProposal).not.toHaveBeenCalled();
-    expect(result[0]!.value!.item.id).toBe('canon-nutmeg');
+    expect(result[0]!.value!.item.id).toBe('canon-garlic');
     expect(productFormDocs()).toHaveLength(1); // no duplicate written
   });
 

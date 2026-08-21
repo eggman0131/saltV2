@@ -44,6 +44,67 @@ describe('proposalRejectionReason', () => {
       ).toBe('self_reference');
     });
 
+    // The first version of this check compared the two names for equality, and
+    // production walked straight through it twice: the model labelled the form
+    // "Leftover garlic sauce" over parent "Garlic Sauce", and "Warm water" over
+    // "Water". A qualifier on the front does not make a new thing.
+    it('rejects a label that only QUALIFIES its parent', () => {
+      expect(
+        proposalRejectionReason(
+          proposal({
+            parentName: 'Garlic Sauce',
+            label: 'Leftover garlic sauce',
+            matcher: 'leftover garlic sauce',
+          }),
+        ),
+      ).toBe('self_reference');
+    });
+
+    it('rejects a one-word parent qualified into a phrase', () => {
+      expect(
+        proposalRejectionReason(
+          proposal({ parentName: 'Water', label: 'Warm water', matcher: 'warm water' }),
+        ),
+      ).toBe('self_reference');
+    });
+
+    // A PREPARATION is not a form. Grated nutmeg is nutmeg, chopped onion is
+    // onion — nothing became anything else, so there is no conversion to state.
+    // Admitting these would admit every preparation verb in the language against
+    // every parent, which is the floodgate this rule closes.
+    it.each([
+      ['Nutmeg', 'Grated nutmeg'],
+      ['Onions', 'Chopped onion'],
+      ['Basmati Rice', 'Cooked rice'],
+    ])('rejects the preparation %s -> %s', (parentName, label) => {
+      expect(proposalRejectionReason(proposal({ parentName, label }))).toBe('self_reference');
+    });
+
+    // The rule is "same head noun", not "the parent appears somewhere in the
+    // label". Plain containment would reject every real form, because a form is
+    // almost always named after the thing it comes from.
+    it.each([
+      ['Lime', 'Lime juice'],
+      ['Lemon', 'Lemon zest'],
+      ['Eggs', 'Egg yolk'],
+      ['Garlic Bulb', 'Garlic clove'],
+      ['Whole Chicken', 'Chicken breast'],
+      ['Beetroot', 'Beetroot brine'],
+    ])('allows the real derivative %s -> %s', (parentName, label) => {
+      expect(proposalRejectionReason(proposal({ parentName, label }))).toBeNull();
+    });
+
+    // A matcher is ingredient text as a recipe wrote it, not a tidy noun phrase.
+    // "juice of 1 lime" normalises to "juice of lime", so its last token is the
+    // parent — which is why the head-noun test is never applied to the matcher.
+    it('does not read a trailing parent in the MATCHER as a self-reference', () => {
+      expect(
+        proposalRejectionReason(
+          proposal({ parentName: 'Lime', label: 'Lime juice', matcher: 'juice of 1 lime' }),
+        ),
+      ).toBeNull();
+    });
+
     it('folds case and spacing like every other name comparison', () => {
       expect(
         proposalRejectionReason(

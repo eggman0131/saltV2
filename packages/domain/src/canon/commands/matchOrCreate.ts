@@ -20,6 +20,7 @@ import { findClosestMatch } from '../queries/findClosestMatch.js';
 import { embedMatch } from '../queries/embedMatch.js';
 import { createCanonItem } from './createCanonItem.js';
 import { appendCanonSynonym } from './appendCanonSynonym.js';
+import type { DerivedNamePredicate } from './appendCanonSynonym.js';
 
 /**
  * Review-queue markers written to `CanonItem.reasoning` when a new item is
@@ -53,6 +54,12 @@ export interface MatchOrCreatePorts {
   readonly arbitration: CanonArbitrationPort;
   readonly ids: IdGenerator;
   readonly logging: MatchLoggingPort | null;
+  /**
+   * Optional, and absent means "no opinion" — see `AppendCanonSynonymOptions`.
+   * Supplied by callers that hold the product-form list, so a derivation never
+   * gets recorded as a synonym of the thing it is derived from.
+   */
+  readonly isDerivedName?: DerivedNamePredicate;
 }
 
 /**
@@ -372,13 +379,13 @@ async function applyClassification(
     // Use the snapshot-current version of the item so that synonym additions
     // by earlier batch items are not lost via a stale overwrite.
     const currentItem = snapshot.get(c.item.id) ?? c.item;
-    return resolveMatch(store, currentItem, c.rawName, 'matched', c.commitLog);
+    return resolveMatch(ports, currentItem, c.rawName, 'matched', c.commitLog);
   }
 
   if (c.kind === 'create_no_ai') {
     if (!c.forceCreate) {
       const hit = findSnapshotMatch(c.name, snapshot);
-      if (hit) return resolveMatch(store, hit, c.name, 'matched', c.commitLog);
+      if (hit) return resolveMatch(ports, hit, c.name, 'matched', c.commitLog);
     }
     // create_no_ai: the raw entry IS the name, so the omission rule drops it.
     return persistNew(store, ids, c.name, c.aisleId, c.commitLog, c.name);
@@ -391,7 +398,7 @@ async function applyClassification(
   // Re-check snapshot before applying the AI result: an earlier item in this
   // batch may have created or updated an item that is now a deterministic match.
   const snapshotHit = findSnapshotMatch(rawName, snapshot);
-  if (snapshotHit) return resolveMatch(store, snapshotHit, rawName, 'matched', commitLog);
+  if (snapshotHit) return resolveMatch(ports, snapshotHit, rawName, 'matched', commitLog);
 
   const durationMs = arb?.durationMs ?? 0;
   const arbResult =
@@ -408,7 +415,7 @@ async function applyClassification(
         if (candidate) {
           const currentItem = snapshot.get(candidate.item.id) ?? candidate.item;
           return resolveMatch(
-            store,
+            ports,
             currentItem,
             rawName,
             'ai_arbitrated',
@@ -439,7 +446,7 @@ async function applyClassification(
     const fallback = shortlist.find((c) => c.stage !== 4);
     if (fallback) {
       const currentItem = snapshot.get(fallback.item.id) ?? fallback.item;
-      return resolveMatch(store, currentItem, rawName, 'ai_arbitrated', commitLog);
+      return resolveMatch(ports, currentItem, rawName, 'ai_arbitrated', commitLog);
     }
     return persistNew(store, ids, rawName, selectedAisleId ?? null, commitLog, rawName);
   }
@@ -462,7 +469,7 @@ async function applyClassification(
   // garlic") failed all deterministic stages. Check before creating a duplicate.
   const canonNameHit = findSnapshotMatch(createName, snapshot);
   if (canonNameHit) {
-    return resolveMatch(store, canonNameHit, rawName, 'ai_arbitrated', commitLog);
+    return resolveMatch(ports, canonNameHit, rawName, 'ai_arbitrated', commitLog);
   }
 
   return persistNew(store, ids, createName, finalAisleId, commitLog, rawName, newExtras);
@@ -564,15 +571,22 @@ function buildShortlist(
   return [...map.values()].sort((a, b) => b.confidence - a.confidence);
 }
 
+// Takes the whole `ports` bag rather than just `store` so the synonym guard
+// reaches every one of the seven match outcomes below without being threaded
+// through each of them by hand — forgetting one would silently reopen the hole.
 async function resolveMatch(
-  store: CanonLocalStorePort,
+  ports: MatchOrCreatePorts,
   item: CanonItem,
   rawName: string,
   decision: 'matched' | 'ai_arbitrated',
   commitLog: CommitLog,
   reasoning?: string,
 ): Promise<ReadResult<MatchOrCreateResult, DomainError>> {
-  const updated = appendCanonSynonym(item, rawName, reasoning);
+  const { store, isDerivedName } = ports;
+  const updated = appendCanonSynonym(item, rawName, {
+    ...(reasoning !== undefined ? { reasoning } : {}),
+    ...(isDerivedName !== undefined ? { isDerivedName } : {}),
+  });
   let finalItem = item;
   if (updated !== item) {
     const saved = await store.upsert(updated);

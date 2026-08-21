@@ -49,6 +49,11 @@ export function buildMatchOrCreatePorts(
   // onCanonItemWritten icon/embedding trigger continue the same trace. Optional:
   // the callable path passes nothing (its trace rides the request, not the doc).
   traceContext?: string,
+  // Only the recipe-canonicalisation flow holds the product-form list, so only it
+  // can answer "is this name a derivation rather than another name for the thing"
+  // — see `isDerivedName`. Omitted everywhere else, which leaves the synonym
+  // append exactly as it was.
+  extras?: Pick<MatchOrCreatePorts, 'isDerivedName'>,
 ): MatchOrCreatePorts {
   const db = getFirestore();
   // Both match-log sinks: firebase-functions/logger + PostHog. Built once here so
@@ -74,6 +79,7 @@ export function buildMatchOrCreatePorts(
         await Promise.allSettled(logSinks.map((p) => p.write(entry)));
       },
     },
+    ...(extras?.isDerivedName !== undefined ? { isDerivedName: extras.isDerivedName } : {}),
   };
 }
 
