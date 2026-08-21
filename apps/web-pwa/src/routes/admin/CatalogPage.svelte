@@ -183,6 +183,13 @@
   // is its first and only consumer, and the repo promotes on the second.
   let approving = $state(new Set<string>());
 
+  // The Undo window, which is also how long the write waits. Shorter than the
+  // Toast default (5000ms) and than shopping's single-item delete (4200ms):
+  // approving is a confirmation, not a destruction, so the toast is read and
+  // dismissed rather than deliberated over. It is still the only way back —
+  // there is no un-approve write path — so it is not cut to nothing.
+  const APPROVE_UNDO_MS = 3000;
+
   function releaseApproving(keys: readonly string[]): void {
     const next = new Set(approving);
     for (const key of keys) next.delete(key);
@@ -194,7 +201,11 @@
     const list = [...keys];
     approving = new Set([...approving, ...list]);
     let undone = false;
-    addToast(`${list.length} record${list.length === 1 ? '' : 's'} approved`, 'default', {
+    // `success`, and said before the write lands: the rows already read as
+    // approved, so the toast matches what the reader is looking at. A failed
+    // commit still surfaces its own destructive toast from `commitApprove`.
+    addToast(`${list.length} record${list.length === 1 ? '' : 's'} approved`, 'success', {
+      duration: APPROVE_UNDO_MS,
       action: {
         label: 'Undo',
         onClick: () => {
