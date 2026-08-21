@@ -1,4 +1,4 @@
-<!-- spec: SPEC.md §8.2 v0.2.12 -->
+<!-- spec: SPEC.md §8.2 v0.2.13 -->
 <script lang="ts">
   import { untrack } from 'svelte';
   import { cn } from '../../lib/cn';
@@ -22,6 +22,7 @@
     name,
     id: idProp,
     class: className,
+    frameClass,
     leading,
     trailing,
     onValueChange,
@@ -53,11 +54,14 @@
   {/if}
 
   <div
-    class={textFieldFrameVariants({
-      size,
-      error: !!error,
-      disabled,
-    })}
+    class={cn(
+      textFieldFrameVariants({
+        size,
+        error: !!error,
+        disabled,
+      }),
+      frameClass,
+    )}
   >
     {#if leading}
       {@render leading()}

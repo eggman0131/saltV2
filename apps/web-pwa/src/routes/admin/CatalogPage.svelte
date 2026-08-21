@@ -354,10 +354,13 @@
     return groups;
   });
 
-  function aisleNameFor(item: CanonItem): string {
-    const aisle = item.aisleId ? $aisles.find((a) => a.id === item.aisleId) : undefined;
-    return aisle ? titleCase(aisle.name) : 'No aisle';
-  }
+  // The options every review row's aisle chip offers (issue #872). Derived ONCE
+  // here rather than inside the row: the list is the same for every row, and a
+  // catalog holds hundreds of them.
+  const aisleItems = $derived([
+    { value: '', label: 'No aisle' },
+    ...$aisles.map((a) => ({ value: a.id, label: titleCase(a.name) })),
+  ]);
 
   // ─── Selection — one selection spanning both record types ───────────────────
 
@@ -554,7 +557,7 @@
                       <CatalogRow
                         item={row.item}
                         forms={row.forms}
-                        aisleName={aisleNameFor(row.item)}
+                        {aisleItems}
                         pending={isItemPending(row.item)}
                         {isFormPending}
                         expanded={expandedRows.has(row.item.id)}

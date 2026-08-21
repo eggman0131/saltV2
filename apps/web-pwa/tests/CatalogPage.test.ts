@@ -236,9 +236,17 @@ describe('CatalogPage — the filter chips', () => {
       'Created from “2 lemons”',
     );
     expect(screen.getByTestId('catalog-row-source')).toHaveTextContent('2 lemons');
-    expect(screen.getByTestId('catalog-row-decisions')).toHaveTextContent(
-      'Produce · Needed · No threshold',
-    );
+    // The three decisions are editable where they are read (ui-spec-v09 §8.27),
+    // so they are controls showing the current answer rather than a line of
+    // words. None of them is a toggle, so none carries `aria-pressed`.
+    const decisions = screen.getByTestId('catalog-row-decisions');
+    expect(decisions).toBeInTheDocument();
+    expect(screen.getByTestId('catalog-row-aisle')).toHaveValue('Produce');
+    expect(screen.getByTestId('catalog-row-behavior')).toHaveTextContent('Needed');
+    expect(screen.getByTestId('catalog-row-threshold')).toHaveValue('');
+    for (const id of ['catalog-row-aisle', 'catalog-row-behavior', 'catalog-row-threshold']) {
+      expect(screen.getByTestId(id)).not.toHaveAttribute('aria-pressed');
+    }
     expect(screen.getAllByTestId('catalog-form-row-wide')).toHaveLength(2);
   });
 

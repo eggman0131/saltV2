@@ -29,18 +29,21 @@
   } from '@salt/ui-components';
   import { CANON_ICON_HIDDEN, describePendingCanonChange } from '@salt/domain';
   import type { CanonItem, ProductForm } from '@salt/domain';
-  import type { CanonItemUnit, ShoppingBehavior } from '@salt/shared-types';
+  import type { CanonItemUnit } from '@salt/shared-types';
   import {
     canonItems,
-    updateCanonItemAisle,
     updateCanonItemSynonyms,
-    updateCanonItemShoppingBehavior,
-    updateCanonItemThreshold,
     approveCanonItemWithOverrides,
     regenerateCanonIcon,
     hideCanonIcon,
     unhideCanonIcon,
   } from '../../lib/canonService.js';
+  import {
+    DEFAULT_THRESHOLD_UNIT,
+    saveCanonAisle,
+    saveCanonShoppingBehavior,
+    saveCanonThreshold,
+  } from './canonDecisions.js';
   import { aisles } from '../../lib/aisleService.js';
   import {
     productForms,
@@ -87,7 +90,7 @@
 
   let editingSynonyms = $state('');
   let editingThreshold = $state('');
-  let editingUnit = $state<CanonItemUnit>('g');
+  let editingUnit = $state<CanonItemUnit>(DEFAULT_THRESHOLD_UNIT);
 
   let matchersText = $state('');
   let parentCanonId = $state('');
@@ -104,7 +107,7 @@
       const i = record.item;
       editingSynonyms = i.synonyms.join(', ');
       editingThreshold = i.largeQuantityThreshold?.toString() ?? '';
-      editingUnit = i.unit ?? 'g';
+      editingUnit = i.unit ?? DEFAULT_THRESHOLD_UNIT;
     } else {
       const f = record.form;
       matchersText = f.matchers.join(', ');
@@ -141,15 +144,13 @@
   let thresholdBusy = $state(false);
   let behaviorBusy = $state(false);
 
+  // The three decisions commit through `canonDecisions` — the same module the
+  // catalog's review row writes through, so the no-op guards cannot drift.
   async function saveAisle(value: string): Promise<void> {
     const item = canon;
     if (!item) return;
-    const newAisleId = value || null;
-    if (newAisleId === item.aisleId) return;
-    aisleBusy = true;
-    const result = await updateCanonItemAisle(item, newAisleId);
-    aisleBusy = false;
-    if (result.kind === 'ok') saved.flash();
+    const result = await saveCanonAisle(item, value, { onBusy: (b) => (aisleBusy = b) });
+    if (result === 'saved') saved.flash();
   }
 
   async function saveSynonyms(): Promise<void> {
@@ -175,32 +176,19 @@
   async function saveShoppingBehavior(value: string): Promise<void> {
     const item = canon;
     if (!item) return;
-    const behavior = value as ShoppingBehavior;
-    if (behavior === item.shoppingBehavior) return;
-    behaviorBusy = true;
-    const result = await updateCanonItemShoppingBehavior(item, behavior);
-    behaviorBusy = false;
-    if (result.kind === 'ok') saved.flash();
+    const result = await saveCanonShoppingBehavior(item, value, {
+      onBusy: (b) => (behaviorBusy = b),
+    });
+    if (result === 'saved') saved.flash();
   }
 
   async function saveThreshold(): Promise<void> {
     const item = canon;
     if (!item) return;
-    const raw = editingThreshold.trim();
-    const parsed = raw ? parseFloat(raw) : NaN;
-    const value = Number.isNaN(parsed) ? undefined : parsed;
-    const unit = value !== undefined ? editingUnit : undefined;
-    // Blur fires on every exit from the field, so a no-op edit must not write.
-    // `item.unit ?? 'g'` is what the Select actually shows for a doc that never
-    // stored one — comparing against the bare `item.unit` would read that default
-    // as a change and write on every blur.
-    const storedUnit = item.unit ?? 'g';
-    if (value === item.largeQuantityThreshold && (value === undefined || unit === storedUnit))
-      return;
-    thresholdBusy = true;
-    const result = await updateCanonItemThreshold(item, value, unit);
-    thresholdBusy = false;
-    if (result.kind === 'ok') saved.flash();
+    const result = await saveCanonThreshold(item, editingThreshold, editingUnit, {
+      onBusy: (b) => (thresholdBusy = b),
+    });
+    if (result === 'saved') saved.flash();
   }
 
   // ─── Canon icon (Tier-1 pictogram) escape hatch ─────────────────────────────

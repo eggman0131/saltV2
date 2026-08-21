@@ -2,30 +2,55 @@
   import {
     Button,
     CanonIcon,
+    Combobox,
+    ComboboxContent,
+    ComboboxEmpty,
+    ComboboxInput,
+    ComboboxItem,
     DisclosureChevron,
     DisclosureTrigger,
     EditableRow,
     Icon,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
     Text,
+    TextField,
+    valueChipVariants,
   } from '@salt/ui-components';
   import type { CanonItem, ProductForm, ShoppingBehavior } from '@salt/domain';
+  import type { CanonItemUnit } from '@salt/shared-types';
   import { describePendingCanonChange } from '@salt/domain';
   import { titleCase } from '../../lib/titleCase.js';
   import { canonKey, formKey, type CatalogRecordKey } from './catalogRoute.js';
+  import {
+    DEFAULT_THRESHOLD_UNIT,
+    saveCanonAisle,
+    saveCanonShoppingBehavior,
+    saveCanonThreshold,
+  } from './canonDecisions.js';
   import { reasoningSentence } from './reasoningSentence.js';
 
   /**
    * One canon item in the catalog, with its product forms underneath (issue #872).
    *
-   * The row DISPLAYS; the editor edits. What used to be an inline aisle combobox,
-   * behaviour select and threshold input at `sm:` and up is now the record editor
-   * — beside the list on a wide screen, a full page on a phone — so this row is
-   * the same at every breakpoint and carries no field controls at all.
+   * The row displays; the editor edits — with ONE exception, which is the whole
+   * point of the "Needs review" filter. A row awaiting review opens onto the
+   * three decisions the pipeline made, and those are editable in place as value
+   * chips (ui-spec-v09 §8.27), because a reviewer correcting an aisle should not
+   * have to leave the list of things still to review to do it.
+   *
+   * The exception is narrow and stays narrow: it is only the three decisions,
+   * only inside the review strip, and it writes through the same
+   * `canonDecisions` module the editor uses. Everything else about the item —
+   * name, synonyms, icon, forms — is still the editor's, beside the list on a
+   * wide screen and a full page on a phone.
    */
   let {
     item,
     forms,
-    aisleName,
+    aisleItems,
     pending,
     isFormPending,
     expanded,
@@ -42,7 +67,11 @@
     item: CanonItem;
     /** This item's forms, already narrowed to what the current filter shows. */
     forms: readonly ProductForm[];
-    aisleName: string;
+    /**
+     * Every aisle, "No aisle" first — computed once by the page rather than per
+     * row, and the same list the record editor's aisle combobox offers.
+     */
+    aisleItems: { value: string; label: string }[];
     /** Is the ITEM itself awaiting review, with a deferred approve already applied. */
     pending: boolean;
     isFormPending: (form: ProductForm) => boolean;
@@ -78,18 +107,34 @@
   // The words the review was raised over — what the user actually typed.
   const sourceTexts = $derived(changes.map((c) => c.rawInput).filter((t): t is string => !!t));
 
-  // What the pipeline decided, in one line — the three things a reviewer checks
-  // before approving. Read-only: changing any of them happens in the editor.
+  // What the pipeline decided — the three things a reviewer checks before
+  // approving, EDITABLE where they are read (issue #872). They are value chips
+  // (ui-spec-v09 §8.27): the pill is a surface worn by the control that owns the
+  // interaction, so each one keeps its own popover, focus and ARIA and none of
+  // them claims an `aria-pressed` it has no business having.
+  //
+  // Every one commits immediately — on change, or on blur for the typed one —
+  // through `canonDecisions`, the same module the record editor writes through.
+  // No Save button, and blur never discards.
   const behaviorLabel: Record<ShoppingBehavior, string> = {
     stocked: 'Stocked',
     check: 'Check',
     needed: 'Needed',
   };
-  const thresholdLabel = $derived(
-    item.largeQuantityThreshold != null
-      ? `${item.largeQuantityThreshold}${item.unit ? ` ${item.unit}` : ''}`
-      : 'No threshold',
-  );
+
+  // The typed decision needs a draft; the two picked ones read straight off the
+  // item. Seeded per item and NOT re-seeded on the store's echo of our own
+  // write, which would yank a half-typed second edit out from under the cursor.
+  let thresholdDraft = $state('');
+  let unitDraft = $state<CanonItemUnit>(DEFAULT_THRESHOLD_UNIT);
+  let seededId = $state('');
+
+  $effect(() => {
+    if (item.id === seededId) return;
+    seededId = item.id;
+    thresholdDraft = item.largeQuantityThreshold?.toString() ?? '';
+    unitDraft = item.unit ?? DEFAULT_THRESHOLD_UNIT;
+  });
 </script>
 
 <!-- One line of words, shared by both layouts so they cannot diverge. -->
@@ -180,9 +225,101 @@
         {#each sourceTexts as source, i (i)}
           <p class="opacity-80" data-testid="catalog-row-source">from “{source}”</p>
         {/each}
-        <p class="text-xs" data-testid="catalog-row-decisions">
-          {aisleName} · {behaviorLabel[item.shoppingBehavior]} · {thresholdLabel}
-        </p>
+        <!-- The surface sets no width, so each control is sized by its wrapper
+             (ui-spec-v09 §8.27.4). ChipGroup is for a row of Chips; this row
+             interleaves an amount with its unit, so the page owns the layout. -->
+        <div class="flex flex-wrap items-center gap-2" data-testid="catalog-row-decisions">
+          <div class="w-40">
+            <Combobox
+              items={aisleItems}
+              value={item.aisleId ?? ''}
+              onValueChange={(v) => saveCanonAisle(item, v)}
+              placeholder="No aisle"
+              restrict
+            >
+              <ComboboxInput
+                class={valueChipVariants()}
+                aria-label="Aisle for {titleCase(item.name)}"
+                data-testid="catalog-row-aisle"
+              />
+              <ComboboxContent>
+                {#snippet children({ filteredItems })}
+                  {#each filteredItems as cbItem, i (cbItem.value)}
+                    <ComboboxItem item={cbItem} index={i} />
+                  {/each}
+                  {#if filteredItems.length === 0}
+                    <ComboboxEmpty>No aisles match.</ComboboxEmpty>
+                  {/if}
+                {/snippet}
+              </ComboboxContent>
+            </Combobox>
+          </div>
+
+          <div class="w-28">
+            <Select
+              value={item.shoppingBehavior}
+              onValueChange={(v) => saveCanonShoppingBehavior(item, v)}
+            >
+              <SelectTrigger
+                class={valueChipVariants()}
+                aria-label="How {titleCase(item.name)} is shopped"
+                data-testid="catalog-row-behavior"
+              >
+                {behaviorLabel[item.shoppingBehavior]}
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="stocked" label="Stocked" />
+                <SelectItem value="check" label="Check" />
+                <SelectItem value="needed" label="Needed" />
+              </SelectContent>
+            </Select>
+          </div>
+
+          <!-- The third decision is typed, not picked — which is why the value
+               chip is a class and not a component (§8.27.5). -->
+          <TextField
+            class="w-20"
+            frameClass={valueChipVariants()}
+            inputmode="numeric"
+            aria-label="Quantity threshold for {titleCase(item.name)}"
+            placeholder="None"
+            value={thresholdDraft}
+            onValueChange={(v) => (thresholdDraft = v)}
+            data-testid="catalog-row-threshold"
+            onkeydown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                saveCanonThreshold(item, thresholdDraft, unitDraft);
+              } else if (e.key === 'Escape') {
+                thresholdDraft = item.largeQuantityThreshold?.toString() ?? '';
+              }
+            }}
+            onblur={() => saveCanonThreshold(item, thresholdDraft, unitDraft)}
+          />
+
+          <div class="w-24">
+            <Select
+              value={unitDraft}
+              onValueChange={(v) => {
+                unitDraft = v as CanonItemUnit;
+                saveCanonThreshold(item, thresholdDraft, unitDraft);
+              }}
+            >
+              <SelectTrigger
+                class={valueChipVariants()}
+                aria-label="Threshold unit for {titleCase(item.name)}"
+                data-testid="catalog-row-threshold-unit"
+              >
+                {unitDraft}
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="g" label="g" />
+                <SelectItem value="ml" label="ml" />
+                <SelectItem value="count" label="count" />
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
       </div>
     {/if}
 
