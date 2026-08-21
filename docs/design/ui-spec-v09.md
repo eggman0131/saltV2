@@ -1,7 +1,7 @@
 # Salt 2.0 — UI Primitives Specification (v0.9)
 
 **Status:** Planning  
-**Scope:** `@salt/ui-components` — `Chip`, `ChipGroup`  
+**Scope:** `@salt/ui-components` — `Chip`, `ChipGroup`, `CollapsibleSection`, `DisclosureTrigger`, `DisclosureChevron`  
 **Audience:** AI code-generation agents + human contributors
 
 > Rule: If anything is missing or ambiguous → STOP → extend this spec → regenerate.  
@@ -18,6 +18,8 @@ v0.9 introduces:
 
 - **`Chip`** — a pill-shaped filter toggle, and the dashed "+N more" expander that ends a row of them (§8.23)
 - **`ChipGroup`** — the row that holds them (§8.24)
+- **`CollapsibleSection`** — a titled section whose body collapses (§8.25)
+- **`DisclosureTrigger`** and **`DisclosureChevron`** — the button that carries `aria-expanded`, and the chevron that answers it (§8.26)
 
 These are **promotions, not inventions**. Every behaviour below already ships in
 `apps/web-pwa`; v0.9 gives it a name so the next list gets it right by default
@@ -27,6 +29,10 @@ already have.
 
 One visual change is deliberate and is the whole reason a spec had to decide
 anything at all — see §8.23.4.
+
+v0.9 changes the behaviour of no existing component. In particular it does
+**not** alter `EditableRow` (v0.4 §11) — §8.26.2 says why disclosure did not
+become a second axis on it.
 
 ---
 
@@ -208,3 +214,157 @@ preferred and every new consumer should pass one.
   and should not pretend to.
 - **No roving tabindex.** These are buttons in a wrapping row, not a composite
   widget; Tab reaches each one, which is what a filter row wants.
+
+---
+
+# 8.25 CollapsibleSection
+
+## 8.25.1 Overview
+
+A titled section whose body folds away: a micro-label header with a chevron, an
+optional trailing action, and children that are rendered only when open.
+
+Consumers today: the shopping list's aisle groups and its Checked group.
+
+## 8.25.2 Props
+
+| Prop | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `title` | `string` | — | The header label. Upper-cased by the style, not by the caller |
+| `expanded` | `boolean` | — | Open state. Owned by the page — see §8.25.4 |
+| `onToggle` | `() => void` | — | Called on header activation. The section never flips itself |
+| `collapsedCount` | `number \| undefined` | — | Rendered as `(N)` **only while collapsed**. Omit for a section that carries its count in the title |
+| `action` | `Snippet` | — | Trailing header content — a button that acts on the whole section |
+| `triggerTestId` | `string \| undefined` | — | `data-testid` for the header button. See §8.25.5 |
+| `children` | `Snippet` | — | The body. Not rendered at all while collapsed |
+| `class` | `string` | — | Merged last via `cn()` (v0.2 §2.3) |
+
+Everything else rides `...rest` onto the `<section>`.
+
+## 8.25.3 The body is removed, not hidden
+
+While collapsed the children are not rendered. A collapsed section holds no
+focusable descendants and contributes nothing to the accessibility tree, which
+is the same rule v0.5 §2 sets for covered navigation chrome: something you
+cannot see must not be something you can Tab into.
+
+This is a state change, not a transition. `CollapsibleSection` runs no animation
+of its own; the row-level motion (`salt-row-collapse`, v0.2) belongs to the rows
+inside it and is untouched.
+
+## 8.25.4 The page owns the open state
+
+`expanded` and `onToggle` are required and there is no internal fallback. The
+real consumers keep collapse state for *many* sections at once — the shopping
+list holds a `Set` of collapsed aisle ids — and a component that also kept its
+own copy would be a second source of truth for something the page must be able
+to reset, persist or derive.
+
+## 8.25.5 Why `triggerTestId` is its own prop
+
+`...rest` lands on the `<section>`, but the thing a test clicks is the header
+button, one level in. Without a way to name it, migrating a hand-rolled section
+onto this component would silently drop the testid the suite depends on —
+`shopping-checked-toggle` is clicked by `e2e/shopping-list-happy-path.spec.ts`.
+An explicit prop is better than a `triggerProps` bag: exactly one attribute is
+ever needed there, and a bag invites the rest of the button's API to leak.
+
+## 8.25.6 Accessibility
+
+The header is a `<button type="button">` carrying `aria-expanded`. It fills the
+header row, so the whole width of the header is the hit target — a micro-label
+is a small thing to hit otherwise. `aria-controls` is deliberately **not** set:
+`aria-expanded` alone is the complete disclosure contract, and an id would have
+to be minted and threaded for no announced benefit.
+
+The chevron is decorative; the header's accessible name is its text.
+
+## 8.25.7 What CollapsibleSection does not do
+
+- **No accordion.** Sections know nothing about their siblings; "only one open
+  at a time" is a page policy and belongs where the state lives.
+- **No count of its own children.** `collapsedCount` is passed in, because the
+  number the shopping list shows is rows-in-this-aisle, which is not the same as
+  how many elements the snippet happens to render.
+- **No animation.** See §8.25.3.
+
+---
+
+# 8.26 DisclosureTrigger and DisclosureChevron
+
+## 8.26.1 Overview
+
+Two small pieces for the disclosure that is **not** a section: a row that opens
+to reveal detail underneath it.
+
+- **`DisclosureTrigger`** — `<button type="button">` carrying `aria-expanded`.
+  It owns the ARIA contract and nothing else; layout classes come from the
+  caller.
+- **`DisclosureChevron`** — `ChevronDown` when open, `ChevronRight` when closed,
+  at a given `size`.
+
+Consumer today: the shopping list's combined rows, which reveal a
+per-contributor breakdown. `CollapsibleSection` is built from the same two.
+
+## 8.26.2 Why not `expanded` on `EditableRow`
+
+The obvious alternative was to give `EditableRow` (v0.4 §11) an `expanded` prop
+and a children snippet, keeping one row concept. It does not fit, and forcing it
+would have meant rewriting `EditableRow` into a different component:
+
+- The shopping list's combined row is not an `EditableRow`. It is a `<div>`, not
+  an `<li>`; it carries a `CanonIcon` and a check-off control as siblings of the
+  label; and it has no `selected` / `onToggleSelect` at all.
+- **The revealed content is a sibling of the row, not a child of it.** The row
+  sits inside a collapse shell that animates the check-off; the breakdown must
+  render *outside* that shell or it would animate away with the row. A component
+  whose root is the row cannot render content outside its own root.
+- The trigger is a *region* of the row — the label column — while the icon and
+  the check-off button beside it must stay outside the button, or tapping
+  "done" would also toggle the disclosure.
+
+So disclosure stays separable from the row. `EditableRow` keeps one axis
+(selection), and a row that needs both composes them.
+
+## 8.26.3 Props
+
+`DisclosureTrigger`
+
+| Prop | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `expanded` | `boolean` | — | Rendered as `aria-expanded` |
+| `children` | `Snippet` | — | The trigger's content, including where the chevron sits |
+| `class` | `string` | — | The caller's layout. The trigger ships none of its own |
+
+`onclick`, `data-testid` and the rest ride `...rest` onto the button.
+
+`DisclosureChevron`
+
+| Prop | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `expanded` | `boolean` | — | Picks the glyph |
+| `size` | `number` | `14` | Pixels. 14 for a section header, 12 inside a row's sub-label |
+
+`DisclosureChevron` takes **no `class`**. It is a glyph inside a trigger the
+caller already styles, neither consumer needs to nudge it, and `Icon` (v0.2
+§8.12) declares `class?: string` — which under `exactOptionalPropertyTypes`
+cannot be handed a conditional one. Widening a v0.2 primitive to forward a prop
+nobody uses is the wrong trade; add it here when something actually needs it.
+
+`expanded` is a plain prop on both rather than a shared context. The two are
+frequently far apart in the markup — in a combined row the chevron sits in the
+trigger's second line while the revealed content is outside the row entirely —
+and the caller always has the boolean in hand, so a context would add a
+provider, a lifetime and a failure mode to save passing one prop.
+
+## 8.26.4 What they do not do
+
+- **No `DisclosureContent`.** The revealed content is `{#if expanded}` and a
+  `<div>` the caller already styles. A wrapper for that would add a component
+  without removing a decision.
+- **No open state.** Like `CollapsibleSection` (§8.25.4), and for the same
+  reason: the shopping list keeps a `Set` of expanded row keys.
+- **No `aria-controls`.** Same reasoning as §8.25.6.
+- **`DisclosureChevron` renders no button.** It is a glyph. Putting it inside
+  something clickable is the caller's job, which is what lets it sit mid-sentence
+  in a row's sub-label.

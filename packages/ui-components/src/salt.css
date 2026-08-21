@@ -692,6 +692,26 @@
     @apply flex flex-wrap gap-1.5;
   }
 
+  /* ─ CollapsibleSection (§8.25) ───────────────────────────────────────────
+   * The trigger takes `flex-1` so the whole header row is the hit target: a
+   * micro-label is a small thing to aim at, and a section header that only
+   * responds on its four words reads as broken. Content still packs left —
+   * there is no `justify-*` on the trigger. */
+  .salt-collapsible {
+    @apply flex flex-col gap-1;
+  }
+  .salt-collapsible__header {
+    @apply mb-1 flex items-center justify-between gap-2;
+  }
+  .salt-collapsible__trigger {
+    @apply flex flex-1 items-center gap-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground;
+  }
+  /* The collapsed-only count. `normal-case` because the header's `uppercase`
+   * would do nothing to a number but inherit down to it anyway. */
+  .salt-collapsible__count {
+    @apply normal-case text-muted-foreground/70;
+  }
+
   /* ─ Input (TextField frame + ComboboxInput) ──────────────────────────── */
   .salt-input {
     @apply flex items-center gap-2 rounded border border-input bg-background;

@@ -101,6 +101,11 @@ describe('@salt/ui-components', () => {
       expect(pkg.Chip).toBeDefined();
       expect(pkg.ChipGroup).toBeDefined();
     });
+    it('exports CollapsibleSection', () => expect(pkg.CollapsibleSection).toBeDefined());
+    it('exports the Disclosure pieces', () => {
+      expect(pkg.DisclosureTrigger).toBeDefined();
+      expect(pkg.DisclosureChevron).toBeDefined();
+    });
   });
 
   describe('helpers and tokens', () => {
