@@ -21,6 +21,8 @@ export { default as CardFooter } from './primitives/Card/CardFooter.svelte';
 export { default as CardHeader } from './primitives/Card/CardHeader.svelte';
 export { default as CardTitle } from './primitives/Card/CardTitle.svelte';
 export { default as Checkbox } from './primitives/Checkbox/Checkbox.svelte';
+export { default as Chip } from './primitives/Chip/Chip.svelte';
+export { default as ChipGroup } from './primitives/Chip/ChipGroup.svelte';
 export { default as Dial } from './primitives/Dial/Dial.svelte';
 export { default as Dialog } from './primitives/Dialog/Dialog.svelte';
 export { default as DialogClose } from './primitives/Dialog/DialogClose.svelte';
@@ -120,6 +122,7 @@ export type {
   CardTitleProps,
 } from './primitives/Card/Card.types';
 export type { CheckboxProps, CheckedState } from './primitives/Checkbox/Checkbox.types';
+export type { ChipProps, ChipGroupProps } from './primitives/Chip/Chip.types';
 export type { DialProps } from './primitives/Dial/Dial.types';
 export type {
   DialogProps,

@@ -655,6 +655,43 @@
     @apply w-full;
   }
 
+  /* ─ Chip (§8.23) ──────────────────────────────────────────────────────────
+   * One size, deliberately: `px-3 py-1 text-xs font-medium` — `px-3` is
+   * `.salt-button--sm`'s horizontal padding and `font-medium` is
+   * `.salt-button`'s weight, so a chip row shares the rhythm of the buttons
+   * around it. §8.23.4 records the two sizes this replaced and why a size
+   * variant would only re-legitimise the drift.
+   *
+   * No press-scale here: `.salt-button`'s tap-scale is NOT inherited, because a
+   * chip already answers a tap with the fill, on the same frame. */
+  .salt-chip {
+    @apply rounded-full border px-3 py-1 text-xs font-medium transition-colors;
+  }
+  .salt-chip--filter {
+    @apply border-border bg-background text-muted-foreground;
+  }
+  /* Written as a two-class selector, and the hover as a `:not()`, so the fill
+   * beats `.salt-chip--filter:hover` on specificity. A pressed chip that
+   * lightens under the cursor reads as though the press came undone. */
+  .salt-chip--filter.salt-chip--on {
+    @apply border-primary bg-primary text-primary-foreground;
+  }
+  .salt-chip--filter:not(.salt-chip--on):hover {
+    @apply bg-muted;
+  }
+  /* Dashed says "this pill is not one of the things, it is the way to see more
+   * of them" — without it a "+3 more" reads as a fourth filter. No background:
+   * it sits on whatever the row sits on. */
+  .salt-chip--expander {
+    @apply border-dashed border-border text-muted-foreground;
+  }
+  .salt-chip--expander:hover {
+    @apply bg-muted;
+  }
+  .salt-chip-group {
+    @apply flex flex-wrap gap-1.5;
+  }
+
   /* ─ Input (TextField frame + ComboboxInput) ──────────────────────────── */
   .salt-input {
     @apply flex items-center gap-2 rounded border border-input bg-background;
