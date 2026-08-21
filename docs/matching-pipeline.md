@@ -62,7 +62,9 @@ flowchart TD
     EMPTY --> CREATEAI
 
     ARB -->|AI 'match' w/ valid id| AIMATCH[appendCanonSynonym on chosen\nReturn ai_arbitrated]
-    ARB -->|AI 'new' from non-empty shortlist| CREATEAI2[Create new w/ AI metadata]
+    ARB -->|AI 'new' from non-empty shortlist| NEWCHK{canonName already\nin snapshot?}
+    NEWCHK -->|yes| AIMATCH
+    NEWCHK -->|no| CREATEAI2[Create new w/ AI metadata]
     ARB -->|AI error / unknown id / 'no-match'| FALLBACK[Fall back: highest-confidence\nnon-stage-4 candidate; needs_approval\nstage-4-only shortlist creates new\nReturn ai_arbitrated]
 
     MATCH --> LOG[Log canon.match path=cf]
@@ -127,7 +129,7 @@ The pipeline falls back to the **highest-confidence shortlist candidate that is 
 2. **AI returns `kind: 'match'` with an `itemId` not present in the shortlist** (unknown id).
 3. **AI returns `kind: 'no-match'` from a non-empty shortlist.**
 
-`AI 'new'` is the **only** path that creates a brand-new item from a non-empty shortlist — except that a shortlist whose only members are stage-4 candidates also creates a new item (the fallback skips them; see below).
+`AI 'new'` is the **only** path that creates a brand-new item from a non-empty shortlist — except that a shortlist whose only members are stage-4 candidates also creates a new item (the fallback skips them; see below). Even here, creation is not unconditional: the same snapshot-name guard described below runs first, so a `canonName` that already exists resolves to that item instead of minting a duplicate.
 
 #### Stage 4 (edit distance) is AI-confirm-only
 
@@ -135,13 +137,13 @@ Edit-distance (stage-4) candidates in the `[0.60, 0.85)` band are spelling coinc
 
 The empty-shortlist case is different: with no candidates to fall back to, AI error or `'no-match'` results in a fresh create (with whatever aisle/metadata arbitration managed to return, or none). All four entry points (canon add, shopping list add, recipe add, recipe ingredient update) inherit this same rule via the shared CF.
 
-**Failsafe before `persistNew` (empty-shortlist and `forceCreate` paths):** After arbitration returns a `canonName` for the new item, `applyClassification` runs `findSnapshotMatch(canonName, snapshot)` before calling `persistNew`. If the name already exists in the snapshot (e.g., the AI correctly returns "Garlic" for a raw input of "1 head of garlic" that scored below threshold on stages 1–4), the pipeline resolves to the existing item as `ai_arbitrated` rather than creating a duplicate. This guard is needed because callers such as `authorRecipe` may pass raw ingredient text — quantity/unit tokens collapse stage 1–4 scores below threshold, landing on the empty-shortlist path, yet the AI often identifies the right canonical name.
+**Failsafe before `persistNew` (every `AI 'new'` path — empty-shortlist, `forceCreate`, and non-empty-shortlist):** After arbitration returns a `canonName` for the new item, `applyClassification` runs `findSnapshotMatch(canonName, snapshot)` before calling `persistNew`. If the name already exists in the snapshot (e.g., the AI correctly returns "Garlic" for a raw input of "1 head of garlic" that scored below threshold on stages 1–4), the pipeline resolves to the existing item as `ai_arbitrated` rather than creating a duplicate. This guard is needed because callers such as `authorRecipe` may pass raw ingredient text — quantity/unit tokens collapse stage 1–4 scores below threshold, landing on the empty-shortlist path, yet the AI often identifies the right canonical name. The guard is applied identically on the non-empty-shortlist branch: a shortlist full of near-misses is what proves the AI's answer is often an *existing* item under a rawName that failed every deterministic stage, so a non-empty shortlist makes a duplicate more likely, not less — guarding only the empty case had it backwards.
 
 | AI response (non-empty shortlist) | Pipeline action | Decision returned |
 |---|---|---|
 | `match` with valid `itemId` | `appendCanonSynonym` on chosen item; AI `reasoning` stored on item if present | `ai_arbitrated` |
 | `match` with unknown `itemId` | Fall back to top-confidence **non-stage-4** candidate, flag `needs_approval`; stage-4-only shortlist creates new | `ai_arbitrated` / `created` |
-| `new` (with metadata) | Create new item with AI-suggested aisle, behaviour, unit; `reasoning` stored if present | `created` |
+| `new` (with metadata) | Snapshot-name guard first (see above); if `canonName` already exists, resolve to it as `ai_arbitrated` — otherwise create new item with AI-suggested aisle, behaviour, unit; `reasoning` stored if present | `created` / `ai_arbitrated` |
 | `no-match` | Fall back to top-confidence **non-stage-4** candidate, flag `needs_approval`; stage-4-only shortlist creates new | `ai_arbitrated` / `created` |
 | Error | Fall back to top-confidence **non-stage-4** candidate, flag `needs_approval`; stage-4-only shortlist creates new | `ai_arbitrated` / `created` |
 
