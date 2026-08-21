@@ -1278,7 +1278,20 @@ describe('RecipeListPage — silent match problems', () => {
 
   it('pips a card whose line buys millilitres of a thing sold by the count', async () => {
     mockCanonItems._set([LIME]);
-    mockProductForms._set([]);
+    // Lime carries a form for something else — zest, as the live Lemon does. That
+    // is what puts it within the pip's reach: a canon with no form at all has
+    // nothing for the line to point at and is silent by design (issue #867).
+    mockProductForms._set([
+      {
+        id: 'form-lime-zest',
+        schemaVersion: 1,
+        matchers: [],
+        parentCanonId: 'canon-lime',
+        label: 'Lime zest',
+        yield: { formUnit: 'g', amountPerParent: 5 },
+        updatedAt: '2026-08-19T00:00:00.000Z',
+      },
+    ]);
     seed([citrusRecipe()]);
     render(RecipeListPage);
 

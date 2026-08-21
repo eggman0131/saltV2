@@ -18,7 +18,9 @@ import type { Recipe } from '../entities/Recipe.js';
  *   matched, is measured by mass or volume, and the thing it buys is sold by the
  *   count, with no product form bridging the two. It reads as matched and buys
  *   "90 ml lime" instead of three limes (issue #855). A product form is exactly
- *   the missing piece, and re-matching is what mints one.
+ *   the missing piece, and re-matching is what mints one. Reported only when the
+ *   matched canon ALREADY carries at least one product form — see the guard
+ *   below for why a form-less canon is out of this marker's reach (issue #867).
  */
 export type IngredientMatchIssue = 'dangling_canon' | 'missing_form';
 
@@ -65,6 +67,26 @@ export function ingredientMatchIssue(
   // rarer than the class this suppresses, and far less harmful than going blind
   // to the real one.
   if (normaliseName(ing.parsed.item) === normaliseName(canon.name)) return null;
+  // A canon item with NO forms at all is beyond this marker's reach. A null from
+  // `resolveProductForm` says "no form matched this text", which is a different
+  // statement from "this line is missing its form", and the gap between the two
+  // was the whole false-positive class: for a canon nobody buys in any shape but
+  // itself — Bay Leaves, Celery, Red Onion, Daikon Radish — ANY gram-measured
+  // line whose wording merely differs from the canon's name read as a missing
+  // form, and #865 has since taught the pipeline that no form should ever be
+  // minted for those. The pip was demanding what the pipeline correctly refuses
+  // to make, so re-matching could never clear it.
+  //
+  // A canon that already carries a form is one the household is known to buy in
+  // some other shape, so a line resolving to none of them is stale or missing
+  // its bridge — actionable. Minting a canon's FIRST form is
+  // `arbitrateProductForm`'s job during a re-match, not something a card badge
+  // can ask for; that case is silent on purpose (issue #867).
+  //
+  // Cheaper than `resolveProductForm` — one field read per form against its
+  // phrase-by-phrase normalising — so it belongs on this side of the call, per
+  // the ordering note above.
+  if (!forms.some((f) => f.parentCanonId === ing.canonId)) return null;
   const form = resolveProductForm(ing.parsed.item, forms);
   // A form that resolves to some OTHER parent is not this line's bridge — the
   // same guard every other product-form read applies.

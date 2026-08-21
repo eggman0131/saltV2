@@ -66,6 +66,17 @@ const LIME_JUICE_FORM: ProductForm = {
   updatedAt: '2026-08-19T00:00:00.000Z',
 };
 
+// A form of the SAME parent that the juice line does not name. `missing_form` is
+// reported only for a canon the household already buys in some other shape
+// (issue #867) — a canon with no form at all has nothing to point at — so this is
+// what keeps Lime within the marker's reach without bridging the line itself.
+const LIME_ZEST_FORM: ProductForm = {
+  ...LIME_JUICE_FORM,
+  id: 'form-lime-zest',
+  label: 'Lime zest',
+  yield: { formUnit: 'g', amountPerParent: 5 },
+};
+
 function ingredient(over: Partial<Ingredient> = {}): Ingredient {
   return {
     id: 'ing-1',
@@ -114,7 +125,7 @@ describe('IngredientMatchSheet', () => {
 
   it('does not claim a form that resolves to a different parent', async () => {
     mockCanonItems._set([LIME]);
-    mockProductForms._set([{ ...LIME_JUICE_FORM, parentCanonId: 'canon-lemon' }]);
+    mockProductForms._set([LIME_ZEST_FORM, { ...LIME_JUICE_FORM, parentCanonId: 'canon-lemon' }]);
 
     render(IngredientMatchSheet, {
       props: { ingredient: ingredient(), open: true, onRematch: () => {} },
@@ -208,7 +219,7 @@ describe('IngredientMatchSheet', () => {
     // The #855 smell and the reason a deleted product form needs naming: nothing
     // dangles, the line just quietly shops as millilitres of a countable thing.
     mockCanonItems._set([LIME]);
-    mockProductForms._set([]);
+    mockProductForms._set([LIME_ZEST_FORM]);
 
     render(IngredientMatchSheet, {
       props: { ingredient: ingredient(), open: true, onRematch: () => {} },
