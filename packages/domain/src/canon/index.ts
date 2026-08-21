@@ -31,6 +31,7 @@ export type { EmbeddingPort } from './ports/EmbeddingPort.js';
 export { MatchLogBuilder } from './commands/buildMatchLog.js';
 export { embedMatch } from './queries/embedMatch.js';
 export { findClosestMatch } from './queries/findClosestMatch.js';
+export { findExactCanonMatch } from './queries/findExactCanonMatch.js';
 export type { FindClosestMatchResult } from './queries/findClosestMatch.js';
 export type {
   CanonArbitrationPort,
@@ -39,6 +40,10 @@ export type {
 } from './ports/CanonArbitrationPort.js';
 export { matchOrCreate, matchOrCreateBatch } from './commands/matchOrCreate.js';
 export { appendCanonSynonym } from './commands/appendCanonSynonym.js';
+export type {
+  DerivedNamePredicate,
+  AppendCanonSynonymOptions,
+} from './commands/appendCanonSynonym.js';
 export { recordPendingCanonChange } from './commands/recordPendingCanonChange.js';
 export type {
   MatchOrCreateInput,

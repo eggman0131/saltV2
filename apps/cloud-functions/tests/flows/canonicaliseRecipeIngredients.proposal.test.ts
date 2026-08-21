@@ -74,12 +74,12 @@ vi.mock('../../src/flows/arbitrateProductForm.js', () => ({
 const { canonicaliseRecipeIngredientsFlow } =
   await import('../../src/flows/canonicaliseRecipeIngredients.js');
 
-function canonDoc(id: string, name: string) {
+function canonDoc(id: string, name: string, synonyms: string[] = []) {
   return {
     id,
     schemaVersion: 5,
     name,
-    synonyms: [],
+    synonyms,
     aisleId: null,
     thumbnail: null,
     needs_approval: false,
@@ -102,7 +102,7 @@ beforeEach(() => {
   mockArbitrateCanon.mockReset();
   mockProposal.mockReset();
   // A buyable parent already in the catalog.
-  seed('canonItems', 'canon-nutmeg', canonDoc('canon-nutmeg', 'Nutmeg'));
+  seed('canonItems', 'canon-garlic', canonDoc('canon-garlic', 'Garlic Bulb'));
 });
 
 afterEach(() => {
@@ -111,33 +111,36 @@ afterEach(() => {
 
 describe('canonicaliseRecipeIngredients — product-form proposals (Phase 3)', () => {
   it('writes a PENDING form and binds the ingredient to the named parent (reuse existing)', async () => {
-    // Parent "Nutmeg" already exists — the named parent resolves to it via
+    // Parent "Garlic Bulb" already exists — the named parent resolves to it via
     // matchOrCreateBatch (no duplicate canon), and the pending form binds to it.
+    // A clove is a genuine derivative: it has its own name for what it IS, so it
+    // clears `proposalRejectionReason`. A preparation ("grated nutmeg") would
+    // not, and deliberately so — see that function.
     mockProposal.mockResolvedValue({
       kind: 'form',
-      parentName: 'Nutmeg',
-      matcher: 'grated nutmeg',
-      label: 'Grated nutmeg',
-      formUnit: 'g',
-      amountPerParent: 12,
+      parentName: 'Garlic Bulb',
+      matcher: 'garlic clove',
+      label: 'Garlic clove',
+      formUnit: 'count',
+      amountPerParent: 10,
     });
 
     const result = (await (canonicaliseRecipeIngredientsFlow as Function)({
-      items: [{ rawName: 'grated nutmeg' }],
+      items: [{ rawName: 'garlic clove' }],
     })) as Array<{ kind: string; value?: { decision: string; item: { id: string } } }>;
 
     // Bound live to the parent in the same pass.
     expect(result[0]!.kind).toBe('ok');
     expect(result[0]!.value!.decision).toBe('matched');
-    expect(result[0]!.value!.item.id).toBe('canon-nutmeg');
+    expect(result[0]!.value!.item.id).toBe('canon-garlic');
 
     // A pending form was persisted, bound to the reused parent — no dup canon.
     const forms = productFormDocs();
     expect(forms).toHaveLength(1);
     expect(forms[0]!.needs_approval).toBe(true);
-    expect(forms[0]!.parentCanonId).toBe('canon-nutmeg');
-    expect(forms[0]!.matchers).toEqual(['grated nutmeg']);
-    expect(canonDocsNamed('Nutmeg')).toHaveLength(1);
+    expect(forms[0]!.parentCanonId).toBe('canon-garlic');
+    expect(forms[0]!.matchers).toEqual(['garlic clove']);
+    expect(canonDocsNamed('Garlic Bulb')).toHaveLength(1);
   });
 
   it('MINTS a new parent canon when the named parent is not in the catalog', async () => {
@@ -255,20 +258,20 @@ describe('canonicaliseRecipeIngredients — product-form proposals (Phase 3)', (
     seed('productForms', 'existing', {
       id: 'existing',
       schemaVersion: 1,
-      matchers: ['grated nutmeg'],
-      parentCanonId: 'canon-nutmeg',
-      label: 'Grated nutmeg',
-      yield: { formUnit: 'g', amountPerParent: 12 },
+      matchers: ['garlic clove'],
+      parentCanonId: 'canon-garlic',
+      label: 'Garlic clove',
+      yield: { formUnit: 'count', amountPerParent: 10 },
       updatedAt: '',
     });
 
     const result = (await (canonicaliseRecipeIngredientsFlow as Function)({
-      items: [{ rawName: 'freshly grated nutmeg' }],
+      items: [{ rawName: 'finely chopped garlic cloves' }],
     })) as Array<{ kind: string; value?: { item: { id: string } } }>;
 
     // Resolved through the EXISTING form; the AI proposal was never consulted.
     expect(mockProposal).not.toHaveBeenCalled();
-    expect(result[0]!.value!.item.id).toBe('canon-nutmeg');
+    expect(result[0]!.value!.item.id).toBe('canon-garlic');
     expect(productFormDocs()).toHaveLength(1); // no duplicate written
   });
 
@@ -381,5 +384,54 @@ describe('canonicaliseRecipeIngredients — product-form proposals (Phase 3)', (
 
     expect(result[0]!.kind).toBe('ok');
     expect(productFormDocs()).toHaveLength(0);
+  });
+
+  // ── An exact canon hit outranks form arbitration ──────────────────────────
+  //
+  // Everything above this point is about proposing forms for text nothing owns.
+  // These two are the opposite case: a person has already said what the text
+  // means, and the model must not be asked to reconsider. Before this, EVERY
+  // ingredient no existing form claimed went to arbitration whatever the canon
+  // list said, so a proposal could be minted over a curated synonym — and minted
+  // again on the next pass after the operator deleted it. Deleting an over-eager
+  // form and recording a synonym is how a person corrects this pipeline, so the
+  // correction has to survive the next run.
+
+  it('skips form arbitration entirely when a stored SYNONYM names the ingredient', async () => {
+    seed('canonItems', 'canon-bay', canonDoc('canon-bay', 'Bay Leaves', ['bay leaf']));
+
+    const result = (await (canonicaliseRecipeIngredientsFlow as Function)({
+      items: [{ rawName: 'bay leaf' }],
+    })) as Array<{ kind: string; value?: { item: { id: string } } }>;
+
+    // The model was never consulted — no AI call, and no form to delete later.
+    expect(mockProposal).not.toHaveBeenCalled();
+    expect(productFormDocs()).toHaveLength(0);
+    expect(result[0]!.kind).toBe('ok');
+    expect(result[0]!.value!.item.id).toBe('canon-bay');
+  });
+
+  it('still arbitrates when the canon match is only a RESEMBLANCE, not an exact name', async () => {
+    // The narrowness is the point. "garlic clove" does not exactly name Garlic
+    // Bulbs and is not one of its synonyms — it merely looks a bit like it — so
+    // the derivative still reaches arbitration and can get the form it needs.
+    // Were this check fuzzy, every derivative would be swallowed by its parent
+    // and no form would ever be proposed again. The parent is the one seeded in
+    // beforeEach, so the ingredient is the only new thing here.
+    mockProposal.mockResolvedValue({
+      kind: 'form',
+      parentName: 'Garlic Bulb',
+      matcher: 'garlic clove',
+      label: 'Garlic clove',
+      formUnit: 'count',
+      amountPerParent: 10,
+    });
+
+    await (canonicaliseRecipeIngredientsFlow as Function)({
+      items: [{ rawName: 'garlic clove' }],
+    });
+
+    expect(mockProposal).toHaveBeenCalledTimes(1);
+    expect(productFormDocs()).toHaveLength(1);
   });
 });

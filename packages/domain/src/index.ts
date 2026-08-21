@@ -40,6 +40,7 @@ export {
   MatchLogBuilder,
   MATCH_THRESHOLDS,
   findClosestMatch,
+  findExactCanonMatch,
   matchOrCreate,
   matchOrCreateBatch,
   appendCanonSynonym,
@@ -57,6 +58,8 @@ export {
   isResolvedMatchState,
 } from './canon/index.js';
 export type {
+  AppendCanonSynonymOptions,
+  DerivedNamePredicate,
   FindClosestMatchResult,
   MatchOrCreateInput,
   MatchOrCreatePorts,

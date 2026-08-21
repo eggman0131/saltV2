@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { appendCanonSynonym } from '@salt/domain';
 import type { CanonItem } from '@salt/domain';
 
@@ -98,6 +98,12 @@ describe('appendCanonSynonym', () => {
       expect(appendCanonSynonym(base, '   ')).toBe(base);
     });
 
+    it('when the name is a DERIVATION rather than another name for the item', () => {
+      expect(appendCanonSynonym(base, 'sun-dried tomato', { isDerivedName: () => true })).toBe(
+        base,
+      );
+    });
+
     it('records nothing on a no-op, even on an item that already has entries', () => {
       const flagged: CanonItem = {
         ...withSynonym,
@@ -107,5 +113,54 @@ describe('appendCanonSynonym', () => {
       expect(next).toBe(flagged);
       expect(next.pendingChanges).toHaveLength(1);
     });
+  });
+});
+
+// A synonym asserts IDENTITY ("another name for this item"); a product form
+// asserts DERIVATION ("a thing you get FROM this item, at this yield"). Writing
+// the second into the field that means the first is what put `lime zest` in
+// Lime's synonym list next to a form saying zest is scraped from a lime — after
+// which the matcher answers "zest IS a lime" at stage 3 and the yield is lost.
+describe('isDerivedName guard', () => {
+  const claimsZest = (rawName: string) => /zest/i.test(rawName);
+
+  it('appends normally when the predicate declines the name', () => {
+    const next = appendCanonSynonym(base, 'plum tomatoes', { isDerivedName: claimsZest });
+    expect(next.synonyms).toEqual(['plum tomato']);
+  });
+
+  it('records no pending change when it refuses', () => {
+    const next = appendCanonSynonym(base, 'tomato zest', { isDerivedName: claimsZest });
+    expect(next.pendingChanges ?? []).toEqual([]);
+    expect(next.needs_approval).toBe(false);
+  });
+
+  it('is handed the RAW name, not the normalised one', () => {
+    // The honest implementation is `resolveProductForm(name, forms)`, which does
+    // its own normalising. Handing it a pre-folded string would make the two
+    // halves of one pipeline disagree about plurals and punctuation.
+    const seen: string[] = [];
+    appendCanonSynonym(base, '  Sun-Dried Tomatoes  ', {
+      isDerivedName: (n) => {
+        seen.push(n);
+        return false;
+      },
+    });
+    expect(seen).toEqual(['  Sun-Dried Tomatoes  ']);
+  });
+
+  it('is not consulted at all for a name that was already a no-op', () => {
+    // The cheap structural guards run first, so a duplicate or self-named
+    // synonym never pays for a forms lookup.
+    const spy = vi.fn(() => true);
+    const withSynonym: CanonItem = { ...base, synonyms: ['passata'] };
+    expect(appendCanonSynonym(withSynonym, 'Passata', { isDerivedName: spy })).toBe(withSynonym);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('still threads reasoning through the options object', () => {
+    const next = appendCanonSynonym(base, 'passata', { reasoning: 'same thing, Italian name' });
+    expect(next.reasoning).toBe('same thing, Italian name');
+    expect(next.synonyms).toEqual(['passata']);
   });
 });

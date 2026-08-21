@@ -3,6 +3,7 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
 import {
   matchOrCreateBatch,
+  findExactCanonMatch,
   resolveProductForm,
   findFormWithSameLabel,
   proposalRejectionReason,
@@ -59,8 +60,6 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
       // returns undefined when no context is active (local emulators / no inbound
       // trace), and buildMatchOrCreatePorts then writes a byte-identical doc with
       // no traceContext field — degrade-never-throw (Rule 10).
-      const ports = buildMatchOrCreatePorts(batchSpan, activeTraceparent());
-
       // Product-form identity resolution (issue #500, Phase 2). Before matching,
       // consult the productForms table: an ingredient that names a known form
       // (e.g. "lime juice") binds to the form's EXISTING parent canon (the buyable
@@ -73,6 +72,15 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
       // second occurrence of the same derivative in the SAME recipe resolves via
       // the just-written form (and its idempotency check) without a second AI call.
       const forms: ProductForm[] = formsResult.kind === 'ok' ? [...formsResult.value] : [];
+
+      // Loaded BEFORE the ports so the synonym guard can be handed to the matcher.
+      // A name a product form already claims is a DERIVATION, and must never be
+      // recorded as a synonym — i.e. as another name for its own parent. Reading
+      // `forms` through the closure rather than copying it is deliberate: a form
+      // minted mid-batch below protects the very next item in the same recipe.
+      const ports = buildMatchOrCreatePorts(batchSpan, activeTraceparent(), {
+        isDerivedName: (name) => resolveProductForm(name, forms) !== null,
+      });
 
       const results: (ReadResult<MatchOrCreateResult, DomainError> | undefined)[] = new Array(
         input.items.length,
@@ -100,13 +108,6 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
       // deterministically in input order.
       const unresolved: number[] = [];
 
-      for (let i = 0; i < input.items.length; i++) {
-        const item = input.items[i]!;
-        const form = forms.length > 0 ? resolveProductForm(item.rawName, forms) : null;
-        if (form && (await bindToParent(i, form.parentCanonId))) continue;
-        unresolved.push(i);
-      }
-
       // Buyable canon items the proposal AI may pick a parent from — a PREFERENCE
       // list, not a requirement: the model is told to reuse one of these names when
       // it fits and otherwise to name a new parent, which #505's
@@ -117,6 +118,49 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
       const canonList = await ports.store.list();
       const candidates =
         canonList.kind === 'ok' ? canonList.value.map((c) => ({ id: c.id, name: c.name })) : [];
+      // Read BEFORE the loop below, which now consults it. A failed read yields an
+      // empty list, and an empty list makes the exact check a no-op — so the flow
+      // degrades to its previous behaviour rather than to a wrong answer (Rule 10).
+      const canonItems = canonList.kind === 'ok' ? canonList.value : [];
+
+      for (let i = 0; i < input.items.length; i++) {
+        const item = input.items[i]!;
+
+        // An EXACT canon hit — the item's own name, or a stored synonym — settles
+        // the ingredient before forms are considered at all. That is the one place
+        // canon outranks a form, and it is narrow on purpose: stages 1 and 3 answer
+        // from a string somebody wrote down, where stages 2/4/5 only score a
+        // resemblance. Form-first is still right for a resemblance, because a
+        // derivative barely resembles its parent ("lime zest" shares one token of
+        // two with "Lime"), so a fuzzy matcher running first would swallow every
+        // derivative and no form would ever be proposed.
+        //
+        // Without this, an approved synonym could not survive: EVERY ingredient no
+        // existing form claimed went to form arbitration regardless of what the
+        // canon list said, so a proposal could be minted over a curated synonym —
+        // and re-minted on the next pass after the operator deleted it. Deleting an
+        // over-eager form and recording a synonym is how a person corrects this
+        // pipeline, and the correction has to stick. Falls through to `toMatch`
+        // rather than binding here, so `matchOrCreateBatch` still owns the match and
+        // its logging; this decides only that no form should be proposed.
+        if (findExactCanonMatch(canonItems, item.rawName) !== null) {
+          toMatch.push({
+            index: i,
+            input: {
+              rawName: item.rawName,
+              ...(item.rawText !== undefined ? { rawText: item.rawText } : {}),
+              ...(item.selectedAisleId !== undefined
+                ? { selectedAisleId: item.selectedAisleId }
+                : {}),
+            },
+          });
+          continue;
+        }
+
+        const form = forms.length > 0 ? resolveProductForm(item.rawName, forms) : null;
+        if (form && (await bindToParent(i, form.parentCanonId))) continue;
+        unresolved.push(i);
+      }
 
       // Canon items some recipe PRODUCES — the "buy or make" set.
       // An ingredient naming one of these must never become a product form; see
