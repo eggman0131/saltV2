@@ -40,6 +40,7 @@ export {
   MatchLogBuilder,
   MATCH_THRESHOLDS,
   findClosestMatch,
+  findExactCanonMatch,
   matchOrCreate,
   matchOrCreateBatch,
   appendCanonSynonym,
