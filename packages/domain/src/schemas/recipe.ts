@@ -138,6 +138,30 @@ export const RecipeImageSchema = z.object({
 // unchanged (salt-architecture.md §1.1 — no migration).
 export const RecipeKindSchema = z.enum(['recipe', 'outing', 'cocktail', 'placeholder']);
 
+// One piece of kit a recipe calls for (issue #882). A free-text LABEL and the
+// steps that use it — never a `kitchenTools` id, and that is the load-bearing
+// choice of the whole feature: the recipe keeps the words a cook would say, and
+// the drawn vocabulary is resolved against those words at DISPLAY time. A label
+// nothing in the vocabulary matches renders as words with no picture, which is a
+// normal outcome rather than a fault, and it means the vocabulary can grow (or
+// shrink) without a single recipe being rewritten.
+export const RecipeKitEntrySchema = z.object({
+  // What a cook would call it, and specific enough to reach for: "large frying
+  // pan", not "pan"; "box grater", not "grater". The specificity is the feature —
+  // "get out a pan" tells you nothing you did not already know.
+  label: z.string(),
+  // The steps this piece of kit is used in, and deliberately PLURAL rather than a
+  // single `firstUsedInStepId`. A frying pan enters at step 3 and is still on the
+  // hob at step 9; a mixing bowl is used at 1 and again at 6. Storing every step
+  // is what lets a later surface say "have it ready by" (the first) and "it is
+  // free after" (the last) without a second field, and what lets the method mark
+  // a run of steps rather than a single moment.
+  //
+  // Ids are step ids from the SAME document, exactly as `firstUsedInStepId` is —
+  // document-local, so a duplicate that copies steps verbatim keeps every link.
+  stepIds: z.array(z.string()),
+});
+
 export const RecipeSchema = z.object({
   id: z.string(),
   schemaVersion: z.literal(1),
@@ -183,6 +207,44 @@ export const RecipeSchema = z.object({
   // make every recipe already in production (#240) silently vanish from the list,
   // and defaulted, every reader sees a concrete `string[]` rather than `undefined`.
   componentRecipeIds: z.array(z.string()).default([]),
+  // The kit this dish needs — the pans, bowls, boards and hand tools a cook gets
+  // OUT before starting (issue #882). Inferred server-side from the WHOLE recipe
+  // by the identifyRecipeKit flow, because the answer is usually not written down:
+  // "mash the potatoes" needs a masher the recipe never names.
+  //
+  // `.default([])` (NOT `.optional()`) for both reasons that made
+  // `componentRecipeIds` above take the same shape: the realtime subscription
+  // skips documents that fail validation, so a required field would make every
+  // recipe already in production (#240) silently vanish from the list, and
+  // defaulted, every reader sees a concrete array rather than `undefined`.
+  kit: z.array(RecipeKitEntrySchema).default([]),
+  // ─── Kit-inference control fields (both optional + additive → back-compat on
+  // read; documents written before #882 lack them and stay valid) ──────────────
+  //
+  // WHY TWO FIELDS, when `kit` is right there. Because `kit.length === 0` cannot
+  // be the guard: `kit` defaults to `[]`, so an empty array is indistinguishable
+  // between "never inferred", "inferred, and this dish genuinely needs nothing
+  // worth listing", and "inference failed". Recipes are re-saved constantly —
+  // canonicalise, per-row rematch, an edit, "apply changes", each a whole-document
+  // `setDoc` (see the note above `imageNeedsGeneration` in onRecipeWritten) — so a
+  // guard keyed on emptiness would fire a fresh AI call on EVERY unrelated save of
+  // any recipe whose kit came back empty, forever.
+  //
+  // `kitInferredAt` (epoch ms) is the stamp that makes the trigger's branch
+  // self-terminating: absent means never inferred, present means the question has
+  // been asked and answered. Left unstamped when inference fails, so a redo can
+  // retry.
+  kitInferredAt: z.number().optional(),
+  // The redo nonce (epoch ms), stamped by the redoRecipeKit callable, which bumps
+  // it in the SAME write that deletes `kitInferredAt` above. Two fields because the
+  // redo needs both halves, exactly as `regenerateCanonIcon` needs both of its:
+  // clearing the stamp is what the guard reads, and the nonce is what guarantees
+  // the write mutates the document at all — Firestore emits no write event for a
+  // no-op update, so on a recipe whose inference FAILED (no stamp to delete) a
+  // stamp-only redo would be silent and the retry would never happen. The trigger
+  // deliberately leaves this field in place when it stamps: deleting it would read
+  // as a nonce change on its own re-fire and buy a second inference every time.
+  kitRequestedAt: z.number().optional(),
   // The photoreal "arty" hero image (Tier-2, issue #148). `null` = none yet: the
   // onRecipeWritten trigger generates one from the title + description on create.
   // A non-null `{ url, source }` is rendered; the trigger skips it (already
@@ -260,4 +322,5 @@ export type RecipeMetadataDoc = z.infer<typeof RecipeMetadataSchema>;
 export type RecipeSourceDoc = z.infer<typeof RecipeSourceSchema>;
 export type RecipeImageDoc = z.infer<typeof RecipeImageSchema>;
 export type RecipeKindDoc = z.infer<typeof RecipeKindSchema>;
+export type RecipeKitEntryDoc = z.infer<typeof RecipeKitEntrySchema>;
 export type RecipeDoc = z.infer<typeof RecipeSchema>;

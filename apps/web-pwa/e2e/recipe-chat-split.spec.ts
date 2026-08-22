@@ -178,6 +178,7 @@ function buildRecipe(id: string, title: string, kind: 'recipe' | 'outing'): Reci
     notes: null,
     producesCanonId: null,
     componentRecipeIds: [],
+    kit: [],
     image: null,
     createdAt: SEED_TIME,
     updatedAt: SEED_TIME,

@@ -18,6 +18,7 @@
   import { auth } from '../../lib/auth.svelte.js';
   import { canonItems } from '../../lib/canonService.js';
   import { productForms } from '../../lib/productFormService.js';
+  import { toolIcons } from '../../lib/kitchenToolService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { isWakeLockSupported, createWakeLock } from '../../lib/wakeLock.js';
   import { primeChime } from '../../lib/chime.js';
@@ -46,6 +47,7 @@
     withTimerDismissed,
     firstIncompleteStepId,
     firstUseByStep,
+    kitByStep,
     guidedPrepBoard,
     guidedMiseProgress,
     guidedPrepCardProgress,
@@ -319,6 +321,18 @@
   // inside the each-block would be both waste and an answer waiting to disagree
   // with plain cook mode's.
   const firstUseMap = $derived(firstUseByStep(recipe?.ingredients ?? []));
+
+  // ─── Kit, by step (issue #882) ─────────────────────────────────────────────────
+  // Same rule as the amounts above, and for the same reason: guided mode may never
+  // show LESS than plain cook mode (docs/ai-kitchen-assistant.md principle 5).
+  // Plain mode now names the kit each step reaches for, so this screen does too —
+  // ONE map for the whole cook, from the ONE domain query, so the run rule cannot
+  // come out differently on the two screens a cook switches between mid-dish.
+  //
+  // It is not the same thing as the plan's container line below it: the container
+  // is what the PLAN says about this bowl and what went into it; this is what the
+  // RECIPE needs got out.
+  const kitStartingAtStep = $derived(kitByStep(recipe?.kit ?? [], recipe?.steps ?? []));
 
   // ─── Canon icons ───────────────────────────────────────────────────────────────
   // Every row that names an INGREDIENT uses these: "Also get out", the amounts
@@ -1231,14 +1245,21 @@
                     {#if card.name !== null || cardProgress.allChecked}
                       {#snippet cardHeading()}
                         {#if card.name !== null}
-                          <!-- The bowl on a tile of its own, in sage: one small
-                             point of colour per header, so a wall of cards still
-                             reads as a list of separate vessels. -->
-                          <span
-                            class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-secondary/10 text-secondary"
-                          >
-                            <Icon name="Soup" size={18} />
-                          </span>
+                          <!-- The vessel itself, drawn (issue #882). The card's
+                             name is resolved against the curated tool vocabulary
+                             at DISPLAY time — nothing about this card stores a
+                             tool id — so a name the list does not know simply
+                             renders as words: CanonIcon draws its own bare tile
+                             and the header is the name alone. That is the point,
+                             not a shortfall. The generic soup glyph that used to
+                             sit here was a picture of the wrong thing beside
+                             "baking tray", which is the defect this replaces. -->
+                          <CanonIcon
+                            thumbnail={$toolIcons.toolIconFor(card.name)}
+                            version={$toolIcons.toolIconVersionFor(card.name)}
+                            name={card.name}
+                            size={32}
+                          />
                         {/if}
                         <span
                           class="min-w-0 flex-1 truncate text-base font-semibold"
@@ -1509,6 +1530,7 @@
               prepEntries,
               note,
             )}
+            {@const stepKit = kitStartingAtStep.get(step.id) ?? []}
             <section
               use:stepAnchor={step.id}
               data-step-id={step.id}
@@ -1603,11 +1625,16 @@
                       {#if note?.container}
                         <li class="flex flex-col gap-2" data-testid="guided-step-note-container">
                           <span class="flex items-start gap-3">
-                            <span
-                              class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-secondary/10 text-secondary"
-                            >
-                              <Icon name="Soup" size={17} ariaLabel="Use" />
-                            </span>
+                            <!-- The same drawn vessel as the mise card's header
+                               (issue #882), at the callout's size. Resolved from
+                               the step's own words, so the two surfaces cannot
+                               disagree about which bowl this is. -->
+                            <CanonIcon
+                              thumbnail={$toolIcons.toolIconFor(note.container)}
+                              version={$toolIcons.toolIconVersionFor(note.container)}
+                              name={note.container}
+                              size={28}
+                            />
                             <span class="whitespace-pre-wrap text-base text-muted-foreground"
                               >{note.container}</span
                             >
@@ -1709,6 +1736,51 @@
                             >
                             —
                             <span class="whitespace-pre-wrap">{checkIn.text}</span>
+                          </span>
+                        </li>
+                      {/each}
+                    </ul>
+                  {/if}
+
+                  <!-- The kit this step reaches for (issue #882) — the same row,
+                     in the same chip vocabulary, plain cook mode draws. BESIDE the
+                     plan's notes rather than inside them, because it is not
+                     something the plan authored: the container line above is what
+                     the plan says about THIS BOWL, and this is what the recipe needs
+                     got out. Nesting it in that list would put the recipe's own
+                     words inside the plan's bracket.
+
+                     Additive, never a substitution — no line of text on this screen
+                     is replaced by a picture, and an unresolved label keeps its
+                     words and loses only the drawing. That is principle 5 of
+                     docs/ai-kitchen-assistant.md at its narrowest: guided mode shows
+                     everything plain cook mode shows, and then some. -->
+                  {#if stepKit.length > 0}
+                    <ul
+                      class="flex flex-wrap items-start gap-2"
+                      aria-label="Kit this step calls for"
+                      data-testid="cook-step-kit"
+                    >
+                      {#each stepKit as entry (entry.label)}
+                        <li class="shrink-0 max-w-full">
+                          <span
+                            class="flex items-center gap-2 rounded-full border border-dashed bg-card py-1 pr-4 text-base {$toolIcons.toolIconFor(
+                              entry.label,
+                            )
+                              ? 'pl-1'
+                              : 'pl-4'}"
+                            data-testid="cook-step-kit-chip"
+                          >
+                            {#if $toolIcons.toolIconFor(entry.label)}
+                              <CanonIcon
+                                thumbnail={$toolIcons.toolIconFor(entry.label)}
+                                version={$toolIcons.toolIconVersionFor(entry.label)}
+                                name={entry.label}
+                                size={40}
+                                class="rounded-full"
+                              />
+                            {/if}
+                            <span class="min-w-0 break-words">{entry.label}</span>
                           </span>
                         </li>
                       {/each}

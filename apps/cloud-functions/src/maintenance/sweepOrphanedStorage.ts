@@ -48,6 +48,10 @@ const SWEEPS = [
   // DOC when its item leaves the manifest — otherwise the join below would find
   // the doc still present and correctly conclude the object is not orphaned.
   { prefix: 'equipment-icons/', collection: 'equipmentIcons' },
+  // Generic kitchen-tool pictograms (issue #882). Same deterministic keying
+  // again — `kit-icons/{toolId}.webp` beside `kitchenTools/{toolId}` — so
+  // retiring a tool from the curated vocabulary strands its icon identically.
+  { prefix: 'kit-icons/', collection: 'kitchenTools' },
 ] as const;
 
 /** A candidate artefact, reduced to just what the decision needs. */

@@ -48,6 +48,7 @@
     persistRecipe,
     stashImportedDraft,
     regenerateRecipeImage,
+    redoRecipeKit,
     reviseRecipeSceneBrief,
     startOverRecipeSceneBrief,
     setRecipeImageUpload,
@@ -71,6 +72,11 @@
   import { authorRecipeFromChat } from '../../lib/chatRecipeAuthor.js';
   import IngredientText from './IngredientText.svelte';
   import { canonItems, isLoadingAisles } from '../../lib/canonService.js';
+  // The ONE shared kitchen-tool lookup (issue #882). Subscribed app-wide in
+  // App.svelte, so there is nothing to initialise here — and it is a store rather
+  // than a plain function precisely so the strip fills in the moment the drawn
+  // vocabulary lands, which on a cold load is after first paint.
+  import { toolIcons } from '../../lib/kitchenToolService.js';
   import { productForms, isLoadingProductForms } from '../../lib/productFormService.js';
   import {
     appendCacheBuster,
@@ -84,6 +90,7 @@
     isAuthorable,
     isCookable,
     isPlannable,
+    kitByStep as groupKitByStep,
     looksScalable,
     OTHER_WAITS_LABEL,
     resolveComponents,
@@ -619,6 +626,13 @@ Finish with a short note on what you changed and why, so I can read the gist her
   // this per step for a while; the reading list never did, which is where you
   // decide whether tonight is the night. Same domain query — there is one.
   const firstUseByStep = $derived(groupIngredientsByFirstUse(recipe?.ingredients ?? []));
+
+  // And what the step is the first to REACH FOR (issue #882). The contiguous-run
+  // rule lives in the domain query, not here: a pan used at steps 3-7 is listed
+  // at 3 and nowhere else, so the method reads as "get the pan out now" rather
+  // than as the same picture five times. Same query the cook deck and the guided
+  // step screen call, so the three cannot disagree about when it comes out.
+  const kitByStep = $derived(groupKitByStep(recipe?.kit ?? [], recipe?.steps ?? []));
 
   // An hour is the point at which a timer stops being something you stand over.
   // Below it you are still in the kitchen; at or above it the step is a wait you
@@ -1179,6 +1193,38 @@ Finish with a short note on what you changed and why, so I can read the gist her
     addToast('Generating a new image — it will appear shortly.', 'success');
   }
 
+  // ─── "You'll need" (issue #882) ──────────────────────────────────────────────
+  //
+  // The kit is inferred server-side and stored as WORDS — `{ label, stepIds }` —
+  // never as an id into the drawn vocabulary. The picture is found from the words
+  // at render time, here, and a label nothing matches renders as words with no
+  // picture. That is the designed outcome, not a degraded one: it is what lets the
+  // vocabulary grow later and light up every recipe already written, and it is why
+  // nothing below ever substitutes a near match or a generic glyph.
+  //
+  // `stepIds` is stored and deliberately unread on this page — per-step kit rows on
+  // the method are a later phase; this strip answers the one question you ask before
+  // you have chosen a tab at all: have I got what this needs?
+  const kit = $derived(recipe?.kit ?? []);
+
+  // Re-asks the question of the whole recipe. Nothing optimistic: the callable bumps
+  // a nonce, the trigger re-infers, and the new list arrives on the subscription —
+  // so the old strip stays on screen throughout rather than blanking. Mirrors
+  // `runRegenerate` exactly, toast for toast.
+  let kitBusy = $state(false);
+
+  async function handleRedoKit(): Promise<void> {
+    if (!recipe || kitBusy) return;
+    kitBusy = true;
+    const result = await redoRecipeKit(recipe.id);
+    kitBusy = false;
+    if (result.kind !== 'ok') {
+      addToast('Failed to redo the kit list.', 'destructive');
+      return;
+    }
+    addToast('Working out the kit — it will update shortly.', 'success');
+  }
+
   // Re-seed on every open (not once): the trigger re-saves imageBrief after each
   // successful generation, so the next open shows the brief that produced the image
   // now on screen — the user's own edited text, not the original. A recipe with no
@@ -1616,6 +1662,32 @@ Finish with a short note on what you changed and why, so I can read the gist her
             >
               <Icon name="RefreshCw" size={14} />
               Refresh
+            </button>
+          {/if}
+          {#if showCooking}
+            <!-- "Redo kit" (issue #882). In group one with Optimise and Refresh
+                 because it is the third of the same kind: re-run a model over THIS
+                 dish in place. Gated on `isCookable` rather than `isAuthorable` —
+                 the question is whether there is a method to read, not whether the
+                 librarian can write one — which is the same predicate the server's
+                 kit branch asks before it spends anything.
+
+                 It lives here rather than beside the strip because the strip has no
+                 controls on it at all: the chips are read, and a recipe whose kit
+                 came back empty shows no card, so an action attached to the card
+                 would be unreachable in exactly the case you most want it. -->
+            <button
+              type="button"
+              class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
+              onclick={() => {
+                overflowMenuOpen = false;
+                void handleRedoKit();
+              }}
+              disabled={kitBusy}
+              data-testid="recipe-redo-kit-menu-item"
+            >
+              <Icon name="CookingPot" size={14} />
+              Redo kit
             </button>
           {/if}
           {#if showCooking}
@@ -2163,6 +2235,50 @@ Finish with a short note on what you changed and why, so I can read the gist her
           </Card>
         {/if}
 
+        <!-- "You'll need" (issue #882) — what to get out of the cupboards, above the
+             tab strip because it answers a question you ask BEFORE choosing between
+             Ingredients and Method: have I got what this dish needs?
+
+             The whole card goes when the kit is empty, in the same idiom the tab
+             strip below uses for a kind with no body: a heading reading "You'll
+             need" over nothing is worse than no card, because it reads as a recipe
+             that failed rather than one nobody has asked yet.
+
+             Each entry is a static `fact` chip — a span, no `onclick`, not reachable
+             by Tab (ui-spec-v09 §8.23.8) — because these are read, not pressed. The
+             picture is resolved from the LABEL through the shared lookup; a label the
+             drawn vocabulary does not know renders its words with no picture and
+             never borrows another tool's. Turning the icon kill-switch off therefore
+             costs the pictures and nothing else — the words are the content. -->
+        {#if kit.length > 0}
+          <Card>
+            <CardContent class="flex flex-col gap-2 p-4">
+              <p class="text-sm font-medium">You&rsquo;ll need</p>
+              <div class="flex flex-wrap items-center gap-2" data-testid="recipe-kit-strip">
+                {#each kit as entry (entry.label)}
+                  <Chip variant="fact" tone="neutral" data-testid="recipe-kit-chip">
+                    {#snippet icon()}
+                      <!-- Nothing at all on a miss, deliberately: `CanonIcon` would
+                           draw its bare placeholder tile, and a blank grey square
+                           inside a chip reads as a broken picture rather than as a
+                           tool nobody has drawn yet. -->
+                      {#if $toolIcons.toolIconFor(entry.label)}
+                        <CanonIcon
+                          thumbnail={$toolIcons.toolIconFor(entry.label)}
+                          version={$toolIcons.toolIconVersionFor(entry.label)}
+                          name={entry.label}
+                          size={18}
+                        />
+                      {/if}
+                    {/snippet}
+                    {entry.label}
+                  </Chip>
+                {/each}
+              </div>
+            </CardContent>
+          </Card>
+        {/if}
+
         <!-- Where the recipe scrolls to when the drawer opens (issue #696): the strip
              left above the chat should hold what the chef is talking about, not the
              hero photograph. It sits immediately above the tab strip rather than above
@@ -2374,6 +2490,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
                     {#each recipe.steps as step, idx (step.id)}
                       {@const handsOff = isHandsOff(step)}
                       {@const firstUse = firstUseByStep.get(step.id) ?? []}
+                      {@const stepKit = kitByStep.get(step.id) ?? []}
                       <li
                         class="relative flex gap-3 pb-5 text-sm last:pb-0"
                         data-testid="recipe-view-step"
@@ -2424,6 +2541,58 @@ Finish with a short note on what you changed and why, so I can read the gist her
                                     />
                                   </span>
                                   <span class="sr-only">{ingredientLabel(ing)}</span>
+                                </li>
+                              {/each}
+                            </ul>
+                          {/if}
+
+                          <!-- And what to GET OUT for it (issue #882). Beside the
+                               first-use row, in the same idiom, because they answer
+                               two different questions about the same step: what it
+                               is the first to call for, and what it needs in your
+                               hand. Two rows that looked alike but said the same
+                               thing would be the bug; two rows that look alike and
+                               say different things is the point — hence its own
+                               `aria-label`, which is the only thing separating them
+                               for a screen reader.
+
+                               Listed at the step the tool COMES OUT and not again
+                               until it has been put down (the contiguous-run rule in
+                               `kitByStep`), so a long braise does not repeat the same
+                               casserole under every step.
+
+                               The tile is decorative; the NAME beside it is the
+                               accessible content. A label the drawn vocabulary does
+                               not know renders its words with no picture — never
+                               `CanonIcon`'s bare placeholder tile, which reads as a
+                               broken image, and never another tool's drawing. -->
+                          {#if stepKit.length > 0}
+                            <ul
+                              class="flex flex-wrap items-center gap-1.5"
+                              aria-label="Kit this step calls for"
+                              data-testid="recipe-view-step-kit"
+                            >
+                              {#each stepKit as entry (entry.label)}
+                                <li
+                                  class="flex items-center gap-1"
+                                  title={entry.label}
+                                  data-testid="recipe-view-step-kit-item"
+                                >
+                                  {#if $toolIcons.toolIconFor(entry.label)}
+                                    <span class="flex" aria-hidden="true">
+                                      <CanonIcon
+                                        thumbnail={$toolIcons.toolIconFor(entry.label)}
+                                        version={$toolIcons.toolIconVersionFor(entry.label)}
+                                        name={entry.label}
+                                        size={26}
+                                      />
+                                    </span>
+                                    <span class="sr-only">{entry.label}</span>
+                                  {:else}
+                                    <!-- No picture, so the words stop being the
+                                         SR-only label and become the row. -->
+                                    <span class="text-xs text-muted-foreground">{entry.label}</span>
+                                  {/if}
                                 </li>
                               {/each}
                             </ul>

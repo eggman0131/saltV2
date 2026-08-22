@@ -656,6 +656,11 @@ export { onKitchenTimerDispatch } from './triggers/onKitchenTimerDispatch.js';
 // (`product-form-icons/`), so storage.rules must be deployed before any icon
 // will load in the browser.
 export { onProductFormWritten } from './triggers/onProductFormWritten.js';
+// Generic kitchen-tool pictograms (issue #882) — the same pipeline pointed at the
+// curated `kitchenTools` vocabulary. NOTE for deploys: it writes a NEW Storage
+// prefix (`kit-icons/`), so storage.rules must be deployed before any tool icon
+// will load in the browser.
+export { onKitchenToolWritten } from './triggers/onKitchenToolWritten.js';
 // Equipment pictogram BRIEFS (issue #877). Level-triggered on the single
 // equipment manifest doc; it authors appliance descriptions and NEVER an image —
 // the picture is drawn by `drawEquipmentIcon` when the user presses Draw. It also
@@ -666,6 +671,7 @@ export { regenerateCanonIcon } from './callables/regenerateCanonIcon.js';
 export { regenerateProductFormIcon } from './callables/regenerateProductFormIcon.js';
 export { regenerateRecipeImage } from './callables/regenerateRecipeImage.js';
 export { setRecipeImageUpload } from './callables/setRecipeImageUpload.js';
+export { redoRecipeKit } from './callables/redoRecipeKit.js';
 // The observation photo (issue #812, phase 4) — the same auth-gated upload one
 // level deeper, writing `batch-images/{batchId}/{observationId}.webp` and stamping
 // the URL onto the observation with a partial update. NOTE for deploys: it writes a

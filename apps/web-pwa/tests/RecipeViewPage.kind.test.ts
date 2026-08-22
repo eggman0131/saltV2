@@ -181,6 +181,7 @@ function makeEntry(overrides: Partial<Recipe> = {}): Recipe {
     source: null,
     notes: null,
     componentRecipeIds: [],
+    kit: [],
     image: { url: 'https://example.com/hero.webp', source: 'ai' },
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
@@ -334,6 +335,9 @@ describe('RecipeViewPage — a recipe keeps everything', () => {
       // in place, and they are the two halves of the pair — Optimise reworks the
       // method around the kit, Refresh re-applies the writing rules.
       'recipe-refresh-menu-item',
+      // "Redo kit" (#882) is the third of the same kind — re-run a model over this
+      // dish in place — so it joins the pair rather than starting a group.
+      'recipe-redo-kit-menu-item',
       'recipe-guided-plan-menu-item',
       'separator',
       'recipe-make-variation-menu-item',
@@ -701,6 +705,7 @@ describe('RecipeViewPage — bread scaling is gated on the formula, never the ki
       'recipe-ask-amend-menu-item',
       'recipe-optimise-kitchen-menu-item',
       'recipe-refresh-menu-item',
+      'recipe-redo-kit-menu-item',
       'recipe-guided-plan-menu-item',
       'recipe-bake-batch-menu-item',
       'recipe-formula-menu-item',

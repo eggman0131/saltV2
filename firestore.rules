@@ -76,6 +76,17 @@ service cloud.firestore {
     match /productForms/{formId} {
       allow read, write: if request.auth != null;
     }
+    // Kitchen tools (issue #882) — the curated pictogram vocabulary a recipe's or
+    // a plan's free-text container words are resolved against at display time.
+    // Client-writable, mirroring `canonItems` and `productForms` rather than the
+    // server-only `equipmentIcons` block: this collection follows the CANON model,
+    // where the client owns the document and the trigger only stamps the generated
+    // `thumbnail` back onto it (via the Admin SDK, which bypasses these rules).
+    // That is what lets the admin page add a tool, regenerate its picture or hide
+    // it with plain client writes — no callable, and no rules change.
+    match /kitchenTools/{toolId} {
+      allow read, write: if request.auth != null;
+    }
     // Aisle config — shared; any authenticated user can read and write.
     match /canonData/{document} {
       allow read, write: if request.auth != null;

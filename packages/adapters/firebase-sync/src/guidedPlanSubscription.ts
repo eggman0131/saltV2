@@ -1,4 +1,13 @@
-import { getFirestore, doc, setDoc, getDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import {
+  getFirestore,
+  doc,
+  collection,
+  setDoc,
+  getDoc,
+  getDocs,
+  deleteDoc,
+  onSnapshot,
+} from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success, failure } from '@salt/shared-types';
@@ -74,6 +83,45 @@ export async function loadGuidedPlan(
     const result = GuidedPlanSchema.safeParse(snap.data());
     if (!result.success) return failure({ kind: 'StorageError', reason: 'corruption' });
     return success(result.data);
+  } catch (err) {
+    return failure(classifyFirestoreError(err));
+  }
+}
+
+/**
+ * Every guided plan, once (issue #882, Phase 4). The kitchen-tool curation queue
+ * needs to know which container words the plans have already used, and until now
+ * nothing in the app had ever read more than one plan at a time.
+ *
+ * ONE-SHOT, DELIBERATELY NOT A SUBSCRIPTION. Every other read of this collection
+ * is a single document a page is standing on, and that asymmetry is the reason: a
+ * standing listener over the whole collection would sync every plan to every
+ * client, for the life of the session, to serve one admin screen almost nobody
+ * opens. At a few dozen documents a `getDocs` on arrival is cheaper in every
+ * direction — and the queue is a curation backlog, not a live readout, so a list
+ * that is a page-load old is exactly as useful as one that is a second old.
+ *
+ * READ CONTRACT — this SKIPS a corrupt plan and logs it, which is the opposite of
+ * `loadGuidedPlan` and `subscribeGuidedPlan` directly above. Not an inconsistency:
+ * those hand ONE plan to the editor, where reporting "no plan" would invite a user
+ * to overwrite reviewed work, so a bad document has to be an error. This is a list
+ * read whose caller wants a tally, and the list-read convention holds — one corrupt
+ * plan must not blank the whole queue. A skipped plan costs its container words a
+ * mention in a ranking, which is the smallest possible consequence.
+ *
+ * Never throws (Rule 10): a stream-level failure crosses as a Failure<DomainError>.
+ */
+export async function loadAllGuidedPlans(): Promise<ReadResult<GuidedPlanDoc[], DomainError>> {
+  try {
+    const db = getFirestore(getApp());
+    const snap = await getDocs(collection(db, COLLECTION));
+    const valid: GuidedPlanDoc[] = [];
+    for (const d of snap.docs) {
+      const result = GuidedPlanSchema.safeParse(d.data());
+      if (result.success) valid.push(result.data);
+      else console.error(`[GuidedPlanSchema] Document ${d.id} failed validation`, result.error);
+    }
+    return success(valid);
   } catch (err) {
     return failure(classifyFirestoreError(err));
   }

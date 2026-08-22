@@ -116,6 +116,7 @@ function dish(id: string, title: string, overrides: Partial<Recipe> = {}): Recip
     title,
     description: null,
     componentRecipeIds: [],
+    kit: [],
     ingredients: [],
     steps: [],
     metadata: { servings: 4, cookTimeMinutes: null, prepTimeMinutes: null, totalTimeMinutes: null },

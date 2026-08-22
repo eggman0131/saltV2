@@ -38,6 +38,12 @@
       href: '/admin/aisles',
     },
     {
+      id: 'kitchen-tools',
+      title: 'Kitchen tools',
+      description: 'Curate the drawn kit, and see which words nothing draws yet.',
+      href: '/admin/kitchen-tools',
+    },
+    {
       id: 'mealplan',
       title: 'Meal plan',
       description: 'Edit the standard weekly template and the big-shop day.',
