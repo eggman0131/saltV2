@@ -34,6 +34,11 @@ export const snapshotVolumetrics = onSchedule(
     timeZone: SNAPSHOT_TIME_ZONE,
     region: 'europe-west2',
     secrets: [posthogApiKey],
+    // 512MiB floor, pinned inline: top-imported, so index.ts's setGlobalOptions
+    // runs too late to reach this endpoint and it would fall to the 256MiB
+    // platform default. This one counts whole collections, and an OOM here is
+    // invisible — it costs a data point on a dashboard nobody watches nightly.
+    memory: '512MiB',
     // A failed run costs one day's data point in a slow-moving curve — not worth
     // Scheduler replaying a deterministic failure (same stance as remindShoppingDay).
     retryCount: 0,
