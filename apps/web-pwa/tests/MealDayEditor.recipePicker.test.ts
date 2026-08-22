@@ -32,6 +32,7 @@ const bolognese = {
   id: 'r1',
   title: 'Spaghetti Bolognese',
   componentRecipeIds: [],
+  kit: [],
 } as unknown as Recipe;
 const roast = { id: 'r2', title: 'Sunday Roast', componentRecipeIds: [] } as unknown as Recipe;
 

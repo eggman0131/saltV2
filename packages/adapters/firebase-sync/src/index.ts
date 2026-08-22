@@ -135,6 +135,7 @@ export {
   callExtractRecipeFromUrl,
   callExtractRecipeFromPhoto,
   callRegenerateRecipeImage,
+  callRedoRecipeKit,
   callSetRecipeImageUpload,
 } from './recipeCallables.js';
 export {

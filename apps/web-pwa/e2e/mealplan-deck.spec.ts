@@ -94,6 +94,7 @@ function recipeWithPhoto(id: string, title: string): Recipe {
     notes: null,
     producesCanonId: null,
     componentRecipeIds: [],
+    kit: [],
     image: { url: '/icons/icon-192.png', source: 'upload' },
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',

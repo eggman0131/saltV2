@@ -149,6 +149,7 @@ function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
     source: null,
     notes: null,
     componentRecipeIds: [],
+    kit: [],
     image: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',

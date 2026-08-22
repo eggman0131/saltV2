@@ -108,6 +108,9 @@ export type { RegenerateCanonIconInput } from './regenerateCanonIcon.js';
 export { RegenerateRecipeImageInputSchema } from './regenerateRecipeImage.js';
 export type { RegenerateRecipeImageInput } from './regenerateRecipeImage.js';
 
+export { RedoRecipeKitInputSchema } from './redoRecipeKit.js';
+export type { RedoRecipeKitInput } from './redoRecipeKit.js';
+
 export { SetRecipeImageUploadInputSchema } from './setRecipeImageUpload.js';
 export type { SetRecipeImageUploadInput } from './setRecipeImageUpload.js';
 
@@ -256,6 +259,20 @@ export type { PushSubscriptionDoc } from './pushSubscription.js';
 export { ChefChatInputSchema } from './chefChat.js';
 export type { ChefChatInput } from './chefChat.js';
 
+// identifyRecipeKit (issue #882) — "what do I need to get out?", inferred from the
+// whole stored recipe. Labels are FREE TEXT on purpose; read the header before
+// reaching for an enum over the drawn vocabulary.
+export {
+  IdentifyRecipeKitInputSchema,
+  IdentifyRecipeKitAIOutputSchema,
+  IdentifyRecipeKitOutputSchema,
+} from './identifyRecipeKit.js';
+export type {
+  IdentifyRecipeKitInput,
+  IdentifyRecipeKitAIOutput,
+  IdentifyRecipeKitOutput,
+} from './identifyRecipeKit.js';
+
 export {
   CategoriseRecipeInputSchema,
   CategoriseRecipeAIOutputSchema,
@@ -348,6 +365,7 @@ export {
   RecipeSourceSchema,
   RecipeImageSchema,
   RecipeKindSchema,
+  RecipeKitEntrySchema,
   RecipeSchema,
 } from './recipe.js';
 export type {
@@ -364,6 +382,7 @@ export type {
   RecipeSourceDoc,
   RecipeImageDoc,
   RecipeKindDoc,
+  RecipeKitEntryDoc,
   RecipeDoc,
 } from './recipe.js';
 

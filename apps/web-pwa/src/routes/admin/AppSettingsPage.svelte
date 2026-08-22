@@ -143,6 +143,7 @@
     generateRecipeImage: 'Recipe hero image generation',
     generateChatTitle: 'Chat title generation',
     identifyEquipment: 'Equipment identification',
+    identifyRecipeKit: 'Recipe kit identification (what to get out)',
     parseEntry: 'Entry parsing',
     parseRecipeIngredients: 'Recipe ingredient parsing',
     populateEquipmentEntry: 'Equipment entry population',
