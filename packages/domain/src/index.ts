@@ -94,6 +94,7 @@ export {
   confirmProductForm,
   setProductFormThumbnail,
   resolveProductForm,
+  resolveIngredientProductForm,
   findFormWithSameLabel,
   convertYield,
   formParentCount,

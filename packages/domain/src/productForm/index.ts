@@ -14,6 +14,7 @@ export { updateProductForm } from './commands/updateProductForm.js';
 export type { UpdateProductFormInput } from './commands/updateProductForm.js';
 export { confirmProductForm } from './commands/confirmProductForm.js';
 export { setProductFormThumbnail } from './commands/setProductFormThumbnail.js';
+export { resolveIngredientProductForm } from './queries/resolveIngredientProductForm.js';
 export { resolveProductForm } from './queries/resolveProductForm.js';
 export { findFormWithSameLabel } from './queries/findFormWithSameLabel.js';
 export { convertYield } from './queries/convertYield.js';

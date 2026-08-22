@@ -17,6 +17,7 @@
   import { guidedPlan, initGuidedPlanSync } from '../../lib/guidedPlanService.js';
   import { auth } from '../../lib/auth.svelte.js';
   import { canonItems } from '../../lib/canonService.js';
+  import { productForms } from '../../lib/productFormService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { isWakeLockSupported, createWakeLock } from '../../lib/wakeLock.js';
   import { primeChime } from '../../lib/chime.js';
@@ -57,6 +58,8 @@
     timerProgress,
     checkInTimerId,
     isCheckInTimerId,
+    resolveIngredientProductForm,
+    isCanonIconRenderable,
   } from '@salt/domain';
   import type {
     CookActiveTimerDoc,
@@ -332,14 +335,41 @@
     ),
   );
 
-  function thumbnailFor(canonId: string | null): string | null {
-    if (!canonId) return null;
-    return canonIconMap.get(canonId)?.thumbnail ?? null;
+  // A line naming a PRODUCT FORM shows the form's own picture (issue #871) — the
+  // squeezed lime, not the whole one. Same rule as cook mode's mise, for the same
+  // reason: these rows are read while doing something else.
+  //
+  // The parent guard lives in `resolveIngredientProductForm`: a form counts only
+  // when it belongs to the canon item this ingredient actually matched.
+  //
+  // FALLS BACK when the form has no renderable icon — not generated yet, or
+  // hidden. Generation is edge-triggered, so every form written before this
+  // shipped has a null thumbnail until regenerated; preferring the form
+  // unconditionally would replace a picture that shows today with a bare tile.
+  function formIconFor(
+    ingredient: IngredientDoc,
+  ): { thumbnail: string; version: string | number | undefined } | null {
+    const form = resolveIngredientProductForm(
+      ingredient.parsed?.item,
+      ingredient.canonId,
+      $productForms,
+    );
+    if (!form || !isCanonIconRenderable(form.thumbnail) || form.thumbnail === null) return null;
+    return { thumbnail: form.thumbnail, version: form.iconRequestedAt ?? form.updatedAt };
   }
 
-  function iconVersionFor(canonId: string | null): string | number | undefined {
-    if (!canonId) return undefined;
-    return canonIconMap.get(canonId)?.version;
+  function thumbnailFor(ingredient: IngredientDoc): string | null {
+    const form = formIconFor(ingredient);
+    if (form) return form.thumbnail;
+    if (!ingredient.canonId) return null;
+    return canonIconMap.get(ingredient.canonId)?.thumbnail ?? null;
+  }
+
+  function iconVersionFor(ingredient: IngredientDoc): string | number | undefined {
+    const form = formIconFor(ingredient);
+    if (form) return form.version;
+    if (!ingredient.canonId) return undefined;
+    return canonIconMap.get(ingredient.canonId)?.version;
   }
 
   function ingredientLabel(ingredient: IngredientDoc): string {
@@ -1332,9 +1362,9 @@
                                         {#if checked}<Icon name="Check" size={16} />{/if}
                                       </span>
                                       <CanonIcon
-                                        thumbnail={thumbnailFor(ingredient.canonId)}
+                                        thumbnail={thumbnailFor(ingredient)}
                                         name={ingredientLabel(ingredient)}
-                                        version={iconVersionFor(ingredient.canonId)}
+                                        version={iconVersionFor(ingredient)}
                                         dimmed={checked}
                                         size={32}
                                       />
@@ -1402,9 +1432,9 @@
                         {#if checked}<Icon name="Check" size={18} />{/if}
                       </span>
                       <CanonIcon
-                        thumbnail={thumbnailFor(ingredient.canonId)}
+                        thumbnail={thumbnailFor(ingredient)}
                         name={ingredientLabel(ingredient)}
-                        version={iconVersionFor(ingredient.canonId)}
+                        version={iconVersionFor(ingredient)}
                         dimmed={checked}
                         size={40}
                       />
@@ -1596,9 +1626,9 @@
                                   data-testid="guided-step-container-contents"
                                 >
                                   <CanonIcon
-                                    thumbnail={thumbnailFor(ingredient.canonId)}
+                                    thumbnail={thumbnailFor(ingredient)}
                                     name={ingredientLabel(ingredient)}
-                                    version={iconVersionFor(ingredient.canonId)}
+                                    version={iconVersionFor(ingredient)}
                                     size={32}
                                   />
                                   <span class="min-w-0 flex-1 text-base">
@@ -1624,9 +1654,9 @@
                             <Icon name="Plus" size={17} ariaLabel="Also" />
                           </span>
                           <CanonIcon
-                            thumbnail={thumbnailFor(ingredient.canonId)}
+                            thumbnail={thumbnailFor(ingredient)}
                             name={ingredientLabel(ingredient)}
-                            version={iconVersionFor(ingredient.canonId)}
+                            version={iconVersionFor(ingredient)}
                             size={32}
                           />
                           <span class="min-w-0 flex-1 text-base">

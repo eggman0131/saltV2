@@ -16,6 +16,7 @@
   } from '../../lib/cookSessionService.js';
   import { auth } from '../../lib/auth.svelte.js';
   import { canonItems } from '../../lib/canonService.js';
+  import { productForms } from '../../lib/productFormService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { isWakeLockSupported, createWakeLock } from '../../lib/wakeLock.js';
   import { primeChime } from '../../lib/chime.js';
@@ -57,6 +58,8 @@
     formatClock,
     timerProgress,
     isCheckInTimerId,
+    resolveIngredientProductForm,
+    isCanonIconRenderable,
   } from '@salt/domain';
   import type {
     CookActiveTimerDoc,
@@ -459,16 +462,46 @@
     ),
   );
 
-  // Tri-state thumbnail. null (→ bare tile) for ingredients that never matched a
-  // canon item, which is also what an unmatched row shows on the shopping list.
-  function thumbnailFor(canonId: string | null): string | null {
-    if (!canonId) return null;
-    return canonIconMap.get(canonId)?.thumbnail ?? null;
+  // A line that names a PRODUCT FORM shows the form's own picture (issue #871):
+  // "lime juice" is a bottle or a squeezed half, not a whole lime, and mise en
+  // place is exactly where that distinction earns its keep — you are looking for
+  // the thing itself, with your hands full.
+  //
+  // Guarded on the parent inside `resolveIngredientProductForm`: a form counts
+  // only when it belongs to the canon item this ingredient actually matched.
+  //
+  // FALLS BACK when the form has no renderable icon of its own — not generated
+  // yet, or hidden. That is not a nicety: generation is edge-triggered, so every
+  // form that existed before this shipped has a null thumbnail until it is
+  // regenerated, and preferring the form unconditionally would blank an icon that
+  // shows a picture today. `isCanonIconRenderable` is the same tri-state
+  // read-boundary guard the tiles themselves use.
+  function formIconFor(
+    ingredient: IngredientDoc,
+  ): { thumbnail: string; version: string | number | undefined } | null {
+    const form = resolveIngredientProductForm(
+      ingredient.parsed?.item,
+      ingredient.canonId,
+      $productForms,
+    );
+    if (!form || !isCanonIconRenderable(form.thumbnail) || form.thumbnail === null) return null;
+    return { thumbnail: form.thumbnail, version: form.iconRequestedAt ?? form.updatedAt };
   }
 
-  function iconVersionFor(canonId: string | null): string | number | undefined {
-    if (!canonId) return undefined;
-    return canonIconMap.get(canonId)?.version;
+  // Tri-state thumbnail. null (→ bare tile) for ingredients that never matched a
+  // canon item, which is also what an unmatched row shows on the shopping list.
+  function thumbnailFor(ingredient: IngredientDoc): string | null {
+    const form = formIconFor(ingredient);
+    if (form) return form.thumbnail;
+    if (!ingredient.canonId) return null;
+    return canonIconMap.get(ingredient.canonId)?.thumbnail ?? null;
+  }
+
+  function iconVersionFor(ingredient: IngredientDoc): string | number | undefined {
+    const form = formIconFor(ingredient);
+    if (form) return form.version;
+    if (!ingredient.canonId) return undefined;
+    return canonIconMap.get(ingredient.canonId)?.version;
   }
 
   // Alt text for the icon. The parsed item name ("plum tomatoes") beats the raw line
@@ -1465,9 +1498,9 @@
                            instead of ragging in and out. Dims with the tick, as on the
                            shopping list. -->
                         <CanonIcon
-                          thumbnail={thumbnailFor(ingredient.canonId)}
+                          thumbnail={thumbnailFor(ingredient)}
                           name={ingredientLabel(ingredient)}
-                          version={iconVersionFor(ingredient.canonId)}
+                          version={iconVersionFor(ingredient)}
                           dimmed={checked}
                           size={40}
                         />
@@ -1651,9 +1684,9 @@
                             }}
                           >
                             <CanonIcon
-                              thumbnail={thumbnailFor(ing.canonId)}
+                              thumbnail={thumbnailFor(ing)}
                               name={ingredientLabel(ing)}
-                              version={iconVersionFor(ing.canonId)}
+                              version={iconVersionFor(ing)}
                               size={40}
                               class="rounded-full"
                             />
