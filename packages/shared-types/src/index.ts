@@ -63,7 +63,8 @@ export type DomainError =
         | 'shoppingListItem'
         | 'workspace'
         | 'aisle'
-        | 'equipment';
+        | 'equipment'
+        | 'kitchenTool';
       readonly id: string;
     }
   | {
@@ -147,6 +148,14 @@ export const ErrorCode = {
   // a defect — the page says so and leaves the description exactly as it was — so
   // it crosses as a ValidationError and is deliberately not reported.
   EQUIPMENT_BRIEF_NOT_WRITABLE: 'EQUIPMENT_BRIEF_NOT_WRITABLE',
+  // A kitchen tool with nothing to call it (issue #882): a blank label, or one
+  // made entirely of punctuation, which slugs to no id and so has nowhere to keep
+  // its drawing. Somebody left a field empty — expected, so it crosses as a
+  // ValidationError and is not reported. An id that COLLIDES with a tool already
+  // in the vocabulary is a different answer and gets `ConflictError`, because the
+  // caller's next move is different: reword it, or go and edit the one that
+  // already exists.
+  INVALID_KITCHEN_TOOL: 'INVALID_KITCHEN_TOOL',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

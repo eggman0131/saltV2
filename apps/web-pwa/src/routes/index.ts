@@ -120,6 +120,10 @@ export const routes: RouteDefinition = new Map<
   ['/admin/dev-settings', lazy(() => import('./admin/DevSettingsPage.svelte'))],
   ['/admin/app-settings', lazy(() => import('./admin/AppSettingsPage.svelte'))],
   ['/admin/aisles', lazy(() => import('./canon/AisleManagementPage.svelte'))],
+  // The drawn kitchen-tool vocabulary (issue #882). A SIBLING of the catalog, not
+  // a third record kind in it: a tool shares no aisle, no match pipeline and no
+  // approval queue with the two grocery kinds, so it gets its own screen.
+  ['/admin/kitchen-tools', lazy(() => import('./admin/KitchenToolsPage.svelte'))],
   // The catalog (issue #872) — one list for canon items and their product forms,
   // in place of the two it replaced. `/admin/canon` and `/admin/product-forms`
   // survive as ALIASES so existing bookmarks still land somewhere correct: the

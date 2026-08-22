@@ -390,10 +390,24 @@ export type {
 export { withKitchenTimerStarted, withKitchenTimerDismissed } from './kitchenTimer/index.js';
 
 // Kitchen-tool module (issue #882) — the curated pictogram vocabulary, and the
-// one pure lookup that turns a cook's own words ("Magmix bowl", "large frying
-// pan") into a tool at DISPLAY time. Nothing persists the answer, so the module
-// has exactly one export and no commands.
-export { resolveKitchenTool } from './kitchenTool/index.js';
+// pure lookup that turns a cook's own words ("Magmix bowl", "large frying pan")
+// into a tool at DISPLAY time. Nothing persists that answer, so the commands here
+// curate the VOCABULARY and never touch a recipe or a plan; `unresolvedKitLabels`
+// is the read that says which words our content already uses and nothing draws.
+export {
+  resolveKitchenTool,
+  unresolvedKitLabels,
+  createKitchenTool,
+  updateKitchenTool,
+  kitchenToolSlug,
+} from './kitchenTool/index.js';
+export type {
+  UnresolvedKitLabel,
+  KitLabelSource,
+  ContainerSource,
+  CreateKitchenToolInput,
+  UpdateKitchenToolInput,
+} from './kitchenTool/index.js';
 
 // Shopping-day module (issue #629) — pure helpers over `shoppingDays/{date}`:
 // the planner's pre-shop shading predicate, the reminder's "tomorrow in zone"

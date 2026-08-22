@@ -1,6 +1,7 @@
 import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
-import type { DomainError } from '@salt/shared-types';
+import type { DomainError, ReadResult } from '@salt/shared-types';
+import { success, failure } from '@salt/shared-types';
 import { KitchenToolSchema, KITCHEN_TOOLS_COLLECTION } from '@salt/domain/schemas';
 import type { KitchenToolDoc } from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
@@ -66,8 +67,19 @@ export async function upsertKitchenTool(tool: KitchenToolDoc): Promise<void> {
  * Remove a tool from the vocabulary. No soft-delete and no tombstone: Firestore
  * is master, and the weekly orphan sweep reclaims the `kit-icons/{id}.webp`
  * object once the document is gone.
+ *
+ * Crosses back as a `Failure<DomainError>` rather than throwing (Rule 10), like
+ * `deleteCanonItem` and `deleteProductForm` — the admin page has a toast to show
+ * and no business catching a Firestore exception. The `upsert` above keeps the
+ * house `Promise<void>` shape it shares with `upsertCanonItem` /
+ * `upsertProductForm`; only the delete has a caller that can act on the answer.
  */
-export async function deleteKitchenTool(id: string): Promise<void> {
-  const db = getFirestore(getApp());
-  await deleteDoc(doc(db, KITCHEN_TOOLS_COLLECTION, id));
+export async function deleteKitchenTool(id: string): Promise<ReadResult<void, DomainError>> {
+  try {
+    const db = getFirestore(getApp());
+    await deleteDoc(doc(db, KITCHEN_TOOLS_COLLECTION, id));
+    return success(undefined);
+  } catch (err) {
+    return failure(classifyFirestoreError(err));
+  }
 }

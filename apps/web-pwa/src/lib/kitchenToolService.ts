@@ -1,17 +1,30 @@
-import { subscribeKitchenTools } from '@salt/firebase-sync';
+import {
+  subscribeKitchenTools,
+  upsertKitchenTool,
+  deleteKitchenTool as deleteKitchenToolDoc,
+} from '@salt/firebase-sync';
 import { createObservabilityErrorReportingAdapter } from '@salt/observability';
-import { resolveKitchenTool, isCanonIconRenderable } from '@salt/domain';
+import {
+  resolveKitchenTool,
+  isCanonIconRenderable,
+  createKitchenTool,
+  updateKitchenTool,
+  CANON_ICON_HIDDEN,
+} from '@salt/domain';
+import type { CreateKitchenToolInput, UpdateKitchenToolInput } from '@salt/domain';
 import type { KitchenToolDoc } from '@salt/domain/schemas';
+import { success, failure, type DomainError, type Result } from '@salt/shared-types';
 import { writable, derived, get } from 'svelte/store';
 import type { Readable } from 'svelte/store';
-import { reportSubscriptionError } from './errorReporting.js';
+import { reportIfFailed, reportSubscriptionError } from './errorReporting.js';
 
 // The curated kitchen-tool pictogram vocabulary (issue #882).
 //
-// Read-only in Phase 1: the list is seeded offline and every surface only ever
-// looks a name up in it. Nothing here writes, and nothing anywhere stores a tool
-// id — a recipe step and a guided plan card keep the cook's own words, and the
-// tool is found from those words each time a row is drawn.
+// Every surface but one only ever looks a name up in this list: nothing anywhere
+// stores a tool id, so a recipe step and a guided plan card keep the cook's own
+// words and the tool is found from those words each time a row is drawn. The one
+// exception is the admin page, whose commands live at the bottom of this file —
+// and they curate the VOCABULARY, never the content that reads it.
 
 // ─── Reactive stores ────────────────────────────────────────────────────────────
 
@@ -103,6 +116,115 @@ function lookupFor(tools: readonly KitchenToolDoc[]): ToolIconLookup {
  * (`$toolIcons.toolIconFor(name)`) so a tile fills in the moment the list lands.
  */
 export const toolIcons: Readable<ToolIconLookup> = derived(_kitchenTools, lookupFor);
+
+// ─── Commands (the admin page, issue #882 Phase 4) ──────────────────────────────
+//
+// PLAIN CLIENT WRITES, with no callable in front of them — and that is the point
+// rather than a shortcut. Canon routes its regenerate through an auth'd Cloud
+// Function because `canonItems` needs AI-cost gating at a surface the client
+// cannot be trusted with; `kitchenTools` was made client-writable in Phase 1
+// precisely so this page would need neither a new function nor a new
+// per-environment IAM invoker grant. Adding one now would contradict the reason
+// the rules block was written the way it was. (Canon's own `hideCanonIcon` is
+// already a plain client write for the same reason: hiding spends nothing.)
+//
+// None of these touch a recipe or a plan. Adding a tool lights up every piece of
+// content that already said the word, because resolution happens at display time —
+// there is nothing to backfill and nothing to reprocess.
+
+export async function addKitchenTool(
+  input: CreateKitchenToolInput,
+): Promise<Result<KitchenToolDoc, DomainError>> {
+  // The whole current vocabulary goes in because the id is derived from the
+  // label: the command refuses a collision rather than letting a full-document
+  // write replace a curated tool with a blank one.
+  const result = createKitchenTool(input, getKitchenToolsSnapshot(), new Date().toISOString());
+  if (result.kind === 'ok') await upsertKitchenTool(result.value);
+  return result;
+}
+
+export async function editKitchenTool(
+  tool: KitchenToolDoc,
+  input: UpdateKitchenToolInput,
+): Promise<Result<KitchenToolDoc, DomainError>> {
+  const result = updateKitchenTool(tool, input, new Date().toISOString());
+  if (result.kind === 'ok') await upsertKitchenTool(result.value);
+  return result;
+}
+
+/**
+ * Add one more phrase a tool answers to — the queue's "alias of an existing tool"
+ * action. It draws NO second pictogram, which is the whole reason it exists: a
+ * vocabulary that gains "masher" beside "potato masher" is a vocabulary paying for
+ * the same drawing twice and slowly filling with near-duplicates.
+ */
+export async function addKitchenToolMatcher(
+  tool: KitchenToolDoc,
+  phrase: string,
+): Promise<Result<KitchenToolDoc, DomainError>> {
+  return editKitchenTool(tool, { label: tool.label, matchers: [...tool.matchers, phrase] });
+}
+
+export async function removeKitchenTool(id: string): Promise<Result<void, DomainError>> {
+  return reportIfFailed(getErrorReporter(), await deleteKitchenToolDoc(id));
+}
+
+// ─── Icon (Tier-1 pictogram) escape hatch ───────────────────────────────────────
+
+/**
+ * Regenerate a tool's icon.
+ *
+ * This reproduces `requestIconRegeneration`'s server-side write field for field,
+ * and every field is load-bearing. Clearing `thumbnail` is what re-fires the
+ * `onKitchenToolWritten` icon branch. The `iconRequestedAt` nonce is what makes
+ * the clear a real write: when the tool has no icon YET, `thumbnail` is already
+ * null, so writing null again mutates nothing, Firestore emits no write event and
+ * the trigger never runs — which is exactly the case a person hits when a
+ * just-added tool's drawing fails to arrive. And passing no `hint` DELETES any
+ * stale one, so a plain regenerate is plain rather than silently inheriting the
+ * last steer somebody typed.
+ *
+ * The write is a whole-document `setDoc`, so dropping the key IS the delete —
+ * there is no `FieldValue.delete()` to reach for and no merge to write around.
+ */
+export async function regenerateKitchenToolIcon(
+  id: string,
+  hint?: string,
+): Promise<Result<void, DomainError>> {
+  const tool = getKitchenToolsSnapshot().find((t) => t.id === id);
+  // Not reported: a NotFound here means the vocabulary changed under a page that
+  // was already open, which is an expected race and not a defect (§7.6).
+  if (!tool) return failure({ kind: 'NotFound', resource: 'kitchenTool', id });
+  const { iconHint: _stale, ...rest } = tool;
+  await upsertKitchenTool({
+    ...rest,
+    thumbnail: null,
+    ...(hint?.trim() ? { iconHint: hint.trim() } : {}),
+    iconRequestedAt: Date.now(),
+  });
+  return success(undefined);
+}
+
+/** Hide a tool's icon: sets `thumbnail` to the shared "hidden" sentinel so the
+ *  trigger skips it forever and every surface renders the words on their own. */
+export async function hideKitchenToolIcon(
+  tool: KitchenToolDoc,
+): Promise<Result<KitchenToolDoc, DomainError>> {
+  const hidden: KitchenToolDoc = {
+    ...tool,
+    thumbnail: CANON_ICON_HIDDEN,
+    updatedAt: new Date().toISOString(),
+  };
+  await upsertKitchenTool(hidden);
+  return success(hidden);
+}
+
+/** Un-hide a tool's icon. It goes through the regenerate path because clearing
+ *  the sentinel back to null is the same write that re-triggers generation —
+ *  there is nothing else to do, and no second way to do it. */
+export async function unhideKitchenToolIcon(id: string): Promise<Result<void, DomainError>> {
+  return regenerateKitchenToolIcon(id);
+}
 
 // ─── Test helpers ────────────────────────────────────────────────────────────────
 
