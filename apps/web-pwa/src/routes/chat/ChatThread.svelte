@@ -6,12 +6,12 @@
 
   What it deliberately does NOT own is anything that differs by host. "Save as
   recipe", "Review changes", "Open full chat" and the panel's card chrome are the
-  host's to place; the hooks offered here are `aboveComposer`, a snippet dropped
-  between the transcript and the input, and `aboveTranscript`, a snippet dropped
-  INSIDE the panel's scroll box above the messages — so what the host puts there
-  scrolls away with the conversation instead of costing it permanent height.
-  There is no branching on which surface is rendering beyond `layout`, which is a
-  layout choice and nothing more:
+  host's to place; the hooks offered here are `starters`, the doors offered into an
+  empty conversation, worded by the host exactly as `emptyText` is, and
+  `aboveTranscript`, a snippet dropped INSIDE the panel's scroll box above the
+  messages — so what the host puts there scrolls away with the conversation instead
+  of costing it permanent height. There is no branching on which surface is
+  rendering beyond `layout`, which is a layout choice and nothing more:
 
   - `page`  — the transcript scrolls with the document and the composer is a bar
               fixed above the bottom navigation (the /chat/:id route).
@@ -38,11 +38,19 @@
     /** Shown when the conversation is empty — the invitation, worded by the host. */
     emptyText: string;
     /**
-     * Host actions that belong with the composer rather than the page header.
+     * Doors into an EMPTY conversation, worded by the host for the same reason
+     * `emptyText` is: what is worth asking about a dish is not what is worth asking
+     * about cooking in general, and this component knows about neither. Each is a
+     * button that sends `text` down the ordinary send path — the same turn you would
+     * have got by typing it — with `label` as the short thing it says on the tin.
+     *
+     * Shown only while the transcript is empty: it is the blank page they answer, and
+     * a conversation with content has its own next thing to say.
+     *
      * `| undefined` is `exactOptionalPropertyTypes`: a host that forwards its own
-     * optional snippet has to be able to forward the one it does not have.
+     * optional value has to be able to forward the one it does not have.
      */
-    aboveComposer?: Snippet | undefined;
+    starters?: { label: string; text: string }[] | undefined;
     /**
      * Host content that belongs at the TOP of the conversation and should scroll away
      * with it — the recipe page's list of chats (#737). Rendered inside the panel's
@@ -55,9 +63,21 @@
      */
     aboveTranscript?: Snippet | undefined;
   }
-  let { session, thread, layout, emptyText, aboveComposer, aboveTranscript }: Props = $props();
+  let { session, thread, layout, emptyText, starters, aboveTranscript }: Props = $props();
 
   const panel = $derived(layout === 'panel');
+
+  // Held here rather than written inline: a conditional beside a long class list is
+  // exactly where a stray space becomes interior whitespace in the rendered text.
+  const emptyWrapClass = $derived(`flex flex-col items-center gap-3 ${panel ? 'py-8' : 'py-12'}`);
+  const emptyTextClass = $derived(
+    `text-center text-muted-foreground ${panel ? 'text-xs' : 'text-sm'}`,
+  );
+  // `h-auto whitespace-normal` because `Button`'s sizes are fixed-height single
+  // lines, and a starter has to be allowed to wrap in a 300px column.
+  const starterClass = $derived(
+    `h-auto whitespace-normal py-1.5 text-left ${panel ? 'text-xs' : 'text-sm'}`,
+  );
 
   let inputText = $state('');
   let inputEl = $state<HTMLTextAreaElement | undefined>(undefined);
@@ -101,6 +121,18 @@
     if (!ok) inputText = text;
   }
 
+  // A starter leaves by the SAME send path a typed message does — `thread.send`,
+  // the only one there is — but deliberately not through the input box. Staging it
+  // in `inputText` would wipe a draft the user had already begun, and a failed send
+  // would hand a five-paragraph canned prompt back into the textarea to delete by
+  // hand; `chatThreadState` says the same thing about canned prompts from a host.
+  // Nothing is lost on failure: the transcript is still empty, so the buttons are
+  // still there to press again.
+  async function handleStarter(text: string): Promise<void> {
+    if (thread.isSending) return;
+    await thread.send(session, text);
+  }
+
   function handleKeydown(e: KeyboardEvent): void {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -118,9 +150,31 @@
 
 {#snippet transcript()}
   {#if session.messages.length === 0 && !thread.isSending}
-    <p class="text-center text-muted-foreground {panel ? 'py-8 text-xs' : 'py-12 text-sm'}">
-      {emptyText}
-    </p>
+    <div class={emptyWrapClass}>
+      <p class={emptyTextClass}>{emptyText}</p>
+      {#if starters && starters.length > 0}
+        <!-- Ordinary buttons in ordinary source order, so the keyboard and a screen
+             reader are offered the same door as the pointer. -->
+        <div
+          class="flex flex-wrap justify-center gap-2"
+          role="group"
+          aria-label="Suggested questions"
+        >
+          {#each starters as starter (starter.label)}
+            <Button
+              size="sm"
+              variant="outline"
+              class={starterClass}
+              disabled={thread.isSending}
+              onclick={() => void handleStarter(starter.text)}
+              data-testid="chat-starter"
+            >
+              {starter.label}
+            </Button>
+          {/each}
+        </div>
+      {/if}
+    </div>
   {/if}
 
   {#each session.messages as msg (msg.id)}
@@ -191,7 +245,7 @@
       <textarea
         bind:this={inputEl}
         class="flex-1 resize-none bg-transparent py-2 outline-none"
-        rows={panel ? 2 : 3}
+        rows={panel ? 1 : 3}
         placeholder="Message the chef… or /remember something"
         value={inputText}
         onkeydown={handleKeydown}
@@ -199,16 +253,20 @@
         disabled={thread.isSending}
         data-testid="chat-input"></textarea>
     </div>
+    <!-- Icon-only in a panel: a fifth of a 300px column spent on the word "Send" is
+         width the message being typed wants more. `ariaLabel` rather than a raw
+         attribute so `size="icon"` gets the name it insists on — the accessible name
+         is "Send" on both layouts, which is what makes dropping the word free. -->
     <Button
-      size={panel ? 'sm' : 'md'}
+      size={panel ? 'icon' : 'md'}
       onclick={handleSend}
       disabled={thread.isSending || !inputText.trim()}
       loading={thread.isSending}
-      aria-label="Send"
+      ariaLabel="Send"
       data-testid="chat-send-btn"
     >
-      {#snippet leading()}<Icon name="SendHorizontal" size={panel ? 14 : 16} />{/snippet}
-      Send
+      {#snippet leading()}<Icon name="SendHorizontal" size={16} />{/snippet}
+      {#if !panel}Send{/if}
     </Button>
   </div>
 {/snippet}
@@ -221,8 +279,6 @@
     </div>
   </div>
 
-  {@render aboveComposer?.()}
-
   <div class="shrink-0 border-t p-3">
     {@render composer()}
   </div>
@@ -231,8 +287,6 @@
   <div class="mx-auto flex w-full max-w-2xl flex-col gap-4 pb-36" data-testid="chat-messages">
     {@render transcript()}
   </div>
-
-  {@render aboveComposer?.()}
 
   <!-- Input bar — fixed above BottomNav on mobile, at viewport bottom on desktop -->
   <div

@@ -915,6 +915,36 @@ Finish with a short note on what you changed and why, so I can read the gist her
     optimiseBusy = false;
   }
 
+  // ─── Openers for an empty conversation (issue #878) ─────────────────────────
+  // A blank box is a bad question to be asked by a chef, so both recipe surfaces
+  // open with a few things worth asking ABOUT THIS DISH — the full /chat/:id page
+  // offers general ones instead, because it is not standing on a recipe.
+  //
+  // "Optimise for my kitchen" is the same prompt the overflow menu sends, not a
+  // second wording of it: it is the best example of the shape, and one text means
+  // one thing to maintain. It carries the same equipment gate for the same reason —
+  // with an empty manifest the chef is asked to reason about no kit at all.
+  //
+  // These land as ordinary user turns down `ChatThread`'s one send path, so a
+  // starter and the same sentence typed by hand are indistinguishable afterwards.
+  const recipeStarters = $derived([
+    ...(hasEquipment
+      ? [{ label: 'Optimise for my kitchen', text: OPTIMISE_FOR_KITCHEN_PROMPT }]
+      : []),
+    {
+      label: 'What can I prep ahead?',
+      text: 'What parts of this can I prepare ahead of time, how far in advance, and how should I store them until I need them?',
+    },
+    {
+      label: 'Make it quicker',
+      text: 'How could I get this on the table faster on a weeknight, and what does each shortcut cost me?',
+    },
+    {
+      label: 'What goes with it?',
+      text: 'What would you serve alongside this to make it a full meal?',
+    },
+  ]);
+
   // Review-and-approve gate. "Update recipe" generates a PENDING proposal and
   // opens a diff summary; nothing is written until "Apply changes". What the
   // proposal contains and what the save writes live in `recipeAmend` and are
@@ -2408,18 +2438,21 @@ Finish with a short note on what you changed and why, so I can read the gist her
              the height comes from the fill chain now, and nothing here measures chrome. -->
         <Card class="flex flex-col overflow-hidden split:min-h-0 split:flex-1">
           <CardHeader class="shrink-0 border-b px-4 py-3">
-            <div class="flex items-center justify-between">
-              <CardTitle class="text-sm">Chef Chat</CardTitle>
-              {#if activeSession}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onclick={() => push(`/chat/${activeSession!.id}`)}
-                  aria-label="Open full chat"
-                >
-                  <Icon name="ExternalLink" size={14} />
-                </Button>
-              {/if}
+            <div class="flex items-center justify-between gap-2">
+              <CardTitle class="truncate text-sm">Chef Chat</CardTitle>
+              <div class="flex shrink-0 items-center gap-1">
+                {@render sidebarChatActions()}
+                {#if activeSession}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onclick={() => push(`/chat/${activeSession!.id}`)}
+                    aria-label="Open full chat"
+                  >
+                    <Icon name="ExternalLink" size={14} />
+                  </Button>
+                {/if}
+              </div>
             </div>
             {#if !activeSession}
               <CardDescription class="text-xs">
@@ -2465,7 +2498,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
               thread={chat}
               layout="panel"
               emptyText="Ask me anything about this recipe."
-              aboveComposer={sidebarReviewChanges}
+              starters={recipeStarters}
               aboveTranscript={docked ? dockedChatList : undefined}
             />
           {/if}
@@ -2517,9 +2550,6 @@ Finish with a short note on what you changed and why, so I can read the gist her
   <RecipeBakeBatchSheet {recipe} formula={$formula} bind:open={bakeBatchOpen} />
 {/if}
 
-<!-- "Review changes", wherever the conversation is being read — the docked column or the
-     drawer. One button, one handler, so an edit proposed from a phone and an edit
-     proposed from a laptop are the same act. -->
 <!-- The docked column's copy of the list, with the gap to the first message baked in
      here rather than in `ChatThread` — the hook is deliberately unstyled so the host
      owns its own spacing. -->
@@ -2537,56 +2567,63 @@ Finish with a short note on what you changed and why, so I can read the gist her
   />
 {/snippet}
 
+<!-- "Review changes", wherever the conversation is being read — the docked column or
+     the drawer. One handler for both, so an edit proposed from a phone and an edit
+     proposed from a laptop are the same act.
+
+     Both actions live in the panel's HEADER now (issue #878), not in a bar above the
+     composer. A full-width button under the transcript is height the conversation never
+     gets back, and there were two of them; up here they cost the row the title already
+     occupies. That is also why they are icon-only: the narrowest column this card
+     renders in is about 300px, which a labelled pair does not fit — and the header was
+     already an icon-only row ("Open full chat"), so they read as part of it. `ariaLabel`
+     carries the whole name, so nothing is lost to a screen reader. -->
 {#snippet reviewChangesAction(testid: string)}
   {#if activeSession?.messages.some((m) => m.role === 'assistant')}
-    <div class="shrink-0 border-t px-3 pt-3">
-      <Button
-        variant="outline"
-        class="w-full"
-        onclick={handleSidebarReviewChanges}
-        loading={sidebarIsProposing}
-        disabled={sidebarIsProposing || chat.isSending}
-        data-testid={testid}
-      >
-        {#snippet leading()}<Icon name="RefreshCw" size={14} />{/snippet}
-        Review changes
-      </Button>
-    </div>
+    <Button
+      size="sm"
+      variant="ghost"
+      onclick={handleSidebarReviewChanges}
+      loading={sidebarIsProposing}
+      disabled={sidebarIsProposing || chat.isSending}
+      ariaLabel="Review changes"
+      data-testid={testid}
+    >
+      {#snippet leading()}<Icon name="RefreshCw" size={14} />{/snippet}
+    </Button>
   {/if}
 {/snippet}
 
 <!-- Its counterpart (issue #798). Same gate — an empty conversation has nothing to
      author either — and deliberately the same shape, because the pair is the whole
      point: one folds what was said into THIS dish, the other makes it a different
-     one. No `border-t`: it sits directly under "Review changes" inside the one
-     footer that button opens, and a second rule would read as a second region. -->
+     one. It moves WITH its twin for that reason: relocating one and leaving the
+     other would keep the bar and split a pair the design treats as one thing. -->
 {#snippet saveAsNewRecipeAction(testid: string)}
   {#if activeSession?.messages.some((m) => m.role === 'assistant')}
-    <div class="shrink-0 px-3 pt-2">
-      <Button
-        variant="outline"
-        class="w-full"
-        onclick={handleSaveAsNewRecipe}
-        loading={sidebarIsSavingNew}
-        disabled={sidebarIsSavingNew || chat.isSending}
-        data-testid={testid}
-      >
-        {#snippet leading()}<Icon name="BookOpen" size={14} />{/snippet}
-        Save as new recipe
-      </Button>
-    </div>
+    <Button
+      size="sm"
+      variant="ghost"
+      onclick={handleSaveAsNewRecipe}
+      loading={sidebarIsSavingNew}
+      disabled={sidebarIsSavingNew || chat.isSending}
+      ariaLabel="Save as new recipe"
+      data-testid={testid}
+    >
+      {#snippet leading()}<Icon name="BookOpen" size={14} />{/snippet}
+    </Button>
   {/if}
 {/snippet}
 
 <!-- The two surfaces are separate DOM nodes and both can be mounted at once (the column
      is merely `hidden` below `lg`), so they carry distinct testids — one ambiguous
      selector is a worse trap than two names for one button. -->
-{#snippet sidebarReviewChanges()}
+{#snippet sidebarChatActions()}
   {@render reviewChangesAction('sidebar-apply-changes-btn')}
   {@render saveAsNewRecipeAction('sidebar-save-new-recipe-btn')}
 {/snippet}
 
-{#snippet drawerReviewChanges()}
+{#snippet drawerChatActions()}
   {@render reviewChangesAction('drawer-apply-changes-btn')}
   {@render saveAsNewRecipeAction('drawer-save-new-recipe-btn')}
 {/snippet}
@@ -2599,7 +2636,8 @@ Finish with a short note on what you changed and why, so I can read the gist her
     thread={chat}
     onClose={() => (drawerOpen = false)}
     onOpenFull={() => push(`/chat/${activeSession!.id}`)}
-    aboveComposer={drawerReviewChanges}
+    headerActions={drawerChatActions}
+    starters={recipeStarters}
   />
 {/if}
 

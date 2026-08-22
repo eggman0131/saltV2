@@ -56,7 +56,7 @@ vi.mock('../src/lib/recipeService.js', () => ({
 }));
 
 import ChatSessionPage from '../src/routes/chat/ChatSessionPage.svelte';
-import { claimRecipe } from '../src/lib/chatService.js';
+import { claimRecipe, sendMessage } from '../src/lib/chatService.js';
 import { attachComponentToMeal, authorRecipeTraced } from '../src/lib/recipeService.js';
 import { addToast } from '../src/lib/toastStore.js';
 import { push } from 'svelte-spa-router';
@@ -342,5 +342,48 @@ describe('ChatSessionPage — saving a dish back onto a meal', () => {
 
     await waitFor(() => expect(push).toHaveBeenCalledWith('/recipes/recipe-new'));
     expect(attachComponentToMeal).not.toHaveBeenCalled();
+  });
+});
+
+// Starter prompts (issue #878): the door out of a blank box. This page is not
+// standing on a dish, so unless the conversation is a variation the openers are
+// general — and whichever is pressed sends down the ordinary send path, so the
+// turn is indistinguishable from the same sentence typed by hand.
+describe('ChatSessionPage — starter prompts', () => {
+  function emptySession(overrides: Partial<ChatSessionDoc> = {}): ChatSessionDoc {
+    return makeSession({ messages: [], ...overrides });
+  }
+
+  it('offers general openers on an empty chat, and sends one as an ordinary turn', async () => {
+    vi.mocked(sendMessage).mockResolvedValue({ kind: 'ok', value: undefined });
+    mockSessions._set([emptySession()]);
+    const { getAllByTestId, getByRole } = renderPage();
+
+    expect(getAllByTestId('chat-starter').length).toBeGreaterThan(0);
+
+    await fireEvent.click(getByRole('button', { name: 'What shall I cook tonight?' }));
+
+    await waitFor(() => expect(sendMessage).toHaveBeenCalled());
+    const [, text] = vi.mocked(sendMessage).mock.calls[0]!;
+    expect(text).toMatch(/cook tonight/i);
+  });
+
+  it('asks about the dish instead when the chat is a variation of one', () => {
+    mockRecipes._set([
+      { id: 'pilaf', title: 'Chorizo & Red Pepper Pilaf', metadata: { tags: [] } } as Recipe,
+    ]);
+    mockSessions._set([emptySession({ basedOnRecipeId: 'pilaf' })]);
+    const { getAllByTestId } = renderPage();
+
+    const labels = getAllByTestId('chat-starter').map((b) => b.textContent?.trim());
+    expect(labels).toContain('Make it vegetarian');
+    expect(labels).not.toContain('What shall I cook tonight?');
+  });
+
+  it('withdraws them the moment the conversation has anything in it', () => {
+    mockSessions._set([makeSession()]);
+    const { queryAllByTestId } = renderPage();
+
+    expect(queryAllByTestId('chat-starter')).toHaveLength(0);
   });
 });
