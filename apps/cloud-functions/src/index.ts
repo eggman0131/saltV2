@@ -621,6 +621,12 @@ export { onKitchenTimerDispatch } from './triggers/onKitchenTimerDispatch.js';
 // (`product-form-icons/`), so storage.rules must be deployed before any icon
 // will load in the browser.
 export { onProductFormWritten } from './triggers/onProductFormWritten.js';
+// Equipment pictogram BRIEFS (issue #877). Level-triggered on the single
+// equipment manifest doc; it authors appliance descriptions and NEVER an image —
+// the picture is drawn by `drawEquipmentIcon` when the user presses Draw. It also
+// reconciles icon docs for items that have been deleted, which is what lets
+// `sweepOrphanedStorage` reclaim their Storage objects.
+export { onEquipmentManifestWritten } from './triggers/onEquipmentManifestWritten.js';
 export { regenerateCanonIcon } from './callables/regenerateCanonIcon.js';
 export { regenerateProductFormIcon } from './callables/regenerateProductFormIcon.js';
 export { regenerateRecipeImage } from './callables/regenerateRecipeImage.js';
@@ -631,6 +637,12 @@ export { setRecipeImageUpload } from './callables/setRecipeImageUpload.js';
 // NEW Storage prefix, which storage.rules must be deployed for before the log will
 // render a photo.
 export { setObservationImageUpload } from './callables/setObservationImageUpload.js';
+// The equipment pictogram's Draw / Hide button (issue #877). Runs the image flow
+// and sharp INLINE — the user is waiting — and stamps the result back with a
+// partial update. NOTE for deploys: it writes a NEW Storage prefix
+// (`equipment-icons/`), which storage.rules must be deployed for before the icons
+// will render.
+export { drawEquipmentIcon } from './callables/drawEquipmentIcon.js';
 export { listPushoverDevices } from './callables/listPushoverDevices.js';
 export { beforeMemberCreated } from './auth/beforeMemberCreated.js';
 export { sweepOrphanedStorage } from './maintenance/sweepOrphanedStorage.js';

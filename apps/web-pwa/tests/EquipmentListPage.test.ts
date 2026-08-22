@@ -3,7 +3,7 @@ import { render, screen, cleanup, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import type { EquipmentManifest } from '@salt/domain';
 
-const { mockEquipment, mockIsLoading } = vi.hoisted(() => {
+const { mockEquipment, mockIsLoading, mockEquipmentIcons } = vi.hoisted(() => {
   function makeStore<T>(initial: T) {
     let value = initial;
     const subs = new Set<(v: T) => void>();
@@ -24,6 +24,10 @@ const { mockEquipment, mockIsLoading } = vi.hoisted(() => {
   return {
     mockEquipment: makeStore<EquipmentManifest | null>(null),
     mockIsLoading: makeStore<boolean>(false),
+    // Pictograms (issue #877). Empty by default, which is the real "no art yet"
+    // state — every row renders CanonIcon's pale placeholder tile, and these
+    // cases go on testing the list rather than the icons.
+    mockEquipmentIcons: makeStore<Map<string, unknown>>(new Map()),
   };
 });
 
@@ -33,6 +37,9 @@ vi.mock('../src/lib/equipmentService.js', () => ({
   equipment: mockEquipment,
   isLoadingEquipment: mockIsLoading,
   removeEquipmentItems: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+  equipmentIcons: mockEquipmentIcons,
+  equipmentThumbnailFor: () => null,
+  equipmentIconVersionFor: () => undefined,
 }));
 
 import EquipmentListPage from '../src/routes/equipment/EquipmentListPage.svelte';

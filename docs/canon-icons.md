@@ -35,6 +35,26 @@ They do not clash because they never share size or context. The recipe feature m
 **not** try to "match" the icon style — different tier, different job. Tier 2 reuses
 the same Storage + `thumbnail`-style conventions but is out of scope here.
 
+**Tier 1 now has three subject families.** Groceries (this document's original
+subject), the 17 weather pictograms (#387, an offline one-off — the planner renders
+committed static assets, nothing generates at request time), and **equipment**
+(#877). All three share ONE house style, because all three import the same locked
+`STYLE` constant from `generateCanonIcon.ts` verbatim rather than copying its
+wording. What each family adds is its own subject wording and its own prohibitions,
+never an edit to `STYLE`:
+
+| Family    | Prompt module              | Relationship to `STYLE`                                                                                                                     |
+| --------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| grocery   | `generateCanonIcon.ts`     | owns it; adds the UK-supermarket steer                                                                                                        |
+| weather   | `weatherIconPrompt.ts`     | removes ONE clause (`A single centered subject…`) — a weather pictogram is a composite scene                                                   |
+| equipment | `equipmentIconPrompt.ts`   | keeps it WHOLE (an appliance *is* a single centred subject) and **adds** a no-lettering-on-the-object clause                                   |
+
+That last addition is worth knowing about before writing a fourth family. `STYLE`
+bans lettering *added* around the subject but explicitly permits text that is part
+of the depicted item ("wording printed on a tin or jar") — which is exactly where a
+brand wordmark on an appliance sits. Equipment closes that gap in its own anchors;
+it does not rewrite `STYLE`, because groceries genuinely want the wording on the tin.
+
 **Tier 2 is no longer only dishes.** The `recipes` collection also holds "When you
 CBA" outings and cocktails (#637) and placeholders (#652), so the hero pipeline
 carries four art directions — a plated dish, food on a night off from cooking as
@@ -79,6 +99,35 @@ of truth. Tri-state:
 Regenerate = set `null`. Hide = set `"hidden"`. Un-hide = set `null`. The `"hidden"`
 sentinel is validated at the client read boundary (it's the one type-smell; chosen
 over widening the schema, reversible pre-launch).
+
+### Equipment departs from `thumbnail`-on-the-document (#877)
+
+Everything else here writes the picture back onto the document the picture is OF —
+`canonItems/{id}.thumbnail`, `recipes/{id}.image` — with a partial `.update()`, and
+Firestore's field-level merge is what makes that safe. **Equipment has no such
+document.** The whole kit is ONE doc, `equipmentManifest/current`, holding an
+`items[]` array, and every mutator does a whole-document `setDoc` of the entire
+array. A `thumbnail` on an array element would mean ticking one accessory's checkbox
+could wipe the icons off every item, and the trigger re-firing on its own writes.
+
+So equipment's icons live in a **sibling collection**, `equipmentIcons/{itemId}` —
+the `canonEmbeddings` move (#410) and the `guidedPlans` move: when a field and its
+host document have different owners and different read audiences, the field gets its
+own collection. Two further consequences follow, and both are departures from the
+canon shape rather than variations on it:
+
+- **The trigger is LEVEL-triggered, not edge-triggered.** `onCanonItemWritten` needs
+  `iconNeedsGeneration` precisely because it writes back to the document it watches.
+  `onEquipmentManifestWritten` never writes the manifest, so it can just ask the
+  honest question — does this item's brief match this item's name? — with no nonce.
+- **A human reads the description before any image is generated.** The trigger
+  authors an appliance description (`describeEquipmentSubject`, `'fast'` tier) and
+  stops; the image is drawn only when someone presses **Draw**, by the
+  `drawEquipmentIcon` callable, which runs the image flow and `sharp` inline. Canon's
+  fully-automatic model is right for groceries — "a bag of frozen peas" has one
+  obvious rendering — but a make and model is exactly where fidelity is won or lost,
+  and a brief is a sentence you can correct where a wrong picture is only a re-roll.
+  Only the description is ever shown or editable; the style anchors stay in code.
 
 ## Generation pipeline
 
@@ -148,6 +197,13 @@ First use of Firebase Storage in the project. Adds a `storage` block to
   collection — one prefix serving two collections could not tell a live object from
   a stranded one. Deploying the function without deploying `storage.rules` leaves
   every generated URL returning 403, which looks exactly like a generation failure.
+- `equipment-icons/{file}` — same posture, added by #877. Written by the
+  `drawEquipmentIcon` callable. Note the ordering trap: without this block the
+  catch-all deny at the bottom of `storage.rules` makes every equipment icon
+  unreadable, so the rules must be deployed before the pictograms will render.
+  Storage objects are reclaimed by `sweepOrphanedStorage`, which only works because
+  `onEquipmentManifestWritten` deletes the icon DOC when its item leaves the
+  manifest — a left-behind doc would make the sweep conclude "not orphaned".
 
 ### Provisioning (one-time, per environment)
 

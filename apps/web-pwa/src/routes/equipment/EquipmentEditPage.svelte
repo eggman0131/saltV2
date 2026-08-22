@@ -1,6 +1,7 @@
 <script lang="ts">
   import {
     Button,
+    CanonIcon,
     Checkbox,
     DetailPage,
     Dialog,
@@ -10,12 +11,20 @@
     DialogHeader,
     DialogTitle,
     Icon,
+    TextArea,
     TextField,
   } from '@salt/ui-components';
   import { push } from 'svelte-spa-router';
+  import { CANON_ICON_HIDDEN, equipmentIconAwaitingApproval } from '@salt/domain';
   import { goBack } from '../../lib/nav.js';
   import {
     equipment,
+    equipmentIcons,
+    equipmentIconFor,
+    equipmentThumbnailFor,
+    equipmentIconVersionFor,
+    drawEquipmentIcon,
+    hideEquipmentIcon,
     renameEquipmentItem,
     removeEquipmentItem,
     addEquipmentAccessory,
@@ -33,6 +42,65 @@
   let { params }: Props = $props();
 
   const item = $derived($equipment?.items.find((i) => i.id === params.id) ?? null);
+
+  // ─── Pictogram + description review gate (issue #877) ─────────────────────
+  // The description is shown BEFORE anything is drawn, and this panel is the
+  // whole reason the pipeline is split in two. An image call is slow and costs
+  // real money, and a wrong picture gives you nothing to act on — you re-roll and
+  // hope. A sentence you can read in two seconds and correct in ten fixes the
+  // CAUSE instead of resampling the symptom.
+  //
+  // ONLY `subjectBrief` appears here. The locked house-style wording
+  // (`EQUIPMENT_STYLE_ANCHORS`) lives in Cloud Functions code, is never stored on
+  // the document, and is never sent to the browser — you are correcting what the
+  // thing IS, never how Salt draws it.
+  const icon = $derived(equipmentIconFor($equipmentIcons, params.id));
+  const awaitingApproval = $derived(equipmentIconAwaitingApproval(icon));
+  // The same sentinel canon uses, deliberately: it is the value `CanonIcon`
+  // itself understands as "render the bare tile", so the two families must agree
+  // on it rather than each spelling their own.
+  const iconHidden = $derived(icon?.thumbnail === CANON_ICON_HIDDEN);
+
+  let iconBusy = $state(false);
+  // The editable copy of the brief. Re-seeded whenever the stored description
+  // changes identity — a rename re-authors it, and the user must see the NEW
+  // words, not their edit of the old ones. Keyed on the pair rather than on the
+  // text so that a redraw stamping the same brief back does not wipe an edit in
+  // progress.
+  let briefDraft = $state('');
+  let briefDraftKey = $state('');
+  $effect(() => {
+    const key = icon ? `${icon.briefSourceName}\u0000${icon.subjectBrief}` : '';
+    if (key !== briefDraftKey) {
+      briefDraftKey = key;
+      briefDraft = icon?.subjectBrief ?? '';
+    }
+  });
+
+  async function handleDraw(): Promise<void> {
+    const trimmed = briefDraft.trim();
+    if (!item || !trimmed) return;
+    iconBusy = true;
+    const result = await drawEquipmentIcon(item.id, trimmed);
+    iconBusy = false;
+    if (result.kind === 'ok') {
+      addToast('Drew the icon.', 'success');
+    } else if (result.error.kind === 'ValidationError') {
+      // The server declined before spending anything: generation is switched off
+      // for this environment, or no description has been written yet.
+      addToast('Drawing is switched off for this environment.', 'destructive');
+    } else {
+      addToast('Failed to draw the icon.', 'destructive');
+    }
+  }
+
+  async function handleHideIcon(): Promise<void> {
+    if (!item) return;
+    iconBusy = true;
+    const result = await hideEquipmentIcon(item.id);
+    iconBusy = false;
+    if (result.kind !== 'ok') addToast('Failed to hide the icon.', 'destructive');
+  }
 
   // ─── Name editing (inline, pencil-triggered) ──────────────────────────────
   let editingName = $state('');
@@ -213,7 +281,15 @@
           }}
         />
       {:else}
-        <div class="flex items-center gap-2 min-w-0">
+        <div class="flex items-center gap-3 min-w-0">
+          <!-- Larger than the 40px list tile, matching the canon detail page's
+               single-icon display spot (ui-spec-v04 §14.6.1). -->
+          <CanonIcon
+            thumbnail={equipmentThumbnailFor($equipmentIcons, params.id)}
+            name={item.name}
+            size={64}
+            version={equipmentIconVersionFor($equipmentIcons, params.id)}
+          />
           <h1 class="text-2xl font-semibold tracking-tight text-foreground truncate">
             {item.name}
           </h1>
@@ -245,6 +321,56 @@
     {/snippet}
 
     <div class="flex flex-col gap-8">
+      <!-- Description (the review gate) -->
+      <section class="flex flex-col gap-3" data-testid="equipment-icon-panel">
+        <p class="text-sm font-medium">
+          Description
+          {#if awaitingApproval}
+            <span class="ml-1 font-normal text-muted-foreground">· waiting for you</span>
+          {/if}
+        </p>
+        {#if icon === null}
+          <p class="text-sm text-muted-foreground" data-testid="equipment-icon-pending">
+            Writing a description of this item…
+          </p>
+        {:else}
+          <p class="text-xs text-muted-foreground">
+            What this piece of kit looks like. Correct anything wrong here, then draw it — getting
+            the words right costs a moment; getting the picture wrong costs a redraw.
+          </p>
+          <TextArea
+            bind:value={briefDraft}
+            label=""
+            aria-label="Appliance description"
+            rows={4}
+            autoresize
+            maxLength={2000}
+            disabled={iconBusy}
+            data-testid="equipment-icon-brief"
+          />
+          <div class="flex flex-wrap gap-2">
+            <Button
+              onclick={handleDraw}
+              loading={iconBusy}
+              disabled={iconBusy || !briefDraft.trim()}
+              data-testid="equipment-icon-draw-btn"
+            >
+              {icon.sourceName ? 'Redraw' : 'Draw it'}
+            </Button>
+            {#if !iconHidden}
+              <Button
+                variant="outline"
+                onclick={handleHideIcon}
+                disabled={iconBusy}
+                data-testid="equipment-icon-hide-btn"
+              >
+                Hide
+              </Button>
+            {/if}
+          </div>
+        {/if}
+      </section>
+
       <!-- Accessories section -->
       <section class="flex flex-col gap-3">
         <p class="text-sm font-medium">

@@ -36,6 +36,11 @@ export const AI_FLOW_ROLES = {
   arbitrateCanon: 'lite',
   authorRecipe: 'fast',
   chefChat: 'pro',
+  // The cheap text half of the equipment pictogram pair (issue #877): turns a
+  // make and model into a brand-free visual brief. `fast` for the same reason
+  // describeRecipeScene is — it is the step in front of an image call, and its
+  // cost has to stay far below the picture it directs.
+  describeEquipmentSubject: 'fast',
   describeRecipeScene: 'fast',
   embedText: 'embedding',
   extractRecipeFromUrl: 'fast',
@@ -65,6 +70,10 @@ export const AI_FLOW_ROLES = {
   // the precedent: long-form judgement about a whole dish.
   generateGuidedPlan: 'pro',
   generateCanonIcon: 'image',
+  // The image half of the equipment pair (issue #877). Its own id rather than
+  // borrowing generateCanonIcon's, so an override aimed at grocery pictograms
+  // does not silently move the appliances too.
+  generateEquipmentIcon: 'image',
   generateRecipeImage: 'image',
   generateChatTitle: 'lite',
   identifyEquipment: 'fast',

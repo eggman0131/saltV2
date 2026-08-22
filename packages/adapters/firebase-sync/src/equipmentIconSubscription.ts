@@ -1,0 +1,98 @@
+import { getFirestore, collection, onSnapshot } from 'firebase/firestore';
+import { getApp } from 'firebase/app';
+import { httpsCallable, getFunctions } from 'firebase/functions';
+import type { DomainError, ReadResult } from '@salt/shared-types';
+import { success, failure, ErrorCode } from '@salt/shared-types';
+import {
+  EquipmentIconSchema,
+  EQUIPMENT_ICONS_COLLECTION,
+  type EquipmentIconDoc,
+  type DrawEquipmentIconInput,
+} from '@salt/domain/schemas';
+import { classifyFirestoreError } from './firestoreErrors.js';
+
+// Equipment pictograms (issue #877) — the read side of the server-owned
+// `equipmentIcons` collection, plus the one callable that writes it.
+//
+// The collection is client-write-denied in firestore.rules, so there is no
+// upsert/delete here to match `canonSubscription`'s: the brief trigger creates
+// and reconciles the documents, and the Draw callable is the only mutation the
+// client can reach.
+
+/**
+ * Subscribe to every equipment icon document.
+ *
+ * SKIP-AND-LOG on a per-document validation failure, following
+ * `subscribeCanonItems` and the list-read convention: one corrupt document must
+ * not fail the whole read. Note this deliberately does NOT inherit
+ * `equipmentManifestSubscription`'s posture, where a single bad item fails the
+ * entire manifest — that is defensible for one document that IS the collection,
+ * and wrong for a collection of independent ones. A missing icon renders as the
+ * pale placeholder tile, which is a state the UI already has to handle.
+ *
+ * Stream-level errors still surface via `onError`.
+ */
+export function subscribeEquipmentIcons(
+  onIcons: (icons: Map<string, EquipmentIconDoc>) => void,
+  onError: (err: DomainError, rawError?: unknown) => void,
+): () => void {
+  const db = getFirestore(getApp());
+  return onSnapshot(
+    collection(db, EQUIPMENT_ICONS_COLLECTION),
+    (snap) => {
+      const byItemId = new Map<string, EquipmentIconDoc>();
+      for (const d of snap.docs) {
+        const result = EquipmentIconSchema.safeParse(d.data());
+        if (result.success) {
+          byItemId.set(d.id, result.data);
+        } else {
+          console.error(`[EquipmentIconSchema] Document ${d.id} failed validation`, result.error);
+        }
+      }
+      onIcons(byItemId);
+    },
+    (err) => onError(classifyFirestoreError(err), err),
+  );
+}
+
+/**
+ * Draw or hide an equipment pictogram (issue #877).
+ *
+ * Both actions go through this one authenticated callable because the collection
+ * is client-write-denied. A DRAW carries the brief actually being drawn from —
+ * the stored description, or the user's edit of it — which is the whole point of
+ * the review gate: correcting the words is how you fix the picture.
+ *
+ * Never throws (Rule 10): every failure crosses the boundary as
+ * `Failure<DomainError>`.
+ */
+export async function callDrawEquipmentIcon(
+  input: DrawEquipmentIconInput,
+): Promise<ReadResult<void, DomainError>> {
+  try {
+    const fn = httpsCallable<DrawEquipmentIconInput, { ok: true }>(
+      getFunctions(undefined, 'europe-west2'),
+      'drawEquipmentIcon',
+    );
+    await fn(input);
+    return success(undefined);
+  } catch (err) {
+    const code = (err as { code?: string }).code ?? '';
+    if (code === 'functions/unauthenticated') {
+      return failure({ kind: 'AuthError', reason: 'unauthenticated' });
+    }
+    if (code === 'functions/permission-denied') {
+      return failure({ kind: 'AuthError', reason: 'forbidden' });
+    }
+    // `failed-precondition` is the kill switch being off, or no description
+    // written yet — both are expected states with a friendly message, not
+    // defects, so they must not be reported (see the error-reporting policy).
+    if (code === 'functions/failed-precondition') {
+      return failure({
+        kind: 'ValidationError',
+        code: ErrorCode.EQUIPMENT_ICON_NOT_DRAWABLE,
+      });
+    }
+    return failure({ kind: 'NetworkError', reason: 'transient' });
+  }
+}

@@ -58,6 +58,16 @@ service firebase.storage {
       allow read: if true;
       allow write: if false;
     }
+    // Equipment pictograms (issue #877): the third subject family on the Tier-1
+    // pictogram pipeline, and the same model as canon icons — generated
+    // server-side by the drawEquipmentIcon callable (Admin SDK, which bypasses
+    // these rules) and rendered client-side via <img src={publicUrl}>. Public
+    // read, no client write. WITHOUT THIS BLOCK the catch-all below denies
+    // everything and the icons are simply unreadable.
+    match /equipment-icons/{file} {
+      allow read: if true;
+      allow write: if false;
+    }
     // Everything else: locked down.
     match /{allPaths=**} {
       allow read, write: if false;

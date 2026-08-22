@@ -1,6 +1,7 @@
 <script lang="ts">
   import {
     Button,
+    CanonIcon,
     ListPage,
     SelectableList,
     SelectAllCheckbox,
@@ -11,6 +12,9 @@
   import { push } from 'svelte-spa-router';
   import {
     equipment,
+    equipmentIcons,
+    equipmentThumbnailFor,
+    equipmentIconVersionFor,
     isLoadingEquipment,
     removeEquipmentItems,
   } from '../../lib/equipmentService.js';
@@ -80,22 +84,37 @@
       >
         {#snippet row(item)}
           <button
-            class="w-full text-left text-sm font-medium hover:underline"
+            class="flex w-full items-center gap-3 text-left text-sm font-medium hover:underline"
             onclick={() => push(`/equipment/${item.id}`)}
             data-testid="equipment-list-item"
             data-equipment-id={item.id}
           >
-            {item.name}
-            {#if item.accessories.length > 0}
-              <span class="ml-2 text-xs text-muted-foreground">
-                {item.accessories.length} accessor{item.accessories.length === 1 ? 'y' : 'ies'}
-              </span>
-            {/if}
-            {#if item.rules.length > 0}
-              <span class="ml-2 text-xs text-muted-foreground">
-                {item.rules.length} rule{item.rules.length === 1 ? '' : 's'}
-              </span>
-            {/if}
+            <!--
+              40px, the in-list size every other CanonIcon consumer uses
+              (ui-spec-v04 §14.6.1) and the size the asset's `contentMax: 108`
+              framing is tuned for. An item with no picture yet renders the pale
+              placeholder tile from the same component, which is what holds the
+              text column straight while art is still generating.
+            -->
+            <CanonIcon
+              thumbnail={equipmentThumbnailFor($equipmentIcons, item.id)}
+              name={item.name}
+              size={40}
+              version={equipmentIconVersionFor($equipmentIcons, item.id)}
+            />
+            <span class="min-w-0 flex-1">
+              {item.name}
+              {#if item.accessories.length > 0}
+                <span class="ml-2 text-xs text-muted-foreground">
+                  {item.accessories.length} accessor{item.accessories.length === 1 ? 'y' : 'ies'}
+                </span>
+              {/if}
+              {#if item.rules.length > 0}
+                <span class="ml-2 text-xs text-muted-foreground">
+                  {item.rules.length} rule{item.rules.length === 1 ? '' : 's'}
+                </span>
+              {/if}
+            </span>
           </button>
         {/snippet}
       </SelectableList>
