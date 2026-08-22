@@ -1,6 +1,7 @@
 <script lang="ts">
   import {
     Button,
+    CanonIcon,
     Card,
     CardContent,
     CardDescription,
@@ -74,6 +75,7 @@
     appendCacheBuster,
     cookShape,
     duplicateRecipe,
+    firstUseByStep as groupIngredientsByFirstUse,
     flattenIngredients,
     hasComponents,
     hasLiveCanonMatch,
@@ -88,6 +90,7 @@
     type IngredientGroup,
     type Ingredient,
     type Recipe,
+    type Step,
   } from '@salt/domain';
   import { KIND_COPY, kindOf } from './recipeKind.js';
   import { formatMinutes } from './recipeDuration.js';
@@ -521,6 +524,51 @@ Finish with a short note on what you changed and why, so I can read the gist her
     if (!matchMarkersKnown) return null;
     if (!hasLiveCanonMatch(ing, liveCanonIds)) return 'unmatched';
     return ingredientMatchIssue(ing, canonById, $productForms) === null ? null : 'mismatched';
+  }
+
+  // ─── Ingredient pictograms (issue #878) ──────────────────────────────────────
+  // The tile the shopping list and cook mode already use, on the recipe's own
+  // list: a picture is faster to find in nineteen lines than a word is. The row
+  // already carries its canon id and `canonById` above is already derived from the
+  // app-wide store, so this is a lookup, not a read — and a Map rather than a
+  // `.find()` per row, which on a long recipe is forty scans of the whole canon.
+  //
+  // Lookup mirrors ShoppingListPage's `thumbnailFor`/`iconVersionFor` exactly,
+  // cache-bust nonce included: a regenerated icon reuses its Storage download URL,
+  // so without the nonce the browser serves the stale image.
+  function thumbnailFor(canonId: string | null): string | null {
+    if (!canonId) return null;
+    return canonById.get(canonId)?.thumbnail ?? null;
+  }
+
+  function iconVersionFor(canonId: string | null): string | number | undefined {
+    if (!canonId) return undefined;
+    const ci = canonById.get(canonId);
+    return ci ? (ci.iconRequestedAt ?? ci.updatedAt) : undefined;
+  }
+
+  // The NAME only, which is what the tile is labelled with — never
+  // `IngredientText`'s rendering. Same helper, same reasoning, as CookModePage's.
+  function ingredientLabel(ing: Ingredient): string {
+    return ing.parsed?.item ?? ing.rawText;
+  }
+
+  // ─── Method: first use, and what you can walk away from (issue #878) ─────────
+  // The recipe stamps `firstUsedInStepId` on each ingredient at authoring/import
+  // time, so a step can show exactly what it introduces. Cook mode has surfaced
+  // this per step for a while; the reading list never did, which is where you
+  // decide whether tonight is the night. Same domain query — there is one.
+  const firstUseByStep = $derived(groupIngredientsByFirstUse(recipe?.ingredients ?? []));
+
+  // An hour is the point at which a timer stops being something you stand over.
+  // Below it you are still in the kitchen; at or above it the step is a wait you
+  // plan the evening around, and the two overnight proves in a bread recipe are
+  // the whole reason this exists. One threshold, no band in the middle — the same
+  // rule `formatMinutes` switches on, so "12 hr" and "Hands-off" always agree.
+  const HANDS_OFF_MINUTES = 60;
+
+  function isHandsOff(step: Step): boolean {
+    return (step.timer?.durationMinutes ?? 0) >= HANDS_OFF_MINUTES;
   }
 
   // ─── Canonicalise ────────────────────────────────────────────────────────────
@@ -2076,62 +2124,107 @@ Finish with a short note on what you changed and why, so I can read the gist her
                     <p class="text-sm text-muted-foreground">No ingredients.</p>
                   {/if}
                   {#each recipe.ingredients as group (group.id)}
-                    <div class="flex flex-col gap-1 [&+&]:mt-3" data-testid="recipe-view-group">
+                    <div class="flex flex-col gap-1.5 [&+&]:mt-4" data-testid="recipe-view-group">
                       {#if group.name}
+                        <!-- Sage, not muted grey (issue #878). A component heading —
+                             "For the punchy vinaigrette" — divides the list into the
+                             sub-recipes you actually make one at a time, and in grey
+                             it read as a caption on the rows above it. The palette's
+                             secondary is the app's "this is a part of something"
+                             colour and it is already what a matched tile settles to,
+                             so the heading and the pictograms below it agree. -->
                         <p
-                          class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                          class="text-xs font-semibold uppercase tracking-wider text-secondary"
                           data-testid="recipe-view-group-name"
                         >
                           {group.name}
                         </p>
                       {/if}
-                      <ul class="flex flex-col gap-1">
+                      <ul class="flex flex-col gap-1.5">
                         {#each group.items as ingredient (ingredient.id)}
                           {@const marker = rowMarker(ingredient)}
-                          <!-- The line is a button (tap → match inspector) and the marker
+                          <!-- Three columns (issue #878): the pictogram, the amount,
+                           the thing. The tile is the shopping list's since #571 and
+                           cook mode's since #532 — one ingredient wears the same
+                           picture wherever the app names it — and it is rendered for
+                           every row, matched or not, because a bare tile is what
+                           holds the text column straight instead of ragging in and
+                           out. `matched` lets a matched-but-iconless line settle to
+                           sage rather than sitting in unmatched grey while its icon
+                           generates.
+
+                           The line is a button (tap → match inspector) and the marker
                            is its SIBLING, not a child: buttons cannot nest, and the
                            two do different jobs — one explains the match, the other
                            acts on what is wrong with it. At most one marker: a line
-                           is either unmatched or mismatched, never both. -->
+                           is either unmatched or mismatched, never both. The marker
+                           now sits on the CORNER OF THE TILE rather than at the end
+                           of the line, because what it describes is the match, and
+                           the match is what the tile is a picture of. -->
                           <li
-                            class="flex items-baseline gap-1 text-sm"
+                            class="flex items-center gap-2 text-sm"
                             data-testid="recipe-view-ingredient"
                           >
+                            <div class="relative shrink-0">
+                              <CanonIcon
+                                thumbnail={thumbnailFor(ingredient.canonId)}
+                                name={ingredientLabel(ingredient)}
+                                version={iconVersionFor(ingredient.canonId)}
+                                matched={marker === null &&
+                                  hasLiveCanonMatch(ingredient, liveCanonIds)}
+                                size={36}
+                              />
+                              {#if marker === 'unmatched'}
+                                <button
+                                  type="button"
+                                  class="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[11px] leading-none text-destructive-foreground ring-2 ring-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                                  title="Not matched — tap to match"
+                                  aria-label="Not matched — tap to match"
+                                  onclick={() => handleRematch(group, ingredient)}
+                                  disabled={matchingIds[ingredient.id] ?? false}
+                                  data-testid="match-state-unmatched"
+                                  >{(matchingIds[ingredient.id] ?? false) ? '…' : '✗'}</button
+                                >
+                              {:else if marker === 'mismatched'}
+                                <!-- Terracotta, the palette's warning accent (design.md),
+                                 and never the ✗'s red: the two say different things and
+                                 want different actions. This one opens the sheet the
+                                 row already opens, because the sheet explains BOTH
+                                 causes and offers the re-match — no new copy. -->
+                                <button
+                                  type="button"
+                                  class="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-tertiary-variant text-[11px] leading-none text-tertiary-foreground ring-2 ring-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                  title="Matched, but buys the wrong thing — tap to see why"
+                                  aria-label="Matched, but buys the wrong thing — tap to see why"
+                                  onclick={() => inspectMatch(ingredient)}
+                                  data-testid="match-state-mismatched">⚠</button
+                                >
+                              {/if}
+                            </div>
                             <button
                               type="button"
-                              class="flex-1 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              class="flex min-w-0 flex-1 items-baseline gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                               title="See what this ingredient matched"
                               onclick={() => inspectMatch(ingredient)}
                               data-testid="recipe-view-ingredient-inspect"
                             >
-                              <IngredientText {ingredient} />
+                              <!-- The amounts get their own column so they can be read
+                                   as one — "how much flour, how much water" is a
+                                   question about the column, not about nineteen
+                                   separate lines. `min-w-14` rather than a fixed
+                                   width: a rare "200–300g" pushes its own row out
+                                   instead of being clipped, and every other row still
+                                   lines up. An UNPARSED line has no separable amount,
+                                   so the cell is empty and the whole raw text sits in
+                                   the name column — which is exactly what keeps the
+                                   names aligned down a part-parsed list. -->
+                              <span class="min-w-14 shrink-0 text-right tabular-nums">
+                                <IngredientText {ingredient} part="quantity" />
+                              </span>
+                              <span class="min-w-0 flex-1">
+                                <IngredientText {ingredient} part="name" />
+                              </span>
                             </button>
-                            {#if marker === 'unmatched'}
-                              <button
-                                type="button"
-                                class="shrink-0 text-xs text-destructive hover:underline disabled:opacity-50"
-                                title="Not matched — tap to match"
-                                aria-label="Not matched — tap to match"
-                                onclick={() => handleRematch(group, ingredient)}
-                                disabled={matchingIds[ingredient.id] ?? false}
-                                data-testid="match-state-unmatched"
-                                >{(matchingIds[ingredient.id] ?? false) ? '…' : '✗'}</button
-                              >
-                            {:else if marker === 'mismatched'}
-                              <!-- Terracotta, the palette's warning accent (design.md),
-                               and never the ✗'s red: the two say different things and
-                               want different actions. This one opens the sheet the
-                               row already opens, because the sheet explains BOTH
-                               causes and offers the re-match — no new copy. -->
-                              <button
-                                type="button"
-                                class="shrink-0 rounded px-0.5 text-xs text-tertiary-variant hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                title="Matched, but buys the wrong thing — tap to see why"
-                                aria-label="Matched, but buys the wrong thing — tap to see why"
-                                onclick={() => inspectMatch(ingredient)}
-                                data-testid="match-state-mismatched">⚠</button
-                              >
-                            {/if}
                           </li>
                         {/each}
                       </ul>
@@ -2147,33 +2240,122 @@ Finish with a short note on what you changed and why, so I can read the gist her
                   {#if recipe.steps.length === 0}
                     <p class="text-sm text-muted-foreground">No steps.</p>
                   {/if}
-                  <ol class="flex flex-col gap-4">
+                  <!-- The method as a rail (issue #878): a filled disc per step, joined
+                       by a connector down to the next one, so the sequence is a shape
+                       you can take in before you read a word of it.
+
+                       The rail is drawn PER GAP — one segment from each disc to the
+                       one below — rather than as a full-height rule behind the
+                       column. That is what settles the "does a two-step recipe want a
+                       rail?" question without a threshold to remember: two steps get
+                       exactly one short connector, which is the smallest mark that
+                       says "then this", and a one-step recipe gets no rail at all
+                       because there is nothing to join. A count rule would make the
+                       same page draw its steps two different ways depending on how
+                       many there are, which is a rule the reader has to learn in
+                       exchange for nothing. -->
+                  <ol class="flex flex-col">
                     {#each recipe.steps as step, idx (step.id)}
-                      <li class="flex gap-3 text-sm" data-testid="recipe-view-step">
-                        <span class="mt-0.5 shrink-0 font-semibold text-muted-foreground"
-                          >{idx + 1}</span
+                      {@const handsOff = isHandsOff(step)}
+                      {@const firstUse = firstUseByStep.get(step.id) ?? []}
+                      <li
+                        class="relative flex gap-3 pb-5 text-sm last:pb-0"
+                        data-testid="recipe-view-step"
+                      >
+                        {#if idx < recipe.steps.length - 1}
+                          <span
+                            class="absolute bottom-0 left-3 top-7 w-px -translate-x-1/2 bg-border"
+                            aria-hidden="true"
+                          ></span>
+                        {/if}
+                        <!-- Hollow for a step you can walk away from. Shape is never
+                             the only carrier — the "Hands-off" pill below says it in
+                             words, which is what a screen reader and a colour-blind
+                             cook actually get. -->
+                        <span
+                          class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold {handsOff
+                            ? 'border-2 border-primary bg-card text-primary'
+                            : 'bg-primary text-primary-foreground'}"
+                          aria-hidden="true">{idx + 1}</span
                         >
-                        <div class="flex flex-1 flex-col gap-1.5">
+                        <div class="flex min-w-0 flex-1 flex-col gap-2">
                           <span>{step.text}</span>
-                          {#if step.note}
-                            <div
-                              class="flex items-start gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
-                              data-testid="recipe-step-note-content"
+
+                          <!-- What this step is the first to call for, from the
+                               `firstUsedInStepId` the recipe already carries. Cook
+                               mode has shown this per step since #532; the reading
+                               list never did, and the reading list is where you
+                               decide whether tonight is the night.
+
+                               The tile is decorative here — the NAME beside it is the
+                               accessible content, so a wall of pictograms reads as a
+                               list of ingredients rather than as nothing at all. -->
+                          {#if firstUse.length > 0}
+                            <ul
+                              class="flex flex-wrap items-center gap-1.5"
+                              aria-label="First used in this step"
+                              data-testid="recipe-view-step-firstuse"
                             >
-                              <Icon
-                                name="TriangleAlert"
-                                size={13}
-                                class="mt-0.5 shrink-0 text-amber-500"
-                              />
-                              <span class="whitespace-pre-wrap">{step.note}</span>
+                              {#each firstUse as ing (ing.id)}
+                                <li class="flex items-center" title={ingredientLabel(ing)}>
+                                  <span class="flex" aria-hidden="true">
+                                    <CanonIcon
+                                      thumbnail={thumbnailFor(ing.canonId)}
+                                      name={ingredientLabel(ing)}
+                                      version={iconVersionFor(ing.canonId)}
+                                      matched={hasLiveCanonMatch(ing, liveCanonIds)}
+                                      size={26}
+                                    />
+                                  </span>
+                                  <span class="sr-only">{ingredientLabel(ing)}</span>
+                                </li>
+                              {/each}
+                            </ul>
+                          {/if}
+
+                          {#if handsOff || step.timer}
+                            <div class="flex flex-wrap items-center gap-1.5">
+                              {#if handsOff}
+                                <!-- Sage, the colour the cook-shape ribbon above already
+                                     uses for a wait, so the two agree about what a wait
+                                     looks like on this page. -->
+                                <span
+                                  class="inline-flex items-center rounded-full bg-secondary-container px-2 py-0.5 text-xs font-medium text-secondary-container-foreground"
+                                  data-testid="recipe-view-step-handsoff">Hands-off</span
+                                >
+                              {/if}
+                              {#if step.timer}
+                                <!-- Terracotta, the palette's accent for a thing that
+                                     wants attention at a moment (design.md), and
+                                     `formatMinutes` rather than the raw number — this
+                                     is the markup that genuinely said "720 min". -->
+                                <span
+                                  class="inline-flex items-center gap-1 rounded-full bg-tertiary-variant/10 px-2 py-0.5 text-xs font-medium text-tertiary-variant"
+                                  data-testid="recipe-view-step-timer"
+                                >
+                                  <Icon name="Timer" size={12} />
+                                  {formatMinutes(step.timer.durationMinutes)}{step.timer.description
+                                    ? ` — ${step.timer.description}`
+                                    : ''}
+                                </span>
+                              {/if}
                             </div>
                           {/if}
-                          {#if step.timer}
-                            <span class="text-xs text-muted-foreground">
-                              ⏱ {step.timer.durationMinutes} min{step.timer.description
-                                ? ` — ${step.timer.description}`
-                                : ''}
-                            </span>
+
+                          <!-- Terracotta, NOT amber. Amber on this page means "a human
+                               has not looked at this yet" — the unreviewed-import
+                               banner and the guided-plan dot — and a step note is not
+                               that: it is a caution about the cooking, written
+                               deliberately, and wearing the review colour made it read
+                               as an unfinished recipe. -->
+                          {#if step.note}
+                            <div
+                              class="flex items-start gap-2 rounded border border-tertiary-variant/30 bg-tertiary-variant/10 px-3 py-2 text-xs text-tertiary-variant"
+                              data-testid="recipe-step-note-content"
+                            >
+                              <Icon name="TriangleAlert" size={13} class="mt-0.5 shrink-0" />
+                              <span class="whitespace-pre-wrap">{step.note}</span>
+                            </div>
                           {/if}
                         </div>
                       </li>
