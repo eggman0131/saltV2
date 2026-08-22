@@ -1,33 +1,35 @@
 /**
- * ⋮ → Refresh, through the review gate (issue #784).
+ * ⋮ → Refresh, through the review gate (issue #890).
  *
- * Refresh re-runs the librarian over a dish that already exists — no
- * conversation, no chat session, no transcript — and shows what it would change
- * in the same review sheet a chat amendment uses. Everything about it that a unit
- * test can pin is pinned in `apps/cloud-functions/tests/flows/authorRecipe.test.ts`
- * (the prompt composition) and `apps/web-pwa/tests/RecipeViewPage.refresh.test.ts`
- * (the wiring). What only e2e can show is that the whole chain actually runs:
- * a menu item with no conversation behind it reaching the real `authorRecipe`
- * callable, whose answer becomes a diff the user approves, whose approval becomes
- * a Firestore document.
+ * Refresh asks the chef to write an existing dish out again and then runs the
+ * review gate over the reply, without being asked twice. That is TWO callables
+ * behind one menu item, which is exactly why it earns an e2e: the unit suites pin
+ * each half (`apps/web-pwa/tests/RecipeViewPage.refresh.test.ts` for the
+ * sequence, `apps/cloud-functions/tests/flows/authorRecipe.test.ts` for the
+ * prompt), and only this can show one tap driving chefChat → transcript →
+ * authorRecipe → diff → Firestore document.
  *
  * Runs against the Firestore + Auth emulators with the MODEL faked
  * (FUNCTIONS_AI_FAKE) and every other layer live — the callable boundary, the
  * Genkit flow, the Firestore write and the realtime subscription.
  *
- *   stubAi('authorRecipe', …)
- *     → ⋮ → Refresh runs the real authorRecipe callable in refresh mode
- *       → the diff proposes the re-transcription
+ *   stubAi('chefChat', …) + stubAi('generateChatTitle', …) + stubAi('authorRecipe', …)
+ *     → ⋮ → Refresh sends the canned turn and reviews the reply
+ *       → the diff proposes the re-written dish
  *         → Apply writes it / Discard leaves the dish alone
  *
  * Two tests, one per side of the gate, because "nothing is written until you say
  * so" is half of what Refresh promises and the half a happy path cannot show.
  *
+ * `generateChatTitle` is stubbed because Refresh opens a chat where there was
+ * none, and a first exchange titles itself in the background — unstubbed it is a
+ * live model call fired off a journey that never looks at the title.
+ *
  * No `parseRecipeIngredients` or canon stub, deliberately: the canned answer
- * repeats the seeded ingredient's rawText verbatim, and refresh mode grounds
- * `assembleRecipeDraft` on the base recipe exactly as edit mode does — so the
- * existing parse and canon match are reused and neither flow is called at all.
- * Stubbing a flow this journey never reaches would only suggest it does (NF-E1).
+ * repeats the seeded ingredient's rawText verbatim, and the amendment grounds
+ * `assembleRecipeDraft` on the base recipe — so the existing parse and canon
+ * match are reused and neither flow is called at all. Stubbing a flow this
+ * journey never reaches would only suggest it does (NF-E1).
  *
  * Left on the project's 1280x720 desktop default. The ⋮ menu is the only surface
  * Refresh has at any width (#735), so there is no second surface to drive.
@@ -43,10 +45,9 @@ const INGREDIENT = '200 g chorizo, sliced';
 const STEP = 'Fry the chorizo and add the rice and stir it through and cover.';
 const TAG = 'refreshgate';
 
-// The metadata the user typed. A refresh re-applies the WRITING rules; it has no
-// business clearing what the cook entered, and the librarian's canned answer
-// forgets all of it — so this doubles as the metadata-preserve assertion on the
-// refresh path, which shares its merge with the chat path.
+// The metadata the user typed. A refresh may PUT BACK what a recipe has lost, but
+// it has no business clearing what the cook entered — and the librarian's canned
+// answer forgets all of it, so this doubles as the metadata-preserve assertion.
 const SEEDED_METADATA = {
   servings: 4,
   prepTimeMinutes: 15,
@@ -55,9 +56,18 @@ const SEEDED_METADATA = {
   tags: [TAG],
 };
 
-// The librarian's canned re-transcription: the run-on step is split in two (the
-// one-operation rule), the title is tidied, and the metadata it was never given a
-// reason to touch is DROPPED — null servings, null times, no tags.
+// What the chef writes back: the whole dish, not a list of changes, which is what
+// the librarian then has something to transcribe FROM.
+const STUB_REPLY = `Chorizo Pilaf, serves 4.
+
+Fry the chorizo. Then add the rice, stir it through, and cover.
+
+I split your one step in two — the frying and the rice are different moments.`;
+const STUB_CHAT_TITLE = 'Refreshing the pilaf';
+
+// The librarian's canned transcription of that reply: the run-on step comes back
+// as two (the one-operation rule), the title is tidied, and the metadata it was
+// never given a reason to touch is DROPPED — null servings, null times, no tags.
 const REFRESHED_TITLE = 'Chorizo Pilaf';
 const REFRESHED_STEPS = ['Fry the chorizo.', 'Add the rice and stir it through, then cover.'];
 
@@ -83,6 +93,13 @@ const STUB_AUTHOR = {
   })),
   notes: null,
 };
+
+/** Register every canned model answer this journey reaches, before driving the UI. */
+async function stubModel(page: Page): Promise<void> {
+  await page.evaluate((r) => window.__e2e!.stubAi('chefChat', r), STUB_REPLY);
+  await page.evaluate((t) => window.__e2e!.stubAi('generateChatTitle', t), STUB_CHAT_TITLE);
+  await page.evaluate((a) => window.__e2e!.stubAi('authorRecipe', a), STUB_AUTHOR);
+}
 
 async function getRecipes(page: Page): Promise<Recipe[]> {
   return page.evaluate<Recipe[]>(() => window.__e2e!.getRecipes() as Recipe[]);
@@ -130,28 +147,29 @@ async function seedDish(page: Page): Promise<string> {
 /**
  * ⋮ → Refresh, settled on the open review sheet.
  *
- * 60 s: this is a real callable round-trip through the emulator (cold function
- * start included), gated on the sheet appearing rather than on a clock.
+ * 90 s: TWO real callable round-trips through the emulator — the chef, then the
+ * librarian — cold function starts included, and gated on the sheet appearing
+ * rather than on a clock.
  */
 async function refreshAndReview(page: Page): Promise<void> {
   await page.getByTestId('recipe-actions-overflow').click();
   await page.getByTestId('recipe-refresh-menu-item').click();
-  await expect(page.getByTestId('recipe-change-summary')).toBeVisible({ timeout: 60_000 });
-  // The positive signal that the diff really computed and really saw the
-  // re-transcription, before either test reads anything else off the sheet.
+  await expect(page.getByTestId('recipe-change-summary')).toBeVisible({ timeout: 90_000 });
+  // The positive signal that the diff really computed and really saw the chef's
+  // answer, before either test reads anything else off the sheet.
   await expect(page.getByTestId('recipe-change-group-basics')).toContainText(REFRESHED_TITLE);
 }
 
 test.describe('recipes — refresh through the review gate', () => {
-  test('applies the re-transcription and keeps the metadata the librarian dropped', async ({
+  test('applies the re-written dish and keeps the metadata the librarian dropped', async ({
     page,
   }, testInfo) => {
-    // 120s: a seed save plus a librarian round-trip through the emulator, each
+    // 180s: a seed save plus TWO model round-trips through the emulator, each
     // gated on its own signal-bound wait.
-    test.setTimeout(120_000);
+    test.setTimeout(180_000);
     // Recipes are gated to admins while the module is incomplete (#179).
     await gotoAndSignIn(page, uniqueEmail(testInfo.testId), '/', { admin: true });
-    await page.evaluate((a) => window.__e2e!.stubAi('authorRecipe', a), STUB_AUTHOR);
+    await stubModel(page);
 
     const recipeId = await seedDish(page);
     await refreshAndReview(page);
@@ -166,6 +184,11 @@ test.describe('recipes — refresh through the review gate', () => {
     await expect
       .poll(() => titleOf(page, recipeId), { timeout: SYNC_TIMEOUT })
       .toBe(REFRESHED_TITLE);
+    // The chef's account of what it did is in the transcript, where you can read
+    // it — that is half the point of asking a chef rather than a transcriber.
+    await expect(page.getByTestId('chat-message-assistant').last()).toContainText(
+      'I split your one step in two',
+    );
     const saved = (await getRecipes(page)).find((r) => r.id === recipeId)!;
     // The run-on step came back as two, which is what a refresh is FOR.
     expect(saved.steps.map((s) => s.text)).toEqual(REFRESHED_STEPS);
@@ -174,9 +197,9 @@ test.describe('recipes — refresh through the review gate', () => {
   });
 
   test('discarding leaves the dish exactly as it was', async ({ page }, testInfo) => {
-    test.setTimeout(120_000);
+    test.setTimeout(180_000);
     await gotoAndSignIn(page, uniqueEmail(testInfo.testId), '/', { admin: true });
-    await page.evaluate((a) => window.__e2e!.stubAi('authorRecipe', a), STUB_AUTHOR);
+    await stubModel(page);
 
     const recipeId = await seedDish(page);
     await refreshAndReview(page);

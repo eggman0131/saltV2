@@ -15,10 +15,12 @@ import { authorRecipeTraced, stampRecipeAttribution } from './recipeService.js';
 // busy/open state, its toasts and where it navigates afterwards; it owns nothing
 // about what gets written.
 //
-// THREE callers now (issue #784): the two chat surfaces above, and ⋮ → Refresh,
-// which re-runs the librarian over the recipe with no conversation at all. It
-// enters at `proposeRecipeRefresh` and shares everything downstream of the
-// librarian call, so what "propose" and "apply" mean cannot fork a third way.
+// Refresh (⋮ → Refresh) is a third caller and needs nothing of its own here
+// (issue #890): it sends the chef a canned turn asking for the dish to be
+// written out again, and what comes back is an ordinary conversation. It reviews
+// and applies through `proposeRecipeAmendment` like any other amendment, which
+// is the point — a re-authored recipe and a hand-typed edit reach the document
+// by exactly one path.
 
 export interface RecipeAmendment {
   /** The merged recipe, ready to save. Nothing is written until `applyRecipeAmendment`. */
@@ -94,32 +96,9 @@ export async function proposeRecipeAmendment(
 }
 
 /**
- * Re-run the librarian over the recipe ITSELF and return a PENDING proposal —
- * the same dish, re-transcribed under today's house writing rules (issue #784).
- *
- * A sibling of `proposeRecipeAmendment`, not a second gate: both build a
- * librarian input, and everything after that — the merge, the post-merge diff,
- * and `applyRecipeAmendment` — is the one shared implementation below. The only
- * difference is what the librarian is asked to read, and a refresh's answer is
- * "the recipe, and nothing else": `messages: []`, because there is no
- * conversation, and `refresh: true`, because the server cannot tell a refresh
- * from an edit by `recipeId` alone.
- *
- * `existingTags` still rides along — the tag vocabulary is a house rule like any
- * other, and re-applying it is part of what a refresh is for.
- */
-export async function proposeRecipeRefresh(
-  existing: Recipe,
-  existingTags: string[],
-): Promise<ReadResult<RecipeAmendment, DomainError>> {
-  return propose(existing, { messages: [], existingTags, recipeId: existing.id, refresh: true });
-}
-
-/**
  * The shared half: call the librarian, merge its draft onto the recipe, diff
- * post-merge. Every propose in this module goes through here, so a refresh
- * cannot acquire a different idea of what a proposal IS than a chat amendment
- * has — which is the whole reason #764 collapsed two copies into one.
+ * post-merge. Every propose in this module goes through here — which is the
+ * whole reason #764 collapsed two copies into one.
  */
 async function propose(
   existing: Recipe,

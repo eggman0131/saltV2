@@ -16,11 +16,7 @@ vi.mock('@salt/firebase-sync', () => ({
 }));
 vi.mock('../src/lib/recipeService.js', () => ({ authorRecipeTraced: vi.fn() }));
 
-import {
-  mergeAmendedRecipe,
-  proposeRecipeAmendment,
-  proposeRecipeRefresh,
-} from '../src/lib/recipeAmend.js';
+import { mergeAmendedRecipe, proposeRecipeAmendment } from '../src/lib/recipeAmend.js';
 import { authorRecipeTraced } from '../src/lib/recipeService.js';
 
 const NOW = '2026-08-11T12:00:00.000Z';
@@ -166,13 +162,13 @@ describe('mergeAmendedRecipe — identity and the fields the librarian never ret
   });
 });
 
-// ─── the two propose entry points (issue #784) ──────────────────────────────────
+// ─── the one propose entry point (issues #764, #890) ────────────────────────────
 //
-// Refresh is a SIBLING of the chat amendment, not a second review gate: the only
-// thing it changes is what the librarian is asked to READ, and everything after
-// that — the merge above, the post-merge diff, the apply — is the one shared
-// implementation. These tests pin both halves of that: the input each entry point
-// builds, and the fact that a refresh inherits the merge contract unchanged.
+// There were two, briefly: Refresh had a sibling entry point that asked the
+// librarian to read the DOCUMENT rather than a conversation (#784). Refresh is
+// now a chef turn followed by an ordinary amendment (#890), so the librarian has
+// exactly one caller shape again and the merge contract below is the whole of
+// what a proposal means.
 
 /** The librarian answered; hand back a draft that forgot every metadata field. */
 function librarianReturns(draft: RecipeDoc = draftWithoutMetadata()): void {
@@ -181,35 +177,31 @@ function librarianReturns(draft: RecipeDoc = draftWithoutMetadata()): void {
   >);
 }
 
-describe('proposeRecipeRefresh — what the librarian is asked to read', () => {
-  it('sends no conversation, the recipe id, and the refresh flag', async () => {
+describe('proposeRecipeAmendment — what the librarian is asked to read', () => {
+  it('sends the conversation and the recipe id, and nothing else', async () => {
     librarianReturns();
+    const messages = [{ id: 'm1', role: 'user' as const, text: 'add some chilli', createdAt: NOW }];
 
-    await proposeRecipeRefresh(existingRecipe(), ['midweek', 'sunday']);
+    await proposeRecipeAmendment(existingRecipe(), messages, ['midweek', 'sunday']);
 
     expect(authorRecipeTraced).toHaveBeenCalledTimes(1);
-    // `refresh: true` is load-bearing rather than decorative: the server cannot
-    // tell a refresh from an edit by `recipeId` alone, so without the flag this
-    // would run edit mode over an empty transcript and be told to change nothing.
+    // The tag vocabulary rides along: it is a house rule like any other, and a
+    // re-authored recipe should land on the words the collection already uses.
     expect(vi.mocked(authorRecipeTraced).mock.calls[0]![0]).toEqual({
-      messages: [],
+      messages,
       existingTags: ['midweek', 'sunday'],
       recipeId: 'pilaf',
-      refresh: true,
     });
-    // The tag vocabulary rides along: it is a house rule like any other, and
-    // re-applying it is part of what a refresh is for.
   });
 
-  it('inherits the merge contract — the null-metadata preserve and the carried image', async () => {
-    // The whole argument for one shared `propose`: a refresh cannot acquire a
-    // different idea of what a proposal IS. The librarian forgets servings and
-    // returns a null image on a refresh exactly as it does on an amendment, so
-    // the same preservation has to hold, or Refresh would quietly propose to
+  it('preserves the metadata the librarian forgot, and the image it never returns', async () => {
+    // The merge contract, reached through the only door there is. The librarian
+    // forgets servings and returns a null image, so without this a Refresh —
+    // which now arrives here like any other amendment — would quietly propose to
     // erase Serves 4 and the hero photo every time it ran.
     librarianReturns();
 
-    const result = await proposeRecipeRefresh(existingRecipe(), []);
+    const result = await proposeRecipeAmendment(existingRecipe(), [], []);
 
     expect(result.kind).toBe('ok');
     if (result.kind !== 'ok') return;
@@ -220,7 +212,7 @@ describe('proposeRecipeRefresh — what the librarian is asked to read', () => {
       source: 'ai',
     });
     expect(result.value.updated.source).toEqual({ type: 'url', url: 'https://example.com/pilaf' });
-    // Identity is the existing dish's — a refresh re-writes it, never replaces it.
+    // Identity is the existing dish's — an amendment re-writes it, never replaces it.
     expect(result.value.updated.id).toBe('pilaf');
   });
 
@@ -230,26 +222,8 @@ describe('proposeRecipeRefresh — what the librarian is asked to read', () => {
       error: { kind: 'NetworkError', reason: 'offline' },
     } as Awaited<ReturnType<typeof authorRecipeTraced>>);
 
-    const result = await proposeRecipeRefresh(existingRecipe(), []);
+    const result = await proposeRecipeAmendment(existingRecipe(), [], []);
 
     expect(result.kind).toBe('err');
-  });
-});
-
-describe('proposeRecipeAmendment — the refresh flag never leaks into the chat path', () => {
-  it('sends the conversation, and no flag', async () => {
-    librarianReturns();
-    const messages = [{ id: 'm1', role: 'user' as const, text: 'add some chilli', createdAt: NOW }];
-
-    await proposeRecipeAmendment(existingRecipe(), messages, []);
-
-    const input = vi.mocked(authorRecipeTraced).mock.calls[0]![0];
-    expect(input.messages).toEqual(messages);
-    expect(input.recipeId).toBe('pilaf');
-    // A chat amendment must stay on the CONVERSATION source: `refresh: true` here
-    // would metricate "half a teaspoon of chilli flakes" into the saved recipe in
-    // the same turn the user typed it, and re-apply every writing rule to a
-    // document nobody asked to have re-written.
-    expect(input.refresh).toBeUndefined();
   });
 });

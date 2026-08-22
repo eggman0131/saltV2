@@ -12,6 +12,7 @@ import { UK_INGREDIENT_PRINCIPLE } from './ingredientConversions.js';
 import { readEquipmentContext, equipmentSectionForChef } from './equipmentContext.js';
 import { readKitchenMemoryContext, kitchenMemorySectionForChef } from './kitchenMemoryContext.js';
 import { readComponentContext, componentSectionForChef } from './componentContext.js';
+import { formatRecipeForPrompt, withComponents } from './recipeText.js';
 
 async function readRecipeContext(
   db: ReturnType<typeof getFirestore>,
@@ -26,33 +27,28 @@ async function readRecipeContext(
       return '';
     }
     const r = result.data;
-    const ingredientLines: string[] = [];
-    for (const group of r.ingredients) {
-      if (group.name) ingredientLines.push(`${group.name}:`);
-      for (const ing of group.items) {
-        ingredientLines.push(`  - ${ing.rawText}${ing.isOptional ? ' (optional)' : ''}`);
-      }
-    }
-    const stepLines = r.steps.map((s, i) => `  ${i + 1}. ${s.text}`);
-    const parts = [`Recipe: ${r.title}`];
-    if (r.description) parts.push(`Description: ${r.description}`);
-    if (ingredientLines.length > 0) parts.push(`Ingredients:\n${ingredientLines.join('\n')}`);
-    if (stepLines.length > 0) parts.push(`Method:\n${stepLines.join('\n')}`);
 
-    // The dishes a meal is built from (issue #838). Appended to the recipe body
-    // rather than pushed as its own top-level section, so it stays adjacent to the
-    // recipe it belongs to and nests correctly under whichever heading the caller
-    // puts this text under — "Current recipe" or "Starting point for a NEW dish".
-    // Both paths reach this reader, so a variation chat sees the dinner too.
+    // The SAME rendering the librarian reads (issue #890). This used to be a
+    // thinner hand-rolled twin — title, description, ingredient lines and step
+    // text — which was survivable while the chef only talked ABOUT a dish, and
+    // stopped being survivable the moment Refresh asked it to write one out: a
+    // chef shown no servings, no times, no step timers and no notes hands the
+    // librarian a recipe with those things missing, and the household loses
+    // them. See recipeText.ts.
+    //
+    // The dishes a meal is built from (issue #838) are appended to the recipe
+    // body rather than pushed as their own top-level section, so they stay
+    // adjacent to the recipe they belong to and nest correctly under whichever
+    // heading the caller puts this text under — "Current recipe" or "Starting
+    // point for a NEW dish". Both paths reach this reader, so a variation chat
+    // sees the dinner too.
     //
     // The read cannot join the flow's Promise.all: the component ids are inside
     // the recipe document, so this is the one round-trip that is necessarily
     // serial. It is a single batched getAll and only happens for a meal — a
     // recipe with no components returns '' here and the prompt is unchanged.
     const componentSection = componentSectionForChef(await readComponentContext(db, r, 'chefChat'));
-    if (componentSection) parts.push(componentSection);
-
-    return parts.join('\n\n');
+    return withComponents(formatRecipeForPrompt(r), componentSection);
   } catch (err) {
     logger.warn('chefChat: failed to read recipe', { recipeId, err });
     return '';

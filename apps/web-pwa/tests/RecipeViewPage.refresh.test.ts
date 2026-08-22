@@ -4,23 +4,24 @@ import type { Recipe } from '@salt/domain';
 import type { RecipeDoc } from '@salt/domain/schemas';
 import type { ChatSessionDoc } from '@salt/domain/schemas';
 
-// ⋮ → Refresh (issue #784): re-run the librarian over THIS dish with today's
-// house writing rules, and show what it would change in the review gate a chat
-// amendment already uses.
+// ⋮ → Refresh (issue #890): ask the chef to write THIS dish out again, then run
+// the review gate over the reply without being asked twice.
 //
-// `recipeAmend` is deliberately NOT mocked here. The propose/merge/apply seam is
-// the thing under test at this level — that Refresh reaches the librarian with
-// `refresh: true`, and that applying writes through the same one save — so the
-// mocks stop at the librarian call (`authorRecipeTraced`) and the write
-// (`saveRecipe`), exactly as the "save as new recipe" suite does.
+// It used to be a fourth librarian mode (#784) — no chat, no conversation, a
+// document re-transcribed at temperature 0. What is under test now is the
+// sequence, because the sequence IS the feature: one canned user turn, one chef
+// reply, and then the same propose/merge/apply seam every chat amendment uses.
 //
-// The load-bearing case is the NEGATIVE one: applying a refresh discards the
-// guided plan, and applying a chat amendment must not. A refresh re-mints every
-// step id, so the plan's `stepNotes` point at steps that no longer exist — the
-// plan becomes silently WRONG rather than merely stale. A chat amendment goes
-// through the same sheet and the same apply handler, so nothing but the pending
-// proposal's provenance separates the two paths; one shared flag decides it, and
-// a flag is exactly the kind of thing that leaks.
+// `recipeAmend` is deliberately NOT mocked. The propose/merge/apply seam is the
+// thing under test at this level, so the mocks stop at the chef (`sendMessage`),
+// the librarian (`authorRecipeTraced`) and the write (`saveRecipe`), exactly as
+// the "save as new recipe" suite does.
+//
+// The load-bearing case is the guided plan. Applying ANY amendment re-mints every
+// step id, so the plan's `stepNotes` point at steps that no longer exist and the
+// plan is silently WRONG rather than merely stale. That is decided here by asking
+// whether the ids survived — not by where the proposal came from, which is what
+// #784 asked and which was wrong about the chat path all along.
 
 const {
   mockRecipes,
@@ -140,11 +141,12 @@ vi.mock('../src/lib/recipeService.js', () => ({
 
 import RecipeViewPage from '../src/routes/recipes/RecipeViewPage.svelte';
 import { authorRecipeTraced } from '../src/lib/recipeService.js';
+import { createChatSession, sendMessage } from '../src/lib/chatService.js';
 import { discardGuidedPlan } from '../src/lib/guidedPlanService.js';
 import { saveRecipe } from '@salt/firebase-sync';
 
 const RECIPE_ID = 'pilaf';
-const REFRESHED_TITLE = 'Chorizo & Red Pepper Pilaf, re-transcribed';
+const REFRESHED_TITLE = 'Chorizo & Red Pepper Pilaf, re-written';
 
 function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
   return {
@@ -221,6 +223,9 @@ function makeSession(messages: ChatSessionDoc['messages']): ChatSessionDoc {
   } as ChatSessionDoc;
 }
 
+// What the chef writes back to a Refresh: the whole dish, not a list of changes.
+const CHEF_REPLY = 'Chorizo & Red Pepper Pilaf, serves 4. 15 minutes prep, 30 to cook…';
+
 const CHAT_TURNS = [
   {
     id: 'm1',
@@ -272,6 +277,29 @@ beforeEach(() => {
   mockRecipes._set([makeRecipe()]);
   mockSessions._set([]);
   mockGuidedPlan._set(makePlan());
+  // The chef: creating a session lands it in the store, and answering appends
+  // both turns to it — because the review gate reads the session back out of the
+  // store, and a stubbed send that quietly changed nothing would let a broken
+  // sequence pass.
+  vi.mocked(createChatSession).mockImplementation(async () => {
+    const session = makeSession([]);
+    mockSessions._set([session]);
+    return { kind: 'ok', value: session } as Awaited<ReturnType<typeof createChatSession>>;
+  });
+  vi.mocked(sendMessage).mockImplementation(async (session, text) => {
+    const answered = makeSession([
+      ...session.messages,
+      { id: 'm-user', role: 'user' as const, text, createdAt: '2026-08-13T10:00:00.000Z' },
+      {
+        id: 'm-chef',
+        role: 'assistant' as const,
+        text: CHEF_REPLY,
+        createdAt: '2026-08-13T10:00:01.000Z',
+      },
+    ]);
+    mockSessions._set([answered]);
+    return { kind: 'ok', value: answered } as Awaited<ReturnType<typeof sendMessage>>;
+  });
   mockEquipment._set({ items: [{ name: 'Sage Pizzaiolo' }] });
 });
 
@@ -300,25 +328,54 @@ async function amendAndReview(): Promise<void> {
   await waitFor(() => expect(screen.getByTestId('recipe-change-summary')).toBeInTheDocument());
 }
 
-describe('RecipeViewPage — Refresh proposes, and writes nothing until you say so', () => {
-  it('asks the librarian to re-transcribe THIS dish and opens the review sheet', async () => {
+describe('RecipeViewPage — Refresh asks the chef, then proposes', () => {
+  it('sends one canned turn and reviews the reply, all from one tap', async () => {
     renderPage();
 
     await refreshAndReview();
 
-    // No conversation, no chat session created — a refresh goes straight from the
-    // menu item into the diff, because there is nothing to talk about.
+    // The chef was asked, on a session opened for the purpose.
+    expect(createChatSession).toHaveBeenCalledTimes(1);
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    const sentText = vi.mocked(sendMessage).mock.calls[0]![1];
+    // Not a word-for-word pin of the prompt — that would break on every wording
+    // improvement — but the two loads that make it a REPAIR rather than a tidy-up,
+    // and the one that makes it transcribable at all.
+    expect(sentText).toContain('complete recipe, not a list of changes');
+    expect(sentText).toMatch(/servings/i);
+    expect(sentText).toMatch(/timings/i);
+
+    // …and the reply went straight to the librarian as an ordinary conversation.
     const input = vi.mocked(authorRecipeTraced).mock.calls[0]![0];
-    expect(input).toMatchObject({ messages: [], recipeId: RECIPE_ID, refresh: true });
+    expect(input.recipeId).toBe(RECIPE_ID);
+    expect(input.messages.map((m) => m.text)).toContain(CHEF_REPLY);
+
     // The proposal really is a proposal: the sheet is open and nothing is written.
     expect(screen.getByTestId('recipe-change-summary')).toBeInTheDocument();
     expect(saveRecipe).not.toHaveBeenCalled();
   });
 
+  it('continues the conversation this dish already has', async () => {
+    // A recipe with a chat gets its Refresh in that chat, not in a second one —
+    // the reply belongs beside everything else that has been said about the dish,
+    // and "Chat" would otherwise take you somewhere the answer is not.
+    mockSessions._set([makeSession(CHAT_TURNS)]);
+    renderPage();
+
+    await refreshAndReview();
+
+    expect(createChatSession).not.toHaveBeenCalled();
+    const messages = vi.mocked(authorRecipeTraced).mock.calls[0]![0].messages;
+    expect(messages.map((m) => m.text)).toEqual([
+      ...CHAT_TURNS.map((m) => m.text),
+      expect.stringContaining('Write this recipe out again'),
+      CHEF_REPLY,
+    ]);
+  });
+
   it('offers the tag vocabulary of the whole collection, not just this dish', async () => {
-    // A refresh re-applies the house rules, and "prefer a tag the collection
-    // already uses" is one of them — so the vocabulary has to come from every
-    // recipe, exactly as the chat path builds it.
+    // "Prefer a tag the collection already uses" is a house rule, so the
+    // vocabulary comes from every recipe — exactly as the chat path builds it.
     mockRecipes._set([
       makeRecipe(),
       makeRecipe({ id: 'other', metadata: { ...makeRecipe().metadata, tags: ['sunday'] } }),
@@ -329,6 +386,23 @@ describe('RecipeViewPage — Refresh proposes, and writes nothing until you say 
 
     const input = vi.mocked(authorRecipeTraced).mock.calls[0]![0];
     expect([...input.existingTags].sort()).toEqual(['midweek', 'sunday']);
+  });
+
+  it('proposes nothing when the chef never answers', async () => {
+    // `chat.send` has already toasted the failure. Running the librarian over a
+    // conversation whose answer never arrived would propose to overwrite the dish
+    // with whatever it made of the question alone.
+    vi.mocked(sendMessage).mockResolvedValue({
+      kind: 'err',
+      error: { kind: 'NetworkError', reason: 'offline' },
+    } as Awaited<ReturnType<typeof sendMessage>>);
+    renderPage();
+
+    await clickOverflowItem('recipe-refresh-menu-item');
+
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
+    expect(authorRecipeTraced).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('recipe-change-summary')).toBeNull();
   });
 
   it('discarding leaves the recipe exactly as it was, and keeps the plan', async () => {
@@ -345,8 +419,8 @@ describe('RecipeViewPage — Refresh proposes, and writes nothing until you say 
   });
 });
 
-describe('RecipeViewPage — applying a refresh takes the guided plan with it', () => {
-  it('saves the re-transcribed recipe and discards the plan whose steps it invalidated', async () => {
+describe('RecipeViewPage — an applied amendment takes the guided plan with it', () => {
+  it('saves the re-written recipe and discards the plan whose steps it invalidated', async () => {
     renderPage();
     await refreshAndReview();
 
@@ -377,11 +451,12 @@ describe('RecipeViewPage — applying a refresh takes the guided plan with it', 
     expect(discardGuidedPlan).not.toHaveBeenCalled();
   });
 
-  // THE negative. Both paths open the same sheet and land on the same apply
-  // handler, so only the pending proposal's provenance separates them — and a
-  // chat amendment preserves step ids for every step it did not change, which is
-  // exactly what keeps the plan's `stepNotes` pointing at real steps.
-  it('does NOT discard the plan when the applied proposal came from the chat', async () => {
+  // The case #784 got wrong, and the reason this is decided on ids now. A chat
+  // amendment was believed to preserve the ids of steps it did not change; it
+  // never did — `assembleRecipeDraft` mints a fresh uuid for EVERY step on every
+  // amend — so the plan was left pointing at steps that no longer existed, with
+  // nothing to tell the cook.
+  it('discards the plan for a chat amendment too, because that re-mints the ids as well', async () => {
     mockSessions._set([makeSession(CHAT_TURNS)]);
     renderPage();
 
@@ -389,20 +464,20 @@ describe('RecipeViewPage — applying a refresh takes the guided plan with it', 
     await fireEvent.click(screen.getByTestId('recipe-change-apply'));
 
     await waitFor(() => expect(saveRecipe).toHaveBeenCalledTimes(1));
-    // The librarian was asked to read the conversation, not the document.
-    expect(vi.mocked(authorRecipeTraced).mock.calls[0]![0].refresh).toBeUndefined();
-    expect(discardGuidedPlan).not.toHaveBeenCalled();
+    await waitFor(() => expect(discardGuidedPlan).toHaveBeenCalledWith(RECIPE_ID));
   });
 
-  it('does not inherit the flag from a refresh that was discarded first', async () => {
-    // The flag is page state shared by one sheet, so the sequence that would
-    // catch a missing reset is refresh → discard → chat amend → apply.
+  it('keeps the plan when the amendment leaves every step id standing', async () => {
+    // The other half of the same question. An amendment that touched only the
+    // title hands back the SAME step ids, so every `stepNotes` reference still
+    // resolves and the plan is merely stale — which the banner already covers.
+    const draft = librarianDraft();
+    vi.mocked(authorRecipeTraced).mockResolvedValue({
+      kind: 'ok',
+      value: { ...draft, steps: [{ ...draft.steps[0]!, id: 'step-1' }] },
+    } as Awaited<ReturnType<typeof authorRecipeTraced>>);
     mockSessions._set([makeSession(CHAT_TURNS)]);
     renderPage();
-
-    await refreshAndReview();
-    await fireEvent.click(screen.getByTestId('recipe-change-discard'));
-    await waitFor(() => expect(screen.queryByTestId('recipe-change-summary')).toBeNull());
 
     await amendAndReview();
     await fireEvent.click(screen.getByTestId('recipe-change-apply'));
@@ -414,10 +489,27 @@ describe('RecipeViewPage — applying a refresh takes the guided plan with it', 
 
 // Refresh is gated on `isAuthorable` — "can the librarian WRITE this kind?" —
 // the same predicate "Make a variation" uses, and never on the kind directly. An
-// outing has no ingredients and no method to re-transcribe; a placeholder is a
+// outing has no ingredients and no method to write out; a placeholder is a
 // photograph of a good dinner and not a dish at all. A cocktail is cookable and
 // still not authorable, which is the case that proves the gate is the predicate
 // rather than a hand-written list of the two obvious kinds.
+describe('RecipeViewPage — Refresh carries no equipment gate', () => {
+  it('is offered to a household that owns nothing', async () => {
+    // Optimise is hidden with an empty manifest, because it asks a question about
+    // kit. Refresh does not: the servings it puts back and the four-operation step
+    // it splits are repairs to the WRITING, and a household with one pan needs
+    // them exactly as much.
+    mockEquipment._set({ items: [] });
+    renderPage();
+
+    await fireEvent.click(screen.getByTestId('recipe-actions-overflow'));
+    await waitFor(() => expect(screen.getByTestId('recipe-edit-menu-item')).toBeInTheDocument());
+
+    expect(screen.getByTestId('recipe-refresh-menu-item')).toBeInTheDocument();
+    expect(screen.queryByTestId('recipe-optimise-kitchen-menu-item')).toBeNull();
+  });
+});
+
 describe('RecipeViewPage — Refresh is offered only where the librarian can write', () => {
   it.each([
     ['recipe', true],
