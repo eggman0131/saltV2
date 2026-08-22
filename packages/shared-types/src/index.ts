@@ -136,6 +136,12 @@ export const ErrorCode = {
   // time. Ordinary flow — somebody typed the percentages — so it crosses as a
   // ValidationError and is deliberately not reported.
   BATCH_NOT_STARTABLE: 'BATCH_NOT_STARTABLE',
+  // A Draw that the server declined before spending anything (issue #877): icon
+  // generation is switched off for the environment, or no description has been
+  // written for this item yet. Both are expected states with a friendly message —
+  // not defects — so they cross as a ValidationError and are deliberately not
+  // reported.
+  EQUIPMENT_ICON_NOT_DRAWABLE: 'EQUIPMENT_ICON_NOT_DRAWABLE',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

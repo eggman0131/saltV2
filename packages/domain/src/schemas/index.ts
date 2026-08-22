@@ -139,6 +139,13 @@ export {
 } from './equipmentManifest.js';
 export type { AccessoryDoc, EquipmentItemDoc, EquipmentManifestDoc } from './equipmentManifest.js';
 
+export {
+  EquipmentIconSchema,
+  DrawEquipmentIconInputSchema,
+  EQUIPMENT_ICONS_COLLECTION,
+} from './equipmentIcon.js';
+export type { EquipmentIconDoc, DrawEquipmentIconInput } from './equipmentIcon.js';
+
 export { ShoppingListSchema } from './shoppingList.js';
 export type { ShoppingListDoc } from './shoppingList.js';
 

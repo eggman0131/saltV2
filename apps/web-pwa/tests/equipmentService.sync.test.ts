@@ -7,6 +7,12 @@ vi.mock('@salt/firebase-sync', () => ({
   saveEquipmentManifest: vi.fn().mockResolvedValue(undefined),
   callIdentifyEquipment: vi.fn(),
   callPopulateEquipmentEntry: vi.fn(),
+  // Pictograms (issue #877) ride the same init lifecycle. Defaulted to a no-op
+  // unsubscribe so every case here keeps testing the MANIFEST store; the icon
+  // collection is a separate store over a separate collection and is asserted
+  // in its own cases below.
+  subscribeEquipmentIcons: vi.fn(() => () => {}),
+  callDrawEquipmentIcon: vi.fn(),
 }));
 
 import * as firebaseSync from '@salt/firebase-sync';

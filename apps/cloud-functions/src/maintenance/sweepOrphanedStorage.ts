@@ -37,6 +37,12 @@ const MAX_DELETIONS_PER_RUN = 500;
 const SWEEPS = [
   { prefix: 'canon-icons/', collection: 'canonItems' },
   { prefix: 'recipe-images/', collection: 'recipes' },
+  // Equipment pictograms (issue #877). Same deterministic-id shape as canon
+  // icons: `equipment-icons/{itemId}.webp` beside `equipmentIcons/{itemId}`.
+  // This pass only works because `onEquipmentManifestWritten` deletes the icon
+  // DOC when its item leaves the manifest — otherwise the join below would find
+  // the doc still present and correctly conclude the object is not orphaned.
+  { prefix: 'equipment-icons/', collection: 'equipmentIcons' },
 ] as const;
 
 /** A candidate artefact, reduced to just what the decision needs. */

@@ -132,6 +132,7 @@ export {
   addRule,
   removeRule,
   editRule,
+  equipmentIconAwaitingApproval,
 } from './equipment/index.js';
 
 // Shopping list module — published surface.

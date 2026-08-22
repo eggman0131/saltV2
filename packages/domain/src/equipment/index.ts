@@ -24,4 +24,6 @@ export type { AddRuleInput } from './commands/addRule.js';
 export { removeRule } from './commands/removeRule.js';
 export type { RemoveRuleInput } from './commands/removeRule.js';
 export { editRule } from './commands/editRule.js';
+
+export { equipmentIconAwaitingApproval } from './queries/equipmentIcon.js';
 export type { EditRuleInput } from './commands/editRule.js';
