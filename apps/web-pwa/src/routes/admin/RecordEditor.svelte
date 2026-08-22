@@ -28,6 +28,7 @@
     TextField,
   } from '@salt/ui-components';
   import ImagePromptDialog from '../../components/ImagePromptDialog.svelte';
+  import ImageUploadDialog from '../../components/ImageUploadDialog.svelte';
   import { CANON_ICON_HIDDEN, describePendingCanonChange } from '@salt/domain';
   import type { CanonItem, ProductForm } from '@salt/domain';
   import type { CanonItemUnit } from '@salt/shared-types';
@@ -233,6 +234,7 @@
   // The read-only prompt window (issue #892). The family follows the same
   // record.kind branch every other icon affordance on this editor follows.
   let promptOpen = $state(false);
+  let uploadOpen = $state(false);
   const promptFamily = $derived(record.kind === 'canon' ? 'canon' : 'productForm');
 
   async function handleRegenerateIcon(): Promise<void> {
@@ -489,6 +491,17 @@
             <Icon name="Copy" size={16} />
           {/snippet}
           Prompt
+        </Button>
+        <Button
+          data-testid="{iconTestid}-icon-upload"
+          variant="outline"
+          size="sm"
+          onclick={() => (uploadOpen = true)}
+        >
+          {#snippet leading()}
+            <Icon name="Upload" size={16} />
+          {/snippet}
+          Upload
         </Button>
         {#if iconHidden}
           <Button
@@ -879,4 +892,12 @@
   id={record.kind === 'canon' ? record.item.id : record.form.id}
   subject={iconName}
   data-testid="{iconTestid}-prompt-dialog"
+/>
+
+<ImageUploadDialog
+  bind:open={uploadOpen}
+  family={promptFamily}
+  id={record.kind === 'canon' ? record.item.id : record.form.id}
+  subject={iconName}
+  data-testid="{iconTestid}-upload-dialog"
 />

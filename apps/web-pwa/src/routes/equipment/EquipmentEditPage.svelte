@@ -15,6 +15,7 @@
     TextField,
   } from '@salt/ui-components';
   import ImagePromptDialog from '../../components/ImagePromptDialog.svelte';
+  import ImageUploadDialog from '../../components/ImageUploadDialog.svelte';
   import { push } from 'svelte-spa-router';
   import { CANON_ICON_HIDDEN, equipmentIconAwaitingApproval } from '@salt/domain';
   import { goBack } from '../../lib/nav.js';
@@ -51,6 +52,7 @@
   // own — the brief is edited inline — so this is the page's only modal for the
   // picture, and it opens from the same row of buttons as Draw and Hide.
   let promptOpen = $state(false);
+  let uploadOpen = $state(false);
 
   // ─── Pictogram + description review gate (issue #877) ─────────────────────
   // The description is shown BEFORE anything is drawn, and this panel is the
@@ -472,6 +474,17 @@
               {/snippet}
               Prompt
             </Button>
+            <Button
+              variant="outline"
+              onclick={() => (uploadOpen = true)}
+              disabled={iconBusy || briefBusy}
+              data-testid="equipment-icon-upload-btn"
+            >
+              {#snippet leading()}
+                <Icon name="Upload" size={16} />
+              {/snippet}
+              Upload
+            </Button>
             {#if !iconHidden}
               <Button
                 variant="outline"
@@ -787,5 +800,15 @@
     id={item.id}
     subject={item.name}
     data-testid="equipment-prompt-dialog"
+  />
+{/if}
+
+{#if item}
+  <ImageUploadDialog
+    bind:open={uploadOpen}
+    family="equipment"
+    id={item.id}
+    subject={item.name}
+    data-testid="equipment-upload-dialog"
   />
 {/if}

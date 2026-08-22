@@ -160,6 +160,11 @@ export const ErrorCode = {
   // caller's next move is different: reword it, or go and edit the one that
   // already exists.
   INVALID_KITCHEN_TOOL: 'INVALID_KITCHEN_TOOL',
+  // A pictogram upload the server refused on the payload itself (issue #892): an
+  // image past the base64 cap, or one the cropper produced nothing usable from.
+  // Bad input, not a defect — the dialog says so and the old picture stays put —
+  // so it crosses as a ValidationError and is deliberately not reported.
+  ICON_UPLOAD_REJECTED: 'ICON_UPLOAD_REJECTED',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

@@ -672,6 +672,7 @@ export { regenerateProductFormIcon } from './callables/regenerateProductFormIcon
 export { regenerateRecipeImage } from './callables/regenerateRecipeImage.js';
 export { setRecipeImageUpload } from './callables/setRecipeImageUpload.js';
 export { getImagePrompt } from './callables/getImagePrompt.js';
+export { setIconUpload } from './callables/setIconUpload.js';
 export { redoRecipeKit } from './callables/redoRecipeKit.js';
 // The observation photo (issue #812, phase 4) — the same auth-gated upload one
 // level deeper, writing `batch-images/{batchId}/{observationId}.webp` and stamping

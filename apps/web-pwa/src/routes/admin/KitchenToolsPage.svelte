@@ -22,6 +22,7 @@
   import { CANON_ICON_HIDDEN, unresolvedKitLabels } from '@salt/domain';
   import type { KitchenToolDoc, GuidedPlanDoc } from '@salt/domain/schemas';
   import ImagePromptDialog from '../../components/ImagePromptDialog.svelte';
+  import ImageUploadDialog from '../../components/ImageUploadDialog.svelte';
   import AdminGuard from './AdminGuard.svelte';
   import { goBack } from '../../lib/nav.js';
   import {
@@ -197,6 +198,14 @@
     promptOpen = true;
   }
 
+  let uploadTool = $state<KitchenToolDoc | null>(null);
+  let uploadOpen = $state(false);
+
+  function openUploadDialog(tool: KitchenToolDoc): void {
+    uploadTool = tool;
+    uploadOpen = true;
+  }
+
   function openRegenerateDialog(tool: KitchenToolDoc): void {
     regenerateHint = '';
     regenerateTool = tool;
@@ -360,6 +369,17 @@
                   >
                     {#snippet leading()}
                       <Icon name="Copy" size={16} />
+                    {/snippet}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onclick={() => openUploadDialog(tool)}
+                    data-testid="kitchen-tool-icon-upload"
+                    ariaLabel="Upload your own picture for {tool.label}"
+                  >
+                    {#snippet leading()}
+                      <Icon name="Upload" size={16} />
                     {/snippet}
                   </Button>
                   {#if isHidden(tool)}
@@ -610,5 +630,15 @@
     id={promptTool.id}
     subject={promptTool.label}
     data-testid="kitchen-tool-prompt-dialog"
+  />
+{/if}
+
+{#if uploadTool}
+  <ImageUploadDialog
+    bind:open={uploadOpen}
+    family="kitchenTool"
+    id={uploadTool.id}
+    subject={uploadTool.label}
+    data-testid="kitchen-tool-upload-dialog"
   />
 {/if}

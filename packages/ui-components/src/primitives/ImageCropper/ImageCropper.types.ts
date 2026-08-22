@@ -1,22 +1,26 @@
-// spec: ui-spec-v06.md §1 v0.6
+// spec: ui-spec-v11.md §1 v0.11
 
-/** Which ratio the crop frame is locked to (ui-spec-v06 §1.3). */
-export type ImageCropperAspect = '3:2' | 'free';
+/** Which ratio the crop frame is locked to (ui-spec-v06 §1.3, ui-spec-v11 §1.3). */
+export type ImageCropperAspect = '3:2' | '1:1' | 'free';
 
 // A pan/zoom cropper locked to one of two named frames. The consumer supplies an
 // image source (object URL / data URL) and, on Save, calls the exposed
 // `getCroppedBase64()` method (via `bind:this`) to obtain the cropped image as a
 // bare base64 string (no data-URL prefix) ready to hand to the upload callable.
-// Aspect is a CLOSED two-valued mode, never a number: '3:2' is the recipe hero
-// frame (the default, so the hero call site passes nothing) and 'free' locks the
-// frame to the source image's own ratio for sources a hero frame would crop the
-// content out of — a photographed cookbook page. A numeric aspect would let a
-// call site silently violate the hero contract; adding a third mode is a spec
-// amendment (ui-spec-v06 §1.3), not a call-site decision.
+// Aspect is a CLOSED set of named modes, never a number: '3:2' is the recipe hero
+// frame (the default, so the hero call site passes nothing), '1:1' is the Tier-1
+// pictogram frame, and 'free' locks the frame to the source image's own ratio for
+// sources a hero frame would crop the content out of — a photographed cookbook
+// page. A numeric aspect would let a call site silently violate the hero
+// contract; adding a further mode is a spec amendment (ui-spec-v11 §1.3), not a
+// call-site decision.
 export type ImageCropperProps = {
   /** Object URL or data URL of the image to crop. */
   src: string;
-  /** Which ratio the crop frame is locked to. Defaults to the 3:2 hero frame. */
+  /**
+   * Which ratio the crop frame is locked to. Defaults to the 3:2 hero frame;
+   * '1:1' is the pictogram frame; 'free' takes the source image's own ratio.
+   */
   aspect?: ImageCropperAspect;
   /** Longest-edge cap (px) of the produced crop. Defaults to 1600; the server
    * re-encodes to its own bound, so this only limits the base64 payload size. */

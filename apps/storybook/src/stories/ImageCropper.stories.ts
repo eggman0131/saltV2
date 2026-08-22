@@ -26,7 +26,7 @@ const meta = {
   },
   argTypes: {
     src: { control: 'text' },
-    aspect: { control: 'inline-radio', options: ['3:2', 'free'] },
+    aspect: { control: 'inline-radio', options: ['3:2', '1:1', 'free'] },
     maxEdge: { control: { type: 'number', min: 200, max: 4000, step: 100 } },
     class: { control: 'text' },
   },
@@ -52,3 +52,16 @@ export const FreeAspectPortrait: Story = { args: { src: PAGE, aspect: 'free' } }
 // Free mode is "the image's ratio", not "portrait": a landscape source in free
 // mode frames landscape, and here happens to coincide with the hero's 3:2.
 export const FreeAspectLandscape: Story = { args: { src: DISH, aspect: 'free' } };
+
+// Square mode (ui-spec-v11 §1): the Tier-1 pictogram frame, for a photograph
+// supplied in place of an AI-drawn icon. It is a CONSTANT ratio like the hero's,
+// not a measured one — the square is what makes an uploaded photo sit at the same
+// apparent size as the pictograms either side of it, because the server frames
+// every upload by its longer side.
+export const SquarePictogram: Story = { args: { src: DISH, aspect: '1:1' } };
+
+// The same square frame over a portrait source. Whatever shape the camera
+// produced, the user pans and zooms to choose what lands inside the square —
+// which is precisely what free mode cannot offer, since it locks to the source's
+// own ratio and leaves the shape unchosen.
+export const SquareOverAPortraitSource: Story = { args: { src: PAGE, aspect: '1:1' } };
