@@ -1,4 +1,4 @@
-// spec: ui-spec-v09.md §8.23, §8.27 v0.9.1
+// spec: ui-spec-v09.md §8.23, §8.27 v0.9.2
 import { cva, type VariantProps } from '../../lib/variants';
 
 export const chipVariants = cva('salt-chip', {
@@ -6,10 +6,17 @@ export const chipVariants = cva('salt-chip', {
     variant: {
       filter: 'salt-chip--filter',
       expander: 'salt-chip--expander',
+      // The two non-interactive treatments (§8.23.8). Named for the ROLE they
+      // play, as `filter` and `expander` are — not for the mechanism they share
+      // (both are static), which would have left the axis reading half role,
+      // half implementation and nothing to call the third static role.
+      fact: 'salt-chip--fact',
+      tag: 'salt-chip--tag',
     },
     // The pressed fill is written as its own class rather than folded into
-    // `variant` so the two axes stay independent: `expander` simply has no rule
-    // for `.salt-chip--on`, which is why a pressed expander paints nothing.
+    // `variant` so the two axes stay independent: `expander`, `fact` and `tag`
+    // simply have no rule for `.salt-chip--on`, which is why a pressed expander
+    // paints nothing.
     pressed: { true: 'salt-chip--on', false: '' },
   },
   defaultVariants: { variant: 'filter', pressed: false },

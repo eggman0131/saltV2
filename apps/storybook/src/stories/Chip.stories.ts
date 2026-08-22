@@ -8,6 +8,14 @@ import { Chip } from '@salt/ui-components';
 // createRawSnippet (Svelte 5) so a plain .ts story can supply it.
 const label = (text: string) => createRawSnippet(() => ({ render: () => `<span>${text}</span>` }));
 
+// A leading glyph for the `fact` chip. Raw markup rather than the `Icon`
+// primitive because a plain .ts story cannot instantiate a component into a
+// snippet; the chip sizes whatever svg it is handed (ui-spec-v09 §8.23.8).
+const clockIcon = createRawSnippet(() => ({
+  render: () =>
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>`,
+}));
+
 const meta = {
   title: 'Primitives/Chip',
   component: Chip,
@@ -17,10 +25,11 @@ const meta = {
     children: label('Weeknight'),
   },
   argTypes: {
-    variant: { control: 'select', options: ['filter', 'expander'] },
+    variant: { control: 'select', options: ['filter', 'expander', 'fact', 'tag'] },
     pressed: { control: 'boolean' },
-    // The label snippet is not a user-facing control.
+    // Neither snippet is a user-facing control.
     children: { table: { disable: true } },
+    icon: { table: { disable: true } },
   },
 } satisfies Meta<typeof Chip>;
 
@@ -41,4 +50,21 @@ export const Expander: Story = {
 
 export const ExpanderCollapse: Story = {
   args: { variant: 'expander', children: label('Show less') },
+};
+
+// The two static chips (ui-spec-v09 §8.23.8). Both render a <span>: they are
+// read, not pressed, so neither is in the tab order and neither ever carries
+// `aria-pressed`.
+export const Fact: Story = {
+  args: { variant: 'fact', children: label('Serves 4') },
+};
+
+export const FactWithIcon: Story = {
+  args: { variant: 'fact', icon: clockIcon, children: label('Prep 40 min') },
+};
+
+// A word someone attached, not a number measured from the dish. Quiet outline,
+// and deliberately no icon — one beside an arbitrary tag would be a guess.
+export const Tag: Story = {
+  args: { variant: 'tag', children: label('weeknight') },
 };

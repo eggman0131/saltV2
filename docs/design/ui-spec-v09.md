@@ -1,4 +1,4 @@
-# Salt 2.0 — UI Primitives Specification (v0.9.1)
+# Salt 2.0 — UI Primitives Specification (v0.9.2)
 
 **Status:** Planning  
 **Scope:** `@salt/ui-components` — `Chip`, `ChipGroup`, `CollapsibleSection`, `DisclosureTrigger`, `DisclosureChevron`, the value-chip surface  
@@ -28,6 +28,15 @@ v0.9.1 adds one thing that is **not** a promotion:
   (§8.27). §8.23.2 left a hole here ("add it to this spec before writing it");
   this is that amendment, and it carries a `frameClass` prop onto `TextField`
   (v0.2 §8.2) and a radius amendment to v0.2 §2.3 with it.
+
+v0.9.2 adds the one thing §8.23.2 explicitly left unbuilt:
+
+- **the static chips** — `variant="fact"` and `variant="tag"`, two
+  non-interactive pills that render a `<span>` rather than a `<button>`
+  (§8.23.8). §8.23.2's last row said "Nothing needs one yet; add it to this spec
+  before writing it"; the recipe detail redraw (issue #878) needs both, and this
+  is that amendment. It also narrows `Chip`'s attribute passthrough from
+  `HTMLButtonAttributes` to `HTMLAttributes<HTMLElement>` — see §8.23.3.
 
 These are **promotions, not inventions**. Every behaviour below already ships in
 `apps/web-pwa`; v0.9 gives it a name so the next list gets it right by default
@@ -69,23 +78,42 @@ Consumers today: the recipe list's section, authorship and tag filters.
 | Anything that navigates, submits, opens or destroys | `Button` |
 | A one-off toggle with no row of peers — "show weather on the planner" | `Switch` (v0.2 §8.19) |
 | A **current value**, shown as a pill and changeable where it sits | Not a component at all — the value-chip **surface** (§8.27) |
-| A read-only badge that cannot be pressed or changed | Neither. Nothing needs one yet; add it to this spec before writing it |
+| A **measured attribute** of the thing being read — "Serves 4", "Prep 40 min" | `Chip variant="fact"` (§8.23.8) |
+| A **word someone attached** to the thing — a recipe tag | `Chip variant="tag"` (§8.23.8) |
 
 ## 8.23.3 Props
 
 | Prop | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `variant` | `'filter' \| 'expander'` | `'filter'` | See §8.23.5 |
+| `variant` | `'filter' \| 'expander' \| 'fact' \| 'tag'` | `'filter'` | See §8.23.5 and §8.23.8 |
 | `pressed` | `boolean` | `false` | Emitted as `aria-pressed`. **`filter` only** — see §8.23.6 |
+| `icon` | `Snippet` | — | A leading glyph. **`fact` only** — see §8.23.8 |
 | `children` | `Snippet` | — | The chip's label. Text only |
 | `class` | `string` | — | Merged last via `cn()` (v0.2 §2.3) |
 
-Everything else — `onclick`, `data-testid`, `data-*`, `title`, `disabled` — rides
-`...rest` onto the underlying `<button type="button">`, exactly as `Button`
-(v0.2 §8.1) does. Passing `data-testid` through is **required**, not incidental:
-the recipe list's filters are asserted by `e2e/recipe-author-filter.spec.ts`
-through `recipe-kind-filter`, `recipe-author-filter`, `recipe-tag-filter` and
-their show-all/show-less siblings.
+Everything else — `onclick`, `data-testid`, `data-*`, `title` — rides `...rest`
+onto the element the variant renders, exactly as `Button` (v0.2 §8.1) does.
+Passing `data-testid` through is **required**, not incidental: the recipe list's
+filters are asserted by `e2e/recipe-author-filter.spec.ts` through
+`recipe-kind-filter`, `recipe-author-filter`, `recipe-tag-filter` and their
+show-all/show-less siblings.
+
+**The passthrough is `HTMLAttributes<HTMLElement>`, not `HTMLButtonAttributes`**
+(amended in v0.9.2). Two of the four variants render a `<span>`, and a type that
+advertised `disabled`, `type` or `form` would be offering a page attributes the
+element it lands on cannot honour. Nothing is lost: `disabled` was the only
+button-only attribute this section ever named, §8.23.7 has always said a chip has
+no disabled treatment, and no call site passed one.
+
+`ChipProps` is a **discriminated union on `variant`**, so a `fact` cannot be
+handed `pressed`, a `tag` cannot be handed an `icon`, and neither can be handed
+an `onclick`. Every member declares every Salt-owned prop — the disallowed ones
+typed `never` — which is what keeps the union destructurable inside the
+component; `$props()` must be annotated with the exported type or the constraint
+would never reach a call site. The union is safe because no consumer picks
+`variant` dynamically: every call site passes a literal. If one ever needs to,
+that is the moment to trade the union for a flat type, not a reason to widen it
+speculatively.
 
 `Chip` owns no selection state. It renders the state it is handed.
 
@@ -120,6 +148,8 @@ text-primary-foreground`, and the hover treatment is suppressed, because a
 pressed chip that lightens under the cursor reads as though the press came
 undone.
 
+The two non-interactive variants — **`fact`** and **`tag`** — are in §8.23.8.
+
 **`expander`** — the dashed chip that ends a truncated row: "+3 more", and
 "Show less" once expanded. Dashed border, no background, `text-muted-foreground`,
 `hover:bg-muted`.
@@ -148,21 +178,90 @@ entirely in what the page does on click — see §8.24.2.
   stronger reason than the expander's: it is a listbox trigger, a combobox or a
   text input, none of which has a pressed state to report. Of the three pill
   treatments in this spec, only `variant="filter"` is ever pressed.
+- **`fact` and `tag` render no `aria-pressed` either**, and for the strongest
+  reason of the three: they are not controls at all. They render a `<span>`, so
+  the question never arises (§8.23.8).
 - Colour is never the only carrier of the pressed state — `aria-pressed` carries
   it independently, per v0.2 §7.
 
 ## 8.23.7 What Chip does not do
 
-- **No leading or trailing icon, no dismiss "×".** A removable chip is a
-  different control (it has two hit targets), and nothing needs one.
+- **No trailing icon, no dismiss "×".** A removable chip is a different control
+  (it has two hit targets), and nothing needs one. A *leading* icon exists on
+  `fact` alone, added in v0.9.2 — see §8.23.8.
 - **No loading or disabled treatment.** A facet that cannot be applied is not
   rendered — the recipe list drops the whole authorship row when the household
   has one member, rather than showing two dead chips.
 - **No count badge.** The recipe list ranks its tag chips by frequency and
   deliberately never shows the number; a chip that could show one would invite
-  the opposite.
+  the opposite. (A count on a *tab* is a different thing and is specified —
+  v0.10 §8.28.4.)
 - **No press-scale.** `.salt-button`'s tap-scale is not inherited. A chip's
   answer to a tap is the fill, which lands on the same frame.
+
+## 8.23.8 The static chips: `fact` and `tag` (v0.9.2)
+
+Two variants that are read, never pressed. Both render **`<span>`**, not
+`<button>` — not a button with `disabled`, and not a button with a handler
+omitted. A thing that cannot be pressed must not be reachable by Tab, must not
+be announced as a control, and must not sit in the same role as the filter chips
+it will often share a row with.
+
+**`fact`** — a measured attribute of the thing being read: "Serves 4",
+"Prep 40 min", "Cook 6 hr". Tinted ground (`bg-muted`), `border-transparent`,
+`text-muted-foreground`, and an optional leading `icon` snippet.
+
+**`tag`** — a word someone attached to the thing rather than measured from it: a
+recipe tag. Quiet outline (`border-border`), no background, no icon.
+
+### Why those two names
+
+They name the **role** the chip plays, as `filter` and `expander` do. The
+obvious alternative — `static` for the plain one, since it is the plain one —
+names the *mechanism* instead, and would have left the axis reading half role,
+half implementation, with nothing to call the next static role when it arrives.
+Both of these are static; only one of them is a fact.
+
+### Why one axis and not a `tone`
+
+A second axis (`variant` × `tone`, say) would immediately admit combinations
+that mean nothing — a tinted expander, an outlined filter — and every one of
+them would need a rule saying it is not supported. Four values on one axis, each
+naming a role, is the smaller thing. `pressed` stays a separate axis because it
+genuinely is orthogonal within `filter`; `fact` and `tag` simply have no rule for
+`.salt-chip--on`, exactly as `expander` has none.
+
+### Why the icon is on `fact` only
+
+A fact has a natural glyph — a clock for a duration, people for a serving count —
+that carries meaning before the number is read. A tag is an arbitrary word, and
+any icon beside it would be a guess. The type enforces this: `icon` is `never` on
+every variant but `fact`.
+
+**The style sizes the icon, at 12px, not the caller.** §8.23.4 exists because two
+chip sizes shipped from two pages guessing; an icon size left to the call site
+would drift the same way inside a year.
+
+### Sizing and the border box
+
+Both static variants restate `inline-flex items-center`, which `.salt-chip` does
+**not** carry: a `<button>` is `inline-block` and centres its own text, while a
+bare inline `<span>` would drop `py-1` on the floor. The display is not hoisted
+into the base rule because that would nudge every filter chip already shipped,
+and §8.23.4 permits exactly one pixel of change, already spent.
+
+`fact` keeps `border-transparent` rather than dropping the border: the border box
+is what makes a fact, a tag and a filter the same height when they sit in one
+row.
+
+### What they do not do
+
+- **No hover, no focus ring, no press.** There is nothing to press.
+- **No `onclick`.** Typed `never`. A pill that does something is a `filter`, an
+  `expander`, a `Button`, or the value-chip surface (§8.27) — one of those four
+  fits, and if none does, amend this spec.
+- **No dismiss affordance on `tag`.** Still true, and for the reason §8.23.7
+  gives: two hit targets is a different control.
 
 ---
 

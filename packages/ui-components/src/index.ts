@@ -77,6 +77,10 @@ export { default as Spinner } from './primitives/Spinner/Spinner.svelte';
 export { default as SortableList } from './primitives/SortableList/SortableList.svelte';
 export { default as Stack } from './primitives/Stack/Stack.svelte';
 export { default as Switch } from './primitives/Switch/Switch.svelte';
+export { default as Tabs } from './primitives/Tabs/Tabs.svelte';
+export { default as TabsList } from './primitives/Tabs/TabsList.svelte';
+export { default as TabsTrigger } from './primitives/Tabs/TabsTrigger.svelte';
+export { default as TabsContent } from './primitives/Tabs/TabsContent.svelte';
 export { default as Text } from './primitives/Text/Text.svelte';
 export { default as TextArea } from './primitives/Textarea/Textarea.svelte';
 export { default as TextField } from './primitives/TextField/TextField.svelte';
@@ -191,6 +195,12 @@ export type { SpinnerProps } from './primitives/Spinner/Spinner.types';
 export type { SortableListProps } from './primitives/SortableList/SortableList.types';
 export type { StackProps } from './primitives/Stack/Stack.types';
 export type { SwitchProps } from './primitives/Switch/Switch.types';
+export type {
+  TabsProps,
+  TabsListProps,
+  TabsTriggerProps,
+  TabsContentProps,
+} from './primitives/Tabs/Tabs.types';
 export type { TextProps } from './primitives/Text/Text.types';
 export type { TextareaProps } from './primitives/Textarea/Textarea.types';
 export type { TextFieldProps } from './primitives/TextField/TextField.types';

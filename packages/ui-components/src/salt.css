@@ -688,8 +688,71 @@
   .salt-chip--expander:hover {
     @apply bg-muted;
   }
+  /* The two static chips (§8.23.8). Both render a <span>, so neither has a
+   * hover, a focus ring or the `--on` fill — there is nothing to press. Both
+   * restate `inline-flex items-center`, which the base rule deliberately does
+   * NOT carry: a <button> is inline-block and centres its own text, while a
+   * bare inline <span> would drop `py-1` on the floor, and moving the display
+   * up into `.salt-chip` would nudge every filter chip already shipped.
+   *
+   * `fact` keeps `border-transparent` rather than dropping `border`: the border
+   * box is what makes a fact, a tag and a filter the same height when they sit
+   * in one row. */
+  .salt-chip--fact {
+    @apply inline-flex items-center gap-1 border-transparent bg-muted text-muted-foreground;
+  }
+  /* 12px, decided here rather than at the call site. §8.23.4 exists because two
+   * chip sizes shipped from two pages guessing; an icon size left to the caller
+   * would drift the same way. */
+  .salt-chip--fact svg {
+    @apply size-3 shrink-0;
+  }
+  .salt-chip--tag {
+    @apply inline-flex items-center border-border text-muted-foreground;
+  }
   .salt-chip-group {
     @apply flex flex-wrap gap-1.5;
+  }
+
+  /* ─ Tabs (§8.28) ─────────────────────────────────────────────────────────
+   * An underlined strip, not a segmented pill: tabs sit directly above the
+   * content they switch, and a hairline that the active tab interrupts says
+   * "this panel belongs to this word" without adding a second filled surface
+   * to a page that already has cards on it.
+   *
+   * The trigger's `-mb-px` pulls its 2px underline over the list's 1px
+   * hairline, so the active marker replaces the rule rather than stacking a
+   * second line beneath it. Inactive triggers carry `border-transparent` — the
+   * border box is reserved at rest, so nothing shifts by 2px on selection.
+   *
+   * No focus rule: the global `:focus-visible` in @layer base already gives the
+   * trigger its ring. */
+  .salt-tabs {
+    @apply flex flex-col;
+  }
+  .salt-tabs__list {
+    @apply flex items-stretch gap-1 border-b border-border;
+  }
+  .salt-tabs__trigger {
+    @apply -mb-px inline-flex items-center gap-1.5 border-b-2 border-transparent px-3 py-2 text-sm font-medium text-muted-foreground transition-colors;
+  }
+  .salt-tabs__trigger:hover {
+    @apply text-foreground;
+  }
+  .salt-tabs__trigger[data-state='active'] {
+    @apply border-primary text-foreground;
+  }
+  /* The count is a companion to the label, never a competitor: one step down in
+   * size, normal weight, and `tabular-nums` so a strip does not reflow when 9
+   * becomes 10. It brightens with its tab so the active count is legible. */
+  .salt-tabs__count {
+    @apply text-xs font-normal tabular-nums text-muted-foreground/70;
+  }
+  .salt-tabs__trigger[data-state='active'] .salt-tabs__count {
+    @apply text-muted-foreground;
+  }
+  .salt-tabs__panel {
+    @apply pt-4;
   }
 
   /* ─ CollapsibleSection (§8.25) ───────────────────────────────────────────
