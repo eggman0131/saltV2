@@ -63,6 +63,10 @@ export {
 // Recipe-drift comparison, shared by everything that snapshots a recipe's
 // `updatedAt`: the cook session (#556) and the guided plan (#751).
 export { hasRecipeChanged } from './queries/hasRecipeChanged.js';
+// Which step each piece of kit should be DRAWN at (issue #882) — the
+// contiguous-run rule, shared by the method column, the cook deck and the guided
+// step screen so the three cannot disagree about when the pan comes out.
+export { kitByStep } from './queries/kitByStep.js';
 export { findProducingRecipes } from './queries/producers.js';
 export { diffRecipe } from './queries/diffRecipe.js';
 // One level below diffRecipe: what moved INSIDE a changed field, so the review

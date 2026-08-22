@@ -68,6 +68,16 @@ service firebase.storage {
       allow read: if true;
       allow write: if false;
     }
+    // Kitchen-tool pictograms (issue #882): the fourth subject family on the
+    // Tier-1 pipeline, and the same model as canon icons — generated server-side
+    // by onKitchenToolWritten (Admin SDK, which bypasses these rules) and
+    // rendered client-side via <img src={publicUrl}>. Public read, no client
+    // write. WITHOUT THIS BLOCK the catch-all below denies everything and the
+    // tool icons are simply unreadable.
+    match /kit-icons/{file} {
+      allow read: if true;
+      allow write: if false;
+    }
     // Everything else: locked down.
     match /{allPaths=**} {
       allow read, write: if false;

@@ -55,6 +55,7 @@ function fullRecipe(overrides: Partial<Recipe> = {}): Recipe {
     notes: 'Rest before slicing.',
     producesCanonId: 'canon-lasagne',
     componentRecipeIds: ['comp-chicken', 'comp-potatoes'],
+    kit: [],
     image: { url: 'https://example.test/recipe-images/original-id.webp', source: 'ai' },
     imageBrief: 'A deep dish of lasagne, late afternoon light.',
     imageHint: 'more browning',
@@ -222,6 +223,32 @@ describe('duplicateRecipe', () => {
         duplicateRecipe(source, 'new-id', NOW),
       );
     });
+  });
+
+  it('carries the kit and its stamp — the copy needs the same pans, and the step ids still fit', () => {
+    const source = fullRecipe({
+      kit: [{ label: 'large frying pan', stepIds: ['step-1'] }],
+      kitInferredAt: 1_700_000_000_000,
+    });
+    const copy = duplicateRecipe(source, 'new-id', NOW);
+    expect(copy.kit).toEqual([{ label: 'large frying pan', stepIds: ['step-1'] }]);
+    // Carried WITH the stamp, so the copy does not pay for an inference that could
+    // only reproduce the answer above it. Step ids are not re-minted, so every
+    // reference is still a step in the copy.
+    expect(copy.kitInferredAt).toBe(1_700_000_000_000);
+    expect(copy.kit).not.toBe(source.kit);
+    expect(copy.kit[0]!.stepIds).not.toBe(source.kit[0]!.stepIds);
+  });
+
+  it('leaves an un-inferred source un-stamped so the trigger picks the copy up', () => {
+    const copy = duplicateRecipe(fullRecipe(), 'new-id', NOW);
+    expect(copy.kitInferredAt).toBeUndefined();
+    expect('kitInferredAt' in copy).toBe(false);
+  });
+
+  it('drops the redo nonce — it is a one-shot request, not a property of the dish', () => {
+    const copy = duplicateRecipe(fullRecipe({ kitRequestedAt: 123 }), 'new-id', NOW);
+    expect(copy.kitRequestedAt).toBeUndefined();
   });
 
   it('copies an entry with no ingredients, steps, source or image (an outing)', () => {

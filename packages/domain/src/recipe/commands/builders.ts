@@ -30,6 +30,10 @@ export function emptyRecipe(id: string, now: string, kind: RecipeKind = 'recipe'
     notes: null,
     producesCanonId: null,
     componentRecipeIds: [],
+    // No kit yet, and no `kitInferredAt` either (issue #882): a blank recipe has
+    // no method to read, so the onRecipeWritten kit branch simply finds nothing to
+    // work from and asks again on the save that gives it steps.
+    kit: [],
     image: null,
     createdAt: now,
     updatedAt: '',
@@ -127,6 +131,18 @@ export function duplicateRecipe(source: Recipe, newId: string, now: string): Rec
     ...(source.needs_approval === undefined ? {} : { needs_approval: source.needs_approval }),
     producesCanonId: null,
     componentRecipeIds: [...source.componentRecipeIds],
+    // Kit carries (issue #882), value-cloned like `componentRecipeIds` — and it is
+    // the `componentRecipeIds` case, not the `imageBrief` one. A brief was dropped
+    // because it art-directs the copy as the dish it is no longer; nothing about
+    // copying a recipe changes which pans it needs. Crucially the STEP IDS are not
+    // re-minted (see the note above), so every `stepIds` reference is still a step
+    // in this document — the same property that preserves `firstUsedInStepId`.
+    kit: source.kit.map((entry) => ({ ...entry, stepIds: [...entry.stepIds] })),
+    // `kitInferredAt` carries with it, so the copy does not pay for an inference
+    // that could only produce the answer already sitting above. Spread-or-omit
+    // because the field is `.optional()`: a source that was never inferred must
+    // leave the copy un-stamped so the trigger picks it up.
+    ...(source.kitInferredAt === undefined ? {} : { kitInferredAt: source.kitInferredAt }),
     image: null,
     createdAt: now,
     // Blank until `persistRecipe` stamps it on save, exactly as `emptyRecipe` leaves it.

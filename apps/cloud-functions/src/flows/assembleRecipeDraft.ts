@@ -235,6 +235,14 @@ export async function assembleRecipeDraft(
     // must hand the base recipe's components straight back. Without this line
     // `mergeAmendedRecipe`'s spread would erase them on every amend.
     componentRecipeIds: baseRecipe?.componentRecipeIds ?? [],
+    // Kit (issue #882) is deliberately NOT carried through from `baseRecipe`, which
+    // makes it the odd one out among the carry-throughs around it. Every step here
+    // gets a FRESH `crypto.randomUUID()` (see the top of this function), so the base
+    // recipe's `kit[].stepIds` point at ids this draft no longer contains — carrying
+    // them would hand the page a set of dangling references. Going out empty, with
+    // no `kitInferredAt` alongside it, is what routes the amended recipe back through
+    // the onRecipeWritten kit branch, which re-reads the method it now actually has.
+    kit: [],
     // Third carry-through of the same shape, and the sharpest of the three
     // (issue #845). An edit-mode amend rebuilds the WHOLE document from
     // `baseRecipe` and `mergeAmendedRecipe` spreads that draft over the existing

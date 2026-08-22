@@ -9,6 +9,7 @@ import {
   callAuthorRecipe,
   callDescribeRecipeScene,
   callRegenerateRecipeImage,
+  callRedoRecipeKit,
   callSetRecipeImageUpload,
   saveShoppingListItem,
 } from '@salt/firebase-sync';
@@ -237,6 +238,14 @@ export async function regenerateRecipeImage(
   brief?: string,
 ): Promise<ReadResult<void, DomainError>> {
   return reportIfFailed(getErrorReporter(), await callRegenerateRecipeImage(recipeId, brief));
+}
+
+// Re-ask what kit this dish needs (issue #882). The callable clears the inference
+// stamp and bumps the nonce, and the onRecipeWritten kit branch does the work, so the
+// new list arrives on the recipe subscription like any other server write —
+// nothing here is optimistic, and the old list stays on screen until it does.
+export async function redoRecipeKit(recipeId: string): Promise<ReadResult<void, DomainError>> {
+  return reportIfFailed(getErrorReporter(), await callRedoRecipeKit(recipeId));
 }
 
 // ─── Scene brief (issue #522, Phase 3) ─────────────────────────────────────────

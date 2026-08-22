@@ -112,6 +112,36 @@ export async function callRegenerateRecipeImage(
   }
 }
 
+// Re-asks what kit a recipe needs (issue #882). The callable clears the
+// `kitInferredAt` stamp and bumps the `kitRequestedAt` nonce, which together
+// re-fire the onRecipeWritten kit branch; the new list arrives on the recipe
+// subscription. A callable rather than a client write
+// for the reason `callRegenerateRecipeImage` is one — it costs an AI call, so it is
+// auth-gated, and a partial server `.update()` cannot clobber a concurrent trigger
+// write the way a whole-document client save would.
+//
+// NEVER throws (Rule 10): every failure crosses the boundary as
+// `Failure<DomainError>`, mapped exactly as its neighbours map it.
+export async function callRedoRecipeKit(recipeId: string): Promise<ReadResult<void, DomainError>> {
+  try {
+    const fn = httpsCallable<{ recipeId: string }, { ok: true }>(
+      getFunctions(undefined, 'europe-west2'),
+      'redoRecipeKit',
+    );
+    await fn({ recipeId });
+    return success(undefined);
+  } catch (err) {
+    const code = (err as { code?: string }).code ?? '';
+    if (code === 'functions/unauthenticated') {
+      return failure({ kind: 'AuthError', reason: 'unauthenticated' });
+    }
+    if (code === 'functions/permission-denied') {
+      return failure({ kind: 'AuthError', reason: 'forbidden' });
+    }
+    return failure({ kind: 'NetworkError', reason: 'transient' });
+  }
+}
+
 // Uploads a user-supplied hero photo for a recipe (issue #455, Phase 2). The
 // cropped 3:2 bytes ride as a base64 string; the callable re-encodes them and
 // writes `recipe-images/{id}.webp`, then stamps `recipe.image = { url, source:

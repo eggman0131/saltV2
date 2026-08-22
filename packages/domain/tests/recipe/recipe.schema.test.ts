@@ -370,4 +370,54 @@ describe('RecipeSchema', () => {
     );
     expect(RecipeSchema.safeParse({ ...messyRecipe(), imageHidden: 'yes' }).success).toBe(false);
   });
+
+  // --- Kit (issue #882) ---
+
+  it('defaults kit to [] on a document written before the field existed', () => {
+    // The back-compat case that matters: every recipe already in production (#240)
+    // predates `kit`, and the realtime subscription SKIPS documents that fail
+    // validation — so a required field here would have emptied the recipe list.
+    const { kit: _kit, ...pre882 } = messyRecipe();
+    const result = RecipeSchema.safeParse(pre882);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.kit).toEqual([]);
+      // Absent, not `undefined`-valued: absence is what "never inferred" means, and
+      // the trigger's guard reads exactly that.
+      expect(result.data.kitInferredAt).toBeUndefined();
+      expect(result.data.kitRequestedAt).toBeUndefined();
+    }
+  });
+
+  it('round-trips a kit entry with several steps', () => {
+    const result = RecipeSchema.safeParse({
+      ...messyRecipe(),
+      kit: [{ label: 'large frying pan', stepIds: ['step-1', 'step-2'] }],
+      kitInferredAt: 1_700_000_000_000,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.kit).toEqual([
+        { label: 'large frying pan', stepIds: ['step-1', 'step-2'] },
+      ]);
+      expect(result.data.kitInferredAt).toBe(1_700_000_000_000);
+    }
+  });
+
+  it('accepts any label — the vocabulary is never an enum on the schema', () => {
+    const result = RecipeSchema.safeParse({
+      ...messyRecipe(),
+      kit: [{ label: 'tagine', stepIds: [] }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a non-numeric kitInferredAt and a malformed kit entry', () => {
+    expect(RecipeSchema.safeParse({ ...messyRecipe(), kitInferredAt: 'later' }).success).toBe(
+      false,
+    );
+    expect(RecipeSchema.safeParse({ ...messyRecipe(), kit: [{ label: 'pan' }] }).success).toBe(
+      false,
+    );
+  });
 });

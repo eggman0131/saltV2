@@ -17,6 +17,11 @@
   import { auth } from '../../lib/auth.svelte.js';
   import { canonItems } from '../../lib/canonService.js';
   import { productForms } from '../../lib/productFormService.js';
+  // The kit pictogram lookup (issue #882). The ONE shared lookup, subscribed
+  // app-wide in App.svelte — deliberately NOT folded into the local
+  // `thumbnailFor`/`iconVersionFor` pair below, which resolves canon items for
+  // INGREDIENTS and knows nothing about the tool vocabulary.
+  import { toolIcons } from '../../lib/kitchenToolService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { isWakeLockSupported, createWakeLock } from '../../lib/wakeLock.js';
   import { primeChime } from '../../lib/chime.js';
@@ -52,6 +57,7 @@
     withTimerStarted,
     withTimerDismissed,
     firstUseByStep as groupIngredientsByFirstUse,
+    kitByStep as groupKitByStep,
     firstIncompleteStepId,
     miseProgress,
     hasRecipeChanged,
@@ -416,6 +422,13 @@
   // ingredient at the step it's first needed, so a step can surface exactly the
   // items it introduces (amount + prep) inline — no scrolling back to mise mid-cook.
   const firstUseByStep = $derived(groupIngredientsByFirstUse(recipe?.ingredients ?? []));
+
+  // The kit each step is the one to REACH FOR (issue #882), under the domain
+  // query's contiguous-run rule: the pan is drawn at the step it comes out of the
+  // cupboard and not again until it has been put down. Mid-cook that matters more
+  // than anywhere — a picture repeated under five consecutive steps stops being
+  // read after the first, and then the one that IS new goes unread with it.
+  const kitByStep = $derived(groupKitByStep(recipe?.kit ?? [], recipe?.steps ?? []));
 
   // First-use chips are capped at half the step's width (gap included, so two capped
   // chips always pair up on one line), which stops one long line ("400g tinned plum
@@ -1570,6 +1583,7 @@
           {#each recipe.steps as step, i (step.id)}
             {@const done = completedStepIds.has(step.id)}
             {@const firstUse = firstUseByStep.get(step.id) ?? []}
+            {@const stepKit = kitByStep.get(step.id) ?? []}
             {@const collapsed = done && peekedStepId !== step.id}
             <section
               use:stepAnchor={step.id}
@@ -1700,6 +1714,54 @@
                               <IngredientText ingredient={ing} />
                             </span>
                           </button>
+                        </li>
+                      {/each}
+                    </ul>
+                  {/if}
+
+                  <!-- The kit this step reaches for (issue #882), in the chip
+                     vocabulary the first-use row just used — mid-cook the two are
+                     read the same way ("things to have in front of me"), and giving
+                     the tools a second visual language would make the cook learn a
+                     second one with their hands full.
+
+                     STATIC, where the ingredient chips are buttons: an ingredient
+                     chip expands its clipped line and long-presses onto the shopping
+                     list, and a frying pan has neither an amount to reveal nor
+                     anywhere to be bought to. A button that does nothing on press is
+                     worse than a span — it takes a tab stop and promises an action.
+
+                     Drawn at the step the tool comes OUT and not again until it has
+                     been put down; the run rule is `kitByStep`'s, not this file's.
+                     An unresolved label keeps its words and loses only the picture,
+                     so the icon kill-switch never costs the cook a piece of kit. -->
+                  {#if stepKit.length > 0}
+                    <ul
+                      class="flex flex-wrap items-start gap-2"
+                      aria-label="Kit this step calls for"
+                      data-testid="cook-step-kit"
+                    >
+                      {#each stepKit as entry (entry.label)}
+                        <li class="shrink-0 max-w-full">
+                          <span
+                            class="flex items-center gap-2 rounded-full border border-dashed bg-card py-1 pr-4 text-base {$toolIcons.toolIconFor(
+                              entry.label,
+                            )
+                              ? 'pl-1'
+                              : 'pl-4'}"
+                            data-testid="cook-step-kit-chip"
+                          >
+                            {#if $toolIcons.toolIconFor(entry.label)}
+                              <CanonIcon
+                                thumbnail={$toolIcons.toolIconFor(entry.label)}
+                                version={$toolIcons.toolIconVersionFor(entry.label)}
+                                name={entry.label}
+                                size={40}
+                                class="rounded-full"
+                              />
+                            {/if}
+                            <span class="min-w-0 break-words">{entry.label}</span>
+                          </span>
                         </li>
                       {/each}
                     </ul>

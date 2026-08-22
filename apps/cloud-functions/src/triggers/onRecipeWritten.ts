@@ -4,10 +4,11 @@ import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { defineSecret } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { RecipeSchema, DevSettingsSchema, type RecipeDoc } from '@salt/domain/schemas';
-import { componentDisplayLines } from '@salt/domain';
+import { componentDisplayLines, isCookable } from '@salt/domain';
 import { flushServerObservability } from '@salt/observability/server';
 import { generateRecipeImageFlow } from '../flows/generateRecipeImage.js';
 import { describeRecipeSceneFlow } from '../flows/describeRecipeScene.js';
+import { identifyRecipeKitFlow } from '../flows/identifyRecipeKit.js';
 import { readComponentContext } from '../flows/componentContext.js';
 import { encodeHeroImage } from '../imaging/encodeHeroImage.js';
 import { buildStorageDownloadUrl } from '../imaging/storageDownloadUrl.js';
@@ -20,8 +21,13 @@ import { whenCfTelemetryReady } from '../observability/telemetryReady.js';
 // onCanonItemWritten's icon branch: when a recipe is created (or its image is
 // explicitly cleared / a regenerate is requested), generate one photorealistic
 // "arty" hero from the title + description, store it in Firebase Storage, and
-// write the public URL back to `recipe.image`. There is no embedding branch here
-// — a recipe's only server-generated side-effect is its hero image.
+// write the public URL back to `recipe.image`.
+//
+// Since issue #882 there is a SECOND, independently-guarded branch: the kit — the
+// pans, bowls and hand tools this dish needs a cook to get out — inferred from the
+// whole saved recipe and written back to `recipe.kit`. The two run under
+// `Promise.allSettled` (as onCanonItemWritten's icon + embedding pair do) so a
+// failure in one can never reject the handler and retry both.
 
 // Defined here (not imported from index.ts) to avoid a circular import; the
 // Firebase CLI aggregates same-named defineSecret calls across files at deploy
@@ -170,6 +176,133 @@ async function maybeGenerateImage(
 }
 
 /**
+ * Edge-trigger decision for the kit branch (issue #882), the exact counterpart of
+ * `imageNeedsGeneration` above and guarded for the same reason: the trigger fires
+ * on EVERY write, and recipes are re-saved constantly.
+ *
+ * Infer when:
+ *   - create, with no stamp — the question has never been asked of this recipe
+ *   - the stamp was just CLEARED (a redo: `redoRecipeKit` deletes it and bumps the
+ *     nonce in one write, exactly as `regenerateCanonIcon` nulls `thumbnail`)
+ *   - the `kitRequestedAt` nonce changed on a recipe that was already unstamped —
+ *     a redo of one whose last inference failed
+ * Skip otherwise, and in particular skip when the recipe was ALREADY unstamped
+ * before this write and still is: the write that first left it unstamped owns the
+ * in-flight inference, and an unrelated save landing during it (an import
+ * canonicalising its ingredients seconds after create is the common case) must not
+ * start a duplicate. This is `iconNeedsGeneration`'s shape, field for field, and it
+ * is that transition test — not the mere absence of a stamp — that makes it safe.
+ *
+ * WHY NOT `kit.length === 0`. Because `kit` defaults to `[]`, an empty array cannot
+ * tell "never inferred" apart from "inferred, and this dish genuinely needs nothing
+ * listed" or from "inference failed". A guard keyed on emptiness would therefore
+ * fire a fresh AI call on every unrelated save — canonicalise, per-row rematch, an
+ * edit, "apply changes" — of any recipe whose kit came back empty, forever. The
+ * stamp is what makes the branch self-terminating; the nonce is what lets a redo
+ * re-fire it when nothing else about the document changed (Firestore emits no write
+ * event for a no-op update — the reason canon's `iconRequestedAt` exists).
+ *
+ * Trade-off, stated because it is a real one: an EDIT does not re-infer. A recipe
+ * whose method is rewritten keeps the kit it had until someone asks for a redo. That
+ * is deliberate — re-inferring on every edit is the emptiness guard by another
+ * route — and the redo action on the recipe page is the answer to it.
+ */
+export function kitNeedsInference(before: DocumentSnapshot | undefined, after: RecipeDoc): boolean {
+  if (after.kitInferredAt !== undefined) return false; // already answered → skip
+  if (!before?.exists) return true; // create → infer
+  const prev = before.data();
+  if (prev?.['kitInferredAt'] !== undefined) return true; // just cleared → infer
+  // Unstamped before AND after: only an explicit nonce bump re-fires. Any other
+  // field change — canonicalise, rematch, an edit — must not start a duplicate
+  // while the first inference is still in flight.
+  return prev?.['kitRequestedAt'] !== after.kitRequestedAt;
+}
+
+/**
+ * Kit branch. Works out what this dish needs a cook to get out, and writes it to
+ * `recipe.kit`.
+ *
+ * BEST-EFFORT (Rule 10): a kit list is an improvement to the recipe page, never a
+ * precondition for anything. A failure logs, reports, and leaves `kitInferredAt`
+ * UNSTAMPED so the redo action can retry — it never rejects, so the sibling image
+ * branch is untouched by it.
+ *
+ * LWW note, identical to the image branch's: a client whole-document `setDoc` that
+ * lands after this write and still carries the recipe as the client last knew it
+ * clobbers the kit back off. That is the documented last-write-wins contract, not a
+ * defect, and it is exactly what can happen to `image` / `imageBrief`. It self-heals
+ * at the cost of one extra inference — the same write drops `kitInferredAt` with it,
+ * so the next pass simply asks again. In the common case the client re-spreads its
+ * subscribed copy and both fields ride along untouched.
+ */
+async function maybeInferKit(
+  id: string,
+  recipe: RecipeDoc,
+  before: DocumentSnapshot | undefined,
+): Promise<void> {
+  if (!kitNeedsInference(before, recipe)) return;
+
+  // An outing has no method and a placeholder is a photograph and a title — neither
+  // has anything to get out, so neither may ever cost an AI call. Asked through the
+  // pure capability predicate, never `kind === 'outing'`: what a kind can do is
+  // answered in one place (packages/domain/src/recipe/queries/capabilities.ts) and
+  // nowhere else.
+  if (!isCookable(recipe.kind)) return;
+
+  // Nothing to read yet. Returning WITHOUT stamping is deliberate: re-evaluating
+  // this guard on a half-written draft's every save costs nothing (it is in-memory),
+  // and the save that finally gives the recipe a method is the one that pays for an
+  // answer.
+  if (recipe.steps.length === 0) return;
+
+  // E2E (FUNCTIONS_AI_FAKE): skip inference entirely, exactly as the image branch
+  // does. Unreachable in production (the flag is never set there).
+  if (aiFakeEnabled()) return;
+
+  // Per-environment kill-switch (issue #238), checked only once the cheap in-memory
+  // guards pass — the SAME switch the hero image uses, deliberately not a second
+  // flag. It is the "stop this environment spending money generating recipe content"
+  // lever, and a kit list is that. Re-enabling does not backfill.
+  if (!(await isRecipeImageGenerationEnabled())) return;
+
+  try {
+    // No `withAiTimeout` wrapper HERE, following `describeSceneOrNothing` below
+    // rather than the image branch above: the flow owns its own deadline (55s, no
+    // retry) and a second wrapper would impose the house 20s default on top of it —
+    // cutting the call short and retrying a flow that deliberately does not retry.
+    const { kit } = await identifyRecipeKitFlow({
+      title: recipe.title.trim(),
+      description: recipe.description,
+      // Flattened to display lines, as the scene brief flattens them: the flow
+      // wants what the dish is made of, not how the list happens to be grouped.
+      ingredients: recipe.ingredients.flatMap((g) => g.items.map((i) => i.rawText)),
+      // Steps carry their ids — the flow has to answer with the ids this document
+      // actually holds, and the sanitiser inside it drops anything else.
+      steps: recipe.steps.map((s) => ({ id: s.id, text: s.text })),
+    });
+    // Partial `.update()`, never a whole-document set: a full write from here would
+    // clobber whatever a concurrent client save had just put on the document.
+    //
+    // Stamping `kitInferredAt` is the whole of the self-termination: this write
+    // re-fires the trigger, and the guard's first line sees the stamp and stops.
+    // The redo nonce is deliberately LEFT ALONE rather than deleted — deleting it
+    // would itself read as a nonce change on that re-fire (`N !== undefined`) and
+    // buy a second inference for every redo. It is inert once the stamp is set,
+    // which is exactly how `regenerateCanonIcon` leaves `iconRequestedAt` in place.
+    await getFirestore().collection('recipes').doc(id).update({
+      kit,
+      kitInferredAt: Date.now(),
+    });
+  } catch (err) {
+    // Leave `kitInferredAt` unstamped so a redo retries; never block the trigger.
+    logger.error('onRecipeWritten: kit inference failed', { id, err });
+    // Additive: an AI flow throwing is unexpected, so report it to PostHog alongside
+    // the logger. Best-effort, never throws; the handler's finally flushes.
+    reportServerError(err);
+  }
+}
+
+/**
  * Authors a scene brief for the hero: art direction describing the plated dish,
  * written by a cheap fast-model text call that reads the WHOLE recipe — every
  * ingredient and every step — not just the title/description/tags the image prompt
@@ -229,8 +362,12 @@ async function describeSceneOrNothing(recipe: RecipeDoc): Promise<string | undef
 }
 
 /**
- * Reads the per-environment recipe-image kill-switch (issue #238) from
- * `devSettings/singleton`. Fails OPEN: a missing doc, an unexpected shape, or a
+ * Reads the per-environment recipe-generation kill-switch (issue #238) from
+ * `devSettings/singleton`. Named for the image because that is what it was built
+ * for, and deliberately reused unchanged by the kit branch (issue #882) rather
+ * than joined by a second flag: it is the one lever that says "this environment is
+ * not to spend money generating recipe content", and splitting it would mean
+ * turning generation off twice. Fails OPEN: a missing doc, an unexpected shape, or a
  * read error all default to ENABLED, so an environment that never configured the
  * switch keeps generation on and a transient read glitch never silently halts it.
  */
@@ -306,7 +443,14 @@ export const onRecipeWritten = onDocumentWritten(
     // warm, and settles (never rejects) on a telemetry-init failure.
     await whenCfTelemetryReady();
     try {
-      await maybeGenerateImage(id, parsed.data, event.data?.before);
+      // Two independently-guarded side-effects, as onCanonItemWritten has. allSettled
+      // so a failure in one branch never rejects the handler — a rejection would
+      // retry BOTH, paying a second time for the one that had already succeeded. Both
+      // are edge-triggered on before→after, so both need the prior snapshot.
+      await Promise.allSettled([
+        maybeGenerateImage(id, parsed.data, event.data?.before),
+        maybeInferKit(id, parsed.data, event.data?.before),
+      ]);
     } finally {
       // The branch catch above reports best-effort to posthog-node, which
       // batches; flush before the function freezes so a report is not stranded.

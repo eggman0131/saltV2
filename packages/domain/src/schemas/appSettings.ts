@@ -74,9 +74,21 @@ export const AI_FLOW_ROLES = {
   // borrowing generateCanonIcon's, so an override aimed at grocery pictograms
   // does not silently move the appliances too.
   generateEquipmentIcon: 'image',
+  // The generic kitchen-tool pictograms (issue #882). Its own id, for the same
+  // reason equipment has one: an override aimed at grocery pictograms must not
+  // silently move the tools too.
+  generateKitchenToolIcon: 'image',
   generateRecipeImage: 'image',
   generateChatTitle: 'lite',
   identifyEquipment: 'fast',
+  // `fast` (issue #882). It reads a whole recipe and returns a short structured
+  // answer, which is describeRecipeScene's shape rather than chefChat's: the
+  // question has a right answer that is mostly in the words in front of it, and it
+  // runs once per recipe on a trigger, so its cost has to stay small. It is NOT
+  // `lite` — the inference half is real ("mash the potatoes" needs a masher the
+  // recipe never names), and a label that reads like a cook wrote it ("large
+  // frying pan", not "pan") is the whole user-visible outcome.
+  identifyRecipeKit: 'fast',
   parseEntry: 'lite',
   parseRecipeIngredients: 'lite',
   populateEquipmentEntry: 'lite',

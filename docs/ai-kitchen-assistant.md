@@ -53,6 +53,15 @@ foundation (#179).
   licenses it to quietly rewrite an imported recipe. A note shapes what the chef
   *suggests* in conversation — it must never touch what a recipe *says*. Only
   `chefChat` reads `kitchenMemories` (see Components, below).
+- **Inference about a recipe runs AFTER it, never inside the transcription.** The
+  same rule, applied the other way round: because those four are transcribers, no
+  question that requires judgement about a dish may be added as an output field on
+  `ExtractRecipeAIOutputSchema` or `LibrarianOutputSchema`. It gets its own
+  best-effort pass over the recipe as SAVED, triggered by `onRecipeWritten`.
+  `describeRecipeScene` (the hero's art direction) established the shape;
+  `identifyRecipeKit` (issue #882 — what kit a dish needs a cook to get out, which
+  is almost never written down: "mash the potatoes" needs a masher the recipe
+  never names) is the second. Adding a third means adding a flow, not a field.
 
 ## Per-user data — a deliberate exception
 

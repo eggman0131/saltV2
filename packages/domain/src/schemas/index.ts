@@ -108,6 +108,9 @@ export type { RegenerateCanonIconInput } from './regenerateCanonIcon.js';
 export { RegenerateRecipeImageInputSchema } from './regenerateRecipeImage.js';
 export type { RegenerateRecipeImageInput } from './regenerateRecipeImage.js';
 
+export { RedoRecipeKitInputSchema } from './redoRecipeKit.js';
+export type { RedoRecipeKitInput } from './redoRecipeKit.js';
+
 export { SetRecipeImageUploadInputSchema } from './setRecipeImageUpload.js';
 export type { SetRecipeImageUploadInput } from './setRecipeImageUpload.js';
 
@@ -161,6 +164,12 @@ export type { ShoppingSlot, ShoppingDayDoc } from './shoppingDay.js';
 
 export { KitchenMemorySchema, KITCHEN_MEMORY_COLLECTION } from './kitchenMemory.js';
 export type { KitchenMemoryDoc } from './kitchenMemory.js';
+
+// Generic kitchen tools (issue #882) — the curated pictogram vocabulary that a
+// recipe's or a plan's WORDS are resolved against at display time. Nothing stores
+// one of these ids, which is what makes the list free to grow.
+export { KitchenToolSchema, KITCHEN_TOOLS_COLLECTION } from './kitchenTool.js';
+export type { KitchenToolDoc } from './kitchenTool.js';
 
 export { DevSettingsSchema } from './devSettings.js';
 export type { DevSettingsDoc } from './devSettings.js';
@@ -249,6 +258,20 @@ export type { PushSubscriptionDoc } from './pushSubscription.js';
 
 export { ChefChatInputSchema } from './chefChat.js';
 export type { ChefChatInput } from './chefChat.js';
+
+// identifyRecipeKit (issue #882) — "what do I need to get out?", inferred from the
+// whole stored recipe. Labels are FREE TEXT on purpose; read the header before
+// reaching for an enum over the drawn vocabulary.
+export {
+  IdentifyRecipeKitInputSchema,
+  IdentifyRecipeKitAIOutputSchema,
+  IdentifyRecipeKitOutputSchema,
+} from './identifyRecipeKit.js';
+export type {
+  IdentifyRecipeKitInput,
+  IdentifyRecipeKitAIOutput,
+  IdentifyRecipeKitOutput,
+} from './identifyRecipeKit.js';
 
 export {
   CategoriseRecipeInputSchema,
@@ -342,6 +365,7 @@ export {
   RecipeSourceSchema,
   RecipeImageSchema,
   RecipeKindSchema,
+  RecipeKitEntrySchema,
   RecipeSchema,
 } from './recipe.js';
 export type {
@@ -358,6 +382,7 @@ export type {
   RecipeSourceDoc,
   RecipeImageDoc,
   RecipeKindDoc,
+  RecipeKitEntryDoc,
   RecipeDoc,
 } from './recipe.js';
 

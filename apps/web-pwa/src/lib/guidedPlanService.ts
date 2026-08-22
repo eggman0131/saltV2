@@ -1,5 +1,6 @@
 import {
   subscribeGuidedPlan,
+  loadAllGuidedPlans as loadAllGuidedPlansDoc,
   saveGuidedPlan as saveGuidedPlanDoc,
   deleteGuidedPlan as deleteGuidedPlanDoc,
   callGenerateGuidedPlan,
@@ -202,4 +203,28 @@ export async function discardGuidedPlan(recipeId: string): Promise<ReadResult<vo
   latestLocalEdit = null;
   _plan.set(null);
   return success(undefined);
+}
+
+/**
+ * Every plan, once, for the kitchen-tool curation queue (issue #882, Phase 4).
+ *
+ * The odd one out in this file, and deliberately so: everything above it is the
+ * ONE plan a page is standing on, held in `_plan` and kept live. This read touches
+ * neither the store nor the subscription — it hands the caller a detached array
+ * and forgets it. The admin queue wants a tally of the container words the plans
+ * have already used, not a live view of any of them, and a whole-collection
+ * listener behind a screen almost nobody opens would cost every session the sync.
+ *
+ * Read-only in the strongest sense the feature has: the queue exists so that
+ * adding a tool lights up plans that already say the word, with nothing written
+ * back to any of them.
+ */
+export async function loadAllGuidedPlansForCuration(): Promise<
+  ReadResult<GuidedPlanDoc[], DomainError>
+> {
+  return reportIfFailed(
+    getErrorReporter(),
+    await loadAllGuidedPlansDoc(),
+    'guidedPlanService.loadAllGuidedPlansForCuration',
+  );
 }

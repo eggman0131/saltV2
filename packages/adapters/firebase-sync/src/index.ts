@@ -29,6 +29,13 @@ export {
   callDrawEquipmentIcon,
   callDescribeEquipmentSubject,
 } from './equipmentIconSubscription.js';
+// Kitchen-tool vocabulary (issue #882) — the curated pictogram list every
+// surface resolves free-text container names against.
+export {
+  subscribeKitchenTools,
+  upsertKitchenTool,
+  deleteKitchenTool,
+} from './kitchenToolSubscription.js';
 export {
   callMatchOrCreate,
   callCanonicaliseRecipeIngredients,
@@ -78,9 +85,12 @@ export { subscribeKitchenTimers, saveKitchenTimers } from './kitchenTimerSubscri
 // family-shared doc keyed by the recipe id, plus the callable that authors one.
 // See guidedPlanSubscription.ts for why a corrupt plan is an error rather than
 // "no plan yet" — unlike a cook session, a human wrote it.
+// `loadAllGuidedPlans` is the one read that enumerates the collection, and it is
+// one-shot for that reason — see its header.
 export {
   subscribeGuidedPlan,
   loadGuidedPlan,
+  loadAllGuidedPlans,
   saveGuidedPlan,
   deleteGuidedPlan,
 } from './guidedPlanSubscription.js';
@@ -128,6 +138,7 @@ export {
   callExtractRecipeFromUrl,
   callExtractRecipeFromPhoto,
   callRegenerateRecipeImage,
+  callRedoRecipeKit,
   callSetRecipeImageUpload,
 } from './recipeCallables.js';
 export {

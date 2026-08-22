@@ -74,6 +74,7 @@ function makeRecipe(overrides: Partial<Recipe> & { id: string; title: string }):
     notes: null,
     producesCanonId: null,
     componentRecipeIds: [],
+    kit: [],
     image: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',

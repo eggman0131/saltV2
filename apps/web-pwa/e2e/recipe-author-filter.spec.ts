@@ -52,6 +52,7 @@ function buildRecipe(id: string, title: string, kind: RecipeKind = 'recipe'): Re
     notes: null,
     producesCanonId: null,
     componentRecipeIds: [],
+    kit: [],
     image: null,
     createdAt: SEED_TIME,
     updatedAt: SEED_TIME,
