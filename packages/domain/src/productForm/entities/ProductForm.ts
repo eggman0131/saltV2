@@ -44,4 +44,14 @@ export interface ProductForm {
   // Absent/false = confirmed; an AI-seeded proposal carries `true` until an admin
   // confirms it. TRANSPORT for the review UI only — never a gate on resolution.
   readonly needs_approval?: boolean;
+  // The form's own Tier-1 pictogram (issue #871). Tri-state exactly as
+  // `CanonItem.thumbnail`: `null` / an https URL / `CANON_ICON_HIDDEN`. REQUIRED
+  // on the entity even though the schema defaults it, because `upsertProductForm`
+  // writes the entity as a full document and Firestore rejects `undefined` — so
+  // every construction site must state the field rather than omit it.
+  readonly thumbnail: string | null;
+  // One-shot generation steer and regenerate nonce; see the schema for why the
+  // nonce exists at all. Both are server-owned — nothing in the domain sets them.
+  readonly iconHint?: string;
+  readonly iconRequestedAt?: number;
 }

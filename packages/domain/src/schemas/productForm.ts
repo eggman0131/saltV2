@@ -34,6 +34,29 @@ export const ProductFormSchema = z.object({
   // exactly like a `needs_approval` canon item is matched live. The flag only
   // drives the review badge + confirm affordance.
   needs_approval: z.boolean().optional(),
+  // ─── Icon (Tier-1 pictogram, issue #871) ──────────────────────────────────
+  // The same tri-state contract as `CanonItemSchema.thumbnail` (issue #148),
+  // field-for-field: `null` = not generated yet, an https URL = a real icon,
+  // `CANON_ICON_HIDDEN` = the user opted out and the trigger skips it forever.
+  // A form gets its OWN pictogram rather than borrowing its parent's, because a
+  // form exists precisely when the thing you buy looks different from the parent
+  // (lime juice vs. a whole lime).
+  //
+  // `.default(null)` rather than canon's bare `.nullable()`: productForms is live
+  // production data (issue #512), and every form written before this shipped has
+  // no `thumbnail` key at all. The default makes those docs parse as "not
+  // generated yet" — which is exactly what they are — instead of failing
+  // validation and being skipped by the realtime subscription.
+  thumbnail: z.string().nullable().default(null),
+  // Transient one-shot steer for the next icon (re)generation. Written by the
+  // regenerateProductFormIcon callable, consumed and cleared by the
+  // onProductFormWritten icon branch.
+  iconHint: z.string().optional(),
+  // Regenerate nonce (epoch ms), load-bearing for the same reason as canon's: a
+  // no-op `.update()` emits no Firestore write event, so re-requesting an icon
+  // for a form whose thumbnail is ALREADY null would never re-fire the trigger
+  // without a field that actually changes.
+  iconRequestedAt: z.number().optional(),
 });
 
 export type ProductFormDoc = z.infer<typeof ProductFormSchema>;

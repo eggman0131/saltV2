@@ -16,6 +16,16 @@ service firebase.storage {
       allow read: if true;
       allow write: if false;
     }
+    // Product-form icons (issue #871): the canon-icon pipeline pointed at a second
+    // collection, so the same posture — written server-side by onProductFormWritten
+    // (Admin SDK, which bypasses these rules), rendered client-side via
+    // <img src={publicUrl}>. Public read, no client write. A SEPARATE prefix from
+    // `canon-icons/` rather than a shared one, because the weekly orphan sweep
+    // joins each prefix against its own owning collection.
+    match /product-form-icons/{file} {
+      allow read: if true;
+      allow write: if false;
+    }
     // Recipe hero images (Tier-2, issue #148): same model as canon icons —
     // non-sensitive photos generated server-side by the onRecipeWritten Cloud
     // Function (Admin SDK, which bypasses these rules) and rendered client-side

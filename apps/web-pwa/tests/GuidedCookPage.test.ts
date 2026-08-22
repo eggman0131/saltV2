@@ -65,13 +65,46 @@ const {
   };
 });
 
-const { mockCanonItems, mockWakeLock, mockChime } = vi.hoisted(() => ({
-  mockCanonItems: {
-    subscribe(fn: (v: never[]) => void) {
-      fn([]);
-      return () => {};
-    },
-  },
+const { mockCanonItems, mockProductForms, mockWakeLock, mockChime } = vi.hoisted(() => ({
+  mockCanonItems: (() => {
+    // Settable since issue #871: proving the icon SWAPS from the parent's to the
+    // form's needs a canon item that actually has an icon to swap away from.
+    let value: unknown[] = [];
+    const subs = new Set<(v: unknown[]) => void>();
+    return {
+      subscribe(fn: (v: unknown[]) => void) {
+        subs.add(fn);
+        fn(value);
+        return () => {
+          subs.delete(fn);
+        };
+      },
+      _set(v: unknown[]) {
+        value = v;
+        subs.forEach((sub) => sub(v));
+      },
+    };
+  })(),
+  // The page prefers a product form's own icon over its parent's (issue #871).
+  // Settable so a test can put a form in front of it; empty by default, which is
+  // what every pre-existing assertion (all about the canon fallback) needs.
+  mockProductForms: (() => {
+    let value: unknown[] = [];
+    const subs = new Set<(v: unknown[]) => void>();
+    return {
+      subscribe(fn: (v: unknown[]) => void) {
+        subs.add(fn);
+        fn(value);
+        return () => {
+          subs.delete(fn);
+        };
+      },
+      _set(v: unknown[]) {
+        value = v;
+        subs.forEach((sub) => sub(v));
+      },
+    };
+  })(),
   mockWakeLock: { enable: vi.fn(async () => true), disable: vi.fn(async () => {}) },
   mockChime: { primeChime: vi.fn(), playChime: vi.fn() },
 }));
@@ -80,6 +113,7 @@ vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
 vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));
 vi.mock('../src/lib/auth.svelte.js', () => ({ auth: mockAuth }));
 vi.mock('../src/lib/canonService.js', () => ({ canonItems: mockCanonItems }));
+vi.mock('../src/lib/productFormService.js', () => ({ productForms: mockProductForms }));
 vi.mock('../src/lib/recipeService.js', () => ({
   recipes: mockRecipes,
   isLoadingRecipes: mockIsLoadingRecipes,
@@ -343,6 +377,8 @@ async function enterSteps() {
 beforeEach(() => {
   vi.clearAllMocks();
   mockAuth.user = { uid: UID };
+  mockCanonItems._set([]);
+  mockProductForms._set([]);
   mockRecipes._set([makeRecipe()]);
   mockIsLoadingRecipes._set(false);
   mockCookSession._set(makeCookSession());
@@ -1385,5 +1421,105 @@ describe('GuidedCookPage — the full-viewport contract', () => {
     const { container } = renderGuidedCook();
     await screen.findByTestId('guided-prep-list');
     expect(await axe(container)).toHaveNoViolations();
+  });
+});
+
+// ─── Product-form icons (issue #871) ──────────────────────────────────────────
+// The prep list is the guided-cook twin of cook mode's mise: a row naming a
+// PRODUCT FORM shows the form's own picture, not the parent canon item's.
+describe('GuidedCookPage — product-form icons in the prep list', () => {
+  const CANON_ICON = 'https://example.com/lime.webp';
+  const FORM_ICON = 'https://example.com/lime-juice.webp';
+
+  const limeCanon = {
+    id: 'c-lime',
+    schemaVersion: 5,
+    name: 'Lime',
+    synonyms: [],
+    aisleId: null,
+    thumbnail: CANON_ICON,
+    embedding: null,
+    needs_approval: false,
+    shoppingBehavior: 'needed',
+    updatedAt: '2026-07-01T00:00:00.000Z',
+  };
+
+  function limeJuiceForm(over: Record<string, unknown> = {}) {
+    return {
+      id: 'f-lime-juice',
+      schemaVersion: 1,
+      matchers: [],
+      parentCanonId: 'c-lime',
+      label: 'lime juice',
+      yield: { formUnit: 'ml', amountPerParent: 30 },
+      updatedAt: '2026-07-01T00:00:00.000Z',
+      thumbnail: FORM_ICON,
+      ...over,
+    };
+  }
+
+  /** The fixture recipe with its FIRST ingredient (the one prep-1 uses) renamed. */
+  function recipeNaming(item: string) {
+    const base = makeRecipe();
+    const group = base.ingredients[0]!;
+    return {
+      ...base,
+      ingredients: [
+        {
+          ...group,
+          items: [
+            {
+              ...group.items[0]!,
+              rawText: `30ml ${item}`,
+              parsed: {
+                quantity: 30,
+                unit: 'ml' as const,
+                item,
+                preparation: [],
+                notes: null,
+                displayText: null,
+              },
+              canonId: 'c-lime',
+            },
+            ...group.items.slice(1),
+          ],
+        },
+      ],
+    };
+  }
+
+  function iconSrcs(): string[] {
+    return screen
+      .getAllByTestId('canon-icon-img')
+      .map((el) => (el as HTMLImageElement).getAttribute('src') ?? '');
+  }
+
+  beforeEach(() => {
+    mockCanonItems._set([limeCanon]);
+  });
+
+  it('shows the form’s own icon when a prep row names a form', async () => {
+    mockProductForms._set([limeJuiceForm()]);
+    mockRecipes._set([recipeNaming('lime juice')]);
+    renderGuidedCook();
+    await screen.findAllByTestId('guided-prep-row');
+    expect(iconSrcs().some((src) => src.startsWith(FORM_ICON))).toBe(true);
+  });
+
+  it('keeps the parent canon icon when the row names no form', async () => {
+    mockProductForms._set([limeJuiceForm()]);
+    mockRecipes._set([recipeNaming('lime')]);
+    renderGuidedCook();
+    await screen.findAllByTestId('guided-prep-row');
+    expect(iconSrcs().some((src) => src.startsWith(CANON_ICON))).toBe(true);
+    expect(iconSrcs().some((src) => src.startsWith(FORM_ICON))).toBe(false);
+  });
+
+  it('falls back to the parent icon when the form has no icon yet', async () => {
+    mockProductForms._set([limeJuiceForm({ thumbnail: null })]);
+    mockRecipes._set([recipeNaming('lime juice')]);
+    renderGuidedCook();
+    await screen.findAllByTestId('guided-prep-row');
+    expect(iconSrcs().some((src) => src.startsWith(CANON_ICON))).toBe(true);
   });
 });

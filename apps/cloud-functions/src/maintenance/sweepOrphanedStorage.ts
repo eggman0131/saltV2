@@ -9,9 +9,10 @@ import { reportServerError } from '../observability/reportServerError.js';
 // Weekly sweep of artefacts whose owning Firestore doc is gone (issues #620, #789).
 //
 // WHY THIS EXISTS — nothing else in this codebase deletes a Storage object.
-// `canon-icons/{canonId}.webp` and `recipe-images/{recipeId}.webp` are both keyed
-// off a deterministic doc id, so deleting the doc (or splitting a canon item)
-// strands the object: no doc, no reference, nothing that would ever remove it.
+// `canon-icons/{canonId}.webp`, `recipe-images/{recipeId}.webp` and
+// `product-form-icons/{formId}.webp` are all keyed off a deterministic doc id, so
+// deleting the doc (or splitting a canon item) strands the object: no doc, no
+// reference, nothing that would ever remove it.
 // Staging reached 165 orphans out of 168 objects before anyone noticed.
 //
 // A GCS lifecycle rule cannot express this — orphan-ness depends on Firestore,
@@ -37,6 +38,10 @@ const MAX_DELETIONS_PER_RUN = 500;
 const SWEEPS = [
   { prefix: 'canon-icons/', collection: 'canonItems' },
   { prefix: 'recipe-images/', collection: 'recipes' },
+  // Product-form pictograms (issue #871). Same deterministic keying as the two
+  // above — `product-form-icons/{formId}.webp` — so deleting a form strands its
+  // icon identically, and the join is the same join.
+  { prefix: 'product-form-icons/', collection: 'productForms' },
   // Equipment pictograms (issue #877). Same deterministic-id shape as canon
   // icons: `equipment-icons/{itemId}.webp` beside `equipmentIcons/{itemId}`.
   // This pass only works because `onEquipmentManifestWritten` deletes the icon
@@ -221,7 +226,7 @@ export const sweepOrphanedStorage = onSchedule(
     // The sweep is idempotent and weekly; a retry storm on a broken run buys
     // nothing that next Sunday would not.
     retryCount: 0,
-    // Listing two prefixes and one collection, four id-only scans, then serial
+    // Listing three prefixes and one collection, id-only scans, then serial
     // deletes. The export name stays `sweepOrphanedStorage` after #789 widened
     // its remit: renaming it would tear down and recreate the schedule.
     timeoutSeconds: 540,

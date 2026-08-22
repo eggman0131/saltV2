@@ -142,6 +142,11 @@ export const ErrorCode = {
   // not defects — so they cross as a ValidationError and are deliberately not
   // reported.
   EQUIPMENT_ICON_NOT_DRAWABLE: 'EQUIPMENT_ICON_NOT_DRAWABLE',
+  // A Revise / Start over the server refused on the payload itself (issue #885):
+  // an over-long correction, or an item with no name to describe. Bad input, not
+  // a defect — the page says so and leaves the description exactly as it was — so
+  // it crosses as a ValidationError and is deliberately not reported.
+  EQUIPMENT_BRIEF_NOT_WRITABLE: 'EQUIPMENT_BRIEF_NOT_WRITABLE',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

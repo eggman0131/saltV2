@@ -2,6 +2,18 @@
 
 Status: **implemented** ([#148](https://github.com/eggman0131/saltV2/issues/148)) · Owner decisions baked in below.
 
+**Two collections, one pipeline** ([#871](https://github.com/eggman0131/saltV2/issues/871)).
+Everything below describes canon items, and every word of it applies unchanged to
+**product forms** — the same seed image, the same verbatim prompt, the same
+background removal and framing, the same tri-state `thumbnail`, the same
+`canonIconGenerationEnabled` kill switch. Only three things differ, and they are
+the three that have to: the trigger is `onProductFormWritten` on
+`productForms/{id}`, the Storage prefix is `product-form-icons/`, and the subject
+is the form's `label` rather than the item's `name`. A form is drawn separately
+from its parent because a form exists precisely when the thing you buy looks
+different from the parent — lime juice is not a lime. Read every "canon item"
+below as "canon item or product form" unless a line says otherwise.
+
 ## What this is
 
 Every canon item gets a small, warm, "quick-sketch" cartoon icon, displayed on a
@@ -179,6 +191,12 @@ First use of Firebase Storage in the project. Adds a `storage` block to
 - `canon-icons/{file}` — **public read**, **no client write** (only the CF Admin SDK
   writes). Icons are non-sensitive, so public read keeps the client SDK-free: the
   browser just renders `<img src={thumbnail}>`, no Storage SDK in `firebase-sync`.
+- `product-form-icons/{file}` — identical posture, written by `onProductFormWritten`
+  (#871). A **separate prefix** rather than a shared one, because the weekly orphan
+  sweep (`sweepOrphanedStorage`, #620) joins each prefix against its own owning
+  collection — one prefix serving two collections could not tell a live object from
+  a stranded one. Deploying the function without deploying `storage.rules` leaves
+  every generated URL returning 403, which looks exactly like a generation failure.
 - `equipment-icons/{file}` — same posture, added by #877. Written by the
   `drawEquipmentIcon` callable. Note the ordering trap: without this block the
   catch-all deny at the bottom of `storage.rules` makes every equipment icon
@@ -288,6 +306,9 @@ sets the new `thumbnail`.
 
 Recipe photorealistic hero imagery (Tier 2) — its own issue; different/costlier model
 path; shares only the Storage + `thumbnail`-style convention.
+
+Product-form icons are **not** out of scope — they are this same pipeline pointed at
+a second collection (#871); see the note at the top.
 
 ## Proven prompt (verbatim — reproduce exactly)
 

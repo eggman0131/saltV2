@@ -102,6 +102,7 @@ export type {
 } from './canonicaliseRecipeIngredientsInput.js';
 
 export { RegenerateCanonIconInputSchema } from './regenerateCanonIcon.js';
+export { RegenerateProductFormIconInputSchema } from './regenerateProductFormIcon.js';
 export type { RegenerateCanonIconInput } from './regenerateCanonIcon.js';
 
 export { RegenerateRecipeImageInputSchema } from './regenerateRecipeImage.js';
@@ -265,6 +266,15 @@ export {
   DescribeRecipeSceneOutputSchema,
 } from './describeRecipeScene.js';
 export type { DescribeRecipeSceneInput, DescribeRecipeSceneOutput } from './describeRecipeScene.js';
+
+export {
+  DescribeEquipmentSubjectInputSchema,
+  DescribeEquipmentSubjectOutputSchema,
+} from './describeEquipmentSubject.js';
+export type {
+  DescribeEquipmentSubjectInput,
+  DescribeEquipmentSubjectOutput,
+} from './describeEquipmentSubject.js';
 
 export { AuthorRecipeInputSchema, LibrarianOutputSchema } from './authorRecipe.js';
 export type {

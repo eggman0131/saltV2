@@ -39,5 +39,10 @@ export function createProductForm(
     label,
     yield: { formUnit: input.formUnit, amountPerParent: input.amountPerParent },
     updatedAt: '',
+    // Stated, not omitted (issue #871): a new form has no icon yet, and the
+    // onProductFormWritten trigger's edge guard reads exactly this null on the
+    // create write to decide to generate. Omitting it would write `undefined`,
+    // which Firestore rejects outright.
+    thumbnail: null,
   });
 }

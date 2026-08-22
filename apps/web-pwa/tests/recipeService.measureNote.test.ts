@@ -86,6 +86,7 @@ function makeForm(
     schemaVersion: 1,
     matchers: [matcher],
     parentCanonId,
+    thumbnail: null,
     label: matcher,
     yield: { formUnit, amountPerParent },
     updatedAt: '',

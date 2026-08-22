@@ -327,6 +327,7 @@ describe('ShoppingListPage — product-form rows are untouched', () => {
     schemaVersion: 1,
     matchers: ['lime juice'],
     parentCanonId: 'c-lime',
+    thumbnail: null,
     label: 'lime juice',
     yield: { formUnit: 'ml', amountPerParent: 30 },
     updatedAt: '',

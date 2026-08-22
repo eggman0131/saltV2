@@ -328,18 +328,30 @@
         {#each forms as form (form.id)}
           {@const key = formKey(form.id)}
           {#snippet formLabel(which: 'narrow' | 'wide')}
-            <button
-              type="button"
-              class="min-w-0 flex-1 text-left"
-              onclick={() => onOpen(key)}
-              data-testid="catalog-form-row-{which}"
-            >
-              <span class="block truncate text-sm font-medium">{form.label}</span>
-              <span class="block truncate text-xs text-muted-foreground">
-                {form.matchers.join(', ')} · {form.yield.amountPerParent}
-                {form.yield.formUnit} per item
-              </span>
-            </button>
+            <div class="flex min-w-0 flex-1 items-center gap-2">
+              <!-- The form's OWN pictogram (issue #871), not its parent's: a form
+                   exists precisely when the thing you buy looks different from the
+                   parent. Sized 32 against the parent row's 40 so the nesting reads
+                   as nesting; same `version` cache-bust as the canon row above. -->
+              <CanonIcon
+                thumbnail={form.thumbnail}
+                name={form.label}
+                size={32}
+                version={form.iconRequestedAt ?? form.updatedAt}
+              />
+              <button
+                type="button"
+                class="min-w-0 flex-1 text-left"
+                onclick={() => onOpen(key)}
+                data-testid="catalog-form-row-{which}"
+              >
+                <span class="block truncate text-sm font-medium">{form.label}</span>
+                <span class="block truncate text-xs text-muted-foreground">
+                  {form.matchers.join(', ')} · {form.yield.amountPerParent}
+                  {form.yield.formUnit} per item
+                </span>
+              </button>
+            </div>
           {/snippet}
           <EditableRow
             selected={isSelected(key) || openKey === key}

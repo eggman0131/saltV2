@@ -37,6 +37,10 @@ export const listPushoverDevices = onCall(
     ...APP_CHECK_ENFORCEMENT,
     region: 'europe-west2',
     secrets: [pushoverAppToken, pushoverUserKey, posthogApiKey],
+    // 512MiB floor, pinned inline: top-imported, so index.ts's setGlobalOptions
+    // runs too late to reach this endpoint and it would fall to the 256MiB
+    // platform default — the same gap that OOM-killed onEquipmentManifestWritten.
+    memory: '512MiB',
   },
   async (request): Promise<ListPushoverDevicesResponse> => {
     if (!request.auth) {
