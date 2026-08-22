@@ -50,9 +50,17 @@ export const EQUIPMENT_ICONS_COLLECTION = 'equipmentIcons';
 export const EquipmentIconSchema = z.object({
   /**
    * The appliance description — what the thing LOOKS LIKE, in brand-free words.
-   * This is the one field shown to the user and the one field they may edit; the
+   * This is the one field shown to the user and the one field they may EDIT; the
    * locked house-style wording lives in code (`EQUIPMENT_STYLE_ANCHORS`) and is
-   * never stored, never sent to the client and never editable.
+   * never stored and never editable.
+   *
+   * AMENDED (issue #892): it is no longer true that the anchors never reach the
+   * client. `getImagePrompt` assembles the whole prompt — anchors included — and
+   * hands it to a read-only dialog, so a person can see exactly what draws their
+   * picture and take those words elsewhere. What the original wording was
+   * protecting is untouched: the style is not editable, not stored per item, and
+   * not something a user can talk the model out of. Nothing in it is sensitive —
+   * it is cartoon-illustration wording in a family app.
    */
   subjectBrief: z.string().min(1),
   /** The item name the CURRENT brief was authored from. Drives the trigger's guard. */

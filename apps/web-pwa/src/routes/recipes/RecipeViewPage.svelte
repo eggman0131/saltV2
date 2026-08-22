@@ -115,6 +115,7 @@
   import { addToast } from '../../lib/toastStore.js';
   import { auth } from '../../lib/auth.svelte.js';
   import { createChatSession, sessions } from '../../lib/chatService.js';
+  import ImagePromptDialog from '../../components/ImagePromptDialog.svelte';
   import ChatThread from '../chat/ChatThread.svelte';
   import { createChatThread } from '../chat/chatThreadState.svelte.js';
   import { equipment } from '../../lib/equipmentService.js';
@@ -1234,6 +1235,9 @@ Finish with a short note on what you changed and why, so I can read the gist her
   const heroVisible = $derived(!!recipe?.image?.url);
   let imageBusy = $state(false);
   let regenOpen = $state(false);
+  // The read-only prompt window (issue #892). The recipe hero already had upload
+  // and regenerate; this is the one power it was missing.
+  let promptOpen = $state(false);
   // The art direction for the next generation. Seeded on every open from the brief
   // saved beside the current image, so the dialog opens filled in with no load —
   // it is already on the recipe doc the page is subscribed to. Editing this text
@@ -2015,6 +2019,17 @@ Finish with a short note on what you changed and why, so I can read the gist her
                 <Button
                   size="icon"
                   variant="outline"
+                  onclick={() => (promptOpen = true)}
+                  ariaLabel="See the prompt behind this picture"
+                  title="See the prompt behind this picture"
+                  class="bg-background/80 opacity-0 shadow-sm backdrop-blur-sm transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-60"
+                  data-testid="recipe-image-prompt"
+                >
+                  {#snippet leading()}<Icon name="Copy" size={16} />{/snippet}
+                </Button>
+                <Button
+                  size="icon"
+                  variant="outline"
                   onclick={openRegenerate}
                   loading={imageBusy}
                   disabled={imageBusy}
@@ -2050,6 +2065,17 @@ Finish with a short note on what you changed and why, so I can read the gist her
             >
               {#snippet leading()}<Icon name="Upload" size={14} />{/snippet}
               Upload a photo
+            </Button>
+            <!-- The prompt is readable BEFORE anything is drawn (issue #892): with
+                 no hero yet this is the prompt that would draw one. -->
+            <Button
+              size="sm"
+              variant="outline"
+              onclick={() => (promptOpen = true)}
+              data-testid="recipe-image-prompt-empty"
+            >
+              {#snippet leading()}<Icon name="Copy" size={14} />{/snippet}
+              See the prompt
             </Button>
           </div>
         {/if}
@@ -3208,3 +3234,13 @@ Finish with a short note on what you changed and why, so I can read the gist her
     </div>
   </DialogContent>
 </Dialog>
+
+{#if recipe}
+  <ImagePromptDialog
+    bind:open={promptOpen}
+    family="recipe"
+    id={recipe.id}
+    subject={recipe.title}
+    data-testid="recipe-prompt-dialog"
+  />
+{/if}

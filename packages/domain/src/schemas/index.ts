@@ -111,6 +111,19 @@ export type { RegenerateRecipeImageInput } from './regenerateRecipeImage.js';
 export { RedoRecipeKitInputSchema } from './redoRecipeKit.js';
 export type { RedoRecipeKitInput } from './redoRecipeKit.js';
 
+// The prompt behind any generated picture (issue #892) — re-derived on demand
+// from the document by the same builders the generators use, never persisted.
+export {
+  IMAGE_PROMPT_FAMILIES,
+  GetImagePromptInputSchema,
+  GetImagePromptResultSchema,
+} from './getImagePrompt.js';
+export type {
+  ImagePromptFamily,
+  GetImagePromptInput,
+  GetImagePromptResult,
+} from './getImagePrompt.js';
+
 export { SetRecipeImageUploadInputSchema } from './setRecipeImageUpload.js';
 export type { SetRecipeImageUploadInput } from './setRecipeImageUpload.js';
 

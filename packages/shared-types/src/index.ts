@@ -64,7 +64,11 @@ export type DomainError =
         | 'workspace'
         | 'aisle'
         | 'equipment'
-        | 'kitchenTool';
+        | 'kitchenTool'
+        // A product-form record (issue #892). Added when the image-prompt
+        // callable gained a not-found arm and a form was the one family with no
+        // honest resource name to report itself as.
+        | 'productForm';
       readonly id: string;
     }
   | {

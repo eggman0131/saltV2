@@ -14,6 +14,7 @@
     TextArea,
     TextField,
   } from '@salt/ui-components';
+  import ImagePromptDialog from '../../components/ImagePromptDialog.svelte';
   import { push } from 'svelte-spa-router';
   import { CANON_ICON_HIDDEN, equipmentIconAwaitingApproval } from '@salt/domain';
   import { goBack } from '../../lib/nav.js';
@@ -45,6 +46,11 @@
   let { params }: Props = $props();
 
   const item = $derived($equipment?.items.find((i) => i.id === params.id) ?? null);
+
+  // The read-only prompt window (issue #892). Equipment has no icon dialog of its
+  // own — the brief is edited inline — so this is the page's only modal for the
+  // picture, and it opens from the same row of buttons as Draw and Hide.
+  let promptOpen = $state(false);
 
   // ─── Pictogram + description review gate (issue #877) ─────────────────────
   // The description is shown BEFORE anything is drawn, and this panel is the
@@ -456,6 +462,16 @@
             >
               {icon.sourceName ? 'Redraw' : 'Draw it'}
             </Button>
+            <Button
+              variant="outline"
+              onclick={() => (promptOpen = true)}
+              data-testid="equipment-icon-prompt-btn"
+            >
+              {#snippet leading()}
+                <Icon name="Copy" size={16} />
+              {/snippet}
+              Prompt
+            </Button>
             {#if !iconHidden}
               <Button
                 variant="outline"
@@ -763,3 +779,13 @@
     </div>
   </DialogContent>
 </Dialog>
+
+{#if item}
+  <ImagePromptDialog
+    bind:open={promptOpen}
+    family="equipment"
+    id={item.id}
+    subject={item.name}
+    data-testid="equipment-prompt-dialog"
+  />
+{/if}

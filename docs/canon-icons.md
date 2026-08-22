@@ -349,6 +349,15 @@ This is the exact prompt set from the prototype that produced the approved set. 
 it as the locked house-style prompt; **do not paraphrase** — wording changes drift the
 style.
 
+**Locked is not the same as hidden** (issue #892). These strings are code-only in the
+sense that matters: they live in `generateCanonIcon.ts`, they are never stored per
+item, and nothing a user types can edit them or displace them. They are NOT secret.
+The `getImagePrompt` callable assembles the complete prompt for any picture — this
+wording included — and returns it to a read-only dialog, so anyone can read what drew
+their icon and paste it into Gemini to play with. There is exactly ONE assembly of
+these words in the repo: that callable **calls** `buildIconPrompt` rather than
+restating it, for precisely the reason this section gives.
+
 Model: `gemini-2.5-flash-image`. No special generation config (defaults).
 
 **Shared style string** (call it `STYLE`):

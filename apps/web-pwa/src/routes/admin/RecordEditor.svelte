@@ -27,6 +27,7 @@
     Text,
     TextField,
   } from '@salt/ui-components';
+  import ImagePromptDialog from '../../components/ImagePromptDialog.svelte';
   import { CANON_ICON_HIDDEN, describePendingCanonChange } from '@salt/domain';
   import type { CanonItem, ProductForm } from '@salt/domain';
   import type { CanonItemUnit } from '@salt/shared-types';
@@ -228,6 +229,11 @@
     regenerateHint = '';
     regenerateOpen = true;
   }
+
+  // The read-only prompt window (issue #892). The family follows the same
+  // record.kind branch every other icon affordance on this editor follows.
+  let promptOpen = $state(false);
+  const promptFamily = $derived(record.kind === 'canon' ? 'canon' : 'productForm');
 
   async function handleRegenerateIcon(): Promise<void> {
     const hint = regenerateHint.trim();
@@ -472,6 +478,17 @@
             <Icon name="RefreshCw" size={16} />
           {/snippet}
           Regenerate
+        </Button>
+        <Button
+          data-testid="{iconTestid}-icon-prompt"
+          variant="outline"
+          size="sm"
+          onclick={() => (promptOpen = true)}
+        >
+          {#snippet leading()}
+            <Icon name="Copy" size={16} />
+          {/snippet}
+          Prompt
         </Button>
         {#if iconHidden}
           <Button
@@ -855,3 +872,11 @@
     </div>
   </DialogContent>
 </Dialog>
+
+<ImagePromptDialog
+  bind:open={promptOpen}
+  family={promptFamily}
+  id={record.kind === 'canon' ? record.item.id : record.form.id}
+  subject={iconName}
+  data-testid="{iconTestid}-prompt-dialog"
+/>

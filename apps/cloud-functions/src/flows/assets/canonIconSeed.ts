@@ -27,11 +27,18 @@ import { fileURLToPath } from 'node:url';
 
 const SEED_CONTENT_TYPE = 'image/webp';
 
+/**
+ * The committed seed's filename. Exported so getImagePrompt (issue #892) can tell
+ * a person which reference image their pictogram is conditioned on without a
+ * second spelling of the name drifting from the one `loadCanonIconSeed` resolves.
+ */
+export const CANON_ICON_SEED_FILE = 'canon-icon-seed.webp';
+
 let cached: { readonly url: string; readonly contentType: string } | null = null;
 
 export function loadCanonIconSeed(): { readonly url: string; readonly contentType: string } {
   if (cached) return cached;
-  const path = fileURLToPath(new URL('./canon-icon-seed.webp', import.meta.url));
+  const path = fileURLToPath(new URL(`./${CANON_ICON_SEED_FILE}`, import.meta.url));
   const base64 = readFileSync(path).toString('base64');
   cached = { url: `data:${SEED_CONTENT_TYPE};base64,${base64}`, contentType: SEED_CONTENT_TYPE };
   return cached;

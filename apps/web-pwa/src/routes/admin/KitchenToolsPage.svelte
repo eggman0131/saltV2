@@ -21,6 +21,7 @@
   } from '@salt/ui-components';
   import { CANON_ICON_HIDDEN, unresolvedKitLabels } from '@salt/domain';
   import type { KitchenToolDoc, GuidedPlanDoc } from '@salt/domain/schemas';
+  import ImagePromptDialog from '../../components/ImagePromptDialog.svelte';
   import AdminGuard from './AdminGuard.svelte';
   import { goBack } from '../../lib/nav.js';
   import {
@@ -186,6 +187,16 @@
     return tool.thumbnail === CANON_ICON_HIDDEN;
   }
 
+  // The read-only prompt window (issue #892). Per row like the controls above,
+  // so the open tool IS the state — there is nothing else to remember.
+  let promptTool = $state<KitchenToolDoc | null>(null);
+  let promptOpen = $state(false);
+
+  function openPromptDialog(tool: KitchenToolDoc): void {
+    promptTool = tool;
+    promptOpen = true;
+  }
+
   function openRegenerateDialog(tool: KitchenToolDoc): void {
     regenerateHint = '';
     regenerateTool = tool;
@@ -338,6 +349,17 @@
                   >
                     {#snippet leading()}
                       <Icon name="RefreshCw" size={16} />
+                    {/snippet}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onclick={() => openPromptDialog(tool)}
+                    data-testid="kitchen-tool-icon-prompt"
+                    ariaLabel="See the prompt behind the {tool.label} icon"
+                  >
+                    {#snippet leading()}
+                      <Icon name="Copy" size={16} />
                     {/snippet}
                   </Button>
                   {#if isHidden(tool)}
@@ -580,3 +602,13 @@
     </div>
   </DialogContent>
 </Dialog>
+
+{#if promptTool}
+  <ImagePromptDialog
+    bind:open={promptOpen}
+    family="kitchenTool"
+    id={promptTool.id}
+    subject={promptTool.label}
+    data-testid="kitchen-tool-prompt-dialog"
+  />
+{/if}
