@@ -139,6 +139,7 @@ const LEMON_ZEST: ProductForm = {
   schemaVersion: 1,
   matchers: [],
   parentCanonId: 'canon-lemon',
+  thumbnail: null,
   label: 'Lemon zest',
   yield: { formUnit: 'g', amountPerParent: 5 },
   updatedAt: '2026-08-19T00:00:00.000Z',

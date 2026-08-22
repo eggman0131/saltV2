@@ -102,6 +102,7 @@ export type {
 } from './canonicaliseRecipeIngredientsInput.js';
 
 export { RegenerateCanonIconInputSchema } from './regenerateCanonIcon.js';
+export { RegenerateProductFormIconInputSchema } from './regenerateProductFormIcon.js';
 export type { RegenerateCanonIconInput } from './regenerateCanonIcon.js';
 
 export { RegenerateRecipeImageInputSchema } from './regenerateRecipeImage.js';

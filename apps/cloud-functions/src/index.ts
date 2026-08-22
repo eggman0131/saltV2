@@ -651,6 +651,11 @@ export { onBatchStageDispatch } from './triggers/onBatchStageDispatch.js';
 // behind it.
 export { onKitchenTimerWrite } from './triggers/onKitchenTimerWrite.js';
 export { onKitchenTimerDispatch } from './triggers/onKitchenTimerDispatch.js';
+// Product-form pictograms (issue #871) — the canon icon pipeline pointed at a
+// second collection. NOTE for deploys: it writes a NEW Storage prefix
+// (`product-form-icons/`), so storage.rules must be deployed before any icon
+// will load in the browser.
+export { onProductFormWritten } from './triggers/onProductFormWritten.js';
 // Equipment pictogram BRIEFS (issue #877). Level-triggered on the single
 // equipment manifest doc; it authors appliance descriptions and NEVER an image —
 // the picture is drawn by `drawEquipmentIcon` when the user presses Draw. It also
@@ -658,6 +663,7 @@ export { onKitchenTimerDispatch } from './triggers/onKitchenTimerDispatch.js';
 // `sweepOrphanedStorage` reclaim their Storage objects.
 export { onEquipmentManifestWritten } from './triggers/onEquipmentManifestWritten.js';
 export { regenerateCanonIcon } from './callables/regenerateCanonIcon.js';
+export { regenerateProductFormIcon } from './callables/regenerateProductFormIcon.js';
 export { regenerateRecipeImage } from './callables/regenerateRecipeImage.js';
 export { setRecipeImageUpload } from './callables/setRecipeImageUpload.js';
 // The observation photo (issue #812, phase 4) — the same auth-gated upload one

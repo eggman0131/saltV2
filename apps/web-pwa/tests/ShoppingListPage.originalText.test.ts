@@ -126,6 +126,7 @@ function limeForm(id: string, matcher: string): ProductForm {
     schemaVersion: 1,
     matchers: [matcher],
     parentCanonId: 'c-lime',
+    thumbnail: null,
     label: matcher,
     yield: { formUnit: 'ml', amountPerParent: 30 },
     updatedAt: '',

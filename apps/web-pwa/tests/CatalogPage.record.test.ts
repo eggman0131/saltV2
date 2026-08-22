@@ -123,6 +123,7 @@ function productForm(overrides: Partial<ProductForm> & { id: string }): ProductF
     schemaVersion: 1,
     matchers: ['olive oil spray'],
     parentCanonId: ITEM_ID,
+    thumbnail: null,
     label: 'Olive oil spray',
     yield: { formUnit: 'ml', amountPerParent: 5 },
     needs_approval: false,

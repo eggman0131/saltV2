@@ -312,6 +312,12 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
                 // Written pending: used live immediately, but flagged for admin review.
                 needs_approval: true,
                 updatedAt: new Date().toISOString(),
+                // No icon yet (issue #871). Stated rather than omitted: this is a
+                // full-document write, and null is what onProductFormWritten's edge
+                // guard reads on the create to start generating. An AI-seeded form
+                // gets its pictogram on the same terms as an admin-created one —
+                // pending review has never gated what a form can do.
+                thumbnail: null,
               };
               // Best-effort write; on failure we simply fall through to matching.
               const written = await productFormStore.upsert(created);
