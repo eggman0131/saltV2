@@ -267,6 +267,15 @@ export {
 } from './describeRecipeScene.js';
 export type { DescribeRecipeSceneInput, DescribeRecipeSceneOutput } from './describeRecipeScene.js';
 
+export {
+  DescribeEquipmentSubjectInputSchema,
+  DescribeEquipmentSubjectOutputSchema,
+} from './describeEquipmentSubject.js';
+export type {
+  DescribeEquipmentSubjectInput,
+  DescribeEquipmentSubjectOutput,
+} from './describeEquipmentSubject.js';
+
 export { AuthorRecipeInputSchema, LibrarianOutputSchema } from './authorRecipe.js';
 export type {
   AuthorRecipeInput,

@@ -37,6 +37,7 @@ import { parseRecipeIngredientsFlow } from './flows/parseRecipeIngredients.js';
 import { chefChatFlow } from './flows/chefChat.js';
 import { authorRecipeFlow } from './flows/authorRecipe.js';
 import { describeRecipeSceneFlow } from './flows/describeRecipeScene.js';
+import { describeEquipmentSubjectFlow } from './flows/describeEquipmentSubject.js';
 import {
   extractRecipeFromUrlFlow,
   UrlImportError,
@@ -323,6 +324,40 @@ export const describeRecipeScene = makeTracedCallable({
   flow: describeRecipeSceneFlow,
   options: { secrets: [geminiApiKey, posthogApiKey], timeoutSeconds: 90 },
 });
+
+// Equipment description on demand (issue #885): the same flow the manifest
+// trigger runs, reachable from the item page's two new buttons. With a
+// `currentBrief` + a `hint` it REVISES ("it's matte black, not cream", folded
+// through the sentence); with neither it authors from scratch, which is what
+// "Start over" sends so a description edited into a corner can be thrown away.
+//
+// PERSISTS NOTHING — deliberately, and this is the load-bearing property.
+// `drawEquipmentIcon` remains the ONLY writer of `subjectBrief` (it stamps it
+// inside the same transaction as `sourceName`), so the revised sentence lives in
+// the browser's textarea until the user presses Draw. That is the economics of
+// the review gate: a revision is a fraction of a penny and touches no document,
+// so you correct the words as often as you like and buy one picture once they
+// are right. A revision that auto-saved would also silently overwrite the words
+// behind the picture currently on screen.
+//
+// Plain onCallGenkit rather than makeTracedCallable, same as generateGuidedPlan
+// below: one press, one call, no cross-invocation pair like identifyEquipment →
+// populateEquipmentEntry, so there is no browser trace to unify and the traced
+// factory would buy only a wire envelope to maintain. Signed-in, no admin gate —
+// equipment is member-editable and the gate here is on AI cost, not authority.
+// 90s so the flow's 55s withAiTimeout has headroom, inside the callable client's
+// 70s default. Memory comes from the global 512MiB floor: this callable is
+// defined inline, below setGlobalOptions, so unlike a top-imported module it
+// genuinely inherits it (issue #883).
+export const describeEquipmentSubject = onCallGenkit(
+  {
+    ...APP_CHECK_ENFORCEMENT,
+    secrets: [geminiApiKey, posthogApiKey],
+    authPolicy: isSignedIn(),
+    timeoutSeconds: 90,
+  },
+  describeEquipmentSubjectFlow,
+);
 
 // Guided plan (issue #751, Phase 1): read the recipe → return the prep list and
 // the notes to sit under its steps. Takes only a recipe id; the flow reads the
