@@ -90,6 +90,7 @@
     isAuthorable,
     isCookable,
     isPlannable,
+    kitByStep as groupKitByStep,
     looksScalable,
     OTHER_WAITS_LABEL,
     resolveComponents,
@@ -625,6 +626,13 @@ Finish with a short note on what you changed and why, so I can read the gist her
   // this per step for a while; the reading list never did, which is where you
   // decide whether tonight is the night. Same domain query — there is one.
   const firstUseByStep = $derived(groupIngredientsByFirstUse(recipe?.ingredients ?? []));
+
+  // And what the step is the first to REACH FOR (issue #882). The contiguous-run
+  // rule lives in the domain query, not here: a pan used at steps 3-7 is listed
+  // at 3 and nowhere else, so the method reads as "get the pan out now" rather
+  // than as the same picture five times. Same query the cook deck and the guided
+  // step screen call, so the three cannot disagree about when it comes out.
+  const kitByStep = $derived(groupKitByStep(recipe?.kit ?? [], recipe?.steps ?? []));
 
   // An hour is the point at which a timer stops being something you stand over.
   // Below it you are still in the kitchen; at or above it the step is a wait you
@@ -2482,6 +2490,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
                     {#each recipe.steps as step, idx (step.id)}
                       {@const handsOff = isHandsOff(step)}
                       {@const firstUse = firstUseByStep.get(step.id) ?? []}
+                      {@const stepKit = kitByStep.get(step.id) ?? []}
                       <li
                         class="relative flex gap-3 pb-5 text-sm last:pb-0"
                         data-testid="recipe-view-step"
@@ -2532,6 +2541,58 @@ Finish with a short note on what you changed and why, so I can read the gist her
                                     />
                                   </span>
                                   <span class="sr-only">{ingredientLabel(ing)}</span>
+                                </li>
+                              {/each}
+                            </ul>
+                          {/if}
+
+                          <!-- And what to GET OUT for it (issue #882). Beside the
+                               first-use row, in the same idiom, because they answer
+                               two different questions about the same step: what it
+                               is the first to call for, and what it needs in your
+                               hand. Two rows that looked alike but said the same
+                               thing would be the bug; two rows that look alike and
+                               say different things is the point — hence its own
+                               `aria-label`, which is the only thing separating them
+                               for a screen reader.
+
+                               Listed at the step the tool COMES OUT and not again
+                               until it has been put down (the contiguous-run rule in
+                               `kitByStep`), so a long braise does not repeat the same
+                               casserole under every step.
+
+                               The tile is decorative; the NAME beside it is the
+                               accessible content. A label the drawn vocabulary does
+                               not know renders its words with no picture — never
+                               `CanonIcon`'s bare placeholder tile, which reads as a
+                               broken image, and never another tool's drawing. -->
+                          {#if stepKit.length > 0}
+                            <ul
+                              class="flex flex-wrap items-center gap-1.5"
+                              aria-label="Kit this step calls for"
+                              data-testid="recipe-view-step-kit"
+                            >
+                              {#each stepKit as entry (entry.label)}
+                                <li
+                                  class="flex items-center gap-1"
+                                  title={entry.label}
+                                  data-testid="recipe-view-step-kit-item"
+                                >
+                                  {#if $toolIcons.toolIconFor(entry.label)}
+                                    <span class="flex" aria-hidden="true">
+                                      <CanonIcon
+                                        thumbnail={$toolIcons.toolIconFor(entry.label)}
+                                        version={$toolIcons.toolIconVersionFor(entry.label)}
+                                        name={entry.label}
+                                        size={26}
+                                      />
+                                    </span>
+                                    <span class="sr-only">{entry.label}</span>
+                                  {:else}
+                                    <!-- No picture, so the words stop being the
+                                         SR-only label and become the row. -->
+                                    <span class="text-xs text-muted-foreground">{entry.label}</span>
+                                  {/if}
                                 </li>
                               {/each}
                             </ul>

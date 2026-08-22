@@ -291,6 +291,7 @@ export {
   insertComponentByCookTime,
   expandForPlanner,
   mergePlannerRecipeIds,
+  kitByStep,
   findProducingRecipes,
   diffRecipe,
   diffWords,

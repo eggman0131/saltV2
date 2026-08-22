@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, cleanup, screen } from '@testing-library/svelte';
+import { render, cleanup, screen, within } from '@testing-library/svelte';
 import type { Recipe } from '@salt/domain';
 import type { KitchenToolDoc } from '@salt/domain/schemas';
 
@@ -312,5 +312,128 @@ describe('RecipeViewPage — the "You\'ll need" strip', () => {
 
     const chip = screen.getAllByTestId('recipe-kit-chip')[0]!;
     expect(chip.tagName).toBe('SPAN');
+  });
+});
+
+// ─── Per-step kit, in the Method column (issue #882) ────────────────────────────
+// The contiguous-run rule is proved in `packages/domain` — this file proves it is
+// what the READER actually sees, because a rule the page forgets to call is worth
+// nothing. Both tab panels stay mounted while hidden (ui-spec-v10 §8.28.3), so the
+// method's steps are queryable without switching tabs first.
+
+function steps(...texts: string[]) {
+  return texts.map((text, i) => ({
+    id: `step-${i + 1}`,
+    text,
+    note: null,
+    timer: null,
+  }));
+}
+
+/** The kit labels drawn under each method step, in step order. */
+function kitByStepRow(): string[][] {
+  return screen.queryAllByTestId('recipe-view-step').map((li) => {
+    const row = within(li).queryByTestId('recipe-view-step-kit');
+    if (!row) return [];
+    return within(row)
+      .queryAllByTestId('recipe-view-step-kit-item')
+      .map((item) => item.textContent?.trim() ?? '');
+  });
+}
+
+describe('RecipeViewPage — kit under a method step', () => {
+  it('draws a tool used across five consecutive steps ONCE, at the step it comes out', () => {
+    // The whole reason the rule exists: without it the method is a column of the
+    // same frying pan, and the eye learns to skip the column.
+    mockRecipes._set([
+      makeEntry({
+        steps: steps('Heat the pan.', 'Brown.', 'Deglaze.', 'Simmer.', 'Rest.'),
+        kit: [{ label: 'frying pan', stepIds: ['step-1', 'step-2', 'step-3', 'step-4', 'step-5'] }],
+      }),
+    ]);
+    renderPage();
+
+    expect(kitByStepRow()).toEqual([['frying pan'], [], [], [], []]);
+  });
+
+  it('draws a tool put down and picked up again TWICE', () => {
+    mockRecipes._set([
+      makeEntry({
+        steps: steps('Mix.', 'Rest.', 'Chill.', 'Fold through.'),
+        kit: [{ label: 'mixing bowl', stepIds: ['step-1', 'step-4'] }],
+      }),
+    ]);
+    renderPage();
+
+    expect(kitByStepRow()).toEqual([['mixing bowl'], [], [], ['mixing bowl']]);
+  });
+
+  it('shows the drawn pictogram with the name as its accessible content', () => {
+    setTools([
+      tool({
+        id: 'saucepan',
+        label: 'large saucepan',
+        thumbnail: 'https://example.com/kit/saucepan.webp',
+        updatedAt: '2026-02-02T00:00:00.000Z',
+      }),
+    ]);
+    mockRecipes._set([
+      makeEntry({
+        steps: steps('Boil the potatoes.'),
+        kit: [{ label: 'large saucepan', stepIds: ['step-1'] }],
+      }),
+    ]);
+    renderPage();
+
+    const step = screen.getAllByTestId('recipe-view-step')[0]!;
+    const img = within(step).getByTestId('canon-icon-img');
+    expect(img).toHaveAttribute(
+      'src',
+      'https://example.com/kit/saucepan.webp?v=2026-02-02T00:00:00.000Z',
+    );
+    // The tile is decorative; the words are what a screen reader gets.
+    expect(kitByStepRow()).toEqual([['large saucepan']]);
+  });
+
+  it('renders an unresolved label as words with NO picture', () => {
+    setTools([tool({ id: 'saucepan', label: 'saucepan' })]);
+    mockRecipes._set([
+      makeEntry({ steps: steps('Steam it.'), kit: [{ label: 'tagine', stepIds: ['step-1'] }] }),
+    ]);
+    renderPage();
+
+    const step = screen.getAllByTestId('recipe-view-step')[0]!;
+    expect(within(step).queryByTestId('canon-icon')).toBeNull();
+    expect(kitByStepRow()).toEqual([['tagine']]);
+  });
+
+  it('draws NOTHING under a step for a kit entry naming no step', () => {
+    // It still belongs on the "You'll need" strip — the strip lists what the dish
+    // needs, and "used at no particular step" is not an answer the method can give.
+    mockRecipes._set([
+      makeEntry({ steps: steps('Serve.'), kit: [{ label: 'oven glove', stepIds: [] }] }),
+    ]);
+    renderPage();
+
+    expect(kitByStepRow()).toEqual([[]]);
+    expect(kitLabels()).toEqual(['oven glove']);
+  });
+
+  it('leaves no misattributed tool when a step has since been deleted', () => {
+    // An ordinary editor save deletes a step and re-runs no inference, so the
+    // document really does carry an id pointing at nothing. It goes quiet; it is
+    // never re-hung on whichever step took that position.
+    mockRecipes._set([
+      makeEntry({
+        steps: steps('Chop.', 'Fry.'),
+        kit: [
+          { label: 'stick blender', stepIds: ['step-deleted'] },
+          { label: 'chopping board', stepIds: ['step-deleted', 'step-2'] },
+        ],
+      }),
+    ]);
+    renderPage();
+
+    expect(kitByStepRow()).toEqual([[], ['chopping board']]);
   });
 });
