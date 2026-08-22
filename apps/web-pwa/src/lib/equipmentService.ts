@@ -5,6 +5,7 @@ import {
   callPopulateEquipmentEntry,
   subscribeEquipmentIcons,
   callDrawEquipmentIcon,
+  callDescribeEquipmentSubject,
 } from '@salt/firebase-sync';
 import type { IdentifyEquipmentResult, PopulateEquipmentEntryResult } from '@salt/firebase-sync';
 import type { EquipmentIconDoc } from '@salt/domain/schemas';
@@ -354,6 +355,49 @@ export async function drawEquipmentIcon(
  */
 export async function hideEquipmentIcon(itemId: string): Promise<ReadResult<void, DomainError>> {
   return callDrawEquipmentIcon({ action: 'hide', itemId });
+}
+
+// ─── Description revision (issue #885) ───────────────────────────────────────
+// Both actions call the describeEquipmentSubject callable, which PERSISTS
+// NOTHING — the new description lands back in the textarea, still editable, and
+// only becomes the item's description if the user then presses Draw. That is the
+// point: the words are a fraction of a penny and the picture is not, so you
+// iterate the sentence for free and buy exactly one drawing once it is right.
+//
+// Both take the NAME rather than the item id: the callable reads nothing from
+// Firestore, so the caller supplies the whole input. Neither touches
+// `equipmentIcons` — `drawEquipmentIcon` remains its only writer.
+
+/**
+ * Rewrite this item's description with a correction folded through it.
+ *
+ * `currentBrief` is what the user is looking at — the stored description or
+ * their edit of it — so a revision applies to the words on screen, not to the
+ * words on the document.
+ */
+export async function reviseEquipmentBrief(
+  name: string,
+  currentBrief: string,
+  hint: string,
+): Promise<ReadResult<string, DomainError>> {
+  return callDescribeEquipmentSubject({
+    name: name.trim(),
+    currentBrief: currentBrief.trim(),
+    hint: hint.trim(),
+  });
+}
+
+/**
+ * Write a fresh description from the item's name, discarding what is in the box.
+ *
+ * Sends neither the accumulated brief nor a steer, which is exactly what the
+ * manifest trigger sends — so "Start over" gets back the description the item
+ * was born with, and is the escape hatch for one edited into a corner.
+ */
+export async function restartEquipmentBrief(
+  name: string,
+): Promise<ReadResult<string, DomainError>> {
+  return callDescribeEquipmentSubject({ name: name.trim() });
 }
 
 /** This item's icon document, or null while none has been authored yet. */

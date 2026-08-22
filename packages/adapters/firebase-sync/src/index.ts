@@ -23,7 +23,11 @@ export {
   saveEquipmentManifest,
 } from './equipmentManifestSubscription.js';
 
-export { subscribeEquipmentIcons, callDrawEquipmentIcon } from './equipmentIconSubscription.js';
+export {
+  subscribeEquipmentIcons,
+  callDrawEquipmentIcon,
+  callDescribeEquipmentSubject,
+} from './equipmentIconSubscription.js';
 export {
   callMatchOrCreate,
   callCanonicaliseRecipeIngredients,
