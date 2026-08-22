@@ -172,10 +172,18 @@ export const onEquipmentManifestWritten = onDocumentWritten(
     document: `${EQUIPMENT_MANIFEST_COLLECTION}/${EQUIPMENT_MANIFEST_DOC_ID}`,
     region: 'europe-west2',
     secrets: [geminiApiKey, posthogApiKey],
+    // 512MiB floor, pinned inline. NOT about this trigger's own workload — it runs
+    // no sharp and needs none of the canon trigger's 1GiB. It is the module-init
+    // baseline every function in this repo carries (firebase-admin + Genkit +
+    // OTel + posthog-node), which alone clears 256MiB; see the note above
+    // `setGlobalOptions` in index.ts. This trigger is top-imported, so the global
+    // 512MiB never reaches it and the endpoint fell to the 256MiB platform
+    // default — it was OOM-killed after authoring its FIRST brief, leaving every
+    // other item stuck on "Writing a description…" with nothing to review or
+    // draw. Pinned inline for the same reason region is.
+    memory: '512MiB',
     // One 'fast'-tier text call per stale item, measured at ~2.8 s median. A cold
-    // 19-item catch-up is ~55 s of AI time, so 300 s leaves comfortable headroom
-    // without the canon trigger's memory/concurrency posture — nothing here runs
-    // sharp.
+    // 19-item catch-up is ~55 s of AI time, so 300 s leaves comfortable headroom.
     timeoutSeconds: 300,
   },
   async (event) => {
