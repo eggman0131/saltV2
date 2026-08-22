@@ -27,6 +27,7 @@ const meta = {
   argTypes: {
     variant: { control: 'select', options: ['filter', 'expander', 'fact', 'tag'] },
     pressed: { control: 'boolean' },
+    tone: { control: 'select', options: ['neutral', 'primary', 'secondary', 'tertiary'] },
     // Neither snippet is a user-facing control.
     children: { table: { disable: true } },
     icon: { table: { disable: true } },
@@ -61,6 +62,21 @@ export const Fact: Story = {
 
 export const FactWithIcon: Story = {
   args: { variant: 'fact', icon: clockIcon, children: label('Prep 40 min') },
+};
+
+// The `fact`-only tint axis (ui-spec-v09 §8.23.9). The names are palette roles,
+// never meanings: what a hue is being used to say belongs to the page, which is
+// why these stories are "Serves / Prep / Cook" and not "the yield tone".
+export const FactTonePrimary: Story = {
+  args: { variant: 'fact', tone: 'primary', icon: clockIcon, children: label('Prep 40 min') },
+};
+
+export const FactToneSecondary: Story = {
+  args: { variant: 'fact', tone: 'secondary', children: label('Serves 4') },
+};
+
+export const FactToneTertiary: Story = {
+  args: { variant: 'fact', tone: 'tertiary', children: label('Cook 6 hr') },
 };
 
 // A word someone attached, not a number measured from the dish. Quiet outline,

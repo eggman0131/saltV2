@@ -44,6 +44,24 @@ describe('salt.css design-system entry', () => {
       expect(css).toMatch(
         /--color-destructive-container-foreground:\s*hsl\(var\(--salt-on-destructive-container\)\)/,
       );
+      // The three tints (#878): one pale ground per hue for a set of peers that
+      // need telling apart — the recipe page's fact chips and its cook-shape
+      // ribbon. Sage deliberately ALIASES the secondary-container pair rather
+      // than plumbing design.md's near-identical `secondary-fixed`, so the
+      // assertion below is what stops someone "tidying" that into a fourth
+      // primitive one hex away from an existing one.
+      expect(css).toMatch(/--color-primary-tint:\s*hsl\(var\(--salt-primary-fixed\)\)/);
+      expect(css).toMatch(
+        /--color-primary-tint-foreground:\s*hsl\(var\(--salt-on-primary-fixed-variant\)\)/,
+      );
+      expect(css).toMatch(/--color-secondary-tint:\s*hsl\(var\(--salt-secondary-container\)\)/);
+      expect(css).toMatch(
+        /--color-secondary-tint-foreground:\s*hsl\(var\(--salt-on-secondary-container\)\)/,
+      );
+      expect(css).toMatch(/--color-tertiary-tint:\s*hsl\(var\(--salt-tertiary-fixed\)\)/);
+      expect(css).toMatch(
+        /--color-tertiary-tint-foreground:\s*hsl\(var\(--salt-on-tertiary-fixed-variant\)\)/,
+      );
       // v4 derives opacity via color-mix, so no color token carries the v3
       // `/ <alpha-value>` placeholder (a bare mention in a comment is fine).
       expect(css).not.toMatch(/hsl\(var\(--salt-[a-z-]+\)\s*\/\s*<alpha-value>\)/);
@@ -96,6 +114,27 @@ describe('salt.css design-system entry', () => {
       // long-standing error-container values were plumbed through.
       expect(css).toMatch(/--salt-destructive-container:\s*6 100% 92%;\s*\/\*\s*#ffdad6/);
       expect(css).toMatch(/--salt-on-destructive-container:\s*356 100% 29%;\s*\/\*\s*#93000a/);
+    });
+
+    it('pins the two new tint primitives to design.md `*-fixed` (#878)', () => {
+      // Same reasoning as the destructive pair above: the provenance comments
+      // are what check-theme.ts diffs against design.md, so the hexes are the
+      // assertion. Nothing was newly decided — these are design.md's
+      // long-standing primary-fixed / on-primary-fixed-variant / tertiary-fixed.
+      expect(css).toMatch(/--salt-primary-fixed:\s*197 49% 88%;\s*\/\*\s*#d0e6ef/);
+      expect(css).toMatch(/--salt-on-primary-fixed-variant:\s*196 20% 26%;\s*\/\*\s*#364a51/);
+      expect(css).toMatch(/--salt-tertiary-fixed:\s*11 100% 91%;\s*\/\*\s*#ffdad2/);
+    });
+
+    it('mirrors the tint primitives into the .dark block (#878)', () => {
+      // The `*-fixed` roles do not flip with the theme, so these are the light
+      // values verbatim — but they must still be PRESENT, for the same
+      // internal-consistency reason the destructive pair is.
+      const dark = css.match(/\.dark\s*\{[\s\S]*?\n\}/)?.[0];
+      expect(dark).toBeDefined();
+      expect(dark).toMatch(/--salt-primary-fixed:\s*197 49% 88%/);
+      expect(dark).toMatch(/--salt-on-primary-fixed-variant:\s*196 20% 26%/);
+      expect(dark).toMatch(/--salt-tertiary-fixed:\s*11 100% 91%/);
     });
 
     it('mirrors the destructive container pair into the .dark block (#825)', () => {
@@ -216,9 +255,9 @@ describe('token constants', () => {
     it('primaryForeground is a CSS var reference string', () => {
       expect(colors.primaryForeground).toBe('hsl(var(--salt-primary-foreground))');
     });
-    it('exports all 27 semantic color constants', () => {
+    it('exports all 33 semantic color constants', () => {
       const keys = Object.keys(colors);
-      expect(keys.length).toBe(27);
+      expect(keys.length).toBe(33);
     });
     it('exposes the destructive container pair a removed row sits on (#825)', () => {
       // Symmetric with secondaryContainer, which is what an ADDED row gets. A
@@ -239,6 +278,15 @@ describe('token constants', () => {
       // A hue shift at the same weight, not a lighter tint — the planner already
       // spends "quieter" on days that are behind you.
       expect(colors.tertiaryVariant).toBe('hsl(var(--salt-on-tertiary-fixed-variant))');
+    });
+
+    it('exposes the three tints and their foregrounds (#878)', () => {
+      expect(colors.primaryTint).toBe('hsl(var(--salt-primary-fixed))');
+      expect(colors.primaryTintForeground).toBe('hsl(var(--salt-on-primary-fixed-variant))');
+      expect(colors.secondaryTint).toBe('hsl(var(--salt-secondary-container))');
+      expect(colors.secondaryTintForeground).toBe('hsl(var(--salt-on-secondary-container))');
+      expect(colors.tertiaryTint).toBe('hsl(var(--salt-tertiary-fixed))');
+      expect(colors.tertiaryTintForeground).toBe('hsl(var(--salt-on-tertiary-fixed-variant))');
     });
   });
 

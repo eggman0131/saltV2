@@ -1,4 +1,4 @@
-<!-- spec: ui-spec-v09.md §8.23 v0.9.2 -->
+<!-- spec: ui-spec-v09.md §8.23 v0.9.3 -->
 <script lang="ts">
   import { cn } from '../../lib/cn';
   import { chipVariants } from './Chip.variants';
@@ -7,6 +7,7 @@
   let {
     variant = 'filter',
     pressed = false,
+    tone = 'neutral',
     icon,
     class: className,
     children,
@@ -22,7 +23,7 @@
 {#if interactive}
   <button
     type="button"
-    class={cn(chipVariants({ variant, pressed }), className)}
+    class={cn(chipVariants({ variant, pressed, tone: 'neutral' }), className)}
     aria-pressed={variant === 'filter' ? pressed : undefined}
     {...rest}
   >
@@ -35,7 +36,7 @@
        it, but a consumer asserting on the text does see it — the recipe page's
        attribution chip is asserted exactly. The 4px gap comes from
        `.salt-chip--fact`'s `gap-1`, never from a space in the markup. -->
-  <span class={cn(chipVariants({ variant, pressed: false }), className)} {...rest}
+  <span class={cn(chipVariants({ variant, pressed: false, tone }), className)} {...rest}
     >{@render icon?.()}{@render children?.()}</span
   >
 {/if}

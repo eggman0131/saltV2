@@ -105,6 +105,10 @@ const COLOR_MAP: Record<string, string> = {
   'tertiary-container': '--salt-tertiary-container',
   'on-tertiary-container': '--salt-on-tertiary-container',
   'on-tertiary-fixed-variant': '--salt-on-tertiary-fixed-variant',
+  // The tint family (issue #878) — see the `--color-*-tint` block in salt.css.
+  'primary-fixed': '--salt-primary-fixed',
+  'on-primary-fixed-variant': '--salt-on-primary-fixed-variant',
+  'tertiary-fixed': '--salt-tertiary-fixed',
   'surface-container': '--salt-muted',
   'on-surface-variant': '--salt-muted-foreground',
   error: '--salt-destructive',

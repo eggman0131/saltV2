@@ -1,4 +1,4 @@
-// spec: ui-spec-v09.md §8.23, §8.24 v0.9.2
+// spec: ui-spec-v09.md §8.23, §8.24 v0.9.3
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
@@ -80,6 +80,26 @@ describe('Chip', () => {
       cleanup();
       render(StaticChipFixture, { props: { variant: 'fact', withIcon: false } });
       expect(chip().querySelector('svg')).toBeNull();
+    });
+
+    // §8.23.9. `neutral` emits no class at all — it IS `.salt-chip--fact` — so
+    // the assertion is a negative one, and the three tints are two-class
+    // selectors so they beat the base rule on specificity rather than on the
+    // order salt.css happens to be written in.
+    it.each([
+      ['primary', 'salt-chip--tone-primary'],
+      ['secondary', 'salt-chip--tone-secondary'],
+      ['tertiary', 'salt-chip--tone-tertiary'],
+    ] as const)('tints a fact when tone is %s', (tone, className) => {
+      render(StaticChipFixture, { props: { variant: 'fact', tone } });
+      expect(chip().className).toContain('salt-chip--fact');
+      expect(chip().className).toContain(className);
+    });
+
+    it('leaves a neutral fact exactly as it was before tone existed', () => {
+      render(StaticChipFixture, { props: { variant: 'fact', tone: 'neutral' } });
+      expect(chip().className).toContain('salt-chip--fact');
+      expect(chip().className).not.toContain('salt-chip--tone-');
     });
 
     it('gives a tag the quiet outline and no icon', () => {

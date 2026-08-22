@@ -134,7 +134,7 @@ export type {
   CardTitleProps,
 } from './primitives/Card/Card.types';
 export type { CheckboxProps, CheckedState } from './primitives/Checkbox/Checkbox.types';
-export type { ChipProps, ChipGroupProps } from './primitives/Chip/Chip.types';
+export type { ChipProps, ChipTone, ChipGroupProps } from './primitives/Chip/Chip.types';
 export type { CollapsibleSectionProps } from './primitives/CollapsibleSection/CollapsibleSection.types';
 export type { DialProps } from './primitives/Dial/Dial.types';
 export type {
