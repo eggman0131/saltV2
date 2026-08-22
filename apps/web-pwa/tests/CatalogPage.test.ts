@@ -45,7 +45,8 @@ const {
     // only when it LAPSES. These tests drive the lapse and the undo by hand.
     toasts: [] as {
       message: string;
-      opts?: { action?: { onClick: () => void }; onDismiss?: () => void };
+      variant?: string;
+      opts?: { action?: { onClick: () => void }; onDismiss?: () => void; duration?: number };
     }[],
   };
 });
@@ -55,10 +56,10 @@ vi.mock('../src/lib/toastStore.js', () => ({
   addToast: vi.fn(
     (
       message: string,
-      _variant?: string,
-      opts?: { action?: { onClick: () => void }; onDismiss?: () => void },
+      variant?: string,
+      opts?: { action?: { onClick: () => void }; onDismiss?: () => void; duration?: number },
     ) => {
-      toasts.push({ message, opts });
+      toasts.push({ message, variant, opts });
     },
   ),
 }));
@@ -296,6 +297,10 @@ describe('CatalogPage — approving', () => {
     expect(vi.mocked(confirmProductForm)).not.toHaveBeenCalled();
     expect(toasts).toHaveLength(1);
     expect(lastToast().message).toBe('3 records approved');
+    // An approve reads as a success, and its Undo window is shorter than the
+    // Toast default — it is a confirmation, not something to deliberate over.
+    expect(lastToast().variant).toBe('success');
+    expect(lastToast().opts?.duration).toBe(3000);
 
     // Meanwhile the records read as approved: they have left this filter.
     await waitFor(() => expect(rowNames()).toEqual([]));
