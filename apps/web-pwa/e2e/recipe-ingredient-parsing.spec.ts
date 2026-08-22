@@ -154,12 +154,16 @@ test.describe('recipes — AI parse + canonicalise', () => {
     // ── The parsed structure renders weight-first with the displayText note ──
     // RecipeViewPage shows "<qty><unit> <item>, <prep> (<displayText>)".
     const dahlGroup = page.getByTestId('recipe-view-group').nth(0);
-    await expect(dahlGroup.getByTestId('recipe-view-ingredient').nth(0)).toContainText(
-      '300g red lentils, rinsed',
-    );
-    await expect(dahlGroup.getByTestId('recipe-view-ingredient').nth(0)).toContainText(
-      '(1 ½ cups)',
-    );
+    // Three cells, asserted separately because they are three cells: the row is
+    // name-then-amount since #878, so "300g red lentils" is no longer one run of
+    // text anywhere on the page. `toContainText` on the row would still pass on
+    // the pieces individually, which is what these two do.
+    const lentilRow = dahlGroup.getByTestId('recipe-view-ingredient').nth(0);
+    await expect(lentilRow).toContainText('red lentils, rinsed');
+    // The metric amount and the measure the source printed, now stacked in the
+    // right-hand column rather than bracketing the name.
+    await expect(lentilRow).toContainText('300g');
+    await expect(lentilRow).toContainText('(1 ½ cups)');
 
     // ── Assert the parsed structure landed in the recipe store ───────────────
     await waitForBridge(page);
@@ -217,9 +221,11 @@ test.describe('recipes — AI parse + canonicalise', () => {
     await expect(page.getByRole('heading', { name: 'Parsed Dahl' })).toBeVisible({
       timeout: SYNC_TIMEOUT,
     });
+    // Name and amount asserted apart, for the reason given at the first render.
     await expect(page.getByTestId('recipe-view-ingredient').nth(0)).toContainText(
-      '300g red lentils, rinsed',
+      'red lentils, rinsed',
     );
+    await expect(page.getByTestId('recipe-view-ingredient').nth(0)).toContainText('300g');
     // No unmatched markers survive the reload — the matches are persisted.
     await expect(page.getByTestId('match-state-unmatched')).toHaveCount(0, {
       timeout: SYNC_TIMEOUT,

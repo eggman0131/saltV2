@@ -145,6 +145,30 @@
   --color-tertiary: hsl(var(--salt-tertiary));
   --color-tertiary-foreground: hsl(var(--salt-tertiary-foreground));
   --color-tertiary-variant: hsl(var(--salt-on-tertiary-fixed-variant));
+  /* ── The three tints ────────────────────────────────────────────────────
+   * One pale ground per hue, each with a foreground that is legible on it
+   * (7:1 or better). They exist to KEY things to each other — a set of peers
+   * that need telling apart at a glance, where the difference between them
+   * carries meaning and none of them is more important than the others: the
+   * recipe page's fact chips, and the segments of its cook-shape ribbon.
+   *
+   * Deliberately not the `*-container` roles. `secondary-container` and
+   * `destructive-container` are a matched pair meaning added/removed (#825),
+   * and a third and fourth member would dilute that pair into "any tinted
+   * surface". Values are design.md's `*-fixed` / `on-*-fixed-variant` keys,
+   * which is exactly the M3 role for a tint that does not flip with the
+   * theme — plumbed through, nothing newly decided.
+   *
+   * Sage aliases the secondary-container pair rather than plumbing
+   * design.md's near-identical `secondary-fixed` (#d2eac0 vs #cfe7bd): two
+   * primitives one hex apart would be a difference no one could see and
+   * everyone would have to choose between. */
+  --color-primary-tint: hsl(var(--salt-primary-fixed));
+  --color-primary-tint-foreground: hsl(var(--salt-on-primary-fixed-variant));
+  --color-secondary-tint: hsl(var(--salt-secondary-container));
+  --color-secondary-tint-foreground: hsl(var(--salt-on-secondary-container));
+  --color-tertiary-tint: hsl(var(--salt-tertiary-fixed));
+  --color-tertiary-tint-foreground: hsl(var(--salt-on-tertiary-fixed-variant));
   --color-muted: hsl(var(--salt-muted));
   --color-muted-foreground: hsl(var(--salt-muted-foreground));
   --color-placeholder: hsl(var(--salt-placeholder));
@@ -306,6 +330,13 @@
   --salt-tertiary-container: 10 100% 17%; /* #580f00 */
   --salt-on-tertiary-container: 12 76% 61%; /* #e76e50 */
   --salt-on-tertiary-fixed-variant: 13 82% 28%; /* #83260e  burnt terracotta */
+  /* The two tint grounds that were not already in the file, and the one
+   * foreground that goes on the teal (the sage and terracotta foregrounds are
+   * --salt-on-secondary-container and --salt-on-tertiary-fixed-variant above).
+   * See the `--color-*-tint` block for what the family is for. */
+  --salt-primary-fixed: 197 49% 88%; /* #d0e6ef  pale teal */
+  --salt-on-primary-fixed-variant: 196 20% 26%; /* #364a51 */
+  --salt-tertiary-fixed: 11 100% 91%; /* #ffdad2  pale terracotta */
   --salt-muted: 180 6% 93%; /* #eceeee  surface-container */
   --salt-muted-foreground: 195 6% 27%; /* #42484a  on-surface-variant */
   /* Example text, and nothing else (issue #821). Its job is to be legible AND
@@ -387,6 +418,13 @@
   --salt-tertiary-container: 10 100% 17%;
   --salt-on-tertiary-container: 12 76% 61%;
   --salt-on-tertiary-fixed-variant: 13 82% 28%;
+  /* The `*-fixed` roles do not flip with the theme — that is what "fixed"
+   * means in M3 — so these are the light values verbatim. Declared here all
+   * the same: every --salt-* primitive is declared in both blocks, and a pair
+   * present in only one leaves the file internally inconsistent. */
+  --salt-primary-fixed: 197 49% 88%;
+  --salt-on-primary-fixed-variant: 196 20% 26%;
+  --salt-tertiary-fixed: 11 100% 91%;
   --salt-muted: 180 3% 24%;
   --salt-muted-foreground: 195 5% 58%;
   /* Dark is arithmetically squeezed: at 4.92:1 this FIXES a pre-existing AA
@@ -706,6 +744,24 @@
    * would drift the same way. */
   .salt-chip--fact svg {
     @apply size-3 shrink-0;
+  }
+  /* `tone` — a `fact`-only second axis (§8.23.9). Palette roles, not meanings:
+   * the chip does not know what a recipe is, so the page decides which class of
+   * fact each hue names and says so where it builds the row. `neutral` is the
+   * default and needs no rule — it IS `.salt-chip--fact` above.
+   *
+   * Written as two-class selectors so they beat `.salt-chip--fact`'s own
+   * `bg-muted`/`text-muted-foreground` on specificity rather than on source
+   * order. No rule for the other three variants, exactly as `--on` has none for
+   * `fact` and `tag`: the type makes those combinations unrepresentable. */
+  .salt-chip--fact.salt-chip--tone-primary {
+    @apply bg-primary-tint text-primary-tint-foreground;
+  }
+  .salt-chip--fact.salt-chip--tone-secondary {
+    @apply bg-secondary-tint text-secondary-tint-foreground;
+  }
+  .salt-chip--fact.salt-chip--tone-tertiary {
+    @apply bg-tertiary-tint text-tertiary-tint-foreground;
   }
   .salt-chip--tag {
     @apply inline-flex items-center border-border text-muted-foreground;

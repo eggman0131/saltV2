@@ -1,4 +1,4 @@
-// spec: ui-spec-v09.md §8.23, §8.27 v0.9.2
+// spec: ui-spec-v09.md §8.23, §8.27 v0.9.3
 import { cva, type VariantProps } from '../../lib/variants';
 
 export const chipVariants = cva('salt-chip', {
@@ -18,8 +18,20 @@ export const chipVariants = cva('salt-chip', {
     // simply have no rule for `.salt-chip--on`, which is why a pressed expander
     // paints nothing.
     pressed: { true: 'salt-chip--on', false: '' },
+    // `tone` (§8.23.9) — which hue a `fact` is tinted in, so a row of facts can
+    // be read as several kinds of thing rather than one. Same construction as
+    // `pressed`, and for the same reason: the other three variants have no rule
+    // for `.salt-chip--tone-*`, so a toned tag paints nothing even if the CSS
+    // class were somehow applied. `neutral` emits nothing at all — it is
+    // `.salt-chip--fact`'s own treatment, not an override of it.
+    tone: {
+      neutral: '',
+      primary: 'salt-chip--tone-primary',
+      secondary: 'salt-chip--tone-secondary',
+      tertiary: 'salt-chip--tone-tertiary',
+    },
   },
-  defaultVariants: { variant: 'filter', pressed: false },
+  defaultVariants: { variant: 'filter', pressed: false, tone: 'neutral' },
 });
 
 export type ChipVariants = VariantProps<typeof chipVariants>;

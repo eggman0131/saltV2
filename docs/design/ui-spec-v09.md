@@ -1,4 +1,4 @@
-# Salt 2.0 — UI Primitives Specification (v0.9.2)
+# Salt 2.0 — UI Primitives Specification (v0.9.3)
 
 **Status:** Planning  
 **Scope:** `@salt/ui-components` — `Chip`, `ChipGroup`, `CollapsibleSection`, `DisclosureTrigger`, `DisclosureChevron`, the value-chip surface  
@@ -37,6 +37,17 @@ v0.9.2 adds the one thing §8.23.2 explicitly left unbuilt:
   before writing it"; the recipe detail redraw (issue #878) needs both, and this
   is that amendment. It also narrows `Chip`'s attribute passthrough from
   `HTMLButtonAttributes` to `HTMLAttributes<HTMLElement>` — see §8.23.3.
+
+v0.9.3 reverses one decision v0.9.2 made, with its reasons:
+
+- **`tone` on `fact`** — a second axis giving a fact chip one of four tinted
+  grounds (§8.23.9). v0.9.2's "Why one axis and not a `tone`" argued a tone axis
+  would admit combinations that mean nothing. It is answered rather than
+  overruled: `tone` is `fact`-only in the discriminated union, exactly as `icon`
+  is and `pressed` is `filter`-only, so the meaningless combinations are
+  **unrepresentable** rather than unsupported. Driven by the recipe detail page
+  (issue #878), where six facts of four different kinds render as one grey pill.
+  It changes nothing for a caller that does not pass it.
 
 These are **promotions, not inventions**. Every behaviour below already ships in
 `apps/web-pwa`; v0.9 gives it a name so the next list gets it right by default
@@ -88,6 +99,7 @@ Consumers today: the recipe list's section, authorship and tag filters.
 | `variant` | `'filter' \| 'expander' \| 'fact' \| 'tag'` | `'filter'` | See §8.23.5 and §8.23.8 |
 | `pressed` | `boolean` | `false` | Emitted as `aria-pressed`. **`filter` only** — see §8.23.6 |
 | `icon` | `Snippet` | — | A leading glyph. **`fact` only** — see §8.23.8 |
+| `tone` | `'neutral' \| 'primary' \| 'secondary' \| 'tertiary'` | `'neutral'` | The tinted ground. **`fact` only** — see §8.23.9 |
 | `children` | `Snippet` | — | The chip's label. Text only |
 | `class` | `string` | — | Merged last via `cn()` (v0.2 §2.3) |
 
@@ -224,12 +236,18 @@ Both of these are static; only one of them is a fact.
 
 ### Why one axis and not a `tone`
 
-A second axis (`variant` × `tone`, say) would immediately admit combinations
-that mean nothing — a tinted expander, an outlined filter — and every one of
-them would need a rule saying it is not supported. Four values on one axis, each
-naming a role, is the smaller thing. `pressed` stays a separate axis because it
-genuinely is orthogonal within `filter`; `fact` and `tag` simply have no rule for
-`.salt-chip--on`, exactly as `expander` has none.
+**Superseded by §8.23.9 in v0.9.3.** Kept here because the objection is still
+the right one to have raised, and §8.23.9 answers it rather than ignoring it.
+
+The objection was: a second axis (`variant` × `tone`, say) would immediately
+admit combinations that mean nothing — a tinted expander, an outlined filter —
+and every one of them would need a rule saying it is not supported. Four values
+on one axis, each naming a role, is the smaller thing. `pressed` stays a
+separate axis because it genuinely is orthogonal within `filter`; `fact` and
+`tag` simply have no rule for `.salt-chip--on`, exactly as `expander` has none.
+
+What it missed is that the union already had the shape that makes a second axis
+safe — see §8.23.9.
 
 ### Why the icon is on `fact` only
 
@@ -262,6 +280,69 @@ row.
   fits, and if none does, amend this spec.
 - **No dismiss affordance on `tag`.** Still true, and for the reason §8.23.7
   gives: two hit targets is a different control.
+
+---
+
+## 8.23.9 `tone` — the fact's tint (v0.9.3)
+
+A `fact` chip takes an optional **`tone`**: `'neutral' | 'primary' | 'secondary'
+| 'tertiary'`, defaulting to `neutral`. `neutral` is the plain `bg-muted` fact
+of §8.23.8, unchanged; the other three paint one of the palette's three tints
+and the foreground that goes with it.
+
+| `tone` | Ground | Foreground |
+| --- | --- | --- |
+| `neutral` (default) | `bg-muted` | `text-muted-foreground` |
+| `primary` | `bg-primary-tint` | `text-primary-tint-foreground` |
+| `secondary` | `bg-secondary-tint` | `text-secondary-tint-foreground` |
+| `tertiary` | `bg-tertiary-tint` | `text-tertiary-tint-foreground` |
+
+The six `--color-*-tint*` tokens are declared in `salt.css` and come verbatim
+from `design.md`'s `*-fixed` / `on-*-fixed-variant` keys. Every pair clears 7:1,
+so a tone is never the reason a chip becomes hard to read.
+
+### Why this is safe where v0.9.2 said it was not
+
+`ChipProps` is a discriminated union, and `tone` is typed `never` on `filter`,
+`expander` and `tag`. A tinted expander is not "unsupported" — it does not
+compile. That is the same mechanism that already keeps `icon` off a tag and
+`pressed` off a fact, so `tone` adds a rule to enforce, not a new kind of rule.
+`.salt-chip--tone-*` likewise has no CSS for any variant but `fact`, exactly as
+`.salt-chip--on` has none for `fact` and `tag`.
+
+### The names are palette roles, never meanings
+
+`primary` / `secondary` / `tertiary`, not `duration` / `yield` / `heat`.
+
+`Chip` does not know what a recipe is. A tone named for what one consumer is
+using it to say would be the wrong word for the second consumer, and the
+primitive would then be holding a vocabulary it cannot maintain. **What a hue
+means is the page's to decide and the page's to document**, next to where it
+builds the row — as the recipe detail page does for its facts.
+
+### What a tone is for, and what it is not
+
+A tone exists to say **these facts are not all the same kind of thing**. A row
+where every chip is tinted differently for decoration is a misuse: the reader
+learns that colour carries nothing and stops looking.
+
+It is never the only carrier of meaning (v0.2 §7). Every fact chip already
+states its own kind in words — "Serves 4", "Prep 40 min" — and the tone only
+lets the row be *scanned* rather than read. A consumer that would need the
+colour explained in a legend wants a different component.
+
+### What `tone` does not do
+
+- **No hover, focus or pressed treatment.** It is still a `<span>`; §8.23.8's
+  "what they do not do" is unchanged.
+- **No border colour.** `border-transparent` stays, for the height reason
+  §8.23.8 gives.
+- **No `tone` on `tag`.** A tag is one kind of thing — a word someone typed —
+  so it has one look. Tinting tags would say some words are more measured than
+  others, which is the distinction `fact` already exists to draw.
+- **No fifth tone.** `destructive` is not offered: a fact is something measured,
+  and a red one would read as an error the reader is meant to act on. Something
+  that genuinely is wrong is not a fact chip.
 
 ---
 

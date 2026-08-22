@@ -29,6 +29,7 @@
     TabsTrigger,
     TextArea,
     TextField,
+    type ChipTone,
     type IconName,
     type ImageCropperHandle,
   } from '@salt/ui-components';
@@ -84,6 +85,7 @@
     isCookable,
     isPlannable,
     looksScalable,
+    OTHER_WAITS_LABEL,
     resolveComponents,
     takesIngredients,
     type CookShapeSegment,
@@ -403,11 +405,37 @@ Finish with a short note on what you changed and why, so I can read the gist her
   // ground with an icon, tags as quiet outlines with none, on their own rows.
   //
   // The durations run through `formatMinutes`, which is the end of `Cook 360 min`.
+  //
+  // ── What the tint means here ────────────────────────────────────────────────
+  // `Chip`'s `tone` is named for a palette role and says nothing about what the
+  // hue means (ui-spec-v09 §8.23.9) — deciding that is this page's job, and this
+  // is where it is written down. The question a fact row is scanned for is never
+  // "what are the numbers", it is "what KIND of numbers are these", so the tint
+  // splits the row by what each fact measures:
+  //
+  //   sage      what comes OUT of it — Makes, Serves. The palette's "fresh /
+  //             organic" accent (design.md), and already this page's colour for
+  //             a part of something: the ingredient group headings below, and a
+  //             matched pictogram tile.
+  //   teal      time that is YOU — Prep. The same hue the cook-shape ribbon
+  //             directly beneath paints its hands-on segment in, which is the
+  //             one relationship on this card worth being able to see twice.
+  //   terracotta  time on HEAT — Cook. design.md's warm, high-energy accent.
+  //   neutral   everything that is not one of those three kinds: Total (the sum
+  //             of the other two, not a fourth kind) and who added the recipe (a
+  //             fact about the document rather than about the dish).
+  //
+  // Three tints and a default, not six: a row where every chip is a different
+  // colour teaches the reader that the colour carries nothing. And nothing is
+  // carried by colour ALONE — every chip says its own kind in words, so the tint
+  // only lets the row be scanned instead of read (ui-spec-v02 §7).
   interface RecipeFact {
     readonly key: string;
     /** Absent only for the one fact with no honest glyph — see `attribution` below. */
     readonly icon?: IconName;
     readonly label: string;
+    /** Which kind of fact this is. See the tint note above. */
+    readonly tone?: ChipTone;
     /** Only the two facts an e2e spec names carry one. */
     readonly testId?: string;
   }
@@ -422,6 +450,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
         key: 'produces',
         icon: 'Soup',
         label: `Makes: ${producesCanonName}`,
+        tone: 'secondary',
         testId: 'recipe-produces-chip',
       });
     }
@@ -430,13 +459,28 @@ Finish with a short note on what you changed and why, so I can read the gist her
     if (isCookable(kindOf(recipe))) {
       const m = recipe.metadata;
       if (m.servings !== null) {
-        out.push({ key: 'servings', icon: 'Users', label: `Serves ${m.servings}` });
+        out.push({
+          key: 'servings',
+          icon: 'Users',
+          label: `Serves ${m.servings}`,
+          tone: 'secondary',
+        });
       }
       if (m.prepTimeMinutes !== null) {
-        out.push({ key: 'prep', icon: 'Timer', label: `Prep ${formatMinutes(m.prepTimeMinutes)}` });
+        out.push({
+          key: 'prep',
+          icon: 'Timer',
+          label: `Prep ${formatMinutes(m.prepTimeMinutes)}`,
+          tone: 'primary',
+        });
       }
       if (m.cookTimeMinutes !== null) {
-        out.push({ key: 'cook', icon: 'Flame', label: `Cook ${formatMinutes(m.cookTimeMinutes)}` });
+        out.push({
+          key: 'cook',
+          icon: 'Flame',
+          label: `Cook ${formatMinutes(m.cookTimeMinutes)}`,
+          tone: 'tertiary',
+        });
       }
       if (m.totalTimeMinutes !== null) {
         out.push({
@@ -469,16 +513,32 @@ Finish with a short note on what you changed and why, so I can read the gist her
     return (segment.minutes / shape.totalMinutes) * 100;
   }
 
-  // Four tints, no new tokens: the work is the page's primary, the waits are the
-  // sage secondary stepped down in opacity. Stepping one hue rather than reaching
-  // for four unrelated colours keeps the ribbon reading as one bar with a bright
-  // "you" segment in it, which is the comparison it exists to make.
-  const WAIT_TINTS = ['bg-secondary', 'bg-secondary/70', 'bg-secondary/50', 'bg-secondary/35'];
+  // The waits are PEERS, and the first cut of this ribbon painted them as one
+  // hue stepped down in opacity (`bg-secondary` at 100/70/50/35). Two problems,
+  // and they compound: 70% and 50% of one green on one card are not two colours
+  // anybody can tell apart, and stepping opacity says the segments are RANKED
+  // when the only thing separating them is which one the author wrote first.
+  //
+  // So: distinct hues, and the tint family exists to be exactly this — a set of
+  // pale grounds whose whole job is keying peers to each other (ui-spec-v09
+  // §8.23.9). Sage, terracotta, teal, in that order, matching nothing about the
+  // wait itself because there is nothing to match; the legend beneath carries
+  // every word, and the colour only ties a stripe to its line.
+  const WAIT_TINTS = ['bg-secondary-tint', 'bg-tertiary-tint', 'bg-primary-tint'];
 
   function segmentTint(segment: CookShapeSegment, index: number): string {
+    // The one segment that is NOT a peer, and the one the ribbon exists to show:
+    // solid primary against three pale waits, so "how much of this is me" is
+    // answered before the legend is read.
     if (segment.kind === 'hands-on') return 'bg-primary';
+    // The unnamed remainder is not a fourth wait — it is the leftovers of the
+    // ones that did not make the cut (`OTHER_WAITS_LABEL`, domain), so it takes
+    // the neutral hairline grey rather than spending a hue on "everything else".
+    // Keyed off the label the domain assigns rather than off position, because
+    // what makes it the remainder is what it IS, not where it landed.
+    if (segment.label === OTHER_WAITS_LABEL) return 'bg-border';
     // `index` counts from the start of the whole ribbon; hands-on, when present,
-    // is always first, so subtracting it keeps the wait tints starting at full.
+    // is always first, so subtracting it keeps the wait tints starting at sage.
     const waitIndex = shape && shape.handsOnMinutes > 0 ? index - 1 : index;
     return WAIT_TINTS[Math.min(waitIndex, WAIT_TINTS.length - 1)]!;
   }
@@ -1875,7 +1935,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
               {#if facts.length > 0}
                 <div class="flex flex-wrap items-center gap-2">
                   {#each facts as fact (fact.key)}
-                    <Chip variant="fact" data-testid={fact.testId}>
+                    <Chip variant="fact" tone={fact.tone ?? 'neutral'} data-testid={fact.testId}>
                       {#snippet icon()}
                         {#if fact.icon}<Icon name={fact.icon} />{/if}
                       {/snippet}
@@ -1884,10 +1944,16 @@ Finish with a short note on what you changed and why, so I can read the gist her
                   {/each}
                 </div>
               {/if}
+              <!-- No leading `#`. The hash was doing the job the outline now does —
+                   saying "this is a tag, not a fact" — back when a tag and a fact
+                   were the same grey pill and the punctuation was the only thing
+                   telling them apart. With the two kinds visibly different it is
+                   just a character in front of every word, and "summer" reads
+                   better than "#summer" on a page about dinner. -->
               {#if recipe.metadata.tags.length > 0}
                 <div class="flex flex-wrap items-center gap-2">
                   {#each recipe.metadata.tags as tag (tag)}
-                    <Chip variant="tag">#{tag}</Chip>
+                    <Chip variant="tag">{tag}</Chip>
                   {/each}
                 </div>
               {/if}
@@ -2170,11 +2236,18 @@ Finish with a short note on what you changed and why, so I can read the gist her
                           {group.name}
                         </p>
                       {/if}
-                      <ul class="flex flex-col gap-1.5">
+                      <!-- `gap-0` and a hairline instead: the rows used to float
+                           1.5 units apart with nothing between them, which reads
+                           as nineteen separate things rather than one list. A rule
+                           per row does the separating, so the gap can close and the
+                           column becomes something you run your eye down. Drawn on
+                           the bottom edge and dropped on the last child, so a group
+                           never ends on a line pointing at the group below it. -->
+                      <ul class="flex flex-col">
                         {#each group.items as ingredient (ingredient.id)}
                           {@const marker = rowMarker(ingredient)}
-                          <!-- Three columns (issue #878): the pictogram, the amount,
-                           the thing. The tile is the shopping list's since #571 and
+                          <!-- Three columns (issue #878): the pictogram, the thing,
+                           the amount. The tile is the shopping list's since #571 and
                            cook mode's since #532 — one ingredient wears the same
                            picture wherever the app names it — and it is rendered for
                            every row, matched or not, because a bare tile is what
@@ -2192,7 +2265,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
                            of the line, because what it describes is the match, and
                            the match is what the tile is a picture of. -->
                           <li
-                            class="flex items-center gap-2 text-sm"
+                            class="flex items-center gap-2 border-b border-border py-1.5 text-sm last:border-b-0"
                             data-testid="recipe-view-ingredient"
                           >
                             <div class="relative shrink-0">
@@ -2233,26 +2306,39 @@ Finish with a short note on what you changed and why, so I can read the gist her
                             </div>
                             <button
                               type="button"
-                              class="flex min-w-0 flex-1 items-baseline gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              class="flex min-w-0 flex-1 items-center gap-3 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                               title="See what this ingredient matched"
                               onclick={() => inspectMatch(ingredient)}
                               data-testid="recipe-view-ingredient-inspect"
                             >
-                              <!-- The amounts get their own column so they can be read
-                                   as one — "how much flour, how much water" is a
-                                   question about the column, not about nineteen
-                                   separate lines. `min-w-14` rather than a fixed
-                                   width: a rare "200–300g" pushes its own row out
-                                   instead of being clipped, and every other row still
-                                   lines up. An UNPARSED line has no separable amount,
-                                   so the cell is empty and the whole raw text sits in
-                                   the name column — which is exactly what keeps the
-                                   names aligned down a part-parsed list. -->
-                              <span class="min-w-14 shrink-0 text-right tabular-nums">
-                                <IngredientText {ingredient} part="quantity" />
-                              </span>
+                              <!-- The thing first, the amount last. Amounts led this
+                                   column until #878 and the order was backwards for
+                                   how the list is actually used: you scan for THE
+                                   INGREDIENT — do I have chorizo — and only then read
+                                   what it says beside it. Names on the left edge means
+                                   nineteen of them start at the same x; amounts pinned
+                                   right means they still line up as a column, which is
+                                   what makes "how much flour, how much water" one
+                                   question rather than nineteen.
+                                   `min-w-0` so a long name wraps inside its cell rather
+                                   than shoving the amount off the row. -->
                               <span class="min-w-0 flex-1">
                                 <IngredientText {ingredient} part="name" />
+                              </span>
+                              <!-- The metric amount, and the measure the source
+                                   actually printed sitting UNDER it: "1 ½ cups" is a
+                                   second way of saying 300g, so it belongs beneath the
+                                   number it restates rather than trailing the end of a
+                                   sentence about lentils, where it read as a third
+                                   fact about the ingredient.
+                                   An UNPARSED line has no separable amount, so both are
+                                   empty and the whole raw text sits in the name cell —
+                                   which is what keeps a part-parsed list from ragging. -->
+                              <span class="shrink-0 text-right tabular-nums leading-tight">
+                                <IngredientText {ingredient} part="quantity" /><IngredientText
+                                  {ingredient}
+                                  part="display"
+                                />
                               </span>
                             </button>
                           </li>

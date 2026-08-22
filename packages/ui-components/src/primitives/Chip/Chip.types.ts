@@ -1,4 +1,4 @@
-// spec: ui-spec-v09.md §8.23, §8.24 v0.9.2
+// spec: ui-spec-v09.md §8.23, §8.24 v0.9.3
 import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 
@@ -20,6 +20,14 @@ import type { HTMLAttributes } from 'svelte/elements';
 type ChipAttributes = Omit<HTMLAttributes<HTMLElement>, 'class'>;
 
 /**
+ * The `fact`-only tint axis (§8.23.9). Named for the palette role, never for
+ * what the role is being used to mean: `Chip` does not know what a recipe is,
+ * and a `tone="duration"` would put the consumer's vocabulary inside the
+ * primitive and be wrong for the next consumer.
+ */
+export type ChipTone = 'neutral' | 'primary' | 'secondary' | 'tertiary';
+
+/**
  * The two pressable chips: `filter` (the toggle) and `expander` (the dashed
  * "+N more" / "Show less"). Both render `<button type="button">`, and
  * `onclick`, `data-testid` and the rest ride `...rest` onto it (§8.23.3).
@@ -33,6 +41,8 @@ export type ChipToggleProps = {
   pressed?: boolean;
   /** Not available here: only `fact` carries an icon (§8.23.7). */
   icon?: never;
+  /** Not available here: only `fact` is tinted (§8.23.9). */
+  tone?: never;
   /** The chip's label, and its accessible name. Text only. */
   children?: Snippet;
   class?: string;
@@ -49,6 +59,13 @@ export type ChipFactProps = {
   pressed?: never;
   /** A leading glyph. Sized by the style, not the caller (§8.23.8). */
   icon?: Snippet;
+  /**
+   * Which hue the tint is, so a row of facts reads as several kinds of thing
+   * (§8.23.9). Palette roles, not meanings — what each hue names is the page's
+   * to decide and to document. Defaults to `neutral`, which is the plain
+   * `bg-muted` fact this variant has always been.
+   */
+  tone?: ChipTone;
   children?: Snippet;
   class?: string;
 } & Omit<ChipAttributes, 'onclick'> & { onclick?: never };
@@ -62,14 +79,16 @@ export type ChipTagProps = {
   pressed?: never;
   /** Not available here: an icon beside an arbitrary word would be a guess. */
   icon?: never;
+  /** Not available here: a tag is one kind of thing, so it has one look. */
+  tone?: never;
   children?: Snippet;
   class?: string;
 } & Omit<ChipAttributes, 'onclick'> & { onclick?: never };
 
 /**
  * A discriminated union on `variant`, so a `fact` chip cannot be handed
- * `pressed`, a `tag` cannot be handed an `icon`, and neither can be handed an
- * `onclick`.
+ * `pressed`, a `tag` cannot be handed an `icon` or a `tone`, and neither can be
+ * handed an `onclick`.
  *
  * Every member declares every Salt-owned prop — the disallowed ones as
  * `never` — which is what keeps the union destructurable inside `Chip.svelte`
