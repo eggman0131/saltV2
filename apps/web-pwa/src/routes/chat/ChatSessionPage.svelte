@@ -45,6 +45,44 @@
       : null,
   );
 
+  // ─── Openers for an empty conversation (issue #878) ─────────────────────────
+  // The same door the recipe column offers, worded for where you are standing:
+  // this page is not on a dish, so unless the conversation is a variation of one
+  // the openers are general ("What shall I cook tonight?"). It follows the
+  // `basedOnRecipe` branch `emptyText` already follows rather than inventing a
+  // second notion of what this conversation is about.
+  const starters = $derived(
+    basedOnRecipe
+      ? [
+          {
+            label: 'Make it lighter',
+            text: `How would you make ${basedOnRecipe.title} lighter without losing what makes it good?`,
+          },
+          {
+            label: 'Make it vegetarian',
+            text: `How would you make ${basedOnRecipe.title} vegetarian?`,
+          },
+          {
+            label: 'Turn up the flavour',
+            text: `What would you change about ${basedOnRecipe.title} to make it taste like more of itself?`,
+          },
+        ]
+      : [
+          {
+            label: 'What shall I cook tonight?',
+            text: 'What shall I cook tonight? Ask me anything you need to know first.',
+          },
+          {
+            label: 'Use up what I have',
+            text: 'I want to use up what is already in the fridge. Ask me what I have and suggest something.',
+          },
+          {
+            label: 'Something in 20 minutes',
+            text: 'Suggest something I can cook from scratch in about twenty minutes.',
+          },
+        ],
+  );
+
   // Authoring a new recipe out of this conversation. What gets written lives in
   // `chatRecipeAuthor` and is shared with the recipe page's chat column and
   // drawer (issue #798); this page holds only its busy state, its toasts, where
@@ -293,6 +331,7 @@
       emptyText={basedOnRecipe
         ? `What would you change about ${basedOnRecipe.title}?`
         : 'Ask me anything about cooking.'}
+      {starters}
     />
   </DetailPage>
 

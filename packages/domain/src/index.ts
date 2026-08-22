@@ -281,6 +281,9 @@ export {
   isPlannable,
   isAuthorable,
   takesComponents,
+  cookShape,
+  UNNAMED_WAIT_LABEL,
+  OTHER_WAITS_LABEL,
   hasComponents,
   resolveComponents,
   componentDisplayLines,
@@ -298,6 +301,7 @@ export {
   PLACEHOLDER_CONDITION_TAGS,
 } from './recipe/index.js';
 export type { IngredientMatchIssue } from './recipe/index.js';
+export type { CookShape, CookShapeSegment, CookShapeSegmentKind } from './recipe/index.js';
 export type { PlaceholderMood, PlaceholderCondition } from './recipe/index.js';
 export type { DiffPart } from './recipe/index.js';
 export type { ParsedImportUrl, IpClass } from './recipe/index.js';

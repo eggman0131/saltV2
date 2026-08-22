@@ -1,9 +1,10 @@
-// spec: ui-spec-v09.md §8.23, §8.24 v0.9
+// spec: ui-spec-v09.md §8.23, §8.24 v0.9.2
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'vitest-axe';
 import ChipFixture from './fixtures/ChipFixture.svelte';
+import StaticChipFixture from './fixtures/StaticChipFixture.svelte';
 
 afterEach(() => cleanup());
 
@@ -54,6 +55,45 @@ describe('Chip', () => {
       render(ChipFixture, { props: { variant: 'expander', pressed: true } });
       expect(chip().className).toContain('salt-chip--expander');
       expect(chip().className).not.toContain('salt-chip--filter');
+    });
+  });
+
+  // §8.23.8: a chip that cannot be pressed must not be a button — not reachable
+  // by Tab, not announced as a control, and never carrying aria-pressed.
+  describe('the static chips', () => {
+    it.each(['fact', 'tag'] as const)('renders %s as a span, not a button', (variant) => {
+      render(StaticChipFixture, { props: { variant } });
+      expect(chip().tagName).toBe('SPAN');
+      expect(screen.queryByRole('button')).toBeNull();
+      expect(chip()).not.toHaveAttribute('aria-pressed');
+    });
+
+    it('never takes the pressed fill', () => {
+      render(StaticChipFixture, { props: { variant: 'fact' } });
+      expect(chip().className).toContain('salt-chip--fact');
+      expect(chip().className).not.toContain('salt-chip--on');
+    });
+
+    it('renders the leading icon a fact is given, and nothing when it is not', () => {
+      render(StaticChipFixture, { props: { variant: 'fact', withIcon: true } });
+      expect(chip().querySelector('svg')).not.toBeNull();
+      cleanup();
+      render(StaticChipFixture, { props: { variant: 'fact', withIcon: false } });
+      expect(chip().querySelector('svg')).toBeNull();
+    });
+
+    it('gives a tag the quiet outline and no icon', () => {
+      render(StaticChipFixture, { props: { variant: 'tag', label: 'weeknight' } });
+      expect(chip().className).toContain('salt-chip--tag');
+      expect(chip().querySelector('svg')).toBeNull();
+      expect(chip()).toHaveTextContent('weeknight');
+    });
+
+    it('has no axe violations', async () => {
+      const { container } = render(StaticChipFixture, {
+        props: { variant: 'fact', withIcon: true },
+      });
+      expect(await axe(container)).toHaveNoViolations();
     });
   });
 

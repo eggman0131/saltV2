@@ -1,13 +1,13 @@
 <script lang="ts">
   import Chip from '../../src/primitives/Chip/Chip.svelte';
   import ChipGroup from '../../src/primitives/Chip/ChipGroup.svelte';
-  import type { ChipProps, ChipGroupProps } from '../../src/primitives/Chip/Chip.types';
+  import type { ChipGroupProps, ChipToggleProps } from '../../src/primitives/Chip/Chip.types';
 
   let {
     label = 'weeknight',
     ariaLabel,
     ...chip
-  }: { label?: string; ariaLabel?: ChipGroupProps['ariaLabel'] } & ChipProps = $props();
+  }: { label?: string; ariaLabel?: ChipGroupProps['ariaLabel'] } & ChipToggleProps = $props();
 </script>
 
 <ChipGroup {ariaLabel} data-testid="group">

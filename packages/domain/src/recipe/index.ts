@@ -44,6 +44,11 @@ export {
   isAuthorable,
   takesComponents,
 } from './queries/capabilities.js';
+// The shape of a cook — elapsed vs hands-on, and where the waiting goes (issue
+// #878). Read by the recipe page's ribbon; returns `null` when the steps carry
+// no timers, which is the "no ribbon at all" case.
+export { cookShape, UNNAMED_WAIT_LABEL, OTHER_WAITS_LABEL } from './queries/cookShape.js';
+export type { CookShape, CookShapeSegment, CookShapeSegmentKind } from './queries/cookShape.js';
 // Meals — a recipe built from several other recipes (issue #752). One level deep,
 // nothing aggregated; see the module header.
 export {

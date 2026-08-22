@@ -165,7 +165,7 @@ into review. Keep the globs accurate.
   than inventing tokens.
   Design docs track `packages/ui-components/**` and `apps/web-pwa/src/**` styling.
 
-- **ui-spec-v02 → v09 are cumulative, never superseding.** v0.2 holds the
+- **ui-spec-v02 → v10 are cumulative, never superseding.** v0.2 holds the
   foundations (boundaries, package surface, event naming, styling rules) and stays
   in force for every later version; each later spec only adds components —
   [v03](docs/design/ui-spec-v03.md) RadioGroup/Select/Slider/Sheet/Toast,
@@ -176,7 +176,11 @@ into review. Keep the globs accurate.
   [v08](docs/design/ui-spec-v08.md) `Dial`,
   [v09](docs/design/ui-spec-v09.md) `Chip` + `ChipGroup` (the filter-pill row —
   one size, and the group owns layout and grouping semantics but never
-  selection). Touching
+  selection; §8.23.8 adds the two static chips, `fact` and `tag`, which render a
+  span because they are read rather than pressed),
+  [v10](docs/design/ui-spec-v10.md) `Tabs` (a bits-ui wrapper — roving focus and
+  automatic activation, a count on each tab, and the selected value always owned
+  by the page so it can move the selection itself). Touching
   `@salt/ui-components` means reading [v02](docs/design/ui-spec-v02.md) **plus**
   the spec that owns your component. The specs are binding: if something is
   missing or ambiguous, stop and extend the spec rather than inventing.

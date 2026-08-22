@@ -41,10 +41,18 @@
     onClose: () => void;
     /** Hand this conversation to the full chat page. */
     onOpenFull: () => void;
-    /** Host actions that belong with the composer — "Review changes". */
-    aboveComposer?: Snippet | undefined;
+    /**
+     * The recipe's own chat actions — "Review changes" and "Save as new recipe" —
+     * rendered in the header beside expand and close. They belong to the host because
+     * they act on the DISH, not on the conversation; they sit up here because a
+     * permanent bar under the transcript costs a phone-height drawer more than the
+     * actions are worth (issue #878).
+     */
+    headerActions?: Snippet | undefined;
+    /** Openers for an empty conversation — forwarded straight to `ChatThread`. */
+    starters?: { label: string; text: string }[] | undefined;
   }
-  let { session, thread, onClose, onOpenFull, aboveComposer }: Props = $props();
+  let { session, thread, onClose, onOpenFull, headerActions, starters }: Props = $props();
 
   /** Slop before a touch counts as a drag rather than a tap on the handle. */
   const DRAG_START_PX = 6;
@@ -222,6 +230,7 @@
     <div class="flex items-center justify-between gap-2 px-3 pb-2">
       <p class="min-w-0 truncate text-sm font-medium">{session.title}</p>
       <div class="flex shrink-0 items-center gap-1">
+        {@render headerActions?.()}
         <Button
           size="sm"
           variant="ghost"
@@ -249,6 +258,6 @@
     {thread}
     layout="panel"
     emptyText="Ask me anything about this recipe."
-    {aboveComposer}
+    {starters}
   />
 </section>
