@@ -25,6 +25,8 @@
     equipmentIconVersionFor,
     drawEquipmentIcon,
     hideEquipmentIcon,
+    reviseEquipmentBrief,
+    restartEquipmentBrief,
     renameEquipmentItem,
     removeEquipmentItem,
     addEquipmentAccessory,
@@ -35,6 +37,7 @@
     editEquipmentRule,
   } from '../../lib/equipmentService.js';
   import { addToast } from '../../lib/toastStore.js';
+  import type { DomainError, ReadResult } from '@salt/shared-types';
 
   interface Props {
     params: { id: string };
@@ -92,6 +95,60 @@
     } else {
       addToast('Failed to draw the icon.', 'destructive');
     }
+  }
+
+  // ─── Revise / Start over (issue #885) ─────────────────────────────────────
+  // Both call the describeEquipmentSubject callable, which PERSISTS NOTHING: the
+  // rewritten sentence lands back in `briefDraft`, still editable, and only
+  // becomes the item's description if Draw is pressed afterwards. Draw remains
+  // the one button that spends money and the one writer of `subjectBrief`.
+  //
+  // `briefDraftKey` is deliberately NOT touched here. It tracks the STORED
+  // description's identity so a rename re-seeds the box; a revision is an edit of
+  // the draft, exactly like typing in it, so leaving the key alone is what stops
+  // the $effect from overwriting the new words with the stored ones.
+  let briefSteer = $state('');
+  let briefBusy = $state(false);
+  let briefError = $state<string | null>(null);
+
+  // Shared by both actions: run it, swap the words in on success, and on failure
+  // leave the box EXACTLY as it was. A revision that failed must not cost the
+  // description already in there — that text may be several edits deep, and a
+  // transient callable error is no reason to throw it away.
+  async function runBriefAction(
+    action: () => Promise<ReadResult<string, DomainError>>,
+  ): Promise<void> {
+    if (briefBusy) return;
+    briefBusy = true;
+    briefError = null;
+    const result = await action();
+    briefBusy = false;
+    if (result.kind !== 'ok') {
+      briefError = "Couldn't rewrite the description — your text is unchanged. Try again.";
+      return;
+    }
+    briefDraft = result.value;
+  }
+
+  async function handleReviseBrief(): Promise<void> {
+    const steer = briefSteer.trim();
+    const brief = briefDraft.trim();
+    // Revision needs both halves. With no description to revise the honest action
+    // is Start over, which the other button already is.
+    if (!item || !steer || !brief) return;
+    const name = item.name;
+    await runBriefAction(() => reviseEquipmentBrief(name, brief, steer));
+    // The correction is spent: it has been folded into the description, and
+    // leaving it in the box invites a second Revise applying "it's matte black"
+    // to an already matte-black sentence.
+    if (!briefError) briefSteer = '';
+  }
+
+  async function handleStartOverBrief(): Promise<void> {
+    if (!item) return;
+    const name = item.name;
+    briefSteer = '';
+    await runBriefAction(() => restartEquipmentBrief(name));
   }
 
   async function handleHideIcon(): Promise<void> {
@@ -345,14 +402,56 @@
             rows={4}
             autoresize
             maxLength={2000}
-            disabled={iconBusy}
+            disabled={iconBusy || briefBusy}
             data-testid="equipment-icon-brief"
           />
-          <div class="flex flex-wrap gap-2">
+          <!--
+            Ask for a correction (issue #885). Say what is wrong, press Revise, and
+            the text model rewrites the sentence above with the correction folded
+            THROUGH it — body colour, finish and controls moving together — and
+            hands it back here, still editable, before any drawing is paid for.
+            maxlength mirrors the 200-char cap on
+            DescribeEquipmentSubjectInputSchema.hint. Enter submits: this is a
+            one-line correction you will press repeatedly, and reaching for the
+            mouse each time is friction the iteration loop can't afford.
+          -->
+          <div class="flex items-end gap-2">
+            <TextField
+              class="flex-1"
+              label="Ask for a correction"
+              placeholder="e.g. it's matte black, and the tank is on the right"
+              maxlength={200}
+              value={briefSteer}
+              onValueChange={(v) => (briefSteer = v)}
+              disabled={iconBusy || briefBusy}
+              onkeydown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void handleReviseBrief();
+                }
+              }}
+              data-testid="equipment-icon-steer"
+            />
+            <Button
+              variant="outline"
+              onclick={handleReviseBrief}
+              loading={briefBusy}
+              disabled={iconBusy || briefBusy || !briefSteer.trim() || !briefDraft.trim()}
+              data-testid="equipment-icon-revise-btn"
+            >
+              Revise
+            </Button>
+          </div>
+          {#if briefError}
+            <p class="text-xs text-destructive" data-testid="equipment-icon-brief-error">
+              {briefError}
+            </p>
+          {/if}
+          <div class="flex flex-wrap items-center gap-2">
             <Button
               onclick={handleDraw}
               loading={iconBusy}
-              disabled={iconBusy || !briefDraft.trim()}
+              disabled={iconBusy || briefBusy || !briefDraft.trim()}
               data-testid="equipment-icon-draw-btn"
             >
               {icon.sourceName ? 'Redraw' : 'Draw it'}
@@ -361,12 +460,27 @@
               <Button
                 variant="outline"
                 onclick={handleHideIcon}
-                disabled={iconBusy}
+                disabled={iconBusy || briefBusy}
                 data-testid="equipment-icon-hide-btn"
               >
                 Hide
               </Button>
             {/if}
+            <!--
+              Start over is ALWAYS available and deliberately quieter than the two
+              buttons beside it: it throws away whatever is in the box — including
+              hand edits — for a fresh description written from the item's name.
+              The escape hatch, not a first resort.
+            -->
+            <button
+              type="button"
+              class="text-xs text-primary hover:underline disabled:opacity-50"
+              onclick={handleStartOverBrief}
+              disabled={iconBusy || briefBusy}
+              data-testid="equipment-icon-start-over-btn"
+            >
+              Start over from the name
+            </button>
           </div>
         {/if}
       </section>

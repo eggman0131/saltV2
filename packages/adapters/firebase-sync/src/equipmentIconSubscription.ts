@@ -8,6 +8,8 @@ import {
   EQUIPMENT_ICONS_COLLECTION,
   type EquipmentIconDoc,
   type DrawEquipmentIconInput,
+  type DescribeEquipmentSubjectInput,
+  type DescribeEquipmentSubjectOutput,
 } from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
 
@@ -92,6 +94,50 @@ export async function callDrawEquipmentIcon(
         kind: 'ValidationError',
         code: ErrorCode.EQUIPMENT_ICON_NOT_DRAWABLE,
       });
+    }
+    return failure({ kind: 'NetworkError', reason: 'transient' });
+  }
+}
+
+/**
+ * Write (or rewrite) an equipment item's description — the words a pictogram is
+ * drawn from (issue #885).
+ *
+ * Two shapes, one callable: pass `currentBrief` + `hint` to REVISE the existing
+ * sentence per a correction, or the name alone to author a fresh one ("Start
+ * over"). It PERSISTS NOTHING — the brief comes back to the caller and only ever
+ * reaches Firestore when the user presses Draw, which is what makes iterating on
+ * the words cheap and the picture the only thing that costs.
+ *
+ * Returns the brief itself: the wrapper object exists only for Genkit's
+ * structured output and no caller wants it.
+ *
+ * Never throws (Rule 10): every failure crosses the boundary as
+ * `Failure<DomainError>`. `invalid-argument` is the callable refusing a payload
+ * the schema would not take (an over-long correction, an item with no name) — an
+ * expected state with a friendly message rather than a defect, so it crosses as a
+ * `ValidationError` and is deliberately not reported.
+ */
+export async function callDescribeEquipmentSubject(
+  input: DescribeEquipmentSubjectInput,
+): Promise<ReadResult<string, DomainError>> {
+  try {
+    const fn = httpsCallable<DescribeEquipmentSubjectInput, DescribeEquipmentSubjectOutput>(
+      getFunctions(undefined, 'europe-west2'),
+      'describeEquipmentSubject',
+    );
+    const res = await fn(input);
+    return success(res.data.brief);
+  } catch (err) {
+    const code = (err as { code?: string }).code ?? '';
+    if (code === 'functions/unauthenticated') {
+      return failure({ kind: 'AuthError', reason: 'unauthenticated' });
+    }
+    if (code === 'functions/permission-denied') {
+      return failure({ kind: 'AuthError', reason: 'forbidden' });
+    }
+    if (code === 'functions/invalid-argument') {
+      return failure({ kind: 'ValidationError', code: ErrorCode.EQUIPMENT_BRIEF_NOT_WRITABLE });
     }
     return failure({ kind: 'NetworkError', reason: 'transient' });
   }
