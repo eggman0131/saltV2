@@ -22,6 +22,8 @@ export {
   subscribeEquipmentManifest,
   saveEquipmentManifest,
 } from './equipmentManifestSubscription.js';
+
+export { subscribeEquipmentIcons, callDrawEquipmentIcon } from './equipmentIconSubscription.js';
 export {
   callMatchOrCreate,
   callCanonicaliseRecipeIngredients,

@@ -28,9 +28,21 @@
 // trigger's, the image time sets the Draw callable's — and guessing them is how
 // the canon path ended up with an outer 20s wrapper racing an inner 60s one.
 //
-// LOCAL ONLY. It writes files and reads Firestore; it writes nothing back to
-// Firestore and uploads nothing to Storage. (Phase 2 extends it with an `--apply`
-// mode for the initial backfill.)
+// DRY/LOCAL BY DEFAULT. It writes files and reads Firestore; it writes nothing
+// back to Firestore and uploads nothing to Storage unless `--apply` is passed
+// (the same posture as scripts/reframe-canon-icons.ts).
+//
+// `--apply` is the ONE-OFF BACKFILL for a kit that already exists. It uploads
+// each pictogram to `equipment-icons/{itemId}.webp` and writes the
+// `equipmentIcons/{itemId}` document — brief, name, thumbnail, sourceName and a
+// fresh cache-bust nonce — exactly as the Draw callable would.
+//
+// It DELIBERATELY BYPASSES THE REVIEW GATE, and that is not a hole in the gate.
+// The gate exists so no image is generated from a description nobody has read;
+// these descriptions were read by hand, side by side with their drawings, when
+// this script was run without `--apply`. Nineteen button presses to seed a kit
+// list that already exists is a chore the gate exists to PREVENT, not to create.
+// Every item added after the backfill goes through the gate normally.
 //
 // ── HOW TO RUN ────────────────────────────────────────────────────────────
 // This .mjs imports TypeScript modules from src/ directly, so it MUST be run
@@ -50,9 +62,13 @@
 //   GOOGLE_CLOUD_PROJECT=s2-stage-ccb22 npx tsx --env-file=.secret.local \
 //     scripts/generate-equipment-icons.mjs kenwood "salad spinner"
 //
-//   # the whole manifest (no id args = every item):
+//   # the whole manifest (no id args = every item), still local-only:
 //   GOOGLE_CLOUD_PROJECT=s2-stage-ccb22 npx tsx --env-file=.secret.local \
 //     scripts/generate-equipment-icons.mjs
+//
+//   # the one-off backfill: upload + write the icon docs as well
+//   GOOGLE_CLOUD_PROJECT=s2-stage-ccb22 npx tsx --env-file=.secret.local \
+//     scripts/generate-equipment-icons.mjs --apply
 //
 // Subset args match an item's id exactly, or a case-insensitive substring of its
 // name — equipment ids are opaque uuids, so nobody is typing one. An arg that
@@ -72,6 +88,7 @@ import { dirname, resolve } from 'node:path';
 
 import { initializeApp, applicationDefault } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { getStorage } from 'firebase-admin/storage';
 
 // Reused, NOT reimplemented: the two flows the app will run, and the two imaging
 // steps the canon pipeline runs after them.
@@ -79,7 +96,9 @@ import { describeEquipmentSubjectFlow } from '../src/flows/describeEquipmentSubj
 import { generateEquipmentIconFlow } from '../src/flows/generateEquipmentIcon.js';
 import { removeFlatBackground } from '../src/imaging/removeFlatBackground.js';
 import { normalizeIconFraming } from '../src/imaging/normalizeIconFraming.js';
+import { buildStorageDownloadUrl } from '../src/imaging/storageDownloadUrl.js';
 import {
+  EQUIPMENT_ICONS_COLLECTION,
   EQUIPMENT_MANIFEST_COLLECTION,
   EQUIPMENT_MANIFEST_DOC_ID,
   EquipmentManifestSchema,
@@ -92,7 +111,14 @@ const pkgRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const OUTPUT_DIR = resolve(pkgRoot, '.equipment-icons.local');
 
 const briefsOnly = process.argv.includes('--briefs-only');
+const apply = process.argv.includes('--apply');
 const selectors = process.argv.slice(2).filter((a) => !a.startsWith('--'));
+
+// The default bucket is derived from FIREBASE_CONFIG inside the CF runtime, which
+// a standalone script has no access to — `getStorage().bucket()` would throw
+// "Bucket name not specified". Every Salt project uses `<project>.firebasestorage.app`;
+// STORAGE_BUCKET overrides it if that ever stops holding. (Same derivation as
+// scripts/reframe-canon-icons.ts.)
 
 const projectId = process.env['GOOGLE_CLOUD_PROJECT'] ?? process.env['GCLOUD_PROJECT'];
 
@@ -202,12 +228,24 @@ async function main() {
     );
   }
 
-  initializeApp({ projectId, credential: applicationDefault() });
+  if (briefsOnly && apply) {
+    throw new Error(
+      'generate-equipment-icons: --briefs-only and --apply are contradictory — ' +
+        'there is no image to upload.',
+    );
+  }
+
+  const storageBucket = process.env['STORAGE_BUCKET'] ?? `${projectId}.firebasestorage.app`;
+  initializeApp({ projectId, credential: applicationDefault(), storageBucket });
 
   const items = selectItems(await loadManifestItems(), selectors);
+  const mode = briefsOnly
+    ? 'BRIEFS ONLY (no images)'
+    : apply
+      ? 'APPLY — uploads + writes equipmentIcons docs'
+      : 'briefs + images, LOCAL ONLY (pass --apply to write)';
   console.log(
-    `generate-equipment-icons: project=${projectId} items=${items.length} ` +
-      `${briefsOnly ? 'BRIEFS ONLY (no images)' : 'briefs + images'} → ${OUTPUT_DIR}`,
+    `generate-equipment-icons: project=${projectId} items=${items.length} ${mode} → ${OUTPUT_DIR}`,
   );
 
   await mkdir(OUTPUT_DIR, { recursive: true });
@@ -247,6 +285,35 @@ async function main() {
       postMs.push(postTook);
 
       await writeFile(resolve(OUTPUT_DIR, `${item.id}.webp`), webp);
+
+      if (apply) {
+        // Upload and stamp exactly what the Draw callable stamps, so a backfilled
+        // item is indistinguishable from a drawn one — `sourceName` equal to
+        // `briefSourceName` is what makes `equipmentIconAwaitingApproval` false,
+        // i.e. "this has been drawn from the description it currently carries".
+        // `immutable` + the nonce, matching the callable (and canon).
+        const bucket = getStorage().bucket();
+        const path = `equipment-icons/${item.id}.webp`;
+        await bucket.file(path).save(webp, {
+          contentType: 'image/webp',
+          metadata: { cacheControl: 'public, max-age=31536000, immutable' },
+        });
+        await getFirestore()
+          .collection(EQUIPMENT_ICONS_COLLECTION)
+          .doc(item.id)
+          .set(
+            {
+              subjectBrief: brief,
+              briefSourceName: item.name,
+              thumbnail: buildStorageDownloadUrl(bucket.name, path),
+              sourceName: item.name,
+              iconRequestedAt: Date.now(),
+              updatedAt: new Date().toISOString(),
+            },
+            { merge: true },
+          );
+      }
+
       rows.push({ id: item.id, name: item.name, brief, image: true });
       console.log(
         `  ✓ ${item.name} — describe ${describeTook}ms, image ${imageTook}ms, post ${postTook}ms, ${webp.length} bytes`,

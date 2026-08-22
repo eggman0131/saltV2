@@ -3,8 +3,11 @@ import {
   saveEquipmentManifest,
   callIdentifyEquipment,
   callPopulateEquipmentEntry,
+  subscribeEquipmentIcons,
+  callDrawEquipmentIcon,
 } from '@salt/firebase-sync';
 import type { IdentifyEquipmentResult, PopulateEquipmentEntryResult } from '@salt/firebase-sync';
+import type { EquipmentIconDoc } from '@salt/domain/schemas';
 import {
   addEquipment,
   removeEquipment,
@@ -30,6 +33,19 @@ export const equipment: Readable<EquipmentManifest | null> = _equipment;
 
 const _isLoadingEquipment = writable(true);
 export const isLoadingEquipment: Readable<boolean> = _isLoadingEquipment;
+
+// ─── Equipment pictograms (issue #877) ───────────────────────────────────────
+// A SEPARATE store over a SEPARATE collection, keyed by item id, because the
+// icons live in `equipmentIcons/{itemId}` rather than on the manifest — see
+// `@salt/domain/schemas/equipmentIcon.ts` for why (the manifest is one document
+// whole-doc `setDoc`'d on every edit, so a thumbnail on the array element would
+// let an unrelated accessory tick wipe every icon in the kit).
+//
+// It is deliberately NOT merged into the manifest store on read: keeping them
+// apart is what means an icon arriving never re-renders the manifest and an
+// accessory edit never touches an icon.
+const _equipmentIcons = writable<Map<string, EquipmentIconDoc>>(new Map());
+export const equipmentIcons: Readable<Map<string, EquipmentIconDoc>> = _equipmentIcons;
 
 // ─── ID generator ─────────────────────────────────────────────────────────────
 
@@ -75,7 +91,22 @@ export function initEquipmentSync(): () => void {
     },
   );
 
-  return unsub;
+  // The icon collection rides along on the same lifecycle. It has no loading
+  // flag of its own on purpose: an item with no icon yet renders the pale
+  // placeholder tile, which is exactly what it should render while the
+  // subscription is still in flight, so there is no third state to spell.
+  const unsubIcons = subscribeEquipmentIcons(
+    (icons) => _equipmentIcons.set(icons),
+    // A failed icon read costs the pictograms and nothing else — the kit list
+    // still works — so it is swallowed here rather than surfaced. The adapter
+    // has already categorised it.
+    (_err) => {},
+  );
+
+  return () => {
+    unsub();
+    unsubIcons();
+  };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -292,11 +323,76 @@ export async function editEquipmentRule(
 
 export { callIdentifyEquipment, callPopulateEquipmentEntry };
 
+// ─── Equipment pictogram commands (issue #877) ────────────────────────────────
+// Both go through ONE authenticated callable because `equipmentIcons` is
+// client-write-denied. There is no local optimistic update: the icon and its
+// version nonce come back through the collection subscription, which is also
+// what makes the cache-bust honest — the `?v=` the browser sees is the one the
+// server actually stamped.
+
+/**
+ * Draw (or redraw) this item's pictogram from `brief`.
+ *
+ * `brief` is what the user is looking at — the authored description, or their
+ * correction of it. Passing it explicitly rather than letting the server read
+ * the stored one is the whole review gate: the edit in the textarea is what gets
+ * drawn, and it is persisted only if the draw succeeds.
+ */
+export async function drawEquipmentIcon(
+  itemId: string,
+  brief: string,
+): Promise<ReadResult<void, DomainError>> {
+  return callDrawEquipmentIcon({ action: 'draw', itemId, brief });
+}
+
+/**
+ * Hide this item's pictogram — the row falls back to the pale placeholder tile.
+ *
+ * There is no un-hide command: the brief survives a hide, so pressing Draw again
+ * IS the un-hide. Canon needs a separate one only because its un-hide has to
+ * clear the field back to null and let a trigger notice.
+ */
+export async function hideEquipmentIcon(itemId: string): Promise<ReadResult<void, DomainError>> {
+  return callDrawEquipmentIcon({ action: 'hide', itemId });
+}
+
+/** This item's icon document, or null while none has been authored yet. */
+export function equipmentIconFor(
+  icons: Map<string, EquipmentIconDoc>,
+  itemId: string,
+): EquipmentIconDoc | null {
+  return icons.get(itemId) ?? null;
+}
+
+/**
+ * Tri-state thumbnail for a row, in `CanonIcon`'s own contract: `null` (→ the
+ * pale placeholder tile), a URL, or the `"hidden"` sentinel.
+ */
+export function equipmentThumbnailFor(
+  icons: Map<string, EquipmentIconDoc>,
+  itemId: string,
+): string | null {
+  return icons.get(itemId)?.thumbnail ?? null;
+}
+
+/**
+ * Cache-bust nonce for `CanonIcon`'s `version` prop. Load-bearing on redraw: the
+ * Storage object path is reused and its bytes are written `immutable`, so
+ * without this the browser serves the old picture (ui-spec-v04 §14.4).
+ */
+export function equipmentIconVersionFor(
+  icons: Map<string, EquipmentIconDoc>,
+  itemId: string,
+): string | number | undefined {
+  return icons.get(itemId)?.iconRequestedAt;
+}
+
 // ─── Test helpers ─────────────────────────────────────────────────────────────
 
 export function __resetEquipmentServiceForTest(): void {
   _equipment.set(null);
   _isLoadingEquipment.set(true);
+  _equipmentIcons.set(new Map());
 }
 
 // ─── Snapshot (used by e2e bridge) ────────────────────────────────────────────

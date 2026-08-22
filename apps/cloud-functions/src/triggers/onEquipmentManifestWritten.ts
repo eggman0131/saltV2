@@ -1,0 +1,217 @@
+import { getFirestore } from 'firebase-admin/firestore';
+import { onDocumentWritten } from 'firebase-functions/v2/firestore';
+import { defineSecret } from 'firebase-functions/params';
+import { logger } from 'firebase-functions';
+import {
+  DevSettingsSchema,
+  EquipmentManifestSchema,
+  EQUIPMENT_ICONS_COLLECTION,
+  EQUIPMENT_MANIFEST_COLLECTION,
+  EQUIPMENT_MANIFEST_DOC_ID,
+  type EquipmentItemDoc,
+} from '@salt/domain/schemas';
+import { flushServerObservability } from '@salt/observability/server';
+import { describeEquipmentSubjectFlow } from '../flows/describeEquipmentSubject.js';
+import { aiFakeEnabled } from '../ai/fakeModel.js';
+import { reportServerError } from '../observability/reportServerError.js';
+
+// Equipment pictogram BRIEFS (issue #877).
+//
+// THIS TRIGGER NEVER GENERATES AN IMAGE. It authors appliance descriptions and
+// nothing else; the picture is drawn only when someone presses Draw, by the
+// `drawEquipmentIcon` callable. That split is the feature, not an optimisation:
+// an image call is slow and costs real money, and a picture you dislike gives you
+// no handle on WHY — you re-roll and hope. A brief is a sentence you can read in
+// two seconds and correct in ten, and correcting it fixes the cause rather than
+// resampling the symptom.
+//
+// Two consequences follow, and both are why this file is short:
+//
+//   • The expensive path is off the automatic side entirely, so the
+//     per-invocation generation cap the canon trigger would have needed is a
+//     non-problem. Nineteen 'fast'-tier text calls are quick and cheap (measured
+//     ~2.8 s median, ~55 s total for a cold full-manifest catch-up) where
+//     nineteen image calls were neither.
+//   • No `sharp`, no Storage, no image decode — so this needs NONE of the canon
+//     trigger's 1 GiB / concurrency-1 posture. That posture exists because
+//     parallel libvips decodes OOM-kill the instance and lose every in-flight
+//     icon; it belongs on the Draw callable, which is the thing that runs sharp.
+//
+// ─── Level-triggered, deliberately ──────────────────────────────────────────
+// The canon trigger is EDGE-triggered (`iconNeedsGeneration`) because it writes
+// back to the very document it watches, so it must not re-enter on its own write.
+// This one writes only to `equipmentIcons/{itemId}` and NEVER to the manifest, so
+// there is no self-refire to defend against and the guard can be the honest
+// question: does this item's brief match this item's name?
+//
+// That also hands rewrite-on-rename over for free. Correcting "Sage oven" to
+// "Sage the Smart Oven Pizzaiolo SPZ820" is exactly the moment the description
+// should improve, and `briefSourceName !== item.name` is already true.
+//
+// Being level-triggered means two manifest writes in quick succession can both
+// author the same brief. That is duplicate work, not a bug: the write is
+// idempotent (same two fields, last one wins) and it costs one cheap text call.
+// An edge guard would buy nothing and cost the nonce gymnastics this design
+// exists to avoid.
+
+// Defined here rather than imported from index.ts to avoid a circular import;
+// the Firebase CLI aggregates same-named defineSecret calls across files at
+// deploy time. This trigger reaches Gemini for the brief.
+const geminiApiKey = defineSecret('GEMINI_API_KEY');
+// Optional, as elsewhere: when unset, reporting no-ops and the logger still emits.
+const posthogApiKey = defineSecret('POSTHOG_API_KEY');
+
+/**
+ * Delete icon documents whose item is no longer in the manifest.
+ *
+ * This is not tidiness. `sweepOrphanedStorage` decides a Storage object is
+ * orphaned by checking whether its owning Firestore doc still exists — so a left
+ * -behind `equipmentIcons/{id}` would make the sweep look at
+ * `equipment-icons/{id}.webp`, correctly conclude "not orphaned", and never
+ * reclaim it. Reconciling here is what lets the sweep do its job.
+ *
+ * Runs on EVERY manifest write, including when generation is disabled: it makes
+ * no AI call and costs one id-only collection scan.
+ */
+async function reconcileRemovedItems(liveIds: ReadonlySet<string>): Promise<void> {
+  const db = getFirestore();
+  const snap = await db.collection(EQUIPMENT_ICONS_COLLECTION).select().get();
+  const stale = snap.docs.filter((d) => !liveIds.has(d.id));
+  if (stale.length === 0) return;
+
+  await Promise.all(
+    stale.map((d) =>
+      d.ref.delete().catch((err: unknown) => {
+        // One failed delete must not cost the others, and must not fail the
+        // trigger — the next manifest write retries it.
+        logger.error('onEquipmentManifestWritten: orphan icon delete failed', { id: d.id, err });
+        reportServerError(err, 'StorageError');
+      }),
+    ),
+  );
+  logger.info('onEquipmentManifestWritten: reconciled orphan icon docs', {
+    deleted: stale.length,
+  });
+}
+
+/**
+ * Author this item's brief if it has none, or if its name has moved on.
+ *
+ * `{ merge: true }` is load-bearing on the rename path: it leaves `thumbnail`,
+ * `sourceName` and `iconRequestedAt` exactly as they were, so the existing icon
+ * keeps showing until a new one is approved. You never lose a picture you liked
+ * because the words changed. `thumbnail: null` is written ONLY on create, for the
+ * same reason — writing it unconditionally would wipe the picture on every
+ * rename, which is the precise failure this whole collection exists to prevent.
+ */
+async function maybeAuthorBrief(item: EquipmentItemDoc): Promise<void> {
+  const name = item.name.trim();
+  if (!name) return;
+
+  const db = getFirestore();
+  const ref = db.collection(EQUIPMENT_ICONS_COLLECTION).doc(item.id);
+  const existing = await ref.get();
+  if (existing.exists && existing.get('briefSourceName') === name) return;
+
+  try {
+    // No outer withAiTimeout. The flow sets its own budget (55 s, no retry), and
+    // wrapping it again is exactly the nested-budget disagreement the canon path
+    // carries, where a 20 s outer race can pre-empt a 60 s inner one.
+    const { brief } = await describeEquipmentSubjectFlow({ name });
+    await ref.set(
+      {
+        subjectBrief: brief,
+        briefSourceName: name,
+        updatedAt: new Date().toISOString(),
+        // Only on create — see the note above.
+        ...(existing.exists ? {} : { thumbnail: null }),
+      },
+      { merge: true },
+    );
+  } catch (err) {
+    // Log and return: a trigger has no caller to surface a Failure to, and the
+    // item simply keeps its old brief (or none) until the next manifest write.
+    logger.error('onEquipmentManifestWritten: brief authoring failed', { id: item.id, err });
+    reportServerError(err);
+  }
+}
+
+/**
+ * Per-environment kill switch (issue #238), reused rather than duplicated:
+ * `canonIconGenerationEnabled` covers this pipeline too — same house style, same
+ * cost profile — and a second switch is a second thing to remember to flip
+ * alongside the first (the decision already taken in #871).
+ *
+ * FAILS OPEN, matching `onCanonItemWritten`: a missing doc, an unexpected shape
+ * or a read error all default to ENABLED, so an environment that never configured
+ * the switch keeps working and a transient glitch never silently halts the app.
+ */
+async function isIconGenerationEnabled(): Promise<boolean> {
+  try {
+    const snap = await getFirestore().collection('devSettings').doc('singleton').get();
+    if (!snap.exists) return true;
+    const parsed = DevSettingsSchema.safeParse(snap.data());
+    if (!parsed.success) {
+      // A shape mismatch is an EXPECTED validation outcome, suppressed per the
+      // error-reporting policy. The fail-open default and the warn are the contract.
+      logger.warn('onEquipmentManifestWritten: invalid devSettings doc, defaulting to enabled');
+      return true;
+    }
+    return parsed.data.canonIconGenerationEnabled;
+  } catch (err) {
+    logger.warn('onEquipmentManifestWritten: devSettings read failed, defaulting to enabled', {
+      err,
+    });
+    reportServerError(err, 'StorageError');
+    return true;
+  }
+}
+
+export const onEquipmentManifestWritten = onDocumentWritten(
+  {
+    document: `${EQUIPMENT_MANIFEST_COLLECTION}/${EQUIPMENT_MANIFEST_DOC_ID}`,
+    region: 'europe-west2',
+    secrets: [geminiApiKey, posthogApiKey],
+    // One 'fast'-tier text call per stale item, measured at ~2.8 s median. A cold
+    // 19-item catch-up is ~55 s of AI time, so 300 s leaves comfortable headroom
+    // without the canon trigger's memory/concurrency posture — nothing here runs
+    // sharp.
+    timeoutSeconds: 300,
+  },
+  async (event) => {
+    const after = event.data?.after;
+    // The manifest deleted outright: nothing to reconcile against, and wiping
+    // every icon on what is almost certainly a mistake is not this trigger's call.
+    if (!after?.exists) return;
+
+    const parsed = EquipmentManifestSchema.safeParse(after.data());
+    if (!parsed.success) {
+      logger.error('onEquipmentManifestWritten: invalid manifest shape, skipping', {
+        error: parsed.error.message,
+      });
+      return;
+    }
+    const items = parsed.data.items;
+
+    try {
+      await reconcileRemovedItems(new Set(items.map((i) => i.id)));
+
+      // E2E (FUNCTIONS_AI_FAKE): no brief authoring. The real text model is not
+      // emulator-safe here and no e2e spec asserts a generated brief.
+      // Unreachable in production — the flag is never set there.
+      if (aiFakeEnabled()) return;
+      if (!(await isIconGenerationEnabled())) return;
+
+      // Sequential, not parallel: nineteen concurrent Gemini calls from one
+      // invocation is a rate-limit shape for no gain, and the whole point of the
+      // gate is that this path is no longer time-critical.
+      for (const item of items) {
+        await maybeAuthorBrief(item);
+      }
+    } finally {
+      // The branch catches above report best-effort to posthog-node, which
+      // batches; flush before the function freezes so a report is not stranded.
+      await flushServerObservability();
+    }
+  },
+);
