@@ -29,8 +29,13 @@
     {@render children?.()}
   </button>
 {:else}
-  <span class={cn(chipVariants({ variant, pressed: false }), className)} {...rest}>
-    {@render icon?.()}
-    {@render children?.()}
-  </span>
+  <!-- The two renders sit hard against each other: whitespace BETWEEN two tags is
+       interior and survives Svelte's trim, so a newline here would put a phantom
+       leading space into every static chip's `textContent`. Flexbox never paints
+       it, but a consumer asserting on the text does see it — the recipe page's
+       attribution chip is asserted exactly. The 4px gap comes from
+       `.salt-chip--fact`'s `gap-1`, never from a space in the markup. -->
+  <span class={cn(chipVariants({ variant, pressed: false }), className)} {...rest}
+    >{@render icon?.()}{@render children?.()}</span
+  >
 {/if}

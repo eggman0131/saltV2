@@ -6,6 +6,7 @@
     CardDescription,
     CardHeader,
     CardTitle,
+    Chip,
     DetailPage,
     Dialog,
     DialogContent,
@@ -21,10 +22,16 @@
     PopoverContent,
     PopoverTrigger,
     Spinner,
+    Tabs,
+    TabsContent,
+    TabsList,
+    TabsTrigger,
     TextArea,
     TextField,
+    type IconName,
     type ImageCropperHandle,
   } from '@salt/ui-components';
+  import { tick } from 'svelte';
   import { push } from 'svelte-spa-router';
   import { trackUsageEvent } from '@salt/observability';
   import { goBack } from '../../lib/nav.js';
@@ -65,6 +72,7 @@
   import { productForms, isLoadingProductForms } from '../../lib/productFormService.js';
   import {
     appendCacheBuster,
+    cookShape,
     duplicateRecipe,
     flattenIngredients,
     hasComponents,
@@ -76,11 +84,13 @@
     looksScalable,
     resolveComponents,
     takesIngredients,
+    type CookShapeSegment,
     type IngredientGroup,
     type Ingredient,
     type Recipe,
   } from '@salt/domain';
   import { KIND_COPY, kindOf } from './recipeKind.js';
+  import { formatMinutes } from './recipeDuration.js';
   import type { ChatSessionDoc } from '@salt/domain/schemas';
   import type { DomainError, ReadResult } from '@salt/shared-types';
   import {
@@ -177,6 +187,20 @@ Finish with a short note on what you changed and why, so I can read the gist her
   // with the content it belongs to.
   const showIngredients = $derived(recipe !== null && takesIngredients(kindOf(recipe)));
   const showCooking = $derived(recipe !== null && isCookable(kindOf(recipe)));
+  // The two halves of the recipe body are tabs (issue #878). They are always
+  // both-or-neither: in the capability table `takesIngredients` and `isCookable`
+  // agree for all four kinds, so there is no one-tab state to design for — a
+  // recipe and a cocktail get the strip, an outing and a placeholder get no body
+  // at all (and, per `e2e/recipe-alternatives`, neither word anywhere on the page).
+  const showBodyTabs = $derived(showIngredients && showCooking);
+  // Ingredients is the landing tab: it is what you check before you start, and
+  // the method is what you open once you have. `$state`, not `$derived`, because
+  // the page moves it itself when the chat drawer opens (`scrollRecipeToBody`).
+  let bodyTab = $state('ingredients');
+  // The count on the Ingredients tab is the number of LINES you will read, so it
+  // flattens the groups — a recipe in three named groups is still nineteen
+  // ingredients. Method's count is `steps.length` and needs no helper.
+  const ingredientCount = $derived(recipe ? flattenIngredients(recipe).length : 0);
   // "Add to planner" offers this entry for a night, which is the same question
   // the planner's own picker asks — so it answers with the same predicate. A
   // cocktail is not dinner and a placeholder is attached, never chosen; neither
@@ -366,18 +390,94 @@ Finish with a short note on what you changed and why, so I can read the gist her
     guidedIsPrimary ? `/recipes/${params.id}/cook` : `/recipes/${params.id}/cook/guided`,
   );
 
-  function timeParts(): string[] {
+  // ─── Facts, and why they are not tags (issue #878) ──────────────────────────
+  // Six different things used to render as the same grey pill: what the dish
+  // makes, how many it serves, three durations, who added it, and every tag on
+  // it. Two of those are different KINDS of thing. A fact is measured from the
+  // dish — you can check it — and gets a glyph that carries its meaning before
+  // the number is read. A tag is an arbitrary word somebody typed, and any icon
+  // beside it would be a guess (ui-spec-v09 §8.23.8). So: facts on a tinted
+  // ground with an icon, tags as quiet outlines with none, on their own rows.
+  //
+  // The durations run through `formatMinutes`, which is the end of `Cook 360 min`.
+  interface RecipeFact {
+    readonly key: string;
+    /** Absent only for the one fact with no honest glyph — see `attribution` below. */
+    readonly icon?: IconName;
+    readonly label: string;
+    /** Only the two facts an e2e spec names carry one. */
+    readonly testId?: string;
+  }
+
+  const facts = $derived.by((): RecipeFact[] => {
     if (!recipe) return [];
-    // Serves / Prep / Cook / Total are cooking facts. An outing has none of
-    // them, and gating here covers both the chips and the card that wraps them.
-    if (!isCookable(kindOf(recipe))) return [];
-    const m = recipe.metadata;
-    const parts: string[] = [];
-    if (m.servings !== null) parts.push(`Serves ${m.servings}`);
-    if (m.prepTimeMinutes !== null) parts.push(`Prep ${m.prepTimeMinutes} min`);
-    if (m.cookTimeMinutes !== null) parts.push(`Cook ${m.cookTimeMinutes} min`);
-    if (m.totalTimeMinutes !== null) parts.push(`Total ${m.totalTimeMinutes} min`);
-    return parts;
+    const out: RecipeFact[] = [];
+    // What the dish makes leads: it is the fact that says what this document IS
+    // when the document is a component of something else.
+    if (producesCanonName) {
+      out.push({
+        key: 'produces',
+        icon: 'Soup',
+        label: `Makes: ${producesCanonName}`,
+        testId: 'recipe-produces-chip',
+      });
+    }
+    // Serves / Prep / Cook / Total are COOKING facts. An outing has none of
+    // them, and gating here covers the chips and, through `hasMeta`, the card.
+    if (isCookable(kindOf(recipe))) {
+      const m = recipe.metadata;
+      if (m.servings !== null) {
+        out.push({ key: 'servings', icon: 'Users', label: `Serves ${m.servings}` });
+      }
+      if (m.prepTimeMinutes !== null) {
+        out.push({ key: 'prep', icon: 'Timer', label: `Prep ${formatMinutes(m.prepTimeMinutes)}` });
+      }
+      if (m.cookTimeMinutes !== null) {
+        out.push({ key: 'cook', icon: 'Flame', label: `Cook ${formatMinutes(m.cookTimeMinutes)}` });
+      }
+      if (m.totalTimeMinutes !== null) {
+        out.push({
+          key: 'total',
+          icon: 'Clock',
+          label: `Total ${formatMinutes(m.totalTimeMinutes)}`,
+        });
+      }
+    }
+    // Provenance is a fact about the document rather than about the dish, and it
+    // is the one fact with no honest glyph — `Users` is already Serves, and a
+    // pencil would say "edited" for a chip that usually says "added". It sits in
+    // the fact row without an icon rather than being promoted to a row of its
+    // own for one pill. Its text is asserted verbatim by
+    // `e2e/recipe-author-filter.spec.ts`, so nothing may be interpolated into it.
+    if (attribution) {
+      out.push({ key: 'attribution', label: attribution, testId: 'recipe-attribution-chip' });
+    }
+    return out;
+  });
+
+  // ─── The shape of the cook (issue #878) ─────────────────────────────────────
+  // `null` when no step carries a timer — the ribbon is then absent, not empty.
+  // Every judgement about what counts as a wait and how the waits are named is
+  // in the pure domain query; the page only turns minutes into widths.
+  const shape = $derived(recipe ? cookShape(recipe) : null);
+
+  function segmentPercent(segment: CookShapeSegment): number {
+    if (!shape || shape.totalMinutes <= 0) return 0;
+    return (segment.minutes / shape.totalMinutes) * 100;
+  }
+
+  // Four tints, no new tokens: the work is the page's primary, the waits are the
+  // sage secondary stepped down in opacity. Stepping one hue rather than reaching
+  // for four unrelated colours keeps the ribbon reading as one bar with a bright
+  // "you" segment in it, which is the comparison it exists to make.
+  const WAIT_TINTS = ['bg-secondary', 'bg-secondary/70', 'bg-secondary/50', 'bg-secondary/35'];
+
+  function segmentTint(segment: CookShapeSegment, index: number): string {
+    if (segment.kind === 'hands-on') return 'bg-primary';
+    // `index` counts from the start of the whole ribbon; hands-on, when present,
+    // is always first, so subtracting it keeps the wait tints starting at full.
+    const waitIndex = shape && shape.handsOnMinutes > 0 ? index - 1 : index;
+    return WAIT_TINTS[Math.min(waitIndex, WAIT_TINTS.length - 1)]!;
   }
 
   // ─── Canon live-id set (for dangling-match derivation) ───────────────────────
@@ -651,7 +751,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
     selectedSessionId = session.id;
     if (!docked) {
       drawerOpen = true;
-      scrollRecipeToBody();
+      void scrollRecipeToBody();
     }
   }
 
@@ -659,9 +759,24 @@ Finish with a short note on what you changed and why, so I can read the gist her
   // — the whole point is reading the answer and the thing it is about in one glance. So
   // the page behind scrolls to its body on open, and only then: at every other moment
   // the recipe's scroll position is the user's.
+  //
+  // Under tabs (issue #878) that is now TWO acts rather than one. The anchor sits above
+  // the tab strip and is never itself hidden, but the ingredients it exists to reveal are
+  // only on screen when their panel is the selected one — an unselected `TabsContent`
+  // stays mounted and `hidden` (ui-spec-v10 §8.28.3), so a `scrollIntoView` that landed on
+  // it would be a silently dead scroll. Selecting first, scrolling second, is what the
+  // spec's bindable `value` is for (§8.28.5).
   let bodyAnchorEl = $state<HTMLElement | undefined>(undefined);
 
-  function scrollRecipeToBody(): void {
+  async function scrollRecipeToBody(): Promise<void> {
+    // Ingredients, not "whichever tab was showing": this scroll exists to put the
+    // ingredients above the chat, and a Method panel left selected would leave the
+    // drawer talking about a dish whose parts are one tap away. `e2e/recipe-chat-drawer`
+    // asserts exactly that ingredient is visible once the drawer is up.
+    if (showIngredients) bodyTab = 'ingredients';
+    // The panel has to be un-`hidden` before the browser will scroll anything into view,
+    // and that is a DOM update away.
+    await tick();
     bodyAnchorEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
@@ -1668,37 +1783,78 @@ Finish with a short note on what you changed and why, so I can read the gist her
           </div>
         {/if}
 
-        <!-- Description + meta chips -->
-        {#if recipe.description || timeParts().length > 0 || recipe.metadata.tags.length > 0 || sourceUrl || producesCanonName || attribution}
+        <!-- Description, facts, tags, and the shape of the cook -->
+        {#if recipe.description || facts.length > 0 || recipe.metadata.tags.length > 0 || sourceUrl || shape}
           <Card>
             <CardContent class="flex flex-col gap-3 p-4">
               {#if recipe.description}
                 <p class="text-sm text-muted-foreground">{recipe.description}</p>
               {/if}
-              {#if timeParts().length > 0 || recipe.metadata.tags.length > 0 || producesCanonName || attribution}
+              <!-- Two rows, two kinds of thing (issue #878). Facts are measured from the
+                   dish and carry a glyph; tags are words somebody typed and carry none.
+                   Separate rows rather than one wrapped row so the difference survives a
+                   narrow screen, where a single row would interleave them again. -->
+              {#if facts.length > 0}
                 <div class="flex flex-wrap items-center gap-2">
-                  {#if producesCanonName}
-                    <span
-                      class="rounded bg-muted px-2 py-1 text-xs text-muted-foreground"
-                      data-testid="recipe-produces-chip">Makes: {producesCanonName}</span
-                    >
-                  {/if}
-                  {#each timeParts() as part (part)}
-                    <span class="rounded bg-muted px-2 py-1 text-xs text-muted-foreground"
-                      >{part}</span
-                    >
+                  {#each facts as fact (fact.key)}
+                    <Chip variant="fact" data-testid={fact.testId}>
+                      {#snippet icon()}
+                        {#if fact.icon}<Icon name={fact.icon} />{/if}
+                      {/snippet}
+                      {fact.label}
+                    </Chip>
                   {/each}
+                </div>
+              {/if}
+              {#if recipe.metadata.tags.length > 0}
+                <div class="flex flex-wrap items-center gap-2">
                   {#each recipe.metadata.tags as tag (tag)}
-                    <span class="rounded bg-muted px-2 py-1 text-xs text-muted-foreground"
-                      >#{tag}</span
-                    >
+                    <Chip variant="tag">#{tag}</Chip>
                   {/each}
-                  {#if attribution}
-                    <span
-                      class="rounded bg-muted px-2 py-1 text-xs text-muted-foreground"
-                      data-testid="recipe-attribution-chip">{attribution}</span
+                </div>
+              {/if}
+              <!-- The shape of the cook (issue #878): how long, how much of it is you,
+                   and where the waiting goes — answered before a single step is read.
+                   The bar is decoration and says so; the legend beneath it carries the
+                   whole of the information, so nothing here depends on colour. -->
+              {#if shape}
+                <div class="flex flex-col gap-1.5" data-testid="recipe-cook-shape">
+                  <p class="text-xs text-muted-foreground">
+                    <span class="font-medium text-foreground"
+                      >{formatMinutes(shape.totalMinutes)}</span
                     >
-                  {/if}
+                    start to finish ·
+                    <span class="font-medium text-foreground"
+                      >{formatMinutes(shape.handsOnMinutes)}</span
+                    >
+                    hands-on
+                  </p>
+                  <div class="flex h-2 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+                    <!-- Unkeyed on purpose: the array is re-derived whole whenever the
+                         recipe changes, and a key built from the label could collide —
+                         a timer described "Hands-on" would clash with the hands-on
+                         segment, and one described "Other waiting" with the remainder. -->
+                    {#each shape.segments as segment, i}
+                      <!-- `min-w-0.5` so a forty-minute segment of a twenty-two-hour cook
+                           is still a mark on the bar rather than nothing at all. -->
+                      <span
+                        class="{segmentTint(segment, i)} min-w-0.5"
+                        style="width: {segmentPercent(segment)}%"
+                      ></span>
+                    {/each}
+                  </div>
+                  <ul class="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                    {#each shape.segments as segment, i}
+                      <li class="flex items-center gap-1.5">
+                        <span
+                          class="{segmentTint(segment, i)} size-2 shrink-0 rounded-full"
+                          aria-hidden="true"
+                        ></span>
+                        {segment.label}
+                        <span class="tabular-nums">{formatMinutes(segment.minutes)}</span>
+                      </li>
+                    {/each}
+                  </ul>
                 </div>
               {/if}
               {#if sourceUrl}
@@ -1716,11 +1872,6 @@ Finish with a short note on what you changed and why, so I can read the gist her
             </CardContent>
           </Card>
         {/if}
-
-        <!-- Where the recipe scrolls to when the drawer opens (issue #696): the strip
-             left above the chat should hold what the chef is talking about, not the
-             hero photograph. -->
-        <div bind:this={bodyAnchorEl} class="scroll-mt-4"></div>
 
         <!-- Made from (issue #752). A meal's components lead, above its own
              ingredients: what a Sunday roast IS — chicken, potatoes, gravy — is
@@ -1868,149 +2019,175 @@ Finish with a short note on what you changed and why, so I can read the gist her
           </Card>
         {/if}
 
-        <!-- Ingredients. The whole CARD goes when the concept doesn't apply
-             (issue #637), not just its contents: a card headed "Ingredients"
-             saying "No ingredients." is worse than no card, because it reads as
-             an unfinished recipe rather than a takeaway. The inner
-             "No ingredients." guard stays for the half-written-recipe case it
-             was written for. -->
-        {#if showIngredients}
-          <Card>
-            <CardHeader class="px-4 pt-4 pb-0">
-              <div class="flex items-center justify-between">
-                <CardTitle class="text-sm">Ingredients</CardTitle>
+        <!-- Where the recipe scrolls to when the drawer opens (issue #696): the strip
+             left above the chat should hold what the chef is talking about, not the
+             hero photograph. It sits immediately above the tab strip rather than above
+             the whole body, which is what it meant before there were tabs — a "Made
+             from" card between the two would eat the strip the drawer leaves and push
+             the ingredients back off the screen. Deliberately OUTSIDE the tab gate, so
+             a kind with no body still has somewhere to scroll to. -->
+        <div bind:this={bodyAnchorEl} class="scroll-mt-4"></div>
+
+        <!-- The body of the recipe: two alternatives, one at a time (issue #878).
+             They are alternatives on a phone — there is one screen and one thing
+             you are doing — and the count on each tab tells you the size of the
+             side you are not looking at without opening it.
+
+             The whole STRIP goes when the concept doesn't apply (issue #637), not
+             just its contents: a panel headed "Ingredients" saying "No
+             ingredients." is worse than no panel, because it reads as an
+             unfinished recipe rather than a takeaway. The inner "No ingredients."
+             guard stays for the half-written-recipe case it was written for.
+
+             Both panels stay mounted while hidden (ui-spec-v10 §8.28.3), which is
+             what lets the drawer scroll to either and what keeps every
+             `recipe-view-step` countable from a spec. -->
+        {#if showBodyTabs}
+          <Tabs bind:value={bodyTab}>
+            <TabsList ariaLabel="Recipe">
+              <TabsTrigger value="ingredients" count={ingredientCount}>Ingredients</TabsTrigger>
+              <TabsTrigger value="method" count={recipe.steps.length}>Method</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="ingredients">
+              <Card>
+                <!-- The tab names the panel, so the card no longer repeats the word.
+                     The header survives only to carry Canonicalise, which is why it
+                     is gated on the button rather than always rendered. -->
                 {#if hasParsedPending}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onclick={handleCanonicalise}
-                    loading={canonalising}
-                    disabled={canonalising}
-                    data-testid="recipe-canonicalise-button"
-                  >
-                    {#snippet leading()}<Icon name="Link" size={14} />{/snippet}
-                    Canonicalise
-                  </Button>
+                  <CardHeader class="px-4 pt-4 pb-0">
+                    <div class="flex items-center justify-end">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onclick={handleCanonicalise}
+                        loading={canonalising}
+                        disabled={canonalising}
+                        data-testid="recipe-canonicalise-button"
+                      >
+                        {#snippet leading()}<Icon name="Link" size={14} />{/snippet}
+                        Canonicalise
+                      </Button>
+                    </div>
+                  </CardHeader>
                 {/if}
-              </div>
-            </CardHeader>
-            <CardContent class="px-4 pb-4 pt-3">
-              {#if recipe.ingredients.length === 0}
-                <p class="text-sm text-muted-foreground">No ingredients.</p>
-              {/if}
-              {#each recipe.ingredients as group (group.id)}
-                <div class="flex flex-col gap-1 [&+&]:mt-3" data-testid="recipe-view-group">
-                  {#if group.name}
-                    <p
-                      class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                      data-testid="recipe-view-group-name"
-                    >
-                      {group.name}
-                    </p>
+                <CardContent class={hasParsedPending ? 'px-4 pb-4 pt-3' : 'p-4'}>
+                  {#if recipe.ingredients.length === 0}
+                    <p class="text-sm text-muted-foreground">No ingredients.</p>
                   {/if}
-                  <ul class="flex flex-col gap-1">
-                    {#each group.items as ingredient (ingredient.id)}
-                      {@const marker = rowMarker(ingredient)}
-                      <!-- The line is a button (tap → match inspector) and the marker
+                  {#each recipe.ingredients as group (group.id)}
+                    <div class="flex flex-col gap-1 [&+&]:mt-3" data-testid="recipe-view-group">
+                      {#if group.name}
+                        <p
+                          class="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                          data-testid="recipe-view-group-name"
+                        >
+                          {group.name}
+                        </p>
+                      {/if}
+                      <ul class="flex flex-col gap-1">
+                        {#each group.items as ingredient (ingredient.id)}
+                          {@const marker = rowMarker(ingredient)}
+                          <!-- The line is a button (tap → match inspector) and the marker
                            is its SIBLING, not a child: buttons cannot nest, and the
                            two do different jobs — one explains the match, the other
                            acts on what is wrong with it. At most one marker: a line
                            is either unmatched or mismatched, never both. -->
-                      <li
-                        class="flex items-baseline gap-1 text-sm"
-                        data-testid="recipe-view-ingredient"
-                      >
-                        <button
-                          type="button"
-                          class="flex-1 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          title="See what this ingredient matched"
-                          onclick={() => inspectMatch(ingredient)}
-                          data-testid="recipe-view-ingredient-inspect"
-                        >
-                          <IngredientText {ingredient} />
-                        </button>
-                        {#if marker === 'unmatched'}
-                          <button
-                            type="button"
-                            class="shrink-0 text-xs text-destructive hover:underline disabled:opacity-50"
-                            title="Not matched — tap to match"
-                            aria-label="Not matched — tap to match"
-                            onclick={() => handleRematch(group, ingredient)}
-                            disabled={matchingIds[ingredient.id] ?? false}
-                            data-testid="match-state-unmatched"
-                            >{(matchingIds[ingredient.id] ?? false) ? '…' : '✗'}</button
+                          <li
+                            class="flex items-baseline gap-1 text-sm"
+                            data-testid="recipe-view-ingredient"
                           >
-                        {:else if marker === 'mismatched'}
-                          <!-- Terracotta, the palette's warning accent (design.md),
+                            <button
+                              type="button"
+                              class="flex-1 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              title="See what this ingredient matched"
+                              onclick={() => inspectMatch(ingredient)}
+                              data-testid="recipe-view-ingredient-inspect"
+                            >
+                              <IngredientText {ingredient} />
+                            </button>
+                            {#if marker === 'unmatched'}
+                              <button
+                                type="button"
+                                class="shrink-0 text-xs text-destructive hover:underline disabled:opacity-50"
+                                title="Not matched — tap to match"
+                                aria-label="Not matched — tap to match"
+                                onclick={() => handleRematch(group, ingredient)}
+                                disabled={matchingIds[ingredient.id] ?? false}
+                                data-testid="match-state-unmatched"
+                                >{(matchingIds[ingredient.id] ?? false) ? '…' : '✗'}</button
+                              >
+                            {:else if marker === 'mismatched'}
+                              <!-- Terracotta, the palette's warning accent (design.md),
                                and never the ✗'s red: the two say different things and
                                want different actions. This one opens the sheet the
                                row already opens, because the sheet explains BOTH
                                causes and offers the re-match — no new copy. -->
-                          <button
-                            type="button"
-                            class="shrink-0 rounded px-0.5 text-xs text-tertiary-variant hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                            title="Matched, but buys the wrong thing — tap to see why"
-                            aria-label="Matched, but buys the wrong thing — tap to see why"
-                            onclick={() => inspectMatch(ingredient)}
-                            data-testid="match-state-mismatched">⚠</button
-                          >
-                        {/if}
+                              <button
+                                type="button"
+                                class="shrink-0 rounded px-0.5 text-xs text-tertiary-variant hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                title="Matched, but buys the wrong thing — tap to see why"
+                                aria-label="Matched, but buys the wrong thing — tap to see why"
+                                onclick={() => inspectMatch(ingredient)}
+                                data-testid="match-state-mismatched">⚠</button
+                              >
+                            {/if}
+                          </li>
+                        {/each}
+                      </ul>
+                    </div>
+                  {/each}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="method">
+              <Card>
+                <CardContent class="p-4">
+                  {#if recipe.steps.length === 0}
+                    <p class="text-sm text-muted-foreground">No steps.</p>
+                  {/if}
+                  <ol class="flex flex-col gap-4">
+                    {#each recipe.steps as step, idx (step.id)}
+                      <li class="flex gap-3 text-sm" data-testid="recipe-view-step">
+                        <span class="mt-0.5 shrink-0 font-semibold text-muted-foreground"
+                          >{idx + 1}</span
+                        >
+                        <div class="flex flex-1 flex-col gap-1.5">
+                          <span>{step.text}</span>
+                          {#if step.note}
+                            <div
+                              class="flex items-start gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
+                              data-testid="recipe-step-note-content"
+                            >
+                              <Icon
+                                name="TriangleAlert"
+                                size={13}
+                                class="mt-0.5 shrink-0 text-amber-500"
+                              />
+                              <span class="whitespace-pre-wrap">{step.note}</span>
+                            </div>
+                          {/if}
+                          {#if step.timer}
+                            <span class="text-xs text-muted-foreground">
+                              ⏱ {step.timer.durationMinutes} min{step.timer.description
+                                ? ` — ${step.timer.description}`
+                                : ''}
+                            </span>
+                          {/if}
+                        </div>
                       </li>
                     {/each}
-                  </ul>
-                </div>
-              {/each}
-            </CardContent>
-          </Card>
+                  </ol>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
         {/if}
 
-        <!-- Method — same treatment, gated on the same capability as Cook. -->
-        {#if showCooking}
-          <Card>
-            <CardHeader class="px-4 pt-4 pb-0">
-              <CardTitle class="text-sm">Method</CardTitle>
-            </CardHeader>
-            <CardContent class="px-4 pb-4 pt-3">
-              {#if recipe.steps.length === 0}
-                <p class="text-sm text-muted-foreground">No steps.</p>
-              {/if}
-              <ol class="flex flex-col gap-4">
-                {#each recipe.steps as step, idx (step.id)}
-                  <li class="flex gap-3 text-sm" data-testid="recipe-view-step">
-                    <span class="mt-0.5 shrink-0 font-semibold text-muted-foreground"
-                      >{idx + 1}</span
-                    >
-                    <div class="flex flex-1 flex-col gap-1.5">
-                      <span>{step.text}</span>
-                      {#if step.note}
-                        <div
-                          class="flex items-start gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
-                          data-testid="recipe-step-note-content"
-                        >
-                          <Icon
-                            name="TriangleAlert"
-                            size={13}
-                            class="mt-0.5 shrink-0 text-amber-500"
-                          />
-                          <span class="whitespace-pre-wrap">{step.note}</span>
-                        </div>
-                      {/if}
-                      {#if step.timer}
-                        <span class="text-xs text-muted-foreground">
-                          ⏱ {step.timer.durationMinutes} min{step.timer.description
-                            ? ` — ${step.timer.description}`
-                            : ''}
-                        </span>
-                      {/if}
-                    </div>
-                  </li>
-                {/each}
-              </ol>
-            </CardContent>
-          </Card>
-        {/if}
-
-        <!-- Notes -->
+        <!-- Notes. BELOW the tab strip, not inside a panel (issue #878): a note is
+             about the dish, not about its ingredients or its method, so it stays
+             visible whichever tab is showing. -->
         {#if recipe.notes}
           <Card>
             <CardHeader class="px-4 pt-4 pb-0">
