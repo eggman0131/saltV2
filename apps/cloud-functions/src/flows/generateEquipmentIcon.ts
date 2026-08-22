@@ -58,9 +58,7 @@ export const generateEquipmentIconFlow = ai.defineFlow(
     setActiveSpanName(`generateEquipmentIcon: ${name}`);
     const seed = loadCanonIconSeed();
 
-    // No per-flow override id, for the same reason as describeEquipmentSubject:
-    // registering one means editing AI_FLOW_ROLES, which Phase 1 must not touch.
-    const modelId = await resolveModel('image');
+    const modelId = await resolveModel('image', 'generateEquipmentIcon');
     const imageModel = googleAI.model(modelId);
 
     const result = await withAiTimeout(

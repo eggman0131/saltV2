@@ -95,10 +95,7 @@ export const describeEquipmentSubjectFlow = ai.defineFlow(
       trimmedHint ? `Additional guidance: ${trimmedHint}` : null,
     ].filter((p): p is string => p !== null);
 
-    // No per-flow override id is passed: registering one means editing
-    // AI_FLOW_ROLES in @salt/domain/schemas, which Phase 1 must not touch. Role
-    // resolution ('fast') is the documented behaviour when flowId is omitted.
-    const modelId = await resolveModel('fast');
+    const modelId = await resolveModel('fast', 'describeEquipmentSubject');
     const model = googleAI.model(modelId);
 
     const result = await withAiTimeout(
