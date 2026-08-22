@@ -18,6 +18,7 @@
   import { auth } from '../../lib/auth.svelte.js';
   import { canonItems } from '../../lib/canonService.js';
   import { productForms } from '../../lib/productFormService.js';
+  import { toolIcons } from '../../lib/kitchenToolService.js';
   import { addToast } from '../../lib/toastStore.js';
   import { isWakeLockSupported, createWakeLock } from '../../lib/wakeLock.js';
   import { primeChime } from '../../lib/chime.js';
@@ -1231,14 +1232,21 @@
                     {#if card.name !== null || cardProgress.allChecked}
                       {#snippet cardHeading()}
                         {#if card.name !== null}
-                          <!-- The bowl on a tile of its own, in sage: one small
-                             point of colour per header, so a wall of cards still
-                             reads as a list of separate vessels. -->
-                          <span
-                            class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-secondary/10 text-secondary"
-                          >
-                            <Icon name="Soup" size={18} />
-                          </span>
+                          <!-- The vessel itself, drawn (issue #882). The card's
+                             name is resolved against the curated tool vocabulary
+                             at DISPLAY time — nothing about this card stores a
+                             tool id — so a name the list does not know simply
+                             renders as words: CanonIcon draws its own bare tile
+                             and the header is the name alone. That is the point,
+                             not a shortfall. The generic soup glyph that used to
+                             sit here was a picture of the wrong thing beside
+                             "baking tray", which is the defect this replaces. -->
+                          <CanonIcon
+                            thumbnail={$toolIcons.toolIconFor(card.name)}
+                            version={$toolIcons.toolIconVersionFor(card.name)}
+                            name={card.name}
+                            size={32}
+                          />
                         {/if}
                         <span
                           class="min-w-0 flex-1 truncate text-base font-semibold"
@@ -1603,11 +1611,16 @@
                       {#if note?.container}
                         <li class="flex flex-col gap-2" data-testid="guided-step-note-container">
                           <span class="flex items-start gap-3">
-                            <span
-                              class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-secondary/10 text-secondary"
-                            >
-                              <Icon name="Soup" size={17} ariaLabel="Use" />
-                            </span>
+                            <!-- The same drawn vessel as the mise card's header
+                               (issue #882), at the callout's size. Resolved from
+                               the step's own words, so the two surfaces cannot
+                               disagree about which bowl this is. -->
+                            <CanonIcon
+                              thumbnail={$toolIcons.toolIconFor(note.container)}
+                              version={$toolIcons.toolIconVersionFor(note.container)}
+                              name={note.container}
+                              size={28}
+                            />
                             <span class="whitespace-pre-wrap text-base text-muted-foreground"
                               >{note.container}</span
                             >

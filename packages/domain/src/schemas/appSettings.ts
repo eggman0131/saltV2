@@ -74,6 +74,10 @@ export const AI_FLOW_ROLES = {
   // borrowing generateCanonIcon's, so an override aimed at grocery pictograms
   // does not silently move the appliances too.
   generateEquipmentIcon: 'image',
+  // The generic kitchen-tool pictograms (issue #882). Its own id, for the same
+  // reason equipment has one: an override aimed at grocery pictograms must not
+  // silently move the tools too.
+  generateKitchenToolIcon: 'image',
   generateRecipeImage: 'image',
   generateChatTitle: 'lite',
   identifyEquipment: 'fast',

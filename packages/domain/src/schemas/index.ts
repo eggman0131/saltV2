@@ -162,6 +162,12 @@ export type { ShoppingSlot, ShoppingDayDoc } from './shoppingDay.js';
 export { KitchenMemorySchema, KITCHEN_MEMORY_COLLECTION } from './kitchenMemory.js';
 export type { KitchenMemoryDoc } from './kitchenMemory.js';
 
+// Generic kitchen tools (issue #882) — the curated pictogram vocabulary that a
+// recipe's or a plan's WORDS are resolved against at display time. Nothing stores
+// one of these ids, which is what makes the list free to grow.
+export { KitchenToolSchema, KITCHEN_TOOLS_COLLECTION } from './kitchenTool.js';
+export type { KitchenToolDoc } from './kitchenTool.js';
+
 export { DevSettingsSchema } from './devSettings.js';
 export type { DevSettingsDoc } from './devSettings.js';
 

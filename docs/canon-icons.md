@@ -35,25 +35,58 @@ They do not clash because they never share size or context. The recipe feature m
 **not** try to "match" the icon style — different tier, different job. Tier 2 reuses
 the same Storage + `thumbnail`-style conventions but is out of scope here.
 
-**Tier 1 now has three subject families.** Groceries (this document's original
+**Tier 1 now has four subject families.** Groceries (this document's original
 subject), the 17 weather pictograms (#387, an offline one-off — the planner renders
-committed static assets, nothing generates at request time), and **equipment**
-(#877). All three share ONE house style, because all three import the same locked
-`STYLE` constant from `generateCanonIcon.ts` verbatim rather than copying its
-wording. What each family adds is its own subject wording and its own prohibitions,
-never an edit to `STYLE`:
+committed static assets, nothing generates at request time), **equipment** (#877),
+and **kitchen tools** (#882). All four share ONE house style, because all four
+import the same locked `STYLE` constant from `generateCanonIcon.ts` verbatim rather
+than copying its wording. What each family adds is its own subject wording and its
+own prohibitions, never an edit to `STYLE`:
 
-| Family    | Prompt module              | Relationship to `STYLE`                                                                                                                     |
-| --------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| grocery   | `generateCanonIcon.ts`     | owns it; adds the UK-supermarket steer                                                                                                        |
-| weather   | `weatherIconPrompt.ts`     | removes ONE clause (`A single centered subject…`) — a weather pictogram is a composite scene                                                   |
-| equipment | `equipmentIconPrompt.ts`   | keeps it WHOLE (an appliance *is* a single centred subject) and **adds** a no-lettering-on-the-object clause                                   |
+| Family       | Prompt module              | Relationship to `STYLE`                                                                                                                     |
+| ------------ | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| grocery      | `generateCanonIcon.ts`     | owns it; adds the UK-supermarket steer                                                                                                        |
+| weather      | `weatherIconPrompt.ts`     | removes ONE clause (`A single centered subject…`) — a weather pictogram is a composite scene                                                   |
+| equipment    | `equipmentIconPrompt.ts`   | keeps it WHOLE (an appliance *is* a single centred subject) and **adds** a no-lettering-on-the-object clause                                   |
+| kitchen tool | `kitchenToolIconPrompt.ts` | keeps it WHOLE, **omits** the UK-supermarket steer (a whisk is not a supermarket product), and **adds** a no-brand-lettering clause of its own |
 
-That last addition is worth knowing about before writing a fourth family. `STYLE`
+That addition is worth knowing about before writing a fifth family. `STYLE`
 bans lettering *added* around the subject but explicitly permits text that is part
 of the depicted item ("wording printed on a tin or jar") — which is exactly where a
 brand wordmark on an appliance sits. Equipment closes that gap in its own anchors;
 it does not rewrite `STYLE`, because groceries genuinely want the wording on the tin.
+
+### The fourth family: generic kitchen tools (#882)
+
+Tools are the family that works differently, and the difference is worth reading
+before touching it.
+
+**Nothing points at a tool.** There is no `toolId` on a recipe, a step or a guided
+plan, and there never will be. A step says "tip it into a large bowl" and a plan's
+prep card is called "Magmix bowl"; both store WORDS, and `resolveKitchenTool`
+(`packages/domain/src/kitchenTool/`) finds the tool from those words every time the
+row is drawn. Two consequences, both deliberate: adding a tool later is retroactive
+and free — every plan that already says "griddle pan" gains a picture with nothing
+migrated and nothing regenerated — and a name that matches nothing renders as words
+with no picture, which is the correct and complete answer to a miss.
+
+**The vocabulary is CURATED and closed**, about forty tools, seeded by
+`apps/cloud-functions/scripts/seed-kitchen-tools.mjs` (which holds the list). It is
+deliberately NOT routed through the canon matching pipeline: no `findClosestMatch`,
+no embeddings, no AI arbitration, no `needs_approval`. Canon needs all that because
+an unmatched ingredient becomes an orphan document polluting a shared catalog; a
+missed tool costs a missing picture and nothing else.
+
+Everything else is the canon pipeline unchanged — the same seed image, the same
+`STYLE`, the same background removal and `contentMax: 108` framing, the same
+tri-state `thumbnail`, and the same `canonIconGenerationEnabled` kill switch (a
+fourth flag would only be a fourth thing to remember to flip). What differs is what
+has to: the trigger is `onKitchenToolWritten` on `kitchenTools/{id}`, the Storage
+prefix is `kit-icons/`, and the subject is the tool's `label`.
+
+The seeding script writes each document with its `thumbnail` ALREADY set. That is
+load-bearing rather than incidental: the trigger's edge guard skips any document
+whose thumbnail is non-null, so seeding never pays for the same drawing twice.
 
 **Tier 2 is no longer only dishes.** The `recipes` collection also holds "When you
 CBA" outings and cocktails (#637) and placeholders (#652), so the hero pipeline

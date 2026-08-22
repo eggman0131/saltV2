@@ -29,6 +29,13 @@ export {
   callDrawEquipmentIcon,
   callDescribeEquipmentSubject,
 } from './equipmentIconSubscription.js';
+// Kitchen-tool vocabulary (issue #882) — the curated pictogram list every
+// surface resolves free-text container names against.
+export {
+  subscribeKitchenTools,
+  upsertKitchenTool,
+  deleteKitchenTool,
+} from './kitchenToolSubscription.js';
 export {
   callMatchOrCreate,
   callCanonicaliseRecipeIngredients,

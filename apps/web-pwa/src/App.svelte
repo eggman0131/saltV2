@@ -20,6 +20,7 @@
   import { toasts, dismissToast } from './lib/toastStore.js';
   import { canonItems, initCanonSync } from './lib/canonService.js';
   import { productForms, initProductFormSync } from './lib/productFormService.js';
+  import { initKitchenToolSync } from './lib/kitchenToolService.js';
   import { initEquipmentSync } from './lib/equipmentService.js';
   import { initShoppingListSync } from './lib/shoppingListService.svelte.js';
   import { currentMember, initMembersSync } from './lib/membersService.js';
@@ -42,6 +43,10 @@
     if (!auth.user) return;
     const unsubCanon = initCanonSync();
     const unsubProductForms = initProductFormSync();
+    // The kitchen-tool pictogram vocabulary (issue #882). App-wide because it is
+    // a lookup table, not a page's data: any surface that prints a container name
+    // resolves it against this list at display time.
+    const unsubKitchenTools = initKitchenToolSync();
     const unsubEquipment = initEquipmentSync();
     const unsubShopping = initShoppingListSync();
     const unsubMembers = initMembersSync();
@@ -69,6 +74,7 @@
     return () => {
       unsubCanon();
       unsubProductForms();
+      unsubKitchenTools();
       unsubEquipment();
       unsubShopping();
       unsubMembers();
