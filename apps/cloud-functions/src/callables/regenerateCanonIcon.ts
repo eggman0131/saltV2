@@ -1,20 +1,16 @@
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { onCall, HttpsError } from 'firebase-functions/https';
 import { defineSecret } from 'firebase-functions/params';
 import { RegenerateCanonIconInputSchema } from '@salt/domain/schemas';
 import { APP_CHECK_ENFORCEMENT } from '../tracedCallable.js';
-import { reportFlowError } from '../observability/reportServerError.js';
+import { requestIconRegeneration } from './requestIconRegeneration.js';
 
 // Bound so an unexpected Firestore write failure here can be reported
 // (posthog-node). Optional like elsewhere — reporting no-ops when unset.
 const posthogApiKey = defineSecret('POSTHOG_API_KEY');
 
-// Manual regenerate / un-hide escape hatch (issue #148). Setting `thumbnail`
-// (→ null) and stamping the `iconRequestedAt` nonce re-fires onCanonItemWritten,
-// whose icon branch then regenerates. The nonce is load-bearing: when the item
-// has no icon yet `thumbnail` is *already* null, so writing null again is a
-// no-op and Firestore emits no write event — the trigger never fires. A fresh
-// `iconRequestedAt` guarantees the update always mutates the doc.
+// Manual regenerate / un-hide escape hatch (issue #148). The write itself — and
+// the reason the `iconRequestedAt` nonce is load-bearing — lives in
+// `requestIconRegeneration`, shared with the product-form twin (issue #871).
 // Auth-gated: only signed-in callers may trigger (re)generation. "Hide"
 // (setting the "hidden" sentinel) is a client-side write — it needs no server
 // authority, so there is no hide callable.
@@ -43,26 +39,7 @@ export const regenerateCanonIcon = onCall(
       throw new HttpsError('invalid-argument', 'Invalid request payload.');
     }
     const { canonId, hint } = parsed.data;
-    // Clear the icon (→ trigger regenerates) and carry the one-shot steer, if any.
-    // No hint clears any stale hint so the regeneration is plain. iconRequestedAt
-    // forces the write to mutate the doc so the trigger fires even when the item
-    // had no icon (thumbnail already null) — see the header note.
-    try {
-      await getFirestore()
-        .collection('canonItems')
-        .doc(canonId)
-        .update({
-          thumbnail: null,
-          iconHint: hint ? hint : FieldValue.delete(),
-          iconRequestedAt: Date.now(),
-        });
-    } catch (err) {
-      // An unexpected Firestore write failure (StorageError-class) — report it
-      // additively, flush, then re-throw so the callable's error path is
-      // unchanged. The auth/validation guards above throw HttpsError before this.
-      await reportFlowError(err);
-      throw err;
-    }
+    await requestIconRegeneration('canonItems', canonId, hint);
     return { ok: true } as const;
   },
 );

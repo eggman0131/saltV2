@@ -61,6 +61,7 @@ const LIME_JUICE_FORM: ProductForm = {
   schemaVersion: 1,
   matchers: [],
   parentCanonId: 'canon-lime',
+  thumbnail: null,
   label: 'Lime juice',
   yield: { formUnit: 'ml', amountPerParent: 30 },
   updatedAt: '2026-08-19T00:00:00.000Z',

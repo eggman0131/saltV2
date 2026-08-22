@@ -131,6 +131,7 @@ function productForm(overrides: Partial<ProductForm> & { id: string; label: stri
     schemaVersion: 1,
     matchers: ['lemon juice'],
     parentCanonId: 'lemon',
+    thumbnail: null,
     yield: { formUnit: 'ml', amountPerParent: 30 },
     needs_approval: false,
     updatedAt: '2026-07-17T00:00:00.000Z',

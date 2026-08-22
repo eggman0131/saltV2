@@ -12,6 +12,7 @@ export {
   subscribeProductForms,
   upsertProductForm,
   deleteProductForm,
+  callRegenerateProductFormIcon,
 } from './productFormSubscription.js';
 export { subscribeAisles, saveAisles } from './aisleSubscription.js';
 // Purchase counts (issue #726): the tick-off history behind the add field's

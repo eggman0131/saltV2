@@ -2,12 +2,15 @@ import {
   subscribeProductForms,
   upsertProductForm,
   deleteProductForm as deleteProductFormDoc,
+  callRegenerateProductFormIcon,
 } from '@salt/firebase-sync';
 import { createObservabilityErrorReportingAdapter } from '@salt/observability';
 import {
   createProductForm,
   updateProductForm,
   confirmProductForm as confirmProductFormCmd,
+  setProductFormThumbnail,
+  CANON_ICON_HIDDEN,
 } from '@salt/domain';
 import type { ProductForm, CreateProductFormInput, UpdateProductFormInput } from '@salt/domain';
 import { type DomainError, type Result } from '@salt/shared-types';
@@ -89,6 +92,41 @@ export async function confirmProductForm(
 
 export async function deleteProductForm(id: string): Promise<Result<void, DomainError>> {
   return reportIfFailed(getErrorReporter(), await deleteProductFormDoc(id));
+}
+
+// ─── Icon (Tier-1 pictogram) escape hatch (issue #871) ──────────────────────────
+//
+// The exact twin of canonService's trio: regenerate and unhide both clear
+// `thumbnail` through the auth'd callable (which is what re-fires the trigger),
+// while hide is a plain client write of the shared `CANON_ICON_HIDDEN` sentinel —
+// it needs no server authority.
+
+/**
+ * Regenerate a product form's icon: clears `thumbnail` server-side (auth'd
+ * callable), re-firing the trigger so the icon branch regenerates. An optional
+ * `hint` is a one-shot additive steer for the next generation.
+ */
+export async function regenerateProductFormIcon(
+  id: string,
+  hint?: string,
+): Promise<Result<void, DomainError>> {
+  return reportIfFailed(getErrorReporter(), await callRegenerateProductFormIcon(id, hint));
+}
+
+/** Hide a product form's icon: sets `thumbnail` to the "hidden" sentinel so the
+ *  trigger never regenerates it and the UI shows the bare tile. */
+export async function hideProductFormIcon(
+  form: ProductForm,
+): Promise<Result<ProductForm, DomainError>> {
+  const result = setProductFormThumbnail(form, CANON_ICON_HIDDEN);
+  if (result.kind === 'ok') await upsertProductForm(result.value);
+  return result;
+}
+
+/** Un-hide a product form's icon: clears the "hidden" sentinel (→ null) via the
+ *  regenerate callable, which re-triggers generation. */
+export async function unhideProductFormIcon(id: string): Promise<Result<void, DomainError>> {
+  return reportIfFailed(getErrorReporter(), await callRegenerateProductFormIcon(id));
 }
 
 // ─── Test helpers ────────────────────────────────────────────────────────────────

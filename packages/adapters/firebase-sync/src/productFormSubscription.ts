@@ -1,4 +1,5 @@
 import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getApp } from 'firebase/app';
 import type { ProductForm } from '@salt/domain';
 import type { DomainError, ReadResult } from '@salt/shared-types';
@@ -45,5 +46,33 @@ export async function deleteProductForm(id: string): Promise<ReadResult<void, Do
     return success(undefined);
   } catch (err) {
     return failure(classifyFirestoreError(err));
+  }
+}
+
+// Clears a product form's icon server-side (issue #871), re-firing the
+// onProductFormWritten trigger so the icon branch regenerates. Used for both the
+// "regenerate" and "unhide" actions (both set thumbnail → null). An optional
+// `hint` is a one-shot additive steer for the next generation. The exact twin of
+// `callRegenerateCanonIcon`, including its error mapping.
+export async function callRegenerateProductFormIcon(
+  formId: string,
+  hint?: string,
+): Promise<ReadResult<void, DomainError>> {
+  try {
+    const fn = httpsCallable<{ formId: string; hint?: string }, { ok: true }>(
+      getFunctions(undefined, 'europe-west2'),
+      'regenerateProductFormIcon',
+    );
+    await fn(hint && hint.trim() ? { formId, hint: hint.trim() } : { formId });
+    return success(undefined);
+  } catch (err) {
+    const code = (err as { code?: string }).code ?? '';
+    if (code === 'functions/unauthenticated') {
+      return failure({ kind: 'AuthError', reason: 'unauthenticated' });
+    }
+    if (code === 'functions/permission-denied') {
+      return failure({ kind: 'AuthError', reason: 'forbidden' });
+    }
+    return failure({ kind: 'NetworkError', reason: 'transient' });
   }
 }

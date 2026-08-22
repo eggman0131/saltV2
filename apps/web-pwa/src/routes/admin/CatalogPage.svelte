@@ -27,6 +27,7 @@
     isLoadingProductForms,
     confirmProductForm,
     deleteProductForm,
+    regenerateProductFormIcon,
   } from '../../lib/productFormService.js';
   import { titleCase } from '../../lib/titleCase.js';
   import { addToast } from '../../lib/toastStore.js';
@@ -408,20 +409,24 @@
   }
 
   async function handleBulkRegenerateIcon(): Promise<void> {
-    // Canon-only: a product form has no icon of its own, so selected forms are
-    // ignored rather than counted into a number that would be wrong.
-    const ids = selection.ids
+    // No longer canon-only: since issue #871 a product form has its own icon from
+    // the same pipeline, so a mixed selection regenerates every record in it, each
+    // through its own collection's callable. The count can therefore be the whole
+    // selection again rather than a canon-only subset.
+    const records = selection.ids
       .map(parseRecordKey)
-      .filter((p): p is { kind: 'canon' | 'form'; id: string } => p !== null)
-      .filter((p) => p.kind === 'canon')
-      .map((p) => p.id);
-    if (ids.length === 0) return;
+      .filter((p): p is { kind: 'canon' | 'form'; id: string } => p !== null);
+    if (records.length === 0) return;
     selectionMode = false;
-    const results = await Promise.all(ids.map((id) => regenerateCanonIcon(id)));
+    const results = await Promise.all(
+      records.map((r) =>
+        r.kind === 'canon' ? regenerateCanonIcon(r.id) : regenerateProductFormIcon(r.id),
+      ),
+    );
     if (results.some((r) => r.kind !== 'ok')) {
       addToast('Failed to regenerate some icons.', 'destructive');
     } else {
-      addToast(`Regenerating ${ids.length} icon${ids.length === 1 ? '' : 's'}…`, 'success');
+      addToast(`Regenerating ${records.length} icon${records.length === 1 ? '' : 's'}…`, 'success');
     }
   }
 

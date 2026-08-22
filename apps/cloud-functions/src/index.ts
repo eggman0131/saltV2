@@ -616,7 +616,13 @@ export { onBatchStageDispatch } from './triggers/onBatchStageDispatch.js';
 // behind it.
 export { onKitchenTimerWrite } from './triggers/onKitchenTimerWrite.js';
 export { onKitchenTimerDispatch } from './triggers/onKitchenTimerDispatch.js';
+// Product-form pictograms (issue #871) — the canon icon pipeline pointed at a
+// second collection. NOTE for deploys: it writes a NEW Storage prefix
+// (`product-form-icons/`), so storage.rules must be deployed before any icon
+// will load in the browser.
+export { onProductFormWritten } from './triggers/onProductFormWritten.js';
 export { regenerateCanonIcon } from './callables/regenerateCanonIcon.js';
+export { regenerateProductFormIcon } from './callables/regenerateProductFormIcon.js';
 export { regenerateRecipeImage } from './callables/regenerateRecipeImage.js';
 export { setRecipeImageUpload } from './callables/setRecipeImageUpload.js';
 // The observation photo (issue #812, phase 4) — the same auth-gated upload one

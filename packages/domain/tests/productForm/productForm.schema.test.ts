@@ -4,6 +4,8 @@ import {
   updateProductForm,
   resolveProductForm,
   convertYield,
+  setProductFormThumbnail,
+  CANON_ICON_HIDDEN,
 } from '@salt/domain';
 import type { ProductForm, ProductFormIdGenerator } from '@salt/domain';
 import { ProductFormSchema } from '@salt/domain/schemas';
@@ -130,5 +132,84 @@ describe('convertYield', () => {
 
   it('guards a non-positive yield to 0', () => {
     expect(convertYield(90, { formUnit: 'ml', amountPerParent: 0 })).toBe(0);
+  });
+});
+
+// Icon fields (issue #871). The one that matters for production is the FIRST:
+// productForms is live data, and every form written before this shipped has no
+// `thumbnail` key at all. If those failed validation the realtime subscription
+// would silently skip them — every existing form would vanish from the catalog.
+describe('ProductForm icon fields', () => {
+  it('a doc written before icons existed parses, with thumbnail defaulted to null', () => {
+    const result = ProductFormSchema.safeParse(baseDoc);
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.thumbnail).toBeNull();
+  });
+
+  it('keeps a real icon URL', () => {
+    const result = ProductFormSchema.safeParse({
+      ...baseDoc,
+      thumbnail: 'https://example.com/lime-juice.webp',
+    });
+    expect(result.success && result.data.thumbnail).toBe('https://example.com/lime-juice.webp');
+  });
+
+  it('keeps an explicit null and the hidden sentinel — all three states round-trip', () => {
+    expect(ProductFormSchema.safeParse({ ...baseDoc, thumbnail: null }).success).toBe(true);
+    const hidden = ProductFormSchema.safeParse({ ...baseDoc, thumbnail: CANON_ICON_HIDDEN });
+    expect(hidden.success && hidden.data.thumbnail).toBe('hidden');
+  });
+
+  it('carries the optional hint and regenerate nonce when present', () => {
+    const result = ProductFormSchema.safeParse({
+      ...baseDoc,
+      thumbnail: null,
+      iconHint: 'show it as a bottle',
+      iconRequestedAt: 1_700_000_000_000,
+    });
+    expect(result.success && result.data.iconHint).toBe('show it as a bottle');
+    expect(result.success && result.data.iconRequestedAt).toBe(1_700_000_000_000);
+  });
+
+  it('createProductForm states thumbnail as null rather than omitting it', () => {
+    const created = createProductForm(
+      {
+        matchers: ['lime juice'],
+        parentCanonId: 'canon-lime',
+        label: 'Lime juice',
+        formUnit: 'ml',
+        amountPerParent: 30,
+      },
+      counterIds(),
+    );
+    expect(created.kind).toBe('ok');
+    // Firestore rejects `undefined` on a full-document write, so "absent" is not
+    // an option here — the key must be present and null.
+    expect(created.kind === 'ok' && 'thumbnail' in created.value).toBe(true);
+    expect(created.kind === 'ok' && created.value.thumbnail).toBeNull();
+  });
+
+  it('setProductFormThumbnail sets the value and touches nothing else', () => {
+    const form: ProductForm = { ...baseDoc, thumbnail: null };
+    const hidden = setProductFormThumbnail(form, CANON_ICON_HIDDEN);
+    expect(hidden.kind === 'ok' && hidden.value.thumbnail).toBe('hidden');
+    expect(hidden.kind === 'ok' && hidden.value.label).toBe(form.label);
+    expect(hidden.kind === 'ok' && hidden.value.matchers).toEqual(form.matchers);
+    // Pure: the input is not mutated.
+    expect(form.thumbnail).toBeNull();
+  });
+
+  it('updateProductForm preserves an already-generated icon', () => {
+    const form: ProductForm = { ...baseDoc, thumbnail: 'https://example.com/lime-juice.webp' };
+    const updated = updateProductForm(form, {
+      matchers: ['lime juice', 'fresh lime juice'],
+      parentCanonId: 'canon-lime',
+      label: 'Lime juice',
+      formUnit: 'ml',
+      amountPerParent: 30,
+    });
+    expect(updated.kind === 'ok' && updated.value.thumbnail).toBe(
+      'https://example.com/lime-juice.webp',
+    );
   });
 });

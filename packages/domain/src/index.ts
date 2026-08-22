@@ -92,6 +92,7 @@ export {
   createProductForm,
   updateProductForm,
   confirmProductForm,
+  setProductFormThumbnail,
   resolveProductForm,
   findFormWithSameLabel,
   convertYield,

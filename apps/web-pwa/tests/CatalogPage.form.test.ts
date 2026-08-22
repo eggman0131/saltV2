@@ -117,6 +117,7 @@ const LIME_ZEST: ProductForm = {
   id: 'form-1',
   matchers: ['lime zest'],
   parentCanonId: 'canon-lime',
+  thumbnail: null,
   label: 'Lime zest',
   yield: { formUnit: 'g', amountPerParent: 5 },
   needs_approval: false,
