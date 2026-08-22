@@ -139,6 +139,7 @@
     generateGuidedPlan: 'Guided plan (prep list + step notes)',
     generateCanonIcon: 'Canon icon generation',
     generateEquipmentIcon: 'Equipment pictogram generation',
+    generateKitchenToolIcon: 'Kitchen tool pictogram generation',
     generateRecipeImage: 'Recipe hero image generation',
     generateChatTitle: 'Chat title generation',
     identifyEquipment: 'Equipment identification',
