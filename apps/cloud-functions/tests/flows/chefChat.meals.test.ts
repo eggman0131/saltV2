@@ -203,7 +203,7 @@ describe('chefChat — meal components', () => {
     expect(system.indexOf('## Current recipe')).toBeLessThan(
       system.indexOf('### The dishes this meal is made of'),
     );
-    expect(system.indexOf('Recipe: Sunday roast')).toBeLessThan(
+    expect(system.indexOf('Title: Sunday roast')).toBeLessThan(
       system.indexOf('### The dishes this meal is made of'),
     );
   });
@@ -234,7 +234,7 @@ describe('chefChat — meal components', () => {
     await send({ recipeId: 'plain' });
 
     const system = systemPromptFrom();
-    expect(system).toContain('Recipe: Cheese on toast');
+    expect(system).toContain('Title: Cheese on toast');
     expect(system).not.toContain('The dishes this meal is made of');
     expect(mockGetAll).not.toHaveBeenCalled();
   });
@@ -246,7 +246,7 @@ describe('chefChat — meal components', () => {
 
     // Rule 10: the meal degrades to today's prompt rather than failing the turn.
     expect(systemPromptFrom()).not.toContain('The dishes this meal is made of');
-    expect(systemPromptFrom()).toContain('Recipe: Sunday roast');
+    expect(systemPromptFrom()).toContain('Title: Sunday roast');
     expect(mockGenerateStream).toHaveBeenCalledTimes(1);
   });
 });

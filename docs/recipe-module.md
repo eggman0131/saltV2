@@ -406,6 +406,54 @@ decision), and the app-wide cook-timer alert watcher follows only the single
 session a cook page has open — so this page lists a component's timers but does
 not chime for them.
 
+## Refresh — a chef turn, never a librarian mode (issue #890)
+
+⋮ → **Refresh** asks the chef to write an existing dish out again, then runs the
+review gate over the reply on the user's behalf. It is a canned user turn, the
+same shape as **Optimise** beside it, and the reasoning is worth recording
+because the obvious-looking alternative was tried first and shipped wrong.
+
+Refresh began (#784) as a fourth composition inside `authorRecipe`: the stored
+document handed to the librarian under a "re-transcribe, never re-invent"
+prompt. It did exactly what it said, and that turned out to be the wrong job.
+The recipes people wanted to refresh had **lost** things — a serving count, the
+timings, the boundary between one operation and the next — and a transcriber may
+not state a fact the document does not already hold. It also ran on `fast` at
+temperature 0 behind a prompt that blessed "barely changed" as a good outcome, so
+in practice it changed nothing at all.
+
+What the librarian could not do, the chef can, and already had every part of:
+
+- it is `pro`, where judgement about a dish belongs;
+- `equipmentSectionForChef` already says the household MAY choose kit, and says
+  proportionality is a rule. The librarian's own manifest framing says the exact
+  opposite — recognition only, never introduce equipment — because a temperature-0
+  transcriber reaching for the Pizzaiolo unasked is a worse failure than a
+  flattened method. **A re-author needs the chef's framing, which is the clearest
+  single reason this cannot live in the librarian.**
+- the reply lands in the transcript, so the account of what changed is readable
+  beside the diff rather than inferred from it.
+
+The librarian then does the job it is genuinely good at: transcribing a recipe
+somebody has already written out. Everything downstream — `proposeRecipeAmendment`,
+the merge, the post-merge diff, `applyRecipeAmendment` — is the one shared path a
+hand-typed edit takes, which is what #764 collapsed two copies into one to get.
+
+Consequences worth knowing before changing it:
+
+- **A recipe with no chat gets one.** Refresh opens the session it needs, and a
+  recipe that already has a conversation gets its Refresh inside that one.
+- **The prompt is the deliverable**, and it lives beside Optimise's in
+  `RecipeViewPage.svelte` rather than in a flow prompt file — both are shortcuts
+  for a sentence you could type by hand, and neither is a capability the server
+  knows about.
+- **Servings and timings are repairs the chef is asked for explicitly.** That is
+  the half that fixes real recipes in the library and the half no transcriber
+  could ever do.
+- **Ingredients change only by exception, out loud.** Every changed line costs a
+  re-parse and a re-canonicalisation, and quantities are what a household trusts
+  most.
+
 ## Attribution — who added it, who last edited it (issue #845)
 
 `createdBy` / `lastEditedBy` hold a **display name** (`Member.name`, snapshotted
@@ -436,17 +484,17 @@ list's filter — therefore stays on the full name. Lossless, and no migration.
 
 Where each field is stamped — every write path, and nothing else writes them:
 
-| Write path | `createdBy` | `lastEditedBy` |
-| --- | --- | --- |
-| `persistRecipe` (`recipeService.ts`) — editor save, ingredient re-match, review-clear, `attachComponentToMeal`, the e2e seed hook | filled if blank, never re-pointed | re-stamped on every write |
-| `authorRecipeFromChat` (`chatRecipeAuthor.ts`) — writes via `saveRecipeDoc`, not `persistRecipe` | filled (a new dish) | stamped |
-| `applyRecipeAmendment` (`recipeAmend.ts`) — confirming a chat amend or a ⋮ → Refresh IS the human edit | carried from the base recipe, untouched | stamped with the amender |
-| `duplicateRecipe` (domain) | blank — a copy belongs to whoever copied it, not to the original's author | blank |
-| `assembleRecipeDraft` (CF) | carried from `baseRecipe`, `''` on a create | carried from `baseRecipe`, `''` on a create |
-| `persistImportedRecipe` (CF, #616) | **unattributed on purpose** — the client stamps it on the save out of the editor the import drops you into | unattributed |
-| `onRecipeWritten` (CF) | never | **never** — a generated hero is not an edit |
-| The editor's "Added by" picker (`RecipeEditPage.svelte`) — the ONE user-editable path | set to the picked roster name, which then survives the save because `stampRecipeAttribution` only fills a blank | untouched by the picker; re-stamped by the save that follows, like any other edit |
-| `scripts/backfill-recipe-attribution.mjs` — the one-off #845 pass | filled if blank, by field-level `PATCH` | **never** — nobody knows who last edited a pre-#845 recipe, and inventing it is worse than silence |
+| Write path                                                                                                                        | `createdBy`                                                                                                     | `lastEditedBy`                                                                                     |
+| --------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `persistRecipe` (`recipeService.ts`) — editor save, ingredient re-match, review-clear, `attachComponentToMeal`, the e2e seed hook | filled if blank, never re-pointed                                                                               | re-stamped on every write                                                                          |
+| `authorRecipeFromChat` (`chatRecipeAuthor.ts`) — writes via `saveRecipeDoc`, not `persistRecipe`                                  | filled (a new dish)                                                                                             | stamped                                                                                            |
+| `applyRecipeAmendment` (`recipeAmend.ts`) — confirming a chat amend or a ⋮ → Refresh IS the human edit                            | carried from the base recipe, untouched                                                                         | stamped with the amender                                                                           |
+| `duplicateRecipe` (domain)                                                                                                        | blank — a copy belongs to whoever copied it, not to the original's author                                       | blank                                                                                              |
+| `assembleRecipeDraft` (CF)                                                                                                        | carried from `baseRecipe`, `''` on a create                                                                     | carried from `baseRecipe`, `''` on a create                                                        |
+| `persistImportedRecipe` (CF, #616)                                                                                                | **unattributed on purpose** — the client stamps it on the save out of the editor the import drops you into      | unattributed                                                                                       |
+| `onRecipeWritten` (CF)                                                                                                            | never                                                                                                           | **never** — a generated hero is not an edit                                                        |
+| The editor's "Added by" picker (`RecipeEditPage.svelte`) — the ONE user-editable path                                             | set to the picked roster name, which then survives the save because `stampRecipeAttribution` only fills a blank | untouched by the picker; re-stamped by the save that follows, like any other edit                  |
+| `scripts/backfill-recipe-attribution.mjs` — the one-off #845 pass                                                                 | filled if blank, by field-level `PATCH`                                                                         | **never** — nobody knows who last edited a pre-#845 recipe, and inventing it is worse than silence |
 
 All three client stamps go through the one `stampRecipeAttribution` helper in
 `recipeService.ts`, which fills `createdBy` only when it is empty and rewrites

@@ -64,7 +64,6 @@
   import { chatsForRecipe } from './recipeChats.js';
   import {
     proposeRecipeAmendment,
-    proposeRecipeRefresh,
     applyRecipeAmendment,
     type RecipeAmendment,
   } from '../../lib/recipeAmend.js';
@@ -141,6 +140,51 @@ Change the method only. Leave the ingredients, the quantities and the servings e
 Be proportionate. Only move a step where the result or the effort is genuinely better for it, counting set-up and washing-up as part of the cost. Leaving a step exactly as written is a good outcome, and if nothing in this recipe is better off on my kit, say so plainly rather than finding something to change.
 
 Finish with a short note on what you changed and why, so I can read the gist here before I look at the recipe itself.`;
+
+  // ─── "Refresh" canned prompt (issue #890) ────────────────────────────────────
+  // Refresh asks the chef to WRITE THE DISH OUT AGAIN — the same dinner, written
+  // the way it would be written today, for this kitchen. It is the same shape as
+  // Optimise above and for the same reason: a shortcut for a prompt you could
+  // type by hand, landing in the transcript as an ordinary user turn.
+  //
+  // It replaces a fourth librarian mode (#784), which re-transcribed the document
+  // at temperature 0 on the `fast` tier under a prompt that forbade re-invention
+  // and ended by blessing "barely changed" as a good outcome. It did what it said
+  // and that turned out to be the wrong job: recipes that had lost their servings
+  // and their timings, or that carried four operations in one step, came back
+  // unrepaired, because a transcriber may not state a fact the document does not
+  // already hold. The chef may, and does — it is `pro`, and the equipment
+  // manifest, the household's favourites and the kitchen notes all ride with it.
+  //
+  // The wording carries five loads:
+  //   1. WRITE THE WHOLE THING OUT. The librarian transcribes the conversation, so
+  //      a reply that lists changes rather than the recipe leaves it with nothing
+  //      to transcribe.
+  //   2. SERVINGS AND TIMINGS ARE THE REPAIR. This is the half that fixes real
+  //      recipes in the library, and the half no transcriber could ever do.
+  //   3. THE SAME DISH. The photograph, the shopping history and the household's
+  //      trust all belong to the dinner they already know.
+  //   4. INGREDIENTS BY EXCEPTION, OUT LOUD. Every changed line costs a re-parse
+  //      and a re-canonicalisation, and quantities are what people trust most —
+  //      so a change has to earn itself and be said plainly, not slipped in.
+  //   5. THE HOUSEHOLD'S OWN NOTES ARE NOT THE CHEF'S TO REWRITE. Same rule the
+  //      old refresh prompt carried, and the one thing worth keeping from it.
+  // Kit is deliberately unmentioned: `equipmentSectionForChef` already tells the
+  // chef what is owned and — crucially — that proportionality is a rule, so
+  // naming appliances here would only re-open a question the manifest settles.
+  const REFRESH_PROMPT = `Write this recipe out again from scratch — the same dish, written the way you would write it today for my kitchen.
+
+Give me the complete recipe, not a list of changes: every ingredient and every step, in full, as though I had just asked you for it.
+
+State the servings, and state the timings. If the recipe has lost them, work them out and put them back — how many it feeds, how long the prep and the cooking take, and how long each step that involves waiting actually takes. A step with a wait needs its own duration.
+
+One coherent operation per step. Where the method has bundled several things into one step, split them. Where a step is really two stations or a wait in the middle, make it two steps.
+
+Keep it the same dish. The ingredients and the quantities should come through as they are — change one only where a genuinely better method or a piece of my kit actually requires it, and when you do, say which one you changed and why. Don't take the opportunity to improve the food.
+
+Leave my own notes alone — the recipe's notes and any notes on individual steps are mine, not yours. Reproduce them as they are.
+
+Finish with a short note on what you changed and why, so I can read the gist here before I look at the diff.`;
 
   interface Props {
     params: { id: string };
@@ -1015,12 +1059,6 @@ Finish with a short note on what you changed and why, so I can read the gist her
   let sidebarIsApplying = $state(false);
   let sidebarSummaryOpen = $state(false);
   let sidebarPending = $state<RecipeAmendment | null>(null);
-  // Whether the pending proposal came from Refresh rather than from the chat
-  // (issue #784). It decides ONE thing — whether applying also discards the
-  // guided plan — and it is state rather than a second apply handler because
-  // there is only one diff sheet and `onApply` binds to one function. Reset by
-  // both entry points, so a discard-then-chat-amend cannot inherit it.
-  let sidebarPendingIsRefresh = $state(false);
 
   async function handleSidebarReviewChanges(): Promise<void> {
     if (!activeSession || !recipe || sidebarIsProposing) return;
@@ -1033,25 +1071,33 @@ Finish with a short note on what you changed and why, so I can read the gist her
       return;
     }
     sidebarPending = result.value;
-    sidebarPendingIsRefresh = false;
     sidebarSummaryOpen = true;
   }
 
   async function handleSidebarApplyChanges(): Promise<void> {
-    if (!sidebarPending || sidebarIsApplying) return;
-    const wasRefresh = sidebarPendingIsRefresh;
-    const refreshedId = sidebarPending.updated.id;
+    if (!sidebarPending || sidebarIsApplying || !recipe) return;
+    const amendedId = sidebarPending.updated.id;
+    // Whether the guided plan survives this write, decided by the one fact that
+    // actually governs it: are the step ids its `stepNotes` point at still there?
+    //
+    // This used to ask a different question — did the proposal come from Refresh
+    // rather than from the chat (issue #784) — on the belief that a chat
+    // amendment preserved the ids of steps it did not change. It does not:
+    // `assembleRecipeDraft` mints a fresh `crypto.randomUUID()` for EVERY step on
+    // every amend, ingredients being the only things reused by content. So a chat
+    // amendment left the plan pointing at steps that no longer existed, silently,
+    // and the stale-recipe banner cannot help with references that do not
+    // resolve. Asking about the ids covers both doors and cannot drift when a
+    // third one opens (issue #890).
+    const survivingStepIds = new Set(sidebarPending.updated.steps.map((step) => step.id));
+    const planStepsInvalidated = recipe.steps.some((step) => !survivingStepIds.has(step.id));
     sidebarIsApplying = true;
     const saveResult = await applyRecipeAmendment(sidebarPending);
-    // A refresh re-mints every step id, so the guided plan's `stepId`
-    // references no longer resolve (issue #784). Discard it here and the next
-    // visit to guided mode writes a fresh one against the refreshed method;
-    // leave it and guided mode is silently wrong. Only after the save succeeds —
-    // throwing away the plan for a write that never landed would be a plain
-    // loss. Best-effort: a failed delete leaves a stale plan, which is the
-    // situation we were already in, so it must not turn a successful save into
-    // an error the user has to interpret.
-    if (saveResult.kind === 'ok' && wasRefresh) await discardGuidedPlan(refreshedId);
+    // Only after the save succeeds — throwing away the plan for a write that
+    // never landed would be a plain loss. Best-effort: a failed delete leaves a
+    // stale plan, which is the situation we were already in, so it must not turn
+    // a successful save into an error the user has to interpret.
+    if (saveResult.kind === 'ok' && planStepsInvalidated) await discardGuidedPlan(amendedId);
     sidebarIsApplying = false;
     if (saveResult.kind !== 'ok') {
       addToast('Failed to save recipe update.', 'destructive');
@@ -1059,43 +1105,57 @@ Finish with a short note on what you changed and why, so I can read the gist her
     }
     sidebarSummaryOpen = false;
     sidebarPending = null;
-    sidebarPendingIsRefresh = false;
     addToast('Recipe updated!', 'success');
   }
 
   function handleSidebarDiscardChanges(): void {
     sidebarSummaryOpen = false;
     sidebarPending = null;
-    sidebarPendingIsRefresh = false;
   }
 
-  // ─── Refresh (issue #784) ───────────────────────────────────────────────────
-  // Re-runs the librarian over THIS dish with today's house writing rules and
-  // shows what it would change in the same review gate a chat amendment uses.
-  // Nothing is written until Apply; Discard leaves the recipe exactly as it was.
+  // ─── Refresh (issue #890) ───────────────────────────────────────────────────
+  // Sends REFRESH_PROMPT as an ordinary user turn — creating the session first
+  // when the recipe has no chat yet — and then runs the review gate over the
+  // reply on your behalf, because "write it out again" has exactly one thing you
+  // could want to do with the answer. Nothing is written until Apply; Discard
+  // leaves the recipe exactly as it was, with the chef's reply still in the
+  // transcript to read.
   //
-  // It is not Optimise, which sits beside it: Optimise reworks the METHOD around
-  // the kit the household owns, and deliberately knows what that kit is. Refresh
-  // deliberately does not — it re-applies the WRITING rules and leaves the
-  // cooking alone. Two different questions, two menu items.
+  // It is not Optimise, which sits beside it. Optimise asks one question — is any
+  // of this better on my kit — and leaves everything it does not touch alone.
+  // Refresh re-writes the whole thing: the structure of the method, the timings,
+  // the servings the document lost. Two different questions, two menu items.
   //
-  // No chat session is created and no transcript is written: this goes straight
-  // from the menu item into the diff, because there is no conversation to have.
+  // Unlike Optimise it carries NO equipment gate. A household that owns nothing
+  // still has recipes with four operations in one step and no serving count, and
+  // those are repaired by the writing, not by the kit.
   let refreshBusy = $state(false);
 
   async function handleRefresh(): Promise<void> {
-    if (!recipe || refreshBusy || sidebarIsProposing) return;
+    if (!recipe || refreshBusy || sidebarIsProposing || chat.isSending) return;
+    const uid = auth.user?.uid;
+    if (!uid) return;
+    // Busy for BOTH round-trips, not just the chef's. One tap owes you one
+    // proposal, and a second tap while the librarian is still reading would send
+    // the chef a second copy of the same question.
     refreshBusy = true;
-    const existingTags = [...new Set($recipes.flatMap((r) => r.metadata.tags))];
-    const result = await proposeRecipeRefresh(recipe, existingTags);
-    refreshBusy = false;
-    if (result.kind !== 'ok') {
-      addToast('Failed to refresh recipe.', 'destructive');
-      return;
+    try {
+      const session = activeSession ?? (await createRecipeChat());
+      if (!session) return;
+      // Put the transcript somewhere visible before the reply arrives in it.
+      openChat(session);
+
+      // `chat.send` has already toasted a failure; there is no reply to review,
+      // and running the librarian over the question alone would propose to
+      // overwrite the dish with whatever it made of that.
+      if (!(await chat.send(session, REFRESH_PROMPT))) return;
+
+      // Reads `activeSession` again rather than the object sent into: the store
+      // now holds both turns, and the reply is the half the librarian needs.
+      await handleSidebarReviewChanges();
+    } finally {
+      refreshBusy = false;
     }
-    sidebarPending = result.value;
-    sidebarPendingIsRefresh = true;
-    sidebarSummaryOpen = true;
   }
 
   // "Save as new recipe" (issue #798) — the other thing a conversation beside a
@@ -1597,13 +1657,14 @@ Finish with a short note on what you changed and why, so I can read the gist her
             </button>
           {/if}
           {#if canAuthor}
-            <!-- Refresh (issue #784). Beside Optimise because both re-run a model
-                 over THIS dish in place, and they are the two halves of a pair:
-                 Optimise reworks the method around the household's kit, Refresh
-                 re-applies the house WRITING rules and leaves the cooking alone.
-                 Gated on `isAuthorable` rather than `isCookable` — the question
-                 is whether the librarian can write this kind, which is why an
-                 outing and a placeholder never offer it. -->
+            <!-- Refresh (issue #890). Beside Optimise because both put a canned
+                 turn to the chef about THIS dish, and they are the two halves of a
+                 pair: Optimise asks whether any of it is better on the household's
+                 kit, Refresh asks for the whole thing to be written out again.
+                 Gated on `isAuthorable` rather than `isCookable` — the question is
+                 whether the librarian can write this kind, which is why an outing
+                 and a placeholder never offer it. No equipment gate, unlike
+                 Optimise: the repairs this makes do not depend on owning any. -->
             <button
               type="button"
               class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
@@ -1611,7 +1672,7 @@ Finish with a short note on what you changed and why, so I can read the gist her
                 overflowMenuOpen = false;
                 void handleRefresh();
               }}
-              disabled={refreshBusy}
+              disabled={refreshBusy || chat.isSending}
               data-testid="recipe-refresh-menu-item"
             >
               <Icon name="RefreshCw" size={14} />
