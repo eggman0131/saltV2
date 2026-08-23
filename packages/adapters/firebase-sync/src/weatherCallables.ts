@@ -1,6 +1,7 @@
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { failure, type DomainError, type ReadResult } from '@salt/shared-types';
 import type { WeatherForecast } from '@salt/domain/schemas';
+import { classifyCallableError } from './callableErrors.js';
 
 // Browser → refreshWeatherForecast callable wrapper (issue #382, Phase 2).
 // CLAUDE.md Rule 2: the Firebase SDK is only touched here. web-pwa consumes this
@@ -17,17 +18,6 @@ export interface RefreshWeatherForecastResult {
   readonly homeLocationSet: boolean;
   readonly skipped: boolean;
   readonly forecast: WeatherForecast | null;
-}
-
-function mapCallableError(err: unknown): DomainError {
-  const code = (err as { code?: string }).code ?? '';
-  if (code === 'functions/unauthenticated') {
-    return { kind: 'AuthError', reason: 'unauthenticated' };
-  }
-  if (code === 'functions/permission-denied') {
-    return { kind: 'AuthError', reason: 'forbidden' };
-  }
-  return { kind: 'NetworkError', reason: 'transient' };
 }
 
 // Triggers a server-side forecast refresh. `force` bypasses the server's <3h
@@ -52,6 +42,6 @@ export async function callRefreshWeatherForecast(
     const res = await fn(traceparent ? { force, traceparent } : { force });
     return { kind: 'ok', value: res.data };
   } catch (err) {
-    return failure(mapCallableError(err));
+    return failure(classifyCallableError(err));
   }
 }

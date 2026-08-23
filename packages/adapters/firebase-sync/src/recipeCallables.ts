@@ -11,6 +11,7 @@ import type {
   RecipeDoc,
   UrlImportFailure,
 } from '@salt/domain/schemas';
+import { classifyCallableError, isBrowserOffline } from './callableErrors.js';
 
 export async function callParseRecipeIngredients(
   rawText: string,
@@ -23,14 +24,7 @@ export async function callParseRecipeIngredients(
     const res = await fn({ rawText });
     return success(res.data);
   } catch (err) {
-    const code = (err as { code?: string }).code ?? '';
-    if (code === 'functions/unauthenticated') {
-      return failure({ kind: 'AuthError', reason: 'unauthenticated' });
-    }
-    if (code === 'functions/permission-denied') {
-      return failure({ kind: 'AuthError', reason: 'forbidden' });
-    }
-    return failure({ kind: 'NetworkError', reason: 'transient' });
+    return failure(classifyCallableError(err));
   }
 }
 
@@ -47,6 +41,11 @@ export async function callParseRecipeIngredients(
 // at all (issue #740). There is deliberately no `default:` that invents an
 // import code for a failure that never reached the import.
 function classifyUrlImportError(err: unknown): UrlImportFailure {
+  // Offline FIRST, before any code is read (issue #916). A failed fetch reaches
+  // the SDK as `functions/internal`, which the `ai-failed` arm below would
+  // otherwise report as "the recipe reader had trouble" — a verdict on the import
+  // for a call that never left the device.
+  if (isBrowserOffline()) return { kind: 'NetworkError', reason: 'offline' };
   const code = (err as { code?: string }).code ?? '';
   switch (code) {
     case 'functions/invalid-argument':
@@ -74,9 +73,10 @@ function classifyUrlImportError(err: unknown): UrlImportFailure {
     case 'functions/permission-denied':
       return { kind: 'AuthError', reason: 'forbidden' };
     default:
-      // Transport hiccup before the function ran. Honestly unknown — NOT a
-      // statement about the recipe site.
-      return { kind: 'NetworkError', reason: 'transient' };
+      // Never reached the import. Honestly unknown — NOT a statement about the
+      // recipe site — so it defers to the shared callable mapper (issue #916)
+      // rather than asserting "transient" over a code nobody has classified.
+      return classifyCallableError(err);
   }
 }
 
@@ -101,14 +101,7 @@ export async function callRegenerateRecipeImage(
     await fn(brief && brief.trim() ? { recipeId, brief: brief.trim() } : { recipeId });
     return success(undefined);
   } catch (err) {
-    const code = (err as { code?: string }).code ?? '';
-    if (code === 'functions/unauthenticated') {
-      return failure({ kind: 'AuthError', reason: 'unauthenticated' });
-    }
-    if (code === 'functions/permission-denied') {
-      return failure({ kind: 'AuthError', reason: 'forbidden' });
-    }
-    return failure({ kind: 'NetworkError', reason: 'transient' });
+    return failure(classifyCallableError(err));
   }
 }
 
@@ -131,14 +124,7 @@ export async function callRedoRecipeKit(recipeId: string): Promise<ReadResult<vo
     await fn({ recipeId });
     return success(undefined);
   } catch (err) {
-    const code = (err as { code?: string }).code ?? '';
-    if (code === 'functions/unauthenticated') {
-      return failure({ kind: 'AuthError', reason: 'unauthenticated' });
-    }
-    if (code === 'functions/permission-denied') {
-      return failure({ kind: 'AuthError', reason: 'forbidden' });
-    }
-    return failure({ kind: 'NetworkError', reason: 'transient' });
+    return failure(classifyCallableError(err));
   }
 }
 
@@ -147,8 +133,8 @@ export async function callRedoRecipeKit(recipeId: string): Promise<ReadResult<vo
 // writes `recipe-images/{id}.webp`, then stamps `recipe.image = { url, source:
 // 'upload' }`. Mirrors callRegenerateRecipeImage: a callable (never a client
 // Storage write — storage.rules stay write:false), try → success(undefined), catch
-// maps unauthenticated/permission-denied → AuthError else NetworkError. NEVER
-// throws (Rule 10). The optional `contentType` is an informational hint only.
+// through the shared `classifyCallableError`. NEVER throws (Rule 10). The optional
+// `contentType` is an informational hint only.
 export async function callSetRecipeImageUpload(
   recipeId: string,
   imageBase64: string,
@@ -162,14 +148,7 @@ export async function callSetRecipeImageUpload(
     await fn(contentType ? { recipeId, imageBase64, contentType } : { recipeId, imageBase64 });
     return success(undefined);
   } catch (err) {
-    const code = (err as { code?: string }).code ?? '';
-    if (code === 'functions/unauthenticated') {
-      return failure({ kind: 'AuthError', reason: 'unauthenticated' });
-    }
-    if (code === 'functions/permission-denied') {
-      return failure({ kind: 'AuthError', reason: 'forbidden' });
-    }
-    return failure({ kind: 'NetworkError', reason: 'transient' });
+    return failure(classifyCallableError(err));
   }
 }
 
@@ -199,14 +178,7 @@ export async function callDescribeRecipeScene(
     const res = await fn(traceparent ? { ...input, traceparent } : input);
     return success(res.data);
   } catch (err) {
-    const code = (err as { code?: string }).code ?? '';
-    if (code === 'functions/unauthenticated') {
-      return failure({ kind: 'AuthError', reason: 'unauthenticated' });
-    }
-    if (code === 'functions/permission-denied') {
-      return failure({ kind: 'AuthError', reason: 'forbidden' });
-    }
-    return failure({ kind: 'NetworkError', reason: 'transient' });
+    return failure(classifyCallableError(err));
   }
 }
 
@@ -248,6 +220,10 @@ export async function callExtractRecipeFromUrl(
 // gate can see them; only genuine photo outcomes keep a bespoke code. The two
 // code sets remain separate taxonomies — only the union's shape is shared.
 function classifyPhotoImportError(err: unknown): PhotoImportFailure {
+  // Offline FIRST, before any code is read (issue #916) — see
+  // classifyUrlImportError. A failed fetch must not be reported as a verdict on
+  // the user's photographs.
+  if (isBrowserOffline()) return { kind: 'NetworkError', reason: 'offline' };
   const code = (err as { code?: string }).code ?? '';
   switch (code) {
     case 'functions/invalid-argument':
@@ -268,8 +244,10 @@ function classifyPhotoImportError(err: unknown): PhotoImportFailure {
     case 'functions/permission-denied':
       return { kind: 'AuthError', reason: 'forbidden' };
     default:
-      // Never reached the reader (transport, cancellation). Honestly unknown.
-      return { kind: 'NetworkError', reason: 'transient' };
+      // Never reached the reader (transport, cancellation). Honestly unknown, so
+      // it defers to the shared callable mapper (issue #916) rather than
+      // asserting "transient" over a code nobody has classified.
+      return classifyCallableError(err);
   }
 }
 

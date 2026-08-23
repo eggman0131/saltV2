@@ -1,6 +1,7 @@
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
 import type { GenerateGuidedPlanInput, GenerateGuidedPlanOutput } from '@salt/domain/schemas';
+import { classifyCallableError } from './callableErrors.js';
 
 // generateGuidedPlan (issue #751, Phase 1). Sends only the recipe ID — the flow
 // reads the recipe server-side via the Admin SDK — and receives the AUTHORED
@@ -25,13 +26,6 @@ export async function callGenerateGuidedPlan(
     const res = await fn(input);
     return success(res.data);
   } catch (err) {
-    const code = (err as { code?: string }).code ?? '';
-    if (code === 'functions/unauthenticated') {
-      return failure({ kind: 'AuthError', reason: 'unauthenticated' });
-    }
-    if (code === 'functions/permission-denied') {
-      return failure({ kind: 'AuthError', reason: 'forbidden' });
-    }
-    return failure({ kind: 'NetworkError', reason: 'transient' });
+    return failure(classifyCallableError(err));
   }
 }

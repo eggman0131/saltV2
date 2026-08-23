@@ -5,6 +5,7 @@ import {
   type ProposeScheduleInput,
   type ProposeScheduleOutput,
 } from '@salt/domain/schemas';
+import { classifyCallableError } from './callableErrors.js';
 
 // proposeSchedule (issue #812, phase 2 of epic #778). Sends the recipe id, the time
 // the bake must be finished by, and the household's quiet hours — the flow reads
@@ -43,17 +44,12 @@ export async function callProposeSchedule(
     const res = await fn(input);
     return success(res.data);
   } catch (err) {
-    const code = (err as { code?: string }).code ?? '';
-    if (code === 'functions/unauthenticated') {
-      return failure({ kind: 'AuthError', reason: 'unauthenticated' });
-    }
-    if (code === 'functions/permission-denied') {
-      return failure({ kind: 'AuthError', reason: 'forbidden' });
-    }
     // Everything else — a formula that will not read, a model that would not
-    // answer, a dropped connection — is transient from where the sheet is standing:
-    // the honest offer is "try again", and none of them is a different thing for
-    // the user to do.
-    return failure({ kind: 'NetworkError', reason: 'transient' });
+    // answer, a dropped connection — offers the sheet the same thing: "try again".
+    // The CATEGORY still has to tell them apart, though (issue #916): a dropped
+    // connection is expected and suppressed, a model that would not answer is a
+    // server fault and must be reported. `classifyCallableError` is what draws
+    // that line.
+    return failure(classifyCallableError(err));
   }
 }
