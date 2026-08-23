@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, cleanup } from '@testing-library/svelte';
+import { render, cleanup, fireEvent } from '@testing-library/svelte';
 import type { CanonItem, Ingredient, ProductForm, Recipe } from '@salt/domain';
 import { recipeMatchIssueCount } from '@salt/domain';
 
@@ -113,6 +113,7 @@ vi.mock('../src/lib/recipeService.js', () => ({
 }));
 
 import RecipeViewPage from '../src/routes/recipes/RecipeViewPage.svelte';
+import { matchIngredient } from '../src/lib/recipeService.js';
 
 const RECIPE_ID = 'recipe-1';
 
@@ -327,5 +328,68 @@ describe('RecipeViewPage — ingredient match markers', () => {
     // Sibling of the row button, not nested inside it.
     expect(marker.closest('[data-testid="recipe-view-ingredient-inspect"]')).toBeNull();
     expect(getByTestId('recipe-view-ingredient-inspect')).toBeTruthy();
+  });
+});
+
+// ─── no amount (issue #949) ──────────────────────────────────────────────────
+
+describe('RecipeViewPage — a line with no amount', () => {
+  // The state a batch-authored line could be stored in: canon-matched, and
+  // holding no parsed quantity at all. It read as healthy, contributed nothing to
+  // the shopping list, and could not be scaled — and the ✗ keys on matchState, so
+  // the list offered no way in. Twelve such rows are in production.
+  const noAmount = line({ id: 'ing-nuts', rawText: '125 g gingernuts', parsed: null });
+
+  it('marks it, and not with the unmatched ✗', () => {
+    mockRecipes._set([makeRecipe([noAmount])]);
+    const { getAllByTestId, queryByTestId } = renderPage();
+
+    expect(getAllByTestId('match-state-no-amount')).toHaveLength(1);
+    expect(queryByTestId('match-state-unmatched')).toBeNull();
+    expect(queryByTestId('match-state-mismatched')).toBeNull();
+  });
+
+  it('repairs the row from the marker in one tap', async () => {
+    // The same repair that today needs you to know which row to open.
+    vi.mocked(matchIngredient).mockResolvedValue({
+      kind: 'ok',
+      value: { ...noAmount, parsed: line({ id: 'x' }).parsed },
+    } as never);
+    mockRecipes._set([makeRecipe([noAmount])]);
+    const { getByTestId } = renderPage();
+
+    await fireEvent.click(getByTestId('match-state-no-amount'));
+
+    expect(vi.mocked(matchIngredient)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(matchIngredient).mock.calls[0]![0]).toMatchObject({ id: 'ing-nuts' });
+  });
+
+  it('labels the marker for a screen reader and keeps it out of the row button', () => {
+    mockRecipes._set([makeRecipe([noAmount])]);
+    const { getByTestId } = renderPage();
+
+    const marker = getByTestId('match-state-no-amount');
+    expect(marker.getAttribute('aria-label')).toBeTruthy();
+    expect(marker.closest('[data-testid="recipe-view-ingredient-inspect"]')).toBeNull();
+  });
+
+  it('marks nothing while canon is still loading', () => {
+    mockIsLoadingAisles._set(true);
+    mockRecipes._set([makeRecipe([noAmount])]);
+    const { queryByTestId } = renderPage();
+
+    expect(queryByTestId('match-state-no-amount')).toBeNull();
+  });
+
+  it('leaves a freshly assembled unparsed line on the ✗ instead', () => {
+    // What Phase 1 now writes: no canon match claimed, so the line is already
+    // visible and this marker would be a second word for the same thing.
+    mockRecipes._set([
+      makeRecipe([line({ id: 'ing-fresh', parsed: null, canonId: null, matchState: 'pending' })]),
+    ]);
+    const { getAllByTestId, queryByTestId } = renderPage();
+
+    expect(getAllByTestId('match-state-unmatched')).toHaveLength(1);
+    expect(queryByTestId('match-state-no-amount')).toBeNull();
   });
 });

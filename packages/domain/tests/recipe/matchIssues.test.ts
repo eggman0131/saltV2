@@ -263,6 +263,35 @@ describe('ingredientMatchIssue', () => {
   });
 });
 
+describe('ingredientMatchIssue — a line with no amount (issue #949)', () => {
+  it('flags a matched line holding no parsed data', () => {
+    // What a batch-authored line looked like when its parse result could not be
+    // joined back: canon matched, nothing to scale, nothing to shop.
+    const line = ing({ rawText: '125 g gingernuts (ginger snaps)', parsed: null });
+    expect(ingredientMatchIssue(line, byId([LIME]), [LIME_ZEST])).toBe('missing_amount');
+  });
+
+  it('flags it whatever the canon is sold by', () => {
+    // The count/metric pre-checks below it read fields the line does not have,
+    // so the order matters: a by-weight canon must not silence it.
+    const line = ing({ canonId: 'canon-flour', parsed: null });
+    expect(ingredientMatchIssue(line, byId([FLOUR]), [])).toBe('missing_amount');
+  });
+
+  it('stays quiet about a never-matched line with no amount', () => {
+    // Nothing silent about it — it wears the ✗ already.
+    const line = ing({ canonId: null, parsed: null });
+    expect(ingredientMatchIssue(line, byId([LIME]), [])).toBeNull();
+  });
+
+  it('still reports a dangling canon ahead of the missing amount', () => {
+    // The canon is gone, so a re-match has to find a new one either way; naming
+    // the amount instead would send you looking for the wrong repair.
+    const line = ing({ canonId: 'canon-gone', parsed: null });
+    expect(ingredientMatchIssue(line, byId([LIME]), [])).toBe('dangling_canon');
+  });
+});
+
 describe('recipeMatchIssueCount', () => {
   const recipe = (items: Ingredient[]): Recipe =>
     ({ ingredients: [{ id: 'g1', name: null, items }] }) as Recipe;
