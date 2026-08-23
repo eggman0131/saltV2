@@ -2,7 +2,6 @@ import { logger } from 'firebase-functions';
 import type { ArbitrationRequest, CanonArbitrationPort } from '@salt/domain';
 import { failure, success } from '@salt/shared-types';
 import { arbitrateCanonFlow } from '../flows/arbitrateCanon.js';
-import { withAiTimeout } from './withAiTimeout.js';
 
 export function createServerArbitrationAdapter(): CanonArbitrationPort {
   return {
@@ -20,7 +19,10 @@ export function createServerArbitrationAdapter(): CanonArbitrationPort {
           aisles: req.aisles.map((a) => ({ id: a.id, name: a.name })),
           ...(req.rawText !== undefined ? { rawText: req.rawText } : {}),
         };
-        const value = await withAiTimeout('arbitrateCanon', () => arbitrateCanonFlow(flowInput));
+        // No outer withAiTimeout: the flow owns its budget (issue #915). It is
+        // also exported as its own callable, so a wrapper here only ever
+        // covered half of its entrypoints.
+        const value = await arbitrateCanonFlow(flowInput);
         return success(value);
       } catch (err) {
         logger.error('matchOrCreateCanon: arbitration failed', { err });

@@ -162,9 +162,9 @@ async function maybeGenerateIcon(
   const hint = form.iconHint?.trim();
 
   try {
-    const { imageBase64 } = await withAiTimeout('generateCanonIcon', () =>
-      generateCanonIconFlow({ name, ...(hint ? { hint } : {}) }),
-    );
+    // No outer withAiTimeout (issue #915) — the flow owns its budget (60s + 1
+    // retry). See the note at the canon trigger's identical call.
+    const { imageBase64 } = await generateCanonIconFlow({ name, ...(hint ? { hint } : {}) });
     const raw = Buffer.from(imageBase64, 'base64');
     // Identical processing to canon's, deliberately including `contentMax: 108`:
     // a form icon sits in the SAME 40px catalog row tile as a canon icon, right

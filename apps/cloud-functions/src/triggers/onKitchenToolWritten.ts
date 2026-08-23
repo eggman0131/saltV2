@@ -173,9 +173,12 @@ async function maybeGenerateIcon(
   const hint = tool.iconHint?.trim();
 
   try {
-    const { imageBase64 } = await withAiTimeout('generateKitchenToolIcon', () =>
-      generateKitchenToolIconFlow({ label, ...(hint ? { hint } : {}) }),
-    );
+    // No outer withAiTimeout (issue #915) — the flow owns its budget (60s + 1
+    // retry). See the note at the canon trigger's identical call.
+    const { imageBase64 } = await generateKitchenToolIconFlow({
+      label,
+      ...(hint ? { hint } : {}),
+    });
     const raw = Buffer.from(imageBase64, 'base64');
     // Identical processing to canon's, deliberately including `contentMax: 108`:
     // a tool icon sits in the same tile as a canon icon — on a guided mise card

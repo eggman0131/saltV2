@@ -158,8 +158,14 @@ kitchenMemories/{id} (Firestore, family-shared)      ← owned by web-pwa + fire
   in. There is deliberately no mode flag, no wire field, and no chat UI for it.
   Absent or empty counts omit the section entirely, so the chef behaves exactly
   as it did before the feature existed.
-- Plain text out. **No `output` schema. No tools.** Wrap the generate call in
-  `withAiTimeout`.
+- Plain text out. **No `output` schema. No tools.** Guard the model call with
+  `withAiStreamTimeout`, not `withAiTimeout` — this is the one streaming flow, and
+  a promise wrapper cannot bound a stream. `withAiTimeout` around the aggregated
+  response sits *after* the drain loop, so a model that goes quiet mid-answer
+  never reaches it and holds the invocation to its 120 s quota (issue #915). The
+  stream wrapper races each chunk against an idle timer instead: silence longer
+  than the budget fails the turn, and a long answer that keeps arriving is never
+  cut short.
 
 ### 3. Librarian flow (conversation → recipe)
 

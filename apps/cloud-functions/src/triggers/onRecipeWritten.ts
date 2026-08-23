@@ -128,24 +128,26 @@ async function maybeGenerateImage(
   const brief = recipe.imageBrief?.trim() || (await describeSceneOrNothing(recipe));
 
   try {
-    const { imageBase64 } = await withAiTimeout('generateRecipeImage', () =>
-      generateRecipeImageFlow({
-        title,
-        description: recipe.description,
-        // Selects the opener, the scene fallback and the style anchors (issue
-        // #637): an outing is photographed as food that ARRIVES, not as a plated
-        // dish. Always parsed (RecipeSchema defaults it), so pre-#637 docs read
-        // back as 'recipe' and their prompt is byte-for-byte unchanged.
-        kind: recipe.kind,
-        ...(hint ? { hint } : {}),
-        ...(brief ? { sceneBrief: brief } : {}),
-        // Feed the recipe's own tags to the model as a dish-type cue for reading
-        // mood/season/cuisine (issue #148, Phase 2). Always present on a parsed
-        // RecipeDoc (string[], possibly empty); the flow drops empties and adds no
-        // clause when there are none. Nothing new is persisted.
-        tags: recipe.metadata.tags,
-      }),
-    );
+    // No outer withAiTimeout (issue #915). The flow owns its budget — 60s + 1
+    // retry, sized for an image generation — and a wrapper here imposed the
+    // house 20s default on top of it, cutting long draws short. Follows the kit
+    // branch below, and the equipment paths, rather than the other way round.
+    const { imageBase64 } = await generateRecipeImageFlow({
+      title,
+      description: recipe.description,
+      // Selects the opener, the scene fallback and the style anchors (issue
+      // #637): an outing is photographed as food that ARRIVES, not as a plated
+      // dish. Always parsed (RecipeSchema defaults it), so pre-#637 docs read
+      // back as 'recipe' and their prompt is byte-for-byte unchanged.
+      kind: recipe.kind,
+      ...(hint ? { hint } : {}),
+      ...(brief ? { sceneBrief: brief } : {}),
+      // Feed the recipe's own tags to the model as a dish-type cue for reading
+      // mood/season/cuisine (issue #148, Phase 2). Always present on a parsed
+      // RecipeDoc (string[], possibly empty); the flow drops empties and adds no
+      // clause when there are none. Nothing new is persisted.
+      tags: recipe.metadata.tags,
+    });
     const raw = Buffer.from(imageBase64, 'base64');
     const webp = await encodeHeroImage(raw);
     const url = await uploadRecipeImage(id, webp);

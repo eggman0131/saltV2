@@ -10,6 +10,7 @@ import { setActiveSpanName, setActiveSpanAttributes } from '@salt/observability/
 import { ai } from '../genkit.js';
 import { resolveModel } from '../ai/resolveModel.js';
 import { aiFakeEnabled } from '../ai/fakeModel.js';
+import { withAiTimeout } from '../adapters/withAiTimeout.js';
 
 // Product-form arbitration (issue #500, Phase 3). Given an ingredient that did
 // not resolve to an existing form or match a buyable canon item as itself, ask
@@ -38,12 +39,21 @@ export const arbitrateProductFormFlow = ai.defineFlow(
       return { kind: 'none' as const };
     }
     const model = await resolveModel('lite');
-    const result = await ai.generate({
-      model: googleAI.model(model),
-      prompt: buildPrompt(req),
-      output: { schema: ProductFormArbitrationAIOutputSchema },
-      config: { temperature: 0 },
-    });
+    // Below the fake seam on purpose (issue #915): the short-circuit above
+    // returns before this line, so the fake path never meets the timer and
+    // wiring the seam to `flowModel` later needs no change here.
+    //
+    // The deadline lives in the flow, not at `canonicaliseRecipeIngredients`
+    // where it used to be applied — one caller remembering it is not coverage.
+    // House defaults (20s + 1 retry), the same values that caller applied.
+    const result = await withAiTimeout('arbitrateProductForm', () =>
+      ai.generate({
+        model: googleAI.model(model),
+        prompt: buildPrompt(req),
+        output: { schema: ProductFormArbitrationAIOutputSchema },
+        config: { temperature: 0 },
+      }),
+    );
     const output = result.output;
     if (!output) {
       // No structured output at all — record it so a `none` here is

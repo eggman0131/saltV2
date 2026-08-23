@@ -6,7 +6,7 @@ import {
   type IdentifyRecipeKitInput,
   type RecipeKitEntryDoc,
 } from '@salt/domain/schemas';
-import { withAiTimeout } from '../adapters/withAiTimeout.js';
+import { AI_TEXT_FLOW_TIMEOUT, withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 import { resolveModel } from '../ai/resolveModel.js';
 
@@ -141,11 +141,11 @@ export const identifyRecipeKitFlow = ai.defineFlow(
           output: { schema: IdentifyRecipeKitAIOutputSchema },
           config: { temperature: 0 },
         }),
-      // House text-flow values, as categoriseRecipe and describeRecipeScene. No
-      // retry: the trigger treats a failure as "no kit yet" and leaves
-      // `kitInferredAt` unstamped, so the redo action is the retry path and there
-      // is nothing to gain from burning the timeout budget automatically.
-      { timeoutMs: 55_000, retries: 0 },
+      // No retry (the shared budget's): the trigger treats a failure as "no kit
+      // yet" and leaves `kitInferredAt` unstamped, so the redo action is the
+      // retry path and there is nothing to gain from burning the budget
+      // automatically.
+      AI_TEXT_FLOW_TIMEOUT,
     );
 
     // AI output is a trust boundary — validate before it leaves the flow.

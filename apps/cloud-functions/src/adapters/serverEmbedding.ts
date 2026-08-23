@@ -13,7 +13,10 @@ export function createServerEmbeddingAdapter(): EmbeddingPort {
   return {
     async computeEmbedding(text: string): Promise<ReadResult<readonly number[], DomainError>> {
       try {
-        const { values } = await withAiTimeout('embedText', () => embedTextFlow({ text }));
+        // No outer withAiTimeout: the flow owns its budget (issue #915). It is
+        // also exported as its own callable, so a wrapper here only ever
+        // covered some of its entrypoints.
+        const { values } = await embedTextFlow({ text });
         return success(values);
       } catch (err) {
         logger.error('matchOrCreateCanon: embedding failed', { err });

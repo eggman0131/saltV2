@@ -20,7 +20,11 @@ const mockRequireAdmin = vi.fn(async () => 'admin@example.com');
 vi.mock('../../src/ai/requireAdmin.js', () => ({ requireAdmin: mockRequireAdmin }));
 
 // withAiTimeout just runs the op in tests.
-vi.mock('../../src/adapters/withAiTimeout.js', () => ({
+// Bypass the real timer, but keep everything else the module exports (the
+// shared budget constant, the stream guard) — a factory that lists only
+// `withAiTimeout` goes stale the moment the module grows.
+vi.mock('../../src/adapters/withAiTimeout.js', async (importActual) => ({
+  ...(await importActual<object>()),
   withAiTimeout: (_label: string, op: () => Promise<unknown>) => op(),
 }));
 

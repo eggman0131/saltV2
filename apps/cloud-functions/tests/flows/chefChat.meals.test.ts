@@ -28,7 +28,11 @@ vi.mock('../../src/genkit.js', () => ({
 
 vi.mock('../../src/ai/fakeModel.js', () => ({ flowModel: vi.fn(async () => 'fake-model') }));
 
-vi.mock('../../src/adapters/withAiTimeout.js', () => ({
+// Bypass the real timer, but keep everything else the module exports (the
+// shared budget constant, the stream guard) — a factory that lists only
+// `withAiTimeout` goes stale the moment the module grows.
+vi.mock('../../src/adapters/withAiTimeout.js', async (importActual) => ({
+  ...(await importActual<object>()),
   withAiTimeout: (_label: string, op: () => unknown) => op(),
 }));
 

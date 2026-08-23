@@ -3,6 +3,7 @@ import { ParseEntryAIOutputSchema } from '@salt/domain/schemas';
 import { setActiveSpanName } from '@salt/observability/server';
 import { ai } from '../genkit.js';
 import { flowModel } from '../ai/fakeModel.js';
+import { withAiTimeout } from '../adapters/withAiTimeout.js';
 
 const ParseEntryInputSchema = z.object({
   rawText: z.string(),
@@ -29,12 +30,25 @@ export const parseEntryFlow = ai.defineFlow(
     // catches it into a `NetworkError` exactly as the 400 already did, so the
     // trigger keeps falling back to the deterministic parse — but offline.
     const model = await flowModel('lite', 'parseEntry');
-    const result = await ai.generate({
-      model,
-      prompt,
-      output: { schema: ParseEntryAIOutputSchema },
-      config: { temperature: 0 },
-    });
+    // The deadline lives HERE, next to the model call, not at the adapter that
+    // invokes the flow (issue #915). `parseEntryFlow` is reachable from more
+    // than one place, and a caller-side wrapper only covers the callers that
+    // remember it. House defaults (20s + 1 retry) — the same budget
+    // `createServerEntryParseAdapter` used to apply from outside, so a slow
+    // parse behaves exactly as it did.
+    //
+    // Under FUNCTIONS_AI_FAKE this still routes through the model (the seam is
+    // not sealed for this flow — see the note above); the wrapper does not
+    // change that either way, it only bounds how long the unsealed call may
+    // hang the trigger.
+    const result = await withAiTimeout('parseEntry', () =>
+      ai.generate({
+        model,
+        prompt,
+        output: { schema: ParseEntryAIOutputSchema },
+        config: { temperature: 0 },
+      }),
+    );
     return result.output!;
   },
 );

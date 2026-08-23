@@ -33,7 +33,8 @@ vi.mock('firebase-admin/firestore', () => ({
 
 // Stub withAiTimeout to call op() directly — timeout/retry behaviour is tested
 // elsewhere — but record the options it was handed.
-vi.mock('../../src/adapters/withAiTimeout.js', () => ({
+vi.mock('../../src/adapters/withAiTimeout.js', async (importActual) => ({
+  ...(await importActual<object>()),
   withAiTimeout: (
     _label: string,
     op: () => unknown,

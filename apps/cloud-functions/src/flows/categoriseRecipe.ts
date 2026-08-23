@@ -4,7 +4,7 @@ import {
   CategoriseRecipeAIOutputSchema,
   CategoriseRecipeOutputSchema,
 } from '@salt/domain/schemas';
-import { withAiTimeout } from '../adapters/withAiTimeout.js';
+import { AI_TEXT_FLOW_TIMEOUT, withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 import { resolveModel } from '../ai/resolveModel.js';
 import { CATEGORY_TAG_RULES, normaliseTags } from './categoryTags.js';
@@ -60,7 +60,7 @@ export const categoriseRecipeFlow = ai.defineFlow(
           output: { schema: CategoriseRecipeAIOutputSchema },
           config: { temperature: 0 },
         }),
-      { timeoutMs: 55_000, retries: 0 },
+      AI_TEXT_FLOW_TIMEOUT,
     );
 
     const parsed = CategoriseRecipeAIOutputSchema.safeParse(result.output);

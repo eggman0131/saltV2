@@ -190,13 +190,12 @@ export const canonicaliseRecipeIngredientsFlow = ai.defineFlow(
       const proposeForm = async (i: number): Promise<ProductFormProposal> => {
         const item = input.items[i]!;
         try {
-          return await withAiTimeout('arbitrateProductForm', () =>
-            arbitrateProductFormFlow({
-              ingredientName: item.rawName,
-              ...(item.rawText !== undefined ? { rawText: item.rawText } : {}),
-              candidates,
-            }),
-          );
+          // No outer withAiTimeout: the flow owns its budget (issue #915).
+          return await arbitrateProductFormFlow({
+            ingredientName: item.rawName,
+            ...(item.rawText !== undefined ? { rawText: item.rawText } : {}),
+            candidates,
+          });
         } catch (err) {
           logger.warn('arbitrateProductForm: proposal failed, skipping', { err });
           return { kind: 'none' };

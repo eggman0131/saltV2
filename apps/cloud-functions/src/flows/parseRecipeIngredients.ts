@@ -3,7 +3,7 @@ import {
   ParseRecipeIngredientsAIOutputSchema,
   ParseRecipeIngredientsOutputSchema,
 } from '@salt/domain/schemas';
-import { withAiTimeout } from '../adapters/withAiTimeout.js';
+import { AI_TEXT_FLOW_TIMEOUT, withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 import { flowModel } from '../ai/fakeModel.js';
 
@@ -33,7 +33,7 @@ export const parseRecipeIngredientsFlow = ai.defineFlow(
           output: { schema: ParseRecipeIngredientsAIOutputSchema },
           config: { temperature: 0 },
         }),
-      { timeoutMs: 55_000, retries: 0 },
+      AI_TEXT_FLOW_TIMEOUT,
     );
 
     const parsed = ParseRecipeIngredientsAIOutputSchema.safeParse(result.output);

@@ -4,7 +4,7 @@ import { logger } from 'firebase-functions';
 import { AuthorRecipeInputSchema, LibrarianOutputSchema, RecipeSchema } from '@salt/domain/schemas';
 import type { RecipeDoc } from '@salt/domain/schemas';
 import { setActiveSpanName } from '@salt/observability/server';
-import { withAiTimeout } from '../adapters/withAiTimeout.js';
+import { AI_TEXT_FLOW_TIMEOUT, withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 import { assembleRecipeDraft } from './assembleRecipeDraft.js';
 import { flowModel } from '../ai/fakeModel.js';
@@ -101,7 +101,7 @@ export const authorRecipeFlow = ai.defineFlow(
           output: { schema: LibrarianOutputSchema },
           config: { temperature: 0 },
         }),
-      { timeoutMs: 55_000, retries: 0 },
+      AI_TEXT_FLOW_TIMEOUT,
     );
 
     const parsed = LibrarianOutputSchema.safeParse(result.output);

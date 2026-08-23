@@ -2,13 +2,15 @@ import { logger } from 'firebase-functions';
 import type { EntryParsePort, ParsedEntry } from '@salt/domain';
 import { failure, success } from '@salt/shared-types';
 import { parseEntryFlow } from '../flows/parseEntry.js';
-import { withAiTimeout } from './withAiTimeout.js';
 
 export function createServerEntryParseAdapter(): EntryParsePort {
   return {
     async parse(rawText: string) {
       try {
-        const value = await withAiTimeout('parseEntry', () => parseEntryFlow({ rawText }));
+        // No outer withAiTimeout: the flow owns its budget (issue #915). It is
+        // reachable from more than this adapter, and nesting a second timer
+        // around it is the budget disagreement the canon icon path carried.
+        const value = await parseEntryFlow({ rawText });
         // Construct ParsedEntry explicitly so optional fields are absent (not
         // undefined) — required by exactOptionalPropertyTypes.
         const parsed: ParsedEntry = {

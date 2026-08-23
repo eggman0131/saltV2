@@ -7,7 +7,7 @@ import {
   RecipeSchema,
   type RecipeDoc,
 } from '@salt/domain/schemas';
-import { withAiTimeout } from '../adapters/withAiTimeout.js';
+import { AI_TEXT_FLOW_TIMEOUT, withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 import { flowModel } from '../ai/fakeModel.js';
 
@@ -134,9 +134,9 @@ export const extractProcessStagesFlow = ai.defineFlow(
           // the ingredient parser at 0.
           config: { temperature: 0 },
         }),
-      // House text-flow values. No retry: a human is sitting in front of the
+      // No retry (the shared budget's): a human is sitting in front of the
       // formula screen with a button they can press again.
-      { timeoutMs: 55_000, retries: 0 },
+      AI_TEXT_FLOW_TIMEOUT,
     );
 
     const parsed = ExtractProcessStagesAIOutputSchema.safeParse(result.output);

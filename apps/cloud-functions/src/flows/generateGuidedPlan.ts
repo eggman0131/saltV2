@@ -7,7 +7,7 @@ import {
   RecipeSchema,
   type RecipeDoc,
 } from '@salt/domain/schemas';
-import { withAiTimeout } from '../adapters/withAiTimeout.js';
+import { AI_TEXT_FLOW_TIMEOUT, withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 import { flowModel } from '../ai/fakeModel.js';
 import { GUIDED_PREP_RULES, GUIDED_STEP_NOTE_RULES } from './stepRules.js';
@@ -115,9 +115,9 @@ export const generateGuidedPlanFlow = ai.defineFlow(
           // anchored to the recipe in front of it.
           config: { temperature: 0.4 },
         }),
-      // House text-flow values. No retry: the caller is a human sitting in front
+      // No retry (the shared budget's): the caller is a human sitting in front
       // of the editor with a Write-the-plan button they can press again.
-      { timeoutMs: 55_000, retries: 0 },
+      AI_TEXT_FLOW_TIMEOUT,
     );
 
     const parsed = GenerateGuidedPlanAIOutputSchema.safeParse(result.output);
