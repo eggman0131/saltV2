@@ -134,9 +134,9 @@
     // ("2 eggs") and for anything with no amount at all ("a pinch"). The anchor
     // every displayed gram figure is pinned to — see `anchorBasisGrams`.
     recipeGrams: number | null;
-    // The recipe gave a range and the midpoint was taken. Disclosed on screen,
-    // because this screen is the only moment anyone can object: once the range is a
-    // percentage it is gone for good.
+    // The recipe gave a range and one end of it was taken (`quantityToNumber`,
+    // issue #917). Disclosed on screen, because this screen is the only moment
+    // anyone can object: once the range is a percentage it is gone for good.
     isRange: boolean;
     gramsText: string;
     included: boolean;
@@ -744,14 +744,14 @@
                 {rangeRows.length === 1
                   ? 'One ingredient is'
                   : `${rangeRows.length} ingredients are`}
-                given as a range. The midpoint is what the formula keeps — the range itself is gone once
-                this is saved.
+                given as a range. The top of the range is what the formula keeps — the range itself is
+                gone once this is saved.
               </p>
               {#each rangeRows as row (row.ingredientId)}
                 {@const grams = gramsOf(row)}
                 <p class="text-sm text-amber-900">
                   <span class="font-medium">{row.rawText}</span>
-                  — taken as {grams === null ? 'its midpoint' : formatGrams(grams)}
+                  — taken at {grams === null ? 'the top of its range' : formatGrams(grams)}
                 </p>
               {/each}
             </div>

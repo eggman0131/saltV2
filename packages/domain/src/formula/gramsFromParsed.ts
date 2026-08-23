@@ -1,40 +1,27 @@
-import type { ParsedIngredientDoc, QuantityDoc } from '../schemas/recipe.js';
+import type { ParsedIngredientDoc } from '../schemas/recipe.js';
 import type { DensityClass } from '../schemas/formula.js';
 import { DEFAULT_DENSITY_CLASS, gramsFromMillilitres } from './density.js';
+import { quantityToNumber } from '../recipe/index.js';
 
 // A parsed recipe ingredient reduced to the one number a formula can scale.
 // Returns null — never a guess — when there is no gram figure to be had, and a
 // null means "not a formula component" rather than "component of zero".
-
-// A range collapses to its MIDPOINT, and the caller owes the cook a disclosure:
-// "2–3 tbsp → 37.5 ml, taken as the midpoint". The moment a range becomes a
-// percentage the range is gone for good — the formula stores a point value, and a
-// scaled batch will later print `58 g olive oil` with a confidence the original
-// never had while the recipe page still reads "2–3 tbsp". The mapping screen is
-// the only moment anyone can object, because it is the moment the information is
-// lost.
-export function amountFromQuantity(quantity: QuantityDoc | null): number | null {
-  if (quantity === null) return null;
-  switch (quantity.type) {
-    case 'single':
-      return quantity.value;
-    case 'range':
-      return (quantity.min + quantity.max) / 2;
-    case 'mixed':
-      return quantity.denominator === 0
-        ? null
-        : quantity.whole + quantity.numerator / quantity.denominator;
-  }
-}
+//
+// A range is collapsed by `quantityToNumber`, which owns that decision for every
+// consumer (issue #917); the rule and the argument for it live there and are not
+// restated here. What this module owes on top of it is a DISCLOSURE: the moment a
+// range becomes a percentage the range is gone for good — the formula stores a
+// point value, and a scaled batch will later print `58 g olive oil` while the
+// recipe page still reads "2–3 tbsp". The mapping screen is the only moment
+// anyone can object, because it is the moment the information is lost.
 
 export function gramsFromParsed(
   parsed: ParsedIngredientDoc | null,
   density: DensityClass = DEFAULT_DENSITY_CLASS,
 ): number | null {
-  if (parsed === null) return null;
+  if (parsed === null || parsed.quantity === null) return null;
 
-  const amount = amountFromQuantity(parsed.quantity);
-  if (amount === null) return null;
+  const amount = quantityToNumber(parsed.quantity);
 
   // No unit means count-based — "2 eggs", "3 cloves". Domain cannot know what an
   // egg weighs, and guessing one here would be a second scaling mechanism

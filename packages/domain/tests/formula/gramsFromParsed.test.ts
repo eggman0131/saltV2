@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { amountFromQuantity, gramsFromParsed, DENSITY_G_PER_ML } from '../../src/index.js';
+import { gramsFromParsed, DENSITY_G_PER_ML } from '../../src/index.js';
 import type { ParsedIngredientDoc } from '../../src/schemas/index.js';
 
 // Reducing a parsed recipe ingredient to the one number a formula can scale.
@@ -17,29 +17,10 @@ function parsed(overrides: Partial<ParsedIngredientDoc>): ParsedIngredientDoc {
   };
 }
 
-describe('amountFromQuantity', () => {
-  it('reads a plain amount', () => {
-    expect(amountFromQuantity({ type: 'single', value: 350 })).toBe(350);
-  });
-
-  it('takes the midpoint of a range', () => {
-    // "2–3 tbsp olive oil" → 30–45 ml → 37.5 ml. The mapping screen owes the cook
-    // this disclosure: once it is a percentage, the range is gone for good.
-    expect(amountFromQuantity({ type: 'range', min: 30, max: 45 })).toBe(37.5);
-  });
-
-  it('reads an exact fraction', () => {
-    // "1 ½ tsp" — stored as a fraction so the original round-trips.
-    expect(amountFromQuantity({ type: 'mixed', whole: 1, numerator: 1, denominator: 2 })).toBe(1.5);
-    expect(amountFromQuantity({ type: 'mixed', whole: 0, numerator: 3, denominator: 4 })).toBe(
-      0.75,
-    );
-  });
-
-  it('has nothing to say about no amount', () => {
-    expect(amountFromQuantity(null)).toBeNull();
-  });
-});
+// The reduction itself now lives in the recipe module and is pinned by
+// tests/recipe/quantityToNumber.test.ts — the formula used to keep a second copy
+// of it (`amountFromQuantity`, which took the midpoint) and that is the fork
+// issue #917 closed. What is left here is what a FORMULA does with the number.
 
 describe('gramsFromParsed', () => {
   it('takes grams as grams', () => {
@@ -63,10 +44,12 @@ describe('gramsFromParsed', () => {
     expect(DENSITY_G_PER_ML.waterLike).toBe(1);
   });
 
-  it('collapses a range to its midpoint before converting', () => {
-    // "2–3 tbsp extra virgin olive oil" → 37.5 ml → 34.5 g.
+  it('collapses a range before converting', () => {
+    // "2–3 tbsp extra virgin olive oil" → 45 ml (the top — see quantityToNumber)
+    // → 41.4 g. Was 37.5 ml → 34.5 g while the formula kept its own midpoint
+    // reduction; the shopping list read the same line as 30 ml.
     const range = parsed({ quantity: { type: 'range', min: 30, max: 45 }, unit: 'ml' });
-    expect(gramsFromParsed(range, 'oil')).toBeCloseTo(34.5, 9);
+    expect(gramsFromParsed(range, 'oil')).toBeCloseTo(41.4, 9);
   });
 
   it('is not a component when there is no amount', () => {
@@ -92,6 +75,10 @@ describe('gramsFromParsed', () => {
     expect(
       gramsFromParsed(parsed({ quantity: { type: 'single', value: -5 }, unit: 'g' })),
     ).toBeNull();
+    // A zero denominator cannot come off a parsed document (`MixedQuantitySchema`
+    // pins it positive) and `quantityToNumber` does not special-case it — the
+    // divide gives Infinity and the finite check below is what catches it. Same
+    // null, one guard instead of two.
     expect(
       gramsFromParsed(
         parsed({ quantity: { type: 'mixed', whole: 1, numerator: 1, denominator: 0 }, unit: 'g' }),

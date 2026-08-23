@@ -111,6 +111,17 @@ function weightIngredient(grams: number) {
   };
 }
 
+// A line the recipe wrote as a range — "400–500 g tomatoes". One of the two
+// shapes that made issue #917 a live fork rather than a latent one.
+const rangeIngredient = {
+  quantity: { type: 'range' as const, min: 400, max: 500 },
+  unit: 'g' as const,
+  item: 'tomatoes',
+  preparation: [],
+  notes: null,
+  displayText: null,
+};
+
 // Count/item-based ingredient (e.g. "2 eggs") — no metric unit, so unit is null
 // (see recipe schema: unit is null for count/item-based ingredients).
 const countIngredient = {
@@ -242,6 +253,21 @@ describe('buildRecipeAddPlan', () => {
     ]);
     const rows = buildRecipeAddPlan(recipe, 4); // base 2 → scale 2
     expect(rows[0]!.amount).toBe(4);
+  });
+
+  it('buys a range at the top of it, so the shop is never short', () => {
+    // "400–500 g tomatoes" is bought as 500 g, not 400 (the old behaviour) and
+    // not 450. `quantityToNumber` in `@salt/domain` owns the choice and argues
+    // it; this pins that the shopping list is the consumer that runs it (issue
+    // #917). Under-buying is a dinner that cannot be cooked; over-buying is a bit
+    // left in the cupboard.
+    mockGetCanonItemsSnapshot.mockReturnValue([makeCanonItem('canon-flour', 'needed')]);
+    const recipe = makeRecipe([
+      makeGroup([matchedIngredient('i1', 'canon-flour', rangeIngredient)]),
+    ]);
+    const rows = buildRecipeAddPlan(recipe, 2); // servings == base, scale 1
+    expect(rows[0]!.amount).toBe(500);
+    expect(rows[0]!.unit).toBe('g');
   });
 
   it('carries parsed.item as itemText and parsed.notes as notes, dropping preparation', () => {
