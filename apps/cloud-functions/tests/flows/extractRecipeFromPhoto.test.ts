@@ -30,7 +30,13 @@ vi.mock('../../src/adapters/withAiTimeout.js', () => ({
 vi.mock('../../src/ai/resolveModel.js', () => ({
   resolveModel: vi.fn(async () => 'gemini-flash-latest'),
 }));
-vi.mock('@salt/observability/server', () => ({ setActiveSpanName: vi.fn() }));
+vi.mock('@salt/observability/server', () => ({
+  setActiveSpanName: vi.fn(),
+  // assembleRecipeDraft reports an unjoinable parse result through
+  // reportServerError, which builds its adapter at module load (issue #949).
+  createServerObservabilityErrorReportingAdapter: () => ({ report: vi.fn() }),
+  flushServerObservability: vi.fn(async () => {}),
+}));
 vi.mock('firebase-admin/firestore', () => ({
   getFirestore: () => ({ collection: mockCollection }),
 }));
