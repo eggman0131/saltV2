@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup, fireEvent, waitFor } from '@testing-library/svelte';
+import { emptyRecipe } from '@salt/domain';
 import type { Recipe } from '@salt/domain';
 import type { ChatSessionDoc } from '@salt/domain/schemas';
 
@@ -145,6 +146,10 @@ const RECIPE_ID = 'lamb';
 
 function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
   return {
+    lastEditedBy: '',
+    createdBy: '',
+    kit: [],
+    producesCanonId: null,
     id: RECIPE_ID,
     schemaVersion: 1,
     kind: 'recipe',
@@ -166,7 +171,7 @@ function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
-  } as Recipe;
+  };
 }
 
 function makeSession(messages: ChatSessionDoc['messages']): ChatSessionDoc {
@@ -180,8 +185,8 @@ function makeSession(messages: ChatSessionDoc['messages']): ChatSessionDoc {
     messages,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
-    expiresAt: null,
-  } as ChatSessionDoc;
+    expiresAt: '2026-01-15T00:00:00.000Z',
+  };
 }
 
 const USER_TURN = {
@@ -242,8 +247,8 @@ describe('RecipeViewPage — saving the conversation as a new dish', () => {
     mockSessions._set([makeSession([USER_TURN, ASSISTANT_TURN])]);
     vi.mocked(authorRecipeTraced).mockResolvedValue({
       kind: 'ok',
-      value: { id: 'salad', kind: 'recipe', title: 'Fennel Salad', metadata: { tags: [] } },
-    } as Awaited<ReturnType<typeof authorRecipeTraced>>);
+      value: { ...emptyRecipe('salad', '2026-01-01T00:00:00.000Z'), title: 'Fennel Salad' },
+    });
     const { getByTestId } = renderPage();
 
     await fireEvent.click(getByTestId('sidebar-save-new-recipe-btn'));

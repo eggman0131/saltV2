@@ -1,7 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup, fireEvent, waitFor } from '@testing-library/svelte';
 import type { ChatSessionDoc } from '@salt/domain/schemas';
+import { emptyRecipe } from '@salt/domain';
 import type { Recipe } from '@salt/domain';
+
+const NOW = '2026-08-01T00:00:00.000Z';
 
 // Back goes where you came from, and "Save as recipe" leaves the conversation
 // attached to the dish it produced (issue #696).
@@ -125,8 +128,8 @@ describe('ChatSessionPage — save as recipe', () => {
     mockSessions._set([makeSession({ recipeId: null })]);
     vi.mocked(authorRecipeTraced).mockResolvedValue({
       kind: 'ok',
-      value: { id: 'recipe-new', kind: 'recipe', metadata: { tags: [] } },
-    } as Awaited<ReturnType<typeof authorRecipeTraced>>);
+      value: emptyRecipe('recipe-new', NOW),
+    });
     const { getByTestId } = renderPage();
 
     await fireEvent.click(getByTestId('chat-save-recipe-btn'));
@@ -196,8 +199,8 @@ describe('ChatSessionPage — save as NEW recipe', () => {
     mockSessions._set([makeSession({ recipeId: 'lamb', basedOnRecipeId: 'older-dish' })]);
     vi.mocked(authorRecipeTraced).mockResolvedValue({
       kind: 'ok',
-      value: { id: 'salad', kind: 'recipe', metadata: { tags: [] } },
-    } as Awaited<ReturnType<typeof authorRecipeTraced>>);
+      value: emptyRecipe('salad', NOW),
+    });
     const { getByTestId } = renderPage();
 
     await fireEvent.click(getByTestId('chat-save-new-recipe-btn'));
@@ -217,7 +220,7 @@ describe('ChatSessionPage — save as NEW recipe', () => {
 // conversation never mentioned.
 describe('ChatSessionPage — a variation chat', () => {
   function pilaf(): Recipe {
-    return { id: 'pilaf', title: 'Chorizo & Red Pepper Pilaf', metadata: { tags: [] } } as Recipe;
+    return { ...emptyRecipe('pilaf', NOW), title: 'Chorizo & Red Pepper Pilaf' };
   }
 
   it('shows the Based on chip, and taps through to the dish it started from', async () => {
@@ -259,8 +262,8 @@ describe('ChatSessionPage — a variation chat', () => {
     mockSessions._set([makeSession({ basedOnRecipeId: 'pilaf' })]);
     vi.mocked(authorRecipeTraced).mockResolvedValue({
       kind: 'ok',
-      value: { id: 'recipe-new', kind: 'recipe', metadata: { tags: [] } },
-    } as Awaited<ReturnType<typeof authorRecipeTraced>>);
+      value: emptyRecipe('recipe-new', NOW),
+    });
     const { getByTestId } = renderPage();
 
     await fireEvent.click(getByTestId('chat-save-recipe-btn'));
@@ -284,9 +287,9 @@ describe('ChatSessionPage — a variation chat', () => {
 
 describe('ChatSessionPage — saving a dish back onto a meal', () => {
   const SAVED = {
-    kind: 'ok',
-    value: { id: 'recipe-new', kind: 'recipe', title: 'Onion gravy', metadata: { tags: [] } },
-  } as Awaited<ReturnType<typeof authorRecipeTraced>>;
+    kind: 'ok' as const,
+    value: { ...emptyRecipe('recipe-new', NOW), title: 'Onion gravy' },
+  };
 
   it('attaches the dish to the meal and lands back on the meal', async () => {
     mockRouter.querystring = 'meal=roast';
@@ -355,7 +358,7 @@ describe('ChatSessionPage — starter prompts', () => {
   }
 
   it('offers general openers on an empty chat, and sends one as an ordinary turn', async () => {
-    vi.mocked(sendMessage).mockResolvedValue({ kind: 'ok', value: undefined });
+    vi.mocked(sendMessage).mockResolvedValue({ kind: 'ok', value: emptySession() });
     mockSessions._set([emptySession()]);
     const { getAllByTestId, getByRole } = renderPage();
 
@@ -369,9 +372,7 @@ describe('ChatSessionPage — starter prompts', () => {
   });
 
   it('asks about the dish instead when the chat is a variation of one', () => {
-    mockRecipes._set([
-      { id: 'pilaf', title: 'Chorizo & Red Pepper Pilaf', metadata: { tags: [] } } as Recipe,
-    ]);
+    mockRecipes._set([{ ...emptyRecipe('pilaf', NOW), title: 'Chorizo & Red Pepper Pilaf' }]);
     mockSessions._set([emptySession({ basedOnRecipeId: 'pilaf' })]);
     const { getAllByTestId } = renderPage();
 

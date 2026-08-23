@@ -160,6 +160,9 @@ function ing(over: { id: string; rawText: string; canonId?: string | null }) {
 
 function makeEntry(overrides: Partial<Recipe> = {}): Recipe {
   return {
+    lastEditedBy: '',
+    createdBy: '',
+    kit: [],
     id: RECIPE_ID,
     schemaVersion: 1,
     kind: 'recipe',
@@ -182,7 +185,7 @@ function makeEntry(overrides: Partial<Recipe> = {}): Recipe {
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
-  } as Recipe;
+  };
 }
 
 function withIngredients(items: ReturnType<typeof ing>[], overrides: Partial<Recipe> = {}): Recipe {

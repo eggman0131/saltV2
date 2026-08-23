@@ -60,6 +60,7 @@ function member(overrides: Partial<Member> & { id: string }): Member {
     admin: false,
     sortOrder: 0,
     icon: null,
+    cookMode: 'standard',
     updatedAt: '2026-06-07T00:00:00.000Z',
     ...overrides,
   };
@@ -70,7 +71,7 @@ function recipe(overrides: Partial<Recipe> = {}): Recipe {
 }
 
 function saved(): Recipe {
-  return fs.saveRecipe.mock.calls[0]![0] as Recipe;
+  return fs.saveRecipe.mock.calls[0]![0];
 }
 
 function signIn(name: string, email = 'daniel@e.org'): void {

@@ -135,6 +135,11 @@ const BRIEF = 'Served on a rustic wooden board in warm afternoon light, shot fro
 
 function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
   return {
+    lastEditedBy: '',
+    createdBy: '',
+    kit: [],
+    producesCanonId: null,
+    kind: 'recipe',
     id: RECIPE_ID,
     schemaVersion: 1,
     title: 'Test Recipe',
@@ -155,7 +160,7 @@ function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
-  } as Recipe;
+  };
 }
 
 afterEach(() => {

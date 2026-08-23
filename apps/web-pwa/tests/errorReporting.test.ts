@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import type { ErrorReportingPort } from '@salt/domain';
 import type { DomainError } from '@salt/shared-types';
 
@@ -16,7 +16,7 @@ import {
 import type { ReadResult } from '@salt/shared-types';
 
 describe('reportSubscriptionError (service-layer subscription onError gate)', () => {
-  let report: ReturnType<typeof vi.fn>;
+  let report: Mock<ErrorReportingPort['report']>;
   let errors: ErrorReportingPort;
 
   beforeEach(() => {
@@ -73,7 +73,7 @@ describe('reportSubscriptionError (service-layer subscription onError gate)', ()
 // write that fails with AuthError is forwarded (it's a real authz failure the
 // user just triggered, not the listener teardown race).
 describe('reportWriteError (service-layer write/command failure forwarder)', () => {
-  let report: ReturnType<typeof vi.fn>;
+  let report: Mock<ErrorReportingPort['report']>;
   let errors: ErrorReportingPort;
 
   beforeEach(() => {
@@ -114,7 +114,7 @@ describe('reportWriteError (service-layer write/command failure forwarder)', () 
 });
 
 describe('reportIfFailed (ergonomic err-branch wrapper)', () => {
-  let report: ReturnType<typeof vi.fn>;
+  let report: Mock<ErrorReportingPort['report']>;
   let errors: ErrorReportingPort;
 
   beforeEach(() => {

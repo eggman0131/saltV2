@@ -121,6 +121,13 @@ function formIngredient(
 
 function makeRecipe(items: IngredientGroup['items']): Recipe {
   return {
+    image: null,
+    createdBy: '',
+    lastEditedBy: '',
+    kind: 'recipe',
+    producesCanonId: null,
+    componentRecipeIds: [],
+    kit: [],
     id: 'recipe-1',
     schemaVersion: 1,
     title: 'Test Recipe',
@@ -416,7 +423,7 @@ describe('commitRecipeAddPlan — originalText', () => {
 
     await commitRecipeAddPlan(recipe, 'list-1', 2, rows);
 
-    const saved = (fs.saveShoppingListItem as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    const saved = vi.mocked(fs.saveShoppingListItem).mock.calls[0]![1];
     expect(saved.originalText).toEqual(['15 g lime zest', '60 ml lime juice']);
     // Display context only — the count and demand it rides with are unchanged.
     expect(saved.amount).toBe(3);
@@ -433,7 +440,7 @@ describe('commitRecipeAddPlan — originalText', () => {
 
     await commitRecipeAddPlan(recipe, 'list-1', 2, rows);
 
-    const saved = (fs.saveShoppingListItem as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    const saved = vi.mocked(fs.saveShoppingListItem).mock.calls[0]![1];
     expect(saved.originalText).toBeUndefined();
     expect('originalText' in saved).toBe(false);
   });

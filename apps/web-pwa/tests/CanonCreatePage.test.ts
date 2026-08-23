@@ -60,12 +60,13 @@ import { addCanonItem } from '../src/lib/canonService.js';
 
 function canonItem(overrides: Partial<CanonItem> & { id: string; name: string }): CanonItem {
   return {
-    schemaVersion: 2,
+    schemaVersion: 5,
     synonyms: [],
     aisleId: null,
     thumbnail: null,
     embedding: null,
     needs_approval: false,
+    shoppingBehavior: 'needed',
     updatedAt: '',
     ...overrides,
   };
@@ -225,7 +226,7 @@ describe('CanonCreatePage', () => {
     it('shows an error message when addCanonItem returns an error', async () => {
       vi.mocked(addCanonItem).mockResolvedValueOnce({
         kind: 'err',
-        error: { kind: 'ValidationError', field: 'name', reason: 'empty' },
+        error: { kind: 'ValidationError', code: 'INVALID_CANON_NAME' },
       });
       render(CanonCreatePage);
       await openAndType('Garlic');

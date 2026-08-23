@@ -29,10 +29,18 @@ interface FakeClient {
   navigate?: (url: string) => Promise<void>;
 }
 
+// `renotify` is what makes a re-fired cook timer buzz again rather than replace
+// its predecessor silently (#544). It is real and load-bearing, but lib.dom's
+// `NotificationOptions` does not name it — so name it here, once, instead of
+// casting at every read.
+type ShownOptions = NotificationOptions & { renotify?: boolean };
+
 function loadSw(clients: FakeClient[] = []) {
   const listeners = new Map<string, Listener>();
-  const showNotification = vi.fn(async () => undefined);
-  const openWindow = vi.fn(async () => undefined);
+  const showNotification = vi.fn(
+    async (_title: string, _options?: ShownOptions): Promise<void> => undefined,
+  );
+  const openWindow = vi.fn(async (_url: string) => undefined);
   const self = {
     addEventListener: (type: string, fn: Listener) => listeners.set(type, fn),
     clients: {
@@ -119,7 +127,7 @@ describe('push-sw — push', () => {
     listeners.get('push')!(event);
     await settle();
     expect(showNotification).toHaveBeenCalledTimes(1);
-    expect(showNotification.mock.calls[0]?.[0]).toBe('Shopping tomorrow AM');
+    expect(showNotification.mock.calls[0]![0]).toBe('Shopping tomorrow AM');
   });
 
   it('shows a cook timer when nothing is focused', async () => {
@@ -135,11 +143,7 @@ describe('push-sw — push', () => {
     const { event: sEvent, settle: sSettle } = pushEvent(SHOPPING);
     shopping.listeners.get('push')!(sEvent);
     await sSettle();
-    const shoppingOpts = shopping.showNotification.mock.calls[0]?.[1] as {
-      renotify: boolean;
-      tag: string;
-      data: { url: string | null };
-    };
+    const shoppingOpts = shopping.showNotification.mock.calls[0]![1]!;
     expect(shoppingOpts.renotify).toBe(false);
     expect(shoppingOpts.tag).toBe('shopping::2026-08-15');
     expect(shoppingOpts.data.url).toBe('/#/shopping/list-1');
@@ -148,7 +152,7 @@ describe('push-sw — push', () => {
     const { event: cEvent, settle: cSettle } = pushEvent(COOK_TIMER);
     cook.listeners.get('push')!(cEvent);
     await cSettle();
-    const cookOpts = cook.showNotification.mock.calls[0]?.[1] as { renotify: boolean };
+    const cookOpts = cook.showNotification.mock.calls[0]![1]!;
     expect(cookOpts.renotify).toBe(true);
   });
 
@@ -161,17 +165,15 @@ describe('push-sw — push', () => {
     listeners.get('push')!(event);
     await settle();
     expect(showNotification).toHaveBeenCalledTimes(1);
-    const [title, opts] = showNotification.mock.calls[0] as unknown as [
-      string,
-      { tag: string; renotify: boolean; data: { url: string | null } },
-    ];
+    const [title, opts] = showNotification.mock.calls[0]!;
+    expect(opts).toBeDefined();
     expect(title).toBe('Shape into the tin');
     // Per batch AND per stage, so the preheat reminder cannot silently replace the
     // shape reminder eight hours earlier.
-    expect(opts.tag).toBe('batch::batch-1::shape');
+    expect(opts!.tag).toBe('batch::batch-1::shape');
     // Re-buzzes, unlike the shopping nudge: a timed call to act, deduped server-side.
-    expect(opts.renotify).toBe(true);
-    expect(opts.data.url).toBe('/#/batches/batch-1');
+    expect(opts!.renotify).toBe(true);
+    expect(opts!.data.url).toBe('/#/batches/batch-1');
   });
 
   it('falls back to BATCH copy, not cook-timer copy, for a batch push with no title', async () => {
@@ -181,7 +183,7 @@ describe('push-sw — push', () => {
     const { event, settle } = pushEvent({ type: 'batch-stage', url: '/#/batches/batch-1' });
     listeners.get('push')!(event);
     await settle();
-    expect(showNotification.mock.calls[0]?.[0]).toBe('A batch stage is due');
+    expect(showNotification.mock.calls[0]![0]).toBe('A batch stage is due');
   });
 
   it('falls back to the cook-timer copy on an unparseable payload', async () => {

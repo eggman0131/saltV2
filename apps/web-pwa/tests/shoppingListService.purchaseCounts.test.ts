@@ -91,7 +91,7 @@ function item(overrides: Partial<ShoppingListItem> & { id: string }): ShoppingLi
   };
 }
 
-function seedItems(listId: string, items: readonly ShoppingListItem[]): void {
+function seedItems(listId: string, items: ShoppingListItem[]): void {
   fs.subscribeShoppingListItems.mockImplementation((_id, onItems) => {
     onItems(items);
     return () => {};

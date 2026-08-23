@@ -80,7 +80,7 @@ import { importRecipeFromPhoto, photoImportMessage } from '../src/lib/recipeServ
 
 const fs = firebaseSync as Mocked<typeof firebaseSync>;
 
-const DRAFT = {
+const DRAFT: Recipe = {
   id: 'imported-1',
   schemaVersion: 1,
   kind: 'recipe',
@@ -98,9 +98,15 @@ const DRAFT = {
   source: { type: 'book', book: { title: 'The Roasting Tin', page: 62 } },
   notes: null,
   needs_approval: true,
+  producesCanonId: null,
+  componentRecipeIds: [],
+  kit: [],
+  image: null,
+  createdBy: '',
+  lastEditedBy: '',
   createdAt: '2026-08-01T00:00:00.000Z',
   updatedAt: '2026-08-01T00:00:00.000Z',
-} as unknown as Recipe;
+};
 
 const PAGES: RecipePagePhoto[] = [
   { base64: 'AAAA', contentType: 'image/webp' },

@@ -93,6 +93,7 @@ function item(overrides: Partial<ShoppingListItem> & { id: string }): ShoppingLi
     sources: [],
     canonId: null,
     matchState: 'matched',
+    needsCheck: false,
     checked: false,
     schemaVersion: 1,
     createdAt: '2026-01-01T00:00:00.000Z',

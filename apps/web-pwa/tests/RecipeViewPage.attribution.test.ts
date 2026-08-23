@@ -124,6 +124,9 @@ const RECIPE_ID = 'recipe-1';
 
 function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
   return {
+    kit: [],
+    producesCanonId: null,
+    kind: 'recipe',
     id: RECIPE_ID,
     schemaVersion: 1,
     title: 'Bare Recipe',
@@ -146,7 +149,7 @@ function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
     createdBy: '',
     lastEditedBy: '',
     ...overrides,
-  } as Recipe;
+  };
 }
 
 afterEach(() => {

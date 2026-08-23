@@ -74,18 +74,20 @@ import { seedMembers, __resetMembersServiceForTest } from '../src/lib/membersSer
 function makeMember(name: string, sortOrder: number): Member {
   return {
     id: `member-${name.toLowerCase()}`,
+    schemaVersion: 1,
     name,
     email: `${name.toLowerCase()}@example.com`,
     admin: false,
     sortOrder,
-    cookMode: 'lite',
-    createdAt: '2026-01-01T00:00:00.000Z',
+    icon: null,
+    cookMode: 'standard',
     updatedAt: '2026-01-01T00:00:00.000Z',
-  } as Member;
+  };
 }
 
 function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
   return {
+    kit: [],
     id: 'entry-1',
     schemaVersion: 1,
     kind: 'recipe',
@@ -110,7 +112,7 @@ function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
     createdBy: '',
     lastEditedBy: '',
     ...overrides,
-  } as Recipe;
+  };
 }
 
 function trigger(): HTMLElement {

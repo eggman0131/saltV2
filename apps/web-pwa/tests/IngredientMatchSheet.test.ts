@@ -44,6 +44,7 @@ vi.mock('../src/lib/membersService.js', () => ({ currentMember: mockCurrentMembe
 import IngredientMatchSheet from '../src/routes/recipes/IngredientMatchSheet.svelte';
 
 const LIME: CanonItem = {
+  embedding: null,
   id: 'canon-lime',
   schemaVersion: 5,
   name: 'lime',

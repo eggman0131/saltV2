@@ -45,13 +45,14 @@ const fs = firebaseSync as Mocked<typeof firebaseSync>;
 function makeItem(id: string, overrides: Partial<CanonItem> = {}): CanonItem {
   return {
     id,
-    schemaVersion: 2,
+    schemaVersion: 5,
     name: id,
     synonyms: [],
     aisleId: null,
     thumbnail: null,
     embedding: null,
     needs_approval: false,
+    shoppingBehavior: 'needed',
     updatedAt: '',
     ...overrides,
   };

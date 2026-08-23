@@ -241,7 +241,7 @@ describe('the catalog record editor', () => {
     it('shows a name error when updateCanonItemName returns an error', async () => {
       vi.mocked(updateCanonItemName).mockResolvedValueOnce({
         kind: 'err',
-        error: { kind: 'ValidationError', field: 'name', reason: 'empty' },
+        error: { kind: 'ValidationError', code: 'INVALID_CANON_NAME' },
       });
       setupWithItem();
 

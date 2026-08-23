@@ -106,6 +106,12 @@ function ingredient(id: string, canonId: string, item: string, amount: number, u
 
 function makeRecipe(items: IngredientGroup['items']): Recipe {
   return {
+    createdBy: '',
+    lastEditedBy: '',
+    producesCanonId: null,
+    componentRecipeIds: [],
+    kit: [],
+    image: null,
     id: 'recipe-1',
     schemaVersion: 1,
     kind: 'recipe',

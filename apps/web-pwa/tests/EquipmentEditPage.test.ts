@@ -173,7 +173,7 @@ describe('EquipmentEditPage — Revise', () => {
 
   it('a failure leaves the box EXACTLY as it was and says so', async () => {
     vi.mocked(reviseEquipmentBrief).mockResolvedValue({
-      kind: 'failure',
+      kind: 'err',
       error: { kind: 'NetworkError', reason: 'transient' },
     });
     renderPage();
@@ -224,7 +224,7 @@ describe('EquipmentEditPage — Start over', () => {
 
   it('a failure leaves the box exactly as it was', async () => {
     vi.mocked(restartEquipmentBrief).mockResolvedValue({
-      kind: 'failure',
+      kind: 'err',
       error: { kind: 'NetworkError', reason: 'transient' },
     });
     renderPage();

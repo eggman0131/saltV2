@@ -125,6 +125,8 @@ const RECIPE_ID = 'entry-1';
 
 function makeEntry(overrides: Partial<Recipe> = {}): Recipe {
   return {
+    lastEditedBy: '',
+    createdBy: '',
     id: RECIPE_ID,
     schemaVersion: 1,
     kind: 'recipe',
@@ -148,7 +150,7 @@ function makeEntry(overrides: Partial<Recipe> = {}): Recipe {
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
-  } as Recipe;
+  };
 }
 
 function makeComponent(over: Partial<Recipe> & { id: string; title: string }): Recipe {

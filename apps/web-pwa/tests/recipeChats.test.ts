@@ -16,6 +16,7 @@ function makeSession(overrides: Partial<ChatSessionDoc> = {}): ChatSessionDoc {
     recipeId: 'recipe-1',
     title: 'Test chat',
     messages: [],
+    basedOnRecipeId: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     expiresAt: '9999-12-31T23:59:59.999Z',

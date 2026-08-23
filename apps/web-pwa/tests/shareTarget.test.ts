@@ -10,7 +10,7 @@ import { get } from 'svelte/store';
 const importRecipeFromUrl = vi.fn();
 const stashImportedDraft = vi.fn();
 const stashPendingImportUrl = vi.fn();
-const push = vi.fn(async () => {});
+const push = vi.fn(async (_path: string) => {});
 
 vi.mock('svelte-spa-router', () => ({ push: (p: string) => push(p) }));
 vi.mock('../src/lib/recipeService.js', () => ({

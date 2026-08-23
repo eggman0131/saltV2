@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi, type Mocked } from 'vitest';
+import { emptyRecipe } from '@salt/domain';
 import type { Recipe, CanonItem, IngredientGroup } from '@salt/domain';
 
 // ─── Mock firebase-sync ──────────────────────────────────────────────────────
@@ -40,35 +41,23 @@ const fs = firebaseSync as Mocked<typeof firebaseSync>;
 function makeCanonItem(id: string, needs_approval = false): CanonItem {
   return {
     id,
-    schemaVersion: 2,
+    schemaVersion: 5,
     name: id,
     synonyms: [],
     aisleId: null,
     thumbnail: null,
     embedding: null,
     needs_approval,
+    shoppingBehavior: 'needed',
     updatedAt: '',
   };
 }
 
 function makeRecipe(groups: IngredientGroup[]): Recipe {
   return {
-    id: 'recipe-1',
-    schemaVersion: 1,
+    ...emptyRecipe('recipe-1', '2026-01-01T00:00:00.000Z'),
     title: 'Test Recipe',
-    description: null,
     ingredients: groups,
-    steps: [],
-    metadata: {
-      servings: null,
-      prepTimeMinutes: null,
-      cookTimeMinutes: null,
-      totalTimeMinutes: null,
-      tags: [],
-    },
-    source: null,
-    notes: null,
-    createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
   };
 }
@@ -141,8 +130,8 @@ describe('canonicaliseIngredients', () => {
 
     await canonicaliseIngredients(recipe);
 
-    const saved = (fs.saveRecipe as ReturnType<typeof vi.fn>).mock.calls[0][0] as Recipe;
-    const ing = saved.ingredients[0].items[0];
+    const saved = fs.saveRecipe.mock.calls[0]![0];
+    const ing = saved.ingredients[0]!.items[0]!;
     expect(ing.canonId).toBe('canon-flour');
     expect(ing.matchState).toBe('matched');
   });
@@ -170,8 +159,8 @@ describe('canonicaliseIngredients', () => {
 
     await canonicaliseIngredients(recipe);
 
-    const saved = (fs.saveRecipe as ReturnType<typeof vi.fn>).mock.calls[0][0] as Recipe;
-    const ing = saved.ingredients[0].items[0];
+    const saved = fs.saveRecipe.mock.calls[0]![0];
+    const ing = saved.ingredients[0]!.items[0]!;
     expect(ing.canonId).toBe('canon-novel');
     expect(ing.matchState).toBe('matched');
   });
@@ -198,8 +187,8 @@ describe('canonicaliseIngredients', () => {
 
     await canonicaliseIngredients(recipe);
 
-    const saved = (fs.saveRecipe as ReturnType<typeof vi.fn>).mock.calls[0][0] as Recipe;
-    const ing = saved.ingredients[0].items[0];
+    const saved = fs.saveRecipe.mock.calls[0]![0];
+    const ing = saved.ingredients[0]!.items[0]!;
     expect(ing.canonId).toBeNull();
     expect(ing.matchState).toBe('failed');
   });
@@ -228,8 +217,8 @@ describe('canonicaliseIngredients', () => {
     await canonicaliseIngredients(recipe);
 
     expect(fs.callCanonicaliseRecipeIngredients).toHaveBeenCalledOnce();
-    const saved = (fs.saveRecipe as ReturnType<typeof vi.fn>).mock.calls[0][0] as Recipe;
-    expect(saved.ingredients[0].items[0].matchState).toBe('matched');
+    const saved = fs.saveRecipe.mock.calls[0]![0];
+    expect(saved.ingredients[0]!.items[0]!.matchState).toBe('matched');
   });
 
   it('skips ingredients whose canonId is live in the canon store', async () => {
@@ -283,9 +272,9 @@ describe('canonicaliseIngredients', () => {
     await canonicaliseIngredients(recipe);
 
     expect(fs.callCanonicaliseRecipeIngredients).toHaveBeenCalledOnce();
-    const saved = (fs.saveRecipe as ReturnType<typeof vi.fn>).mock.calls[0][0] as Recipe;
-    expect(saved.ingredients[0].items[0].canonId).toBe('canon-flour-new');
-    expect(saved.ingredients[0].items[0].matchState).toBe('matched');
+    const saved = fs.saveRecipe.mock.calls[0]![0];
+    expect(saved.ingredients[0]!.items[0]!.canonId).toBe('canon-flour-new');
+    expect(saved.ingredients[0]!.items[0]!.matchState).toBe('matched');
   });
 
   it('calls the batch CF with rawName from parsed.item and rawText from ingredient', async () => {
@@ -363,8 +352,8 @@ describe('canonicaliseIngredients', () => {
     await canonicaliseIngredients(recipe);
 
     expect(fs.callCanonicaliseRecipeIngredients).toHaveBeenCalledOnce();
-    const saved = (fs.saveRecipe as ReturnType<typeof vi.fn>).mock.calls[0][0] as Recipe;
-    expect(saved.ingredients[0].items[0].canonId).toBe('canon-flour');
-    expect(saved.ingredients[1].items[0].canonId).toBe('canon-sugar');
+    const saved = fs.saveRecipe.mock.calls[0]![0];
+    expect(saved.ingredients[0]!.items[0]!.canonId).toBe('canon-flour');
+    expect(saved.ingredients[1]!.items[0]!.canonId).toBe('canon-sugar');
   });
 });

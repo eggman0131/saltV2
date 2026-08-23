@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup, fireEvent, within } from '@testing-library/svelte';
+import { emptyRecipe } from '@salt/domain';
 import type { CanonItem, ProductForm, Recipe, ShoppingList, ShoppingListItem } from '@salt/domain';
 
 // A recipe's name on the shopping list opens the recipe (#860). Two surfaces
@@ -122,9 +123,13 @@ function item(overrides: Partial<ShoppingListItem> & { id: string }): ShoppingLi
   };
 }
 
-// Only the id is ever read (`liveRecipeIds`), so the fixture stays a stub rather
-// than a full Recipe — the page never dereferences another field.
-const recipeStub = (id: string, title: string) => ({ id, title }) as unknown as Recipe;
+// Only the id is ever read (`liveRecipeIds`), but the fixture is a real Recipe
+// all the same: a stub cast past the compiler is how a fixture drifts out of
+// shape unnoticed (#942).
+const recipeStub = (id: string, title: string): Recipe => ({
+  ...emptyRecipe(id, '2026-01-01T00:00:00.000Z'),
+  title,
+});
 
 const fromRecipe = (label: string, recipeId = 'r1', servings = 4) => [
   { kind: 'recipe' as const, recipeId, servings, label },

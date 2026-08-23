@@ -72,6 +72,9 @@ function recipe(
   } = {},
 ): Recipe {
   return {
+    kit: [],
+    createdBy: '',
+    lastEditedBy: '',
     id,
     schemaVersion: 1,
     kind: 'recipe',

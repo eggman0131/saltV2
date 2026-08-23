@@ -74,6 +74,12 @@ const CONFLICT_ERR: DomainError = { kind: 'ConflictError' };
 
 function makeRecipe(groups: IngredientGroup[] = []): Recipe {
   return {
+    createdBy: '',
+    lastEditedBy: '',
+    kind: 'recipe',
+    producesCanonId: null,
+    kit: [],
+    image: null,
     id: 'recipe-1',
     schemaVersion: 1,
     title: 'Test',
@@ -102,12 +108,28 @@ function makeRecipe(groups: IngredientGroup[] = []): Recipe {
 
 function makeIngredient(id: string): Ingredient {
   return {
+    firstUsedInStepId: null,
     id,
     rawText: '2 eggs',
     parsed: null,
     canonId: null,
     matchState: 'pending',
     isOptional: false,
+  };
+}
+
+/** The same ingredient once the parse callable has filled in `parsed`. */
+function parsedIngredient(id: string): Ingredient {
+  return {
+    ...makeIngredient(id),
+    parsed: {
+      item: 'egg',
+      quantity: null,
+      unit: null,
+      preparation: [],
+      notes: null,
+      displayText: null,
+    },
   };
 }
 
@@ -159,14 +181,7 @@ describe('recipeService — write/command failure reporting (Phase 2)', () => {
     it('reports a StorageError canonicalise failure after a successful parse', async () => {
       fs.callParseRecipeIngredients.mockResolvedValueOnce({
         kind: 'ok',
-        value: [
-          {
-            heading: null,
-            items: [
-              { ...makeIngredient('a'), parsed: { item: 'egg', quantity: null, unit: null } },
-            ],
-          } as unknown as IngredientGroup,
-        ],
+        value: [{ id: 'g1', name: null, items: [parsedIngredient('a')] }],
       });
       fs.callCanonicaliseRecipeIngredients.mockResolvedValueOnce({
         kind: 'err',
@@ -179,12 +194,7 @@ describe('recipeService — write/command failure reporting (Phase 2)', () => {
 
   describe('canonicaliseIngredients (batch AI callable)', () => {
     it('reports a StorageError batch failure', async () => {
-      const recipe = makeRecipe([
-        {
-          heading: null,
-          items: [{ ...makeIngredient('a'), parsed: { item: 'egg', quantity: null, unit: null } }],
-        } as unknown as IngredientGroup,
-      ]);
+      const recipe = makeRecipe([{ id: 'g1', name: null, items: [parsedIngredient('a')] }]);
       fs.callCanonicaliseRecipeIngredients.mockResolvedValueOnce({
         kind: 'err',
         error: STORAGE_ERR,
@@ -207,6 +217,11 @@ describe('recipeService — write/command failure reporting (Phase 2)', () => {
       matched: false,
       add: true,
       check: false,
+      producers: [],
+      make: false,
+      producerId: null,
+      madeServings: 1,
+      subRows: null,
     };
 
     it('reports the first StorageError item-write failure', async () => {

@@ -86,7 +86,7 @@ function ingredient(spec: IngredientSpec) {
           quantity: { type: 'single' as const, value: spec.count },
           unit: null,
           item: spec.rawText,
-          preparation: null,
+          preparation: [],
           notes: null,
           displayText: spec.rawText,
         }
@@ -95,7 +95,7 @@ function ingredient(spec: IngredientSpec) {
             quantity: { type: 'range' as const, min: spec.range[0], max: spec.range[1] },
             unit: 'ml' as const,
             item: spec.rawText,
-            preparation: null,
+            preparation: [],
             notes: null,
             displayText: spec.rawText,
           }
@@ -104,7 +104,7 @@ function ingredient(spec: IngredientSpec) {
               quantity: { type: 'single' as const, value: spec.grams },
               unit: 'g' as const,
               item: spec.rawText,
-              preparation: null,
+              preparation: [],
               notes: null,
               displayText: spec.rawText,
             }
@@ -130,6 +130,11 @@ const LOAF: IngredientSpec[] = [
 
 function makeRecipe(specs: IngredientSpec[] = LOAF, overrides: Partial<Recipe> = {}): Recipe {
   return {
+    lastEditedBy: '',
+    createdBy: '',
+    kit: [],
+    componentRecipeIds: [],
+    producesCanonId: null,
     id: RECIPE_ID,
     schemaVersion: 1,
     kind: 'recipe',
@@ -150,11 +155,12 @@ function makeRecipe(specs: IngredientSpec[] = LOAF, overrides: Partial<Recipe> =
     createdAt: WRITTEN_AT,
     updatedAt: WRITTEN_AT,
     ...overrides,
-  } as Recipe;
+  };
 }
 
 function canon(id: string, name: string): CanonItem {
   return {
+    embedding: null,
     id,
     schemaVersion: 5,
     name,

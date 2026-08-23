@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { PushSubscriptionDoc } from '@salt/domain/schemas';
 
 // firebase-sync writes are mocked so we assert the doc shape without Firestore.
 const { mockSave, mockDelete } = vi.hoisted(() => ({
-  mockSave: vi.fn(async () => ({ kind: 'ok', value: undefined })),
-  mockDelete: vi.fn(async () => ({ kind: 'ok', value: undefined })),
+  mockSave: vi.fn(async (_doc: PushSubscriptionDoc) => ({ kind: 'ok' as const, value: undefined })),
+  mockDelete: vi.fn(async (_id: string) => ({ kind: 'ok' as const, value: undefined })),
 }));
 vi.mock('@salt/firebase-sync', () => ({
   savePushSubscription: mockSave,
@@ -36,6 +37,8 @@ function stubBrowser(permission: NotificationPermission, grant: NotificationPerm
     value: { ready: Promise.resolve({ pushManager }) },
     configurable: true,
   });
+  // jsdom ships neither global, and both are read only for existence/permission —
+  // hence the widening casts rather than a full API stub.
   (window as unknown as { PushManager: unknown }).PushManager = function () {};
   const N: NotificationStub = { permission, requestPermission: vi.fn(async () => grant) };
   (window as unknown as { Notification: unknown }).Notification = N;
@@ -79,12 +82,7 @@ describe('push store (#544)', () => {
     expect(pushManager.subscribe).toHaveBeenCalledTimes(1);
     expect(mockSave).toHaveBeenCalledTimes(1);
 
-    const doc = mockSave.mock.calls[0]![0] as {
-      id: string;
-      ownerUid: string;
-      endpoint: string;
-      keys: { p256dh: string; auth: string };
-    };
+    const doc = mockSave.mock.calls[0]![0];
     expect(doc.ownerUid).toBe('user-1');
     expect(doc.endpoint).toBe(ENDPOINT);
     expect(doc.keys).toEqual({ p256dh: 'PK', auth: 'AK' });

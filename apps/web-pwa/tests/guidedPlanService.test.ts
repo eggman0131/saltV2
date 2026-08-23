@@ -138,7 +138,15 @@ describe('generateGuidedPlan', () => {
       value: {
         prep: [{ text: 'Dice the onion', container: 'small bowl', ingredientIds: ['ing-1'] }],
         stepNotes: [
-          { stepId: 'step-1', container: null, setup: null, cue: 'a gentle sizzle', checkIns: [] },
+          {
+            stepId: 'step-1',
+            container: null,
+            setup: null,
+            cue: 'a gentle sizzle',
+            checkIns: [],
+            lookahead: null,
+            getAhead: null,
+          },
         ],
       },
     });

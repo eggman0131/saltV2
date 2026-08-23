@@ -78,6 +78,7 @@ function makeSession(): ChatSessionDoc {
     recipeId: null,
     title: 'New chat',
     messages: [],
+    basedOnRecipeId: null,
     createdAt: ts,
     updatedAt: ts,
     expiresAt: ts,

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { chooseLandingStop, deriveStops } from '../src/lib/cookDeck.js';
+import type { DeckThresholds } from '../src/lib/cookDeck.js';
 
 // The planner's deck (#639, Phase 4) reuses cook mode's geometry against sections
 // of a completely different size: a day card is ~200px where a cook step fills the
@@ -75,7 +76,11 @@ describe('the planner deck leaves the row gap above the day it rests on', () => 
 });
 
 describe('the planner deck commits on a day-sized drag', () => {
-  const land = (dragged: number, velocity = 0, overrides = PLANNER_THRESHOLDS): number => {
+  const land = (
+    dragged: number,
+    velocity = 0,
+    overrides: DeckThresholds = PLANNER_THRESHOLDS,
+  ): number => {
     const stops = deriveStops({ sections: WEEK, screen: SCREEN, limit: LIMIT });
     return chooseLandingStop({
       stops,

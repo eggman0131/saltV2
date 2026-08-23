@@ -105,7 +105,7 @@ function canon(id: string, name: string): CanonItem {
 
 // Seed the active-list store the way production does — through the subscription
 // callback (mirrors shoppingListService.moveWithEdits.test.ts).
-function seedItems(listId: string, items: readonly ShoppingListItem[]): void {
+function seedItems(listId: string, items: ShoppingListItem[]): void {
   fs.subscribeShoppingListItems.mockImplementation((_id, onItems) => {
     onItems(items);
     return () => {};

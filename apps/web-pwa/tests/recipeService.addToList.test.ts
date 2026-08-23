@@ -64,6 +64,13 @@ function makeGroup(items: IngredientGroup['items']): IngredientGroup {
 
 function makeRecipe(groups: IngredientGroup[]): Recipe {
   return {
+    image: null,
+    createdBy: '',
+    lastEditedBy: '',
+    kind: 'recipe',
+    producesCanonId: null,
+    componentRecipeIds: [],
+    kit: [],
     id: 'recipe-1',
     schemaVersion: 1,
     title: 'Test Recipe',
@@ -234,7 +241,7 @@ describe('buildRecipeAddPlan', () => {
       makeGroup([matchedIngredient('i1', 'canon-flour', countIngredient)]),
     ]);
     const rows = buildRecipeAddPlan(recipe, 4); // base 2 → scale 2
-    expect(rows[0].amount).toBe(4);
+    expect(rows[0]!.amount).toBe(4);
   });
 
   it('carries parsed.item as itemText and parsed.notes as notes, dropping preparation', () => {
@@ -245,7 +252,7 @@ describe('buildRecipeAddPlan', () => {
     const rows = buildRecipeAddPlan(recipe, 2);
     expect(rows[0]).toMatchObject({ itemText: 'tomatoes', notes: 'preferably San Marzano' });
     // Preparation ("drained") is intentionally dropped from both name and notes.
-    expect(rows[0].notes).not.toContain('drained');
+    expect(rows[0]!.notes).not.toContain('drained');
   });
 
   it('falls back to the raw line for itemText when the ingredient is unparsed', () => {
@@ -280,7 +287,7 @@ describe('commitRecipeAddPlan', () => {
     const result = await commitRecipeAddPlan(recipe, 'list-1', 2, rows);
     expect(result).toEqual({ kind: 'ok', value: undefined });
     expect(fs.saveShoppingListItem).toHaveBeenCalledOnce();
-    const saved = (fs.saveShoppingListItem as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    const saved = fs.saveShoppingListItem.mock.calls[0]![1];
     expect(saved.canonId).toBe('canon-flour');
     expect(saved.matchState).toBe('matched');
     expect(saved.needsCheck).toBe(true);
@@ -309,7 +316,7 @@ describe('commitRecipeAddPlan', () => {
     const rows = buildRecipeAddPlan(recipe, 2);
 
     await commitRecipeAddPlan(recipe, 'list-1', 2, rows);
-    const saved = (fs.saveShoppingListItem as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    const saved = fs.saveShoppingListItem.mock.calls[0]![1];
     // Clean item name, not the raw line and not the "1 tin" displayText.
     expect(saved.rawText).toBe('tomatoes');
     expect(saved.notes).toBe('preferably San Marzano');
@@ -338,7 +345,7 @@ describe('commitRecipeAddPlan', () => {
     ]);
     const rows = buildRecipeAddPlan(recipe, 3);
     await commitRecipeAddPlan(recipe, 'list-1', 3, rows);
-    const saved = (fs.saveShoppingListItem as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    const saved = fs.saveShoppingListItem.mock.calls[0]![1];
     expect(saved.sources).toEqual([
       { kind: 'recipe', recipeId: 'recipe-1', servings: 3, label: 'Test Recipe' },
     ]);

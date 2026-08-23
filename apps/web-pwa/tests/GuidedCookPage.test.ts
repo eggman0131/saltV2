@@ -192,6 +192,7 @@ function makeRecipe(over: Partial<RecipeDoc> = {}): RecipeDoc {
   return {
     id: RECIPE_ID,
     schemaVersion: 1,
+    kind: 'recipe',
     title: 'Weeknight ragù',
     description: null,
     ingredients: [
@@ -227,9 +228,13 @@ function makeRecipe(over: Partial<RecipeDoc> = {}): RecipeDoc {
     source: null,
     notes: null,
     producesCanonId: null,
+    componentRecipeIds: [],
+    kit: [],
     image: null,
     createdAt: '2026-07-01T09:00:00.000Z',
     updatedAt: RECIPE_UPDATED_AT,
+    createdBy: '',
+    lastEditedBy: '',
     ...over,
   };
 }
@@ -245,6 +250,7 @@ function makeCookSession(over: Partial<CookSessionDoc> = {}): CookSessionDoc {
     checkedPrepIds: [],
     completedStepIds: [],
     activeTimers: [],
+    serveAt: null,
     createdAt: '2026-08-01T11:00:00.000Z',
     updatedAt: '2026-08-01T11:00:00.000Z',
     ...over,
@@ -732,6 +738,8 @@ describe('GuidedCookPage — the steps carry the plan-s notes', () => {
             setup: null,
             cue: null,
             checkIns: [],
+            lookahead: null,
+            getAhead: null,
           },
         ],
       }),
@@ -753,7 +761,15 @@ describe('GuidedCookPage — the steps carry the plan-s notes', () => {
     mockGuidedPlan._set(
       makePlan({
         stepNotes: [
-          { stepId: 'step-1', container: null, setup: 'Big pan', cue: null, checkIns: [] },
+          {
+            stepId: 'step-1',
+            container: null,
+            setup: 'Big pan',
+            cue: null,
+            checkIns: [],
+            lookahead: null,
+            getAhead: null,
+          },
         ],
       }),
     );
@@ -775,6 +791,8 @@ describe('GuidedCookPage — the steps carry the plan-s notes', () => {
             setup: null,
             cue: null,
             checkIns: [],
+            lookahead: null,
+            getAhead: null,
           },
         ],
       }),
@@ -1152,7 +1170,15 @@ describe('GuidedCookPage — a step says what is in the bowl, and what is not', 
       stepNotes: [
         // Typed with different case and spacing from the prep job's "small bowl",
         // which is exactly how a hand-edited plan drifts.
-        { stepId: 'step-1', container: 'Small  Bowl', setup: null, cue: null, checkIns: [] },
+        {
+          stepId: 'step-1',
+          container: 'Small  Bowl',
+          setup: null,
+          cue: null,
+          checkIns: [],
+          lookahead: null,
+          getAhead: null,
+        },
       ],
     });
   }
@@ -1472,7 +1498,7 @@ describe('GuidedCookPage — product-form icons in the prep list', () => {
               ...group.items[0]!,
               rawText: `30ml ${item}`,
               parsed: {
-                quantity: 30,
+                quantity: { type: 'single' as const, value: 30 },
                 unit: 'ml' as const,
                 item,
                 preparation: [],

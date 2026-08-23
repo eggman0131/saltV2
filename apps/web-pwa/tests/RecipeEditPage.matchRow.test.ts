@@ -76,6 +76,11 @@ function makePendingIngredient(): Ingredient {
 
 function makeRecipe(ing: Ingredient): Recipe {
   return {
+    kind: 'recipe',
+    producesCanonId: null,
+    kit: [],
+    createdBy: '',
+    lastEditedBy: '',
     id: 'recipe-1',
     schemaVersion: 1,
     title: 'Test Recipe',
@@ -158,7 +163,7 @@ describe('RecipeEditPage — per-row Match button', () => {
       expect(vi.mocked(persistRecipe)).toHaveBeenCalledTimes(1);
     });
 
-    const saved = vi.mocked(persistRecipe).mock.calls[0]![0] as Recipe;
+    const saved = vi.mocked(persistRecipe).mock.calls[0]![0];
     const ing = saved.ingredients[0]!.items[0]!;
     expect(ing.matchState).toBe('matched');
     expect(ing.canonId).toBe('canon-flour');

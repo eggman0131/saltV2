@@ -68,6 +68,11 @@ const WRITTEN_AT = '2026-08-01T09:00:00.000Z';
 
 function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
   return {
+    lastEditedBy: '',
+    createdBy: '',
+    kit: [],
+    componentRecipeIds: [],
+    producesCanonId: null,
     id: RECIPE_ID,
     schemaVersion: 1,
     kind: 'recipe',
@@ -121,7 +126,7 @@ function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
     createdAt: WRITTEN_AT,
     updatedAt: WRITTEN_AT,
     ...overrides,
-  } as Recipe;
+  };
 }
 
 function makePlan(overrides: Partial<GuidedPlanDoc> = {}): GuidedPlanDoc {
@@ -150,6 +155,8 @@ function makePlan(overrides: Partial<GuidedPlanDoc> = {}): GuidedPlanDoc {
         setup: 'small hob burner, medium-low',
         cue: 'a very gentle sizzle',
         checkIns: [],
+        lookahead: null,
+        getAhead: null,
       },
     ],
     createdAt: WRITTEN_AT,
@@ -236,6 +243,8 @@ describe('GuidedPlanPage — the plan', () => {
             setup: null,
             cue: 'a cue for a step that is gone',
             checkIns: [],
+            lookahead: null,
+            getAhead: null,
           },
         ],
       }),
@@ -438,6 +447,8 @@ describe('GuidedPlanPage — the dangling-container warning', () => {
             setup: null,
             cue: null,
             checkIns: [],
+            lookahead: null,
+            getAhead: null,
           },
         ],
       }),
@@ -453,7 +464,15 @@ describe('GuidedPlanPage — the dangling-container warning', () => {
     mockPlan._set(
       makePlan({
         stepNotes: [
-          { stepId: 'step-2', container: 'the onion bowl', setup: null, cue: null, checkIns: [] },
+          {
+            stepId: 'step-2',
+            container: 'the onion bowl',
+            setup: null,
+            cue: null,
+            checkIns: [],
+            lookahead: null,
+            getAhead: null,
+          },
         ],
       }),
     );
@@ -472,7 +491,15 @@ describe('GuidedPlanPage — the dangling-container warning', () => {
     mockPlan._set(
       makePlan({
         stepNotes: [
-          { stepId: 'step-deleted', container: 'the tureen', setup: null, cue: null, checkIns: [] },
+          {
+            stepId: 'step-deleted',
+            container: 'the tureen',
+            setup: null,
+            cue: null,
+            checkIns: [],
+            lookahead: null,
+            getAhead: null,
+          },
         ],
       }),
     );
@@ -486,7 +513,15 @@ describe('GuidedPlanPage — the dangling-container warning', () => {
     mockPlan._set(
       makePlan({
         stepNotes: [
-          { stepId: 'step-2', container: 'the tureen', setup: null, cue: null, checkIns: [] },
+          {
+            stepId: 'step-2',
+            container: 'the tureen',
+            setup: null,
+            cue: null,
+            checkIns: [],
+            lookahead: null,
+            getAhead: null,
+          },
         ],
       }),
     );
@@ -542,8 +577,24 @@ describe('GuidedPlanPage — drift and save', () => {
       makePlan({
         prep: [{ id: 'prep-1', text: 'Open the tin', container: '', ingredientIds: [] }],
         stepNotes: [
-          { stepId: 'step-1', container: '', setup: '', cue: '', checkIns: [] },
-          { stepId: 'step-2', container: '', setup: '', cue: 'looks glossy', checkIns: [] },
+          {
+            stepId: 'step-1',
+            container: '',
+            setup: '',
+            cue: '',
+            checkIns: [],
+            lookahead: null,
+            getAhead: null,
+          },
+          {
+            stepId: 'step-2',
+            container: '',
+            setup: '',
+            cue: 'looks glossy',
+            checkIns: [],
+            lookahead: null,
+            getAhead: null,
+          },
         ],
       }),
     );
@@ -650,6 +701,8 @@ describe('GuidedPlanPage — drift and save', () => {
             setup: null,
             cue: null,
             checkIns: [{ atMinutes: 20, text: 'stir' }],
+            lookahead: null,
+            getAhead: null,
           },
         ],
       }),

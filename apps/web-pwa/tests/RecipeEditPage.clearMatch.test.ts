@@ -78,6 +78,11 @@ function makeMatchedIngredient(): Ingredient {
 
 function makeRecipe(ing: Ingredient): Recipe {
   return {
+    kind: 'recipe',
+    producesCanonId: null,
+    kit: [],
+    createdBy: '',
+    lastEditedBy: '',
     id: 'recipe-1',
     schemaVersion: 1,
     title: 'Test Recipe',
@@ -122,7 +127,7 @@ describe('RecipeEditPage — clearIngredientMatch on edit', () => {
       expect(vi.mocked(persistRecipe)).toHaveBeenCalledTimes(1);
     });
 
-    const saved = vi.mocked(persistRecipe).mock.calls[0]![0] as Recipe;
+    const saved = vi.mocked(persistRecipe).mock.calls[0]![0];
     const ingredient = saved.ingredients[0]!.items[0]!;
     expect(ingredient.matchState).toBe('pending');
     expect(ingredient.canonId).toBeNull();
@@ -138,7 +143,7 @@ describe('RecipeEditPage — clearIngredientMatch on edit', () => {
       expect(vi.mocked(persistRecipe)).toHaveBeenCalledTimes(1);
     });
 
-    const saved = vi.mocked(persistRecipe).mock.calls[0]![0] as Recipe;
+    const saved = vi.mocked(persistRecipe).mock.calls[0]![0];
     const ingredient = saved.ingredients[0]!.items[0]!;
     expect(ingredient.matchState).toBe('matched');
     expect(ingredient.canonId).toBe('canon-abc');

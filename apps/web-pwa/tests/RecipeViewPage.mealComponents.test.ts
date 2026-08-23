@@ -135,6 +135,9 @@ const MEAL_ID = 'roast';
 
 function makeEntry(overrides: Partial<Recipe> = {}): Recipe {
   return {
+    lastEditedBy: '',
+    createdBy: '',
+    kit: [],
     id: MEAL_ID,
     schemaVersion: 1,
     kind: 'recipe',
@@ -157,7 +160,7 @@ function makeEntry(overrides: Partial<Recipe> = {}): Recipe {
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
-  } as Recipe;
+  };
 }
 
 const CHICKEN = makeEntry({ id: 'chicken', title: 'Roast chicken' });

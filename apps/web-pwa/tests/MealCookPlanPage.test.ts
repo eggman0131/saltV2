@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup, fireEvent } from '@testing-library/svelte';
-import type { Recipe } from '@salt/domain';
+import { emptyRecipe } from '@salt/domain';
+import type { Recipe, Step } from '@salt/domain';
 import type { CookSessionDoc } from '@salt/domain/schemas';
 
 // A meal's cook plan (issue #752, phase 4) — `/recipes/:id/cook-plan`.
@@ -109,22 +110,14 @@ const CLOCK = new Intl.DateTimeFormat('en-GB', {
 });
 
 function dish(id: string, title: string, overrides: Partial<Recipe> = {}): Recipe {
+  const base = emptyRecipe(id, '2026-08-01T09:00:00.000Z');
   return {
-    id,
-    schemaVersion: 1,
-    kind: 'recipe',
+    ...base,
     title,
-    description: null,
-    componentRecipeIds: [],
-    kit: [],
-    ingredients: [],
-    steps: [],
-    metadata: { servings: 4, cookTimeMinutes: null, prepTimeMinutes: null, totalTimeMinutes: null },
-    tags: [],
-    createdAt: '2026-08-01T09:00:00.000Z',
+    metadata: { ...base.metadata, servings: 4 },
     updatedAt: '2026-08-01T09:00:00.000Z',
     ...overrides,
-  } as unknown as Recipe;
+  };
 }
 
 function withCookTime(id: string, title: string, minutes: number | null): Recipe {
@@ -132,12 +125,15 @@ function withCookTime(id: string, title: string, minutes: number | null): Recipe
     metadata: {
       servings: 4,
       cookTimeMinutes: minutes,
+      prepTimeMinutes: null,
+      totalTimeMinutes: null,
+      tags: [],
     },
-  } as unknown as Partial<Recipe>);
+  });
 }
 
-function step(id: string) {
-  return { id, text: 'do a thing', timer: null };
+function step(id: string): Step {
+  return { id, text: 'do a thing', timer: null, note: null };
 }
 
 function session(overrides: Partial<CookSessionDoc> = {}): CookSessionDoc {
@@ -260,7 +256,7 @@ describe('MealCookPlanPage — the running order', () => {
   });
 
   it('puts the meal FIRST when it has a method of its own', () => {
-    seedRoast({ steps: [step('s1')] as unknown as Recipe['steps'] });
+    seedRoast({ steps: [step('s1')] });
     const { getAllByTestId } = renderPage();
     expect(getAllByTestId('cook-plan-row-title').map((n) => n.textContent?.trim())).toEqual([
       'Sunday roast',

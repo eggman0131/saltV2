@@ -57,6 +57,7 @@ function member(overrides: Partial<Member> & { id: string }): Member {
     admin: false,
     sortOrder: 0,
     icon: null,
+    cookMode: 'standard',
     updatedAt: '2026-06-07T00:00:00.000Z',
     ...overrides,
   };

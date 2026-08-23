@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/svelte';
+import { emptyRecipe } from '@salt/domain';
 import type { Day, Member, Recipe } from '@salt/domain';
 import type { WeatherDaySummary } from '@salt/domain/schemas';
 
@@ -20,11 +21,11 @@ const alex: Member = { id: 'm1', name: 'Alex' } as Member;
 const bea: Member = { id: 'm2', name: 'Bea' } as Member;
 
 const roast: Recipe = {
-  id: 'r1',
+  ...emptyRecipe('r1', '2026-06-30T00:00:00.000Z'),
   title: 'Roast',
-  image: { url: 'https://example.test/roast.jpg' },
+  image: { url: 'https://example.test/roast.jpg', source: 'ai' },
   updatedAt: '2026-06-30T00:00:00.000Z',
-} as unknown as Recipe;
+};
 
 const noop = () => {};
 

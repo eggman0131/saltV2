@@ -119,6 +119,7 @@ const RECIPE_ID = 'recipe-1';
 // A count-sold canon carrying a form for something else: the shape that makes an
 // unbridged line genuinely wrong, and the live `Lemon` / `Lemon zest` pair.
 const LEMON: CanonItem = {
+  embedding: null,
   id: 'canon-lemon',
   schemaVersion: 5,
   name: 'lemon',
@@ -166,6 +167,11 @@ function line(over: Partial<Ingredient> & { id: string }): Ingredient {
 
 function makeRecipe(items: Ingredient[]): Recipe {
   return {
+    kind: 'recipe',
+    producesCanonId: null,
+    kit: [],
+    createdBy: '',
+    lastEditedBy: '',
     id: RECIPE_ID,
     schemaVersion: 1,
     title: 'Lemony Thing',
@@ -185,7 +191,7 @@ function makeRecipe(items: Ingredient[]): Recipe {
     image: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
-  } as unknown as Recipe;
+  };
 }
 
 afterEach(() => {

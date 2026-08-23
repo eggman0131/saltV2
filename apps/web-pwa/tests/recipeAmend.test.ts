@@ -27,6 +27,10 @@ beforeEach(() => {
 
 function existingRecipe(): Recipe {
   return {
+    componentRecipeIds: [],
+    kit: [],
+    createdBy: '',
+    lastEditedBy: '',
     id: 'pilaf',
     schemaVersion: 1,
     kind: 'recipe',
@@ -47,12 +51,16 @@ function existingRecipe(): Recipe {
     image: { url: 'https://example.com/pilaf.webp', source: 'ai' },
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-02-01T00:00:00.000Z',
-  } as Recipe;
+  };
 }
 
 /** What the librarian returns: a complete recipe, but with the metadata dropped. */
 function draftWithoutMetadata(overrides: Partial<RecipeDoc['metadata']> = {}): RecipeDoc {
   return {
+    componentRecipeIds: [],
+    kit: [],
+    createdBy: '',
+    lastEditedBy: '',
     id: 'draft-id',
     schemaVersion: 1,
     kind: 'recipe',
@@ -74,7 +82,7 @@ function draftWithoutMetadata(overrides: Partial<RecipeDoc['metadata']> = {}): R
     image: null,
     createdAt: NOW,
     updatedAt: NOW,
-  } as RecipeDoc;
+  };
 }
 
 describe('mergeAmendedRecipe — a metadata field the librarian omitted is preserved', () => {

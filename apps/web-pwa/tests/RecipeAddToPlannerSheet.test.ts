@@ -43,6 +43,11 @@ vi.mock('../src/lib/toastStore.js', () => ({ addToast: mockAddToast }));
 import RecipeAddToPlannerSheet from '../src/routes/recipes/RecipeAddToPlannerSheet.svelte';
 
 const RECIPE: Recipe = {
+  producesCanonId: null,
+  componentRecipeIds: [],
+  kit: [],
+  createdBy: '',
+  lastEditedBy: '',
   id: 'recipe-1',
   schemaVersion: 1,
   kind: 'recipe',
@@ -62,7 +67,7 @@ const RECIPE: Recipe = {
   image: null,
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
-} as unknown as Recipe;
+};
 
 // A fixed "today" so the seeded month and selection are assertable. Wednesday.
 const TODAY = new Date('2026-08-12T09:00:00.000Z');

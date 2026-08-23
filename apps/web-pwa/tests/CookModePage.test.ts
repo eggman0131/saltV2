@@ -177,6 +177,11 @@ function makeIngredient(over: Partial<IngredientDoc> = {}): IngredientDoc {
 
 function makeRecipe(over: Partial<RecipeDoc> = {}): RecipeDoc {
   return {
+    lastEditedBy: '',
+    createdBy: '',
+    kit: [],
+    componentRecipeIds: [],
+    kind: 'recipe',
     id: RECIPE_ID,
     schemaVersion: 1,
     title: 'Weeknight ragù',
@@ -235,6 +240,7 @@ function makeCookSession(over: Partial<CookSessionDoc> = {}): CookSessionDoc {
     checkedPrepIds: [],
     completedStepIds: [],
     activeTimers: [],
+    serveAt: null,
     createdAt: '2026-07-01T11:00:00.000Z',
     updatedAt: '2026-07-01T11:00:00.000Z',
     ...over,
@@ -1820,7 +1826,7 @@ describe('CookModePage — product-form icons in mise en place', () => {
               id: 'ing-1',
               rawText: `30ml ${item}`,
               parsed: {
-                quantity: 30,
+                quantity: { type: 'single' as const, value: 30 },
                 unit: 'ml' as const,
                 item,
                 preparation: [],
