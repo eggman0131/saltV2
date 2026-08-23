@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // The pictogram upload wrapper (issue #892). What is worth pinning here is the
 // wire shape — the four families and the optional contentType, since a wrong
@@ -23,6 +23,14 @@ beforeEach(() => {
   callableMock.mockReset();
   callableMock.mockResolvedValue({ data: { ok: true } });
   httpsCallable.mockClear();
+  // Node >= 21 exposes navigator globally with onLine = false, and since #916 the
+  // offline check runs FIRST in classifyCallableError — so every code-based case
+  // has to say it is online, exactly as firestoreErrors.test.ts does.
+  vi.stubGlobal('navigator', { onLine: true });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe('callSetIconUpload', () => {
@@ -64,17 +72,31 @@ describe('callSetIconUpload', () => {
     expect(result.error.kind).toBe('ValidationError');
   });
 
-  it('maps unauthenticated to AuthError and anything else to a transient NetworkError', async () => {
+  it('maps unauthenticated to AuthError, and a server 500 to a REPORTED StorageError', async () => {
     callableMock.mockRejectedValueOnce(codeError('functions/unauthenticated'));
     expect(await callSetIconUpload('canon', 'milk', 'AAAA')).toEqual({
       kind: 'err',
       error: { kind: 'AuthError', reason: 'unauthenticated' },
     });
 
+    // Issue #916: `functions/internal` is a Cloud Function 500. Calling it a
+    // NetworkError told the user to check their connection AND suppressed the
+    // report, because NetworkError is a suppressed category under §7.6.
     callableMock.mockRejectedValueOnce(codeError('functions/internal'));
     expect(await callSetIconUpload('canon', 'milk', 'AAAA')).toEqual({
       kind: 'err',
-      error: { kind: 'NetworkError', reason: 'transient' },
+      error: { kind: 'StorageError', reason: 'unavailable' },
+    });
+  });
+
+  it('still calls a genuine offline failure a suppressed NetworkError', async () => {
+    // The callable SDK surfaces a failed fetch as `functions/internal` too, which
+    // is why the offline check has to come first.
+    vi.stubGlobal('navigator', { onLine: false });
+    callableMock.mockRejectedValueOnce(codeError('functions/internal'));
+    expect(await callSetIconUpload('canon', 'milk', 'AAAA')).toEqual({
+      kind: 'err',
+      error: { kind: 'NetworkError', reason: 'offline' },
     });
   });
 });

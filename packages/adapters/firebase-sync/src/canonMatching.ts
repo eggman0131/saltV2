@@ -2,6 +2,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import type { MatchOrCreateInput, MatchOrCreateResult } from '@salt/domain';
 import type { CanonicaliseRecipeIngredientsInput } from '@salt/domain/schemas';
 import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
+import { classifyCallableError } from './callableErrors.js';
 
 // The CF returns the Result envelope from matchOrCreate verbatim; the client
 // just forwards it. Transport-level failures (auth, network) become a fresh
@@ -29,14 +30,7 @@ export async function callMatchOrCreate(
     const res = await fn(traceparent ? { ...input, traceparent } : input);
     return res.data;
   } catch (err) {
-    const code = (err as { code?: string }).code ?? '';
-    if (code === 'functions/unauthenticated') {
-      return failure({ kind: 'AuthError', reason: 'unauthenticated' });
-    }
-    if (code === 'functions/permission-denied') {
-      return failure({ kind: 'AuthError', reason: 'forbidden' });
-    }
-    return failure({ kind: 'NetworkError', reason: 'transient' });
+    return failure(classifyCallableError(err));
   }
 }
 
@@ -54,14 +48,7 @@ export async function callCanonicaliseRecipeIngredients(
     const res = await fn(traceparent ? { ...input, traceparent } : input);
     return success(res.data);
   } catch (err) {
-    const code = (err as { code?: string }).code ?? '';
-    if (code === 'functions/unauthenticated') {
-      return failure({ kind: 'AuthError', reason: 'unauthenticated' });
-    }
-    if (code === 'functions/permission-denied') {
-      return failure({ kind: 'AuthError', reason: 'forbidden' });
-    }
-    return failure({ kind: 'NetworkError', reason: 'transient' });
+    return failure(classifyCallableError(err));
   }
 }
 
@@ -81,13 +68,6 @@ export async function callRegenerateCanonIcon(
     await fn(hint && hint.trim() ? { canonId, hint: hint.trim() } : { canonId });
     return success(undefined);
   } catch (err) {
-    const code = (err as { code?: string }).code ?? '';
-    if (code === 'functions/unauthenticated') {
-      return failure({ kind: 'AuthError', reason: 'unauthenticated' });
-    }
-    if (code === 'functions/permission-denied') {
-      return failure({ kind: 'AuthError', reason: 'forbidden' });
-    }
-    return failure({ kind: 'NetworkError', reason: 'transient' });
+    return failure(classifyCallableError(err));
   }
 }

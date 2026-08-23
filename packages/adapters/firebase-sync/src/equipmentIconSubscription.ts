@@ -12,6 +12,7 @@ import {
   type DescribeEquipmentSubjectOutput,
 } from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
+import { classifyCallableError } from './callableErrors.js';
 
 // Equipment pictograms (issue #877) — the read side of the server-owned
 // `equipmentIcons` collection, plus the one callable that writes it.
@@ -79,23 +80,17 @@ export async function callDrawEquipmentIcon(
     await fn(input);
     return success(undefined);
   } catch (err) {
-    const code = (err as { code?: string }).code ?? '';
-    if (code === 'functions/unauthenticated') {
-      return failure({ kind: 'AuthError', reason: 'unauthenticated' });
-    }
-    if (code === 'functions/permission-denied') {
-      return failure({ kind: 'AuthError', reason: 'forbidden' });
-    }
     // `failed-precondition` is the kill switch being off, or no description
     // written yet — both are expected states with a friendly message, not
     // defects, so they must not be reported (see the error-reporting policy).
-    if (code === 'functions/failed-precondition') {
-      return failure({
-        kind: 'ValidationError',
-        code: ErrorCode.EQUIPMENT_ICON_NOT_DRAWABLE,
-      });
-    }
-    return failure({ kind: 'NetworkError', reason: 'transient' });
+    return failure(
+      classifyCallableError(err, {
+        'failed-precondition': {
+          kind: 'ValidationError',
+          code: ErrorCode.EQUIPMENT_ICON_NOT_DRAWABLE,
+        },
+      }),
+    );
   }
 }
 
@@ -129,16 +124,13 @@ export async function callDescribeEquipmentSubject(
     const res = await fn(input);
     return success(res.data.brief);
   } catch (err) {
-    const code = (err as { code?: string }).code ?? '';
-    if (code === 'functions/unauthenticated') {
-      return failure({ kind: 'AuthError', reason: 'unauthenticated' });
-    }
-    if (code === 'functions/permission-denied') {
-      return failure({ kind: 'AuthError', reason: 'forbidden' });
-    }
-    if (code === 'functions/invalid-argument') {
-      return failure({ kind: 'ValidationError', code: ErrorCode.EQUIPMENT_BRIEF_NOT_WRITABLE });
-    }
-    return failure({ kind: 'NetworkError', reason: 'transient' });
+    return failure(
+      classifyCallableError(err, {
+        'invalid-argument': {
+          kind: 'ValidationError',
+          code: ErrorCode.EQUIPMENT_BRIEF_NOT_WRITABLE,
+        },
+      }),
+    );
   }
 }

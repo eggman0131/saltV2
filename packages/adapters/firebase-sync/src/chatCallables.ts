@@ -1,19 +1,9 @@
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
 import type { ChefChatInput } from '@salt/domain/schemas';
+import { classifyCallableError } from './callableErrors.js';
 
 const REGION = 'europe-west2';
-
-function getErr(err: unknown): DomainError {
-  const code = (err as { code?: string }).code ?? '';
-  if (code === 'functions/unauthenticated') {
-    return { kind: 'AuthError', reason: 'unauthenticated' };
-  }
-  if (code === 'functions/permission-denied') {
-    return { kind: 'AuthError', reason: 'forbidden' };
-  }
-  return { kind: 'NetworkError', reason: 'transient' };
-}
 
 export async function callGenerateChatTitle(
   userMessage: string,
@@ -27,7 +17,7 @@ export async function callGenerateChatTitle(
     const res = await fn({ userMessage, assistantResponse });
     return success(res.data);
   } catch (err) {
-    return failure(getErr(err));
+    return failure(classifyCallableError(err));
   }
 }
 
@@ -50,6 +40,6 @@ export async function streamChefChat(
     const result = await data;
     return success(result);
   } catch (err) {
-    return failure(getErr(err));
+    return failure(classifyCallableError(err));
   }
 }

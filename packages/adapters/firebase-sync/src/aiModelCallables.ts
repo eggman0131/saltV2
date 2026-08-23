@@ -1,6 +1,7 @@
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { failure, type DomainError, type ReadResult } from '@salt/shared-types';
 import type { AiModelRole } from '@salt/domain/schemas';
+import { classifyCallableError } from './callableErrors.js';
 
 // Browser → admin-only Phase 3 callables. CLAUDE.md rule #2: the Firebase SDK is
 // only touched here. The web service consumes these wrappers, never
@@ -20,17 +21,6 @@ export interface TestModelOutcome {
   readonly error?: string;
 }
 
-function mapCallableError(err: unknown): DomainError {
-  const code = (err as { code?: string }).code ?? '';
-  if (code === 'functions/unauthenticated') {
-    return { kind: 'AuthError', reason: 'unauthenticated' };
-  }
-  if (code === 'functions/permission-denied') {
-    return { kind: 'AuthError', reason: 'forbidden' };
-  }
-  return { kind: 'NetworkError', reason: 'transient' };
-}
-
 /** Fetches the capability-filtered model catalog. `forceRefresh` bypasses the CF cache. */
 export async function callListAiModels(
   forceRefresh = false,
@@ -43,7 +33,7 @@ export async function callListAiModels(
     const res = await fn({ forceRefresh });
     return { kind: 'ok', value: res.data };
   } catch (err) {
-    return failure(mapCallableError(err));
+    return failure(classifyCallableError(err));
   }
 }
 
@@ -60,6 +50,6 @@ export async function callTestModel(
     const res = await fn(role ? { model, role } : { model });
     return { kind: 'ok', value: res.data };
   } catch (err) {
-    return failure(mapCallableError(err));
+    return failure(classifyCallableError(err));
   }
 }

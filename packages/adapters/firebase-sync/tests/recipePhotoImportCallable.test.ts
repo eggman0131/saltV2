@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // callExtractRecipeFromPhoto (issue #649, Phase 3). The wrapper's three jobs:
 //  • pass an EXPLICIT client timeout — the callable SDK defaults to 70s, which
@@ -29,6 +29,14 @@ const rejectWith = (code: string) => {
 beforeEach(() => {
   vi.clearAllMocks();
   callableMock.mockResolvedValue({ data: RECIPE });
+  // Node >= 21 exposes navigator globally with onLine = false, and since #916 the
+  // offline check runs FIRST in classifyCallableError — so every code-based case
+  // has to say it is online, exactly as firestoreErrors.test.ts does.
+  vi.stubGlobal('navigator', { onLine: true });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe('callExtractRecipeFromPhoto', () => {
@@ -107,15 +115,30 @@ describe('callExtractRecipeFromPhoto', () => {
     });
   });
 
-  it('crosses a transport hiccup as NetworkError, not as a photo verdict', async () => {
+  it('crosses a transport hiccup as a DomainError, not as a photo verdict', async () => {
     // Neither code can come from mapPhotoImportFailure — the call never reached
     // the reader, so there is no honest verdict to give about the photographs.
-    for (const code of ['functions/unavailable', '']) {
-      rejectWith(code);
-      await expect(callExtractRecipeFromPhoto(INPUT)).resolves.toEqual({
-        kind: 'err',
-        error: { kind: 'NetworkError', reason: 'transient' },
-      });
-    }
+    rejectWith('functions/unavailable');
+    await expect(callExtractRecipeFromPhoto(INPUT)).resolves.toEqual({
+      kind: 'err',
+      error: { kind: 'NetworkError', reason: 'transient' },
+    });
+
+    // A rejection carrying no code at all is the UNEXPECTED, and since #916 it
+    // defers to the shared callable mapper rather than blaming the connection.
+    rejectWith('');
+    await expect(callExtractRecipeFromPhoto(INPUT)).resolves.toEqual({
+      kind: 'err',
+      error: { kind: 'StorageError', reason: 'unavailable' },
+    });
+  });
+
+  it('still calls a genuine offline failure a suppressed NetworkError', async () => {
+    vi.stubGlobal('navigator', { onLine: false });
+    rejectWith('functions/internal');
+    await expect(callExtractRecipeFromPhoto(INPUT)).resolves.toEqual({
+      kind: 'err',
+      error: { kind: 'NetworkError', reason: 'offline' },
+    });
   });
 });
