@@ -1,3 +1,5 @@
+import { readdirSync } from 'node:fs';
+
 import boundaries from 'eslint-plugin-boundaries';
 import tsParser from '@typescript-eslint/parser';
 import svelteParser from 'svelte-eslint-parser';
@@ -138,8 +140,30 @@ function forbidGroup(pkgs, message) {
   return pkgs.map((g) => ({ group: [g], message }));
 }
 
-// Domain submodules. Add a module name here when scaffolding it.
-const DOMAIN_MODULES = ['canon', 'recipe', 'auth', 'equipment', 'shoppingList'];
+// Domain submodules, DERIVED from the directory listing rather than listed by
+// hand (issue #914). A hand-maintained list silently loses coverage the moment
+// somebody scaffolds a module and forgets to add its name here — which is
+// exactly what happened: five names were listed while packages/domain/src held
+// twenty-one directories, so sixteen modules were covered by neither the
+// cross-module subpath rule nor the coordinator rule. Deriving makes the guard
+// structural: a new directory is a module the moment it exists, and the only
+// way out is to name it in DOMAIN_NON_MODULE_DIRS below, which is a visible,
+// reviewable act rather than an omission.
+//
+// Everything under packages/domain/src IS a module except these:
+//   - schemas       the @salt/domain/schemas subpath — shared zod shapes every
+//                   module reads, not a module with internals of its own.
+//   - coordinators  has its own config block below, with the inverse rule
+//                   (coordinators may reach across modules; modules may not
+//                   reach into coordinators). Treating it as a module would
+//                   forbid a coordinator from importing its own siblings.
+//   - __boundary_tests__  deliberate-violation fixtures; globally ignored.
+const DOMAIN_SRC_DIR = new URL('./packages/domain/src/', import.meta.url);
+const DOMAIN_NON_MODULE_DIRS = new Set(['schemas', 'coordinators', '__boundary_tests__']);
+const DOMAIN_MODULES = readdirSync(DOMAIN_SRC_DIR, { withFileTypes: true })
+  .filter((entry) => entry.isDirectory() && !DOMAIN_NON_MODULE_DIRS.has(entry.name))
+  .map((entry) => entry.name)
+  .sort();
 // Subfolders that constitute a domain module's internals. Cross-module
 // subpath imports into these are forbidden — go through the module index.
 const DOMAIN_INTERNAL_SUBFOLDERS = ['entities', 'ports', 'commands', 'queries'];
