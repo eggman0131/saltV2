@@ -15,6 +15,7 @@ import { failure, success, type DomainError, type ReadResult } from '@salt/share
 import type { AuthProvider, User, ErrorReportingPort } from '@salt/domain';
 import { setAuthTransitioning, isAuthTransitioning } from './authTransition.js';
 import { callRequestEmailOtp, callVerifyEmailOtp } from './emailOtpCallables.js';
+import { classifyCallableError } from './callableErrors.js';
 
 // Keyed to the Auth instance (not a module-global boolean) so a re-created
 // default app — as the emulator integration suite does per test, #319 — gets
@@ -82,20 +83,19 @@ function reportAuthFailure(
 // The offline check comes FIRST, exactly as in classifyFirestoreError, because the
 // callable SDK surfaces a failed fetch as `functions/internal` TOO — the error code
 // alone cannot separate "server 500" from "no connection".
+//
+// Since #916 this is the SHARED `classifyCallableError`, which was generalised
+// from the version that used to live here: everything above is now the contract
+// every callable wrapper in this package gets, and the only thing left for the OTP
+// path to say is its two bespoke arms. Off-allowlist (`permission-denied` →
+// forbidden), the session codes and the transient codes are all the shared
+// default; only "that code is wrong, expired, or malformed" is peculiar to
+// sign-in, where a network-flavoured message would be actively misleading.
 function toOtpError(err: unknown): DomainError {
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
-    return { kind: 'NetworkError', reason: 'offline' };
-  }
-  const code = (err as { code?: string } | null)?.code ?? '';
-  if (code === 'functions/permission-denied') return { kind: 'AuthError', reason: 'forbidden' };
-  if (code === 'functions/failed-precondition' || code === 'functions/invalid-argument') {
-    return { kind: 'AuthError', reason: 'expired' };
-  }
-  if (code === 'functions/unauthenticated') return { kind: 'AuthError', reason: 'unauthenticated' };
-  if (code === 'functions/unavailable' || code === 'functions/deadline-exceeded') {
-    return { kind: 'NetworkError', reason: 'transient' };
-  }
-  return { kind: 'StorageError', reason: 'unavailable' };
+  return classifyCallableError(err, {
+    'failed-precondition': { kind: 'AuthError', reason: 'expired' },
+    'invalid-argument': { kind: 'AuthError', reason: 'expired' },
+  });
 }
 
 // Report only the UNEXPECTED bucket from toOtpError. The AuthError outcomes it

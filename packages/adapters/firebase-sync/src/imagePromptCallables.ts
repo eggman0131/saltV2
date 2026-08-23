@@ -6,6 +6,7 @@ import {
   type GetImagePromptResult,
   type ImagePromptFamily,
 } from '@salt/domain/schemas';
+import { classifyCallableError } from './callableErrors.js';
 
 // Browser → the getImagePrompt callable (issue #892). CLAUDE.md rule #2: the
 // Firebase SDK is touched only here; the web services consume this wrapper, never
@@ -14,18 +15,8 @@ import {
 // The result is `.safeParse`d rather than trusted: a callable response arrives as
 // `unknown` over the wire, which is a type-laundering boundary by the Zod
 // conventions. A shape mismatch is a corruption, not a network blip, so it maps to
-// StorageError — the one category here that IS reported.
-
-function mapCallableError(err: unknown): DomainError {
-  const code = (err as { code?: string }).code ?? '';
-  if (code === 'functions/unauthenticated') {
-    return { kind: 'AuthError', reason: 'unauthenticated' };
-  }
-  if (code === 'functions/permission-denied') {
-    return { kind: 'AuthError', reason: 'forbidden' };
-  }
-  return { kind: 'NetworkError', reason: 'transient' };
-}
+// StorageError — reported, exactly as the shared callable mapper now reports a
+// server fault (issue #916).
 
 /**
  * Which DomainError resource each family reports itself as when its document has
@@ -69,6 +60,6 @@ export async function callGetImagePrompt(
     if ((err as { code?: string }).code === 'functions/not-found') {
       return failure({ kind: 'NotFound', resource: NOT_FOUND_RESOURCE[family], id });
     }
-    return failure(mapCallableError(err));
+    return failure(classifyCallableError(err));
   }
 }

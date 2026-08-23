@@ -1,6 +1,7 @@
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
 import type { SetObservationImageUploadInput } from '@salt/domain/schemas';
+import { classifyCallableError } from './callableErrors.js';
 
 // The observation photo (issue #812, phase 4 of epic #778). The browser reads a
 // local photo, base64-encodes it, and hands it to an AUTH-GATED CALLABLE which
@@ -37,17 +38,12 @@ export async function callSetObservationImageUpload(
     });
     return success(undefined);
   } catch (err) {
-    const code = (err as { code?: string }).code ?? '';
-    if (code === 'functions/unauthenticated') {
-      return failure({ kind: 'AuthError', reason: 'unauthenticated' });
-    }
-    if (code === 'functions/permission-denied') {
-      return failure({ kind: 'AuthError', reason: 'forbidden' });
-    }
     // Everything else — a photo sharp would not decode, a bucket that would not
-    // take it, a dropped connection — is transient from where the log is standing:
-    // the offer is "try again", and none of them is a different thing for the user
-    // to do.
-    return failure({ kind: 'NetworkError', reason: 'transient' });
+    // take it, a dropped connection — offers the log the same thing: "try again".
+    // The CATEGORY still has to tell them apart, though (issue #916): a dropped
+    // connection is expected and suppressed, a bucket that would not take the
+    // photo is a server fault and must be reported. `classifyCallableError` is
+    // what draws that line.
+    return failure(classifyCallableError(err));
   }
 }

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // callExtractProcessStages (issue #806, phase 2 of epic #778). The whole surface is
 // one call and a failure map, and the failure map is the part worth pinning: this
@@ -25,6 +25,14 @@ const STAGE = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Node >= 21 exposes navigator globally with onLine = false, and since #916 the
+  // offline check runs FIRST in classifyCallableError — so every code-based case
+  // has to say it is online, exactly as firestoreErrors.test.ts does.
+  vi.stubGlobal('navigator', { onLine: true });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe('callExtractProcessStages', () => {
@@ -50,8 +58,12 @@ describe('callExtractProcessStages', () => {
   it.each([
     ['functions/unauthenticated', { kind: 'AuthError', reason: 'unauthenticated' }],
     ['functions/permission-denied', { kind: 'AuthError', reason: 'forbidden' }],
-    ['functions/internal', { kind: 'NetworkError', reason: 'transient' }],
-    ['', { kind: 'NetworkError', reason: 'transient' }],
+    // A Cloud Function 500 is a SERVER fault, not a connectivity one (issue
+    // #916): StorageError so the user is not told to check their connection, and
+    // so the §7.6 reporting gate actually sees it.
+    ['functions/internal', { kind: 'StorageError', reason: 'unavailable' }],
+    ['functions/unavailable', { kind: 'NetworkError', reason: 'transient' }],
+    ['', { kind: 'StorageError', reason: 'unavailable' }],
   ])('maps %s to a Failure rather than throwing', async (code, error) => {
     callableMock.mockRejectedValueOnce(Object.assign(new Error('nope'), code ? { code } : {}));
 
@@ -64,7 +76,23 @@ describe('callExtractProcessStages', () => {
     callableMock.mockRejectedValueOnce('a string');
     await expect(callExtractProcessStages({ recipeId: 'recipe-1' })).resolves.toEqual({
       kind: 'err',
-      error: { kind: 'NetworkError', reason: 'transient' },
+      error: { kind: 'StorageError', reason: 'unavailable' },
+    });
+  });
+
+  it('still calls a genuine offline failure a NetworkError, code notwithstanding', async () => {
+    // The callable SDK surfaces a failed fetch as `functions/internal` too, which
+    // is why the offline check has to come first.
+    vi.stubGlobal('navigator', { onLine: false });
+    callableMock.mockRejectedValueOnce(
+      Object.assign(new Error('nope'), {
+        code: 'functions/internal',
+      }),
+    );
+
+    await expect(callExtractProcessStages({ recipeId: 'recipe-1' })).resolves.toEqual({
+      kind: 'err',
+      error: { kind: 'NetworkError', reason: 'offline' },
     });
   });
 });

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // The image-prompt wrapper (issue #892) is a READ across a trust boundary, so
 // unlike the fire-and-forget callables beside it there are two things worth
@@ -30,6 +30,14 @@ function codeError(code: string): Error & { code: string } {
 beforeEach(() => {
   callableMock.mockReset();
   httpsCallable.mockClear();
+  // Node >= 21 exposes navigator globally with onLine = false, and since #916 the
+  // offline check runs FIRST in classifyCallableError — so every code-based case
+  // has to say it is online, exactly as firestoreErrors.test.ts does.
+  vi.stubGlobal('navigator', { onLine: true });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe('callGetImagePrompt', () => {
@@ -61,17 +69,29 @@ describe('callGetImagePrompt', () => {
     });
   });
 
-  it('maps unauthenticated to AuthError and anything else to a transient NetworkError', async () => {
+  it('maps unauthenticated to AuthError, and a server 500 to a REPORTED StorageError', async () => {
     callableMock.mockRejectedValueOnce(codeError('functions/unauthenticated'));
     expect(await callGetImagePrompt('kitchenTool', 'whisk')).toEqual({
       kind: 'err',
       error: { kind: 'AuthError', reason: 'unauthenticated' },
     });
 
+    // Issue #916: `functions/internal` is a Cloud Function 500 — a broken server,
+    // not a broken connection, and the same reportable category a broken payload
+    // already gets.
     callableMock.mockRejectedValueOnce(codeError('functions/internal'));
     expect(await callGetImagePrompt('equipment', 'kenwood')).toEqual({
       kind: 'err',
-      error: { kind: 'NetworkError', reason: 'transient' },
+      error: { kind: 'StorageError', reason: 'unavailable' },
+    });
+  });
+
+  it('still calls a genuine offline failure a suppressed NetworkError', async () => {
+    vi.stubGlobal('navigator', { onLine: false });
+    callableMock.mockRejectedValueOnce(codeError('functions/internal'));
+    expect(await callGetImagePrompt('canon', 'milk')).toEqual({
+      kind: 'err',
+      error: { kind: 'NetworkError', reason: 'offline' },
     });
   });
 });

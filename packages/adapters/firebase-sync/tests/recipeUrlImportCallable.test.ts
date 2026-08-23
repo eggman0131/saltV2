@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // callExtractRecipeFromUrl's failure mapping (issue #740).
 //
@@ -29,6 +29,14 @@ const rejectWith = (code: string, message = 'nope') => {
 beforeEach(() => {
   vi.clearAllMocks();
   callableMock.mockResolvedValue({ data: RECIPE });
+  // Node >= 21 exposes navigator globally with onLine = false, and since #916 the
+  // offline check runs FIRST in classifyCallableError — so every code-based case
+  // has to say it is online, exactly as firestoreErrors.test.ts does.
+  vi.stubGlobal('navigator', { onLine: true });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe('callExtractRecipeFromUrl', () => {
@@ -101,16 +109,39 @@ describe('callExtractRecipeFromUrl', () => {
     });
   });
 
-  it('crosses an unmapped transport failure as NetworkError, not fetch-failed', async () => {
+  it('crosses an unmapped transport failure as a DomainError, not fetch-failed', async () => {
     // `fetch-failed` is a claim that we reached the network and the PAGE was the
-    // problem. An unmapped code means the call never got that far.
-    for (const code of ['functions/cancelled', 'functions/resource-exhausted', '']) {
-      rejectWith(code);
-      await expect(callExtractRecipeFromUrl(INPUT)).resolves.toEqual({
-        kind: 'err',
-        error: { kind: 'NetworkError', reason: 'transient' },
-      });
-    }
+    // problem. An unmapped code means the call never got that far, so it defers to
+    // the shared callable mapper (issue #916) rather than inventing a verdict.
+    rejectWith('functions/cancelled');
+    await expect(callExtractRecipeFromUrl(INPUT)).resolves.toEqual({
+      kind: 'err',
+      error: { kind: 'NetworkError', reason: 'transient' },
+    });
+
+    // A code nobody has classified — a rejection carrying none at all included —
+    // is the UNEXPECTED, and since #916 it says so honestly (a reportable
+    // StorageError) instead of blaming the user's connection.
+    rejectWith('functions/resource-exhausted');
+    await expect(callExtractRecipeFromUrl(INPUT)).resolves.toEqual({
+      kind: 'err',
+      error: { kind: 'StorageError', reason: 'quota-exceeded' },
+    });
+
+    rejectWith('');
+    await expect(callExtractRecipeFromUrl(INPUT)).resolves.toEqual({
+      kind: 'err',
+      error: { kind: 'StorageError', reason: 'unavailable' },
+    });
+  });
+
+  it('still calls a genuine offline failure a suppressed NetworkError', async () => {
+    vi.stubGlobal('navigator', { onLine: false });
+    rejectWith('functions/internal');
+    await expect(callExtractRecipeFromUrl(INPUT)).resolves.toEqual({
+      kind: 'err',
+      error: { kind: 'NetworkError', reason: 'offline' },
+    });
   });
 
   it('never throws — a rejection always crosses as a Failure (Rule 10)', async () => {

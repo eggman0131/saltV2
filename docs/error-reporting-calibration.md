@@ -40,6 +40,19 @@ failure never throws, so nothing automatic surfaced it):**
   Uncategorised server exceptions report by default (`undefined → report`).
   These appear under the synthetic server person **`salt-cloud-functions`**
   (the fixed `SERVER_DISTINCT_ID`), not a real user.
+- **Since issue #916:** the BROWSER-side half of a Cloud Function 500. A callable
+  that 500s reaches the browser SDK as `functions/internal`; every callable
+  wrapper in `@salt/firebase-sync` used to end its catch with a
+  `NetworkError/transient` catch-all, which both told the user to check their
+  connection and suppressed the report. They all now go through the one shared
+  `classifyCallableError`, whose catch-all is `StorageError/unavailable`. Expect a
+  CF fault to show up TWICE — once server-side under `salt-cloud-functions`, once
+  client-side under the real user — and read that as the pair it is, not as a
+  double-report bug. What must NOT appear is a `StorageError` for an offline
+  user: `classifyCallableError` answers `navigator.onLine` before it reads any
+  error code, precisely because a failed fetch arrives under the same
+  `functions/internal`. A `StorageError` spike that tracks connectivity rather
+  than deploys means that ordering has been broken.
 
 Coverage is uniform across all failure boundaries — write/command failures,
 realtime `onError` callbacks, and server CF — gated by category, not by which

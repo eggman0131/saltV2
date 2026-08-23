@@ -1,6 +1,7 @@
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
 import type { ExtractProcessStagesInput, ExtractProcessStagesOutput } from '@salt/domain/schemas';
+import { classifyCallableError } from './callableErrors.js';
 
 // extractProcessStages (issue #806, phase 2 of epic #778). Sends only the recipe
 // id — the flow reads the recipe server-side via the Admin SDK — and receives the
@@ -25,13 +26,6 @@ export async function callExtractProcessStages(
     const res = await fn(input);
     return success(res.data);
   } catch (err) {
-    const code = (err as { code?: string }).code ?? '';
-    if (code === 'functions/unauthenticated') {
-      return failure({ kind: 'AuthError', reason: 'unauthenticated' });
-    }
-    if (code === 'functions/permission-denied') {
-      return failure({ kind: 'AuthError', reason: 'forbidden' });
-    }
-    return failure({ kind: 'NetworkError', reason: 'transient' });
+    return failure(classifyCallableError(err));
   }
 }

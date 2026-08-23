@@ -6,6 +6,7 @@ import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success, failure } from '@salt/shared-types';
 import { ProductFormSchema } from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
+import { classifyCallableError } from './callableErrors.js';
 
 const COLLECTION = 'productForms';
 
@@ -66,13 +67,6 @@ export async function callRegenerateProductFormIcon(
     await fn(hint && hint.trim() ? { formId, hint: hint.trim() } : { formId });
     return success(undefined);
   } catch (err) {
-    const code = (err as { code?: string }).code ?? '';
-    if (code === 'functions/unauthenticated') {
-      return failure({ kind: 'AuthError', reason: 'unauthenticated' });
-    }
-    if (code === 'functions/permission-denied') {
-      return failure({ kind: 'AuthError', reason: 'forbidden' });
-    }
-    return failure({ kind: 'NetworkError', reason: 'transient' });
+    return failure(classifyCallableError(err));
   }
 }

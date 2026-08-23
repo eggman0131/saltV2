@@ -1,5 +1,6 @@
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { failure, type DomainError, type ReadResult } from '@salt/shared-types';
+import { classifyCallableError } from './callableErrors.js';
 
 export interface IdentifyEquipmentCandidate {
   readonly name: string;
@@ -40,14 +41,7 @@ export async function callIdentifyEquipment(
     const res = await fn(traceparent ? { rawName, traceparent } : { rawName });
     return { kind: 'ok', value: res.data };
   } catch (err) {
-    const code = (err as { code?: string }).code ?? '';
-    if (code === 'functions/unauthenticated') {
-      return failure({ kind: 'AuthError', reason: 'unauthenticated' });
-    }
-    if (code === 'functions/permission-denied') {
-      return failure({ kind: 'AuthError', reason: 'forbidden' });
-    }
-    return failure({ kind: 'NetworkError', reason: 'transient' });
+    return failure(classifyCallableError(err));
   }
 }
 
@@ -66,13 +60,6 @@ export async function callPopulateEquipmentEntry(
     const res = await fn(traceparent ? { confirmedName, traceparent } : { confirmedName });
     return { kind: 'ok', value: res.data };
   } catch (err) {
-    const code = (err as { code?: string }).code ?? '';
-    if (code === 'functions/unauthenticated') {
-      return failure({ kind: 'AuthError', reason: 'unauthenticated' });
-    }
-    if (code === 'functions/permission-denied') {
-      return failure({ kind: 'AuthError', reason: 'forbidden' });
-    }
-    return failure({ kind: 'NetworkError', reason: 'transient' });
+    return failure(classifyCallableError(err));
   }
 }
