@@ -166,6 +166,25 @@ describe('IngredientMatchSheet', () => {
     expect(screen.queryByTestId('ingredient-match-missing-form')).not.toBeInTheDocument();
   });
 
+  it('says a matched line has no amount rather than calling it a clean match', async () => {
+    // Issue #949: this row read "Matched straight to the canon item" — true, and
+    // useless, because it had nothing to scale or to shop with.
+    mockCanonItems._set([LIME]);
+
+    render(IngredientMatchSheet, {
+      props: {
+        ingredient: ingredient({ rawText: '125 g gingernuts (ginger snaps)', parsed: null }),
+        open: true,
+        onRematch: () => {},
+      },
+    });
+
+    expect(await screen.findByTestId('ingredient-match-missing-amount')).toBeInTheDocument();
+    expect(screen.queryByTestId('ingredient-match-direct')).not.toBeInTheDocument();
+    // The repair is right there, as it is on every other state.
+    expect(screen.getByTestId('ingredient-match-rematch')).toBeInTheDocument();
+  });
+
   it('calls out a match pointing at a canon item that no longer exists', async () => {
     mockCanonItems._set([]);
 
