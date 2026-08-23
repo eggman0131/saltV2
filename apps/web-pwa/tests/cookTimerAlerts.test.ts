@@ -63,6 +63,7 @@ function makeSession(activeTimers: CookActiveTimerDoc[]): CookSessionDoc {
     checkedPrepIds: [],
     completedStepIds: [],
     activeTimers,
+    serveAt: null,
     createdAt: iso(START - 60_000),
     updatedAt: iso(START - 60_000),
   };

@@ -83,7 +83,7 @@ const RECIPE = {
   image: null,
   createdAt: '2026-08-01T09:00:00.000Z',
   updatedAt: '2026-08-01T09:00:00.000Z',
-} as unknown as Recipe;
+};
 
 // The REFERENCE process — the loaf as the formula holds it, ninety counter minutes
 // and all. Nothing in this suite ever writes to it.

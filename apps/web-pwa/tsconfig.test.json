@@ -1,0 +1,24 @@
+{
+  // The unit suite's own typecheck (issue #942). `tsconfig.json` is the BUILD
+  // config — `rootDir: "src"`, `composite`, emits to `dist` — so it can never
+  // include `tests/**`. That is how 41k lines of test code reached August 2026
+  // without a compiler ever looking at them, and why #838 could sit there: six
+  // tests died on a bare `TypeError` from fixtures that were not valid
+  // `Recipe`s, with nothing to say so. Wired into the root `typecheck` script
+  // beside `e2e/tsconfig.json` and the CF probes.
+  //
+  // `src` is in scope alongside `tests` for two reasons: `src/env.d.ts` carries
+  // the `*.svelte` module shim and the `ImportMetaEnv` shape, and a test's props
+  // are only checked against the thing under test when both are in one program.
+  // Note the limit of that shim — it types every component as a bare
+  // `Component`, so what a test passes as PROPS is not checked here. Prop
+  // checking needs `svelte-check`, which is a separate (larger) job.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "composite": false,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*", "tests/**/*"]
+}

@@ -76,7 +76,7 @@ function ingredient(id: string, rawText: string, grams: number, canonId: string)
       quantity: { type: 'single' as const, value: grams },
       unit: 'g' as const,
       item: rawText,
-      preparation: null,
+      preparation: [],
       notes: null,
       displayText: rawText,
     },
@@ -89,6 +89,11 @@ function ingredient(id: string, rawText: string, grams: number, canonId: string)
 
 function makeRecipe(): Recipe {
   return {
+    producesCanonId: null,
+    componentRecipeIds: [],
+    kit: [],
+    createdBy: '',
+    lastEditedBy: '',
     id: RECIPE_ID,
     schemaVersion: 1,
     kind: 'recipe',
@@ -120,11 +125,12 @@ function makeRecipe(): Recipe {
     image: null,
     createdAt: WRITTEN_AT,
     updatedAt: WRITTEN_AT,
-  } as Recipe;
+  };
 }
 
 function canon(id: string, name: string): CanonItem {
   return {
+    embedding: null,
     id,
     schemaVersion: 5,
     name,

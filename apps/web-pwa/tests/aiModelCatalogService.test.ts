@@ -17,11 +17,12 @@ import {
   __resetAiModelCatalogServiceForTest,
 } from '../src/lib/aiModelCatalogService.js';
 
-const fs = firebaseSync as unknown as Mocked<typeof firebaseSync>;
+const fs = firebaseSync as Mocked<typeof firebaseSync>;
 
 const CATALOG = {
   byRole: {
     fast: [{ name: 'gemini-flash-latest', displayName: 'Gemini Flash' }],
+    lite: [{ name: 'gemini-flash-lite-latest', displayName: 'Gemini Flash Lite' }],
     pro: [{ name: 'gemini-pro-latest', displayName: 'Gemini Pro' }],
     embedding: [{ name: 'gemini-embedding-001', displayName: 'Embedding' }],
     image: [{ name: 'gemini-2.5-flash-image', displayName: 'Image' }],

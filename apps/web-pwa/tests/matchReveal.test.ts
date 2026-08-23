@@ -184,6 +184,8 @@ describe('createMatchReveal — reduced motion', () => {
   });
 
   function preferReducedMotion(): void {
+    // `vi.fn` cannot satisfy `matchMedia`'s overloads, so the assignment needs the
+    // cast; the stub is complete for everything the code under test reads.
     window.matchMedia = ((query: string) => ({
       media: query,
       matches: query.includes('prefers-reduced-motion'),

@@ -16,6 +16,9 @@ import WeekShopSheet from '../src/routes/mealplan/WeekShopSheet.svelte';
 
 function makeRecipe(id: string, title: string, componentRecipeIds: string[] = []): Recipe {
   return {
+    kit: [],
+    createdBy: '',
+    lastEditedBy: '',
     id,
     schemaVersion: 1,
     kind: 'recipe',

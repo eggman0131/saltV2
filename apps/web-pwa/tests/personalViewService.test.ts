@@ -76,6 +76,10 @@ const NOW = Date.parse('2026-08-05T12:00:00.000Z');
 
 function recipe(id: string, title: string, overrides: Partial<Recipe> = {}): Recipe {
   return {
+    lastEditedBy: '',
+    createdBy: '',
+    kit: [],
+    componentRecipeIds: [],
     id,
     schemaVersion: 1,
     kind: 'recipe',
@@ -97,7 +101,7 @@ function recipe(id: string, title: string, overrides: Partial<Recipe> = {}): Rec
     createdAt: '2026-07-01T00:00:00.000Z',
     updatedAt: '2026-07-01T00:00:00.000Z',
     ...overrides,
-  } as Recipe;
+  };
 }
 
 function withSteps(id: string, title: string, count: number, overrides: Partial<Recipe> = {}) {
@@ -127,6 +131,7 @@ function session(
     checkedPrepIds: [],
     completedStepIds,
     activeTimers,
+    serveAt: null,
     createdAt: '2026-07-01T00:00:00.000Z',
     updatedAt: '2026-07-01T00:00:00.000Z',
   };
@@ -223,7 +228,10 @@ describe('myTimers', () => {
     expect(get(myTimers)).toMatchObject([
       { id: 'r1_uid-a::r1-s0', label: 'Simmer the sauce', durationMs: 600_000 },
     ]);
-    expect(get(myTimers)[0]?.recipe.title).toBe('Ragu');
+    // `recipe` lives on the cook arm of the union only (#842), so the assertion
+    // has to name the kind — which is itself worth pinning here.
+    const [first] = get(myTimers);
+    expect(first?.kind === 'cook' ? first.recipe.title : null).toBe('Ragu');
   });
 
   it('lists a fired-but-undismissed timer alongside the running ones (#682)', () => {

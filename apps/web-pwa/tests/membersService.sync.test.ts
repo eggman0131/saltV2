@@ -52,6 +52,7 @@ function member(overrides: Partial<Member> & { id: string }): Member {
     admin: false,
     sortOrder: 0,
     icon: null,
+    cookMode: 'standard',
     updatedAt: '2026-06-07T00:00:00.000Z',
     ...overrides,
   };
@@ -168,7 +169,7 @@ describe('membersService — mutations', () => {
     await createMemberEntry({ name: 'New', email: '  New@E.ORG ', admin: true });
 
     expect(fs.upsertMember).toHaveBeenCalledTimes(1);
-    const written = fs.upsertMember.mock.calls[0][0];
+    const written = fs.upsertMember.mock.calls[0]![0];
     expect(written.id).toBe('new@e.org');
     expect(written.email).toBe('new@e.org');
     expect(written.admin).toBe(true);
@@ -178,14 +179,14 @@ describe('membersService — mutations', () => {
   it('createMemberEntry honours an explicit sortOrder', async () => {
     seedMembers([]);
     await createMemberEntry({ name: 'New', email: 'n@e.org', admin: false, sortOrder: 3 });
-    expect(fs.upsertMember.mock.calls[0][0].sortOrder).toBe(3);
+    expect(fs.upsertMember.mock.calls[0]![0].sortOrder).toBe(3);
   });
 
   it('updateMemberEntry patches the existing member and keeps the id', async () => {
     seedMembers([member({ id: 'a@e.org', name: 'Old', admin: false, sortOrder: 0 })]);
     await updateMemberEntry('a@e.org', { name: 'New', admin: true });
 
-    const written = fs.upsertMember.mock.calls[0][0];
+    const written = fs.upsertMember.mock.calls[0]![0];
     expect(written.id).toBe('a@e.org');
     expect(written.name).toBe('New');
     expect(written.admin).toBe(true);

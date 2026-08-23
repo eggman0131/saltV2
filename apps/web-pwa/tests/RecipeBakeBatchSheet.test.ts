@@ -84,7 +84,7 @@ const RECIPE = {
   image: null,
   createdAt: '2026-08-01T09:00:00.000Z',
   updatedAt: '2026-08-01T09:00:00.000Z',
-} as unknown as Recipe;
+};
 
 // Reference yield: twelve 120 g rolls, which is a preset the picker recognises, so
 // the sheet opens already saying what the last person declared.

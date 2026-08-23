@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi, type Mocked } from 'vitest';
+import { emptyRecipe } from '@salt/domain';
 import type { Recipe, CanonItem, Ingredient, ShoppingBehavior } from '@salt/domain';
 
 // Buy-or-make at add-to-list (Phase 2). Exercises buildRecipeAddPlan's producer
@@ -124,12 +125,9 @@ function recipe(
   } = {},
 ): Recipe {
   return {
-    id,
-    schemaVersion: 1,
+    ...emptyRecipe(id, '2026-01-01T00:00:00.000Z'),
     title: opts.title ?? id,
-    description: null,
     ingredients: [{ id: `${id}-grp`, name: null, items: opts.ingredients ?? [] }],
-    steps: [],
     metadata: {
       servings: opts.servings ?? 2,
       totalTimeMinutes: null,
@@ -137,11 +135,7 @@ function recipe(
       cookTimeMinutes: null,
       tags: [],
     },
-    source: null,
-    notes: null,
     producesCanonId: opts.producesCanonId ?? null,
-    image: null,
-    createdAt: '2026-01-01T00:00:00.000Z',
     // Fresh, monotonically-increasing stamp so a re-seed of the same id is never
     // rejected by the store's stale-echo guard.
     updatedAt: new Date().toISOString(),
@@ -183,9 +177,9 @@ describe('buildRecipeAddPlan — buy-or-make flagging', () => {
     });
     const rows = buildRecipeAddPlan(parent, 2);
 
-    expect(rows[0].producers.map((r) => r.id)).toEqual([nsId('r-mayo')]);
-    expect(rows[0].make).toBe(false); // default buy
-    expect(rows[0].producerId).toBe(nsId('r-mayo'));
+    expect(rows[0]!.producers.map((r) => r.id)).toEqual([nsId('r-mayo')]);
+    expect(rows[0]!.make).toBe(false); // default buy
+    expect(rows[0]!.producerId).toBe(nsId('r-mayo'));
   });
 
   it('shows no producer for an ingredient nobody makes', () => {
@@ -197,8 +191,8 @@ describe('buildRecipeAddPlan — buy-or-make flagging', () => {
       ingredients: [ingredient('i-salt', 'salt', canonSalt)],
     });
     const rows = buildRecipeAddPlan(parent, 2);
-    expect(rows[0].producers).toEqual([]);
-    expect(rows[0].producerId).toBeNull();
+    expect(rows[0]!.producers).toEqual([]);
+    expect(rows[0]!.producerId).toBeNull();
   });
 
   it('excludes the recipe being added from its own producer candidates', () => {
@@ -213,7 +207,7 @@ describe('buildRecipeAddPlan — buy-or-make flagging', () => {
     seedRecipes([parent, other]);
 
     const rows = buildRecipeAddPlan(parent, 2);
-    expect(rows[0].producers.map((r) => r.id)).toEqual([nsId('r-other-mayo')]);
+    expect(rows[0]!.producers.map((r) => r.id)).toEqual([nsId('r-other-mayo')]);
   });
 
   it('lists every candidate when more than one recipe produces the item', () => {
@@ -227,8 +221,8 @@ describe('buildRecipeAddPlan — buy-or-make flagging', () => {
       ingredients: [ingredient('i-mayo', 'mayonnaise', canonMayo)],
     });
     const rows = buildRecipeAddPlan(parent, 2);
-    expect(rows[0].producers.map((r) => r.id)).toEqual([nsId('r-mayo-a'), nsId('r-mayo-b')]);
-    expect(rows[0].producerId).toBe(nsId('r-mayo-a')); // seeded to first candidate
+    expect(rows[0]!.producers.map((r) => r.id)).toEqual([nsId('r-mayo-a'), nsId('r-mayo-b')]);
+    expect(rows[0]!.producerId).toBe(nsId('r-mayo-a')); // seeded to first candidate
   });
 });
 
@@ -426,7 +420,7 @@ describe('recipeAddPlanItemCount — footer preview count', () => {
       ingredients: [ingredient('i-salt', 'salt', canonSalt)],
     });
     const rows = buildRecipeAddPlan(parent, 2);
-    rows[0].add = false;
+    rows[0]!.add = false;
     expect(recipeAddPlanItemCount(rows)).toBe(0);
   });
 
@@ -443,7 +437,7 @@ describe('recipeAddPlanItemCount — footer preview count', () => {
       ingredients: [ingredient('i-mayo', 'mayonnaise', canonMayo)],
     });
     const rows = buildRecipeAddPlan(parent, 2);
-    rows[0].producerId = 'does-not-exist'; // find() misses → falls back to producers[0]
+    rows[0]!.producerId = 'does-not-exist'; // find() misses → falls back to producers[0]
     selectMake(rows, 'i-mayo'); // builds sub-rows from the fallback producer
     // producers[0] (r-mayo) fans out one ingredient → 1, same as commit does.
     expect(recipeAddPlanItemCount(rows)).toBe(1);
@@ -598,7 +592,7 @@ describe('made-header servings — default, live rescale, independence', () => {
       ingredients: [ingredient('i-mayo', 'mayonnaise', canonMayo)],
     });
     const rows = buildRecipeAddPlan(parent, 10); // master servings 10
-    expect(rows[0].madeServings).toBe(3); // producer base, not 10, not 100
+    expect(rows[0]!.madeServings).toBe(3); // producer base, not 10, not 100
   });
 
   it('stepping a made header live-rescales its sub-entry amounts', () => {
@@ -712,10 +706,10 @@ describe('made-header servings — default, live rescale, independence', () => {
       ingredients: [ingredient('i-mayo', 'mayonnaise', canonMayo)],
     });
     const rows = buildRecipeAddPlan(parent, 2);
-    expect(rows[0].madeServings).toBe(2); // seeded to first producer's base
+    expect(rows[0]!.madeServings).toBe(2); // seeded to first producer's base
 
     // Mirror the sheet's setProducer: switch to producer B (base 6) and re-default.
-    const row = rows[0];
+    const row = rows[0]!;
     row.producerId = nsId('r-mayo-b');
     row.madeServings = row.producers.find((r) => r.id === row.producerId)!.metadata.servings ?? 1;
     expect(row.madeServings).toBe(6);

@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
+import { emptyRecipe } from '@salt/domain';
 import type { Day, Member, Recipe } from '@salt/domain';
 
 import MealDayEditor from '../src/routes/mealplan/MealDayEditor.svelte';
@@ -26,15 +27,11 @@ import MealDayEditor from '../src/routes/mealplan/MealDayEditor.svelte';
 
 const alex: Member = { id: 'm1', name: 'Alex' } as Member;
 const noop = () => {};
+const NOW = '2026-01-01T00:00:00.000Z';
 const emptyDay: Day = { note: '', recipeIds: [], chefs: [], attendees: [], guests: 0 };
 
-const bolognese = {
-  id: 'r1',
-  title: 'Spaghetti Bolognese',
-  componentRecipeIds: [],
-  kit: [],
-} as unknown as Recipe;
-const roast = { id: 'r2', title: 'Sunday Roast', componentRecipeIds: [] } as unknown as Recipe;
+const bolognese: Recipe = { ...emptyRecipe('r1', NOW), title: 'Spaghetti Bolognese' };
+const roast: Recipe = { ...emptyRecipe('r2', NOW), title: 'Sunday Roast' };
 
 function baseProps(overrides: Record<string, unknown> = {}) {
   return {
@@ -131,11 +128,11 @@ describe('MealDayEditor — the recipe picker inside the day sheet (#640)', () =
     // photograph, without either mechanic learning what a meal is.
     const onRecipesChange = vi.fn();
     const onNoteChange = vi.fn();
-    const meal = {
-      id: 'm-roast',
+    const meal: Recipe = {
+      ...emptyRecipe('m-roast', NOW),
       title: 'Sunday lunch',
       componentRecipeIds: ['r2', 'r1'],
-    } as unknown as Recipe;
+    };
     render(MealDayEditor, {
       props: baseProps({
         onRecipesChange,
@@ -155,11 +152,11 @@ describe('MealDayEditor — the recipe picker inside the day sheet (#640)', () =
     // The gravy was attached on its own last night; attaching the meal now must
     // not duplicate it, and must not re-sort the night around it.
     const onRecipesChange = vi.fn();
-    const meal = {
-      id: 'm-roast',
+    const meal: Recipe = {
+      ...emptyRecipe('m-roast', NOW),
       title: 'Sunday lunch',
       componentRecipeIds: ['r1', 'r2'],
-    } as unknown as Recipe;
+    };
     render(MealDayEditor, {
       props: baseProps({
         day: { ...emptyDay, note: 'Something already written', recipeIds: ['r2'] },

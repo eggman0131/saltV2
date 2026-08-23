@@ -150,6 +150,10 @@ const REFRESHED_TITLE = 'Chorizo & Red Pepper Pilaf, re-written';
 
 function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
   return {
+    lastEditedBy: '',
+    createdBy: '',
+    kit: [],
+    producesCanonId: null,
     id: RECIPE_ID,
     schemaVersion: 1,
     kind: 'recipe',
@@ -171,7 +175,7 @@ function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
-  } as Recipe;
+  };
 }
 
 // What the librarian hands back. The title moves so the diff has something to
@@ -179,6 +183,10 @@ function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
 // survive an applied refresh.
 function librarianDraft(): RecipeDoc {
   return {
+    producesCanonId: null,
+    kit: [],
+    createdBy: '',
+    lastEditedBy: '',
     id: 'draft-id',
     schemaVersion: 1,
     kind: 'recipe',
@@ -206,7 +214,7 @@ function librarianDraft(): RecipeDoc {
     image: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
-  } as RecipeDoc;
+  };
 }
 
 function makeSession(messages: ChatSessionDoc['messages']): ChatSessionDoc {
@@ -217,10 +225,11 @@ function makeSession(messages: ChatSessionDoc['messages']): ChatSessionDoc {
     recipeId: RECIPE_ID,
     title: 'Pilaf chat',
     messages,
+    basedOnRecipeId: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
-    expiresAt: null,
-  } as ChatSessionDoc;
+    expiresAt: '2026-01-15T00:00:00.000Z',
+  };
 }
 
 // What the chef writes back to a Refresh: the whole dish, not a list of changes.

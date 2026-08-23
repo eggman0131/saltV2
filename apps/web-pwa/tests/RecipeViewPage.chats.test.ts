@@ -133,6 +133,10 @@ const RECIPE_ID = 'recipe-1';
 
 function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
   return {
+    lastEditedBy: '',
+    createdBy: '',
+    producesCanonId: null,
+    kind: 'recipe',
     id: RECIPE_ID,
     schemaVersion: 1,
     title: 'Cauliflower Steaks',
@@ -154,7 +158,7 @@ function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
-  } as Recipe;
+  };
 }
 
 function makeSession(overrides: Partial<ChatSessionDoc> = {}): ChatSessionDoc {
@@ -165,6 +169,7 @@ function makeSession(overrides: Partial<ChatSessionDoc> = {}): ChatSessionDoc {
     recipeId: RECIPE_ID,
     title: 'Cauliflower Steaks chat',
     messages: [],
+    basedOnRecipeId: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     expiresAt: '9999-12-31T23:59:59.999Z',

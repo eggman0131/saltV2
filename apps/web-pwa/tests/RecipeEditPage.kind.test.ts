@@ -57,6 +57,9 @@ import { persistRecipe } from '../src/lib/recipeService.js';
 
 function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
   return {
+    lastEditedBy: '',
+    createdBy: '',
+    producesCanonId: null,
     id: 'entry-1',
     schemaVersion: 1,
     kind: 'recipe',
@@ -81,7 +84,7 @@ function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
-  } as Recipe;
+  };
 }
 
 // The three cooking-only fields, by testid. Present together or not at all.

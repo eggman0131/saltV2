@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import {
+  emptyRecipe,
   emptyWeek,
   templateWeekStarts,
   weekDates,
@@ -10,41 +11,39 @@ import {
   type MealPlanWeek,
   type Member,
   type Recipe,
+  type RecipeKind,
 } from '@salt/domain';
 
-// A minimal recipe. MealDayEditor's picker/auto-fill read `id`/`title`; the add-to-
-// shop sheet also reads `metadata.servings` (seed) — the plan builder is mocked, so
-// the ingredient detail is irrelevant here.
-const RECIPE: Recipe = {
-  id: 'r1',
-  title: 'Spaghetti Bolognese',
-  metadata: { servings: 2 },
-  ingredients: [],
-  componentRecipeIds: [],
-} as unknown as Recipe;
+const NOW = '2026-01-01T00:00:00.000Z';
+
+/** A recipe of the given kind, with the servings the add-to-shop sheet seeds from. */
+function entry(
+  id: string,
+  title: string,
+  servings: number | null,
+  kind: RecipeKind = 'recipe',
+): Recipe {
+  const base = emptyRecipe(id, NOW, kind);
+  return { ...base, title, metadata: { ...base.metadata, servings } };
+}
+
+// MealDayEditor's picker/auto-fill read `id`/`title`; the add-to-shop sheet also
+// reads `metadata.servings` — the plan builder is mocked, so the ingredient
+// detail is irrelevant here.
+const RECIPE = entry('r1', 'Spaghetti Bolognese', 2);
 
 // The other two kinds (#637). Neither carries ingredients or steps: what the
 // planner does with them is decided by the domain capability predicates, not by
-// their contents. RECIPE deliberately has NO `kind` field — a pre-#637 document
-// — so every assertion below also proves the `kindOf` default still reads as a
-// recipe.
-const OUTING: Recipe = {
-  id: 'o1',
-  title: 'Takeaway — Indian',
-  kind: 'outing',
-  metadata: { servings: 2 },
-  ingredients: [],
-  componentRecipeIds: [],
-} as unknown as Recipe;
-
-const COCKTAIL: Recipe = {
-  id: 'c1',
-  title: 'Negroni',
-  kind: 'cocktail',
-  metadata: { servings: 1 },
-  ingredients: [],
-  componentRecipeIds: [],
-} as unknown as Recipe;
+// their contents.
+//
+// RECIPE above used to be a `kind`-less literal, to stand for a pre-#637
+// document. It cannot be one now that these fixtures are typechecked (#942):
+// `RecipeSchema.kind` is `.default('recipe')`, so `z.infer` makes it required,
+// and the subscription parses every document before the planner sees it — a
+// `kind`-less doc never reaches this page. The default itself is pinned where it
+// belongs, in `packages/domain/tests/recipe/recipe.schema.test.ts`.
+const OUTING = entry('o1', 'Takeaway — Indian', 2, 'outing');
+const COCKTAIL = entry('c1', 'Negroni', 1, 'cocktail');
 
 // ─── Hoisted reactive stubs ────────────────────────────────────────────────
 const {
@@ -104,9 +103,9 @@ const {
     mockExtensionWeek: makeStore<MealPlanWeek | null>(null),
     mockExtensionStart: extensionStart,
     mockSetExtensionWeek: vi.fn((start: string | null) => extensionStart._set(start ?? '')),
-    mockRecipes: makeStore<readonly Recipe[]>([
-      { id: 'r1', title: 'Spaghetti Bolognese', componentRecipeIds: [] } as unknown as Recipe,
-    ]),
+    // Empty here — `vi.hoisted` runs before the imports `entry` needs. Every test
+    // gets `[RECIPE]` from the beforeEach below, which is what the seed was for.
+    mockRecipes: makeStore<readonly Recipe[]>([]),
     mockCanonItems: makeStore<unknown[]>([]),
     mockDefaultListId: makeStore<string | null>('list-1'),
     // The week's shop day (issue #629) — null unless a test marks one.
@@ -114,7 +113,7 @@ const {
     // Next week's shop day, when the planner is showing next week too (#639).
     mockExtensionShopDay: makeStore<{ date: string; slot: 'am' | 'pm' } | null>(null),
     // A one-row plan is enough for the sheet to render and confirm.
-    mockBuildRecipeAddPlan: vi.fn(() => [
+    mockBuildRecipeAddPlan: vi.fn((_recipe: Recipe, _servings: number) => [
       {
         ingredientId: 'i1',
         name: 'Spaghetti',
@@ -131,7 +130,10 @@ const {
         subRows: null,
       },
     ]),
-    mockCommitRecipeAddPlan: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
+    mockCommitRecipeAddPlan: vi.fn(async (_recipe: Recipe, ..._rest: unknown[]) => ({
+      kind: 'ok' as const,
+      value: undefined,
+    })),
     mockRecipeAddPlanItemCount: vi.fn(() => 1),
   };
 });
@@ -249,6 +251,7 @@ function member(id: string, name: string): Member {
     admin: false,
     sortOrder: 0,
     icon: null,
+    cookMode: 'standard',
     updatedAt: '2026-06-07T00:00:00.000Z',
   };
 }
@@ -1050,7 +1053,7 @@ describe('MealPlanWeekPage', () => {
     await userEvent.click(confirm);
     await waitFor(() => expect(vi.mocked(mockCommitRecipeAddPlan)).toHaveBeenCalled());
     const [recipeArg, listIdArg] = vi.mocked(mockCommitRecipeAddPlan).mock.calls[0]!;
-    expect((recipeArg as Recipe).id).toBe('r1');
+    expect(recipeArg.id).toBe('r1');
     expect(listIdArg).toBe('list-1');
   });
 
@@ -1603,10 +1606,10 @@ describe('MealPlanWeekPage — when you CBA (#637, Phase 4)', () => {
     mockRecipes._set([
       {
         ...OUTING,
-        image: { url: 'https://example.test/curry.webp' },
+        image: { url: 'https://example.test/curry.webp', source: 'ai' },
         imageHidden: true,
         updatedAt: '2026-06-01T00:00:00.000Z',
-      } as unknown as Recipe,
+      },
     ]);
     mockWeek._set(weekWith('2026-06-08', ['o1']));
     render(MealPlanWeekPage);
@@ -1626,13 +1629,7 @@ describe('MealPlanWeekPage — when you CBA (#637, Phase 4)', () => {
 // ahead, which entries can be shopped for at all, and how the queue advances.
 describe('MealPlanWeekPage — shop the week (#724, Phase 1)', () => {
   // A second dish, so a sequence has somewhere to go.
-  const RECIPE_2: Recipe = {
-    id: 'r2',
-    title: 'Chilli con carne',
-    metadata: { servings: 4 },
-    ingredients: [],
-    componentRecipeIds: [],
-  } as unknown as Recipe;
+  const RECIPE_2 = entry('r2', 'Chilli con carne', 4);
 
   /** A week whose days carry the given recipe ids. */
   function planned(start: string, plan: Record<string, string[]>): MealPlanWeek {
@@ -1685,14 +1682,7 @@ describe('MealPlanWeekPage — shop the week (#724, Phase 1)', () => {
   });
 
   it('leaves out a takeaway, a note-only placeholder and a night already behind us', async () => {
-    const PLACEHOLDER = {
-      id: 'p1',
-      title: 'A good dinner',
-      kind: 'placeholder',
-      metadata: { servings: null },
-      ingredients: [],
-      componentRecipeIds: [],
-    } as unknown as Recipe;
+    const PLACEHOLDER = entry('p1', 'A good dinner', null, 'placeholder');
     mockRecipes._set([RECIPE, OUTING, PLACEHOLDER]);
     const start = weekAroundToday(2);
     mockWeek._set(
@@ -1773,12 +1763,12 @@ describe('MealPlanWeekPage — shop the week (#724, Phase 1)', () => {
     // First recipe, in day order.
     await confirmReview();
     await waitFor(() => expect(vi.mocked(mockCommitRecipeAddPlan)).toHaveBeenCalledTimes(1));
-    expect((vi.mocked(mockCommitRecipeAddPlan).mock.calls[0]![0] as Recipe).id).toBe('r1');
+    expect(vi.mocked(mockCommitRecipeAddPlan).mock.calls[0]![0].id).toBe('r1');
 
     // …then the next one's sheet opens in its place.
     await confirmReview();
     await waitFor(() => expect(vi.mocked(mockCommitRecipeAddPlan)).toHaveBeenCalledTimes(2));
-    expect((vi.mocked(mockCommitRecipeAddPlan).mock.calls[1]![0] as Recipe).id).toBe('r2');
+    expect(vi.mocked(mockCommitRecipeAddPlan).mock.calls[1]![0].id).toBe('r2');
     expect(vi.mocked(mockCommitRecipeAddPlan).mock.calls[1]![1]).toBe('list-1');
 
     // The last one done, nothing is left open.
@@ -1804,7 +1794,7 @@ describe('MealPlanWeekPage — shop the week (#724, Phase 1)', () => {
 
     await confirmReview();
     await waitFor(() => expect(vi.mocked(mockCommitRecipeAddPlan)).toHaveBeenCalledTimes(1));
-    expect((vi.mocked(mockCommitRecipeAddPlan).mock.calls[0]![0] as Recipe).id).toBe('r2');
+    expect(vi.mocked(mockCommitRecipeAddPlan).mock.calls[0]![0].id).toBe('r2');
     await waitFor(() =>
       expect(screen.queryByTestId('recipe-add-review-list')).not.toBeInTheDocument(),
     );
@@ -1826,7 +1816,7 @@ describe('MealPlanWeekPage — shop the week (#724, Phase 1)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Skip' }));
     await confirmReview();
     await waitFor(() => expect(vi.mocked(mockCommitRecipeAddPlan)).toHaveBeenCalledTimes(1));
-    expect((vi.mocked(mockCommitRecipeAddPlan).mock.calls[0]![0] as Recipe).id).toBe('r2');
+    expect(vi.mocked(mockCommitRecipeAddPlan).mock.calls[0]![0].id).toBe('r2');
   });
 
   it('stops the sequence on a failed write instead of rolling on', async () => {
@@ -1854,7 +1844,7 @@ describe('MealPlanWeekPage — shop the week (#724, Phase 1)', () => {
     // moved on. Confirming again retries THAT recipe, not the next one.
     await confirmReview();
     await waitFor(() => expect(vi.mocked(mockCommitRecipeAddPlan)).toHaveBeenCalledTimes(2));
-    expect((vi.mocked(mockCommitRecipeAddPlan).mock.calls[1]![0] as Recipe).id).toBe('r1');
+    expect(vi.mocked(mockCommitRecipeAddPlan).mock.calls[1]![0].id).toBe('r1');
   });
 
   it('shows the friendly toast and opens nothing with no default list', async () => {
@@ -1881,13 +1871,7 @@ describe('MealPlanWeekPage — shop the week (#724, Phase 1)', () => {
 // uniquely able to supply: which of how many this recipe is, and how many people
 // are actually eating that night.
 describe('MealPlanWeekPage — shop the week, in sequence (#724, Phase 2)', () => {
-  const RECIPE_2: Recipe = {
-    id: 'r2',
-    title: 'Chilli con carne',
-    metadata: { servings: 4 },
-    ingredients: [],
-    componentRecipeIds: [],
-  } as unknown as Recipe;
+  const RECIPE_2 = entry('r2', 'Chilli con carne', 4);
 
   function planned(start: string, plan: Record<string, Day>): MealPlanWeek {
     const base = emptyWeek(start);

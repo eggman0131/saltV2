@@ -134,6 +134,11 @@ const RECIPE_ID = 'recipe-1';
 
 function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
   return {
+    lastEditedBy: '',
+    createdBy: '',
+    kit: [],
+    producesCanonId: null,
+    kind: 'recipe',
     id: RECIPE_ID,
     schemaVersion: 1,
     title: 'Test Recipe',
@@ -154,7 +159,7 @@ function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
-  } as Recipe;
+  };
 }
 
 function makeSession(overrides: Partial<ChatSessionDoc> = {}): ChatSessionDoc {

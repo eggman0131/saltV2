@@ -120,6 +120,13 @@ function formIngredient(
 
 function makeRecipe(items: IngredientGroup['items']): Recipe {
   return {
+    image: null,
+    createdBy: '',
+    lastEditedBy: '',
+    kind: 'recipe',
+    producesCanonId: null,
+    componentRecipeIds: [],
+    kit: [],
     id: 'recipe-1',
     schemaVersion: 1,
     title: 'Test Recipe',
@@ -220,7 +227,7 @@ describe('commitRecipeAddPlan — measureNote', () => {
 
     await commitRecipeAddPlan(recipe, 'list-1', 2, rows);
 
-    const saved = (fs.saveShoppingListItem as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    const saved = vi.mocked(fs.saveShoppingListItem).mock.calls[0]![1];
     expect(saved.measureNote).toBe('6 cloves');
   });
 
@@ -232,7 +239,7 @@ describe('commitRecipeAddPlan — measureNote', () => {
 
     await commitRecipeAddPlan(recipe, 'list-1', 4, rows);
 
-    const saved = (fs.saveShoppingListItem as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    const saved = vi.mocked(fs.saveShoppingListItem).mock.calls[0]![1];
     expect('measureNote' in saved).toBe(false);
   });
 });

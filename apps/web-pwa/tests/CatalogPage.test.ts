@@ -45,8 +45,12 @@ const {
     // only when it LAPSES. These tests drive the lapse and the undo by hand.
     toasts: [] as {
       message: string;
-      variant?: string;
-      opts?: { action?: { onClick: () => void }; onDismiss?: () => void; duration?: number };
+      // `| undefined` (not just `?`) under `exactOptionalPropertyTypes`: the spy
+      // records what `addToast` was CALLED with, and both of these are called
+      // absent as often as present.
+      variant?: string | undefined;
+      opts?:
+        { action?: { onClick: () => void }; onDismiss?: () => void; duration?: number } | undefined;
     }[],
   };
 });
@@ -109,6 +113,7 @@ const ADMIN: Member = {
   admin: true,
   sortOrder: 0,
   icon: null,
+  cookMode: 'standard',
   updatedAt: '2026-07-17T00:00:00.000Z',
 };
 
@@ -144,7 +149,7 @@ const LEMON = canonItem({
   name: 'lemon',
   needs_approval: true,
   reasoning: 'Created from “2 lemons”.',
-  pendingChanges: [{ kind: 'item_created', rawInput: '2 lemons' }],
+  pendingChanges: [{ kind: 'created', rawInput: '2 lemons' }],
 });
 const BUTTER = canonItem({ id: 'butter', name: 'butter', largeQuantityThreshold: 500, unit: 'g' });
 const JUICE = productForm({ id: 'juice', label: 'Lemon juice', needs_approval: true });
@@ -382,6 +387,8 @@ describe('CatalogPage — the two-pane breakpoint', () => {
   });
 
   function dock() {
+    // `vi.fn` cannot satisfy `matchMedia`'s overloads, so the assignment needs the
+    // cast; the stub is complete for everything the code under test reads.
     window.matchMedia = ((query: string) => ({
       media: query,
       matches: true,

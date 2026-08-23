@@ -96,6 +96,8 @@ function tool(over: Partial<KitchenToolDoc> & { id: string; label: string }): Ki
 
 function recipeWithKit(id: string, ...labels: string[]): Recipe {
   return {
+    createdBy: '',
+    lastEditedBy: '',
     id,
     schemaVersion: 1,
     kind: 'recipe',
@@ -118,7 +120,7 @@ function recipeWithKit(id: string, ...labels: string[]): Recipe {
     image: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
-  } as Recipe;
+  };
 }
 
 function planWithContainers(id: string, prep: (string | null)[], notes: (string | null)[] = []) {

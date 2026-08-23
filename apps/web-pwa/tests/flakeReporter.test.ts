@@ -42,6 +42,9 @@ function makeTest(options: {
     results = [{ duration: 100, startTime: new Date('2026-08-01T10:00:00.000Z') }],
   } = options;
 
+  // Playwright's `Suite`/`TestCase` are large interfaces the runner constructs;
+  // the reporter reads only the fields named here, so the fixtures are stubs and
+  // the casts are the point rather than an oversight.
   let parent = { type: 'project', title: project, parent: undefined } as unknown as Suite;
   for (const describeTitle of describes) {
     parent = { type: 'describe', title: describeTitle, parent } as unknown as Suite;

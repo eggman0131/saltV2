@@ -36,13 +36,13 @@ describe('haptics — a supported platform (Android)', () => {
   });
 
   it('fires exactly one short pulse per tick', () => {
-    const vibrate = vi.fn(() => true);
+    const vibrate = vi.fn((_pattern: number | readonly number[]) => true);
     installVibrate(vibrate);
 
     tick();
 
     expect(vibrate).toHaveBeenCalledTimes(1);
-    const [pattern] = vibrate.mock.calls[0] as unknown as [number];
+    const [pattern] = vibrate.mock.calls[0]!;
     // A tick, not a buzz: one pulse, short enough to read as a tap landing.
     expect(typeof pattern).toBe('number');
     expect(pattern).toBeGreaterThan(0);
@@ -66,8 +66,10 @@ describe('haptics — reduced motion', () => {
   });
 
   it('stays silent on a device that could buzz but a user who asked it not to', () => {
-    const vibrate = vi.fn(() => true);
+    const vibrate = vi.fn((_pattern: number | readonly number[]) => true);
     installVibrate(vibrate);
+    // `vi.fn` cannot satisfy `matchMedia`'s overloads, so the assignment needs the
+    // cast; the stub is complete for everything the code under test reads.
     window.matchMedia = ((query: string) => ({
       media: query,
       matches: query.includes('prefers-reduced-motion'),

@@ -115,6 +115,7 @@ function makeRecipe(over: {
   lastEditedBy?: string;
 }): Recipe {
   return {
+    kit: [],
     id: over.id,
     schemaVersion: 1,
     kind: over.kind ?? 'recipe',
@@ -239,7 +240,7 @@ describe('RecipeListPage', () => {
     // #460): Apple has no `imageRequestedAt`, so the nonce falls back to
     // `updatedAt`. The base URL carries no query, so the param is appended with
     // `?v=`.
-    const src = screen.getAllByTestId('recipe-list-thumb')[0].getAttribute('src');
+    const src = screen.getAllByTestId('recipe-list-thumb')[0]!.getAttribute('src');
     expect(src).toBe(`http://img.test/apple.jpg?v=${APPLE.updatedAt}`);
   });
 

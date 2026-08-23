@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
+import { emptyRecipe } from '@salt/domain';
 import type { Day, Member, Recipe } from '@salt/domain';
 import type { WeatherDaySummary } from '@salt/domain/schemas';
 
@@ -19,33 +20,31 @@ import MealDayEditor from '../src/routes/mealplan/MealDayEditor.svelte';
 
 const alex: Member = { id: 'm1', name: 'Alex' } as Member;
 const noop = () => {};
+const NOW = '2026-01-01T00:00:00.000Z';
 
 // January → the season's mood is `comfort`; July → `bright`. Both well clear of
 // the boundary, so neither test is one month from meaning something else.
 const WINTER_DAY = '2026-01-15';
 const SUMMER_DAY = '2026-07-15';
 
-function placeholder(id: string, mood: string, image: Recipe['image'] = { url: `${id}.jpg` }) {
+function placeholder(
+  id: string,
+  mood: string,
+  image: Recipe['image'] = { url: `${id}.jpg`, source: 'ai' },
+) {
+  const base = emptyRecipe(id, NOW, 'placeholder');
   return {
-    id,
+    ...base,
     title: `Placeholder — ${mood}`,
-    kind: 'placeholder',
     image,
-    metadata: { tags: [mood] },
-    updatedAt: '2026-01-01T00:00:00.000Z',
-  } as unknown as Recipe;
+    metadata: { ...base.metadata, tags: [mood] },
+    updatedAt: NOW,
+  };
 }
 
 const comfortOne = placeholder('ph-comfort', 'comfort');
 const brightOne = placeholder('ph-bright', 'bright');
-const roast = {
-  id: 'r1',
-  title: 'Sunday Roast',
-  kind: 'recipe',
-  image: null,
-  metadata: { tags: [] },
-  updatedAt: '2026-01-01T00:00:00.000Z',
-} as unknown as Recipe;
+const roast: Recipe = { ...emptyRecipe('r1', NOW), title: 'Sunday Roast', updatedAt: NOW };
 
 function makeDay(overrides: Partial<Day> = {}): Day {
   return { note: '', recipeIds: [], chefs: [], attendees: [], guests: 0, ...overrides };

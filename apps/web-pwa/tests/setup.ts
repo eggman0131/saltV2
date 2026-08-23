@@ -46,6 +46,8 @@ afterEach(() => {
 // as "no reduced-motion preference", which is the honest default for a headless run:
 // the motion-reduce branches stay unexercised here and belong to a real browser.
 if (typeof window.matchMedia !== 'function') {
+  // `vi.fn` cannot satisfy `matchMedia`'s overloads, so the assignment needs the
+  // cast; the stub is complete for everything the code under test reads.
   window.matchMedia = ((query: string) => ({
     media: query,
     matches: false,
@@ -72,6 +74,7 @@ if (typeof globalThis.ResizeObserver !== 'function') {
     observe(): void {}
     unobserve(): void {}
     disconnect(): void {}
+    // Cast: the class omits the static/`prototype` shape of the real constructor.
   } as unknown as typeof ResizeObserver;
 }
 

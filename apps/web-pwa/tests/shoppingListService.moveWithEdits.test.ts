@@ -73,7 +73,7 @@ function item(overrides: Partial<ShoppingListItem> & { id: string }): ShoppingLi
 
 // Seed the active-list store the only way production does — through the
 // subscription callback — rather than adding a test-only setter.
-function seedItems(listId: string, items: readonly ShoppingListItem[]): void {
+function seedItems(listId: string, items: ShoppingListItem[]): void {
   fs.subscribeShoppingListItems.mockImplementation((_id, onItems) => {
     onItems(items);
     return () => {};

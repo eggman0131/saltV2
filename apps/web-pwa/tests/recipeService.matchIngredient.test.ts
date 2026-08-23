@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi, type Mocked } from 'vitest';
+import type { CanonItem } from '@salt/domain';
 import type { Ingredient, IngredientGroup } from '@salt/domain';
 
 // ─── Mock firebase-sync ──────────────────────────────────────────────────────
@@ -56,16 +57,17 @@ const parseGroup: IngredientGroup = {
   items: [{ ...makePendingIngredient(), parsed: parsedFlour }],
 };
 
-function makeCanonItem(id: string) {
+function makeCanonItem(id: string): CanonItem {
   return {
     id,
-    schemaVersion: 2 as const,
+    schemaVersion: 5,
     name: id,
     synonyms: [],
     aisleId: null,
     thumbnail: null,
     embedding: null,
     needs_approval: false,
+    shoppingBehavior: 'needed',
     updatedAt: '',
   };
 }

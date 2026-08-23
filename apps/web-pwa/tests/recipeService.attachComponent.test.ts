@@ -52,6 +52,9 @@ function recipe(
   opts: { cookTimeMinutes?: number | null; componentRecipeIds?: string[] } = {},
 ): Recipe {
   return {
+    kit: [],
+    createdBy: '',
+    lastEditedBy: '',
     id,
     schemaVersion: 1,
     kind: 'recipe',
@@ -91,7 +94,7 @@ function seedRecipes(list: Recipe[]): void {
 
 /** What the Nth `saveRecipe` actually wrote. */
 function saved(n = 0): Recipe {
-  return (fs.saveRecipe as ReturnType<typeof vi.fn>).mock.calls[n]![0] as Recipe;
+  return fs.saveRecipe.mock.calls[n]![0];
 }
 
 beforeEach(() => {

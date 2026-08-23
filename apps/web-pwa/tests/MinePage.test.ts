@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup, fireEvent, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
+import { emptyRecipe } from '@salt/domain';
 import type { Member, Recipe } from '@salt/domain';
+import type { KitchenTimersDoc } from '@salt/domain/schemas';
 
 // "Mine" (issues #634, #682): what of mine is running right now, and what needs a
 // look. The projections are tested in personalViewService.test.ts and the domain
@@ -64,7 +66,7 @@ const {
     mockPersistRecipe: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
     mockKitchenTeardown,
     mockSubscribeKitchenWeeks: vi.fn(() => mockKitchenTeardown),
-    mockKitchenSnapshot: vi.fn(() => ({ ownerUid: 'uid', timers: [] })),
+    mockKitchenSnapshot: vi.fn((): KitchenTimersDoc | null => ({ ownerUid: 'uid', timers: [] })),
     mockPersistKitchenTimers: vi.fn().mockResolvedValue({ kind: 'ok', value: undefined }),
     mockPrimeChime: vi.fn(),
   };
@@ -121,18 +123,15 @@ import { kitchenPrefs } from '../src/lib/kitchenDashboardPrefs.svelte.js';
 
 const NOW = Date.parse('2026-08-05T12:00:00.000Z');
 
-function recipe(id: string, title: string, overrides: Record<string, unknown> = {}): Recipe {
+function recipe(id: string, title: string, overrides: Partial<Recipe> = {}): Recipe {
+  const base = emptyRecipe(id, '2026-08-01T11:56:00.000Z');
   return {
-    id,
+    ...base,
     title,
-    kind: 'recipe',
-    metadata: { servings: 2 },
-    ingredients: [],
-    steps: [],
-    createdAt: '2026-08-01T11:56:00.000Z',
+    metadata: { ...base.metadata, servings: 2 },
     updatedAt: '2026-08-01T11:56:00.000Z',
     ...overrides,
-  } as unknown as Recipe;
+  };
 }
 
 /** A recipe as it sits in the review queue: AI-authored, unread. */
@@ -611,7 +610,7 @@ describe('MinePage — needs review', () => {
     mockRecipes._set([
       recipe('r9', 'Lemon drizzle traybake', {
         needs_approval: true,
-        image: { url: 'https://example.test/hero.webp' },
+        image: { url: 'https://example.test/hero.webp', source: 'ai' },
       }),
     ]);
     const { getByTestId } = render(MinePage);
@@ -705,7 +704,7 @@ describe('MinePage — the workbench', () => {
     // Photography earns its bytes on the dish in front of you and nowhere else:
     // a 40px crop of a generated hero says less than a calendar glyph, and an
     // unreviewed import's image is itself unreviewed.
-    const withImage = { image: { url: 'https://example.test/x.webp', source: 'ai' } };
+    const withImage = { image: { url: 'https://example.test/x.webp', source: 'ai' as const } };
     mockUpcomingNights._set([
       chefNight('2026-08-06', 1, { recipeIds: ['r1'] }, [recipe('r1', 'Ragu', withImage)]),
     ]);

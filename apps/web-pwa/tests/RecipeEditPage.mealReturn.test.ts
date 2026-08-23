@@ -60,6 +60,9 @@ const MEAL_ID = 'roast';
 
 function makeRecipe(overrides: Partial<Recipe> & { id: string; title: string }): Recipe {
   return {
+    lastEditedBy: '',
+    createdBy: '',
+    kit: [],
     schemaVersion: 1,
     kind: 'recipe',
     description: null,
@@ -80,7 +83,7 @@ function makeRecipe(overrides: Partial<Recipe> & { id: string; title: string }):
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
-  } as Recipe;
+  };
 }
 
 const ROAST = makeRecipe({ id: MEAL_ID, title: 'Sunday roast' });
