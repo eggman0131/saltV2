@@ -18,6 +18,11 @@ vi.mock('../../src/flows/canonicaliseRecipeIngredients.js', () => ({
   canonicaliseRecipeIngredientsFlow: mockCanonFlow,
 }));
 
+const mockReport = vi.fn();
+vi.mock('../../src/observability/reportServerError.js', () => ({
+  reportServerError: mockReport,
+}));
+
 vi.stubGlobal('crypto', { randomUUID: mockUUID });
 
 const { assembleRecipeDraft } = await import('../../src/flows/assembleRecipeDraft.js');
@@ -26,7 +31,12 @@ beforeEach(() => {
   vi.clearAllMocks();
   let counter = 0;
   mockUUID.mockImplementation(() => `id-${++counter}`);
-  mockParseFlow.mockResolvedValue([]);
+  // Default: the parser behaves — one item per line handed in, echoed verbatim.
+  // Canon is only asked about lines that parsed (issue #949), so a test about
+  // canon needs the parse to have worked, exactly as production does.
+  mockParseFlow.mockImplementation(({ rawText }: { rawText: string }) =>
+    Promise.resolve(parseResultFor(rawText.split('\n'))),
+  );
   mockCanonFlow.mockResolvedValue([]);
 });
 
@@ -175,7 +185,11 @@ describe('assembleRecipeDraft — id minting', () => {
 // ─── non-fatal sub-flow failures ─────────────────────────────────────────────
 
 describe('assembleRecipeDraft — non-fatal sub-flow failures', () => {
-  it('assembles with parsed: null on every ingredient when the parse flow throws', async () => {
+  it('never writes matched alongside parsed: null when the parse flow throws (issue #949)', async () => {
+    // The coarse route into the defect: the whole parse fails, canon runs anyway
+    // on the full raw line, and every row lands `matched` holding no amount —
+    // healthy-looking, unscalable, and invisible in the list. Canon is no longer
+    // asked about a line it would have to match as "2 cloves garlic, crushed".
     mockParseFlow.mockRejectedValue(new Error('parse failed'));
     mockCanonFlow.mockResolvedValue([
       { kind: 'ok', value: { decision: 'matched', item: { id: 'canon-pasta' } } },
@@ -186,18 +200,38 @@ describe('assembleRecipeDraft — non-fatal sub-flow failures', () => {
     const items = doc.ingredients[0]!.items;
 
     expect(items.every((i) => i.parsed === null)).toBe(true);
-    // Canon still ran — a parse failure must not take the match down with it.
-    expect(items[0]!.canonId).toBe('canon-pasta');
-    expect(items[0]!.matchState).toBe('matched');
+    expect(items.some((i) => i.matchState === 'matched' && i.parsed === null)).toBe(false);
+    // `pending`, not `failed`: matchState still means canon matching and nothing
+    // else, and canon was never asked.
+    expect(items.every((i) => i.matchState === 'pending')).toBe(true);
+    expect(items.every((i) => i.canonId === null)).toBe(true);
   });
 
-  it('falls back to rawText as the canon rawName when the parse flow throws', async () => {
+  it('does not send an unparsed line to canon, and reports the miss', async () => {
     mockParseFlow.mockRejectedValue(new Error('parse failed'));
 
     await assembleRecipeDraft(rawOutput(), { source: MANUAL });
 
-    const items = mockCanonFlow.mock.calls[0]![0].items as { rawName: string; rawText: string }[];
-    expect(items.map((i) => i.rawName)).toEqual(['200g pasta', '2 cloves garlic, crushed']);
+    expect(mockCanonFlow).not.toHaveBeenCalled();
+    expect(mockReport).toHaveBeenCalledTimes(1);
+    const reported = mockReport.mock.calls[0]![0] as Error;
+    expect(reported.message).toContain('2 of 2');
+  });
+
+  it('keeps raw ingredient text out of the report (free-form user content)', async () => {
+    mockParseFlow.mockRejectedValue(new Error('parse failed'));
+
+    await assembleRecipeDraft(rawOutput(), { source: MANUAL });
+
+    const reported = mockReport.mock.calls[0]![0] as Error;
+    expect(reported.message).not.toContain('200g pasta');
+    expect(reported.message).not.toContain('garlic');
+  });
+
+  it('emits no report when every line parsed', async () => {
+    await assembleRecipeDraft(rawOutput(), { source: MANUAL });
+
+    expect(mockReport).not.toHaveBeenCalled();
   });
 
   it('lands every ingredient as pending when the canon flow throws', async () => {
@@ -236,6 +270,146 @@ describe('assembleRecipeDraft — non-fatal sub-flow failures', () => {
     expect(mockParseFlow).not.toHaveBeenCalled();
     expect(mockCanonFlow).not.toHaveBeenCalled();
     expect(doc.ingredients).toEqual([]);
+  });
+});
+
+// ─── parse-result join (issue #949) ──────────────────────────────────────────
+
+// `rawText` on a parse result is echoed by the MODEL. Joining on it lost a whole
+// line to a single re-typed character, and canon — joined by index — matched
+// anyway, so the row went to Firestore `matched` with no amount at all.
+
+/** A parse result whose echoes deliberately DON'T match what went in. */
+function mangledEchoResult() {
+  return [
+    {
+      id: 'parse-group-1',
+      name: null,
+      items: [
+        // Whitespace normalised away.
+        { rawText: '200 g pasta', parsed: parsedFor('pasta', 200) },
+        // Trailing preparation dropped.
+        { rawText: '2 cloves garlic', parsed: parsedFor('garlic clove', 2) },
+      ].map((item, i) => ({
+        id: `parse-item-${i}`,
+        ...item,
+        canonId: null,
+        matchState: 'pending' as const,
+        isOptional: false,
+        firstUsedInStepId: null,
+      })),
+    },
+  ];
+}
+
+function parsedFor(item: string, value: number) {
+  return {
+    quantity: { type: 'single', value },
+    unit: 'g',
+    item,
+    preparation: [],
+    notes: null,
+    displayText: null,
+  };
+}
+
+describe('assembleRecipeDraft — parse-result join', () => {
+  it('threads parsed data onto every line when the model mangles its rawText echo', async () => {
+    mockParseFlow.mockResolvedValue(mangledEchoResult());
+
+    const doc = await assembleRecipeDraft(rawOutput(), { source: MANUAL });
+    const items = doc.ingredients[0]!.items;
+
+    expect(items[0]!.parsed).toEqual(parsedFor('pasta', 200));
+    expect(items[1]!.parsed).toEqual(parsedFor('garlic clove', 2));
+    expect(mockReport).not.toHaveBeenCalled();
+  });
+
+  it('gives canon the parsed item name even when the echo was mangled', async () => {
+    mockParseFlow.mockResolvedValue(mangledEchoResult());
+
+    await assembleRecipeDraft(rawOutput(), { source: MANUAL });
+
+    const sent = mockCanonFlow.mock.calls[0]![0].items as { rawName: string; rawText: string }[];
+    expect(sent.map((i) => i.rawName)).toEqual(['pasta', 'garlic clove']);
+    // …keyed back to the line the recipe actually holds, not the model's echo.
+    expect(sent.map((i) => i.rawText)).toEqual(['200g pasta', '2 cloves garlic, crushed']);
+  });
+
+  it('falls back to the rawText echo when the parser split or merged a line', async () => {
+    // Three items for two input lines: position means nothing here, so the echo
+    // is all there is. A blind positional zip would hang the wrong quantity on
+    // the wrong ingredient, which is worse than a null.
+    mockParseFlow.mockResolvedValue([
+      {
+        id: 'parse-group-1',
+        name: null,
+        items: [
+          { rawText: '200g pasta', parsed: parsedFor('pasta', 200) },
+          { rawText: '2 cloves garlic, crushed', parsed: parsedFor('garlic clove', 2) },
+          { rawText: 'a pinch of salt', parsed: parsedFor('salt', 1) },
+        ].map((item, i) => ({
+          id: `parse-item-${i}`,
+          ...item,
+          canonId: null,
+          matchState: 'pending' as const,
+          isOptional: false,
+          firstUsedInStepId: null,
+        })),
+      },
+    ]);
+
+    const doc = await assembleRecipeDraft(rawOutput(), { source: MANUAL });
+    const items = doc.ingredients[0]!.items;
+
+    expect(items[0]!.parsed).toEqual(parsedFor('pasta', 200));
+    expect(items[1]!.parsed).toEqual(parsedFor('garlic clove', 2));
+  });
+
+  it('leaves a line the fallback cannot reach unparsed, unmatched and reported', async () => {
+    // Count mismatch forces the echo join, and one echo is unrecognisable.
+    mockParseFlow.mockResolvedValue([
+      {
+        id: 'parse-group-1',
+        name: null,
+        items: [
+          { rawText: '200g pasta', parsed: parsedFor('pasta', 200) },
+          { rawText: '2 cloves garlic, crushed', parsed: parsedFor('garlic clove', 2) },
+          { rawText: 'garlic, crushed (2 cloves)', parsed: parsedFor('garlic clove', 2) },
+        ].map((item, i) => ({
+          id: `parse-item-${i}`,
+          ...item,
+          canonId: null,
+          matchState: 'pending' as const,
+          isOptional: false,
+          firstUsedInStepId: null,
+        })),
+      },
+    ]);
+    // Only the pasta line is offered to canon, so only one result comes back.
+    mockCanonFlow.mockImplementation(({ items }: { items: unknown[] }) =>
+      Promise.resolve(items.map(() => ({ kind: 'ok', value: { item: { id: 'canon-x' } } }))),
+    );
+
+    const raw = rawOutput();
+    raw.ingredientGroups[0]!.ingredients[1]!.rawText = '2 garlic cloves, finely crushed';
+
+    const doc = await assembleRecipeDraft(raw, { source: MANUAL });
+    const items = doc.ingredients[0]!.items;
+
+    expect(items[0]!.parsed).not.toBeNull();
+    expect(items[0]!.matchState).toBe('matched');
+    // The unreachable line: no amount, and honestly unresolved rather than
+    // claiming a canon match it was never offered for.
+    expect(items[1]!.parsed).toBeNull();
+    expect(items[1]!.matchState).toBe('pending');
+    expect(items[1]!.canonId).toBeNull();
+
+    const sent = mockCanonFlow.mock.calls[0]![0].items as { rawText: string }[];
+    expect(sent.map((i) => i.rawText)).toEqual(['200g pasta']);
+
+    expect(mockReport).toHaveBeenCalledTimes(1);
+    expect((mockReport.mock.calls[0]![0] as Error).message).toContain('1 of 2');
   });
 });
 
@@ -350,6 +524,23 @@ describe('assembleRecipeDraft — edit mode', () => {
     expect(pasta.canonId).toBe('canon-pasta');
     expect(pasta.matchState).toBe('matched');
     expect(pasta.parsed!.item).toBe('pasta');
+  });
+
+  it("keeps the base ingredient's parsed data even when the parser is having a bad day", async () => {
+    // The carry-over branch is what stops an unrelated re-author discarding good
+    // data, so it has to hold when the parse path is failing outright — the very
+    // situation the join fix changes the behaviour of.
+    mockParseFlow.mockRejectedValue(new Error('parse failed'));
+
+    const doc = await assembleRecipeDraft(rawOutput(), {
+      source: MANUAL,
+      baseRecipe: baseRecipe(),
+    });
+
+    const pasta = doc.ingredients[0]!.items[0]!;
+    expect(pasta.parsed).toEqual(baseRecipe().ingredients[0]!.items[0]!.parsed);
+    expect(pasta.matchState).toBe('matched');
+    expect(pasta.canonId).toBe('canon-pasta');
   });
 
   it('re-resolves the step ordinal on a carried-over ingredient rather than keeping the old step id', async () => {

@@ -14,6 +14,12 @@ import type { Recipe } from '../entities/Recipe.js';
  *
  * - `dangling_canon` — the line points at a canon item that has since been
  *   deleted or merged away. It reads as matched and buys nothing.
+ * - `missing_amount` — the line holds no parsed data at all, so it has no
+ *   amount to scale with servings and contributes nothing to the shopping list.
+ *   It reads as matched because it IS matched: canon and parse are two separate
+ *   joins, and for months a batch-authored line could lose the second one and
+ *   keep the first (issue #949). Re-matching is exactly the remedy — the
+ *   single-line path re-parses before it matches.
  * - `missing_form` — the line names something OTHER than the canon item it
  *   matched, is measured by mass or volume, and the thing it buys is sold by the
  *   count, with no product form bridging the two. It reads as matched and buys
@@ -22,7 +28,7 @@ import type { Recipe } from '../entities/Recipe.js';
  *   matched canon ALREADY carries at least one product form — see the guard
  *   below for why a form-less canon is out of this marker's reach (issue #867).
  */
-export type IngredientMatchIssue = 'dangling_canon' | 'missing_form';
+export type IngredientMatchIssue = 'dangling_canon' | 'missing_amount' | 'missing_form';
 
 /**
  * What (if anything) is silently wrong with one ingredient's match.
@@ -44,8 +50,12 @@ export function ingredientMatchIssue(
   if (ing.canonId === null) return null; // never matched — visible already, see above
   const canon = canonById.get(ing.canonId);
   if (canon === undefined) return 'dangling_canon';
+  // Before the count/metric pre-checks, not after: a line with NO parsed data is
+  // wrong whatever its canon is sold by, and the checks below all read fields it
+  // does not have. It is also the cheapest test here — one field read.
+  if (ing.parsed === null) return 'missing_amount';
   if (canon.unit !== 'count') return null;
-  if (ing.parsed === null || ing.parsed.unit === null) return null;
+  if (ing.parsed.unit === null) return null;
   // The line names the canon item ITSELF, so there is no second product to
   // bridge to and no form can exist: "2 tsp garlic, finely grated" parses to 12 g
   // of `garlic` and matches canon Garlic, which is sold by the count. Without

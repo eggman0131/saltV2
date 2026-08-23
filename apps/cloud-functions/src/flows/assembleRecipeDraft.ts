@@ -8,6 +8,7 @@ import type {
 import { canonicaliseRecipeIngredientsFlow } from './canonicaliseRecipeIngredients.js';
 import { parseRecipeIngredientsFlow } from './parseRecipeIngredients.js';
 import { normaliseTags } from './categoryTags.js';
+import { reportServerError } from '../observability/reportServerError.js';
 
 // The one place a RecipeDoc is assembled from raw AI output. Both authoring
 // paths (the librarian chat in authorRecipe, the URL import in
@@ -102,39 +103,72 @@ export async function assembleRecipeDraft(
   // Parse raw texts to extract clean item names (strips quantity, unit, prep phrases).
   // This mirrors what recipeService.canonicaliseIngredients does on the manual-entry path
   // and ensures the canon matching stages see "garlic" not "1 head of garlic".
-  // We also retain the full structured `parsed` object (quantity/unit/displayText/etc.) keyed
-  // by rawText so the assembled RecipeDoc threads it through instead of dropping it as null.
-  // Duplicate rawText: last occurrence wins, matching parsedItemMap's tolerated behavior.
-  const parsedItemMap = new Map<string, string>();
-  const parsedMap = new Map<string, ParsedIngredient>();
+  // We also retain the full structured `parsed` object (quantity/unit/displayText/etc.)
+  // so the assembled RecipeDoc threads it through instead of dropping it as null.
+  //
+  // HOW THE JOIN BACK TO THE INPUT WORKS (issue #949). `item.rawText` on a parse
+  // result is EMITTED BY THE MODEL, not threaded through from the input, so keying
+  // on it alone loses a whole line to a single re-typed character — a normalised
+  // `1/8`, a dropped `(ginger snaps)`, a trimmed `, melted`. Sixteen production rows
+  // were stored canon-matched with no amount at all that way, silently, because the
+  // canon join two blocks below is by INDEX and succeeded regardless.
+  //
+  // So: join by POSITION when the parser returned exactly one item per input line,
+  // and fall back to the model's echoed rawText only when the counts disagree. The
+  // fallback earns its place — parseRecipeIngredients groups its output and may
+  // legitimately split or merge a line, and a blind positional zip would then hang
+  // the wrong quantity on the wrong ingredient, which is worse than a null.
+  //
+  // Duplicate rawText: last occurrence wins in the fallback; `toProcess` is already
+  // deduped by `seen` above, so the positional path sets each key exactly once.
+  const parsedMap = new Map<string, NonNullable<ParsedIngredient>>();
   if (toProcess.length > 0) {
     try {
       const joinedRawText = toProcess.join('\n');
       const parseResult = await parseRecipeIngredientsFlow({ rawText: joinedRawText });
-      for (const group of parseResult) {
-        for (const item of group.items) {
-          if (item.parsed?.item) parsedItemMap.set(item.rawText, item.parsed.item);
+      const parsedItems = parseResult.flatMap((group) => group.items);
+      if (parsedItems.length === toProcess.length) {
+        toProcess.forEach((rawText, k) => {
+          const parsed = parsedItems[k]?.parsed;
+          if (parsed) parsedMap.set(rawText, parsed);
+        });
+      } else {
+        for (const item of parsedItems) {
           if (item.parsed) parsedMap.set(item.rawText, item.parsed);
         }
       }
     } catch {
-      // Parse failure is non-fatal — fall back to rawText as rawName below
-      // and to parsed: null on the assembled ingredient.
+      // Parse failure stays non-fatal — every line simply goes unparsed, and is
+      // reported below. Non-fatal was never the bug; silence was.
     }
   }
 
-  // Batch canonicalise only the to-process raw texts; key results by rawText so
-  // the assembly step below can look each one up directly.
+  // Lines the parser gave us nothing for. They keep `parsed: null` (the schema
+  // allows it) and they are NOT sent to canon: without a parsed item name canon
+  // would be matching "125 g gingernuts (ginger snaps)" rather than "gingernut",
+  // and a row that comes back `matched` on that is exactly the row that claims
+  // success while holding no data. Left out, they have no canon result, which the
+  // assembly below already reads as `pending` — honest (canon was never asked),
+  // visibly unresolved, and repairable one tap at a time via Match again, whose
+  // single-row path re-parses the line first. `matchState` still means canon
+  // matching and nothing else.
+  const unparsed = toProcess.filter((rawText) => !parsedMap.has(rawText));
+  const toCanon = toProcess.filter((rawText) => parsedMap.has(rawText));
+
+  // Batch canonicalise the parsed raw texts; key results by rawText so the
+  // assembly step below can look each one up directly.
   const canonByRawText = new Map<string, CanonResult>();
-  if (toProcess.length > 0) {
+  if (toCanon.length > 0) {
     try {
       const canonResults = await canonicaliseRecipeIngredientsFlow({
-        items: toProcess.map((rawText) => ({
-          rawName: parsedItemMap.get(rawText) ?? rawText,
+        items: toCanon.map((rawText) => ({
+          // An empty or absent `item` on an otherwise good parse still falls back
+          // to the full line, as it always has.
+          rawName: parsedMap.get(rawText)?.item || rawText,
           rawText,
         })),
       });
-      toProcess.forEach((rawText, k) => {
+      toCanon.forEach((rawText, k) => {
         const r = canonResults[k];
         if (r) canonByRawText.set(rawText, r);
       });
@@ -187,6 +221,29 @@ export async function assembleRecipeDraft(
     }),
   }));
 
+  // Minted here rather than inline in the return below so the miss report can name
+  // the document — same position in the id sequence as before, still after every
+  // step / group / ingredient id.
+  const recipeId = crypto.randomUUID();
+
+  // A line the parser returned nothing for is UNEXPECTED, and until now reached
+  // nobody: canon matched around it and the row went to Firestore looking healthy
+  // (issue #949). Report it so the join's real miss rate is finally measurable —
+  // counts and the document id only. The ingredient text itself is free-form user
+  // content and never goes near a report (CLAUDE.md §Observability).
+  //
+  // Best-effort and non-throwing (Rule 10). No flush here: every caller of this
+  // assembler is a callable that already drains in a finally (makeTracedCallable)
+  // or under onCallGenkit's own flush.
+  if (unparsed.length > 0) {
+    reportServerError(
+      new Error(
+        `assembleRecipeDraft: ${unparsed.length} of ${toProcess.length} ingredient lines had no parse result ` +
+          `(recipeId=${baseRecipe?.id ?? recipeId}, source=${source.type})`,
+      ),
+    );
+  }
+
   // "No cooking" is a real answer (a salad, a dressing, a cocktail) and the
   // extractor now accepts it as `0` (issue #739). A stored recipe has only one
   // way to say "no time to state" — null — so fold 0 back to it here rather than
@@ -207,7 +264,7 @@ export async function assembleRecipeDraft(
     : raw.totalTimeMinutes;
 
   return {
-    id: crypto.randomUUID(),
+    id: recipeId,
     schemaVersion: 1,
     // Authoring and importing both produce a cookable recipe (issue #637) —
     // outings are written by hand and have nothing to author or extract. On an

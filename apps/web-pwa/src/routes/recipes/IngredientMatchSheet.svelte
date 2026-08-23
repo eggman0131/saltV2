@@ -96,6 +96,7 @@
   });
 
   const missingForm = $derived(issue === 'missing_form');
+  const missingAmount = $derived(issue === 'missing_amount');
   const dangling = $derived(issue === 'dangling_canon');
 
   const isAdmin = $derived($currentMember?.admin === true);
@@ -179,6 +180,18 @@
             No product form covers this line, so it shops as
             {ingredient.parsed?.unit} of {titleCase(canon.name)} rather than whole ones. Match again to
             have one worked out.
+          </p>
+        {:else if missingAmount}
+          <!-- Matched, and holding nothing to match ON. Until #949 this line read
+               "Matched straight to the canon item", which was true and useless:
+               the row still had no amount, scaled with nothing, and added nothing
+               to the shopping list. -->
+          <p
+            class="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
+            data-testid="ingredient-match-missing-amount"
+          >
+            No amount was read off this line, so it cannot scale with the servings and adds nothing
+            to the shopping list. Match again to read it properly.
           </p>
         {:else}
           <p class="text-muted-foreground" data-testid="ingredient-match-direct">

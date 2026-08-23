@@ -632,10 +632,19 @@ Finish with a short note on what you changed and why, so I can read the gist her
   // A never-matched line still shows ✗ without being counted on the card. That
   // asymmetry is deliberate and unchanged: the card exists to say which recipe to
   // OPEN, and an unmatched line is already plain once you have.
-  function rowMarker(ing: Ingredient): 'unmatched' | 'mismatched' | null {
+  //
+  // Three markers now, split on TWO questions rather than one. The colour answers
+  // "does this line look finished?" — red ✗ for a line that plainly is not,
+  // terracotta for the two that do and aren't. The glyph and the tap answer "is a
+  // re-match the known remedy?" — ✗ and ? run it, ⚠ opens the sheet, because a
+  // missing product form may not be re-matchable at all and saying otherwise
+  // trains the marker out of you.
+  function rowMarker(ing: Ingredient): 'unmatched' | 'no-amount' | 'mismatched' | null {
     if (!matchMarkersKnown) return null;
     if (!hasLiveCanonMatch(ing, liveCanonIds)) return 'unmatched';
-    return ingredientMatchIssue(ing, canonById, $productForms) === null ? null : 'mismatched';
+    const issue = ingredientMatchIssue(ing, canonById, $productForms);
+    if (issue === null) return null;
+    return issue === 'missing_amount' ? 'no-amount' : 'mismatched';
   }
 
   // ─── Ingredient pictograms (issue #878) ──────────────────────────────────────
@@ -2463,7 +2472,8 @@ Finish with a short note on what you changed and why, so I can read the gist her
                            is its SIBLING, not a child: buttons cannot nest, and the
                            two do different jobs — one explains the match, the other
                            acts on what is wrong with it. At most one marker: a line
-                           is either unmatched or mismatched, never both. The marker
+                           is unmatched, without an amount, or mis-bought — never
+                           more than one at a time. The marker
                            now sits on the CORNER OF THE TILE rather than at the end
                            of the line, because what it describes is the match, and
                            the match is what the tile is a picture of. -->
@@ -2490,6 +2500,23 @@ Finish with a short note on what you changed and why, so I can read the gist her
                                   disabled={matchingIds[ingredient.id] ?? false}
                                   data-testid="match-state-unmatched"
                                   >{(matchingIds[ingredient.id] ?? false) ? '…' : '✗'}</button
+                                >
+                              {:else if marker === 'no-amount'}
+                                <!-- Terracotta, like the ⚠ — this line looks finished
+                                 too. The glyph and the action are the ✗'s, because
+                                 the remedy is the ✗'s: matchIngredient re-parses the
+                                 line before it matches it, which is precisely the
+                                 repair that populated these rows by hand (issue
+                                 #949). Nothing to explain first, so nothing opens. -->
+                                <button
+                                  type="button"
+                                  class="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-tertiary-variant text-[11px] leading-none text-tertiary-foreground ring-2 ring-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                                  title="No amount — tap to read the line again"
+                                  aria-label="No amount — tap to read the line again"
+                                  onclick={() => handleRematch(group, ingredient)}
+                                  disabled={matchingIds[ingredient.id] ?? false}
+                                  data-testid="match-state-no-amount"
+                                  >{(matchingIds[ingredient.id] ?? false) ? '…' : '?'}</button
                                 >
                               {:else if marker === 'mismatched'}
                                 <!-- Terracotta, the palette's warning accent (design.md),
