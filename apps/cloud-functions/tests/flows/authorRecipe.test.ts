@@ -526,7 +526,33 @@ describe('authorRecipe — shared field rules', () => {
 describe('authorRecipe — edit-mode diff', () => {
   beforeEach(() => {
     mockGenerate.mockResolvedValue({ output: librarianEditOutput() });
-    mockParseFlow.mockResolvedValue([]);
+    // The one new line parses cleanly. Canon is only asked about lines that
+    // parsed (issue #949), so an empty parse result here would take the canon
+    // call this describe is about with it.
+    mockParseFlow.mockResolvedValue([
+      {
+        id: 'parse-group-1',
+        name: null,
+        items: [
+          {
+            id: 'parse-item-1',
+            rawText: '100g feta, crumbled',
+            parsed: {
+              quantity: { type: 'single', value: 100 },
+              unit: 'g',
+              item: 'feta',
+              preparation: ['crumbled'],
+              notes: null,
+              displayText: null,
+            },
+            canonId: null,
+            matchState: 'pending' as const,
+            isOptional: false,
+            firstUsedInStepId: null,
+          },
+        ],
+      },
+    ]);
     mockGet.mockResolvedValue({ exists: true, data: () => baseRecipeDoc() });
     // Canon returns a fresh match for the single new ingredient (feta).
     mockCanonFlow.mockResolvedValue([
