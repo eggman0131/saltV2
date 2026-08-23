@@ -64,7 +64,11 @@ export type DomainError =
         | 'workspace'
         | 'aisle'
         | 'equipment'
-        | 'kitchenTool';
+        | 'kitchenTool'
+        // A product-form record (issue #892). Added when the image-prompt
+        // callable gained a not-found arm and a form was the one family with no
+        // honest resource name to report itself as.
+        | 'productForm';
       readonly id: string;
     }
   | {
@@ -156,6 +160,11 @@ export const ErrorCode = {
   // caller's next move is different: reword it, or go and edit the one that
   // already exists.
   INVALID_KITCHEN_TOOL: 'INVALID_KITCHEN_TOOL',
+  // A pictogram upload the server refused on the payload itself (issue #892): an
+  // image past the base64 cap, or one the cropper produced nothing usable from.
+  // Bad input, not a defect — the dialog says so and the old picture stays put —
+  // so it crosses as a ValidationError and is deliberately not reported.
+  ICON_UPLOAD_REJECTED: 'ICON_UPLOAD_REJECTED',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

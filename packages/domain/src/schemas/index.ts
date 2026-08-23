@@ -111,6 +111,24 @@ export type { RegenerateRecipeImageInput } from './regenerateRecipeImage.js';
 export { RedoRecipeKitInputSchema } from './redoRecipeKit.js';
 export type { RedoRecipeKitInput } from './redoRecipeKit.js';
 
+// Your own picture in place of a generated pictogram (issue #892). Recipe heroes
+// keep their own upload above — a 3:2 hero and a 128px square are two pipelines.
+export { ICON_UPLOAD_FAMILIES, SetIconUploadInputSchema } from './setIconUpload.js';
+export type { IconUploadFamily, SetIconUploadInput } from './setIconUpload.js';
+
+// The prompt behind any generated picture (issue #892) — re-derived on demand
+// from the document by the same builders the generators use, never persisted.
+export {
+  IMAGE_PROMPT_FAMILIES,
+  GetImagePromptInputSchema,
+  GetImagePromptResultSchema,
+} from './getImagePrompt.js';
+export type {
+  ImagePromptFamily,
+  GetImagePromptInput,
+  GetImagePromptResult,
+} from './getImagePrompt.js';
+
 export { SetRecipeImageUploadInputSchema } from './setRecipeImageUpload.js';
 export type { SetRecipeImageUploadInput } from './setRecipeImageUpload.js';
 

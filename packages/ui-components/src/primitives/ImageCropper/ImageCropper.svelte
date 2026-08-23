@@ -1,15 +1,17 @@
-<!-- spec: ui-spec-v06.md §1 v0.6 -->
+<!-- spec: ui-spec-v11.md §1 v0.11 -->
 <script lang="ts">
   import Cropper from 'svelte-easy-crop';
   import type { CropArea, Point } from 'svelte-easy-crop';
   import { cn } from '../../lib/cn';
   import type { ImageCropperProps } from './ImageCropper.types';
 
-  // The recipe hero is ALWAYS 3:2 — hence the default. `aspect='free'` is the one
-  // sanctioned escape (ui-spec-v06 §1), for a source a hero frame would crop the
-  // content out of; it locks the frame to the source's OWN ratio, so it is still
-  // a locked frame, just not this constant.
+  // The recipe hero is ALWAYS 3:2 — hence the default. The other two modes are
+  // each a sanctioned, spec'd escape: `aspect='1:1'` is the Tier-1 pictogram frame
+  // (ui-spec-v11 §1), and `aspect='free'` locks the frame to the source's OWN ratio
+  // (ui-spec-v06 §1) for a source a hero frame would crop the content out of. All
+  // three are LOCKED frames; they differ only in which ratio they lock to.
   const HERO_ASPECT = 3 / 2;
+  const SQUARE_ASPECT = 1;
 
   let { src, aspect = '3:2', maxEdge = 1600, class: className }: ImageCropperProps = $props();
 
@@ -24,7 +26,11 @@
 
   // The single ratio the frame, the stage and the output canvas all follow.
   // `null` only in free mode, while the source is unmeasured (ui-spec-v06 §1.4).
-  const activeAspect = $derived(aspect === 'free' ? measuredAspect : HERO_ASPECT);
+  // '1:1' resolves to a constant like '3:2' does — it measures nothing and can
+  // never be unknown, so it has no placeholder stage (ui-spec-v11 §1.4).
+  const activeAspect = $derived(
+    aspect === 'free' ? measuredAspect : aspect === '1:1' ? SQUARE_ASPECT : HERO_ASPECT,
+  );
 
   function onCropComplete(e: { percent: CropArea; pixels: CropArea }): void {
     croppedAreaPixels = e.pixels;

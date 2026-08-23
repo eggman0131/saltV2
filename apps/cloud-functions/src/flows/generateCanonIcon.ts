@@ -32,7 +32,12 @@ const UK = 'The item is as commonly sold in a UK supermarket.';
 // {ITEM}, {UK} and {STYLE} substituted. The apple/leaf/red negatives are keyed
 // to the committed red-apple seed. An optional user `hint` is appended verbatim
 // as additive guidance — it never alters the locked house-style wording.
-function buildIconPrompt(item: string, hint?: string): string {
+//
+// Exported so getImagePrompt (issue #892) can show a person the exact words that
+// draw their picture by CALLING this builder. A second copy of the wording is the
+// failure mode docs/canon-icons.md warns about and placeholderVocabulary.ts exists
+// to undo, so the read-only view shares the builder rather than restating it.
+export function buildIconPrompt(item: string, hint?: string): string {
   const base = `Generate a cute cartoon icon of ${item}. ${UK} Copy ONLY the rendering STYLE of the reference image — its line weight, outline, colouring technique, palette and plain background. Do NOT copy the apple, and do NOT add any leaf, stem, sprig, red colouring or face that came from the reference. Draw only ${item} and nothing else. ${STYLE}`;
   const trimmed = hint?.trim();
   return trimmed ? `${base} Additional guidance for this item: ${trimmed}` : base;

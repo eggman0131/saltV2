@@ -165,7 +165,7 @@ into review. Keep the globs accurate.
   than inventing tokens.
   Design docs track `packages/ui-components/**` and `apps/web-pwa/src/**` styling.
 
-- **ui-spec-v02 → v10 are cumulative, never superseding.** v0.2 holds the
+- **ui-spec-v02 → v11 are cumulative, never superseding.** v0.2 holds the
   foundations (boundaries, package surface, event naming, styling rules) and stays
   in force for every later version; each later spec only adds components —
   [v03](docs/design/ui-spec-v03.md) RadioGroup/Select/Slider/Sheet/Toast,
@@ -180,7 +180,11 @@ into review. Keep the globs accurate.
   span because they are read rather than pressed),
   [v10](docs/design/ui-spec-v10.md) `Tabs` (a bits-ui wrapper — roving focus and
   automatic activation, a count on each tab, and the selected value always owned
-  by the page so it can move the selection itself). Touching
+  by the page so it can move the selection itself),
+  [v11](docs/design/ui-spec-v11.md) `ImageCropper` square mode (a third `aspect`
+  value, `'1:1'`, for the pictogram upload — the amendment v06 §1.3 demanded
+  before the union could be widened; why neither existing mode works is the
+  alpha-bounding-box arithmetic in §1.1). Touching
   `@salt/ui-components` means reading [v02](docs/design/ui-spec-v02.md) **plus**
   the spec that owns your component. The specs are binding: if something is
   missing or ambiguous, stop and extend the spec rather than inventing.

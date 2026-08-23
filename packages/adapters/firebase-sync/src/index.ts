@@ -160,6 +160,8 @@ export {
 export { subscribeDevSettings, saveDevSettings } from './devSettingsSync.js';
 export { subscribeAppSettings, saveAppSettings } from './appSettingsSync.js';
 export { callListAiModels, callTestModel } from './aiModelCallables.js';
+export { callGetImagePrompt } from './imagePromptCallables.js';
+export { callSetIconUpload } from './iconUploadCallables.js';
 // Pushover device readout for the /settings cook-notifications card (issue #680).
 export { callListPushoverDevices } from './pushoverCallables.js';
 export type { PushoverDevices } from './pushoverCallables.js';

@@ -14,6 +14,23 @@
     TextArea,
     TextField,
   } from '@salt/ui-components';
+  // TYPE-ONLY, so both are fully erased, and the components are pulled in by the
+  // `await import()`s below rather than at module scope (the Leaflet treatment in
+  // routes/admin/LocationMapField.svelte, issue #813).
+  //
+  // THIS PAGE IS EAGERLY ROUTED. `/equipment/:id` is a core daily-use view and is
+  // a static import in routes/index.ts, unlike the admin pages and the recipe view
+  // that host these same two dialogs — every one of those is `lazy()`. So a plain
+  // module-scope import here is the one that reaches the boot graph, and it drags
+  // `ImageCropper` (and `svelte-easy-crop` behind it) into what every first open
+  // and every PWA update must download before painting. It measured 504.75 kB
+  // gzipped against the 500 kB ceiling — caught by scripts/check-boot-payload.mjs,
+  // which exists for exactly this one-line, no-visible-symptom regression.
+  //
+  // Neither dialog can be needed before a button is pressed, so neither is loaded
+  // until one is.
+  import type ImagePromptDialogComponent from '../../components/ImagePromptDialog.svelte';
+  import type ImageUploadDialogComponent from '../../components/ImageUploadDialog.svelte';
   import { push } from 'svelte-spa-router';
   import { CANON_ICON_HIDDEN, equipmentIconAwaitingApproval } from '@salt/domain';
   import { goBack } from '../../lib/nav.js';
@@ -45,6 +62,26 @@
   let { params }: Props = $props();
 
   const item = $derived($equipment?.items.find((i) => i.id === params.id) ?? null);
+
+  // The read-only prompt window (issue #892). Equipment has no icon dialog of its
+  // own — the brief is edited inline — so this is the page's only modal for the
+  // picture, and it opens from the same row of buttons as Draw and Hide.
+  let promptOpen = $state(false);
+  let uploadOpen = $state(false);
+
+  // Loaded once each, on first use, then kept for the life of the page.
+  let PromptDialog = $state<typeof ImagePromptDialogComponent | null>(null);
+  let UploadDialog = $state<typeof ImageUploadDialogComponent | null>(null);
+
+  async function openPromptDialog(): Promise<void> {
+    PromptDialog ??= (await import('../../components/ImagePromptDialog.svelte')).default;
+    promptOpen = true;
+  }
+
+  async function openUploadDialog(): Promise<void> {
+    UploadDialog ??= (await import('../../components/ImageUploadDialog.svelte')).default;
+    uploadOpen = true;
+  }
 
   // ─── Pictogram + description review gate (issue #877) ─────────────────────
   // The description is shown BEFORE anything is drawn, and this panel is the
@@ -456,6 +493,27 @@
             >
               {icon.sourceName ? 'Redraw' : 'Draw it'}
             </Button>
+            <Button
+              variant="outline"
+              onclick={openPromptDialog}
+              data-testid="equipment-icon-prompt-btn"
+            >
+              {#snippet leading()}
+                <Icon name="Copy" size={16} />
+              {/snippet}
+              Prompt
+            </Button>
+            <Button
+              variant="outline"
+              onclick={openUploadDialog}
+              disabled={iconBusy || briefBusy}
+              data-testid="equipment-icon-upload-btn"
+            >
+              {#snippet leading()}
+                <Icon name="Upload" size={16} />
+              {/snippet}
+              Upload
+            </Button>
             {#if !iconHidden}
               <Button
                 variant="outline"
@@ -763,3 +821,23 @@
     </div>
   </DialogContent>
 </Dialog>
+
+{#if item && PromptDialog}
+  <PromptDialog
+    bind:open={promptOpen}
+    family="equipment"
+    id={item.id}
+    subject={item.name}
+    data-testid="equipment-prompt-dialog"
+  />
+{/if}
+
+{#if item && UploadDialog}
+  <UploadDialog
+    bind:open={uploadOpen}
+    family="equipment"
+    id={item.id}
+    subject={item.name}
+    data-testid="equipment-upload-dialog"
+  />
+{/if}

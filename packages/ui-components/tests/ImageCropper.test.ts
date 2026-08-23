@@ -1,4 +1,5 @@
-// spec: ui-spec-v04 §15 (ImageCropper), ui-spec-v06 §1 (free-aspect mode)
+// spec: ui-spec-v04 §15 (ImageCropper), ui-spec-v06 §1 (free-aspect mode),
+// ui-spec-v11 §1 (square mode)
 // The aspect contract only — v0.4 §15.6's canvas-pipeline requirements need a
 // real image decode and a real 2D context, neither of which jsdom provides.
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
@@ -104,6 +105,43 @@ describe('ImageCropper', () => {
       await waitFor(() => {
         expect(stageRatio(stageOf(getByTestId))).toBeCloseTo(1600 / 900);
       });
+    });
+  });
+
+  // ui-spec-v11 §1.6. The point of the mode is that it is a CONSTANT: unlike
+  // 'free' it measures nothing, so a source jsdom can never load still mounts a
+  // cropper at 1:1 rather than sitting on a placeholder.
+  describe('aspect: 1:1 (ui-spec-v11 §1)', () => {
+    it('renders the stage at 1:1', () => {
+      const { getByTestId } = render(ImageCropper, {
+        props: { src: PORTRAIT, aspect: '1:1' as const },
+      });
+      expect(stageRatio(stageOf(getByTestId))).toBeCloseTo(1);
+    });
+
+    it('mounts the cropper immediately, with no measurement and no placeholder', () => {
+      const { getByTestId } = render(ImageCropper, {
+        props: { src: NEVER_LOADS, aspect: '1:1' as const },
+      });
+      expect(stageRatio(stageOf(getByTestId))).toBeCloseTo(1);
+      expect(stageOf(getByTestId).children.length).toBeGreaterThan(0);
+    });
+
+    it('leaves the other two modes alone', () => {
+      const square = render(ImageCropper, {
+        props: { src: LANDSCAPE, aspect: '1:1' as const },
+      });
+      expect(stageRatio(stageOf(square.getByTestId))).toBeCloseTo(1);
+      cleanup();
+      const hero = render(ImageCropper, { props: { src: LANDSCAPE } });
+      expect(stageRatio(stageOf(hero.getByTestId))).toBeCloseTo(3 / 2);
+    });
+
+    it('renders the zoom slider', () => {
+      const { getByTestId } = render(ImageCropper, {
+        props: { src: PORTRAIT, aspect: '1:1' as const },
+      });
+      expect(getByTestId('image-cropper-zoom')).toHaveAttribute('aria-label', 'Zoom');
     });
   });
 

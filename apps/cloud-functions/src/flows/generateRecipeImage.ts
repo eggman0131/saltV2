@@ -328,7 +328,9 @@ function tagsClauseFor(kind: ImageKind | undefined, tags: string[]): string {
 // ORDER IS LOAD-BEARING: dish → brief|fallback → tags → hint → ANCHORS. Every
 // piece of free/authored text sits BEFORE the anchors; the anchors are always the
 // last word. Do not append anything after them.
-function buildRecipePrompt(
+// Exported for the same reason buildIconPrompt is (issue #892): the prompt view
+// CALLS this, so there is exactly one assembly of these words in the repo.
+export function buildRecipePrompt(
   title: string,
   description?: string | null,
   hint?: string,
