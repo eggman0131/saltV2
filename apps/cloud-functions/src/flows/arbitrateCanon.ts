@@ -9,6 +9,7 @@ import { setActiveSpanName } from '@salt/observability/server';
 import { ai } from '../genkit.js';
 import { resolveModel } from '../ai/resolveModel.js';
 import { aiFakeEnabled } from '../ai/fakeModel.js';
+import { withAiTimeout } from '../adapters/withAiTimeout.js';
 
 // Flow output is the shared `ArbitrationResultSchema` from `@salt/domain/schemas`
 // (issue #417) — the same schema the domain `ArbitrationResult` type derives from,
@@ -43,12 +44,24 @@ export const arbitrateCanonFlow = ai.defineFlow(
       return { kind: 'no-match' as const, prompt: builtPrompt, rawResponse: '' };
     }
     const model = await resolveModel('lite', 'arbitrateCanon');
-    const result = await ai.generate({
-      model: googleAI.model(model),
-      prompt: builtPrompt,
-      output: { schema: CanonArbitrationAIOutputSchema },
-      config: { temperature: 0 },
-    });
+    // Below the fake seam on purpose (issue #915): under FUNCTIONS_AI_FAKE the
+    // short-circuit above returns before this line, so the wrapper adds no
+    // timer to the fake path and nothing here has to change the day that seam
+    // is wired to `flowModel`.
+    //
+    // The deadline lives in the flow rather than at the adapter that used to
+    // apply it, because `arbitrateCanonFlow` is ALSO exported as its own
+    // callable (index.ts) — a caller-side wrapper left that entrypoint
+    // completely unguarded. House defaults (20s + 1 retry), the same values
+    // `createServerArbitrationAdapter` applied from outside.
+    const result = await withAiTimeout('arbitrateCanon', () =>
+      ai.generate({
+        model: googleAI.model(model),
+        prompt: builtPrompt,
+        output: { schema: CanonArbitrationAIOutputSchema },
+        config: { temperature: 0 },
+      }),
+    );
     const output = result.output!;
     const rawResponse = result.text ?? JSON.stringify(output);
 

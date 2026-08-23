@@ -56,7 +56,8 @@ async function maybeGenerateEmbedding(id: string, item: CanonItemDoc): Promise<v
   if (!normalised) return;
 
   try {
-    const { values } = await withAiTimeout('embedText', () => embedTextFlow({ text: normalised }));
+    // No outer withAiTimeout: the flow owns its budget (issue #915).
+    const { values } = await embedTextFlow({ text: normalised });
     await db
       .collection('canonEmbeddings')
       .doc(id)
@@ -141,9 +142,12 @@ async function maybeGenerateIcon(
   const hint = item.iconHint?.trim();
 
   try {
-    const { imageBase64 } = await withAiTimeout('generateCanonIcon', () =>
-      generateCanonIconFlow({ name, ...(hint ? { hint } : {}) }),
-    );
+    // No outer withAiTimeout (issue #915). The flow owns its budget — 60s + 1
+    // retry, sized for an image generation — and the wrapper that used to sit
+    // here imposed the house 20s default on top of it, so a drawing that took
+    // longer than 20s was cut short and retried whole. This is the nested-budget
+    // disagreement the equipment paths already cite as the thing not to copy.
+    const { imageBase64 } = await generateCanonIconFlow({ name, ...(hint ? { hint } : {}) });
     const raw = Buffer.from(imageBase64, 'base64');
     // Background removal, then framing. The model centres its subject only
     // loosely — measured 55–72% of the frame across production icons — so

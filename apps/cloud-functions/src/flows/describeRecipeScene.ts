@@ -4,7 +4,7 @@ import {
   DescribeRecipeSceneOutputSchema,
   type DescribeRecipeSceneInput,
 } from '@salt/domain/schemas';
-import { withAiTimeout } from '../adapters/withAiTimeout.js';
+import { AI_TEXT_FLOW_TIMEOUT, withAiTimeout } from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 import { resolveModel } from '../ai/resolveModel.js';
 import { PLACEHOLDER_TAG_VOCABULARY } from './placeholderVocabulary.js';
@@ -457,11 +457,11 @@ export const describeRecipeSceneFlow = ai.defineFlow(
           prompt: promptParts.join('\n\n'),
           output: { schema: DescribeRecipeSceneOutputSchema },
         }),
-      // House text-flow values, as categoriseRecipe. No retry: the trigger treats a
+      // No retry (the shared budget's): the trigger treats a
       // failure as "no brief" and falls back, and the callable's caller is a human
       // sitting in front of the dialog who can press the button again — neither
       // gains anything from burning the timeout budget on an automatic retry.
-      { timeoutMs: 55_000, retries: 0 },
+      AI_TEXT_FLOW_TIMEOUT,
     );
 
     // AI output is a trust boundary — validate before it leaves the flow.

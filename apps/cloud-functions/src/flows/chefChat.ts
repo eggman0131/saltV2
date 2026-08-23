@@ -4,7 +4,11 @@ import { logger } from 'firebase-functions';
 import { ChefChatInputSchema } from '@salt/domain/schemas';
 import { RecipeSchema } from '@salt/domain/schemas';
 import { CanonItemSchema, CanonPurchaseCountsSchema } from '@salt/domain/schemas';
-import { withAiTimeout } from '../adapters/withAiTimeout.js';
+import {
+  AI_TEXT_FLOW_TIMEOUT,
+  withAiStreamTimeout,
+  withAiTimeout,
+} from '../adapters/withAiTimeout.js';
 import { ai } from '../genkit.js';
 import { flowModel } from '../ai/fakeModel.js';
 import { reportFlowError } from '../observability/reportServerError.js';
@@ -268,19 +272,24 @@ export const chefChatFlow = ai.defineFlow(
         prompt: input.newMessage,
       });
 
-      for await (const chunk of stream) {
+      // The DRAIN is what needs the deadline, not what follows it (issue #915).
+      // This loop used to be bare, with withAiTimeout applied afterwards to the
+      // aggregated `response` — which a model that goes quiet mid-stream never
+      // reaches, so the turn hung until the 120s function quota killed it.
+      // withAiStreamTimeout races each chunk against an idle timer instead: a
+      // silence longer than the budget throws AiTimeoutError into the catch
+      // below, and a long answer that keeps arriving is never cut short.
+      for await (const chunk of withAiStreamTimeout('chefChat', stream)) {
         const text = chunk.text;
         if (text) streamingCallback(text);
       }
 
-      // The stream is already draining above; await the resolved aggregated
-      // response under the existing timeout. AI model/token/cost telemetry rides
-      // the Genkit model span the AI-OTLP processor ships to PostHog (#356) — and
-      // span-derived usage fixes the old streamed-response empty-tokens gap.
-      const finalResponse = await withAiTimeout('chefChat', () => response, {
-        timeoutMs: 55_000,
-        retries: 0,
-      });
+      // The stream has fully drained above, so this resolves immediately in the
+      // normal case; the timeout stays as a backstop. AI model/token/cost
+      // telemetry rides the Genkit model span the AI-OTLP processor ships to
+      // PostHog (#356) — and span-derived usage fixes the old streamed-response
+      // empty-tokens gap.
+      const finalResponse = await withAiTimeout('chefChat', () => response, AI_TEXT_FLOW_TIMEOUT);
 
       return finalResponse.text;
     } catch (err) {

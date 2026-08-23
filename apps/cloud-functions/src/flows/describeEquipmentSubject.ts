@@ -5,7 +5,7 @@ import {
 } from '@salt/domain/schemas';
 import { setActiveSpanName } from '@salt/observability/server';
 import { ai } from '../genkit.js';
-import { withAiTimeout } from '../adapters/withAiTimeout.js';
+import { AI_TEXT_FLOW_TIMEOUT, withAiTimeout } from '../adapters/withAiTimeout.js';
 import { resolveModel } from '../ai/resolveModel.js';
 
 // describeEquipmentSubject — the cheap TEXT step in front of the expensive image
@@ -169,11 +169,11 @@ export const describeEquipmentSubjectFlow = ai.defineFlow(
           prompt: promptParts.join('\n\n'),
           output: { schema: DescribeEquipmentSubjectOutputSchema },
         }),
-      // House text-flow values, as describeRecipeScene. No retry: the trigger
+      // No retry (the shared budget's): the trigger
       // treats a failure as "no brief" and the item simply waits for the next
       // manifest write, and a human pressing a button can press it again —
       // neither gains from burning the budget on an automatic second attempt.
-      { timeoutMs: 55_000, retries: 0 },
+      AI_TEXT_FLOW_TIMEOUT,
     );
 
     // AI output is a trust boundary — validate before it leaves the flow.
