@@ -36,26 +36,50 @@
  * uniformly rather than trusting 28 files to have implemented them the same way.
  *
  * ─── What pins #939 (query narrowing) ────────────────────────────────────────
- * A row that only ever seeds documents the query ADMITS pins nothing about the
- * query: delete the `where` and the row stays green. So every row that carries a
- * filter, an order or a limit also seeds what the query must LEAVE OUT, and
- * names it in `excluded`; every row with an `orderBy` seeds enough documents for
- * the delivered ORDER to be asserted as a list, not as membership. A row with no
- * such bound says so in `noExcludedCase`, and the guard block below fails a
- * bounded row that arrives without either. The bounds that exist today:
+ * EVERY row seeds a fixed, complete world and asserts EXACTLY what comes out of
+ * it: `toEqual` over the whole delivered id list on a collection row, and "every
+ * delivery is either absent or THIS document" on a single-document one — never
+ * the membership check (`toContain`, `.includes`) an earlier cut used, which one
+ * more document in the answer satisfies just as happily. The world always has
+ * two halves: the documents the subscription must return (`seed` plus, where a
+ * second in-bounds document is possible, `alsoDelivers`) and at least one decoy
+ * it must not (`excluded`, required on all 28 rows).
  *
- *   subscribeBatchObservations   subcollection path + orderBy('at','asc')
- *   subscribeChatSessions        where('ownerUid','==',uid)
- *   subscribeMyCookSessions      where('ownerUid') + orderBy('updatedAt','desc')
- *                                + limit(5) — all three pinned by one row
- *   subscribeShoppingDaysInRange where(documentId() >= start), where(<= end)
- *   subscribeShoppingListItems   subcollection path under one list id
- *   the six KEYED document rows  the document key itself (batch, cook session,
- *                                formula, guided plan, kitchen timers, week)
+ * That is the whole mechanism. Adding ANY narrowing to ANY subscription — a
+ * `where`, a `limit`, a tighter path, a different document key — changes the
+ * delivered set, and the row that owns it goes red with no test edit, whatever
+ * shape the code has taken by then and wherever the constraint literal ends up
+ * living. It is what the `ordered` rows already do for order, generalised to
+ * membership.
  *
- * The other 17 read a whole collection or a fixed singleton id, unfiltered and
- * unordered — there is nothing there to narrow, and their `noExcludedCase`
- * string says which of the two it is.
+ * An earlier cut of this file tried to do the same job by reading `src/*.ts` as
+ * TEXT and attributing each `where(`/`orderBy(`/`limit(` to the `subscribe*`
+ * above it. That was deleted, and must not come back. It could not survive the
+ * refactor it existed to guard: hoisting the constraints into a shared
+ * descriptor — the most literal reading of #928's "a new collection means a
+ * call, not a file" — left the walk reporting NO operators for a subscription
+ * that still issued a `where`, so the guard went vacuously green exactly where
+ * it was needed. It also broke on `export const subscribeX = …` and on the
+ * modules simply moving into a subdirectory, and the only repair for either was
+ * to edit this file — which is precisely what the consolidation commit is
+ * forbidden to do. And it contradicted the paragraph above: a source-text shape
+ * assertion is the thing this net exists NOT to be.
+ *
+ * The exact-set rule is also strictly stronger than that walk ever was. It sees
+ * subcollection-path bounds and document-key bounds, which no scan for
+ * `where(` can.
+ *
+ * The decoy a row seeds is chosen for what its own query could get wrong:
+ *
+ *   an owner filter        a document owned by someone else
+ *   a documentId() range   the day either side of the inclusive bounds
+ *   a subcollection path   the same document under a DIFFERENT parent
+ *   a keyed document read  a valid, distinguishable document at another key
+ *   an unfiltered read     a valid document one level deeper, in a subcollection
+ *                          of the SAME NAME — the one thing a `collection()`
+ *                          read must exclude and a `collectionGroup()` read
+ *                          would not, which is a one-word difference in a helper
+ *                          parameterised by collection name
  *
  * ─── The corrupt-document rows assert a REJECTION, not an absence ────────────
  * Every collection parse loop `console.error`s `Document {id} failed validation`
@@ -66,11 +90,39 @@
  * excludes a document missing the ordered field, so nothing was ever skipped.
  * The log assertion turns that silent pass into a red.
  *
- * The single-document rows need no such assertion for the `'error'` case — a
+ * The eleven single-document `'error'` rows carry NO uniform log assertion, and
+ * the reason is not the one an earlier cut of this file gave. It claimed a
  * `StorageError`/`corruption` on `onError` cannot be produced by a document the
- * read never saw. The two `'null'` rows do assert the log, because there `null`
- * is by design indistinguishable from "absent" to the caller, and the log is the
- * only thing that says the null came from a rejection.
+ * read never saw; that is false. `firestoreErrors.ts` maps the Firestore code
+ * `data-loss` to exactly `{kind:'StorageError', reason:'corruption'}`, and all
+ * eleven pass stream errors through `classifyFirestoreError`, so a stream-level
+ * `data-loss` satisfies the assertion with no document read at all.
+ *
+ * The real reason is that the log is not there to assert: EIGHT of the eleven
+ * never log before calling `onError` — subscribeAppSettings, subscribeDevSettings,
+ * subscribeEquipmentManifest, subscribeMealPlanConfig, subscribeMealPlanTemplate,
+ * subscribeMealPlanWeek, subscribeShoppingListsConfig and
+ * subscribeWeatherForecast. Only subscribeBatch, subscribeFormula and
+ * subscribeGuidedPlan do. That divergence IS #928's finding B2-008, and this
+ * table states it rather than papering over it.
+ *
+ * What the `'error'` rows CAN discriminate, and do, is `rawError`. The stream
+ * path is `onError(classifyFirestoreError(err), err)` — two arguments — and the
+ * parse path is `onError({kind:'StorageError', reason:'corruption'})` — one. So
+ * every row asserts that no `rawError` was forwarded, which is a real
+ * stream-vs-parse discriminator on the six modules whose `onError` declares the
+ * optional trailing parameter (subscribeBatch, subscribeCookSession,
+ * subscribeFormula, subscribeGuidedPlan, subscribeKitchenTimers,
+ * subscribeShoppingListsConfig) and vacuously true on the other seven, which
+ * never pass a second argument at all. Asserted uniformly rather than from a
+ * hand-kept list of the six (UT-E1): the weaker rows cost nothing and the list
+ * cannot go stale.
+ *
+ * The two `'null'` rows do assert the log, because there `null` is by design
+ * indistinguishable from "absent" to the caller, and the log is the only thing
+ * that says the null came from a rejection. They bind the DOCUMENT ID in that
+ * match, like the collection rows — an unbound `failed validation` would be
+ * satisfied by a rejection of any document at all.
  *
  * ─── Seeding goes through the emulator's REST door, not a client ─────────────
  * Every row seeds with `seed()`, which writes through the Firestore emulator's
@@ -98,9 +150,6 @@
  * Requires the isolated Vitest emulator stack; run via `pnpm test:emulator`.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import type { DomainError } from '@salt/shared-types';
@@ -336,11 +385,39 @@ const NOW = '2026-08-24T00:00:00.000Z';
  */
 const CORRUPT = { id: 42, schemaVersion: 'not-a-number', updatedAt: false } as const;
 
+// Marks that make a keyed row's own document distinguishable from an equally
+// VALID decoy at another key in the same collection. Without one, a singleton
+// row matching on `schemaVersion: 1` would accept the decoy and prove nothing.
+const MODEL_MARK = 'the-model-under-test';
+const TEMPLATE_MARK = 'the template under test';
+const AISLE_ID = 'produce';
+const DECOY_AISLE_ID = 'decoy-aisle';
+
+/**
+ * The parent and the id of the decoy an UNFILTERED collection row seeds: a valid
+ * document one level deeper, in a subcollection of the SAME NAME as the
+ * collection under test. `collection(db, 'recipes')` must not return it;
+ * `collectionGroup(db, 'recipes')` would — and that is a one-word difference in a
+ * helper parameterised by collection name, which is exactly the shape #928 is
+ * heading for. The parent id is one the collection itself never holds, so a
+ * phantom parent would show up in the delivered set too.
+ */
+const DECOY_PARENT = 'decoy-parent';
+const NESTED_DECOY_ID = 'nested-decoy';
+const nestedPath = (collectionName: string): string[] => [
+  collectionName,
+  DECOY_PARENT,
+  collectionName,
+  NESTED_DECOY_ID,
+];
+const NESTED_DECOY_WHAT =
+  'a document nested in a subcollection of the same name — a collection read, never a collection-group read';
+
 const fx = {
-  aislesDoc: (id: string) => ({
+  aislesDoc: (ids: string[]) => ({
     schemaVersion: 1,
     updatedAt: NOW,
-    aisles: [{ id, name: 'Produce', order: 0 }],
+    aisles: ids.map((id, order) => ({ id, name: `Aisle ${id}`, order })),
   }),
   batch: (id: string) => ({
     id,
@@ -370,7 +447,10 @@ const fx = {
     note: 'x',
     image: { url: 'https://example.test/x.webp', source: 'upload' },
   }),
-  canonItem: (id: string) => ({
+  // `embedding` is omitted unless a caller asks for one: the projection row is
+  // the only place that wants an inline vector, because dropping it is an
+  // observable per-subscription transform (#410 — see that row).
+  canonItem: (id: string, embedding?: number[]) => ({
     id,
     schemaVersion: 5,
     name: 'Carrot',
@@ -380,7 +460,15 @@ const fx = {
     needs_approval: false,
     shoppingBehavior: 'needed',
     updatedAt: NOW,
+    ...(embedding ? { embedding } : {}),
   }),
+  /**
+   * The REAL sibling of `canonData/aisles` (issue #726). Nothing parses it here;
+   * it is seeded so `subscribeAisles` has the neighbour its collection actually
+   * holds, and a read that widened past its key would surface it as a corruption
+   * error the row already forbids.
+   */
+  purchaseCounts: () => ({ counts: {}, lastAt: {} }),
   chatSession: (id: string, uid: string) => ({
     id,
     schemaVersion: 1,
@@ -406,7 +494,7 @@ const fx = {
     briefSourceName: 'pan',
     thumbnail: 'https://example.test/x.webp',
   }),
-  equipmentManifest: () => ({ schemaVersion: 1, updatedAt: NOW, items: [] }),
+  equipmentManifest: (updatedAt: string = NOW) => ({ schemaVersion: 1, updatedAt, items: [] }),
   formula: (recipeId: string) => ({
     recipeId,
     components: [],
@@ -435,8 +523,13 @@ const fx = {
     createdAt: NOW,
     updatedAt: NOW,
   }),
-  mealPlanConfig: () => ({ firstDayOfWeek: 'fri', schemaVersion: 1 }),
-  mealPlanTemplate: () => ({ schemaVersion: 1, days: {} }),
+  mealPlanConfig: (firstDayOfWeek: string = 'fri') => ({ firstDayOfWeek, schemaVersion: 1 }),
+  // `days.mon.note` carries the mark, because `schemaVersion` is the only other
+  // field and a literal 1 cannot tell this document from a decoy at another key.
+  mealPlanTemplate: (note: string = TEMPLATE_MARK) => ({
+    schemaVersion: 1,
+    days: { mon: { note, recipeIds: [], chefs: [], attendees: [], guests: 0 } },
+  }),
   mealPlanWeek: (startDate: string) => ({
     id: startDate,
     schemaVersion: 1,
@@ -504,14 +597,19 @@ const fx = {
     updatedAt: NOW,
   }),
   shoppingListsConfig: (defaultListId: string) => ({ defaultListId, schemaVersion: 1 }),
-  weatherForecast: () => ({
+  weatherForecast: (timezone: string = 'Europe/London') => ({
     days: {},
     fetchedAt: 1,
-    location: { latitude: 0, longitude: 0, timezone: 'Europe/London', label: 'London' },
-    timezone: 'Europe/London',
+    location: { latitude: 0, longitude: 0, timezone, label: 'London' },
+    timezone,
   }),
-  appSettings: () => ({ schemaVersion: 1 }),
-  devSettings: () => ({ schemaVersion: 1 }),
+  // `fast` is a free-text model name with a schema default, so it is the field
+  // that can tell this document from an equally valid one at another key.
+  appSettings: (fast: string = MODEL_MARK) => ({ schemaVersion: 1, fast }),
+  devSettings: (canonIconGenerationEnabled = true) => ({
+    schemaVersion: 1,
+    canonIconGenerationEnabled,
+  }),
 };
 
 // ─── The tables ─────────────────────────────────────────────────────────────
@@ -536,17 +634,44 @@ interface CollectionCase {
    * the row asserts that log. It must be an id the query actually RETURNS: see
    * the note on `CORRUPT`.
    */
+  /**
+   * Further documents the subscription MUST deliver, seeded BEFORE the listener
+   * attaches (`seed` stays the single live write — see the corrupt row's note on
+   * #122). Present wherever a second in-bounds document is possible, because the
+   * exact-set assertion is what makes a future `limit` or `where` cost
+   * something: with one document seeded, `limit(1)` is invisible.
+   *
+   * Absent only where the subscription reads ONE document that holds the whole
+   * array, so there is no second document to add — the reason is written on the
+   * row.
+   */
+  alsoDelivers?: { ids: string[]; seed: () => Promise<void> };
+  /**
+   * The exact set `seed()` alone produces, when that is more than `[id]`. Only
+   * `subscribeAisles` needs it: its one document holds the whole array, so the
+   * second in-bounds entry cannot be a separate write.
+   */
+  seedDelivers?: string[];
   corrupt?: { id: string; seed: () => Promise<void> };
   noCorruptCase?: string;
   /**
-   * Seed the documents this subscription's filter/path must LEAVE OUT, and name
-   * their ids. Without this a filter is untestable by construction — every row
-   * would seed only what the query admits, and deleting the `where` would keep
-   * the suite green (#939).
+   * Seed the documents this subscription must LEAVE OUT, and name their ids.
+   * REQUIRED on every row: a row that seeds only what its query admits pins
+   * nothing about the query, and every narrowing #939 could add would pass
+   * unnoticed. See the header for which decoy each shape of query gets.
    */
-  excluded?: { ids: string[]; seed: () => Promise<void> };
-  /** Why this row has no bound to exclude anything with. Required when `excluded` is absent. */
-  noExcludedCase?: string;
+  excluded: { ids: string[]; what: string; seed: () => Promise<void> };
+  /**
+   * A per-subscription transform on the delivered DOCUMENTS that no list of ids
+   * can see. Only canon has one today (#410), and a consolidated parse loop is
+   * exactly what would drop it silently.
+   */
+  projection?: {
+    what: string;
+    seed: () => Promise<void>;
+    subscribe: (onDocs: (docs: unknown[]) => void, onError: ErrCb) => () => void;
+    assert: (docs: unknown[]) => void;
+  };
   /**
    * Seed documents whose DELIVERED order the query fixes, and name that order
    * exactly. Only for rows carrying an `orderBy` (and, for cook sessions, a
@@ -573,19 +698,45 @@ const collectionCases: CollectionCase[] = [
   {
     name: 'subscribeAisles',
     subscribe: (on, err) => subscribeAisles((aisles) => on(aisles.map((a) => a.id)), err),
-    id: 'produce',
-    seed: () => writeAs(['canonData', 'aisles'], fx.aislesDoc('produce')),
+    id: AISLE_ID,
+    // TWO aisles in the one document, so a narrowing applied to the ARRAY (a
+    // filter or a slice inside the parse) changes the delivered set the same way
+    // a `limit` would on the collection rows.
+    seed: () => writeAs(['canonData', 'aisles'], fx.aislesDoc([AISLE_ID, 'dairy'])),
+    seedDelivers: [AISLE_ID, 'dairy'],
     noCorruptCase:
       'reads ONE document holding the whole array, so a corrupt entry fails the document rather than being skipped past',
-    noExcludedCase: 'reads ONE document at a fixed id — no query, so nothing to narrow',
+    // Two decoys, because this row reads one KEYED document out of a collection
+    // that really does hold siblings. `canonData/purchaseCounts` is the sibling
+    // production has (#726): nothing here parses it, and a read that widened past
+    // its key would deliver it to `AislesDocumentSchema` and surface the
+    // corruption error this row forbids. `canonData/aisles-decoy` is a VALID
+    // aisles document at another key, so a read at the WRONG key delivers
+    // `decoy-aisle` and the exact-set assertion names it.
+    excluded: {
+      ids: [DECOY_AISLE_ID],
+      what: 'the aisles under another canonData key, or the purchase counts beside them',
+      seed: async () => {
+        await writeAs(['canonData', 'purchaseCounts'], fx.purchaseCounts());
+        await writeAs(['canonData', 'aisles-decoy'], fx.aislesDoc([DECOY_AISLE_ID]));
+      },
+    },
   },
   {
     name: 'subscribeBatches',
     subscribe: (on, err) => subscribeBatches((batches) => on(batches.map((b) => b.id)), err),
     id: BATCH_ID,
     seed: () => writeAs(['batches', BATCH_ID], fx.batch(BATCH_ID)),
+    alsoDelivers: {
+      ids: ['batch-3'],
+      seed: () => writeAs(['batches', 'batch-3'], fx.batch('batch-3')),
+    },
     corrupt: { id: 'bad', seed: () => writeAs(['batches', 'bad'], CORRUPT) },
-    noExcludedCase: 'reads the whole collection unfiltered and unordered',
+    excluded: {
+      ids: [NESTED_DECOY_ID],
+      what: NESTED_DECOY_WHAT,
+      seed: () => writeAs(nestedPath('batches'), fx.batch(NESTED_DECOY_ID)),
+    },
   },
   {
     name: 'subscribeBatchObservations',
@@ -594,6 +745,14 @@ const collectionCases: CollectionCase[] = [
     id: 'obs-1',
     seed: () =>
       writeAs(['batches', BATCH_ID, 'observations', 'obs-1'], fx.batchObservation('obs-1')),
+    alsoDelivers: {
+      ids: ['obs-0'],
+      seed: () =>
+        writeAs(
+          ['batches', BATCH_ID, 'observations', 'obs-0'],
+          fx.batchObservation('obs-0', '2026-08-23T00:00:00.000Z'),
+        ),
+    },
     // `at` is NOT decoration here. The query is `orderBy('at','asc')` and
     // Firestore omits a document missing the ordered field, so a corrupt sibling
     // without one is never returned — nothing is skipped, and the row would go
@@ -607,6 +766,7 @@ const collectionCases: CollectionCase[] = [
     // different subcollection and must never appear.
     excluded: {
       ids: ['other-obs'],
+      what: "another run's observations",
       seed: () =>
         writeAs(
           ['batches', OTHER_BATCH_ID, 'observations', 'other-obs'],
@@ -636,8 +796,30 @@ const collectionCases: CollectionCase[] = [
     subscribe: (on, err) => subscribeCanonItems((items) => on(items.map((i) => i.id)), err),
     id: 'carrot',
     seed: () => writeAs(['canonItems', 'carrot'], fx.canonItem('carrot')),
+    alsoDelivers: {
+      ids: ['onion'],
+      seed: () => writeAs(['canonItems', 'onion'], fx.canonItem('onion')),
+    },
     corrupt: { id: 'bad', seed: () => writeAs(['canonItems', 'bad'], CORRUPT) },
-    noExcludedCase: 'reads the whole collection unfiltered and unordered',
+    excluded: {
+      ids: [NESTED_DECOY_ID],
+      what: NESTED_DECOY_WHAT,
+      seed: () => writeAs(nestedPath('canonItems'), fx.canonItem(NESTED_DECOY_ID)),
+    },
+    // The one per-subscription transform in the table that a list of ids cannot
+    // see: `canonSubscription.ts` overwrites `embedding` with null on every
+    // delivered item, so an un-migrated document's inline vector (#410) never
+    // reaches the in-memory store — and a client edit cannot write one back.
+    // A consolidated parse loop that just returned `result.data` would drop this
+    // silently, which is exactly what a characterisation net is for.
+    projection: {
+      what: 'strips the server-only embedding vector off every item it delivers (#410)',
+      seed: () => writeAs(['canonItems', 'carrot'], fx.canonItem('carrot', [0.25, 0.5, 0.75])),
+      subscribe: (onDocs, err) => subscribeCanonItems((items) => onDocs(items), err),
+      assert: (docs) => {
+        expect(docs.map((d) => (d as { embedding?: unknown }).embedding)).toEqual([null]);
+      },
+    },
   },
   {
     name: 'subscribeChatSessions',
@@ -645,6 +827,10 @@ const collectionCases: CollectionCase[] = [
       subscribeChatSessions(ownerUid(), (sessions) => on(sessions.map((s) => s.id)), err),
     id: 'chat-1',
     seed: () => writeAs(['chatSessions', 'chat-1'], fx.chatSession('chat-1', ownerUid())),
+    alsoDelivers: {
+      ids: ['chat-2'],
+      seed: () => writeAs(['chatSessions', 'chat-2'], fx.chatSession('chat-2', ownerUid())),
+    },
     // The corrupt sibling must still be OWNED by the subscriber, or the query's
     // `where('ownerUid','==',uid)` filters it out server-side and the row would
     // prove nothing about skip-invalid.
@@ -654,6 +840,7 @@ const collectionCases: CollectionCase[] = [
     },
     excluded: {
       ids: ['chat-theirs'],
+      what: "the other member's chat history",
       seed: () =>
         writeAs(['chatSessions', 'chat-theirs'], fx.chatSession('chat-theirs', OTHER_UID)),
     },
@@ -664,12 +851,17 @@ const collectionCases: CollectionCase[] = [
       subscribeMyCookSessions(ownerUid(), (sessions) => on(sessions.map((s) => s.id)), err),
     id: 'cook-1',
     seed: () => writeAs(['cookSessions', 'cook-1'], fx.cookSession('cook-1', ownerUid())),
+    alsoDelivers: {
+      ids: ['cook-2'],
+      seed: () => writeAs(['cookSessions', 'cook-2'], fx.cookSession('cook-2', ownerUid())),
+    },
     corrupt: {
       id: 'bad',
       seed: () => writeAs(['cookSessions', 'bad'], { ...CORRUPT, ownerUid: ownerUid() }),
     },
     excluded: {
       ids: ['cook-theirs'],
+      what: "the other member's cook in progress",
       seed: () =>
         writeAs(['cookSessions', 'cook-theirs'], fx.cookSession('cook-theirs', OTHER_UID)),
     },
@@ -696,48 +888,96 @@ const collectionCases: CollectionCase[] = [
     subscribe: (on, err) => subscribeEquipmentIcons((icons) => on([...icons.keys()]), err),
     id: 'pan',
     seed: () => writeAs(['equipmentIcons', 'pan'], fx.equipmentIcon()),
+    alsoDelivers: {
+      ids: ['pot'],
+      seed: () => writeAs(['equipmentIcons', 'pot'], fx.equipmentIcon()),
+    },
     corrupt: { id: 'bad', seed: () => writeAs(['equipmentIcons', 'bad'], CORRUPT) },
-    noExcludedCase: 'reads the whole collection unfiltered and unordered',
+    excluded: {
+      ids: [NESTED_DECOY_ID],
+      what: NESTED_DECOY_WHAT,
+      seed: () => writeAs(nestedPath('equipmentIcons'), fx.equipmentIcon()),
+    },
   },
   {
     name: 'subscribeKitchenMemories',
     subscribe: (on, err) => subscribeKitchenMemories((mems) => on(mems.map((m) => m.id)), err),
     id: 'mem-1',
     seed: () => writeAs(['kitchenMemories', 'mem-1'], fx.kitchenMemory('mem-1')),
+    alsoDelivers: {
+      ids: ['mem-2'],
+      seed: () => writeAs(['kitchenMemories', 'mem-2'], fx.kitchenMemory('mem-2')),
+    },
     corrupt: { id: 'bad', seed: () => writeAs(['kitchenMemories', 'bad'], CORRUPT) },
-    noExcludedCase: 'reads the whole collection unfiltered and unordered',
+    excluded: {
+      ids: [NESTED_DECOY_ID],
+      what: NESTED_DECOY_WHAT,
+      seed: () => writeAs(nestedPath('kitchenMemories'), fx.kitchenMemory(NESTED_DECOY_ID)),
+    },
   },
   {
     name: 'subscribeKitchenTools',
     subscribe: (on, err) => subscribeKitchenTools((tools) => on(tools.map((t) => t.id)), err),
     id: 'whisk',
     seed: () => writeAs(['kitchenTools', 'whisk'], fx.kitchenTool('whisk')),
+    alsoDelivers: {
+      ids: ['spatula'],
+      seed: () => writeAs(['kitchenTools', 'spatula'], fx.kitchenTool('spatula')),
+    },
     corrupt: { id: 'bad', seed: () => writeAs(['kitchenTools', 'bad'], CORRUPT) },
-    noExcludedCase: 'reads the whole collection unfiltered and unordered',
+    excluded: {
+      ids: [NESTED_DECOY_ID],
+      what: NESTED_DECOY_WHAT,
+      seed: () => writeAs(nestedPath('kitchenTools'), fx.kitchenTool(NESTED_DECOY_ID)),
+    },
   },
   {
     name: 'subscribeMembers',
     subscribe: (on, err) => subscribeMembers((members) => on(members.map((m) => m.id)), err),
     id: 'a@b.test',
     seed: () => writeAs(['members', 'a@b.test'], fx.member('a@b.test')),
+    alsoDelivers: {
+      ids: ['c@d.test'],
+      seed: () => writeAs(['members', 'c@d.test'], fx.member('c@d.test')),
+    },
     corrupt: { id: 'bad@b.test', seed: () => writeAs(['members', 'bad@b.test'], CORRUPT) },
-    noExcludedCase: 'reads the whole collection unfiltered and unordered',
+    excluded: {
+      ids: [NESTED_DECOY_ID],
+      what: NESTED_DECOY_WHAT,
+      seed: () => writeAs(nestedPath('members'), fx.member(NESTED_DECOY_ID)),
+    },
   },
   {
     name: 'subscribeProductForms',
     subscribe: (on, err) => subscribeProductForms((forms) => on(forms.map((f) => f.id)), err),
     id: 'yolk',
     seed: () => writeAs(['productForms', 'yolk'], fx.productForm('yolk')),
+    alsoDelivers: {
+      ids: ['white'],
+      seed: () => writeAs(['productForms', 'white'], fx.productForm('white')),
+    },
     corrupt: { id: 'bad', seed: () => writeAs(['productForms', 'bad'], CORRUPT) },
-    noExcludedCase: 'reads the whole collection unfiltered and unordered',
+    excluded: {
+      ids: [NESTED_DECOY_ID],
+      what: NESTED_DECOY_WHAT,
+      seed: () => writeAs(nestedPath('productForms'), fx.productForm(NESTED_DECOY_ID)),
+    },
   },
   {
     name: 'subscribeRecipes',
     subscribe: (on, err) => subscribeRecipes((recipes) => on(recipes.map((r) => r.id)), err),
     id: 'toast',
     seed: () => writeAs(['recipes', 'toast'], fx.recipe('toast')),
+    alsoDelivers: {
+      ids: ['soup'],
+      seed: () => writeAs(['recipes', 'soup'], fx.recipe('soup')),
+    },
     corrupt: { id: 'bad', seed: () => writeAs(['recipes', 'bad'], CORRUPT) },
-    noExcludedCase: 'reads the whole collection unfiltered and unordered',
+    excluded: {
+      ids: [NESTED_DECOY_ID],
+      what: NESTED_DECOY_WHAT,
+      seed: () => writeAs(nestedPath('recipes'), fx.recipe(NESTED_DECOY_ID)),
+    },
   },
   {
     name: 'subscribeShoppingDaysInRange',
@@ -750,12 +990,22 @@ const collectionCases: CollectionCase[] = [
       ),
     id: '2026-08-19',
     seed: () => writeAs(['shoppingDays', '2026-08-19'], fx.shoppingDay('2026-08-19')),
+    // The two range ENDS, which are inclusive. Tighten either `where` to a strict
+    // comparison and one of these stops arriving.
+    alsoDelivers: {
+      ids: [RANGE_START, RANGE_END],
+      seed: async () => {
+        await writeAs(['shoppingDays', RANGE_START], fx.shoppingDay(RANGE_START));
+        await writeAs(['shoppingDays', RANGE_END], fx.shoppingDay(RANGE_END));
+      },
+    },
     // In range, so the documentId() bounds return it and the parse loop rejects it.
     corrupt: { id: '2026-08-20', seed: () => writeAs(['shoppingDays', '2026-08-20'], CORRUPT) },
     // One day either side of the inclusive range. Delete either `where` clause in
     // shoppingDaySync.ts and one of these arrives.
     excluded: {
       ids: ['2026-08-16', '2026-08-24'],
+      what: 'the day either side of the range',
       seed: async () => {
         await writeAs(['shoppingDays', '2026-08-16'], fx.shoppingDay('2026-08-16'));
         await writeAs(['shoppingDays', '2026-08-24'], fx.shoppingDay('2026-08-24'));
@@ -769,12 +1019,18 @@ const collectionCases: CollectionCase[] = [
     id: 'item-1',
     seed: () =>
       writeAs(['shoppingLists', LIST_ID, 'items', 'item-1'], fx.shoppingListItem('item-1')),
+    alsoDelivers: {
+      ids: ['item-2'],
+      seed: () =>
+        writeAs(['shoppingLists', LIST_ID, 'items', 'item-2'], fx.shoppingListItem('item-2')),
+    },
     corrupt: {
       id: 'bad',
       seed: () => writeAs(['shoppingLists', LIST_ID, 'items', 'bad'], CORRUPT),
     },
     excluded: {
       ids: ['other-item'],
+      what: "another list's items",
       seed: () =>
         writeAs(
           ['shoppingLists', OTHER_LIST_ID, 'items', 'other-item'],
@@ -787,8 +1043,16 @@ const collectionCases: CollectionCase[] = [
     subscribe: (on, err) => subscribeShoppingLists((lists) => on(lists.map((l) => l.id)), err),
     id: LIST_ID,
     seed: () => writeAs(['shoppingLists', LIST_ID], fx.shoppingList(LIST_ID)),
+    alsoDelivers: {
+      ids: ['list-3'],
+      seed: () => writeAs(['shoppingLists', 'list-3'], fx.shoppingList('list-3')),
+    },
     corrupt: { id: 'bad', seed: () => writeAs(['shoppingLists', 'bad'], CORRUPT) },
-    noExcludedCase: 'reads the whole collection unfiltered and unordered',
+    excluded: {
+      ids: [NESTED_DECOY_ID],
+      what: NESTED_DECOY_WHAT,
+      seed: () => writeAs(nestedPath('shoppingLists'), fx.shoppingList(NESTED_DECOY_ID)),
+    },
   },
 ];
 
@@ -814,23 +1078,41 @@ interface DocumentCase {
    * then unify it as a deliberate, visible behaviour change instead of a silent
    * one buried inside a consolidation.
    *
-   * The `'null'` rows carry one extra assertion the `'error'` rows do not need:
-   * that the parse loop LOGGED the rejection. `null` is by design
-   * indistinguishable from "absent" to the caller, so without the log the row
-   * cannot tell a rejected document from one the read never saw. A
-   * `StorageError`/`corruption` on `onError` needs no such backstop — an absent
-   * document cannot produce one.
+   * The `'null'` rows carry one extra assertion: that the parse loop LOGGED the
+   * rejection, naming this document. `null` is by design indistinguishable from
+   * "absent" to the caller, so without the log the row cannot tell a rejected
+   * document from one the read never saw.
+   *
+   * The `'error'` rows get no equivalent, and NOT because a corruption error
+   * proves a document was read — `firestoreErrors.ts` maps the Firestore code
+   * `data-loss` to that same DomainError, so a stream-level failure produces it
+   * with nothing read at all. They get none because EIGHT of the eleven do not
+   * log before calling `onError` (#928 finding B2-008); see the file header for
+   * which. What they assert instead is that no `rawError` was forwarded, which
+   * separates the parse path from the stream path on every module whose
+   * `onError` declares that parameter.
    */
   onCorrupt: 'error' | 'null';
   /**
-   * Seed a VALID document of the same schema at a DIFFERENT key in the same
-   * collection. A keyed single-document read has no filter to narrow, but it does
-   * have a key, and a row that only ever seeds the key it asks for cannot tell
-   * "reads the document at `id`" from "reads whatever is in the collection".
+   * The document id the parse loop will name in its rejection log. Required on
+   * the `'null'` rows, which assert that log; the `'error'` rows have nothing to
+   * bind it to. A function, because for `subscribeKitchenTimers` the id IS the
+   * subscriber's uid and is only knowable inside a test.
    */
-  excluded?: { seed: () => Promise<void>; what: string };
-  /** Why this row has no other key to get wrong. Required when `excluded` is absent. */
-  noExcludedCase?: string;
+  corruptDocId?: () => string;
+  /**
+   * Seed a VALID document of the same schema at a DIFFERENT key in the same
+   * collection, chosen so `matches` REJECTS it. REQUIRED on every row: a keyed
+   * single-document read has no filter to narrow, but it does have a key, and a
+   * row that only ever seeds the key it asks for cannot tell "reads the document
+   * at this key" from "reads whatever is in the collection".
+   *
+   * The singleton rows are no exception. `appSettings/singleton` is a fixed id in
+   * a collection that can hold any other, and a helper parameterised by
+   * collection and key can be handed the wrong key as easily as the wrong
+   * collection.
+   */
+  excluded: { seed: () => Promise<void>; what: string };
 }
 
 const has = (d: unknown, key: string, value: unknown): boolean =>
@@ -843,9 +1125,13 @@ const documentCases: DocumentCase[] = [
     subscribe: (on, err) => subscribeAppSettings(on, err),
     seed: () => writeAs(['appSettings', 'singleton'], fx.appSettings()),
     corrupt: () => writeAs(['appSettings', 'singleton'], { schemaVersion: 'nope' }),
-    matches: (d) => has(d, 'schemaVersion', 1),
-    noExcludedCase:
-      'reads a fixed singleton id, so there is no other key it could read — the delivery row above already pins which id that is',
+    // On `fast`, not on `schemaVersion`: the literal 1 is true of the decoy too,
+    // and a predicate the decoy satisfies is not a predicate.
+    matches: (d) => has(d, 'fast', MODEL_MARK),
+    excluded: {
+      what: 'another key in the same collection',
+      seed: () => writeAs(['appSettings', 'not-the-singleton'], fx.appSettings('decoy-model')),
+    },
   },
   {
     name: 'subscribeBatch',
@@ -867,6 +1153,7 @@ const documentCases: DocumentCase[] = [
     // Keep ownerUid valid so the doc is READABLE; only the rest is corrupt. A
     // doc the rules deny is an AuthError, not the StorageError this row pins.
     corrupt: () => writeAs(['cookSessions', 'cook-1'], { ...CORRUPT, ownerUid: ownerUid() }),
+    corruptDocId: () => 'cook-1',
     matches: (d) => has(d, 'id', 'cook-1'),
     // Owned by the subscriber, so the rules would ALLOW this read — the only
     // thing keeping it out of the delivery is the key.
@@ -881,9 +1168,11 @@ const documentCases: DocumentCase[] = [
     subscribe: (on, err) => subscribeDevSettings(on, err),
     seed: () => writeAs(['devSettings', 'singleton'], fx.devSettings()),
     corrupt: () => writeAs(['devSettings', 'singleton'], { schemaVersion: 'nope' }),
-    matches: (d) => has(d, 'schemaVersion', 1),
-    noExcludedCase:
-      'reads a fixed singleton id, so there is no other key it could read — the delivery row above already pins which id that is',
+    matches: (d) => has(d, 'canonIconGenerationEnabled', true),
+    excluded: {
+      what: 'another key in the same collection',
+      seed: () => writeAs(['devSettings', 'not-the-singleton'], fx.devSettings(false)),
+    },
   },
   {
     name: 'subscribeEquipmentManifest',
@@ -891,9 +1180,15 @@ const documentCases: DocumentCase[] = [
     subscribe: (on, err) => subscribeEquipmentManifest(on, err),
     seed: () => writeAs(['equipmentManifest', 'current'], fx.equipmentManifest()),
     corrupt: () => writeAs(['equipmentManifest', 'current'], CORRUPT),
-    matches: (d) => has(d, 'schemaVersion', 1),
-    noExcludedCase:
-      'reads a fixed singleton id, so there is no other key it could read — the delivery row above already pins which id that is',
+    matches: (d) => has(d, 'updatedAt', NOW),
+    excluded: {
+      what: 'another key in the same collection',
+      seed: () =>
+        writeAs(
+          ['equipmentManifest', 'not-current'],
+          fx.equipmentManifest('2020-01-01T00:00:00.000Z'),
+        ),
+    },
   },
   {
     name: 'subscribeFormula',
@@ -925,6 +1220,9 @@ const documentCases: DocumentCase[] = [
     subscribe: (on, err) => subscribeKitchenTimers(ownerUid(), on, err),
     seed: () => writeAs(['kitchenTimers', ownerUid()], fx.kitchenTimers(ownerUid())),
     corrupt: () => writeAs(['kitchenTimers', ownerUid()], { ownerUid: ownerUid(), timers: 'nope' }),
+    // The document id IS the uid here (issue #842), so that is what the parse
+    // loop logs.
+    corruptDocId: () => ownerUid(),
     // Matches on the OWNER, not merely on the field being present: the id IS the
     // uid here, so a laxer predicate would accept the other member's document.
     matches: (d) => has(d, 'ownerUid', ownerUid()),
@@ -940,8 +1238,10 @@ const documentCases: DocumentCase[] = [
     seed: () => writeAs(['mealPlanConfig', 'singleton'], fx.mealPlanConfig()),
     corrupt: () => writeAs(['mealPlanConfig', 'singleton'], CORRUPT),
     matches: (d) => has(d, 'firstDayOfWeek', 'fri'),
-    noExcludedCase:
-      'reads a fixed singleton id, so there is no other key it could read — the delivery row above already pins which id that is',
+    excluded: {
+      what: 'another key in the same collection',
+      seed: () => writeAs(['mealPlanConfig', 'not-the-singleton'], fx.mealPlanConfig('mon')),
+    },
   },
   {
     name: 'subscribeMealPlanTemplate',
@@ -949,9 +1249,15 @@ const documentCases: DocumentCase[] = [
     subscribe: (on, err) => subscribeMealPlanTemplate(on, err),
     seed: () => writeAs(['mealPlanTemplate', 'singleton'], fx.mealPlanTemplate()),
     corrupt: () => writeAs(['mealPlanTemplate', 'singleton'], CORRUPT),
-    matches: (d) => has(d, 'schemaVersion', 1),
-    noExcludedCase:
-      'reads a fixed singleton id, so there is no other key it could read — the delivery row above already pins which id that is',
+    // `schemaVersion` is a literal 1 on the decoy too, so the mark has to be
+    // inside the week — the only other field this schema has.
+    matches: (d) =>
+      (d as { days?: { mon?: { note?: string } } } | null)?.days?.mon?.note === TEMPLATE_MARK,
+    excluded: {
+      what: 'another key in the same collection',
+      seed: () =>
+        writeAs(['mealPlanTemplate', 'not-the-singleton'], fx.mealPlanTemplate('a decoy week')),
+    },
   },
   {
     name: 'subscribeMealPlanWeek',
@@ -972,8 +1278,14 @@ const documentCases: DocumentCase[] = [
     seed: () => writeAs(['shoppingListsConfig', 'singleton'], fx.shoppingListsConfig(LIST_ID)),
     corrupt: () => writeAs(['shoppingListsConfig', 'singleton'], { defaultListId: 42 }),
     matches: (d) => has(d, 'defaultListId', LIST_ID),
-    noExcludedCase:
-      'reads a fixed singleton id, so there is no other key it could read — the delivery row above already pins which id that is',
+    excluded: {
+      what: 'another key in the same collection',
+      seed: () =>
+        writeAs(
+          ['shoppingListsConfig', 'not-the-singleton'],
+          fx.shoppingListsConfig(OTHER_LIST_ID),
+        ),
+    },
   },
   {
     name: 'subscribeWeatherForecast',
@@ -982,45 +1294,20 @@ const documentCases: DocumentCase[] = [
     seed: () => writeAs(['weatherForecast', 'singleton'], fx.weatherForecast()),
     corrupt: () => writeAs(['weatherForecast', 'singleton'], CORRUPT),
     matches: (d) => has(d, 'timezone', 'Europe/London'),
-    noExcludedCase:
-      'reads a fixed singleton id, so there is no other key it could read — the delivery row above already pins which id that is',
+    excluded: {
+      what: 'another key in the same collection',
+      seed: () =>
+        writeAs(['weatherForecast', 'not-the-singleton'], fx.weatherForecast('America/New_York')),
+    },
   },
 ];
 
 // ─── The guard ──────────────────────────────────────────────────────────────
 
-/**
- * Read every `subscribe*` in `src/` off disk and report which Firestore query
- * operators its own body issues.
- *
- * Derived from the tree, never from a list (UT-E1), and matched on call shape
- * rather than on any sentence (UT-E3). Comments are stripped first — several
- * modules discuss their `where`/`orderBy` in prose right above the code, and a
- * scan that counted those would report bounds nothing actually issues.
- *
- * Splitting on `\nexport ` keeps each operator with the function that issues it:
- * `cookSessionSubscription.ts` exports one subscription WITH a query and one
- * without, from the same file.
- */
-function queryOperatorsBySubscription(): Map<string, string[]> {
-  const srcDir = fileURLToPath(new URL('../src/', import.meta.url));
-  const found = new Map<string, string[]>();
-  for (const file of readdirSync(srcDir).filter((f) => f.endsWith('.ts'))) {
-    const src = readFileSync(join(srcDir, file), 'utf8')
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/\/\/[^\n]*/g, '');
-    for (const chunk of src.split(/\nexport /)) {
-      const declared = /^(?:async\s+)?function\s+(subscribe\w+)\s*\(/.exec(chunk);
-      if (!declared) continue;
-      found.set(
-        declared[1]!,
-        ['where', 'orderBy', 'limit'].filter((op) => new RegExp(`\\b${op}\\(`).test(chunk)),
-      );
-    }
-  }
-  return found;
-}
-
+// Everything here is a guard on the TABLE — that no subscription and no
+// obligation has been left out of it. There is deliberately nothing that reads
+// `src/` as text: see the header for the scan that used to live at this spot and
+// why it had to go.
 describe('subscription contract — table coverage', () => {
   it('covers every exported subscribe* — derived from the barrel, not a hand-kept list', () => {
     const exported = Object.keys(barrel)
@@ -1049,61 +1336,30 @@ describe('subscription contract — table coverage', () => {
   });
 
   /**
-   * The #939 counterpart of the rule above. A subscription that carries a filter
-   * or a path bound and seeds only what its query ADMITS pins nothing about the
-   * query — this is what makes the omission cost something instead of passing
-   * unnoticed.
+   * The #939 counterpart of the rule above, and the one the exact-set assertion
+   * rests on. A row that seeds only what its query ADMITS pins nothing about the
+   * query: whatever narrowing arrives, the delivered set is unchanged and the row
+   * stays green. `tests/` is not in the root `typecheck` yet (UT-G1), so the
+   * required field on the interface is not on its own enough to notice a row
+   * arriving without one.
    */
-  it('a row that skips the query-bound case says why', () => {
-    for (const c of [...collectionCases, ...documentCases]) {
-      if (!c.excluded) {
-        expect(
-          c.noExcludedCase,
-          `${c.name} seeds nothing its query must exclude, and gives no reason`,
-        ).toBeTruthy();
-      }
+  it('every row seeds at least one document its subscription must exclude', () => {
+    for (const c of collectionCases) {
+      expect(c.excluded.ids.length, `${c.name} names no excluded id`).toBeGreaterThan(0);
+      expect(c.excluded.what, `${c.name} does not say what its decoy is`).toBeTruthy();
+    }
+    for (const c of documentCases) {
+      expect(c.excluded, `${c.name} seeds nothing its read must exclude`).toBeTruthy();
+      expect(c.excluded.what, `${c.name} does not say what its decoy is`).toBeTruthy();
     }
   });
 
-  /**
-   * The rule above is only worth having if it cannot be satisfied by writing
-   * `noExcludedCase: 'no bound'` on a subscription that plainly has one. So the
-   * set of bounded subscriptions is read off the SOURCE rather than kept by hand
-   * (UT-E1): a module whose `subscribe*` body issues `where(`/`limit(` must have
-   * a row seeding what that bound excludes, and one issuing `orderBy(` must have
-   * a row asserting the order.
-   *
-   * This is the half of the net that survives #939. When the narrowing adds a
-   * filter to a subscription that has none today, THIS test goes red — before the
-   * refactor can claim the net covered it.
-   */
-  it('every subscription that issues a query has a row pinning its bounds', () => {
-    const ops = queryOperatorsBySubscription();
-    const exported = Object.keys(barrel)
-      .filter((k) => k.startsWith('subscribe'))
-      .sort();
-
-    // UT-E2: the walk still finds every subscription, and still recognises all
-    // three operators. A scan that quietly stopped matching would otherwise green
-    // the rule below on an empty set.
-    expect([...ops.keys()].sort()).toEqual(exported);
-    expect(new Set([...ops.values()].flat())).toEqual(new Set(['where', 'orderBy', 'limit']));
-
-    const rows = new Map([...collectionCases, ...documentCases].map((c) => [c.name, c] as const));
-    const unpinned: string[] = [];
-    for (const [name, operators] of ops) {
-      const row = rows.get(name);
-      if (!row) continue; // the barrel guard above already reports a missing row
-      const bounded = operators.includes('where') || operators.includes('limit');
-      const ordered = 'ordered' in row ? row.ordered : undefined;
-      if (bounded && !row.excluded && !ordered) {
-        unpinned.push(`${name} issues ${operators.join('+')} but seeds nothing it excludes`);
-      }
-      if (operators.includes('orderBy') && !ordered) {
-        unpinned.push(`${name} issues orderBy but no row asserts the delivered order`);
+  it("every 'null' row names the document id its parse loop will log", () => {
+    for (const c of documentCases) {
+      if (c.onCorrupt === 'null') {
+        expect(c.corruptDocId, `${c.name} delivers null but names no document id`).toBeTruthy();
       }
     }
-    expect(unpinned).toEqual([]);
   });
 
   it('every corrupt case names the document id its parse loop will log', () => {
@@ -1115,8 +1371,44 @@ describe('subscription contract — table coverage', () => {
 
 // ─── Collection subscriptions ───────────────────────────────────────────────
 
+/**
+ * An id list, ordered so two of them can be compared for SET equality.
+ *
+ * Used only where the query imposes no order of its own. The `ordered` rows
+ * compare raw, because there the order IS the assertion — do not route them
+ * through here.
+ */
+const asSet = (ids: readonly string[]): string[] => [...ids].sort();
+const sameSet = (a: readonly string[], b: readonly string[]): boolean => {
+  if (a.length !== b.length) return false;
+  const wanted = asSet(b);
+  return asSet(a).every((id, i) => id === wanted[i]);
+};
+
 describe.each(collectionCases)('$name (collection)', (c) => {
-  it('delivers the seeded document within the convergence window', async () => {
+  const background = c.alsoDelivers?.ids ?? [];
+  const expected = [...background, ...(c.seedDelivers ?? [c.id])];
+
+  /**
+   * The exact-set row — the one that survives #928 and reds under #939.
+   *
+   * The whole world this subscription can see is seeded, and the assertion is
+   * `toEqual` over the delivered ids, not `toContain`. Any narrowing that arrives
+   * later — a `where`, a `limit`, a tighter path, a different key — changes that
+   * set and fails HERE, whatever the code has been reshaped into and wherever the
+   * constraint literal ends up living.
+   *
+   * Everything except ONE document goes in before the listener attaches. That is
+   * what makes the negative half mean something without an arbitrary sleep
+   * (UT-F3) — the decoys were on the server first, so by the time the last
+   * document is DELIVERED they would have been delivered too if the query
+   * admitted them — and it keeps this row to a single write under an attached
+   * listener, like every other row here (see the corrupt row's note on #122).
+   */
+  it(`delivers exactly what its query admits, never ${c.excluded.what}`, async () => {
+    await c.excluded.seed();
+    if (c.alsoDelivers) await c.alsoDelivers.seed();
+
     const seen: string[][] = [];
     const errors: DomainError[] = [];
     const unsubscribe = c.subscribe(
@@ -1124,14 +1416,27 @@ describe.each(collectionCases)('$name (collection)', (c) => {
       (e) => errors.push(e),
     );
     try {
-      await c.seed();
       await waitFor(
-        () => seen.some((ids) => ids.includes(c.id)),
+        () => seen.some((ids) => sameSet(ids, background)),
         CONVERGENCE_MS,
-        `${c.name}/${c.id}`,
+        `${c.name} to settle on ${JSON.stringify(asSet(background))} — what was seeded before it attached`,
         errors,
       );
-      expect(seen.some((ids) => ids.includes(c.id))).toBe(true);
+
+      await c.seed();
+      await waitFor(
+        () => seen.some((ids) => sameSet(ids, expected)),
+        CONVERGENCE_MS,
+        `${c.name} to deliver exactly ${JSON.stringify(asSet(expected))}`,
+        errors,
+      );
+      expect(asSet(seen[seen.length - 1]!)).toEqual(asSet(expected));
+
+      // Nothing out of bounds may appear in ANY snapshot, not merely the last:
+      // a filter that leaks and then self-corrects has still leaked.
+      for (const ids of seen) {
+        for (const id of c.excluded.ids) expect(ids).not.toContain(id);
+      }
       expect(errors).toEqual([]);
     } finally {
       unsubscribe();
@@ -1189,48 +1494,30 @@ describe.each(collectionCases)('$name (collection)', (c) => {
     expect(seen.length).toBe(before);
   });
 
-  const excluded = c.excluded;
-  if (excluded) {
+  const projection = c.projection;
+  if (projection) {
     /**
-     * The out-of-bounds documents are seeded BEFORE the subscription and the
-     * in-bounds one after it. That ordering is what makes the negative assertion
-     * mean something without an arbitrary sleep (UT-F3): the excluded documents
-     * were on the server first, so by the time the in-bounds one is DELIVERED,
-     * they would have been delivered too if the query admitted them. It also
-     * keeps the row to one write under an attached listener, like every other
-     * row here (see the corrupt row's note on #122).
+     * A transform the id list cannot see. Asserted on the delivered DOCUMENTS,
+     * because that is the only place it is observable — and a consolidation that
+     * replaced 13 parse loops with one would drop it without a single row here
+     * changing colour otherwise.
      */
-    it('does not deliver what its query excludes', async () => {
-      await excluded.seed();
-
-      const seen: string[][] = [];
+    it(projection.what, async () => {
+      const seen: unknown[][] = [];
       const errors: DomainError[] = [];
-      const unsubscribe = c.subscribe(
-        (ids) => seen.push(ids),
+      const unsubscribe = projection.subscribe(
+        (docs) => seen.push(docs),
         (e) => errors.push(e),
       );
       try {
+        await projection.seed();
         await waitFor(
-          () => seen.length > 0,
+          () => seen.some((docs) => docs.length > 0),
           CONVERGENCE_MS,
-          `${c.name} initial snapshot past its query bounds`,
+          `${c.name} to deliver the document its projection applies to`,
           errors,
         );
-        expect(seen[0]).toEqual([]);
-
-        await c.seed();
-        await waitFor(
-          () => seen.some((ids) => ids.includes(c.id)),
-          CONVERGENCE_MS,
-          `${c.name} in-bounds document`,
-          errors,
-        );
-
-        // Nothing out of bounds may appear in ANY snapshot, not merely the last:
-        // a filter that leaks and then self-corrects has still leaked.
-        for (const ids of seen) {
-          for (const id of excluded.ids) expect(ids).not.toContain(id);
-        }
+        projection.assert(seen[seen.length - 1]!);
         expect(errors).toEqual([]);
       } finally {
         unsubscribe();
@@ -1312,18 +1599,19 @@ describe.each(collectionCases)('$name (collection)', (c) => {
         expect(seen[0]).toEqual([]);
 
         await c.seed();
+        const validSubset = c.seedDelivers ?? [c.id];
         await waitFor(
-          () => seen.some((ids) => ids.includes(c.id)),
+          () => seen.some((ids) => sameSet(ids, validSubset)),
           CONVERGENCE_MS,
           `${c.name} valid subset after a corrupt sibling`,
           errors,
         );
 
         // The contract (CLAUDE.md, zod conventions): skip the invalid doc, keep
-        // the rest, and do NOT fail the whole read.
-        const last = seen[seen.length - 1]!;
-        expect(last).toContain(c.id);
-        expect(last).not.toContain(seedCorrupt.id);
+        // the rest, and do NOT fail the whole read. Asserted as the EXACT set,
+        // so the corrupt id being absent is not the only thing being checked —
+        // nothing may have gone missing alongside it either.
+        expect(asSet(seen[seen.length - 1]!)).toEqual(asSet(validSubset));
         expect(errors).toEqual([]);
 
         // …and it was skipped, not merely absent. Without this the row passes on
@@ -1415,58 +1703,57 @@ describe.each(documentCases)('$name (document)', (c) => {
     expect(seen.length).toBe(before);
   });
 
-  const excluded = c.excluded;
-  if (excluded) {
-    /**
-     * A keyed single-document read has no filter to narrow, but it does have a
-     * key, and every other row seeds only the key it asks for — so nothing here
-     * could tell "reads the document at this key" from "reads the collection".
-     * The decoy is seeded FIRST, so a read at the wrong key would surface it in
-     * the very first snapshot.
-     */
-    it(`delivers only its own key, never ${excluded.what}`, async () => {
-      await excluded.seed();
+  /**
+   * The single-document counterpart of the collection rows' exact-set assertion,
+   * and REQUIRED on every row. A keyed read has no filter to narrow, but it does
+   * have a key, and a row that only ever seeds the key it asks for cannot tell
+   * "reads the document at this key" from "reads whatever is in the collection".
+   * The decoy is a VALID document of the same schema that `matches` rejects, so
+   * a read at the wrong key delivers a non-null value and fails here — it is
+   * seeded FIRST, so it would already be in the very first snapshot.
+   */
+  it(`delivers only its own key, never ${c.excluded.what}`, async () => {
+    await c.excluded.seed();
 
-      const seen: unknown[] = [];
-      const errors: DomainError[] = [];
-      const unsubscribe = c.subscribe(
-        (d) => seen.push(d),
-        (e) => errors.push(e),
-      );
-      try {
-        await waitFor(
-          () => seen.length > 0,
-          CONVERGENCE_MS,
-          `${c.name} initial snapshot alongside ${excluded.what}`,
-          errors,
-        );
-        expect(seen[0]).toBeNull();
-
-        await c.seed();
-        await waitFor(() => seen.some(c.matches), CONVERGENCE_MS, `${c.name} document`, errors);
-
-        // Every delivery is either "absent" or THIS document. The decoy is a
-        // valid document of the same schema, so anything reading the wrong key
-        // would have delivered a non-null value that does not match.
-        expect(seen.every((d) => d === null || c.matches(d))).toBe(true);
-        expect(errors).toEqual([]);
-      } finally {
-        unsubscribe();
-      }
-    });
-  }
-
-  it(`handles a document that fails its schema by delivering ${c.onCorrupt}`, async () => {
-    // Only the `'null'` rows need the rejection log: there `null` is by design
-    // indistinguishable from "absent", so the log is the only thing that says the
-    // document was read and refused. A `StorageError`/`corruption` is its own
-    // proof and needs no backstop.
-    const logged = vi.spyOn(console, 'error');
     const seen: unknown[] = [];
     const errors: DomainError[] = [];
     const unsubscribe = c.subscribe(
       (d) => seen.push(d),
       (e) => errors.push(e),
+    );
+    try {
+      await waitFor(
+        () => seen.length > 0,
+        CONVERGENCE_MS,
+        `${c.name} initial snapshot alongside ${c.excluded.what}`,
+        errors,
+      );
+      expect(seen[0]).toBeNull();
+
+      await c.seed();
+      await waitFor(() => seen.some(c.matches), CONVERGENCE_MS, `${c.name} document`, errors);
+
+      // Every delivery is either "absent" or THIS document.
+      expect(seen.every((d) => d === null || c.matches(d))).toBe(true);
+      expect(errors).toEqual([]);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it(`handles a document that fails its schema by delivering ${c.onCorrupt}`, async () => {
+    const logged = vi.spyOn(console, 'error');
+    const seen: unknown[] = [];
+    const errors: DomainError[] = [];
+    // The second argument of `onError`, captured alongside the first. It is what
+    // separates the parse path from the stream path — see below.
+    const raws: unknown[] = [];
+    const unsubscribe = c.subscribe(
+      (d) => seen.push(d),
+      (e, raw) => {
+        errors.push(e);
+        raws.push(raw);
+      },
     );
     try {
       // Settle the initial (absent) snapshot first, so the null this row may
@@ -1478,6 +1765,21 @@ describe.each(documentCases)('$name (document)', (c) => {
       if (c.onCorrupt === 'error') {
         await waitFor(() => errors.length > 0, CONVERGENCE_MS, `${c.name} corruption error`);
         expect(errors[0]).toMatchObject({ kind: 'StorageError', reason: 'corruption' });
+
+        // …and it came from the PARSE, not from the stream. This matters because
+        // `{kind:'StorageError', reason:'corruption'}` is ALSO what
+        // classifyFirestoreError returns for the Firestore code `data-loss`, so
+        // the assertion above is satisfiable with no document read at all. The
+        // stream path calls `onError(classifyFirestoreError(err), err)` — two
+        // arguments; the parse path passes one. A real discriminator on the six
+        // modules that declare the parameter, vacuously true on the seven that
+        // never pass a second argument, and asserted uniformly so there is no
+        // hand-kept list of the six to go stale (UT-E1).
+        expect(
+          raws.every((r) => r === undefined),
+          `${c.name} forwarded a rawError with its corruption Failure — that is the ` +
+            'stream path, so this row never proved the document was parsed and refused',
+        ).toBe(true);
       } else {
         await waitFor(
           () => seen.length > before,
@@ -1486,11 +1788,16 @@ describe.each(documentCases)('$name (document)', (c) => {
         );
         expect(seen[seen.length - 1]).toBeNull();
         expect(errors).toEqual([]);
+
+        // The rejection log, bound to THIS document id. `null` is by design
+        // indistinguishable from "absent" to the caller, so the log is the only
+        // thing that says the null came from a rejection — and an unbound
+        // `failed validation` would be satisfied by a rejection of any document
+        // at all, including one another row left in the console.
+        const wanted = `Document ${c.corruptDocId!()} failed validation`;
         expect(
-          logged.mock.calls.some(
-            ([first]) => typeof first === 'string' && first.includes('failed validation'),
-          ),
-          `${c.name} delivered null without logging a rejection — indistinguishable from absent`,
+          logged.mock.calls.some(([first]) => typeof first === 'string' && first.includes(wanted)),
+          `${c.name} delivered null without logging "${wanted}" — indistinguishable from absent`,
         ).toBe(true);
       }
     } finally {
