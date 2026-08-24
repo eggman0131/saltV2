@@ -2,6 +2,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { failure, type DomainError, type ReadResult } from '@salt/shared-types';
 import type { AiModelRole } from '@salt/domain/schemas';
 import { classifyCallableError } from './callableErrors.js';
+import { FUNCTIONS_REGION } from './functionsRegion.js';
 
 // Browser → admin-only Phase 3 callables. CLAUDE.md rule #2: the Firebase SDK is
 // only touched here. The web service consumes these wrappers, never
@@ -27,7 +28,7 @@ export async function callListAiModels(
 ): Promise<ReadResult<AiModelCatalog, DomainError>> {
   try {
     const fn = httpsCallable<{ forceRefresh: boolean }, AiModelCatalog>(
-      getFunctions(undefined, 'europe-west2'),
+      getFunctions(undefined, FUNCTIONS_REGION),
       'listAiModels',
     );
     const res = await fn({ forceRefresh });
@@ -44,7 +45,7 @@ export async function callTestModel(
 ): Promise<ReadResult<TestModelOutcome, DomainError>> {
   try {
     const fn = httpsCallable<{ model: string; role?: AiModelRole }, TestModelOutcome>(
-      getFunctions(undefined, 'europe-west2'),
+      getFunctions(undefined, FUNCTIONS_REGION),
       'testModel',
     );
     const res = await fn(role ? { model, role } : { model });

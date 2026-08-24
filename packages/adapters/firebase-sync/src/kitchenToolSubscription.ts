@@ -1,10 +1,11 @@
-import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success, failure } from '@salt/shared-types';
 import { KitchenToolSchema, KITCHEN_TOOLS_COLLECTION } from '@salt/domain/schemas';
 import type { KitchenToolDoc } from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
+import { subscribeCollection } from './subscribeCollection.js';
 
 // Kitchen-tool pictogram vocabulary (issue #882) — the read side of the curated
 // `kitchenTools` collection, plus the two plain writes that maintain it.
@@ -34,22 +35,16 @@ export function subscribeKitchenTools(
   // DomainError so the service report site can send the REAL stack to PostHog.
   onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
-  const db = getFirestore(getApp());
-  return onSnapshot(
-    collection(db, KITCHEN_TOOLS_COLLECTION),
-    (snap) => {
-      const valid: KitchenToolDoc[] = [];
-      for (const d of snap.docs) {
-        const result = KitchenToolSchema.safeParse(d.data());
-        if (result.success) {
-          valid.push(result.data);
-        } else {
-          console.error(`[KitchenToolSchema] Document ${d.id} failed validation`, result.error);
-        }
-      }
-      onTools(valid);
+  return subscribeCollection(
+    {
+      path: [KITCHEN_TOOLS_COLLECTION],
+      schema: KitchenToolSchema,
+      label: 'KitchenToolSchema',
+      project: (tool) => tool,
+      forwardsRawError: true,
     },
-    (err) => onError(classifyFirestoreError(err), err),
+    onTools,
+    onError,
   );
 }
 

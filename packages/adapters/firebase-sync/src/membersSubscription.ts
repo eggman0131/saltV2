@@ -1,10 +1,11 @@
-import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import type { Member } from '@salt/domain';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success, failure } from '@salt/shared-types';
 import { MemberSchema } from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
+import { subscribeCollection } from './subscribeCollection.js';
 
 const COLLECTION = 'members';
 
@@ -15,22 +16,18 @@ export function subscribeMembers(
   onMembers: (members: Member[]) => void,
   onError: (err: DomainError) => void,
 ): () => void {
-  const db = getFirestore(getApp());
-  return onSnapshot(
-    collection(db, COLLECTION),
-    (snap) => {
-      const valid: Member[] = [];
-      for (const d of snap.docs) {
-        const result = MemberSchema.safeParse(d.data());
-        if (result.success) {
-          valid.push(result.data as Member);
-        } else {
-          console.error(`[MemberSchema] Document ${d.id} failed validation`, result.error);
-        }
-      }
-      onMembers(valid);
+  return subscribeCollection(
+    {
+      path: [COLLECTION],
+      schema: MemberSchema,
+      label: 'MemberSchema',
+      project: (member) => member as Member,
+      // The one collection subscription whose `onError` takes a single argument
+      // (#928 finding B2-009). Widening it is an API change, not a consolidation.
+      forwardsRawError: false,
     },
-    (err) => onError(classifyFirestoreError(err)),
+    onMembers,
+    onError,
   );
 }
 

@@ -1,9 +1,10 @@
-import { getFirestore, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, getDoc } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success, failure } from '@salt/shared-types';
 import { FormulaSchema, type Formula } from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
+import { subscribeDocument } from './subscribeDocument.js';
 
 // Formula persistence (issue #806, phase 1 of epic #778). One document per recipe
 // at `formulas/{recipeId}` — a DETERMINISTIC id, so this is a SINGLE-DOCUMENT
@@ -43,23 +44,17 @@ export function subscribeFormula(
   // the categorised DomainError. Optional + last-positional: backward-compatible.
   onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
-  const db = getFirestore(getApp());
-  return onSnapshot(
-    doc(db, COLLECTION, recipeId),
-    (snap) => {
-      if (!snap.exists()) {
-        onFormula(null);
-        return;
-      }
-      const result = FormulaSchema.safeParse(snap.data());
-      if (!result.success) {
-        console.error(`[FormulaSchema] Document ${snap.id} failed validation`, result.error);
-        onError({ kind: 'StorageError', reason: 'corruption' });
-        return;
-      }
-      onFormula(result.data);
+  return subscribeDocument(
+    {
+      path: [COLLECTION, recipeId],
+      schema: FormulaSchema,
+      label: 'FormulaSchema',
+      onCorrupt: 'error',
+      logsRejection: true,
+      forwardsRawError: true,
     },
-    (err) => onError(classifyFirestoreError(err), err),
+    onFormula,
+    onError,
   );
 }
 

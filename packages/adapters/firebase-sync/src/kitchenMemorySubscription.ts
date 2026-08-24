@@ -1,4 +1,4 @@
-import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success, failure } from '@salt/shared-types';
@@ -8,6 +8,7 @@ import {
   type KitchenMemoryDoc,
 } from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
+import { subscribeCollection } from './subscribeCollection.js';
 
 // Kitchen memories (issue #816) — the notes the household wrote for the chef. One
 // document per note at `kitchenMemories/{id}`, a random id, so this is a COLLECTION
@@ -49,22 +50,16 @@ export function subscribeKitchenMemories(
   // the categorised DomainError. Optional + last-positional: backward-compatible.
   onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
-  const db = getFirestore(getApp());
-  return onSnapshot(
-    collection(db, COLLECTION),
-    (snap) => {
-      const valid: KitchenMemoryDoc[] = [];
-      for (const d of snap.docs) {
-        const result = KitchenMemorySchema.safeParse(d.data());
-        if (result.success) {
-          valid.push(result.data);
-        } else {
-          console.error(`[KitchenMemorySchema] Document ${d.id} failed validation`, result.error);
-        }
-      }
-      onMemories(valid);
+  return subscribeCollection(
+    {
+      path: [COLLECTION],
+      schema: KitchenMemorySchema,
+      label: 'KitchenMemorySchema',
+      project: (memory) => memory,
+      forwardsRawError: true,
     },
-    (err) => onError(classifyFirestoreError(err), err),
+    onMemories,
+    onError,
   );
 }
 

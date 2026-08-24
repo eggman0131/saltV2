@@ -2,6 +2,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { failure, success, type DomainError, type ReadResult } from '@salt/shared-types';
 import type { ExtractProcessStagesInput, ExtractProcessStagesOutput } from '@salt/domain/schemas';
 import { classifyCallableError } from './callableErrors.js';
+import { FUNCTIONS_REGION } from './functionsRegion.js';
 
 // extractProcessStages (issue #806, phase 2 of epic #778). Sends only the recipe
 // id — the flow reads the recipe server-side via the Admin SDK — and receives the
@@ -20,7 +21,7 @@ export async function callExtractProcessStages(
 ): Promise<ReadResult<ExtractProcessStagesOutput, DomainError>> {
   try {
     const fn = httpsCallable<ExtractProcessStagesInput, ExtractProcessStagesOutput>(
-      getFunctions(undefined, 'europe-west2'),
+      getFunctions(undefined, FUNCTIONS_REGION),
       'extractProcessStages',
     );
     const res = await fn(input);

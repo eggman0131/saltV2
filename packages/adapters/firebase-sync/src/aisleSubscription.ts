@@ -1,9 +1,9 @@
-import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, setDoc } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import type { Aisle } from '@salt/domain';
 import type { DomainError } from '@salt/shared-types';
 import { AislesDocumentSchema } from '@salt/domain/schemas';
-import { classifyFirestoreError } from './firestoreErrors.js';
+import { subscribeDocument } from './subscribeDocument.js';
 
 const AISLES_COLLECTION = 'canonData';
 const AISLES_DOC_ID = 'aisles';
@@ -11,25 +11,24 @@ const AISLES_DOC_ID = 'aisles';
 export function subscribeAisles(
   onAisles: (aisles: Aisle[]) => void,
   // rawError forwards the original Firestore error for the real stack; the
-  // synthetic schema-corruption DomainError below has none, so it omits it.
+  // synthetic schema-corruption DomainError has none, so the parse path omits
+  // it (see subscribeDocument.ts).
   onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
-  const db = getFirestore(getApp());
-  return onSnapshot(
-    doc(db, AISLES_COLLECTION, AISLES_DOC_ID),
-    (snap) => {
-      if (!snap.exists()) {
-        onAisles([]);
-        return;
-      }
-      const result = AislesDocumentSchema.safeParse(snap.data());
-      if (!result.success) {
-        onError({ kind: 'StorageError', reason: 'corruption' });
-        return;
-      }
-      onAisles(result.data.aisles);
+  return subscribeDocument(
+    {
+      path: [AISLES_COLLECTION, AISLES_DOC_ID],
+      schema: AislesDocumentSchema,
+      label: 'AislesDocumentSchema',
+      onCorrupt: 'error',
+      logsRejection: false,
+      forwardsRawError: true,
     },
-    (err) => onError(classifyFirestoreError(err), err),
+    // ONE document holding the whole array, so "no document" is an empty list
+    // rather than the `null` every other single-document read delivers — there
+    // is no such thing as "no aisles yet", only none of them.
+    (document) => onAisles(document === null ? [] : document.aisles),
+    onError,
   );
 }
 

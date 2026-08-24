@@ -1,6 +1,7 @@
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { failure, type DomainError, type ReadResult } from '@salt/shared-types';
 import { classifyCallableError } from './callableErrors.js';
+import { FUNCTIONS_REGION } from './functionsRegion.js';
 
 export interface IdentifyEquipmentCandidate {
   readonly name: string;
@@ -35,7 +36,7 @@ export async function callIdentifyEquipment(
 ): Promise<ReadResult<IdentifyEquipmentResult, DomainError>> {
   try {
     const fn = httpsCallable<{ rawName: string; traceparent?: string }, IdentifyEquipmentResult>(
-      getFunctions(undefined, 'europe-west2'),
+      getFunctions(undefined, FUNCTIONS_REGION),
       'identifyEquipment',
     );
     const res = await fn(traceparent ? { rawName, traceparent } : { rawName });
@@ -56,7 +57,7 @@ export async function callPopulateEquipmentEntry(
     const fn = httpsCallable<
       { confirmedName: string; traceparent?: string },
       PopulateEquipmentEntryResult
-    >(getFunctions(undefined, 'europe-west2'), 'populateEquipmentEntry');
+    >(getFunctions(undefined, FUNCTIONS_REGION), 'populateEquipmentEntry');
     const res = await fn(traceparent ? { confirmedName, traceparent } : { confirmedName });
     return { kind: 'ok', value: res.data };
   } catch (err) {

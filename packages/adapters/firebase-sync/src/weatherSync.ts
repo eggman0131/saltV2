@@ -1,8 +1,6 @@
-import { getFirestore, doc, onSnapshot } from 'firebase/firestore';
-import { getApp } from 'firebase/app';
 import type { DomainError } from '@salt/shared-types';
 import { WeatherForecastSchema, type WeatherForecast } from '@salt/domain/schemas';
-import { classifyFirestoreError } from './firestoreErrors.js';
+import { subscribeDocument } from './subscribeDocument.js';
 
 // Weather forecast cache subscription (issue #382, Phase 2). The CF writes the
 // pre-aggregated forecast to weatherForecast/singleton via the Admin SDK; this
@@ -20,21 +18,16 @@ export function subscribeWeatherForecast(
   onForecast: (forecast: WeatherForecast | null) => void,
   onError: (err: DomainError) => void,
 ): () => void {
-  const db = getFirestore(getApp());
-  return onSnapshot(
-    doc(db, COLLECTION, SINGLETON_DOC_ID),
-    (snap) => {
-      if (!snap.exists()) {
-        onForecast(null);
-        return;
-      }
-      const result = WeatherForecastSchema.safeParse(snap.data());
-      if (!result.success) {
-        onError({ kind: 'StorageError', reason: 'corruption' });
-        return;
-      }
-      onForecast(result.data);
+  return subscribeDocument(
+    {
+      path: [COLLECTION, SINGLETON_DOC_ID],
+      schema: WeatherForecastSchema,
+      label: 'WeatherForecastSchema',
+      onCorrupt: 'error',
+      logsRejection: false,
+      forwardsRawError: false,
     },
-    (err) => onError(classifyFirestoreError(err)),
+    onForecast,
+    onError,
   );
 }

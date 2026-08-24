@@ -5,7 +5,6 @@ import {
   setDoc,
   deleteDoc,
   getDocs,
-  onSnapshot,
   writeBatch,
 } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
@@ -14,6 +13,8 @@ import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success, failure } from '@salt/shared-types';
 import { ShoppingListItemSchema } from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
+import { parseDocuments } from './schemaParsing.js';
+import { subscribeCollection } from './subscribeCollection.js';
 
 const LISTS_COLLECTION = 'shoppingLists';
 const ITEMS_SUB = 'items';
@@ -25,25 +26,17 @@ export function subscribeShoppingListItems(
   // the categorised DomainError. Optional + last-positional: backward-compatible.
   onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
-  const db = getFirestore(getApp());
-  return onSnapshot(
-    collection(db, LISTS_COLLECTION, listId, ITEMS_SUB),
-    (snap) => {
-      const valid: ShoppingListItem[] = [];
-      for (const d of snap.docs) {
-        const result = ShoppingListItemSchema.safeParse(d.data());
-        if (result.success) {
-          valid.push(result.data as ShoppingListItem);
-        } else {
-          console.error(
-            `[ShoppingListItemSchema] Document ${d.id} failed validation`,
-            result.error,
-          );
-        }
-      }
-      onItems(valid);
+  return subscribeCollection(
+    {
+      // A SUBCOLLECTION: the items of one list, never every list's items.
+      path: [LISTS_COLLECTION, listId, ITEMS_SUB],
+      schema: ShoppingListItemSchema,
+      label: 'ShoppingListItemSchema',
+      project: (item) => item as ShoppingListItem,
+      forwardsRawError: true,
     },
-    (err) => onError(classifyFirestoreError(err), err),
+    onItems,
+    onError,
   );
 }
 
@@ -53,16 +46,15 @@ export async function listShoppingListItems(
   try {
     const db = getFirestore(getApp());
     const snap = await getDocs(collection(db, LISTS_COLLECTION, listId, ITEMS_SUB));
-    const valid: ShoppingListItem[] = [];
-    for (const d of snap.docs) {
-      const result = ShoppingListItemSchema.safeParse(d.data());
-      if (result.success) {
-        valid.push(result.data as ShoppingListItem);
-      } else {
-        console.error(`[ShoppingListItemSchema] Document ${d.id} failed validation`, result.error);
-      }
-    }
-    return success(valid);
+    // Same parse loop as the subscription above (#928, B2-006).
+    return success(
+      parseDocuments(
+        snap.docs,
+        ShoppingListItemSchema,
+        'ShoppingListItemSchema',
+        (item) => item as ShoppingListItem,
+      ),
+    );
   } catch (err) {
     return failure(classifyFirestoreError(err));
   }

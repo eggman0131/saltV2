@@ -1,9 +1,10 @@
-import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, setDoc } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success, failure } from '@salt/shared-types';
 import { AppSettingsSchema, type AppSettings } from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
+import { subscribeDocument } from './subscribeDocument.js';
 
 // Admin-managed AI model settings (Phase 1). A single Firestore singleton doc,
 // read here for the admin UI and (independently, via the Admin SDK) by the CF
@@ -17,22 +18,17 @@ export function subscribeAppSettings(
   onSettings: (settings: AppSettings | null) => void,
   onError: (err: DomainError) => void,
 ): () => void {
-  const db = getFirestore(getApp());
-  return onSnapshot(
-    doc(db, COLLECTION, SINGLETON_DOC_ID),
-    (snap) => {
-      if (!snap.exists()) {
-        onSettings(null);
-        return;
-      }
-      const result = AppSettingsSchema.safeParse(snap.data());
-      if (!result.success) {
-        onError({ kind: 'StorageError', reason: 'corruption' });
-        return;
-      }
-      onSettings(result.data);
+  return subscribeDocument(
+    {
+      path: [COLLECTION, SINGLETON_DOC_ID],
+      schema: AppSettingsSchema,
+      label: 'AppSettingsSchema',
+      onCorrupt: 'error',
+      logsRejection: false,
+      forwardsRawError: false,
     },
-    (err) => onError(classifyFirestoreError(err)),
+    onSettings,
+    onError,
   );
 }
 

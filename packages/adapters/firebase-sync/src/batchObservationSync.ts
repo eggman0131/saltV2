@@ -1,17 +1,10 @@
-import {
-  getFirestore,
-  collection,
-  doc,
-  setDoc,
-  onSnapshot,
-  query,
-  orderBy,
-} from 'firebase/firestore';
+import { getFirestore, doc, setDoc, orderBy } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success, failure } from '@salt/shared-types';
 import { BatchObservationSchema, type BatchObservationDoc } from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
+import { subscribeCollection } from './subscribeCollection.js';
 
 // The observation log (issue #812, phase 4 of epic #778). One document per entry at
 // `batches/{batchId}/observations/{observationId}` — Salt's first purpose-built
@@ -66,25 +59,19 @@ export function subscribeBatchObservations(
   // the categorised DomainError. Optional + last-positional: backward-compatible.
   onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
-  const db = getFirestore(getApp());
-  return onSnapshot(
-    query(collection(db, BATCHES_COLLECTION, batchId, OBSERVATIONS_SUB), orderBy('at', 'asc')),
-    (snap) => {
-      const valid: BatchObservationDoc[] = [];
-      for (const d of snap.docs) {
-        const result = BatchObservationSchema.safeParse(d.data());
-        if (result.success) {
-          valid.push(result.data);
-        } else {
-          console.error(
-            `[BatchObservationSchema] Document ${d.id} failed validation`,
-            result.error,
-          );
-        }
-      }
-      onObservations(valid);
+  return subscribeCollection(
+    {
+      path: [BATCHES_COLLECTION, batchId, OBSERVATIONS_SUB],
+      // Ordered by when the reading was OBSERVED — see the header for why that
+      // is not arrival order and why the query rather than the caller owns it.
+      constraints: [orderBy('at', 'asc')],
+      schema: BatchObservationSchema,
+      label: 'BatchObservationSchema',
+      project: (observation) => observation,
+      forwardsRawError: true,
     },
-    (err) => onError(classifyFirestoreError(err), err),
+    onObservations,
+    onError,
   );
 }
 

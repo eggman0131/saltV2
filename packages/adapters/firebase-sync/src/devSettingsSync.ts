@@ -1,9 +1,10 @@
-import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, setDoc } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success, failure } from '@salt/shared-types';
 import { DevSettingsSchema, type DevSettingsDoc } from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
+import { subscribeDocument } from './subscribeDocument.js';
 
 // Per-environment developer settings (issue #238). A single Firestore singleton
 // doc, read here for the admin UI and by the onCanonItemWritten CF trigger. A
@@ -17,22 +18,17 @@ export function subscribeDevSettings(
   onSettings: (settings: DevSettingsDoc | null) => void,
   onError: (err: DomainError) => void,
 ): () => void {
-  const db = getFirestore(getApp());
-  return onSnapshot(
-    doc(db, COLLECTION, SINGLETON_DOC_ID),
-    (snap) => {
-      if (!snap.exists()) {
-        onSettings(null);
-        return;
-      }
-      const result = DevSettingsSchema.safeParse(snap.data());
-      if (!result.success) {
-        onError({ kind: 'StorageError', reason: 'corruption' });
-        return;
-      }
-      onSettings(result.data);
+  return subscribeDocument(
+    {
+      path: [COLLECTION, SINGLETON_DOC_ID],
+      schema: DevSettingsSchema,
+      label: 'DevSettingsSchema',
+      onCorrupt: 'error',
+      logsRejection: false,
+      forwardsRawError: false,
     },
-    (err) => onError(classifyFirestoreError(err)),
+    onSettings,
+    onError,
   );
 }
 

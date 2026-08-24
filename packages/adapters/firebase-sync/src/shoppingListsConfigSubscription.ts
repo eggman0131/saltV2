@@ -1,10 +1,11 @@
-import { getFirestore, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, getDoc } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import type { ShoppingListsConfig } from '@salt/domain';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success, failure } from '@salt/shared-types';
 import { ShoppingListsConfigSchema } from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
+import { subscribeDocument } from './subscribeDocument.js';
 
 const CONFIG_COLLECTION = 'shoppingListsConfig';
 const CONFIG_DOC_ID = 'singleton';
@@ -12,25 +13,21 @@ const CONFIG_DOC_ID = 'singleton';
 export function subscribeShoppingListsConfig(
   onConfig: (config: ShoppingListsConfig | null) => void,
   // rawError forwards the original Firestore error for the real stack; the
-  // synthetic schema-corruption DomainError below has none, so it omits it.
+  // synthetic schema-corruption DomainError has none, so the parse path omits
+  // it (see subscribeDocument.ts).
   onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
-  const db = getFirestore(getApp());
-  return onSnapshot(
-    doc(db, CONFIG_COLLECTION, CONFIG_DOC_ID),
-    (snap) => {
-      if (!snap.exists()) {
-        onConfig(null);
-        return;
-      }
-      const result = ShoppingListsConfigSchema.safeParse(snap.data());
-      if (!result.success) {
-        onError({ kind: 'StorageError', reason: 'corruption' });
-        return;
-      }
-      onConfig(result.data);
+  return subscribeDocument(
+    {
+      path: [CONFIG_COLLECTION, CONFIG_DOC_ID],
+      schema: ShoppingListsConfigSchema,
+      label: 'ShoppingListsConfigSchema',
+      onCorrupt: 'error',
+      logsRejection: false,
+      forwardsRawError: true,
     },
-    (err) => onError(classifyFirestoreError(err), err),
+    onConfig,
+    onError,
   );
 }
 

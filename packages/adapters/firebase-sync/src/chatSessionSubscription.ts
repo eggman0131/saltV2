@@ -1,20 +1,11 @@
-import {
-  getFirestore,
-  collection,
-  doc,
-  setDoc,
-  deleteDoc,
-  getDoc,
-  onSnapshot,
-  query,
-  where,
-} from 'firebase/firestore';
+import { getFirestore, doc, setDoc, deleteDoc, getDoc, where } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import type { DomainError, ReadResult } from '@salt/shared-types';
 import { success, failure } from '@salt/shared-types';
 import { ChatSessionSchema } from '@salt/domain/schemas';
 import type { ChatSessionDoc } from '@salt/domain/schemas';
 import { classifyFirestoreError } from './firestoreErrors.js';
+import { subscribeCollection } from './subscribeCollection.js';
 
 // Chat session persistence (issue #206, Phase 1). One doc per session at
 // chatSessions/{id}. Per-user scoped: every read/write is filtered by ownerUid.
@@ -50,23 +41,19 @@ export function subscribeChatSessions(
   // the categorised DomainError. Optional + last-positional: backward-compatible.
   onError: (err: DomainError, rawError?: unknown) => void,
 ): () => void {
-  const db = getFirestore(getApp());
-  const q = query(collection(db, COLLECTION), where('ownerUid', '==', ownerUid));
-  return onSnapshot(
-    q,
-    (snap) => {
-      const valid: ChatSessionDoc[] = [];
-      for (const d of snap.docs) {
-        const result = ChatSessionSchema.safeParse(d.data());
-        if (result.success) {
-          valid.push(result.data);
-        } else {
-          console.error(`[ChatSessionSchema] Document ${d.id} failed validation`, result.error);
-        }
-      }
-      onSessions(valid);
+  return subscribeCollection(
+    {
+      path: [COLLECTION],
+      // Per-user scoped: the rule allows a read when the document's ownerUid is
+      // the caller's, and every document this filter returns satisfies it.
+      constraints: [where('ownerUid', '==', ownerUid)],
+      schema: ChatSessionSchema,
+      label: 'ChatSessionSchema',
+      project: (session) => session,
+      forwardsRawError: true,
     },
-    (err) => onError(classifyFirestoreError(err), err),
+    onSessions,
+    onError,
   );
 }
 
