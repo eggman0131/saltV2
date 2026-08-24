@@ -1,4 +1,4 @@
-// spec: SPEC.md §6 v0.3.1
+// spec: ui-spec-v03.md §6 v0.3.1
 import type { Snippet } from 'svelte';
 import type { ToastVariant } from '../../headless/Toast.headless.svelte';
 import type { ToastVariants } from './Toast.variants';

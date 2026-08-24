@@ -1,4 +1,4 @@
-// spec: SPEC.md §3 v0.3
+// spec: ui-spec-v03.md §3 v0.3
 export { default as Select } from './Select.svelte';
 export { default as SelectTrigger } from './SelectTrigger.svelte';
 export { default as SelectContent } from './SelectContent.svelte';

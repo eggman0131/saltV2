@@ -1,4 +1,4 @@
-<!-- spec: SPEC.md §8.1 v0.2.7 -->
+<!-- spec: ui-spec-v02.md §8.1 v0.2.7 -->
 <script lang="ts">
   import { cn } from '../../lib/cn';
   import { createButtonState } from '../../headless/Button.headless.svelte';
@@ -40,7 +40,7 @@
   $effect(() => {
     if (size === 'icon' && !ariaLabel) {
       console.warn(
-        '[Button] size="icon" requires an ariaLabel prop for accessibility. See SPEC.md §8.1.',
+        '[Button] size="icon" requires an ariaLabel prop for accessibility. See ui-spec-v02.md §8.1.',
       );
     }
   });

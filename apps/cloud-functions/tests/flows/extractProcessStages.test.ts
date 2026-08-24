@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const { mockGenerate, mockGet, mockDoc, mockCollection, mockFlowModel } = vi.hoisted(() => {
@@ -166,6 +167,47 @@ describe('extractProcessStages', () => {
   });
 });
 
+/**
+ * `packages/domain/src/schemas/process.ts`, found from the workspace root rather
+ * than by counting `../` (issue #919). The old `'../../../../packages/domain/…'`
+ * was correct only while this test sat exactly four levels down; moving the file
+ * one directory would have broken it with an ENOENT that reads like a missing
+ * schema rather than like a moved test.
+ */
+function processSchemaPath(): string {
+  let dir = dirname(fileURLToPath(import.meta.url));
+  while (!existsSync(join(dir, 'pnpm-workspace.yaml'))) {
+    const parent = dirname(dir);
+    if (parent === dir) throw new Error('no pnpm-workspace.yaml above this test');
+    dir = parent;
+  }
+  return join(dir, 'packages/domain/src/schemas/process.ts');
+}
+
+/**
+ * The indented paragraphs of the schema's `active vs wait` block — the definition
+ * itself, without the prose around it explaining why it is there. The definition
+ * is indented under the block header; the commentary sits flush at `// `.
+ */
+function activeVsWaitParagraphs(source: string): string[] {
+  const block = /─ active vs wait ─[^\n]*\n([\s\S]*?)\nexport const ProcessStageKindSchema/.exec(
+    source,
+  );
+  if (!block) return [];
+  const paragraphs: string[] = [];
+  let current: string[] = [];
+  for (const line of (block[1] as string).split('\n')) {
+    const indented = /^\/\/ {3,}(.*)$/.exec(line);
+    if (indented) current.push((indented[1] as string).trim());
+    else if (current.length > 0) {
+      paragraphs.push(current.join(' '));
+      current = [];
+    }
+  }
+  if (current.length > 0) paragraphs.push(current.join(' '));
+  return paragraphs;
+}
+
 describe('extractProcessStages — which side the oven falls on', () => {
   // THE SPIKE'S HEADLINE DEFECT. The bake came back labelled differently on each of
   // three bread recipes because nothing anywhere said whether an oven is attended.
@@ -182,12 +224,25 @@ describe('extractProcessStages — which side the oven falls on', () => {
   it('says the same thing as the schema the stages are stored under', async () => {
     // The drift guard. The definition lives in ProcessStageKindSchema's field docs
     // AND in this prompt; a change to one that is not made to the other is exactly
-    // how the bake starts moving between recipes again. Compared sentence by
-    // sentence rather than as one blob, because the two are wrapped differently.
-    const schemaSource = readFileSync(
-      fileURLToPath(new URL('../../../../packages/domain/src/schemas/process.ts', import.meta.url)),
-      'utf8',
-    );
+    // how the bake starts moving between recipes again.
+    //
+    // ─── Read from the schema, not remembered here (issue #919) ───────────────
+    // This used to hold the three sentences VERBATIM — ~40 words each — which made
+    // the test a THIRD copy of a definition whose whole point is to exist exactly
+    // once. Three copies drift faster than two, and the third was the one nobody
+    // would think to look at. It now reads the paragraphs OUT of the schema and
+    // requires the prompt to contain each, so the schema stays the single source
+    // and an edit reaching only one of the two goes red on the words that moved.
+    const definition = activeVsWaitParagraphs(readFileSync(processSchemaPath(), 'utf8'));
+
+    // Anti-vacuity: an extractor that stopped finding the block would make the
+    // loop below iterate over nothing and pass in silence — the exact failure the
+    // rewrite removes, reintroduced by the back door.
+    expect(
+      definition.length,
+      'the `active vs wait` block was not found in the schema — this guard is reading nothing',
+    ).toBe(3);
+
     // Comment prefixes, line wrapping and which words are SHOUTED differ between a
     // code comment and a prompt; the words themselves must not.
     const flatten = (text: string) =>
@@ -195,16 +250,10 @@ describe('extractProcessStages — which side the oven falls on', () => {
         .replace(/^\s*\/\/ ?/gm, '')
         .replace(/\s+/g, ' ')
         .toUpperCase();
-    const schemaText = flatten(schemaSource);
     const promptText = flatten(STAGE_KIND_RULES);
 
-    for (const sentence of [
-      'A `wait` is unattended change — the dough, the ferment or the oven changes on its own and the cook can leave the room: bulk fermentation, proving, a fridge retard, resting, curing, and an oven coming up to temperature.',
-      'An `active` stage is one the cook carries out and is present for: mixing, folding, shaping, and the bake itself.',
-      'The bake is `active`. The preheat is `wait`.',
-    ]) {
-      expect(promptText).toContain(sentence.toUpperCase());
-      expect(schemaText).toContain(sentence.toUpperCase());
+    for (const paragraph of definition) {
+      expect(promptText).toContain(flatten(paragraph));
     }
   });
 });

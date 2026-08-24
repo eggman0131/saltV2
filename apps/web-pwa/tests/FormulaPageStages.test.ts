@@ -20,31 +20,17 @@ import type { Formula, ProcessStage } from '@salt/domain/schemas';
 //   • a recipe with no waits comes back with nothing, and the screen says so rather
 //     than showing an invented proof.
 
-const { mockRecipes, mockIsLoadingRecipes, mockFormula, mockCanonItems } = vi.hoisted(() => {
-  function makeStore<T>(initial: T) {
-    let value = initial;
-    const subs = new Set<(v: T) => void>();
+const { mockRecipes, mockIsLoadingRecipes, mockFormula, mockCanonItems } = await vi.hoisted(
+  async () => {
+    const { makeStore } = await import('./support/testStore.js');
     return {
-      subscribe(fn: (v: T) => void) {
-        subs.add(fn);
-        fn(value);
-        return () => {
-          subs.delete(fn);
-        };
-      },
-      _set(v: T) {
-        value = v;
-        subs.forEach((fn) => fn(v));
-      },
+      mockRecipes: makeStore<readonly Recipe[]>([]),
+      mockIsLoadingRecipes: makeStore<boolean>(false),
+      mockFormula: makeStore<Formula | null | undefined>(undefined),
+      mockCanonItems: makeStore<readonly CanonItem[]>([]),
     };
-  }
-  return {
-    mockRecipes: makeStore<readonly Recipe[]>([]),
-    mockIsLoadingRecipes: makeStore<boolean>(false),
-    mockFormula: makeStore<Formula | null | undefined>(undefined),
-    mockCanonItems: makeStore<readonly CanonItem[]>([]),
-  };
-});
+  },
+);
 
 vi.mock('svelte-spa-router', () => ({ push: vi.fn() }));
 vi.mock('../src/lib/toastStore.js', () => ({ addToast: vi.fn() }));

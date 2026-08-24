@@ -1,0 +1,24 @@
+{
+  // Typechecking config for the `.test-d.ts` type tests (issue #922).
+  //
+  // The package's own tsconfig is `composite` and rooted at `src/`, so it cannot
+  // compile anything under `tests/` — which is how `Icon.types.test-d.ts` and
+  // `Text.types.test-d.ts` came to sit in the repo for months having never been
+  // run by anything at all. This config exists solely for `vitest --typecheck`
+  // to point at: no emit, no project references, just the two files and whatever
+  // they pull in from `src/`.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "composite": false,
+    // The base config emits declarations; under `declaration: true` TS demands a
+    // portable name for every inferred export type and `iconRegistry`'s cannot
+    // be named without reaching into @lucide/svelte's dist. Nothing is emitted
+    // here, so the requirement is pure noise.
+    "declaration": false,
+    "declarationMap": false,
+    "lib": ["ES2022", "DOM"],
+    "types": []
+  },
+  "include": ["tests/**/*.test-d.ts"]
+}

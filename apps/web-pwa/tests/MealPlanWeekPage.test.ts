@@ -63,24 +63,8 @@ const {
   mockBuildRecipeAddPlan,
   mockCommitRecipeAddPlan,
   mockRecipeAddPlanItemCount,
-} = vi.hoisted(() => {
-  function makeStore<T>(initial: T) {
-    let value = initial;
-    const subs = new Set<(v: T) => void>();
-    return {
-      subscribe(fn: (v: T) => void) {
-        subs.add(fn);
-        fn(value);
-        return () => {
-          subs.delete(fn);
-        };
-      },
-      _set(v: T) {
-        value = v;
-        subs.forEach((fn) => fn(v));
-      },
-    };
-  }
+} = await vi.hoisted(async () => {
+  const { makeStore } = await import('./support/testStore.js');
   // Start date of the second week the planner is holding, '' for none. The real
   // service owns this; here `setExtensionWeek` drives it, so the page's own
   // request for a second week is what makes one appear — exactly the loop the

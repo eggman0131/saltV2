@@ -1,4 +1,4 @@
-// spec: SPEC.md §6 v0.2.3
+// spec: ui-spec-v02.md §6 v0.2.3
 // Non-interactive primitive — 'events contract' and 'keyboard interaction' blocks omitted per §6.1.
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/svelte';

@@ -9,24 +9,8 @@ import type { Recipe } from '@salt/domain';
 // picked. A native `<input type="date">` would put all three of those in the
 // platform's hands and give a different answer on every device.
 
-const { mockFirstDayOfWeek, mockAddRecipeToDay, mockAddToast } = vi.hoisted(() => {
-  function makeStore<T>(initial: T) {
-    let value = initial;
-    const subs = new Set<(v: T) => void>();
-    return {
-      subscribe(fn: (v: T) => void) {
-        subs.add(fn);
-        fn(value);
-        return () => {
-          subs.delete(fn);
-        };
-      },
-      _set(v: T) {
-        value = v;
-        subs.forEach((fn) => fn(v));
-      },
-    };
-  }
+const { mockFirstDayOfWeek, mockAddRecipeToDay, mockAddToast } = await vi.hoisted(async () => {
+  const { makeStore } = await import('./support/testStore.js');
   return {
     mockFirstDayOfWeek: makeStore<string>('mon'),
     mockAddRecipeToDay: vi.fn(),

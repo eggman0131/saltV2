@@ -19,24 +19,8 @@ const {
   mockDefaultListId,
   mockLoading,
   mockForms,
-} = vi.hoisted(() => {
-  function makeStore<T>(initial: T) {
-    let value = initial;
-    const subs = new Set<(v: T) => void>();
-    return {
-      subscribe(fn: (v: T) => void) {
-        subs.add(fn);
-        fn(value);
-        return () => {
-          subs.delete(fn);
-        };
-      },
-      _set(v: T) {
-        value = v;
-        subs.forEach((fn) => fn(v));
-      },
-    };
-  }
+} = await vi.hoisted(async () => {
+  const { makeStore } = await import('./support/testStore.js');
   return {
     mockCanonItems: makeStore<CanonItem[]>([]),
     mockAisles: makeStore<{ id: string; name: string; order: number }[]>([]),

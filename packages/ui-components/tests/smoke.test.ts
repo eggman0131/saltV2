@@ -1,4 +1,4 @@
-// spec: SPEC.md §6 v0.3
+// spec: ui-spec-v03.md §6 v0.3
 import { describe, it, expect } from 'vitest';
 import * as pkg from '../src/index.js';
 

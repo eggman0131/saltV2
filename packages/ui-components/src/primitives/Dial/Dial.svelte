@@ -1,4 +1,4 @@
-<!-- spec: SPEC.md §8.22 v0.8 -->
+<!-- spec: ui-spec-v08.md §8.22 v0.8 -->
 <script lang="ts">
   import { cn } from '../../lib/cn';
   import { dialVariants } from './Dial.variants';

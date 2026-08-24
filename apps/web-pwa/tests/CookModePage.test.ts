@@ -20,27 +20,8 @@ const {
   mockCookSession,
   mockCookSessionEnded,
   mockIsLoadingCookSession,
-} = vi.hoisted(() => {
-  function makeStore<T>(initial: T) {
-    let value = initial;
-    const subs = new Set<(v: T) => void>();
-    return {
-      subscribe(fn: (v: T) => void) {
-        subs.add(fn);
-        fn(value);
-        return () => {
-          subs.delete(fn);
-        };
-      },
-      _set(v: T) {
-        value = v;
-        subs.forEach((sub) => sub(v));
-      },
-      _get() {
-        return value;
-      },
-    };
-  }
+} = await vi.hoisted(async () => {
+  const { makeStore } = await import('./support/testStore.js');
   return {
     mockAuth: { user: { uid: 'user-1' } as { uid: string } | null },
     mockRecipes: makeStore<RecipeDoc[]>([]),

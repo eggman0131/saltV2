@@ -1,4 +1,4 @@
-// spec: SPEC.md §3.5 v0.2.3
+// spec: ui-spec-v02.md §3.5 v0.2.3
 import { clsx, type ClassValue } from 'clsx';
 import { extendTailwindMerge } from 'tailwind-merge';
 

@@ -1,4 +1,4 @@
-// spec: SPEC.md §3.5 v0.2.10
+// spec: ui-spec-v02.md §3.5 v0.2.10
 import { getContext, setContext } from 'svelte';
 
 export function createContext<T>(name: string) {

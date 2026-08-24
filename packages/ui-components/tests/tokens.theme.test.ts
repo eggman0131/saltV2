@@ -1,4 +1,4 @@
-// spec: SPEC.md §3.3 v0.2.3
+// spec: ui-spec-v02.md §3.3 v0.2.3
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';

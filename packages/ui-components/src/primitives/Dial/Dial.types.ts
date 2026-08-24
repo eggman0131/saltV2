@@ -1,4 +1,4 @@
-// spec: SPEC.md §8.22 v0.8
+// spec: ui-spec-v08.md §8.22 v0.8
 import type { Snippet } from 'svelte';
 import type { DialVariants } from './Dial.variants';
 

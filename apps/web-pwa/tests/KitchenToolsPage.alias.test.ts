@@ -15,32 +15,18 @@ import type { KitchenToolDoc } from '@salt/domain/schemas';
 // reads exactly like a broken page. Vitest's isolation is per FILE, so this is the
 // smallest boundary that makes the test honest.
 
-const { mockRecipes, mockMembers, mockIsLoading, mockAuth, toolSink } = vi.hoisted(() => {
-  function makeStore<T>(initial: T) {
-    let value = initial;
-    const subs = new Set<(v: T) => void>();
+const { mockRecipes, mockMembers, mockIsLoading, mockAuth, toolSink } = await vi.hoisted(
+  async () => {
+    const { makeStore } = await import('./support/testStore.js');
     return {
-      subscribe(fn: (v: T) => void) {
-        subs.add(fn);
-        fn(value);
-        return () => {
-          subs.delete(fn);
-        };
-      },
-      _set(v: T) {
-        value = v;
-        subs.forEach((fn) => fn(v));
-      },
+      mockRecipes: makeStore<readonly Recipe[]>([]),
+      mockMembers: makeStore<{ email: string; admin: boolean }[]>([]),
+      mockIsLoading: makeStore<boolean>(false),
+      mockAuth: { user: { email: 'admin@e.org' } as { email: string } | null },
+      toolSink: { push: null as null | ((tools: readonly unknown[]) => void) },
     };
-  }
-  return {
-    mockRecipes: makeStore<readonly Recipe[]>([]),
-    mockMembers: makeStore<{ email: string; admin: boolean }[]>([]),
-    mockIsLoading: makeStore<boolean>(false),
-    mockAuth: { user: { email: 'admin@e.org' } as { email: string } | null },
-    toolSink: { push: null as null | ((tools: readonly unknown[]) => void) },
-  };
-});
+  },
+);
 
 vi.mock('svelte-spa-router', () => ({
   push: vi.fn(),

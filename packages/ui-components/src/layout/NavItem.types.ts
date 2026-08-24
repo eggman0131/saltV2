@@ -1,3 +1,4 @@
+// spec: ui-spec-v04.md §13 v0.4
 import type { LucideIcon } from '@lucide/svelte';
 
 export interface NavItem {

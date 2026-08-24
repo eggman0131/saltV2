@@ -1,4 +1,4 @@
-// spec: SPEC.md §8.1 v0.2.3
+// spec: ui-spec-v02.md §8.1 v0.2.3
 import type { Snippet } from 'svelte';
 import type { HTMLButtonAttributes } from 'svelte/elements';
 import type { ButtonVariants } from './Button.variants';

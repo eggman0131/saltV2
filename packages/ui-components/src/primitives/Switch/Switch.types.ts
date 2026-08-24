@@ -1,4 +1,4 @@
-// spec: SPEC.md §8.5 v0.2.3
+// spec: ui-spec-v02.md §8.5 v0.2.3
 import type { SwitchRootVariants } from './Switch.variants';
 
 export type SwitchProps = {

@@ -1,4 +1,4 @@
-// spec: SPEC.md §3.3 v0.2.3
+// spec: ui-spec-v02.md §3.3 v0.2.3
 // AUTO-GENERATED — do not hand-edit. Run `pnpm --filter @salt/ui-components generate-tokens` to regenerate.
 export const background = 'hsl(var(--salt-background))';
 export const foreground = 'hsl(var(--salt-foreground))';

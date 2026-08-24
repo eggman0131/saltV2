@@ -1,4 +1,4 @@
-<!-- spec: SPEC.md §2 v0.3 -->
+<!-- spec: ui-spec-v03.md §2 v0.3 -->
 <script lang="ts">
   import { untrack } from 'svelte';
   import { cn } from '../../lib/cn';

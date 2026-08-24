@@ -1,4 +1,4 @@
-// spec: SPEC.md §8.6 v0.2.3
+// spec: ui-spec-v02.md §8.6 v0.2.3
 export { default as Dialog } from './Dialog.svelte';
 export { default as DialogTrigger } from './DialogTrigger.svelte';
 export { default as DialogContent } from './DialogContent.svelte';

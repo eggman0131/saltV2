@@ -1,4 +1,4 @@
-<!-- spec: SPEC.md §6 v0.3 — test fixture for Select composition -->
+<!-- spec: ui-spec-v03.md §6 v0.3 — test fixture for Select composition -->
 <script lang="ts">
   import Select from '../../src/primitives/Select/Select.svelte';
   import SelectTrigger from '../../src/primitives/Select/SelectTrigger.svelte';

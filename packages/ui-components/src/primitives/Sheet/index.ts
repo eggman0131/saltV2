@@ -1,4 +1,4 @@
-// spec: SPEC.md §5 v0.3
+// spec: ui-spec-v03.md §5 v0.3
 export { default as Sheet } from './Sheet.svelte';
 export { default as SheetTrigger } from './SheetTrigger.svelte';
 export { default as SheetContent } from './SheetContent.svelte';

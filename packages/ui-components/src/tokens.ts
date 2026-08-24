@@ -1,4 +1,4 @@
-// spec: SPEC.md §1.3 v0.2.3
+// spec: ui-spec-v02.md §1.3 v0.2.3
 // AUTO-GENERATED — do not hand-edit. Run `pnpm --filter @salt/ui-components generate-tokens` to regenerate.
 export * as colors from './tokens/colors';
 export * as radius from './tokens/radius';

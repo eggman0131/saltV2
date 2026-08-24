@@ -1,4 +1,4 @@
-<!-- spec: SPEC.md §2 v0.3 -->
+<!-- spec: ui-spec-v03.md §2 v0.3 -->
 <script lang="ts">
   import { cn } from '../../lib/cn';
   import { RADIO_GROUP_CONTEXT } from '../../headless/RadioGroup.headless.svelte';

@@ -9,25 +9,9 @@ import type { Recipe, CanonItem, IngredientGroup, ProductForm } from '@salt/doma
 // justified its count. This pins that the original wording is rendered ALONGSIDE
 // the label (issue #528), and that ordinary rows are untouched.
 
-const { mockCanonItems, mockGetCanonItemsSnapshot, mockGetProductFormsSnapshot } = vi.hoisted(
-  () => {
-    function makeStore<T>(initial: T) {
-      let value = initial;
-      const subs = new Set<(v: T) => void>();
-      return {
-        subscribe(fn: (v: T) => void) {
-          subs.add(fn);
-          fn(value);
-          return () => {
-            subs.delete(fn);
-          };
-        },
-        _set(v: T) {
-          value = v;
-          subs.forEach((fn) => fn(v));
-        },
-      };
-    }
+const { mockCanonItems, mockGetCanonItemsSnapshot, mockGetProductFormsSnapshot } = await vi.hoisted(
+  async () => {
+    const { makeStore } = await import('./support/testStore.js');
     return {
       mockCanonItems: makeStore<CanonItem[]>([]),
       mockGetCanonItemsSnapshot: vi.fn(() => [] as CanonItem[]),

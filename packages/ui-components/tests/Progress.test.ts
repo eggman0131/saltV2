@@ -1,4 +1,4 @@
-// spec: SPEC.md §6 v0.2.3
+// spec: ui-spec-v02.md §6 v0.2.3
 // Note: "events contract" and "keyboard interaction" blocks are omitted — Progress is
 // non-interactive (consumer-driven value) and has no keyboard surface or event callbacks.
 import { describe, it, expect, afterEach } from 'vitest';

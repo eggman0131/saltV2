@@ -1,4 +1,4 @@
-// spec: SPEC.md §4.1 v0.2.3
+// spec: ui-spec-v02.md §4.1 v0.2.3
 // AUTO-GENERATED — do not hand-edit. Run `pnpm --filter @salt/ui-components generate-tokens` to regenerate.
 export const sm = 'var(--salt-radius-sm)';
 export const DEFAULT = 'var(--salt-radius-default)';

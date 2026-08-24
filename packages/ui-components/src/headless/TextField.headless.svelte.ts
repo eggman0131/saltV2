@@ -1,4 +1,4 @@
-// spec: SPEC.md §8.2 v0.2.3
+// spec: ui-spec-v02.md §8.2 v0.2.3
 import { useId } from '../lib/useId';
 
 export type TextFieldState = {

@@ -1,4 +1,4 @@
-<!-- spec: SPEC.md §4 v0.3 -->
+<!-- spec: ui-spec-v03.md §4 v0.3 -->
 <script lang="ts">
   import { cn } from '../../lib/cn';
   import { SLIDER_CONTEXT } from '../../headless/Slider.headless.svelte';

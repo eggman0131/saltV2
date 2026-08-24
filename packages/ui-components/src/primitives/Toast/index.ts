@@ -1,4 +1,4 @@
-// spec: SPEC.md §6 v0.3
+// spec: ui-spec-v03.md §6 v0.3
 export { default as ToastProvider } from './ToastProvider.svelte';
 export { default as ToastViewport } from './ToastViewport.svelte';
 export { default as Toast } from './Toast.svelte';

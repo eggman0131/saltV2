@@ -1,3 +1,4 @@
+// spec: ui-spec-v04.md §16.2 v0.4
 import type { Snippet } from 'svelte';
 
 export interface TopBarProps {

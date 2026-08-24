@@ -1,4 +1,4 @@
-// spec: SPEC.md §8.10 v0.2.3
+// spec: ui-spec-v02.md §8.10 v0.2.3
 import { cva, type VariantProps } from '../../lib/variants';
 
 export const headingVariants = cva('font-display font-semibold tracking-tight text-foreground', {

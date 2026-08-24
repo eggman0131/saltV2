@@ -3,24 +3,8 @@ import { render, screen, cleanup, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import type { Member } from '@salt/domain';
 
-const { mockMembers, mockIsLoading, mockAuth } = vi.hoisted(() => {
-  function makeStore<T>(initial: T) {
-    let value = initial;
-    const subs = new Set<(v: T) => void>();
-    return {
-      subscribe(fn: (v: T) => void) {
-        subs.add(fn);
-        fn(value);
-        return () => {
-          subs.delete(fn);
-        };
-      },
-      _set(v: T) {
-        value = v;
-        subs.forEach((fn) => fn(v));
-      },
-    };
-  }
+const { mockMembers, mockIsLoading, mockAuth } = await vi.hoisted(async () => {
+  const { makeStore } = await import('./support/testStore.js');
   return {
     mockMembers: makeStore<Member[]>([]),
     mockIsLoading: makeStore<boolean>(false),

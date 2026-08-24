@@ -15,26 +15,10 @@ const {
   mockExtensionStartDate,
   mockFirstDayOfWeek,
   mockUnsub,
-} = vi.hoisted(() => {
+} = await vi.hoisted(async () => {
   // A minimal readable store, hand-rolled: vi.hoisted runs before imports, so
   // svelte/store's writable is not available here yet.
-  function makeStore<T>(initial: T) {
-    let value = initial;
-    const subs = new Set<(v: T) => void>();
-    return {
-      subscribe(fn: (v: T) => void) {
-        subs.add(fn);
-        fn(value);
-        return () => {
-          subs.delete(fn);
-        };
-      },
-      set(v: T) {
-        value = v;
-        subs.forEach((fn) => fn(v));
-      },
-    };
-  }
+  const { makeStore } = await import('./support/testStore.js');
   return {
     mockSubscribeInRange: vi.fn(),
     mockSaveShoppingDay: vi.fn(),

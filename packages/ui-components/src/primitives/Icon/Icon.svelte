@@ -1,4 +1,4 @@
-<!-- spec: SPEC.md §8.12 v0.2.11 -->
+<!-- spec: ui-spec-v02.md §8.12 v0.2.11 -->
 <script lang="ts">
   import { iconRegistry } from './iconRegistry';
   import { cn } from '../../lib/cn';

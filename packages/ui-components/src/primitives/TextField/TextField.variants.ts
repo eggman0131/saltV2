@@ -1,4 +1,4 @@
-// spec: SPEC.md §8.2 v0.2.3
+// spec: ui-spec-v02.md §8.2 v0.2.3
 import { cva, type VariantProps } from '../../lib/variants';
 
 export const textFieldFrameVariants = cva('salt-input salt-focus-ring-within', {

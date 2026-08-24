@@ -1,3 +1,4 @@
+<!-- spec: ui-spec-v04.md §13 v0.4 -->
 <script lang="ts">
   import { cn } from '../../lib/cn';
   import type { SideNavProps } from './SideNav.types';

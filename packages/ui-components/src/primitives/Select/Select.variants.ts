@@ -1,4 +1,4 @@
-// spec: SPEC.md §3 v0.3
+// spec: ui-spec-v03.md §3 v0.3
 import { cva, type VariantProps } from '../../lib/variants';
 
 export const selectTriggerVariants = cva('salt-trigger', {

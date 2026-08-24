@@ -9,24 +9,8 @@ import type { ChatSessionDoc } from '@salt/domain/schemas';
 // the URL — anything held in module memory would not survive the navigation, let
 // alone a reload while the user reads the list.
 
-const { mockSessions, mockIsLoading, mockRouter } = vi.hoisted(() => {
-  function makeStore<T>(initial: T) {
-    let value = initial;
-    const subs = new Set<(v: T) => void>();
-    return {
-      subscribe(fn: (v: T) => void) {
-        subs.add(fn);
-        fn(value);
-        return () => {
-          subs.delete(fn);
-        };
-      },
-      _set(v: T) {
-        value = v;
-        subs.forEach((fn) => fn(v));
-      },
-    };
-  }
+const { mockSessions, mockIsLoading, mockRouter } = await vi.hoisted(async () => {
+  const { makeStore } = await import('./support/testStore.js');
   return {
     mockSessions: makeStore<readonly ChatSessionDoc[]>([]),
     mockIsLoading: makeStore<boolean>(false),

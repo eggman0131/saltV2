@@ -5,33 +5,19 @@ import type { CanonItem } from '@salt/domain';
 
 // ─── Mock stores (hoisted so vi.mock factories can reference them) ─────────────
 
-const { mockCanonItems, mockAisles, mockMembers, mockIsLoading, mockAuth } = vi.hoisted(() => {
-  function makeStore<T>(initial: T) {
-    let value = initial;
-    const subs = new Set<(v: T) => void>();
+const { mockCanonItems, mockAisles, mockMembers, mockIsLoading, mockAuth } = await vi.hoisted(
+  async () => {
+    const { makeStore } = await import('./support/testStore.js');
     return {
-      subscribe(fn: (v: T) => void) {
-        subs.add(fn);
-        fn(value);
-        return () => {
-          subs.delete(fn);
-        };
-      },
-      _set(v: T) {
-        value = v;
-        subs.forEach((fn) => fn(v));
-      },
+      mockCanonItems: makeStore<CanonItem[]>([]),
+      mockAisles: makeStore<{ id: string; name: string; position: number }[]>([]),
+      // AdminGuard (canon now lives behind /admin, #157) reads these.
+      mockMembers: makeStore<{ email: string; admin: boolean }[]>([]),
+      mockIsLoading: makeStore<boolean>(false),
+      mockAuth: { user: { email: 'admin@e.org' } as { email: string } | null },
     };
-  }
-  return {
-    mockCanonItems: makeStore<CanonItem[]>([]),
-    mockAisles: makeStore<{ id: string; name: string; position: number }[]>([]),
-    // AdminGuard (canon now lives behind /admin, #157) reads these.
-    mockMembers: makeStore<{ email: string; admin: boolean }[]>([]),
-    mockIsLoading: makeStore<boolean>(false),
-    mockAuth: { user: { email: 'admin@e.org' } as { email: string } | null },
-  };
-});
+  },
+);
 
 // ─── Module mocks ──────────────────────────────────────────────────────────────
 
