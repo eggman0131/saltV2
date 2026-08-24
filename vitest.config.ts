@@ -67,7 +67,22 @@ export default defineConfig({
       thresholds: {
         'packages/domain/src/**': { lines: 98.74, branches: 91.64 },
         'packages/ui-components/src/**': { lines: 88.03, branches: 74.74 },
-        'packages/adapters/observability/src/**': { lines: 83.56, branches: 77.77 },
+        // Lines CORRECTED DOWN 83.56 → 82.58 in #977, and this is the one case
+        // where that is not a ratchet release. 83.56 was never measured: it was
+        // the output of a corrupted v8 merge. `browserTracer.ts` loads its OTel
+        // implementation with a fire-and-forget `import()`, and seven tests left
+        // that load in flight at worker teardown, so V8 reported
+        // `browserTracerImpl.ts` a second time with every count at zero. Merging
+        // that entry misaligned the statement maps and credited five lines that
+        // CANNOT have run — including the `pagehide` registration, inside a guard
+        // this project's `node` environment sends the other way. Whether the race
+        // was lost decided whether the pin was met, hence cold-cache red / warm
+        // green. Draining the load (observability's tests/setup.ts) makes the
+        // measurement identical cold and warm; 82.58% is what it has always
+        // honestly been. Branches gained the same way (77.78 → a true 78.59) and
+        // the pin is left at 77.77 rather than swept up in the correction —
+        // raising a pin stays a deliberate, separate act.
+        'packages/adapters/observability/src/**': { lines: 82.58, branches: 77.77 },
         'packages/adapters/firebase-sync/src/**': { lines: 57.82, branches: 63.02 },
         'apps/cloud-functions/src/**': { lines: 79.75, branches: 73.73 },
         'apps/web-pwa/src/routes/**': { lines: 73.91, branches: 63.24 },

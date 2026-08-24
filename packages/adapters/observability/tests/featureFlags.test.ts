@@ -38,7 +38,13 @@ vi.mock('posthog-js', () => ({
 
 // The browser tracer is wired by initObservability and is not what is under test;
 // stubbing it keeps the OTel SDK out of this suite entirely.
-vi.mock('../src/browserTracer.js', () => ({ initBrowserTracing: vi.fn() }));
+// `browserTracingLoadSettled` is stubbed too because tests/setup.ts drains it
+// after every test (#977); a stubbed facade never starts a load, so resolving
+// immediately is the truthful answer here.
+vi.mock('../src/browserTracer.js', () => ({
+  initBrowserTracing: vi.fn(),
+  browserTracingLoadSettled: () => Promise.resolve(),
+}));
 
 type InitModule = typeof import('../src/init.js');
 
