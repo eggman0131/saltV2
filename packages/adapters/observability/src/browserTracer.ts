@@ -35,10 +35,14 @@ type BrowserTracerImpl = typeof import('./browserTracerImpl.js');
 // every helper below degrades to its inert path.
 let impl: BrowserTracerImpl | null = null;
 
-// Guards a second initBrowserTracing call firing a second import while the first
-// is still in flight (the import itself is cached, but its `.then` would re-run
-// the implementation's own init). Cleared on failure so a later call may retry.
-let loading = false;
+// The in-flight load, or null when none is running. Guards a second
+// initBrowserTracing call firing a second import while the first is still in
+// flight (the import itself is cached, but its `.then` would re-run the
+// implementation's own init). Cleared on failure so a later call may retry.
+//
+// Held as the PROMISE rather than a boolean purely so the load is observable —
+// see loadSettled() below. Production still never awaits it.
+let loading: Promise<void> | null = null;
 
 // Kick off the implementation load and initialise it when it lands. Idempotent,
 // and inert without a key (mirrors initObservability) — so the SDK chunk is never
@@ -46,17 +50,16 @@ let loading = false;
 export function initBrowserTracing(key: string, environment?: string): void {
   if (impl || loading) return;
   if (!key) return;
-  loading = true;
   // Not awaited: initObservability is on the boot path and must not block on a
   // telemetry chunk. Failures are swallowed (Rule 10) and leave tracing inert.
-  void import('./browserTracerImpl.js')
+  loading = import('./browserTracerImpl.js')
     .then((module) => {
       module.initBrowserTracing(key, environment);
       impl = module;
     })
     .catch(() => {
       // Inert — no tracing this page load. Never surfaced to the caller.
-      loading = false;
+      loading = null;
     });
 }
 
@@ -72,4 +75,23 @@ export function isBrowserTracingReady(): boolean {
 // still loading, or if it never does. Never throws (Rule 10).
 export function startUserActionSpan(name: string): UserActionSpan {
   return impl ? impl.startUserActionSpan(name) : NOOP_ACTION;
+}
+
+// Resolves once the fire-and-forget load above has settled — loaded, or failed
+// and left tracing inert. Resolves immediately when no load was ever started.
+//
+// NOT part of the observability port and deliberately NOT re-exported from
+// index.ts: no application code should ever wait on telemetry. It exists for the
+// TEST HARNESS (issue #977). A page can afford to be torn down with the chunk
+// still in flight; a Vitest worker cannot. If the module finishes evaluating
+// after the worker has taken its V8 coverage snapshot, V8 reports the same script
+// a second time with every count at zero, and merging that zero-count entry into
+// the real one misaligns the two statement maps — the report then credits lines
+// that provably never ran (the `pagehide` block, in a `node` environment where
+// `window` is undefined) and drops lines that provably did. That is what made
+// `packages/adapters/observability/src/**` measure 422/511 lines on a cold Vite
+// transform cache and 427/511 once warm. The observability project's setup file
+// awaits this after every test so the load can never straddle teardown.
+export function browserTracingLoadSettled(): Promise<void> {
+  return loading ?? Promise.resolve();
 }
